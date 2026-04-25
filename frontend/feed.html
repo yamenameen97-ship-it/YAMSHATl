@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Social App | الرئيسية</title>
+    <link rel="stylesheet" href="assets/style.css">
+</head>
+<body class="feed-page">
+    <header class="header glass">
+        <div class="header-row">
+            <div>
+                <div class="brand-title">📸 Social Feed</div>
+                <div class="subtle-text" id="sessionUser">جاري التحقق من الجلسة...</div>
+            </div>
+            <div class="header-actions">
+                <button class="icon-btn" onclick="toggleNotifications()">🔔 <span id="count">0</span></button>
+                <button class="icon-btn" onclick="logout()">🚪 خروج</button>
+            </div>
+        </div>
+    </header>
+
+    <div id="notifBox" class="notif-box glass"></div>
+
+    <main class="container feed-shell">
+        <div id="storyBar" class="story-bar glass"></div>
+
+        <section id="quickUpload" class="quick-panel glass">
+            <div class="post-box composer-box">
+                <input type="text" id="postInput" placeholder="اكتب منشورك الآن...">
+                <button onclick="addPost(this)">نشر</button>
+            </div>
+
+            <div class="upload-grid">
+                <div class="post-box upload-box">
+                    <input type="file" id="fileInput" accept="image/*,video/*">
+                    <button onclick="uploadMedia(this)">رفع منشور</button>
+                </div>
+
+                <div class="post-box upload-box hidden-file-box">
+                    <input type="file" id="storyInput" accept="image/*,video/*" onchange="if(this.files[0]) uploadStory(this.files[0])">
+                    <button onclick="document.getElementById('storyInput').click()">إضافة ستوري</button>
+                </div>
+
+                <div class="post-box upload-box hidden-file-box">
+                    <input type="file" id="reelInput" accept="video/*" onchange="if(this.files[0]) uploadReel(this.files[0])">
+                    <button onclick="document.getElementById('reelInput').click()">رفع ريل</button>
+                </div>
+            </div>
+        </section>
+
+        <div id="feed"></div>
+    </main>
+
+    <div class="bottom-nav">
+        <button class="active" data-nav="feed" onclick="goFeed()">🏠</button>
+        <button data-nav="upload" onclick="goUpload()">➕</button>
+        <button data-nav="notifications" onclick="goNotifications()">🔔</button>
+        <button data-nav="profile" onclick="goProfile()">👤</button>
+    </div>
+
+    <script src="assets/app.js"></script>
+</body>
+</html>

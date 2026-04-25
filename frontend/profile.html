@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Social App | الملف الشخصي</title>
+    <link rel="stylesheet" href="assets/style.css">
+</head>
+<body class="profile-page">
+    <header class="header glass profile-header">
+        <div class="header-row">
+            <button class="icon-btn" onclick="goFeed()">⬅</button>
+            <div>
+                <h2 id="username">...</h2>
+                <div class="subtle-text" id="profileEmail"></div>
+            </div>
+            <button class="icon-btn" onclick="logout()">🚪</button>
+        </div>
+
+        <div class="stats-row glass mini-glass">
+            <div><strong id="followers">0</strong><span>متابعين</span></div>
+            <div><strong id="following">0</strong><span>يتابع</span></div>
+        </div>
+
+        <div class="profile-actions" id="profileActions"></div>
+    </header>
+
+    <main class="container">
+        <div id="posts" class="profile-posts"></div>
+    </main>
+
+    <script src="assets/app.js"></script>
+</body>
+</html>

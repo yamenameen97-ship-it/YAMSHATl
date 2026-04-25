@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Social App | البث المباشر</title>
+    <link rel="stylesheet" href="assets/style.css">
+    <style>
+        .live-page { background:black; padding-bottom:40px; }
+        .live-shell { padding:10px; }
+        .live-panel { padding:16px; }
+        .live-card {
+            margin-top:12px; padding:14px; border-radius:18px; background:rgba(255,255,255,0.06);
+            display:flex; align-items:center; justify-content:space-between; gap:10px;
+        }
+        .live-meta { color:rgba(255,255,255,0.72); font-size:13px; margin-top:6px; }
+        .live-top { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+        .danger { background:#ef4444; }
+    </style>
+</head>
+<body class="live-page">
+    <header class="header glass">
+        <div class="header-row">
+            <button class="icon-btn" onclick="window.location.href='feed.html'">⬅</button>
+            <div>
+                <div class="brand-title">🔴 البث المباشر</div>
+                <div class="subtle-text" id="sessionLabel">جاري تحميل الجلسة...</div>
+            </div>
+            <button class="icon-btn" onclick="window.location.href='profile.html'">👤</button>
+        </div>
+    </header>
+
+    <main class="container live-shell">
+        <section class="glass live-panel">
+            <div class="post-box">
+                <input id="title" placeholder="عنوان البث">
+                <button onclick="startLive(this)">ابدأ بث</button>
+            </div>
+            <div class="live-meta">دي واجهة تمهيدية للبث المباشر، وغرفة البث الحالية فيها محاكاة فيديو وشات لحين ربط WebRTC أو RTMP.</div>
+        </section>
+
+        <section class="glass live-panel" style="margin-top:14px;">
+            <div class="live-top">
+                <h3 style="margin:0;">البثوث الحالية</h3>
+                <button onclick="loadLives()">تحديث</button>
+            </div>
+            <div id="rooms"></div>
+        </section>
+    </main>
+
+    <script>
+        const API_BASE = localStorage.getItem("apiBase") || "http://127.0.0.1:5000";
+        let currentUser = "";
+
+        function escapeHTML(value) {
+            return String(value || "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/\"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function showToast(msg) {
+            const t = document.createElement("div");
+            t.className = "toast";
+            t.innerText = msg;
+            document.body.appendChild(t);
+            setTimeout(() => t.remove(), 2500);
+        }
+
+        async function requestJSON(url, options = {}) {
+            const response = await fetch(url, { credentials: "include", ...options });
+            const data = await response.json().catch(() => ({ message: "حدث خطأ غير متوقع" }));
+            if (!response.ok) throw new Error(data.message || "حدث خطأ في الطلب");
+            return data;
+        }
+
+        async function checkSession() {
+            const data = await requestJSON(`${API_BASE}/me`);
+            if (!data.user) {
+                window.location.href = "index.html";
+                return;
+            }
+            currentUser = data.user;
+            document.getElementById("sessionLabel").innerText = `مرحباً ${currentUser}`;
+        }
+
+        async function startLive(btn) {
+            const title = document.getElementById("title").value.trim();
+            if (!title) {
+                showToast("اكتب عنوان البث أولاً");
+                return;
+            }
+            btn.disabled = true;
+            const oldText = btn.innerText;
+            btn.innerText = "جاري البدء...";
+            try {
+                const data = await requestJSON(`${API_BASE}/create_live`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username: currentUser, title })
+                });
+                showToast(data.message);
+                document.getElementById("title").value = "";
+                await loadLives();
+                if (data.room_id) {
+                    setTimeout(() => {
+                        window.location.href = `live_room.html?id=${data.room_id}`;
+                    }, 800);
+                }
+            } catch (error) {
+                showToast(error.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = oldText;
+            }
+        }
+
+        async function endLive(roomId) {
+            try {
+                const data = await requestJSON(`${API_BASE}/end_live/${roomId}`, {
+                    method: "POST"
+                });
+                showToast(data.message);
+                await loadLives();
+            } catch (error) {
+                showToast(error.message);
+            }
+        }
+
+        async function loadLives() {
+            const box = document.getElementById("rooms");
+            try {
+                const data = await requestJSON(`${API_BASE}/live_rooms`);
+                if (!data.length) {
+                    box.innerHTML = '<div class="empty-state">لا يوجد بث مباشر الآن</div>';
+                    return;
+                }
+                box.innerHTML = data.map(room => `
+                    <div class="live-card">
+                        <div>
+                            <h3 style="margin:0 0 6px;">🔴 ${escapeHTML(room.title)}</h3>
+                            <div class="live-meta">👤 ${escapeHTML(room.username)}</div>
+                        </div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <button onclick="openLive(${room.id})">دخول</button>
+                            ${room.username === currentUser ? `<button class="danger" onclick="endLive(${room.id})">إنهاء</button>` : ""}
+                        </div>
+                    </div>
+                `).join("");
+            } catch (error) {
+                box.innerHTML = `<div class="empty-state">${escapeHTML(error.message)}</div>`;
+            }
+        }
+
+        function openLive(id) {
+            window.location.href = `live_room.html?id=${id}`;
+        }
+
+        window.addEventListener("DOMContentLoaded", async () => {
+            try {
+                await checkSession();
+                await loadLives();
+            } catch (error) {
+                showToast(error.message);
+            }
+        });
+    </script>
+</body>
+</html>

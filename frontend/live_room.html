@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="theme-color" content="#000000">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Social App | غرفة البث</title>
+    <link rel="stylesheet" href="assets/style.css">
+    <style>
+        body { margin:0; background:black; color:white; }
+        .room-header {
+            position:sticky; top:0; z-index:10; padding:14px 16px;
+            display:flex; align-items:center; justify-content:space-between; gap:12px;
+            background:rgba(15,23,42,0.82); backdrop-filter:blur(16px);
+        }
+        .room-shell { max-width:980px; margin:0 auto; }
+        .video-box {
+            width:100%; height:60vh; background:#050505; display:flex; align-items:center; justify-content:center;
+            border-bottom:1px solid rgba(255,255,255,0.08);
+        }
+        video { width:100%; height:100%; background:black; }
+        .placeholder { text-align:center; color:rgba(255,255,255,0.72); line-height:1.8; padding:20px; }
+        .chat-box { height:28vh; overflow:auto; padding:14px; }
+        .chat-msg {
+            margin-bottom:10px; padding:10px 12px; border-radius:14px; background:rgba(255,255,255,0.08);
+        }
+        .composer {
+            display:flex; gap:10px; padding:14px; position:sticky; bottom:0;
+            background:rgba(15,23,42,0.9); backdrop-filter:blur(14px);
+        }
+        .composer input { flex:1; }
+    </style>
+</head>
+<body>
+    <div class="room-shell">
+        <div class="room-header">
+            <button class="icon-btn" onclick="window.location.href='live.html'">⬅</button>
+            <div>
+                <div id="roomTitle">غرفة البث</div>
+                <div class="subtle-text" id="roomOwner">جاري التحميل...</div>
+            </div>
+            <button class="icon-btn" onclick="location.reload()">🔄</button>
+        </div>
+
+        <div class="video-box">
+            <video id="video" autoplay controls muted playsinline></video>
+            <div id="placeholder" class="placeholder">
+                دي غرفة بث تجريبية.<br>
+                تقدر تربطها لاحقاً بـ WebRTC أو RTMP علشان تشغيل الفيديو الحقيقي.
+            </div>
+        </div>
+
+        <div class="chat-box" id="chat">
+            <div class="chat-msg">💬 أهلاً بك في غرفة البث.</div>
+        </div>
+
+        <div class="composer">
+            <input id="msg" placeholder="اكتب رسالة داخل الغرفة">
+            <button onclick="send()">إرسال</button>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = localStorage.getItem("apiBase") || "http://127.0.0.1:5000";
+        const roomId = new URLSearchParams(window.location.search).get("id");
+
+        function escapeHTML(value) {
+            return String(value || "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/\"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        async function loadRoom() {
+            const response = await fetch(`${API_BASE}/live_rooms`, { credentials: "include" });
+            const data = await response.json().catch(() => []);
+            const room = Array.isArray(data) ? data.find(item => String(item.id) === String(roomId)) : null;
+
+            if (!room) {
+                document.getElementById("roomTitle").innerText = "غرفة غير متاحة";
+                document.getElementById("roomOwner").innerText = "قد يكون البث انتهى بالفعل";
+                return;
+            }
+
+            document.getElementById("roomTitle").innerText = `🔴 ${room.title}`;
+            document.getElementById("roomOwner").innerText = `صاحب البث: ${room.username}`;
+        }
+
+        function send() {
+            const input = document.getElementById("msg");
+            const msg = input.value.trim();
+            if (!msg) return;
+            document.getElementById("chat").innerHTML += `<div class="chat-msg">💬 ${escapeHTML(msg)}</div>`;
+            input.value = "";
+            document.getElementById("chat").scrollTop = document.getElementById("chat").scrollHeight;
+        }
+
+        window.addEventListener("DOMContentLoaded", () => {
+            loadRoom();
+            document.getElementById("video").src = "";
+        });
+    </script>
+</body>
+</html>

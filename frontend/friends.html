@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Social App | الأصدقاء</title>
+    <link rel="stylesheet" href="assets/style.css">
+    <style>
+        .friends-page { padding-bottom: 40px; }
+        .friends-shell { padding: 10px; }
+        .friends-grid { display: grid; gap: 14px; }
+        .friends-card { padding: 16px; }
+        .request-card, .user-card, .friend-pill {
+            display:flex; align-items:center; justify-content:space-between; gap:10px;
+            padding:12px; border-radius:16px; background:rgba(255,255,255,0.05); margin-top:10px;
+        }
+        .friend-pill { justify-content:flex-start; }
+        .inline-actions { display:flex; gap:8px; flex-wrap:wrap; }
+        .accept { background:#22c55e; }
+        .reject { background:#ef4444; }
+        .muted-box { color: rgba(255,255,255,0.72); font-size: 13px; margin-top: 6px; }
+    </style>
+</head>
+<body class="friends-page">
+    <header class="header glass">
+        <div class="header-row">
+            <button class="icon-btn" onclick="window.location.href='feed.html'">⬅</button>
+            <div>
+                <div class="brand-title">🤝 الأصدقاء</div>
+                <div class="subtle-text" id="sessionLabel">جاري تحميل بياناتك...</div>
+            </div>
+            <button class="icon-btn" onclick="window.location.href='profile.html'">👤</button>
+        </div>
+    </header>
+
+    <main class="container friends-shell">
+        <div class="friends-grid">
+            <section class="glass friends-card">
+                <h3>إرسال طلب صداقة</h3>
+                <div class="post-box">
+                    <input id="receiver" type="text" placeholder="اسم المستخدم">
+                    <button onclick="sendFriendRequest(this)">إرسال</button>
+                </div>
+                <div class="muted-box">اكتب اسم المستخدم كما هو مسجل داخل التطبيق.</div>
+            </section>
+
+            <section class="glass friends-card">
+                <h3>طلبات الصداقة الواردة</h3>
+                <div id="requests"></div>
+            </section>
+
+            <section class="glass friends-card">
+                <h3>قائمة أصدقائي</h3>
+                <div id="friendsList"></div>
+            </section>
+
+            <section class="glass friends-card">
+                <h3>كل المستخدمين</h3>
+                <div id="usersList"></div>
+            </section>
+        </div>
+    </main>
+
+    <script>
+        const API_BASE = localStorage.getItem("apiBase") || "http://127.0.0.1:5000";
+        let currentUser = "";
+
+        function escapeHTML(value) {
+            return String(value || "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/\"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function showToast(msg) {
+            const t = document.createElement("div");
+            t.className = "toast";
+            t.innerText = msg;
+            document.body.appendChild(t);
+            setTimeout(() => t.remove(), 2500);
+        }
+
+        async function requestJSON(url, options = {}) {
+            const response = await fetch(url, { credentials: "include", ...options });
+            const data = await response.json().catch(() => ({ message: "حدث خطأ غير متوقع" }));
+            if (!response.ok) throw new Error(data.message || "حدث خطأ في الطلب");
+            return data;
+        }
+
+        async function checkSession() {
+            const data = await requestJSON(`${API_BASE}/me`);
+            if (!data.user) {
+                window.location.href = "index.html";
+                return;
+            }
+            currentUser = data.user;
+            document.getElementById("sessionLabel").innerText = `مرحباً ${currentUser}`;
+        }
+
+        async function sendFriendRequest(btn) {
+            const receiver = document.getElementById("receiver").value.trim();
+            if (!receiver) {
+                showToast("اكتب اسم المستخدم أولاً");
+                return;
+            }
+
+            btn.disabled = true;
+            const oldText = btn.innerText;
+            btn.innerText = "جاري الإرسال...";
+
+            try {
+                const data = await requestJSON(`${API_BASE}/send_friend_request`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ sender: currentUser, receiver })
+                });
+                document.getElementById("receiver").value = "";
+                showToast(data.message);
+                await Promise.all([loadRequests(), loadUsers()]);
+            } catch (error) {
+                showToast(error.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = oldText;
+            }
+        }
+
+        async function handleRequest(id, status) {
+            try {
+                const data = await requestJSON(`${API_BASE}/handle_friend_request`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id, status })
+                });
+                showToast(data.message);
+                await Promise.all([loadRequests(), loadFriends()]);
+            } catch (error) {
+                showToast(error.message);
+            }
+        }
+
+        async function loadRequests() {
+            const box = document.getElementById("requests");
+            try {
+                const data = await requestJSON(`${API_BASE}/friend_requests/${encodeURIComponent(currentUser)}`);
+                if (!data.length) {
+                    box.innerHTML = '<div class="empty-state">لا توجد طلبات معلقة</div>';
+                    return;
+                }
+                box.innerHTML = data.map(r => `
+                    <div class="request-card">
+                        <div>
+                            <b>${escapeHTML(r.sender)}</b>
+                            <div class="muted-box">يريد إضافتك كصديق</div>
+                        </div>
+                        <div class="inline-actions">
+                            <button class="accept" onclick="handleRequest(${r.id}, 'accepted')">قبول</button>
+                            <button class="reject" onclick="handleRequest(${r.id}, 'rejected')">رفض</button>
+                        </div>
+                    </div>
+                `).join("");
+            } catch (error) {
+                box.innerHTML = `<div class="empty-state">${escapeHTML(error.message)}</div>`;
+            }
+        }
+
+        async function loadFriends() {
+            const box = document.getElementById("friendsList");
+            try {
+                const data = await requestJSON(`${API_BASE}/friends/${encodeURIComponent(currentUser)}`);
+                if (!data.length) {
+                    box.innerHTML = '<div class="empty-state">لا يوجد أصدقاء حتى الآن</div>';
+                    return;
+                }
+                box.innerHTML = data.map(name => `
+                    <div class="friend-pill">
+                        <div class="avatar">👤</div>
+                        <div>
+                            <b>${escapeHTML(name)}</b>
+                            <div class="muted-box">صديق مقبول</div>
+                        </div>
+                    </div>
+                `).join("");
+            } catch (error) {
+                box.innerHTML = `<div class="empty-state">${escapeHTML(error.message)}</div>`;
+            }
+        }
+
+        async function loadUsers() {
+            const box = document.getElementById("usersList");
+            try {
+                const data = await requestJSON(`${API_BASE}/users`);
+                if (!data.length) {
+                    box.innerHTML = '<div class="empty-state">لا يوجد مستخدمون آخرون حالياً</div>';
+                    return;
+                }
+                box.innerHTML = data.map(user => `
+                    <div class="user-card">
+                        <div>
+                            <b>${escapeHTML(user.name)}</b>
+                            <div class="muted-box">${escapeHTML(user.email)}</div>
+                        </div>
+                        <div class="inline-actions">
+                            <button onclick='sendRequestTo(${JSON.stringify(user.name)})'>إضافة</button>
+                            <button onclick="window.location.href='profile.html?user=${encodeURIComponent(user.name)}'">ملف شخصي</button>
+                        </div>
+                    </div>
+                `).join("");
+            } catch (error) {
+                box.innerHTML = `<div class="empty-state">${escapeHTML(error.message)}</div>`;
+            }
+        }
+
+        function sendRequestTo(name) {
+            document.getElementById("receiver").value = name;
+            const fakeBtn = document.createElement("button");
+            fakeBtn.innerText = "إرسال";
+            sendFriendRequest(fakeBtn);
+        }
+
+        window.addEventListener("DOMContentLoaded", async () => {
+            try {
+                await checkSession();
+                await Promise.all([loadRequests(), loadFriends(), loadUsers()]);
+            } catch (error) {
+                showToast(error.message);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -13,6 +13,9 @@ from models import init_db
 from routes.auth import auth_bp
 from routes.posts import posts_bp
 from routes.social import social_bp
+from routes.friends import friends_bp
+from routes.groups import groups_bp
+from routes.live import live_bp
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)
@@ -42,6 +45,9 @@ init_db()
 app.register_blueprint(auth_bp)
 app.register_blueprint(posts_bp)
 app.register_blueprint(social_bp)
+app.register_blueprint(friends_bp)
+app.register_blueprint(groups_bp)
+app.register_blueprint(live_bp)
 
 
 @app.get("/")

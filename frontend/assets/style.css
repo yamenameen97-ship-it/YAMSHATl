@@ -592,3 +592,23 @@ textarea::placeholder {
         margin: 8px;
     }
 }
+
+
+.brand-logo img {
+    width: 42px;
+    height: 42px;
+    display: block;
+}
+
+.brand-inline {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.brand-inline-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 8px;
+    box-shadow: 0 6px 18px rgba(255, 77, 109, 0.25);
+}

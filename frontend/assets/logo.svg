@@ -1,0 +1,26 @@
+<svg width="640" height="180" viewBox="0 0 640 180" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title>Yamshat Logo</title>
+  <desc>Professional logo for Yamshat social chat app</desc>
+  <defs>
+    <linearGradient id="g1" x1="40" y1="24" x2="140" y2="154" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF4D6D"/>
+      <stop offset="1" stop-color="#4CC9F0"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFFFFF" stop-opacity="0.98"/>
+      <stop offset="1" stop-color="#D7E9FF" stop-opacity="0.92"/>
+    </linearGradient>
+    <filter id="shadow" x="0" y="0" width="200" height="200" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="16" flood-color="#0F172A" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <rect x="20" y="20" width="140" height="140" rx="42" fill="url(#g1)"/>
+    <path d="M53 58C53 51.3726 58.3726 46 65 46H70.267C74.8125 46 79.0011 48.4277 81.2426 52.3646L90.694 68.9655C91.6107 70.575 93.9281 70.5711 94.8394 68.9586L104.143 52.4978C106.381 48.5401 110.583 46.0959 115.143 46.0959H118.987C125.614 46.0959 130.987 51.4685 130.987 58.0959V122C130.987 128.627 125.614 134 118.987 134H114.5C107.873 134 102.5 128.627 102.5 122V93.5237C102.5 91.0768 99.2714 90.195 98.0263 92.3014L91.9688 102.547C89.6062 106.544 83.8185 106.56 81.4336 102.576L74.9319 91.7181C73.6727 89.6153 70.4507 90.507 70.4507 92.9578V122C70.4507 128.627 65.0781 134 58.4507 134H53C46.3726 134 41 128.627 41 122V58H53Z" fill="url(#g2)"/>
+    <path d="M105 116C111.627 116 117 110.627 117 104C117 97.3726 111.627 92 105 92C98.3726 92 93 97.3726 93 104C93 110.627 98.3726 116 105 116Z" fill="#0F172A" fill-opacity="0.16"/>
+  </g>
+  <g>
+    <text x="190" y="88" fill="#F8FAFC" font-size="58" font-family="Segoe UI, Arial, sans-serif" font-weight="800" letter-spacing="0.6">Yamshat</text>
+    <text x="190" y="126" fill="#B8CAE6" font-size="24" font-family="Segoe UI, Arial, sans-serif" font-weight="500">Social chat, reels and live moments</text>
+  </g>
+</svg>

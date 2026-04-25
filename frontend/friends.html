@@ -4,8 +4,10 @@
     <meta charset="UTF-8">
     <meta name="theme-color" content="#0f172a">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Social App | الأصدقاء</title>
+    <title>Yamshat | الأصدقاء</title>
     <link rel="stylesheet" href="assets/style.css">
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+    <link rel="apple-touch-icon" href="assets/favicon.svg">
     <style>
         .friends-page { padding-bottom: 40px; }
         .friends-shell { padding: 10px; }
@@ -63,7 +65,13 @@
     </main>
 
     <script>
-        const API_BASE = localStorage.getItem("apiBase") || "http://127.0.0.1:5000";
+        const API_BASE = (() => {
+            const saved = (localStorage.getItem("apiBase") || "").trim().replace(/\/+$/, "");
+            if (saved) {
+                return saved.endsWith("/api") ? saved : `${saved}/api`;
+            }
+            return `${window.location.origin.replace(/\/+$/, "")}/api`;
+        })();
         let currentUser = "";
 
         function escapeHTML(value) {

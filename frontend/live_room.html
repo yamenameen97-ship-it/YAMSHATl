@@ -4,8 +4,10 @@
     <meta charset="UTF-8">
     <meta name="theme-color" content="#000000">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Social App | غرفة البث</title>
+    <title>Yamshat | غرفة البث</title>
     <link rel="stylesheet" href="assets/style.css">
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+    <link rel="apple-touch-icon" href="assets/favicon.svg">
     <style>
         body { margin:0; background:black; color:white; }
         .room-header {
@@ -61,7 +63,13 @@
     </div>
 
     <script>
-        const API_BASE = localStorage.getItem("apiBase") || "http://127.0.0.1:5000";
+        const API_BASE = (() => {
+            const saved = (localStorage.getItem("apiBase") || "").trim().replace(/\/+$/, "");
+            if (saved) {
+                return saved.endsWith("/api") ? saved : `${saved}/api`;
+            }
+            return `${window.location.origin.replace(/\/+$/, "")}/api`;
+        })();
         const roomId = new URLSearchParams(window.location.search).get("id");
 
         function escapeHTML(value) {

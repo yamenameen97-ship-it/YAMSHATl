@@ -1,4 +1,10 @@
-const API_BASE = localStorage.getItem("apiBase") || "http://127.0.0.1:5000";
+const API_BASE = (() => {
+    const saved = (localStorage.getItem("apiBase") || "").trim().replace(/\/+$/, "");
+    if (saved) {
+        return saved.endsWith("/api") ? saved : `${saved}/api`;
+    }
+    return `${window.location.origin.replace(/\/+$/, "")}/api`;
+})();
 
 let currentUser = null;
 let currentEmail = null;

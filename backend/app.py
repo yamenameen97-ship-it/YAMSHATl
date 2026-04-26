@@ -1,9 +1,9 @@
 from pathlib import Path
-import secrets
-import sys
+from datetime import timedelta
 import os
+import sys
 
-from flask import Flask, jsonify, send_from_directory, abort
+from flask import Flask, abort, jsonify, send_from_directory
 from flask_cors import CORS
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -11,8 +11,8 @@ BASE_DIR = Path(__file__).resolve().parent
 
 def resolve_frontend_path() -> Path:
     candidates = [
-        BASE_DIR / 'frontend',
-        BASE_DIR.parent / 'frontend',
+        BASE_DIR / "frontend",
+        BASE_DIR.parent / "frontend",
     ]
     for candidate in candidates:
         if candidate.exists():
@@ -21,36 +21,40 @@ def resolve_frontend_path() -> Path:
 
 
 FRONTEND_PATH = resolve_frontend_path()
+render_external = os.environ.get("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
+session_cookie_secure = render_external.startswith("https://") or os.environ.get("SESSION_COOKIE_SECURE") == "1"
 
 app = Flask(
     __name__,
     static_folder=str(FRONTEND_PATH),
-    static_url_path=''
+    static_url_path="",
 )
 
-app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(16))
+app.secret_key = os.environ.get("SECRET_KEY", "yamshat-fixed-stable-session-secret")
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=session_cookie_secure,
+    SESSION_REFRESH_EACH_REQUEST=True,
+    PERMANENT_SESSION_LIFETIME=timedelta(days=int(os.environ.get("SESSION_DAYS", "30"))),
 )
 
 allowed_origins = {
-    'null',
-    'http://127.0.0.1:5500',
-    'http://localhost:5500',
-    'http://127.0.0.1:5000',
-    'http://localhost:5000',
-    'https://yamshatl.onrender.com',
-    'https://yamshatl-1.onrender.com',
+    "null",
+    "http://127.0.0.1:5500",
+    "http://localhost:5500",
+    "http://127.0.0.1:5000",
+    "http://localhost:5000",
+    "https://yamshatl.onrender.com",
+    "https://yamshatl-1.onrender.com",
 }
-render_external = os.environ.get('RENDER_EXTERNAL_URL', '').strip()
 if render_external:
-    allowed_origins.add(render_external.rstrip('/'))
+    allowed_origins.add(render_external)
 
 CORS(
     app,
     supports_credentials=True,
-    resources={r'/api/*': {'origins': sorted(allowed_origins)}}
+    resources={r"/api/*": {"origins": sorted(allowed_origins)}},
 )
 
 if str(BASE_DIR) not in sys.path:
@@ -66,40 +70,43 @@ from routes.live import live_bp
 
 init_db()
 
-app.register_blueprint(auth_bp, url_prefix='/api')
-app.register_blueprint(posts_bp, url_prefix='/api')
-app.register_blueprint(social_bp, url_prefix='/api')
-app.register_blueprint(friends_bp, url_prefix='/api')
-app.register_blueprint(groups_bp, url_prefix='/api')
-app.register_blueprint(live_bp, url_prefix='/api')
+app.register_blueprint(auth_bp, url_prefix="/api")
+app.register_blueprint(posts_bp, url_prefix="/api")
+app.register_blueprint(social_bp, url_prefix="/api")
+app.register_blueprint(friends_bp, url_prefix="/api")
+app.register_blueprint(groups_bp, url_prefix="/api")
+app.register_blueprint(live_bp, url_prefix="/api")
 
 
-@app.get('/health')
+@app.get("/health")
 def health():
-    return jsonify({
-        'status': 'ok',
-        'frontend_path': str(FRONTEND_PATH),
-    })
+    return jsonify(
+        {
+            "status": "ok",
+            "frontend_path": str(FRONTEND_PATH),
+            "session_cookie_secure": session_cookie_secure,
+        }
+    )
 
 
-@app.route('/', methods=['GET', 'HEAD'])
+@app.route("/", methods=["GET", "HEAD"])
 def index():
-    return send_from_directory(app.static_folder, 'index.html')
+    return send_from_directory(app.static_folder, "index.html")
 
 
-@app.route('/<path:path>', methods=['GET', 'HEAD'])
+@app.route("/<path:path>", methods=["GET", "HEAD"])
 def serve_files(path):
     requested = FRONTEND_PATH / path
 
     if requested.exists() and requested.is_file():
         return send_from_directory(app.static_folder, path)
 
-    if '.' in Path(path).name:
+    if "." in Path(path).name:
         return abort(404)
 
-    return send_from_directory(app.static_folder, 'index.html')
+    return send_from_directory(app.static_folder, "index.html")
 
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)

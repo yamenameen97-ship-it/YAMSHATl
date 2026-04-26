@@ -107,6 +107,32 @@ def init_db() -> None:
 
     cursor.execute(
         """
+        CREATE TABLE IF NOT EXISTS reel_likes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            reel_id INTEGER NOT NULL,
+            username TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(reel_id, username),
+            FOREIGN KEY(reel_id) REFERENCES reels(id)
+        )
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS reel_comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            reel_id INTEGER NOT NULL,
+            username TEXT NOT NULL,
+            comment TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(reel_id) REFERENCES reels(id)
+        )
+        """
+    )
+
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             sender TEXT,

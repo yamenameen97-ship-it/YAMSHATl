@@ -29,6 +29,14 @@ def _save_file(file):
     return unique_name, None
 
 
+def _reel_stats(cursor, reel_id: int):
+    cursor.execute("SELECT COUNT(*) AS total FROM reel_likes WHERE reel_id=?", (reel_id,))
+    likes = cursor.fetchone()["total"]
+    cursor.execute("SELECT COUNT(*) AS total FROM reel_comments WHERE reel_id=?", (reel_id,))
+    comments = cursor.fetchone()["total"]
+    return likes, comments
+
+
 @posts_bp.route("/posts", methods=["GET"])
 def get_posts():
     conn = get_connection()
@@ -37,15 +45,17 @@ def get_posts():
     posts = cursor.fetchall()
     conn.close()
 
-    return jsonify([
-        {
-            "id": post["id"],
-            "username": post["username"],
-            "content": post["content"],
-            "likes": post["likes"],
-        }
-        for post in posts
-    ])
+    return jsonify(
+        [
+            {
+                "id": post["id"],
+                "username": post["username"],
+                "content": post["content"],
+                "likes": post["likes"],
+            }
+            for post in posts
+        ]
+    )
 
 
 @posts_bp.route("/add_post", methods=["POST"])
@@ -86,11 +96,13 @@ def upload_file():
         return error
 
     host = request.host_url.rstrip("/")
-    return jsonify({
-        "message": "تم رفع الملف",
-        "file_url": f"{host}/uploads/{filename}",
-        "filename": filename,
-    })
+    return jsonify(
+        {
+            "message": "تم رفع الملف",
+            "file_url": f"{host}/api/uploads/{filename}",
+            "filename": filename,
+        }
+    )
 
 
 @posts_bp.route("/uploads/<path:filename>", methods=["GET"])
@@ -173,10 +185,12 @@ def get_comments(post_id: int):
     comments = cursor.fetchall()
     conn.close()
 
-    return jsonify([
-        {"username": comment["username"], "comment": comment["comment"]}
-        for comment in comments
-    ])
+    return jsonify(
+        [
+            {"username": comment["username"], "comment": comment["comment"]}
+            for comment in comments
+        ]
+    )
 
 
 @posts_bp.route("/notifications", methods=["GET"])
@@ -197,10 +211,12 @@ def get_notifications(username: str | None = None):
     notifications = cursor.fetchall()
     conn.close()
 
-    return jsonify([
-        {"id": item["id"], "message": item["message"]}
-        for item in notifications
-    ])
+    return jsonify(
+        [
+            {"id": item["id"], "message": item["message"]}
+            for item in notifications
+        ]
+    )
 
 
 @posts_bp.route("/add_story", methods=["POST"])
@@ -237,10 +253,12 @@ def get_stories():
     data = cursor.fetchall()
     conn.close()
 
-    return jsonify([
-        {"username": story["username"], "media": story["media"]}
-        for story in data
-    ])
+    return jsonify(
+        [
+            {"username": story["username"], "media": story["media"]}
+            for story in data
+        ]
+    )
 
 
 @posts_bp.route("/add_reel", methods=["POST"])
@@ -263,21 +281,160 @@ def add_reel():
         "INSERT INTO reels (username, video) VALUES (?, ?)",
         (username, filename),
     )
+    reel_id = cursor.lastrowid
     conn.commit()
     conn.close()
 
-    return jsonify({"message": "تم إضافة الريل", "video": filename})
+    return jsonify({"message": "تم إضافة الريل", "video": filename, "id": reel_id})
 
 
 @posts_bp.route("/reels", methods=["GET"])
 def get_reels():
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT username, video FROM reels ORDER BY id DESC")
+    current_user = _logged_in_user() or ""
+    cursor.execute("SELECT id, username, video FROM reels ORDER BY id DESC")
     data = cursor.fetchall()
+
+    results = []
+    for reel in data:
+        likes_count, comments_count = _reel_stats(cursor, reel["id"])
+        cursor.execute(
+            "SELECT 1 AS liked FROM reel_likes WHERE reel_id=? AND username=? LIMIT 1",
+            (reel["id"], current_user),
+        )
+        liked_by_current_user = bool(cursor.fetchone()) if current_user else False
+        results.append(
+            {
+                "id": reel["id"],
+                "username": reel["username"],
+                "video": reel["video"],
+                "likes": likes_count,
+                "comments_count": comments_count,
+                "liked_by_current_user": liked_by_current_user,
+            }
+        )
+
+    conn.close()
+    return jsonify(results)
+
+
+@posts_bp.route("/reels/<int:reel_id>/like", methods=["POST"])
+def like_reel(reel_id: int):
+    username = _logged_in_user()
+    if not username:
+        return jsonify({"message": "يجب تسجيل الدخول أولاً"}), 401
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT username FROM reels WHERE id=?", (reel_id,))
+    reel = cursor.fetchone()
+
+    if not reel:
+        conn.close()
+        return jsonify({"message": "الريل غير موجود"}), 404
+
+    cursor.execute(
+        "SELECT id FROM reel_likes WHERE reel_id=? AND username=?",
+        (reel_id, username),
+    )
+    existing = cursor.fetchone()
+
+    if existing:
+        cursor.execute(
+            "DELETE FROM reel_likes WHERE reel_id=? AND username=?",
+            (reel_id, username),
+        )
+        liked = False
+        message = "تم إلغاء الإعجاب من الريل"
+    else:
+        cursor.execute(
+            "INSERT INTO reel_likes (reel_id, username) VALUES (?, ?)",
+            (reel_id, username),
+        )
+        if reel["username"] and reel["username"] != username:
+            cursor.execute(
+                "INSERT INTO notifications (username, message) VALUES (?, ?)",
+                (reel["username"], f"🎬 {username} أعجب بالريل الخاص بك"),
+            )
+        liked = True
+        message = "تم الإعجاب بالريل"
+
+    conn.commit()
+    likes_count, comments_count = _reel_stats(cursor, reel_id)
     conn.close()
 
-    return jsonify([
-        {"username": reel["username"], "video": reel["video"]}
-        for reel in data
-    ])
+    return jsonify(
+        {
+            "message": message,
+            "liked": liked,
+            "likes": likes_count,
+            "comments_count": comments_count,
+        }
+    )
+
+
+@posts_bp.route("/reels/<int:reel_id>/comment", methods=["POST"])
+def add_reel_comment(reel_id: int):
+    username = _logged_in_user()
+    if not username:
+        return jsonify({"message": "يجب تسجيل الدخول أولاً"}), 401
+
+    data = request.get_json(silent=True) or {}
+    comment = (data.get("comment") or "").strip()
+    if not comment:
+        return jsonify({"message": "اكتب تعليقاً أولاً"}), 400
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT username FROM reels WHERE id=?", (reel_id,))
+    reel = cursor.fetchone()
+
+    if not reel:
+        conn.close()
+        return jsonify({"message": "الريل غير موجود"}), 404
+
+    cursor.execute(
+        "INSERT INTO reel_comments (reel_id, username, comment) VALUES (?, ?, ?)",
+        (reel_id, username, comment),
+    )
+    if reel["username"] and reel["username"] != username:
+        cursor.execute(
+            "INSERT INTO notifications (username, message) VALUES (?, ?)",
+            (reel["username"], f"💬 {username} علّق على الريل الخاص بك"),
+        )
+    conn.commit()
+    likes_count, comments_count = _reel_stats(cursor, reel_id)
+    conn.close()
+
+    return jsonify(
+        {
+            "message": "تمت إضافة التعليق على الريل",
+            "likes": likes_count,
+            "comments_count": comments_count,
+        }
+    )
+
+
+@posts_bp.route("/reels/<int:reel_id>/comments", methods=["GET"])
+def get_reel_comments(reel_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, username, comment, created_at FROM reel_comments WHERE reel_id=? ORDER BY id ASC",
+        (reel_id,),
+    )
+    comments = cursor.fetchall()
+    conn.close()
+
+    return jsonify(
+        [
+            {
+                "id": comment["id"],
+                "username": comment["username"],
+                "comment": comment["comment"],
+                "created_at": comment["created_at"],
+            }
+            for comment in comments
+        ]
+    )

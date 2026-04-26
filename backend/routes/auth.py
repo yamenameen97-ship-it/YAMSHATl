@@ -65,22 +65,30 @@ def login():
 
     conn.close()
 
+    session.clear()
+    session.permanent = True
     session["user"] = user["name"]
     session["email"] = user["email"]
+    session.modified = True
 
-    return jsonify({
-        "message": "تم تسجيل الدخول",
-        "user": user["name"],
-    })
+    return jsonify(
+        {
+            "message": "تم تسجيل الدخول",
+            "user": user["name"],
+        }
+    )
 
 
 @auth_bp.route("/me")
 def me():
     if "user" in session:
-        return jsonify({
-            "user": session["user"],
-            "email": session.get("email"),
-        })
+        session.permanent = True
+        return jsonify(
+            {
+                "user": session["user"],
+                "email": session.get("email"),
+            }
+        )
     return jsonify({"user": None})
 
 

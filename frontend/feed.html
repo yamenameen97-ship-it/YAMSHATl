@@ -18,23 +18,46 @@
             </div>
             <div class="header-actions">
                 <button class="icon-btn" onclick="toggleNotifications()">🔔 <span id="count">0</span></button>
+                <button class="icon-btn" onclick="toggleServiceMenu(event)">☰ القائمة</button>
                 <button class="icon-btn" onclick="logout()">🚪 خروج</button>
             </div>
         </div>
+
+        <div class="top-services glass mini-glass">
+            <button onclick="window.location.href='friends.html'">🤝 الأصدقاء</button>
+            <button onclick="window.location.href='groups.html'">👥 المجموعات</button>
+            <button onclick="window.location.href='live.html'">🔴 البث</button>
+            <button onclick="goReels()">🎬 الريلز</button>
+            <button onclick="goInbox()">💬 الرسائل</button>
+            <button onclick="openSearchPanel()">🔎 بحث</button>
+        </div>
     </header>
+
+    <div id="serviceMenu" class="service-menu glass hidden">
+        <div class="menu-section-title">الخدمات</div>
+        <button onclick="window.location.href='friends.html'">🤝 الأصدقاء</button>
+        <button onclick="window.location.href='groups.html'">👥 المجموعات</button>
+        <button onclick="window.location.href='live.html'">🔴 البث المباشر</button>
+        <button onclick="goReels()">🎬 الريلز</button>
+        <button onclick="goInbox()">💬 الرسائل</button>
+        <button onclick="goProfile()">👤 الملف الشخصي</button>
+        <div class="menu-section-title">الإعدادات</div>
+        <button onclick="openProfileEditor()">✏️ تعديل الملف الشخصي</button>
+        <button onclick="openSearchPanel()">🔎 بحث</button>
+        <button onclick="toggleTheme()">🌓 وضع ليلي/نهاري</button>
+        <button onclick="openAdminPanel()">🛠️ لوحة إدارة بسيطة</button>
+    </div>
 
     <div id="notifBox" class="notif-box glass"></div>
 
     <main class="container feed-shell">
-        <div id="storyBar" class="story-bar glass"></div>
-
         <section id="quickUpload" class="quick-panel glass">
             <div class="post-box composer-box">
                 <input type="text" id="postInput" placeholder="اكتب منشورك الآن...">
                 <button onclick="addPost(this)">نشر</button>
             </div>
 
-            <div class="upload-grid">
+            <div class="upload-grid compact-grid">
                 <div class="post-box upload-box">
                     <input type="file" id="fileInput" accept="image/*,video/*">
                     <button onclick="uploadMedia(this)">رفع منشور</button>
@@ -52,26 +75,60 @@
             </div>
         </section>
 
-        <section class="quick-panel glass">
-            <div class="brand-title" style="margin-bottom: 10px;">⚡ الخدمات الرئيسية</div>
-            <div class="upload-grid services-grid">
-                <button onclick="window.location.href='friends.html'">🤝 الأصدقاء</button>
-                <button onclick="window.location.href='groups.html'">👥 المجموعات</button>
-                <button onclick="window.location.href='live.html'">🔴 البث المباشر</button>
-                <button onclick="window.location.href='reels.html'">🎬 الريلز</button>
-                <button onclick="window.location.href='inbox.html'">💬 الرسائل</button>
-                <button onclick="window.location.href='profile.html'">👤 الملف الشخصي</button>
-            </div>
-        </section>
-
+        <div id="storyBar" class="story-bar glass"></div>
         <div id="feed"></div>
     </main>
 
-    <div class="bottom-nav">
-        <button class="active" data-nav="feed" onclick="goFeed()">🏠</button>
-        <button data-nav="upload" onclick="goUpload()">➕</button>
-        <button data-nav="notifications" onclick="goNotifications()">🔔</button>
-        <button data-nav="profile" onclick="goProfile()">👤</button>
+    <div id="searchModal" class="modal-overlay hidden">
+        <div class="modal-card glass">
+            <div class="modal-header">
+                <h3>البحث</h3>
+                <button class="icon-btn" onclick="closeSearchPanel()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="post-box">
+                    <input id="globalSearchInput" type="text" placeholder="ابحث عن مستخدم أو منشور" onkeydown="if(event.key==='Enter') runSearch()">
+                    <button onclick="runSearch()">بحث</button>
+                </div>
+                <div id="searchResults" class="search-results"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="profileModal" class="modal-overlay hidden">
+        <div class="modal-card glass">
+            <div class="modal-header">
+                <h3>تعديل الملف الشخصي</h3>
+                <button class="icon-btn" onclick="closeProfileEditor()">✕</button>
+            </div>
+            <div class="modal-body stacked-form">
+                <input id="editName" type="text" placeholder="اسم المستخدم">
+                <input id="editEmail" type="text" placeholder="البريد أو الجوال">
+                <input id="editPassword" type="password" placeholder="كلمة مرور جديدة - اختياري">
+                <button onclick="saveProfile(this)">حفظ التعديلات</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="adminModal" class="modal-overlay hidden">
+        <div class="modal-card glass large-modal">
+            <div class="modal-header">
+                <h3>لوحة الإدارة البسيطة</h3>
+                <button class="icon-btn" onclick="closeAdminPanel()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div id="adminContent" class="admin-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bottom-nav wide-bottom-nav">
+        <button class="active" data-nav="feed" onclick="goFeed()">🏠<span>الرئيسية</span></button>
+        <button data-nav="reels" onclick="goReels()">🎬<span>ريلز</span></button>
+        <button data-nav="upload" onclick="goUpload()">➕<span>نشر</span></button>
+        <button data-nav="inbox" onclick="goInbox()">💬<span>رسائل</span></button>
+        <button data-nav="notifications" onclick="goNotifications()">🔔<span>إشعارات</span></button>
+        <button data-nav="profile" onclick="goProfile()">👤<span>حسابي</span></button>
     </div>
 
     <script src="assets/app.js"></script>

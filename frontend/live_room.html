@@ -9,28 +9,45 @@
     <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
     <link rel="apple-touch-icon" href="assets/favicon.svg">
     <style>
-        body { margin:0; background:black; color:white; }
+        body { margin:0; background:#000; color:#fff; }
+        .room-shell { max-width:1100px; margin:0 auto; min-height:100vh; }
         .room-header {
             position:sticky; top:0; z-index:10; padding:14px 16px;
             display:flex; align-items:center; justify-content:space-between; gap:12px;
             background:rgba(15,23,42,0.82); backdrop-filter:blur(16px);
         }
-        .room-shell { max-width:980px; margin:0 auto; }
-        .video-box {
-            width:100%; height:60vh; background:#050505; display:flex; align-items:center; justify-content:center;
-            border-bottom:1px solid rgba(255,255,255,0.08);
+        .room-main { display:grid; grid-template-columns: 1.4fr 0.8fr; min-height:calc(100vh - 82px); }
+        .video-stage {
+            position:relative; min-height:60vh; background:#050505; display:flex; flex-direction:column;
         }
-        video { width:100%; height:100%; background:black; }
-        .placeholder { text-align:center; color:rgba(255,255,255,0.72); line-height:1.8; padding:20px; }
-        .chat-box { height:28vh; overflow:auto; padding:14px; }
-        .chat-msg {
-            margin-bottom:10px; padding:10px 12px; border-radius:14px; background:rgba(255,255,255,0.08);
+        .video-box { flex:1; display:grid; place-items:center; border-bottom:1px solid rgba(255,255,255,0.08); }
+        video { width:100%; height:100%; background:#000; object-fit:cover; }
+        .status-chip {
+            position:absolute; top:16px; right:16px; z-index:2;
+            padding:8px 12px; border-radius:999px; background:rgba(239,68,68,0.18); color:#fecaca;
         }
-        .composer {
-            display:flex; gap:10px; padding:14px; position:sticky; bottom:0;
-            background:rgba(15,23,42,0.9); backdrop-filter:blur(14px);
+        .viewer-chip {
+            position:absolute; top:16px; left:16px; z-index:2;
+            padding:8px 12px; border-radius:999px; background:rgba(255,255,255,0.12);
         }
+        .host-tools { padding:14px; display:flex; gap:10px; flex-wrap:wrap; border-top:1px solid rgba(255,255,255,0.08); }
+        .sidebar { border-right:1px solid rgba(255,255,255,0.08); display:flex; flex-direction:column; background:rgba(255,255,255,0.03); }
+        .panel { padding:14px; border-bottom:1px solid rgba(255,255,255,0.08); }
+        .chat-box { flex:1; overflow:auto; padding:14px; }
+        .chat-msg { margin-bottom:10px; padding:10px 12px; border-radius:14px; background:rgba(255,255,255,0.08); line-height:1.7; }
+        .composer { display:flex; gap:10px; padding:14px; position:sticky; bottom:0; background:rgba(15,23,42,0.9); backdrop-filter:blur(14px); }
         .composer input { flex:1; }
+        .viewer-list { display:flex; flex-direction:column; gap:8px; margin-top:10px; }
+        .viewer-item { padding:10px 12px; border-radius:14px; background:rgba(255,255,255,0.06); }
+        .muted-line { color:rgba(255,255,255,0.7); font-size:13px; line-height:1.8; }
+        .placeholder { padding:24px; text-align:center; color:rgba(255,255,255,0.72); line-height:1.9; }
+        .danger { background:#ef4444; }
+        .success { background:#16a34a; }
+        @media (max-width: 900px) {
+            .room-main { grid-template-columns: 1fr; }
+            .sidebar { border-right:none; border-top:1px solid rgba(255,255,255,0.08); }
+            .video-box { min-height:50vh; }
+        }
     </style>
 </head>
 <body>
@@ -41,36 +58,62 @@
                 <div id="roomTitle">غرفة البث</div>
                 <div class="subtle-text" id="roomOwner">جاري التحميل...</div>
             </div>
-            <button class="icon-btn" onclick="location.reload()">🔄</button>
+            <button class="icon-btn" onclick="refreshRoom()">🔄</button>
         </div>
 
-        <div class="video-box">
-            <video id="video" autoplay controls muted playsinline></video>
-            <div id="placeholder" class="placeholder">
-                دي غرفة بث تجريبية.<br>
-                تقدر تربطها لاحقاً بـ WebRTC أو RTMP علشان تشغيل الفيديو الحقيقي.
-            </div>
-        </div>
+        <div class="room-main">
+            <section class="video-stage">
+                <div class="status-chip" id="streamStatus">جاري التجهيز...</div>
+                <div class="viewer-chip" id="viewerCounter">👀 0</div>
+                <div class="video-box">
+                    <video id="streamVideo" autoplay playsinline controls muted></video>
+                    <div id="placeholder" class="placeholder">جاري تجهيز البث الحقيقي داخل المتصفح...</div>
+                </div>
+                <div class="host-tools" id="hostTools"></div>
+            </section>
 
-        <div class="chat-box" id="chat">
-            <div class="chat-msg">💬 أهلاً بك في غرفة البث.</div>
-        </div>
-
-        <div class="composer">
-            <input id="msg" placeholder="اكتب رسالة داخل الغرفة">
-            <button onclick="send()">إرسال</button>
+            <aside class="sidebar">
+                <div class="panel">
+                    <div class="brand-title">معلومات الغرفة</div>
+                    <div id="roomSummary" class="muted-line">...</div>
+                </div>
+                <div class="panel">
+                    <div class="brand-title">المشاهدون</div>
+                    <div id="viewerList" class="viewer-list"><div class="viewer-item">لا يوجد مشاهدون بعد</div></div>
+                </div>
+                <div class="chat-box" id="chat"></div>
+                <div class="composer">
+                    <input id="msg" placeholder="اكتب رسالة داخل الغرفة">
+                    <button onclick="sendChat()">إرسال</button>
+                </div>
+            </aside>
         </div>
     </div>
 
     <script>
         const API_BASE = (() => {
             const saved = (localStorage.getItem("apiBase") || "").trim().replace(/\/+$/, "");
-            if (saved) {
-                return saved.endsWith("/api") ? saved : `${saved}/api`;
-            }
+            if (saved) return saved.endsWith("/api") ? saved : `${saved}/api`;
             return `${window.location.origin.replace(/\/+$/, "")}/api`;
         })();
-        const roomId = new URLSearchParams(window.location.search).get("id");
+        const roomId = Number(new URLSearchParams(window.location.search).get("id") || 0);
+        const hostTarget = `host:${roomId}`;
+        const rtcConfig = { iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }] };
+
+        let currentUser = "";
+        let room = null;
+        let isHost = false;
+        let viewerToken = "";
+        let localStream = null;
+        let remoteStream = null;
+        let hostPeers = new Map();
+        let viewerPeer = null;
+        let lastSignalId = 0;
+        let lastMessageId = 0;
+        let viewerPollTimer = null;
+        let signalPollTimer = null;
+        let chatPollTimer = null;
+        let pingTimer = null;
 
         function escapeHTML(value) {
             return String(value || "")
@@ -81,33 +124,342 @@
                 .replace(/'/g, "&#39;");
         }
 
-        async function loadRoom() {
-            const response = await fetch(`${API_BASE}/live_rooms`, { credentials: "include" });
-            const data = await response.json().catch(() => []);
-            const room = Array.isArray(data) ? data.find(item => String(item.id) === String(roomId)) : null;
+        function showToast(msg) {
+            const t = document.createElement("div");
+            t.className = "toast";
+            t.innerText = msg;
+            document.body.appendChild(t);
+            setTimeout(() => t.remove(), 2500);
+        }
 
-            if (!room) {
-                document.getElementById("roomTitle").innerText = "غرفة غير متاحة";
-                document.getElementById("roomOwner").innerText = "قد يكون البث انتهى بالفعل";
+        async function requestJSON(url, options = {}) {
+            const response = await fetch(url, { credentials: "include", ...options });
+            const data = await response.json().catch(() => ({ message: "حدث خطأ غير متوقع" }));
+            if (!response.ok) throw new Error(data.message || "حدث خطأ في الطلب");
+            return data;
+        }
+
+        function setStatus(text) {
+            document.getElementById("streamStatus").innerText = text;
+        }
+
+        function setVideoStream(stream, muted = false) {
+            const video = document.getElementById("streamVideo");
+            const placeholder = document.getElementById("placeholder");
+            video.srcObject = stream || null;
+            video.muted = muted;
+            if (stream) {
+                placeholder.style.display = "none";
+                video.play().catch(() => {});
+            } else {
+                placeholder.style.display = "block";
+            }
+        }
+
+        async function checkSession() {
+            const data = await requestJSON(`${API_BASE}/me`);
+            if (!data.user) {
+                window.location.href = "index.html";
+                return;
+            }
+            currentUser = data.user;
+        }
+
+        async function loadRoom() {
+            room = await requestJSON(`${API_BASE}/live_room/${roomId}`);
+            if (room.status !== "live") {
+                setStatus("انتهى البث");
+            }
+            isHost = room.username === currentUser;
+            document.getElementById("roomTitle").innerText = `🔴 ${room.title}`;
+            document.getElementById("roomOwner").innerText = `صاحب البث: ${room.username}`;
+            document.getElementById("roomSummary").innerHTML = `عنوان البث: <b>${escapeHTML(room.title)}</b><br>الحالة: ${room.status === 'live' ? 'مباشر الآن' : 'منتهي'}<br>دورك: ${isHost ? 'صاحب البث' : 'مشاهد'}`;
+            document.getElementById("viewerCounter").innerText = `👀 ${room.viewer_count || 0}`;
+            renderHostTools();
+        }
+
+        function renderHostTools() {
+            const box = document.getElementById("hostTools");
+            if (!isHost) {
+                box.innerHTML = '<div class="muted-line">أنت داخل البث كمشاهد. سيتم تشغيل الفيديو عند وصول إشارة البث.</div>';
+                return;
+            }
+            box.innerHTML = `
+                <button class="success" onclick="restartBroadcast()">🎥 تشغيل الكاميرا</button>
+                <button class="danger" onclick="endLive()">⛔ إنهاء البث</button>
+                <div class="muted-line">اسمح للمتصفح بالوصول إلى الكاميرا والمايك لبدء البث الحقيقي.</div>
+            `;
+        }
+
+        async function startHostBroadcast() {
+            try {
+                if (!localStream) {
+                    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                }
+                setVideoStream(localStream, true);
+                setStatus("أنت الآن على الهواء");
+                await refreshViewers();
+            } catch (error) {
+                setStatus("تعذر تشغيل الكاميرا أو المايك");
+                showToast(error.message || "تعذر الوصول إلى الكاميرا والمايك");
+            }
+        }
+
+        async function restartBroadcast() {
+            await startHostBroadcast();
+            for (const [token, pc] of hostPeers.entries()) {
+                try { pc.close(); } catch (_) {}
+                hostPeers.delete(token);
+            }
+            await refreshViewers();
+        }
+
+        async function joinAsViewer() {
+            const data = await requestJSON(`${API_BASE}/live_viewer_join`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ room_id: roomId })
+            });
+            viewerToken = data.viewer_token || "";
+            setStatus("متصل كمشاهد");
+            pingViewer();
+        }
+
+        async function pingViewer() {
+            if (!viewerToken) return;
+            try {
+                await requestJSON(`${API_BASE}/live_viewer_ping`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ room_id: roomId, viewer_token: viewerToken })
+                });
+            } catch (_) {}
+        }
+
+        function createHostPeer(viewer) {
+            const peer = new RTCPeerConnection(rtcConfig);
+            if (localStream) {
+                localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
+            }
+            peer.onicecandidate = ({ candidate }) => {
+                if (candidate) {
+                    sendSignal(hostTarget, viewer.viewer_token, "candidate", candidate);
+                }
+            };
+            peer.onconnectionstatechange = () => {
+                if (["failed", "closed", "disconnected"].includes(peer.connectionState)) {
+                    hostPeers.delete(viewer.viewer_token);
+                }
+            };
+            hostPeers.set(viewer.viewer_token, peer);
+            return peer;
+        }
+
+        async function ensureHostOffer(viewer) {
+            if (!localStream) return;
+            const peer = hostPeers.get(viewer.viewer_token) || createHostPeer(viewer);
+            const offer = await peer.createOffer();
+            await peer.setLocalDescription(offer);
+            await sendSignal(hostTarget, viewer.viewer_token, "offer", offer);
+        }
+
+        async function ensureViewerPeer() {
+            if (viewerPeer) return viewerPeer;
+            viewerPeer = new RTCPeerConnection(rtcConfig);
+            remoteStream = new MediaStream();
+            setVideoStream(remoteStream, false);
+            viewerPeer.ontrack = event => {
+                event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));
+                setVideoStream(remoteStream, false);
+                setStatus("يتم تشغيل البث الآن");
+            };
+            viewerPeer.onicecandidate = ({ candidate }) => {
+                if (candidate && viewerToken) {
+                    sendSignal(viewerToken, hostTarget, "candidate", candidate);
+                }
+            };
+            viewerPeer.onconnectionstatechange = () => {
+                if (viewerPeer.connectionState === "connected") setStatus("البث يعمل الآن");
+                if (["failed", "disconnected"].includes(viewerPeer.connectionState)) setStatus("جاري إعادة الاتصال بالبث");
+            };
+            return viewerPeer;
+        }
+
+        async function sendSignal(sender, target, signalType, data) {
+            try {
+                await requestJSON(`${API_BASE}/live_signal`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ room_id: roomId, sender, target, signal_type: signalType, data })
+                });
+            } catch (error) {
+                console.error(error.message);
+            }
+        }
+
+        async function refreshViewers() {
+            if (!isHost) return;
+            try {
+                const viewers = await requestJSON(`${API_BASE}/live_viewers/${roomId}`);
+                document.getElementById("viewerCounter").innerText = `👀 ${viewers.length}`;
+                const list = document.getElementById("viewerList");
+                if (!viewers.length) {
+                    list.innerHTML = '<div class="viewer-item">لا يوجد مشاهدون بعد</div>';
+                } else {
+                    list.innerHTML = viewers.map(v => `<div class="viewer-item">👤 ${escapeHTML(v.username)}</div>`).join("");
+                }
+                for (const viewer of viewers) {
+                    if (!hostPeers.has(viewer.viewer_token) && localStream) {
+                        await ensureHostOffer(viewer);
+                    }
+                }
+            } catch (error) {
+                console.error(error.message);
+            }
+        }
+
+        async function pollSignals() {
+            const target = isHost ? hostTarget : viewerToken;
+            if (!target) return;
+            try {
+                const signals = await requestJSON(`${API_BASE}/live_signals/${roomId}?target=${encodeURIComponent(target)}&after_id=${lastSignalId}`);
+                for (const signal of signals) {
+                    lastSignalId = Math.max(lastSignalId, signal.id || 0);
+                    if (isHost) {
+                        await handleHostSignal(signal);
+                    } else {
+                        await handleViewerSignal(signal);
+                    }
+                }
+            } catch (error) {
+                console.error(error.message);
+            }
+        }
+
+        async function handleHostSignal(signal) {
+            const viewerTokenFromSignal = signal.sender;
+            const peer = hostPeers.get(viewerTokenFromSignal) || createHostPeer({ viewer_token: viewerTokenFromSignal });
+            if (signal.signal_type === "answer") {
+                await peer.setRemoteDescription(new RTCSessionDescription(signal.data));
+            } else if (signal.signal_type === "candidate" && signal.data) {
+                try {
+                    await peer.addIceCandidate(new RTCIceCandidate(signal.data));
+                } catch (error) {
+                    console.error(error.message);
+                }
+            }
+        }
+
+        async function handleViewerSignal(signal) {
+            const peer = await ensureViewerPeer();
+            if (signal.signal_type === "offer") {
+                await peer.setRemoteDescription(new RTCSessionDescription(signal.data));
+                const answer = await peer.createAnswer();
+                await peer.setLocalDescription(answer);
+                await sendSignal(viewerToken, hostTarget, "answer", answer);
+            } else if (signal.signal_type === "candidate" && signal.data) {
+                try {
+                    await peer.addIceCandidate(new RTCIceCandidate(signal.data));
+                } catch (error) {
+                    console.error(error.message);
+                }
+            }
+        }
+
+        async function loadMessages() {
+            try {
+                const data = await requestJSON(`${API_BASE}/live_messages/${roomId}?after_id=${lastMessageId}`);
+                const box = document.getElementById("chat");
+                if (!Array.isArray(data) || !data.length) {
+                    if (!box.innerHTML.trim()) {
+                        box.innerHTML = '<div class="chat-msg">💬 أهلاً بك في غرفة البث.</div>';
+                    }
+                    return;
+                }
+                data.forEach(message => {
+                    lastMessageId = Math.max(lastMessageId, message.id || 0);
+                    box.innerHTML += `<div class="chat-msg"><b>${escapeHTML(message.username)}:</b> ${escapeHTML(message.message)}</div>`;
+                });
+                box.scrollTop = box.scrollHeight;
+            } catch (error) {
+                console.error(error.message);
+            }
+        }
+
+        async function sendChat() {
+            const input = document.getElementById("msg");
+            const message = input.value.trim();
+            if (!message) return;
+            try {
+                await requestJSON(`${API_BASE}/live_message`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ room_id: roomId, message })
+                });
+                input.value = "";
+                await loadMessages();
+            } catch (error) {
+                showToast(error.message);
+            }
+        }
+
+        async function endLive() {
+            if (!isHost) return;
+            if (!confirm("هل تريد إنهاء البث الآن؟")) return;
+            try {
+                const data = await requestJSON(`${API_BASE}/end_live/${roomId}`, { method: "POST" });
+                showToast(data.message);
+                setStatus("تم إنهاء البث");
+                setTimeout(() => {
+                    window.location.href = 'live.html';
+                }, 900);
+            } catch (error) {
+                showToast(error.message);
+            }
+        }
+
+        async function refreshRoom() {
+            try {
+                await loadRoom();
+                await refreshViewers();
+            } catch (error) {
+                showToast(error.message);
+            }
+        }
+
+        function clearTimers() {
+            [viewerPollTimer, signalPollTimer, chatPollTimer, pingTimer].forEach(timer => timer && clearInterval(timer));
+        }
+
+        window.addEventListener("beforeunload", clearTimers);
+
+        window.addEventListener("DOMContentLoaded", async () => {
+            if (!roomId) {
+                showToast("رقم الغرفة غير صالح");
                 return;
             }
 
-            document.getElementById("roomTitle").innerText = `🔴 ${room.title}`;
-            document.getElementById("roomOwner").innerText = `صاحب البث: ${room.username}`;
-        }
+            try {
+                await checkSession();
+                await loadRoom();
+                await loadMessages();
 
-        function send() {
-            const input = document.getElementById("msg");
-            const msg = input.value.trim();
-            if (!msg) return;
-            document.getElementById("chat").innerHTML += `<div class="chat-msg">💬 ${escapeHTML(msg)}</div>`;
-            input.value = "";
-            document.getElementById("chat").scrollTop = document.getElementById("chat").scrollHeight;
-        }
+                if (isHost) {
+                    await startHostBroadcast();
+                    await refreshViewers();
+                    viewerPollTimer = setInterval(refreshViewers, 3000);
+                } else {
+                    await joinAsViewer();
+                    pingTimer = setInterval(pingViewer, 12000);
+                    document.getElementById("viewerList").innerHTML = '<div class="viewer-item">أنت تشاهد البث الآن</div>';
+                }
 
-        window.addEventListener("DOMContentLoaded", () => {
-            loadRoom();
-            document.getElementById("video").src = "";
+                signalPollTimer = setInterval(pollSignals, 1200);
+                chatPollTimer = setInterval(loadMessages, 1500);
+            } catch (error) {
+                setStatus("تعذر فتح البث");
+                showToast(error.message);
+            }
         });
     </script>
 </body>

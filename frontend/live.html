@@ -9,16 +9,18 @@
     <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
     <link rel="apple-touch-icon" href="assets/favicon.svg">
     <style>
-        .live-page { background:black; padding-bottom:40px; }
+        .live-page { padding-bottom:40px; }
         .live-shell { padding:10px; }
         .live-panel { padding:16px; }
         .live-card {
             margin-top:12px; padding:14px; border-radius:18px; background:rgba(255,255,255,0.06);
             display:flex; align-items:center; justify-content:space-between; gap:10px;
         }
-        .live-meta { color:rgba(255,255,255,0.72); font-size:13px; margin-top:6px; }
+        .live-meta { color:var(--muted); font-size:13px; margin-top:6px; }
         .live-top { display:flex; align-items:center; justify-content:space-between; gap:10px; }
         .danger { background:#ef4444; }
+        .live-badge { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; background:rgba(239,68,68,0.18); color:#fecaca; font-size:12px; }
+        @media (max-width: 720px) { .live-card { flex-direction:column; align-items:flex-start; } }
     </style>
 </head>
 <body class="live-page">
@@ -26,7 +28,7 @@
         <div class="header-row">
             <button class="icon-btn" onclick="window.location.href='feed.html'">⬅</button>
             <div>
-                <div class="brand-title">🔴 البث المباشر</div>
+                <div class="brand-title">🔴 البث المباشر الحقيقي</div>
                 <div class="subtle-text" id="sessionLabel">جاري تحميل الجلسة...</div>
             </div>
             <button class="icon-btn" onclick="window.location.href='profile.html'">👤</button>
@@ -39,7 +41,7 @@
                 <input id="title" placeholder="عنوان البث">
                 <button onclick="startLive(this)">ابدأ بث</button>
             </div>
-            <div class="live-meta">دي واجهة تمهيدية للبث المباشر، وغرفة البث الحالية فيها محاكاة فيديو وشات لحين ربط WebRTC أو RTMP.</div>
+            <div class="live-meta">البث الآن يشتغل داخل المتصفح باستخدام الكاميرا والمايك، والمشاهد يقدر يدخل الغرفة ويتابع البث الفعلي مع شات مباشر.</div>
         </section>
 
         <section class="glass live-panel" style="margin-top:14px;">
@@ -54,9 +56,7 @@
     <script>
         const API_BASE = (() => {
             const saved = (localStorage.getItem("apiBase") || "").trim().replace(/\/+$/, "");
-            if (saved) {
-                return saved.endsWith("/api") ? saved : `${saved}/api`;
-            }
+            if (saved) return saved.endsWith("/api") ? saved : `${saved}/api`;
             return `${window.location.origin.replace(/\/+$/, "")}/api`;
         })();
         let currentUser = "";
@@ -116,7 +116,7 @@
                 if (data.room_id) {
                     setTimeout(() => {
                         window.location.href = `live_room.html?id=${data.room_id}`;
-                    }, 800);
+                    }, 700);
                 }
             } catch (error) {
                 showToast(error.message);
@@ -128,9 +128,7 @@
 
         async function endLive(roomId) {
             try {
-                const data = await requestJSON(`${API_BASE}/end_live/${roomId}`, {
-                    method: "POST"
-                });
+                const data = await requestJSON(`${API_BASE}/end_live/${roomId}`, { method: "POST" });
                 showToast(data.message);
                 await loadLives();
             } catch (error) {
@@ -149,8 +147,9 @@
                 box.innerHTML = data.map(room => `
                     <div class="live-card">
                         <div>
-                            <h3 style="margin:0 0 6px;">🔴 ${escapeHTML(room.title)}</h3>
-                            <div class="live-meta">👤 ${escapeHTML(room.username)}</div>
+                            <div class="live-badge">● مباشر الآن</div>
+                            <h3 style="margin:10px 0 6px;">${escapeHTML(room.title)}</h3>
+                            <div class="live-meta">👤 ${escapeHTML(room.username)} · 👀 ${room.viewer_count || 0} مشاهد</div>
                         </div>
                         <div style="display:flex; gap:8px; flex-wrap:wrap;">
                             <button onclick="openLive(${room.id})">دخول</button>

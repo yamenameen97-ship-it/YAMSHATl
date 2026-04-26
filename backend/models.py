@@ -1,9 +1,11 @@
 from pathlib import Path
 import hashlib
+import os
 import sqlite3
 
 BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = BASE_DIR / "database.db"
+DEFAULT_DB_PATH = "/var/data/yamshat.db" if os.environ.get("RENDER") else str(BASE_DIR / "database.db")
+DB_PATH = Path(os.environ.get("DB_PATH", DEFAULT_DB_PATH))
 UPLOAD_FOLDER = BASE_DIR / "uploads"
 UPLOAD_FOLDER.mkdir(exist_ok=True)
 
@@ -16,6 +18,13 @@ def get_connection() -> sqlite3.Connection:
 
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
+
+
+def ensure_column(cursor, table: str, column: str, ddl: str) -> None:
+    cursor.execute(f"PRAGMA table_info({table})")
+    columns = {row[1] for row in cursor.fetchall()}
+    if column not in columns:
+        cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
 
 
 def init_db() -> None:
@@ -192,6 +201,87 @@ def init_db() -> None:
             username TEXT,
             title TEXT,
             status TEXT DEFAULT 'live'
+        )
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS blocked_users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            blocker TEXT NOT NULL,
+            blocked TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(blocker, blocked)
+        )
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            reporter TEXT NOT NULL,
+            target_type TEXT NOT NULL,
+            target_value TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS live_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL,
+            username TEXT NOT NULL,
+            message TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(room_id) REFERENCES live_rooms(id)
+        )
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS live_viewers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL,
+            viewer_token TEXT NOT NULL UNIQUE,
+            username TEXT NOT NULL,
+            last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(room_id) REFERENCES live_rooms(id)
+        )
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS live_signals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL,
+            sender TEXT NOT NULL,
+            target TEXT NOT NULL,
+            signal_type TEXT NOT NULL,
+            data TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(room_id) REFERENCES live_rooms(id)
+        )
+        """
+    )
+
+    ensure_column(cursor, "users", "fcm_token", "TEXT")
+    ensure_column(cursor, "posts", "media", "TEXT")
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS analytics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user TEXT,
+            event TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """
     )

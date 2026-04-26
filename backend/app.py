@@ -47,6 +47,8 @@ allowed_origins = {
     "http://localhost:5000",
     "https://yamshatl.onrender.com",
     "https://yamshatl-1.onrender.com",
+    "capacitor://localhost",
+    "ionic://localhost",
 }
 if render_external:
     allowed_origins.add(render_external)
@@ -67,6 +69,7 @@ from routes.social import social_bp
 from routes.friends import friends_bp
 from routes.groups import groups_bp
 from routes.live import live_bp
+from routes.mobile_compat import mobile_compat_bp
 
 init_db()
 
@@ -76,6 +79,7 @@ app.register_blueprint(social_bp, url_prefix="/api")
 app.register_blueprint(friends_bp, url_prefix="/api")
 app.register_blueprint(groups_bp, url_prefix="/api")
 app.register_blueprint(live_bp, url_prefix="/api")
+app.register_blueprint(mobile_compat_bp, url_prefix="/api")
 
 
 @app.get("/health")

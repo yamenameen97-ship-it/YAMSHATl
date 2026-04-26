@@ -33,15 +33,35 @@ function isImage(url) {
     return /\.(jpg|jpeg|png|gif|webp)$/i.test(url || "");
 }
 
-function renderContent(content) {
-    const safeContent = String(content || "").trim();
+function normalizeMediaUrl(url) {
+    const safeUrl = String(url || "").trim();
+    if (!safeUrl) return safeUrl;
 
-    if (isVideo(safeContent)) {
-        return `<video class="post-media" controls src="${encodeURI(safeContent)}"></video>`;
+    if (safeUrl.includes("/api/uploads/")) {
+        return safeUrl;
     }
 
-    if (isImage(safeContent)) {
-        return `<img class="post-media" src="${encodeURI(safeContent)}" alt="post image">`;
+    if (safeUrl.startsWith("/uploads/")) {
+        return `/api${safeUrl}`;
+    }
+
+    if (/^https?:\/\//i.test(safeUrl) && safeUrl.includes("/uploads/")) {
+        return safeUrl.replace("/uploads/", "/api/uploads/");
+    }
+
+    return safeUrl;
+}
+
+function renderContent(content) {
+    const safeContent = String(content || "").trim();
+    const mediaUrl = normalizeMediaUrl(safeContent);
+
+    if (isVideo(mediaUrl)) {
+        return `<video class="post-media" controls src="${encodeURI(mediaUrl)}"></video>`;
+    }
+
+    if (isImage(mediaUrl)) {
+        return `<img class="post-media" src="${encodeURI(mediaUrl)}" alt="post image">`;
     }
 
     return `<p class="post-text">${escapeHTML(safeContent)}</p>`;
@@ -389,6 +409,21 @@ function sharePost(id) {
     });
 }
 
+function shareReel(id) {
+    const shareUrl = `${window.location.origin}/reels.html?reel=${id}`;
+    const text = `شاهد هذا الريل على Yamshat`;
+    if (navigator.share) {
+        navigator.share({ title: "Yamshat Reels", text, url: shareUrl }).catch(() => {});
+        return;
+    }
+
+    navigator.clipboard?.writeText(shareUrl).then(() => {
+        showToast("تم نسخ رابط الريل");
+    }).catch(() => {
+        showToast("تم تجهيز مشاركة الريل");
+    });
+}
+
 function openProfile(user) {
     window.location.href = `profile.html?user=${encodeURIComponent(user)}`;
 }
@@ -634,6 +669,10 @@ function goReels() {
     window.location.href = "reels.html";
 }
 
+function goInbox() {
+    window.location.href = "inbox.html";
+}
+
 function reloadFeed() {
     loadPosts(true);
     loadStories(true);
@@ -731,13 +770,117 @@ async function loadProfile() {
 function loadReels(force = false) {
     fetchData(`${API_BASE}/reels`, data => {
         reelsData = Array.isArray(data) ? data : [];
+        const target = document.getElementById("reels");
+        if (!target) return;
+
         if (!reelsData.length) {
-            document.getElementById("reels").innerHTML = '<div class="reel"><div class="user">لا توجد ريلز حالياً</div></div>';
+            target.innerHTML = '<div class="reel"><div class="user">لا توجد ريلز حالياً</div></div>';
             return;
         }
-        current = 0;
-        showReel(0);
+
+        const requestedId = new URLSearchParams(window.location.search).get("reel");
+        const requestedIndex = requestedId
+            ? reelsData.findIndex(item => String(item.id) === String(requestedId))
+            : 0;
+
+        current = requestedIndex >= 0 ? requestedIndex : 0;
+        showReel(current);
     }, force);
+}
+
+async function likeReel(reelId) {
+    try {
+        const data = await requestJSON(`${API_BASE}/reels/${reelId}/like`, {
+            method: "POST",
+            credentials: "include"
+        });
+        const reel = reelsData.find(item => item.id === reelId);
+        if (reel) {
+            reel.likes = data.likes;
+            reel.comments_count = data.comments_count;
+            reel.liked_by_current_user = data.liked;
+        }
+        updateReelStats(reelId, data.likes, data.comments_count, data.liked);
+        showToast(data.message);
+    } catch (error) {
+        showToast(error.message);
+    }
+}
+
+function updateReelStats(reelId, likes, commentsCount, liked) {
+    const likesNode = document.getElementById(`reelLikesCount-${reelId}`);
+    const commentsNode = document.getElementById(`reelCommentsCount-${reelId}`);
+    const likeBtn = document.getElementById(`reelLikeBtn-${reelId}`);
+
+    if (likesNode) likesNode.innerText = likes ?? 0;
+    if (commentsNode) commentsNode.innerText = commentsCount ?? 0;
+    if (likeBtn) {
+        likeBtn.classList.toggle("active", Boolean(liked));
+        likeBtn.setAttribute("aria-pressed", liked ? "true" : "false");
+    }
+}
+
+async function addReelComment(reelId) {
+    const input = document.getElementById(`reelCommentInput-${reelId}`);
+    const comment = input?.value.trim();
+
+    if (!comment) {
+        showToast("اكتب تعليقاً على الريل أولاً");
+        return;
+    }
+
+    try {
+        const data = await requestJSON(`${API_BASE}/reels/${reelId}/comment`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ comment })
+        });
+        const reel = reelsData.find(item => item.id === reelId);
+        if (reel) {
+            reel.likes = data.likes;
+            reel.comments_count = data.comments_count;
+        }
+        input.value = "";
+        updateReelStats(reelId, data.likes, data.comments_count, reel?.liked_by_current_user);
+        await loadReelComments(reelId);
+        document.getElementById(`reelCommentsWrap-${reelId}`).style.display = "block";
+        showToast(data.message);
+    } catch (error) {
+        showToast(error.message);
+    }
+}
+
+async function loadReelComments(reelId) {
+    const list = document.getElementById(`reelComments-${reelId}`);
+    if (!list) return;
+
+    try {
+        const data = await requestJSON(`${API_BASE}/reels/${reelId}/comments`, {
+            credentials: "include"
+        });
+
+        if (!data.length) {
+            list.innerHTML = '<div class="empty-state">لا توجد تعليقات على الريل بعد</div>';
+            return;
+        }
+
+        list.innerHTML = data.map(comment => `
+            <div class="comment"><b>${escapeHTML(comment.username)}:</b> ${escapeHTML(comment.comment)}</div>
+        `).join("");
+    } catch (error) {
+        list.innerHTML = `<div class="empty-state">${escapeHTML(error.message)}</div>`;
+    }
+}
+
+function toggleReelComments(reelId) {
+    const box = document.getElementById(`reelCommentsWrap-${reelId}`);
+    if (!box) return;
+    const shouldShow = box.style.display === "none" || !box.style.display;
+    box.style.display = shouldShow ? "block" : "none";
+    if (shouldShow) {
+        loadReelComments(reelId);
+    }
 }
 
 function showReel(index) {
@@ -745,12 +888,29 @@ function showReel(index) {
     if (!target || !reelsData[index]) return;
 
     const r = reelsData[index];
+    const isLiked = Boolean(r.liked_by_current_user);
     target.innerHTML = `
         <div class="reel">
-            <video id="video" autoplay loop playsinline>
+            <video id="video" autoplay loop playsinline controls>
                 <source src="${API_BASE}/uploads/${encodeURIComponent(r.video)}">
             </video>
+            <div class="reel-gradient"></div>
             <div class="user">👤 ${escapeHTML(r.username)}</div>
+            <div class="reel-meta">ريل ${index + 1} من ${reelsData.length}</div>
+            <div class="reel-side-actions">
+                <button id="reelLikeBtn-${r.id}" class="reel-action-btn ${isLiked ? "active" : ""}" onclick="likeReel(${r.id})">❤️</button>
+                <div class="reel-action-count" id="reelLikesCount-${r.id}">${r.likes || 0}</div>
+                <button class="reel-action-btn" onclick="toggleReelComments(${r.id})">💬</button>
+                <div class="reel-action-count" id="reelCommentsCount-${r.id}">${r.comments_count || 0}</div>
+                <button class="reel-action-btn" onclick="shareReel(${r.id})">📤</button>
+            </div>
+            <div id="reelCommentsWrap-${r.id}" class="reel-comment-panel glass" style="display:none;">
+                <div id="reelComments-${r.id}" class="reel-comments-list"></div>
+                <div class="comment-box reel-comment-box">
+                    <input type="text" id="reelCommentInput-${r.id}" placeholder="اكتب تعليقك على الريل...">
+                    <button onclick="addReelComment(${r.id})">إرسال</button>
+                </div>
+            </div>
         </div>
     `;
 
@@ -781,6 +941,11 @@ function initReelsSwipe() {
         if (endY < startY - 50) next();
         if (endY > startY + 50) prev();
     }, { passive: true });
+
+    document.addEventListener("keydown", e => {
+        if (e.key === "ArrowUp") prev();
+        if (e.key === "ArrowDown") next();
+    });
 }
 
 async function loadMessages() {
@@ -853,6 +1018,10 @@ function initChatPage() {
 
 window.addEventListener("DOMContentLoaded", async () => {
     if (document.body.classList.contains("auth-page")) {
+        const sessionData = await checkSession(false);
+        if (sessionData.user) {
+            window.location.href = "feed.html";
+        }
         return;
     }
 

@@ -6,3 +6,12 @@ services:
     buildCommand: pip install -r backend/requirements.txt
     startCommand: gunicorn --chdir backend app:app
     autoDeploy: true
+    disk:
+      name: yamshat-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DB_PATH
+        value: /var/data/yamshat.db

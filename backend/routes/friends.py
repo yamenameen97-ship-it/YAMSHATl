@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request, session
 
 from auth_utils import current_user
 from models import get_connection
+from push_utils import send_push_to_user
 
 friends_bp = Blueprint("friends", __name__)
 
@@ -65,6 +66,13 @@ def send_friend_request():
         "INSERT INTO notifications (username, message) VALUES (?, ?)",
         (receiver, f"🤝 {sender} أرسل لك طلب صداقة"),
     )
+    send_push_to_user(
+        cursor,
+        receiver,
+        "طلب صداقة جديد",
+        f"{sender} أرسل لك طلب صداقة",
+        {"type": "friend_request", "from_user": sender, "screen": "notifications"},
+    )
 
     conn.commit()
     conn.close()
@@ -77,7 +85,7 @@ def handle_friend_request():
     data = request.get_json(silent=True) or {}
     request_id = data.get("id")
     status = (data.get("status") or "").strip().lower()
-    current_user = _logged_in_user()
+    current_user_name = _logged_in_user()
 
     if not request_id or status not in {"accepted", "rejected"}:
         return jsonify({"message": "بيانات التحديث غير صحيحة"}), 400
@@ -94,7 +102,7 @@ def handle_friend_request():
         conn.close()
         return jsonify({"message": "طلب الصداقة غير موجود"}), 404
 
-    if current_user and row["receiver"] != current_user:
+    if current_user_name and row["receiver"] != current_user_name:
         conn.close()
         return jsonify({"message": "غير مصرح لك بتعديل هذا الطلب"}), 403
 
@@ -108,10 +116,24 @@ def handle_friend_request():
             "INSERT INTO notifications (username, message) VALUES (?, ?)",
             (row["sender"], f"✅ {row['receiver']} قبل طلب الصداقة"),
         )
+        send_push_to_user(
+            cursor,
+            row["sender"],
+            "تم قبول طلب الصداقة",
+            f"{row['receiver']} قبل طلب الصداقة",
+            {"type": "friend_request_accepted", "screen": "notifications"},
+        )
     else:
         cursor.execute(
             "INSERT INTO notifications (username, message) VALUES (?, ?)",
             (row["sender"], f"❌ {row['receiver']} رفض طلب الصداقة"),
+        )
+        send_push_to_user(
+            cursor,
+            row["sender"],
+            "تم رفض طلب الصداقة",
+            f"{row['receiver']} رفض طلب الصداقة",
+            {"type": "friend_request_rejected", "screen": "notifications"},
         )
 
     conn.commit()

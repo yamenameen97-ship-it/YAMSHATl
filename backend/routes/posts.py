@@ -6,7 +6,9 @@ from flask import Blueprint, jsonify, request, send_from_directory, session
 from werkzeug.utils import secure_filename
 
 from auth_utils import current_user
+from extensions import limiter
 from models import UPLOAD_FOLDER, get_connection, insert_and_get_id
+from push_utils import send_push_to_user
 
 posts_bp = Blueprint("posts", __name__)
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp", "mp4", "mov", "webm", "mkv"}
@@ -116,6 +118,7 @@ def get_posts():
 
 
 @posts_bp.route("/add_post", methods=["POST"])
+@limiter.limit("30 per hour")
 def add_post():
     username = _logged_in_user()
     if not username:
@@ -165,6 +168,7 @@ def delete_post(post_id: int):
 
 
 @posts_bp.route("/upload", methods=["POST"])
+@limiter.limit("20 per hour")
 def upload_file():
     if not _logged_in_user():
         return jsonify({"message": "يجب تسجيل الدخول أولاً"}), 401
@@ -218,6 +222,13 @@ def like(post_id: int):
             "INSERT INTO notifications (username, message) VALUES (?, ?)",
             (post_owner, "❤️ تم الإعجاب بمنشورك"),
         )
+        send_push_to_user(
+            cursor,
+            post_owner,
+            "إعجاب جديد",
+            f"{username} أعجب بمنشورك",
+            {"type": "like", "post_id": post_id, "screen": "notifications"},
+        )
     conn.commit()
     conn.close()
 
@@ -258,6 +269,13 @@ def add_comment():
         cursor.execute(
             "INSERT INTO notifications (username, message) VALUES (?, ?)",
             (owner_row["username"], "💬 تم التعليق على منشورك"),
+        )
+        send_push_to_user(
+            cursor,
+            owner_row["username"],
+            "تعليق جديد",
+            f"{username} علّق على منشورك",
+            {"type": "comment", "post_id": post_id, "screen": "notifications"},
         )
     conn.commit()
     conn.close()

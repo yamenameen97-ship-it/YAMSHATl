@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request
 
 from auth_utils import current_user
 from models import get_connection
+from push_utils import send_push_to_user, store_user_device_token
 
 mobile_compat_bp = Blueprint("mobile_compat", __name__)
 
@@ -14,10 +15,15 @@ def save_device_token():
 
     data = request.get_json(silent=True) or {}
     token = (data.get("token") or "").strip()
+    platform = (data.get("platform") or "android").strip() or "android"
+    app_version = (data.get("app_version") or "").strip()
+    if not token:
+        return jsonify({"message": "رمز الجهاز غير صالح"}), 400
 
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("UPDATE users SET fcm_token=? WHERE name=?", (token, user))
+    store_user_device_token(cursor, user, token, platform=platform, app_version=app_version)
     conn.commit()
     conn.close()
     return jsonify({"ok": True, "message": "تم حفظ رمز الجهاز"})
@@ -114,7 +120,17 @@ def legacy_like():
 
     cursor.execute("UPDATE posts SET likes = COALESCE(likes, 0) + 1 WHERE id=?", (post_id,))
     if row["username"] != user:
-        cursor.execute("INSERT INTO notifications (username, message) VALUES (?, ?)", (row["username"], f"❤️ {user} أعجب بمنشورك"))
+        cursor.execute(
+            "INSERT INTO notifications (username, message) VALUES (?, ?)",
+            (row["username"], f"❤️ {user} أعجب بمنشورك"),
+        )
+        send_push_to_user(
+            cursor,
+            row["username"],
+            "إعجاب جديد",
+            f"{user} أعجب بمنشورك",
+            {"type": "like", "post_id": post_id, "screen": "notifications"},
+        )
     conn.commit()
     conn.close()
     return jsonify({"ok": True, "message": "تم الإعجاب"})
@@ -142,7 +158,17 @@ def legacy_comment():
 
     cursor.execute("INSERT INTO comments (post_id, username, comment) VALUES (?, ?, ?)", (post_id, user, comment))
     if row["username"] != user:
-        cursor.execute("INSERT INTO notifications (username, message) VALUES (?, ?)", (row["username"], f"💬 {user} علّق على منشورك"))
+        cursor.execute(
+            "INSERT INTO notifications (username, message) VALUES (?, ?)",
+            (row["username"], f"💬 {user} علّق على منشورك"),
+        )
+        send_push_to_user(
+            cursor,
+            row["username"],
+            "تعليق جديد",
+            f"{user} علّق على منشورك",
+            {"type": "comment", "post_id": post_id, "screen": "notifications"},
+        )
     conn.commit()
     conn.close()
     return jsonify({"ok": True, "message": "تم التعليق"})

@@ -36,6 +36,17 @@ CREATE_TABLE_STATEMENTS = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS user_devices (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL,
+        token TEXT NOT NULL UNIQUE,
+        platform TEXT DEFAULT 'android',
+        app_version TEXT DEFAULT '',
+        last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS posts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT NOT NULL,

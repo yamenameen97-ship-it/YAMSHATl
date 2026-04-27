@@ -5,6 +5,7 @@ from flask import Blueprint, jsonify, request, session
 
 from auth_utils import current_user
 from models import get_connection, insert_and_get_id, recent_timestamp_condition
+from push_utils import send_push_to_users
 
 live_bp = Blueprint("live", __name__)
 RECENT_VIEWER_THRESHOLD = recent_timestamp_condition("last_seen", 35)
@@ -55,6 +56,23 @@ def create_live():
     cursor.execute(
         "INSERT INTO live_messages (room_id, username, message) VALUES (?, ?, ?)",
         (room_id, username, "بدأ البث المباشر الآن"),
+    )
+    cursor.execute(
+        "SELECT follower FROM follows WHERE following=? ORDER BY id DESC",
+        (username,),
+    )
+    followers = [row["follower"] for row in cursor.fetchall() if row["follower"] != username]
+    for follower in followers:
+        cursor.execute(
+            "INSERT INTO notifications (username, message) VALUES (?, ?)",
+            (follower, f"🔴 {username} بدأ بثاً مباشراً بعنوان: {title}"),
+        )
+    send_push_to_users(
+        cursor,
+        followers,
+        "بث مباشر الآن",
+        f"{username} بدأ بثاً مباشراً: {title}",
+        {"type": "live", "room_id": room_id, "screen": "live"},
     )
     conn.commit()
     conn.close()

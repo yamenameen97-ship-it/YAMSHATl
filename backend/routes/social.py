@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request, session
 
 from auth_utils import current_user, current_email
 from models import get_connection
+from push_utils import send_push_to_user
 
 social_bp = Blueprint("social", __name__)
 
@@ -78,6 +79,13 @@ def follow():
         cursor.execute(
             "INSERT INTO notifications (username, message) VALUES (?, ?)",
             (following, f"➕ {follower} بدأ بمتابعتك"),
+        )
+        send_push_to_user(
+            cursor,
+            following,
+            "متابع جديد",
+            f"{follower} بدأ بمتابعتك",
+            {"type": "follow", "from_user": follower, "screen": "notifications"},
         )
         action = "تمت المتابعة"
 
@@ -195,6 +203,17 @@ def send_message():
     cursor.execute(
         "INSERT INTO messages (sender, receiver, message) VALUES (?, ?, ?)",
         (sender, receiver, message),
+    )
+    cursor.execute(
+        "INSERT INTO notifications (username, message) VALUES (?, ?)",
+        (receiver, f"📩 رسالة جديدة من {sender}"),
+    )
+    send_push_to_user(
+        cursor,
+        receiver,
+        "رسالة جديدة",
+        f"{sender}: {message[:80]}",
+        {"type": "message", "from_user": sender, "screen": "chat"},
     )
     conn.commit()
     conn.close()

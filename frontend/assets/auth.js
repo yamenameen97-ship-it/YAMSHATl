@@ -1,10 +1,31 @@
 (() => {
     const storageKey = "yamshatAuth";
-    const resolvedApiBase = (() => {
-        const saved = (localStorage.getItem("apiBase") || "").trim().replace(/\/+$/, "");
-        if (saved) return saved.endsWith("/api") ? saved : `${saved}/api`;
-        return `${window.location.origin.replace(/\/+$/, "")}/api`;
-    })();
+
+    function normalizeBase(url) {
+        const safe = String(url || "").trim().replace(/\/+$/, "");
+        if (!safe) return "";
+        return safe.endsWith("/api") ? safe : `${safe}/api`;
+    }
+
+    function detectApiBase() {
+        const saved = normalizeBase(localStorage.getItem("apiBase"));
+        if (saved) return saved;
+
+        const explicit = normalizeBase(window.YAMSHAT_API_BASE || window.APP_API_BASE);
+        if (explicit) return explicit;
+
+        const origin = window.location.origin.replace(/\/+$/, "");
+        const host = window.location.hostname;
+
+        if (host === "yamshatl-1.onrender.com") return "https://yamshatl.onrender.com/api";
+        if (host === "127.0.0.1" || host === "localhost") {
+            if (window.location.port === "5500") return "http://127.0.0.1:5000/api";
+            return `${origin}/api`;
+        }
+        return `${origin}/api`;
+    }
+
+    const resolvedApiBase = detectApiBase();
 
     function getStoredAuth() {
         try {

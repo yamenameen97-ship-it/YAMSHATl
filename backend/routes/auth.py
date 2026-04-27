@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request, session
 
 from auth_utils import create_token, current_email, current_user
+from extensions import limiter
 from models import get_connection, hash_password
 
 auth_bp = Blueprint("auth", __name__)
@@ -55,6 +56,7 @@ def _normalize_email(data, fallback_name: str = ""):
 
 
 @auth_bp.route("/register", methods=["POST"])
+@limiter.limit("10 per minute")
 def register():
     data = request.get_json(silent=True) or {}
     name = _normalize_name(data)
@@ -102,6 +104,7 @@ def register():
 
 
 @auth_bp.route("/login", methods=["POST"])
+@limiter.limit("10 per minute")
 def login():
     data = request.get_json(silent=True) or {}
     identifier = (data.get("email") or data.get("username") or data.get("identifier") or "").strip()
@@ -163,6 +166,7 @@ def me():
 
 
 @auth_bp.route("/update_profile", methods=["POST"])
+@limiter.limit("20 per hour")
 def update_profile():
     active_user = current_user()
     active_email = current_email()

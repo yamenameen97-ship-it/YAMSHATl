@@ -1,4 +1,4 @@
-const API_BASE = (() => {
+const API_BASE = window.API_BASE || (() => {
     const saved = (localStorage.getItem("apiBase") || "").trim().replace(/\/+$/, "");
     if (saved) {
         return saved.endsWith("/api") ? saved : `${saved}/api`;
@@ -6,8 +6,8 @@ const API_BASE = (() => {
     return `${window.location.origin.replace(/\/+$/, "")}/api`;
 })();
 
-let currentUser = null;
-let currentEmail = null;
+let currentUser = window.getStoredAuth?.().user || null;
+let currentEmail = window.getStoredAuth?.().email || null;
 let cache = {};
 let postsTimer = null;
 let notificationsTimer = null;
@@ -79,11 +79,24 @@ function showToast(msg) {
     setTimeout(() => t.remove(), 3000);
 }
 
-async function requestJSON(url, options = {}) {
+const requestJSON = window.requestJSON || async function (url, options = {}) {
     const response = await fetch(url, { credentials: "include", ...options });
     const data = await response.json().catch(() => ({ message: "حدث خطأ غير متوقع" }));
     if (!response.ok) throw new Error(data.message || "حدث خطأ في الطلب");
     return data;
+};
+
+function persistAuthSession(data = {}) {
+    const saved = window.persistSessionFromPayload?.(data) || data;
+    currentUser = saved.user || data.user || currentUser || null;
+    currentEmail = saved.email || data.email || currentEmail || null;
+    return saved;
+}
+
+function clearAuthSession() {
+    window.clearStoredAuth?.();
+    currentUser = null;
+    currentEmail = null;
 }
 
 function fetchData(url, callback, force = false) {
@@ -91,7 +104,7 @@ function fetchData(url, callback, force = false) {
         callback(cache[url]);
         return;
     }
-    fetch(url, { credentials: "include" })
+    (window.authFetch ? window.authFetch(url) : fetch(url, { credentials: "include" }))
         .then(res => res.json())
         .then(data => {
             cache[url] = data;
@@ -147,11 +160,12 @@ async function register(btn) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ name, email, password })
         });
+        persistAuthSession(data);
         showToast(data.message);
         document.getElementById("registerName").value = "";
         document.getElementById("registerEmail").value = "";
         document.getElementById("registerPassword").value = "";
-        showLogin();
+        window.location.href = "feed.html";
     } catch (error) {
         showToast(error.message);
     } finally {
@@ -175,7 +189,7 @@ async function login(btn) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ email, password })
         });
-        currentUser = data.user;
+        persistAuthSession(data);
         showToast(data.message);
         window.location.href = "feed.html";
     } catch (error) {
@@ -189,8 +203,7 @@ async function checkSession(redirectIfMissing = true) {
     try {
         const data = await requestJSON(`${API_BASE}/me`);
         if (data.user) {
-            currentUser = data.user;
-            currentEmail = data.email || "";
+            persistAuthSession(data);
             document.getElementById("sessionUser")?.replaceChildren(document.createTextNode(`مرحباً ${currentUser}`));
             const profileEmail = document.getElementById("profileEmail");
             if (profileEmail && !profileEmail.innerText.trim()) {
@@ -202,14 +215,17 @@ async function checkSession(redirectIfMissing = true) {
         console.error(error.message);
     }
 
+    clearAuthSession();
     if (redirectIfMissing) window.location.href = "index.html";
     return { user: null };
 }
 
 async function logout() {
     try {
-        await fetch(`${API_BASE}/logout`, { credentials: "include" });
+        if (window.authFetch) await window.authFetch(`${API_BASE}/logout`);
+        else await fetch(`${API_BASE}/logout`, { credentials: "include" });
     } finally {
+        clearAuthSession();
         window.location.href = "index.html";
     }
 }
@@ -318,8 +334,7 @@ async function saveProfile(btn) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ name, email, password })
         });
-        currentUser = data.user;
-        currentEmail = data.email;
+        persistAuthSession(data);
         document.getElementById("username") && (document.getElementById("username").innerText = currentUser);
         document.getElementById("profileEmail") && (document.getElementById("profileEmail").innerText = currentEmail);
         document.getElementById("sessionUser")?.replaceChildren(document.createTextNode(`مرحباً ${currentUser}`));

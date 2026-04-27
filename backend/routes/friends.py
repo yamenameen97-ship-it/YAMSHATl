@@ -1,12 +1,13 @@
 from flask import Blueprint, jsonify, request, session
 
+from auth_utils import current_user
 from models import get_connection
 
 friends_bp = Blueprint("friends", __name__)
 
 
 def _logged_in_user():
-    return session.get("user")
+    return current_user()
 
 
 @friends_bp.route("/send_friend_request", methods=["POST"])

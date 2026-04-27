@@ -1,12 +1,13 @@
 from flask import Blueprint, jsonify, request, session
 
-from models import get_connection
+from auth_utils import current_user
+from models import get_connection, insert_and_get_id
 
 groups_bp = Blueprint("groups", __name__)
 
 
 def _logged_in_user():
-    return session.get("user")
+    return current_user()
 
 
 @groups_bp.route("/create_group", methods=["POST"])
@@ -21,11 +22,11 @@ def create_group():
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
+    group_id = insert_and_get_id(
+        cursor,
         "INSERT INTO groups (name, owner) VALUES (?, ?)",
         (name, owner),
     )
-    group_id = cursor.lastrowid
     cursor.execute(
         "INSERT INTO group_members (group_id, username) VALUES (?, ?)",
         (group_id, owner),

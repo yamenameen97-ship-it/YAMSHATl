@@ -6,7 +6,7 @@ from typing import Any
 import jwt
 from flask import request, session
 
-SECRET_KEY = os.environ.get("SECRET_KEY", "yamshat-unified-secret")
+SECRET_KEY = os.environ.get("SECRET_KEY", "yamshat-fixed-stable-session-secret")
 JWT_ALGORITHM = "HS256"
 
 

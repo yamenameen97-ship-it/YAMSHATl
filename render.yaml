@@ -4,7 +4,8 @@ services:
     env: python
     rootDir: .
     buildCommand: pip install -r backend/requirements.txt
-    startCommand: gunicorn --chdir backend app:app
+    startCommand: gunicorn --chdir backend app:app --timeout 120
+    healthCheckPath: /health
     autoDeploy: true
     disk:
       name: yamshat-data
@@ -13,5 +14,9 @@ services:
     envVars:
       - key: SECRET_KEY
         generateValue: true
+      - key: SESSION_COOKIE_SECURE
+        value: "1"
+      - key: DATABASE_URL
+        sync: false
       - key: DB_PATH
         value: /var/data/yamshat.db

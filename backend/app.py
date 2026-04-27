@@ -5,6 +5,7 @@ import sys
 
 from flask import Flask, abort, jsonify, send_from_directory
 from flask_cors import CORS
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -22,13 +23,19 @@ def resolve_frontend_path() -> Path:
 
 FRONTEND_PATH = resolve_frontend_path()
 render_external = os.environ.get("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
-session_cookie_secure = render_external.startswith("https://") or os.environ.get("SESSION_COOKIE_SECURE") == "1"
+session_cookie_secure = (
+    render_external.startswith("https://")
+    or os.environ.get("SESSION_COOKIE_SECURE") == "1"
+    or os.environ.get("RENDER") == "true"
+    or os.environ.get("FLASK_ENV") == "production"
+)
 
 app = Flask(
     __name__,
     static_folder=str(FRONTEND_PATH),
     static_url_path="",
 )
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 app.secret_key = os.environ.get("SECRET_KEY", "yamshat-fixed-stable-session-secret")
 app.config.update(
@@ -37,6 +44,8 @@ app.config.update(
     SESSION_COOKIE_SECURE=session_cookie_secure,
     SESSION_REFRESH_EACH_REQUEST=True,
     PERMANENT_SESSION_LIFETIME=timedelta(days=int(os.environ.get("SESSION_DAYS", "30"))),
+    JSON_AS_ASCII=False,
+    PREFERRED_URL_SCHEME="https" if session_cookie_secure else "http",
 )
 
 allowed_origins = {

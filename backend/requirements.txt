@@ -1,6 +1,10 @@
+
 flask
 flask-cors
+psycopg2-binary
+python-dotenv
+pyjwt
+werkzeug
+flask-limiter
 flask-socketio
 eventlet
-psycopg2-binary
-sqlalchemy

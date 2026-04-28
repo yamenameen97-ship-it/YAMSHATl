@@ -488,7 +488,7 @@ def get_reels():
                 "id": reel["id"],
                 "username": reel["username"],
                 "video": reel["video"],
-                "video_url": f"{request.host_url.rstrip("/")}/api/uploads/{reel["video"]}" if reel["video"] else "",
+                "video_url": f"{request.host_url.rstrip('/')}/api/uploads/{reel['video']}" if reel["video"] else "",
                 "likes": likes_count,
                 "comments_count": comments_count,
                 "liked_by_current_user": liked_by_current_user,

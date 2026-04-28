@@ -357,10 +357,7 @@ def recent_timestamp_condition(column: str, seconds: int) -> str:
 
 
 
-def try:
-    init_db()
-except Exception as e:
-    print("DB ERROR:", e) -> None:
+def init_db() -> None:
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -372,3 +369,9 @@ except Exception as e:
 
     conn.commit()
     conn.close()
+
+
+try:
+    init_db()
+except Exception as e:
+    print("DB ERROR:", e)

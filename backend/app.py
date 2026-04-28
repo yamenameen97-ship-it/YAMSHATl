@@ -126,9 +126,6 @@ def health():
 
 @app.route("/", methods=["GET", "HEAD"])
 def index():
-    # FIX: serve correct HTML pages instead of always index
-    if path.endswith(".html"):
-        return send_from_directory(app.static_folder, path)
     return send_from_directory(app.static_folder, "index.html")
 
 

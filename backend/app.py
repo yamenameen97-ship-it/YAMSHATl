@@ -79,7 +79,10 @@ from routes.groups import groups_bp  # noqa: E402
 from routes.live import live_bp  # noqa: E402
 from routes.mobile_compat import mobile_compat_bp  # noqa: E402
 
-init_db()
+try:
+    init_db()
+except Exception as e:
+    print("DB ERROR:", e)
 
 app.register_blueprint(auth_bp, url_prefix="/api")
 app.register_blueprint(posts_bp, url_prefix="/api")
@@ -142,3 +145,5 @@ def serve_files(path):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024

@@ -43,6 +43,7 @@
         .placeholder { padding:24px; text-align:center; color:rgba(255,255,255,0.72); line-height:1.9; }
         .danger { background:#ef4444; }
         .success { background:#16a34a; }
+        .audio-unlock-btn { background:#2563eb; }
         @media (max-width: 900px) {
             .room-main { grid-template-columns: 1fr; }
             .sidebar { border-right:none; border-top:1px solid rgba(255,255,255,0.08); }
@@ -66,7 +67,7 @@
                 <div class="status-chip" id="streamStatus">جاري التجهيز...</div>
                 <div class="viewer-chip" id="viewerCounter">👀 0</div>
                 <div class="video-box">
-                    <video id="streamVideo" autoplay playsinline controls muted></video>
+                    <video id="streamVideo" autoplay playsinline controls></video>
                     <div id="placeholder" class="placeholder">جاري تجهيز البث الحقيقي داخل المتصفح...</div>
                 </div>
                 <div class="host-tools" id="hostTools"></div>
@@ -95,7 +96,13 @@
         const API_BASE = window.API_BASE || `${window.location.origin.replace(/\/+$/, "")}/api`;
         const roomId = Number(new URLSearchParams(window.location.search).get("id") || 0);
         const hostTarget = `host:${roomId}`;
-        const rtcConfig = { iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }] };
+        const rtcConfig = {
+            iceServers: [
+                { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302", "stun:stun2.l.google.com:19302"] },
+                { urls: ["stun:global.stun.twilio.com:3478"] }
+            ],
+            sdpSemantics: "unified-plan"
+        };
 
         let currentUser = "";
         let room = null;
@@ -139,12 +146,28 @@
             const video = document.getElementById("streamVideo");
             const placeholder = document.getElementById("placeholder");
             video.srcObject = stream || null;
-            video.muted = muted;
+            video.muted = Boolean(muted);
+            video.volume = muted ? 0 : 1;
             if (stream) {
                 placeholder.style.display = "none";
-                video.play().catch(() => {});
+                video.play().catch(() => {
+                    if (!muted) setStatus("اضغط زر تشغيل الصوت لبدء الاستماع");
+                });
             } else {
                 placeholder.style.display = "block";
+            }
+        }
+
+        async function enableViewerAudio() {
+            const video = document.getElementById("streamVideo");
+            if (!video) return;
+            video.muted = false;
+            video.volume = 1;
+            try {
+                await video.play();
+                setStatus("الصوت يعمل الآن");
+            } catch (error) {
+                showToast(error.message || "اضغط على الفيديو للسماح بالصوت");
             }
         }
 
@@ -173,7 +196,10 @@
         function renderHostTools() {
             const box = document.getElementById("hostTools");
             if (!isHost) {
-                box.innerHTML = '<div class="muted-line">أنت داخل البث كمشاهد. سيتم تشغيل الفيديو عند وصول إشارة البث.</div>';
+                box.innerHTML = `
+                    <button class="audio-unlock-btn" onclick="enableViewerAudio()">🔊 تشغيل الصوت</button>
+                    <div class="muted-line">أنت داخل البث كمشاهد. عند وصول البث اضغط تشغيل الصوت إذا لم يعمل تلقائياً.</div>
+                `;
                 return;
             }
             box.innerHTML = `
@@ -186,7 +212,18 @@
         async function startHostBroadcast() {
             try {
                 if (!localStream) {
-                    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                    localStream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 },
+                            facingMode: "user"
+                        },
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        }
+                    });
                 }
                 setVideoStream(localStream, true);
                 setStatus("أنت الآن على الهواء");
@@ -250,7 +287,7 @@
         async function ensureHostOffer(viewer) {
             if (!localStream) return;
             const peer = hostPeers.get(viewer.viewer_token) || createHostPeer(viewer);
-            const offer = await peer.createOffer();
+            const offer = await peer.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
             await peer.setLocalDescription(offer);
             await sendSignal(hostTarget, viewer.viewer_token, "offer", offer);
         }
@@ -258,12 +295,13 @@
         async function ensureViewerPeer() {
             if (viewerPeer) return viewerPeer;
             viewerPeer = new RTCPeerConnection(rtcConfig);
-            remoteStream = new MediaStream();
-            setVideoStream(remoteStream, false);
             viewerPeer.ontrack = event => {
-                event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));
-                setVideoStream(remoteStream, false);
-                setStatus("يتم تشغيل البث الآن");
+                const [incomingStream] = event.streams;
+                if (incomingStream) {
+                    remoteStream = incomingStream;
+                    setVideoStream(remoteStream, false);
+                    setStatus("يتم تشغيل البث الآن");
+                }
             };
             viewerPeer.onicecandidate = ({ candidate }) => {
                 if (candidate && viewerToken) {
@@ -421,6 +459,13 @@
 
         function clearTimers() {
             [viewerPollTimer, signalPollTimer, chatPollTimer, pingTimer].forEach(timer => timer && clearInterval(timer));
+            localStream?.getTracks?.().forEach(track => track.stop());
+            remoteStream?.getTracks?.().forEach(track => track.stop());
+            hostPeers.forEach(peer => {
+                try { peer.close(); } catch (_) {}
+            });
+            hostPeers.clear();
+            try { viewerPeer?.close?.(); } catch (_) {}
         }
 
         window.addEventListener("beforeunload", clearTimers);

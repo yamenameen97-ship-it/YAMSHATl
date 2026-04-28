@@ -1,7 +1,10 @@
-from flask import Blueprint, jsonify, request, session
+from pathlib import Path
+from urllib.parse import urlparse
+
+from flask import Blueprint, jsonify, request
 
 from auth_utils import current_user, current_email
-from models import get_connection
+from models import UPLOAD_FOLDER, USE_POSTGRES, get_connection, recent_timestamp_condition
 from push_utils import send_push_to_user
 
 social_bp = Blueprint("social", __name__)
@@ -35,6 +38,95 @@ def _is_admin() -> bool:
     active_user = (current_user() or "").strip().lower()
     active_email = (current_email() or "").strip().lower()
     return active_user == "admin" or active_email.startswith("admin")
+
+
+def _extract_upload_filename(content: str) -> str | None:
+    value = str(content or "").strip()
+    if not value:
+        return None
+    parsed = urlparse(value)
+    path = parsed.path or value
+    if "/uploads/" not in path:
+        return None
+    return path.split("/uploads/")[-1].split("?")[0]
+
+
+def _delete_file_if_exists(filename: str | None) -> None:
+    if not filename:
+        return
+    file_path = UPLOAD_FOLDER / filename
+    if file_path.exists() and file_path.is_file():
+        try:
+            file_path.unlink()
+        except OSError:
+            pass
+
+
+def _count_rows(cursor, table: str, where_clause: str = "", params: tuple = ()) -> int:
+    query = f"SELECT COUNT(*) AS total FROM {table}"
+    if where_clause:
+        query += f" WHERE {where_clause}"
+    cursor.execute(query, params)
+    return int(cursor.fetchone()["total"] or 0)
+
+
+def _activity_window(column: str, days: int) -> str:
+    return recent_timestamp_condition(column, max(int(days), 1) * 86400)
+
+
+def _activity_snapshot(cursor, days: int) -> dict:
+    posts_window = _activity_window("created_at", days)
+    comments_window = _activity_window("created_at", days)
+    messages_window = _activity_window("created_at", days)
+    reports_window = _activity_window("created_at", days)
+    users_window = _activity_window("created_at", days)
+
+    snapshot = {
+        "users": _count_rows(cursor, "users", users_window),
+        "posts": _count_rows(cursor, "posts", posts_window),
+        "comments": _count_rows(cursor, "comments", comments_window),
+        "messages": _count_rows(cursor, "messages", messages_window),
+        "reports": _count_rows(cursor, "reports", reports_window),
+    }
+
+    cursor.execute(
+        f"""
+        SELECT COUNT(DISTINCT actor) AS total
+        FROM (
+            SELECT username AS actor FROM posts WHERE {posts_window}
+            UNION ALL
+            SELECT username AS actor FROM comments WHERE {comments_window}
+            UNION ALL
+            SELECT sender AS actor FROM messages WHERE {messages_window}
+            UNION ALL
+            SELECT receiver AS actor FROM messages WHERE {messages_window}
+            UNION ALL
+            SELECT reporter AS actor FROM reports WHERE {reports_window}
+        ) activity
+        WHERE actor IS NOT NULL AND TRIM(actor) != ''
+        """
+    )
+    snapshot["active_users"] = int(cursor.fetchone()["total"] or 0)
+    return snapshot
+
+
+def _top_users(cursor, table: str, user_column: str, days: int, limit: int = 5, date_column: str = "created_at") -> list:
+    cursor.execute(
+        f"""
+        SELECT {user_column} AS username, COUNT(*) AS total
+        FROM {table}
+        WHERE {_activity_window(date_column, days)}
+          AND {user_column} IS NOT NULL
+          AND TRIM({user_column}) != ''
+        GROUP BY {user_column}
+        ORDER BY total DESC, username ASC
+        LIMIT {int(limit)}
+        """
+    )
+    return [
+        {"username": row["username"], "total": int(row["total"] or 0)}
+        for row in cursor.fetchall()
+    ]
 
 
 @social_bp.route("/follow", methods=["POST"])
@@ -157,7 +249,7 @@ def get_users():
     if current:
         cursor.execute(
             """
-            SELECT name, email FROM users
+            SELECT name FROM users
             WHERE name != ?
               AND NOT EXISTS (
                 SELECT 1 FROM blocked_users b
@@ -169,13 +261,13 @@ def get_users():
             (current, current, current),
         )
     else:
-        cursor.execute("SELECT name, email FROM users ORDER BY id DESC")
+        cursor.execute("SELECT name FROM users ORDER BY id DESC")
 
     users = cursor.fetchall()
     conn.close()
 
     return jsonify([
-        {"name": user["name"], "email": user["email"]}
+        {"name": user["name"]}
         for user in users
     ])
 
@@ -359,7 +451,7 @@ def search():
     if current:
         cursor.execute(
             """
-            SELECT name, email FROM users
+            SELECT name FROM users
             WHERE (name LIKE ? OR email LIKE ?)
               AND name != ?
               AND NOT EXISTS (
@@ -392,7 +484,7 @@ def search():
         posts = cursor.fetchall()
     else:
         cursor.execute(
-            "SELECT name, email FROM users WHERE name LIKE ? OR email LIKE ? ORDER BY id DESC LIMIT 12",
+            "SELECT name FROM users WHERE name LIKE ? OR email LIKE ? ORDER BY id DESC LIMIT 12",
             (like_query, like_query),
         )
         users = cursor.fetchall()
@@ -406,7 +498,7 @@ def search():
 
     return jsonify(
         {
-            "users": [{"name": row["name"], "email": row["email"]} for row in users],
+            "users": [{"name": row["name"]} for row in users],
             "posts": [
                 {
                     "id": row["id"],
@@ -420,6 +512,46 @@ def search():
     )
 
 
+@social_bp.route("/admin_remove_post/<int:post_id>", methods=["POST"])
+def admin_remove_post(post_id: int):
+    if not _is_admin():
+        return jsonify({"message": "هذا الإجراء متاح للمشرف فقط"}), 403
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT media FROM posts WHERE id=?", (post_id,))
+    post = cursor.fetchone()
+    if not post:
+        conn.close()
+        return jsonify({"message": "المنشور غير موجود"}), 404
+
+    filename = _extract_upload_filename(post["media"])
+    cursor.execute("DELETE FROM comments WHERE post_id=?", (post_id,))
+    cursor.execute("DELETE FROM reports WHERE target_type='post' AND target_value=?", (str(post_id),))
+    cursor.execute("DELETE FROM posts WHERE id=?", (post_id,))
+    conn.commit()
+    conn.close()
+    _delete_file_if_exists(filename)
+
+    return jsonify({"message": "تم حذف المنشور من لوحة الإدارة"})
+
+
+@social_bp.route("/admin_dismiss_report/<int:report_id>", methods=["POST"])
+def admin_dismiss_report(report_id: int):
+    if not _is_admin():
+        return jsonify({"message": "هذا الإجراء متاح للمشرف فقط"}), 403
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM reports WHERE id=?", (report_id,))
+    conn.commit()
+    changed = getattr(cursor, "rowcount", 0)
+    conn.close()
+    if not changed:
+        return jsonify({"message": "البلاغ غير موجود"}), 404
+    return jsonify({"message": "تمت أرشفة البلاغ"})
+
+
 @social_bp.route("/admin_overview", methods=["GET"])
 def admin_overview():
     if not _is_admin():
@@ -428,26 +560,50 @@ def admin_overview():
     conn = get_connection()
     cursor = conn.cursor()
 
-    stats = {}
-    for key, table in {
-        "users": "users",
-        "posts": "posts",
-        "reels": "reels",
-        "reports": "reports",
-        "live_rooms": "live_rooms",
-    }.items():
-        cursor.execute(f"SELECT COUNT(*) AS total FROM {table}")
-        stats[key] = cursor.fetchone()["total"]
+    stats = {
+        "users": _count_rows(cursor, "users"),
+        "posts": _count_rows(cursor, "posts"),
+        "comments": _count_rows(cursor, "comments"),
+        "messages": _count_rows(cursor, "messages"),
+        "reels": _count_rows(cursor, "reels"),
+        "reports": _count_rows(cursor, "reports"),
+        "live_rooms": _count_rows(cursor, "live_rooms"),
+        "follows": _count_rows(cursor, "follows"),
+    }
 
     cursor.execute(
         "SELECT id, reporter, target_type, target_value, reason, created_at FROM reports ORDER BY id DESC LIMIT 20"
     )
     reports = cursor.fetchall()
+
+    cursor.execute(
+        "SELECT id, username, content, likes, media, created_at FROM posts ORDER BY id DESC LIMIT 12"
+    )
+    recent_posts = cursor.fetchall()
+
+    cursor.execute(
+        "SELECT id, name, email, created_at FROM users ORDER BY id DESC LIMIT 12"
+    )
+    recent_users = cursor.fetchall()
+
+    leaderboards = {
+        "commenters": _top_users(cursor, "comments", "username", 30),
+        "posters": _top_users(cursor, "posts", "username", 30),
+        "messengers": _top_users(cursor, "messages", "sender", 30),
+    }
+
+    activity = {
+        "day": _activity_snapshot(cursor, 1),
+        "month": _activity_snapshot(cursor, 30),
+    }
+
     conn.close()
 
     return jsonify(
         {
             "stats": stats,
+            "activity": activity,
+            "leaderboards": leaderboards,
             "reports": [
                 {
                     "id": row["id"],
@@ -459,5 +615,30 @@ def admin_overview():
                 }
                 for row in reports
             ],
+            "recent_posts": [
+                {
+                    "id": row["id"],
+                    "username": row["username"],
+                    "content": row["content"],
+                    "likes": row["likes"],
+                    "media": row["media"],
+                    "created_at": row["created_at"],
+                }
+                for row in recent_posts
+            ],
+            "recent_users": [
+                {
+                    "id": row["id"],
+                    "name": row["name"],
+                    "email": row["email"],
+                    "created_at": row["created_at"],
+                }
+                for row in recent_users
+            ],
+            "system": {
+                "db_engine": "postgres" if USE_POSTGRES else "sqlite",
+                "tracking_window_day": "آخر 24 ساعة",
+                "tracking_window_month": "آخر 30 يوم",
+            },
         }
     )

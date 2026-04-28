@@ -231,10 +231,13 @@ async function logout() {
 }
 
 function toggleServiceMenu(event) {
+    event?.preventDefault?.();
     event?.stopPropagation?.();
     const menu = document.getElementById("serviceMenu");
     if (!menu) return;
-    menu.classList.toggle("hidden");
+    document.getElementById("notifBox")?.style && (document.getElementById("notifBox").style.display = "none");
+    const isHidden = menu.classList.contains("hidden");
+    menu.classList.toggle("hidden", !isHidden);
 }
 
 function hideServiceMenu() {
@@ -282,7 +285,7 @@ async function runSearch() {
                     <div class="search-card">
                         <div>
                             <b>${escapeHTML(user.name)}</b>
-                            <div class="subtle-text">${escapeHTML(user.email)}</div>
+                            <div class="subtle-text">تم إخفاء البريد حفاظاً على الخصوصية</div>
                         </div>
                         <button onclick='openProfile(${JSON.stringify(user.name)})'>فتح</button>
                     </div>
@@ -367,25 +370,118 @@ async function openAdminPanel() {
     box.innerHTML = '<div class="empty-state">جاري تحميل لوحة الإدارة...</div>';
     try {
         const data = await requestJSON(`${API_BASE}/admin_overview`);
+        const totals = data.stats || {};
+        const day = data.activity?.day || {};
+        const month = data.activity?.month || {};
+        const reports = Array.isArray(data.reports) ? data.reports : [];
+        const recentPosts = Array.isArray(data.recent_posts) ? data.recent_posts : [];
+        const recentUsers = Array.isArray(data.recent_users) ? data.recent_users : [];
+        const leaderboards = data.leaderboards || {};
+        const system = data.system || {};
+
+        const renderBoard = (title, rows, icon) => `
+            <div class="glass admin-panel-card admin-list-card">
+                <div class="admin-section-title">${icon} ${title}</div>
+                ${rows?.length ? rows.map(row => `
+                    <div class="admin-mini-row">
+                        <b>${escapeHTML(row.username)}</b>
+                        <span>${row.total || 0}</span>
+                    </div>
+                `).join("") : '<div class="empty-state">لا توجد بيانات كافية</div>'}
+            </div>
+        `;
+
         box.innerHTML = `
             <div class="admin-stats-grid">
-                <div class="admin-stat glass"><b>${data.stats?.users || 0}</b><span>المستخدمون</span></div>
-                <div class="admin-stat glass"><b>${data.stats?.posts || 0}</b><span>المنشورات</span></div>
-                <div class="admin-stat glass"><b>${data.stats?.reels || 0}</b><span>الريلز</span></div>
-                <div class="admin-stat glass"><b>${data.stats?.live_rooms || 0}</b><span>البثوث</span></div>
-                <div class="admin-stat glass"><b>${data.stats?.reports || 0}</b><span>البلاغات</span></div>
+                <div class="admin-stat glass"><b>${totals.users || 0}</b><span>المستخدمون</span></div>
+                <div class="admin-stat glass"><b>${totals.posts || 0}</b><span>المنشورات</span></div>
+                <div class="admin-stat glass"><b>${totals.comments || 0}</b><span>التعليقات</span></div>
+                <div class="admin-stat glass"><b>${totals.messages || 0}</b><span>الرسائل</span></div>
+                <div class="admin-stat glass"><b>${totals.reels || 0}</b><span>الريلز</span></div>
+                <div class="admin-stat glass"><b>${totals.live_rooms || 0}</b><span>البثوث</span></div>
+                <div class="admin-stat glass"><b>${totals.reports || 0}</b><span>البلاغات</span></div>
+                <div class="admin-stat glass"><b>${totals.follows || 0}</b><span>المتابعات</span></div>
             </div>
+
+            <div class="admin-activity-grid">
+                <div class="glass admin-panel-card">
+                    <div class="admin-section-title">📅 ${escapeHTML(system.tracking_window_day || 'آخر 24 ساعة')}</div>
+                    <div class="admin-mini-grid">
+                        <div><b>${day.active_users || 0}</b><span>نشاط المستخدمين</span></div>
+                        <div><b>${day.users || 0}</b><span>تسجيلات جديدة</span></div>
+                        <div><b>${day.posts || 0}</b><span>منشورات</span></div>
+                        <div><b>${day.comments || 0}</b><span>تعليقات</span></div>
+                        <div><b>${day.messages || 0}</b><span>رسائل</span></div>
+                        <div><b>${day.reports || 0}</b><span>بلاغات</span></div>
+                    </div>
+                </div>
+                <div class="glass admin-panel-card">
+                    <div class="admin-section-title">🗓️ ${escapeHTML(system.tracking_window_month || 'آخر 30 يوم')}</div>
+                    <div class="admin-mini-grid">
+                        <div><b>${month.active_users || 0}</b><span>نشاط المستخدمين</span></div>
+                        <div><b>${month.users || 0}</b><span>تسجيلات جديدة</span></div>
+                        <div><b>${month.posts || 0}</b><span>منشورات</span></div>
+                        <div><b>${month.comments || 0}</b><span>تعليقات</span></div>
+                        <div><b>${month.messages || 0}</b><span>رسائل</span></div>
+                        <div><b>${month.reports || 0}</b><span>بلاغات</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="admin-activity-grid">
+                ${renderBoard('أكثر المعلقين', leaderboards.commenters, '💬')}
+                ${renderBoard('أكثر الناشرين', leaderboards.posters, '📝')}
+                ${renderBoard('أكثر المراسلين', leaderboards.messengers, '📨')}
+            </div>
+
             <div class="admin-report-list">
-                <h4>أحدث البلاغات</h4>
-                ${(data.reports || []).length ? data.reports.map(report => `
+                <div class="admin-section-title">🚩 أحدث البلاغات</div>
+                ${reports.length ? reports.map(report => `
                     <div class="search-card admin-report-card">
                         <div>
                             <b>#${report.id} · ${escapeHTML(report.target_type)}</b>
-                            <div class="subtle-text">المبلّغ: ${escapeHTML(report.reporter)} · الهدف: ${escapeHTML(report.target_value)}</div>
+                            <div class="subtle-text">المبلّغ: ${escapeHTML(report.reporter)} · الهدف: ${escapeHTML(report.target_value)} · ${escapeHTML(report.created_at || '')}</div>
                             <div>${escapeHTML(report.reason)}</div>
+                        </div>
+                        <div class="inline-actions">
+                            ${report.target_type === 'post' ? `<button class="soft-danger" onclick="adminRemovePost(${Number(report.target_value)})">حذف المنشور</button>` : ''}
+                            <button onclick="adminDismissReport(${report.id})">أرشفة البلاغ</button>
                         </div>
                     </div>
                 `).join("") : '<div class="empty-state">لا توجد بلاغات</div>'}
+            </div>
+
+            <div class="admin-report-list">
+                <div class="admin-section-title">📰 مراجعة آخر المنشورات</div>
+                ${recentPosts.length ? recentPosts.map(post => `
+                    <div class="search-card admin-report-card">
+                        <div>
+                            <b>${escapeHTML(post.username)}</b>
+                            <div class="subtle-text">#${post.id} · إعجابات ${post.likes || 0} · ${escapeHTML(post.created_at || '')}</div>
+                            <div>${escapeHTML(String(post.content || '').slice(0, 180) || 'منشور وسائط بدون نص')}</div>
+                        </div>
+                        <div class="inline-actions">
+                            <button onclick='openProfile(${JSON.stringify(post.username)})'>الحساب</button>
+                            <button class="soft-danger" onclick="adminRemovePost(${post.id})">حذف</button>
+                        </div>
+                    </div>
+                `).join("") : '<div class="empty-state">لا توجد منشورات حديثة</div>'}
+            </div>
+
+            <div class="admin-report-list">
+                <div class="admin-section-title">👤 أحدث المستخدمين</div>
+                ${recentUsers.length ? recentUsers.map(user => `
+                    <div class="search-card admin-report-card">
+                        <div>
+                            <b>${escapeHTML(user.name)}</b>
+                            <div class="subtle-text">${escapeHTML(user.created_at || '')}</div>
+                            <div class="subtle-text">تم إخفاء البريد في الواجهات العامة حفاظاً على الخصوصية</div>
+                        </div>
+                        <div class="inline-actions">
+                            <button onclick='openProfile(${JSON.stringify(user.name)})'>فتح الحساب</button>
+                        </div>
+                    </div>
+                `).join("") : '<div class="empty-state">لا توجد حسابات حديثة</div>'}
             </div>
         `;
     } catch (error) {
@@ -395,6 +491,29 @@ async function openAdminPanel() {
 
 function closeAdminPanel() {
     closeModal("adminModal");
+}
+
+async function adminRemovePost(postId) {
+    if (!postId || !confirm(`حذف المنشور رقم ${postId} من لوحة الإدارة؟`)) return;
+    try {
+        const data = await requestJSON(`${API_BASE}/admin_remove_post/${postId}`, { method: "POST" });
+        showToast(data.message);
+        openAdminPanel();
+        if (document.body.classList.contains("feed-page")) reloadFeed();
+    } catch (error) {
+        showToast(error.message);
+    }
+}
+
+async function adminDismissReport(reportId) {
+    if (!reportId) return;
+    try {
+        const data = await requestJSON(`${API_BASE}/admin_dismiss_report/${reportId}`, { method: "POST" });
+        showToast(data.message);
+        openAdminPanel();
+    } catch (error) {
+        showToast(error.message);
+    }
 }
 
 async function reportEntity(targetType, targetValue, label = "المحتوى") {
@@ -785,6 +904,7 @@ async function loadNotifications(force = false) {
 }
 
 function toggleNotifications() {
+    hideServiceMenu();
     const box = document.getElementById("notifBox");
     if (!box) return;
     box.style.display = box.style.display === "block" ? "none" : "block";
@@ -845,15 +965,16 @@ function reloadFeed() {
 }
 
 function initPullToRefresh() {
+    const pullTarget = document.querySelector(".feed-shell") || document.querySelector("main") || document.body;
     document.addEventListener("touchstart", e => { startY = e.touches[0].clientY; }, { passive: true });
     document.addEventListener("touchmove", e => {
         const moveY = e.touches[0].clientY;
-        if (moveY - startY > 120) document.body.style.transform = "translateY(20px)";
+        if (window.scrollY <= 0 && moveY - startY > 120) pullTarget.style.transform = "translateY(12px)";
     }, { passive: true });
     document.addEventListener("touchend", e => {
         const endY = e.changedTouches[0].clientY;
-        document.body.style.transform = "translateY(0px)";
-        if (endY - startY > 120) reloadFeed();
+        pullTarget.style.transform = "";
+        if (window.scrollY <= 0 && endY - startY > 120) reloadFeed();
     }, { passive: true });
 }
 
@@ -1138,8 +1259,15 @@ function initChatPage() {
 function installGlobalUIEvents() {
     document.addEventListener("click", event => {
         const menu = document.getElementById("serviceMenu");
-        if (menu && !menu.classList.contains("hidden") && !menu.contains(event.target) && !event.target.closest('.icon-btn')) {
+        const isMenuTrigger = event.target.closest?.('[data-menu-trigger]');
+        const isNotifTrigger = event.target.closest?.('[data-notif-trigger]');
+        if (menu && !menu.classList.contains("hidden") && !menu.contains(event.target) && !isMenuTrigger) {
             menu.classList.add("hidden");
+        }
+
+        const notifBox = document.getElementById("notifBox");
+        if (notifBox && notifBox.style.display === "block" && !notifBox.contains(event.target) && !isNotifTrigger) {
+            notifBox.style.display = "none";
         }
     });
 
@@ -1161,6 +1289,15 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
 
     await checkSession(true);
+
+    const postComposer = document.getElementById("postInput");
+    if (postComposer) {
+        postComposer.value = "";
+        postComposer.setAttribute("autocomplete", "off");
+        postComposer.setAttribute("autocorrect", "off");
+        postComposer.setAttribute("autocapitalize", "sentences");
+        postComposer.setAttribute("spellcheck", "true");
+    }
 
     if (document.body.classList.contains("feed-page")) {
         setActiveNav("feed");

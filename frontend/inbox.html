@@ -41,13 +41,20 @@
     <main class="container inbox-shell">
         <div class="inbox-grid">
             <section class="glass" style="padding:16px;">
-                <h3>المحادثات الأخيرة</h3>
+                <h3>المحادثات السابقة</h3>
+                <div class="muted-box">لن تظهر جميع الحسابات هنا. ستظهر فقط المحادثات التي سبق التحدث معها.</div>
                 <div id="threads"></div>
             </section>
 
             <section class="glass" style="padding:16px;">
-                <h3>ابدأ محادثة جديدة</h3>
-                <div id="suggestions"></div>
+                <h3>البحث عن مشترك لبدء دردشة</h3>
+                <div class="post-box" style="margin-top:12px;">
+                    <input id="chatSearchInput" type="text" placeholder="ابحث بالاسم فقط" autocomplete="off" onkeydown="if(event.key==='Enter') searchUsersForChat()">
+                    <button onclick="searchUsersForChat()">بحث</button>
+                </div>
+                <div id="suggestions">
+                    <div class="empty-state">ابحث عن اسم مستخدم لبدء محادثة جديدة</div>
+                </div>
             </section>
         </div>
     </main>
@@ -111,20 +118,27 @@
             }
         }
 
-        async function loadSuggestions() {
+        async function searchUsersForChat() {
+            const input = document.getElementById("chatSearchInput");
             const box = document.getElementById("suggestions");
+            const query = input?.value.trim();
+            if (!query) {
+                box.innerHTML = '<div class="empty-state">اكتب اسم المستخدم أولاً</div>';
+                return;
+            }
+            box.innerHTML = '<div class="empty-state">جاري البحث...</div>';
             try {
-                const data = await requestJSON(`${API_BASE}/users`);
-                const users = (Array.isArray(data) ? data : []).filter(user => user.name !== currentUser);
+                const data = await requestJSON(`${API_BASE}/search?q=${encodeURIComponent(query)}`);
+                const users = (Array.isArray(data.users) ? data.users : []).filter(user => user.name !== currentUser);
                 if (!users.length) {
-                    box.innerHTML = '<div class="empty-state">لا يوجد مستخدمون آخرون حالياً</div>';
+                    box.innerHTML = '<div class="empty-state">لا يوجد مشترك مطابق لهذا الاسم</div>';
                     return;
                 }
                 box.innerHTML = users.map(user => `
                     <div class="suggest-card">
                         <div>
                             <b>${escapeHTML(user.name)}</b>
-                            <div class="muted-box">${escapeHTML(user.email)}</div>
+                            <div class="muted-box">تم إخفاء البريد حفاظاً على الخصوصية</div>
                         </div>
                         <div class="inline-actions">
                             <button onclick="openChat(${JSON.stringify(user.name)})">مراسلة</button>
@@ -144,7 +158,7 @@
         window.addEventListener("DOMContentLoaded", async () => {
             try {
                 await checkSession();
-                await Promise.all([loadThreads(), loadSuggestions()]);
+                await loadThreads();
             } catch (error) {
                 showToast(error.message);
             }

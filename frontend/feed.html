@@ -16,20 +16,19 @@
                 <div class="brand-title brand-inline"><img src="assets/favicon.svg" alt="Yamshat" class="brand-inline-icon"> Yamshat</div>
                 <div class="subtle-text" id="sessionUser">جاري التحقق من الجلسة...</div>
             </div>
-            <div class="header-actions">
-                <button class="icon-btn" onclick="toggleNotifications()">🔔 <span id="count">0</span></button>
-                <button class="icon-btn" onclick="toggleServiceMenu(event)">☰ القائمة</button>
-                <button class="icon-btn" onclick="logout()">🚪 خروج</button>
-            </div>
         </div>
 
         <div class="top-services glass mini-glass">
+            <button data-notif-trigger="true" onclick="toggleNotifications()">🔔 الإشعارات <span id="count">0</span></button>
+            <button data-menu-trigger="true" onclick="toggleServiceMenu(event)">☰ القائمة</button>
+            <button onclick="logout()">🚪 خروج</button>
             <button onclick="window.location.href='friends.html'">🤝 الأصدقاء</button>
             <button onclick="window.location.href='groups.html'">👥 المجموعات</button>
             <button onclick="window.location.href='live.html'">🔴 البث</button>
             <button onclick="goReels()">🎬 الريلز</button>
             <button onclick="goInbox()">💬 الرسائل</button>
             <button onclick="openSearchPanel()">🔎 بحث</button>
+            <button onclick="goProfile()">👤 حسابي</button>
         </div>
     </header>
 
@@ -45,7 +44,7 @@
         <button onclick="openProfileEditor()">✏️ تعديل الملف الشخصي</button>
         <button onclick="openSearchPanel()">🔎 بحث</button>
         <button onclick="toggleTheme()">🌓 وضع ليلي/نهاري</button>
-        <button onclick="openAdminPanel()">🛠️ لوحة إدارة بسيطة</button>
+        <button onclick="openAdminPanel()">🛠️ لوحة الإدارة الاحترافية</button>
     </div>
 
     <div id="notifBox" class="notif-box glass"></div>
@@ -53,7 +52,16 @@
     <main class="container feed-shell">
         <section id="quickUpload" class="quick-panel glass">
             <div class="post-box composer-box">
-                <input type="text" id="postInput" placeholder="اكتب منشورك الآن...">
+                <input
+                    type="text"
+                    id="postInput"
+                    name="postContent"
+                    placeholder="اكتب منشورك الآن..."
+                    autocomplete="off"
+                    autocorrect="off"
+                    autocapitalize="sentences"
+                    spellcheck="true"
+                >
                 <button onclick="addPost(this)">نشر</button>
             </div>
 
@@ -113,7 +121,7 @@
     <div id="adminModal" class="modal-overlay hidden">
         <div class="modal-card glass large-modal">
             <div class="modal-header">
-                <h3>لوحة الإدارة البسيطة</h3>
+                <h3>لوحة الإدارة الاحترافية</h3>
                 <button class="icon-btn" onclick="closeAdminPanel()">✕</button>
             </div>
             <div class="modal-body">

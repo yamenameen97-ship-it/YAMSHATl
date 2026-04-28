@@ -541,7 +541,7 @@ async function addComment(id) {
         handleCommentInput(id, input);
         await loadComments(id);
         await loadNotifications(true);
-        document.getElementById(`comments-${id}`).style.display = "block";
+        openComments(id, false);
         showToast("تم إضافة التعليق");
     } catch (error) {
         showToast(error.message);
@@ -553,6 +553,7 @@ async function loadComments(id) {
         const data = await requestJSON(`${API_BASE}/comments/${id}`);
         const box = document.getElementById(`comments-${id}`);
         if (!box) return;
+        box.dataset.loaded = "true";
         if (!data.length) {
             box.innerHTML = '<div class="empty-state">لا توجد تعليقات بعد</div>';
             return;
@@ -561,15 +562,39 @@ async function loadComments(id) {
             <div class="comment"><b>${escapeHTML(c.username)}:</b> ${escapeHTML(c.comment)}</div>
         `).join("");
     } catch (error) {
+        const box = document.getElementById(`comments-${id}`);
+        if (box) box.dataset.loaded = "false";
         console.error(error.message);
+    }
+}
+
+function openComments(id, focusInput = false) {
+    const box = document.getElementById(`comments-${id}`);
+    const input = document.getElementById(`commentInput-${id}`);
+    if (!box) return;
+    const shouldLoad = box.style.display !== "block" || box.dataset.loaded !== "true";
+    box.style.display = "block";
+    if (shouldLoad) loadComments(id);
+    if (focusInput && input) {
+        input.scrollIntoView({ behavior: "smooth", block: "center" });
+        window.setTimeout(() => {
+            input.focus();
+            const length = input.value.length;
+            try {
+                input.setSelectionRange(length, length);
+            } catch (_) {}
+        }, 120);
     }
 }
 
 function toggleComments(id) {
     const box = document.getElementById(`comments-${id}`);
     if (!box) return;
-    box.style.display = box.style.display === "none" || !box.style.display ? "block" : "none";
-    if (box.style.display === "block") loadComments(id);
+    if (box.style.display === "block") {
+        box.style.display = "none";
+        return;
+    }
+    openComments(id, false);
 }
 
 async function follow(user) {
@@ -655,7 +680,7 @@ async function loadPosts(force = false) {
 
                     <div class="actions">
                         <button onclick="like(${post.id})">❤️</button>
-                        <button onclick="toggleComments(${post.id})">💬</button>
+                        <button onclick="openComments(${post.id}, true)">💬</button>
                         <button onclick="sharePost(${post.id})">📤</button>
                         ${isMine ? `<button onclick="deletePost(${post.id})">🗑</button>` : `<button onclick="reportPost(${post.id})">🚩</button>`}
                     </div>
@@ -663,7 +688,7 @@ async function loadPosts(force = false) {
                     <div class="count-chip">الإعجابات: ${post.likes}</div>
                     <div id="comments-${post.id}" class="comments-wrapper" style="display:none;"></div>
                     <div class="comment-box">
-                        <input type="text" id="commentInput-${post.id}" placeholder="اكتب تعليق..." onfocus="toggleComments(${post.id})" oninput="handleCommentInput(${post.id}, this)">
+                        <input type="text" id="commentInput-${post.id}" placeholder="اكتب تعليق..." onfocus="openComments(${post.id})" oninput="handleCommentInput(${post.id}, this)">
                         <button id="commentSend-${post.id}" class="send-comment-btn hidden" onclick="addComment(${post.id})">إرسال</button>
                     </div>
                 </div>

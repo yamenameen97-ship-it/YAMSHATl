@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import re
 import threading
 import time
@@ -18,21 +19,53 @@ from config import Config
 _RATE_BUCKETS: dict[str, deque[float]] = defaultdict(deque)
 _RATE_LOCK = threading.Lock()
 IDENTITY_RE = re.compile(r"^[^\s]{3,255}$")
+EMAIL_CONTACT_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+PHONE_CONTACT_RE = re.compile(r"^\+?[0-9]{8,20}$")
 
 
 def json_error(message: str, status: int = 400):
     return jsonify({"message": message}), status
 
 
-def normalize_text(value, max_length: int | None = None) -> str:
+def clean(text) -> str:
+    return html.escape(str(text or "").strip(), quote=True)
+
+
+def normalize_text(value, max_length: int | None = None, escape_html: bool = False) -> str:
     text = str(value or "").strip()
     if max_length is not None:
         text = text[:max_length]
-    return text
+    return clean(text) if escape_html else text
+
+
+def normalize_contact(value: str) -> str:
+    text = normalize_text(value, 255)
+    if not text:
+        return ""
+    if "@" in text:
+        return text.lower()
+
+    text = text.replace(" ", "")
+    if text.startswith("00"):
+        text = f"+{text[2:]}"
+
+    if text.startswith("+"):
+        digits = re.sub(r"\D", "", text[1:])
+        return f"+{digits}" if digits else ""
+
+    return re.sub(r"\D", "", text)
 
 
 def validate_identity(value: str) -> bool:
     return bool(IDENTITY_RE.match(str(value or "").strip()))
+
+
+def is_email_contact(value: str) -> bool:
+    return bool(EMAIL_CONTACT_RE.match(normalize_text(value, 255).lower()))
+
+
+def is_phone_contact(value: str) -> bool:
+    return bool(PHONE_CONTACT_RE.match(normalize_contact(value)))
 
 
 def validate_password_strength(password: str) -> bool:
@@ -85,6 +118,10 @@ def decode_token(token: str | None):
         return jwt.decode(token, Config.SECRET_KEY, algorithms=["HS256"])
     except Exception:
         return None
+
+
+def verify_token(token: str | None):
+    return decode_token(token)
 
 
 def get_bearer_token() -> str | None:
@@ -141,6 +178,7 @@ def require_auth(view: Callable):
         if not current_user():
             return json_error("يجب تسجيل الدخول أولاً", 401)
         return view(*args, **kwargs)
+
     return wrapped
 
 
@@ -152,6 +190,7 @@ def require_admin(view: Callable):
         if current_role() != "admin":
             return json_error("غير مصرح لك بهذا الإجراء", 403)
         return view(*args, **kwargs)
+
     return wrapped
 
 
@@ -170,5 +209,7 @@ def rate_limit(limit: int, window_seconds: int):
                     return json_error("عدد الطلبات كبير جداً، حاول بعد قليل", 429)
                 bucket.append(now)
             return view(*args, **kwargs)
+
         return wrapped
+
     return decorator

@@ -5,7 +5,7 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
-from flask import Flask, abort, jsonify, request, send_from_directory
+from flask import Flask, Response, abort, jsonify, send_from_directory, request
 
 from admin import admin_bp
 from auth import auth_bp
@@ -13,10 +13,15 @@ from chat import chat_bp
 from config import Config
 from db import init_db, set_admin_roles
 from extensions import init_extensions
+from live import live_api_bp
 from live_socket import init_socket, socketio
+from notifications import notifications_bp
 from posts import posts_bp
 from reels import reels_bp
-from routes.live import live_bp
+from routes.friends import friends_bp
+from routes.groups import groups_bp
+from routes.live import live_bp as live_stream_bp
+from users import users_bp
 
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
@@ -49,7 +54,12 @@ app.register_blueprint(posts_bp, url_prefix="/api")
 app.register_blueprint(reels_bp, url_prefix="/api")
 app.register_blueprint(chat_bp, url_prefix="/api")
 app.register_blueprint(admin_bp, url_prefix="/api")
-app.register_blueprint(live_bp, url_prefix="/api")
+app.register_blueprint(users_bp, url_prefix="/api")
+app.register_blueprint(notifications_bp, url_prefix="/api")
+app.register_blueprint(live_api_bp, url_prefix="/api")
+app.register_blueprint(live_stream_bp, url_prefix="/api")
+app.register_blueprint(friends_bp, url_prefix="/api")
+app.register_blueprint(groups_bp, url_prefix="/api")
 
 
 @app.before_request
@@ -74,8 +84,20 @@ def health():
             "max_upload_mb": int(Config.MAX_CONTENT_LENGTH / (1024 * 1024)),
             "livekit_url": (os.getenv("LIVEKIT_WS_URL") or os.getenv("LIVEKIT_URL") or "").strip(),
             "socketio": True,
+            "default_coin_balance": Config.DEFAULT_COIN_BALANCE,
         }
     )
+
+
+@app.get("/app-config.js")
+def app_config_js():
+    api_base = f"{Config.BACKEND_ORIGIN}/api" if Config.BACKEND_ORIGIN else "/api"
+    content = (
+        "window.APP_API_BASE = " + repr(api_base) + ";\n"
+        "window.YAMSHAT_FRONTEND_ORIGIN = " + repr(Config.FRONTEND_ORIGIN) + ";\n"
+        "window.YAMSHAT_BACKEND_ORIGIN = " + repr(Config.BACKEND_ORIGIN) + ";\n"
+    )
+    return Response(content, mimetype="application/javascript")
 
 
 @app.get("/")

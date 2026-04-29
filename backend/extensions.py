@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from config import Config
+
+limiter = Limiter(key_func=get_remote_address, default_limits=[])
 
 
 def init_extensions(app):
@@ -24,6 +28,7 @@ def init_extensions(app):
         supports_credentials=True,
         resources={r"/api/*": {"origins": allowed_origins}, r"/socket.io/*": {"origins": allowed_origins}},
     )
+    limiter.init_app(app)
 
     @app.after_request
     def apply_security_headers(response):
@@ -44,4 +49,6 @@ def init_extensions(app):
         )
         if response.headers.get("Content-Type", "").startswith("application/json"):
             response.headers["Cache-Control"] = "no-store"
+        if Config.SESSION_COOKIE_SECURE:
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
         return response

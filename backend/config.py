@@ -42,10 +42,15 @@ class Config:
     MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH_MB", "25")) * 1024 * 1024
     SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "1") == "1"
     SESSION_COOKIE_HTTPONLY = True
-    SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
+    SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "None")
     SESSION_DAYS = int(os.getenv("SESSION_DAYS", "30"))
     JWT_EXPIRE_DAYS = int(os.getenv("JWT_EXPIRE_DAYS", "30"))
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+    DEFAULT_COIN_BALANCE = int(os.getenv("DEFAULT_COIN_BALANCE", "0"))
+
+    LIVEKIT_PROJECT_ID = os.getenv("LIVEKIT_PROJECT_ID", "").strip()
+    LIVEKIT_SIP_URI = os.getenv("LIVEKIT_SIP_URI", "").strip()
+    LIVEKIT_WS_URL = os.getenv("LIVEKIT_WS_URL", os.getenv("LIVEKIT_URL", "")).strip()
 
     UPLOAD_FOLDER = str(BASE_DIR / "uploads")
     ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif"}
@@ -54,3 +59,21 @@ class Config:
 
     ADMIN_EMAILS = _split_csv(os.getenv("ADMIN_EMAILS", ""))
     ADMIN_USERNAMES = _split_csv(os.getenv("ADMIN_USERNAMES", ""))
+
+    RESET_CODE_EXPIRE_MINUTES = int(os.getenv("RESET_CODE_EXPIRE_MINUTES", "10"))
+    RESET_CODE_LENGTH = int(os.getenv("RESET_CODE_LENGTH", "6"))
+    RESET_MAX_VERIFY_ATTEMPTS = int(os.getenv("RESET_MAX_VERIFY_ATTEMPTS", "5"))
+
+    SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USER = os.getenv("SMTP_USER", "").strip()
+    SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+    SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", "").strip()
+    SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "Yamshat").strip() or "Yamshat"
+    SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "1") == "1"
+    SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "0") == "1"
+
+    TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
+    TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
+    TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "").strip()
+    TWILIO_WHATSAPP_CONTENT_SID = os.getenv("TWILIO_WHATSAPP_CONTENT_SID", "").strip()

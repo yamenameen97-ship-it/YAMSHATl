@@ -1,17 +1,24 @@
 from __future__ import annotations
 
+import secrets
+
 from flask import Blueprint, jsonify, request
 
 from config import Config
 from db import db_cursor
+from reset_service import generate_reset_code, hash_reset_code, send_reset_code, verify_reset_code
 from utils import (
     current_email,
     current_role,
     current_user,
     hash_password,
+    is_email_contact,
+    is_phone_contact,
     json_error,
     login_user,
     logout_user,
+    normalize_contact,
+    normalize_text,
     rate_limit,
     require_auth,
     validate_identity,
@@ -20,6 +27,9 @@ from utils import (
 )
 
 auth_bp = Blueprint("auth", __name__)
+
+
+GENERIC_RESET_MESSAGE = "إذا كانت البيانات صحيحة فسيصل رمز التحقق خلال لحظات"
 
 
 def _role_for_identity(name: str, email: str, current_role_value: str = "user") -> str:
@@ -41,25 +51,44 @@ def _rename_user_references(cur, old_name: str, new_name: str):
         cur.execute(f"UPDATE {table_name} SET {column_name}=%s WHERE {column_name}=%s", (new_name, old_name))
 
 
+def _is_valid_contact(value: str) -> bool:
+    return is_email_contact(value) or is_phone_contact(value)
+
+
+def _mask_contact(value: str) -> str:
+    if is_email_contact(value):
+        local, _, domain = value.partition("@")
+        if len(local) <= 2:
+            masked_local = f"{local[:1]}***"
+        else:
+            masked_local = f"{local[:2]}***"
+        return f"{masked_local}@{domain}"
+
+    normalized = normalize_contact(value)
+    if len(normalized) <= 4:
+        return "***"
+    return f"***{normalized[-4:]}"
+
+
 @auth_bp.post("/register")
 @rate_limit(10, 60)
 def register():
     data = request.get_json(silent=True) or {}
     name = str(data.get("name") or "").strip()
-    email = str(data.get("email") or "").strip().lower()
+    email = normalize_contact(data.get("email") or "")
     password = str(data.get("password") or "")
 
     if not name or not email or not password:
         return json_error("الاسم والبريد أو الجوال وكلمة المرور مطلوبة", 400)
     if not validate_identity(name) or len(name) > 80:
         return json_error("اسم المستخدم غير صالح", 400)
-    if not validate_identity(email):
-        return json_error("البريد أو رقم الجوال غير صالح", 400)
+    if not _is_valid_contact(email):
+        return json_error("البريد الإلكتروني أو رقم الجوال غير صالح", 400)
     if not validate_password_strength(password):
         return json_error("كلمة المرور يجب أن تكون 8 أحرف على الأقل", 400)
 
     with db_cursor(commit=True) as (_conn, cur):
-        cur.execute("SELECT id FROM users WHERE email=%s", (email,))
+        cur.execute("SELECT id FROM users WHERE lower(email)=lower(%s)", (email,))
         if cur.fetchone():
             return json_error("هذا الحساب مسجل بالفعل", 409)
         cur.execute("SELECT id FROM users WHERE name=%s", (name,))
@@ -86,10 +115,12 @@ def login():
     if not identifier or not password:
         return json_error("يرجى إدخال بيانات تسجيل الدخول", 400)
 
+    normalized_identifier = normalize_contact(identifier)
+
     with db_cursor(commit=True) as (_conn, cur):
         cur.execute(
-            "SELECT name,email,password,COALESCE(role,'user') AS role FROM users WHERE email=%s OR name=%s LIMIT 1",
-            (identifier.lower(), identifier),
+            "SELECT name,email,password,COALESCE(role,'user') AS role FROM users WHERE lower(email)=lower(%s) OR name=%s LIMIT 1",
+            (normalized_identifier, identifier),
         )
         user = cur.fetchone()
         if not user:
@@ -134,20 +165,20 @@ def update_profile():
     data = request.get_json(silent=True) or {}
 
     new_name = str(data.get("name") or active_user or "").strip()
-    new_email = str(data.get("email") or active_email or "").strip().lower()
+    new_email = normalize_contact(data.get("email") or active_email or "")
     new_password = str(data.get("password") or "")
 
     if not new_name or not new_email:
         return json_error("الاسم والبريد أو الجوال مطلوبان", 400)
     if not validate_identity(new_name) or len(new_name) > 80:
         return json_error("اسم المستخدم غير صالح", 400)
-    if not validate_identity(new_email):
-        return json_error("البريد أو رقم الجوال غير صالح", 400)
+    if not _is_valid_contact(new_email):
+        return json_error("البريد الإلكتروني أو رقم الجوال غير صالح", 400)
     if new_password and not validate_password_strength(new_password):
         return json_error("كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل", 400)
 
     with db_cursor(commit=True) as (_conn, cur):
-        cur.execute("SELECT id FROM users WHERE email=%s AND email<>%s", (new_email, active_email))
+        cur.execute("SELECT id FROM users WHERE lower(email)=lower(%s) AND lower(email)<>lower(%s)", (new_email, active_email))
         if cur.fetchone():
             return json_error("هذا البريد أو الجوال مستخدم بالفعل", 409)
         cur.execute("SELECT id FROM users WHERE name=%s AND name<>%s", (new_name, active_user))
@@ -171,3 +202,160 @@ def update_profile():
 
     token = login_user(new_name, new_email, role)
     return jsonify({"ok": True, "message": "تم تحديث الملف الشخصي", "user": new_name, "email": new_email, "role": role, "token": token})
+
+
+@auth_bp.post("/password_reset/request")
+@rate_limit(5, 900)
+def password_reset_request():
+    data = request.get_json(silent=True) or {}
+    identifier = normalize_contact(data.get("identifier") or data.get("email") or data.get("contact") or "")
+    requested_channel = normalize_text(data.get("channel") or "auto", 20).lower() or "auto"
+
+    if not identifier:
+        return json_error("أدخل البريد الإلكتروني أو رقم الجوال", 400)
+    if requested_channel not in {"auto", "email", "whatsapp"}:
+        return json_error("قناة الإرسال غير مدعومة", 400)
+
+    with db_cursor(commit=True) as (_conn, cur):
+        cur.execute("SELECT id, name, email FROM users WHERE lower(email)=lower(%s) LIMIT 1", (identifier,))
+        user = cur.fetchone()
+        if not user:
+            return jsonify({"ok": True, "message": GENERIC_RESET_MESSAGE})
+
+        delivery_target = normalize_contact(user["email"])
+        available_channel = "email" if is_email_contact(delivery_target) else "whatsapp" if is_phone_contact(delivery_target) else ""
+        selected_channel = available_channel if requested_channel == "auto" else requested_channel
+
+        if not available_channel:
+            return json_error("بيانات الحساب الحالية لا تدعم الاستعادة. حدّث البريد الإلكتروني أو رقم الجوال أولاً", 400)
+        if selected_channel != available_channel:
+            if available_channel == "email":
+                return json_error("هذا الحساب مرتبط ببريد إلكتروني فقط. اختر البريد الإلكتروني", 400)
+            return json_error("هذا الحساب مرتبط برقم جوال فقط. اختر واتساب", 400)
+
+        code = generate_reset_code()
+        request_token = secrets.token_urlsafe(32)
+
+        cur.execute("UPDATE password_reset_codes SET consumed_at=NOW() WHERE user_id=%s AND consumed_at IS NULL", (user["id"],))
+        cur.execute(
+            """
+            INSERT INTO password_reset_codes(user_id, identifier, delivery_target, channel, code_hash, request_token, expires_at)
+            VALUES(%s,%s,%s,%s,%s,%s,CURRENT_TIMESTAMP + (%s * INTERVAL '1 minute'))
+            """,
+            (
+                user["id"],
+                identifier,
+                delivery_target,
+                selected_channel,
+                hash_reset_code(code),
+                request_token,
+                Config.RESET_CODE_EXPIRE_MINUTES,
+            ),
+        )
+
+    try:
+        send_reset_code(delivery_target, selected_channel, code)
+    except Exception:
+        with db_cursor(commit=True) as (_conn, cur):
+            cur.execute("UPDATE password_reset_codes SET consumed_at=NOW() WHERE request_token=%s", (request_token,))
+        if selected_channel == "email":
+            return json_error("تعذر إرسال البريد. تأكد من إعدادات SMTP في Render", 500)
+        return json_error("تعذر إرسال رسالة واتساب. تأكد من إعدادات Twilio/WhatsApp في Render", 500)
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": f"تم إرسال رمز التحقق إلى { _mask_contact(delivery_target) }",
+            "request_token": request_token,
+            "channel": selected_channel,
+            "masked_target": _mask_contact(delivery_target),
+        }
+    )
+
+
+@auth_bp.post("/password_reset/verify")
+@rate_limit(10, 900)
+def password_reset_verify():
+    data = request.get_json(silent=True) or {}
+    request_token = normalize_text(data.get("request_token"), 255)
+    code = normalize_text(data.get("code"), 20)
+
+    if not request_token or not code:
+        return json_error("أدخل رمز التحقق أولاً", 400)
+
+    with db_cursor(commit=True) as (_conn, cur):
+        cur.execute(
+            """
+            SELECT id, code_hash, attempts
+            FROM password_reset_codes
+            WHERE request_token=%s
+              AND consumed_at IS NULL
+              AND expires_at > CURRENT_TIMESTAMP
+            LIMIT 1
+            """,
+            (request_token,),
+        )
+        reset_row = cur.fetchone()
+        if not reset_row:
+            return json_error("انتهت صلاحية الرمز أو الطلب غير صالح", 400)
+
+        attempts = int(reset_row.get("attempts") or 0)
+        if attempts >= Config.RESET_MAX_VERIFY_ATTEMPTS:
+            cur.execute("UPDATE password_reset_codes SET consumed_at=NOW() WHERE id=%s", (reset_row["id"],))
+            return json_error("تم تجاوز عدد المحاولات المسموح", 429)
+
+        if not verify_reset_code(code, reset_row["code_hash"]):
+            attempts += 1
+            if attempts >= Config.RESET_MAX_VERIFY_ATTEMPTS:
+                cur.execute(
+                    "UPDATE password_reset_codes SET attempts=%s, consumed_at=NOW() WHERE id=%s",
+                    (attempts, reset_row["id"]),
+                )
+                return json_error("رمز التحقق غير صحيح وتم إلغاء الطلب بعد عدة محاولات", 400)
+
+            cur.execute("UPDATE password_reset_codes SET attempts=%s WHERE id=%s", (attempts, reset_row["id"]))
+            return json_error("رمز التحقق غير صحيح", 400)
+
+        reset_token = secrets.token_urlsafe(32)
+        cur.execute(
+            "UPDATE password_reset_codes SET verified_at=NOW(), reset_token=%s WHERE id=%s",
+            (reset_token, reset_row["id"]),
+        )
+
+    return jsonify({"ok": True, "message": "تم التحقق من الرمز", "reset_token": reset_token})
+
+
+@auth_bp.post("/password_reset/reset")
+@rate_limit(5, 1800)
+def password_reset_reset():
+    data = request.get_json(silent=True) or {}
+    reset_token = normalize_text(data.get("reset_token"), 255)
+    new_password = str(data.get("new_password") or data.get("password") or "")
+
+    if not reset_token or not new_password:
+        return json_error("أدخل كلمة المرور الجديدة", 400)
+    if not validate_password_strength(new_password):
+        return json_error("كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل", 400)
+
+    with db_cursor(commit=True) as (_conn, cur):
+        cur.execute(
+            """
+            SELECT pr.id, pr.user_id, u.name, u.email, COALESCE(u.role, 'user') AS role
+            FROM password_reset_codes pr
+            JOIN users u ON u.id = pr.user_id
+            WHERE pr.reset_token=%s
+              AND pr.verified_at IS NOT NULL
+              AND pr.consumed_at IS NULL
+              AND pr.expires_at > CURRENT_TIMESTAMP
+            LIMIT 1
+            """,
+            (reset_token,),
+        )
+        reset_row = cur.fetchone()
+        if not reset_row:
+            return json_error("انتهت صلاحية طلب الاستعادة أو تم استخدامه بالفعل", 400)
+
+        cur.execute("UPDATE users SET password=%s WHERE id=%s", (hash_password(new_password), reset_row["user_id"]))
+        cur.execute("UPDATE password_reset_codes SET consumed_at=NOW() WHERE id=%s", (reset_row["id"],))
+
+    return jsonify({"ok": True, "message": "تم تغيير كلمة المرور بنجاح. يمكنك تسجيل الدخول الآن"})

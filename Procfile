@@ -1,1 +1,1 @@
-web: gunicorn --chdir backend app:app --worker-class eventlet -w 1 --bind 0.0.0.0:$PORT --timeout 120
+web: cd backend && gunicorn --worker-class eventlet --workers 1 --bind 0.0.0.0:${PORT:-5000} app:app

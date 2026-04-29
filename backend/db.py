@@ -66,6 +66,42 @@ def _ensure_column(cur, table_name: str, column_name: str, ddl: str) -> None:
         cur.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {ddl}")
 
 
+def _get_column_data_type(cur, table_name: str, column_name: str) -> str | None:
+    cur.execute(
+        """
+        SELECT data_type
+        FROM information_schema.columns
+        WHERE table_schema='public' AND table_name=%s AND column_name=%s
+        LIMIT 1
+        """,
+        (table_name, column_name),
+    )
+    row = cur.fetchone() or {}
+    return row.get("data_type")
+
+
+def _coerce_column_to_boolean(cur, table_name: str, column_name: str) -> None:
+    data_type = _get_column_data_type(cur, table_name, column_name)
+    if not data_type or data_type == "boolean":
+        return
+
+    cur.execute(f"ALTER TABLE {table_name} ALTER COLUMN {column_name} DROP DEFAULT")
+    cur.execute(
+        f"""
+        ALTER TABLE {table_name}
+        ALTER COLUMN {column_name} TYPE BOOLEAN
+        USING CASE
+            WHEN {column_name} IS NULL THEN FALSE
+            WHEN lower(trim({column_name}::text)) IN ('1', 'true', 't', 'yes', 'y', 'on') THEN TRUE
+            ELSE FALSE
+        END
+        """
+    )
+    cur.execute(f"UPDATE {table_name} SET {column_name}=FALSE WHERE {column_name} IS NULL")
+    cur.execute(f"ALTER TABLE {table_name} ALTER COLUMN {column_name} SET DEFAULT FALSE")
+    cur.execute(f"ALTER TABLE {table_name} ALTER COLUMN {column_name} SET NOT NULL")
+
+
 def init_db() -> None:
     with db_cursor(commit=True) as (_conn, cur):
         cur.execute(
@@ -457,6 +493,12 @@ def init_db() -> None:
         ]:
             if _table_exists(cur, table_name):
                 _ensure_column(cur, table_name, column_name, ddl)
+
+        if _table_exists(cur, "notifications"):
+            if "seen" in _get_columns(cur, "notifications"):
+                _coerce_column_to_boolean(cur, "notifications", "seen")
+            if "is_read" in _get_columns(cur, "notifications"):
+                _coerce_column_to_boolean(cur, "notifications", "is_read")
 
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(lower(email))")
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_name_unique ON users(name)")

@@ -10,10 +10,10 @@ from db import db_cursor
 from utils import current_user, json_error, normalize_text, require_auth
 
 try:
-    from livekit import AccessToken, VideoGrant
+    from livekit.api import AccessToken, VideoGrants
 except Exception:  # pragma: no cover - fallback when dependency is absent during static checks
     AccessToken = None
-    VideoGrant = None
+    VideoGrants = None
 
 
 live_bp = Blueprint("live", __name__)
@@ -29,31 +29,30 @@ def _livekit_ws_url() -> str:
 
 
 def _livekit_api_key() -> str:
-    return (os.getenv("LIVEKIT_API_KEY") or "LIVEKIT_API_KEY").strip()
+    return (os.getenv("LIVEKIT_API_KEY") or "").strip()
 
 
 def _livekit_secret() -> str:
-    return (os.getenv("LIVEKIT_SECRET") or "LIVEKIT_SECRET").strip()
+    return (os.getenv("LIVEKIT_SECRET") or os.getenv("LIVEKIT_API_SECRET") or "").strip()
 
 
 def create_token(room: str, user: str, can_publish: bool = True) -> str:
-    if AccessToken is None or VideoGrant is None:
-        raise RuntimeError("livekit dependency is not installed")
+    if AccessToken is None or VideoGrants is None:
+        raise RuntimeError("livekit-api dependency is not installed")
 
-    token = AccessToken(
-        _livekit_api_key(),
-        _livekit_secret(),
-        identity=user,
-    )
+    api_key = _livekit_api_key()
+    api_secret = _livekit_secret()
+    if not api_key or not api_secret:
+        raise RuntimeError("LiveKit API credentials are not configured")
 
-    grant = VideoGrant(
+    grant = VideoGrants(
         room_join=True,
         room=room,
         can_publish=can_publish,
         can_subscribe=True,
     )
 
-    token.add_grant(grant)
+    token = AccessToken(api_key, api_secret).with_identity(user).with_grants(grant)
     return token.to_jwt()
 
 
@@ -114,7 +113,10 @@ def create_live():
         )
         existing = cur.fetchone()
         if existing:
-            token = create_token(existing["livekit_room"], username, can_publish=True)
+            try:
+                token = create_token(existing["livekit_room"], username, can_publish=True)
+            except RuntimeError as exc:
+                return json_error(str(exc), 503)
             return jsonify(
                 {
                     "ok": True,
@@ -145,7 +147,10 @@ def create_live():
             (room_id, user["id"] if user else None, username, "بدأ البث المباشر الآن"),
         )
 
-    token = create_token(room_slug, username, can_publish=True)
+    try:
+        token = create_token(room_slug, username, can_publish=True)
+    except RuntimeError as exc:
+        return json_error(str(exc), 503)
     return jsonify(
         {
             "ok": True,
@@ -232,7 +237,10 @@ def live_token():
             return json_error("هذا البث غير متاح حالياً", 404)
 
     is_host = room["username"] == username or requested_role == "host"
-    token = create_token(room["livekit_room"], username, can_publish=is_host)
+    try:
+        token = create_token(room["livekit_room"], username, can_publish=is_host)
+    except RuntimeError as exc:
+        return json_error(str(exc), 503)
     return jsonify(
         {
             "ok": True,

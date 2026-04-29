@@ -26,13 +26,25 @@
         <div id="messages" class="messages-box"></div>
 
         <div class="input-box glass">
-            <input type="text" id="msgInput" placeholder="اكتب رسالة...">
-            <button onclick="sendMsg(this)">إرسال</button>
+            <input type="text" id="msgInput" placeholder="اكتب رسالة..." autocomplete="off">
+            <button id="sendBtn" onclick="sendMsg(this)">إرسال</button>
         </div>
     </div>
 
-    <script src="/app-config.js"></script>
+    <script src="app-config.js"></script>
     <script src="assets/auth.js"></script>
     <script src="assets/app.js"></script>
+    <script>
+        window.addEventListener('DOMContentLoaded', () => {
+            const input = document.getElementById('msgInput');
+            const sendBtn = document.getElementById('sendBtn');
+            input?.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    sendMsg(sendBtn);
+                }
+            });
+        });
+    </script>
 </body>
 </html>

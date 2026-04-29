@@ -1,0 +1,7 @@
+flask
+flask-socketio
+eventlet
+flask-cors
+flask_sqlalchemy
+python-dotenv
+jwt

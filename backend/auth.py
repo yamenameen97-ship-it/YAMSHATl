@@ -14,6 +14,7 @@ from utils import (
     hash_password,
     is_email_contact,
     is_phone_contact,
+    is_privileged_role,
     json_error,
     login_user,
     logout_user,
@@ -33,8 +34,12 @@ GENERIC_RESET_MESSAGE = "إذا كانت البيانات صحيحة فسيصل 
 
 
 def _role_for_identity(name: str, email: str, current_role_value: str = "user") -> str:
-    if email in Config.ADMIN_EMAILS or name in Config.ADMIN_USERNAMES:
+    normalized_name = str(name or "").strip()
+    normalized_email = normalize_contact(email or "")
+    if normalized_email in {normalize_contact(value) for value in Config.ADMIN_EMAILS} or normalized_name in set(Config.ADMIN_USERNAMES):
         return "admin"
+    if is_privileged_role(current_role_value):
+        return str(current_role_value).strip().lower()
     return current_role_value or "user"
 
 

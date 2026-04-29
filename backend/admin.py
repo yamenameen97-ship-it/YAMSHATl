@@ -27,7 +27,9 @@ def admin_overview():
             "comments": _count(cur, "comments"),
             "messages": _count(cur, "messages"),
             "reels": _count(cur, "reels"),
+            "live_rooms": _count(cur, "live_rooms", "status='live'"),
             "reports": _count(cur, "reports", "status='open'"),
+            "follows": _count(cur, "followers"),
             "followers": _count(cur, "followers"),
             "gifts": _count(cur, "gifts"),
         }
@@ -41,15 +43,49 @@ def admin_overview():
         )
         reports = cur.fetchall()
 
+        activity_day = {
+            "active_users": stats["users"],
+            "users": _count(cur, "users", "created_at > NOW() - INTERVAL '1 day'"),
+            "posts": _count(cur, "posts", "created_at > NOW() - INTERVAL '1 day'"),
+            "comments": _count(cur, "comments", "created_at > NOW() - INTERVAL '1 day'"),
+            "messages": _count(cur, "messages", "created_at > NOW() - INTERVAL '1 day'"),
+            "reports": _count(cur, "reports", "created_at > NOW() - INTERVAL '1 day' AND status='open'"),
+        }
+        activity_month = {
+            "active_users": stats["users"],
+            "users": _count(cur, "users", "created_at > NOW() - INTERVAL '30 days'"),
+            "posts": _count(cur, "posts", "created_at > NOW() - INTERVAL '30 days'"),
+            "comments": _count(cur, "comments", "created_at > NOW() - INTERVAL '30 days'"),
+            "messages": _count(cur, "messages", "created_at > NOW() - INTERVAL '30 days'"),
+            "reports": _count(cur, "reports", "created_at > NOW() - INTERVAL '30 days' AND status='open'"),
+        }
+
+        cur.execute("SELECT username, COUNT(*) AS total FROM comments GROUP BY username ORDER BY total DESC LIMIT 5")
+        top_commenters = cur.fetchall()
+        cur.execute("SELECT username, COUNT(*) AS total FROM posts GROUP BY username ORDER BY total DESC LIMIT 5")
+        top_posters = cur.fetchall()
+        cur.execute("SELECT sender AS username, COUNT(*) AS total FROM messages GROUP BY sender ORDER BY total DESC LIMIT 5")
+        top_messengers = cur.fetchall()
+
     return jsonify(
         {
             "stats": stats,
             "recent_users": recent_users,
             "recent_posts": recent_posts,
-            "activity": {},
+            "activity": {"day": activity_day, "month": activity_month},
             "reports": reports,
-            "leaderboards": {},
-            "system": {"security": "enabled", "jwt": True, "rate_limit": True},
+            "leaderboards": {
+                "commenters": top_commenters,
+                "posters": top_posters,
+                "messengers": top_messengers,
+            },
+            "system": {
+                "security": "enabled",
+                "jwt": True,
+                "rate_limit": True,
+                "tracking_window_day": "آخر 24 ساعة",
+                "tracking_window_month": "آخر 30 يوم",
+            },
         }
     )
 

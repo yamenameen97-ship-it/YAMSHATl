@@ -158,6 +158,10 @@ def current_role() -> str:
     return identity.get("role", "user")
 
 
+def is_privileged_role(role: str | None) -> bool:
+    return str(role or "").strip().lower() in {"admin", "security", "moderator", "superadmin"}
+
+
 def login_user(user: str, email: str, role: str = "user") -> str:
     session.clear()
     session.permanent = True
@@ -187,7 +191,7 @@ def require_admin(view: Callable):
     def wrapped(*args, **kwargs):
         if not current_user():
             return json_error("يجب تسجيل الدخول أولاً", 401)
-        if current_role() != "admin":
+        if not is_privileged_role(current_role()):
             return json_error("غير مصرح لك بهذا الإجراء", 403)
         return view(*args, **kwargs)
 

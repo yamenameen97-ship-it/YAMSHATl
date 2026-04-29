@@ -47,8 +47,16 @@ def init_extensions(app):
             "connect-src 'self' https: ws: wss:; "
             "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
         )
-        if response.headers.get("Content-Type", "").startswith("application/json"):
-            response.headers["Cache-Control"] = "no-store"
+        content_type = response.headers.get("Content-Type", "")
+        if (
+            content_type.startswith("application/json")
+            or content_type.startswith("text/html")
+            or "javascript" in content_type
+            or content_type.startswith("text/css")
+        ):
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
         if Config.SESSION_COOKIE_SECURE:
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
         return response

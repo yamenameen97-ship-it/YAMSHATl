@@ -89,15 +89,21 @@ def health():
     )
 
 
-@app.get("/app-config.js")
+@app.get("/api/app-config.js")
 def app_config_js():
-    api_base = f"{Config.BACKEND_ORIGIN}/api" if Config.BACKEND_ORIGIN else "/api"
+    runtime_origin = request.host_url.rstrip("/")
+    api_base = "/api"
     content = (
         "window.APP_API_BASE = " + repr(api_base) + ";\n"
-        "window.YAMSHAT_FRONTEND_ORIGIN = " + repr(Config.FRONTEND_ORIGIN) + ";\n"
-        "window.YAMSHAT_BACKEND_ORIGIN = " + repr(Config.BACKEND_ORIGIN) + ";\n"
+        "window.YAMSHAT_FRONTEND_ORIGIN = " + repr(runtime_origin) + ";\n"
+        "window.YAMSHAT_BACKEND_ORIGIN = " + repr(runtime_origin) + ";\n"
+        "window.YAMSHAT_DEPLOY_MODE = 'single-service';\n"
     )
-    return Response(content, mimetype="application/javascript")
+    response = Response(content, mimetype="application/javascript")
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 @app.get("/")

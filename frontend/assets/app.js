@@ -1202,6 +1202,25 @@ function handleReelCommentInput(reelId, input) {
     if (box && hasValue) box.style.display = "block";
 }
 
+function openReelComments(reelId, focusInput = false) {
+    const box = document.getElementById(`reelCommentsWrap-${reelId}`);
+    const input = document.getElementById(`reelCommentInput-${reelId}`);
+    if (!box) return;
+    box.style.display = "block";
+    loadReelComments(reelId);
+    if (focusInput && input) {
+        input.removeAttribute("readonly");
+        input.scrollIntoView({ behavior: "smooth", block: "center" });
+        window.setTimeout(() => {
+            input.focus();
+            const length = input.value.length;
+            try {
+                input.setSelectionRange(length, length);
+            } catch (_) {}
+        }, 120);
+    }
+}
+
 async function addReelComment(reelId) {
     const input = document.getElementById(`reelCommentInput-${reelId}`);
     const comment = input?.value.trim();
@@ -1244,12 +1263,22 @@ async function loadReelComments(reelId) {
     }
 }
 
-function toggleReelComments(reelId) {
+function toggleReelComments(reelId, focusInput = false) {
     const box = document.getElementById(`reelCommentsWrap-${reelId}`);
     if (!box) return;
     const shouldShow = box.style.display === "none" || !box.style.display;
+    if (!shouldShow && focusInput) {
+        openReelComments(reelId, true);
+        return;
+    }
     box.style.display = shouldShow ? "block" : "none";
-    if (shouldShow) loadReelComments(reelId);
+    if (shouldShow) {
+        loadReelComments(reelId);
+        if (focusInput) {
+            const input = document.getElementById(`reelCommentInput-${reelId}`);
+            window.setTimeout(() => input?.focus(), 120);
+        }
+    }
 }
 
 function showReel(index) {
@@ -1269,7 +1298,7 @@ function showReel(index) {
             <div class="reel-side-actions">
                 <button id="reelLikeBtn-${r.id}" class="reel-action-btn ${isLiked ? "active" : ""}" onclick="likeReel(${r.id})">❤️</button>
                 <div class="reel-action-count" id="reelLikesCount-${r.id}">${r.likes || 0}</div>
-                <button class="reel-action-btn" onclick="toggleReelComments(${r.id})">💬</button>
+                <button class="reel-action-btn" onclick="toggleReelComments(${r.id}, true)">💬</button>
                 <div class="reel-action-count" id="reelCommentsCount-${r.id}">${r.comments_count || 0}</div>
                 <button class="reel-action-btn" onclick="shareReel(${r.id})">📤</button>
                 <button class="reel-action-btn" onclick="${isMine ? `deleteReel(${r.id})` : `reportReel(${r.id})`}">${isMine ? "🗑" : "🚩"}</button>
@@ -1277,7 +1306,7 @@ function showReel(index) {
             <div id="reelCommentsWrap-${r.id}" class="reel-comment-panel glass" style="display:none;">
                 <div id="reelComments-${r.id}" class="reel-comments-list"></div>
                 <div class="comment-box reel-comment-box">
-                    <input type="text" id="reelCommentInput-${r.id}" placeholder="اكتب تعليقك على الريل..." onfocus="toggleReelComments(${r.id})" oninput="handleReelCommentInput(${r.id}, this)">
+                    <input type="text" id="reelCommentInput-${r.id}" placeholder="اكتب تعليقك على الريل..." autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="true" onfocus="openReelComments(${r.id}, true)" oninput="handleReelCommentInput(${r.id}, this)">
                     <button id="reelCommentSend-${r.id}" class="send-comment-btn hidden" onclick="addReelComment(${r.id})">إرسال</button>
                 </div>
             </div>
@@ -1290,11 +1319,20 @@ function next() { if (current < reelsData.length - 1) { current++; showReel(curr
 function prev() { if (current > 0) { current--; showReel(current); } }
 
 function initReelsSwipe() {
-    document.addEventListener("touchstart", e => { startY = e.touches[0].clientY; }, { passive: true });
+    const isInteractiveTarget = target => Boolean(target?.closest?.('input, textarea, button, select, .reel-comment-panel'));
+    document.addEventListener("touchstart", e => {
+        if (isInteractiveTarget(e.target)) {
+            startY = 0;
+            return;
+        }
+        startY = e.touches[0].clientY;
+    }, { passive: true });
     document.addEventListener("touchend", e => {
+        if (!startY || isInteractiveTarget(e.target)) return;
         const endY = e.changedTouches[0].clientY;
         if (endY < startY - 50) next();
         if (endY > startY + 50) prev();
+        startY = 0;
     }, { passive: true });
     document.addEventListener("keydown", e => {
         if (e.key === "ArrowUp") prev();

@@ -17,8 +17,8 @@ class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production")
     DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 
-    FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "https://yamshatl-1.onrender.com").strip().rstrip("/")
-    BACKEND_ORIGIN = os.getenv("BACKEND_ORIGIN", "https://yamshatl.onrender.com").strip().rstrip("/")
+    FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "").strip().rstrip("/")
+    BACKEND_ORIGIN = os.getenv("BACKEND_ORIGIN", "").strip().rstrip("/")
     RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL", BACKEND_ORIGIN).strip().rstrip("/")
 
     ALLOWED_ORIGINS = _split_csv(

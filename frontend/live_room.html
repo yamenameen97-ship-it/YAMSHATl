@@ -99,7 +99,7 @@
         </div>
     </div>
 
-    <script src="app-config.js"></script>
+    <script src="/api/app-config.js"></script>
     <script src="assets/auth.js"></script>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.15.5/dist/livekit-client.umd.min.js"></script>
@@ -226,50 +226,83 @@
                 }),
             });
 
-            const connectFn = LivekitClient.connect || (async (url, token) => {
-                const room = new LivekitClient.Room();
-                await room.connect(url, token);
-                return room;
-            });
-
-            lkRoom = await connectFn(tokenData.livekit_url, tokenData.token);
-            const subscribedEvent = (LivekitClient.RoomEvent && LivekitClient.RoomEvent.TrackSubscribed) || 'trackSubscribed';
-            const disconnectedEvent = (LivekitClient.RoomEvent && LivekitClient.RoomEvent.Disconnected) || 'disconnected';
-
-            lkRoom.on(subscribedEvent, (track) => {
+            const attachTrack = async (track) => {
                 const remoteMedia = document.getElementById('remoteMedia');
+                if (!remoteMedia || !track) return;
                 remoteMedia.innerHTML = '';
 
-                if (track && track.mediaStreamTrack) {
-                    if (track.kind === 'video') {
-                        const video = document.createElement('video');
-                        video.srcObject = new MediaStream([track.mediaStreamTrack]);
-                        video.autoplay = true;
-                        video.playsInline = true;
-                        video.setAttribute('webkit-playsinline', 'true');
-                        remoteMedia.appendChild(video);
-                    } else {
-                        const audio = document.createElement('audio');
-                        audio.srcObject = new MediaStream([track.mediaStreamTrack]);
-                        audio.autoplay = true;
-                        remoteMedia.appendChild(audio);
-                    }
-                } else if (track && typeof track.attach === 'function') {
-                    const element = track.attach();
-                    element.autoplay = true;
+                let element = null;
+                if (typeof track.attach === 'function') {
+                    element = track.attach();
+                } else if (track.mediaStreamTrack) {
+                    element = document.createElement(track.kind === 'audio' ? 'audio' : 'video');
+                    element.srcObject = new MediaStream([track.mediaStreamTrack]);
+                }
+                if (!element) return;
+
+                element.autoplay = true;
+                if (element.tagName === 'VIDEO') {
                     element.playsInline = true;
                     element.setAttribute('webkit-playsinline', 'true');
-                    remoteMedia.appendChild(element);
+                    element.controls = false;
                 }
+                if (element.tagName === 'AUDIO') {
+                    element.controls = true;
+                }
+                remoteMedia.appendChild(element);
+                try { await element.play(); } catch (_) {}
                 setStatus('البث يعمل الآن');
-            });
+            };
 
-            lkRoom.on(disconnectedEvent, () => setStatus('تم قطع الاتصال بالبث'));
+            const createRoomInstance = () => {
+                const room = new LivekitClient.Room();
+                const subscribedEvent = (LivekitClient.RoomEvent && LivekitClient.RoomEvent.TrackSubscribed) || 'trackSubscribed';
+                const disconnectedEvent = (LivekitClient.RoomEvent && LivekitClient.RoomEvent.Disconnected) || 'disconnected';
+                const participantConnectedEvent = (LivekitClient.RoomEvent && LivekitClient.RoomEvent.ParticipantConnected) || 'participantConnected';
+                const trackPublishedEvent = (LivekitClient.RoomEvent && LivekitClient.RoomEvent.TrackPublished) || 'trackPublished';
+
+                room.on(subscribedEvent, track => attachTrack(track));
+                room.on(disconnectedEvent, () => setStatus('تم قطع الاتصال بالبث'));
+                room.on(participantConnectedEvent, () => {
+                    if (!isHost) setStatus('تم الاتصال، بانتظار وسائط المضيف...');
+                });
+                room.on(trackPublishedEvent, async (_publication, participant) => {
+                    const publications = Array.from(participant?.trackPublications?.values?.() || []);
+                    for (const pub of publications) {
+                        const track = pub?.track;
+                        if (track) {
+                            await attachTrack(track);
+                            break;
+                        }
+                    }
+                });
+                return room;
+            };
+
+            if (typeof LivekitClient.connect === 'function') {
+                lkRoom = createRoomInstance();
+                await lkRoom.connect(tokenData.livekit_url, tokenData.token);
+            } else {
+                lkRoom = createRoomInstance();
+                await lkRoom.connect(tokenData.livekit_url, tokenData.token);
+            }
+
+            const participants = Array.from(lkRoom.remoteParticipants?.values?.() || []);
+            for (const participant of participants) {
+                const publications = Array.from(participant?.trackPublications?.values?.() || []);
+                for (const pub of publications) {
+                    const track = pub?.track;
+                    if (track) {
+                        await attachTrack(track);
+                        break;
+                    }
+                }
+            }
 
             if (isHost) {
                 await publishLocalTracks();
-            } else {
-                setStatus('تم الاتصال كمشاهد');
+            } else if (!document.querySelector('#remoteMedia video, #remoteMedia audio')) {
+                setStatus('تم الاتصال، بانتظار فيديو أو صوت المضيف');
             }
         }
 
@@ -288,6 +321,7 @@
             preview.setAttribute('webkit-playsinline', 'true');
             preview.srcObject = stream;
             hostPreview.appendChild(preview);
+            preview.play().catch(() => {});
 
             for (const track of stream.getTracks()) {
                 try {

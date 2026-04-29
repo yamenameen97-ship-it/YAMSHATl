@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import logging
-
 from flask import request
 from flask_socketio import SocketIO, emit, join_room
 
@@ -9,20 +7,8 @@ from config import Config
 from db import db_cursor
 from utils import clean
 
-logger = logging.getLogger(__name__)
-
-
-def _select_async_mode() -> str:
-    try:
-        import eventlet.green.threading  # noqa: F401
-        return "eventlet"
-    except Exception as exc:  # pragma: no cover - compatibility fallback
-        logger.warning("eventlet unavailable, falling back to threading async mode: %s", exc)
-        return "threading"
-
-
 _ALLOWED_SOCKET_ORIGINS = Config.ALLOWED_ORIGINS or "*"
-socketio = SocketIO(cors_allowed_origins=_ALLOWED_SOCKET_ORIGINS, async_mode=_select_async_mode())
+socketio = SocketIO(cors_allowed_origins=_ALLOWED_SOCKET_ORIGINS, async_mode="eventlet")
 
 
 GIFT_VALUES = {

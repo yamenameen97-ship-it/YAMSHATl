@@ -1,32 +1,98 @@
+from __future__ import annotations
 
-from flask import Flask
-from flask_cors import CORS
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
+import logging
+import os
+from datetime import timedelta
+from pathlib import Path
 
-from auth import auth
-from posts import posts
-from reels import reels
-from chat import chat
-from live import socketio, init_socket
+from flask import Flask, abort, jsonify, request, send_from_directory
 
-app = Flask(__name__)
-app.secret_key="secret"
+from admin import admin_bp
+from auth import auth_bp
+from chat import chat_bp
+from config import Config
+from db import init_db, set_admin_roles
+from extensions import init_extensions
+from posts import posts_bp
+from reels import reels_bp
 
-CORS(app, supports_credentials=True)
+BASE_DIR = Path(__file__).resolve().parent
+FRONTEND_DIR = BASE_DIR.parent / "frontend"
 
-limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day","50 per hour"])
+logging.basicConfig(
+    level=getattr(logging, Config.LOG_LEVEL, logging.INFO),
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+logger = logging.getLogger(__name__)
 
-app.register_blueprint(auth, url_prefix="/api")
-app.register_blueprint(posts, url_prefix="/api")
-app.register_blueprint(reels, url_prefix="/api")
-app.register_blueprint(chat, url_prefix="/api")
+app = Flask(__name__, static_folder=str(FRONTEND_DIR), static_url_path="")
+app.config.from_object(Config)
+app.secret_key = Config.SECRET_KEY
+app.config.update(
+    MAX_CONTENT_LENGTH=Config.MAX_CONTENT_LENGTH,
+    SESSION_COOKIE_HTTPONLY=Config.SESSION_COOKIE_HTTPONLY,
+    SESSION_COOKIE_SAMESITE=Config.SESSION_COOKIE_SAMESITE,
+    SESSION_COOKIE_SECURE=Config.SESSION_COOKIE_SECURE,
+    PERMANENT_SESSION_LIFETIME=timedelta(days=Config.SESSION_DAYS),
+    JSON_AS_ASCII=False,
+)
 
-init_socket(app)
+init_extensions(app)
+init_db()
+set_admin_roles(Config.ADMIN_EMAILS, Config.ADMIN_USERNAMES)
 
-@app.route("/")
+app.register_blueprint(auth_bp, url_prefix="/api")
+app.register_blueprint(posts_bp, url_prefix="/api")
+app.register_blueprint(reels_bp, url_prefix="/api")
+app.register_blueprint(chat_bp, url_prefix="/api")
+app.register_blueprint(admin_bp, url_prefix="/api")
+
+
+@app.before_request
+def log_requests():
+    if request.path.startswith("/api/"):
+        logger.info("%s %s from %s", request.method, request.path, request.headers.get("X-Forwarded-For", request.remote_addr))
+
+
+@app.errorhandler(413)
+def file_too_large(_error):
+    return jsonify({"message": "حجم الملف أكبر من الحد المسموح"}), 413
+
+
+@app.get("/health")
+def health():
+    return jsonify(
+        {
+            "status": "ok",
+            "backend_origin": Config.BACKEND_ORIGIN,
+            "frontend_origin": Config.FRONTEND_ORIGIN,
+            "secure_cookie": Config.SESSION_COOKIE_SECURE,
+            "max_upload_mb": int(Config.MAX_CONTENT_LENGTH / (1024 * 1024)),
+        }
+    )
+
+
+@app.get("/")
 def home():
-    return {"status":"running"}
+    index_path = FRONTEND_DIR / "index.html"
+    if index_path.exists():
+        return send_from_directory(FRONTEND_DIR, "index.html")
+    return jsonify({"status": "running"})
+
+
+@app.route("/<path:path>")
+def serve_frontend(path: str):
+    requested = FRONTEND_DIR / path
+    if requested.exists() and requested.is_file():
+        return send_from_directory(FRONTEND_DIR, path)
+    if "." in Path(path).name:
+        return abort(404)
+    index_path = FRONTEND_DIR / "index.html"
+    if index_path.exists():
+        return send_from_directory(FRONTEND_DIR, "index.html")
+    return abort(404)
+
 
 if __name__ == "__main__":
-    socketio.run(app, host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)

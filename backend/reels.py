@@ -1,43 +1,53 @@
+from __future__ import annotations
 
-from flask import Blueprint, request, jsonify
-from db import get_db
-import os
+import uuid
+from pathlib import Path
+
+from flask import Blueprint, jsonify, request
 from werkzeug.utils import secure_filename
 
-reels = Blueprint("reels", __name__)
+from config import Config
+from db import db_cursor
+from utils import current_user, json_error, rate_limit, require_auth
 
-UPLOAD_FOLDER="uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+reels_bp = Blueprint("reels", __name__)
+UPLOAD_DIR = Path(Config.UPLOAD_FOLDER)
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-ALLOWED={"mp4","mov","webm"}
 
-def allowed(filename):
-    return "." in filename and filename.rsplit(".",1)[1].lower() in ALLOWED
+@reels_bp.post("/add_reel")
+@require_auth
+@rate_limit(20, 3600)
+def add_reel():
+    if "file" not in request.files:
+        return json_error("لم يتم اختيار ملف", 400)
 
-@reels.route("/add_reel", methods=["POST"])
-def add():
-    f=request.files["file"]
+    file_storage = request.files["file"]
+    raw_name = secure_filename(file_storage.filename or "")
+    if not raw_name:
+        return json_error("اسم الملف غير صالح", 400)
 
-    if not allowed(f.filename):
-        return {"msg":"invalid file"},400
+    ext = Path(raw_name).suffix.lower().replace(".", "")
+    if ext not in Config.ALLOWED_VIDEO_EXTENSIONS:
+        return json_error("الملف يجب أن يكون فيديو صالحاً", 400)
 
-    filename=secure_filename(f.filename)
-    path=os.path.join(UPLOAD_FOLDER, filename)
-    f.save(path)
+    filename = f"reel_{uuid.uuid4().hex}.{ext}"
+    save_path = UPLOAD_DIR / filename
+    file_storage.save(save_path)
+    video_url = f"{request.host_url.rstrip('/')}/api/uploads/{filename}"
 
-    conn=get_db(); cur=conn.cursor()
-    cur.execute(
-        "INSERT INTO reels(username,video) VALUES(%s,%s)",
-        (request.form["username"], path)
-    )
+    with db_cursor(commit=True) as (_conn, cur):
+        cur.execute(
+            "INSERT INTO reels(username,video) VALUES(%s,%s)",
+            (current_user(), video_url),
+        )
 
-    conn.commit(); conn.close()
-    return {"ok":True}
+    return jsonify({"ok": True, "message": "تم رفع الريل", "video": video_url})
 
-@reels.route("/reels")
-def get():
-    conn=get_db(); cur=conn.cursor()
-    cur.execute("SELECT * FROM reels ORDER BY id DESC")
-    data=cur.fetchall()
-    conn.close()
-    return jsonify(data)
+
+@reels_bp.get("/reels")
+def get_reels():
+    with db_cursor() as (_conn, cur):
+        cur.execute("SELECT id, username, video, created_at FROM reels ORDER BY id DESC LIMIT 200")
+        rows = cur.fetchall()
+    return jsonify(rows)

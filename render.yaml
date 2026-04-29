@@ -7,34 +7,34 @@ services:
     startCommand: gunicorn --chdir backend app:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120
     healthCheckPath: /health
     autoDeploy: true
-    disk:
-      name: yamshat-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.10
       - key: SECRET_KEY
         generateValue: true
-      - key: SESSION_COOKIE_SECURE
-        value: "1"
-      - key: SESSION_COOKIE_SAMESITE
-        value: Lax
       - key: DATABASE_URL
         sync: false
-      - key: DB_PATH
-        value: /var/data/yamshat.db
       - key: FRONTEND_ORIGIN
         value: https://yamshatl-1.onrender.com
       - key: BACKEND_ORIGIN
         value: https://yamshatl.onrender.com
+      - key: RENDER_EXTERNAL_URL
+        value: https://yamshatl.onrender.com
       - key: ALLOWED_ORIGINS
-        value: https://yamshatl-1.onrender.com,https://yamshatl.onrender.com,capacitor://localhost,ionic://localhost
-      - key: MAX_CONTENT_LENGTH_MB
-        value: "5"
+        value: https://yamshatl-1.onrender.com,https://yamshatl.onrender.com,capacitor://localhost,ionic://localhost,http://127.0.0.1:5500,http://localhost:5500,http://127.0.0.1:5000,http://localhost:5000
+      - key: SESSION_COOKIE_SECURE
+        value: "1"
+      - key: SESSION_COOKIE_SAMESITE
+        value: Lax
+      - key: SESSION_DAYS
+        value: "30"
       - key: JWT_EXPIRE_DAYS
         value: "30"
-      - key: RATELIMIT_DEFAULT
-        value: 300 per hour,60 per minute
-      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+      - key: MAX_CONTENT_LENGTH_MB
+        value: "25"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: ADMIN_USERNAMES
         sync: false

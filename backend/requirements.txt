@@ -6,3 +6,4 @@ python-socketio
 psycopg2-binary
 sqlalchemy
 livekit
+python-dotenv

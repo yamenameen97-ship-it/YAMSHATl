@@ -1,6 +1,5 @@
-
-from werkzeug.middleware.proxy_fix import ProxyFix
 from __future__ import annotations
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import logging
 import os

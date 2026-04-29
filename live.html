@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="format-detection" content="telephone=no">
+    <title>Yamshat | البث المباشر</title>
+    <link rel="stylesheet" href="assets/style.css">
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+    <style>
+        body { background:#020617; }
+        .live-wrap { padding:calc(env(safe-area-inset-top, 0px) + 14px) 12px calc(env(safe-area-inset-bottom, 0px) + 24px); max-width:1100px; margin:0 auto; }
+        .hero, .panel { border:1px solid rgba(255,255,255,0.08); background:rgba(15,23,42,0.78); border-radius:24px; box-shadow:0 20px 60px rgba(0,0,0,0.26); }
+        .hero { padding:18px; }
+        .hero h1 { margin:0 0 10px; font-size:28px; }
+        .hero p, .muted { color:#cbd5e1; line-height:1.8; }
+        .diagram { display:grid; gap:10px; margin-top:18px; }
+        .node { padding:14px; border-radius:18px; background:rgba(255,255,255,0.06); text-align:center; font-weight:700; }
+        .arrow { text-align:center; color:#f87171; font-size:22px; }
+        .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px; }
+        .post-box { display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; }
+        .post-box input { flex:1; min-width:220px; }
+        .room-list { display:grid; gap:12px; }
+        .room-card { padding:16px; border-radius:20px; background:rgba(255,255,255,0.05); display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+        .badge { display:inline-flex; align-items:center; gap:6px; border-radius:999px; background:rgba(239,68,68,0.16); color:#fecaca; padding:6px 12px; font-size:12px; }
+        .stack { display:flex; flex-direction:column; gap:8px; }
+        .stats { display:flex; gap:10px; flex-wrap:wrap; color:#cbd5e1; font-size:13px; }
+        .code-box { margin-top:14px; padding:14px; border-radius:18px; background:#020617; overflow:auto; font-family:ui-monospace,SFMono-Regular,monospace; font-size:12px; line-height:1.8; }
+        @media (max-width: 820px) { .grid { grid-template-columns:1fr; } .hero h1 { font-size:24px; } }
+    </style>
+</head>
+<body>
+    <main class="live-wrap">
+        <section class="hero">
+            <div class="badge">● نظام البث الصحيح</div>
+            <h1>LiveKit + Flask Socket.IO + قاعدة بيانات مشتركة</h1>
+            <p id="sessionLabel" class="muted">جاري التحقق من الجلسة...</p>
+            <div class="diagram">
+                <div class="node">Mobile App</div>
+                <div class="arrow">▼ WebRTC</div>
+                <div class="node">Signaling Server (Flask + SocketIO)</div>
+                <div class="arrow">▼</div>
+                <div class="node">Media Server (WebRTC SFU / LiveKit)</div>
+                <div class="arrow">▼</div>
+                <div class="node">Viewers (Web / Mobile)</div>
+            </div>
+            <div class="grid">
+                <div class="panel" style="padding:16px;">
+                    <div class="brand-title">إنشاء بث جديد</div>
+                    <div class="post-box">
+                        <input id="title" placeholder="عنوان البث المباشر">
+                        <button onclick="startLive(this)">ابدأ بث</button>
+                    </div>
+                    <div class="code-box">pip install livekit
+flask-socketio
+python-socketio
+eventlet</div>
+                </div>
+                <div class="panel" style="padding:16px;">
+                    <div class="brand-title">دعم Android و iOS</div>
+                    <div class="muted">تم تجهيز صفحة البث بخصائص mobile-first مثل playsinline و viewport-fit=cover وتحديث عداد المشاهدين من خلال Socket.IO بالإضافة إلى مزامنة دورية من خلال assets/live_fix.js.</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel" style="padding:16px; margin-top:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+                <div>
+                    <div class="brand-title">البثوث الحالية</div>
+                    <div class="muted">العداد يتحدث تلقائياً الآن.</div>
+                </div>
+                <button onclick="loadLives()">تحديث</button>
+            </div>
+            <div id="rooms" class="room-list" style="margin-top:14px;"></div>
+        </section>
+    </main>
+
+    <script src="assets/auth.js"></script>
+    <script src="assets/live_fix.js"></script>
+    <script>
+        const API_BASE = window.API_BASE || `${window.location.origin.replace(/\/+$/, "")}/api`;
+        let currentUser = "";
+        let refreshTimer = null;
+
+        async function checkSession() {
+            const data = await window.requestJSON(`${API_BASE}/me`);
+            if (!data.user) {
+                window.location.href = "index.html";
+                return;
+            }
+            currentUser = data.user;
+            const platform = window.LiveFix.detectPlatform();
+            document.getElementById('sessionLabel').textContent = `مرحباً ${currentUser} · المنصة: ${platform}`;
+        }
+
+        async function startLive(button) {
+            const title = document.getElementById('title').value.trim();
+            if (!title) {
+                window.LiveFix.showToast('اكتب عنوان البث أولاً');
+                return;
+            }
+            const original = button.textContent;
+            button.disabled = true;
+            button.textContent = 'جاري التجهيز...';
+            try {
+                const data = await window.requestJSON(`${API_BASE}/create_live`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title, platform: window.LiveFix.detectPlatform() }),
+                });
+                window.LiveFix.showToast(data.message || 'تم تجهيز البث');
+                document.getElementById('title').value = '';
+                if (data.room_id) {
+                    setTimeout(() => {
+                        window.location.href = `live_room.html?id=${data.room_id}`;
+                    }, 500);
+                }
+            } catch (error) {
+                window.LiveFix.showToast(error.message || 'تعذر إنشاء البث');
+            } finally {
+                button.disabled = false;
+                button.textContent = original;
+            }
+        }
+
+        async function loadLives() {
+            const box = document.getElementById('rooms');
+            try {
+                const rooms = await window.requestJSON(`${API_BASE}/live_rooms`);
+                if (!rooms.length) {
+                    box.innerHTML = '<div class="room-card"><div class="muted">لا يوجد بث مباشر الآن</div></div>';
+                    return;
+                }
+                box.innerHTML = rooms.map(room => `
+                    <div class="room-card">
+                        <div class="stack">
+                            <div class="badge">🔴 مباشر الآن</div>
+                            <strong>${window.LiveFix.escapeHTML(room.title)}</strong>
+                            <div class="stats">
+                                <span>👤 ${window.LiveFix.escapeHTML(room.username)}</span>
+                                <span>👀 <span class="viewer-count" data-room-id="${room.id}">${room.viewer_count || 0}</span></span>
+                                <span>SFU: ${window.LiveFix.escapeHTML(room.stream_mode || 'livekit_sfu')}</span>
+                            </div>
+                        </div>
+                        <button onclick="window.location.href='live_room.html?id=${room.id}'">دخول البث</button>
+                    </div>
+                `).join('');
+            } catch (error) {
+                box.innerHTML = `<div class="room-card"><div class="muted">${window.LiveFix.escapeHTML(error.message)}</div></div>`;
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            try {
+                await checkSession();
+                await loadLives();
+                refreshTimer = setInterval(loadLives, 7000);
+            } catch (error) {
+                window.LiveFix.showToast(error.message || 'تعذر تحميل صفحة البث');
+            }
+        });
+
+        window.addEventListener('beforeunload', () => refreshTimer && clearInterval(refreshTimer));
+    </script>
+</body>
+</html>

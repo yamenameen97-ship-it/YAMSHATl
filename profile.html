@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Yamshat | الملف الشخصي</title>
+    <link rel="stylesheet" href="assets/style.css">
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+    <link rel="apple-touch-icon" href="assets/favicon.svg">
+</head>
+<body class="profile-page">
+    <header class="header glass profile-header">
+        <div class="header-row">
+            <button class="icon-btn" onclick="goFeed()">⬅</button>
+            <div>
+                <h2 id="username">...</h2>
+                <div class="subtle-text" id="profileEmail"></div>
+            </div>
+            <div class="header-actions">
+                <button class="icon-btn" onclick="toggleServiceMenu(event)">☰</button>
+                <button class="icon-btn" onclick="logout()">🚪</button>
+            </div>
+        </div>
+
+        <div class="stats-row glass mini-glass">
+            <div><strong id="followers">0</strong><span>متابعين</span></div>
+            <div><strong id="following">0</strong><span>يتابع</span></div>
+        </div>
+
+        <div class="profile-actions" id="profileActions"></div>
+    </header>
+
+    <div id="serviceMenu" class="service-menu glass hidden profile-menu">
+        <button onclick="goFeed()">🏠 الرئيسية</button>
+        <button onclick="openProfileEditor()">✏️ تعديل الملف الشخصي</button>
+        <button onclick="toggleTheme()">🌓 وضع ليلي/نهاري</button>
+        <button onclick="goReels()">🎬 الريلز</button>
+    </div>
+
+    <main class="container">
+        <div id="posts" class="profile-posts"></div>
+    </main>
+
+    <div id="profileModal" class="modal-overlay hidden">
+        <div class="modal-card glass">
+            <div class="modal-header">
+                <h3>تعديل الملف الشخصي</h3>
+                <button class="icon-btn" onclick="closeProfileEditor()">✕</button>
+            </div>
+            <div class="modal-body stacked-form">
+                <input id="editName" type="text" placeholder="اسم المستخدم">
+                <input id="editEmail" type="text" placeholder="البريد أو الجوال">
+                <input id="editPassword" type="password" placeholder="كلمة مرور جديدة - اختياري">
+                <button onclick="saveProfile(this)">حفظ التعديلات</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="assets/auth.js"></script>
+    <script src="assets/app.js"></script>
+</body>
+</html>

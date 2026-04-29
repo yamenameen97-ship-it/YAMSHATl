@@ -1,5 +1,4 @@
 from __future__ import annotations
-from werkzeug.middleware.proxy_fix import ProxyFix
 
 import logging
 import os
@@ -14,9 +13,10 @@ from chat import chat_bp
 from config import Config
 from db import init_db, set_admin_roles
 from extensions import init_extensions
+from live_socket import init_socket, socketio
 from posts import posts_bp
 from reels import reels_bp
-from live_socket import socketio, init_socket
+from routes.live import live_bp
 
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
@@ -26,9 +26,8 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
 )
 logger = logging.getLogger(__name__)
+
 app = Flask(__name__, static_folder=str(FRONTEND_DIR), static_url_path="")
-app.secret_key = os.environ.get("SECRET_KEY")
-app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 app.config.from_object(Config)
 app.secret_key = Config.SECRET_KEY
 app.config.update(
@@ -41,15 +40,16 @@ app.config.update(
 )
 
 init_extensions(app)
-init_socket(app)
 init_db()
 set_admin_roles(Config.ADMIN_EMAILS, Config.ADMIN_USERNAMES)
+init_socket(app)
 
 app.register_blueprint(auth_bp, url_prefix="/api")
 app.register_blueprint(posts_bp, url_prefix="/api")
 app.register_blueprint(reels_bp, url_prefix="/api")
 app.register_blueprint(chat_bp, url_prefix="/api")
 app.register_blueprint(admin_bp, url_prefix="/api")
+app.register_blueprint(live_bp, url_prefix="/api")
 
 
 @app.before_request
@@ -72,6 +72,8 @@ def health():
             "frontend_origin": Config.FRONTEND_ORIGIN,
             "secure_cookie": Config.SESSION_COOKIE_SECURE,
             "max_upload_mb": int(Config.MAX_CONTENT_LENGTH / (1024 * 1024)),
+            "livekit_url": (os.getenv("LIVEKIT_WS_URL") or os.getenv("LIVEKIT_URL") or "").strip(),
+            "socketio": True,
         }
     )
 

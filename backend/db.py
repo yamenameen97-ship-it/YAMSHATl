@@ -136,6 +136,88 @@ def init_db() -> None:
             """
         )
 
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS live_rooms (
+                id SERIAL PRIMARY KEY,
+                host_id INT REFERENCES users(id) ON DELETE SET NULL,
+                username TEXT NOT NULL,
+                title TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'live',
+                stream_mode TEXT NOT NULL DEFAULT 'livekit_sfu',
+                livekit_room TEXT NOT NULL UNIQUE,
+                platform TEXT DEFAULT 'web',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                ended_at TIMESTAMP NULL
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS live_viewers (
+                id SERIAL PRIMARY KEY,
+                room_id INT NOT NULL REFERENCES live_rooms(id) ON DELETE CASCADE,
+                user_id INT REFERENCES users(id) ON DELETE SET NULL,
+                username TEXT NOT NULL,
+                socket_id TEXT,
+                platform TEXT DEFAULT 'web',
+                device_type TEXT DEFAULT 'browser',
+                is_host BOOLEAN NOT NULL DEFAULT FALSE,
+                active BOOLEAN NOT NULL DEFAULT TRUE,
+                joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_seen TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS live_comments (
+                id SERIAL PRIMARY KEY,
+                room_id INT NOT NULL REFERENCES live_rooms(id) ON DELETE CASCADE,
+                user_id INT REFERENCES users(id) ON DELETE SET NULL,
+                username TEXT NOT NULL,
+                comment TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS live_messages (
+                id SERIAL PRIMARY KEY,
+                room_id INT NOT NULL REFERENCES live_rooms(id) ON DELETE CASCADE,
+                user_id INT REFERENCES users(id) ON DELETE SET NULL,
+                username TEXT NOT NULL,
+                message TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS live_gifts (
+                id SERIAL PRIMARY KEY,
+                room_id INT NOT NULL REFERENCES live_rooms(id) ON DELETE CASCADE,
+                sender INT REFERENCES users(id) ON DELETE SET NULL,
+                username TEXT NOT NULL,
+                gift_name TEXT NOT NULL,
+                gift_value INT NOT NULL DEFAULT 0,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS live_likes (
+                id SERIAL PRIMARY KEY,
+                room_id INT NOT NULL REFERENCES live_rooms(id) ON DELETE CASCADE,
+                user_id INT REFERENCES users(id) ON DELETE SET NULL,
+                username TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
         for table_name, column_name, ddl in [
             ("users", "role", "TEXT NOT NULL DEFAULT 'user'"),
             ("users", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
@@ -145,6 +227,37 @@ def init_db() -> None:
             ("comments", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
             ("reels", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
             ("messages", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+            ("live_rooms", "host_id", "INT"),
+            ("live_rooms", "username", "TEXT NOT NULL DEFAULT ''"),
+            ("live_rooms", "title", "TEXT NOT NULL DEFAULT ''"),
+            ("live_rooms", "status", "TEXT NOT NULL DEFAULT 'live'"),
+            ("live_rooms", "stream_mode", "TEXT NOT NULL DEFAULT 'livekit_sfu'"),
+            ("live_rooms", "livekit_room", "TEXT NOT NULL DEFAULT ''"),
+            ("live_rooms", "platform", "TEXT DEFAULT 'web'"),
+            ("live_rooms", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+            ("live_rooms", "ended_at", "TIMESTAMP NULL"),
+            ("live_viewers", "user_id", "INT"),
+            ("live_viewers", "socket_id", "TEXT"),
+            ("live_viewers", "platform", "TEXT DEFAULT 'web'"),
+            ("live_viewers", "device_type", "TEXT DEFAULT 'browser'"),
+            ("live_viewers", "is_host", "BOOLEAN NOT NULL DEFAULT FALSE"),
+            ("live_viewers", "active", "BOOLEAN NOT NULL DEFAULT TRUE"),
+            ("live_viewers", "joined_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+            ("live_viewers", "last_seen", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+            ("live_comments", "user_id", "INT"),
+            ("live_comments", "username", "TEXT NOT NULL DEFAULT ''"),
+            ("live_comments", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+            ("live_messages", "user_id", "INT"),
+            ("live_messages", "username", "TEXT NOT NULL DEFAULT ''"),
+            ("live_messages", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+            ("live_gifts", "sender", "INT"),
+            ("live_gifts", "username", "TEXT NOT NULL DEFAULT ''"),
+            ("live_gifts", "gift_name", "TEXT NOT NULL DEFAULT ''"),
+            ("live_gifts", "gift_value", "INT NOT NULL DEFAULT 0"),
+            ("live_gifts", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+            ("live_likes", "user_id", "INT"),
+            ("live_likes", "username", "TEXT NOT NULL DEFAULT ''"),
+            ("live_likes", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
         ]:
             if _table_exists(cur, table_name):
                 _ensure_column(cur, table_name, column_name, ddl)
@@ -155,6 +268,12 @@ def init_db() -> None:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments(post_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_reels_created_at ON reels(created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_pair ON messages(sender, receiver, created_at)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_live_rooms_status ON live_rooms(status, created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_live_viewers_room_active ON live_viewers(room_id, active, last_seen DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_live_comments_room ON live_comments(room_id, created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_live_messages_room ON live_messages(room_id, created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_live_gifts_room ON live_gifts(room_id, created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_live_likes_room ON live_likes(room_id, created_at DESC)")
 
 
 def set_admin_roles(admin_emails: list[str], admin_usernames: list[str]) -> None:

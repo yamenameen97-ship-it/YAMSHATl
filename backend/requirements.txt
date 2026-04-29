@@ -9,3 +9,4 @@ livekit
 python-dotenv
 PyJWT
 firebase-admin
+psycopg2

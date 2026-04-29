@@ -3,27 +3,51 @@
 <head>
     <meta charset="UTF-8">
     <meta name="theme-color" content="#e00000">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Yamshat | لوحة الإدارة</title>
     <link rel="stylesheet" href="assets/style.css">
     <link rel="icon" type="image/png" href="assets/favicon-32.png">
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
     <link rel="manifest" href="site.webmanifest">
+    <style>
+        body { background:linear-gradient(180deg,#020617 0%, #0f172a 40%, #111827 100%); }
+        .admin-shell { max-width:1280px; margin:0 auto; padding:calc(env(safe-area-inset-top, 0px) + 16px) 14px calc(env(safe-area-inset-bottom, 0px) + 24px); }
+        .admin-topbar { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+        .admin-layout { display:grid; grid-template-columns:280px 1fr; gap:16px; }
+        .admin-side, .admin-main { border:1px solid rgba(255,255,255,0.08); background:rgba(15,23,42,0.78); border-radius:26px; box-shadow:0 20px 60px rgba(0,0,0,0.26); }
+        .admin-side { padding:18px; display:grid; gap:14px; align-content:start; }
+        .admin-main { padding:18px; }
+        .side-card { padding:14px; border-radius:18px; background:rgba(255,255,255,0.05); color:#cbd5e1; line-height:1.8; }
+        .side-actions { display:grid; gap:10px; }
+        @media (max-width: 920px) { .admin-layout { grid-template-columns:1fr; } }
+    </style>
 </head>
 <body class="feed-page">
-    <header class="header glass">
-        <div class="header-row">
-            <button class="icon-btn" onclick="window.location.href='feed.html'">⬅</button>
-            <div>
-                <div class="brand-title">🛠️ لوحة الإدارة الاحترافية</div>
-                <div class="subtle-text">مراجعة البلاغات والمنشورات ومتابعة حركة المنصة</div>
-            </div>
-            <button class="icon-btn" onclick="window.location.reload()">🔄</button>
+    <main class="admin-shell">
+        <div class="admin-topbar">
+            <button class="icon-btn" onclick="window.location.href='feed.html'">⬅ العودة للرئيسية</button>
+            <button class="icon-btn" onclick="window.location.reload()">🔄 تحديث اللوحة</button>
         </div>
-    </header>
 
-    <main class="container">
-        <div id="adminContent" class="admin-content"></div>
+        <div class="admin-layout">
+            <aside class="admin-side">
+                <div>
+                    <div class="brand-title">🛠️ لوحة الإدارة</div>
+                    <div class="subtle-text">متابعة البلاغات، المنشورات، الريلز، والبثوث من مكان واحد.</div>
+                </div>
+                <div class="side-card">هذه اللوحة مرتبطة مباشرة بخدمات الإدارة داخل المشروع، ومخصصة للمتابعة اليومية والإشراف السريع.</div>
+                <div class="side-actions">
+                    <button onclick="window.location.href='feed.html'">🏠 الصفحة الرئيسية</button>
+                    <button onclick="window.location.href='live.html'">🔴 البث المباشر</button>
+                    <button onclick="goReels()">🎬 الريلز</button>
+                    <button onclick="window.location.reload()">📊 تحديث البيانات</button>
+                </div>
+            </aside>
+
+            <section class="admin-main">
+                <div id="adminContent" class="admin-content"></div>
+            </section>
+        </div>
     </main>
 
     <script src="/api/app-config.js"></script>

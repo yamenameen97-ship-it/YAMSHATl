@@ -185,6 +185,19 @@ def init_db() -> None:
         )
         cur.execute(
             """
+            CREATE TABLE IF NOT EXISTS media_files (
+                id SERIAL PRIMARY KEY,
+                storage_key TEXT NOT NULL UNIQUE,
+                original_name TEXT NOT NULL,
+                content_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+                file_size BIGINT NOT NULL DEFAULT 0,
+                binary_data BYTEA NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS reel_likes (
                 id SERIAL PRIMARY KEY,
                 reel_id INT NOT NULL REFERENCES reels(id) ON DELETE CASCADE,
@@ -438,6 +451,9 @@ def init_db() -> None:
             ("comments", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
             ("stories", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
             ("reels", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+            ("media_files", "content_type", "TEXT NOT NULL DEFAULT 'application/octet-stream'"),
+            ("media_files", "file_size", "BIGINT NOT NULL DEFAULT 0"),
+            ("media_files", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
             ("messages", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
             ("notifications", "text", "TEXT NOT NULL DEFAULT ''"),
             ("notifications", "message", "TEXT NOT NULL DEFAULT ''"),
@@ -506,6 +522,7 @@ def init_db() -> None:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments(post_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_stories_created_at ON stories(created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_reels_created_at ON reels(created_at DESC)")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_media_files_storage_key ON media_files(storage_key)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_reel_likes_reel_id ON reel_likes(reel_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_reel_comments_reel_id ON reel_comments(reel_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_pair ON messages(sender, receiver, created_at)")

@@ -17,6 +17,8 @@ except Exception:  # pragma: no cover - fallback when dependency is absent durin
 
 
 live_bp = Blueprint("live", __name__)
+HOST_ACTIVE_WINDOW_SECONDS = 90
+HOST_STALE_GRACE_SECONDS = 45
 
 
 def _livekit_ws_url() -> str:
@@ -61,9 +63,37 @@ def _find_user(cur, username: str) -> dict[str, Any] | None:
     return cur.fetchone()
 
 
+def _cleanup_stale_rooms(cur, username: str | None = None, room_id: int | None = None) -> None:
+    filters = ["lr.status='live'", f"lr.created_at < NOW() - INTERVAL '{HOST_STALE_GRACE_SECONDS} seconds'"]
+    params: list[Any] = []
+    if username:
+        filters.append("lr.username=%s")
+        params.append(username)
+    if room_id:
+        filters.append("lr.id=%s")
+        params.append(room_id)
+
+    cur.execute(
+        f"""
+        UPDATE live_rooms lr
+        SET status='ended', ended_at=COALESCE(lr.ended_at, NOW())
+        WHERE {' AND '.join(filters)}
+          AND NOT EXISTS (
+                SELECT 1
+                FROM live_viewers lv
+                WHERE lv.room_id = lr.id
+                  AND lv.is_host = TRUE
+                  AND lv.active = TRUE
+                  AND lv.last_seen > NOW() - INTERVAL '{HOST_ACTIVE_WINDOW_SECONDS} seconds'
+          )
+        """,
+        tuple(params),
+    )
+
+
 def _room_payload(cur, room_id: int) -> dict[str, Any] | None:
     cur.execute(
-        """
+        f"""
         SELECT
             lr.id,
             lr.host_id,
@@ -74,12 +104,21 @@ def _room_payload(cur, room_id: int) -> dict[str, Any] | None:
             lr.livekit_room,
             lr.platform,
             lr.created_at,
+            lr.ended_at,
+            EXISTS(
+                SELECT 1
+                FROM live_viewers lvh
+                WHERE lvh.room_id = lr.id
+                  AND lvh.is_host = TRUE
+                  AND lvh.active = TRUE
+                  AND lvh.last_seen > NOW() - INTERVAL '{HOST_ACTIVE_WINDOW_SECONDS} seconds'
+            ) AS host_active,
             (
                 SELECT COUNT(*)
                 FROM live_viewers lv
                 WHERE lv.room_id = lr.id
                   AND lv.active = TRUE
-                  AND lv.last_seen > NOW() - INTERVAL '90 seconds'
+                  AND lv.last_seen > NOW() - INTERVAL '{HOST_ACTIVE_WINDOW_SECONDS} seconds'
                   AND lv.is_host = FALSE
             ) AS viewer_count,
             (
@@ -106,9 +145,16 @@ def create_live():
     platform = normalize_text(data.get("platform"), 40) or "web"
 
     with db_cursor(commit=True) as (_conn, cur):
+        _cleanup_stale_rooms(cur, username=username)
         user = _find_user(cur, username)
         cur.execute(
-            "SELECT id, livekit_room FROM live_rooms WHERE username=%s AND status='live' ORDER BY id DESC LIMIT 1",
+            """
+            SELECT lr.id, lr.livekit_room
+            FROM live_rooms lr
+            WHERE lr.username=%s AND lr.status='live'
+            ORDER BY lr.id DESC
+            LIMIT 1
+            """,
             (username,),
         )
         existing = cur.fetchone()
@@ -120,7 +166,7 @@ def create_live():
             return jsonify(
                 {
                     "ok": True,
-                    "message": "لديك بث مباشر نشط بالفعل",
+                    "message": "تم العثور على بث مباشر نشط لنفس الحساب",
                     "room_id": str(existing["id"]),
                     "livekit_room": existing["livekit_room"],
                     "livekit_url": _livekit_ws_url(),
@@ -166,9 +212,10 @@ def create_live():
 
 @live_bp.get("/live_rooms")
 def live_rooms():
-    with db_cursor() as (_conn, cur):
+    with db_cursor(commit=True) as (_conn, cur):
+        _cleanup_stale_rooms(cur)
         cur.execute(
-            """
+            f"""
             SELECT
                 lr.id,
                 lr.username,
@@ -182,11 +229,22 @@ def live_rooms():
                     FROM live_viewers lv
                     WHERE lv.room_id = lr.id
                       AND lv.active = TRUE
-                      AND lv.last_seen > NOW() - INTERVAL '90 seconds'
+                      AND lv.last_seen > NOW() - INTERVAL '{HOST_ACTIVE_WINDOW_SECONDS} seconds'
                       AND lv.is_host = FALSE
                 ) AS viewer_count
             FROM live_rooms lr
             WHERE lr.status='live'
+              AND (
+                    EXISTS(
+                        SELECT 1
+                        FROM live_viewers lvh
+                        WHERE lvh.room_id = lr.id
+                          AND lvh.is_host = TRUE
+                          AND lvh.active = TRUE
+                          AND lvh.last_seen > NOW() - INTERVAL '{HOST_ACTIVE_WINDOW_SECONDS} seconds'
+                    )
+                    OR lr.created_at > NOW() - INTERVAL '45 seconds'
+              )
             ORDER BY lr.id DESC
             LIMIT 100
             """
@@ -197,18 +255,19 @@ def live_rooms():
 
 @live_bp.get("/live_room/<int:room_id>")
 def live_room(room_id: int):
-    with db_cursor() as (_conn, cur):
+    with db_cursor(commit=True) as (_conn, cur):
+        _cleanup_stale_rooms(cur, room_id=room_id)
         room = _room_payload(cur, room_id)
-        if not room:
+        if not room or room["status"] != "live":
             return json_error("غرفة البث غير موجودة", 404)
 
         cur.execute(
-            """
+            f"""
             SELECT username, platform, device_type, last_seen
             FROM live_viewers
             WHERE room_id=%s
               AND active=TRUE
-              AND last_seen > NOW() - INTERVAL '90 seconds'
+              AND last_seen > NOW() - INTERVAL '{HOST_ACTIVE_WINDOW_SECONDS} seconds'
               AND is_host=FALSE
             ORDER BY last_seen DESC
             LIMIT 30
@@ -231,7 +290,8 @@ def live_token():
     requested_role = normalize_text(data.get("role"), 20) or "viewer"
     platform = normalize_text(data.get("platform"), 40) or "web"
 
-    with db_cursor() as (_conn, cur):
+    with db_cursor(commit=True) as (_conn, cur):
+        _cleanup_stale_rooms(cur, room_id=room_id)
         room = _room_payload(cur, room_id)
         if not room or room["status"] != "live":
             return json_error("هذا البث غير متاح حالياً", 404)
@@ -271,8 +331,9 @@ def live_presence():
         return json_error("رقم الغرفة غير صالح", 400)
 
     with db_cursor(commit=True) as (_conn, cur):
+        _cleanup_stale_rooms(cur, room_id=room_id)
         room = _room_payload(cur, room_id)
-        if not room:
+        if not room or room["status"] != "live":
             return json_error("غرفة البث غير موجودة", 404)
 
         user = _find_user(cur, username)
@@ -299,13 +360,14 @@ def live_presence():
                 (room_id, user["id"] if user else None, username, socket_id or None, platform, device_type, is_host, active),
             )
 
+        _cleanup_stale_rooms(cur, room_id=room_id)
         cur.execute(
-            """
+            f"""
             SELECT COUNT(*) AS total
             FROM live_viewers
             WHERE room_id=%s
               AND active=TRUE
-              AND last_seen > NOW() - INTERVAL '90 seconds'
+              AND last_seen > NOW() - INTERVAL '{HOST_ACTIVE_WINDOW_SECONDS} seconds'
               AND is_host=FALSE
             """,
             (room_id,),
@@ -318,17 +380,18 @@ def live_presence():
 @live_bp.get("/live_viewers/<int:room_id>")
 @require_auth
 def live_viewers(room_id: int):
-    with db_cursor() as (_conn, cur):
+    with db_cursor(commit=True) as (_conn, cur):
+        _cleanup_stale_rooms(cur, room_id=room_id)
         room = _room_payload(cur, room_id)
-        if not room:
+        if not room or room["status"] != "live":
             return json_error("غرفة البث غير موجودة", 404)
         cur.execute(
-            """
+            f"""
             SELECT username, platform, device_type, last_seen
             FROM live_viewers
             WHERE room_id=%s
               AND active=TRUE
-              AND last_seen > NOW() - INTERVAL '90 seconds'
+              AND last_seen > NOW() - INTERVAL '{HOST_ACTIVE_WINDOW_SECONDS} seconds'
               AND is_host=FALSE
             ORDER BY last_seen DESC
             LIMIT 100
@@ -380,7 +443,7 @@ def end_live(room_id: int):
 
     with db_cursor(commit=True) as (_conn, cur):
         room = _room_payload(cur, room_id)
-        if not room:
+        if not room or room["status"] != "live":
             return json_error("غرفة البث غير موجودة", 404)
         if room["username"] != username:
             return json_error("لا يمكنك إنهاء هذا البث", 403)

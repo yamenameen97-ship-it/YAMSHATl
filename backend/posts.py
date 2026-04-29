@@ -4,12 +4,13 @@ import os
 import uuid
 from pathlib import Path
 
-from flask import Blueprint, jsonify, request, send_from_directory
+from flask import Blueprint, jsonify, request
 from werkzeug.utils import secure_filename
 
 from config import Config
 from db import db_cursor
 from extensions import limiter
+from media_store import delete_media_file, save_media_upload, serve_media_file
 from utils import clean, current_user, json_error, normalize_text, require_auth
 
 posts_bp = Blueprint("posts", __name__)
@@ -23,17 +24,8 @@ def _allowed_file(filename: str) -> bool:
 
 
 def _save_upload(file_storage, allowed_exts: set[str] | None = None) -> str:
-    raw_name = secure_filename(file_storage.filename or "")
-    if not raw_name:
-        raise ValueError("اسم الملف غير صالح")
-    ext = Path(raw_name).suffix.lower().replace(".", "")
     valid_exts = allowed_exts or Config.ALLOWED_EXTENSIONS
-    if ext not in valid_exts:
-        raise ValueError("نوع الملف غير مدعوم")
-    unique_name = f"{uuid.uuid4().hex}.{ext}"
-    save_path = UPLOAD_DIR / unique_name
-    file_storage.save(save_path)
-    return unique_name
+    return save_media_upload(file_storage, valid_exts, UPLOAD_DIR)
 
 
 def _extract_upload_name(media_value: str | None) -> str | None:
@@ -42,19 +34,14 @@ def _extract_upload_name(media_value: str | None) -> str | None:
         return None
     if "/uploads/" in media:
         return media.split("/uploads/")[-1].split("?")[0]
-    return media if (UPLOAD_DIR / media).exists() else None
+    return Path(media).name
 
 
 def _delete_upload_if_exists(media_value: str | None):
     file_name = _extract_upload_name(media_value)
     if not file_name:
         return
-    file_path = UPLOAD_DIR / file_name
-    if file_path.exists() and file_path.is_file():
-        try:
-            os.remove(file_path)
-        except OSError:
-            pass
+    delete_media_file(file_name, UPLOAD_DIR)
 
 
 def _is_blocked(cur, user_a: str | None, user_b: str | None) -> bool:
@@ -138,7 +125,10 @@ def upload_file():
 
 @posts_bp.get("/uploads/<path:filename>")
 def uploaded_file(filename: str):
-    return send_from_directory(UPLOAD_DIR, filename)
+    try:
+        return serve_media_file(filename, UPLOAD_DIR)
+    except FileNotFoundError:
+        return json_error("الملف غير موجود", 404)
 
 
 @posts_bp.post("/like/<int:post_id>")
@@ -355,4 +345,10 @@ def get_stories():
         else:
             cur.execute("SELECT id, username, media, created_at FROM stories ORDER BY id DESC LIMIT 100")
         rows = cur.fetchall()
-    return jsonify(rows)
+    return jsonify([
+        {
+            **row,
+            "media_url": f"{request.host_url.rstrip('/')}/api/uploads/{row['media']}" if row.get("media") else "",
+        }
+        for row in rows
+    ])

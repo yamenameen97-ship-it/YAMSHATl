@@ -6,7 +6,7 @@ export default function Users() {
   const [users, setUsers] = useState([]);
 
   useEffect(() => {
-    axios.get("http://localhost:5000/admin/users")
+    axios.get("/api/admin_users", { withCredentials: true })
       .then(res => setUsers(res.data));
   }, []);
 

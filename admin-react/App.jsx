@@ -7,7 +7,7 @@ function Layout({ children }) {
   return (
     <div style={{ display: "flex" }}>
       <aside style={{ width: 200, background: "#111", color: "#fff" }}>
-        <h3>Admin</h3>
+        <h3>Admin Panel</h3>
         <Link to="/">Dashboard</Link><br/>
         <Link to="/users">Users</Link>
       </aside>

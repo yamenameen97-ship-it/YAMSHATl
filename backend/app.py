@@ -73,6 +73,16 @@ def file_too_large(_error):
     return jsonify({"message": "حجم الملف أكبر من الحد المسموح"}), 413
 
 
+@app.after_request
+def add_cache_headers(response):
+    path = request.path.lower()
+    if path in {"/", "/index.html", "/api/app-config.js", "/site.webmanifest"} or path.endswith((".html", ".js", ".css")):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
 @app.get("/health")
 def health():
     return jsonify(

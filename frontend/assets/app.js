@@ -471,6 +471,8 @@ async function openAdminPanel() {
         const reports = Array.isArray(data.reports) ? data.reports : [];
         const recentPosts = Array.isArray(data.recent_posts) ? data.recent_posts : [];
         const recentUsers = Array.isArray(data.recent_users) ? data.recent_users : [];
+        const recentReels = Array.isArray(data.recent_reels) ? data.recent_reels : [];
+        const liveRooms = Array.isArray(data.live_rooms) ? data.live_rooms : [];
         const leaderboards = data.leaderboards || {};
         const system = data.system || {};
 
@@ -508,6 +510,8 @@ async function openAdminPanel() {
                         <div><b>${day.comments || 0}</b><span>تعليقات</span></div>
                         <div><b>${day.messages || 0}</b><span>رسائل</span></div>
                         <div><b>${day.reports || 0}</b><span>بلاغات</span></div>
+                        <div><b>${day.reels || 0}</b><span>ريلز</span></div>
+                        <div><b>${day.stories || 0}</b><span>ستوري</span></div>
                     </div>
                 </div>
                 <div class="glass admin-panel-card">
@@ -519,6 +523,8 @@ async function openAdminPanel() {
                         <div><b>${month.comments || 0}</b><span>تعليقات</span></div>
                         <div><b>${month.messages || 0}</b><span>رسائل</span></div>
                         <div><b>${month.reports || 0}</b><span>بلاغات</span></div>
+                        <div><b>${month.reels || 0}</b><span>ريلز</span></div>
+                        <div><b>${month.stories || 0}</b><span>ستوري</span></div>
                     </div>
                 </div>
             </div>
@@ -564,12 +570,46 @@ async function openAdminPanel() {
             </div>
 
             <div class="admin-report-list">
+                <div class="admin-section-title">🎬 آخر الريلز</div>
+                ${recentReels.length ? recentReels.map(reel => `
+                    <div class="search-card admin-report-card">
+                        <div>
+                            <b>${escapeHTML(reel.username)}</b>
+                            <div class="subtle-text">ريل #${reel.id} · ${escapeHTML(reel.created_at || '')}</div>
+                            <div class="subtle-text">${escapeHTML(reel.video || '')}</div>
+                        </div>
+                        <div class="inline-actions">
+                            <button onclick="goReels()">فتح الريلز</button>
+                            <button class="soft-danger" onclick="adminRemoveReel(${reel.id})">حذف</button>
+                        </div>
+                    </div>
+                `).join("") : '<div class="empty-state">لا توجد ريلز حديثة</div>'}
+            </div>
+
+            <div class="admin-report-list">
+                <div class="admin-section-title">🔴 متابعة البثوث</div>
+                ${liveRooms.length ? liveRooms.map(room => `
+                    <div class="search-card admin-report-card">
+                        <div>
+                            <b>#${room.id} · ${escapeHTML(room.title || 'بث مباشر')}</b>
+                            <div class="subtle-text">${escapeHTML(room.username || '')} · الحالة: ${escapeHTML(room.status || '')} · مشاهدون: ${room.viewer_count || 0}</div>
+                            <div class="subtle-text">حالة المضيف: ${room.host_active ? 'نشط' : 'غير متصل'}</div>
+                        </div>
+                        <div class="inline-actions">
+                            <button onclick="window.location.href='live_room.html?id=${room.id}'">فتح</button>
+                            ${room.status === 'live' ? `<button class="soft-danger" onclick="adminEndLive(${room.id})">إنهاء</button>` : ''}
+                        </div>
+                    </div>
+                `).join("") : '<div class="empty-state">لا توجد بثوث مسجلة</div>'}
+            </div>
+
+            <div class="admin-report-list">
                 <div class="admin-section-title">👤 أحدث المستخدمين</div>
                 ${recentUsers.length ? recentUsers.map(user => `
                     <div class="search-card admin-report-card">
                         <div>
                             <b>${escapeHTML(user.name)}</b>
-                            <div class="subtle-text">${escapeHTML(user.created_at || '')}</div>
+                            <div class="subtle-text">${escapeHTML(user.created_at || '')} · الصلاحية: ${escapeHTML(user.role || 'user')}</div>
                             <div class="subtle-text">تم إخفاء البريد في الواجهات العامة حفاظاً على الخصوصية</div>
                         </div>
                         <div class="inline-actions">
@@ -604,6 +644,29 @@ async function adminDismissReport(reportId) {
     if (!reportId) return;
     try {
         const data = await requestJSON(`${API_BASE}/admin_dismiss_report/${reportId}`, { method: "POST" });
+        showToast(data.message);
+        openAdminPanel();
+    } catch (error) {
+        showToast(error.message);
+    }
+}
+
+async function adminRemoveReel(reelId) {
+    if (!reelId || !confirm(`حذف الريل رقم ${reelId} من لوحة الإدارة؟`)) return;
+    try {
+        const data = await requestJSON(`${API_BASE}/admin_remove_reel/${reelId}`, { method: "POST" });
+        showToast(data.message);
+        openAdminPanel();
+        if (document.body.classList.contains("reels-page")) loadReels();
+    } catch (error) {
+        showToast(error.message);
+    }
+}
+
+async function adminEndLive(roomId) {
+    if (!roomId || !confirm(`إنهاء البث رقم ${roomId} من لوحة الإدارة؟`)) return;
+    try {
+        const data = await requestJSON(`${API_BASE}/admin_end_live/${roomId}`, { method: "POST" });
         showToast(data.message);
         openAdminPanel();
     } catch (error) {
@@ -924,7 +987,7 @@ function loadStories(force = false) {
             return;
         }
         bar.innerHTML = data.map(s => {
-            const mediaUrl = `${API_BASE}/uploads/${encodeURIComponent(s.media)}`;
+            const mediaUrl = normalizeMediaUrl(s.media_url || (s.media ? `${API_BASE}/uploads/${encodeURIComponent(s.media)}` : ''));
             const preview = isVideo(s.media)
                 ? `<video muted playsinline><source src="${mediaUrl}"></video>`
                 : `<img src="${mediaUrl}" alt="story">`;
@@ -941,7 +1004,7 @@ function loadStories(force = false) {
 function openStory(media) {
     const viewer = document.createElement("div");
     viewer.style = `position:fixed;top:0;left:0;width:100%;height:100%;background:black;display:flex;justify-content:center;align-items:center;z-index:9999;`;
-    const mediaUrl = `${API_BASE}/uploads/${encodeURIComponent(media)}`;
+    const mediaUrl = normalizeMediaUrl(media?.includes?.('/uploads/') ? media : `${API_BASE}/uploads/${encodeURIComponent(media)}`);
     viewer.innerHTML = isVideo(media)
         ? `<video src="${mediaUrl}" autoplay controls style="max-width:100%; max-height:100%;"></video>`
         : `<img src="${mediaUrl}" style="max-width:100%; max-height:100%;">`;
@@ -1290,7 +1353,7 @@ function showReel(index) {
     target.innerHTML = `
         <div class="reel">
             <video id="video" autoplay loop playsinline controls>
-                <source src="${API_BASE}/uploads/${encodeURIComponent(r.video)}">
+                <source src="${normalizeMediaUrl(r.video_url || (r.video ? `${API_BASE}/uploads/${encodeURIComponent(r.video)}` : ''))}">
             </video>
             <div class="reel-gradient"></div>
             <div class="user">👤 ${escapeHTML(r.username)}</div>

@@ -213,6 +213,9 @@
                 window.LiveFix.showFloatingGift(`${data.user} sent ${data.gift}`);
                 appendComment({ user: 'النظام', text: `${data.user} sent ${data.gift}` });
             });
+            socket.on('socket_error', (data) => {
+                if (data?.message) window.LiveFix.showToast(data.message);
+            });
         }
 
         async function connectLiveKit() {
@@ -399,8 +402,35 @@
             setTimeout(() => window.location.href = 'live.html', 700);
         }
 
+        function notifyPresenceExit() {
+            if (!ROOM_ID || !CURRENT_USER) return;
+            const payload = JSON.stringify({
+                room_id: ROOM_ID,
+                socket_id: socket?.id || '',
+                platform: window.LiveFix.detectPlatform(),
+                device_type: 'browser',
+                is_host: isHost,
+                active: false,
+            });
+            try {
+                fetch(`${API_BASE}/live_presence`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    keepalive: true,
+                    headers: { 'Content-Type': 'application/json', ...(window.withAuthHeaders ? window.withAuthHeaders({}) : {}) },
+                    body: payload,
+                });
+            } catch (_) {}
+        }
+
+        window.addEventListener('pagehide', notifyPresenceExit);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') notifyPresenceExit();
+        });
+
         window.addEventListener('beforeunload', () => {
             if (presenceStopper) presenceStopper();
+            notifyPresenceExit();
             if (socket) socket.disconnect();
             if (lkRoom && typeof lkRoom.disconnect === 'function') lkRoom.disconnect();
             if (localPreviewStream) localPreviewStream.getTracks().forEach(track => track.stop());

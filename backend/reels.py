@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import os
-import uuid
 from pathlib import Path
 
 from flask import Blueprint, jsonify, request
-from werkzeug.utils import secure_filename
 
 from config import Config
 from db import db_cursor
 from extensions import limiter
+from media_store import delete_media_file, save_media_upload
 from utils import current_user, json_error, normalize_text, require_auth
 
 reels_bp = Blueprint("reels", __name__)
@@ -35,16 +33,7 @@ def _is_blocked(cur, user_a: str | None, user_b: str | None) -> bool:
 
 
 def _save_video(file_storage) -> str:
-    raw_name = secure_filename(file_storage.filename or "")
-    if not raw_name:
-        raise ValueError("اسم الملف غير صالح")
-    ext = Path(raw_name).suffix.lower().replace(".", "")
-    if ext not in Config.ALLOWED_VIDEO_EXTENSIONS:
-        raise ValueError("الملف يجب أن يكون فيديو صالحاً")
-    filename = f"reel_{uuid.uuid4().hex}.{ext}"
-    save_path = UPLOAD_DIR / filename
-    file_storage.save(save_path)
-    return filename
+    return save_media_upload(file_storage, Config.ALLOWED_VIDEO_EXTENSIONS, UPLOAD_DIR)
 
 
 def _delete_video_file(video_value: str | None):
@@ -52,12 +41,7 @@ def _delete_video_file(video_value: str | None):
     if not video:
         return
     file_name = video.split("/uploads/")[-1].split("?")[0] if "/uploads/" in video else video
-    file_path = UPLOAD_DIR / file_name
-    if file_path.exists() and file_path.is_file():
-        try:
-            os.remove(file_path)
-        except OSError:
-            pass
+    delete_media_file(file_name, UPLOAD_DIR)
 
 
 def _reel_stats(cur, reel_id: int, username: str | None = None) -> dict:

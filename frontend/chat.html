@@ -9,17 +9,6 @@
     <link rel="icon" type="image/png" href="assets/favicon-32.png">
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
     <link rel="manifest" href="site.webmanifest">
-
-<style>
-.chat-messages{display:flex;flex-direction:column;padding:10px;gap:6px;height:70vh;overflow-y:auto;background:#ece5dd}
-.msg{max-width:70%;padding:8px 12px;border-radius:10px;font-size:14px;line-height:1.4}
-.msg.me{align-self:flex-start;background:#ffffff}
-.msg.other{align-self:flex-end;background:#dcf8c6}
-.chat-input-bar{position:fixed;bottom:10px;left:0;right:0;display:flex;gap:8px;padding:8px}
-.chat-input-bar input{flex:1;padding:10px;border-radius:20px;border:1px solid #ccc}
-.chat-input-bar button{padding:10px 16px;border-radius:20px;border:none;background:#25d366;color:white}
-</style>
-
 </head>
 <body class="chat-page">
     <div class="chat-shell glass">
@@ -45,25 +34,5 @@
     <script src="/app-config.js"></script>
     <script src="assets/auth.js"></script>
     <script src="assets/app.js"></script>
-
-<div class="chat-messages" id="messages"></div>
-<div class="chat-input-bar">
-<input id="msgInput" placeholder="اكتب رسالة">
-<button onclick="sendMsg()">ارسال</button>
-</div>
-<script>
-function sendMsg(){
- const i=document.getElementById('msgInput');
- if(!i.value.trim())return;
- const box=document.getElementById('messages');
- const d=document.createElement('div');
- d.className='msg other';
- d.innerText=i.value;
- box.appendChild(d);
- i.value='';
- box.scrollTop=box.scrollHeight;
-}
-</script>
-
 </body>
 </html>

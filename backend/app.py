@@ -15,6 +15,7 @@ from db import init_db, set_admin_roles
 from extensions import init_extensions
 from posts import posts_bp
 from reels import reels_bp
+from live_socket import socketio, init_socket
 
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
@@ -38,6 +39,7 @@ app.config.update(
 )
 
 init_extensions(app)
+init_socket(app)
 init_db()
 set_admin_roles(Config.ADMIN_EMAILS, Config.ADMIN_USERNAMES)
 
@@ -95,4 +97,4 @@ def serve_frontend(path: str):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    socketio.run(app, host="0.0.0.0", port=port)

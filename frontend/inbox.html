@@ -2,12 +2,12 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="theme-color" content="#0f172a">
+    <meta name="theme-color" content="#e00000">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Yamshat | الرسائل</title>
     <link rel="stylesheet" href="assets/style.css">
-    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
-    <link rel="apple-touch-icon" href="assets/favicon.svg">
+    <link rel="icon" type="image/png" href="assets/favicon-32.png">
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
     <style>
         .inbox-page { padding-bottom: 40px; }
         .inbox-shell { padding: 10px; }
@@ -25,6 +25,7 @@
         .muted-box { color: rgba(255,255,255,0.72); font-size: 13px; margin-top: 6px; }
         .inline-actions { display: flex; gap: 8px; flex-wrap: wrap; }
     </style>
+    <link rel="manifest" href="site.webmanifest">
 </head>
 <body class="inbox-page">
     <header class="header glass">
@@ -59,6 +60,7 @@
         </div>
     </main>
 
+    <script src="app-config.js"></script>
     <script src="assets/auth.js"></script>
     <script>
         const API_BASE = window.API_BASE || `${window.location.origin.replace(/\/+$/, "")}/api`;

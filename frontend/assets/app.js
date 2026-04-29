@@ -15,6 +15,8 @@ let chatTimer = null;
 let reelsData = [];
 let current = 0;
 let startY = 0;
+let passwordResetRequestToken = null;
+let passwordResetToken = null;
 
 function escapeHTML(value) {
     return String(value || "")
@@ -133,14 +135,22 @@ function toggleTheme() {
     showToast(nextTheme === "light" ? "تم تفعيل الوضع النهاري" : "تم تفعيل الوضع الليلي");
 }
 
+function showAuthForm(formId) {
+    ["loginForm", "registerForm", "resetForm"].forEach(id => {
+        document.getElementById(id)?.classList.toggle("hidden", id !== formId);
+    });
+}
+
 function showRegister() {
-    document.getElementById("loginForm")?.classList.add("hidden");
-    document.getElementById("registerForm")?.classList.remove("hidden");
+    showAuthForm("registerForm");
 }
 
 function showLogin() {
-    document.getElementById("registerForm")?.classList.add("hidden");
-    document.getElementById("loginForm")?.classList.remove("hidden");
+    showAuthForm("loginForm");
+}
+
+function showPasswordReset() {
+    showAuthForm("resetForm");
 }
 
 async function register(btn) {
@@ -192,6 +202,91 @@ async function login(btn) {
         persistAuthSession(data);
         showToast(data.message);
         window.location.href = "feed.html";
+    } catch (error) {
+        showToast(error.message);
+    } finally {
+        resetLoading(btn);
+    }
+}
+
+async function requestPasswordReset(btn) {
+    const identifier = document.getElementById("resetIdentifier")?.value.trim();
+    const channel = document.getElementById("resetChannel")?.value || "auto";
+
+    if (!identifier) {
+        showToast("أدخل البريد الإلكتروني أو رقم الجوال");
+        return;
+    }
+
+    showLoading(btn);
+    try {
+        const data = await requestJSON(`${API_BASE}/password_reset/request`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ identifier, channel })
+        });
+        passwordResetRequestToken = data.request_token || null;
+        passwordResetToken = null;
+        showToast(data.message || "تم إرسال رمز التحقق");
+    } catch (error) {
+        showToast(error.message);
+    } finally {
+        resetLoading(btn);
+    }
+}
+
+async function verifyPasswordReset(btn) {
+    const code = document.getElementById("resetCode")?.value.trim();
+    if (!passwordResetRequestToken) {
+        showToast("أرسل رمز التحقق أولاً");
+        return;
+    }
+    if (!code) {
+        showToast("أدخل رمز التحقق");
+        return;
+    }
+
+    showLoading(btn);
+    try {
+        const data = await requestJSON(`${API_BASE}/password_reset/verify`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ request_token: passwordResetRequestToken, code })
+        });
+        passwordResetToken = data.reset_token || null;
+        showToast(data.message || "تم التحقق من الرمز");
+    } catch (error) {
+        showToast(error.message);
+    } finally {
+        resetLoading(btn);
+    }
+}
+
+async function completePasswordReset(btn) {
+    const newPassword = document.getElementById("resetNewPassword")?.value.trim();
+    if (!passwordResetToken) {
+        showToast("أكد رمز التحقق أولاً");
+        return;
+    }
+    if (!newPassword) {
+        showToast("أدخل كلمة المرور الجديدة");
+        return;
+    }
+
+    showLoading(btn);
+    try {
+        const data = await requestJSON(`${API_BASE}/password_reset/reset`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reset_token: passwordResetToken, new_password: newPassword })
+        });
+        passwordResetRequestToken = null;
+        passwordResetToken = null;
+        document.getElementById("resetCode") && (document.getElementById("resetCode").value = "");
+        document.getElementById("resetNewPassword") && (document.getElementById("resetNewPassword").value = "");
+        document.getElementById("loginPassword") && (document.getElementById("loginPassword").value = "");
+        showToast(data.message || "تم تحديث كلمة المرور");
+        showLogin();
     } catch (error) {
         showToast(error.message);
     } finally {

@@ -2,13 +2,14 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="theme-color" content="#020617">
+    <meta name="theme-color" content="#e00000">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="format-detection" content="telephone=no">
     <title>Yamshat | غرفة البث</title>
     <link rel="stylesheet" href="assets/style.css">
+    <link rel="icon" type="image/png" href="assets/favicon-32.png">
     <style>
         body { margin:0; background:#000; color:#fff; }
         .shell { max-width:1280px; margin:0 auto; min-height:100vh; padding-bottom:calc(env(safe-area-inset-bottom, 0px) + 16px); }
@@ -40,6 +41,8 @@
         @keyframes giftRise{ 0%{transform:translateX(-50%) translateY(0);opacity:0} 15%{opacity:1} 100%{transform:translateX(-50%) translateY(-120px);opacity:0} }
         @media (max-width: 980px) { .layout { grid-template-columns:1fr; } .sidebar { border-right:0; border-top:1px solid rgba(255,255,255,0.08); } .host-preview { width:120px; } }
     </style>
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+    <link rel="manifest" href="site.webmanifest">
 </head>
 <body>
     <div class="shell">
@@ -96,8 +99,9 @@
         </div>
     </div>
 
+    <script src="app-config.js"></script>
     <script src="assets/auth.js"></script>
-    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.15.5/dist/livekit-client.umd.min.js"></script>
     <script src="assets/live_fix.js"></script>
     <script>

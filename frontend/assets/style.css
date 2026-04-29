@@ -1,15 +1,15 @@
 :root{
-  --primary:#ff2e63;
-  --primary-dark:#e11d48;
-  --secondary:#7c3aed;
-  --accent:#22d3ee;
-  --bg:#070b14;
-  --bg-soft:#0f172a;
-  --surface:#111827;
-  --surface-2:#172033;
-  --surface-3:#1e293b;
+  --primary:#e00000;
+  --primary-dark:#b80000;
+  --secondary:#ffffff;
+  --accent:#ffffff;
+  --bg:#050505;
+  --bg-soft:#101010;
+  --surface:#121212;
+  --surface-2:#1a1a1a;
+  --surface-3:#222222;
   --text:#f8fafc;
-  --muted:#94a3b8;
+  --muted:#d1d5db;
   --border:rgba(255,255,255,.09);
   --shadow:0 18px 50px rgba(0,0,0,.26);
   --radius:22px;
@@ -35,9 +35,9 @@ body{
   min-height:100vh;
   overscroll-behavior-y:contain;
   background:
-    radial-gradient(circle at top right, rgba(124,58,237,.18), transparent 28%),
-    radial-gradient(circle at top left, rgba(255,46,99,.14), transparent 24%),
-    linear-gradient(180deg, #09101d 0%, #05070c 100%);
+    radial-gradient(circle at top right, rgba(224,0,0,.18), transparent 28%),
+    radial-gradient(circle at top left, rgba(255,255,255,.08), transparent 24%),
+    linear-gradient(180deg, #101010 0%, #000000 100%);
   color:var(--text);
   font-family:Tahoma, Arial, "Segoe UI", sans-serif;
   line-height:1.65;
@@ -64,8 +64,8 @@ body.light-theme{
   --border:rgba(15,23,42,.09);
   --shadow:0 16px 38px rgba(15,23,42,.10);
   background:
-    radial-gradient(circle at top right, rgba(124,58,237,.10), transparent 28%),
-    radial-gradient(circle at top left, rgba(255,46,99,.09), transparent 24%),
+    radial-gradient(circle at top right, rgba(224,0,0,.08), transparent 28%),
+    radial-gradient(circle at top left, rgba(224,0,0,.06), transparent 24%),
     linear-gradient(180deg, #f7faff 0%, #edf3fb 100%);
 }
 
@@ -95,8 +95,8 @@ button{
   padding:12px 16px;
   font-weight:700;
   color:#fff;
-  background:linear-gradient(135deg, var(--primary) 0%, #ff5d8f 100%);
-  box-shadow:0 10px 20px rgba(255,46,99,.22);
+  background:linear-gradient(135deg, var(--primary) 0%, #ff2e2e 100%);
+  box-shadow:0 10px 20px rgba(224,0,0,.22);
   transition:transform .16s ease, opacity .16s ease, box-shadow .16s ease, filter .16s ease;
 }
 

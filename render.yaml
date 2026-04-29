@@ -1,10 +1,10 @@
 services:
   - type: web
-    name: yamshat
+    name: yamshatl
     env: python
     rootDir: .
     buildCommand: pip install -r backend/requirements.txt
-    startCommand: gunicorn --chdir backend app:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120
+    startCommand: gunicorn --chdir backend app:app --worker-class eventlet -w 1 --bind 0.0.0.0:$PORT --timeout 120
     healthCheckPath: /health
     autoDeploy: true
     envVars:
@@ -25,7 +25,7 @@ services:
       - key: SESSION_COOKIE_SECURE
         value: "1"
       - key: SESSION_COOKIE_SAMESITE
-        value: Lax
+        value: None
       - key: SESSION_DAYS
         value: "30"
       - key: JWT_EXPIRE_DAYS
@@ -34,7 +34,63 @@ services:
         value: "25"
       - key: LOG_LEVEL
         value: INFO
+      - key: DEFAULT_COIN_BALANCE
+        value: "0"
+      - key: LIVEKIT_PROJECT_ID
+        sync: false
+      - key: LIVEKIT_SIP_URI
+        sync: false
+      - key: LIVEKIT_URL
+        sync: false
+      - key: LIVEKIT_WS_URL
+        sync: false
+      - key: LIVEKIT_API_KEY
+        sync: false
+      - key: LIVEKIT_SECRET
+        sync: false
       - key: ADMIN_EMAILS
         sync: false
       - key: ADMIN_USERNAMES
         sync: false
+      - key: RESET_CODE_EXPIRE_MINUTES
+        value: "10"
+      - key: RESET_CODE_LENGTH
+        value: "6"
+      - key: RESET_MAX_VERIFY_ATTEMPTS
+        value: "5"
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM_EMAIL
+        sync: false
+      - key: SMTP_FROM_NAME
+        value: Yamshat
+      - key: SMTP_USE_TLS
+        value: "1"
+      - key: SMTP_USE_SSL
+        value: "0"
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_FROM
+        sync: false
+      - key: TWILIO_WHATSAPP_CONTENT_SID
+        sync: false
+
+  - type: static
+    name: yamshatl-1
+    rootDir: frontend
+    buildCommand: |
+      cat > app-config.js <<EOF
+      window.APP_API_BASE = "https://yamshatl.onrender.com/api";
+      window.YAMSHAT_FRONTEND_ORIGIN = "https://yamshatl-1.onrender.com";
+      window.YAMSHAT_BACKEND_ORIGIN = "https://yamshatl.onrender.com";
+      EOF
+    staticPublishPath: .
+    autoDeploy: true

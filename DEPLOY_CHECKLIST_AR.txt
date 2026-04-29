@@ -1,0 +1,38 @@
+Yamshat - Checklist النشر النهائي
+=================================
+
+1) ارفع المشروع كما هو إلى GitHub بدون ملفات محلية حساسة.
+2) في Render أنشئ Blueprint من ملف render.yaml.
+3) وافق على إنشاء خدمتين:
+   - Backend Web Service: yamshatl
+   - Frontend Static Site: yamshatl-1
+4) قبل أول Deploy أضف القيم السرية المطلوبة داخل Render:
+   - DATABASE_URL
+   - LIVEKIT_PROJECT_ID
+   - LIVEKIT_SIP_URI
+   - LIVEKIT_URL
+   - LIVEKIT_WS_URL
+   - LIVEKIT_API_KEY
+   - LIVEKIT_SECRET
+   - SMTP_HOST / SMTP_USER / SMTP_PASSWORD / SMTP_FROM_EMAIL (إذا كنت تحتاج استرجاع كلمة المرور بالإيميل)
+   - TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_WHATSAPP_FROM / TWILIO_WHATSAPP_CONTENT_SID (إذا كنت تحتاج واتساب)
+5) بعد النشر تحقق من الروابط التالية:
+   - https://yamshatl.onrender.com/health
+   - https://yamshatl-1.onrender.com
+6) اختبر من الويب:
+   - تسجيل حساب
+   - تسجيل دخول
+   - رفع صورة/فيديو
+   - إرسال رسالة
+   - إشعار دفع إذا كان Firebase مفعّل
+   - بث مباشر إذا كانت مفاتيح LiveKit مضافة
+7) اختبر من أندرويد:
+   - الأيقونة تظهر بعد التثبيت
+   - شاشة الترحيب تظهر أول التشغيل
+   - شاشة الدخول والتسجيل تحمل الشعار الرسمي
+   - تسجيل الدخول وفتح الرئيسية
+8) لو أردت Build Release Android:
+   - أضف بيانات التوقيع في gradle.properties أو من بيئة CI
+   - نفّذ assembleRelease أو bundleRelease
+9) لا ترفع أي ملف .env محلي أو قاعدة SQLite محلية أو ملفات __pycache__.
+10) إذا غيّرت أسماء خدمات Render عدّل الروابط داخل render.yaml و frontend/app-config.js و mobile/gradle.properties.

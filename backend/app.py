@@ -27,6 +27,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder=str(FRONTEND_DIR), static_url_path="")
+app.secret_key = os.environ.get("SECRET_KEY")
 app.config.from_object(Config)
 app.secret_key = Config.SECRET_KEY
 app.config.update(

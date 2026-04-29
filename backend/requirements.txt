@@ -8,3 +8,4 @@ sqlalchemy
 livekit
 python-dotenv
 PyJWT
+gonicorn

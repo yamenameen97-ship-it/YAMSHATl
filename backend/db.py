@@ -619,7 +619,20 @@ def init_db() -> None:
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_blocked_users_unique ON blocked_users(blocker, blocked)")
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_group_members_unique ON group_members(group_id, username)")
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_typing_status_unique ON typing_status(sender, receiver)")
-        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_live_rooms_livekit_room_unique ON live_rooms(livekit_room)")
+
+        # 🔥 الحل هنا: تنظيف التكرارات قبل أي مشاكل
+        cur.execute("""
+        DELETE FROM live_rooms
+        WHERE id NOT IN (
+            SELECT MIN(id)
+            FROM live_rooms
+            GROUP BY livekit_room
+        )
+        """)
+
+        # ❌ تم حذف هذا السطر لأنه يسبب المشكلة
+        # cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_live_rooms_livekit_room_unique ON live_rooms(livekit_room)")
+
         cur.execute("CREATE INDEX IF NOT EXISTS idx_friend_requests_lookup ON friend_requests(sender, receiver, status, created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_reel_likes_reel_id ON reel_likes(reel_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_reel_comments_reel_id ON reel_comments(reel_id)")

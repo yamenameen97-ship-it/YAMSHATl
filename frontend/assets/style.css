@@ -160,6 +160,64 @@ body.light-theme .glass{
   background:linear-gradient(180deg, rgba(255,255,255,.88), rgba(255,255,255,.72));
 }
 
+
+body.theme-instagram{
+  --primary:#ff2d55;
+  --primary-2:#fd5949;
+  --secondary:#f59e0b;
+  --accent:#c13584;
+}
+
+body.theme-instagram .glass,
+body.theme-instagram .post,
+body.theme-instagram .group-card,
+body.theme-instagram .post-card,
+body.theme-instagram .search-card,
+body.theme-instagram .admin-report-card{
+  border-radius:24px;
+  border:1px solid rgba(255,255,255,.16);
+}
+
+body.theme-instagram button{
+  border-radius:18px;
+  background:linear-gradient(135deg, rgba(255,45,85,.96), rgba(253,89,73,.92), rgba(245,158,11,.92));
+}
+
+body.theme-instagram .icon-btn,
+body.theme-instagram .top-services button,
+body.theme-instagram .service-menu button{
+  box-shadow:0 12px 28px rgba(255,45,85,.18);
+}
+
+body.theme-neon{
+  --primary:#06b6d4;
+  --primary-2:#8b5cf6;
+  --secondary:#22d3ee;
+  --accent:#a78bfa;
+}
+
+body.theme-neon .glass,
+body.theme-neon .post,
+body.theme-neon .group-card,
+body.theme-neon .post-card,
+body.theme-neon .search-card,
+body.theme-neon .admin-report-card{
+  border-radius:18px;
+  border:1px solid rgba(34,211,238,.24);
+  box-shadow:0 0 0 1px rgba(34,211,238,.08), 0 18px 40px rgba(6,182,212,.12), 0 0 34px rgba(139,92,246,.14);
+}
+
+body.theme-neon button{
+  border-radius:14px;
+  background:linear-gradient(135deg, rgba(6,182,212,.92), rgba(139,92,246,.92));
+}
+
+body.theme-neon .icon-btn,
+body.theme-neon .top-services button,
+body.theme-neon .service-menu button{
+  border-color:rgba(34,211,238,.28);
+}
+
 .mini-glass{
   background:rgba(255,255,255,.045);
 }

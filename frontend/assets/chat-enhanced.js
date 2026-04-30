@@ -77,92 +77,65 @@
         return /\.(mp3|wav|m4a|aac|ogg|oga|opus|3gp|amr|weba)$/i.test(url || '');
     }
 
-    const KEY_VERSION = 'hybrid-rsa-aes-v1';
-    const publicKeyCache = new Map();
-
-    async function ensureChatIdentity() {
-        const auth = window.getStoredAuth ? window.getStoredAuth() : {};
-        if (!auth?.user) throw new Error('يجب تسجيل الدخول أولاً');
-        if (!window.ensureWebChatIdentity) throw new Error('تهيئة التشفير غير متاحة');
-        return window.ensureWebChatIdentity(auth.user);
+    function chatSecretKey(receiver) {
+        const pair = [String(currentUser || '').trim(), String(receiver || '').trim()].sort().join('::');
+        return `yamshat_e2e_${pair}`;
     }
 
-    async function fetchRemotePublicKey(receiver) {
-        const safeReceiver = String(receiver || '').trim();
-        if (!safeReceiver) throw new Error('المستلم غير محدد');
-        if (publicKeyCache.has(safeReceiver)) return publicKeyCache.get(safeReceiver);
-        const data = await requestJSON(`${API_BASE}/chat_keys/public/${encodeURIComponent(safeReceiver)}`);
-        if (!data?.public_key) throw new Error('المستخدم الآخر لم يفعّل التشفير بعد');
-        publicKeyCache.set(safeReceiver, data.public_key);
-        return data.public_key;
+    function getChatSecret(receiver = chatReceiver()) {
+        return localStorage.getItem(chatSecretKey(receiver)) || '';
+    }
+
+    function setChatSecret(receiver, secret) {
+        const key = chatSecretKey(receiver);
+        if (!secret) localStorage.removeItem(key);
+        else localStorage.setItem(key, secret);
+    }
+
+    async function deriveChatCryptoKey(secret, receiver) {
+        const material = await crypto.subtle.importKey('raw', enc.encode(secret), 'PBKDF2', false, ['deriveKey']);
+        const salt = enc.encode([String(currentUser || '').trim(), String(receiver || '').trim()].sort().join('|yamshat|'));
+        return crypto.subtle.deriveKey(
+            { name: 'PBKDF2', salt, iterations: 120000, hash: 'SHA-256' },
+            material,
+            { name: 'AES-GCM', length: 256 },
+            false,
+            ['encrypt', 'decrypt']
+        );
     }
 
     function toB64(buffer) {
-        return window.webChatB64FromBytes ? window.webChatB64FromBytes(buffer) : btoa(String.fromCharCode(...new Uint8Array(buffer)));
+        return btoa(String.fromCharCode(...new Uint8Array(buffer)));
     }
 
     function fromB64(value) {
-        return window.webChatBytesFromB64 ? window.webChatBytesFromB64(value) : Uint8Array.from(atob(value), c => c.charCodeAt(0));
-    }
-
-    async function importAesKey(rawKey) {
-        return crypto.subtle.importKey('raw', rawKey, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+        return Uint8Array.from(atob(value), c => c.charCodeAt(0));
     }
 
     async function encryptChatText(plainText, receiver) {
-        if (!plainText) {
-            return { ciphertext: '', encrypted_key: '', iv: '', encryption_version: KEY_VERSION };
-        }
-        const auth = window.getStoredAuth ? window.getStoredAuth() : {};
-        const myKeys = await ensureChatIdentity();
-        const receiverPublicKeyB64 = await fetchRemotePublicKey(receiver);
-        const [senderPublicKey, receiverPublicKey] = await Promise.all([
-            window.importWebChatPublicKey(myKeys.publicKey),
-            window.importWebChatPublicKey(receiverPublicKeyB64),
-        ]);
-        const aesKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
-        const rawAesKey = await crypto.subtle.exportKey('raw', aesKey);
+        const secret = getChatSecret(receiver);
+        if (!secret || !plainText) return plainText;
+        const key = await deriveChatCryptoKey(secret, receiver);
         const iv = crypto.getRandomValues(new Uint8Array(12));
-        const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, enc.encode(plainText));
-        const [senderWrappedKey, receiverWrappedKey] = await Promise.all([
-            crypto.subtle.encrypt({ name: 'RSA-OAEP' }, senderPublicKey, rawAesKey),
-            crypto.subtle.encrypt({ name: 'RSA-OAEP' }, receiverPublicKey, rawAesKey),
-        ]);
-        return {
-            ciphertext: toB64(cipher),
-            encrypted_key: JSON.stringify({
-                sender: toB64(senderWrappedKey),
-                receiver: toB64(receiverWrappedKey),
-                owner: String(auth.user || currentUser || '').trim(),
-            }),
-            iv: toB64(iv),
-            encryption_version: KEY_VERSION,
-        };
+        const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(plainText));
+        return `ENCv1:${toB64(iv)}:${toB64(cipher)}`;
     }
 
-    async function decryptChatText(message) {
-        const text = String(message?.content || message?.message || '');
-        const encryptedKey = String(message?.encrypted_key || '').trim();
-        const iv = String(message?.iv || '').trim();
-        if (!text || !encryptedKey || !iv) return text;
+    async function decryptChatText(cipherText, receiver) {
+        const text = String(cipherText || '');
+        if (!text.startsWith('ENCv1:')) return text;
+        const secret = getChatSecret(receiver);
+        if (!secret) return '🔐 رسالة مشفرة — فعّل E2E لقراءتها';
+        const parts = text.split(':');
+        if (parts.length < 3) return '🔐 رسالة مشفرة';
         try {
-            const auth = window.getStoredAuth ? window.getStoredAuth() : {};
-            const current = String(auth.user || currentUser || '').trim();
-            const myKeys = await ensureChatIdentity();
-            const privateKey = await window.importWebChatPrivateKey(myKeys.privateKey);
-            let wrappedKey = encryptedKey;
-            if (encryptedKey.startsWith('{')) {
-                const parsed = JSON.parse(encryptedKey);
-                wrappedKey = current === String(message?.sender || '')
-                    ? (parsed.sender || parsed.self || parsed.me || wrappedKey)
-                    : (parsed.receiver || parsed.peer || wrappedKey);
-            }
-            const rawAesKey = await crypto.subtle.decrypt({ name: 'RSA-OAEP' }, privateKey, fromB64(wrappedKey));
-            const aesKey = await importAesKey(rawAesKey);
-            const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(iv) }, aesKey, fromB64(text));
+            const key = await deriveChatCryptoKey(secret, receiver);
+            const iv = fromB64(parts[1]);
+            const payload = fromB64(parts.slice(2).join(':'));
+            const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, payload);
             return dec.decode(plain);
         } catch (_) {
-            return '🔐 تعذر فك التشفير على هذا الجهاز';
+            return '🔐 تعذر فك التشفير بهذه العبارة السرية';
         }
     }
 
@@ -376,7 +349,7 @@
         const safeMedia = normalizeMediaUrl(message.media_url || '');
         const mine = message.sender === currentUser;
         const rawText = deleted ? 'تم حذف هذه الرسالة' : String(message.local_status ? (message.content || message.message || '') : (message.content || message.message || ''));
-        const text = message.local_status ? rawText : await decryptChatText(message);
+        const text = message.local_status ? rawText : await decryptChatText(rawText, receiver);
         let mediaHtml = '';
         if (!deleted && safeMedia) {
             if (isImage(safeMedia) || message.type === 'image') mediaHtml = `<img class="chat-media" src="${encodeURI(safeMedia)}" alt="image message">`;
@@ -524,16 +497,13 @@
         patchQueuedItem(item.client_id, { local_status: 'syncing', last_error: '' });
         await renderMessages();
         try {
-            const encryptedPayload = item.raw_message ? await encryptChatText(item.raw_message, state.receiver) : { ciphertext: '', encrypted_key: '', iv: '', encryption_version: KEY_VERSION };
+            const encryptedMessage = item.raw_message ? await encryptChatText(item.raw_message, state.receiver) : '';
             const response = await requestJSON(`${API_BASE}/send_message`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     receiver: state.receiver,
-                    ciphertext: encryptedPayload.ciphertext,
-                    encrypted_key: encryptedPayload.encrypted_key,
-                    iv: encryptedPayload.iv,
-                    encryption_version: encryptedPayload.encryption_version,
+                    message: encryptedMessage,
                     type: item.type || 'text',
                     media_url: item.media_url || null,
                     client_id: item.client_id,
@@ -654,7 +624,7 @@
         state.replyDraft = {
             id: Number(message.id || 0),
             sender: message.sender || '',
-            content: message.encrypted_key ? '🔐 رسالة مشفرة' : (raw ? raw.slice(0, 140) : ({ image: '📷 صورة', video: '🎥 فيديو', voice: '🎤 رسالة صوتية', file: '📎 ملف' }[message.type] || 'رسالة'))
+            content: raw ? raw.slice(0, 140) : ({ image: '📷 صورة', video: '🎥 فيديو', voice: '🎤 رسالة صوتية', file: '📎 ملف' }[message.type] || 'رسالة')
         };
         renderReplyComposer();
     }
@@ -702,17 +672,15 @@
         });
     }
 
-    async function toggleChatE2E() {
+    function toggleChatE2E() {
         const receiver = state.receiver;
         if (!receiver) return;
-        try {
-            await ensureChatIdentity();
-            await fetchRemotePublicKey(receiver);
-            showToast('✅ التشفير الطرفي مفعّل وجاهز لهذه المحادثة');
-            await renderMessages();
-        } catch (error) {
-            showToast(error.message || 'المستخدم الآخر لم يفعّل مفاتيح التشفير بعد');
-        }
+        const current = getChatSecret(receiver);
+        const next = window.prompt(current ? 'أدخل عبارة سرية جديدة أو اتركها فارغة لإيقاف E2E' : 'أدخل عبارة سرية لتفعيل E2E بينك وبين هذا المستخدم', current || '');
+        if (next === null) return;
+        setChatSecret(receiver, next.trim());
+        showToast(next.trim() ? 'تم تفعيل التشفير الطرفي لهذه المحادثة' : 'تم إيقاف التشفير الطرفي');
+        renderMessages();
     }
 
     function startCall(mode) {
@@ -827,7 +795,6 @@
         document.getElementById('chatWith') && (document.getElementById('chatWith').innerText = state.receiver ? `المحادثة مع ${state.receiver}` : 'لم يتم اختيار مستخدم');
         bindUiEvents();
         bindTypingInput();
-        await ensureChatIdentity();
         renderReplyComposer();
         refreshSyncBanner();
         await loadMessagesEnhanced({ reset: true });

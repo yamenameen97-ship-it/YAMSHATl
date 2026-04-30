@@ -2,19 +2,61 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Yamshat | Admin Panel</title>
-  <meta http-equiv="refresh" content="0; url=admin-panel/index.html">
-  <style>
-    body{font-family:system-ui,sans-serif;background:#081120;color:#fff;display:grid;place-items:center;min-height:100vh;margin:0}
-    a{color:#8ec5ff}
-    .box{max-width:560px;padding:24px;border:1px solid rgba(255,255,255,.1);border-radius:18px;background:rgba(255,255,255,.04)}
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#e00000">
+  <title>Yamshat | لوحة الإدارة</title>
+  <link rel="stylesheet" href="assets/style.css">
+  <link rel="icon" type="image/png" href="assets/favicon-32.png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="manifest" href="site.webmanifest">
 </head>
-<body>
-  <div class="box">
-    <h1>جاري فتح لوحة الإدارة الجديدة...</h1>
-    <p>إذا لم يتم التحويل تلقائيًا اضغط هنا: <a href="admin-panel/index.html">فتح Admin Dashboard</a></p>
+<body class="admin-page">
+  <header class="header glass">
+    <div class="header-row">
+      <button class="icon-btn" onclick="goFeed()">⬅</button>
+      <div>
+        <div class="brand-title">🛠️ لوحة الإدارة</div>
+        <div class="subtle-text" id="adminSessionHint">جاري تجهيز لوحة الإدارة...</div>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn" onclick="openAdminPanel()">🔄</button>
+        <button class="icon-btn" onclick="logout()">🚪</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container" style="padding-bottom:120px;">
+    <div class="glass quick-panel">
+      <div class="subtle-text">لوحة الإدارة الآن تعمل من نفس جلسة المستخدم داخل الموقع، بدون تحويل إلى لوحة منفصلة قد تكسر الجلسة.</div>
+    </div>
+  </main>
+
+  <div id="adminModal" class="modal-overlay hidden">
+    <div class="modal-card glass large-modal">
+      <div class="modal-header">
+        <h3>لوحة الإدارة الاحترافية</h3>
+        <button class="icon-btn" onclick="window.location.href='feed.html'">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="adminContent" class="admin-content"></div>
+      </div>
+    </div>
   </div>
+
+  <script src="/api/app-config.js"></script>
+  <script src="assets/auth.js"></script>
+  <script src="assets/app.js"></script>
+  <script>
+    window.addEventListener('DOMContentLoaded', async () => {
+      const hint = document.getElementById('adminSessionHint');
+      try {
+        const me = await window.requestJSON(`${window.API_BASE}/me`);
+        hint.textContent = me?.user ? `مرحباً ${me.user}` : 'يجب تسجيل الدخول أولاً';
+        await openAdminPanel();
+      } catch (error) {
+        hint.textContent = error.message || 'تعذر فتح لوحة الإدارة';
+      }
+    });
+  </script>
 </body>
 </html>

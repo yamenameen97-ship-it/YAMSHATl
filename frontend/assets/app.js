@@ -8,7 +8,9 @@ const API_BASE = window.API_BASE || (() => {
 
 let currentUser = window.getStoredAuth?.().user || null;
 let currentEmail = window.getStoredAuth?.().email || null;
+let currentRole = window.getStoredAuth?.().role || null;
 let cache = {};
+let relationshipCache = {};
 let postsTimer = null;
 let notificationsTimer = null;
 let chatTimer = null;
@@ -42,6 +44,9 @@ function normalizeMediaUrl(url) {
     if (safeUrl.startsWith("/uploads/")) return `/api${safeUrl}`;
     if (/^https?:\/\//i.test(safeUrl) && safeUrl.includes("/uploads/")) {
         return safeUrl.replace("/uploads/", "/api/uploads/");
+    }
+    if (!safeUrl.includes('/') && /\.[a-z0-9]{2,8}$/i.test(safeUrl)) {
+        return `${API_BASE}/uploads/${encodeURIComponent(safeUrl)}`;
     }
     return safeUrl;
 }
@@ -92,6 +97,7 @@ function persistAuthSession(data = {}) {
     const saved = window.persistSessionFromPayload?.(data) || data;
     currentUser = saved.user || data.user || currentUser || null;
     currentEmail = saved.email || data.email || currentEmail || null;
+    currentRole = saved.role || data.role || currentRole || null;
     return saved;
 }
 
@@ -99,6 +105,8 @@ function clearAuthSession() {
     window.clearStoredAuth?.();
     currentUser = null;
     currentEmail = null;
+    currentRole = null;
+    relationshipCache = {};
 }
 
 function fetchData(url, callback, force = false) {
@@ -123,8 +131,42 @@ function getStoredTheme() {
     return localStorage.getItem("yamshatTheme") || "dark";
 }
 
+function getStoredStylePreset() {
+    return localStorage.getItem("yamshatStylePreset") || "classic";
+}
+
+function updateThemeColorMeta() {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) return;
+    const preset = getStoredStylePreset();
+    const isLight = getStoredTheme() === 'light';
+    const map = {
+        classic: isLight ? '#ffffff' : '#e00000',
+        instagram: isLight ? '#ffd7df' : '#ff2d55',
+        neon: isLight ? '#d9fbff' : '#06b6d4',
+    };
+    meta.setAttribute('content', map[preset] || map.classic);
+}
+
+function applyStylePreset(preset = getStoredStylePreset()) {
+    document.body.classList.remove('theme-instagram', 'theme-neon');
+    if (preset === 'instagram') document.body.classList.add('theme-instagram');
+    if (preset === 'neon') document.body.classList.add('theme-neon');
+    updateThemeColorMeta();
+}
+
+function setStylePreset(preset = 'classic') {
+    const safePreset = ['classic', 'instagram', 'neon'].includes(preset) ? preset : 'classic';
+    localStorage.setItem('yamshatStylePreset', safePreset);
+    applyStylePreset(safePreset);
+    hideServiceMenu();
+    const labels = { classic: 'تم تفعيل الاستايل الكلاسيكي', instagram: 'تم تفعيل استايل إنستغرام', neon: 'تم تفعيل الاستايل الثالث' };
+    showToast(labels[safePreset] || labels.classic);
+}
+
 function applyTheme(theme = getStoredTheme()) {
     document.body.classList.toggle("light-theme", theme === "light");
+    applyStylePreset();
 }
 
 function toggleTheme() {
@@ -171,7 +213,6 @@ async function register(btn) {
             body: JSON.stringify({ name, email, password })
         });
         persistAuthSession(data);
-        if (window.ensureWebChatIdentity) await window.ensureWebChatIdentity(data.user || name);
         showToast(data.message);
         document.getElementById("registerName").value = "";
         document.getElementById("registerEmail").value = "";
@@ -201,7 +242,6 @@ async function login(btn) {
             body: JSON.stringify({ email, password })
         });
         persistAuthSession(data);
-        if (window.ensureWebChatIdentity) await window.ensureWebChatIdentity(data.user || email);
         showToast(data.message);
         window.location.href = "feed.html";
     } catch (error) {
@@ -876,6 +916,129 @@ function toggleComments(id) {
     openComments(id, false);
 }
 
+
+function relationshipCacheKey(user) {
+    return String(user || '').trim().toLowerCase();
+}
+
+function getRelationshipButtonsSelector(user) {
+    return `[data-rel-actions="${encodeURIComponent(String(user || '').trim())}"]`;
+}
+
+async function getRelationshipState(user, force = false) {
+    const safeUser = String(user || '').trim();
+    if (!safeUser || safeUser === currentUser) {
+        return { same_user: true, following: false, is_friend: false, outgoing_request_id: null, incoming_request_id: null };
+    }
+    const key = relationshipCacheKey(safeUser);
+    if (!force && relationshipCache[key]) return relationshipCache[key];
+    const state = await requestJSON(`${API_BASE}/relationship/${encodeURIComponent(safeUser)}`);
+    relationshipCache[key] = state;
+    return state;
+}
+
+function relationshipFollowLabel(state = {}) {
+    return state.following ? '➖ إلغاء المتابعة' : '➕ متابعة';
+}
+
+function relationshipFriendLabel(state = {}) {
+    if (state.is_friend) return '✅ صديق';
+    if (state.incoming_request_id) return '✅ قبول طلب الصداقة';
+    if (state.outgoing_request_id) return '❌ إلغاء طلب الصداقة';
+    return '🤝 طلب صداقة';
+}
+
+function renderRelationshipButtons(user, extraButtons = '') {
+    const encodedUser = encodeURIComponent(String(user || '').trim());
+    return `
+        <div class="inline-actions social-actions" data-rel-actions="${encodedUser}">
+            <button class="rel-follow-btn" data-rel-user="${encodedUser}" onclick='follow(${JSON.stringify(user)})'>⏳ متابعة</button>
+            <button class="rel-friend-btn" data-friend-user="${encodedUser}" onclick='toggleFriendRequest(${JSON.stringify(user)})'>🤝 طلب صداقة</button>
+            ${extraButtons}
+        </div>
+    `;
+}
+
+function applyRelationshipStateToDom(user, state = {}) {
+    document.querySelectorAll(getRelationshipButtonsSelector(user)).forEach(container => {
+        const followBtn = container.querySelector('.rel-follow-btn');
+        const friendBtn = container.querySelector('.rel-friend-btn');
+        if (followBtn) {
+            followBtn.textContent = relationshipFollowLabel(state);
+            followBtn.dataset.following = state.following ? '1' : '0';
+        }
+        if (friendBtn) {
+            friendBtn.textContent = relationshipFriendLabel(state);
+            friendBtn.disabled = Boolean(state.is_friend);
+            friendBtn.dataset.friendState = state.is_friend ? 'friend' : state.outgoing_request_id ? 'outgoing' : state.incoming_request_id ? 'incoming' : 'none';
+        }
+    });
+}
+
+async function hydrateRelationshipButtons(scope = document) {
+    const containers = Array.from((scope || document).querySelectorAll?.('[data-rel-actions]') || []);
+    const uniqueUsers = [...new Set(containers.map(node => decodeURIComponent(node.dataset.relActions || '')).filter(Boolean))];
+    await Promise.all(uniqueUsers.map(async user => {
+        try {
+            const state = await getRelationshipState(user);
+            applyRelationshipStateToDom(user, state);
+        } catch (_) {}
+    }));
+}
+
+async function refreshRelationshipState(user) {
+    const state = await getRelationshipState(user, true);
+    applyRelationshipStateToDom(user, state);
+    return state;
+}
+
+async function toggleFriendRequest(user) {
+    if (!user || user === currentUser) {
+        showToast('لا يمكنك إرسال طلب لنفسك');
+        return;
+    }
+    try {
+        const state = await getRelationshipState(user, true);
+        let data;
+        if (state.is_friend) {
+            showToast('أنتم أصدقاء بالفعل');
+            return;
+        }
+        if (state.incoming_request_id) {
+            data = await requestJSON(`${API_BASE}/handle_friend_request`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: state.incoming_request_id, status: 'accepted' })
+            });
+        } else if (state.outgoing_request_id) {
+            data = await requestJSON(`${API_BASE}/cancel_friend_request`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: state.outgoing_request_id, receiver: user })
+            });
+        } else {
+            data = await requestJSON(`${API_BASE}/send_friend_request`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sender: currentUser, receiver: user })
+            });
+        }
+        relationshipCache[relationshipCacheKey(user)] = null;
+        await refreshRelationshipState(user);
+        if (document.body.classList.contains('profile-page')) {
+            const viewed = new URLSearchParams(window.location.search).get('user') || currentUser || '';
+            if (viewed === user) {
+                const stats = await requestJSON(`${API_BASE}/followers/${encodeURIComponent(user)}`);
+                document.getElementById('followers') && (document.getElementById('followers').innerText = stats.followers || 0);
+                document.getElementById('following') && (document.getElementById('following').innerText = stats.following || 0);
+            }
+        }
+        showToast(data.message || 'تم تحديث حالة الصداقة');
+    } catch (error) {
+        showToast(error.message);
+    }
+}
+
 async function follow(user) {
     if (!user || user === currentUser) {
         showToast("لا يمكنك متابعة نفسك");
@@ -887,6 +1050,13 @@ async function follow(user) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ following: user })
         });
+        relationshipCache[relationshipCacheKey(user)] = null;
+        await refreshRelationshipState(user);
+        if (document.body.classList.contains('profile-page')) {
+            const stats = await requestJSON(`${API_BASE}/followers/${encodeURIComponent(user)}`);
+            document.getElementById('followers') && (document.getElementById('followers').innerText = stats.followers || 0);
+            document.getElementById('following') && (document.getElementById('following').innerText = stats.following || 0);
+        }
         showToast(data.message);
     } catch (error) {
         showToast(error.message);
@@ -951,7 +1121,7 @@ async function loadPosts(force = false) {
                             </div>
                         </div>
                         <div class="post-top-actions">
-                            ${isMine ? `<button class="soft-danger" onclick="deletePost(${post.id})">🗑 حذف</button>` : `<button onclick='follow(${JSON.stringify(post.username)})'>➕ متابعة</button>`}
+                            ${isMine ? `<button class="soft-danger" onclick="deletePost(${post.id})">🗑 حذف</button>` : renderRelationshipButtons(post.username)}
                         </div>
                     </div>
 
@@ -973,6 +1143,7 @@ async function loadPosts(force = false) {
                 </div>
             `;
         }).join("");
+        hydrateRelationshipButtons(feed);
 
         if (force) cache[`${API_BASE}/posts`] = data;
     } catch (error) {
@@ -1138,10 +1309,18 @@ function initPullToRefresh() {
     }, { passive: true });
 }
 
+function isUserComposing() {
+    const active = document.activeElement;
+    if (!active) return false;
+    if (active.matches?.('input, textarea, [contenteditable="true"]')) return true;
+    return Boolean(active.closest?.('.comment-box, .reel-comment-box, .composer-box, .input-box, .post-box, .stacked-form'));
+}
+
 function startAutoRefresh() {
     if (postsTimer) clearInterval(postsTimer);
     if (notificationsTimer) clearInterval(notificationsTimer);
     postsTimer = setInterval(() => {
+        if (isUserComposing()) return;
         loadPosts(true);
         loadNotifications(true);
     }, 5000);
@@ -1168,12 +1347,12 @@ async function loadProfile() {
         document.getElementById("following").innerText = stats.following || 0;
 
         if (user && user !== currentUser) {
-            profileActions.innerHTML = `
-                <button onclick='follow(${JSON.stringify(user)})'>➕ متابعة</button>
+            profileActions.innerHTML = renderRelationshipButtons(user, `
                 <button onclick='openChat(${JSON.stringify(user)})'>💬 مراسلة</button>
                 <button onclick='blockUser(${JSON.stringify(user)})'>⛔ حظر</button>
                 <button onclick='reportUser(${JSON.stringify(user)})'>🚩 تبليغ</button>
-            `;
+            `);
+            hydrateRelationshipButtons(profileActions);
         } else {
             profileActions.innerHTML = `
                 <button onclick="openProfileEditor()">✏️ تعديل الملف</button>

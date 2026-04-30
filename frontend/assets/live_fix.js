@@ -24,7 +24,33 @@
       return window.location.origin;
     }
   }
+async function startLive(token, url) {
+    try {
+        const room = new LiveKit.Room();
 
+        // الاتصال بالغرفة
+        await room.connect(url, token);
+
+        console.log("Connected to LiveKit room");
+
+        // تشغيل الكاميرا
+        const videoTrack = await LiveKit.createLocalVideoTrack();
+        await room.localParticipant.publishTrack(videoTrack);
+
+        // تشغيل المايك
+        const audioTrack = await LiveKit.createLocalAudioTrack();
+        await room.localParticipant.publishTrack(audioTrack);
+
+        console.log("Live stream started successfully");
+
+        // عرض الفيديو في الصفحة (اختياري)
+        videoTrack.attach(document.getElementById("local-video"));
+
+    } catch (error) {
+        console.error("Live error:", error);
+        alert("فشل تشغيل البث: " + error.message);
+    }
+}
   function showToast(message) {
     const toast = document.createElement('div');
     toast.className = 'toast';

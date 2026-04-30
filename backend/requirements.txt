@@ -13,3 +13,6 @@ gunicorn==23.0.0
 livekit-api==1.1.0
 flask-limiter==3.8.0
 firebase-admin>=6.5.0,<7
+flask-jwt-extended>=4.6.0,<5
+celery>=5.4.0,<6
+redis>=5.0.0,<6

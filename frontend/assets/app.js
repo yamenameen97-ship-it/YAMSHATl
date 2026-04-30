@@ -171,6 +171,7 @@ async function register(btn) {
             body: JSON.stringify({ name, email, password })
         });
         persistAuthSession(data);
+        if (window.ensureWebChatIdentity) await window.ensureWebChatIdentity(data.user || name);
         showToast(data.message);
         document.getElementById("registerName").value = "";
         document.getElementById("registerEmail").value = "";
@@ -200,6 +201,7 @@ async function login(btn) {
             body: JSON.stringify({ email, password })
         });
         persistAuthSession(data);
+        if (window.ensureWebChatIdentity) await window.ensureWebChatIdentity(data.user || email);
         showToast(data.message);
         window.location.href = "feed.html";
     } catch (error) {
@@ -1514,7 +1516,485 @@ window.addEventListener("DOMContentLoaded", async () => {
         return;
     }
 
-    if (document.body.classList.contains("chat-page")) {
-        initChatPage();
+    if (document.body.classList.contains("chat-page") && typeof window.initChatPage === "function") {
+        window.initChatPage();
     }
 });
+
+(function () {
+    const enc = new TextEncoder();
+    const dec = new TextDecoder();
+    let chatPendingMedia = null;
+    let chatMediaRecorder = null;
+    let chatVoiceChunks = [];
+    let typingTimer = null;
+    let lastTypingSentAt = 0;
+
+    function chatReceiver() {
+        return new URLSearchParams(window.location.search).get('user') || '';
+    }
+
+    function chatSecretKey(receiver) {
+        const pair = [String(currentUser || '').trim(), String(receiver || '').trim()].sort().join('::');
+        return `yamshat_e2e_${pair}`;
+    }
+
+    function getChatSecret(receiver = chatReceiver()) {
+        return localStorage.getItem(chatSecretKey(receiver)) || '';
+    }
+
+    function setChatSecret(receiver, secret) {
+        const key = chatSecretKey(receiver);
+        if (!secret) localStorage.removeItem(key);
+        else localStorage.setItem(key, secret);
+    }
+
+    async function deriveChatCryptoKey(secret, receiver) {
+        const material = await crypto.subtle.importKey('raw', enc.encode(secret), 'PBKDF2', false, ['deriveKey']);
+        const salt = enc.encode([String(currentUser || '').trim(), String(receiver || '').trim()].sort().join('|yamshat|'));
+        return crypto.subtle.deriveKey(
+            { name: 'PBKDF2', salt, iterations: 120000, hash: 'SHA-256' },
+            material,
+            { name: 'AES-GCM', length: 256 },
+            false,
+            ['encrypt', 'decrypt']
+        );
+    }
+
+    function toB64(buffer) {
+        return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+    }
+
+    function fromB64(value) {
+        return Uint8Array.from(atob(value), c => c.charCodeAt(0));
+    }
+
+    async function encryptChatText(plainText, receiver) {
+        const secret = getChatSecret(receiver);
+        if (!secret || !plainText) return plainText;
+        const key = await deriveChatCryptoKey(secret, receiver);
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(plainText));
+        return `ENCv1:${toB64(iv)}:${toB64(cipher)}`;
+    }
+
+    async function decryptChatText(cipherText, receiver) {
+        const text = String(cipherText || '');
+        if (!text.startsWith('ENCv1:')) return text;
+        const secret = getChatSecret(receiver);
+        if (!secret) return '🔐 رسالة مشفرة — فعّل E2E لقراءتها';
+        const parts = text.split(':');
+        if (parts.length < 3) return '🔐 رسالة مشفرة';
+        try {
+            const key = await deriveChatCryptoKey(secret, receiver);
+            const iv = fromB64(parts[1]);
+            const payload = fromB64(parts.slice(2).join(':'));
+            const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, payload);
+            return dec.decode(plain);
+        } catch (_) {
+            return '🔐 تعذر فك التشفير بهذه العبارة السرية';
+        }
+    }
+
+    function isAudio(url) {
+        return /\.(mp3|wav|m4a|aac|ogg|oga|opus|3gp|amr|weba)$/i.test(url || '');
+    }
+
+    function chatStatusLabel(status) {
+        switch (String(status || '').toLowerCase()) {
+            case 'seen': return '✓✓ تمت المشاهدة';
+            case 'delivered': return '✓✓ تم التسليم';
+            case 'deleted': return 'تم الحذف';
+            default: return '✓ تم الإرسال';
+        }
+    }
+
+    function clearChatPendingMedia() {
+        chatPendingMedia = null;
+        const preview = document.getElementById('chatUploadPreview');
+        if (preview) {
+            preview.classList.add('hidden');
+            preview.innerHTML = '';
+        }
+        const input = document.getElementById('chatMediaInput');
+        if (input) input.value = '';
+    }
+
+    function renderPendingMedia(url, type) {
+        const preview = document.getElementById('chatUploadPreview');
+        if (!preview) return;
+        preview.classList.remove('hidden');
+        const safe = normalizeMediaUrl(url);
+        if (type === 'image') {
+            preview.innerHTML = `<img src="${encodeURI(safe)}" alt="preview"><button type="button" onclick="clearChatPendingMedia()">إزالة</button>`;
+        } else if (type === 'video') {
+            preview.innerHTML = `<video controls src="${encodeURI(safe)}"></video><button type="button" onclick="clearChatPendingMedia()">إزالة</button>`;
+        } else {
+            preview.innerHTML = `<div class="upload-preview-file">🎤 جاهز للإرسال الصوتي</div><button type="button" onclick="clearChatPendingMedia()">إزالة</button>`;
+        }
+    }
+
+    async function uploadChatMedia(file) {
+        if (!file) return;
+        const formData = new FormData();
+        formData.append('file', file, file.name || 'upload');
+        try {
+            const data = await requestJSON(`${API_BASE}/upload`, { method: 'POST', body: formData });
+            const url = data.file_url || data.url;
+            if (!url) throw new Error('تعذر رفع الملف');
+            let type = 'file';
+            if ((file.type || '').startsWith('image/')) type = 'image';
+            else if ((file.type || '').startsWith('video/')) type = 'video';
+            else if ((file.type || '').startsWith('audio/')) type = 'voice';
+            chatPendingMedia = { url, type, name: file.name || '' };
+            renderPendingMedia(url, type);
+            showToast(type === 'voice' ? 'تم تجهيز الرسالة الصوتية' : 'تم رفع الملف وجاهز للإرسال');
+        } catch (error) {
+            showToast(error.message || 'فشل رفع الملف');
+        }
+    }
+
+    async function toggleVoiceRecording() {
+        const status = document.getElementById('voiceStatus');
+        const recordBtn = document.getElementById('voiceRecordBtn');
+        if (chatMediaRecorder && chatMediaRecorder.state === 'recording') {
+            chatMediaRecorder.stop();
+            if (recordBtn) recordBtn.textContent = '🎤';
+            if (status) status.textContent = 'جاري تجهيز الرسالة الصوتية...';
+            return;
+        }
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            chatVoiceChunks = [];
+            chatMediaRecorder = new MediaRecorder(stream);
+            chatMediaRecorder.ondataavailable = event => {
+                if (event.data?.size) chatVoiceChunks.push(event.data);
+            };
+            chatMediaRecorder.onstop = async () => {
+                stream.getTracks().forEach(track => track.stop());
+                const blob = new Blob(chatVoiceChunks, { type: chatMediaRecorder.mimeType || 'audio/webm' });
+                const ext = (chatMediaRecorder.mimeType || '').includes('ogg') ? 'ogg' : 'weba';
+                const file = new File([blob], `voice-note.${ext}`, { type: blob.type || 'audio/webm' });
+                if (status) status.textContent = 'جاري رفع الرسالة الصوتية...';
+                await uploadChatMedia(file);
+                if (status) status.textContent = 'الرسالة الصوتية جاهزة';
+            };
+            chatMediaRecorder.start();
+            if (recordBtn) recordBtn.textContent = '⏹';
+            if (status) status.textContent = 'جاري التسجيل... اضغط للإيقاف';
+        } catch (error) {
+            showToast(error.message || 'تعذر الوصول إلى الميكروفون');
+        }
+    }
+
+    async function renderChatMessage(m, receiver) {
+        const deleted = Boolean(m.deleted);
+        const safeMedia = normalizeMediaUrl(m.media_url || '');
+        const rawText = deleted ? 'تم حذف هذه الرسالة' : String(m.content || m.message || '');
+        const text = await decryptChatText(rawText, receiver);
+        const mine = m.sender === currentUser;
+        let mediaHtml = '';
+        if (!deleted && safeMedia) {
+            if (isImage(safeMedia) || m.type === 'image') mediaHtml = `<img class="chat-media" src="${encodeURI(safeMedia)}" alt="image message">`;
+            else if (isVideo(safeMedia) || m.type === 'video') mediaHtml = `<video class="chat-media" controls src="${encodeURI(safeMedia)}"></video>`;
+            else if (isAudio(safeMedia) || m.type === 'voice') mediaHtml = `<audio class="chat-audio" controls src="${encodeURI(safeMedia)}"></audio>`;
+            else mediaHtml = `<a class="chat-file-link" href="${encodeURI(safeMedia)}" target="_blank" rel="noopener">فتح الملف</a>`;
+        }
+        const deleteBtn = mine && !deleted ? `<button class="chat-delete-btn" type="button" onclick="deleteChatMessage(${Number(m.id || 0)})">حذف للجميع</button>` : '';
+        return `
+            <div class="msg ${mine ? 'me' : 'other'} ${deleted ? 'deleted' : ''}">
+                <div class="chat-msg-body">
+                    ${text ? `<div class="chat-msg-text">${escapeHTML(text)}</div>` : ''}
+                    ${mediaHtml}
+                </div>
+                <div class="chat-msg-meta">
+                    <span>${escapeHTML(String(m.created_at || '').replace('T', ' ').slice(0, 16))}</span>
+                    ${mine ? `<span>${escapeHTML(chatStatusLabel(m.status))}</span>` : ''}
+                </div>
+                ${deleteBtn}
+            </div>
+        `;
+    }
+
+    async function refreshPresence() {
+        const receiver = chatReceiver();
+        const label = document.getElementById('presenceText');
+        if (!receiver || !label) return;
+        try {
+            const data = await requestJSON(`${API_BASE}/presence/${encodeURIComponent(receiver)}`);
+            label.textContent = data.is_online ? '🟢 متصل الآن' : `آخر ظهور: ${String(data.last_seen || '').replace('T', ' ').slice(0, 16) || 'غير متاح'}`;
+        } catch (_) {
+            label.textContent = 'تعذر جلب الحالة الآن';
+        }
+    }
+
+    async function notifySeen(receiver) {
+        try {
+            await requestJSON(`${API_BASE}/message_seen`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sender: receiver })
+            });
+        } catch (_) {}
+    }
+
+    async function sendPresence(online) {
+        try {
+            await requestJSON(`${API_BASE}/update_online`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ online: Boolean(online) })
+            });
+        } catch (_) {}
+    }
+
+    async function loadMessagesEnhanced() {
+        const receiver = chatReceiver();
+        const box = document.getElementById('messages');
+        if (!receiver || !box) return;
+        try {
+            const data = await requestJSON(`${API_BASE}/get_messages?receiver=${encodeURIComponent(receiver)}`);
+            if (!data.length) {
+                box.innerHTML = '<div class="empty-state">ابدأ المحادثة الآن</div>';
+                await refreshPresence();
+                return;
+            }
+            const html = await Promise.all(data.map(item => renderChatMessage(item, receiver)));
+            box.innerHTML = html.join('');
+            box.scrollTop = box.scrollHeight;
+            await notifySeen(receiver);
+            await refreshPresence();
+        } catch (error) {
+            box.innerHTML = `<div class="empty-state">${escapeHTML(error.message)}</div>`;
+        }
+    }
+
+    async function sendMsgEnhanced(btn) {
+        const receiver = chatReceiver();
+        const input = document.getElementById('msgInput');
+        const rawMessage = input?.value.trim() || '';
+        if (!receiver || (!rawMessage && !chatPendingMedia)) {
+            showToast('اكتب رسالة أو أرفق ملفاً أولاً');
+            return;
+        }
+        showLoading(btn);
+        try {
+            const encryptedMessage = rawMessage ? await encryptChatText(rawMessage, receiver) : '';
+            const type = chatPendingMedia?.type || 'text';
+            await requestJSON(`${API_BASE}/send_message`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    receiver,
+                    message: encryptedMessage,
+                    type,
+                    media_url: chatPendingMedia?.url || null
+                })
+            });
+            if (input) input.value = '';
+            clearChatPendingMedia();
+            await loadMessagesEnhanced();
+        } catch (error) {
+            showToast(error.message);
+        } finally {
+            resetLoading(btn);
+        }
+    }
+
+    async function deleteChatMessage(messageId) {
+        if (!messageId) return;
+        try {
+            await requestJSON(`${API_BASE}/delete_message`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message_id: messageId })
+            });
+            await loadMessagesEnhanced();
+        } catch (error) {
+            showToast(error.message || 'تعذر حذف الرسالة');
+        }
+    }
+
+    function sendTypingPing(isTyping) {
+        const receiver = chatReceiver();
+        if (!receiver) return;
+        const now = Date.now();
+        if (isTyping && now - lastTypingSentAt < 1200) return;
+        lastTypingSentAt = now;
+        requestJSON(`${API_BASE}/typing`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ receiver, is_typing: Boolean(isTyping) })
+        }).catch(() => {});
+    }
+
+    function initChatTyping() {
+        const input = document.getElementById('msgInput');
+        if (!input) return;
+        input.addEventListener('input', () => {
+            sendTypingPing(Boolean(input.value.trim()));
+            clearTimeout(typingTimer);
+            typingTimer = setTimeout(() => sendTypingPing(false), 1200);
+        });
+    }
+
+    function toggleChatE2E() {
+        const receiver = chatReceiver();
+        if (!receiver) return;
+        const current = getChatSecret(receiver);
+        const next = window.prompt(current ? 'أدخل عبارة سرية جديدة أو اتركها فارغة لإيقاف E2E' : 'أدخل عبارة سرية لتفعيل E2E بينك وبين هذا المستخدم', current || '');
+        if (next === null) return;
+        setChatSecret(receiver, next.trim());
+        showToast(next.trim() ? 'تم تفعيل التشفير الطرفي لهذه المحادثة' : 'تم إيقاف التشفير الطرفي');
+        loadMessagesEnhanced();
+    }
+
+    function startCall(mode) {
+        const receiver = chatReceiver();
+        if (!receiver) return;
+        window.location.href = `call.html?user=${encodeURIComponent(receiver)}&mode=${encodeURIComponent(mode || 'video')}`;
+    }
+
+    function initChatPageEnhanced() {
+        const receiver = chatReceiver();
+        document.getElementById('chatWith') && (document.getElementById('chatWith').innerText = receiver ? `المحادثة مع ${receiver}` : 'لم يتم اختيار مستخدم');
+        initChatTyping();
+        loadMessagesEnhanced();
+        sendPresence(true);
+        if (chatTimer) clearInterval(chatTimer);
+        chatTimer = setInterval(loadMessagesEnhanced, 4000);
+        document.addEventListener('visibilitychange', () => sendPresence(!document.hidden));
+        window.addEventListener('beforeunload', () => sendPresence(false));
+    }
+
+    window.loadMessages = loadMessagesEnhanced;
+    window.sendMsg = sendMsgEnhanced;
+    window.uploadChatMedia = uploadChatMedia;
+    window.toggleVoiceRecording = toggleVoiceRecording;
+    window.deleteChatMessage = deleteChatMessage;
+    window.toggleChatE2E = toggleChatE2E;
+    window.startCall = startCall;
+    window.clearChatPendingMedia = clearChatPendingMedia;
+    window.initChatPage = initChatPageEnhanced;
+})();
+
+
+(function () {
+    let chatSocket = null;
+    let presenceUnloadBound = false;
+    let typingTimeout = null;
+    let lastTypingSentAt = 0;
+
+    function activeReceiver() {
+        return new URLSearchParams(window.location.search).get('user') || '';
+    }
+
+    function updatePresenceLabel(payload) {
+        const receiver = activeReceiver();
+        const label = document.getElementById('presenceText');
+        if (!label || !payload || payload.user !== receiver) return;
+        label.textContent = payload.is_online ? '🟢 متصل الآن' : `آخر ظهور: ${String(payload.last_seen || '').replace('T', ' ').slice(0, 16) || 'غير متاح'}`;
+    }
+
+    function updateTyping(payload) {
+        const receiver = activeReceiver();
+        const indicator = document.getElementById('typingIndicator');
+        if (!indicator || !payload || payload.sender !== receiver) return;
+        indicator.classList.toggle('hidden', !payload.is_typing);
+        indicator.textContent = payload.is_typing ? 'يكتب الآن...' : '';
+    }
+
+    function connectRealtimeChat() {
+        const receiver = activeReceiver();
+        const auth = window.getStoredAuth ? window.getStoredAuth() : {};
+        if (!receiver || !auth?.token || typeof io === 'undefined') return;
+
+        if (chatSocket) {
+            try { chatSocket.disconnect(); } catch (_) {}
+        }
+
+        const origin = (window.YAMSHAT_BACKEND_ORIGIN || window.location.origin || '').replace(/\/+$/, '');
+        chatSocket = io(origin, {
+            transports: ['websocket'],
+            withCredentials: true,
+            auth: { token: auth.token }
+        });
+
+        chatSocket.on('connect', () => {
+            chatSocket.emit('join_chat', { user: auth.user, peer: receiver, token: auth.token });
+        });
+
+        ['new_private_message', 'message_deleted', 'messages_seen', 'messages_delivered', 'incoming_call'].forEach(eventName => {
+            chatSocket.on(eventName, () => {
+                if (typeof window.loadMessages === 'function') window.loadMessages();
+            });
+        });
+
+        chatSocket.on('presence_update', payload => updatePresenceLabel(payload));
+        chatSocket.on('typing_update', payload => updateTyping(payload));
+    }
+
+    async function sendPresenceRealtime(online) {
+        const auth = window.getStoredAuth ? window.getStoredAuth() : {};
+        const receiver = activeReceiver();
+        try {
+            await requestJSON(`${API_BASE}/update_online`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ online: Boolean(online) })
+            });
+        } catch (_) {}
+        if (chatSocket?.connected) {
+            chatSocket.emit('chat_presence', { user: auth.user, peer: receiver, online: Boolean(online) });
+        }
+    }
+
+    function bindRealtimeTyping() {
+        const input = document.getElementById('msgInput');
+        const auth = window.getStoredAuth ? window.getStoredAuth() : {};
+        if (!input) return;
+        input.addEventListener('input', () => {
+            const receiver = activeReceiver();
+            if (!receiver) return;
+            const now = Date.now();
+            const isTyping = Boolean(input.value.trim());
+            if (isTyping && now - lastTypingSentAt < 1000) return;
+            lastTypingSentAt = now;
+            requestJSON(`${API_BASE}/typing`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ receiver, is_typing: isTyping })
+            }).catch(() => {});
+            if (chatSocket?.connected) {
+                chatSocket.emit('chat_typing', { sender: auth.user, receiver, is_typing: isTyping });
+            }
+            clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => {
+                requestJSON(`${API_BASE}/typing`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ receiver, is_typing: false })
+                }).catch(() => {});
+                if (chatSocket?.connected) {
+                    chatSocket.emit('chat_typing', { sender: auth.user, receiver, is_typing: false });
+                }
+            }, 1200);
+        }, { passive: true });
+    }
+
+    function initChatPageRealtime() {
+        const receiver = activeReceiver();
+        document.getElementById('chatWith') && (document.getElementById('chatWith').innerText = receiver ? `المحادثة مع ${receiver}` : 'لم يتم اختيار مستخدم');
+        if (typeof window.loadMessages === 'function') window.loadMessages();
+        bindRealtimeTyping();
+        connectRealtimeChat();
+        sendPresenceRealtime(true);
+        document.addEventListener('visibilitychange', () => sendPresenceRealtime(!document.hidden));
+        if (!presenceUnloadBound) {
+            presenceUnloadBound = true;
+            window.addEventListener('beforeunload', () => sendPresenceRealtime(false));
+        }
+    }
+
+    window.initChatPage = initChatPageRealtime;
+})();

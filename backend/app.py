@@ -7,10 +7,16 @@ from pathlib import Path
 
 from flask import Flask, Response, abort, jsonify, send_from_directory, request
 
+try:
+    from flask_jwt_extended import JWTManager
+except Exception:  # pragma: no cover
+    JWTManager = None
+
 from admin import admin_bp
 from auth import auth_bp
 from chat import chat_bp
 from config import Config
+from logger import setup_logging
 from db import init_db, set_admin_roles
 from extensions import init_extensions
 from live import live_api_bp
@@ -26,10 +32,7 @@ from users import users_bp
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
 
-logging.basicConfig(
-    level=getattr(logging, Config.LOG_LEVEL, logging.INFO),
-    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder=str(FRONTEND_DIR), static_url_path="")
@@ -42,7 +45,11 @@ app.config.update(
     SESSION_COOKIE_SECURE=Config.SESSION_COOKIE_SECURE,
     PERMANENT_SESSION_LIFETIME=timedelta(days=Config.SESSION_DAYS),
     JSON_AS_ASCII=False,
+    JWT_SECRET_KEY=Config.JWT_SECRET_KEY,
+    JWT_ACCESS_TOKEN_EXPIRES=timedelta(days=Config.JWT_EXPIRE_DAYS),
 )
+
+jwt_manager = JWTManager(app) if JWTManager else None
 
 init_extensions(app)
 init_db()
@@ -71,6 +78,12 @@ def log_requests():
 @app.errorhandler(413)
 def file_too_large(_error):
     return jsonify({"message": "حجم الملف أكبر من الحد المسموح"}), 413
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    logger.exception("Unhandled server error: %s", error)
+    return jsonify({"message": "حدث خطأ داخلي في الخادم"}), 500
 
 
 @app.after_request

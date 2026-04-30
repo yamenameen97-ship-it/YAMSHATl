@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#e00000">
+    <title>Yamshat | مكالمة LiveKit</title>
+    <link rel="stylesheet" href="assets/style.css">
+</head>
+<body class="chat-page">
+    <div class="call-shell glass">
+        <div class="header chat-header">
+            <div class="header-row">
+                <button class="icon-btn" onclick="window.location.href='chat.html?user=' + encodeURIComponent(peer)">⬅</button>
+                <div>
+                    <div id="callTitle">جاري تجهيز المكالمة...</div>
+                    <div class="subtle-text" id="callStatus">يرجى السماح باستخدام الكاميرا/الميكروفون إذا طُلب ذلك</div>
+                </div>
+                <button class="icon-btn" onclick="leaveCall()">❌</button>
+            </div>
+        </div>
+
+        <div class="call-stage">
+            <div class="call-tile glass">
+                <div class="call-badge">أنت</div>
+                <div id="localWrap"></div>
+            </div>
+            <div class="call-tile glass">
+                <div class="call-badge" id="remoteBadge">الطرف الآخر</div>
+                <div id="remoteWrap"></div>
+            </div>
+        </div>
+
+        <div class="call-actions">
+            <button onclick="toggleMic()">🎤 كتم/تشغيل</button>
+            <button onclick="toggleCamera()">📷 كاميرا</button>
+            <button class="soft-danger" onclick="leaveCall()">إنهاء المكالمة</button>
+        </div>
+    </div>
+
+    <script src="/api/app-config.js"></script>
+    <script src="assets/auth.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+    <script>
+        window.peer = new URLSearchParams(window.location.search).get('user') || '';
+        const peer = window.peer;
+        const mode = (new URLSearchParams(window.location.search).get('mode') || 'video').toLowerCase();
+        const titleEl = document.getElementById('callTitle');
+        const statusEl = document.getElementById('callStatus');
+        const localWrap = document.getElementById('localWrap');
+        const remoteWrap = document.getElementById('remoteWrap');
+        const remoteBadge = document.getElementById('remoteBadge');
+        let room = null;
+
+        function setStatus(text) {
+            statusEl.textContent = text;
+        }
+
+        function attachTrack(track, target) {
+            if (!track || !target) return;
+            const el = track.attach();
+            el.autoplay = true;
+            el.playsInline = true;
+            el.controls = false;
+            target.innerHTML = '';
+            target.appendChild(el);
+        }
+
+        async function startCall() {
+            if (!peer) {
+                setStatus('اسم المستخدم المطلوب غير موجود');
+                return;
+            }
+            titleEl.textContent = `${mode === 'audio' ? '📞' : '🎥'} مكالمة مع ${peer}`;
+            try {
+                const tokenData = await requestJSON(`${API_BASE}/create_call_token`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ receiver: peer, call_type: mode })
+                });
+                room = new LivekitClient.Room();
+                room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
+                    remoteBadge.textContent = participant?.identity || peer;
+                    attachTrack(track, remoteWrap);
+                    setStatus('تم توصيل الطرف الآخر');
+                });
+                room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track) => {
+                    try { track.detach().forEach(el => el.remove()); } catch (_) {}
+                });
+                room.on(LivekitClient.RoomEvent.ParticipantDisconnected, () => {
+                    remoteWrap.innerHTML = '';
+                    setStatus('غادر الطرف الآخر المكالمة');
+                });
+                room.on(LivekitClient.RoomEvent.Disconnected, () => {
+                    setStatus('تم إنهاء الاتصال');
+                });
+                await room.connect(tokenData.livekit_url, tokenData.token);
+                await room.localParticipant.setMicrophoneEnabled(true);
+                await room.localParticipant.setCameraEnabled(mode !== 'audio');
+                const localVideo = Array.from(room.localParticipant.videoTrackPublications.values())[0]?.track;
+                const localAudio = Array.from(room.localParticipant.audioTrackPublications.values())[0]?.track;
+                attachTrack(localVideo || localAudio, localWrap);
+                setStatus('تم الاتصال بنجاح، بانتظار الطرف الآخر...');
+            } catch (error) {
+                console.error(error);
+                setStatus(error.message || 'تعذر بدء المكالمة');
+            }
+        }
+
+        async function toggleMic() {
+            if (!room) return;
+            const enabled = room.localParticipant.isMicrophoneEnabled;
+            await room.localParticipant.setMicrophoneEnabled(!enabled);
+            setStatus(enabled ? 'تم كتم الميكروفون' : 'تم تشغيل الميكروفون');
+        }
+
+        async function toggleCamera() {
+            if (!room || mode === 'audio') return;
+            const enabled = room.localParticipant.isCameraEnabled;
+            await room.localParticipant.setCameraEnabled(!enabled);
+            const localVideo = Array.from(room.localParticipant.videoTrackPublications.values())[0]?.track;
+            const localAudio = Array.from(room.localParticipant.audioTrackPublications.values())[0]?.track;
+            attachTrack(localVideo || localAudio, localWrap);
+            setStatus(enabled ? 'تم إيقاف الكاميرا' : 'تم تشغيل الكاميرا');
+        }
+
+        async function leaveCall() {
+            if (room) {
+                await room.disconnect();
+                room = null;
+            }
+            window.location.href = `chat.html?user=${encodeURIComponent(peer)}`;
+        }
+
+        window.toggleMic = toggleMic;
+        window.toggleCamera = toggleCamera;
+        window.leaveCall = leaveCall;
+        startCall();
+    </script>
+</body>
+</html>

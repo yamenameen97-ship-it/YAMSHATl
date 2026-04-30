@@ -5,3 +5,6 @@ flask-cors
 flask_sqlalchemy
 python-dotenv
 jwt
+flask-jwt-extended
+celery
+redis

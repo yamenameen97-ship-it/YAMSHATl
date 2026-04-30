@@ -15,6 +15,7 @@ def _split_csv(value: str) -> list[str]:
 
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production")
+    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", SECRET_KEY)
     DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 
     FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "").strip().rstrip("/")
@@ -55,7 +56,8 @@ class Config:
     UPLOAD_FOLDER = str(BASE_DIR / "uploads")
     ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif"}
     ALLOWED_VIDEO_EXTENSIONS = {"mp4", "mov", "webm", "mkv"}
-    ALLOWED_EXTENSIONS = ALLOWED_IMAGE_EXTENSIONS | ALLOWED_VIDEO_EXTENSIONS
+    ALLOWED_AUDIO_EXTENSIONS = {"mp3", "wav", "m4a", "aac", "ogg", "oga", "opus", "3gp", "amr", "weba"}
+    ALLOWED_EXTENSIONS = ALLOWED_IMAGE_EXTENSIONS | ALLOWED_VIDEO_EXTENSIONS | ALLOWED_AUDIO_EXTENSIONS
 
     ADMIN_EMAILS = _split_csv(os.getenv("ADMIN_EMAILS", ""))
     ADMIN_USERNAMES = _split_csv(os.getenv("ADMIN_USERNAMES", ""))
@@ -77,3 +79,8 @@ class Config:
     TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
     TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "").strip()
     TWILIO_WHATSAPP_CONTENT_SID = os.getenv("TWILIO_WHATSAPP_CONTENT_SID", "").strip()
+
+    REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0").strip()
+    CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL).strip()
+    CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", REDIS_URL).strip()
+    LOG_FILE = os.getenv("LOG_FILE", str(BASE_DIR / "app.log")).strip()

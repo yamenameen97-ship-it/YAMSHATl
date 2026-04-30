@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
 
+from admin_utils import enforce_moderation, log_audit
 from db import db_cursor
 from extensions import limiter
 from utils import current_user, json_error, normalize_text, require_auth
@@ -26,6 +27,31 @@ def _is_blocked(cur, user_a: str | None, user_b: str | None) -> bool:
     return bool(cur.fetchone())
 
 
+def _submit_report(reporter: str, target_type: str, target_value: str, reason: str):
+    safe_target_type = normalize_text(target_type, 40)
+    safe_target_value = normalize_text(target_value, 255)
+    safe_reason = normalize_text(reason, 1000, escape_html=True)
+
+    if not safe_target_type or not safe_target_value or not safe_reason:
+        return json_error("بيانات التبليغ غير مكتملة", 400)
+
+    with db_cursor(commit=True) as (_conn, cur):
+        cur.execute(
+            "INSERT INTO reports(reporter,target_type,target_value,reason,status) VALUES(%s,%s,%s,%s,'open')",
+            (reporter, safe_target_type, safe_target_value, safe_reason),
+        )
+        log_audit(
+            cur,
+            action="report_submitted",
+            actor=reporter,
+            target_type=safe_target_type,
+            target_value=safe_target_value,
+            details=safe_reason,
+            severity="warning",
+        )
+    return jsonify({"ok": True, "message": "تم إرسال البلاغ"})
+
+
 @users_bp.post("/follow")
 @require_auth
 @limiter.limit("60/hour")
@@ -40,6 +66,9 @@ def follow():
         return json_error("لا يمكنك متابعة نفسك", 400)
 
     with db_cursor(commit=True) as (_conn, cur):
+        moderation_error = enforce_moderation(cur, follower, "social")
+        if moderation_error:
+            return json_error(moderation_error, 403)
         cur.execute("SELECT id FROM users WHERE name=%s LIMIT 1", (following,))
         if not cur.fetchone():
             return json_error("المستخدم غير موجود", 404)
@@ -59,6 +88,7 @@ def follow():
                 (following, note, note),
             )
             message = "تمت المتابعة"
+        log_audit(cur, action="follow_toggle", actor=follower, target_type="user", target_value=following, details=message)
 
     return jsonify({"ok": True, "message": message})
 
@@ -123,6 +153,7 @@ def block_user():
             "DELETE FROM followers WHERE (follower=%s AND following=%s) OR (follower=%s AND following=%s)",
             (blocker, blocked, blocked, blocker),
         )
+        log_audit(cur, action="user_block", actor=blocker, target_type="user", target_value=blocked, details="حظر مباشر من المستخدم")
     return jsonify({"ok": True, "message": "تم حظر المستخدم"})
 
 
@@ -132,16 +163,27 @@ def block_user():
 def report_content():
     reporter = current_user()
     data = request.get_json(silent=True) or {}
-    target_type = normalize_text(data.get("target_type"), 40)
-    target_value = normalize_text(data.get("target_value"), 255)
-    reason = normalize_text(data.get("reason"), 1000, escape_html=True)
+    return _submit_report(
+        reporter,
+        data.get("target_type") or "",
+        data.get("target_value") or "",
+        data.get("reason") or "",
+    )
 
-    if not target_type or not target_value or not reason:
-        return json_error("بيانات التبليغ غير مكتملة", 400)
 
-    with db_cursor(commit=True) as (_conn, cur):
-        cur.execute(
-            "INSERT INTO reports(reporter,target_type,target_value,reason,status) VALUES(%s,%s,%s,%s,'open')",
-            (reporter, target_type, target_value, reason),
-        )
-    return jsonify({"ok": True, "message": "تم إرسال البلاغ"})
+@users_bp.post("/report_user")
+@require_auth
+@limiter.limit("20/hour")
+def report_user():
+    reporter = current_user()
+    data = request.get_json(silent=True) or {}
+    return _submit_report(reporter, "user", data.get("username") or data.get("target_value") or "", data.get("reason") or "")
+
+
+@users_bp.post("/report_message")
+@require_auth
+@limiter.limit("20/hour")
+def report_message():
+    reporter = current_user()
+    data = request.get_json(silent=True) or {}
+    return _submit_report(reporter, "message", data.get("message_id") or data.get("target_value") or "", data.get("reason") or "")

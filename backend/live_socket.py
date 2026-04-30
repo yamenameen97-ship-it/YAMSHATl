@@ -5,6 +5,7 @@ import logging
 from flask import request
 from flask_socketio import SocketIO, emit, join_room
 
+from admin_utils import enforce_moderation, log_audit
 from config import Config
 from db import db_cursor
 from utils import clean
@@ -55,6 +56,10 @@ def join_live_event(data):
     join_room(room_channel(room_id))
 
     with db_cursor(commit=True) as (_conn, cur):
+        moderation_error = enforce_moderation(cur, username, "live")
+        if moderation_error and username != "Guest":
+            emit("socket_error", {"message": moderation_error}, to=request.sid)
+            return
         cur.execute("SELECT id FROM users WHERE name=%s LIMIT 1", (username,))
         user = cur.fetchone()
         cur.execute("SELECT id FROM live_rooms WHERE id=%s LIMIT 1", (room_id,))
@@ -111,6 +116,10 @@ def send_comment(data):
 
     payload = {"user": user, "text": text}
     with db_cursor(commit=True) as (_conn, cur):
+        moderation_error = enforce_moderation(cur, user, "live_comment")
+        if moderation_error and user != "Guest":
+            emit("socket_error", {"message": moderation_error}, to=request.sid)
+            return
         cur.execute("SELECT id FROM users WHERE name=%s LIMIT 1", (user,))
         row = cur.fetchone()
         cur.execute(
@@ -121,6 +130,7 @@ def send_comment(data):
             "INSERT INTO live_messages(room_id, user_id, username, message) VALUES(%s,%s,%s,%s)",
             (room_id, row["id"] if row else None, user, text),
         )
+        log_audit(cur, action="live_comment", actor=user, target_type="live_room", target_value=room_id, details=text[:140])
 
     emit("new_comment", payload, room=room_channel(room_id))
 
@@ -169,6 +179,10 @@ def send_gift(data):
     }
 
     with db_cursor(commit=True) as (_conn, cur):
+        moderation_error = enforce_moderation(cur, user, "live")
+        if moderation_error and user != "Guest":
+            emit("socket_error", {"message": moderation_error}, to=request.sid)
+            return
         cur.execute("SELECT id, username FROM live_rooms WHERE id=%s LIMIT 1", (room_id,))
         room = cur.fetchone()
         if not room:
@@ -210,6 +224,7 @@ def send_gift(data):
         cur.execute("SELECT balance FROM coins WHERE username=%s", (user,))
         payload["balance"] = int((cur.fetchone() or {}).get("balance") or 0)
         payload["receiver"] = room["username"]
+        log_audit(cur, action="live_gift", actor=user, target_type="live_room", target_value=room_id, details=f"{gift}:{gift_value}")
 
     emit("new_gift", payload, room=room_channel(room_id))
 

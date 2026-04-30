@@ -4,6 +4,7 @@ import secrets
 
 from flask import Blueprint, jsonify, request
 
+from admin_utils import enforce_moderation, log_audit
 from config import Config
 from db import db_cursor
 from reset_service import generate_reset_code, hash_reset_code, send_reset_code, verify_reset_code
@@ -51,6 +52,7 @@ def _rename_user_references(cur, old_name: str, new_name: str):
         ("reels", "username"),
         ("messages", "sender"),
         ("messages", "receiver"),
+        ("chat_public_keys", "username"),
         ("post_likes", "username"),
     ]:
         cur.execute(f"UPDATE {table_name} SET {column_name}=%s WHERE {column_name}=%s", (new_name, old_name))
@@ -102,12 +104,13 @@ def register():
 
         role = _role_for_identity(name, email, "user")
         cur.execute(
-            "INSERT INTO users(name,email,password,role) VALUES(%s,%s,%s,%s)",
+            "INSERT INTO users(name,email,password,role,is_online,last_seen) VALUES(%s,%s,%s,%s,TRUE,NOW())",
             (name, email, hash_password(password), role),
         )
+        log_audit(cur, action="register", actor=name, target_type="account", target_value=email, details="إنشاء حساب جديد")
 
     token = login_user(name, email, role)
-    return jsonify({"ok": True, "message": "تم التسجيل بنجاح", "user": name, "email": email, "role": role, "token": token})
+    return jsonify({"ok": True, "message": "تم التسجيل بنجاح", "user": name, "email": email, "role": role, "token": token, "access_token": token})
 
 
 @auth_bp.post("/login")
@@ -135,12 +138,20 @@ def login():
         if not is_valid:
             return json_error("بيانات غير صحيحة", 401)
 
+        moderation_error = enforce_moderation(cur, user["name"], "login")
+        if moderation_error:
+            log_audit(cur, action="login_blocked", actor=user["name"], target_type="account", target_value=user["email"], details=moderation_error, severity="warning")
+            return json_error(moderation_error, 403)
+
         role = _role_for_identity(user["name"], user["email"], user.get("role") or "user")
         if needs_upgrade or role != (user.get("role") or "user"):
-            cur.execute("UPDATE users SET password=%s, role=%s WHERE email=%s", (hash_password(password), role, user["email"]))
+            cur.execute("UPDATE users SET password=%s, role=%s, is_online=TRUE, last_seen=NOW() WHERE email=%s", (hash_password(password), role, user["email"]))
+        else:
+            cur.execute("UPDATE users SET is_online=TRUE, last_seen=NOW() WHERE email=%s", (user["email"],))
+        log_audit(cur, action="login", actor=user["name"], target_type="account", target_value=user["email"], details="نجاح تسجيل الدخول")
 
     token = login_user(user["name"], user["email"], role)
-    return jsonify({"ok": True, "message": "تم تسجيل الدخول", "user": user["name"], "email": user["email"], "role": role, "token": token})
+    return jsonify({"ok": True, "message": "تم تسجيل الدخول", "user": user["name"], "email": user["email"], "role": role, "token": token, "access_token": token})
 
 
 @auth_bp.get("/me")
@@ -150,12 +161,24 @@ def me():
     role = current_role()
     if not user:
         return jsonify({"user": None})
+    with db_cursor(commit=True) as (_conn, cur):
+        moderation_error = enforce_moderation(cur, user, "login")
+        if moderation_error:
+            log_audit(cur, action="session_revoked", actor=user, target_type="account", target_value=email or "", details=moderation_error, severity="warning")
+            logout_user()
+            return json_error(moderation_error, 403)
+        cur.execute("UPDATE users SET is_online=TRUE, last_seen=NOW() WHERE name=%s", (user,))
     token = login_user(user, email or "", role)
-    return jsonify({"user": user, "email": email, "role": role, "token": token})
+    return jsonify({"user": user, "email": email, "role": role, "token": token, "access_token": token})
 
 
 @auth_bp.route("/logout", methods=["GET", "POST"])
 def logout():
+    user = current_user()
+    if user:
+        with db_cursor(commit=True) as (_conn, cur):
+            cur.execute("UPDATE users SET is_online=FALSE, last_seen=NOW() WHERE name=%s", (user,))
+            log_audit(cur, action="logout", actor=user, target_type="session", target_value=current_email() or "", details="إنهاء الجلسة")
     logout_user()
     return jsonify({"ok": True, "message": "تم تسجيل الخروج"})
 
@@ -183,6 +206,9 @@ def update_profile():
         return json_error("كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل", 400)
 
     with db_cursor(commit=True) as (_conn, cur):
+        moderation_error = enforce_moderation(cur, active_user, "profile_edit")
+        if moderation_error:
+            return json_error(moderation_error, 403)
         cur.execute("SELECT id FROM users WHERE lower(email)=lower(%s) AND lower(email)<>lower(%s)", (new_email, active_email))
         if cur.fetchone():
             return json_error("هذا البريد أو الجوال مستخدم بالفعل", 409)
@@ -196,17 +222,18 @@ def update_profile():
         role = _role_for_identity(new_name, new_email, active_role)
         if new_password:
             cur.execute(
-                "UPDATE users SET name=%s, email=%s, password=%s, role=%s WHERE email=%s",
+                "UPDATE users SET name=%s, email=%s, password=%s, role=%s, is_online=TRUE, last_seen=NOW() WHERE email=%s",
                 (new_name, new_email, hash_password(new_password), role, active_email),
             )
         else:
             cur.execute(
-                "UPDATE users SET name=%s, email=%s, role=%s WHERE email=%s",
+                "UPDATE users SET name=%s, email=%s, role=%s, is_online=TRUE, last_seen=NOW() WHERE email=%s",
                 (new_name, new_email, role, active_email),
             )
+        log_audit(cur, action="profile_updated", actor=new_name, target_type="account", target_value=new_email, details="تم تحديث الملف الشخصي")
 
     token = login_user(new_name, new_email, role)
-    return jsonify({"ok": True, "message": "تم تحديث الملف الشخصي", "user": new_name, "email": new_email, "role": role, "token": token})
+    return jsonify({"ok": True, "message": "تم تحديث الملف الشخصي", "user": new_name, "email": new_email, "role": role, "token": token, "access_token": token})
 
 
 @auth_bp.post("/password_reset/request")

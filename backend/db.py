@@ -112,6 +112,9 @@ def init_db() -> None:
                 email TEXT NOT NULL,
                 password TEXT NOT NULL,
                 role TEXT NOT NULL DEFAULT 'user',
+                fcm_token TEXT,
+                last_seen TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                is_online BOOLEAN NOT NULL DEFAULT FALSE,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
@@ -224,7 +227,18 @@ def init_db() -> None:
                 id SERIAL PRIMARY KEY,
                 sender TEXT NOT NULL,
                 receiver TEXT NOT NULL,
-                message TEXT NOT NULL,
+                message TEXT NOT NULL DEFAULT '',
+                encrypted_key TEXT,
+                iv TEXT,
+                encryption_version TEXT NOT NULL DEFAULT 'hybrid-rsa-aes-v1',
+                type TEXT NOT NULL DEFAULT 'text',
+                media_url TEXT,
+                deleted BOOLEAN NOT NULL DEFAULT FALSE,
+                status TEXT NOT NULL DEFAULT 'sent',
+                client_id TEXT,
+                reply_to_id INT,
+                delivered_at TIMESTAMP,
+                seen_at TIMESTAMP,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
@@ -248,6 +262,17 @@ def init_db() -> None:
                 blocked TEXT NOT NULL,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(blocker, blocked)
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_public_keys (
+                username TEXT PRIMARY KEY,
+                public_key TEXT NOT NULL,
+                algorithm TEXT NOT NULL DEFAULT 'RSA_OAEP_SHA256',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
@@ -424,6 +449,62 @@ def init_db() -> None:
         )
         cur.execute(
             """
+            CREATE TABLE IF NOT EXISTS analytics (
+                id SERIAL PRIMARY KEY,
+                "user" TEXT,
+                event TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS moderation_actions (
+                id SERIAL PRIMARY KEY,
+                username TEXT NOT NULL,
+                action TEXT NOT NULL,
+                reason TEXT NOT NULL DEFAULT '',
+                created_by TEXT NOT NULL DEFAULT 'system',
+                duration_minutes INT NOT NULL DEFAULT 0,
+                expires_at TIMESTAMP NULL,
+                is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                auto_generated BOOLEAN NOT NULL DEFAULT FALSE,
+                metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id SERIAL PRIMARY KEY,
+                actor TEXT NOT NULL DEFAULT 'system',
+                action TEXT NOT NULL,
+                target_type TEXT NOT NULL DEFAULT '',
+                target_value TEXT NOT NULL DEFAULT '',
+                details TEXT NOT NULL DEFAULT '',
+                severity TEXT NOT NULL DEFAULT 'info',
+                metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+                ip_address TEXT NOT NULL DEFAULT '',
+                user_agent TEXT NOT NULL DEFAULT '',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS typing_status (
+                id SERIAL PRIMARY KEY,
+                sender TEXT NOT NULL,
+                receiver TEXT NOT NULL,
+                is_typing BOOLEAN NOT NULL DEFAULT FALSE,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(sender, receiver)
+            )
+            """
+        )
+        cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS password_reset_codes (
                 id SERIAL PRIMARY KEY,
                 user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -444,6 +525,9 @@ def init_db() -> None:
 
         for table_name, column_name, ddl in [
             ("users", "role", "TEXT NOT NULL DEFAULT 'user'"),
+            ("users", "fcm_token", "TEXT"),
+            ("users", "last_seen", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+            ("users", "is_online", "BOOLEAN NOT NULL DEFAULT FALSE"),
             ("users", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
             ("posts", "media", "TEXT"),
             ("posts", "likes", "INT NOT NULL DEFAULT 0"),
@@ -454,7 +538,22 @@ def init_db() -> None:
             ("media_files", "content_type", "TEXT NOT NULL DEFAULT 'application/octet-stream'"),
             ("media_files", "file_size", "BIGINT NOT NULL DEFAULT 0"),
             ("media_files", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+            ("messages", "encrypted_key", "TEXT"),
+            ("messages", "iv", "TEXT"),
+            ("messages", "encryption_version", "TEXT NOT NULL DEFAULT 'hybrid-rsa-aes-v1'"),
+            ("messages", "type", "TEXT NOT NULL DEFAULT 'text'"),
+            ("messages", "media_url", "TEXT"),
+            ("messages", "deleted", "BOOLEAN NOT NULL DEFAULT FALSE"),
+            ("messages", "status", "TEXT NOT NULL DEFAULT 'sent'"),
+            ("messages", "client_id", "TEXT"),
+            ("messages", "reply_to_id", "INT"),
+            ("messages", "delivered_at", "TIMESTAMP NULL"),
+            ("messages", "seen_at", "TIMESTAMP NULL"),
             ("messages", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+            ("chat_public_keys", "algorithm", "TEXT NOT NULL DEFAULT 'RSA_OAEP_SHA256'"),
+            ("chat_public_keys", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+            ("chat_public_keys", "updated_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+            ("typing_status", "updated_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
             ("notifications", "text", "TEXT NOT NULL DEFAULT ''"),
             ("notifications", "message", "TEXT NOT NULL DEFAULT ''"),
             ("notifications", "seen", "BOOLEAN NOT NULL DEFAULT FALSE"),
@@ -500,6 +599,24 @@ def init_db() -> None:
             ("live_likes", "user_id", "INT"),
             ("live_likes", "username", "TEXT NOT NULL DEFAULT ''"),
             ("live_likes", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+            ("moderation_actions", "reason", "TEXT NOT NULL DEFAULT ''"),
+            ("moderation_actions", "created_by", "TEXT NOT NULL DEFAULT 'system'"),
+            ("moderation_actions", "duration_minutes", "INT NOT NULL DEFAULT 0"),
+            ("moderation_actions", "expires_at", "TIMESTAMP NULL"),
+            ("moderation_actions", "is_active", "BOOLEAN NOT NULL DEFAULT TRUE"),
+            ("moderation_actions", "auto_generated", "BOOLEAN NOT NULL DEFAULT FALSE"),
+            ("moderation_actions", "metadata", "JSONB NOT NULL DEFAULT '{}'::jsonb"),
+            ("moderation_actions", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+            ("audit_logs", "actor", "TEXT NOT NULL DEFAULT 'system'"),
+            ("audit_logs", "action", "TEXT NOT NULL DEFAULT ''"),
+            ("audit_logs", "target_type", "TEXT NOT NULL DEFAULT ''"),
+            ("audit_logs", "target_value", "TEXT NOT NULL DEFAULT ''"),
+            ("audit_logs", "details", "TEXT NOT NULL DEFAULT ''"),
+            ("audit_logs", "severity", "TEXT NOT NULL DEFAULT 'info'"),
+            ("audit_logs", "metadata", "JSONB NOT NULL DEFAULT '{}'::jsonb"),
+            ("audit_logs", "ip_address", "TEXT NOT NULL DEFAULT ''"),
+            ("audit_logs", "user_agent", "TEXT NOT NULL DEFAULT ''"),
+            ("audit_logs", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
             ("password_reset_codes", "reset_token", "TEXT"),
             ("password_reset_codes", "attempts", "INT NOT NULL DEFAULT 0"),
             ("password_reset_codes", "verified_at", "TIMESTAMP NULL"),
@@ -518,6 +635,7 @@ def init_db() -> None:
 
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(lower(email))")
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_name_unique ON users(name)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_users_presence ON users(is_online, last_seen DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts(created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments(post_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_stories_created_at ON stories(created_at DESC)")
@@ -526,6 +644,11 @@ def init_db() -> None:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_reel_likes_reel_id ON reel_likes(reel_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_reel_comments_reel_id ON reel_comments(reel_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_pair ON messages(sender, receiver, created_at)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_receiver_status ON messages(receiver, status, created_at DESC)")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_sender_client ON messages(sender, client_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_chat_public_keys_updated ON chat_public_keys(updated_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_typing_status_receiver ON typing_status(receiver, updated_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_analytics_user_created ON analytics(\"user\", created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_followers_following ON followers(following)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_notifications_username ON notifications(username, created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status, created_at DESC)")
@@ -535,6 +658,11 @@ def init_db() -> None:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_live_messages_room ON live_messages(room_id, created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_live_gifts_room ON live_gifts(room_id, created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_live_likes_room ON live_likes(room_id, created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_moderation_actions_user_active ON moderation_actions(username, is_active, created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_moderation_actions_action_active ON moderation_actions(action, is_active, created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_created ON audit_logs(actor, created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_action_created ON audit_logs(action, created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_password_reset_user_created ON password_reset_codes(user_id, created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_password_reset_active_lookup ON password_reset_codes(request_token, expires_at DESC)")
 

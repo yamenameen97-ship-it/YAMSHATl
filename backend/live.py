@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
 
+from admin_utils import enforce_moderation, log_audit
 from config import Config
 from db import db_cursor
 from extensions import limiter
@@ -28,6 +29,9 @@ def send_gift():
         return json_error("قيمة الهدية غير صالحة", 400)
 
     with db_cursor(commit=True) as (_conn, cur):
+        moderation_error = enforce_moderation(cur, sender, "live")
+        if moderation_error:
+            return json_error(moderation_error, 403)
         cur.execute("SELECT id FROM users WHERE name=%s LIMIT 1", (receiver,))
         if not cur.fetchone():
             return json_error("المستلم غير موجود", 404)
@@ -59,6 +63,7 @@ def send_gift():
         )
         cur.execute("SELECT balance FROM coins WHERE username=%s", (sender,))
         remaining = int((cur.fetchone() or {}).get("balance") or 0)
+        log_audit(cur, action="gift_sent", actor=sender, target_type="user", target_value=receiver, details=f"{gift}:{value}")
 
     return jsonify({"ok": True, "message": "تم إرسال الهدية", "balance": remaining})
 

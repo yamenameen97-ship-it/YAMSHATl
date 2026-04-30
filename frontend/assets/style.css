@@ -1112,3 +1112,269 @@ body.light-theme .icon-btn{
     padding:14px;
   }
 }
+
+.enhanced-chat-shell{
+  gap:12px;
+}
+
+.chat-header-copy{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+.chat-top-actions,
+.chat-tools-row{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.presence-line{
+  color:#9efcb0;
+}
+
+.enhanced-messages{
+  display:grid;
+  gap:10px;
+}
+
+.chat-msg-body{
+  display:grid;
+  gap:8px;
+}
+
+.chat-msg-text{
+  white-space:pre-wrap;
+  word-break:break-word;
+}
+
+.chat-msg-meta{
+  display:flex;
+  gap:10px;
+  justify-content:space-between;
+  font-size:.78rem;
+  opacity:.82;
+  margin-top:8px;
+}
+
+.chat-delete-btn{
+  margin-top:8px;
+  align-self:flex-start;
+  background:rgba(255,255,255,.16);
+  border:1px solid rgba(255,255,255,.15);
+}
+
+.msg.deleted{
+  opacity:.7;
+}
+
+.chat-media,
+.upload-preview img,
+.upload-preview video{
+  width:min(100%, 320px);
+  border-radius:16px;
+  border:1px solid rgba(255,255,255,.12);
+  background:#000;
+}
+
+.chat-audio{
+  width:min(100%, 320px);
+}
+
+.chat-file-link{
+  color:#fff;
+  text-decoration:underline;
+}
+
+.chat-tools{
+  padding:12px;
+  display:grid;
+  gap:10px;
+}
+
+.voice-status{
+  min-width:120px;
+}
+
+.upload-preview{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.upload-preview button{
+  padding:10px 12px;
+}
+
+.upload-preview-file{
+  padding:10px 14px;
+  border-radius:14px;
+  background:rgba(255,255,255,.08);
+}
+
+.enhanced-input-box{
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+
+.typing-indicator{
+  padding:4px 10px;
+  color:var(--muted);
+}
+
+.chat-top-strip{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.secondary-btn{
+  background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.14);
+}
+
+.sync-status{
+  padding:8px 12px;
+  border-radius:14px;
+  font-size:.88rem;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.06);
+}
+
+.sync-status.success{ color:#9efcb0; }
+.sync-status.info{ color:#c8d4ff; }
+.sync-status.warning{ color:#ffd27d; }
+.sync-status.danger{ color:#ff9ca0; }
+
+.reply-composer{
+  display:grid;
+  gap:8px;
+}
+
+.reply-draft-card,
+.chat-reply-preview{
+  border-inline-start:3px solid rgba(255,255,255,.35);
+  border-radius:14px;
+  padding:10px 12px;
+  background:rgba(255,255,255,.06);
+}
+
+.reply-draft-card{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.reply-draft-copy,
+.chat-reply-preview{
+  display:grid;
+  gap:4px;
+}
+
+.reply-draft-title,
+.chat-reply-author{
+  font-size:.84rem;
+  opacity:.85;
+}
+
+.reply-draft-text,
+.chat-reply-text{
+  font-size:.88rem;
+  word-break:break-word;
+}
+
+.chat-msg-actions,
+.chat-reaction-summary,
+.chat-reaction-picker{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:8px;
+}
+
+.chat-action-btn,
+.reaction-chip,
+.reaction-btn{
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.08);
+  color:#fff;
+  border-radius:999px;
+  padding:6px 10px;
+  font-size:.82rem;
+}
+
+.reaction-chip.mine,
+.reaction-btn.active{
+  background:rgba(224,0,0,.25);
+  border-color:rgba(224,0,0,.5);
+}
+
+.msg.local-pending,
+.msg.local-syncing,
+.msg.local-failed{
+  border-style:dashed;
+}
+
+.msg.local-failed{
+  box-shadow:0 0 0 1px rgba(255,80,80,.25) inset;
+}
+
+.call-shell{
+  max-width:1100px;
+  margin:20px auto;
+  padding:18px;
+  display:grid;
+  gap:16px;
+}
+
+.call-stage{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  gap:14px;
+}
+
+.call-tile{
+  min-height:260px;
+  border-radius:24px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.05);
+  overflow:hidden;
+  position:relative;
+  display:grid;
+  place-items:center;
+}
+
+.call-tile video,
+.call-tile audio{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  background:#000;
+}
+
+.call-badge{
+  position:absolute;
+  top:12px;
+  right:12px;
+  z-index:2;
+  padding:8px 12px;
+  border-radius:999px;
+  background:rgba(0,0,0,.45);
+  border:1px solid rgba(255,255,255,.1);
+}
+
+.call-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+}
+
+.call-actions button{
+  min-width:140px;
+}

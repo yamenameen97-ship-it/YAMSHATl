@@ -77,16 +77,16 @@ def store_user_device_token(cursor, username: str, token: str, platform: str = "
     if not safe_username or not safe_token:
         return False
 
-    cursor.execute("SELECT id FROM user_devices WHERE token=? LIMIT 1", (safe_token,))
+    cursor.execute("SELECT id FROM user_devices WHERE token=%s LIMIT 1", (safe_token,))
     existing = cursor.fetchone()
     if existing:
         cursor.execute(
-            "UPDATE user_devices SET username=?, platform=?, app_version=?, last_seen=CURRENT_TIMESTAMP WHERE token=?",
+            "UPDATE user_devices SET username=%s, platform=%s, app_version=%s, last_seen=CURRENT_TIMESTAMP WHERE token=%s",
             (safe_username, safe_platform, safe_app_version, safe_token),
         )
     else:
         cursor.execute(
-            "INSERT INTO user_devices (username, token, platform, app_version) VALUES (?, ?, ?, ?)",
+            "INSERT INTO user_devices (username, token, platform, app_version) VALUES (%s, %s, %s, %s)",
             (safe_username, safe_token, safe_platform, safe_app_version),
         )
     return True
@@ -99,14 +99,14 @@ def get_user_device_tokens(cursor, username: str):
 
     tokens = []
     try:
-        cursor.execute("SELECT token FROM user_devices WHERE username=? ORDER BY id DESC", (safe_username,))
+        cursor.execute("SELECT token FROM user_devices WHERE username=%s ORDER BY id DESC", (safe_username,))
         rows = cursor.fetchall()
         tokens.extend([row["token"] for row in rows if row.get("token")])
     except Exception:
         logger.exception("Failed to fetch tokens from user_devices for %s", safe_username)
 
     try:
-        cursor.execute("SELECT fcm_token FROM users WHERE name=? LIMIT 1", (safe_username,))
+        cursor.execute("SELECT fcm_token FROM users WHERE name=%s LIMIT 1", (safe_username,))
         row = cursor.fetchone()
         if row and row.get("fcm_token"):
             tokens.append(row["fcm_token"])

@@ -11,6 +11,11 @@ from functools import wraps
 from typing import Callable
 
 import jwt
+
+try:
+    from flask_jwt_extended import create_access_token
+except Exception:  # pragma: no cover
+    create_access_token = None
 from flask import jsonify, request, session
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -108,7 +113,9 @@ def create_token(user: str, email: str, role: str = "user") -> str:
         "iat": now,
         "exp": now + timedelta(days=Config.JWT_EXPIRE_DAYS),
     }
-    return jwt.encode(payload, Config.SECRET_KEY, algorithm="HS256")
+    if create_access_token is not None:
+        return create_access_token(identity=user, additional_claims={"user": user, "email": email, "role": role})
+    return jwt.encode(payload, Config.JWT_SECRET_KEY, algorithm="HS256")
 
 
 def decode_token(token: str | None):

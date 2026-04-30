@@ -11,21 +11,44 @@
     <link rel="manifest" href="site.webmanifest">
 </head>
 <body class="chat-page">
-    <div class="chat-shell glass">
+    <div class="chat-shell glass enhanced-chat-shell">
         <div class="header chat-header">
             <div class="header-row">
                 <button class="icon-btn" onclick="goFeed()">⬅</button>
-                <div>
+                <div class="chat-header-copy">
                     <div>💬 الدردشة</div>
                     <div class="subtle-text" id="chatWith">جاري التحميل...</div>
+                    <div class="subtle-text presence-line" id="presenceText">جاري فحص الحالة...</div>
                 </div>
-                <button class="icon-btn" onclick="goProfile()">👤</button>
+                <div class="chat-top-actions">
+                    <button class="icon-btn" type="button" onclick="toggleChatE2E()" title="تفعيل التشفير">🔐</button>
+                    <button class="icon-btn" type="button" onclick="startCall('audio')" title="مكالمة صوتية">📞</button>
+                    <button class="icon-btn" type="button" onclick="startCall('video')" title="مكالمة فيديو">🎥</button>
+                </div>
             </div>
         </div>
 
-        <div id="messages" class="messages-box"></div>
+        <div class="chat-top-strip">
+            <button id="loadOlderBtn" class="secondary-btn hidden" type="button">تحميل رسائل أقدم</button>
+            <div id="syncStatusBar" class="sync-status info">جاري تجهيز المزامنة...</div>
+        </div>
 
-        <div class="input-box glass">
+        <div id="typingIndicator" class="typing-indicator hidden">يكتب الآن...</div>
+        <div id="messages" class="messages-box enhanced-messages"></div>
+
+        <div class="chat-tools glass">
+            <input type="file" id="chatMediaInput" accept="image/*,video/*,audio/*" class="hidden" onchange="if(this.files[0]) uploadChatMedia(this.files[0])">
+            <div class="chat-tools-row">
+                <button class="icon-btn" type="button" onclick="document.getElementById('chatMediaInput').click()" title="إرسال صورة أو فيديو">🖼️</button>
+                <button id="voiceRecordBtn" class="icon-btn" type="button" onclick="toggleVoiceRecording()" title="تسجيل صوتي">🎤</button>
+                <div id="voiceStatus" class="subtle-text voice-status">جاهز للتسجيل</div>
+            </div>
+            <div id="chatUploadPreview" class="upload-preview hidden"></div>
+        </div>
+
+        <div id="replyComposer" class="reply-composer hidden"></div>
+
+        <div class="input-box glass enhanced-input-box">
             <input type="text" id="msgInput" placeholder="اكتب رسالة..." autocomplete="off">
             <button id="sendBtn" onclick="sendMsg(this)">إرسال</button>
         </div>
@@ -33,7 +56,9 @@
 
     <script src="/api/app-config.js"></script>
     <script src="assets/auth.js"></script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="assets/app.js"></script>
+    <script src="assets/chat-enhanced.js"></script>
     <script>
         window.addEventListener('DOMContentLoaded', () => {
             const input = document.getElementById('msgInput');

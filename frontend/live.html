@@ -8,8 +8,13 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="format-detection" content="telephone=no">
     <title>Yamshat | البث المباشر</title>
+
     <link rel="stylesheet" href="assets/style.css">
     <link rel="icon" type="image/png" href="assets/favicon-32.png">
+
+    <!-- 🔥 LiveKit Library -->
+    <script src="https://unpkg.com/livekit-client/dist/livekit-client.umd.min.js"></script>
+
     <style>
         body { background:linear-gradient(180deg,#020617 0%, #0f172a 35%, #111827 100%); }
         .live-wrap { padding:calc(env(safe-area-inset-top, 0px) + 16px) 14px calc(env(safe-area-inset-bottom, 0px) + 28px); max-width:1180px; margin:0 auto; }
@@ -18,198 +23,83 @@
         .hero { padding:20px; display:grid; grid-template-columns:1.2fr .8fr; gap:16px; }
         .hero h1 { margin:0 0 12px; font-size:30px; }
         .hero p, .muted { color:#cbd5e1; line-height:1.8; }
-        .hero-badges, .stats-row, .room-stats { display:flex; gap:10px; flex-wrap:wrap; }
-        .hero-badge, .live-pill { display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:999px; background:rgba(239,68,68,0.12); color:#fecaca; font-size:13px; }
-        .hero-side { display:grid; gap:12px; }
-        .metric-card { padding:16px; }
-        .metric-card b { display:block; font-size:24px; margin-bottom:6px; }
-        .metric-card span { color:#cbd5e1; font-size:13px; }
-        .create-box { display:grid; gap:12px; margin-top:18px; }
-        .create-actions { display:flex; gap:10px; flex-wrap:wrap; }
-        .create-actions input { flex:1; min-width:220px; }
-        .live-grid { display:grid; grid-template-columns:1fr .85fr; gap:16px; margin-top:18px; }
-        .panel { padding:18px; }
-        .panel-head { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
-        .room-list { display:grid; gap:12px; }
-        .room-card { padding:16px; display:grid; gap:12px; }
-        .room-head { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
-        .room-title { font-size:18px; font-weight:800; }
-        .room-meta { color:#cbd5e1; font-size:13px; line-height:1.8; }
-        .room-actions { display:flex; gap:8px; flex-wrap:wrap; }
-        .empty-box { padding:22px; border-radius:20px; text-align:center; background:rgba(255,255,255,0.04); color:#cbd5e1; }
-        .tips-list { display:grid; gap:10px; }
-        .tip-item { padding:14px; border-radius:18px; background:rgba(255,255,255,0.05); color:#cbd5e1; line-height:1.8; }
-        @media (max-width: 920px) {
-            .hero, .live-grid { grid-template-columns:1fr; }
-            .hero h1 { font-size:26px; }
-        }
     </style>
+
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
     <link rel="manifest" href="site.webmanifest">
 </head>
+
 <body>
-    <main class="live-wrap">
-        <div class="topbar">
-            <button class="icon-btn" onclick="window.location.href='feed.html'">⬅ العودة للرئيسية</button>
-            <button class="icon-btn" onclick="loadLives()">🔄 تحديث البثوث</button>
-        </div>
+<main class="live-wrap">
 
-        <section class="hero">
+    <div class="topbar">
+        <button class="icon-btn" onclick="window.location.href='feed.html'">⬅ العودة للرئيسية</button>
+        <button class="icon-btn" onclick="loadLives()">🔄 تحديث البثوث</button>
+    </div>
+
+    <section class="hero">
+        <div>
+            <h1>ابدأ بثك بشكل مرتب وسريع</h1>
+            <p id="sessionLabel">جاري التحقق من الجلسة...</p>
+
             <div>
-                <div class="hero-badges">
-                    <span class="hero-badge">🔴 بث مباشر</span>
-                    <span class="hero-badge">📱 Web / Android / iOS</span>
-                    <span class="hero-badge">🎥 LiveKit + Socket.IO</span>
-                </div>
-                <h1>ابدأ بثك بشكل مرتب وسريع</h1>
-                <p id="sessionLabel" class="muted">جاري التحقق من الجلسة...</p>
-                <div class="create-box">
-                    <div class="create-actions">
-                        <input id="title" placeholder="اكتب عنوان البث المباشر">
-                        <button onclick="startLive(this)">ابدأ البث الآن</button>
-                    </div>
-                    <div class="stats-row">
-                        <span class="live-pill">✅ الغرف القديمة غير النشطة يتم تنظيفها تلقائياً</span>
-                        <span class="live-pill">↩️ يمكنك الرجوع للرئيسية من نفس الصفحة</span>
-                    </div>
-                </div>
+                <input id="title" placeholder="اكتب عنوان البث المباشر">
+                <button onclick="startLive(this)">ابدأ البث الآن</button>
             </div>
-            <div class="hero-side">
-                <div class="metric-card">
-                    <b id="liveCount">0</b>
-                    <span>بث مباشر متاح حالياً</span>
-                </div>
-                <div class="metric-card">
-                    <b>واجهة أنظف</b>
-                    <span>تم إزالة الأسهم والكتابات التجريبية من صفحة البث الرئيسية.</span>
-                </div>
-                <div class="metric-card">
-                    <b>حفظ أفضل</b>
-                    <span>الصور والفيديوهات الجديدة يتم تخزينها بشكل أكثر ثباتاً مع المشروع.</span>
-                </div>
-            </div>
-        </section>
+        </div>
+    </section>
 
-        <section class="live-grid">
-            <div class="panel">
-                <div class="panel-head">
-                    <div>
-                        <div class="brand-title">البثوث الحالية</div>
-                        <div class="muted">القائمة تتحدث تلقائياً وتعرض البثوث النشطة فقط.</div>
-                    </div>
-                </div>
-                <div id="rooms" class="room-list"></div>
-            </div>
+    <section id="rooms"></section>
 
-            <div class="panel">
-                <div class="panel-head">
-                    <div>
-                        <div class="brand-title">ملاحظات مهمة</div>
-                        <div class="muted">لأفضل تجربة أثناء البث والمشاهدة</div>
-                    </div>
-                </div>
-                <div class="tips-list">
-                    <div class="tip-item">استخدم عنوان واضح للبث حتى يسهل على المتابعين دخوله بسرعة.</div>
-                    <div class="tip-item">إذا أغلقت البث وخرج المضيف، يتم تنظيف الجلسة غير النشطة تلقائياً بدلاً من بقائها مفتوحة.</div>
-                    <div class="tip-item">لوحة الإدارة متاحة للبلاغات والمتابعة من داخل المشروع نفسه.</div>
-                </div>
-            </div>
-        </section>
-    </main>
+</main>
 
-    <script src="/api/app-config.js"></script>
-    <script src="assets/auth.js"></script>
-    <script src="assets/live_fix.js"></script>
-    <script>
-        const API_BASE = window.API_BASE || `${window.location.origin.replace(/\/+$/, "")}/api`;
-        let currentUser = "";
-        let refreshTimer = null;
+<!-- 🔥 Live Fix (تشغيل الكاميرا والبث) -->
+<script src="assets/live_fix.js"></script>
 
-        async function checkSession() {
-            const data = await window.requestJSON(`${API_BASE}/me`);
-            if (!data.user) {
-                window.location.href = "index.html";
-                return;
-            }
-            currentUser = data.user;
-            const platform = window.LiveFix.detectPlatform();
-            document.getElementById('sessionLabel').textContent = `مرحباً ${currentUser} · المنصة الحالية: ${platform}`;
-        }
+<script>
+const API_BASE = window.location.origin + "/api";
+let currentUser = "";
 
-        async function startLive(button) {
-            const title = document.getElementById('title').value.trim();
-            if (!title) {
-                window.LiveFix.showToast('اكتب عنوان البث أولاً');
-                return;
-            }
-            const original = button.textContent;
-            button.disabled = true;
-            button.textContent = 'جاري التجهيز...';
-            try {
-                const data = await window.requestJSON(`${API_BASE}/create_live`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title, platform: window.LiveFix.detectPlatform() }),
-                });
-                window.LiveFix.showToast(data.message || 'تم تجهيز البث');
-                document.getElementById('title').value = '';
-                if (data.room_id) {
-                    setTimeout(() => {
-                        window.location.href = `live_room.html?id=${data.room_id}`;
-                    }, 450);
-                }
-            } catch (error) {
-                window.LiveFix.showToast(error.message || 'تعذر إنشاء البث');
-            } finally {
-                button.disabled = false;
-                button.textContent = original;
-            }
-        }
+async function startLive(button) {
+    const title = document.getElementById('title').value.trim();
 
-        async function loadLives() {
-            const box = document.getElementById('rooms');
-            try {
-                const rooms = await window.requestJSON(`${API_BASE}/live_rooms`);
-                document.getElementById('liveCount').textContent = String(rooms.length || 0);
-                if (!rooms.length) {
-                    box.innerHTML = '<div class="empty-box">لا يوجد بث مباشر الآن</div>';
-                    return;
-                }
-                box.innerHTML = rooms.map(room => `
-                    <div class="room-card">
-                        <div class="room-head">
-                            <div>
-                                <div class="room-title">${window.LiveFix.escapeHTML(room.title)}</div>
-                                <div class="room-meta">صاحب البث: ${window.LiveFix.escapeHTML(room.username)}</div>
-                            </div>
-                            <span class="live-pill">🔴 مباشر الآن</span>
-                        </div>
-                        <div class="room-stats">
-                            <span class="live-pill">👀 <span class="viewer-count" data-room-id="${room.id}">${room.viewer_count || 0}</span> مشاهد</span>
-                            <span class="live-pill">⚙️ ${window.LiveFix.escapeHTML(room.stream_mode || 'livekit_sfu')}</span>
-                        </div>
-                        <div class="room-actions">
-                            <button onclick="window.location.href='live_room.html?id=${room.id}'">دخول البث</button>
-                            <button class="icon-btn" onclick="window.location.href='profile.html?user=${encodeURIComponent(room.username)}'">👤 الحساب</button>
-                        </div>
-                    </div>
-                `).join('');
-            } catch (error) {
-                box.innerHTML = `<div class="empty-box">${window.LiveFix.escapeHTML(error.message)}</div>`;
-            }
-        }
+    if (!title) {
+        alert("اكتب عنوان البث");
+        return;
+    }
 
-        window.addEventListener('DOMContentLoaded', async () => {
-            try {
-                await checkSession();
-                await loadLives();
-                refreshTimer = setInterval(loadLives, 7000);
-            } catch (error) {
-                window.LiveFix.showToast(error.message || 'تعذر تحميل صفحة البث');
-            }
+    button.disabled = true;
+    button.textContent = "جاري التشغيل...";
+
+    try {
+        const res = await fetch(API_BASE + "/create_live", {
+            method: "POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({ title })
         });
 
-        window.addEventListener('beforeunload', () => refreshTimer && clearInterval(refreshTimer));
-    </script>
+        const data = await res.json();
+
+        if (!data.token) {
+            alert("فشل إنشاء البث");
+            return;
+        }
+
+        // 🔥 تشغيل البث الحقيقي
+        startLiveStream(data.token, data.livekit_url);
+
+        setTimeout(() => {
+            window.location.href = "live_room.html?id=" + data.room_id;
+        }, 1000);
+
+    } catch (e) {
+        alert("خطأ في البث: " + e.message);
+    }
+
+    button.disabled = false;
+    button.textContent = "ابدأ البث الآن";
+}
+</script>
+
 </body>
 </html>

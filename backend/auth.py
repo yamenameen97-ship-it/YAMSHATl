@@ -52,7 +52,6 @@ def _rename_user_references(cur, old_name: str, new_name: str):
         ("reels", "username"),
         ("messages", "sender"),
         ("messages", "receiver"),
-        ("chat_public_keys", "username"),
         ("post_likes", "username"),
     ]:
         cur.execute(f"UPDATE {table_name} SET {column_name}=%s WHERE {column_name}=%s", (new_name, old_name))

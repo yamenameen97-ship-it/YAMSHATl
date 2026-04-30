@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -127,21 +126,7 @@ def _ensure_chat_tables():
             )
             """
         )
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS chat_public_keys (
-                username TEXT PRIMARY KEY,
-                public_key TEXT NOT NULL,
-                algorithm TEXT NOT NULL DEFAULT 'RSA_OAEP_SHA256',
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-            """
-        )
         for statement in [
-            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS encrypted_key TEXT",
-            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS iv TEXT",
-            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS encryption_version TEXT NOT NULL DEFAULT 'hybrid-rsa-aes-v1'",
             "ALTER TABLE messages ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'text'",
             "ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_url TEXT",
             "ALTER TABLE messages ADD COLUMN IF NOT EXISTS deleted BOOLEAN NOT NULL DEFAULT FALSE",
@@ -270,10 +255,7 @@ def _serialize_message(row: dict, reply_map: dict[int, dict] | None = None, reac
         "media_url": None if deleted else row.get("media_url"),
         "deleted": deleted,
         "status": row.get("status") or "sent",
-        "encrypted_key": row.get("encrypted_key") or "",
-        "iv": row.get("iv") or "",
-        "encryption_version": row.get("encryption_version") or "hybrid-rsa-aes-v1",
-        "is_e2e": bool(row.get("encrypted_key") and row.get("iv") and base_message),
+        "is_e2e": _looks_like_encrypted(base_message),
         "reply_to_id": reply_to_id,
         "reply_to": (reply_map or {}).get(reply_to_id or 0),
         "reactions": reaction_state.get("items") or [],
@@ -449,52 +431,6 @@ def _reaction_payload(cur, message_id: int, username: str | None = None) -> dict
     }
 
 
-@chat_bp.post("/chat_keys/public")
-@require_auth
-def upload_chat_public_key():
-    _ensure_chat_tables()
-    username = current_user() or ""
-    data = request.get_json(silent=True) or {}
-    public_key = normalize_text(data.get("public_key"), 12000)
-    algorithm = normalize_text(data.get("algorithm"), 64) or "RSA_OAEP_SHA256"
-    if not public_key:
-        return json_error("المفتاح العام مطلوب", 400)
-
-    with db_cursor(commit=True) as (_conn, cur):
-        cur.execute(
-            """
-            INSERT INTO chat_public_keys(username, public_key, algorithm, created_at, updated_at)
-            VALUES(%s,%s,%s,NOW(),NOW())
-            ON CONFLICT (username)
-            DO UPDATE SET public_key=EXCLUDED.public_key, algorithm=EXCLUDED.algorithm, updated_at=NOW()
-            """,
-            (username, public_key, algorithm),
-        )
-    return jsonify({"ok": True, "message": "تم حفظ المفتاح العام", "username": username, "algorithm": algorithm})
-
-
-@chat_bp.get("/chat_keys/public/<username>")
-@require_auth
-def get_chat_public_key(username: str):
-    _ensure_chat_tables()
-    safe_username = normalize_text(username, 80)
-    with db_cursor() as (_conn, cur):
-        cur.execute(
-            "SELECT username, public_key, algorithm, updated_at FROM chat_public_keys WHERE username=%s LIMIT 1",
-            (safe_username,),
-        )
-        row = cur.fetchone() or {}
-    if not row:
-        return json_error("المستخدم لم يفعّل التشفير بعد", 404)
-    return jsonify({
-        "ok": True,
-        "username": row.get("username") or safe_username,
-        "public_key": row.get("public_key") or "",
-        "algorithm": row.get("algorithm") or "RSA_OAEP_SHA256",
-        "updated_at": row.get("updated_at"),
-    })
-
-
 @chat_bp.post("/send_message")
 @require_auth
 @rate_limit(120, 60)
@@ -503,10 +439,7 @@ def send_message():
     data = request.get_json(silent=True) or {}
     sender = current_user() or ""
     receiver = normalize_text(data.get("receiver") or data.get("receiver_id"), 80)
-    message = normalize_text(data.get("ciphertext") or data.get("message") or data.get("content"), 24000)
-    encrypted_key = normalize_text(data.get("encrypted_key"), 24000)
-    iv = normalize_text(data.get("iv"), 512)
-    encryption_version = normalize_text(data.get("encryption_version"), 64) or "hybrid-rsa-aes-v1"
+    message = normalize_text(data.get("message") or data.get("content"), 8000)
     media_url = normalize_text(data.get("media_url"), 2000)
     client_id = _normalize_client_id(data.get("client_id"))
     msg_type = _normalize_message_type(data.get("type") or "text", media_url)
@@ -520,8 +453,6 @@ def send_message():
         return json_error("الرسالة فارغة", 400)
     if msg_type == "text" and not message and media_url:
         msg_type = _normalize_message_type("file", media_url)
-    if message and (not encrypted_key or not iv):
-        return json_error("حقول التشفير مطلوبة", 400)
 
     with db_cursor(commit=True) as (_conn, cur):
         cur.execute("SELECT id FROM users WHERE name=%s LIMIT 1", (receiver,))
@@ -553,7 +484,7 @@ def send_message():
         if client_id:
             cur.execute(
                 """
-                SELECT id, client_id, sender, receiver, message, encrypted_key, iv, encryption_version, type, media_url, deleted, status,
+                SELECT id, client_id, sender, receiver, message, type, media_url, deleted, status,
                        reply_to_id, delivered_at, seen_at, created_at
                 FROM messages
                 WHERE sender=%s AND client_id=%s
@@ -581,14 +512,14 @@ def send_message():
         cur.execute(
             """
             INSERT INTO messages(
-                sender, receiver, message, encrypted_key, iv, encryption_version, type, media_url, deleted, status,
+                sender, receiver, message, type, media_url, deleted, status,
                 client_id, reply_to_id, delivered_at, seen_at
             )
-            VALUES(%s,%s,%s,%s,%s,%s,%s,%s,FALSE,'sent',%s,%s,NULL,NULL)
-            RETURNING id, client_id, sender, receiver, message, encrypted_key, iv, encryption_version, type, media_url, deleted, status,
+            VALUES(%s,%s,%s,%s,%s,FALSE,'sent',%s,%s,NULL,NULL)
+            RETURNING id, client_id, sender, receiver, message, type, media_url, deleted, status,
                       reply_to_id, delivered_at, seen_at, created_at
             """,
-            (sender, receiver, message, encrypted_key or None, iv or None, encryption_version, msg_type, media_url or None, client_id or None, reply_to_id or None),
+            (sender, receiver, message, msg_type, media_url or None, client_id or None, reply_to_id or None),
         )
         row = cur.fetchone() or {}
 
@@ -659,7 +590,7 @@ def delete_message():
         if row.get("sender") != username:
             return json_error("غير مسموح لك بحذف هذه الرسالة", 403)
         cur.execute(
-            "UPDATE messages SET deleted=TRUE, message='', encrypted_key=NULL, iv=NULL, media_url=NULL, status='deleted' WHERE id=%s",
+            "UPDATE messages SET deleted=TRUE, message='', media_url=NULL, status='deleted' WHERE id=%s",
             (message_id,),
         )
         cur.execute('INSERT INTO analytics("user", event) VALUES(%s,%s)', (username, "chat_delete"))
@@ -819,7 +750,7 @@ def get_messages():
         if before_id:
             cur.execute(
                 """
-                SELECT id, client_id, sender, receiver, message, encrypted_key, iv, encryption_version, type, media_url, deleted, status,
+                SELECT id, client_id, sender, receiver, message, type, media_url, deleted, status,
                        reply_to_id, delivered_at, seen_at, created_at
                 FROM messages
                 WHERE ((sender=%s AND receiver=%s) OR (sender=%s AND receiver=%s))
@@ -832,7 +763,7 @@ def get_messages():
         else:
             cur.execute(
                 """
-                SELECT id, client_id, sender, receiver, message, encrypted_key, iv, encryption_version, type, media_url, deleted, status,
+                SELECT id, client_id, sender, receiver, message, type, media_url, deleted, status,
                        reply_to_id, delivered_at, seen_at, created_at
                 FROM messages
                 WHERE (sender=%s AND receiver=%s)

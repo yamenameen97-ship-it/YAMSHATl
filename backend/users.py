@@ -106,6 +106,114 @@ def followers(username: str):
     return jsonify({"followers": followers_count, "following": following_count})
 
 
+
+
+@users_bp.get("/relationship/<username>")
+@require_auth
+def relationship(username: str):
+    viewer = current_user() or ""
+    target = normalize_text(username, 80)
+    if not target:
+        return json_error("اسم المستخدم غير صالح", 400)
+    if viewer == target:
+        return jsonify({
+            "same_user": True,
+            "following": False,
+            "is_friend": False,
+            "outgoing_request_id": None,
+            "incoming_request_id": None,
+        })
+
+    with db_cursor() as (_conn, cur):
+        cur.execute("SELECT id FROM users WHERE name=%s LIMIT 1", (target,))
+        if not cur.fetchone():
+            return json_error("المستخدم غير موجود", 404)
+
+        cur.execute("SELECT 1 FROM followers WHERE follower=%s AND following=%s LIMIT 1", (viewer, target))
+        following = bool(cur.fetchone())
+
+        cur.execute(
+            """
+            SELECT id, sender, receiver, status
+            FROM friend_requests
+            WHERE ((sender=%s AND receiver=%s) OR (sender=%s AND receiver=%s))
+              AND status IN ('pending', 'accepted')
+            ORDER BY id DESC
+            LIMIT 20
+            """,
+            (viewer, target, target, viewer),
+        )
+        rows = cur.fetchall() or []
+
+    outgoing_request_id = None
+    incoming_request_id = None
+    is_friend = False
+    for row in rows:
+        status = str(row.get("status") or "").strip().lower()
+        sender = row.get("sender")
+        receiver = row.get("receiver")
+        if status == 'accepted':
+            is_friend = True
+            break
+        if status == 'pending' and sender == viewer and receiver == target and outgoing_request_id is None:
+            outgoing_request_id = row.get("id")
+        if status == 'pending' and sender == target and receiver == viewer and incoming_request_id is None:
+            incoming_request_id = row.get("id")
+
+    return jsonify({
+        "same_user": False,
+        "following": following,
+        "is_friend": is_friend,
+        "outgoing_request_id": outgoing_request_id,
+        "incoming_request_id": incoming_request_id,
+    })
+
+
+@users_bp.post("/cancel_friend_request")
+@require_auth
+def cancel_friend_request():
+    viewer = current_user() or ""
+    data = request.get_json(silent=True) or {}
+    request_id = int(data.get("id") or 0)
+    receiver = normalize_text(data.get("receiver"), 80)
+
+    with db_cursor(commit=True) as (_conn, cur):
+        if request_id:
+            cur.execute(
+                """
+                SELECT id, sender, receiver, status
+                FROM friend_requests
+                WHERE id=%s
+                LIMIT 1
+                """,
+                (request_id,),
+            )
+        elif receiver:
+            cur.execute(
+                """
+                SELECT id, sender, receiver, status
+                FROM friend_requests
+                WHERE sender=%s AND receiver=%s AND status='pending'
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (viewer, receiver),
+            )
+        else:
+            return json_error("بيانات الطلب غير مكتملة", 400)
+
+        row = cur.fetchone()
+        if not row:
+            return json_error("طلب الصداقة غير موجود", 404)
+        if row.get("sender") != viewer:
+            return json_error("لا يمكنك إلغاء هذا الطلب", 403)
+        if str(row.get("status") or '').lower() != 'pending':
+            return json_error("لا يمكن إلغاء هذا الطلب بعد الآن", 400)
+
+        cur.execute("DELETE FROM friend_requests WHERE id=%s", (row.get("id"),))
+
+    return jsonify({"ok": True, "message": "تم إلغاء طلب الصداقة"})
+
 @users_bp.get("/users")
 def list_users():
     viewer = current_user()

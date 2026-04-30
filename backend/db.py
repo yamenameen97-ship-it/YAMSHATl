@@ -228,17 +228,10 @@ def init_db() -> None:
                 sender TEXT NOT NULL,
                 receiver TEXT NOT NULL,
                 message TEXT NOT NULL DEFAULT '',
-                encrypted_key TEXT,
-                iv TEXT,
-                encryption_version TEXT NOT NULL DEFAULT 'hybrid-rsa-aes-v1',
                 type TEXT NOT NULL DEFAULT 'text',
                 media_url TEXT,
                 deleted BOOLEAN NOT NULL DEFAULT FALSE,
                 status TEXT NOT NULL DEFAULT 'sent',
-                client_id TEXT,
-                reply_to_id INT,
-                delivered_at TIMESTAMP,
-                seen_at TIMESTAMP,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
@@ -262,17 +255,6 @@ def init_db() -> None:
                 blocked TEXT NOT NULL,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(blocker, blocked)
-            )
-            """
-        )
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS chat_public_keys (
-                username TEXT PRIMARY KEY,
-                public_key TEXT NOT NULL,
-                algorithm TEXT NOT NULL DEFAULT 'RSA_OAEP_SHA256',
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
@@ -538,21 +520,11 @@ def init_db() -> None:
             ("media_files", "content_type", "TEXT NOT NULL DEFAULT 'application/octet-stream'"),
             ("media_files", "file_size", "BIGINT NOT NULL DEFAULT 0"),
             ("media_files", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
-            ("messages", "encrypted_key", "TEXT"),
-            ("messages", "iv", "TEXT"),
-            ("messages", "encryption_version", "TEXT NOT NULL DEFAULT 'hybrid-rsa-aes-v1'"),
             ("messages", "type", "TEXT NOT NULL DEFAULT 'text'"),
             ("messages", "media_url", "TEXT"),
             ("messages", "deleted", "BOOLEAN NOT NULL DEFAULT FALSE"),
             ("messages", "status", "TEXT NOT NULL DEFAULT 'sent'"),
-            ("messages", "client_id", "TEXT"),
-            ("messages", "reply_to_id", "INT"),
-            ("messages", "delivered_at", "TIMESTAMP NULL"),
-            ("messages", "seen_at", "TIMESTAMP NULL"),
             ("messages", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
-            ("chat_public_keys", "algorithm", "TEXT NOT NULL DEFAULT 'RSA_OAEP_SHA256'"),
-            ("chat_public_keys", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
-            ("chat_public_keys", "updated_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
             ("typing_status", "updated_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
             ("notifications", "text", "TEXT NOT NULL DEFAULT ''"),
             ("notifications", "message", "TEXT NOT NULL DEFAULT ''"),
@@ -641,12 +613,18 @@ def init_db() -> None:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_stories_created_at ON stories(created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_reels_created_at ON reels(created_at DESC)")
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_media_files_storage_key ON media_files(storage_key)")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_post_likes_unique ON post_likes(post_id, username)")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_followers_unique ON followers(follower, following)")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_reel_likes_unique ON reel_likes(reel_id, username)")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_blocked_users_unique ON blocked_users(blocker, blocked)")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_group_members_unique ON group_members(group_id, username)")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_typing_status_unique ON typing_status(sender, receiver)")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_live_rooms_livekit_room_unique ON live_rooms(livekit_room)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_friend_requests_lookup ON friend_requests(sender, receiver, status, created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_reel_likes_reel_id ON reel_likes(reel_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_reel_comments_reel_id ON reel_comments(reel_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_pair ON messages(sender, receiver, created_at)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_receiver_status ON messages(receiver, status, created_at DESC)")
-        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_sender_client ON messages(sender, client_id)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_chat_public_keys_updated ON chat_public_keys(updated_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_typing_status_receiver ON typing_status(receiver, updated_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_analytics_user_created ON analytics(\"user\", created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_followers_following ON followers(following)")

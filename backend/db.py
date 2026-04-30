@@ -605,58 +605,50 @@ def init_db() -> None:
             if "is_read" in _get_columns(cur, "notifications"):
                 _coerce_column_to_boolean(cur, "notifications", "is_read")
 
-        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(lower(email))")
-        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_name_unique ON users(name)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_users_presence ON users(is_online, last_seen DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts(created_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments(post_id)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_stories_created_at ON stories(created_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_reels_created_at ON reels(created_at DESC)")
-        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_media_files_storage_key ON media_files(storage_key)")
-        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_post_likes_unique ON post_likes(post_id, username)")
-        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_followers_unique ON followers(follower, following)")
-        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_reel_likes_unique ON reel_likes(reel_id, username)")
-        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_blocked_users_unique ON blocked_users(blocker, blocked)")
-        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_group_members_unique ON group_members(group_id, username)")
-        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_typing_status_unique ON typing_status(sender, receiver)")
+        # إنشاء الفهارس
+cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(lower(email))")
+cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_name_unique ON users(name)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_users_presence ON users(is_online, last_seen DESC)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts(created_at DESC)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments(post_id)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_stories_created_at ON stories(created_at DESC)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_reels_created_at ON reels(created_at DESC)")
+cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_media_files_storage_key ON media_files(storage_key)")
+cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_post_likes_unique ON post_likes(post_id, username)")
+cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_followers_unique ON followers(follower, following)")
+cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_reel_likes_unique ON reel_likes(reel_id, username)")
+cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_blocked_users_unique ON blocked_users(blocker, blocked)")
+cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_group_members_unique ON group_members(group_id, username)")
+cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_typing_status_unique ON typing_status(sender, receiver)")
 
-        # 🔥 الحل هنا: تنظيف التكرارات قبل أي مشاكل
-        cur.execute("""
-        DELETE FROM live_rooms
-        WHERE id NOT IN (
-            SELECT MIN(id)
-            FROM live_rooms
-            GROUP BY livekit_room
-        )
-        """)
+# ❌ تم حذف كود DELETE لأنه يسبب crash بسبب Foreign Key
 
-        # ❌ تم حذف هذا السطر لأنه يسبب المشكلة
-        # cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_live_rooms_livekit_room_unique ON live_rooms(livekit_room)")
+# (اختياري لاحقًا) لو تريد منع التكرار مستقبلاً
+# cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_live_rooms_livekit_room_unique ON live_rooms(livekit_room)")
 
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_friend_requests_lookup ON friend_requests(sender, receiver, status, created_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_reel_likes_reel_id ON reel_likes(reel_id)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_reel_comments_reel_id ON reel_comments(reel_id)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_pair ON messages(sender, receiver, created_at)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_receiver_status ON messages(receiver, status, created_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_typing_status_receiver ON typing_status(receiver, updated_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_analytics_user_created ON analytics(\"user\", created_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_followers_following ON followers(following)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_notifications_username ON notifications(username, created_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status, created_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_live_rooms_status ON live_rooms(status, created_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_live_viewers_room_active ON live_viewers(room_id, active, last_seen DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_live_comments_room ON live_comments(room_id, created_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_live_messages_room ON live_messages(room_id, created_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_live_gifts_room ON live_gifts(room_id, created_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_live_likes_room ON live_likes(room_id, created_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_moderation_actions_user_active ON moderation_actions(username, is_active, created_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_moderation_actions_action_active ON moderation_actions(action, is_active, created_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_created ON audit_logs(actor, created_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_action_created ON audit_logs(action, created_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_password_reset_user_created ON password_reset_codes(user_id, created_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_password_reset_active_lookup ON password_reset_codes(request_token, expires_at DESC)")
-
+cur.execute("CREATE INDEX IF NOT EXISTS idx_friend_requests_lookup ON friend_requests(sender, receiver, status, created_at DESC)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_reel_likes_reel_id ON reel_likes(reel_id)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_reel_comments_reel_id ON reel_comments(reel_id)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_pair ON messages(sender, receiver, created_at)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_receiver_status ON messages(receiver, status, created_at DESC)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_typing_status_receiver ON typing_status(receiver, updated_at DESC)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_analytics_user_created ON analytics(\"user\", created_at DESC)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_followers_following ON followers(following)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_notifications_username ON notifications(username, created_at DESC)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status, created_at DESC)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_live_rooms_status ON live_rooms(status, created_at DESC)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_live_viewers_room_active ON live_viewers(room_id, active, last_seen DESC)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_live_comments_room ON live_comments(room_id, created_at DESC)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_live_messages_room ON live_messages(room_id, created_at DESC)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_live_gifts_room ON live_gifts(room_id, created_at DESC)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_live_likes_room ON live_likes(room_id, created_at DESC)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_moderation_actions_user_active ON moderation_actions(username, is_active, created_at DESC)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_moderation_actions_action_active ON moderation_actions(action, is_active, created_at DESC)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_created ON audit_logs(actor, created_at DESC)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_action_created ON audit_logs(action, created_at DESC)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_password_reset_user_created ON password_reset_codes(user_id, created_at DESC)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_password_reset_active_lookup ON password_reset_codes(request_token, expires_at DESC)")
 
 def set_admin_roles(admin_emails: list[str], admin_usernames: list[str]) -> None:
     admin_emails = [value.strip() for value in admin_emails if value.strip()]

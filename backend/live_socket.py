@@ -22,7 +22,15 @@ def _select_async_mode() -> str:
         return "threading"
 
 
-_ALLOWED_SOCKET_ORIGINS = Config.ALLOWED_ORIGINS or "*"
+_SOCKET_FALLBACK_ORIGINS = [origin for origin in (Config.ALLOWED_ORIGINS or []) if origin]
+if not _SOCKET_FALLBACK_ORIGINS or all(
+    any(token in origin for token in ["localhost", "127.0.0.1", "capacitor://", "ionic://"])
+    for origin in _SOCKET_FALLBACK_ORIGINS
+):
+    _ALLOWED_SOCKET_ORIGINS = "*"
+else:
+    _ALLOWED_SOCKET_ORIGINS = _SOCKET_FALLBACK_ORIGINS
+
 socketio = SocketIO(cors_allowed_origins=_ALLOWED_SOCKET_ORIGINS, async_mode=_select_async_mode())
 
 

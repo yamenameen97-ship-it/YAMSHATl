@@ -13,9 +13,10 @@ from typing import Callable
 import jwt
 
 try:
-    from flask_jwt_extended import create_access_token
+    from flask_jwt_extended import create_access_token, decode_token as flask_jwt_decode_token
 except Exception:  # pragma: no cover
     create_access_token = None
+    flask_jwt_decode_token = None
 from flask import jsonify, request, session
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -121,10 +122,23 @@ def create_token(user: str, email: str, role: str = "user") -> str:
 def decode_token(token: str | None):
     if not token:
         return None
-    try:
-        return jwt.decode(token, Config.SECRET_KEY, algorithms=["HS256"])
-    except Exception:
-        return None
+
+    if flask_jwt_decode_token is not None:
+        try:
+            decoded = flask_jwt_decode_token(token)
+            if isinstance(decoded, dict):
+                return decoded
+        except Exception:
+            pass
+
+    for secret in [Config.JWT_SECRET_KEY, Config.SECRET_KEY]:
+        if not secret:
+            continue
+        try:
+            return jwt.decode(token, secret, algorithms=["HS256"])
+        except Exception:
+            continue
+    return None
 
 
 def verify_token(token: str | None):

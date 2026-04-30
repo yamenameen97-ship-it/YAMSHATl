@@ -1533,7 +1533,7 @@ function showReel(index) {
     const isMine = r.username === currentUser;
     target.innerHTML = `
         <div class="reel">
-            <video id="video" autoplay loop playsinline controls>
+            <video id="video" autoplay loop playsinline webkit-playsinline preload="metadata" controls>
                 <source src="${normalizeMediaUrl(r.video_url || (r.video ? `${API_BASE}/uploads/${encodeURIComponent(r.video)}` : ''))}">
             </video>
             <div class="reel-gradient"></div>

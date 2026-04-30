@@ -164,11 +164,30 @@ def home():
     return jsonify({"status": "running"})
 
 
+@app.get("/admin")
+def admin_home():
+    admin_path = FRONTEND_DIR / "admin.html"
+    if admin_path.exists():
+        return send_from_directory(FRONTEND_DIR, "admin.html")
+    return abort(404)
+
+
+@app.get("/admin-panel")
+def admin_panel_home():
+    panel_index = FRONTEND_DIR / "admin-panel" / "index.html"
+    if panel_index.exists():
+        return send_from_directory(FRONTEND_DIR / "admin-panel", "index.html")
+    return abort(404)
+
+
 @app.route("/<path:path>")
 def serve_frontend(path: str):
     requested = FRONTEND_DIR / path
     if requested.exists() and requested.is_file():
         return send_from_directory(FRONTEND_DIR, path)
+    if requested.exists() and requested.is_dir() and (requested / "index.html").exists():
+        relative_dir = requested.relative_to(FRONTEND_DIR)
+        return send_from_directory(FRONTEND_DIR / relative_dir, "index.html")
     if "." in Path(path).name:
         return abort(404)
     index_path = FRONTEND_DIR / "index.html"

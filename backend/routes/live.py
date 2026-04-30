@@ -22,12 +22,17 @@ HOST_STALE_GRACE_SECONDS = 45
 
 
 def _livekit_ws_url() -> str:
-    return (
+    raw_url = (
         os.getenv("LIVEKIT_WS_URL")
         or os.getenv("LIVEKIT_URL")
         or os.getenv("LIVEKIT_HOST")
         or "wss://your-livekit-server"
-    ).strip()
+    ).strip().rstrip("/")
+    if raw_url.startswith("https://"):
+        return "wss://" + raw_url[len("https://"):]
+    if raw_url.startswith("http://"):
+        return "ws://" + raw_url[len("http://"):]
+    return raw_url
 
 
 def _livekit_api_key() -> str:

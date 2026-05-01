@@ -344,6 +344,7 @@
         <div class="topbar-actions">
           <button class="ghost-btn" onclick="goBack()">⬅ رجوع</button>
           <button class="action-btn" onclick="refreshPage()">🔄 تحديث</button>
+          <button class="danger-btn" onclick="forceLogoutAll()">🧹 تنظيف وخروج الكل</button>
           <button class="danger-btn" onclick="logoutAdmin()">🚪 تسجيل خروج</button>
         </div>
       </div>
@@ -804,6 +805,17 @@
         return await loadDashboard();
       } catch (error) {
         renderError(error);
+      }
+    }
+
+    async function forceLogoutAll() {
+      if (!confirm('سيتم تسجيل خروج جميع الحسابات من التطبيق. هل تريد المتابعة؟')) return;
+      try {
+        const data = await window.requestJSON(`${API_BASE}/admin_force_logout_all`, { method: 'POST' });
+        showToast(data.message || 'تم تسجيل خروج جميع الحسابات');
+        await refreshPage();
+      } catch (error) {
+        showToast(error?.message || 'تعذر تنفيذ العملية');
       }
     }
 

@@ -26,13 +26,23 @@ def _livekit_ws_url() -> str:
         os.getenv("LIVEKIT_WS_URL")
         or os.getenv("LIVEKIT_URL")
         or os.getenv("LIVEKIT_HOST")
-        or "wss://your-livekit-server"
+        or ""
     ).strip().rstrip("/")
+    if not raw_url:
+        return ""
     if raw_url.startswith("https://"):
         return "wss://" + raw_url[len("https://"):]
     if raw_url.startswith("http://"):
         return "ws://" + raw_url[len("http://"):]
     return raw_url
+
+
+def _livekit_available() -> bool:
+    return bool(AccessToken is not None and VideoGrants is not None and _livekit_ws_url() and _livekit_api_key() and _livekit_secret())
+
+
+def _stream_mode() -> str:
+    return "livekit_sfu" if _livekit_available() else "webrtc_mesh"
 
 
 def _livekit_api_key() -> str:
@@ -164,20 +174,18 @@ def create_live():
         )
         existing = cur.fetchone()
         if existing:
-            try:
-                token = create_token(existing["livekit_room"], username, can_publish=True)
-            except RuntimeError as exc:
-                return json_error(str(exc), 503)
-            return jsonify(
-                {
-                    "ok": True,
-                    "message": "تم العثور على بث مباشر نشط لنفس الحساب",
-                    "room_id": str(existing["id"]),
-                    "livekit_room": existing["livekit_room"],
-                    "livekit_url": _livekit_ws_url(),
-                    "token": token,
-                }
-            )
+            payload = {
+                "ok": True,
+                "message": "تم العثور على بث مباشر نشط لنفس الحساب",
+                "room_id": str(existing["id"]),
+                "livekit_room": existing["livekit_room"],
+                "livekit_url": _livekit_ws_url(),
+                "stream_mode": _stream_mode(),
+                "token": "",
+            }
+            if _livekit_available():
+                payload["token"] = create_token(existing["livekit_room"], username, can_publish=True)
+            return jsonify(payload)
 
         room_slug = f"yamshat-live-{secrets.token_hex(6)}"
         cur.execute(
@@ -186,7 +194,7 @@ def create_live():
             VALUES(%s,%s,%s,'live','livekit_sfu',%s,%s)
             RETURNING id
             """,
-            (user["id"] if user else None, username, title, room_slug, platform),
+            (user["id"] if user else None, username, title, _stream_mode(), room_slug, platform),
         )
         room_id = cur.fetchone()["id"]
         cur.execute(
@@ -198,21 +206,22 @@ def create_live():
             (room_id, user["id"] if user else None, username, "بدأ البث المباشر الآن"),
         )
 
-    try:
-        token = create_token(room_slug, username, can_publish=True)
-    except RuntimeError as exc:
-        return json_error(str(exc), 503)
-    return jsonify(
-        {
-            "ok": True,
-            "message": "تم تجهيز غرفة البث باستخدام LiveKit + Socket.IO",
-            "room_id": str(room_id),
-            "host": username,
-            "livekit_room": room_slug,
-            "livekit_url": _livekit_ws_url(),
-            "token": token,
-        }
-    )
+    payload = {
+        "ok": True,
+        "message": "تم تجهيز غرفة البث بنجاح",
+        "room_id": str(room_id),
+        "host": username,
+        "livekit_room": room_slug,
+        "livekit_url": _livekit_ws_url(),
+        "stream_mode": _stream_mode(),
+        "token": "",
+    }
+    if _livekit_available():
+        payload["message"] = "تم تجهيز غرفة البث باستخدام LiveKit + Socket.IO"
+        payload["token"] = create_token(room_slug, username, can_publish=True)
+    else:
+        payload["message"] = "تم تجهيز غرفة البث بوضع WebRTC الاحتياطي عبر Socket.IO"
+    return jsonify(payload)
 
 
 @live_bp.get("/live_rooms")
@@ -302,22 +311,21 @@ def live_token():
             return json_error("هذا البث غير متاح حالياً", 404)
 
     is_host = room["username"] == username or requested_role == "host"
-    try:
-        token = create_token(room["livekit_room"], username, can_publish=is_host)
-    except RuntimeError as exc:
-        return json_error(str(exc), 503)
-    return jsonify(
-        {
-            "ok": True,
-            "message": "تم إنشاء توكن البث",
-            "room_id": str(room_id),
-            "role": "host" if is_host else "viewer",
-            "livekit_room": room["livekit_room"],
-            "livekit_url": _livekit_ws_url(),
-            "platform": platform,
-            "token": token,
-        }
-    )
+    payload = {
+        "ok": True,
+        "message": "تم تجهيز الوصول للبث",
+        "room_id": str(room_id),
+        "role": "host" if is_host else "viewer",
+        "livekit_room": room["livekit_room"],
+        "livekit_url": _livekit_ws_url(),
+        "platform": platform,
+        "stream_mode": room.get("stream_mode") or _stream_mode(),
+        "token": "",
+    }
+    if _livekit_available() and (room.get("stream_mode") or _stream_mode()) == "livekit_sfu":
+        payload["message"] = "تم إنشاء توكن البث"
+        payload["token"] = create_token(room["livekit_room"], username, can_publish=is_host)
+    return jsonify(payload)
 
 
 @live_bp.post("/live_presence")

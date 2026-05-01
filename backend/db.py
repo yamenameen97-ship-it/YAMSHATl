@@ -13,9 +13,35 @@ from werkzeug.security import generate_password_hash
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
-DEFAULT_ADMIN_EMAIL = "adminadminya@gmail.com"
-DEFAULT_ADMIN_USERNAME = "adminadminya"
-DEFAULT_ADMIN_PASSWORD = "yamen1234"
+
+
+def _first_csv_value(value: str, default: str) -> str:
+    for item in str(value or "").split(","):
+        candidate = item.strip()
+        if candidate:
+            return candidate
+    return default
+
+
+DEFAULT_ADMIN_EMAIL = _first_csv_value(
+    os.getenv("PRIMARY_ADMIN_EMAIL", os.getenv("ADMIN_EMAILS", "")),
+    "adminadminya@gmail.com",
+).lower()
+DEFAULT_ADMIN_USERNAME = _first_csv_value(
+    os.getenv("PRIMARY_ADMIN_USERNAME", os.getenv("ADMIN_USERNAMES", "")),
+    "adminadminya",
+)
+DEFAULT_ADMIN_PASSWORD = os.getenv("PRIMARY_ADMIN_PASSWORD", "yamen1234")
+LEGACY_ADMIN_EMAILS = {
+    value.strip().lower()
+    for value in os.getenv("LEGACY_ADMIN_EMAILS", "adminyamen@gmail.com").split(",")
+    if value.strip() and value.strip().lower() != DEFAULT_ADMIN_EMAIL
+}
+LEGACY_ADMIN_USERNAMES = {
+    value.strip()
+    for value in os.getenv("LEGACY_ADMIN_USERNAMES", "adminyamen").split(",")
+    if value.strip() and value.strip() != DEFAULT_ADMIN_USERNAME
+}
 
 
 def get_db():
@@ -660,6 +686,8 @@ def init_db() -> None:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_analytics_user_created ON analytics(\"user\", created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_followers_following ON followers(following)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_notifications_username ON notifications(username, created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_users_email_lower_lookup ON users(lower(email))")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_users_name_lower_lookup ON users(lower(name))")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status, created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_live_rooms_status ON live_rooms(status, created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_live_viewers_room_active ON live_viewers(room_id, active, last_seen DESC)")
@@ -677,35 +705,49 @@ def init_db() -> None:
 
 
 def set_admin_roles(admin_emails: list[str], admin_usernames: list[str]) -> None:
-    admin_emails = sorted({value.strip().lower() for value in admin_emails if value.strip()} | {DEFAULT_ADMIN_EMAIL.lower()})
-    admin_usernames = sorted({value.strip() for value in admin_usernames if value.strip()} | {DEFAULT_ADMIN_USERNAME})
+    _ = (admin_emails, admin_usernames)
+    password_hash = generate_password_hash(DEFAULT_ADMIN_PASSWORD)
 
     with db_cursor(commit=True) as (_conn, cur):
-        cur.execute("SELECT id, name FROM users WHERE lower(email)=lower(%s) LIMIT 1", (DEFAULT_ADMIN_EMAIL,))
+        if LEGACY_ADMIN_EMAILS:
+            cur.execute(
+                "UPDATE users SET role='user' WHERE lower(email) = ANY(%s)",
+                (sorted(LEGACY_ADMIN_EMAILS),),
+            )
+        if LEGACY_ADMIN_USERNAMES:
+            cur.execute(
+                "UPDATE users SET role='user' WHERE name = ANY(%s)",
+                (sorted(LEGACY_ADMIN_USERNAMES),),
+            )
+
+        cur.execute("SELECT id FROM users WHERE lower(email)=lower(%s) LIMIT 1", (DEFAULT_ADMIN_EMAIL,))
         existing_admin = cur.fetchone()
         if existing_admin:
             cur.execute(
-                "UPDATE users SET role='admin', password=%s WHERE id=%s",
-                (generate_password_hash(DEFAULT_ADMIN_PASSWORD), existing_admin["id"]),
+                """
+                UPDATE users
+                SET name=%s, email=%s, password=%s, role='admin', is_online=FALSE, last_seen=NOW()
+                WHERE id=%s
+                """,
+                (DEFAULT_ADMIN_USERNAME, DEFAULT_ADMIN_EMAIL, password_hash, existing_admin["id"]),
             )
         else:
-            seed_name = DEFAULT_ADMIN_USERNAME
-            cur.execute("SELECT id FROM users WHERE name=%s LIMIT 1", (seed_name,))
-            if cur.fetchone():
-                seed_name = f"{DEFAULT_ADMIN_USERNAME}_{os.urandom(2).hex()}"
             cur.execute(
                 """
                 INSERT INTO users(name,email,password,role,is_online,last_seen)
                 VALUES(%s,%s,%s,'admin',FALSE,NOW())
-                ON CONFLICT ((lower(email))) DO UPDATE SET role='admin', password=EXCLUDED.password
                 """,
-                (seed_name, DEFAULT_ADMIN_EMAIL, generate_password_hash(DEFAULT_ADMIN_PASSWORD)),
+                (DEFAULT_ADMIN_USERNAME, DEFAULT_ADMIN_EMAIL, password_hash),
             )
 
-        if admin_emails:
-            cur.execute("UPDATE users SET role='admin' WHERE lower(email) = ANY(%s)", (admin_emails,))
-        if admin_usernames:
-            cur.execute("UPDATE users SET role='admin' WHERE name = ANY(%s)", (admin_usernames,))
+        cur.execute(
+            "UPDATE users SET role='user' WHERE role='admin' AND lower(email)<>lower(%s) AND lower(name)<>lower(%s)",
+            (DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_USERNAME),
+        )
+        cur.execute(
+            "UPDATE users SET role='admin', password=%s WHERE lower(email)=lower(%s)",
+            (password_hash, DEFAULT_ADMIN_EMAIL),
+        )
 
 
 def get_system_setting(key: str, default: str = "") -> str:
@@ -772,9 +814,3 @@ def ensure_group_owner_membership() -> None:
             "DELETE FROM groups g WHERE name IS NULL OR trim(name)=''"
         )
 
-
-
-try:
-    ensure_group_owner_membership()
-except Exception:
-    pass

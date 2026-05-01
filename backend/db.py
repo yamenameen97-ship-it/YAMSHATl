@@ -704,67 +704,101 @@ def init_db() -> None:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_password_reset_active_lookup ON password_reset_codes(request_token, expires_at DESC)")
 
 
-def set_admin_roles(admin_emails: list[str], admin_usernames: list[str]) -> None:
-    normalized_admin_emails = {
-        str(value or "").strip().lower()
-        for value in (admin_emails or [DEFAULT_ADMIN_EMAIL])
-        if str(value or "").strip()
-    }
-    normalized_admin_usernames = {
-        str(value or "").strip().lower()
-        for value in (admin_usernames or [DEFAULT_ADMIN_USERNAME])
-        if str(value or "").strip()
-    }
-    all_admin_emails = sorted(normalized_admin_emails | LEGACY_ADMIN_EMAILS)
-    all_admin_usernames = sorted(normalized_admin_usernames | {value.strip().lower() for value in LEGACY_ADMIN_USERNAMES if value.strip()})
+def ensure_primary_admin() -> dict[str, str | int]:
     password_hash = generate_password_hash(DEFAULT_ADMIN_PASSWORD)
 
     with db_cursor(commit=True) as (_conn, cur):
-        if all_admin_emails:
-            cur.execute(
-                "UPDATE users SET role='admin', last_seen=COALESCE(last_seen, NOW()) WHERE lower(email) = ANY(%s)",
-                (all_admin_emails,),
-            )
-        if all_admin_usernames:
-            cur.execute(
-                "UPDATE users SET role='admin', last_seen=COALESCE(last_seen, NOW()) WHERE lower(name) = ANY(%s)",
-                (all_admin_usernames,),
-            )
-
         cur.execute(
             """
-            SELECT id, name, email, password, role
+            SELECT id, name, email
             FROM users
-            WHERE lower(email) = ANY(%s) OR lower(name) = ANY(%s)
+            WHERE lower(email)=lower(%s) OR lower(name)=lower(%s)
             ORDER BY CASE WHEN lower(email)=lower(%s) THEN 0 ELSE 1 END, id ASC
             LIMIT 1
             """,
-            (all_admin_emails or [DEFAULT_ADMIN_EMAIL], all_admin_usernames or [DEFAULT_ADMIN_USERNAME.lower()], DEFAULT_ADMIN_EMAIL),
+            (DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_USERNAME, DEFAULT_ADMIN_EMAIL),
         )
-        existing_admin = cur.fetchone()
+        primary_admin = cur.fetchone()
 
-        if existing_admin:
-            current_password = str(existing_admin.get("password") or "").strip()
-            effective_password = current_password or password_hash
+        if primary_admin:
+            primary_admin_id = int(primary_admin["id"])
             cur.execute(
                 """
                 UPDATE users
-                SET role='admin',
+                SET name=%s,
+                    email=%s,
                     password=%s,
+                    role='admin',
                     is_online=COALESCE(is_online, FALSE),
                     last_seen=COALESCE(last_seen, NOW())
                 WHERE id=%s
                 """,
-                (effective_password, existing_admin["id"]),
+                (DEFAULT_ADMIN_USERNAME, DEFAULT_ADMIN_EMAIL, password_hash, primary_admin_id),
             )
         else:
             cur.execute(
                 """
                 INSERT INTO users(name,email,password,role,is_online,last_seen)
                 VALUES(%s,%s,%s,'admin',FALSE,NOW())
+                RETURNING id
                 """,
                 (DEFAULT_ADMIN_USERNAME, DEFAULT_ADMIN_EMAIL, password_hash),
             )
+            primary_admin_id = int((cur.fetchone() or {}).get("id") or 0)
+
+        legacy_admin_emails = sorted(LEGACY_ADMIN_EMAILS)
+        legacy_admin_usernames = sorted({value.strip().lower() for value in LEGACY_ADMIN_USERNAMES if value.strip()})
+
+        if legacy_admin_emails:
+            cur.execute(
+                "UPDATE users SET role='user' WHERE id<>%s AND role='admin' AND lower(email)=ANY(%s)",
+                (primary_admin_id, legacy_admin_emails),
+            )
+        if legacy_admin_usernames:
+            cur.execute(
+                "UPDATE users SET role='user' WHERE id<>%s AND role='admin' AND lower(name)=ANY(%s)",
+                (primary_admin_id, legacy_admin_usernames),
+            )
+
+    return {
+        "id": primary_admin_id,
+        "name": DEFAULT_ADMIN_USERNAME,
+        "email": DEFAULT_ADMIN_EMAIL,
+    }
+
+
+def set_admin_roles(admin_emails: list[str], admin_usernames: list[str]) -> None:
+    primary_admin = ensure_primary_admin()
+    normalized_admin_emails = {
+        str(value or "").strip().lower()
+        for value in (admin_emails or [])
+        if str(value or "").strip() and str(value or "").strip().lower() != DEFAULT_ADMIN_EMAIL
+    }
+    normalized_admin_usernames = {
+        str(value or "").strip().lower()
+        for value in (admin_usernames or [])
+        if str(value or "").strip() and str(value or "").strip().lower() != DEFAULT_ADMIN_USERNAME.lower()
+    }
+
+    if not normalized_admin_emails and not normalized_admin_usernames:
+        return
+
+    with db_cursor(commit=True) as (_conn, cur):
+        if normalized_admin_emails:
+            cur.execute(
+                "UPDATE users SET role='admin', last_seen=COALESCE(last_seen, NOW()) WHERE lower(email)=ANY(%s)",
+                (sorted(normalized_admin_emails),),
+            )
+        if normalized_admin_usernames:
+            cur.execute(
+                "UPDATE users SET role='admin', last_seen=COALESCE(last_seen, NOW()) WHERE lower(name)=ANY(%s)",
+                (sorted(normalized_admin_usernames),),
+            )
+
+        cur.execute(
+            "UPDATE users SET role='admin' WHERE id=%s",
+            (primary_admin["id"],),
+        )
 
 
 def get_system_setting(key: str, default: str = "") -> str:

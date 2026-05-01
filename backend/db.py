@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 import psycopg2
@@ -12,9 +13,9 @@ from werkzeug.security import generate_password_hash
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
-DEFAULT_ADMIN_EMAIL = "adminyamen@gmail.com"
-DEFAULT_ADMIN_USERNAME = "adminyamen"
-DEFAULT_ADMIN_PASSWORD = "yamen2020"
+DEFAULT_ADMIN_EMAIL = "adminadminya@gmail.com"
+DEFAULT_ADMIN_USERNAME = "adminadminya"
+DEFAULT_ADMIN_PASSWORD = "yamen1234"
 
 
 def get_db():
@@ -508,6 +509,22 @@ def init_db() -> None:
             )
             """
         )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS system_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL DEFAULT '',
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        cur.execute(
+            """
+            INSERT INTO system_settings(key, value, updated_at)
+            VALUES('force_logout_at', '1970-01-01T00:00:00', NOW())
+            ON CONFLICT (key) DO NOTHING
+            """
+        )
 
         for table_name, column_name, ddl in [
             ("users", "role", "TEXT NOT NULL DEFAULT 'user'"),
@@ -689,3 +706,75 @@ def set_admin_roles(admin_emails: list[str], admin_usernames: list[str]) -> None
             cur.execute("UPDATE users SET role='admin' WHERE lower(email) = ANY(%s)", (admin_emails,))
         if admin_usernames:
             cur.execute("UPDATE users SET role='admin' WHERE name = ANY(%s)", (admin_usernames,))
+
+
+def get_system_setting(key: str, default: str = "") -> str:
+    with db_cursor() as (_conn, cur):
+        cur.execute("SELECT value FROM system_settings WHERE key=%s LIMIT 1", (key,))
+        row = cur.fetchone() or {}
+    return str(row.get("value") or default)
+
+
+def set_system_setting(key: str, value: str) -> None:
+    with db_cursor(commit=True) as (_conn, cur):
+        cur.execute(
+            """
+            INSERT INTO system_settings(key, value, updated_at)
+            VALUES(%s, %s, NOW())
+            ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()
+            """,
+            (key, value),
+        )
+
+
+def get_force_logout_at() -> str:
+    return get_system_setting("force_logout_at", "1970-01-01T00:00:00")
+
+
+def set_force_logout_now() -> str:
+    timestamp = datetime.now(timezone.utc).isoformat()
+    set_system_setting("force_logout_at", timestamp)
+    return timestamp
+
+
+def ensure_group_owner_membership() -> None:
+    with db_cursor(commit=True) as (_conn, cur):
+        cur.execute(
+            """
+            INSERT INTO group_members(group_id, username)
+            SELECT g.id, g.owner
+            FROM groups g
+            WHERE NOT EXISTS (
+                SELECT 1 FROM group_members gm WHERE gm.group_id = g.id AND gm.username = g.owner
+            )
+            ON CONFLICT (group_id, username) DO NOTHING
+            """
+        )
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_groups_name_unique ON groups(lower(name))")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_group_posts_group_id ON group_posts(group_id, created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_group_members_group_id ON group_members(group_id, created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_group_members_username ON group_members(username)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_groups_owner ON groups(owner)")
+        cur.execute("UPDATE groups SET owner='system' WHERE owner IS NULL OR trim(owner)='' ")
+        cur.execute(
+            "DELETE FROM group_members WHERE username IS NULL OR trim(username)='' OR group_id IS NULL"
+        )
+        cur.execute(
+            "DELETE FROM group_posts WHERE username IS NULL OR trim(username)='' OR group_id IS NULL"
+        )
+        cur.execute(
+            "DELETE FROM group_posts gp WHERE NOT EXISTS (SELECT 1 FROM groups g WHERE g.id = gp.group_id)"
+        )
+        cur.execute(
+            "DELETE FROM group_members gm WHERE NOT EXISTS (SELECT 1 FROM groups g WHERE g.id = gm.group_id)"
+        )
+        cur.execute(
+            "DELETE FROM groups g WHERE name IS NULL OR trim(name)=''"
+        )
+
+
+
+try:
+    ensure_group_owner_membership()
+except Exception:
+    pass

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 from flask import Blueprint, jsonify, request
 
 from admin_utils import apply_moderation, get_active_moderation, log_audit, moderation_flags
 from config import Config
-from db import db_cursor
+from db import db_cursor, set_force_logout_now
 from media_store import delete_media_file
 from utils import current_user, normalize_text, require_admin
 
@@ -718,3 +719,23 @@ def admin_delete_user(username: str):
         delete_media_file(file_name, UPLOAD_DIR)
 
     return jsonify({"ok": True, "message": "تم حذف المستخدم وبياناته الأساسية"})
+
+
+@admin_bp.post("/admin_force_logout_all")
+@require_admin
+def admin_force_logout_all():
+    actor = current_user() or "admin"
+    timestamp = datetime.now(timezone.utc).isoformat()
+    with db_cursor(commit=True) as (_conn, cur):
+        cur.execute("UPDATE users SET is_online=FALSE, last_seen=NOW()")
+        log_audit(
+            cur,
+            action="admin_force_logout_all",
+            actor=actor,
+            target_type="session",
+            target_value="all_users",
+            details=f"تم تسجيل خروج جميع الحسابات عند {timestamp}",
+            severity="warning",
+        )
+    set_force_logout_now()
+    return jsonify({"ok": True, "message": "تم تسجيل خروج جميع الحسابات من التطبيق بنجاح"})

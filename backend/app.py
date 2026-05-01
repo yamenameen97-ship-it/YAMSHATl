@@ -17,7 +17,7 @@ from auth import auth_bp
 from chat import chat_bp
 from config import Config
 from logger import setup_logging
-from db import init_db, set_admin_roles
+from db import ensure_group_owner_membership, init_db, set_admin_roles
 from extensions import init_extensions
 from live import live_api_bp
 from live_socket import init_socket, socketio
@@ -62,6 +62,7 @@ init_socket(app)
 try:
     init_db()
     set_admin_roles(Config.ADMIN_EMAILS, Config.ADMIN_USERNAMES)
+    ensure_group_owner_membership()
 except Exception as exc:
     logger.exception("DB bootstrap failed: %s", exc)
 

@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="theme-color" content="#e00000">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="format-detection" content="telephone=no">
+    <title>Yamshat | غرفة البث</title>
+    <link rel="stylesheet" href="assets/style.css">
+    <link rel="icon" type="image/png" href="assets/favicon-32.png">
+    <style>
+        body { margin:0; background:#000; color:#fff; }
+        .shell { max-width:1280px; margin:0 auto; min-height:100vh; padding-bottom:calc(env(safe-area-inset-bottom, 0px) + 16px); }
+        .topbar { position:sticky; top:0; z-index:30; padding:calc(env(safe-area-inset-top, 0px) + 12px) 14px 12px; display:flex; justify-content:space-between; align-items:center; gap:10px; background:rgba(2,6,23,0.9); backdrop-filter:blur(16px); }
+        .layout { display:grid; grid-template-columns:1.45fr .75fr; min-height:calc(100vh - 88px); }
+        .stage { position:relative; background:#000; min-height:62vh; }
+        .stage video, .stage audio { width:100%; height:100%; background:#000; object-fit:cover; }
+        #remoteMedia { width:100%; height:100%; min-height:62vh; display:grid; place-items:center; }
+        #remoteMedia video { width:100%; height:100%; }
+        .chip { position:absolute; top:16px; padding:8px 12px; border-radius:999px; background:rgba(15,23,42,0.75); z-index:5; font-size:13px; }
+        .chip.right { right:16px; } .chip.left { left:16px; }
+        .host-preview { position:absolute; bottom:18px; left:18px; width:160px; max-width:35%; aspect-ratio:9/16; border-radius:18px; overflow:hidden; border:1px solid rgba(255,255,255,0.15); background:#0f172a; z-index:8; }
+        .host-preview video { width:100%; height:100%; object-fit:cover; }
+        .toolbar { display:flex; gap:10px; flex-wrap:wrap; padding:16px; border-top:1px solid rgba(255,255,255,0.08); background:rgba(15,23,42,0.45); }
+        .sidebar { display:flex; flex-direction:column; border-right:1px solid rgba(255,255,255,0.08); background:rgba(15,23,42,0.92); }
+        .panel { padding:16px; border-bottom:1px solid rgba(255,255,255,0.08); }
+        .muted { color:#cbd5e1; line-height:1.8; font-size:13px; }
+        .viewer-list { display:flex; flex-direction:column; gap:8px; margin-top:10px; }
+        .viewer-item { padding:10px 12px; border-radius:14px; background:rgba(255,255,255,0.06); }
+        #comments { flex:1; overflow:auto; padding:14px; display:flex; flex-direction:column; gap:10px; }
+        .chat-msg { padding:10px 12px; border-radius:14px; background:rgba(255,255,255,0.08); line-height:1.8; }
+        .composer { display:flex; gap:10px; padding:14px; position:sticky; bottom:0; background:rgba(2,6,23,0.96); }
+        .composer input { flex:1; }
+        .reactions { display:flex; gap:8px; flex-wrap:wrap; }
+        .reaction-btn { min-width:52px; font-size:24px; }
+        .heart{ position:fixed; bottom:20px; right:20px; font-size:30px; animation:float 2s linear; z-index:999; }
+        .gift{ position:fixed; left:50%; transform:translateX(-50%); bottom:30px; background:rgba(15,23,42,0.92); padding:12px 18px; border-radius:999px; border:1px solid rgba(255,255,255,0.08); z-index:999; animation:giftRise 3s ease forwards; }
+        @keyframes float{ 0%{transform:translateY(0)} 100%{transform:translateY(-200px);opacity:0} }
+        @keyframes giftRise{ 0%{transform:translateX(-50%) translateY(0);opacity:0} 15%{opacity:1} 100%{transform:translateX(-50%) translateY(-120px);opacity:0} }
+        @media (max-width: 980px) { .layout { grid-template-columns:1fr; } .sidebar { border-right:0; border-top:1px solid rgba(255,255,255,0.08); } .host-preview { width:120px; } }
+    </style>
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+    <link rel="manifest" href="site.webmanifest">
+</head>
+<body>
+    <div class="shell">
+        <header class="topbar">
+            <button class="icon-btn" onclick="window.location.href='live.html'">⬅</button>
+            <div>
+                <div id="roomTitle" class="brand-title">غرفة البث</div>
+                <div id="roomOwner" class="subtle-text">جاري التحميل...</div>
+            </div>
+            <button class="icon-btn" onclick="refreshRoom()">🔄</button>
+        </header>
+
+        <div class="layout">
+            <section>
+                <div class="stage">
+                    <div class="chip right" id="streamStatus">جاري تجهيز البث...</div>
+                    <div class="chip left" id="viewerCounter">👀 0</div>
+                    <div id="remoteMedia">جاري ربط المشغل مع LiveKit...</div>
+                    <div class="host-preview" id="hostPreview" style="display:none;"></div>
+                </div>
+                <div class="toolbar" id="hostTools">
+                    <button onclick="enableViewerAudio()">🔊 تشغيل الصوت</button>
+                    <button onclick="sendHeart()" class="reaction-btn">❤️</button>
+                    <button onclick="sendGift('🌹')" class="reaction-btn">🌹</button>
+                    <button onclick="sendGift('💎')" class="reaction-btn">💎</button>
+                    <button onclick="sendGift('👑')" class="reaction-btn">👑</button>
+                </div>
+            </section>
+
+            <aside class="sidebar">
+                <div class="panel">
+                    <div class="brand-title">معلومات الغرفة</div>
+                    <div id="roomSummary" class="muted">...</div>
+                </div>
+                <div class="panel">
+                    <div class="brand-title">المشاهدون</div>
+                    <div id="viewerList" class="viewer-list"><div class="viewer-item">جاري تحديث المشاهدين...</div></div>
+                </div>
+                <div class="panel">
+                    <div class="brand-title">التعليقات والهدايا والقلوب</div>
+                    <div class="reactions">
+                        <button onclick="sendHeart()" class="reaction-btn">❤️</button>
+                        <button onclick="sendGift('🌹')" class="reaction-btn">🌹</button>
+                        <button onclick="sendGift('💎')" class="reaction-btn">💎</button>
+                        <button onclick="sendGift('👑')" class="reaction-btn">👑</button>
+                    </div>
+                </div>
+                <div id="comments"></div>
+                <div class="composer">
+                    <input id="commentInput" placeholder="اكتب تعليق مباشر داخل البث">
+                    <button onclick="sendComment()">إرسال</button>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <script src="app-config.js"></script>
+    <script src="assets/auth.js"></script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.15.5/dist/livekit-client.umd.min.js"></script>
+    <script src="assets/live_fix.js"></script>
+    <script>
+        const API_BASE = window.API_BASE || `${window.location.origin.replace(/\/+$/, '')}/api`;
+        const ROOM_ID = Number(new URLSearchParams(window.location.search).get('id') || 0);
+        const ICE_CONFIG = { iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }] };
+        let CURRENT_USER = '';
+        let isHost = false;
+        let roomData = null;
+        let lkRoom = null;
+        let socket = null;
+        let presenceStopper = null;
+        let localPreviewStream = null;
+        let meshPeers = new Map();
+
+        function setStatus(text) {
+            document.getElementById('streamStatus').textContent = text;
+        }
+
+        function updateViewerCount(value) {
+            document.getElementById('viewerCounter').textContent = `👀 ${value || 0}`;
+        }
+
+        function setViewerList(viewers) {
+            const box = document.getElementById('viewerList');
+            if (!Array.isArray(viewers) || !viewers.length) {
+                box.innerHTML = '<div class="viewer-item">لا يوجد مشاهدون بعد</div>';
+                return;
+            }
+            box.innerHTML = viewers.map(v => `<div class="viewer-item">👤 ${window.LiveFix.escapeHTML(v.username)} · ${window.LiveFix.escapeHTML(v.platform || 'web')}</div>`).join('');
+        }
+
+        function appendComment(data) {
+            window.LiveFix.renderComment(document.getElementById('comments'), data);
+        }
+
+        async function checkSession() {
+            const me = await window.requestJSON(`${API_BASE}/me`);
+            if (!me.user) {
+                window.location.href = 'index.html';
+                return;
+            }
+            CURRENT_USER = me.user;
+        }
+
+        async function loadRoom() {
+            roomData = await window.requestJSON(`${API_BASE}/live_room/${ROOM_ID}`);
+            isHost = roomData.username === CURRENT_USER;
+            document.getElementById('roomTitle').textContent = `🔴 ${roomData.title}`;
+            document.getElementById('roomOwner').textContent = `صاحب البث: ${roomData.username}`;
+            document.getElementById('roomSummary').innerHTML = `عنوان البث: <b>${window.LiveFix.escapeHTML(roomData.title)}</b><br>الوضع: ${window.LiveFix.escapeHTML(roomData.stream_mode || 'webrtc_mesh')}<br>الرابط: ${window.LiveFix.escapeHTML(roomData.livekit_room || 'fallback-room')}<br>دورك: ${isHost ? 'صاحب البث' : 'مشاهد'}`;
+            updateViewerCount(roomData.viewer_count || 0);
+            setViewerList(roomData.viewers || []);
+            renderHostTools();
+        }
+
+        function renderHostTools() {
+            const box = document.getElementById('hostTools');
+            if (isHost) {
+                box.innerHTML = `
+                    <button onclick="restartBroadcast()">🎥 بدء/إعادة تشغيل الكاميرا</button>
+                    <button onclick="enableViewerAudio()">🔊 فحص الصوت</button>
+                    <button onclick="sendHeart()" class="reaction-btn">❤️</button>
+                    <button onclick="sendGift('🌹')" class="reaction-btn">🌹</button>
+                    <button onclick="sendGift('💎')" class="reaction-btn">💎</button>
+                    <button onclick="sendGift('👑')" class="reaction-btn">👑</button>
+                    <button class="danger" onclick="endLive()">⛔ إنهاء البث</button>
+                `;
+                return;
+            }
+            box.innerHTML = `
+                <button onclick="enableViewerAudio()">🔊 تشغيل الصوت</button>
+                <button onclick="sendHeart()" class="reaction-btn">❤️</button>
+                <button onclick="sendGift('🌹')" class="reaction-btn">🌹</button>
+                <button onclick="sendGift('💎')" class="reaction-btn">💎</button>
+                <button onclick="sendGift('👑')" class="reaction-btn">👑</button>
+            `;
+        }
+
+        async function setupSocket() {
+            socket = io(window.LiveFix.socketOriginFromApiBase(API_BASE), {
+                transports: ['websocket', 'polling'],
+                withCredentials: true,
+            });
+
+            socket.on('connect', async () => {
+                socket.emit('join_live', {
+                    room_id: ROOM_ID,
+                    user: CURRENT_USER,
+                    role: isHost ? 'host' : 'viewer',
+                    platform: window.LiveFix.detectPlatform(),
+                    device_type: 'browser',
+                });
+                await window.LiveFix.syncPresence({
+                    apiBase: API_BASE,
+                    roomId: ROOM_ID,
+                    isHost,
+                    socketId: socket.id,
+                    deviceType: 'browser',
+                });
+            });
+
+            socket.on('room_stats', (data) => {
+                if (String(data.room_id) !== String(ROOM_ID)) return;
+                if (typeof data.viewer_count !== 'undefined') updateViewerCount(data.viewer_count);
+            });
+
+            socket.on('new_comment', appendComment);
+            socket.on('new_heart', () => window.LiveFix.showFloatingHeart());
+            socket.on('new_gift', (data) => {
+                window.LiveFix.showFloatingGift(`${data.user} أرسل ${data.gift}`);
+                appendComment({ user: 'النظام', text: `${data.user} أرسل ${data.gift}` });
+            });
+            socket.on('socket_error', (data) => {
+                if (data?.message) window.LiveFix.showToast(data.message);
+            });
+            socket.on('viewer_joined', async (data) => {
+                if (!isHost || !data?.viewer_socket_id) return;
+                try {
+                    await createMeshPeer(data.viewer_socket_id, true);
+                } catch (error) {
+                    console.error(error);
+                }
+            });
+            socket.on('viewer_left', (data) => {
+                if (!data?.viewer_socket_id) return;
+                cleanupMeshPeer(data.viewer_socket_id);
+            });
+            socket.on('webrtc_signal', async (data) => {
+                try {
+                    await handleMeshSignal(data);
+                } catch (error) {
+                    console.error(error);
+                }
+            });
+        }
+
+        async function ensureHostLocalStream() {
+            if (!isHost) return null;
+            if (localPreviewStream && localPreviewStream.getTracks().some(track => track.readyState === 'live')) {
+                return localPreviewStream;
+            }
+            let stream;
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            } catch (videoErr) {
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+                    setStatus('الكاميرا غير متاحة — البث صوتي فقط');
+                } catch (audioErr) {
+                    setStatus('تعذر الوصول إلى الكاميرا أو الميكروفون');
+                    window.LiveFix.showToast('تعذر الوصول إلى الكاميرا أو الميكروفون');
+                    throw audioErr;
+                }
+            }
+            localPreviewStream = stream;
+            const hostPreview = document.getElementById('hostPreview');
+            hostPreview.style.display = 'block';
+            hostPreview.innerHTML = '';
+            if (stream.getVideoTracks().length > 0) {
+                const preview = document.createElement('video');
+                preview.muted = true;
+                preview.autoplay = true;
+                preview.playsInline = true;
+                preview.setAttribute('webkit-playsinline', 'true');
+                preview.srcObject = stream;
+                hostPreview.appendChild(preview);
+                preview.play().catch(() => {});
+            } else {
+                hostPreview.innerHTML = '<div style="display:grid;place-items:center;width:100%;height:100%;background:linear-gradient(180deg,#0f172a,#1e293b);color:#e2e8f0;font-size:13px;text-align:center;padding:12px;">🎙️ البث يعمل الآن بالصوت فقط</div>';
+            }
+            return stream;
+        }
+
+        function attachRemoteStream(stream) {
+            if (!stream) return;
+            const remoteMedia = document.getElementById('remoteMedia');
+            if (!remoteMedia) return;
+            remoteMedia.innerHTML = '';
+            const hasVideo = stream.getVideoTracks().length > 0;
+            const element = document.createElement(hasVideo ? 'video' : 'audio');
+            element.autoplay = true;
+            element.playsInline = true;
+            element.setAttribute('webkit-playsinline', 'true');
+            element.controls = !hasVideo;
+            element.srcObject = stream;
+            remoteMedia.appendChild(element);
+            element.play().catch(() => {});
+            setStatus(hasVideo ? 'البث يعمل الآن' : 'البث الصوتي يعمل الآن');
+        }
+
+        async function createMeshPeer(peerSocketId, initiator = false) {
+            if (!peerSocketId) return null;
+            const existing = meshPeers.get(peerSocketId);
+            if (existing) return existing;
+            const pc = new RTCPeerConnection(ICE_CONFIG);
+            const state = { pc, remoteStream: new MediaStream() };
+            meshPeers.set(peerSocketId, state);
+
+            pc.onicecandidate = (event) => {
+                if (!event.candidate || !socket) return;
+                socket.emit('webrtc_signal', {
+                    room_id: ROOM_ID,
+                    user: CURRENT_USER,
+                    target_socket_id: peerSocketId,
+                    signal: { type: 'candidate', candidate: event.candidate },
+                });
+            };
+
+            pc.ontrack = (event) => {
+                const stream = event.streams && event.streams[0] ? event.streams[0] : state.remoteStream;
+                if (!event.streams?.length && event.track) {
+                    state.remoteStream.addTrack(event.track);
+                }
+                attachRemoteStream(stream);
+            };
+
+            pc.onconnectionstatechange = () => {
+                if (['failed', 'closed', 'disconnected'].includes(pc.connectionState)) {
+                    cleanupMeshPeer(peerSocketId);
+                }
+            };
+
+            if (isHost) {
+                const stream = await ensureHostLocalStream();
+                stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+            }
+
+            if (initiator) {
+                const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+                await pc.setLocalDescription(offer);
+                socket.emit('webrtc_signal', {
+                    room_id: ROOM_ID,
+                    user: CURRENT_USER,
+                    target_socket_id: peerSocketId,
+                    signal: { type: 'offer', sdp: offer.sdp },
+                });
+            }
+
+            return state;
+        }
+
+        async function handleMeshSignal(data) {
+            const senderSocketId = data?.sender_socket_id;
+            const signal = data?.signal || {};
+            if (!senderSocketId || !signal?.type) return;
+            const state = await createMeshPeer(senderSocketId, false);
+            const pc = state.pc;
+
+            if (signal.type === 'offer') {
+                await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: signal.sdp }));
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                socket.emit('webrtc_signal', {
+                    room_id: ROOM_ID,
+                    user: CURRENT_USER,
+                    target_socket_id: senderSocketId,
+                    signal: { type: 'answer', sdp: answer.sdp },
+                });
+                setStatus('تم تفعيل البث الاحتياطي');
+                return;
+            }
+            if (signal.type === 'answer') {
+                await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: signal.sdp }));
+                return;
+            }
+            if (signal.type === 'candidate' && signal.candidate) {
+                try {
+                    await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+                } catch (_) {}
+            }
+        }
+
+        function cleanupMeshPeer(peerSocketId) {
+            const state = meshPeers.get(peerSocketId);
+            if (!state) return;
+            try { state.pc.close(); } catch (_) {}
+            meshPeers.delete(peerSocketId);
+        }
+
+        async function connectLiveKitMode(tokenData) {
+            const attachTrack = async (track) => {
+                const remoteMedia = document.getElementById('remoteMedia');
+                if (!remoteMedia || !track) return;
+                remoteMedia.innerHTML = '';
+                let element = null;
+                if (typeof track.attach === 'function') {
+                    element = track.attach();
+                } else if (track.mediaStreamTrack) {
+                    element = document.createElement(track.kind === 'audio' ? 'audio' : 'video');
+                    element.srcObject = new MediaStream([track.mediaStreamTrack]);
+                }
+                if (!element) return;
+                element.autoplay = true;
+                if (element.tagName === 'VIDEO') {
+                    element.playsInline = true;
+                    element.setAttribute('webkit-playsinline', 'true');
+                    element.controls = false;
+                }
+                if (element.tagName === 'AUDIO') {
+                    element.controls = true;
+                }
+                remoteMedia.appendChild(element);
+                try { await element.play(); } catch (_) {}
+                setStatus('البث يعمل الآن');
+            };
+
+            const createRoomInstance = () => {
+                const room = new LivekitClient.Room();
+                const subscribedEvent = (LivekitClient.RoomEvent && LivekitClient.RoomEvent.TrackSubscribed) || 'trackSubscribed';
+                const disconnectedEvent = (LivekitClient.RoomEvent && LivekitClient.RoomEvent.Disconnected) || 'disconnected';
+                const participantConnectedEvent = (LivekitClient.RoomEvent && LivekitClient.RoomEvent.ParticipantConnected) || 'participantConnected';
+                const trackPublishedEvent = (LivekitClient.RoomEvent && LivekitClient.RoomEvent.TrackPublished) || 'trackPublished';
+
+                room.on(subscribedEvent, track => attachTrack(track));
+                room.on(disconnectedEvent, () => setStatus('تم قطع الاتصال بالبث'));
+                room.on(participantConnectedEvent, () => {
+                    if (!isHost) setStatus('تم الاتصال، بانتظار وسائط المضيف...');
+                });
+                room.on(trackPublishedEvent, async (_publication, participant) => {
+                    const publications = Array.from(participant?.trackPublications?.values?.() || []);
+                    for (const pub of publications) {
+                        const track = pub?.track;
+                        if (track) {
+                            await attachTrack(track);
+                            break;
+                        }
+                    }
+                });
+                return room;
+            };
+
+            lkRoom = createRoomInstance();
+            await lkRoom.connect(tokenData.livekit_url, tokenData.token);
+
+            const participants = Array.from(lkRoom.remoteParticipants?.values?.() || []);
+            for (const participant of participants) {
+                const publications = Array.from(participant?.trackPublications?.values?.() || []);
+                for (const pub of publications) {
+                    const track = pub?.track;
+                    if (track) {
+                        await attachTrack(track);
+                        break;
+                    }
+                }
+            }
+
+            if (isHost) {
+                await publishLocalTracksToLiveKit();
+            } else if (!document.querySelector('#remoteMedia video, #remoteMedia audio')) {
+                setStatus('تم الاتصال، بانتظار فيديو أو صوت المضيف');
+            }
+        }
+
+        async function publishLocalTracksToLiveKit() {
+            if (!lkRoom) return;
+            const stream = await ensureHostLocalStream();
+            for (const track of stream.getTracks()) {
+                try {
+                    await lkRoom.localParticipant.publishTrack(track);
+                } catch (_) {
+                    if (track.kind === 'video' && typeof LivekitClient.createLocalVideoTrack === 'function') {
+                        const localVideoTrack = await LivekitClient.createLocalVideoTrack();
+                        await lkRoom.localParticipant.publishTrack(localVideoTrack);
+                    }
+                    if (track.kind === 'audio' && typeof LivekitClient.createLocalAudioTrack === 'function') {
+                        const localAudioTrack = await LivekitClient.createLocalAudioTrack();
+                        await lkRoom.localParticipant.publishTrack(localAudioTrack);
+                    }
+                }
+            }
+            setStatus('أنت الآن على الهواء');
+        }
+
+        async function connectStreaming() {
+            const tokenData = await window.requestJSON(`${API_BASE}/live_token`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    room_id: ROOM_ID,
+                    role: isHost ? 'host' : 'viewer',
+                    platform: window.LiveFix.detectPlatform(),
+                }),
+            });
+
+            const mode = tokenData.stream_mode || roomData?.stream_mode || 'webrtc_mesh';
+            if (mode === 'livekit_sfu' && tokenData.token && tokenData.livekit_url) {
+                await connectLiveKitMode(tokenData);
+                return;
+            }
+
+            if (isHost) {
+                await ensureHostLocalStream();
+                setStatus('وضع البث الاحتياطي يعمل عبر WebRTC + Socket.IO');
+            } else {
+                setStatus('تم الاتصال بوضع المشاهدة الاحتياطي، بانتظار المضيف...');
+            }
+        }
+
+        async function restartBroadcast() {
+            try {
+                if (localPreviewStream) localPreviewStream.getTracks().forEach(track => track.stop());
+                localPreviewStream = null;
+                if (isHost && meshPeers.size) {
+                    const peerIds = Array.from(meshPeers.keys());
+                    peerIds.forEach(cleanupMeshPeer);
+                    await ensureHostLocalStream();
+                    for (const peerId of peerIds) {
+                        await createMeshPeer(peerId, true);
+                    }
+                } else if (lkRoom) {
+                    await publishLocalTracksToLiveKit();
+                } else if (isHost) {
+                    await ensureHostLocalStream();
+                }
+            } catch (error) {
+                window.LiveFix.showToast(error.message || 'تعذر إعادة تشغيل الكاميرا');
+            }
+        }
+
+        async function enableViewerAudio() {
+            document.querySelectorAll('#remoteMedia video, #remoteMedia audio').forEach(async media => {
+                media.muted = false;
+                media.volume = 1;
+                try { await media.play(); } catch (_) {}
+            });
+            setStatus('تم تفعيل الصوت');
+        }
+
+        async function sendComment() {
+            const input = document.getElementById('commentInput');
+            const text = input.value.trim();
+            if (!text || !socket) return;
+            socket.emit('send_comment', { room_id: ROOM_ID, user: CURRENT_USER, text });
+            input.value = '';
+        }
+
+        function sendHeart() {
+            if (!socket) return;
+            socket.emit('send_heart', { room_id: ROOM_ID, user: CURRENT_USER });
+        }
+
+        function sendGift(gift) {
+            if (!socket) return;
+            socket.emit('send_gift', { room_id: ROOM_ID, user: CURRENT_USER, gift });
+        }
+
+        async function preloadComments() {
+            try {
+                const comments = await window.requestJSON(`${API_BASE}/live_comments/${ROOM_ID}`);
+                const box = document.getElementById('comments');
+                box.innerHTML = '';
+                comments.forEach(appendComment);
+            } catch (_) {}
+        }
+
+        async function refreshRoom() {
+            await loadRoom();
+            await preloadComments();
+        }
+
+        async function endLive() {
+            if (!isHost) return;
+            const result = confirm('هل تريد إنهاء البث الآن؟');
+            if (!result) return;
+            const data = await window.requestJSON(`${API_BASE}/end_live/${ROOM_ID}`, { method: 'POST' });
+            window.LiveFix.showToast(data.message || 'تم إنهاء البث');
+            setTimeout(() => window.location.href = 'live.html', 700);
+        }
+
+        function notifyPresenceExit() {
+            if (!ROOM_ID || !CURRENT_USER) return;
+            const payload = JSON.stringify({
+                room_id: ROOM_ID,
+                socket_id: socket?.id || '',
+                platform: window.LiveFix.detectPlatform(),
+                device_type: 'browser',
+                is_host: isHost,
+                active: false,
+            });
+            try {
+                fetch(`${API_BASE}/live_presence`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    keepalive: true,
+                    headers: { 'Content-Type': 'application/json', ...(window.withAuthHeaders ? window.withAuthHeaders({}) : {}) },
+                    body: payload,
+                });
+            } catch (_) {}
+        }
+
+        window.addEventListener('pagehide', notifyPresenceExit);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') notifyPresenceExit();
+        });
+
+        window.addEventListener('beforeunload', () => {
+            if (presenceStopper) presenceStopper();
+            notifyPresenceExit();
+            if (socket) socket.disconnect();
+            if (lkRoom && typeof lkRoom.disconnect === 'function') lkRoom.disconnect();
+            meshPeers.forEach((_, peerId) => cleanupMeshPeer(peerId));
+            if (localPreviewStream) localPreviewStream.getTracks().forEach(track => track.stop());
+        });
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            if (!ROOM_ID) {
+                window.LiveFix.showToast('رقم الغرفة غير صالح');
+                return;
+            }
+            try {
+                await checkSession();
+                await loadRoom();
+                await preloadComments();
+                await setupSocket();
+                await connectStreaming();
+                presenceStopper = window.LiveFix.startPresenceLoop({
+                    apiBase: API_BASE,
+                    roomId: ROOM_ID,
+                    isHost,
+                    socketId: () => socket?.id || '',
+                    interval: 15000,
+                    deviceType: 'browser',
+                    onPresence: (data) => { if (data && typeof data.viewer_count !== 'undefined') updateViewerCount(data.viewer_count); },
+                });
+            } catch (error) {
+                setStatus('تعذر فتح البث');
+                window.LiveFix.showToast(error.message || 'حدث خطأ أثناء تشغيل البث');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="theme-color" content="#e00000">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Yamshat | الملف الشخصي</title>
+    <link rel="stylesheet" href="assets/style.css">
+    <link rel="icon" type="image/png" href="assets/favicon-32.png">
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+    <link rel="manifest" href="site.webmanifest">
+</head>
+<body class="profile-page">
+    <header class="header glass profile-header">
+        <div class="header-row">
+            <button class="icon-btn" onclick="goFeed()">⬅</button>
+            <div>
+                <h2 id="username">...</h2>
+                <div class="subtle-text" id="profileEmail"></div>
+            </div>
+            <div class="header-actions">
+                <button class="icon-btn" onclick="toggleServiceMenu(event)">☰</button>
+                <button class="icon-btn" onclick="logout()">🚪</button>
+            </div>
+        </div>
+
+        <div class="stats-row glass mini-glass">
+            <div><strong id="followers">0</strong><span>متابعين</span></div>
+            <div><strong id="following">0</strong><span>يتابع</span></div>
+        </div>
+
+        <div class="profile-actions" id="profileActions"></div>
+    </header>
+
+    <div id="serviceMenu" class="service-menu glass hidden profile-menu">
+        <button onclick="goFeed()">🏠 الرئيسية</button>
+        <button onclick="openProfileEditor()">✏️ تعديل الملف الشخصي</button>
+        <button onclick="toggleTheme()">🌓 وضع ليلي/نهاري</button>
+        <div class="menu-section-title">استايل النظام</div>
+        <button onclick="setStylePreset('classic')">🎨 الاستايل الكلاسيكي</button>
+        <button onclick="setStylePreset('instagram')">📸 استايل إنستغرام</button>
+        <button onclick="setStylePreset('neon')">✨ الاستايل الثالث</button>
+        <button onclick="goReels()">🎬 الريلز</button>
+    </div>
+
+    <main class="container">
+        <div id="posts" class="profile-posts"></div>
+    </main>
+
+    <div id="profileModal" class="modal-overlay hidden">
+        <div class="modal-card glass">
+            <div class="modal-header">
+                <h3>تعديل الملف الشخصي</h3>
+                <button class="icon-btn" onclick="closeProfileEditor()">✕</button>
+            </div>
+            <div class="modal-body stacked-form">
+                <input id="editName" type="text" placeholder="اسم المستخدم">
+                <input id="editEmail" type="text" placeholder="البريد أو الجوال">
+                <input id="editPassword" type="password" placeholder="كلمة مرور جديدة - اختياري">
+                <button onclick="saveProfile(this)">حفظ التعديلات</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app-config.js"></script>
+    <script src="assets/auth.js"></script>
+    <script src="assets/app.js"></script>
+</body>
+</html>

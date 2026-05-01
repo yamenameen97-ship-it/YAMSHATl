@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="theme-color" content="#e00000">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Yamshat | الريلز</title>
+    <link rel="stylesheet" href="assets/style.css">
+    <link rel="icon" type="image/png" href="assets/favicon-32.png">
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+    <link rel="manifest" href="site.webmanifest">
+</head>
+<body class="reels-page">
+    <div class="reels-topbar glass">
+        <button class="icon-btn" onclick="goFeed()">⬅</button>
+        <div>🎬 Reels</div>
+        <button class="icon-btn" onclick="document.getElementById('pageReelInput').click()">➕</button>
+    </div>
+
+    <input type="file" id="pageReelInput" accept="video/*" class="hidden" onchange="if(this.files[0]) uploadReel(this.files[0])">
+
+    <div id="reels" class="reels-container"></div>
+
+    <div class="reels-hint glass">اسحب لأعلى أو لأسفل للتنقل بين الريلز</div>
+
+    <script src="app-config.js"></script>
+    <script src="assets/auth.js"></script>
+    <script src="assets/app.js"></script>
+</body>
+</html>

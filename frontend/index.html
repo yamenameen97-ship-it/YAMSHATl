@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="theme-color" content="#e00000">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Yamshat | تسجيل الدخول</title>
+    <link rel="stylesheet" href="assets/style.css">
+    <link rel="icon" type="image/png" href="assets/favicon-32.png">
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+    <link rel="manifest" href="site.webmanifest">
+</head>
+<body class="auth-page">
+    <div class="container auth-card glass">
+        <div class="brand-block">
+            <div class="brand-logo"><img src="assets/brand-logo.png" alt="Yamshat logo"></div>
+            <h1>Yamshat</h1>
+            <p>منصة اجتماعية عصرية للدردشة والمنشورات والريلز والبث المباشر.</p>
+        </div>
+
+        <div id="loginForm">
+            <h2>تسجيل الدخول</h2>
+            <input id="loginEmail" type="text" placeholder="البريد الإلكتروني أو رقم الجوال أو اسم المستخدم">
+            <input id="loginPassword" type="password" placeholder="كلمة المرور">
+            <button onclick="login(this)">دخول</button>
+            <div class="switch" onclick="showPasswordReset()">نسيت كلمة المرور؟</div>
+            <div class="switch" onclick="showRegister()">ليس لديك حساب؟ إنشاء حساب</div>
+            <div class="subtle-text" style="margin-top:10px;">يمكن تسجيل الدخول بالبريد الإلكتروني أو اسم المستخدم أو رقم الجوال، والحد الأدنى لكلمة المرور الآن 6 أحرف.</div>
+        </div>
+
+        <div id="registerForm" class="hidden">
+            <h2>إنشاء حساب</h2>
+            <input id="registerName" type="text" placeholder="الاسم">
+            <input id="registerEmail" type="text" placeholder="البريد الإلكتروني أو رقم الجوال بصيغة دولية">
+            <input id="registerPassword" type="password" placeholder="كلمة المرور">
+            <button onclick="register(this)">تسجيل</button>
+            <div class="switch" onclick="showLogin()">لديك حساب؟ تسجيل الدخول</div>
+        </div>
+
+        <div id="resetForm" class="hidden">
+            <h2>استعادة كلمة المرور</h2>
+            <input id="resetIdentifier" type="text" placeholder="البريد الإلكتروني أو رقم الجوال بصيغة دولية">
+            <select id="resetChannel">
+                <option value="auto">تلقائي حسب نوع الحساب</option>
+                <option value="email">بريد إلكتروني</option>
+                <option value="whatsapp">واتساب</option>
+            </select>
+            <button onclick="requestPasswordReset(this)">إرسال رمز التحقق</button>
+            <input id="resetCode" type="text" placeholder="رمز التحقق">
+            <button onclick="verifyPasswordReset(this)">تأكيد الرمز</button>
+            <input id="resetNewPassword" type="password" placeholder="كلمة المرور الجديدة">
+            <button onclick="completePasswordReset(this)">إعادة ضبط كلمة المرور</button>
+            <div class="switch" onclick="showLogin()">رجوع لتسجيل الدخول</div>
+        </div>
+    </div>
+
+    <script src="app-config.js"></script>
+    <script src="assets/auth.js"></script>
+    <script src="assets/app.js"></script>
+</body>
+</html>

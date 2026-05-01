@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="theme-color" content="#e00000">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Yamshat | المجموعات</title>
+    <link rel="stylesheet" href="assets/style.css">
+    <link rel="icon" type="image/png" href="assets/favicon-32.png">
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+    <style>
+        .groups-page { padding-bottom: 40px; }
+        .groups-shell { padding: 10px; }
+        .group-layout { display:grid; grid-template-columns: 1.1fr 0.9fr; gap:14px; }
+        .panel { padding:16px; }
+        .group-card, .post-card, .member-pill {
+            margin-top:10px; padding:12px; border-radius:16px; background:rgba(255,255,255,0.05);
+        }
+        .group-top, .member-pill { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+        .group-meta { color:rgba(255,255,255,0.72); font-size:13px; margin-top:6px; }
+        .stack { display:flex; flex-direction:column; gap:10px; }
+        .editor { display:flex; gap:10px; margin-top:12px; }
+        .editor textarea { min-height:96px; resize:vertical; }
+        .selected-banner { margin-top:12px; padding:12px; border-radius:16px; background:rgba(76,201,240,0.12); }
+        @media (max-width: 900px) { .group-layout { grid-template-columns: 1fr; } .editor { flex-direction:column; } }
+    </style>
+    <link rel="manifest" href="site.webmanifest">
+</head>
+<body class="groups-page">
+    <header class="header glass">
+        <div class="header-row">
+            <button class="icon-btn" onclick="window.location.href='feed.html'">⬅</button>
+            <div>
+                <div class="brand-title">👥 المجموعات</div>
+                <div class="subtle-text" id="sessionLabel">جاري تحميل الجلسة...</div>
+            </div>
+            <button class="icon-btn" onclick="window.location.href='profile.html'">👤</button>
+        </div>
+    </header>
+
+    <main class="container groups-shell">
+        <div class="group-layout">
+            <section class="glass panel">
+                <h3>قائمة المجموعات</h3>
+                <div class="post-box">
+                    <input id="groupName" placeholder="اسم المجموعة">
+                    <button onclick="createGroup(this)">إنشاء</button>
+                </div>
+                <div id="groups" class="stack"></div>
+            </section>
+
+            <section class="glass panel">
+                <h3>تفاصيل المجموعة</h3>
+                <div id="selectedGroup" class="selected-banner">اختر مجموعة من القائمة لعرض المنشورات والأعضاء.</div>
+
+                <div class="editor">
+                    <textarea id="groupPostText" placeholder="اكتب منشور داخل المجموعة..."></textarea>
+                    <button onclick="publishGroupPost(this)">نشر</button>
+                </div>
+
+                <h4>المنشورات</h4>
+                <div id="groupPosts"></div>
+
+                <h4>الأعضاء</h4>
+                <div id="groupMembers"></div>
+            </section>
+        </div>
+    </main>
+
+    <script src="app-config.js"></script>
+    <script src="assets/auth.js"></script>
+    <script>
+        const API_BASE = window.API_BASE || `${window.location.origin.replace(/\/+$/, "")}/api`;
+        let currentUser = "";
+        let selectedGroupId = null;
+        let selectedGroupName = "";
+
+        function escapeHTML(value) {
+            return String(value || "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/\"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function showToast(msg) {
+            const t = document.createElement("div");
+            t.className = "toast";
+            t.innerText = msg;
+            document.body.appendChild(t);
+            setTimeout(() => t.remove(), 2500);
+        }
+
+        const requestJSON = window.requestJSON;
+
+        async function checkSession() {
+            const data = await requestJSON(`${API_BASE}/me`);
+            if (!data.user) {
+                window.location.href = "index.html";
+                return;
+            }
+            currentUser = data.user;
+            document.getElementById("sessionLabel").innerText = `مرحباً ${currentUser}`;
+        }
+
+        async function createGroup(btn) {
+            const name = document.getElementById("groupName").value.trim();
+            if (!name) {
+                showToast("اكتب اسم المجموعة أولاً");
+                return;
+            }
+            btn.disabled = true;
+            const oldText = btn.innerText;
+            btn.innerText = "جاري الإنشاء...";
+            try {
+                const data = await requestJSON(`${API_BASE}/create_group`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name, owner: currentUser })
+                });
+                document.getElementById("groupName").value = "";
+                showToast(data.message);
+                await loadGroups();
+                if (data.group_id) openGroup(data.group_id, name);
+            } catch (error) {
+                showToast(error.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = oldText;
+            }
+        }
+
+        async function join(groupId) {
+            try {
+                const data = await requestJSON(`${API_BASE}/join_group`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ group_id: groupId, username: currentUser })
+                });
+                showToast(data.message);
+                await Promise.all([loadGroups(), loadMembers(groupId)]);
+            } catch (error) {
+                showToast(error.message);
+            }
+        }
+
+        async function loadGroups() {
+            const box = document.getElementById("groups");
+            try {
+                const data = await requestJSON(`${API_BASE}/groups`);
+                if (!data.length) {
+                    box.innerHTML = '<div class="empty-state">لا توجد مجموعات حتى الآن</div>';
+                    return;
+                }
+                box.innerHTML = data.map(group => `
+                    <div class="group-card">
+                        <div class="group-top">
+                            <div>
+                                <b>${escapeHTML(group.name)}</b>
+                                <div class="group-meta">المالك: ${escapeHTML(group.owner)} · الأعضاء: ${group.members_count || 0}</div>
+                            </div>
+                            <div class="inline-actions">
+                                <button onclick="join(${group.id})">انضمام</button>
+                                <button onclick='openGroup(${group.id}, ${JSON.stringify(group.name)})'>فتح</button>
+                            </div>
+                        </div>
+                    </div>
+                `).join("");
+            } catch (error) {
+                box.innerHTML = `<div class="empty-state">${escapeHTML(error.message)}</div>`;
+            }
+        }
+
+        async function openGroup(groupId, groupName) {
+            selectedGroupId = groupId;
+            selectedGroupName = groupName;
+            document.getElementById("selectedGroup").innerHTML = `المجموعة المحددة: <b>${escapeHTML(groupName)}</b> (ID: ${groupId})`;
+            await Promise.all([loadGroupPosts(groupId), loadMembers(groupId)]);
+        }
+
+        async function publishGroupPost(btn) {
+            if (!selectedGroupId) {
+                showToast("اختر مجموعة أولاً");
+                return;
+            }
+            const content = document.getElementById("groupPostText").value.trim();
+            if (!content) {
+                showToast("اكتب محتوى المنشور أولاً");
+                return;
+            }
+            btn.disabled = true;
+            const oldText = btn.innerText;
+            btn.innerText = "جاري النشر...";
+            try {
+                const data = await requestJSON(`${API_BASE}/group_post`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ group_id: selectedGroupId, username: currentUser, content })
+                });
+                document.getElementById("groupPostText").value = "";
+                showToast(data.message);
+                await loadGroupPosts(selectedGroupId);
+            } catch (error) {
+                showToast(error.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = oldText;
+            }
+        }
+
+        async function loadGroupPosts(groupId) {
+            const box = document.getElementById("groupPosts");
+            try {
+                const data = await requestJSON(`${API_BASE}/group_posts/${groupId}`);
+                if (!data.length) {
+                    box.innerHTML = '<div class="empty-state">لا توجد منشورات داخل هذه المجموعة</div>';
+                    return;
+                }
+                box.innerHTML = data.map(post => `
+                    <div class="post-card">
+                        <b>${escapeHTML(post.username)}</b>
+                        <div class="group-meta">داخل ${escapeHTML(selectedGroupName)}</div>
+                        <div style="margin-top:8px; line-height:1.8;">${escapeHTML(post.content)}</div>
+                    </div>
+                `).join("");
+            } catch (error) {
+                box.innerHTML = `<div class="empty-state">${escapeHTML(error.message)}</div>`;
+            }
+        }
+
+        function openChat(name) {
+            window.location.href = `chat.html?user=${encodeURIComponent(name)}`;
+        }
+
+        async function loadMembers(groupId) {
+            const box = document.getElementById("groupMembers");
+            try {
+                const data = await requestJSON(`${API_BASE}/group_members/${groupId}`);
+                if (!data.length) {
+                    box.innerHTML = '<div class="empty-state">لا يوجد أعضاء حالياً</div>';
+                    return;
+                }
+                box.innerHTML = data.map(name => `
+                    <div class="member-pill">
+                        <span>${escapeHTML(name)}</span>
+                        <div class="inline-actions">
+                            <button onclick="window.location.href='profile.html?user=${encodeURIComponent(name)}'">الملف الشخصي</button>
+                            <button onclick="openChat(${JSON.stringify(name)})">💬 دردشة</button>
+                        </div>
+                    </div>
+                `).join("");
+            } catch (error) {
+                box.innerHTML = `<div class="empty-state">${escapeHTML(error.message)}</div>`;
+            }
+        }
+
+        window.addEventListener("DOMContentLoaded", async () => {
+            try {
+                await checkSession();
+                await loadGroups();
+            } catch (error) {
+                showToast(error.message);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -15,9 +15,9 @@ admin_bp = Blueprint("supplementary_admin", __name__)
 def _current_user() -> dict:
     auth = request.headers.get("Authorization", "")
     role = (request.headers.get("X-Admin-Role") or request.args.get("role") or "admin").strip().lower()
-    actor = (request.headers.get("X-Admin-User") or request.args.get("user") or "admin").strip()
+    actor = (request.headers.get("X-Admin-User") or request.args.get("user") or "adminyamen").strip()
     return {
-        "name": actor or "admin",
+        "name": actor or "adminyamen",
         "role": role,
         "token_present": bool(auth.strip()),
     }

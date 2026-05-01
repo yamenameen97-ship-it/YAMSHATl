@@ -13,8 +13,8 @@ BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 DEFAULT_ADMIN_EMAIL = "admin@gmail.com"
-DEFAULT_ADMIN_USERNAME = "admin"
-DEFAULT_ADMIN_PASSWORD = "yamen444"
+DEFAULT_ADMIN_USERNAME = "adminyamen"
+DEFAULT_ADMIN_PASSWORD = "yamen2020"
 
 
 def get_db():

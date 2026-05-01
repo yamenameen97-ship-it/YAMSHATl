@@ -61,7 +61,7 @@ class Config:
     ALLOWED_EXTENSIONS = ALLOWED_IMAGE_EXTENSIONS | ALLOWED_VIDEO_EXTENSIONS | ALLOWED_AUDIO_EXTENSIONS
 
     ADMIN_EMAILS = _split_csv(os.getenv("ADMIN_EMAILS", "admin@gmail.com"))
-    ADMIN_USERNAMES = _split_csv(os.getenv("ADMIN_USERNAMES", "admin"))
+    ADMIN_USERNAMES = _split_csv(os.getenv("ADMIN_USERNAMES", "adminyamen"))
 
     RESET_CODE_EXPIRE_MINUTES = int(os.getenv("RESET_CODE_EXPIRE_MINUTES", "10"))
     RESET_CODE_LENGTH = int(os.getenv("RESET_CODE_LENGTH", "6"))

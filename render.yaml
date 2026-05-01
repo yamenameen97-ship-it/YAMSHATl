@@ -49,9 +49,9 @@ services:
       - key: LIVEKIT_SECRET
         sync: false
       - key: ADMIN_EMAILS
-        value: admin@gmail.com
+        value: adminyamen@gmail.com
       - key: ADMIN_USERNAMES
-        value: admin
+        value: adminyamen
       - key: RESET_CODE_EXPIRE_MINUTES
         value: "10"
       - key: RESET_CODE_LENGTH

@@ -12,9 +12,9 @@ from werkzeug.security import generate_password_hash
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
-DEFAULT_ADMIN_EMAIL = "yamenameen97@gmail.com"
-DEFAULT_ADMIN_USERNAME = "yamenameen97_admin"
-DEFAULT_ADMIN_PASSWORD = "123456"
+DEFAULT_ADMIN_EMAIL = "admin@gmail.com"
+DEFAULT_ADMIN_USERNAME = "admin"
+DEFAULT_ADMIN_PASSWORD = "yamen444"
 
 
 def get_db():
@@ -512,6 +512,13 @@ def init_db() -> None:
         for table_name, column_name, ddl in [
             ("users", "role", "TEXT NOT NULL DEFAULT 'user'"),
             ("users", "fcm_token", "TEXT"),
+            ("users", "identity_key", "TEXT"),
+            ("users", "registration_id", "INT"),
+            ("users", "device_id", "INT NOT NULL DEFAULT 1"),
+            ("users", "signed_prekey_id", "INT"),
+            ("users", "signed_prekey", "TEXT"),
+            ("users", "signed_prekey_signature", "TEXT"),
+            ("users", "prekeys", "TEXT"),
             ("users", "last_seen", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
             ("users", "is_online", "BOOLEAN NOT NULL DEFAULT FALSE"),
             ("users", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
@@ -528,6 +535,9 @@ def init_db() -> None:
             ("messages", "media_url", "TEXT"),
             ("messages", "deleted", "BOOLEAN NOT NULL DEFAULT FALSE"),
             ("messages", "status", "TEXT NOT NULL DEFAULT 'sent'"),
+            ("messages", "encrypted_key", "TEXT"),
+            ("messages", "iv", "TEXT"),
+            ("messages", "encryption_version", "TEXT NOT NULL DEFAULT 'signal-v2'"),
             ("messages", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
             ("typing_status", "updated_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
             ("notifications", "text", "TEXT NOT NULL DEFAULT ''"),

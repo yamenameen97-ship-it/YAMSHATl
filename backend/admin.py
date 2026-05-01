@@ -644,3 +644,77 @@ def admin_end_live(room_id: int):
             severity="warning",
         )
     return jsonify({"ok": True, "message": "تم إنهاء البث من لوحة الإدارة"})
+
+
+@admin_bp.get("/admin_posts")
+@require_admin
+def admin_posts():
+    with db_cursor() as (_conn, cur):
+        cur.execute(
+            """
+            SELECT
+                p.id,
+                p.username,
+                p.content,
+                p.media,
+                p.likes,
+                p.created_at,
+                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comments_count,
+                (SELECT COUNT(*) FROM reports r WHERE r.target_type='post' AND r.target_value = CAST(p.id AS TEXT) AND r.status='open') AS reports_count
+            FROM posts p
+            ORDER BY p.id DESC
+            LIMIT 250
+            """
+        )
+        rows = cur.fetchall() or []
+    return jsonify(rows)
+
+
+@admin_bp.post("/admin_delete_user/<username>")
+@require_admin
+def admin_delete_user(username: str):
+    safe_username = normalize_text(username, 80)
+    if not safe_username:
+        return jsonify({"message": "اسم المستخدم غير صالح"}), 400
+
+    media_files: list[str] = []
+    reel_files: list[str] = []
+
+    with db_cursor(commit=True) as (_conn, cur):
+        cur.execute("SELECT id, email FROM users WHERE name=%s LIMIT 1", (safe_username,))
+        user_row = cur.fetchone()
+        if not user_row:
+            return jsonify({"message": "المستخدم غير موجود"}), 404
+
+        cur.execute("SELECT media FROM posts WHERE username=%s AND media IS NOT NULL", (safe_username,))
+        media_files = [str((row or {}).get("media") or "") for row in (cur.fetchall() or []) if (row or {}).get("media")]
+
+        cur.execute("SELECT video FROM reels WHERE username=%s AND video IS NOT NULL", (safe_username,))
+        reel_files = [str((row or {}).get("video") or "") for row in (cur.fetchall() or []) if (row or {}).get("video")]
+
+        cur.execute("DELETE FROM notifications WHERE username=%s", (safe_username,))
+        cur.execute("DELETE FROM post_likes WHERE username=%s", (safe_username,))
+        cur.execute("DELETE FROM comments WHERE username=%s", (safe_username,))
+        cur.execute("DELETE FROM messages WHERE sender=%s OR receiver=%s", (safe_username, safe_username))
+        cur.execute("DELETE FROM followers WHERE follower=%s OR followed=%s", (safe_username, safe_username))
+        cur.execute("DELETE FROM blocked_users WHERE blocker=%s OR blocked=%s", (safe_username, safe_username))
+        cur.execute("DELETE FROM reports WHERE (target_type='user' AND target_value=%s) OR reporter=%s", (safe_username, safe_username))
+        cur.execute("DELETE FROM moderation_actions WHERE username=%s", (safe_username,))
+        cur.execute("DELETE FROM reels WHERE username=%s", (safe_username,))
+        cur.execute("DELETE FROM posts WHERE username=%s", (safe_username,))
+        cur.execute("DELETE FROM users WHERE name=%s", (safe_username,))
+
+        log_audit(
+            cur,
+            action="admin_delete_user",
+            actor=current_user() or "admin",
+            target_type="user",
+            target_value=safe_username,
+            details=f"تم حذف المستخدم {safe_username} من لوحة الإدارة",
+            severity="warning",
+        )
+
+    for file_name in media_files + reel_files:
+        delete_media_file(file_name, UPLOAD_DIR)
+
+    return jsonify({"ok": True, "message": "تم حذف المستخدم وبياناته الأساسية"})

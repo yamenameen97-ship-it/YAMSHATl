@@ -45,6 +45,24 @@ def room_channel(room_id) -> str:
     return f"live:{room_id}"
 
 
+def _active_host_socket_ids(cur, room_id) -> list[str]:
+    cur.execute(
+        """
+        SELECT socket_id
+        FROM live_viewers
+        WHERE room_id=%s
+          AND is_host=TRUE
+          AND active=TRUE
+          AND socket_id IS NOT NULL
+          AND socket_id<>''
+          AND last_seen > NOW() - INTERVAL '90 seconds'
+        ORDER BY id ASC
+        """,
+        (room_id,),
+    )
+    return [str(row.get("socket_id") or "").strip() for row in (cur.fetchall() or []) if str(row.get("socket_id") or "").strip()]
+
+
 def init_socket(app):
     socketio.init_app(app, cors_allowed_origins=_ALLOWED_SOCKET_ORIGINS)
 
@@ -112,6 +130,16 @@ def join_live_event(data):
 
     emit("joined_live", {"room_id": room_id, "socket_id": request.sid}, room=room_channel(room_id))
     emit("room_stats", {"room_id": room_id, "viewer_count": total}, room=room_channel(room_id))
+
+    if role != "host":
+        with db_cursor() as (_conn, cur):
+            for host_socket_id in _active_host_socket_ids(cur, room_id):
+                if host_socket_id != request.sid:
+                    emit(
+                        "viewer_joined",
+                        {"room_id": room_id, "viewer_socket_id": request.sid, "viewer": username},
+                        to=host_socket_id,
+                    )
 
 
 @socketio.on("send_comment")
@@ -237,6 +265,26 @@ def send_gift(data):
     emit("new_gift", payload, room=room_channel(room_id))
 
 
+@socketio.on("webrtc_signal")
+def relay_webrtc_signal(data):
+    room_id = str(data.get("room_id") or "").strip()
+    target_socket_id = clean(data.get("target_socket_id") or "")
+    username = clean(data.get("user") or "Guest") or "Guest"
+    signal = data.get("signal") or {}
+    if not room_id or not target_socket_id or not isinstance(signal, dict):
+        return
+    emit(
+        "webrtc_signal",
+        {
+            "room_id": room_id,
+            "sender_socket_id": request.sid,
+            "user": username,
+            "signal": signal,
+        },
+        to=target_socket_id,
+    )
+
+
 @socketio.on("disconnect")
 def on_disconnect():
     sid = request.sid
@@ -248,11 +296,25 @@ def on_disconnect():
             UPDATE live_viewers
             SET active=FALSE, last_seen=NOW()
             WHERE socket_id=%s
-            RETURNING room_id
+            RETURNING room_id, is_host, username
             """,
             (sid,),
         )
-        room_updates = [str(row["room_id"]) for row in cur.fetchall()]
+        disconnected_rows = cur.fetchall() or []
+        room_updates = [str(row["room_id"]) for row in disconnected_rows]
+
+        for disconnected in disconnected_rows:
+            if not disconnected.get("is_host"):
+                for host_socket_id in _active_host_socket_ids(cur, disconnected["room_id"]):
+                    emit(
+                        "viewer_left",
+                        {
+                            "room_id": str(disconnected["room_id"]),
+                            "viewer_socket_id": sid,
+                            "viewer": disconnected.get("username") or "",
+                        },
+                        to=host_socket_id,
+                    )
 
         for room_id in room_updates:
             cur.execute(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -126,6 +128,20 @@ def _ensure_chat_tables():
             )
             """
         )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_backups (
+                id SERIAL PRIMARY KEY,
+                username TEXT NOT NULL UNIQUE,
+                encrypted_data BYTEA NOT NULL,
+                backup_version TEXT NOT NULL DEFAULT 'yamshat-backup-v1',
+                key_hint TEXT,
+                byte_size BIGINT NOT NULL DEFAULT 0,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
         for statement in [
             "ALTER TABLE messages ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'text'",
             "ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_url TEXT",
@@ -138,6 +154,16 @@ def _ensure_chat_tables():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_online BOOLEAN NOT NULL DEFAULT FALSE",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS fcm_token TEXT",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS identity_key TEXT",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS registration_id INT",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS device_id INT NOT NULL DEFAULT 1",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS signed_prekey_id INT",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS signed_prekey TEXT",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS signed_prekey_signature TEXT",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS prekeys TEXT",
+            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS encrypted_key TEXT",
+            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS iv TEXT",
+            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS encryption_version TEXT NOT NULL DEFAULT 'signal-v2'",
         ]:
             cur.execute(statement)
         cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_pair_id ON messages(sender, receiver, id DESC)")
@@ -162,7 +188,8 @@ def _is_blocked(cur, user_a: str, user_b: str) -> bool:
 
 
 def _looks_like_encrypted(message: str) -> bool:
-    return str(message or "").startswith("ENCv1:")
+    text = str(message or "")
+    return text.startswith("ENCv1:") or text.startswith("SGv2:")
 
 
 
@@ -439,7 +466,7 @@ def send_message():
     data = request.get_json(silent=True) or {}
     sender = current_user() or ""
     receiver = normalize_text(data.get("receiver") or data.get("receiver_id"), 80)
-    message = normalize_text(data.get("message") or data.get("content"), 8000)
+    message = normalize_text(data.get("encrypted_message") or data.get("message") or data.get("content"), 8000)
     media_url = normalize_text(data.get("media_url"), 2000)
     client_id = _normalize_client_id(data.get("client_id"))
     msg_type = _normalize_message_type(data.get("type") or "text", media_url)
@@ -567,6 +594,113 @@ def send_message():
         pass
 
     return jsonify({"ok": True, "message": "تم إرسال الرسالة", "data": payload, **payload})
+
+
+@chat_bp.post("/keys/upload")
+@require_auth
+def upload_signal_keys():
+    _ensure_chat_tables()
+    data = request.get_json(silent=True) or {}
+    username = current_user() or ""
+    identity_key = normalize_text(data.get("identity_key"), 6000)
+    signed_prekey = normalize_text(data.get("signed_prekey"), 6000)
+    signed_prekey_signature = normalize_text(data.get("signed_prekey_signature"), 6000)
+    registration_id = _parse_positive_int(data.get("registration_id"))
+    device_id = _parse_positive_int(data.get("device_id")) or 1
+    signed_prekey_id = _parse_positive_int(data.get("signed_prekey_id"))
+    prekeys = data.get("prekeys") if isinstance(data.get("prekeys"), list) else []
+
+    sanitized_prekeys = []
+    for item in prekeys[:100]:
+        if not isinstance(item, dict):
+            continue
+        key_id = _parse_positive_int(item.get("key_id") or item.get("id"))
+        public_key = normalize_text(item.get("public_key") or item.get("key"), 6000)
+        if key_id and public_key:
+            sanitized_prekeys.append({"key_id": key_id, "public_key": public_key})
+
+    if not identity_key or not signed_prekey or not signed_prekey_signature or not registration_id or not signed_prekey_id or not sanitized_prekeys:
+        return json_error("بيانات المفاتيح غير مكتملة", 400)
+
+    with db_cursor(commit=True) as (_conn, cur):
+        cur.execute(
+            """
+            UPDATE users
+            SET identity_key=%s,
+                registration_id=%s,
+                device_id=%s,
+                signed_prekey_id=%s,
+                signed_prekey=%s,
+                signed_prekey_signature=%s,
+                prekeys=%s,
+                last_seen=NOW()
+            WHERE name=%s
+            RETURNING name
+            """,
+            (
+                identity_key,
+                registration_id,
+                device_id,
+                signed_prekey_id,
+                signed_prekey,
+                signed_prekey_signature,
+                json.dumps(sanitized_prekeys, ensure_ascii=False),
+                username,
+            ),
+        )
+        if not cur.fetchone():
+            return json_error("المستخدم غير موجود", 404)
+
+    return jsonify({"ok": True, "status": "ok", "message": "تم رفع مفاتيح التشفير"})
+
+
+@chat_bp.get("/keys/<username>")
+@require_auth
+def get_signal_keys(username: str):
+    _ensure_chat_tables()
+    safe_username = normalize_text(username, 80)
+    if not safe_username:
+        return json_error("المستخدم غير صالح", 400)
+
+    with db_cursor(commit=True) as (_conn, cur):
+        cur.execute(
+            """
+            SELECT name, identity_key, registration_id, device_id,
+                   signed_prekey_id, signed_prekey, signed_prekey_signature, prekeys
+            FROM users
+            WHERE name=%s
+            LIMIT 1
+            """,
+            (safe_username,),
+        )
+        row = cur.fetchone() or {}
+
+    if not row:
+        return json_error("المستخدم غير موجود", 404)
+    if not row.get("identity_key") or not row.get("signed_prekey") or not row.get("signed_prekey_signature") or not row.get("prekeys"):
+        return json_error("المستخدم لم يفعّل التشفير بعد", 404)
+
+    try:
+        prekeys = json.loads(row.get("prekeys") or "[]")
+    except Exception:
+        prekeys = []
+
+    if not prekeys:
+        return json_error("لا توجد مفاتيح أولية متاحة", 404)
+
+    return jsonify(
+        {
+            "ok": True,
+            "username": row.get("name"),
+            "registration_id": int(row.get("registration_id") or 0),
+            "device_id": int(row.get("device_id") or 1),
+            "identity_key": row.get("identity_key"),
+            "signed_prekey_id": int(row.get("signed_prekey_id") or 0),
+            "signed_prekey": row.get("signed_prekey"),
+            "signed_prekey_signature": row.get("signed_prekey_signature"),
+            "prekeys": prekeys,
+        }
+    )
 
 
 @chat_bp.post("/delete_message")
@@ -858,6 +992,116 @@ def user_presence(username: str):
             return json_error("المستخدم غير موجود", 404)
         payload = _presence_payload(cur, safe_username)
     return jsonify(payload)
+
+
+@chat_bp.post("/backup/upload")
+@require_auth
+def upload_backup():
+    _ensure_chat_tables()
+    username = current_user() or ""
+    data = request.get_json(silent=True) or {}
+    encoded_payload = normalize_text(data.get("encrypted_data"), 40_000_000)
+    backup_version = normalize_text(data.get("backup_version"), 64) or "yamshat-backup-v1"
+    key_hint = normalize_text(data.get("key_hint"), 64)
+    if not encoded_payload:
+        return json_error("النسخة الاحتياطية المشفرة مطلوبة", 400)
+    try:
+        encrypted_data = base64.b64decode(encoded_payload.encode("utf-8"), validate=True)
+    except Exception:
+        return json_error("صيغة النسخة الاحتياطية غير صحيحة", 400)
+    if not encrypted_data:
+        return json_error("النسخة الاحتياطية فارغة", 400)
+    if len(encrypted_data) > 20 * 1024 * 1024:
+        return json_error("حجم النسخة الاحتياطية أكبر من الحد المسموح", 413)
+
+    with db_cursor(commit=True) as (_conn, cur):
+        cur.execute(
+            """
+            INSERT INTO user_backups(username, encrypted_data, backup_version, key_hint, byte_size, created_at, updated_at)
+            VALUES(%s,%s,%s,%s,%s,NOW(),NOW())
+            ON CONFLICT (username)
+            DO UPDATE SET
+                encrypted_data=EXCLUDED.encrypted_data,
+                backup_version=EXCLUDED.backup_version,
+                key_hint=EXCLUDED.key_hint,
+                byte_size=EXCLUDED.byte_size,
+                updated_at=NOW()
+            RETURNING username, backup_version, key_hint, byte_size, created_at, updated_at
+            """,
+            (username, encrypted_data, backup_version, key_hint or None, len(encrypted_data)),
+        )
+        row = cur.fetchone() or {}
+        _set_user_online(cur, username, True)
+
+    return jsonify({
+        "ok": True,
+        "message": "تم حفظ النسخة الاحتياطية المشفرة",
+        "backup_version": row.get("backup_version"),
+        "key_hint": row.get("key_hint"),
+        "byte_size": int(row.get("byte_size") or 0),
+        "created_at": row.get("created_at"),
+        "updated_at": row.get("updated_at"),
+    })
+
+
+@chat_bp.get("/backup/info")
+@require_auth
+def backup_info():
+    _ensure_chat_tables()
+    username = current_user() or ""
+    with db_cursor() as (_conn, cur):
+        cur.execute(
+            """
+            SELECT backup_version, key_hint, byte_size, created_at, updated_at
+            FROM user_backups
+            WHERE username=%s
+            LIMIT 1
+            """,
+            (username,),
+        )
+        row = cur.fetchone() or {}
+    if not row:
+        return jsonify({"ok": True, "message": "لا توجد نسخة احتياطية", "backup_version": None, "key_hint": None, "byte_size": 0, "created_at": None, "updated_at": None})
+    return jsonify({
+        "ok": True,
+        "message": "Backup available",
+        "backup_version": row.get("backup_version"),
+        "key_hint": row.get("key_hint"),
+        "byte_size": int(row.get("byte_size") or 0),
+        "created_at": row.get("created_at"),
+        "updated_at": row.get("updated_at"),
+    })
+
+
+@chat_bp.get("/backup/download")
+@require_auth
+def download_backup():
+    _ensure_chat_tables()
+    username = current_user() or ""
+    with db_cursor() as (_conn, cur):
+        cur.execute(
+            """
+            SELECT encrypted_data, backup_version, key_hint, byte_size, created_at, updated_at
+            FROM user_backups
+            WHERE username=%s
+            LIMIT 1
+            """,
+            (username,),
+        )
+        row = cur.fetchone() or {}
+    if not row:
+        return json_error("لا توجد نسخة احتياطية محفوظة", 404)
+    encrypted_data = row.get("encrypted_data") or b""
+    return jsonify({
+        "ok": True,
+        "message": "تم تنزيل النسخة الاحتياطية المشفرة",
+        "encrypted_data": base64.b64encode(encrypted_data).decode("utf-8"),
+        "backup_version": row.get("backup_version"),
+        "key_hint": row.get("key_hint"),
+        "byte_size": int(row.get("byte_size") or len(encrypted_data)),
+        "created_at": row.get("created_at"),
+        "updated_at": row.get("updated_at"),
+    })
 
 
 @chat_bp.post("/save_device_token")

@@ -58,10 +58,12 @@ jwt_manager = JWTManager(app) if JWTManager else None
 init_extensions(app)
 init_socket(app)
 
-# ⚠️ تشغيل قاعدة البيانات مرة واحدة فقط
-if os.environ.get("RUN_DB_INIT") == "true":
+# تشغيل التهيئة والمهاجرات وإنشاء صلاحيات الأدمن تلقائياً
+try:
     init_db()
     set_admin_roles(Config.ADMIN_EMAILS, Config.ADMIN_USERNAMES)
+except Exception as exc:
+    logger.exception("DB bootstrap failed: %s", exc)
 
 # =========================
 # تسجيل المسارات
@@ -114,6 +116,9 @@ def add_cache_headers(response):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     return response
 
 # =========================

@@ -48,9 +48,19 @@ services:
         sync: false
       - key: LIVEKIT_SECRET
         sync: false
+      - key: PRIMARY_ADMIN_EMAIL
+        value: adminadminya@gmail.com
+      - key: PRIMARY_ADMIN_USERNAME
+        value: adminadminya
+      - key: PRIMARY_ADMIN_PASSWORD
+        value: yamen1234
       - key: ADMIN_EMAILS
-        value: adminyamen@gmail.com
+        value: adminadminya@gmail.com
       - key: ADMIN_USERNAMES
+        value: adminadminya
+      - key: LEGACY_ADMIN_EMAILS
+        value: adminyamen@gmail.com
+      - key: LEGACY_ADMIN_USERNAMES
         value: adminyamen
       - key: RESET_CODE_EXPIRE_MINUTES
         value: "10"

@@ -35,9 +35,13 @@ GENERIC_RESET_MESSAGE = "إذا كانت البيانات صحيحة فسيصل 
 
 
 def _role_for_identity(name: str, email: str, current_role_value: str = "user") -> str:
-    normalized_name = str(name or "").strip()
+    normalized_name = str(name or "").strip().lower()
     normalized_email = normalize_contact(email or "")
-    if normalized_email in {normalize_contact(value) for value in Config.ADMIN_EMAILS} or normalized_name in set(Config.ADMIN_USERNAMES):
+    configured_admin_emails = {normalize_contact(value) for value in Config.ADMIN_EMAILS}
+    configured_admin_usernames = {str(value or "").strip().lower() for value in Config.ADMIN_USERNAMES}
+    legacy_admin_emails = {normalize_contact(value) for value in getattr(Config, "LEGACY_ADMIN_EMAILS", [])}
+    legacy_admin_usernames = {str(value or "").strip().lower() for value in getattr(Config, "LEGACY_ADMIN_USERNAMES", [])}
+    if normalized_email in configured_admin_emails | legacy_admin_emails or normalized_name in configured_admin_usernames | legacy_admin_usernames:
         return "admin"
     if is_privileged_role(current_role_value):
         return str(current_role_value).strip().lower()
@@ -97,7 +101,7 @@ def register():
         cur.execute("SELECT id FROM users WHERE lower(email)=lower(%s)", (email,))
         if cur.fetchone():
             return json_error("هذا الحساب مسجل بالفعل", 409)
-        cur.execute("SELECT id FROM users WHERE name=%s", (name,))
+        cur.execute("SELECT id FROM users WHERE lower(name)=lower(%s)", (name,))
         if cur.fetchone():
             return json_error("اسم المستخدم مستخدم بالفعل", 409)
 
@@ -126,7 +130,7 @@ def login():
 
     with db_cursor(commit=True) as (_conn, cur):
         cur.execute(
-            "SELECT name,email,password,COALESCE(role,'user') AS role FROM users WHERE lower(email)=lower(%s) OR name=%s LIMIT 1",
+            "SELECT name,email,password,COALESCE(role,'user') AS role FROM users WHERE lower(email)=lower(%s) OR lower(name)=lower(%s) LIMIT 1",
             (normalized_identifier, identifier),
         )
         user = cur.fetchone()
@@ -211,7 +215,7 @@ def update_profile():
         cur.execute("SELECT id FROM users WHERE lower(email)=lower(%s) AND lower(email)<>lower(%s)", (new_email, active_email))
         if cur.fetchone():
             return json_error("هذا البريد أو الجوال مستخدم بالفعل", 409)
-        cur.execute("SELECT id FROM users WHERE name=%s AND name<>%s", (new_name, active_user))
+        cur.execute("SELECT id FROM users WHERE lower(name)=lower(%s) AND lower(name)<>lower(%s)", (new_name, active_user))
         if cur.fetchone():
             return json_error("اسم المستخدم مستخدم بالفعل", 409)
 

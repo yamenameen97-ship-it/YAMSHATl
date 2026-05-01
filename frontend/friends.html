@@ -182,6 +182,10 @@
                             <b>${escapeHTML(name)}</b>
                             <div class="muted-box">صديق مقبول</div>
                         </div>
+                        <div class="inline-actions">
+                            <button onclick="openChat(${JSON.stringify(name)})">💬 دردشة</button>
+                            <button onclick="window.location.href='profile.html?user=${encodeURIComponent(name)}'">الملف الشخصي</button>
+                        </div>
                     </div>
                 `).join("");
             } catch (error) {
@@ -205,6 +209,7 @@
                         </div>
                         <div class="inline-actions">
                             <button onclick='sendRequestTo(${JSON.stringify(user.name)})'>إضافة</button>
+                            <button onclick="openChat(${JSON.stringify(user.name)})">💬 دردشة</button>
                             <button onclick="window.location.href='profile.html?user=${encodeURIComponent(user.name)}'">ملف شخصي</button>
                         </div>
                     </div>
@@ -212,6 +217,10 @@
             } catch (error) {
                 box.innerHTML = `<div class="empty-state">${escapeHTML(error.message)}</div>`;
             }
+        }
+
+        function openChat(name) {
+            window.location.href = `chat.html?user=${encodeURIComponent(name)}`;
         }
 
         function sendRequestTo(name) {

@@ -229,6 +229,10 @@
             }
         }
 
+        function openChat(name) {
+            window.location.href = `chat.html?user=${encodeURIComponent(name)}`;
+        }
+
         async function loadMembers(groupId) {
             const box = document.getElementById("groupMembers");
             try {
@@ -240,7 +244,10 @@
                 box.innerHTML = data.map(name => `
                     <div class="member-pill">
                         <span>${escapeHTML(name)}</span>
-                        <button onclick="window.location.href='profile.html?user=${encodeURIComponent(name)}'">الملف الشخصي</button>
+                        <div class="inline-actions">
+                            <button onclick="window.location.href='profile.html?user=${encodeURIComponent(name)}'">الملف الشخصي</button>
+                            <button onclick="openChat(${JSON.stringify(name)})">💬 دردشة</button>
+                        </div>
                     </div>
                 `).join("");
             } catch (error) {

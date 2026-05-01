@@ -44,12 +44,28 @@ body{
   overflow-x:hidden;
 }
 
-body::before{
+body::before,
+body::after{
   content:"";
   position:fixed;
-  inset:0;
   pointer-events:none;
+  width:320px;
+  height:320px;
+  border-radius:50%;
+}
+body::before{
+  top:84px;
+  right:-110px;
+  border:1px solid rgba(148,163,184,.14);
+  box-shadow:0 0 0 18px rgba(148,163,184,.03), 0 0 0 42px rgba(148,163,184,.02);
   background:linear-gradient(180deg, rgba(255,255,255,.015), transparent 22%, rgba(255,255,255,.01));
+  z-index:-1;
+}
+body::after{
+  bottom:90px;
+  left:-120px;
+  border:1px solid rgba(148,163,184,.12);
+  box-shadow:0 0 0 18px rgba(148,163,184,.025), 0 0 0 42px rgba(148,163,184,.018);
   z-index:-1;
 }
 

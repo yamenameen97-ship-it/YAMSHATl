@@ -424,7 +424,10 @@ async function runSearch() {
                             <b>${escapeHTML(user.name)}</b>
                             <div class="subtle-text">تم إخفاء البريد حفاظاً على الخصوصية</div>
                         </div>
-                        <button onclick='openProfile(${JSON.stringify(user.name)})'>فتح</button>
+                        <div class="inline-actions">
+                            <button onclick='openProfile(${JSON.stringify(user.name)})'>ملف شخصي</button>
+                            <button onclick='openChat(${JSON.stringify(user.name)})'>💬 دردشة</button>
+                        </div>
                     </div>
                 `).join("") : '<div class="empty-state">لا توجد نتائج مستخدمين</div>'}
             </div>

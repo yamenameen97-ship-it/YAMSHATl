@@ -28,10 +28,6 @@ from routes.friends import friends_bp
 from routes.groups import groups_bp
 from routes.live import live_bp as live_stream_bp
 from users import users_bp
-from explore_ai import explore_bp
-from stream_routes import stream_bp
-from advanced_security import register_security_hooks, security_admin_bp
-from audit_log_system import audit_bp
 
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
@@ -61,11 +57,11 @@ jwt_manager = JWTManager(app) if JWTManager else None
 # =========================
 init_extensions(app)
 init_socket(app)
-register_security_hooks(app)
 
-# تهيئة قاعدة البيانات وتثبيت حسابات الإدارة عند كل إقلاع
-init_db()
-set_admin_roles(Config.ADMIN_EMAILS, Config.ADMIN_USERNAMES)
+# ⚠️ تشغيل قاعدة البيانات مرة واحدة فقط
+if os.environ.get("RUN_DB_INIT") == "true":
+    init_db()
+    set_admin_roles(Config.ADMIN_EMAILS, Config.ADMIN_USERNAMES)
 
 # =========================
 # تسجيل المسارات
@@ -81,8 +77,6 @@ app.register_blueprint(live_api_bp, url_prefix="/api")
 app.register_blueprint(live_stream_bp, url_prefix="/api")
 app.register_blueprint(friends_bp, url_prefix="/api")
 app.register_blueprint(groups_bp, url_prefix="/api")
-app.register_blueprint(explore_bp, url_prefix="/api")
-app.register_blueprint(stream_bp, url_prefix="/api")
 
 # =========================
 # لوق الطلبات
@@ -170,30 +164,11 @@ def home():
     return jsonify({"status": "running"})
 
 
-@app.get("/admin")
-def admin_home():
-    admin_path = FRONTEND_DIR / "admin.html"
-    if admin_path.exists():
-        return send_from_directory(FRONTEND_DIR, "admin.html")
-    return abort(404)
-
-
-@app.get("/admin-panel")
-def admin_panel_home():
-    panel_index = FRONTEND_DIR / "admin-panel" / "index.html"
-    if panel_index.exists():
-        return send_from_directory(FRONTEND_DIR / "admin-panel", "index.html")
-    return abort(404)
-
-
 @app.route("/<path:path>")
 def serve_frontend(path: str):
     requested = FRONTEND_DIR / path
     if requested.exists() and requested.is_file():
         return send_from_directory(FRONTEND_DIR, path)
-    if requested.exists() and requested.is_dir() and (requested / "index.html").exists():
-        relative_dir = requested.relative_to(FRONTEND_DIR)
-        return send_from_directory(FRONTEND_DIR / relative_dir, "index.html")
     if "." in Path(path).name:
         return abort(404)
     index_path = FRONTEND_DIR / "index.html"
@@ -212,6 +187,3 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=port
     )
-
-app.register_blueprint(security_admin_bp, url_prefix="/api")
-app.register_blueprint(audit_bp, url_prefix="/api")

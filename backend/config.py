@@ -19,6 +19,17 @@ def _first_csv_value(value: str, default: str) -> str:
     return items[0] if items else default
 
 
+DEFAULT_PRIMARY_ADMIN_EMAIL = _first_csv_value(
+    os.getenv("PRIMARY_ADMIN_EMAIL", os.getenv("ADMIN_EMAILS", "")),
+    "adminadminya@gmail.com",
+).lower()
+DEFAULT_PRIMARY_ADMIN_USERNAME = _first_csv_value(
+    os.getenv("PRIMARY_ADMIN_USERNAME", os.getenv("ADMIN_USERNAMES", "")),
+    "adminadminya",
+)
+DEFAULT_PRIMARY_ADMIN_PASSWORD = os.getenv("PRIMARY_ADMIN_PASSWORD", "yamen1234")
+
+
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "").strip() or secrets.token_hex(32)
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "").strip() or SECRET_KEY
@@ -64,21 +75,22 @@ class Config:
     ALLOWED_VIDEO_EXTENSIONS = {"mp4", "mov", "webm", "mkv"}
     ALLOWED_AUDIO_EXTENSIONS = {"mp3", "wav", "m4a", "aac", "ogg", "oga", "opus", "3gp", "amr", "weba"}
     ALLOWED_EXTENSIONS = ALLOWED_IMAGE_EXTENSIONS | ALLOWED_VIDEO_EXTENSIONS | ALLOWED_AUDIO_EXTENSIONS
-    PRIMARY_ADMIN_EMAIL = _first_csv_value(os.getenv("PRIMARY_ADMIN_EMAIL", os.getenv("ADMIN_EMAILS", "")), "adminadminya@gmail.com").lower()
-    PRIMARY_ADMIN_USERNAME = _first_csv_value(os.getenv("PRIMARY_ADMIN_USERNAME", os.getenv("ADMIN_USERNAMES", "")), "adminadminya")
-    PRIMARY_ADMIN_PASSWORD = os.getenv("PRIMARY_ADMIN_PASSWORD", "yamen1234")
+
+    PRIMARY_ADMIN_EMAIL = DEFAULT_PRIMARY_ADMIN_EMAIL
+    PRIMARY_ADMIN_USERNAME = DEFAULT_PRIMARY_ADMIN_USERNAME
+    PRIMARY_ADMIN_PASSWORD = DEFAULT_PRIMARY_ADMIN_PASSWORD
     LEGACY_ADMIN_EMAILS = [
         value.lower()
         for value in _split_csv(os.getenv("LEGACY_ADMIN_EMAILS", "adminyamen@gmail.com"))
-        if value.lower() != PRIMARY_ADMIN_EMAIL
+        if value.lower() != DEFAULT_PRIMARY_ADMIN_EMAIL
     ]
     LEGACY_ADMIN_USERNAMES = [
         value
         for value in _split_csv(os.getenv("LEGACY_ADMIN_USERNAMES", "adminyamen"))
-        if value != PRIMARY_ADMIN_USERNAME
+        if value != DEFAULT_PRIMARY_ADMIN_USERNAME
     ]
-    ADMIN_EMAILS = [PRIMARY_ADMIN_EMAIL]
-    ADMIN_USERNAMES = [PRIMARY_ADMIN_USERNAME]
+    ADMIN_EMAILS = [DEFAULT_PRIMARY_ADMIN_EMAIL]
+    ADMIN_USERNAMES = [DEFAULT_PRIMARY_ADMIN_USERNAME]
 
     RESET_CODE_EXPIRE_MINUTES = int(os.getenv("RESET_CODE_EXPIRE_MINUTES", "10"))
     RESET_CODE_LENGTH = int(os.getenv("RESET_CODE_LENGTH", "6"))

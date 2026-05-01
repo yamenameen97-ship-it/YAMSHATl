@@ -76,7 +76,7 @@ def is_phone_contact(value: str) -> bool:
 
 def validate_password_strength(password: str) -> bool:
     password = str(password or "")
-    return len(password) >= 8
+    return len(password) >= 6
 
 
 def hash_password(password: str) -> str:

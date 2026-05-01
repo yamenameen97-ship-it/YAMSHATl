@@ -63,10 +63,9 @@ init_extensions(app)
 init_socket(app)
 register_security_hooks(app)
 
-# ⚠️ تشغيل قاعدة البيانات مرة واحدة فقط
-if os.environ.get("RUN_DB_INIT") == "true":
-    init_db()
-    set_admin_roles(Config.ADMIN_EMAILS, Config.ADMIN_USERNAMES)
+# تهيئة قاعدة البيانات وتثبيت حسابات الإدارة عند كل إقلاع
+init_db()
+set_admin_roles(Config.ADMIN_EMAILS, Config.ADMIN_USERNAMES)
 
 # =========================
 # تسجيل المسارات

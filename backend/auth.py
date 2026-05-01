@@ -91,7 +91,7 @@ def register():
     if not _is_valid_contact(email):
         return json_error("البريد الإلكتروني أو رقم الجوال غير صالح", 400)
     if not validate_password_strength(password):
-        return json_error("كلمة المرور يجب أن تكون 8 أحرف على الأقل", 400)
+        return json_error("كلمة المرور يجب أن تكون 6 أحرف على الأقل", 400)
 
     with db_cursor(commit=True) as (_conn, cur):
         cur.execute("SELECT id FROM users WHERE lower(email)=lower(%s)", (email,))
@@ -202,7 +202,7 @@ def update_profile():
     if not _is_valid_contact(new_email):
         return json_error("البريد الإلكتروني أو رقم الجوال غير صالح", 400)
     if new_password and not validate_password_strength(new_password):
-        return json_error("كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل", 400)
+        return json_error("كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل", 400)
 
     with db_cursor(commit=True) as (_conn, cur):
         moderation_error = enforce_moderation(cur, active_user, "profile_edit")
@@ -366,7 +366,7 @@ def password_reset_reset():
     if not reset_token or not new_password:
         return json_error("أدخل كلمة المرور الجديدة", 400)
     if not validate_password_strength(new_password):
-        return json_error("كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل", 400)
+        return json_error("كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل", 400)
 
     with db_cursor(commit=True) as (_conn, cur):
         cur.execute(

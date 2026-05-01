@@ -64,7 +64,6 @@ class Config:
     ALLOWED_VIDEO_EXTENSIONS = {"mp4", "mov", "webm", "mkv"}
     ALLOWED_AUDIO_EXTENSIONS = {"mp3", "wav", "m4a", "aac", "ogg", "oga", "opus", "3gp", "amr", "weba"}
     ALLOWED_EXTENSIONS = ALLOWED_IMAGE_EXTENSIONS | ALLOWED_VIDEO_EXTENSIONS | ALLOWED_AUDIO_EXTENSIONS
-
     PRIMARY_ADMIN_EMAIL = _first_csv_value(os.getenv("PRIMARY_ADMIN_EMAIL", os.getenv("ADMIN_EMAILS", "")), "adminadminya@gmail.com").lower()
     PRIMARY_ADMIN_USERNAME = _first_csv_value(os.getenv("PRIMARY_ADMIN_USERNAME", os.getenv("ADMIN_USERNAMES", "")), "adminadminya")
     PRIMARY_ADMIN_PASSWORD = os.getenv("PRIMARY_ADMIN_PASSWORD", "yamen1234")

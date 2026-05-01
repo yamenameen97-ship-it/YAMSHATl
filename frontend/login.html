@@ -143,6 +143,9 @@
       btn.disabled = true;
       btn.textContent = 'جاري تسجيل الدخول...';
       try {
+        try { await window.authFetch(`${API_BASE}/logout`, { method: 'POST' }); } catch (_) {}
+        window.clearStoredAuth?.();
+
         const data = await window.requestJSON(`${API_BASE}/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

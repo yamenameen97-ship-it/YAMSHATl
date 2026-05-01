@@ -28,6 +28,10 @@ from routes.friends import friends_bp
 from routes.groups import groups_bp
 from routes.live import live_bp as live_stream_bp
 from users import users_bp
+from explore_ai import explore_bp
+from stream_routes import stream_bp
+from advanced_security import register_security_hooks, security_admin_bp
+from audit_log_system import audit_bp
 
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
@@ -57,6 +61,7 @@ jwt_manager = JWTManager(app) if JWTManager else None
 # =========================
 init_extensions(app)
 init_socket(app)
+register_security_hooks(app)
 
 # ⚠️ تشغيل قاعدة البيانات مرة واحدة فقط
 if os.environ.get("RUN_DB_INIT") == "true":
@@ -77,6 +82,8 @@ app.register_blueprint(live_api_bp, url_prefix="/api")
 app.register_blueprint(live_stream_bp, url_prefix="/api")
 app.register_blueprint(friends_bp, url_prefix="/api")
 app.register_blueprint(groups_bp, url_prefix="/api")
+app.register_blueprint(explore_bp, url_prefix="/api")
+app.register_blueprint(stream_bp, url_prefix="/api")
 
 # =========================
 # لوق الطلبات
@@ -206,3 +213,6 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=port
     )
+
+app.register_blueprint(security_admin_bp, url_prefix="/api")
+app.register_blueprint(audit_bp, url_prefix="/api")

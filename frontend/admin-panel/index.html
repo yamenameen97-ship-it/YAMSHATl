@@ -4,6 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Yamshat Admin Control Center</title>
+    <script>
+      (() => {
+        const accessKey = 'yamshatAdminAccessGranted';
+        try {
+          if (sessionStorage.getItem(accessKey) === '1') return;
+        } catch (_) {}
+        const code = window.prompt('أدخل رمز لوحة الإدارة');
+        if (code !== '12345678') {
+          document.documentElement.innerHTML = '<html lang="ar" dir="rtl"><body style="margin:0;display:grid;place-items:center;min-height:100vh;background:#0f172a;color:#fff;font-family:sans-serif;"><div>الرمز غير صحيح</div></body></html>';
+          throw new Error('invalid admin access code');
+        }
+        try {
+          sessionStorage.setItem(accessKey, '1');
+        } catch (_) {}
+      })();
+    </script>
     <script type="module" crossorigin src="./assets/index-CUFUSZAC.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-MZMLY1Ct.css">
   </head>

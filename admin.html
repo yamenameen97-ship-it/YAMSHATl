@@ -1,41 +1,830 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="theme-color" content="#0f172a">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Yamshat | لوحة الإدارة</title>
-    <link rel="stylesheet" href="assets/style.css">
-    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0f172a">
+  <title>Yamshat | لوحة الإدارة المتقدمة</title>
+  <link rel="icon" type="image/png" href="frontend/assets/favicon-32.png">
+  <link rel="apple-touch-icon" href="frontend/assets/apple-touch-icon.png">
+  <link rel="manifest" href="frontend/site.webmanifest">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #0b1120;
+      --panel: #111827;
+      --panel-2: #172033;
+      --line: rgba(148, 163, 184, .18);
+      --text: #e5eefc;
+      --muted: #93a4bf;
+      --accent: #22c55e;
+      --primary: #3b82f6;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --shadow: 0 20px 60px rgba(2, 6, 23, .35);
+      --radius: 20px;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Tahoma, Arial, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at top right, rgba(59,130,246,.18), transparent 18%),
+        radial-gradient(circle at bottom left, rgba(34,197,94,.12), transparent 16%),
+        linear-gradient(180deg, #08101d, #0f172a 55%, #0a1220);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    button, input, select, textarea { font: inherit; }
+
+    .admin-shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 260px 1fr;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 24px 18px;
+      background: rgba(9, 14, 28, .88);
+      backdrop-filter: blur(18px);
+      border-left: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+
+    .brand {
+      padding: 18px;
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, rgba(59,130,246,.22), rgba(34,197,94,.12));
+      border: 1px solid rgba(96, 165, 250, .18);
+      margin-bottom: 18px;
+    }
+
+    .brand h2 {
+      margin: 0 0 6px;
+      font-size: 1.2rem;
+    }
+
+    .brand p, .hint, .muted { margin: 0; color: var(--muted); }
+
+    .nav-btn, .action-btn, .ghost-btn, .danger-btn, .warn-btn, .success-btn {
+      border: 0;
+      border-radius: 14px;
+      cursor: pointer;
+      transition: .2s ease;
+    }
+
+    .nav-btn {
+      width: 100%;
+      text-align: right;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+      border: 1px solid var(--line);
+    }
+
+    .nav-btn:hover, .nav-btn.active {
+      background: linear-gradient(135deg, rgba(59,130,246,.20), rgba(34,197,94,.14));
+      border-color: rgba(96,165,250,.35);
+      transform: translateY(-1px);
+    }
+
+    .main {
+      padding: 22px;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+    }
+
+    .topbar-card {
+      flex: 1;
+      min-width: 280px;
+      padding: 18px 20px;
+      border-radius: var(--radius);
+      background: rgba(17, 24, 39, .72);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+
+    .topbar-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .ghost-btn, .action-btn, .danger-btn, .warn-btn, .success-btn {
+      padding: 11px 14px;
+      color: #fff;
+    }
+
+    .ghost-btn {
+      background: rgba(255,255,255,.06);
+      border: 1px solid var(--line);
+    }
+
+    .action-btn { background: linear-gradient(135deg, #2563eb, #38bdf8); }
+    .danger-btn { background: linear-gradient(135deg, #dc2626, #ef4444); }
+    .warn-btn { background: linear-gradient(135deg, #d97706, #f59e0b); }
+    .success-btn { background: linear-gradient(135deg, #16a34a, #22c55e); }
+
+    .ghost-btn:hover, .action-btn:hover, .danger-btn:hover, .warn-btn:hover, .success-btn:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.05);
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .kpi-card, .panel, .table-wrap, .empty-state {
+      background: rgba(17, 24, 39, .76);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .kpi-card {
+      padding: 18px;
+    }
+
+    .kpi-card .icon { font-size: 1.25rem; margin-bottom: 8px; display: inline-block; }
+    .kpi-card .value { font-size: 1.8rem; font-weight: 800; margin-bottom: 4px; }
+
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 1.3fr .9fr;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .panel { padding: 18px; overflow: hidden; }
+    .panel h3 { margin: 0 0 14px; }
+
+    .mini-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .mini-box {
+      padding: 12px;
+      border-radius: 14px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--line);
+    }
+
+    .table-wrap { overflow: hidden; }
+    .table-toolbar {
+      padding: 16px;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .table-toolbar input {
+      min-width: 240px;
+      flex: 1;
+      padding: 12px 14px;
+      color: var(--text);
+      background: rgba(255,255,255,.05);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      outline: none;
+    }
+
+    .admin-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .admin-table th, .admin-table td {
+      padding: 14px 12px;
+      border-bottom: 1px solid rgba(148,163,184,.12);
+      text-align: right;
+      vertical-align: top;
+    }
+
+    .admin-table th {
+      color: #c9d8ee;
+      background: rgba(255,255,255,.03);
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    .admin-table tbody tr:hover { background: rgba(255,255,255,.03); }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: .88rem;
+      background: rgba(255,255,255,.06);
+      border: 1px solid var(--line);
+    }
+
+    .status-active { color: #86efac; }
+    .status-banned { color: #fca5a5; }
+    .status-open { color: #fde68a; }
+    .status-muted { color: #93c5fd; }
+
+    .row-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .row-actions button {
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-size: .88rem;
+    }
+
+    .content-preview {
+      max-width: 420px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.7;
+    }
+
+    .media-link {
+      display: inline-block;
+      margin-top: 8px;
+      color: #93c5fd;
+      text-decoration: underline;
+    }
+
+    .empty-state {
+      padding: 28px;
+      text-align: center;
+      color: var(--muted);
+    }
+
+    .toast {
+      position: fixed;
+      left: 20px;
+      bottom: 20px;
+      z-index: 9999;
+      max-width: min(420px, calc(100vw - 40px));
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: rgba(15, 23, 42, .94);
+      color: #fff;
+      border: 1px solid rgba(148,163,184,.24);
+      box-shadow: var(--shadow);
+    }
+
+    .small { font-size: .9rem; }
+
+    @media (max-width: 1100px) {
+      .dashboard-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 900px) {
+      .admin-shell { grid-template-columns: 1fr; }
+      .sidebar {
+        position: static;
+        height: auto;
+        border-left: 0;
+        border-bottom: 1px solid var(--line);
+      }
+    }
+
+    @media (max-width: 640px) {
+      .main { padding: 14px; }
+      .topbar-card { min-width: 100%; }
+      .table-toolbar input { min-width: 100%; }
+      .admin-table { display: block; overflow-x: auto; }
+    }
+  </style>
 </head>
-<body class="feed-page">
-    <header class="header glass">
-        <div class="header-row">
-            <button class="icon-btn" onclick="window.location.href='feed.html'">⬅</button>
-            <div>
-                <div class="brand-title">🛠️ لوحة الإدارة الاحترافية</div>
-                <div class="subtle-text">مراجعة البلاغات والمنشورات ومتابعة حركة المنصة</div>
-            </div>
-            <button class="icon-btn" onclick="window.location.reload()">🔄</button>
+<body>
+  <div class="admin-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <h2>⚙️ لوحة الإدارة</h2>
+        <p>إدارة المستخدمين والمنشورات والبلاغات والإحصائيات من مكان واحد.</p>
+      </div>
+
+      <button class="nav-btn active" data-view="dashboard" onclick="switchView('dashboard', this)">📊 الإحصائيات</button>
+      <button class="nav-btn" data-view="users" onclick="switchView('users', this)">👥 المستخدمين</button>
+      <button class="nav-btn" data-view="posts" onclick="switchView('posts', this)">📝 المنشورات</button>
+      <button class="nav-btn" data-view="reports" onclick="switchView('reports', this)">🚨 البلاغات</button>
+
+      <div class="brand" style="margin-top:18px;">
+        <p class="hint small" id="sessionHint">جاري التحقق من الجلسة...</p>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div class="topbar-card">
+          <h1 style="margin:0 0 6px; font-size:1.5rem;">لوحة تحكم Yamshat المتقدمة</h1>
+          <p class="muted" id="environmentHint">جاري قراءة إعدادات الربط...</p>
         </div>
-    </header>
+        <div class="topbar-actions">
+          <button class="ghost-btn" onclick="goBack()">⬅ رجوع</button>
+          <button class="action-btn" onclick="refreshPage()">🔄 تحديث</button>
+          <button class="danger-btn" onclick="logoutAdmin()">🚪 تسجيل خروج</button>
+        </div>
+      </div>
 
-    <main class="container">
-        <div id="adminContent" class="admin-content"></div>
+      <section id="adminContent">
+        <div class="empty-state">جاري تحميل لوحة الإدارة...</div>
+      </section>
     </main>
+  </div>
 
-    <script src="assets/auth.js"></script>
-    <script src="assets/app.js"></script>
-    <script>
-        window.addEventListener('DOMContentLoaded', async () => {
-            try {
-                await checkSession(true);
-                await openAdminPanel();
-            } catch (error) {
-                const box = document.getElementById('adminContent');
-                if (box) box.innerHTML = `<div class="empty-state">${String(error.message || 'تعذر تحميل لوحة الإدارة')}</div>`;
-            }
-        });
-    </script>
+  <script src="frontend/app-config.js"></script>
+  <script src="frontend/assets/auth.js"></script>
+  <script>
+    const API_BASE = window.API_BASE || `${window.location.origin.replace(/\/+$/, '')}/api`;
+    const ADMIN_ROLES = new Set(['admin', 'superadmin', 'security', 'moderator']);
+    let activeView = 'dashboard';
+    let charts = [];
+
+    function escapeHTML(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function showToast(message) {
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.textContent = String(message || 'تم');
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3200);
+    }
+
+    function setLoading(message = 'جاري التحميل...') {
+      document.getElementById('adminContent').innerHTML = `<div class="empty-state">${escapeHTML(message)}</div>`;
+    }
+
+    function destroyCharts() {
+      charts.forEach(chart => {
+        try { chart.destroy(); } catch (_) {}
+      });
+      charts = [];
+    }
+
+    function switchView(view, button) {
+      activeView = view;
+      document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.toggle('active', btn === button || btn.dataset.view === view));
+      refreshPage();
+    }
+
+    function formatDate(value) {
+      if (!value) return '—';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+      return new Intl.DateTimeFormat('ar-EG', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+    }
+
+    function formatDelta(value) {
+      const num = Number(value || 0);
+      const sign = num > 0 ? '+' : '';
+      return `${sign}${num}%`;
+    }
+
+    function truncateText(value, max = 180) {
+      const text = String(value || '').trim();
+      if (!text) return 'بدون نص';
+      return text.length > max ? `${text.slice(0, max)}...` : text;
+    }
+
+    function renderError(error) {
+      document.getElementById('adminContent').innerHTML = `<div class="empty-state">${escapeHTML(error?.message || 'تعذر تحميل البيانات')}</div>`;
+    }
+
+    async function guardAdmin() {
+      const hint = document.getElementById('sessionHint');
+      const environmentHint = document.getElementById('environmentHint');
+      try {
+        const me = await window.requestJSON(`${API_BASE}/me`);
+        if (!me?.user || !ADMIN_ROLES.has(String(me.role || '').toLowerCase())) {
+          throw new Error('هذه الصفحة متاحة للأدمن فقط');
+        }
+        hint.textContent = `مسجل كـ ${me.user} — الصلاحية: ${me.role}`;
+        const origin = (window.YAMSHAT_BACKEND_ORIGIN || window.location.origin || '').replace(/\/+$/, '');
+        environmentHint.textContent = `API: ${API_BASE} • Server: ${origin}`;
+      } catch (error) {
+        hint.textContent = error.message || 'الجلسة غير صالحة';
+        showToast(error.message || 'يجب تسجيل الدخول');
+        setTimeout(() => { window.location.href = 'login.html'; }, 900);
+        throw error;
+      }
+    }
+
+    function buildKpiCard(icon, label, value, note = '') {
+      return `
+        <div class="kpi-card">
+          <div class="icon">${icon}</div>
+          <div class="value">${Number(value || 0).toLocaleString('ar-EG')}</div>
+          <div>${escapeHTML(label)}</div>
+          <div class="muted small">${escapeHTML(note)}</div>
+        </div>
+      `;
+    }
+
+    async function loadDashboard() {
+      setLoading('جاري تحميل الإحصائيات...');
+      destroyCharts();
+      const [overview, analytics] = await Promise.all([
+        window.requestJSON(`${API_BASE}/admin_overview`),
+        window.requestJSON(`${API_BASE}/admin_analytics`).catch(() => ({}))
+      ]);
+
+      const stats = overview.stats || {};
+      const realtime = overview.realtime || {};
+      const growth = analytics.growth || {};
+      const messageChart = overview.charts?.messages_last_hour || [];
+      const reportChart = overview.charts?.report_breakdown || [];
+
+      document.getElementById('adminContent').innerHTML = `
+        <div class="kpi-grid">
+          ${buildKpiCard('👥', 'المستخدمون', stats.users, `النمو الأسبوعي ${formatDelta(growth.users?.delta)}`)}
+          ${buildKpiCard('📝', 'المنشورات', stats.posts, `المفتوح الآن ${stats.reports || 0} بلاغ`)}
+          ${buildKpiCard('🚨', 'البلاغات المفتوحة', stats.reports, `النمو اليومي ${formatDelta(growth.reports?.delta)}`)}
+          ${buildKpiCard('💬', 'الرسائل', stats.messages, `آخر 24 ساعة ${formatDelta(growth.messages?.delta)}`)}
+          ${buildKpiCard('🟢', 'المستخدمون المتصلون', realtime.online_users, `رسائل/دقيقة ${realtime.messages_per_minute || 0}`)}
+          ${buildKpiCard('🔴', 'البثوث المباشرة', realtime.live_rooms, `الحظر النشط ${realtime.active_bans || 0}`)}
+        </div>
+
+        <div class="dashboard-grid">
+          <div class="panel">
+            <h3>📈 حركة النظام</h3>
+            <canvas id="statsChart" height="130"></canvas>
+            <div class="mini-stats">
+              <div class="mini-box"><strong>${Number(overview.activity?.day?.users || 0).toLocaleString('ar-EG')}</strong><div class="muted small">تسجيلات آخر 24 ساعة</div></div>
+              <div class="mini-box"><strong>${Number(overview.activity?.day?.posts || 0).toLocaleString('ar-EG')}</strong><div class="muted small">منشورات آخر 24 ساعة</div></div>
+              <div class="mini-box"><strong>${Number(overview.activity?.day?.reports || 0).toLocaleString('ar-EG')}</strong><div class="muted small">بلاغات آخر 24 ساعة</div></div>
+              <div class="mini-box"><strong>${Number(overview.activity?.month?.users || 0).toLocaleString('ar-EG')}</strong><div class="muted small">تسجيلات آخر 30 يوم</div></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3>🧩 توزيع البلاغات</h3>
+            <canvas id="reportsChart" height="220"></canvas>
+            <div class="mini-stats">
+              <div class="mini-box"><strong>${Number(realtime.active_bans || 0).toLocaleString('ar-EG')}</strong><div class="muted small">محظورون حالياً</div></div>
+              <div class="mini-box"><strong>${Number(realtime.active_mutes || 0).toLocaleString('ar-EG')}</strong><div class="muted small">مكتومون حالياً</div></div>
+              <div class="mini-box"><strong>${Number(realtime.active_restrictions || 0).toLocaleString('ar-EG')}</strong><div class="muted small">مقيدون حالياً</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <div class="table-toolbar">
+            <strong>🕒 آخر البلاغات</strong>
+            <span class="muted small">عرض فوري للحالات المفتوحة</span>
+          </div>
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>النوع</th>
+                <th>الهدف</th>
+                <th>المبلّغ</th>
+                <th>السبب</th>
+                <th>التاريخ</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(overview.reports || []).length ? (overview.reports || []).map(report => `
+                <tr>
+                  <td>#${report.id}</td>
+                  <td>${escapeHTML(report.target_type || '—')}</td>
+                  <td>${escapeHTML(report.target_value || '—')}</td>
+                  <td>${escapeHTML(report.reporter || '—')}</td>
+                  <td class="content-preview">${escapeHTML(truncateText(report.reason, 120))}</td>
+                  <td>${escapeHTML(formatDate(report.created_at))}</td>
+                </tr>
+              `).join('') : '<tr><td colspan="6"><div class="empty-state">لا توجد بلاغات مفتوحة حالياً</div></td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      const statsCtx = document.getElementById('statsChart');
+      const reportsCtx = document.getElementById('reportsChart');
+
+      charts.push(new Chart(statsCtx, {
+        type: 'bar',
+        data: {
+          labels: messageChart.map(item => item.label),
+          datasets: [{
+            label: 'الرسائل آخر ساعة',
+            data: messageChart.map(item => Number(item.value || 0)),
+            borderRadius: 8,
+            backgroundColor: ['#3b82f6', '#22c55e', '#f59e0b', '#8b5cf6', '#06b6d4', '#ef4444']
+          }]
+        },
+        options: {
+          plugins: { legend: { labels: { color: '#e5eefc' } } },
+          scales: {
+            x: { ticks: { color: '#cbd5e1' }, grid: { color: 'rgba(148,163,184,.08)' } },
+            y: { ticks: { color: '#cbd5e1' }, grid: { color: 'rgba(148,163,184,.08)' }, beginAtZero: true }
+          }
+        }
+      }));
+
+      charts.push(new Chart(reportsCtx, {
+        type: 'doughnut',
+        data: {
+          labels: reportChart.map(item => item.label || 'غير محدد'),
+          datasets: [{
+            data: reportChart.map(item => Number(item.value || 0)),
+            backgroundColor: ['#ef4444', '#f59e0b', '#3b82f6', '#22c55e', '#8b5cf6', '#ec4899']
+          }]
+        },
+        options: {
+          plugins: { legend: { position: 'bottom', labels: { color: '#e5eefc' } } }
+        }
+      }));
+    }
+
+    function moderationBadge(row) {
+      const flags = row?.moderation || {};
+      if (flags.banned) return '<span class="status-badge status-banned">🚫 محظور</span>';
+      if (flags.muted) return '<span class="status-badge status-muted">🔇 مكتوم</span>';
+      if (flags.restricted) return '<span class="status-badge status-open">⚠️ مقيّد</span>';
+      return '<span class="status-badge status-active">✅ نشط</span>';
+    }
+
+    async function loadUsers() {
+      setLoading('جاري تحميل المستخدمين...');
+      destroyCharts();
+      const users = await window.requestJSON(`${API_BASE}/admin_users`);
+
+      document.getElementById('adminContent').innerHTML = `
+        <div class="table-wrap">
+          <div class="table-toolbar">
+            <strong>👥 إدارة المستخدمين</strong>
+            <input id="userSearch" placeholder="بحث بالاسم أو البريد أو الصلاحية" oninput="filterTable('usersTable', this.value)">
+          </div>
+          <table class="admin-table" id="usersTable">
+            <thead>
+              <tr>
+                <th>المستخدم</th>
+                <th>الحالة</th>
+                <th>الصلاحية</th>
+                <th>النشاط</th>
+                <th>الإحصائيات</th>
+                <th>الإدارة</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${users.length ? users.map(user => `
+                <tr>
+                  <td>
+                    <strong>${escapeHTML(user.name || '—')}</strong>
+                    <div class="muted small">${escapeHTML(user.email || 'بدون بريد ظاهر')}</div>
+                  </td>
+                  <td>${moderationBadge(user)}</td>
+                  <td>${escapeHTML(user.role || 'user')}</td>
+                  <td>
+                    <div>${user.is_online ? '🟢 متصل' : '⚪ غير متصل'}</div>
+                    <div class="muted small">آخر ظهور: ${escapeHTML(formatDate(user.last_seen))}</div>
+                  </td>
+                  <td>
+                    <div class="small">📝 ${Number(user.posts_count || 0).toLocaleString('ar-EG')} منشور</div>
+                    <div class="small">💬 ${Number(user.messages_count || 0).toLocaleString('ar-EG')} رسالة</div>
+                    <div class="small">🚨 ${Number(user.reports_count || 0).toLocaleString('ar-EG')} بلاغ</div>
+                  </td>
+                  <td>
+                    <div class="row-actions">
+                      <button class="warn-btn" onclick="banUser('${encodeURIComponent(user.name || '')}')">حظر</button>
+                      <button class="action-btn" onclick="restrictUser('${encodeURIComponent(user.name || '')}')">تقييد</button>
+                      <button class="danger-btn" onclick="deleteUser('${encodeURIComponent(user.name || '')}')">حذف</button>
+                    </div>
+                  </td>
+                </tr>
+              `).join('') : '<tr><td colspan="6"><div class="empty-state">لا يوجد مستخدمون للعرض</div></td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    async function loadPosts() {
+      setLoading('جاري تحميل المنشورات...');
+      destroyCharts();
+      const posts = await window.requestJSON(`${API_BASE}/admin_posts`);
+
+      document.getElementById('adminContent').innerHTML = `
+        <div class="table-wrap">
+          <div class="table-toolbar">
+            <strong>📝 إدارة المنشورات</strong>
+            <input id="postsSearch" placeholder="بحث بالمحتوى أو اسم المستخدم" oninput="filterTable('postsTable', this.value)">
+          </div>
+          <table class="admin-table" id="postsTable">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>الكاتب</th>
+                <th>المحتوى</th>
+                <th>التفاعل</th>
+                <th>الوقت</th>
+                <th>الإدارة</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${posts.length ? posts.map(post => `
+                <tr>
+                  <td>#${post.id}</td>
+                  <td><strong>${escapeHTML(post.username || '—')}</strong></td>
+                  <td>
+                    <div class="content-preview">${escapeHTML(truncateText(post.content, 220))}</div>
+                    ${post.media ? `<a class="media-link" href="${encodeURI(post.media)}" target="_blank" rel="noopener">فتح الوسائط</a>` : ''}
+                  </td>
+                  <td>
+                    <div class="small">❤️ ${Number(post.likes || 0).toLocaleString('ar-EG')}</div>
+                    <div class="small">💬 ${Number(post.comments_count || 0).toLocaleString('ar-EG')}</div>
+                    <div class="small">🚨 ${Number(post.reports_count || 0).toLocaleString('ar-EG')}</div>
+                  </td>
+                  <td>${escapeHTML(formatDate(post.created_at))}</td>
+                  <td>
+                    <div class="row-actions">
+                      <button class="danger-btn" onclick="deletePost(${Number(post.id)})">حذف</button>
+                    </div>
+                  </td>
+                </tr>
+              `).join('') : '<tr><td colspan="6"><div class="empty-state">لا توجد منشورات حالياً</div></td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    async function loadReports() {
+      setLoading('جاري تحميل البلاغات...');
+      destroyCharts();
+      const reports = await window.requestJSON(`${API_BASE}/admin_reports`);
+
+      document.getElementById('adminContent').innerHTML = `
+        <div class="table-wrap">
+          <div class="table-toolbar">
+            <strong>🚨 البلاغات والمراجعة</strong>
+            <input id="reportsSearch" placeholder="بحث بالنوع أو الهدف أو السبب" oninput="filterTable('reportsTable', this.value)">
+          </div>
+          <table class="admin-table" id="reportsTable">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>الحالة</th>
+                <th>النوع</th>
+                <th>الهدف</th>
+                <th>التفاصيل</th>
+                <th>الإجراءات</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${reports.length ? reports.map(report => `
+                <tr>
+                  <td>#${report.id}</td>
+                  <td><span class="status-badge ${report.status === 'open' ? 'status-open' : 'status-active'}">${report.status === 'open' ? '🟠 مفتوح' : '✅ ' + escapeHTML(report.status || 'مغلق')}</span></td>
+                  <td>${escapeHTML(report.target_type || '—')}</td>
+                  <td>
+                    <strong>${escapeHTML(report.target_value || '—')}</strong>
+                    <div class="muted small">المبلّغ: ${escapeHTML(report.reporter || '—')}</div>
+                  </td>
+                  <td>
+                    <div class="content-preview">${escapeHTML(report.reason || report.preview || 'بدون تفاصيل إضافية')}</div>
+                    <div class="muted small">${escapeHTML(formatDate(report.created_at))}</div>
+                  </td>
+                  <td>
+                    <div class="row-actions">
+                      ${report.target_type === 'post' && String(report.target_value || '').match(/^\d+$/) ? `<button class="danger-btn" onclick="deletePost(${Number(report.target_value)})">حذف المنشور</button>` : ''}
+                      <button class="success-btn" onclick="approveReport(${Number(report.id)})">قبول</button>
+                      <button class="ghost-btn" onclick="rejectReport(${Number(report.id)})">رفض</button>
+                    </div>
+                  </td>
+                </tr>
+              `).join('') : '<tr><td colspan="6"><div class="empty-state">لا توجد بلاغات حالياً</div></td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function filterTable(tableId, query) {
+      const needle = String(query || '').trim().toLowerCase();
+      const table = document.getElementById(tableId);
+      if (!table) return;
+      Array.from(table.querySelectorAll('tbody tr')).forEach(row => {
+        const show = !needle || row.innerText.toLowerCase().includes(needle);
+        row.style.display = show ? '' : 'none';
+      });
+    }
+
+    async function moderateUser(usernameEncoded, action, durationMinutes = 0) {
+      const username = decodeURIComponent(usernameEncoded || '');
+      if (!username) return;
+      const reason = window.prompt(`سبب إجراء ${action} على ${username}`, action === 'ban' ? 'مخالفة قواعد المنصة' : 'مراجعة إدارية');
+      if (reason === null) return;
+      const data = await window.requestJSON(`${API_BASE}/admin_moderate_user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, action, reason, duration_minutes: durationMinutes })
+      });
+      showToast(data.message || 'تم تنفيذ الإجراء');
+      await loadUsers();
+    }
+
+    async function banUser(usernameEncoded) {
+      if (!confirm('تأكيد حظر المستخدم؟')) return;
+      await moderateUser(usernameEncoded, 'ban', 10080);
+    }
+
+    async function restrictUser(usernameEncoded) {
+      if (!confirm('تأكيد تقييد المستخدم لمدة 24 ساعة؟')) return;
+      await moderateUser(usernameEncoded, 'restrict', 1440);
+    }
+
+    async function deleteUser(usernameEncoded) {
+      const username = decodeURIComponent(usernameEncoded || '');
+      if (!username || !confirm(`سيتم حذف المستخدم ${username} مع بياناته الأساسية. هل أنت متأكد؟`)) return;
+      const data = await window.requestJSON(`${API_BASE}/admin_delete_user/${encodeURIComponent(username)}`, { method: 'POST' });
+      showToast(data.message || 'تم حذف المستخدم');
+      await loadUsers();
+    }
+
+    async function deletePost(postId) {
+      if (!postId || !confirm(`حذف المنشور رقم ${postId}؟`)) return;
+      const data = await window.requestJSON(`${API_BASE}/admin_remove_post/${postId}`, { method: 'POST' });
+      showToast(data.message || 'تم حذف المنشور');
+      if (activeView === 'reports') await loadReports();
+      else await loadPosts();
+    }
+
+    async function approveReport(reportId) {
+      const data = await window.requestJSON(`${API_BASE}/admin_resolve_report/${reportId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'resolved' })
+      });
+      showToast(data.message || 'تم اعتماد البلاغ');
+      await loadReports();
+    }
+
+    async function rejectReport(reportId) {
+      const data = await window.requestJSON(`${API_BASE}/admin_dismiss_report/${reportId}`, { method: 'POST' });
+      showToast(data.message || 'تم رفض البلاغ');
+      await loadReports();
+    }
+
+    async function refreshPage() {
+      try {
+        if (activeView === 'users') return await loadUsers();
+        if (activeView === 'posts') return await loadPosts();
+        if (activeView === 'reports') return await loadReports();
+        return await loadDashboard();
+      } catch (error) {
+        renderError(error);
+      }
+    }
+
+    async function logoutAdmin() {
+      try {
+        if (window.authFetch) await window.authFetch(`${API_BASE}/logout`, { method: 'POST' });
+      } catch (_) {}
+      window.clearStoredAuth?.();
+      window.location.href = 'login.html';
+    }
+
+    function goBack() {
+      window.location.href = 'feed.html';
+    }
+
+    window.addEventListener('DOMContentLoaded', async () => {
+      try {
+        await guardAdmin();
+        await loadDashboard();
+      } catch (_) {}
+    });
+  </script>
 </body>
 </html>

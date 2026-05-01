@@ -107,6 +107,7 @@
     <script>
         const API_BASE = window.API_BASE || `${window.location.origin.replace(/\/+$/, '')}/api`;
         const ROOM_ID = Number(new URLSearchParams(window.location.search).get('id') || 0);
+        const ICE_CONFIG = { iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }] };
         let CURRENT_USER = '';
         let isHost = false;
         let roomData = null;
@@ -114,6 +115,7 @@
         let socket = null;
         let presenceStopper = null;
         let localPreviewStream = null;
+        let meshPeers = new Map();
 
         function setStatus(text) {
             document.getElementById('streamStatus').textContent = text;
@@ -150,7 +152,7 @@
             isHost = roomData.username === CURRENT_USER;
             document.getElementById('roomTitle').textContent = `🔴 ${roomData.title}`;
             document.getElementById('roomOwner').textContent = `صاحب البث: ${roomData.username}`;
-            document.getElementById('roomSummary').innerHTML = `عنوان البث: <b>${window.LiveFix.escapeHTML(roomData.title)}</b><br>الوضع: ${window.LiveFix.escapeHTML(roomData.stream_mode || 'livekit_sfu')}<br>الرابط: ${window.LiveFix.escapeHTML(roomData.livekit_room)}<br>دورك: ${isHost ? 'صاحب البث' : 'مشاهد'}`;
+            document.getElementById('roomSummary').innerHTML = `عنوان البث: <b>${window.LiveFix.escapeHTML(roomData.title)}</b><br>الوضع: ${window.LiveFix.escapeHTML(roomData.stream_mode || 'webrtc_mesh')}<br>الرابط: ${window.LiveFix.escapeHTML(roomData.livekit_room || 'fallback-room')}<br>دورك: ${isHost ? 'صاحب البث' : 'مشاهد'}`;
             updateViewerCount(roomData.viewer_count || 0);
             setViewerList(roomData.viewers || []);
             renderHostTools();
@@ -210,30 +212,181 @@
             socket.on('new_comment', appendComment);
             socket.on('new_heart', () => window.LiveFix.showFloatingHeart());
             socket.on('new_gift', (data) => {
-                window.LiveFix.showFloatingGift(`${data.user} sent ${data.gift}`);
-                appendComment({ user: 'النظام', text: `${data.user} sent ${data.gift}` });
+                window.LiveFix.showFloatingGift(`${data.user} أرسل ${data.gift}`);
+                appendComment({ user: 'النظام', text: `${data.user} أرسل ${data.gift}` });
             });
             socket.on('socket_error', (data) => {
                 if (data?.message) window.LiveFix.showToast(data.message);
             });
+            socket.on('viewer_joined', async (data) => {
+                if (!isHost || !data?.viewer_socket_id) return;
+                try {
+                    await createMeshPeer(data.viewer_socket_id, true);
+                } catch (error) {
+                    console.error(error);
+                }
+            });
+            socket.on('viewer_left', (data) => {
+                if (!data?.viewer_socket_id) return;
+                cleanupMeshPeer(data.viewer_socket_id);
+            });
+            socket.on('webrtc_signal', async (data) => {
+                try {
+                    await handleMeshSignal(data);
+                } catch (error) {
+                    console.error(error);
+                }
+            });
         }
 
-        async function connectLiveKit() {
-            const tokenData = await window.requestJSON(`${API_BASE}/live_token`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    room_id: ROOM_ID,
-                    role: isHost ? 'host' : 'viewer',
-                    platform: window.LiveFix.detectPlatform(),
-                }),
-            });
+        async function ensureHostLocalStream() {
+            if (!isHost) return null;
+            if (localPreviewStream && localPreviewStream.getTracks().some(track => track.readyState === 'live')) {
+                return localPreviewStream;
+            }
+            let stream;
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            } catch (videoErr) {
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+                    setStatus('الكاميرا غير متاحة — البث صوتي فقط');
+                } catch (audioErr) {
+                    setStatus('تعذر الوصول إلى الكاميرا أو الميكروفون');
+                    window.LiveFix.showToast('تعذر الوصول إلى الكاميرا أو الميكروفون');
+                    throw audioErr;
+                }
+            }
+            localPreviewStream = stream;
+            const hostPreview = document.getElementById('hostPreview');
+            hostPreview.style.display = 'block';
+            hostPreview.innerHTML = '';
+            if (stream.getVideoTracks().length > 0) {
+                const preview = document.createElement('video');
+                preview.muted = true;
+                preview.autoplay = true;
+                preview.playsInline = true;
+                preview.setAttribute('webkit-playsinline', 'true');
+                preview.srcObject = stream;
+                hostPreview.appendChild(preview);
+                preview.play().catch(() => {});
+            } else {
+                hostPreview.innerHTML = '<div style="display:grid;place-items:center;width:100%;height:100%;background:linear-gradient(180deg,#0f172a,#1e293b);color:#e2e8f0;font-size:13px;text-align:center;padding:12px;">🎙️ البث يعمل الآن بالصوت فقط</div>';
+            }
+            return stream;
+        }
 
+        function attachRemoteStream(stream) {
+            if (!stream) return;
+            const remoteMedia = document.getElementById('remoteMedia');
+            if (!remoteMedia) return;
+            remoteMedia.innerHTML = '';
+            const hasVideo = stream.getVideoTracks().length > 0;
+            const element = document.createElement(hasVideo ? 'video' : 'audio');
+            element.autoplay = true;
+            element.playsInline = true;
+            element.setAttribute('webkit-playsinline', 'true');
+            element.controls = !hasVideo;
+            element.srcObject = stream;
+            remoteMedia.appendChild(element);
+            element.play().catch(() => {});
+            setStatus(hasVideo ? 'البث يعمل الآن' : 'البث الصوتي يعمل الآن');
+        }
+
+        async function createMeshPeer(peerSocketId, initiator = false) {
+            if (!peerSocketId) return null;
+            const existing = meshPeers.get(peerSocketId);
+            if (existing) return existing;
+            const pc = new RTCPeerConnection(ICE_CONFIG);
+            const state = { pc, remoteStream: new MediaStream() };
+            meshPeers.set(peerSocketId, state);
+
+            pc.onicecandidate = (event) => {
+                if (!event.candidate || !socket) return;
+                socket.emit('webrtc_signal', {
+                    room_id: ROOM_ID,
+                    user: CURRENT_USER,
+                    target_socket_id: peerSocketId,
+                    signal: { type: 'candidate', candidate: event.candidate },
+                });
+            };
+
+            pc.ontrack = (event) => {
+                const stream = event.streams && event.streams[0] ? event.streams[0] : state.remoteStream;
+                if (!event.streams?.length && event.track) {
+                    state.remoteStream.addTrack(event.track);
+                }
+                attachRemoteStream(stream);
+            };
+
+            pc.onconnectionstatechange = () => {
+                if (['failed', 'closed', 'disconnected'].includes(pc.connectionState)) {
+                    cleanupMeshPeer(peerSocketId);
+                }
+            };
+
+            if (isHost) {
+                const stream = await ensureHostLocalStream();
+                stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+            }
+
+            if (initiator) {
+                const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+                await pc.setLocalDescription(offer);
+                socket.emit('webrtc_signal', {
+                    room_id: ROOM_ID,
+                    user: CURRENT_USER,
+                    target_socket_id: peerSocketId,
+                    signal: { type: 'offer', sdp: offer.sdp },
+                });
+            }
+
+            return state;
+        }
+
+        async function handleMeshSignal(data) {
+            const senderSocketId = data?.sender_socket_id;
+            const signal = data?.signal || {};
+            if (!senderSocketId || !signal?.type) return;
+            const state = await createMeshPeer(senderSocketId, false);
+            const pc = state.pc;
+
+            if (signal.type === 'offer') {
+                await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: signal.sdp }));
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                socket.emit('webrtc_signal', {
+                    room_id: ROOM_ID,
+                    user: CURRENT_USER,
+                    target_socket_id: senderSocketId,
+                    signal: { type: 'answer', sdp: answer.sdp },
+                });
+                setStatus('تم تفعيل البث الاحتياطي');
+                return;
+            }
+            if (signal.type === 'answer') {
+                await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: signal.sdp }));
+                return;
+            }
+            if (signal.type === 'candidate' && signal.candidate) {
+                try {
+                    await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+                } catch (_) {}
+            }
+        }
+
+        function cleanupMeshPeer(peerSocketId) {
+            const state = meshPeers.get(peerSocketId);
+            if (!state) return;
+            try { state.pc.close(); } catch (_) {}
+            meshPeers.delete(peerSocketId);
+        }
+
+        async function connectLiveKitMode(tokenData) {
             const attachTrack = async (track) => {
                 const remoteMedia = document.getElementById('remoteMedia');
                 if (!remoteMedia || !track) return;
                 remoteMedia.innerHTML = '';
-
                 let element = null;
                 if (typeof track.attach === 'function') {
                     element = track.attach();
@@ -242,7 +395,6 @@
                     element.srcObject = new MediaStream([track.mediaStreamTrack]);
                 }
                 if (!element) return;
-
                 element.autoplay = true;
                 if (element.tagName === 'VIDEO') {
                     element.playsInline = true;
@@ -282,13 +434,8 @@
                 return room;
             };
 
-            if (typeof LivekitClient.connect === 'function') {
-                lkRoom = createRoomInstance();
-                await lkRoom.connect(tokenData.livekit_url, tokenData.token);
-            } else {
-                lkRoom = createRoomInstance();
-                await lkRoom.connect(tokenData.livekit_url, tokenData.token);
-            }
+            lkRoom = createRoomInstance();
+            await lkRoom.connect(tokenData.livekit_url, tokenData.token);
 
             const participants = Array.from(lkRoom.remoteParticipants?.values?.() || []);
             for (const participant of participants) {
@@ -303,45 +450,15 @@
             }
 
             if (isHost) {
-                await publishLocalTracks();
+                await publishLocalTracksToLiveKit();
             } else if (!document.querySelector('#remoteMedia video, #remoteMedia audio')) {
                 setStatus('تم الاتصال، بانتظار فيديو أو صوت المضيف');
             }
         }
 
-        async function publishLocalTracks() {
+        async function publishLocalTracksToLiveKit() {
             if (!lkRoom) return;
-            let stream;
-            try {
-                stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            } catch (videoErr) {
-                try {
-                    stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
-                    setStatus('الكاميرا غير متاحة — البث صوتي فقط');
-                } catch (audioErr) {
-                    setStatus('تعذر الوصول إلى الكاميرا أو الميكروفون');
-                    window.LiveFix.showToast('تعذر الوصول إلى الكاميرا أو الميكروفون');
-                    return;
-                }
-            }
-            localPreviewStream = stream;
-
-            const hostPreview = document.getElementById('hostPreview');
-            hostPreview.style.display = 'block';
-            hostPreview.innerHTML = '';
-            if (stream.getVideoTracks().length > 0) {
-                const preview = document.createElement('video');
-                preview.muted = true;
-                preview.autoplay = true;
-                preview.playsInline = true;
-                preview.setAttribute('webkit-playsinline', 'true');
-                preview.srcObject = stream;
-                hostPreview.appendChild(preview);
-                preview.play().catch(() => {});
-            } else {
-                hostPreview.innerHTML = '<div style="display:grid;place-items:center;width:100%;height:100%;background:linear-gradient(180deg,#0f172a,#1e293b);color:#e2e8f0;font-size:13px;text-align:center;padding:12px;">🎙️ البث يعمل الآن بالصوت فقط</div>';
-            }
-
+            const stream = await ensureHostLocalStream();
             for (const track of stream.getTracks()) {
                 try {
                     await lkRoom.localParticipant.publishTrack(track);
@@ -359,10 +476,47 @@
             setStatus('أنت الآن على الهواء');
         }
 
+        async function connectStreaming() {
+            const tokenData = await window.requestJSON(`${API_BASE}/live_token`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    room_id: ROOM_ID,
+                    role: isHost ? 'host' : 'viewer',
+                    platform: window.LiveFix.detectPlatform(),
+                }),
+            });
+
+            const mode = tokenData.stream_mode || roomData?.stream_mode || 'webrtc_mesh';
+            if (mode === 'livekit_sfu' && tokenData.token && tokenData.livekit_url) {
+                await connectLiveKitMode(tokenData);
+                return;
+            }
+
+            if (isHost) {
+                await ensureHostLocalStream();
+                setStatus('وضع البث الاحتياطي يعمل عبر WebRTC + Socket.IO');
+            } else {
+                setStatus('تم الاتصال بوضع المشاهدة الاحتياطي، بانتظار المضيف...');
+            }
+        }
+
         async function restartBroadcast() {
             try {
                 if (localPreviewStream) localPreviewStream.getTracks().forEach(track => track.stop());
-                await publishLocalTracks();
+                localPreviewStream = null;
+                if (isHost && meshPeers.size) {
+                    const peerIds = Array.from(meshPeers.keys());
+                    peerIds.forEach(cleanupMeshPeer);
+                    await ensureHostLocalStream();
+                    for (const peerId of peerIds) {
+                        await createMeshPeer(peerId, true);
+                    }
+                } else if (lkRoom) {
+                    await publishLocalTracksToLiveKit();
+                } else if (isHost) {
+                    await ensureHostLocalStream();
+                }
             } catch (error) {
                 window.LiveFix.showToast(error.message || 'تعذر إعادة تشغيل الكاميرا');
             }
@@ -449,6 +603,7 @@
             notifyPresenceExit();
             if (socket) socket.disconnect();
             if (lkRoom && typeof lkRoom.disconnect === 'function') lkRoom.disconnect();
+            meshPeers.forEach((_, peerId) => cleanupMeshPeer(peerId));
             if (localPreviewStream) localPreviewStream.getTracks().forEach(track => track.stop());
         });
 
@@ -462,7 +617,7 @@
                 await loadRoom();
                 await preloadComments();
                 await setupSocket();
-                await connectLiveKit();
+                await connectStreaming();
                 presenceStopper = window.LiveFix.startPresenceLoop({
                     apiBase: API_BASE,
                     roomId: ROOM_ID,

@@ -49,9 +49,9 @@ services:
       - key: LIVEKIT_SECRET
         sync: false
       - key: ADMIN_EMAILS
-        sync: false
+        value: admin@gmail.com
       - key: ADMIN_USERNAMES
-        sync: false
+        value: admin
       - key: RESET_CODE_EXPIRE_MINUTES
         value: "10"
       - key: RESET_CODE_LENGTH

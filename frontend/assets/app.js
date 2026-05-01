@@ -542,7 +542,7 @@ async function openAdminPanel() {
                 <div class="admin-stat glass"><b>${totals.reels || 0}</b><span>الريلز</span></div>
                 <div class="admin-stat glass"><b>${totals.live_rooms || 0}</b><span>البثوث</span></div>
                 <div class="admin-stat glass"><b>${totals.reports || 0}</b><span>البلاغات</span></div>
-                <div class="admin-stat glass"><b>${totals.follows || 0}</b><span>المتابعات</span></div>
+                <div class="admin-stat glass"><b>${totals.followers || totals.follows || 0}</b><span>المتابعات</span></div>
             </div>
 
             <div class="admin-activity-grid">

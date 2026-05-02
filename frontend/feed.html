@@ -2,19 +2,19 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="theme-color" content="#7c3aed">
+    <meta name="theme-color" content="#e00000">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no">
     <title>Yamshat | الرئيسية</title>
     <link rel="stylesheet" href="assets/style.css">
-    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
-    <link rel="apple-touch-icon" href="assets/favicon.svg">
+    <link rel="icon" type="image/png" href="assets/favicon-32.png">
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
     <link rel="manifest" href="site.webmanifest">
 </head>
 <body class="feed-page">
     <header class="header glass">
         <div class="header-row">
             <div>
-                <div class="brand-title brand-inline"><img src="assets/favicon.svg" alt="Yamshat" class="brand-inline-icon"> Yamshat</div>
+                <div class="brand-title brand-inline"><img src="assets/brand-logo.png" alt="Yamshat" class="brand-inline-icon"> Yamshat</div>
                 <div class="subtle-text" id="sessionUser">جاري التحقق من الجلسة...</div>
             </div>
         </div>
@@ -45,7 +45,11 @@
         <button onclick="openProfileEditor()">✏️ تعديل الملف الشخصي</button>
         <button onclick="openSearchPanel()">🔎 بحث</button>
         <button onclick="toggleTheme()">🌓 وضع ليلي/نهاري</button>
-        <button onclick="openAdminPanel()">🛠️ لوحة الإدارة الاحترافية</button>
+        <div class="menu-section-title">استايل النظام</div>
+        <button onclick="setStylePreset('classic')">🎨 الاستايل الكلاسيكي</button>
+        <button onclick="setStylePreset('instagram')">📸 استايل إنستغرام</button>
+        <button onclick="setStylePreset('neon')">✨ الاستايل الثالث</button>
+        <button onclick="window.location.href='admin.html'">🛠️ لوحة الإدارة الاحترافية</button>
     </div>
 
     <div id="notifBox" class="notif-box glass"></div>

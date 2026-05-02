@@ -2,60 +2,149 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="theme-color" content="#7c3aed">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Yamshat | تسجيل الدخول</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yamshat - منصة تواصل اجتماعي متكاملة</title>
     <link rel="stylesheet" href="assets/style.css">
-    <link rel="icon" type="image/png" href="assets/favicon-32.png">
-    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-    <link rel="manifest" href="site.webmanifest">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
-<body class="auth-page">
-    <div class="container auth-card glass">
-        <div class="brand-block">
-            <div class="brand-logo"><img src="assets/brand-logo.png" alt="Yamshat logo"></div>
-            <h1>Yamshat</h1>
-            <p>منصة اجتماعية متكاملة بتجربة داكنة فخمة ولمسات بنفسجية عصرية للدردشة والمنشورات والريلز والبث المباشر.</p>
-        </div>
+<body>
 
-        <div id="loginForm">
-            <h2>تسجيل الدخول</h2>
-            <input id="loginEmail" type="text" placeholder="البريد الإلكتروني أو رقم الجوال أو اسم المستخدم">
-            <input id="loginPassword" type="password" placeholder="كلمة المرور">
-            <button onclick="login(this)">دخول</button>
-            <div class="switch" onclick="showPasswordReset()">نسيت كلمة المرور؟</div>
-            <div class="switch" onclick="showRegister()">ليس لديك حساب؟ إنشاء حساب</div>
-            <div class="subtle-text" style="margin-top:10px;">يمكن تسجيل الدخول بالبريد الإلكتروني أو اسم المستخدم أو رقم الجوال، والحد الأدنى لكلمة المرور الآن 6 أحرف.</div>
+    <!-- Header -->
+    <header class="header glass-effect">
+        <div class="header-actions">
+            <i class="fa-solid fa-bars"></i>
         </div>
-
-        <div id="registerForm" class="hidden">
-            <h2>إنشاء حساب</h2>
-            <input id="registerName" type="text" placeholder="الاسم">
-            <input id="registerEmail" type="text" placeholder="البريد الإلكتروني أو رقم الجوال بصيغة دولية">
-            <input id="registerPassword" type="password" placeholder="كلمة المرور">
-            <button onclick="register(this)">تسجيل</button>
-            <div class="switch" onclick="showLogin()">لديك حساب؟ تسجيل الدخول</div>
+        <div class="brand-name">Yamshat</div>
+        <div class="header-actions">
+            <div class="relative">
+                <i class="fa-regular fa-bell"></i>
+                <span class="badge">3</span>
+            </div>
+            <i class="fa-solid fa-magnifying-glass" style="margin-right: 15px;"></i>
         </div>
+    </header>
 
-        <div id="resetForm" class="hidden">
-            <h2>استعادة كلمة المرور</h2>
-            <input id="resetIdentifier" type="text" placeholder="البريد الإلكتروني أو رقم الجوال بصيغة دولية">
-            <select id="resetChannel">
-                <option value="auto">تلقائي حسب نوع الحساب</option>
-                <option value="email">بريد إلكتروني</option>
-                <option value="whatsapp">واتساب</option>
-            </select>
-            <button onclick="requestPasswordReset(this)">إرسال رمز التحقق</button>
-            <input id="resetCode" type="text" placeholder="رمز التحقق">
-            <button onclick="verifyPasswordReset(this)">تأكيد الرمز</button>
-            <input id="resetNewPassword" type="password" placeholder="كلمة المرور الجديدة">
-            <button onclick="completePasswordReset(this)">إعادة ضبط كلمة المرور</button>
-            <div class="switch" onclick="showLogin()">رجوع لتسجيل الدخول</div>
+    <!-- Stories Section -->
+    <section class="stories-container">
+        <div class="story-item">
+            <div class="story-ring add-story">
+                <i class="fa-solid fa-plus"></i>
+            </div>
+            <span class="story-name">إنشاء قصة</span>
         </div>
-    </div>
+        <div class="story-item">
+            <div class="story-ring">
+                <img src="https://i.pravatar.cc/150?u=1" alt="User">
+            </div>
+            <span class="story-name">أنت</span>
+        </div>
+        <div class="story-item">
+            <div class="story-ring">
+                <img src="https://i.pravatar.cc/150?u=2" alt="User">
+            </div>
+            <span class="story-name">محمد</span>
+        </div>
+        <div class="story-item">
+            <div class="story-ring">
+                <img src="https://i.pravatar.cc/150?u=3" alt="User">
+            </div>
+            <span class="story-name">سارة</span>
+        </div>
+        <div class="story-item">
+            <div class="story-ring">
+                <img src="https://i.pravatar.cc/150?u=4" alt="User">
+            </div>
+            <span class="story-name">أحمد</span>
+        </div>
+        <div class="story-item">
+            <div class="story-ring">
+                <img src="https://i.pravatar.cc/150?u=5" alt="User">
+            </div>
+            <span class="story-name">ليلى</span>
+        </div>
+    </section>
 
-    <script src="app-config.js"></script>
-    <script src="assets/auth.js"></script>
+    <!-- Feed Section -->
+    <main id="feed">
+        <!-- Post 1 -->
+        <article class="post-card glass-effect">
+            <div class="post-header">
+                <img src="https://i.pravatar.cc/150?u=2" class="user-avatar" alt="Avatar">
+                <div class="user-info">
+                    <span class="name">محمد الطائي</span>
+                    <span class="time">منذ 5 دقائق</span>
+                </div>
+                <i class="fa-solid fa-ellipsis" style="margin-right: auto;"></i>
+            </div>
+            <div class="post-content">
+                <p>الحياة جميلة عندما نشاركها مع من نحب ✨ صباح الخير لكل الأصدقاء ❤️ ☀️</p>
+            </div>
+            <img src="https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=80" class="post-image" alt="Post Image">
+            <div class="post-actions">
+                <div class="action-item">
+                    <i class="fa-regular fa-heart"></i>
+                    <span>128</span>
+                </div>
+                <div class="action-item">
+                    <i class="fa-regular fa-comment"></i>
+                    <span>32</span>
+                </div>
+                <div class="action-item">
+                    <i class="fa-solid fa-share-nodes"></i>
+                    <span>15</span>
+                </div>
+            </div>
+        </article>
+
+        <!-- Post 2 -->
+        <article class="post-card glass-effect">
+            <div class="post-header">
+                <img src="https://i.pravatar.cc/150?u=3" class="user-avatar" alt="Avatar">
+                <div class="user-info">
+                    <span class="name">سارة محمد</span>
+                    <span class="time">منذ ساعة</span>
+                </div>
+                <i class="fa-solid fa-ellipsis" style="margin-right: auto;"></i>
+            </div>
+            <div class="post-content">
+                <p>مساء الخير جميعاً 🌸</p>
+            </div>
+            <div class="post-actions">
+                <div class="action-item">
+                    <i class="fa-regular fa-heart"></i>
+                    <span>85</span>
+                </div>
+                <div class="action-item">
+                    <i class="fa-regular fa-comment"></i>
+                    <span>12</span>
+                </div>
+            </div>
+        </article>
+    </main>
+
+    <!-- Bottom Navigation -->
+    <nav class="bottom-nav glass-effect">
+        <div class="nav-item active">
+            <i class="fa-solid fa-house"></i>
+        </div>
+        <div class="nav-item">
+            <i class="fa-solid fa-play"></i>
+        </div>
+        <div class="nav-center-btn">
+            <i class="fa-solid fa-plus"></i>
+        </div>
+        <div class="nav-item">
+            <div class="relative">
+                <i class="fa-regular fa-comment-dots"></i>
+                <span class="badge">2</span>
+            </div>
+        </div>
+        <div class="nav-item">
+            <i class="fa-regular fa-user"></i>
+        </div>
+    </nav>
+
     <script src="assets/app.js"></script>
 </body>
 </html>

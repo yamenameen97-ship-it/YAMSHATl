@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#7c3aed">
+  <meta name="theme-color" content="#0f172a">
   <title>Yamshat | لوحة الإدارة المتقدمة</title>
   <link rel="icon" type="image/png" href="assets/favicon-32.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
@@ -316,50 +316,6 @@
       .admin-table { display: block; overflow-x: auto; }
     }
   </style>
-
-<style id="yamshat-2026-override">
-  :root {
-    --bg: #070b17;
-    --panel: rgba(15, 23, 42, .86);
-    --panel-2: rgba(17, 28, 52, .88);
-    --line: rgba(167, 139, 250, .16);
-    --text: #f8fafc;
-    --muted: #94a3b8;
-    --accent: #a855f7;
-    --primary: #7c3aed;
-    --danger: #ef4444;
-    --warning: #f59e0b;
-    --shadow: 0 24px 70px rgba(2, 6, 23, .45);
-    --radius: 24px;
-  }
-  body {
-    font-family: "Cairo", Tahoma, Arial, sans-serif;
-    background:
-      radial-gradient(circle at top right, rgba(139,92,246,.2), transparent 18%),
-      radial-gradient(circle at bottom left, rgba(168,85,247,.1), transparent 16%),
-      linear-gradient(180deg, #070b17, #0b1120 56%, #0d1730);
-  }
-  .sidebar {
-    background: rgba(9, 14, 28, .9);
-    border-left: 1px solid var(--line);
-  }
-  .brand {
-    background: linear-gradient(180deg, rgba(124,58,237,.22), rgba(168,85,247,.12));
-    border: 1px solid rgba(192,132,252,.18);
-  }
-  .nav-btn:hover, .nav-btn.active {
-    background: linear-gradient(135deg, rgba(124,58,237,.22), rgba(168,85,247,.14));
-    border-color: rgba(192,132,252,.34);
-  }
-  .topbar-card, .kpi-card, .panel, .table-wrap, .empty-state {
-    background: linear-gradient(180deg, rgba(17,28,52,.9), rgba(11,17,32,.84));
-    border-color: rgba(167,139,250,.14);
-  }
-  .action-btn { background: linear-gradient(135deg, #7c3aed, #8b5cf6); }
-  .success-btn { background: linear-gradient(135deg, #7c3aed, #a855f7); }
-  .ghost-btn { background: rgba(255,255,255,.04); }
-</style>
-
 </head>
 <body>
   <div class="admin-shell">
@@ -584,7 +540,7 @@
             label: 'الرسائل آخر ساعة',
             data: messageChart.map(item => Number(item.value || 0)),
             borderRadius: 8,
-            backgroundColor: ['#7c3aed', '#8b5cf6', '#a855f7', '#c084fc', '#f59e0b', '#ef4444']
+            backgroundColor: ['#3b82f6', '#22c55e', '#f59e0b', '#8b5cf6', '#06b6d4', '#ef4444']
           }]
         },
         options: {
@@ -602,7 +558,7 @@
           labels: reportChart.map(item => item.label || 'غير محدد'),
           datasets: [{
             data: reportChart.map(item => Number(item.value || 0)),
-            backgroundColor: ['#ef4444', '#f59e0b', '#7c3aed', '#8b5cf6', '#a855f7', '#ec4899']
+            backgroundColor: ['#ef4444', '#f59e0b', '#3b82f6', '#22c55e', '#8b5cf6', '#ec4899']
           }]
         },
         options: {

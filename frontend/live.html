@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="theme-color" content="#7c3aed">
+    <meta name="theme-color" content="#e00000">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -11,15 +11,15 @@
     <link rel="stylesheet" href="assets/style.css">
     <link rel="icon" type="image/png" href="assets/favicon-32.png">
     <style>
-        body { background:linear-gradient(180deg,#070b17 0%, #0f172a 35%, #131c34 100%); }
+        body { background:linear-gradient(180deg,#020617 0%, #0f172a 35%, #111827 100%); }
         .live-wrap { padding:calc(env(safe-area-inset-top, 0px) + 16px) 14px calc(env(safe-area-inset-bottom, 0px) + 28px); max-width:1180px; margin:0 auto; }
         .topbar { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:16px; }
-        .hero, .panel, .metric-card, .room-card { border:1px solid rgba(167,139,250,0.14); background:linear-gradient(180deg, rgba(17,28,52,0.92), rgba(11,17,32,0.88)); border-radius:28px; box-shadow:0 24px 60px rgba(2,6,23,0.34); }
+        .hero, .panel, .metric-card, .room-card { border:1px solid rgba(255,255,255,0.08); background:rgba(15,23,42,0.78); border-radius:24px; box-shadow:0 20px 60px rgba(0,0,0,0.26); }
         .hero { padding:20px; display:grid; grid-template-columns:1.2fr .8fr; gap:16px; }
         .hero h1 { margin:0 0 12px; font-size:30px; }
         .hero p, .muted { color:#cbd5e1; line-height:1.8; }
         .hero-badges, .stats-row, .room-stats { display:flex; gap:10px; flex-wrap:wrap; }
-        .hero-badge, .live-pill { display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:999px; background:rgba(139,92,246,0.12); color:#e9d5ff; font-size:13px; }
+        .hero-badge, .live-pill { display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:999px; background:rgba(239,68,68,0.12); color:#fecaca; font-size:13px; }
         .hero-side { display:grid; gap:12px; }
         .metric-card { padding:16px; }
         .metric-card b { display:block; font-size:24px; margin-bottom:6px; }
@@ -46,31 +46,6 @@
     </style>
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
     <link rel="manifest" href="site.webmanifest">
-
-<style id="yamshat-2026-override">
-  body {
-    font-family: "Cairo", Tahoma, Arial, sans-serif;
-    background:
-      radial-gradient(circle at top right, rgba(139,92,246,.22), transparent 20%),
-      radial-gradient(circle at bottom left, rgba(168,85,247,.10), transparent 16%),
-      linear-gradient(180deg,#070b17 0%, #0b1120 38%, #0d1730 100%) !important;
-  }
-  .hero, .panel, .metric-card, .room-card {
-    border: 1px solid rgba(167,139,250,.16) !important;
-    background: linear-gradient(180deg, rgba(17,28,52,.92), rgba(11,17,32,.86)) !important;
-    box-shadow: 0 22px 60px rgba(2,6,23,.34);
-  }
-  .hero-badge, .live-pill {
-    background: rgba(124,58,237,.14) !important;
-    color: #e9d5ff !important;
-    border: 1px solid rgba(192,132,252,.16);
-  }
-  .empty-box, .tip-item {
-    background: rgba(255,255,255,.04) !important;
-    border: 1px solid rgba(167,139,250,.12);
-  }
-</style>
-
 </head>
 <body>
     <main class="live-wrap">

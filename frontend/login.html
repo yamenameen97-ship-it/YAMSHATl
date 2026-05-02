@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#0f172a">
+  <meta name="theme-color" content="#7c3aed">
   <title>Yamshat | Admin Login</title>
   <link rel="icon" type="image/png" href="assets/favicon-32.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
@@ -98,6 +98,50 @@
       border: 1px solid rgba(239,68,68,.2);
     }
   </style>
+
+<style id="yamshat-2026-override">
+  :root {
+    --bg: #070b17;
+    --panel: rgba(15, 23, 42, .88);
+    --line: rgba(167, 139, 250, .16);
+    --text: #f8fafc;
+    --muted: #94a3b8;
+    --primary: #7c3aed;
+    --danger: #ef4444;
+    --shadow: 0 24px 70px rgba(2, 6, 23, .45);
+  }
+  body {
+    font-family: "Cairo", Tahoma, Arial, sans-serif;
+    background:
+      radial-gradient(circle at top right, rgba(139,92,246,.22), transparent 20%),
+      radial-gradient(circle at bottom left, rgba(168,85,247,.12), transparent 18%),
+      linear-gradient(180deg, #070b17, #0b1120 58%, #0c1428);
+  }
+  .card {
+    background: linear-gradient(180deg, rgba(17,28,52,.94), rgba(11,17,32,.9));
+    border: 1px solid var(--line);
+    border-radius: 30px;
+    backdrop-filter: blur(22px);
+  }
+  .badge {
+    background: rgba(124,58,237,.16);
+    border: 1px solid rgba(192,132,252,.22);
+    color: #e9d5ff;
+  }
+  input {
+    border-radius: 18px;
+    background: rgba(255,255,255,.045);
+    border-color: rgba(167,139,250,.14);
+  }
+  input:focus { border-color: rgba(168,85,247,.52); box-shadow: 0 0 0 4px rgba(168,85,247,.12); }
+  button {
+    border-radius: 18px;
+    background: linear-gradient(135deg, #7c3aed, #8b5cf6, #a855f7);
+    box-shadow: 0 16px 34px rgba(124,58,237,.28);
+  }
+  .links a { color: #c4b5fd; }
+</style>
+
 </head>
 <body>
   <div class="card">

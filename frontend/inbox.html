@@ -15,12 +15,18 @@
         .thread-card, .suggest-card {
             margin-top: 10px;
             padding: 14px;
-            border-radius: 16px;
+            border-radius: var(--radius-sm);
             background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border);
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 10px;
+            transition: all 0.2s ease;
+        }
+        .thread-card:hover, .suggest-card:hover {
+            background: rgba(139, 92, 246, 0.1);
+            border-color: var(--primary);
         }
         .muted-box { color: rgba(255,255,255,0.72); font-size: 13px; margin-top: 6px; }
         .inline-actions { display: flex; gap: 8px; flex-wrap: wrap; }

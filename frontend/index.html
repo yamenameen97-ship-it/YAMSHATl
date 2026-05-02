@@ -2,128 +2,60 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Yamshat - منصة تواصل اجتماعي متكاملة</title>
+    <meta name="theme-color" content="#e00000">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Yamshat | تسجيل الدخول</title>
     <link rel="stylesheet" href="assets/style.css">
-    <!-- Font Awesome for Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="icon" type="image/png" href="assets/favicon-32.png">
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+    <link rel="manifest" href="site.webmanifest">
 </head>
-<body class="feed-page">
-
-    <!-- Header -->
-    <header class="header glass-effect">
-        <div class="header-actions" onclick="toggleServiceMenu()">
-            <i class="fa-solid fa-bars"></i>
+<body class="auth-page">
+    <div class="container auth-card glass">
+        <div class="brand-block">
+            <div class="brand-logo"><img src="assets/brand-logo.png" alt="Yamshat logo"></div>
+            <h1>Yamshat</h1>
+            <p>منصة اجتماعية عصرية للدردشة والمنشورات والريلز والبث المباشر.</p>
         </div>
-        <div class="brand-name">Yamshat</div>
-        <div class="header-actions">
-            <div class="relative" onclick="toggleNotifications()">
-                <i class="fa-regular fa-bell"></i>
-                <span class="badge" id="count">0</span>
-            </div>
-            <i class="fa-solid fa-magnifying-glass" style="margin-right: 15px;" onclick="openSearch()"></i>
+
+        <div id="loginForm">
+            <h2>تسجيل الدخول</h2>
+            <input id="loginEmail" type="text" placeholder="البريد الإلكتروني أو رقم الجوال أو اسم المستخدم">
+            <input id="loginPassword" type="password" placeholder="كلمة المرور">
+            <button onclick="login(this)">دخول</button>
+            <div class="switch" onclick="showPasswordReset()">نسيت كلمة المرور؟</div>
+            <div class="switch" onclick="showRegister()">ليس لديك حساب؟ إنشاء حساب</div>
+            <div class="subtle-text" style="margin-top:10px;">يمكن تسجيل الدخول بالبريد الإلكتروني أو اسم المستخدم أو رقم الجوال، والحد الأدنى لكلمة المرور الآن 6 أحرف.</div>
         </div>
-    </header>
 
-    <!-- Notifications Box -->
-    <div id="notifBox" class="notif-box glass-effect" style="display:none;"></div>
-
-    <!-- Service Menu (Side Menu) -->
-    <div id="serviceMenu" class="service-menu glass-effect" style="display:none;">
-        <div class="menu-section-title">القائمة</div>
-        <button onclick="openProfile(currentUser)"><i class="fa-regular fa-user"></i> الملف الشخصي</button>
-        <button onclick="window.location.href='friends.html'"><i class="fa-solid fa-users"></i> الأصدقاء</button>
-        <button onclick="window.location.href='groups.html'"><i class="fa-solid fa-layer-group"></i> المجموعات</button>
-        <button onclick="window.location.href='live.html'"><i class="fa-solid fa-tower-broadcast"></i> البث المباشر</button>
-        <button onclick="goReels()"><i class="fa-solid fa-play"></i> الريلز</button>
-        <button onclick="toggleTheme()"><i class="fa-solid fa-moon"></i> الوضع الليلي</button>
-        <button class="soft-danger" onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i> تسجيل الخروج</button>
-    </div>
-
-    <!-- Stories Section -->
-    <section class="stories-container" id="storyBar">
-        <div class="story-item">
-            <div class="story-ring add-story" onclick="document.getElementById('storyInput').click()">
-                <i class="fa-solid fa-plus"></i>
-            </div>
-            <span class="story-name">إنشاء قصة</span>
-            <input type="file" id="storyInput" hidden accept="image/*,video/*" onchange="uploadStory(this.files[0])">
+        <div id="registerForm" class="hidden">
+            <h2>إنشاء حساب</h2>
+            <input id="registerName" type="text" placeholder="الاسم">
+            <input id="registerEmail" type="text" placeholder="البريد الإلكتروني أو رقم الجوال بصيغة دولية">
+            <input id="registerPassword" type="password" placeholder="كلمة المرور">
+            <button onclick="register(this)">تسجيل</button>
+            <div class="switch" onclick="showLogin()">لديك حساب؟ تسجيل الدخول</div>
         </div>
-        <!-- Stories will be loaded here by loadStories() -->
-    </section>
 
-    <!-- Quick Post Box -->
-    <div class="post-card glass-effect" style="padding: 15px; margin-bottom: 0;">
-        <div class="post-box">
-            <input type="text" id="postContent" placeholder="بماذا تفكر؟" style="background: rgba(255,255,255,0.05); border: none;">
-            <button onclick="addPost()" style="padding: 10px 20px;">نشر</button>
-        </div>
-        <div class="upload-grid compact-grid" style="margin-top: 10px;">
-            <button class="icon-btn" onclick="document.getElementById('postMedia').click()" style="width: 100%; background: rgba(255,255,255,0.05);">
-                <i class="fa-solid fa-image"></i> صورة / فيديو
-            </button>
-            <input type="file" id="postMedia" hidden accept="image/*,video/*">
+        <div id="resetForm" class="hidden">
+            <h2>استعادة كلمة المرور</h2>
+            <input id="resetIdentifier" type="text" placeholder="البريد الإلكتروني أو رقم الجوال بصيغة دولية">
+            <select id="resetChannel">
+                <option value="auto">تلقائي حسب نوع الحساب</option>
+                <option value="email">بريد إلكتروني</option>
+                <option value="whatsapp">واتساب</option>
+            </select>
+            <button onclick="requestPasswordReset(this)">إرسال رمز التحقق</button>
+            <input id="resetCode" type="text" placeholder="رمز التحقق">
+            <button onclick="verifyPasswordReset(this)">تأكيد الرمز</button>
+            <input id="resetNewPassword" type="password" placeholder="كلمة المرور الجديدة">
+            <button onclick="completePasswordReset(this)">إعادة ضبط كلمة المرور</button>
+            <div class="switch" onclick="showLogin()">رجوع لتسجيل الدخول</div>
         </div>
     </div>
 
-    <!-- Feed Section -->
-    <main id="feed">
-        <!-- Posts will be loaded here by loadPosts() -->
-        <div class="skeleton-loader" style="padding: 20px; text-align: center;">جاري تحميل المنشورات...</div>
-    </main>
-
-    <!-- Bottom Navigation -->
-    <nav class="bottom-nav glass-effect">
-        <div class="nav-item active" onclick="window.location.href='feed.html'">
-            <i class="fa-solid fa-house"></i>
-        </div>
-        <div class="nav-item" onclick="goReels()">
-            <i class="fa-solid fa-play"></i>
-        </div>
-        <div class="nav-center-btn" onclick="document.getElementById('postContent').focus()">
-            <i class="fa-solid fa-plus"></i>
-        </div>
-        <div class="nav-item" onclick="window.location.href='inbox.html'">
-            <div class="relative">
-                <i class="fa-regular fa-comment-dots"></i>
-                <span class="badge" id="msgCount">0</span>
-            </div>
-        </div>
-        <div class="nav-item" onclick="openProfile(currentUser)">
-            <i class="fa-regular fa-user"></i>
-        </div>
-    </nav>
-
-    <!-- Scripts -->
+    <script src="app-config.js"></script>
     <script src="assets/auth.js"></script>
     <script src="assets/app.js"></script>
-    <script>
-        // Initialize the page
-        document.addEventListener('DOMContentLoaded', () => {
-            if (typeof applyTheme === 'function') applyTheme();
-            if (typeof loadPosts === 'function') loadPosts();
-            if (typeof loadStories === 'function') loadStories();
-            if (typeof loadNotifications === 'function') loadNotifications();
-            
-            // Auto refresh
-            setInterval(() => {
-                if (typeof loadNotifications === 'function') loadNotifications();
-            }, 30000);
-        });
-
-        function goReels() {
-            window.location.href = 'reels.html';
-        }
-
-        function toggleServiceMenu() {
-            const menu = document.getElementById('serviceMenu');
-            menu.style.display = menu.style.display === 'none' ? 'flex' : 'none';
-        }
-
-        function toggleNotifications() {
-            const box = document.getElementById('notifBox');
-            box.style.display = box.style.display === 'none' ? 'block' : 'none';
-        }
-    </script>
 </body>
 </html>

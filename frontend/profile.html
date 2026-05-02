@@ -11,25 +11,26 @@
     <link rel="manifest" href="site.webmanifest">
 </head>
 <body class="profile-page">
-    <header class="header glass profile-header">
-        <div class="header-row">
+    <header class="header glass profile-header" style="text-align:center; padding: 40px 20px;">
+        <div class="header-row" style="position:absolute; top:15px; left:15px; right:15px; width:auto;">
             <button class="icon-btn" onclick="goFeed()">⬅</button>
-            <div>
-                <h2 id="username">...</h2>
-                <div class="subtle-text" id="profileEmail"></div>
-            </div>
             <div class="header-actions">
                 <button class="icon-btn" onclick="toggleServiceMenu(event)">☰</button>
-                <button class="icon-btn" onclick="logout()">🚪</button>
             </div>
         </div>
-
-        <div class="stats-row glass mini-glass">
-            <div><strong id="followers">0</strong><span>متابعين</span></div>
-            <div><strong id="following">0</strong><span>يتابع</span></div>
+        
+        <div style="margin-top:20px;">
+            <div class="avatar" style="width:100px; height:100px; margin:0 auto 15px; font-size:40px; border-width:4px;">👤</div>
+            <h2 id="username" style="font-size:1.8rem; margin-bottom:5px;">...</h2>
+            <div class="subtle-text" id="profileEmail" style="margin-bottom:20px;"></div>
         </div>
 
-        <div class="profile-actions" id="profileActions"></div>
+        <div class="stats-row mini-glass" style="display:flex; justify-content:center; gap:40px; background:transparent; border:none; box-shadow:none;">
+            <div style="text-align:center;"><strong id="followers" style="font-size:1.5rem; display:block;">0</strong><span class="subtle-text">متابعين</span></div>
+            <div style="text-align:center;"><strong id="following" style="font-size:1.5rem; display:block;">0</strong><span class="subtle-text">يتابع</span></div>
+        </div>
+
+        <div class="profile-actions" id="profileActions" style="margin-top:25px; display:flex; justify-content:center; gap:10px;"></div>
     </header>
 
     <div id="serviceMenu" class="service-menu glass hidden profile-menu">

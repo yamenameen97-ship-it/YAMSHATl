@@ -11,17 +11,15 @@
     <link rel="manifest" href="site.webmanifest">
 </head>
 <body class="chat-page">
-    <div class="chat-shell glass enhanced-chat-shell">
-        <div class="header chat-header">
+    <div class="chat-shell enhanced-chat-shell" style="height:100vh; display:flex; flex-direction:column; background:var(--bg);">
+        <div class="header chat-header glass" style="border-radius:0; margin-bottom:0;">
             <div class="header-row">
                 <button class="icon-btn" onclick="goFeed()">⬅</button>
-                <div class="chat-header-copy">
-                    <div>💬 الدردشة</div>
-                    <div class="subtle-text" id="chatWith">جاري التحميل...</div>
-                    <div class="subtle-text presence-line" id="presenceText">جاري فحص الحالة...</div>
+                <div class="chat-header-copy" style="flex:1; margin-right:15px;">
+                    <div id="chatWith" style="font-weight:800; font-size:1.1rem;">جاري التحميل...</div>
+                    <div class="subtle-text presence-line" id="presenceText" style="font-size:0.8rem;">جاري فحص الحالة...</div>
                 </div>
                 <div class="chat-top-actions">
-                    <button class="icon-btn" type="button" onclick="toggleChatE2E()" title="تفعيل التشفير">🔐</button>
                     <button class="icon-btn" type="button" onclick="startCall('audio')" title="مكالمة صوتية">📞</button>
                     <button class="icon-btn" type="button" onclick="startCall('video')" title="مكالمة فيديو">🎥</button>
                 </div>
@@ -48,9 +46,10 @@
 
         <div id="replyComposer" class="reply-composer hidden"></div>
 
-        <div class="input-box glass enhanced-input-box">
-            <input type="text" id="msgInput" placeholder="اكتب رسالة..." autocomplete="off">
-            <button id="sendBtn" onclick="sendMsg(this)">إرسال</button>
+        <div class="input-box glass enhanced-input-box" style="margin: 10px; border-radius: var(--radius); padding: 5px 10px; display:flex; gap:10px; align-items:center;">
+            <button class="icon-btn" type="button" onclick="document.getElementById('chatMediaInput').click()" style="background:transparent; border:none;">➕</button>
+            <input type="text" id="msgInput" placeholder="اكتب رسالة..." autocomplete="off" style="background:transparent; border:none; box-shadow:none;">
+            <button id="sendBtn" onclick="sendMsg(this)" style="border-radius:50%; width:45px; height:45px; padding:0; flex-shrink:0;">🚀</button>
         </div>
     </div>
 

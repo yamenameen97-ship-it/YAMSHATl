@@ -141,9 +141,9 @@ function updateThemeColorMeta() {
     const preset = getStoredStylePreset();
     const isLight = getStoredTheme() === 'light';
     const map = {
-        classic: isLight ? '#f5f3ff' : '#7c3aed',
-        instagram: isLight ? '#ffe4f0' : '#db2777',
-        neon: isLight ? '#ede9fe' : '#8b5cf6',
+        classic: isLight ? '#ffffff' : '#e00000',
+        instagram: isLight ? '#ffd7df' : '#ff2d55',
+        neon: isLight ? '#d9fbff' : '#06b6d4',
     };
     meta.setAttribute('content', map[preset] || map.classic);
 }
@@ -160,7 +160,7 @@ function setStylePreset(preset = 'classic') {
     localStorage.setItem('yamshatStylePreset', safePreset);
     applyStylePreset(safePreset);
     hideServiceMenu();
-    const labels = { classic: 'تم تفعيل ستايل Yamshat', instagram: 'تم تفعيل ستايل Sunset', neon: 'تم تفعيل ستايل Ultra Violet' };
+    const labels = { classic: 'تم تفعيل الاستايل الكلاسيكي', instagram: 'تم تفعيل استايل إنستغرام', neon: 'تم تفعيل الاستايل الثالث' };
     showToast(labels[safePreset] || labels.classic);
 }
 

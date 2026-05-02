@@ -141,9 +141,9 @@ function updateThemeColorMeta() {
     const preset = getStoredStylePreset();
     const isLight = getStoredTheme() === 'light';
     const map = {
-        classic: isLight ? '#ffffff' : '#e00000',
+        classic: isLight ? '#f3e8ff' : '#8b5cf6',
         instagram: isLight ? '#ffd7df' : '#ff2d55',
-        neon: isLight ? '#d9fbff' : '#06b6d4',
+        neon: isLight ? '#d9fbff' : '#22d3ee',
     };
     meta.setAttribute('content', map[preset] || map.classic);
 }
@@ -160,7 +160,7 @@ function setStylePreset(preset = 'classic') {
     localStorage.setItem('yamshatStylePreset', safePreset);
     applyStylePreset(safePreset);
     hideServiceMenu();
-    const labels = { classic: 'تم تفعيل الاستايل الكلاسيكي', instagram: 'تم تفعيل استايل إنستغرام', neon: 'تم تفعيل الاستايل الثالث' };
+    const labels = { classic: 'تم تفعيل ستايل Yamshat', instagram: 'تم تفعيل الستايل المتدرج', neon: 'تم تفعيل ستايل النيون' };
     showToast(labels[safePreset] || labels.classic);
 }
 
@@ -1120,21 +1120,24 @@ async function loadPosts(force = false) {
                             <div class="avatar">👤</div>
                             <div>
                                 <b class="user-link" onclick='openProfile(${JSON.stringify(post.username)})'>${escapeHTML(post.username)}</b>
-                                <div class="subtle-text">منشور حديث</div>
+                                <div class="count-chip">منشور حديث</div>
                             </div>
                         </div>
                         <div class="post-top-actions">
-                            ${isMine ? `<button style="background:rgba(239,68,68,0.1); color:#ef4444; border:none;" onclick="deletePost(${post.id})">حذف</button>` : renderRelationshipButtons(post.username)}
+                            ${isMine ? `<button class="soft-danger" onclick="deletePost(${post.id})">🗑 حذف</button>` : renderRelationshipButtons(post.username)}
                         </div>
                     </div>
 
                     ${renderContent(post.content, post.media)}
 
                     <div class="actions">
-                        <button onclick="like(${post.id})">❤️ ${post.likes || 0}</button>
-                        <button onclick="openComments(${post.id}, true)">💬 تعليق</button>
-                        <button onclick="sharePost(${post.id})">📤 مشاركة</button>
+                        <button onclick="like(${post.id})">❤️</button>
+                        <button onclick="openComments(${post.id}, true)">💬</button>
+                        <button onclick="sharePost(${post.id})">📤</button>
+                        ${isMine ? `<button onclick="deletePost(${post.id})">🗑</button>` : `<button onclick="reportPost(${post.id})">🚩</button>`}
                     </div>
+
+                    <div class="count-chip">الإعجابات: ${post.likes}</div>
                     <div id="comments-${post.id}" class="comments-wrapper" style="display:none;"></div>
                     <div class="comment-box">
                         <input type="text" id="commentInput-${post.id}" placeholder="اكتب تعليق..." onfocus="openComments(${post.id})" oninput="handleCommentInput(${post.id}, this)">
@@ -1159,12 +1162,7 @@ function loadStories(force = false) {
             bar.innerHTML = '<div class="empty-state">لا توجد ستوري حالياً</div>';
             return;
         }
-        bar.innerHTML = `
-            <div class="story-item">
-                <div class="story" style="background: var(--primary); display:flex; align-items:center; justify-content:center; font-size:24px; color:white;" onclick="document.getElementById('storyInput').click()">+</div>
-                <div class="story-label">أنت</div>
-            </div>
-        ` + data.map(s => {
+        bar.innerHTML = data.map(s => {
             const mediaUrl = normalizeMediaUrl(s.media_url || (s.media ? `${API_BASE}/uploads/${encodeURIComponent(s.media)}` : ''));
             const preview = isVideo(s.media)
                 ? `<video muted playsinline><source src="${mediaUrl}"></video>`
@@ -1350,6 +1348,7 @@ async function loadProfile() {
         ]);
         document.getElementById("followers").innerText = stats.followers || 0;
         document.getElementById("following").innerText = stats.following || 0;
+        document.getElementById("postsCount") && (document.getElementById("postsCount").innerText = posts.length || 0);
 
         if (user && user !== currentUser) {
             profileActions.innerHTML = renderRelationshipButtons(user, `

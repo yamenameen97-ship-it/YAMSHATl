@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="theme-color" content="#e00000">
+    <meta name="theme-color" content="#8b5cf6">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -10,67 +10,36 @@
     <title>Yamshat | البث المباشر</title>
     <link rel="stylesheet" href="assets/style.css">
     <link rel="icon" type="image/png" href="assets/favicon-32.png">
-    <style>
-        body { background: var(--bg); }
-        .live-wrap { padding:calc(env(safe-area-inset-top, 0px) + 16px) 14px calc(env(safe-area-inset-bottom, 0px) + 28px); max-width:1180px; margin:0 auto; }
-        .topbar { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:16px; }
-        .hero, .panel, .metric-card, .room-card { border:1px solid var(--glass-border); background: var(--glass); border-radius:var(--radius); box-shadow:var(--shadow); backdrop-filter:blur(12px); }
-        .hero { padding:20px; display:grid; grid-template-columns:1.2fr .8fr; gap:16px; }
-        .hero h1 { margin:0 0 12px; font-size:30px; }
-        .hero p, .muted { color:#cbd5e1; line-height:1.8; }
-        .hero-badges, .stats-row, .room-stats { display:flex; gap:10px; flex-wrap:wrap; }
-        .hero-badge, .live-pill { display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:999px; background:rgba(139, 92, 246, 0.12); color:var(--accent); font-size:13px; border: 1px solid rgba(139, 92, 246, 0.1); }
-        .hero-side { display:grid; gap:12px; }
-        .metric-card { padding:16px; }
-        .metric-card b { display:block; font-size:24px; margin-bottom:6px; }
-        .metric-card span { color:#cbd5e1; font-size:13px; }
-        .create-box { display:grid; gap:12px; margin-top:18px; }
-        .create-actions { display:flex; gap:10px; flex-wrap:wrap; }
-        .create-actions input { flex:1; min-width:220px; }
-        .live-grid { display:grid; grid-template-columns:1fr .85fr; gap:16px; margin-top:18px; }
-        .panel { padding:18px; }
-        .panel-head { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
-        .room-list { display:grid; gap:12px; }
-        .room-card { padding:16px; display:grid; gap:12px; }
-        .room-head { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
-        .room-title { font-size:18px; font-weight:800; }
-        .room-meta { color:#cbd5e1; font-size:13px; line-height:1.8; }
-        .room-actions { display:flex; gap:8px; flex-wrap:wrap; }
-        .empty-box { padding:22px; border-radius:20px; text-align:center; background:rgba(255,255,255,0.04); color:#cbd5e1; }
-        .tips-list { display:grid; gap:10px; }
-        .tip-item { padding:14px; border-radius:18px; background:rgba(255,255,255,0.05); color:#cbd5e1; line-height:1.8; }
-        @media (max-width: 920px) {
-            .hero, .live-grid { grid-template-columns:1fr; }
-            .hero h1 { font-size:26px; }
-        }
-    </style>
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
     <link rel="manifest" href="site.webmanifest">
 </head>
 <body>
     <main class="live-wrap">
-        <div class="topbar">
+        <div class="header-row" style="margin-bottom:16px;">
             <button class="icon-btn" onclick="window.location.href='feed.html'">⬅ العودة للرئيسية</button>
-            <button class="icon-btn" onclick="loadLives()">🔄 تحديث البثوث</button>
+            <div class="hero-badges">
+                <span class="hero-badge">🔴 البث المباشر</span>
+                <span class="hero-badge">🎥 LiveKit</span>
+            </div>
         </div>
 
         <section class="hero">
             <div>
                 <div class="hero-badges">
-                    <span class="hero-badge">🔴 بث مباشر</span>
-                    <span class="hero-badge">📱 Web / Android / iOS</span>
-                    <span class="hero-badge">🎥 LiveKit + Socket.IO</span>
+                    <span class="hero-badge">مباشر الآن</span>
+                    <span class="hero-badge">واجهات موبايل</span>
+                    <span class="hero-badge">نفس الستايل الداكن</span>
                 </div>
-                <h1>ابدأ بثك بشكل مرتب وسريع</h1>
+                <h1>ابدأ بثك بنفس شكل الشاشة المرجعية</h1>
                 <p id="sessionLabel" class="muted">جاري التحقق من الجلسة...</p>
                 <div class="create-box">
                     <div class="create-actions">
                         <input id="title" placeholder="اكتب عنوان البث المباشر">
                         <button onclick="startLive(this)">ابدأ البث الآن</button>
                     </div>
-                    <div class="stats-row">
-                        <span class="live-pill">✅ الغرف القديمة غير النشطة يتم تنظيفها تلقائياً</span>
-                        <span class="live-pill">↩️ يمكنك الرجوع للرئيسية من نفس الصفحة</span>
+                    <div class="stats-inline">
+                        <span class="live-pill">✅ الغرف غير النشطة يتم تنظيفها تلقائياً</span>
+                        <span class="live-pill">📱 جاهز للموبايل والويب</span>
                     </div>
                 </div>
             </div>
@@ -80,12 +49,12 @@
                     <span>بث مباشر متاح حالياً</span>
                 </div>
                 <div class="metric-card">
-                    <b>واجهة أنظف</b>
-                    <span>تم إزالة الأسهم والكتابات التجريبية من صفحة البث الرئيسية.</span>
+                    <b>واجهة أوضح</b>
+                    <span>ترتيب أقرب للتصميم المعروض: بطاقات، شارات، وتدرجات بنفسجية أنيقة.</span>
                 </div>
                 <div class="metric-card">
-                    <b>حفظ أفضل</b>
-                    <span>الصور والفيديوهات الجديدة يتم تخزينها بشكل أكثر ثباتاً مع المشروع.</span>
+                    <b>دخول أسرع</b>
+                    <span>عرض مباشر للغرف الجارية مع زر دخول واضح وعداد مشاهدين.</span>
                 </div>
             </div>
         </section>
@@ -95,8 +64,9 @@
                 <div class="panel-head">
                     <div>
                         <div class="brand-title">البثوث الحالية</div>
-                        <div class="muted">القائمة تتحدث تلقائياً وتعرض البثوث النشطة فقط.</div>
+                        <div class="muted">مستوحاة من شاشة البث في التصميم المرجعي</div>
                     </div>
+                    <button class="icon-btn" onclick="loadLives()">🔄 تحديث</button>
                 </div>
                 <div id="rooms" class="room-list"></div>
             </div>
@@ -104,14 +74,14 @@
             <div class="panel">
                 <div class="panel-head">
                     <div>
-                        <div class="brand-title">ملاحظات مهمة</div>
-                        <div class="muted">لأفضل تجربة أثناء البث والمشاهدة</div>
+                        <div class="brand-title">ملاحظات سريعة</div>
+                        <div class="muted">أفضل تجربة للبث والمشاهدة</div>
                     </div>
                 </div>
-                <div class="tips-list">
-                    <div class="tip-item">استخدم عنوان واضح للبث حتى يسهل على المتابعين دخوله بسرعة.</div>
-                    <div class="tip-item">إذا أغلقت البث وخرج المضيف، يتم تنظيف الجلسة غير النشطة تلقائياً بدلاً من بقائها مفتوحة.</div>
-                    <div class="tip-item">لوحة الإدارة متاحة للبلاغات والمتابعة من داخل المشروع نفسه.</div>
+                <div class="stack">
+                    <div class="tip-item">استخدم عنوان واضح للبث حتى يسهل على المتابعين إيجاده بسرعة.</div>
+                    <div class="tip-item">الواجهة الجديدة تحافظ على نفس الهوية الداكنة البنفسجية في باقي صفحات المشروع.</div>
+                    <div class="tip-item">يمكنك فتح الملف الشخصي لصاحب البث أو الدخول للغرفة مباشرة من نفس البطاقة.</div>
                 </div>
             </div>
         </section>
@@ -190,7 +160,7 @@
                         </div>
                         <div class="room-actions">
                             <button onclick="window.location.href='live_room.html?id=${room.id}'">دخول البث</button>
-                            <button class="icon-btn" onclick="window.location.href='profile.html?user=${encodeURIComponent(room.username)}'">👤 الحساب</button>
+                            <button onclick="window.location.href='profile.html?user=${encodeURIComponent(room.username)}'">👤 الحساب</button>
                         </div>
                     </div>
                 `).join('');

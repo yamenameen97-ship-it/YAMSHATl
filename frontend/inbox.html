@@ -2,36 +2,22 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="theme-color" content="#e00000">
+    <meta name="theme-color" content="#8b5cf6">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Yamshat | الرسائل</title>
     <link rel="stylesheet" href="assets/style.css">
     <link rel="icon" type="image/png" href="assets/favicon-32.png">
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-    <style>
-        .inbox-page { padding-bottom: 40px; }
-        .inbox-shell { padding: 10px; }
-        .inbox-grid { display: grid; gap: 14px; }
-        .thread-card, .suggest-card {
-            margin-top: 10px;
-            padding: 14px;
-            border-radius: var(--radius-sm);
-            background: rgba(255,255,255,0.05);
-            border: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            transition: all 0.2s ease;
-        }
-        .thread-card:hover, .suggest-card:hover {
-            background: rgba(139, 92, 246, 0.1);
-            border-color: var(--primary);
-        }
-        .muted-box { color: rgba(255,255,255,0.72); font-size: 13px; margin-top: 6px; }
-        .inline-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-    </style>
     <link rel="manifest" href="site.webmanifest">
+    <style>
+        .inbox-top-search{margin-top:14px}
+        .inbox-split{display:grid;grid-template-columns:1.08fr .92fr;gap:14px}
+        .thread-card,.suggest-card{align-items:center}
+        .thread-avatar{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,#a855f7,#6d28d9);box-shadow:0 12px 30px rgba(139,92,246,.24)}
+        .thread-copy{display:grid;gap:5px}
+        .thread-copy .muted-box{margin-top:0}
+        @media (max-width:900px){.inbox-split{grid-template-columns:1fr}}
+    </style>
 </head>
 <body class="inbox-page">
     <header class="header glass">
@@ -43,21 +29,30 @@
             </div>
             <button class="icon-btn" onclick="window.location.href='profile.html'">👤</button>
         </div>
+        <div class="post-box inbox-top-search">
+            <input id="chatSearchInput" type="text" placeholder="ابحث عن اسم لبدء محادثة" autocomplete="off" onkeydown="if(event.key==='Enter') searchUsersForChat()">
+            <button onclick="searchUsersForChat()">بحث</button>
+        </div>
     </header>
 
     <main class="container inbox-shell">
-        <div class="inbox-grid">
+        <div class="inbox-split">
             <section class="glass" style="padding:16px;">
-                <h3>المحادثات السابقة</h3>
-                <div class="muted-box">لن تظهر جميع الحسابات هنا. ستظهر فقط المحادثات التي سبق التحدث معها.</div>
+                <div class="feed-section-title" style="margin:0 0 12px;">
+                    <div>
+                        <div class="brand-title">المحادثات السابقة</div>
+                        <div class="subtle-text">قائمة مرتبة بنفس الطابع الداكن الناعم</div>
+                    </div>
+                </div>
                 <div id="threads"></div>
             </section>
 
             <section class="glass" style="padding:16px;">
-                <h3>البحث عن مشترك لبدء دردشة</h3>
-                <div class="post-box" style="margin-top:12px;">
-                    <input id="chatSearchInput" type="text" placeholder="ابحث بالاسم فقط" autocomplete="off" onkeydown="if(event.key==='Enter') searchUsersForChat()">
-                    <button onclick="searchUsersForChat()">بحث</button>
+                <div class="feed-section-title" style="margin:0 0 12px;">
+                    <div>
+                        <div class="brand-title">بدء دردشة جديدة</div>
+                        <div class="subtle-text">ابحث عن أي مستخدم ثم افتح المحادثة مباشرة</div>
+                    </div>
                 </div>
                 <div id="suggestions">
                     <div class="empty-state">ابحث عن اسم مستخدم لبدء محادثة جديدة</div>
@@ -111,9 +106,12 @@
                 }
                 box.innerHTML = data.map(thread => `
                     <div class="thread-card">
-                        <div>
-                            <b>${escapeHTML(thread.name)}</b>
-                            <div class="muted-box">افتح المحادثة واستكمل الرسائل</div>
+                        <div class="thread-preview">
+                            <div class="thread-avatar">👤</div>
+                            <div class="thread-copy">
+                                <b>${escapeHTML(thread.name)}</b>
+                                <div class="muted-box">جاهز لاستكمال الرسائل والوسائط</div>
+                            </div>
                         </div>
                         <div class="inline-actions">
                             <button onclick="openChat(${JSON.stringify(thread.name)})">فتح المحادثة</button>
@@ -144,9 +142,12 @@
                 }
                 box.innerHTML = users.map(user => `
                     <div class="suggest-card">
-                        <div>
-                            <b>${escapeHTML(user.name)}</b>
-                            <div class="muted-box">تم إخفاء البريد حفاظاً على الخصوصية</div>
+                        <div class="thread-preview">
+                            <div class="thread-avatar">👤</div>
+                            <div class="thread-copy">
+                                <b>${escapeHTML(user.name)}</b>
+                                <div class="muted-box">تم إخفاء البريد حفاظاً على الخصوصية</div>
+                            </div>
                         </div>
                         <div class="inline-actions">
                             <button onclick="openChat(${JSON.stringify(user.name)})">مراسلة</button>

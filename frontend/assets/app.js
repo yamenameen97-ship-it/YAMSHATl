@@ -1114,36 +1114,40 @@ async function loadPosts(force = false) {
         feed.innerHTML = data.map(post => {
             const isMine = post.username === currentUser;
             return `
-                <div class="post glass">
-                    <div class="post-top">
-                        <div class="post-user">
-                            <div class="avatar">👤</div>
-                            <div>
-                                <b class="user-link" onclick='openProfile(${JSON.stringify(post.username)})'>${escapeHTML(post.username)}</b>
-                                <div class="count-chip">منشور حديث</div>
-                            </div>
+                <article class="post-card glass-effect">
+                    <div class="post-header">
+                        <img src="https://i.pravatar.cc/150?u=${post.id}" class="user-avatar" alt="Avatar" onclick='openProfile(${JSON.stringify(post.username)})'>
+                        <div class="user-info">
+                            <span class="name" onclick='openProfile(${JSON.stringify(post.username)})'>${escapeHTML(post.username)}</span>
+                            <span class="time">${post.created_at || 'منذ قليل'}</span>
                         </div>
-                        <div class="post-top-actions">
-                            ${isMine ? `<button class="soft-danger" onclick="deletePost(${post.id})">🗑 حذف</button>` : renderRelationshipButtons(post.username)}
+                        <div style="margin-right: auto;">
+                            ${isMine ? `<i class="fa-solid fa-trash-can" style="color: #ef4444; cursor:pointer;" onclick="deletePost(${post.id})"></i>` : `<i class="fa-solid fa-ellipsis" style="cursor:pointer;"></i>`}
                         </div>
                     </div>
-
-                    ${renderContent(post.content, post.media)}
-
-                    <div class="actions">
-                        <button onclick="like(${post.id})">❤️</button>
-                        <button onclick="openComments(${post.id}, true)">💬</button>
-                        <button onclick="sharePost(${post.id})">📤</button>
-                        ${isMine ? `<button onclick="deletePost(${post.id})">🗑</button>` : `<button onclick="reportPost(${post.id})">🚩</button>`}
+                    <div class="post-content">
+                        ${renderContent(post.content, post.media)}
                     </div>
-
-                    <div class="count-chip">الإعجابات: ${post.likes}</div>
-                    <div id="comments-${post.id}" class="comments-wrapper" style="display:none;"></div>
-                    <div class="comment-box">
-                        <input type="text" id="commentInput-${post.id}" placeholder="اكتب تعليق..." onfocus="openComments(${post.id})" oninput="handleCommentInput(${post.id}, this)">
-                        <button id="commentSend-${post.id}" class="send-comment-btn hidden" onclick="addComment(${post.id})">إرسال</button>
+                    <div class="post-actions">
+                        <div class="action-item" onclick="like(${post.id})">
+                            <i class="fa-regular fa-heart"></i>
+                            <span>${post.likes || 0}</span>
+                        </div>
+                        <div class="action-item" onclick="openComments(${post.id}, true)">
+                            <i class="fa-regular fa-comment"></i>
+                            <span>تعليق</span>
+                        </div>
+                        <div class="action-item" onclick="sharePost(${post.id})">
+                            <i class="fa-solid fa-share-nodes"></i>
+                            <span>مشاركة</span>
+                        </div>
                     </div>
-                </div>
+                    <div id="comments-${post.id}" class="comments-wrapper" style="display:none; padding: 15px; border-top: 1px solid var(--glass-border);"></div>
+                    <div class="comment-box" style="padding: 10px 15px;">
+                        <input type="text" id="commentInput-${post.id}" placeholder="اكتب تعليق..." onfocus="openComments(${post.id})" style="background: rgba(255,255,255,0.05); border: none; border-radius: 10px;">
+                        <button id="commentSend-${post.id}" class="hidden" onclick="addComment(${post.id})" style="background: none; box-shadow: none; color: var(--primary); padding: 5px;">إرسال</button>
+                    </div>
+                </article>
             `;
         }).join("");
         hydrateRelationshipButtons(feed);
@@ -1162,15 +1166,25 @@ function loadStories(force = false) {
             bar.innerHTML = '<div class="empty-state">لا توجد ستوري حالياً</div>';
             return;
         }
-        bar.innerHTML = data.map(s => {
+        bar.innerHTML = `
+            <div class="story-item">
+                <div class="story-ring add-story" onclick="document.getElementById('storyInput').click()">
+                    <i class="fa-solid fa-plus"></i>
+                </div>
+                <span class="story-name">إنشاء قصة</span>
+                <input type="file" id="storyInput" hidden accept="image/*,video/*" onchange="uploadStory(this.files[0])">
+            </div>
+        ` + data.map(s => {
             const mediaUrl = normalizeMediaUrl(s.media_url || (s.media ? `${API_BASE}/uploads/${encodeURIComponent(s.media)}` : ''));
             const preview = isVideo(s.media)
-                ? `<video muted playsinline><source src="${mediaUrl}"></video>`
-                : `<img src="${mediaUrl}" alt="story">`;
+                ? `<video muted playsinline style="width:100%; height:100%; object-fit:cover; border-radius:50%; border:2px solid var(--bg-dark);"><source src="${mediaUrl}"></video>`
+                : `<img src="${mediaUrl}" alt="story" style="width:100%; height:100%; object-fit:cover; border-radius:50%; border:2px solid var(--bg-dark);">`;
             return `
                 <div class="story-item">
-                    <div class="story" onclick='openStory(${JSON.stringify(s.media)})'>${preview}</div>
-                    <div class="story-label">${escapeHTML(s.username)}</div>
+                    <div class="story-ring" onclick='openStory(${JSON.stringify(s.media)})'>
+                        ${preview}
+                    </div>
+                    <span class="story-name">${escapeHTML(s.username)}</span>
                 </div>
             `;
         }).join("");

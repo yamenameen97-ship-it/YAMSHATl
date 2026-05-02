@@ -1114,40 +1114,33 @@ async function loadPosts(force = false) {
         feed.innerHTML = data.map(post => {
             const isMine = post.username === currentUser;
             return `
-                <article class="post-card glass-effect">
-                    <div class="post-header">
-                        <img src="https://i.pravatar.cc/150?u=${post.id}" class="user-avatar" alt="Avatar" onclick='openProfile(${JSON.stringify(post.username)})'>
-                        <div class="user-info">
-                            <span class="name" onclick='openProfile(${JSON.stringify(post.username)})'>${escapeHTML(post.username)}</span>
-                            <span class="time">${post.created_at || 'منذ قليل'}</span>
+                <div class="post glass">
+                    <div class="post-top">
+                        <div class="post-user">
+                            <div class="avatar">👤</div>
+                            <div>
+                                <b class="user-link" onclick='openProfile(${JSON.stringify(post.username)})'>${escapeHTML(post.username)}</b>
+                                <div class="subtle-text">منشور حديث</div>
+                            </div>
                         </div>
-                        <div style="margin-right: auto;">
-                            ${isMine ? `<i class="fa-solid fa-trash-can" style="color: #ef4444; cursor:pointer;" onclick="deletePost(${post.id})"></i>` : `<i class="fa-solid fa-ellipsis" style="cursor:pointer;"></i>`}
-                        </div>
-                    </div>
-                    <div class="post-content">
-                        ${renderContent(post.content, post.media)}
-                    </div>
-                    <div class="post-actions">
-                        <div class="action-item" onclick="like(${post.id})">
-                            <i class="fa-regular fa-heart"></i>
-                            <span>${post.likes || 0}</span>
-                        </div>
-                        <div class="action-item" onclick="openComments(${post.id}, true)">
-                            <i class="fa-regular fa-comment"></i>
-                            <span>تعليق</span>
-                        </div>
-                        <div class="action-item" onclick="sharePost(${post.id})">
-                            <i class="fa-solid fa-share-nodes"></i>
-                            <span>مشاركة</span>
+                        <div class="post-top-actions">
+                            ${isMine ? `<button style="background:rgba(239,68,68,0.1); color:#ef4444; border:none;" onclick="deletePost(${post.id})">حذف</button>` : renderRelationshipButtons(post.username)}
                         </div>
                     </div>
-                    <div id="comments-${post.id}" class="comments-wrapper" style="display:none; padding: 15px; border-top: 1px solid var(--glass-border);"></div>
-                    <div class="comment-box" style="padding: 10px 15px;">
-                        <input type="text" id="commentInput-${post.id}" placeholder="اكتب تعليق..." onfocus="openComments(${post.id})" style="background: rgba(255,255,255,0.05); border: none; border-radius: 10px;">
-                        <button id="commentSend-${post.id}" class="hidden" onclick="addComment(${post.id})" style="background: none; box-shadow: none; color: var(--primary); padding: 5px;">إرسال</button>
+
+                    ${renderContent(post.content, post.media)}
+
+                    <div class="actions">
+                        <button onclick="like(${post.id})">❤️ ${post.likes || 0}</button>
+                        <button onclick="openComments(${post.id}, true)">💬 تعليق</button>
+                        <button onclick="sharePost(${post.id})">📤 مشاركة</button>
                     </div>
-                </article>
+                    <div id="comments-${post.id}" class="comments-wrapper" style="display:none;"></div>
+                    <div class="comment-box">
+                        <input type="text" id="commentInput-${post.id}" placeholder="اكتب تعليق..." onfocus="openComments(${post.id})" oninput="handleCommentInput(${post.id}, this)">
+                        <button id="commentSend-${post.id}" class="send-comment-btn hidden" onclick="addComment(${post.id})">إرسال</button>
+                    </div>
+                </div>
             `;
         }).join("");
         hydrateRelationshipButtons(feed);
@@ -1168,23 +1161,18 @@ function loadStories(force = false) {
         }
         bar.innerHTML = `
             <div class="story-item">
-                <div class="story-ring add-story" onclick="document.getElementById('storyInput').click()">
-                    <i class="fa-solid fa-plus"></i>
-                </div>
-                <span class="story-name">إنشاء قصة</span>
-                <input type="file" id="storyInput" hidden accept="image/*,video/*" onchange="uploadStory(this.files[0])">
+                <div class="story" style="background: var(--primary); display:flex; align-items:center; justify-content:center; font-size:24px; color:white;" onclick="document.getElementById('storyInput').click()">+</div>
+                <div class="story-label">أنت</div>
             </div>
         ` + data.map(s => {
             const mediaUrl = normalizeMediaUrl(s.media_url || (s.media ? `${API_BASE}/uploads/${encodeURIComponent(s.media)}` : ''));
             const preview = isVideo(s.media)
-                ? `<video muted playsinline style="width:100%; height:100%; object-fit:cover; border-radius:50%; border:2px solid var(--bg-dark);"><source src="${mediaUrl}"></video>`
-                : `<img src="${mediaUrl}" alt="story" style="width:100%; height:100%; object-fit:cover; border-radius:50%; border:2px solid var(--bg-dark);">`;
+                ? `<video muted playsinline><source src="${mediaUrl}"></video>`
+                : `<img src="${mediaUrl}" alt="story">`;
             return `
                 <div class="story-item">
-                    <div class="story-ring" onclick='openStory(${JSON.stringify(s.media)})'>
-                        ${preview}
-                    </div>
-                    <span class="story-name">${escapeHTML(s.username)}</span>
+                    <div class="story" onclick='openStory(${JSON.stringify(s.media)})'>${preview}</div>
+                    <div class="story-label">${escapeHTML(s.username)}</div>
                 </div>
             `;
         }).join("");

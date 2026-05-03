@@ -1,3 +1,1 @@
-/api/* https://yamshatl.onrender.com/api/:splat 200!
-/socket.io/* https://yamshatl.onrender.com/socket.io/:splat 200!
 /* /index.html 200

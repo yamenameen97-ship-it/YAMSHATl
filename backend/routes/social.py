@@ -37,7 +37,7 @@ def _ensure_not_blocked(cursor, current: str, other: str):
 def _is_admin() -> bool:
     active_user = (current_user() or "").strip().lower()
     active_email = (current_email() or "").strip().lower()
-    return active_user in {"admin", "adminyamen"} or active_email.startswith("admin")
+    return active_user == "admin" or active_email.startswith("admin")
 
 
 def _extract_upload_filename(content: str) -> str | None:

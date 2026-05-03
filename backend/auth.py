@@ -34,67 +34,10 @@ auth_bp = Blueprint("auth", __name__)
 GENERIC_RESET_MESSAGE = "إذا كانت البيانات صحيحة فسيصل رمز التحقق خلال لحظات"
 
 
-def _configured_admin_sets() -> tuple[set[str], set[str]]:
-    configured_admin_emails = {normalize_contact(Config.PRIMARY_ADMIN_EMAIL)}
-    configured_admin_usernames = {str(Config.PRIMARY_ADMIN_USERNAME or "").strip().lower()}
-    return configured_admin_emails, configured_admin_usernames
-
-
-def _matches_configured_admin(identifier: str) -> bool:
-    raw_identifier = str(identifier or "").strip().lower()
-    normalized_identifier = normalize_contact(identifier or "")
-    admin_emails, admin_usernames = _configured_admin_sets()
-    return normalized_identifier in admin_emails or raw_identifier in admin_usernames
-
-
-def _sync_primary_admin_login(cur, user, identifier: str, password: str):
-    if not _matches_configured_admin(identifier) or password != Config.PRIMARY_ADMIN_PASSWORD:
-        return None
-
-    password_hash = hash_password(password)
-    user_data = dict(user or {})
-
-    if user_data:
-        cur.execute(
-            "UPDATE users SET password=%s, role='admin', is_online=TRUE, last_seen=NOW() WHERE lower(email)=lower(%s)",
-            (password_hash, user_data["email"]),
-        )
-        user_data["password"] = password_hash
-        user_data["role"] = "admin"
-        return user_data
-
-    cur.execute(
-        "SELECT name,email,password,COALESCE(role,'user') AS role FROM users WHERE lower(email)=lower(%s) OR lower(name)=lower(%s) LIMIT 1",
-        (Config.PRIMARY_ADMIN_EMAIL, Config.PRIMARY_ADMIN_USERNAME),
-    )
-    existing_primary = cur.fetchone()
-    if existing_primary:
-        user_data = dict(existing_primary)
-        cur.execute(
-            "UPDATE users SET password=%s, role='admin', is_online=TRUE, last_seen=NOW() WHERE lower(email)=lower(%s)",
-            (password_hash, user_data["email"]),
-        )
-        user_data["password"] = password_hash
-        user_data["role"] = "admin"
-        return user_data
-
-    cur.execute(
-        "INSERT INTO users(name,email,password,role,is_online,last_seen) VALUES(%s,%s,%s,'admin',TRUE,NOW())",
-        (Config.PRIMARY_ADMIN_USERNAME, Config.PRIMARY_ADMIN_EMAIL, password_hash),
-    )
-    return {
-        "name": Config.PRIMARY_ADMIN_USERNAME,
-        "email": Config.PRIMARY_ADMIN_EMAIL,
-        "password": password_hash,
-        "role": "admin",
-    }
-
-
 def _role_for_identity(name: str, email: str, current_role_value: str = "user") -> str:
-    normalized_name = str(name or "").strip().lower()
+    normalized_name = str(name or "").strip()
     normalized_email = normalize_contact(email or "")
-    admin_emails, admin_usernames = _configured_admin_sets()
-    if normalized_email in admin_emails or normalized_name in admin_usernames:
+    if normalized_email in {normalize_contact(value) for value in Config.ADMIN_EMAILS} or normalized_name in set(Config.ADMIN_USERNAMES):
         return "admin"
     if is_privileged_role(current_role_value):
         return str(current_role_value).strip().lower()
@@ -154,7 +97,7 @@ def register():
         cur.execute("SELECT id FROM users WHERE lower(email)=lower(%s)", (email,))
         if cur.fetchone():
             return json_error("هذا الحساب مسجل بالفعل", 409)
-        cur.execute("SELECT id FROM users WHERE lower(name)=lower(%s)", (name,))
+        cur.execute("SELECT id FROM users WHERE name=%s", (name,))
         if cur.fetchone():
             return json_error("اسم المستخدم مستخدم بالفعل", 409)
 
@@ -183,21 +126,16 @@ def login():
 
     with db_cursor(commit=True) as (_conn, cur):
         cur.execute(
-            "SELECT name,email,password,COALESCE(role,'user') AS role FROM users WHERE lower(email)=lower(%s) OR lower(name)=lower(%s) LIMIT 1",
+            "SELECT name,email,password,COALESCE(role,'user') AS role FROM users WHERE lower(email)=lower(%s) OR name=%s LIMIT 1",
             (normalized_identifier, identifier),
         )
         user = cur.fetchone()
+        if not user:
+            return json_error("بيانات غير صحيحة", 401)
 
-        admin_override = _sync_primary_admin_login(cur, user, identifier, password)
-        if admin_override:
-            user = admin_override
-            is_valid, needs_upgrade = True, False
-        else:
-            if not user:
-                return json_error("بيانات غير صحيحة", 401)
-            is_valid, needs_upgrade = verify_password(password, user["password"])
-            if not is_valid:
-                return json_error("بيانات غير صحيحة", 401)
+        is_valid, needs_upgrade = verify_password(password, user["password"])
+        if not is_valid:
+            return json_error("بيانات غير صحيحة", 401)
 
         moderation_error = enforce_moderation(cur, user["name"], "login")
         if moderation_error:
@@ -273,7 +211,7 @@ def update_profile():
         cur.execute("SELECT id FROM users WHERE lower(email)=lower(%s) AND lower(email)<>lower(%s)", (new_email, active_email))
         if cur.fetchone():
             return json_error("هذا البريد أو الجوال مستخدم بالفعل", 409)
-        cur.execute("SELECT id FROM users WHERE lower(name)=lower(%s) AND lower(name)<>lower(%s)", (new_name, active_user))
+        cur.execute("SELECT id FROM users WHERE name=%s AND name<>%s", (new_name, active_user))
         if cur.fetchone():
             return json_error("اسم المستخدم مستخدم بالفعل", 409)
 

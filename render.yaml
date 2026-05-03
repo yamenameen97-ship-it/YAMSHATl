@@ -3,7 +3,13 @@ services:
     name: yamshatl
     env: python
     rootDir: .
-    buildCommand: pip install -r backend/requirements.txt
+    buildCommand: |
+      pip install -r backend/requirements.txt
+      if command -v npm >/dev/null 2>&1; then
+        cd frontend && npm ci && npm run build
+      else
+        echo "npm is not available in this environment, using existing frontend/dist if present."
+      fi
     startCommand: gunicorn --chdir backend app:app --worker-class eventlet -w 1 --bind 0.0.0.0:$PORT --timeout 120
     healthCheckPath: /health
     autoDeploy: true
@@ -48,22 +54,10 @@ services:
         sync: false
       - key: LIVEKIT_SECRET
         sync: false
-      - key: PRIMARY_ADMIN_EMAIL
-        value: adminadminya@gmail.com
-      - key: PRIMARY_ADMIN_USERNAME
-        value: adminadminya
-      - key: PRIMARY_ADMIN_PASSWORD
-        value: yamen1234
-      - key: ADMIN_API_KEY
-        value: A9x!2Kp#7Lm@Qz
       - key: ADMIN_EMAILS
-        value: adminadminya@gmail.com
+        value: admin@gmail.com
       - key: ADMIN_USERNAMES
-        value: adminadminya
-      - key: LEGACY_ADMIN_EMAILS
-        value: adminyamen@gmail.com
-      - key: LEGACY_ADMIN_USERNAMES
-        value: adminyamen
+        value: admin
       - key: RESET_CODE_EXPIRE_MINUTES
         value: "10"
       - key: RESET_CODE_LENGTH
@@ -99,10 +93,7 @@ services:
     name: yamshatl-1
     rootDir: frontend
     buildCommand: |
-      cat > app-config.js <<EOF
-      window.APP_API_BASE = "https://yamshatl.onrender.com/api";
-      window.YAMSHAT_FRONTEND_ORIGIN = "https://yamshatl-1.onrender.com";
-      window.YAMSHAT_BACKEND_ORIGIN = "https://yamshatl.onrender.com";
-      EOF
-    staticPublishPath: .
+      npm ci
+      npm run build
+    staticPublishPath: dist
     autoDeploy: true

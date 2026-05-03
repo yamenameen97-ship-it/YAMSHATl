@@ -17,7 +17,7 @@ from auth import auth_bp
 from chat import chat_bp
 from config import Config
 from logger import setup_logging
-from db import db_cursor, ensure_group_owner_membership, ensure_primary_admin, init_db, set_admin_roles
+from db import init_db, set_admin_roles
 from extensions import init_extensions
 from live import live_api_bp
 from live_socket import init_socket, socketio
@@ -28,10 +28,10 @@ from routes.friends import friends_bp
 from routes.groups import groups_bp
 from routes.live import live_bp as live_stream_bp
 from users import users_bp
-from utils import hash_password, is_email_contact, normalize_contact, validate_identity, validate_password_strength
 
 BASE_DIR = Path(__file__).resolve().parent
-FRONTEND_DIR = BASE_DIR.parent / "frontend"
+FRONTEND_BUILD_DIR = BASE_DIR.parent / "frontend" / "dist"
+FRONTEND_DIR = FRONTEND_BUILD_DIR if FRONTEND_BUILD_DIR.exists() else (BASE_DIR.parent / "frontend")
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -62,9 +62,7 @@ init_socket(app)
 # تشغيل التهيئة والمهاجرات وإنشاء صلاحيات الأدمن تلقائياً
 try:
     init_db()
-    ensure_primary_admin()
     set_admin_roles(Config.ADMIN_EMAILS, Config.ADMIN_USERNAMES)
-    ensure_group_owner_membership()
 except Exception as exc:
     logger.exception("DB bootstrap failed: %s", exc)
 
@@ -83,54 +81,9 @@ app.register_blueprint(live_stream_bp, url_prefix="/api")
 app.register_blueprint(friends_bp, url_prefix="/api")
 app.register_blueprint(groups_bp, url_prefix="/api")
 
-
-@app.post("/api/create-admin")
-def create_admin():
-    secret_key = request.headers.get("X-ADMIN-KEY", "")
-    if secret_key != Config.ADMIN_API_KEY:
-        return jsonify({"error": "Unauthorized"}), 403
-
-    data = request.get_json(silent=True) or {}
-    username = str(data.get("username") or "").strip()
-    email = normalize_contact(data.get("email") or "")
-    password = str(data.get("password") or "")
-
-    if not username or not email or not password:
-        return jsonify({"error": "Missing data"}), 400
-    if not validate_identity(username) or len(username) > 80:
-        return jsonify({"error": "Invalid username"}), 400
-    if not is_email_contact(email):
-        return jsonify({"error": "Invalid email"}), 400
-    if not validate_password_strength(password):
-        return jsonify({"error": "Weak password"}), 400
-
-    with db_cursor(commit=True) as (_conn, cur):
-        cur.execute(
-            "SELECT id FROM users WHERE lower(email)=lower(%s) OR lower(name)=lower(%s) LIMIT 1",
-            (email, username),
-        )
-        if cur.fetchone():
-            return jsonify({"error": "User already exists"}), 400
-
-        cur.execute(
-            "INSERT INTO users(name,email,password,role,is_online,last_seen) VALUES(%s,%s,%s,'admin',FALSE,NOW())",
-            (username, email, hash_password(password)),
-        )
-
-    return jsonify({"message": "Admin created successfully", "username": username, "email": email})
-
-
 # =========================
 # لوق الطلبات
 # =========================
-@app.before_request
-def ensure_admin_before_request():
-    try:
-        ensure_primary_admin()
-    except Exception as exc:
-        logger.exception("Failed to ensure primary admin: %s", exc)
-
-
 @app.before_request
 def log_requests():
     if request.path.startswith("/api/"):
@@ -160,13 +113,10 @@ def internal_error(error):
 @app.after_request
 def add_cache_headers(response):
     path = request.path.lower()
-    if path in {"/", "/index.html", "/api/app-config.js", "/site.webmanifest"} or path.endswith((".html", ".js", ".css")):
+    if path in {"/", "/index.html", "/api/app-config.js", "/app-config.js", "/site.webmanifest"} or path.endswith((".html", ".js", ".css")):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
-    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
-    response.headers.setdefault("X-Content-Type-Options", "nosniff")
-    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     return response
 
 # =========================
@@ -190,12 +140,14 @@ def health():
 # =========================
 # إعدادات الفرونت
 # =========================
+@app.get("/app-config.js")
 @app.get("/api/app-config.js")
 def app_config_js():
     runtime_origin = request.host_url.rstrip("/")
-    api_base = "/api"
+    api_base = runtime_origin + "/api"
     content = (
         "window.APP_API_BASE = " + repr(api_base) + ";\n"
+        "window.YAMSHAT_SOCKET_URL = " + repr(runtime_origin) + ";\n"
         "window.YAMSHAT_FRONTEND_ORIGIN = " + repr(runtime_origin) + ";\n"
         "window.YAMSHAT_BACKEND_ORIGIN = " + repr(runtime_origin) + ";\n"
         "window.YAMSHAT_DEPLOY_MODE = 'single-service';\n"

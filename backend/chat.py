@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import json
 import re
 from datetime import datetime, timezone
@@ -123,20 +122,6 @@ def _ensure_chat_tables():
                 strike_count INT NOT NULL DEFAULT 0,
                 muted_until TIMESTAMP,
                 reason TEXT,
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-            """
-        )
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS user_backups (
-                id SERIAL PRIMARY KEY,
-                username TEXT NOT NULL UNIQUE,
-                encrypted_data BYTEA NOT NULL,
-                backup_version TEXT NOT NULL DEFAULT 'yamshat-backup-v1',
-                key_hint TEXT,
-                byte_size BIGINT NOT NULL DEFAULT 0,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -992,116 +977,6 @@ def user_presence(username: str):
             return json_error("المستخدم غير موجود", 404)
         payload = _presence_payload(cur, safe_username)
     return jsonify(payload)
-
-
-@chat_bp.post("/backup/upload")
-@require_auth
-def upload_backup():
-    _ensure_chat_tables()
-    username = current_user() or ""
-    data = request.get_json(silent=True) or {}
-    encoded_payload = normalize_text(data.get("encrypted_data"), 40_000_000)
-    backup_version = normalize_text(data.get("backup_version"), 64) or "yamshat-backup-v1"
-    key_hint = normalize_text(data.get("key_hint"), 64)
-    if not encoded_payload:
-        return json_error("النسخة الاحتياطية المشفرة مطلوبة", 400)
-    try:
-        encrypted_data = base64.b64decode(encoded_payload.encode("utf-8"), validate=True)
-    except Exception:
-        return json_error("صيغة النسخة الاحتياطية غير صحيحة", 400)
-    if not encrypted_data:
-        return json_error("النسخة الاحتياطية فارغة", 400)
-    if len(encrypted_data) > 20 * 1024 * 1024:
-        return json_error("حجم النسخة الاحتياطية أكبر من الحد المسموح", 413)
-
-    with db_cursor(commit=True) as (_conn, cur):
-        cur.execute(
-            """
-            INSERT INTO user_backups(username, encrypted_data, backup_version, key_hint, byte_size, created_at, updated_at)
-            VALUES(%s,%s,%s,%s,%s,NOW(),NOW())
-            ON CONFLICT (username)
-            DO UPDATE SET
-                encrypted_data=EXCLUDED.encrypted_data,
-                backup_version=EXCLUDED.backup_version,
-                key_hint=EXCLUDED.key_hint,
-                byte_size=EXCLUDED.byte_size,
-                updated_at=NOW()
-            RETURNING username, backup_version, key_hint, byte_size, created_at, updated_at
-            """,
-            (username, encrypted_data, backup_version, key_hint or None, len(encrypted_data)),
-        )
-        row = cur.fetchone() or {}
-        _set_user_online(cur, username, True)
-
-    return jsonify({
-        "ok": True,
-        "message": "تم حفظ النسخة الاحتياطية المشفرة",
-        "backup_version": row.get("backup_version"),
-        "key_hint": row.get("key_hint"),
-        "byte_size": int(row.get("byte_size") or 0),
-        "created_at": row.get("created_at"),
-        "updated_at": row.get("updated_at"),
-    })
-
-
-@chat_bp.get("/backup/info")
-@require_auth
-def backup_info():
-    _ensure_chat_tables()
-    username = current_user() or ""
-    with db_cursor() as (_conn, cur):
-        cur.execute(
-            """
-            SELECT backup_version, key_hint, byte_size, created_at, updated_at
-            FROM user_backups
-            WHERE username=%s
-            LIMIT 1
-            """,
-            (username,),
-        )
-        row = cur.fetchone() or {}
-    if not row:
-        return jsonify({"ok": True, "message": "لا توجد نسخة احتياطية", "backup_version": None, "key_hint": None, "byte_size": 0, "created_at": None, "updated_at": None})
-    return jsonify({
-        "ok": True,
-        "message": "Backup available",
-        "backup_version": row.get("backup_version"),
-        "key_hint": row.get("key_hint"),
-        "byte_size": int(row.get("byte_size") or 0),
-        "created_at": row.get("created_at"),
-        "updated_at": row.get("updated_at"),
-    })
-
-
-@chat_bp.get("/backup/download")
-@require_auth
-def download_backup():
-    _ensure_chat_tables()
-    username = current_user() or ""
-    with db_cursor() as (_conn, cur):
-        cur.execute(
-            """
-            SELECT encrypted_data, backup_version, key_hint, byte_size, created_at, updated_at
-            FROM user_backups
-            WHERE username=%s
-            LIMIT 1
-            """,
-            (username,),
-        )
-        row = cur.fetchone() or {}
-    if not row:
-        return json_error("لا توجد نسخة احتياطية محفوظة", 404)
-    encrypted_data = row.get("encrypted_data") or b""
-    return jsonify({
-        "ok": True,
-        "message": "تم تنزيل النسخة الاحتياطية المشفرة",
-        "encrypted_data": base64.b64encode(encrypted_data).decode("utf-8"),
-        "backup_version": row.get("backup_version"),
-        "key_hint": row.get("key_hint"),
-        "byte_size": int(row.get("byte_size") or len(encrypted_data)),
-        "created_at": row.get("created_at"),
-        "updated_at": row.get("updated_at"),
-    })
 
 
 @chat_bp.post("/save_device_token")

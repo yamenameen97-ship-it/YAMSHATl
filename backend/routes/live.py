@@ -191,7 +191,7 @@ def create_live():
         cur.execute(
             """
             INSERT INTO live_rooms(host_id, username, title, status, stream_mode, livekit_room, platform)
-            VALUES(%s,%s,%s,'live','livekit_sfu',%s,%s)
+            VALUES(%s,%s,%s,'live',%s,%s,%s)
             RETURNING id
             """,
             (user["id"] if user else None, username, title, _stream_mode(), room_slug, platform),

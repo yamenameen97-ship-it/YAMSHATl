@@ -45,6 +45,10 @@ def room_channel(room_id) -> str:
     return f"live:{room_id}"
 
 
+def user_channel(username: str) -> str:
+    return f"user:{username}"
+
+
 def _active_host_socket_ids(cur, room_id) -> list[str]:
     cur.execute(
         """
@@ -65,6 +69,217 @@ def _active_host_socket_ids(cur, room_id) -> list[str]:
 
 def init_socket(app):
     socketio.init_app(app, cors_allowed_origins=_ALLOWED_SOCKET_ORIGINS)
+
+
+@socketio.on("register_user")
+def register_user(data):
+    username = clean((data or {}).get("user") or (data or {}).get("username") or "")
+    if not username:
+        return
+    join_room(user_channel(username))
+    emit("user_registered", {"user": username}, to=request.sid)
+
+
+@socketio.on("like_post")
+def like_post_event(data):
+    payload = data or {}
+    username = clean(payload.get("user") or payload.get("username") or "")
+    post_id = int(payload.get("post_id") or payload.get("postId") or 0)
+    if not username or not post_id:
+        emit("socket_error", {"message": "بيانات الإعجاب غير مكتملة"}, to=request.sid)
+        return
+
+    with db_cursor(commit=True) as (_conn, cur):
+        moderation_error = enforce_moderation(cur, username, "social")
+        if moderation_error:
+            emit("socket_error", {"message": moderation_error}, to=request.sid)
+            return
+
+        cur.execute("SELECT id, username FROM posts WHERE id=%s LIMIT 1", (post_id,))
+        post = cur.fetchone()
+        if not post:
+            emit("socket_error", {"message": "المنشور غير موجود"}, to=request.sid)
+            return
+
+        cur.execute("SELECT id FROM post_likes WHERE post_id=%s AND username=%s LIMIT 1", (post_id, username))
+        existing = cur.fetchone()
+        if existing:
+            cur.execute("DELETE FROM post_likes WHERE post_id=%s AND username=%s", (post_id, username))
+            cur.execute("UPDATE posts SET likes = GREATEST(COALESCE(likes, 0) - 1, 0) WHERE id=%s", (post_id,))
+            liked = False
+        else:
+            cur.execute("INSERT INTO post_likes(post_id, username) VALUES(%s, %s)", (post_id, username))
+            cur.execute("UPDATE posts SET likes = COALESCE(likes, 0) + 1 WHERE id=%s", (post_id,))
+            liked = True
+            if post["username"] != username:
+                note = f"❤️ {username} أعجب بمنشورك"
+                cur.execute(
+                    """
+                    INSERT INTO notifications(username,text,message,seen,is_read)
+                    VALUES(%s,%s,%s,FALSE,FALSE)
+                    RETURNING id, message, text, seen, created_at
+                    """,
+                    (post["username"], note, note),
+                )
+                notification = cur.fetchone()
+                if notification:
+                    socketio.emit(
+                        "new_notification",
+                        {
+                            "id": notification["id"],
+                            "message": notification.get("message") or notification.get("text") or note,
+                            "text": notification.get("text") or notification.get("message") or note,
+                            "seen": bool(notification.get("seen")),
+                            "created_at": notification.get("created_at"),
+                        },
+                        room=user_channel(post["username"]),
+                    )
+
+        cur.execute("SELECT likes FROM posts WHERE id=%s", (post_id,))
+        likes_row = cur.fetchone() or {"likes": 0}
+
+    socketio.emit(
+        "post_liked",
+        {
+            "post_id": post_id,
+            "likes": int(likes_row.get("likes") or 0),
+            "liked": liked,
+            "username": username,
+        },
+    )
+
+
+@socketio.on("add_comment")
+def add_comment_event(data):
+    payload = data or {}
+    username = clean(payload.get("user") or payload.get("username") or "")
+    post_id = int(payload.get("post_id") or payload.get("postId") or 0)
+    text = clean(payload.get("text") or payload.get("comment") or "")
+    if not username or not post_id or not text:
+        emit("socket_error", {"message": "بيانات التعليق غير مكتملة"}, to=request.sid)
+        return
+
+    with db_cursor(commit=True) as (_conn, cur):
+        moderation_error = enforce_moderation(cur, username, "social")
+        if moderation_error:
+            emit("socket_error", {"message": moderation_error}, to=request.sid)
+            return
+
+        cur.execute("SELECT id, username FROM posts WHERE id=%s LIMIT 1", (post_id,))
+        post = cur.fetchone()
+        if not post:
+            emit("socket_error", {"message": "المنشور غير موجود"}, to=request.sid)
+            return
+
+        cur.execute(
+            """
+            INSERT INTO comments(post_id, username, comment)
+            VALUES(%s, %s, %s)
+            RETURNING id, post_id, username, comment, created_at
+            """,
+            (post_id, username, text),
+        )
+        comment = cur.fetchone()
+
+        if post["username"] != username:
+            note = f"💬 {username} علّق على منشورك"
+            cur.execute(
+                """
+                INSERT INTO notifications(username,text,message,seen,is_read)
+                VALUES(%s,%s,%s,FALSE,FALSE)
+                RETURNING id, message, text, seen, created_at
+                """,
+                (post["username"], note, note),
+            )
+            notification = cur.fetchone()
+            if notification:
+                socketio.emit(
+                    "new_notification",
+                    {
+                        "id": notification["id"],
+                        "message": notification.get("message") or notification.get("text") or note,
+                        "text": notification.get("text") or notification.get("message") or note,
+                        "seen": bool(notification.get("seen")),
+                        "created_at": notification.get("created_at"),
+                    },
+                    room=user_channel(post["username"]),
+                )
+
+    socketio.emit("comment_added", {"post_id": post_id, "comment": comment})
+
+
+@socketio.on("follow_user")
+def follow_user_event(data):
+    payload = data or {}
+    username = clean(payload.get("user") or payload.get("username") or payload.get("current_user") or "")
+    target_username = clean(payload.get("target_username") or payload.get("following") or payload.get("to_user") or "")
+    if not username or not target_username:
+        emit("socket_error", {"message": "بيانات المتابعة غير مكتملة"}, to=request.sid)
+        return
+    if username == target_username:
+        emit("socket_error", {"message": "لا يمكنك متابعة نفسك"}, to=request.sid)
+        return
+
+    with db_cursor(commit=True) as (_conn, cur):
+        moderation_error = enforce_moderation(cur, username, "social")
+        if moderation_error:
+            emit("socket_error", {"message": moderation_error}, to=request.sid)
+            return
+
+        cur.execute("SELECT id FROM users WHERE name=%s LIMIT 1", (target_username,))
+        if not cur.fetchone():
+            emit("socket_error", {"message": "المستخدم غير موجود"}, to=request.sid)
+            return
+
+        cur.execute("SELECT id FROM followers WHERE follower=%s AND following=%s LIMIT 1", (username, target_username))
+        existing = cur.fetchone()
+        if existing:
+            cur.execute("DELETE FROM followers WHERE follower=%s AND following=%s", (username, target_username))
+            following = False
+            message = "تم إلغاء المتابعة"
+        else:
+            cur.execute("INSERT INTO followers(follower, following) VALUES(%s, %s)", (username, target_username))
+            following = True
+            message = "تمت المتابعة"
+            note = f"{username} started following you"
+            cur.execute(
+                """
+                INSERT INTO notifications(username,text,message,seen,is_read)
+                VALUES(%s,%s,%s,FALSE,FALSE)
+                RETURNING id, message, text, seen, created_at
+                """,
+                (target_username, note, note),
+            )
+            notification = cur.fetchone()
+            if notification:
+                socketio.emit(
+                    "new_notification",
+                    {
+                        "id": notification["id"],
+                        "message": notification.get("message") or notification.get("text") or note,
+                        "text": notification.get("text") or notification.get("message") or note,
+                        "seen": bool(notification.get("seen")),
+                        "created_at": notification.get("created_at"),
+                    },
+                    room=user_channel(target_username),
+                )
+
+        cur.execute("SELECT COUNT(*) AS total FROM followers WHERE following=%s", (target_username,))
+        followers_count = int((cur.fetchone() or {}).get("total") or 0)
+        cur.execute("SELECT COUNT(*) AS total FROM followers WHERE follower=%s", (target_username,))
+        following_count = int((cur.fetchone() or {}).get("total") or 0)
+        log_audit(cur, action="follow_toggle_socket", actor=username, target_type="user", target_value=target_username, details=message)
+
+    socketio.emit(
+        "user_follow_update",
+        {
+            "username": username,
+            "target_username": target_username,
+            "following": following,
+            "followers_count": followers_count,
+            "following_count": following_count,
+        },
+    )
 
 
 @socketio.on("join_live")
@@ -150,7 +365,7 @@ def send_comment(data):
     if not room_id or not text:
         return
 
-    payload = {"user": user, "text": text}
+    payload = {"room_id": room_id, "user": user, "text": text}
     with db_cursor(commit=True) as (_conn, cur):
         moderation_error = enforce_moderation(cur, user, "live_comment")
         if moderation_error and user != "Guest":
@@ -195,7 +410,7 @@ def send_heart(data):
         )
         hearts_count = cur.fetchone()["total"]
 
-    emit("new_heart", {"user": user, "count": hearts_count}, room=room_channel(room_id))
+    emit("new_heart", {"room_id": room_id, "user": user, "count": hearts_count}, room=room_channel(room_id))
     emit("room_stats", {"room_id": room_id, "hearts_count": hearts_count}, room=room_channel(room_id))
 
 
@@ -209,6 +424,7 @@ def send_gift(data):
 
     gift_value = GIFT_VALUES.get(gift, 0)
     payload = {
+        "room_id": room_id,
         "user": user,
         "gift": gift,
         "gift_value": gift_value,

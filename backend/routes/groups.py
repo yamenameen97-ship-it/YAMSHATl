@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
 
-from db import db_cursor, ensure_group_owner_membership
+from db import db_cursor
 from utils import current_user, json_error, normalize_text, require_auth
 
 groups_bp = Blueprint("groups", __name__)
@@ -19,13 +19,6 @@ def create_group():
         return json_error("اكتب اسم المجموعة أولاً", 400)
 
     with db_cursor(commit=True) as (_conn, cur):
-        cur.execute(
-            "SELECT id FROM users WHERE name=%s LIMIT 1",
-            (owner,),
-        )
-        if not cur.fetchone():
-            return json_error("الحساب الحالي غير صالح، سجّل الدخول مرة أخرى", 401)
-
         cur.execute(
             "SELECT id FROM groups WHERE lower(name)=lower(%s) LIMIT 1",
             (name,),
@@ -54,10 +47,6 @@ def create_group():
             (group_id, owner),
         )
 
-    try:
-        ensure_group_owner_membership()
-    except Exception:
-        pass
     return jsonify({"ok": True, "message": "تم إنشاء المجموعة", "group_id": group_id})
 
 
@@ -146,10 +135,6 @@ def group_posts(group_id: int):
 
 @groups_bp.get("/groups")
 def list_groups():
-    try:
-        ensure_group_owner_membership()
-    except Exception:
-        pass
     with db_cursor() as (_conn, cur):
         cur.execute(
             """

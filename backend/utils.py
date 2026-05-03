@@ -154,55 +154,14 @@ def get_bearer_token() -> str | None:
     return header
 
 
-def _parse_identity_datetime(value):
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
-    if isinstance(value, (int, float)):
-        return datetime.fromtimestamp(value, tz=timezone.utc)
-    text = str(value or "").strip()
-    if not text:
-        return None
-    try:
-        return datetime.fromisoformat(text.replace("Z", "+00:00"))
-    except Exception:
-        return None
-
-
-
-def _identity_force_logged_out(identity: dict | None) -> bool:
-    if not identity:
-        return False
-    try:
-        from db import get_force_logout_at
-
-        issued_at = _parse_identity_datetime(identity.get("login_at") or identity.get("iat"))
-        force_logout_at = _parse_identity_datetime(get_force_logout_at())
-        if not issued_at or not force_logout_at:
-            return False
-        return issued_at <= force_logout_at
-    except Exception:
-        return False
-
-
-
 def current_identity() -> dict | None:
     if session.get("user"):
-        identity = {
+        return {
             "user": session.get("user"),
             "email": session.get("email"),
             "role": session.get("role", "user"),
-            "login_at": session.get("login_at"),
         }
-        if _identity_force_logged_out(identity):
-            session.clear()
-            return None
-        return identity
-    identity = decode_token(get_bearer_token())
-    if _identity_force_logged_out(identity):
-        return None
-    return identity
+    return decode_token(get_bearer_token())
 
 
 def current_user() -> str | None:
@@ -230,7 +189,6 @@ def login_user(user: str, email: str, role: str = "user") -> str:
     session["user"] = user
     session["email"] = email
     session["role"] = role
-    session["login_at"] = datetime.now(timezone.utc).isoformat()
     session.modified = True
     return create_token(user, email, role)
 

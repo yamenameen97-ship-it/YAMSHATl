@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 from contextlib import contextmanager
-from datetime import datetime, timezone
 from pathlib import Path
 
 import psycopg2
@@ -13,35 +12,9 @@ from werkzeug.security import generate_password_hash
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
-
-
-def _first_csv_value(value: str, default: str) -> str:
-    for item in str(value or "").split(","):
-        candidate = item.strip()
-        if candidate:
-            return candidate
-    return default
-
-
-DEFAULT_ADMIN_EMAIL = _first_csv_value(
-    os.getenv("PRIMARY_ADMIN_EMAIL", os.getenv("ADMIN_EMAILS", "")),
-    "adminadminya@gmail.com",
-).lower()
-DEFAULT_ADMIN_USERNAME = _first_csv_value(
-    os.getenv("PRIMARY_ADMIN_USERNAME", os.getenv("ADMIN_USERNAMES", "")),
-    "adminadminya",
-)
-DEFAULT_ADMIN_PASSWORD = os.getenv("PRIMARY_ADMIN_PASSWORD", "yamen1234")
-LEGACY_ADMIN_EMAILS = {
-    value.strip().lower()
-    for value in os.getenv("LEGACY_ADMIN_EMAILS", "adminyamen@gmail.com").split(",")
-    if value.strip() and value.strip().lower() != DEFAULT_ADMIN_EMAIL
-}
-LEGACY_ADMIN_USERNAMES = {
-    value.strip()
-    for value in os.getenv("LEGACY_ADMIN_USERNAMES", "adminyamen").split(",")
-    if value.strip() and value.strip() != DEFAULT_ADMIN_USERNAME
-}
+DEFAULT_ADMIN_EMAIL = "admin@gmail.com"
+DEFAULT_ADMIN_USERNAME = "admin"
+DEFAULT_ADMIN_PASSWORD = "yamen444"
 
 
 def get_db():
@@ -131,6 +104,45 @@ def _coerce_column_to_boolean(cur, table_name: str, column_name: str) -> None:
     cur.execute(f"UPDATE {table_name} SET {column_name}=FALSE WHERE {column_name} IS NULL")
     cur.execute(f"ALTER TABLE {table_name} ALTER COLUMN {column_name} SET DEFAULT FALSE")
     cur.execute(f"ALTER TABLE {table_name} ALTER COLUMN {column_name} SET NOT NULL")
+
+
+def _normalize_livekit_room_values(cur) -> None:
+    if not _table_exists(cur, "live_rooms"):
+        return
+
+    live_room_columns = _get_columns(cur, "live_rooms")
+    if "livekit_room" not in live_room_columns:
+        return
+
+    cur.execute("ALTER TABLE live_rooms ALTER COLUMN livekit_room DROP NOT NULL")
+    cur.execute("ALTER TABLE live_rooms ALTER COLUMN livekit_room DROP DEFAULT")
+    cur.execute(
+        """
+        UPDATE live_rooms
+        SET livekit_room = NULL
+        WHERE NULLIF(BTRIM(COALESCE(livekit_room, '')), '') IS NULL
+        """
+    )
+    cur.execute(
+        """
+        WITH ranked AS (
+            SELECT
+                id,
+                livekit_room,
+                ROW_NUMBER() OVER (PARTITION BY livekit_room ORDER BY id DESC) AS rn
+            FROM live_rooms
+            WHERE livekit_room IS NOT NULL
+              AND BTRIM(livekit_room) <> ''
+        )
+        UPDATE live_rooms lr
+        SET livekit_room = ranked.livekit_room || '-' || lr.id::text
+        FROM ranked
+        WHERE lr.id = ranked.id
+          AND ranked.rn > 1
+        """
+    )
+    cur.execute("DROP INDEX IF EXISTS idx_live_rooms_livekit_room_unique")
+
 
 
 def init_db() -> None:
@@ -388,7 +400,7 @@ def init_db() -> None:
                 title TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'live',
                 stream_mode TEXT NOT NULL DEFAULT 'livekit_sfu',
-                livekit_room TEXT NOT NULL UNIQUE,
+                livekit_room TEXT,
                 platform TEXT DEFAULT 'web',
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 ended_at TIMESTAMP NULL
@@ -535,22 +547,6 @@ def init_db() -> None:
             )
             """
         )
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS system_settings (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL DEFAULT '',
-                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-            """
-        )
-        cur.execute(
-            """
-            INSERT INTO system_settings(key, value, updated_at)
-            VALUES('force_logout_at', '1970-01-01T00:00:00', NOW())
-            ON CONFLICT (key) DO NOTHING
-            """
-        )
 
         for table_name, column_name, ddl in [
             ("users", "role", "TEXT NOT NULL DEFAULT 'user'"),
@@ -602,7 +598,7 @@ def init_db() -> None:
             ("live_rooms", "title", "TEXT NOT NULL DEFAULT ''"),
             ("live_rooms", "status", "TEXT NOT NULL DEFAULT 'live'"),
             ("live_rooms", "stream_mode", "TEXT NOT NULL DEFAULT 'livekit_sfu'"),
-            ("live_rooms", "livekit_room", "TEXT NOT NULL DEFAULT ''"),
+            ("live_rooms", "livekit_room", "TEXT"),
             ("live_rooms", "platform", "TEXT DEFAULT 'web'"),
             ("live_rooms", "created_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"),
             ("live_rooms", "ended_at", "TIMESTAMP NULL"),
@@ -662,6 +658,8 @@ def init_db() -> None:
             if "is_read" in _get_columns(cur, "notifications"):
                 _coerce_column_to_boolean(cur, "notifications", "is_read")
 
+        _normalize_livekit_room_values(cur)
+
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(lower(email))")
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_name_unique ON users(name)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_users_presence ON users(is_online, last_seen DESC)")
@@ -676,7 +674,13 @@ def init_db() -> None:
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_blocked_users_unique ON blocked_users(blocker, blocked)")
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_group_members_unique ON group_members(group_id, username)")
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_typing_status_unique ON typing_status(sender, receiver)")
-        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_live_rooms_livekit_room_unique ON live_rooms(livekit_room)")
+        cur.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_live_rooms_livekit_room_unique
+            ON live_rooms(livekit_room)
+            WHERE livekit_room IS NOT NULL AND BTRIM(livekit_room) <> ''
+            """
+        )
         cur.execute("CREATE INDEX IF NOT EXISTS idx_friend_requests_lookup ON friend_requests(sender, receiver, status, created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_reel_likes_reel_id ON reel_likes(reel_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_reel_comments_reel_id ON reel_comments(reel_id)")
@@ -686,8 +690,6 @@ def init_db() -> None:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_analytics_user_created ON analytics(\"user\", created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_followers_following ON followers(following)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_notifications_username ON notifications(username, created_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_users_email_lower_lookup ON users(lower(email))")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_users_name_lower_lookup ON users(lower(name))")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status, created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_live_rooms_status ON live_rooms(status, created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_live_viewers_room_active ON live_viewers(room_id, active, last_seen DESC)")
@@ -704,164 +706,33 @@ def init_db() -> None:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_password_reset_active_lookup ON password_reset_codes(request_token, expires_at DESC)")
 
 
-def ensure_primary_admin() -> dict[str, str | int]:
-    password_hash = generate_password_hash(DEFAULT_ADMIN_PASSWORD)
+def set_admin_roles(admin_emails: list[str], admin_usernames: list[str]) -> None:
+    admin_emails = sorted({value.strip().lower() for value in admin_emails if value.strip()} | {DEFAULT_ADMIN_EMAIL.lower()})
+    admin_usernames = sorted({value.strip() for value in admin_usernames if value.strip()} | {DEFAULT_ADMIN_USERNAME})
 
     with db_cursor(commit=True) as (_conn, cur):
-        cur.execute(
-            """
-            SELECT id, name, email
-            FROM users
-            WHERE lower(email)=lower(%s) OR lower(name)=lower(%s)
-            ORDER BY CASE WHEN lower(email)=lower(%s) THEN 0 ELSE 1 END, id ASC
-            LIMIT 1
-            """,
-            (DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_USERNAME, DEFAULT_ADMIN_EMAIL),
-        )
-        primary_admin = cur.fetchone()
-
-        if primary_admin:
-            primary_admin_id = int(primary_admin["id"])
+        cur.execute("SELECT id, name FROM users WHERE lower(email)=lower(%s) LIMIT 1", (DEFAULT_ADMIN_EMAIL,))
+        existing_admin = cur.fetchone()
+        if existing_admin:
             cur.execute(
-                """
-                UPDATE users
-                SET name=%s,
-                    email=%s,
-                    password=%s,
-                    role='admin',
-                    is_online=COALESCE(is_online, FALSE),
-                    last_seen=COALESCE(last_seen, NOW())
-                WHERE id=%s
-                """,
-                (DEFAULT_ADMIN_USERNAME, DEFAULT_ADMIN_EMAIL, password_hash, primary_admin_id),
+                "UPDATE users SET role='admin', password=%s WHERE id=%s",
+                (generate_password_hash(DEFAULT_ADMIN_PASSWORD), existing_admin["id"]),
             )
         else:
+            seed_name = DEFAULT_ADMIN_USERNAME
+            cur.execute("SELECT id FROM users WHERE name=%s LIMIT 1", (seed_name,))
+            if cur.fetchone():
+                seed_name = f"{DEFAULT_ADMIN_USERNAME}_{os.urandom(2).hex()}"
             cur.execute(
                 """
                 INSERT INTO users(name,email,password,role,is_online,last_seen)
                 VALUES(%s,%s,%s,'admin',FALSE,NOW())
-                RETURNING id
+                ON CONFLICT ((lower(email))) DO UPDATE SET role='admin', password=EXCLUDED.password
                 """,
-                (DEFAULT_ADMIN_USERNAME, DEFAULT_ADMIN_EMAIL, password_hash),
-            )
-            primary_admin_id = int((cur.fetchone() or {}).get("id") or 0)
-
-        legacy_admin_emails = sorted(LEGACY_ADMIN_EMAILS)
-        legacy_admin_usernames = sorted({value.strip().lower() for value in LEGACY_ADMIN_USERNAMES if value.strip()})
-
-        if legacy_admin_emails:
-            cur.execute(
-                "UPDATE users SET role='user' WHERE id<>%s AND role='admin' AND lower(email)=ANY(%s)",
-                (primary_admin_id, legacy_admin_emails),
-            )
-        if legacy_admin_usernames:
-            cur.execute(
-                "UPDATE users SET role='user' WHERE id<>%s AND role='admin' AND lower(name)=ANY(%s)",
-                (primary_admin_id, legacy_admin_usernames),
+                (seed_name, DEFAULT_ADMIN_EMAIL, generate_password_hash(DEFAULT_ADMIN_PASSWORD)),
             )
 
-    return {
-        "id": primary_admin_id,
-        "name": DEFAULT_ADMIN_USERNAME,
-        "email": DEFAULT_ADMIN_EMAIL,
-    }
-
-
-def set_admin_roles(admin_emails: list[str], admin_usernames: list[str]) -> None:
-    primary_admin = ensure_primary_admin()
-    normalized_admin_emails = {
-        str(value or "").strip().lower()
-        for value in (admin_emails or [])
-        if str(value or "").strip() and str(value or "").strip().lower() != DEFAULT_ADMIN_EMAIL
-    }
-    normalized_admin_usernames = {
-        str(value or "").strip().lower()
-        for value in (admin_usernames or [])
-        if str(value or "").strip() and str(value or "").strip().lower() != DEFAULT_ADMIN_USERNAME.lower()
-    }
-
-    if not normalized_admin_emails and not normalized_admin_usernames:
-        return
-
-    with db_cursor(commit=True) as (_conn, cur):
-        if normalized_admin_emails:
-            cur.execute(
-                "UPDATE users SET role='admin', last_seen=COALESCE(last_seen, NOW()) WHERE lower(email)=ANY(%s)",
-                (sorted(normalized_admin_emails),),
-            )
-        if normalized_admin_usernames:
-            cur.execute(
-                "UPDATE users SET role='admin', last_seen=COALESCE(last_seen, NOW()) WHERE lower(name)=ANY(%s)",
-                (sorted(normalized_admin_usernames),),
-            )
-
-        cur.execute(
-            "UPDATE users SET role='admin' WHERE id=%s",
-            (primary_admin["id"],),
-        )
-
-
-def get_system_setting(key: str, default: str = "") -> str:
-    with db_cursor() as (_conn, cur):
-        cur.execute("SELECT value FROM system_settings WHERE key=%s LIMIT 1", (key,))
-        row = cur.fetchone() or {}
-    return str(row.get("value") or default)
-
-
-def set_system_setting(key: str, value: str) -> None:
-    with db_cursor(commit=True) as (_conn, cur):
-        cur.execute(
-            """
-            INSERT INTO system_settings(key, value, updated_at)
-            VALUES(%s, %s, NOW())
-            ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()
-            """,
-            (key, value),
-        )
-
-
-def get_force_logout_at() -> str:
-    return get_system_setting("force_logout_at", "1970-01-01T00:00:00")
-
-
-def set_force_logout_now() -> str:
-    timestamp = datetime.now(timezone.utc).isoformat()
-    set_system_setting("force_logout_at", timestamp)
-    return timestamp
-
-
-def ensure_group_owner_membership() -> None:
-    with db_cursor(commit=True) as (_conn, cur):
-        cur.execute(
-            """
-            INSERT INTO group_members(group_id, username)
-            SELECT g.id, g.owner
-            FROM groups g
-            WHERE NOT EXISTS (
-                SELECT 1 FROM group_members gm WHERE gm.group_id = g.id AND gm.username = g.owner
-            )
-            ON CONFLICT (group_id, username) DO NOTHING
-            """
-        )
-        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_groups_name_unique ON groups(lower(name))")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_group_posts_group_id ON group_posts(group_id, created_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_group_members_group_id ON group_members(group_id, created_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_group_members_username ON group_members(username)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_groups_owner ON groups(owner)")
-        cur.execute("UPDATE groups SET owner='system' WHERE owner IS NULL OR trim(owner)='' ")
-        cur.execute(
-            "DELETE FROM group_members WHERE username IS NULL OR trim(username)='' OR group_id IS NULL"
-        )
-        cur.execute(
-            "DELETE FROM group_posts WHERE username IS NULL OR trim(username)='' OR group_id IS NULL"
-        )
-        cur.execute(
-            "DELETE FROM group_posts gp WHERE NOT EXISTS (SELECT 1 FROM groups g WHERE g.id = gp.group_id)"
-        )
-        cur.execute(
-            "DELETE FROM group_members gm WHERE NOT EXISTS (SELECT 1 FROM groups g WHERE g.id = gm.group_id)"
-        )
-        cur.execute(
-            "DELETE FROM groups g WHERE name IS NULL OR trim(name)=''"
-        )
-
+        if admin_emails:
+            cur.execute("UPDATE users SET role='admin' WHERE lower(email) = ANY(%s)", (admin_emails,))
+        if admin_usernames:
+            cur.execute("UPDATE users SET role='admin' WHERE name = ANY(%s)", (admin_usernames,))

@@ -68,7 +68,21 @@ def get_posts():
         if username:
             cur.execute(
                 """
-                SELECT p.id, p.username, p.content, p.media, p.likes, p.created_at
+                SELECT
+                    p.id,
+                    p.username,
+                    p.content,
+                    p.media,
+                    p.likes,
+                    p.created_at,
+                    EXISTS(
+                        SELECT 1 FROM post_likes pl
+                        WHERE pl.post_id = p.id AND pl.username = %s
+                    ) AS liked_by_me,
+                    (
+                        SELECT COUNT(*) FROM comments c
+                        WHERE c.post_id = p.id
+                    ) AS comments_count
                 FROM posts p
                 WHERE NOT EXISTS (
                     SELECT 1 FROM blocked_users b
@@ -78,17 +92,34 @@ def get_posts():
                 ORDER BY p.id DESC
                 LIMIT 200
                 """,
-                (username, username),
+                (username, username, username),
             )
         else:
             cur.execute(
-                "SELECT id, username, content, media, likes, created_at FROM posts ORDER BY id DESC LIMIT 200"
+                """
+                SELECT
+                    p.id,
+                    p.username,
+                    p.content,
+                    p.media,
+                    p.likes,
+                    p.created_at,
+                    FALSE AS liked_by_me,
+                    (
+                        SELECT COUNT(*) FROM comments c
+                        WHERE c.post_id = p.id
+                    ) AS comments_count
+                FROM posts p
+                ORDER BY p.id DESC
+                LIMIT 200
+                """
             )
         rows = cur.fetchall()
     return jsonify(rows)
 
 
 @posts_bp.post("/add_post")
+@posts_bp.post("/posts")
 @require_auth
 @limiter.limit("30/hour")
 def add_post():
@@ -132,6 +163,7 @@ def uploaded_file(filename: str):
 
 
 @posts_bp.post("/like/<int:post_id>")
+@posts_bp.post("/posts/<int:post_id>/like")
 @require_auth
 @limiter.limit("120/hour")
 def like(post_id: int):
@@ -145,28 +177,38 @@ def like(post_id: int):
             return json_error("لا يمكن التفاعل مع هذا الحساب", 403)
 
         cur.execute("SELECT id FROM post_likes WHERE post_id=%s AND username=%s", (post_id, username))
-        if cur.fetchone():
-            return jsonify({"ok": True, "message": "تم تسجيل الإعجاب سابقاً"})
+        existing = cur.fetchone()
+        if existing:
+            cur.execute("DELETE FROM post_likes WHERE post_id=%s AND username=%s", (post_id, username))
+            cur.execute("UPDATE posts SET likes = GREATEST(COALESCE(likes, 0) - 1, 0) WHERE id=%s", (post_id,))
+            liked = False
+            message = "تم إلغاء الإعجاب"
+        else:
+            cur.execute("INSERT INTO post_likes(post_id,username) VALUES(%s,%s)", (post_id, username))
+            cur.execute("UPDATE posts SET likes = COALESCE(likes, 0) + 1 WHERE id=%s", (post_id,))
+            liked = True
+            message = "تم الإعجاب"
+            if post["username"] != username:
+                note = f"❤️ {username} أعجب بمنشورك"
+                cur.execute(
+                    "INSERT INTO notifications(username,text,message,seen,is_read) VALUES(%s,%s,%s,FALSE,FALSE)",
+                    (post["username"], note, note),
+                )
 
-        cur.execute("INSERT INTO post_likes(post_id,username) VALUES(%s,%s)", (post_id, username))
-        cur.execute("UPDATE posts SET likes = likes + 1 WHERE id=%s", (post_id,))
-        if post["username"] != username:
-            note = f"❤️ {username} أعجب بمنشورك"
-            cur.execute(
-                "INSERT INTO notifications(username,text,message,seen,is_read) VALUES(%s,%s,%s,FALSE,FALSE)",
-                (post["username"], note, note),
-            )
+        cur.execute("SELECT likes FROM posts WHERE id=%s", (post_id,))
+        row = cur.fetchone() or {"likes": 0}
 
-    return jsonify({"ok": True, "message": "تم الإعجاب"})
+    return jsonify({"ok": True, "message": message, "liked": liked, "likes": int(row.get("likes") or 0)})
 
 
 @posts_bp.post("/add_comment")
+@posts_bp.post("/posts/<int:post_id>/comment")
 @require_auth
 @limiter.limit("60/hour")
-def add_comment():
+def add_comment(post_id: int | None = None):
     data = request.get_json(silent=True) or {}
-    post_id = data.get("post_id")
-    comment = normalize_text(data.get("comment"), 2000, escape_html=True)
+    post_id = post_id or data.get("post_id")
+    comment = normalize_text(data.get("comment") or data.get("text"), 2000, escape_html=True)
     username = current_user()
 
     if not post_id or not comment:
@@ -180,9 +222,14 @@ def add_comment():
         if _is_blocked(cur, username, post["username"]):
             return json_error("لا يمكن التعليق على هذا الحساب", 403)
         cur.execute(
-            "INSERT INTO comments(post_id,username,comment) VALUES(%s,%s,%s)",
+            """
+            INSERT INTO comments(post_id,username,comment)
+            VALUES(%s,%s,%s)
+            RETURNING id, post_id, username, comment, created_at
+            """,
             (post_id, username, comment),
         )
+        created_comment = cur.fetchone()
         if post["username"] != username:
             note = f"💬 {username} علّق على منشورك"
             cur.execute(
@@ -190,10 +237,11 @@ def add_comment():
                 (post["username"], note, note),
             )
 
-    return jsonify({"ok": True, "message": "تم التعليق", "username": username})
+    return jsonify(created_comment or {"ok": True, "message": "تم التعليق", "username": username})
 
 
 @posts_bp.get("/comments/<int:post_id>")
+@posts_bp.get("/posts/<int:post_id>/comments")
 def get_comments(post_id: int):
     username = current_user()
     with db_cursor() as (_conn, cur):

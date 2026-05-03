@@ -1,0 +1,75 @@
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+BASE_DIR = Path(__file__).resolve().parents[2]
+load_dotenv(BASE_DIR / '.env')
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def _normalize_database_url(value: str) -> str:
+    cleaned = (value or '').strip()
+    if cleaned.startswith('postgres://'):
+        return cleaned.replace('postgres://', 'postgresql://', 1)
+    return cleaned
+
+
+class Settings:
+    PROJECT_NAME: str = os.getenv('PROJECT_NAME', 'YAMSHAT API')
+    SERVICE_NAME: str = os.getenv('SERVICE_NAME', 'yamshat-backend')
+    API_PREFIX: str = '/api'
+    DEBUG: bool = _env_bool('DEBUG', False)
+    AUTO_CREATE_TABLES: bool = _env_bool('AUTO_CREATE_TABLES', False)
+    DATABASE_URL: str = _normalize_database_url(
+        os.getenv(
+            'DATABASE_URL',
+            'postgresql://postgres:1234@localhost:5432/yamshat',
+        )
+    )
+    SECRET_KEY: str = os.getenv('SECRET_KEY', 'change-this-secret-key')
+    ALGORITHM: str = os.getenv('ALGORITHM', 'HS256')
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv('ACCESS_TOKEN_EXPIRE_MINUTES', '1440'))
+    FIREBASE_CREDENTIALS_PATH: str = os.getenv('FIREBASE_CREDENTIALS_PATH', '')
+    REDIS_URL: str = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+    ENABLE_METRICS: bool = _env_bool('ENABLE_METRICS', True)
+    ENABLE_TRACING: bool = _env_bool('ENABLE_TRACING', False)
+    JAEGER_AGENT_HOST: str = os.getenv('JAEGER_AGENT_HOST', '').strip()
+    JAEGER_AGENT_PORT: int = int(os.getenv('JAEGER_AGENT_PORT', '6831'))
+    CORS_ORIGINS_RAW: str = os.getenv(
+        'CORS_ORIGINS',
+        'http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173',
+    )
+    ALLOWED_UPLOAD_EXTENSIONS_RAW: str = os.getenv('ALLOWED_UPLOAD_EXTENSIONS', 'png,jpg,jpeg,webp,gif,mp4,webm,mov')
+    LOGIN_RATE_LIMIT_PER_MINUTE: int = int(os.getenv('LOGIN_RATE_LIMIT_PER_MINUTE', '5'))
+    REGISTER_RATE_LIMIT_PER_MINUTE: int = int(os.getenv('REGISTER_RATE_LIMIT_PER_MINUTE', '5'))
+    API_RATE_LIMIT_PER_MINUTE: int = int(os.getenv('API_RATE_LIMIT_PER_MINUTE', '100'))
+    SOCKET_MESSAGE_MIN_INTERVAL_SECONDS: float = float(os.getenv('SOCKET_MESSAGE_MIN_INTERVAL_SECONDS', '1.0'))
+    BRUTE_FORCE_MAX_ATTEMPTS: int = int(os.getenv('BRUTE_FORCE_MAX_ATTEMPTS', '5'))
+    BRUTE_FORCE_LOCKOUT_SECONDS: int = int(os.getenv('BRUTE_FORCE_LOCKOUT_SECONDS', '900'))
+    LIVEKIT_URL: str = os.getenv('LIVEKIT_URL', '')
+    LIVEKIT_API_KEY: str = os.getenv('LIVEKIT_API_KEY', '')
+    LIVEKIT_API_SECRET: str = os.getenv('LIVEKIT_API_SECRET', '')
+
+    @property
+    def cors_origins(self) -> list[str]:
+        if self.CORS_ORIGINS_RAW.strip() == '*':
+            return ['*']
+        return [origin.strip() for origin in self.CORS_ORIGINS_RAW.split(',') if origin.strip()]
+
+    @property
+    def allowed_upload_extensions(self) -> set[str]:
+        return {
+            ext.strip().lower().lstrip('.')
+            for ext in self.ALLOWED_UPLOAD_EXTENSIONS_RAW.split(',')
+            if ext.strip()
+        }
+
+
+settings = Settings()

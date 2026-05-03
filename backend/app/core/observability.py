@@ -1,3 +1,4 @@
+import logging
 import time
 from typing import Callable
 
@@ -11,6 +12,8 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 REQUEST_COUNT = Counter(
     'yamshat_http_requests_total',
@@ -54,18 +57,22 @@ def configure_metrics(app: FastAPI, service_name: str) -> None:
 
 
 def configure_tracing(app: FastAPI, service_name: str) -> None:
-    if not settings.ENABLE_TRACING or not settings.JAEGER_AGENT_HOST:
+    if not settings.ENABLE_TRACING:
         return
 
-    if getattr(app.state, 'yamshat_tracing_configured', False):
+    agent_host = settings.JAEGER_AGENT_HOST.strip()
+    if not agent_host:
+        logger.info('Tracing is enabled but JAEGER_AGENT_HOST is empty; skipping tracing setup.')
         return
 
-    provider = TracerProvider(resource=Resource.create({'service.name': service_name}))
-    exporter = JaegerExporter(
-        agent_host_name=settings.JAEGER_AGENT_HOST,
-        agent_port=settings.JAEGER_AGENT_PORT,
-    )
-    provider.add_span_processor(BatchSpanProcessor(exporter))
-    trace.set_tracer_provider(provider)
-    FastAPIInstrumentor.instrument_app(app, tracer_provider=provider)
-    app.state.yamshat_tracing_configured = True
+    try:
+        provider = TracerProvider(resource=Resource.create({'service.name': service_name}))
+        exporter = JaegerExporter(
+            agent_host_name=agent_host,
+            agent_port=settings.JAEGER_AGENT_PORT,
+        )
+        provider.add_span_processor(BatchSpanProcessor(exporter))
+        trace.set_tracer_provider(provider)
+        FastAPIInstrumentor.instrument_app(app, tracer_provider=provider)
+    except Exception as exc:
+        logger.warning('Tracing setup skipped: %s', exc)

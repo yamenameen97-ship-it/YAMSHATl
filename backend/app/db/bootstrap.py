@@ -20,7 +20,7 @@ def _add_column_if_missing(engine: Engine, table_name: str, column_name: str, co
 
 
 def initialize_database(engine: Engine) -> None:
-    if not settings.AUTO_CREATE_TABLES:
+    if not settings.DB_BOOTSTRAP_ON_START:
         return
 
     Base.metadata.create_all(bind=engine)

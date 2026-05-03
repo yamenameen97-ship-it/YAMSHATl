@@ -3,10 +3,10 @@ from contextlib import asynccontextmanager
 import socketio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 import app.models  # noqa: F401
-from app.api.routes import auth, chat, comments, follow, inbox, notifications, posts, users, ws
-from app.api.routes import admin, live, search, upload
+from app.api.routes import admin, auth, chat, comments, follow, inbox, live, notifications, posts, search, upload, users, ws
 from app.core.config import settings
 from app.core.observability import configure_metrics, configure_tracing, make_metrics_router
 from app.core.security_extra import security_headers
@@ -19,6 +19,18 @@ from app.db.session import engine
 async def lifespan(_app: FastAPI):
     initialize_database(engine)
     yield
+
+
+def _database_status() -> dict:
+    try:
+        with engine.connect() as connection:
+            connection.execute(text('SELECT 1'))
+        return {'database': 'ok'}
+    except Exception as exc:
+        return {
+            'database': 'error',
+            'database_error': str(exc)[:300],
+        }
 
 
 fastapi_app = FastAPI(
@@ -56,7 +68,7 @@ fastapi_app.include_router(chat.router, prefix=settings.API_PREFIX, tags=['chat'
 fastapi_app.include_router(ws.router, tags=['ws'])
 
 
-@fastapi_app.get('/')
+@fastapi_app.api_route('/', methods=['GET', 'HEAD'])
 def root() -> dict:
     return {
         'message': 'YAMSHAT FastAPI backend is running',
@@ -68,11 +80,13 @@ def root() -> dict:
     }
 
 
-@fastapi_app.get('/health')
+@fastapi_app.api_route('/health', methods=['GET', 'HEAD'])
 def health() -> dict:
+    database_status = _database_status()
+    status = 'ok' if database_status.get('database') == 'ok' else 'degraded'
     return {
-        'status': 'ok',
-        'database': 'configured',
+        'status': status,
+        **database_status,
         'docs': '/docs',
         'metrics': '/metrics',
         'service': settings.SERVICE_NAME,

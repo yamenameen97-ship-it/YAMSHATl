@@ -1,19 +1,13 @@
 from __future__ import annotations
 
 from logging.config import fileConfig
-from pathlib import Path
-import sys
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from app.core.config import settings  # noqa: E402
-from app.db.base import Base  # noqa: E402
-import app.models  # noqa: F401,E402
+import app.models  # noqa: F401
+from app.core.config import settings
+from app.db.base import Base
 
 config = context.config
 
@@ -21,7 +15,6 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 config.set_main_option('sqlalchemy.url', settings.DATABASE_URL)
-
 target_metadata = Base.metadata
 
 
@@ -38,7 +31,6 @@ def run_migrations_offline() -> None:
 
     with context.begin_transaction():
         context.run_migrations()
-
 
 
 def run_migrations_online() -> None:

@@ -42,6 +42,7 @@ fastapi_app = FastAPI(
 fastapi_app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
+    allow_origin_regex=settings.cors_origin_regex,
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*'],
@@ -95,4 +96,3 @@ def health() -> dict:
 
 
 app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app, socketio_path='socket.io')
-app=fastapi_app

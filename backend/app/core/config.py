@@ -1,5 +1,7 @@
 import os
+import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
@@ -64,6 +66,24 @@ class Settings:
     LIVEKIT_API_KEY: str = os.getenv('LIVEKIT_API_KEY', '')
     LIVEKIT_API_SECRET: str = os.getenv('LIVEKIT_API_SECRET', '')
     DB_BOOTSTRAP_ON_START: bool = env_bool('DB_BOOTSTRAP_ON_START', False)
+    CORS_ORIGIN_REGEX_RAW: str = os.getenv('CORS_ORIGIN_REGEX', '').strip()
+
+    @property
+    def cors_origin_regex(self) -> str | None:
+        if self.CORS_ORIGIN_REGEX_RAW:
+            return self.CORS_ORIGIN_REGEX_RAW
+
+        for candidate in [self.FRONTEND_ORIGIN, self.BACKEND_ORIGIN, self.RENDER_EXTERNAL_URL]:
+            parsed = urlparse(candidate)
+            host = (parsed.hostname or '').strip().lower()
+            if not host.endswith('.onrender.com'):
+                continue
+            base = re.sub(r'-\d+(?=\.onrender\.com$)', '', host)
+            service = base.removesuffix('.onrender.com')
+            if service:
+                return rf'^https://{re.escape(service)}(?:-\d+)?\.onrender\.com$'
+
+        return None
 
     @property
     def cors_origins(self) -> list[str]:

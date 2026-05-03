@@ -1,12 +1,13 @@
 services:
   - type: web
-    name: yamshat-fastapi
-    env: python
-    rootDir: .
-    buildCommand: pip install -r backend/requirements.txt
-    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    name: yamshatl
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    preDeployCommand: bash scripts/predeploy.sh
+    startCommand: bash scripts/start.sh
     healthCheckPath: /health
-    autoDeploy: true
+    autoDeployTrigger: commit
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.10
@@ -18,10 +19,20 @@ services:
         value: '60'
       - key: REDIS_URL
         sync: false
-      - key: EMAIL_ADDRESS
-        sync: false
-      - key: EMAIL_PASSWORD
-        sync: false
+      - key: FRONTEND_ORIGIN
+        value: https://yamshatl-1.onrender.com
+      - key: BACKEND_ORIGIN
+        value: https://yamshatl.onrender.com
+      - key: RENDER_EXTERNAL_URL
+        value: https://yamshatl.onrender.com
+      - key: CORS_ORIGINS
+        value: http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,https://yamshatl-1.onrender.com,https://yamshatl.onrender.com
+      - key: CORS_ORIGIN_REGEX
+        value: '^https://yamshatl(?:-\d+)?\.onrender\.com$'
+      - key: ENABLE_TRACING
+        value: 'false'
+      - key: DB_BOOTSTRAP_ON_START
+        value: 'false'
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT
@@ -37,10 +48,20 @@ services:
       - key: FIREBASE_CREDENTIALS_PATH
         value: mobile/app/google-services.json
       - key: LIVEKIT_URL
-        value: wss://yamshat-enqr8c2d.livekit.cloud
+        sync: false
       - key: LIVEKIT_API_KEY
         sync: false
       - key: LIVEKIT_API_SECRET
         sync: false
-      - key: CORS_ORIGINS
-        value: http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,https://yamshatl-1.onrender.com
+
+  - type: web
+    name: yamshatl-1
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    autoDeployTrigger: commit
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

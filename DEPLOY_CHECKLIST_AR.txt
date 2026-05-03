@@ -1,38 +1,39 @@
 Yamshat - Checklist النشر النهائي
 =================================
 
-1) ارفع المشروع كما هو إلى GitHub بدون ملفات محلية حساسة.
-2) في Render أنشئ Blueprint من ملف render.yaml.
-3) وافق على إنشاء خدمتين:
+1) ارفع المشروع إلى GitHub بدون أي ملفات أسرار أو .env محلي.
+2) في Render استخدم Blueprint من ملف render.yaml الموجود في الجذر.
+3) الـ Blueprint هيجهز خدمتين بنفس الأسماء الحالية:
    - Backend Web Service: yamshatl
    - Frontend Static Site: yamshatl-1
-4) قبل أول Deploy أضف القيم السرية المطلوبة داخل Render:
-   - DATABASE_URL
-   - LIVEKIT_PROJECT_ID
-   - LIVEKIT_SIP_URI
-   - LIVEKIT_URL
-   - LIVEKIT_WS_URL
-   - LIVEKIT_API_KEY
-   - LIVEKIT_SECRET
-   - SMTP_HOST / SMTP_USER / SMTP_PASSWORD / SMTP_FROM_EMAIL (إذا كنت تحتاج استرجاع كلمة المرور بالإيميل)
-   - TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_WHATSAPP_FROM / TWILIO_WHATSAPP_CONTENT_SID (إذا كنت تحتاج واتساب)
-5) بعد النشر تحقق من الروابط التالية:
+4) أهم متغيرات البيئة قبل أول Deploy:
+   - DATABASE_URL  ← استخدم رابط Postgres الداخلي على Render
+   - SECRET_KEY
+   - SMTP_USERNAME / SMTP_PASSWORD / SMTP_FROM (لو محتاج استرجاع كلمة المرور)
+   - LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET (لو البث المباشر مطلوب)
+5) backend في النسخة دي بيشتغل بالأمر الصحيح على Render:
+   - uvicorn app.main:app --host 0.0.0.0 --port $PORT
+6) frontend في النسخة دي لازم يتنشر من المجلد المبني فقط:
+   - Root Directory = frontend
+   - Build Command = npm ci && npm run build
+   - Publish Directory = dist
+7) لو بتنشر يدويًا بدل Blueprint:
+   - Backend Root Directory = backend
+   - Start Command = uvicorn app.main:app --host 0.0.0.0 --port $PORT
+   - Pre-Deploy Command = alembic upgrade head
+8) بعد النشر اختبر الروابط دي:
+   - https://yamshatl.onrender.com/
    - https://yamshatl.onrender.com/health
    - https://yamshatl-1.onrender.com
-6) اختبر من الويب:
-   - تسجيل حساب
-   - تسجيل دخول
-   - رفع صورة/فيديو
-   - إرسال رسالة
-   - إشعار دفع إذا كان Firebase مفعّل
-   - بث مباشر إذا كانت مفاتيح LiveKit مضافة
-7) اختبر من أندرويد:
-   - الأيقونة تظهر بعد التثبيت
-   - شاشة الترحيب تظهر أول التشغيل
-   - شاشة الدخول والتسجيل تحمل الشعار الرسمي
-   - تسجيل الدخول وفتح الرئيسية
-8) لو أردت Build Release Android:
-   - أضف بيانات التوقيع في gradle.properties أو من بيئة CI
-   - نفّذ assembleRelease أو bundleRelease
-9) لا ترفع أي ملف .env محلي أو قاعدة SQLite محلية أو ملفات __pycache__.
-10) إذا غيّرت أسماء خدمات Render عدّل الروابط داخل render.yaml و frontend/app-config.js و mobile/gradle.properties.
+9) تم إضافة Alembic migrations داخل:
+   - backend/alembic
+   - backend/alembic/versions
+10) Railway:
+   - Backend Root Directory = backend
+   - Frontend Root Directory = frontend
+   - كل خدمة فيها nixpacks.toml جاهز
+11) لو غيرت أسماء الخدمات على Render حدّث القيم التالية:
+   - FRONTEND_ORIGIN
+   - BACKEND_ORIGIN
+   - CORS_ORIGINS
+   - frontend/public/app-config.js لو اعتمدت على أسماء مختلفة تمامًا

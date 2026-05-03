@@ -21,8 +21,8 @@
   const inferBackendOrigin = () => {
     const origin = trim(window.location.origin);
     const host = window.location.hostname || '';
-    if (/-1\.onrender\.com$/i.test(host)) {
-      return `${window.location.protocol}//${host.replace(/-1(?=\.onrender\.com$)/i, '')}`;
+    if (/-\d+\.onrender\.com$/i.test(host)) {
+      return `${window.location.protocol}//${host.replace(/-\d+(?=\.onrender\.com$)/i, '')}`;
     }
     return origin;
   };

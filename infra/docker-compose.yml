@@ -1,0 +1,39 @@
+version: '3.9'
+
+services:
+  gateway:
+    build: ../gateway
+    ports:
+      - '8000:8000'
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8000
+      USER_SERVICE_URL: http://user-service:8000
+      POST_SERVICE_URL: http://post-service:8000
+      CHAT_SERVICE_URL: http://chat-service:8000
+      NOTIFICATION_SERVICE_URL: http://notification-service:8000
+      MEDIA_SERVICE_URL: http://media-service:8000
+      SEARCH_SERVICE_URL: http://search-service:8000
+
+  auth-service:
+    build: ../services/auth-service
+
+  user-service:
+    build: ../services/user-service
+
+  post-service:
+    build: ../services/post-service
+
+  chat-service:
+    build: ../services/chat-service
+
+  notification-service:
+    build: ../services/notification-service
+
+  media-service:
+    build: ../services/media-service
+
+  search-service:
+    build: ../services/search-service
+
+  redis:
+    image: redis

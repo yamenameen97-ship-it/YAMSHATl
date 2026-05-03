@@ -1,0 +1,25 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: yamshat-app-alerts
+  namespace: monitoring
+spec:
+  groups:
+    - name: app-alerts
+      rules:
+        - alert: GatewayHighErrorRate
+          expr: sum(rate(yamshat_gateway_requests_total{status_code=~"5.."}[5m])) > 1
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: Gateway error rate is elevated
+            description: Gateway is returning 5xx responses above threshold for 2 minutes.
+        - alert: UserServiceLatencyHigh
+          expr: histogram_quantile(0.95, sum(rate(yamshat_http_request_latency_seconds_bucket{service="user-service"}[5m])) by (le)) > 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: User service p95 latency high
+            description: User service p95 latency is above 1 second.

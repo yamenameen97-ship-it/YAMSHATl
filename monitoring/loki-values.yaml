@@ -1,0 +1,6 @@
+promtail:
+  enabled: true
+loki:
+  enabled: true
+  persistence:
+    enabled: false

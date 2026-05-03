@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: yamshat-config
+  namespace: app-prod
+data:
+  PROJECT_NAME: YAMSHAT API
+  API_PREFIX: /api
+  DEBUG: 'false'
+  DATABASE_URL: postgresql://postgres:postgres@postgres:5432/yamshat
+  REDIS_URL: redis://redis:6379/0
+  ENABLE_METRICS: 'true'
+  ENABLE_TRACING: 'true'
+  JAEGER_AGENT_HOST: jaeger-agent.monitoring.svc.cluster.local
+  JAEGER_AGENT_PORT: '6831'
+  CORS_ORIGINS: https://your-frontend.example.com

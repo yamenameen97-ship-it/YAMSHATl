@@ -1,0 +1,9 @@
+grafana:
+  adminUser: admin
+  adminPassword: prom-operator
+  defaultDashboardsTimezone: utc
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
+alertmanager:
+  enabled: true

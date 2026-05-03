@@ -1,6 +1,14 @@
 import API from './axios.js';
 
-export const loginUser = (data) => API.post('/login', data);
-export const registerUser = (data) => API.post('/register', data);
-export const getMe = () => API.get('/me');
-export const logoutUser = () => API.post('/logout');
+export const loginUser = async (data) => {
+  const response = await API.post('/auth/login', data);
+  return response;
+};
+
+export const registerUser = async (data) => {
+  const response = await API.post('/auth/register', data);
+  return response;
+};
+
+export const getMe = () => API.get('/users/me');
+export const logoutUser = () => API.post('/auth/logout');

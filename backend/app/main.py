@@ -95,3 +95,4 @@ def health() -> dict:
 
 
 app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app, socketio_path='socket.io')
+app=fastapi_app

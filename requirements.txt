@@ -1,10 +1,5 @@
-flask
-flask-socketio
-eventlet
-flask-cors
-flask_sqlalchemy
-python-dotenv
-jwt
-flask-jwt-extended
-celery
-redis
+-r backend/requirements.txt
+Flask==3.1.0
+Flask-SocketIO==5.4.1
+eventlet==0.36.1
+PyJWT==2.10.1

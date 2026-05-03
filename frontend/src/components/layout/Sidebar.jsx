@@ -1,22 +1,32 @@
 import { NavLink } from 'react-router-dom';
 
 const links = [
-  { to: '/', label: 'Feed', icon: '🏠' },
-  { to: '/live', label: 'Live', icon: '🔴' },
-  { to: '/profile', label: 'Profile', icon: '👤' },
-  { to: '/inbox', label: 'Inbox', icon: '📥' },
-  { to: '/users', label: 'Users', icon: '🫂' },
-  { to: '/stories', label: 'Stories', icon: '📸' },
-  { to: '/dashboard', label: 'Dashboard', icon: '📊' },
+  { to: '/', label: 'الرئيسية', meta: 'المنشورات', icon: '⌂' },
+  { to: '/stories', label: 'الستوري', meta: 'لحظات سريعة', icon: '◌' },
+  { to: '/live', label: 'البث', meta: 'غرف مباشرة', icon: '◉' },
+  { to: '/inbox', label: 'الرسائل', meta: 'الدردشات', icon: '✉' },
+  { to: '/users', label: 'الأصدقاء', meta: 'الحسابات', icon: '◎' },
+  { to: '/profile', label: 'حسابي', meta: 'الملف الشخصي', icon: '◍' },
+  { to: '/dashboard', label: 'التحليلات', meta: 'النشاط', icon: '◫' },
 ];
 
 export default function Sidebar() {
   return (
-    <aside className="sidebar">
-      <div>
-        <div className="brand-mark">Y</div>
-        <h1 className="brand-title">YAMSHAT</h1>
-        <p className="brand-subtitle">Feed احترافي، تفاعل لحظي، إشعارات، متابعة، وبث مباشر.</p>
+    <aside className="sidebar yamshat-sidebar">
+      <div className="sidebar-top">
+        <div className="brand-stack">
+          <div className="brand-mark">ي</div>
+          <div>
+            <h1 className="brand-title">Yamshat</h1>
+            <p className="brand-subtitle">ستايل داكن بنفس هوية البنفسجي المضيء وربط مباشر بالمنشورات والأسماء المخزنة.</p>
+          </div>
+        </div>
+
+        <div className="sidebar-highlight card">
+          <div className="page-eyebrow">واجهة احترافية</div>
+          <strong>شبكة اجتماعية عربية</strong>
+          <p className="muted no-margin">تصميم زجاجي، زوايا ناعمة، وإحساس قريب جداً من المرجع المرسل.</p>
+        </div>
       </div>
 
       <nav className="nav-links">
@@ -26,14 +36,18 @@ export default function Sidebar() {
             to={link.to}
             className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
           >
-            <span>{link.icon}</span>
-            <span>{link.label}</span>
+            <span className="nav-link-icon">{link.icon}</span>
+            <span className="nav-link-copy">
+              <strong>{link.label}</strong>
+              <small>{link.meta}</small>
+            </span>
           </NavLink>
         ))}
       </nav>
 
       <div className="sidebar-footer">
-        <div className="glass-chip">Realtime Feed</div>
+        <div className="glass-chip">منشورات لحظية</div>
+        <div className="glass-chip">أسماء ومتابعات محفوظة</div>
         <div className="glass-chip">Socket + LiveKit</div>
       </div>
     </aside>

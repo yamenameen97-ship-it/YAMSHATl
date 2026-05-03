@@ -6,14 +6,14 @@ import socket from '../../api/socket.js';
 import { clearStoredUser, getCurrentUsername, getStoredUser } from '../../utils/auth.js';
 
 const titles = {
-  '/': 'Feed',
-  '/dashboard': 'Dashboard',
-  '/users': 'Users',
-  '/profile': 'Profile',
-  '/inbox': 'Inbox',
-  '/chat': 'Chat',
-  '/stories': 'Stories',
-  '/live': 'Live Streaming',
+  '/': 'الرئيسية',
+  '/dashboard': 'لوحة التحكم',
+  '/users': 'الأصدقاء',
+  '/profile': 'الملف الشخصي',
+  '/inbox': 'الرسائل',
+  '/chat': 'المحادثة',
+  '/stories': 'الستوري',
+  '/live': 'البث المباشر',
 };
 
 export default function Topbar() {
@@ -26,9 +26,9 @@ export default function Topbar() {
   const [loading, setLoading] = useState(false);
 
   const title = useMemo(() => {
-    if (location.pathname.startsWith('/chat/')) return 'Private Chat';
-    if (location.pathname.startsWith('/profile/')) return 'Profile';
-    return titles[location.pathname] || 'YAMSHAT';
+    if (location.pathname.startsWith('/chat/')) return 'المحادثة الخاصة';
+    if (location.pathname.startsWith('/profile/')) return 'ملف المستخدم';
+    return titles[location.pathname] || 'يمشات';
   }, [location.pathname]);
 
   const unreadCount = notifications.filter((item) => !item?.seen).length;
@@ -88,17 +88,20 @@ export default function Topbar() {
   };
 
   return (
-    <header className="topbar">
+    <header className="topbar yamshat-topbar">
       <div>
-        <div className="page-eyebrow">منصة اجتماعية حديثة</div>
+        <div className="page-eyebrow">ستايل Yamshat الجديد</div>
         <h2 className="page-title">{title}</h2>
+        <p className="muted no-margin topbar-note">نفس البيانات المخزنة، لكن بواجهة أقرب للصورة المرجعية على الويب والموبايل.</p>
       </div>
 
       <div className="topbar-actions">
         <div className="search-shell">
-          <span>🔎</span>
+          <span>⌕</span>
           <input placeholder="بحث سريع..." disabled />
         </div>
+
+        <div className="glass-chip live-pill">LIVE</div>
 
         <div className="notification-shell">
           <button type="button" className="ghost-btn notification-trigger" onClick={() => setOpen((prev) => !prev)}>
@@ -137,7 +140,7 @@ export default function Topbar() {
         <Link to="/profile" className="profile-pill">
           <span className="status-dot active"></span>
           <div>
-            <strong>{user?.user || 'User'}</strong>
+            <strong>{user?.user || user?.username || 'مستخدم'}</strong>
             <small>{user?.role || 'member'}</small>
           </div>
         </Link>

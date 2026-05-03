@@ -84,7 +84,7 @@ export default function Profile() {
             <div className="avatar-circle large">{username?.slice(0, 1)?.toUpperCase() || 'U'}</div>
             <div className="user-meta">
               <h3 className="section-title">{username}</h3>
-              <p className="muted">ملف شخصي اجتماعي متصل بالمنشورات والمتابعات.</p>
+              <p className="muted">ملف شخصي اجتماعي متصل بالمنشورات والمتابعات بنفس هوية Yamshat الجديدة.</p>
             </div>
             {username !== currentUser ? (
               <Button variant={following ? 'secondary' : 'primary'} onClick={handleFollow}>
@@ -95,8 +95,8 @@ export default function Profile() {
 
           <div className="stats-grid compact-stats profile-stats">
             <div className="mini-stat"><strong>{posts.length}</strong><span>المنشورات</span></div>
-            <div className="mini-stat"><strong>{counts.followers}</strong><span>Followers</span></div>
-            <div className="mini-stat"><strong>{counts.following}</strong><span>Following</span></div>
+            <div className="mini-stat"><strong>{counts.followers}</strong><span>المتابعون</span></div>
+            <div className="mini-stat"><strong>{counts.following}</strong><span>يتابع</span></div>
           </div>
         </Card>
 

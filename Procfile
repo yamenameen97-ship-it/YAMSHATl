@@ -1,2 +1,1 @@
-web: cd backend && gunicorn --worker-class eventlet --workers 1 --bind 0.0.0.0:${PORT:-5000} app:app
-worker: cd backend && celery -A celery.celery_app worker --loglevel=info
+web: cd backend && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}

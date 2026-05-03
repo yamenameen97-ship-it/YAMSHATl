@@ -251,8 +251,8 @@ export default function Feed() {
           <Card className="composer-card">
             <div className="section-head compact">
               <div>
-                <h3 className="section-title">🏠 Feed</h3>
-                <p className="muted">أنشر الآن، وتابع الإعجابات والتعليقات لحظياً بدون أي تحديث للصفحة.</p>
+                <h3 className="section-title">🏠 الرئيسية</h3>
+                <p className="muted">أنشر الآن، وتابع الإعجابات والتعليقات لحظياً بنفس الستايل الداكن الجديد.</p>
               </div>
             </div>
 
@@ -307,7 +307,7 @@ export default function Feed() {
 
                     {post.username !== currentUser ? (
                       <button type="button" className="mini-action" onClick={() => handleFollow(post.username)}>
-                        {isFollowing ? 'Unfollow' : 'Follow'}
+                        {isFollowing ? 'إلغاء المتابعة' : 'متابعة'}
                       </button>
                     ) : null}
                   </div>
@@ -323,14 +323,14 @@ export default function Feed() {
                   ) : null}
 
                   <div className="post-social-meta">
-                    <span>👥 {counts.followers} Followers</span>
+                    <span>👥 {counts.followers} متابع</span>
                     <span>❤️ {post.likes}</span>
                     <span>💬 {post.comments_count}</span>
                   </div>
 
                   <div className="post-actions-bar">
                     <button type="button" className={`reaction-btn ${post.liked_by_me ? 'active' : ''}`} onClick={() => handleLike(post.id)}>
-                      {post.liked_by_me ? '💙' : '🤍'} {post.likes}
+                      {post.liked_by_me ? '💙' : '🤍'} إعجاب {post.likes}
                     </button>
                     <Link to={`/profile/${encodeURIComponent(post.username)}`} className="reaction-btn link-btn">
                       👤 الملف الشخصي
@@ -400,7 +400,7 @@ export default function Feed() {
                     </div>
                   </Link>
                   <button type="button" className="mini-action" onClick={() => handleFollow(name)}>
-                    {relationships[name] ? 'Unfollow' : 'Follow'}
+                    {relationships[name] ? 'إلغاء المتابعة' : 'متابعة'}
                   </button>
                 </div>
               ))}

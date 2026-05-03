@@ -1,48 +1,45 @@
-Yamshat Premium Chat Upgrade
-============================
+# YAMSHAT Production Platform
 
-المشروع الآن يشمل:
-- دردشة نصية + صوتيات Voice Notes
-- مشاركة صور وفيديو وملفات مرفوعة
-- Online Status + Last Seen
-- Delete for Everyone
-- Read Receipts + Typing ping
-- مكالمات صوت/فيديو عبر LiveKit من الويب ومن تطبيق الجوال
-- Push Notifications جاهزة عبر Firebase FCM
-- تشفير طرفي اختياري E2E للمحادثات الخاصة
-- Anti-Spam + Moderation أساسي على مستوى الباك إند
-- Admin Dashboard جديد مبني بـ React مع Charts + Tables + Live Updates
-- Analytics Engine لإحصاءات الأونلاين والرسائل/الدقيقة والنمو
-- نظام Moderation إداري: Ban / Mute / Restrict + Auto anti-spam
-- Audit Logs لتسجيل الحركات الإدارية والعمليات المهمة
-- Report User / Report Message + Live Admin Panel
-- تحسينات أداء في قاعدة البيانات وفهارس الرسائل والحضور
+تم تحويل المشروع إلى منصة **FastAPI Microservices + Kubernetes + GitHub Actions + GitOps + Observability**.
 
-أهم الإعدادات المطلوبة في backend/.env.example:
-- DATABASE_URL
-- SECRET_KEY
-- LIVEKIT_WS_URL / LIVEKIT_URL
-- LIVEKIT_API_KEY
-- LIVEKIT_SECRET
-- FIREBASE_SERVICE_ACCOUNT_JSON أو FIREBASE_SERVICE_ACCOUNT_PATH
+## المكونات الجديدة
+- `user-service/` لخدمات المستخدمين والمصادقة والمنشورات والتعليقات والمتابعة
+- `chat-service/` للمحادثات و WebSocket و inbox
+- `notification-service/` للإشعارات
+- `gateway/` كبوابة API مع Distributed Rate Limiting باستخدام Redis Token Bucket
+- `k8s/` لجميع ملفات Kubernetes الجاهزة للنشر
+- `.github/workflows/` لخطوط CI/CD و GitOps
+- `gitops-repo/` نموذج GitOps Repository مع ArgoCD
+- `monitoring/` لإعداد Prometheus / Grafana / Loki / Jaeger / Alertmanager
 
-ملاحظات تشغيل سريعة:
-1) شغّل الباك إند Flask مع PostgreSQL.
-2) اربط LiveKit بالقيم البيئية السابقة.
-3) ضع ملف google-services.json في تطبيق Android كما هو موجود داخل المشروع.
-4) فعّل Firebase Cloud Messaging لمفاتيح الإشعارات.
-5) افتح chat.html أو تطبيق Android ثم فعّل E2E من زر القفل إذا رغبت.
+## التشغيل المحلي
+```bash
+docker compose up --build
+```
 
-ملفات رئيسية تم تحديثها:
-- backend/chat.py
-- backend/db.py
-- backend/auth.py
-- backend/config.py
-- frontend/chat.html
-- frontend/call.html
-- frontend/admin.html
-- frontend/admin-panel/*
-- admin-react/*
-- frontend/assets/app.js
-- mobile/app/src/main/java/com/socialapp/activities/ChatActivity.kt
-- mobile/app/src/main/java/com/socialapp/activities/LiveActivity.kt
+## مسارات مهمة
+- Gateway: `http://localhost:8000`
+- Health: `http://localhost:8000/health`
+- Metrics: `http://localhost:8000/metrics`
+- WebSocket chat مباشر من `chat-service` عبر مسار `/ws` في Ingress
+
+## GitHub Secrets المطلوبة
+- `DOCKER_USERNAME`
+- `DOCKER_PASSWORD`
+- `KUBE_CONFIG`
+- `GITOPS_REPO_TOKEN`
+
+## النشر التقليدي
+```bash
+kubectl apply -f k8s/
+```
+
+## تفعيل ArgoCD
+```bash
+./scripts/install-argocd.sh
+```
+
+## ملاحظات Production
+- استخدم image tags مبنية على `${GITHUB_SHA}` بدل `latest` في الإنتاج
+- عدّل قيم `your-dockerhub-username` داخل ملفات `k8s/` و `gitops-repo/`
+- أنشئ Secret حقيقي بدل `k8s/02-secrets.example.yaml`

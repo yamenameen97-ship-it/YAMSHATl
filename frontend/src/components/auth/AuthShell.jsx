@@ -2,27 +2,15 @@ import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 
 const featureItems = [
-  { label: 'ربط مباشر', value: 'API + Socket.io + LiveKit' },
-  { label: 'تجربة سريعة', value: 'واجهة React جاهزة للنشر' },
-  { label: 'حماية الجلسة', value: 'JWT + Protected Routes' },
+  { label: 'لوحة موحدة', value: 'Dashboard + Users + Content + Reports' },
+  { label: 'Realtime', value: 'FastAPI + Socket.io' },
+  { label: 'الصلاحيات', value: 'RBAC + Protected Routes' },
 ];
 
-export default function AuthShell({
-  badge,
-  title,
-  description,
-  footer,
-  alternateAction,
-  children,
-}) {
+export default function AuthShell({ badge, title, description, footer, alternateAction, children }) {
   return (
     <div className="auth-shell auth-shell-enhanced">
-      <motion.div
-        className="auth-card auth-card-enhanced"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35 }}
-      >
+      <motion.div className="auth-card auth-card-enhanced" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
         <div className="auth-copy auth-copy-enhanced">
           <span className="badge">{badge}</span>
           <h1>{title}</h1>
@@ -38,11 +26,11 @@ export default function AuthShell({
           </div>
 
           <div className="auth-side-footer">
-            <span>منصة اجتماعية عصرية بنفس الهوية الداكنة الأنيقة</span>
+            <span>نسخة Admin احترافية مبنية على المشروع الحالي بالكامل.</span>
             <div className="auth-side-links">
-              <Link to="/">الرئيسية</Link>
-              <Link to="/stories">الستوري</Link>
-              <Link to="/live">البث المباشر</Link>
+              <Link to="/login">Login</Link>
+              <Link to="/register">Register</Link>
+              <Link to="/admin/dashboard">Dashboard</Link>
             </div>
           </div>
         </div>

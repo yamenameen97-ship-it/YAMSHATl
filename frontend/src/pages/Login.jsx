@@ -30,9 +30,9 @@ export default function Login() {
         password: form.password,
       });
       setStoredUser(data);
-      navigate(location.state?.from?.pathname || '/', { replace: true });
+      navigate(location.state?.from?.pathname || '/admin/dashboard', { replace: true });
     } catch (err) {
-      setError(err?.response?.data?.message || 'فشل تسجيل الدخول، راجع البيانات.');
+      setError(err?.response?.data?.detail || 'فشل تسجيل الدخول، راجع البيانات.');
     } finally {
       setLoading(false);
     }
@@ -40,9 +40,9 @@ export default function Login() {
 
   return (
     <AuthShell
-      badge="YAMSHAT LOGIN"
-      title="تسجيل دخول سريع وآمن"
-      description="ادخل بحسابك من البريد الإلكتروني أو اسم المستخدم أو رقم الجوال، وابدأ مباشرة في التفاعل مع المنشورات والرسائل والبث المباشر بنفس تصميم المنصة الحالي."
+      badge="YAMSHAT ADMIN"
+      title="تسجيل دخول لوحة التحكم"
+      description="ادخل إلى لوحة التحكم الاحترافية الجديدة لإدارة المستخدمين والمحتوى والتقارير والإشعارات والصلاحيات من مكان واحد."
       alternateAction={
         <>
           <span className="muted">ليس لديك حساب؟</span>
@@ -51,37 +51,22 @@ export default function Login() {
       }
       footer={
         <>
-          يدعم الباك إند تسجيل الدخول عبر البريد الإلكتروني أو اسم المستخدم أو رقم الجوال.{' '}
-          <Link to="/register">إنشاء حساب جديد</Link>
+          أول حساب يتم إنشاؤه يأخذ صلاحية Admin تلقائياً. <Link to="/register">إنشاء حساب جديد</Link>
         </>
       }
     >
       <form className="auth-form auth-form-enhanced" onSubmit={handleSubmit}>
         <div className="auth-form-head">
-          <h2>أهلاً بعودتك</h2>
-          <p className="muted">استخدم نفس بيانات حسابك الحالية على الباك إند.</p>
+          <h2>مرحباً بعودتك</h2>
+          <p className="muted">استخدم البريد الإلكتروني أو اسم المستخدم للدخول.</p>
         </div>
 
-        <Input
-          label="البريد الإلكتروني أو اسم المستخدم أو رقم الجوال"
-          placeholder="example@mail.com أو username أو 9665xxxxxxx"
-          value={form.identifier}
-          onChange={handleChange('identifier')}
-        />
-        <Input
-          label="كلمة المرور"
-          type="password"
-          placeholder="••••••••"
-          value={form.password}
-          onChange={handleChange('password')}
-          hint="الحد الأدنى 6 أحرف"
-        />
+        <Input label="البريد الإلكتروني أو اسم المستخدم" placeholder="admin@mail.com أو admin" value={form.identifier} onChange={handleChange('identifier')} />
+        <Input label="كلمة المرور" type="password" placeholder="••••••••" value={form.password} onChange={handleChange('password')} hint="الحد الأدنى 6 أحرف" />
 
         {error ? <div className="alert error">{error}</div> : null}
 
-        <Button type="submit" disabled={loading}>
-          {loading ? 'جارٍ تسجيل الدخول...' : 'دخول'}
-        </Button>
+        <Button type="submit" disabled={loading}>{loading ? 'جارٍ تسجيل الدخول...' : 'دخول إلى اللوحة'}</Button>
       </form>
     </AuthShell>
   );

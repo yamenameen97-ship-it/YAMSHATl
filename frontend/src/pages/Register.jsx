@@ -7,12 +7,7 @@ import { registerUser } from '../api/auth.js';
 import { setStoredUser } from '../utils/auth.js';
 
 export default function Register() {
-  const [form, setForm] = useState({
-    name: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
-  });
+  const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
@@ -29,12 +24,10 @@ export default function Register() {
       setError('من فضلك أكمل كل البيانات المطلوبة.');
       return;
     }
-
     if (form.password.length < 6) {
       setError('كلمة المرور يجب أن تكون 6 أحرف على الأقل.');
       return;
     }
-
     if (form.password !== form.confirmPassword) {
       setError('تأكيد كلمة المرور غير مطابق.');
       return;
@@ -42,15 +35,11 @@ export default function Register() {
 
     try {
       setLoading(true);
-      const { data } = await registerUser({
-        name: form.name.trim(),
-        email: form.email.trim(),
-        password: form.password,
-      });
+      const { data } = await registerUser({ name: form.name.trim(), email: form.email.trim(), password: form.password });
       setStoredUser(data);
-      navigate('/', { replace: true });
+      navigate('/admin/dashboard', { replace: true });
     } catch (err) {
-      setError(err?.response?.data?.message || 'تعذر إنشاء الحساب حالياً.');
+      setError(err?.response?.data?.detail || 'تعذر إنشاء الحساب حالياً.');
     } finally {
       setLoading(false);
     }
@@ -58,9 +47,9 @@ export default function Register() {
 
   return (
     <AuthShell
-      badge="YAMSHAT REGISTER"
-      title="أنشئ حسابك بنفس هوية المنصة"
-      description="صفحة تسجيل جديدة بنفس الستايل الداكن والزجاجي الموجود في التطبيق، ومتصلة مباشرة بالباك إند لإنشاء الحساب وتسجيل الدخول تلقائياً بعد النجاح."
+      badge="YAMSHAT SETUP"
+      title="إنشاء حساب الإدارة"
+      description="ابدأ بحساب جديد ثم ادخل مباشرة إلى لوحة التحكم المطورة بالكامل والمربوطة مع المشروع الحالي."
       alternateAction={
         <>
           <span className="muted">عندك حساب بالفعل؟</span>
@@ -69,51 +58,24 @@ export default function Register() {
       }
       footer={
         <>
-          بعد إنشاء الحساب سيتم حفظ التوكن والانتقال مباشرة للصفحة الرئيسية.{' '}
-          <Link to="/login">عندي حساب بالفعل</Link>
+          أول حساب يتم إنشاؤه يصبح Admin، وبعدها يمكن إدارة الأدوار بالكامل من صفحة RBAC. <Link to="/login">لدي حساب بالفعل</Link>
         </>
       }
     >
       <form className="auth-form auth-form-enhanced" onSubmit={handleSubmit}>
         <div className="auth-form-head">
           <h2>إنشاء حساب جديد</h2>
-          <p className="muted">اكتب اسم مستخدم فريد وبريد إلكتروني أو رقم جوال صالح.</p>
+          <p className="muted">يمكنك استخدام البريد أو اسم المستخدم، ثم إدارة كامل النظام من داخل اللوحة.</p>
         </div>
 
-        <Input
-          label="اسم المستخدم"
-          placeholder="yamshat_user"
-          value={form.name}
-          onChange={handleChange('name')}
-          hint="حروف وأرقام وشرطة سفلية فقط"
-        />
-        <Input
-          label="البريد الإلكتروني أو رقم الجوال"
-          placeholder="example@mail.com أو 9665xxxxxxx"
-          value={form.email}
-          onChange={handleChange('email')}
-        />
-        <Input
-          label="كلمة المرور"
-          type="password"
-          placeholder="••••••••"
-          value={form.password}
-          onChange={handleChange('password')}
-          hint="6 أحرف على الأقل"
-        />
-        <Input
-          label="تأكيد كلمة المرور"
-          type="password"
-          placeholder="••••••••"
-          value={form.confirmPassword}
-          onChange={handleChange('confirmPassword')}
-        />
+        <Input label="اسم المستخدم" placeholder="yamshat_admin" value={form.name} onChange={handleChange('name')} hint="يُحفظ بدون مسافات" />
+        <Input label="البريد الإلكتروني" placeholder="admin@mail.com" value={form.email} onChange={handleChange('email')} />
+        <Input label="كلمة المرور" type="password" placeholder="••••••••" value={form.password} onChange={handleChange('password')} hint="6 أحرف على الأقل" />
+        <Input label="تأكيد كلمة المرور" type="password" placeholder="••••••••" value={form.confirmPassword} onChange={handleChange('confirmPassword')} />
 
         {error ? <div className="alert error">{error}</div> : null}
 
-        <Button type="submit" disabled={loading}>
-          {loading ? 'جارٍ إنشاء الحساب...' : 'إنشاء الحساب'}
-        </Button>
+        <Button type="submit" disabled={loading}>{loading ? 'جارٍ إنشاء الحساب...' : 'إنشاء الحساب والدخول'}</Button>
       </form>
     </AuthShell>
   );

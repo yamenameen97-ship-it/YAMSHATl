@@ -31,6 +31,9 @@ const queryBackend = trim(params.get('backend'));
 const storedApi = toApiBase(readStored('apiBase'));
 const storedBackend = trim(readStored('backendOrigin'));
 const runtimeBackendOrigin = trim(window.YAMSHAT_BACKEND_ORIGIN || window.APP_BACKEND_ORIGIN);
+const envApi = toApiBase(import.meta.env.VITE_API_BASE || '');
+const envBackendOrigin = trim(import.meta.env.VITE_BACKEND_ORIGIN || apiToOrigin(envApi));
+const envSocketUrl = trim(import.meta.env.VITE_SOCKET_URL || envBackendOrigin);
 
 export const BACKEND_ORIGIN = trim(
   queryBackend ||
@@ -38,21 +41,25 @@ export const BACKEND_ORIGIN = trim(
     runtimeBackendOrigin ||
     storedBackend ||
     apiToOrigin(storedApi) ||
+    envBackendOrigin ||
     inferBackendOrigin() ||
     window.location.origin
 );
 
 export const API_BASE = toApiBase(
-  window.APP_API_BASE ||
-    queryApi ||
+  queryApi ||
     storedApi ||
+    envApi ||
+    window.APP_API_BASE ||
     (BACKEND_ORIGIN ? `${BACKEND_ORIGIN}/api` : `${window.location.origin}/api`)
 );
 
 export const SOCKET_URL = trim(
-  window.YAMSHAT_SOCKET_URL ||
-    queryBackend ||
+  queryBackend ||
     apiToOrigin(queryApi) ||
+    runtimeBackendOrigin ||
+    envSocketUrl ||
+    window.YAMSHAT_SOCKET_URL ||
     BACKEND_ORIGIN ||
     window.location.origin
 );

@@ -1,45 +1,48 @@
-# YAMSHAT Production Platform
+# YAMSHAT — Cleaned Ready-to-Use Project
 
-تم تحويل المشروع إلى منصة **FastAPI Microservices + Kubernetes + GitHub Actions + GitOps + Observability**.
+ده أرشيف منظّف للمشروع بعد إزالة الملفات الزائدة وبقايا الشغل القديم، مع الإبقاء على الملفات الأساسية فقط:
 
-## المكونات الجديدة
-- `user-service/` لخدمات المستخدمين والمصادقة والمنشورات والتعليقات والمتابعة
-- `chat-service/` للمحادثات و WebSocket و inbox
-- `notification-service/` للإشعارات
-- `gateway/` كبوابة API مع Distributed Rate Limiting باستخدام Redis Token Bucket
-- `k8s/` لجميع ملفات Kubernetes الجاهزة للنشر
-- `.github/workflows/` لخطوط CI/CD و GitOps
-- `gitops-repo/` نموذج GitOps Repository مع ArgoCD
-- `monitoring/` لإعداد Prometheus / Grafana / Loki / Jaeger / Alertmanager
+- `backend/` — باك إند FastAPI
+- `frontend/` — واجهة React + Vite
+- `mobile/` — تطبيق Android
+- `render.yaml` / `Dockerfile` / `Procfile` — ملفات النشر
+- `database_schema.sql` — سكيمة قاعدة البيانات
+- `DEPLOY_CHECKLIST_AR.txt` و `DEPLOY_LINKING_GUIDE.md` — ملاحظات النشر والربط
 
-## التشغيل المحلي
+## ملاحظات مهمة
+- تم حذف `node_modules` و `dist` وملفات الكاش وملفات البنية القديمة والمجلدات التجريبية/المكررة غير اللازمة للتطبيق الأساسي.
+- ملف Firebase موجود في: `mobile/app/google-services.json`.
+- تم تثبيت رابط LiveKit الصحيح في إعدادات الموبايل.
+- إعدادات البريد الإلكتروني **تحتاج بيانات SMTP حقيقية** قبل أن يعمل إرسال رسائل استرجاع كلمة المرور فعليًا.
+- تفعيل **التحقق بالبريد عند التسجيل** غير موجود كمسار مكتمل في الكود الحالي؛ الموجود حاليًا هو تدفق **استرجاع كلمة المرور** فقط.
+
+## تشغيل الواجهة الأمامية
 ```bash
-docker compose up --build
+cd frontend
+npm install
+npm run build
 ```
 
-## مسارات مهمة
-- Gateway: `http://localhost:8000`
-- Health: `http://localhost:8000/health`
-- Metrics: `http://localhost:8000/metrics`
-- WebSocket chat مباشر من `chat-service` عبر مسار `/ws` في Ingress
-
-## GitHub Secrets المطلوبة
-- `DOCKER_USERNAME`
-- `DOCKER_PASSWORD`
-- `KUBE_CONFIG`
-- `GITOPS_REPO_TOKEN`
-
-## النشر التقليدي
+## تشغيل الباك إند محليًا
 ```bash
-kubectl apply -f k8s/
+cd backend
+cp .env.example .env
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-## تفعيل ArgoCD
-```bash
-./scripts/install-argocd.sh
-```
-
-## ملاحظات Production
-- استخدم image tags مبنية على `${GITHUB_SHA}` بدل `latest` في الإنتاج
-- عدّل قيم `your-dockerhub-username` داخل ملفات `k8s/` و `gitops-repo/`
-- أنشئ Secret حقيقي بدل `k8s/02-secrets.example.yaml`
+## أهم الإعدادات قبل النشر
+- `DATABASE_URL`
+- `SECRET_KEY`
+- `REDIS_URL`
+- `EMAIL_ADDRESS`
+- `EMAIL_PASSWORD`
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_USERNAME`
+- `SMTP_PASSWORD`
+- `SMTP_FROM`
+- `FIREBASE_CREDENTIALS_PATH`
+- `LIVEKIT_URL`
+- `LIVEKIT_API_KEY`
+- `LIVEKIT_API_SECRET`

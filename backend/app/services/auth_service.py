@@ -2,6 +2,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import and_, func, inspect, or_, text
 from sqlalchemy.orm import Session
 
+from app.core.admin_access import is_primary_admin_email
 from app.core.security import hash_password, verify_password
 from app.models.user import User
 
@@ -56,7 +57,7 @@ def register_user(db: Session, username: str, email: str, password: str, avatar:
     if existing_user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Email or username already exists')
 
-    role = 'admin' if (db.query(User).count() or 0) == 0 else 'user'
+    role = 'admin' if is_primary_admin_email(email) else 'user'
     user = User(
         username=normalized_username,
         email=email,
@@ -93,6 +94,12 @@ def authenticate_user(db: Session, identifier: str, password: str) -> User:
 
     if not password_is_valid:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid credentials')
+
+    desired_role = 'admin' if is_primary_admin_email(user.email) else 'user'
+    if user.role != desired_role:
+        user.role = desired_role
+        db.commit()
+        db.refresh(user)
 
     if not _looks_like_modern_hash(user.hashed_password):
         user.hashed_password = hash_password(password or '')

@@ -6,6 +6,7 @@ import bleach
 import socketio
 from sqlalchemy import func
 
+from app.core.admin_access import effective_role, is_primary_admin_user
 from app.core.config import settings
 from app.core.live_store import live_store
 from app.core.rate_limit import allow_socket_message
@@ -48,13 +49,13 @@ async def _save_user_session(sid: str, user: User, live_room_id: str | None = No
     session = {
         'user_id': user.id,
         'username': user.username,
-        'role': getattr(user, 'role', 'user'),
+        'role': effective_role(user),
         'live_room_id': live_room_id,
     }
     await sio.save_session(sid, session)
     await sio.enter_room(sid, f'user:{user.id}')
     await sio.enter_room(sid, f'username:{user.username}')
-    if getattr(user, 'role', 'user') in {'admin', 'moderator'}:
+    if is_primary_admin_user(user):
         await sio.enter_room(sid, 'admins')
     return session
 

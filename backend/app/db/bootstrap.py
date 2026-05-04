@@ -6,6 +6,7 @@ from datetime import datetime
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
+from app.core.admin_access import is_primary_admin_email
 from app.core.config import settings
 from app.core.security import hash_password
 from app.db.base import Base
@@ -124,9 +125,8 @@ def _migrate_users_table(engine: Engine) -> None:
     with engine.begin() as connection:
         rows = connection.execute(text(f"SELECT {', '.join(select_columns)} FROM users ORDER BY id ASC")).mappings().all()
         used_usernames = {str(row['username']).strip() for row in rows if row.get('username')}
-        has_admin = any(str(row.get('role') or '').strip().lower() == 'admin' for row in rows)
 
-        for index, row in enumerate(rows):
+        for row in rows:
             updates: dict[str, object] = {}
             username = str(row.get('username') or '').strip()
             email = str(row.get('email') or '').strip().lower() or None
@@ -142,11 +142,9 @@ def _migrate_users_table(engine: Engine) -> None:
                 updates['hashed_password'] = hash_password(stored_password)
 
             current_role = str(row.get('role') or '').strip().lower()
-            if not has_admin and index == 0:
-                updates['role'] = 'admin'
-                has_admin = True
-            elif current_role in ('', 'none'):
-                updates['role'] = 'user'
+            desired_role = 'admin' if is_primary_admin_email(email) else 'user'
+            if current_role != desired_role:
+                updates['role'] = desired_role
             if row.get('is_active') is None:
                 updates['is_active'] = True
             if row.get('created_at') is None:

@@ -16,6 +16,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
+from app.core.admin_access import effective_role, permissions_for_user
 from app.core.dependencies import get_current_user, get_db
 from app.core.security import hash_password, verify_password
 from app.core.socket_server import sio
@@ -64,7 +65,7 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
         'notifications.manage',
         'search.global',
     ],
-    'user': ['dashboard.view'],
+    'user': [],
 }
 
 DEFAULT_SETTINGS = {
@@ -116,8 +117,12 @@ def _permissions_for(role: str | None) -> list[str]:
     return ROLE_PERMISSIONS.get((role or 'user').lower(), ROLE_PERMISSIONS['user'])
 
 
+def _permissions_for_user(current_user: User) -> list[str]:
+    return permissions_for_user(current_user, ROLE_PERMISSIONS)
+
+
 def _require_permission(current_user: User, permission: str) -> None:
-    if permission not in _permissions_for(current_user.role):
+    if permission not in _permissions_for_user(current_user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Permission denied')
 
 
@@ -166,7 +171,7 @@ def _serialize_user(user: User) -> dict[str, Any]:
         'username': user.username,
         'email': user.email,
         'avatar': user.avatar,
-        'role': user.role,
+        'role': effective_role(user),
         'is_active': bool(user.is_active),
         'status': 'active' if user.is_active else 'banned',
         'followers_count': user.followers_count,
@@ -174,7 +179,7 @@ def _serialize_user(user: User) -> dict[str, Any]:
         'created_at': user.created_at.isoformat() if user.created_at else None,
         'last_login_at': user.last_login_at.isoformat() if user.last_login_at else None,
         'banned_at': user.banned_at.isoformat() if user.banned_at else None,
-        'permissions': _permissions_for(user.role),
+        'permissions': _permissions_for_user(user),
     }
 
 
@@ -198,8 +203,8 @@ def _serialize_post_row(db: Session, row: Any) -> dict[str, Any]:
 def get_rbac(current_user: User = Depends(get_current_user)):
     _require_permission(current_user, 'rbac.view')
     return {
-        'current_role': current_user.role,
-        'current_permissions': _permissions_for(current_user.role),
+        'current_role': effective_role(current_user),
+        'current_permissions': _permissions_for_user(current_user),
         'roles': [
             {
                 'role': role,

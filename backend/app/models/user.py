@@ -13,7 +13,7 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False, index=True)
     avatar = Column(String(500), nullable=True)
     hashed_password = Column(String(255), nullable=False)
-    role = Column(String(20), default='admin', nullable=False, index=True)
+    role = Column(String(20), default='user', nullable=False, index=True)
     is_active = Column(Boolean, default=True, nullable=False, index=True)
     followers_count = Column(Integer, default=0, nullable=False)
     following_count = Column(Integer, default=0, nullable=False)

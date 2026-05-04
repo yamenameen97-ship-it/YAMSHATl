@@ -12,6 +12,7 @@ from app.services.auth_service import authenticate_user, register_user
 from app.services.email import send_email
 
 from app.api.routes.admin import ROLE_PERMISSIONS
+from app.core.admin_access import effective_role, permissions_for_user
 from app.core.config import settings
 from app.core.dependencies import get_db
 
@@ -20,14 +21,16 @@ router = APIRouter()
 
 def _session_payload(user: User) -> dict:
     token = create_access_token({'user_id': user.id, 'username': user.username, 'role': user.role})
+    effective_user_role = effective_role(user)
+    effective_permissions = permissions_for_user(user, ROLE_PERMISSIONS)
     user_payload = {
         'id': user.id,
         'username': user.username,
         'email': user.email,
         'avatar': user.avatar,
-        'role': user.role,
+        'role': effective_user_role,
         'is_active': user.is_active,
-        'permissions': ROLE_PERMISSIONS.get(user.role, ROLE_PERMISSIONS['user']),
+        'permissions': effective_permissions,
         'followers_count': user.followers_count,
         'following_count': user.following_count,
         'created_at': user.created_at.isoformat() if user.created_at else None,
@@ -42,8 +45,8 @@ def _session_payload(user: User) -> dict:
         'email': user.email,
         'avatar': user.avatar,
         'id': user.id,
-        'role': user.role,
-        'permissions': ROLE_PERMISSIONS.get(user.role, ROLE_PERMISSIONS['user']),
+        'role': effective_user_role,
+        'permissions': effective_permissions,
         'profile': user_payload,
     }
 

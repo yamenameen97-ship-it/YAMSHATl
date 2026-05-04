@@ -49,8 +49,8 @@ export const BACKEND_ORIGIN = trim(
 export const API_BASE = toApiBase(
   queryApi ||
     storedApi ||
-    envApi ||
     window.APP_API_BASE ||
+    envApi ||
     (BACKEND_ORIGIN ? `${BACKEND_ORIGIN}/api` : `${window.location.origin}/api`)
 );
 

@@ -1,4 +1,5 @@
 from fastapi import HTTPException, status
+from sqlalchemy import and_, func, inspect, or_, text
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password, verify_password
@@ -13,9 +14,34 @@ def _password_matches(plain_password: str, stored_password: str | None) -> bool:
     raw = (stored_password or '').strip()
     if not raw:
         return False
-    if raw.startswith(('pbkdf2:', 'scrypt:', 'argon2:')):
+    if (plain_password or '') == raw:
+        return True
+    try:
         return verify_password(plain_password or '', raw)
-    return (plain_password or '') == raw
+    except Exception:
+        return False
+
+
+def _looks_like_modern_hash(value: str | None) -> bool:
+    raw = (value or '').strip()
+    return raw.startswith(('pbkdf2:', 'scrypt:', 'argon2:'))
+
+
+def _load_legacy_password(db: Session, user_id: int) -> str | None:
+    bind = db.get_bind()
+    inspector = inspect(bind)
+    if 'users' not in inspector.get_table_names():
+        return None
+
+    columns = {column['name'] for column in inspector.get_columns('users')}
+    if 'password' not in columns:
+        return None
+
+    row = db.execute(text('SELECT password FROM users WHERE id = :user_id'), {'user_id': user_id}).mappings().first()
+    if not row:
+        return None
+    value = row.get('password')
+    return str(value).strip() if value not in (None, '') else None
 
 
 def register_user(db: Session, username: str, email: str, password: str, avatar: str | None = None) -> User:
@@ -46,15 +72,29 @@ def register_user(db: Session, username: str, email: str, password: str, avatar:
 
 def authenticate_user(db: Session, identifier: str, password: str) -> User:
     normalized_identifier = (identifier or '').strip()
+    lowered_identifier = normalized_identifier.lower()
     user = db.query(User).filter(
-        ((User.email == normalized_identifier.lower()) | (User.username == normalized_identifier))
-        & (User.is_active.is_(True))
+        and_(
+            User.is_active.is_(True),
+            or_(
+                func.lower(User.email) == lowered_identifier,
+                func.lower(User.username) == lowered_identifier,
+            ),
+        )
     ).first()
 
-    if user is None or not _password_matches(password or '', user.hashed_password):
+    if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid credentials')
 
-    if user.hashed_password and not user.hashed_password.startswith(('pbkdf2:', 'scrypt:', 'argon2:')):
+    password_is_valid = _password_matches(password or '', user.hashed_password)
+    if not password_is_valid:
+        legacy_password = _load_legacy_password(db, user.id)
+        password_is_valid = _password_matches(password or '', legacy_password)
+
+    if not password_is_valid:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid credentials')
+
+    if not _looks_like_modern_hash(user.hashed_password):
         user.hashed_password = hash_password(password or '')
         db.commit()
         db.refresh(user)

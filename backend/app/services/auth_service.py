@@ -9,6 +9,15 @@ def _normalize_username(value: str) -> str:
     return (value or '').strip().replace(' ', '_')
 
 
+def _password_matches(plain_password: str, stored_password: str | None) -> bool:
+    raw = (stored_password or '').strip()
+    if not raw:
+        return False
+    if raw.startswith(('pbkdf2:', 'scrypt:', 'argon2:')):
+        return verify_password(plain_password or '', raw)
+    return (plain_password or '') == raw
+
+
 def register_user(db: Session, username: str, email: str, password: str, avatar: str | None = None) -> User:
     normalized_username = _normalize_username(username)
     email = (email or '').strip().lower()
@@ -42,7 +51,12 @@ def authenticate_user(db: Session, identifier: str, password: str) -> User:
         & (User.is_active.is_(True))
     ).first()
 
-    if user is None or not verify_password(password or '', user.hashed_password):
+    if user is None or not _password_matches(password or '', user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid credentials')
+
+    if user.hashed_password and not user.hashed_password.startswith(('pbkdf2:', 'scrypt:', 'argon2:')):
+        user.hashed_password = hash_password(password or '')
+        db.commit()
+        db.refresh(user)
 
     return user

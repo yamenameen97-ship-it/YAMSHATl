@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 import bleach
 import socketio
-from fastapi import HTTPException
 from sqlalchemy import func
 
 from app.core.config import settings
@@ -20,6 +21,20 @@ from app.models.user import User
 cors_allowed_origins = '*' if '*' in settings.cors_origins else settings.cors_origins
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins=cors_allowed_origins)
 sio_app = socketio.ASGIApp(sio)
+
+
+def _room_has_members(room_name: str, namespace: str = '/') -> bool:
+    namespace_rooms = getattr(getattr(sio, 'manager', None), 'rooms', {}).get(namespace, {})
+    room = namespace_rooms.get(room_name)
+    return bool(room)
+
+
+def is_user_online(*, username: str | None = None, user_id: int | None = None) -> bool:
+    if user_id is not None and _room_has_members(f'user:{user_id}'):
+        return True
+    if username and _room_has_members(f'username:{username}'):
+        return True
+    return False
 
 
 async def _get_session_user(sid: str) -> dict | None:
@@ -81,7 +96,9 @@ async def _resolve_authenticated_user(sid: str, token: str | None = None) -> tup
 async def connect(sid, environ, auth):
     token = (auth or {}).get('token') if isinstance(auth, dict) else None
     if token:
-        await _resolve_authenticated_user(sid, token)
+        _, user = await _resolve_authenticated_user(sid, token)
+        if user is not None:
+            await sio.emit('presence_update', {'user': user.username, 'is_online': True, 'last_seen': user.last_login_at.isoformat() if user.last_login_at else None})
     return True
 
 
@@ -89,10 +106,28 @@ async def connect(sid, environ, auth):
 async def disconnect(sid):
     session = await sio.get_session(sid)
     room_id = session.get('live_room_id') if session else None
+    username = session.get('username') if session else None
+    user_id = session.get('user_id') if session else None
+
     if room_id:
         room = live_store.deactivate_presence(room_id, sid)
         if room:
             await sio.emit('room_stats', {'room_id': room_id, 'viewer_count': room['viewer_count'], 'hearts_count': room['hearts_count']}, room=room_id)
+
+    if user_id:
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == int(user_id)).first()
+            if user is not None:
+                user.last_login_at = datetime.utcnow()
+                db.commit()
+                last_seen = user.last_login_at.isoformat()
+            else:
+                last_seen = datetime.utcnow().isoformat()
+        finally:
+            db.close()
+        if username:
+            await sio.emit('presence_update', {'user': username, 'is_online': False, 'last_seen': last_seen})
 
 
 @sio.on('register_user')
@@ -106,6 +141,7 @@ async def register_user_event(sid, data):
             await sio.enter_room(sid, f'username:{username}')
         return
     await _save_user_session(sid, user, live_room_id=(session or {}).get('live_room_id'))
+    await sio.emit('presence_update', {'user': user.username, 'is_online': True, 'last_seen': user.last_login_at.isoformat() if user.last_login_at else None})
 
 
 @sio.on('join_live')
@@ -194,6 +230,7 @@ async def join_chat_event(sid, data):
         return
     room_name = ':'.join(sorted([user.username, peer]))
     await sio.enter_room(sid, f'chat:{room_name}')
+    await sio.emit('presence_update', {'user': user.username, 'is_online': True, 'last_seen': None})
 
 
 @sio.on('leave_chat')
@@ -251,7 +288,10 @@ async def add_comment_event(sid, data):
             'id': comment.id,
             'post_id': comment.post_id,
             'user': user.username,
+            'username': user.username,
             'text': comment.content,
+            'comment': comment.content,
+            'content': comment.content,
             'created_at': comment.created_at.isoformat(),
         }
     finally:
@@ -272,10 +312,12 @@ async def follow_user_event(sid, data):
         if target_user is None:
             return
         follow = db.query(Follow).filter(Follow.follower_id == user.id, Follow.following_id == target_user.id).first()
+        following = False
         if follow is None:
             db.add(Follow(follower_id=user.id, following_id=target_user.id))
             user.following_count = (user.following_count or 0) + 1
             target_user.followers_count = (target_user.followers_count or 0) + 1
+            following = True
             notification = Notification(
                 user_id=target_user.id,
                 type='FOLLOW',
@@ -297,12 +339,17 @@ async def follow_user_event(sid, data):
                 },
                 room=f'user:{target_user.id}',
             )
+        else:
+            db.delete(follow)
+            user.following_count = max((user.following_count or 0) - 1, 0)
+            target_user.followers_count = max((target_user.followers_count or 0) - 1, 0)
+            db.commit()
         db.refresh(user)
         db.refresh(target_user)
         payload = {
             'username': user.username,
             'target_username': target_user.username,
-            'following': True,
+            'following': following,
             'followers_count': target_user.followers_count,
             'following_count': target_user.following_count,
         }

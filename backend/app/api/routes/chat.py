@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import bleach
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from sqlalchemy import and_, or_
@@ -6,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.dependencies import get_current_user, get_db
 from app.core.rate_limit import allow_socket_message
 from app.core.security import TokenError, decode_token
-from app.core.socket_server import sio
+from app.core.socket_server import is_user_online, sio
 from app.db.session import SessionLocal
 from app.models.message import Message
 from app.models.user import User
@@ -18,15 +20,18 @@ router = APIRouter()
 def _serialize_message(message: Message, db: Session) -> dict:
     sender = db.query(User).filter(User.id == message.sender_id).first()
     receiver = db.query(User).filter(User.id == message.receiver_id).first()
+    deleted = bool(message.deleted_at)
     return {
         'id': message.id,
         'sender': sender.username if sender else str(message.sender_id),
         'receiver': receiver.username if receiver else str(message.receiver_id),
-        'message': message.content,
-        'content': message.content,
+        'message': 'تم حذف الرسالة' if deleted else message.content,
+        'content': 'تم حذف الرسالة' if deleted else message.content,
+        'media_url': None if deleted else message.media_url,
+        'type': message.message_type or ('image' if message.media_url else 'text'),
         'created_at': message.created_at.isoformat() if message.created_at else None,
         'status': 'seen' if message.is_seen else 'delivered' if message.is_delivered else 'sent',
-        'deleted': False,
+        'deleted': deleted,
     }
 
 
@@ -73,8 +78,10 @@ def get_messages(
 async def send_message(payload: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     receiver_username = str(payload.get('receiver') or '').strip()
     raw_message = str(payload.get('message') or '').strip()
-    if not receiver_username or not raw_message:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='receiver and message are required')
+    media_url = str(payload.get('media_url') or '').strip()
+    message_type = str(payload.get('type') or ('image' if media_url else 'text')).strip() or 'text'
+    if not receiver_username or (not raw_message and not media_url):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='receiver and message or media_url are required')
     if not allow_socket_message(f'chat:{current_user.id}'):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='You are sending messages too quickly')
 
@@ -86,7 +93,9 @@ async def send_message(payload: dict, db: Session = Depends(get_db), current_use
         sender_id=current_user.id,
         receiver_id=receiver.id,
         content=bleach.clean(raw_message),
-        is_delivered=manager.is_online(receiver.id),
+        media_url=media_url or None,
+        message_type=message_type,
+        is_delivered=is_user_online(username=receiver.username, user_id=receiver.id),
         is_seen=False,
     )
     db.add(message)
@@ -146,9 +155,10 @@ def get_chat_threads(db: Session = Depends(get_db), current_user: User = Depends
             continue
         seen.add(peer.username)
         result.append({
+            'name': peer.username,
             'username': peer.username,
             'avatar': peer.avatar,
-            'last_message': message.content,
+            'last_message': 'تم حذف الرسالة' if message.deleted_at else (message.content or ''),
             'created_at': message.created_at.isoformat() if message.created_at else None,
         })
     return result
@@ -160,13 +170,26 @@ def get_presence(username: str, db: Session = Depends(get_db), current_user: Use
     user = db.query(User).filter(User.username == username, User.is_active.is_(True)).first()
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
-    return {'user': username, 'is_online': manager.is_online(user.id), 'last_seen': None}
+    online = is_user_online(username=username, user_id=user.id)
+    return {
+        'user': username,
+        'is_online': online,
+        'last_seen': None if online else (user.last_login_at.isoformat() if user.last_login_at else None),
+    }
 
 
 @router.post('/update_online')
-async def update_online(payload: dict, current_user: User = Depends(get_current_user)):
+async def update_online(payload: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     online = bool(payload.get('online', True))
-    response = {'user': current_user.username, 'is_online': online, 'last_seen': None}
+    if not online:
+        current_user.last_login_at = datetime.utcnow()
+        db.commit()
+        db.refresh(current_user)
+    response = {
+        'user': current_user.username,
+        'is_online': online,
+        'last_seen': None if online else (current_user.last_login_at.isoformat() if current_user.last_login_at else None),
+    }
     await sio.emit('presence_update', response)
     return response
 
@@ -180,12 +203,19 @@ async def delete_message(payload: dict, db: Session = Depends(get_db), current_u
     if message is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Message not found')
     receiver = db.query(User).filter(User.id == message.receiver_id).first()
+    message.deleted_at = datetime.utcnow()
+    message.content = 'تم حذف الرسالة'
+    message.media_url = None
+    db.commit()
     payload_out = {
         'id': message.id,
         'sender': current_user.username,
         'receiver': receiver.username if receiver else str(message.receiver_id),
         'deleted': True,
         'message': 'تم حذف الرسالة',
+        'content': 'تم حذف الرسالة',
+        'media_url': None,
+        'type': 'text',
     }
     await sio.emit('message_deleted', payload_out, room=f'username:{payload_out["receiver"]}')
     await sio.emit('message_deleted', payload_out, room=f'username:{payload_out["sender"]}')

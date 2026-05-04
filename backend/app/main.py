@@ -1,12 +1,14 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import socketio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 import app.models  # noqa: F401
-from app.api.routes import admin, auth, chat, comments, follow, inbox, live, notifications, posts, search, upload, users, ws
+from app.api.routes import admin, auth, chat, comments, follow, groups, inbox, live, notifications, posts, search, stories, upload, users, ws
 from app.core.config import settings
 from app.core.observability import configure_metrics, configure_tracing, make_metrics_router
 from app.core.security_extra import security_headers
@@ -54,6 +56,10 @@ if settings.ENABLE_METRICS:
 fastapi_app.include_router(make_metrics_router())
 configure_tracing(fastapi_app, settings.SERVICE_NAME)
 
+uploads_dir = Path(__file__).resolve().parents[2] / 'uploads'
+uploads_dir.mkdir(exist_ok=True)
+fastapi_app.mount('/uploads', StaticFiles(directory=str(uploads_dir)), name='uploads')
+
 fastapi_app.include_router(auth.router, prefix=f'{settings.API_PREFIX}/auth', tags=['auth'])
 fastapi_app.include_router(users.router, prefix=f'{settings.API_PREFIX}/users', tags=['users'])
 fastapi_app.include_router(posts.router, prefix=f'{settings.API_PREFIX}/posts', tags=['posts'])
@@ -66,6 +72,8 @@ fastapi_app.include_router(upload.router, prefix=f'{settings.API_PREFIX}/upload'
 fastapi_app.include_router(admin.router, prefix=f'{settings.API_PREFIX}/admin', tags=['admin'])
 fastapi_app.include_router(live.router, prefix=settings.API_PREFIX, tags=['live'])
 fastapi_app.include_router(chat.router, prefix=settings.API_PREFIX, tags=['chat'])
+fastapi_app.include_router(stories.router, prefix=settings.API_PREFIX, tags=['stories'])
+fastapi_app.include_router(groups.router, prefix=settings.API_PREFIX, tags=['groups'])
 fastapi_app.include_router(ws.router, tags=['ws'])
 
 
@@ -78,6 +86,7 @@ def root() -> dict:
         'metrics': '/metrics',
         'service': settings.SERVICE_NAME,
         'socketio': '/socket.io',
+        'uploads': '/uploads',
     }
 
 

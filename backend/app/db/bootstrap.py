@@ -11,6 +11,13 @@ from app.core.security import hash_password
 from app.db.base import Base
 
 CURRENT_ALEMBIC_REVISION = '20260503_0001'
+LEGACY_USER_TABLE_NAMES = ('suser', 'user')
+REQUIRED_SCHEMA_COLUMNS: dict[str, set[str]] = {
+    'users': {'username', 'email', 'hashed_password', 'role', 'is_active'},
+    'posts': {'user_id'},
+    'comments': {'user_id', 'content'},
+    'messages': {'sender_id', 'receiver_id', 'content'},
+}
 
 
 def _table_exists(engine: Engine, table_name: str) -> bool:
@@ -61,6 +68,35 @@ def _set_alembic_revision(engine: Engine, revision: str = CURRENT_ALEMBIC_REVISI
         connection.execute(text('CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)'))
         connection.execute(text('DELETE FROM alembic_version'))
         connection.execute(text('INSERT INTO alembic_version (version_num) VALUES (:revision)'), {'revision': revision})
+
+
+def _adopt_legacy_users_table(engine: Engine) -> None:
+    if _table_exists(engine, 'users'):
+        return
+
+    for legacy_table in LEGACY_USER_TABLE_NAMES:
+        if not _table_exists(engine, legacy_table):
+            continue
+        with engine.begin() as connection:
+            connection.execute(text(f'ALTER TABLE {legacy_table} RENAME TO users'))
+        return
+
+
+def _schema_needs_normalization(engine: Engine, existing_tables: list[str] | None = None) -> bool:
+    tables = set(existing_tables or inspect(engine).get_table_names())
+    if not tables:
+        return True
+
+    if any(table in tables for table in LEGACY_USER_TABLE_NAMES):
+        return True
+
+    for table_name, required_columns in REQUIRED_SCHEMA_COLUMNS.items():
+        if table_name not in tables:
+            continue
+        if not required_columns.issubset(_column_names(engine, table_name)):
+            return True
+
+    return False
 
 
 def _migrate_users_table(engine: Engine) -> None:
@@ -206,12 +242,15 @@ def _migrate_messages_table(engine: Engine) -> None:
     _add_column_if_missing(engine, 'messages', 'sender_id', 'sender_id INTEGER')
     _add_column_if_missing(engine, 'messages', 'receiver_id', 'receiver_id INTEGER')
     _add_column_if_missing(engine, 'messages', 'content', 'content TEXT')
+    _add_column_if_missing(engine, 'messages', 'media_url', 'media_url TEXT')
+    _add_column_if_missing(engine, 'messages', 'message_type', "message_type VARCHAR(20) DEFAULT 'text'")
     _add_column_if_missing(engine, 'messages', 'is_delivered', 'is_delivered BOOLEAN DEFAULT FALSE')
     _add_column_if_missing(engine, 'messages', 'is_seen', 'is_seen BOOLEAN DEFAULT FALSE')
+    _add_column_if_missing(engine, 'messages', 'deleted_at', 'deleted_at TIMESTAMP NULL')
     _add_column_if_missing(engine, 'messages', 'created_at', 'created_at TIMESTAMP NULL')
 
     columns = _column_names(engine, 'messages')
-    select_columns = ['id', *[column for column in ['sender_id', 'receiver_id', 'sender', 'receiver', 'message', 'content', 'created_at'] if column in columns]]
+    select_columns = ['id', *[column for column in ['sender_id', 'receiver_id', 'sender', 'receiver', 'message', 'content', 'message_type', 'created_at'] if column in columns]]
 
     with engine.begin() as connection:
         user_lookup = _load_user_lookup(connection)
@@ -230,6 +269,8 @@ def _migrate_messages_table(engine: Engine) -> None:
                     updates['receiver_id'] = mapped_receiver_id
             if row.get('content') in (None, '') and row.get('message') not in (None, ''):
                 updates['content'] = row.get('message')
+            if row.get('message_type') in (None, ''):
+                updates['message_type'] = 'text'
             if row.get('created_at') is None:
                 updates['created_at'] = datetime.utcnow()
             if updates:
@@ -240,10 +281,11 @@ def _migrate_messages_table(engine: Engine) -> None:
 
 def initialize_database(engine: Engine, force: bool = False) -> None:
     existing_tables = inspect(engine).get_table_names()
-    should_bootstrap = force or settings.DB_BOOTSTRAP_ON_START or not existing_tables
+    should_bootstrap = force or settings.DB_BOOTSTRAP_ON_START or _schema_needs_normalization(engine, existing_tables)
     if not should_bootstrap:
         return
 
+    _adopt_legacy_users_table(engine)
     Base.metadata.create_all(bind=engine)
     _migrate_users_table(engine)
     Base.metadata.create_all(bind=engine)

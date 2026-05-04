@@ -12,16 +12,20 @@ def _serialize_post(db: Session, post: Post) -> dict:
     user = db.query(User).filter(User.id == post.user_id).first()
     like_count = db.query(func.count(Like.id)).filter(Like.post_id == post.id).scalar() or 0
     comment_count = db.query(func.count(Comment.id)).filter(Comment.post_id == post.id).scalar() or 0
+    media = post.image_url or ''
     return {
         'id': post.id,
         'user_id': post.user_id,
         'username': user.username if user else 'unknown',
         'avatar': user.avatar if user else None,
         'content': post.content,
-        'image_url': post.image_url,
+        'image_url': media,
+        'media': media,
         'created_at': post.created_at,
         'like_count': like_count,
+        'likes': like_count,
         'comment_count': comment_count,
+        'comments_count': comment_count,
     }
 
 
@@ -35,6 +39,14 @@ def create_post(db: Session, user_id: int, content: str, image_url: str | None =
 
 def get_posts(db: Session, skip: int = 0, limit: int = 10) -> list[dict]:
     posts = db.query(Post).order_by(Post.created_at.desc()).offset(skip).limit(limit).all()
+    return [_serialize_post(db, post) for post in posts]
+
+
+def get_posts_by_username(db: Session, username: str) -> list[dict]:
+    user = db.query(User).filter(User.username == username, User.is_active.is_(True)).first()
+    if user is None:
+        return []
+    posts = db.query(Post).filter(Post.user_id == user.id).order_by(Post.created_at.desc()).all()
     return [_serialize_post(db, post) for post in posts]
 
 

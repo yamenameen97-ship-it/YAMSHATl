@@ -1,16 +1,15 @@
 import { NavLink } from 'react-router-dom';
 
 const links = [
-  { to: '/', label: 'الرئيسية', meta: 'المنشورات', icon: '⌂' },
+  { to: '/', label: 'الرئيسية', meta: 'الصفحة الرئيسية', icon: '⌂' },
   { to: '/stories', label: 'الستوري', meta: 'لحظات سريعة', icon: '◌' },
   { to: '/reels', label: 'الريلز', meta: 'فيديوهات قصيرة', icon: '▣' },
+  { to: '/live', label: 'البث المباشر', meta: 'غرف مباشرة', icon: '◉' },
+  { to: '/inbox', label: 'الدردشة', meta: 'الرسائل', icon: '✉' },
+  { to: '/users', label: 'الأصدقاء', meta: 'ابدأ محادثة', icon: '◎' },
   { to: '/groups', label: 'المجموعات', meta: 'إنشاء ومتابعة', icon: '◍' },
-  { to: '/live', label: 'البث', meta: 'غرف مباشرة', icon: '◉' },
-  { to: '/inbox', label: 'الرسائل', meta: 'الدردشات', icon: '✉' },
-  { to: '/users', label: 'الأصدقاء', meta: 'الحسابات', icon: '◎' },
-  { to: '/profile', label: 'حسابي', meta: 'الملف الشخصي', icon: '◌' },
-  { to: '/dashboard', label: 'التحليلات', meta: 'النشاط', icon: '◫' },
-  { to: '/admin/dashboard', label: 'الإدارة', meta: 'لوحة التحكم', icon: '⌘' },
+  { to: '/profile', label: 'الملف الشخصي', meta: 'إحصائياتك', icon: '◌' },
+  { to: '/dashboard', label: 'لوحة النشاط', meta: 'نظرة سريعة', icon: '◫' },
 ];
 
 export default function Sidebar() {
@@ -21,14 +20,14 @@ export default function Sidebar() {
           <div className="brand-mark">ي</div>
           <div>
             <h1 className="brand-title">Yamshat</h1>
-            <p className="brand-subtitle">ستايل داكن بنفس هوية البنفسجي المضيء وربط مباشر بالمنشورات والأسماء المخزنة.</p>
+            <p className="brand-subtitle">تواصل، شارك، عش اللحظة — نفس روح المرجع الداكن البنفسجي على صفحات التطبيق.</p>
           </div>
         </div>
 
         <div className="sidebar-highlight card">
           <div className="page-eyebrow">واجهة احترافية</div>
-          <strong>شبكة اجتماعية عربية</strong>
-          <p className="muted no-margin">تصميم زجاجي، زوايا ناعمة، وإحساس قريب جداً من المرجع المرسل.</p>
+          <strong>هوية اجتماعية عربية</strong>
+          <p className="muted no-margin">تنظيم أوضح، بطاقات ناعمة، وحضور بصري مطابق أكثر للصورة المرجعية.</p>
         </div>
       </div>
 
@@ -49,9 +48,9 @@ export default function Sidebar() {
       </nav>
 
       <div className="sidebar-footer">
-        <div className="glass-chip">منشورات لحظية</div>
-        <div className="glass-chip">شات + ظهور</div>
-        <div className="glass-chip">Socket + LiveKit</div>
+        <div className="glass-chip">ريلز وستوري</div>
+        <div className="glass-chip">دردشة وبث</div>
+        <div className="glass-chip">Dark Purple UI</div>
       </div>
     </aside>
   );

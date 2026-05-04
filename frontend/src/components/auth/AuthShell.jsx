@@ -2,9 +2,9 @@ import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 
 const featureItems = [
-  { label: 'لوحة موحدة', value: 'Dashboard + Users + Content + Reports' },
-  { label: 'Realtime', value: 'FastAPI + Socket.io' },
-  { label: 'الصلاحيات', value: 'RBAC + Protected Routes' },
+  { label: 'المشاركة', value: 'منشورات، صور، فيديو، وتفاعل لحظي' },
+  { label: 'المجتمع', value: 'ريلز، ستوري، دردشة، وبث مباشر' },
+  { label: 'الهوية', value: 'Dark mode + purple glow + Arabic mobile UX' },
 ];
 
 export default function AuthShell({ badge, title, description, footer, alternateAction, children }) {
@@ -26,11 +26,11 @@ export default function AuthShell({ badge, title, description, footer, alternate
           </div>
 
           <div className="auth-side-footer">
-            <span>نسخة Admin احترافية مبنية على المشروع الحالي بالكامل.</span>
+            <span>واجهة جوال اجتماعية مطورة على نفس المشروع الحالي بالكامل.</span>
             <div className="auth-side-links">
-              <Link to="/login">Login</Link>
-              <Link to="/register">Register</Link>
-              <Link to="/admin/dashboard">Dashboard</Link>
+              <Link to="/login">تسجيل الدخول</Link>
+              <Link to="/register">إنشاء حساب</Link>
+              <Link to="/">الرئيسية</Link>
             </div>
           </div>
         </div>

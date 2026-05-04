@@ -42,7 +42,7 @@ export default function Login() {
     <AuthShell
       badge="YAMSHAT"
       title="تسجيل الدخول"
-      description="ادخل إلى الويب الجديد: منشورات، ريلز، ستوري، مجموعات، شات، وبث مباشر من مكان واحد."
+      description="ادخل إلى يمشات بواجهة جوال داكنة ومنظمة بنفس ألوان وترتيب المرجع المرسل."
       alternateAction={
         <>
           <span className="muted">ليس لديك حساب؟</span>
@@ -58,7 +58,7 @@ export default function Login() {
       <form className="auth-form auth-form-enhanced" onSubmit={handleSubmit}>
         <div className="auth-form-head">
           <h2>مرحباً بعودتك</h2>
-          <p className="muted">استخدم البريد الإلكتروني أو اسم المستخدم للدخول.</p>
+          <p className="muted">استخدم البريد الإلكتروني أو اسم المستخدم للدخول إلى مجتمعك ومحتواك.</p>
         </div>
 
         <Input label="البريد الإلكتروني أو اسم المستخدم" placeholder="admin@mail.com أو admin" value={form.identifier} onChange={handleChange('identifier')} />
@@ -66,7 +66,7 @@ export default function Login() {
 
         {error ? <div className="alert error">{error}</div> : null}
 
-        <Button type="submit" disabled={loading}>{loading ? 'جارٍ تسجيل الدخول...' : 'دخول'}</Button>
+        <Button type="submit" disabled={loading}>{loading ? 'جارٍ تسجيل الدخول...' : 'تسجيل الدخول'}</Button>
       </form>
     </AuthShell>
   );

@@ -6,11 +6,11 @@ import socket from '../../api/socket.js';
 import { clearStoredUser, getAuthToken, getCurrentUsername, getStoredUser } from '../../utils/auth.js';
 
 const titles = {
-  '/': 'الرئيسية',
-  '/dashboard': 'لوحة التحكم',
+  '/': 'الصفحة الرئيسية',
+  '/dashboard': 'لوحة النشاط',
   '/users': 'الأصدقاء',
   '/profile': 'الملف الشخصي',
-  '/inbox': 'الرسائل',
+  '/inbox': 'الدردشات',
   '/stories': 'الستوري',
   '/reels': 'الريلز',
   '/groups': 'المجموعات',
@@ -92,15 +92,15 @@ export default function Topbar() {
   return (
     <header className="topbar yamshat-topbar">
       <div>
-        <div className="page-eyebrow">ستايل Yamshat الجديد</div>
+        <div className="page-eyebrow">Yamshat mobile style</div>
         <h2 className="page-title">{title}</h2>
-        <p className="muted no-margin topbar-note">واجهة ويب مربوطة الآن بالمنشورات والريلز والستوري والشات والبث المباشر.</p>
+        <p className="muted no-margin topbar-note">واجهة مرتبة للجوال بألوان بنفسجية داكنة وتوزيع أقرب للصورة المرجعية.</p>
       </div>
 
       <div className="topbar-actions">
         <div className="search-shell">
           <span>⌕</span>
-          <input placeholder="بحث سريع..." disabled />
+          <input placeholder="بحث في يمشات..." disabled />
         </div>
 
         <div className="glass-chip live-pill">LIVE</div>
@@ -108,7 +108,7 @@ export default function Topbar() {
         <div className="notification-shell">
           <button type="button" className="ghost-btn notification-trigger" onClick={() => setOpen((prev) => !prev)}>
             <span>🔔</span>
-            <span>الإشعارات</span>
+            <span>التنبيهات</span>
             <strong className="notif-count">{unreadCount}</strong>
           </button>
 
@@ -147,7 +147,7 @@ export default function Topbar() {
           </div>
         </Link>
         <button type="button" className="ghost-btn" onClick={handleLogout}>
-          خروج
+تسجيل الخروج
         </button>
       </div>
     </header>

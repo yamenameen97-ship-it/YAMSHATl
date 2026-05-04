@@ -47,9 +47,9 @@ export default function Register() {
 
   return (
     <AuthShell
-      badge="YAMSHAT SETUP"
+      badge="YAMSHAT"
       title="إنشاء حساب"
-      description="ابدأ بحساب جديد ثم ادخل مباشرة إلى الويب المتكامل ولوحة التحكم إن كنت Admin."
+      description="افتح حسابك الجديد وابدأ بنفس توزيع الصفحات الداكنة والبطاقات البنفسجية الحديثة."
       alternateAction={
         <>
           <span className="muted">عندك حساب بالفعل؟</span>
@@ -65,7 +65,7 @@ export default function Register() {
       <form className="auth-form auth-form-enhanced" onSubmit={handleSubmit}>
         <div className="auth-form-head">
           <h2>إنشاء حساب جديد</h2>
-          <p className="muted">يمكنك استخدام البريد أو اسم المستخدم، ثم إدارة كامل النظام من داخل اللوحة.</p>
+          <p className="muted">أكمل بياناتك وادخل مباشرة إلى تجربة يمشات الاجتماعية على الجوال.</p>
         </div>
 
         <Input label="اسم المستخدم" placeholder="yamshat_admin" value={form.name} onChange={handleChange('name')} hint="يُحفظ بدون مسافات" />
@@ -75,7 +75,7 @@ export default function Register() {
 
         {error ? <div className="alert error">{error}</div> : null}
 
-        <Button type="submit" disabled={loading}>{loading ? 'جارٍ إنشاء الحساب...' : 'إنشاء الحساب والدخول'}</Button>
+        <Button type="submit" disabled={loading}>{loading ? 'جارٍ إنشاء الحساب...' : 'إنشاء الحساب'}</Button>
       </form>
     </AuthShell>
   );

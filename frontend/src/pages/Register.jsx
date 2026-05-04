@@ -5,6 +5,7 @@ import Button from '../components/ui/Button.jsx';
 import AuthShell from '../components/auth/AuthShell.jsx';
 import { registerUser } from '../api/auth.js';
 import { setStoredUser } from '../utils/auth.js';
+import { getDefaultPostLoginPath } from '../utils/access.js';
 
 export default function Register() {
   const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '' });
@@ -37,7 +38,7 @@ export default function Register() {
       setLoading(true);
       const { data } = await registerUser({ name: form.name.trim(), email: form.email.trim(), password: form.password });
       setStoredUser(data);
-      navigate('/', { replace: true });
+      navigate(getDefaultPostLoginPath(data), { replace: true });
     } catch (err) {
       setError(err?.response?.data?.detail || 'تعذر إنشاء الحساب حالياً.');
     } finally {
@@ -58,7 +59,7 @@ export default function Register() {
       }
       footer={
         <>
-          أول حساب يتم إنشاؤه يصبح Admin، وبعدها يمكن إدارة الأدوار بالكامل من صفحة RBAC. <Link to="/login">لدي حساب بالفعل</Link>
+          الحسابات الجديدة تُنشأ كمشتركين عاديين، ودخول الإدارة يبقى منفصلاً عن واجهة المشتركين. <Link to="/login">لدي حساب بالفعل</Link>
         </>
       }
     >
@@ -68,8 +69,8 @@ export default function Register() {
           <p className="muted">أكمل بياناتك وادخل مباشرة إلى تجربة يمشات الاجتماعية على الجوال.</p>
         </div>
 
-        <Input label="اسم المستخدم" placeholder="yamshat_admin" value={form.name} onChange={handleChange('name')} hint="يُحفظ بدون مسافات" />
-        <Input label="البريد الإلكتروني" placeholder="admin@mail.com" value={form.email} onChange={handleChange('email')} />
+        <Input label="اسم المستخدم" placeholder="yamshat_user" value={form.name} onChange={handleChange('name')} hint="يُحفظ بدون مسافات" />
+        <Input label="البريد الإلكتروني" placeholder="user@mail.com" value={form.email} onChange={handleChange('email')} />
         <Input label="كلمة المرور" type="password" placeholder="••••••••" value={form.password} onChange={handleChange('password')} hint="6 أحرف على الأقل" />
         <Input label="تأكيد كلمة المرور" type="password" placeholder="••••••••" value={form.confirmPassword} onChange={handleChange('confirmPassword')} />
 

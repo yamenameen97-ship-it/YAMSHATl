@@ -22,6 +22,22 @@ async function loadLiveKit() {
   return livekitCache.module;
 }
 
+function ensureSocketConnected() {
+  if (socket.connected && socket.id) {
+    return Promise.resolve(socket.id);
+  }
+
+  return new Promise((resolve) => {
+    const handleConnect = () => {
+      socket.off('connect', handleConnect);
+      resolve(socket.id || '');
+    };
+
+    socket.on('connect', handleConnect);
+    socket.connect();
+  });
+}
+
 export default function Live() {
   const currentUser = getCurrentUsername();
   const token = getAuthToken();
@@ -113,10 +129,11 @@ export default function Live() {
   const disconnectRoom = async () => {
     try {
       if (activeRoomIdRef.current) {
+        const socketId = await ensureSocketConnected();
         socket.emit('leave_live', { token, room_id: String(activeRoomIdRef.current) });
         await updateLivePresence({
           room_id: activeRoomIdRef.current,
-          socket_id: socket.id,
+          socket_id: socketId,
           platform: 'web',
           device_type: 'browser',
           is_host: activeRoom?.role === 'host',
@@ -195,7 +212,7 @@ export default function Live() {
       setViewerCount(Number(roomRecord.viewer_count || 0));
       setHeartsCount(Number(roomRecord.hearts_count || 0));
 
-      if (!socket.connected) socket.connect();
+      const socketId = await ensureSocketConnected();
       socket.emit('join_live', {
         token,
         room_id: String(roomRecord.id),
@@ -207,7 +224,7 @@ export default function Live() {
 
       await updateLivePresence({
         room_id: roomRecord.id,
-        socket_id: socket.id,
+        socket_id: socketId,
         platform: 'web',
         device_type: 'browser',
         is_host: role === 'host',

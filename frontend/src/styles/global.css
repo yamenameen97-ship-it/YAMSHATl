@@ -1109,6 +1109,10 @@ body {
   min-width: 0;
 }
 
+.main-shell.native-shell {
+  width: 100%;
+}
+
 .topbar.yamshat-topbar {
   position: sticky;
   top: 0;
@@ -1157,6 +1161,10 @@ body {
 
 .page-content {
   padding: 22px;
+}
+
+.page-content.native-shell {
+  padding: 14px 0 0;
 }
 
 .card,
@@ -1502,6 +1510,10 @@ input::placeholder {
 
   .page-content {
     padding-bottom: 96px;
+  }
+
+  .page-content.native-shell {
+    padding-bottom: 14px;
   }
 
   .mobile-dock {

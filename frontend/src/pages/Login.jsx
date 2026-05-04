@@ -5,6 +5,7 @@ import Button from '../components/ui/Button.jsx';
 import AuthShell from '../components/auth/AuthShell.jsx';
 import { loginUser } from '../api/auth.js';
 import { setStoredUser } from '../utils/auth.js';
+import { getDefaultPostLoginPath } from '../utils/access.js';
 
 export default function Login() {
   const [form, setForm] = useState({ identifier: '', password: '' });
@@ -30,7 +31,8 @@ export default function Login() {
         password: form.password,
       });
       setStoredUser(data);
-      navigate(location.state?.from?.pathname || '/', { replace: true });
+      const fallbackPath = getDefaultPostLoginPath(data);
+      navigate(location.state?.from?.pathname || fallbackPath, { replace: true });
     } catch (err) {
       setError(err?.response?.data?.detail || 'فشل تسجيل الدخول، راجع البيانات.');
     } finally {
@@ -51,7 +53,7 @@ export default function Login() {
       }
       footer={
         <>
-          أول حساب يتم إنشاؤه يأخذ صلاحية Admin تلقائياً. <Link to="/register">إنشاء حساب جديد</Link>
+          دخول الإدارة يتم من الرابط المخصص للإدارة فقط، أما هذه الصفحة فهي للمشتركين. <Link to="/register">إنشاء حساب جديد</Link>
         </>
       }
     >

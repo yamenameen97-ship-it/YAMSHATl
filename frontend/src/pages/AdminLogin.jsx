@@ -5,12 +5,9 @@ import Button from '../components/ui/Button.jsx';
 import AuthShell from '../components/auth/AuthShell.jsx';
 import { loginUser } from '../api/auth.js';
 import { clearStoredUser, getStoredUser, setStoredUser } from '../utils/auth.js';
+import { PRIMARY_ADMIN_EMAIL, isPrimaryAdminSession } from '../utils/access.js';
 
-const canAccessAdminPanel = (session) => {
-  if (!session || typeof session !== 'object') return false;
-  if (session.role === 'admin') return true;
-  return Array.isArray(session.permissions) && session.permissions.includes('dashboard.view');
-};
+const canAccessAdminPanel = (session) => isPrimaryAdminSession(session);
 
 export default function AdminLogin() {
   const [form, setForm] = useState({ identifier: '', password: '' });
@@ -82,10 +79,10 @@ export default function AdminLogin() {
       <form className="auth-form auth-form-enhanced" onSubmit={handleSubmit}>
         <div className="auth-form-head">
           <h2>لوحة تحكم الإدارة</h2>
-          <p className="muted">ادخل بالبريد الإلكتروني أو اسم المستخدم المصرح له بدخول لوحة الإدارة.</p>
+          <p className="muted">دخول لوحة الإدارة مقصور على البريد المخصص للإدارة فقط: {PRIMARY_ADMIN_EMAIL}</p>
         </div>
 
-        <Input label="البريد الإلكتروني أو اسم المستخدم" placeholder="admin@mail.com أو admin" value={form.identifier} onChange={handleChange('identifier')} />
+        <Input label="البريد الإلكتروني أو اسم المستخدم" placeholder={PRIMARY_ADMIN_EMAIL} value={form.identifier} onChange={handleChange('identifier')} />
         <Input label="كلمة المرور" type="password" placeholder="••••••••" value={form.password} onChange={handleChange('password')} hint="الحد الأدنى 6 أحرف" />
 
         {error ? <div className="alert error">{error}</div> : null}

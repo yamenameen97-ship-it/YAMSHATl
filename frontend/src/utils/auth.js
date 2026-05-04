@@ -1,3 +1,5 @@
+import { isPrimaryAdminSession } from './access.js';
+
 function normalizeUserShape(user) {
   if (!user || typeof user !== 'object') return null;
   const token = user.token || user.access_token || user?.profile?.token || '';
@@ -50,6 +52,6 @@ export function getCurrentUsername() {
 export function hasPermission(permission) {
   const user = getStoredUser();
   if (!user) return false;
-  if (user.role === 'admin') return true;
+  if (isPrimaryAdminSession(user)) return true;
   return Array.isArray(user.permissions) && user.permissions.includes(permission);
 }

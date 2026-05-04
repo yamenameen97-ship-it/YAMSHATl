@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { getStoredUser, hasPermission } from '../utils/auth.js';
+import { isPrimaryAdminSession } from '../utils/access.js';
 
 export default function ProtectedRoute({ children, requiredPermission = '' }) {
   const location = useLocation();
@@ -10,8 +11,12 @@ export default function ProtectedRoute({ children, requiredPermission = '' }) {
     return <Navigate to={loginPath} state={{ from: location }} replace />;
   }
 
+  if (location.pathname.startsWith('/admin') && !isPrimaryAdminSession(user)) {
+    return <Navigate to="/admin/login" state={{ from: location }} replace />;
+  }
+
   if (requiredPermission && !hasPermission(requiredPermission)) {
-    return <Navigate to="/admin/dashboard" replace />;
+    return <Navigate to="/" replace />;
   }
 
   return children;

@@ -83,7 +83,7 @@ class Settings:
             if service:
                 return rf'^https://{re.escape(service)}(?:-\d+)?\.onrender\.com$'
 
-        return None
+        return r'^https://[a-z0-9-]+(?:-\d+)?\.onrender\.com$'
 
     @property
     def cors_origins(self) -> list[str]:

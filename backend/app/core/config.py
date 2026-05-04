@@ -56,12 +56,12 @@ class Settings:
         'ALLOWED_UPLOAD_EXTENSIONS',
         'png,jpg,jpeg,webp,gif,mp4,webm,mov',
     )
-    LOGIN_RATE_LIMIT_PER_MINUTE: int = int(os.getenv('LOGIN_RATE_LIMIT_PER_MINUTE', '5'))
-    REGISTER_RATE_LIMIT_PER_MINUTE: int = int(os.getenv('REGISTER_RATE_LIMIT_PER_MINUTE', '5'))
+    LOGIN_RATE_LIMIT_PER_MINUTE: int = int(os.getenv('LOGIN_RATE_LIMIT_PER_MINUTE', '10'))
+    REGISTER_RATE_LIMIT_PER_MINUTE: int = int(os.getenv('REGISTER_RATE_LIMIT_PER_MINUTE', '10'))
     API_RATE_LIMIT_PER_MINUTE: int = int(os.getenv('API_RATE_LIMIT_PER_MINUTE', '100'))
     SOCKET_MESSAGE_MIN_INTERVAL_SECONDS: float = float(os.getenv('SOCKET_MESSAGE_MIN_INTERVAL_SECONDS', '1.0'))
-    BRUTE_FORCE_MAX_ATTEMPTS: int = int(os.getenv('BRUTE_FORCE_MAX_ATTEMPTS', '5'))
-    BRUTE_FORCE_LOCKOUT_SECONDS: int = int(os.getenv('BRUTE_FORCE_LOCKOUT_SECONDS', '900'))
+    BRUTE_FORCE_MAX_ATTEMPTS: int = int(os.getenv('BRUTE_FORCE_MAX_ATTEMPTS', '8'))
+    BRUTE_FORCE_LOCKOUT_SECONDS: int = int(os.getenv('BRUTE_FORCE_LOCKOUT_SECONDS', '300'))
     LIVEKIT_URL: str = os.getenv('LIVEKIT_URL', '')
     LIVEKIT_API_KEY: str = os.getenv('LIVEKIT_API_KEY', '')
     LIVEKIT_API_SECRET: str = os.getenv('LIVEKIT_API_SECRET', '')

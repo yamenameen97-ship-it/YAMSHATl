@@ -239,7 +239,9 @@ def _migrate_messages_table(engine: Engine) -> None:
 
 
 def initialize_database(engine: Engine, force: bool = False) -> None:
-    if not (force or settings.DB_BOOTSTRAP_ON_START):
+    existing_tables = inspect(engine).get_table_names()
+    should_bootstrap = force or settings.DB_BOOTSTRAP_ON_START or not existing_tables
+    if not should_bootstrap:
         return
 
     Base.metadata.create_all(bind=engine)

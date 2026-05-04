@@ -37,7 +37,7 @@ export default function Register() {
       setLoading(true);
       const { data } = await registerUser({ name: form.name.trim(), email: form.email.trim(), password: form.password });
       setStoredUser(data);
-      navigate('/admin/dashboard', { replace: true });
+      navigate('/', { replace: true });
     } catch (err) {
       setError(err?.response?.data?.detail || 'تعذر إنشاء الحساب حالياً.');
     } finally {
@@ -48,8 +48,8 @@ export default function Register() {
   return (
     <AuthShell
       badge="YAMSHAT SETUP"
-      title="إنشاء حساب الإدارة"
-      description="ابدأ بحساب جديد ثم ادخل مباشرة إلى لوحة التحكم المطورة بالكامل والمربوطة مع المشروع الحالي."
+      title="إنشاء حساب"
+      description="ابدأ بحساب جديد ثم ادخل مباشرة إلى الويب المتكامل ولوحة التحكم إن كنت Admin."
       alternateAction={
         <>
           <span className="muted">عندك حساب بالفعل؟</span>

@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { logoutUser } from '../../api/auth.js';
 import { getNotifications, markNotificationsRead } from '../../api/notifications.js';
 import socket from '../../api/socket.js';
-import { clearStoredUser, getCurrentUsername, getStoredUser } from '../../utils/auth.js';
+import { clearStoredUser, getAuthToken, getCurrentUsername, getStoredUser } from '../../utils/auth.js';
 
 const titles = {
   '/': 'الرئيسية',
@@ -11,8 +11,9 @@ const titles = {
   '/users': 'الأصدقاء',
   '/profile': 'الملف الشخصي',
   '/inbox': 'الرسائل',
-  '/chat': 'المحادثة',
   '/stories': 'الستوري',
+  '/reels': 'الريلز',
+  '/groups': 'المجموعات',
   '/live': 'البث المباشر',
 };
 
@@ -20,6 +21,7 @@ export default function Topbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const user = getStoredUser();
+  const token = getAuthToken();
   const currentUsername = getCurrentUsername();
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(false);
@@ -54,7 +56,7 @@ export default function Topbar() {
     loadNotifications();
 
     if (!socket.connected) socket.connect();
-    socket.emit('register_user', { user: currentUsername });
+    socket.emit('register_user', { token, user: currentUsername });
 
     const handleNotification = (notification) => {
       setNotifications((prev) => [{ ...notification, seen: false }, ...prev]);
@@ -66,7 +68,7 @@ export default function Topbar() {
       active = false;
       socket.off('new_notification', handleNotification);
     };
-  }, [currentUsername]);
+  }, [currentUsername, token]);
 
   const handleLogout = async () => {
     try {
@@ -92,7 +94,7 @@ export default function Topbar() {
       <div>
         <div className="page-eyebrow">ستايل Yamshat الجديد</div>
         <h2 className="page-title">{title}</h2>
-        <p className="muted no-margin topbar-note">نفس البيانات المخزنة، لكن بواجهة أقرب للصورة المرجعية على الويب والموبايل.</p>
+        <p className="muted no-margin topbar-note">واجهة ويب مربوطة الآن بالمنشورات والريلز والستوري والشات والبث المباشر.</p>
       </div>
 
       <div className="topbar-actions">

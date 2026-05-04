@@ -5,11 +5,12 @@ import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import socket from '../api/socket.js';
 import { getFollowersSummary, getRelationship, getUserPosts, followUser } from '../api/users.js';
-import { getCurrentUsername } from '../utils/auth.js';
+import { getAuthToken, getCurrentUsername } from '../utils/auth.js';
 
 export default function Profile() {
   const { username: routeUsername } = useParams();
   const currentUser = getCurrentUsername();
+  const token = getAuthToken();
   const username = routeUsername || currentUser;
   const [posts, setPosts] = useState([]);
   const [counts, setCounts] = useState({ followers: 0, following: 0 });
@@ -31,7 +32,7 @@ export default function Profile() {
       setPosts(Array.isArray(postsRes?.data) ? postsRes.data : []);
       setFollowing(Boolean(relationRes?.data?.following));
     } catch (err) {
-      setError(err?.response?.data?.message || 'تعذر تحميل الملف الشخصي.');
+      setError(err?.response?.data?.message || err?.response?.data?.detail || 'تعذر تحميل الملف الشخصي.');
     } finally {
       setLoading(false);
     }
@@ -44,7 +45,7 @@ export default function Profile() {
   useEffect(() => {
     if (!currentUser) return undefined;
     if (!socket.connected) socket.connect();
-    socket.emit('register_user', { user: currentUser });
+    socket.emit('register_user', { token, user: currentUser });
 
     const handleFollowUpdate = ({ username: actor, target_username, following: nextFollowing, followers_count, following_count }) => {
       if (target_username !== username) return;
@@ -54,13 +55,13 @@ export default function Profile() {
 
     socket.on('user_follow_update', handleFollowUpdate);
     return () => socket.off('user_follow_update', handleFollowUpdate);
-  }, [currentUser, username]);
+  }, [currentUser, token, username]);
 
   const handleFollow = async () => {
     if (!username || username === currentUser) return;
 
     if (socket.connected) {
-      socket.emit('follow_user', { user: currentUser, target_username: username });
+      socket.emit('follow_user', { token, user: currentUser, target_username: username });
       return;
     }
 
@@ -72,7 +73,7 @@ export default function Profile() {
         following: Number(data?.following_count || counts.following),
       });
     } catch (err) {
-      setError(err?.response?.data?.message || 'تعذر تحديث المتابعة.');
+      setError(err?.response?.data?.message || err?.response?.data?.detail || 'تعذر تحديث المتابعة.');
     }
   };
 
@@ -104,25 +105,28 @@ export default function Profile() {
         {loading ? <div className="empty-state">جارٍ تحميل الملف الشخصي...</div> : null}
 
         <div className="feed-stack">
-          {posts.map((post) => (
-            <Card key={post.id} className="post-card">
-              <div className="post-head">
-                <div>
-                  <strong>{post.username}</strong>
-                  <div className="muted">{post.created_at ? new Date(post.created_at).toLocaleString('ar-EG') : 'الآن'}</div>
+          {posts.map((post) => {
+            const media = post.media || post.image_url || '';
+            return (
+              <Card key={post.id} className="post-card">
+                <div className="post-head">
+                  <div>
+                    <strong>{post.username}</strong>
+                    <div className="muted">{post.created_at ? new Date(post.created_at).toLocaleString('ar-EG') : 'الآن'}</div>
+                  </div>
+                  <div className="glass-chip">❤️ {post.likes || post.like_count || 0}</div>
                 </div>
-                <div className="glass-chip">❤️ {post.likes || 0}</div>
-              </div>
-              <p className="post-text">{post.content}</p>
-              {post.media ? (
-                /\.(mp4|mov|webm|mkv)$/i.test(post.media) ? (
-                  <video className="post-media" src={post.media} controls playsInline />
-                ) : (
-                  <img className="post-media" src={post.media} alt={post.content || 'post media'} />
-                )
-              ) : null}
-            </Card>
-          ))}
+                <p className="post-text">{post.content}</p>
+                {media ? (
+                  /\.(mp4|mov|webm|mkv)$/i.test(media) ? (
+                    <video className="post-media" src={media} controls playsInline />
+                  ) : (
+                    <img className="post-media" src={media} alt={post.content || 'post media'} />
+                  )
+                ) : null}
+              </Card>
+            );
+          })}
 
           {!loading && posts.length === 0 ? <Card className="empty-card">لا توجد منشورات لهذا الحساب بعد.</Card> : null}
         </div>

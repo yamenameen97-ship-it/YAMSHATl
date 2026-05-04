@@ -30,7 +30,7 @@ export default function Login() {
         password: form.password,
       });
       setStoredUser(data);
-      navigate(location.state?.from?.pathname || '/admin/dashboard', { replace: true });
+      navigate(location.state?.from?.pathname || '/', { replace: true });
     } catch (err) {
       setError(err?.response?.data?.detail || 'فشل تسجيل الدخول، راجع البيانات.');
     } finally {
@@ -40,9 +40,9 @@ export default function Login() {
 
   return (
     <AuthShell
-      badge="YAMSHAT ADMIN"
-      title="تسجيل دخول لوحة التحكم"
-      description="ادخل إلى لوحة التحكم الاحترافية الجديدة لإدارة المستخدمين والمحتوى والتقارير والإشعارات والصلاحيات من مكان واحد."
+      badge="YAMSHAT"
+      title="تسجيل الدخول"
+      description="ادخل إلى الويب الجديد: منشورات، ريلز، ستوري، مجموعات، شات، وبث مباشر من مكان واحد."
       alternateAction={
         <>
           <span className="muted">ليس لديك حساب؟</span>
@@ -66,7 +66,7 @@ export default function Login() {
 
         {error ? <div className="alert error">{error}</div> : null}
 
-        <Button type="submit" disabled={loading}>{loading ? 'جارٍ تسجيل الدخول...' : 'دخول إلى اللوحة'}</Button>
+        <Button type="submit" disabled={loading}>{loading ? 'جارٍ تسجيل الدخول...' : 'دخول'}</Button>
       </form>
     </AuthShell>
   );

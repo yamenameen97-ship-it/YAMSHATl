@@ -6,22 +6,33 @@ import Button from '../components/ui/Button.jsx';
 import socket from '../api/socket.js';
 import { addComment, createPost, getComments, getPosts, uploadPostMedia } from '../api/posts.js';
 import { getUsers, getFollowersSummary, getRelationship, followUser } from '../api/users.js';
-import { getCurrentUsername } from '../utils/auth.js';
+import { getAuthToken, getCurrentUsername } from '../utils/auth.js';
 
 const EMPTY_COUNTS = { followers: 0, following: 0 };
+const isVideo = (value) => /\.(mp4|mov|webm|mkv)$/i.test(String(value || ''));
+
+function normalizeComment(comment) {
+  return {
+    ...comment,
+    username: comment?.username || comment?.user || 'user',
+    comment: comment?.comment || comment?.text || comment?.content || '',
+  };
+}
 
 function normalizePost(post, comments = []) {
   return {
     ...post,
-    comments,
+    media: post?.media || post?.image_url || '',
+    comments: comments.map(normalizeComment),
     liked_by_me: Boolean(post?.liked_by_me),
-    comments_count: Number(post?.comments_count || comments.length || 0),
-    likes: Number(post?.likes || 0),
+    comments_count: Number(post?.comments_count || post?.comment_count || comments.length || 0),
+    likes: Number(post?.likes || post?.like_count || 0),
   };
 }
 
 export default function Feed() {
   const currentUser = getCurrentUsername();
+  const token = getAuthToken();
   const [posts, setPosts] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
   const [relationships, setRelationships] = useState({});
@@ -39,7 +50,7 @@ export default function Feed() {
       const [{ data: postsData }, { data: usersData }] = await Promise.all([getPosts(), getUsers()]);
       const rawPosts = Array.isArray(postsData) ? postsData : [];
       const users = (Array.isArray(usersData) ? usersData : [])
-        .map((item) => item?.name)
+        .map((item) => item?.username || item?.name)
         .filter(Boolean)
         .filter((name) => name !== currentUser);
 
@@ -86,7 +97,7 @@ export default function Feed() {
       setSuggestions(users.slice(0, 8));
       setPosts(rawPosts.map((post) => normalizePost(post, commentsMap[post.id] || [])));
     } catch (err) {
-      setError(err?.response?.data?.message || 'تعذر تحميل الصفحة الرئيسية.');
+      setError(err?.response?.data?.message || err?.response?.data?.detail || 'تعذر تحميل الصفحة الرئيسية.');
     } finally {
       setLoading(false);
     }
@@ -100,7 +111,7 @@ export default function Feed() {
     if (!currentUser) return undefined;
 
     if (!socket.connected) socket.connect();
-    socket.emit('register_user', { user: currentUser });
+    socket.emit('register_user', { token, user: currentUser });
 
     const handleLiked = ({ post_id, likes, liked, username }) => {
       setPosts((prev) =>
@@ -117,12 +128,13 @@ export default function Feed() {
     };
 
     const handleCommentAdded = ({ post_id, comment }) => {
+      const normalized = normalizeComment(comment || {});
       setPosts((prev) =>
         prev.map((post) =>
           post.id === post_id
             ? {
                 ...post,
-                comments: [...post.comments, comment],
+                comments: [...post.comments, normalized],
                 comments_count: (post.comments_count || post.comments.length || 0) + 1,
               }
             : post
@@ -152,7 +164,7 @@ export default function Feed() {
       socket.off('comment_added', handleCommentAdded);
       socket.off('user_follow_update', handleFollowUpdate);
     };
-  }, [currentUser]);
+  }, [currentUser, token]);
 
   const handlePublish = async () => {
     if (!form.text.trim() && !form.file) return;
@@ -165,11 +177,11 @@ export default function Feed() {
         const { data } = await uploadPostMedia(form.file);
         media = data?.file_url || data?.url || '';
       }
-      await createPost({ content: form.text.trim(), media });
+      await createPost({ content: form.text.trim(), image_url: media, media });
       setForm({ text: '', file: null });
       await loadFeed();
     } catch (err) {
-      setError(err?.response?.data?.message || 'تعذر نشر المنشور.');
+      setError(err?.response?.data?.message || err?.response?.data?.detail || 'تعذر نشر المنشور.');
     } finally {
       setPublishing(false);
     }
@@ -179,7 +191,7 @@ export default function Feed() {
     if (!currentUser) return;
 
     if (!socket.connected) socket.connect();
-    socket.emit('like_post', { post_id: postId, user: currentUser });
+    socket.emit('like_post', { token, post_id: postId, user: currentUser });
   };
 
   const handleComment = async (postId) => {
@@ -187,19 +199,20 @@ export default function Feed() {
     if (!text || !currentUser) return;
 
     if (socket.connected) {
-      socket.emit('add_comment', { post_id: postId, user: currentUser, text });
+      socket.emit('add_comment', { token, post_id: postId, user: currentUser, text });
       setCommentText((prev) => ({ ...prev, [postId]: '' }));
       return;
     }
 
     try {
       const { data } = await addComment(postId, text);
+      const normalized = normalizeComment(data || {});
       setPosts((prev) =>
         prev.map((post) =>
           post.id === postId
             ? {
                 ...post,
-                comments: [...post.comments, data],
+                comments: [...post.comments, normalized],
                 comments_count: (post.comments_count || post.comments.length || 0) + 1,
               }
             : post
@@ -207,7 +220,7 @@ export default function Feed() {
       );
       setCommentText((prev) => ({ ...prev, [postId]: '' }));
     } catch (err) {
-      setError(err?.response?.data?.message || 'تعذر إضافة التعليق.');
+      setError(err?.response?.data?.message || err?.response?.data?.detail || 'تعذر إضافة التعليق.');
     }
   };
 
@@ -215,7 +228,7 @@ export default function Feed() {
     if (!username || username === currentUser) return;
 
     if (socket.connected) {
-      socket.emit('follow_user', { user: currentUser, target_username: username });
+      socket.emit('follow_user', { token, user: currentUser, target_username: username });
       return;
     }
 
@@ -230,7 +243,7 @@ export default function Feed() {
         },
       }));
     } catch (err) {
-      setError(err?.response?.data?.message || 'تعذر تحديث المتابعة.');
+      setError(err?.response?.data?.message || err?.response?.data?.detail || 'تعذر تحديث المتابعة.');
     }
   };
 
@@ -288,7 +301,6 @@ export default function Feed() {
               const isFollowing = relationships[post.username];
               const counts = socialCounts[post.username] || EMPTY_COUNTS;
               const mediaUrl = post.media || '';
-              const isVideo = /\.(mp4|mov|webm|mkv)$/i.test(mediaUrl);
 
               return (
                 <Card key={post.id} className="post-card">
@@ -315,7 +327,7 @@ export default function Feed() {
                   <p className="post-text">{post.content}</p>
 
                   {mediaUrl ? (
-                    isVideo ? (
+                    isVideo(mediaUrl) ? (
                       <video className="post-media" src={mediaUrl} controls playsInline />
                     ) : (
                       <img className="post-media" src={mediaUrl} alt={post.content || 'post media'} />

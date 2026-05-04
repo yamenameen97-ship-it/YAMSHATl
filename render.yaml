@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: yamshatl
+    name: yamshat-api
     runtime: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt
@@ -20,15 +20,15 @@ services:
       - key: REDIS_URL
         sync: false
       - key: FRONTEND_ORIGIN
-        value: https://yamshatl-1.onrender.com
+        sync: false
       - key: BACKEND_ORIGIN
-        value: https://yamshatl.onrender.com
+        sync: false
       - key: RENDER_EXTERNAL_URL
-        value: https://yamshatl.onrender.com
+        sync: false
       - key: CORS_ORIGINS
-        value: http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,https://yamshatl-1.onrender.com,https://yamshatl.onrender.com
+        sync: false
       - key: CORS_ORIGIN_REGEX
-        value: '^https://yamshatl(?:-\d+)?\.onrender\.com$'
+        sync: false
       - key: ENABLE_TRACING
         value: 'false'
       - key: DB_BOOTSTRAP_ON_START
@@ -55,12 +55,19 @@ services:
         sync: false
 
   - type: web
-    name: yamshatl-1
+    name: yamshat-web
     runtime: static
     rootDir: frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
     autoDeployTrigger: commit
+    envVars:
+      - key: VITE_API_BASE
+        sync: false
+      - key: VITE_BACKEND_ORIGIN
+        sync: false
+      - key: VITE_SOCKET_URL
+        sync: false
     routes:
       - type: rewrite
         source: /*

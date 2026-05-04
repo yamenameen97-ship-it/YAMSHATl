@@ -20,7 +20,7 @@ export default function Users() {
         const { data } = await getUsers();
         setUsers(Array.isArray(data) ? data : []);
       } catch (err) {
-        setError(err?.response?.data?.message || 'تعذر تحميل المستخدمين.');
+        setError(err?.response?.data?.message || err?.response?.data?.detail || 'تعذر تحميل المستخدمين.');
       } finally {
         setLoading(false);
       }
@@ -43,17 +43,20 @@ export default function Users() {
 
       <div className="list-grid">
         {users
-          .filter((user) => user?.name && user.name !== currentUser)
-          .map((user) => (
-            <Card key={user.name} className="user-row">
-              <div className="avatar-circle">{user.name.slice(0, 1).toUpperCase()}</div>
-              <div className="user-meta">
-                <strong>{user.name}</strong>
-                <span className="muted">جاهز للدردشة</span>
-              </div>
-              <Button onClick={() => navigate(`/chat/${encodeURIComponent(user.name)}`)}>فتح الشات</Button>
-            </Card>
-          ))}
+          .filter((user) => (user?.username || user?.name) && (user.username || user.name) !== currentUser)
+          .map((user) => {
+            const username = user.username || user.name;
+            return (
+              <Card key={username} className="user-row">
+                <div className="avatar-circle">{username.slice(0, 1).toUpperCase()}</div>
+                <div className="user-meta">
+                  <strong>{username}</strong>
+                  <span className="muted">جاهز للدردشة</span>
+                </div>
+                <Button onClick={() => navigate(`/chat/${encodeURIComponent(username)}`)}>فتح الشات</Button>
+              </Card>
+            );
+          })}
       </div>
     </MainLayout>
   );

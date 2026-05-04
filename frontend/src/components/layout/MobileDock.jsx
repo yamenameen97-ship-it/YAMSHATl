@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom';
 
 const dockLinks = [
   { to: '/', label: 'الرئيسية', icon: '⌂' },
+  { to: '/reels', label: 'ريلز', icon: '▣' },
   { to: '/live', label: 'لايف', icon: '◉' },
   { to: '/inbox', label: 'الرسائل', icon: '✉' },
   { to: '/profile', label: 'حسابي', icon: '◌' },
@@ -22,7 +23,7 @@ export default function MobileDock() {
           </NavLink>
         ))}
 
-        <NavLink to="/" className="mobile-dock-plus" aria-label="إنشاء أو الرجوع للرئيسية">
+        <NavLink to="/groups" className="mobile-dock-plus" aria-label="المجموعات">
           +
         </NavLink>
 

@@ -10,6 +10,16 @@ import AdminSettings from './pages/admin/AdminSettings.jsx';
 import AdminRbac from './pages/admin/AdminRbac.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
+import Dashboard from './pages/Dashboard.jsx';
+import Feed from './pages/Feed.jsx';
+import Stories from './pages/Stories.jsx';
+import Reels from './pages/Reels.jsx';
+import Groups from './pages/Groups.jsx';
+import Live from './pages/Live.jsx';
+import Inbox from './pages/Inbox.jsx';
+import Users from './pages/Users.jsx';
+import Profile from './pages/Profile.jsx';
+import Chat from './pages/Chat.jsx';
 
 export default function App() {
   return (
@@ -20,7 +30,20 @@ export default function App() {
         <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
         <Route path="/admin/login" element={<Navigate to="/login" replace />} />
         <Route path="/admin/register" element={<Navigate to="/register" replace />} />
-        <Route path="/" element={<Navigate to="/admin/dashboard" replace />} />
+
+        <Route path="/" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
+        <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+        <Route path="/stories" element={<ProtectedRoute><Stories /></ProtectedRoute>} />
+        <Route path="/reels" element={<ProtectedRoute><Reels /></ProtectedRoute>} />
+        <Route path="/groups" element={<ProtectedRoute><Groups /></ProtectedRoute>} />
+        <Route path="/live" element={<ProtectedRoute><Live /></ProtectedRoute>} />
+        <Route path="/inbox" element={<ProtectedRoute><Inbox /></ProtectedRoute>} />
+        <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
+        <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+        <Route path="/profile/:username" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+        <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
+        <Route path="/chat/:userId" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
+
         <Route path="/admin/dashboard" element={<ProtectedRoute requiredPermission="dashboard.view"><AdminDashboard /></ProtectedRoute>} />
         <Route path="/admin/users" element={<ProtectedRoute requiredPermission="users.view"><AdminUsers /></ProtectedRoute>} />
         <Route path="/admin/rbac" element={<ProtectedRoute requiredPermission="rbac.view"><AdminRbac /></ProtectedRoute>} />
@@ -28,7 +51,7 @@ export default function App() {
         <Route path="/admin/notifications" element={<ProtectedRoute requiredPermission="notifications.manage"><AdminNotifications /></ProtectedRoute>} />
         <Route path="/admin/reports" element={<ProtectedRoute requiredPermission="reports.view"><AdminReports /></ProtectedRoute>} />
         <Route path="/admin/settings" element={<ProtectedRoute requiredPermission="settings.manage"><AdminSettings /></ProtectedRoute>} />
-        <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ToastProvider>
   );

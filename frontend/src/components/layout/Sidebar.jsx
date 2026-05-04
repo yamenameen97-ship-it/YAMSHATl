@@ -3,11 +3,14 @@ import { NavLink } from 'react-router-dom';
 const links = [
   { to: '/', label: 'الرئيسية', meta: 'المنشورات', icon: '⌂' },
   { to: '/stories', label: 'الستوري', meta: 'لحظات سريعة', icon: '◌' },
+  { to: '/reels', label: 'الريلز', meta: 'فيديوهات قصيرة', icon: '▣' },
+  { to: '/groups', label: 'المجموعات', meta: 'إنشاء ومتابعة', icon: '◍' },
   { to: '/live', label: 'البث', meta: 'غرف مباشرة', icon: '◉' },
   { to: '/inbox', label: 'الرسائل', meta: 'الدردشات', icon: '✉' },
   { to: '/users', label: 'الأصدقاء', meta: 'الحسابات', icon: '◎' },
-  { to: '/profile', label: 'حسابي', meta: 'الملف الشخصي', icon: '◍' },
+  { to: '/profile', label: 'حسابي', meta: 'الملف الشخصي', icon: '◌' },
   { to: '/dashboard', label: 'التحليلات', meta: 'النشاط', icon: '◫' },
+  { to: '/admin/dashboard', label: 'الإدارة', meta: 'لوحة التحكم', icon: '⌘' },
 ];
 
 export default function Sidebar() {
@@ -47,7 +50,7 @@ export default function Sidebar() {
 
       <div className="sidebar-footer">
         <div className="glass-chip">منشورات لحظية</div>
-        <div className="glass-chip">أسماء ومتابعات محفوظة</div>
+        <div className="glass-chip">شات + ظهور</div>
         <div className="glass-chip">Socket + LiveKit</div>
       </div>
     </aside>

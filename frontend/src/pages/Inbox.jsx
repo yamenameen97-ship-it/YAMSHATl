@@ -21,7 +21,7 @@ export default function Inbox() {
         await updateOnline(true);
         const { data } = await getChatThreads();
         const names = (Array.isArray(data) ? data : [])
-          .map((item) => item?.name)
+          .map((item) => item?.username || item?.name)
           .filter(Boolean)
           .filter((name) => name !== currentUser);
 
@@ -42,7 +42,7 @@ export default function Inbox() {
               return {
                 username: name,
                 lastMessage: null,
-                presence: { is_online: false },
+                presence: { is_online: false, last_seen: null },
               };
             }
           })
@@ -52,7 +52,7 @@ export default function Inbox() {
         setThreads(hydrated);
       } catch (err) {
         if (!mounted) return;
-        setError(err?.response?.data?.message || 'تعذر تحميل المحادثات.');
+        setError(err?.response?.data?.message || err?.response?.data?.detail || 'تعذر تحميل المحادثات.');
       } finally {
         if (mounted) setLoading(false);
       }
@@ -83,7 +83,7 @@ export default function Inbox() {
         {threads.map((thread) => {
           const preview = thread.lastMessage?.deleted
             ? 'تم حذف هذه الرسالة'
-            : thread.lastMessage?.message || thread.lastMessage?.content || 'ابدأ المحادثة الآن';
+            : thread.lastMessage?.message || thread.lastMessage?.content || (thread.lastMessage?.media_url ? '📷 صورة' : 'ابدأ المحادثة الآن');
           const time = thread.lastMessage?.created_at
             ? new Date(thread.lastMessage.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
             : '—';
@@ -99,7 +99,7 @@ export default function Inbox() {
                 <div className="thread-headline">
                   <strong>{thread.username}</strong>
                   <span className={`presence-badge ${thread.presence?.is_online ? 'online' : 'offline'}`}>
-                    {thread.presence?.is_online ? '🟢 متصل' : '⚫ غير متصل'}
+                    {thread.presence?.is_online ? '🟢 متصل' : thread.presence?.last_seen ? `آخر ظهور ${new Date(thread.presence.last_seen).toLocaleTimeString('ar-EG')}` : '⚫ غير متصل'}
                   </span>
                 </div>
                 <div className="muted truncate">{preview}</div>

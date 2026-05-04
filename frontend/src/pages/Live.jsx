@@ -11,7 +11,7 @@ import {
   getLiveToken,
   updateLivePresence,
 } from '../api/live.js';
-import { getCurrentUsername } from '../utils/auth.js';
+import { getAuthToken, getCurrentUsername } from '../utils/auth.js';
 
 const livekitCache = { module: null };
 
@@ -24,6 +24,7 @@ async function loadLiveKit() {
 
 export default function Live() {
   const currentUser = getCurrentUsername();
+  const token = getAuthToken();
   const roomRef = useRef(null);
   const videosRef = useRef(null);
   const activeRoomIdRef = useRef(null);
@@ -58,7 +59,7 @@ export default function Live() {
     if (!currentUser) return undefined;
 
     if (!socket.connected) socket.connect();
-    socket.emit('register_user', { user: currentUser });
+    socket.emit('register_user', { token, user: currentUser });
 
     const handleRoomStats = ({ room_id, viewer_count, hearts_count }) => {
       if (String(room_id) !== String(activeRoomIdRef.current)) return;
@@ -82,7 +83,7 @@ export default function Live() {
       socket.off('new_comment', handleComment);
       socket.off('new_heart', handleHeart);
     };
-  }, [currentUser]);
+  }, [currentUser, token]);
 
   const clearVideoContainer = () => {
     if (videosRef.current) {
@@ -111,14 +112,17 @@ export default function Live() {
 
   const disconnectRoom = async () => {
     try {
-      await updateLivePresence({
-        room_id: activeRoomIdRef.current,
-        socket_id: socket.id,
-        platform: 'web',
-        device_type: 'browser',
-        is_host: activeRoom?.role === 'host',
-        active: false,
-      });
+      if (activeRoomIdRef.current) {
+        socket.emit('leave_live', { token, room_id: String(activeRoomIdRef.current) });
+        await updateLivePresence({
+          room_id: activeRoomIdRef.current,
+          socket_id: socket.id,
+          platform: 'web',
+          device_type: 'browser',
+          is_host: activeRoom?.role === 'host',
+          active: false,
+        });
+      }
     } catch {
       // ignore presence errors on disconnect
     }
@@ -193,6 +197,7 @@ export default function Live() {
 
       if (!socket.connected) socket.connect();
       socket.emit('join_live', {
+        token,
         room_id: String(roomRecord.id),
         user: currentUser,
         role,
@@ -211,7 +216,7 @@ export default function Live() {
 
       await connectToLiveKit(session, role);
     } catch (err) {
-      setError(err?.response?.data?.message || err?.message || 'تعذر الانضمام إلى البث.');
+      setError(err?.response?.data?.message || err?.response?.data?.detail || err?.message || 'تعذر الانضمام إلى البث.');
     } finally {
       setJoining(false);
     }
@@ -223,9 +228,9 @@ export default function Live() {
       setError('');
       const { data } = await createLiveRoom({ title, platform: 'web' });
       await refreshRooms();
-      await joinRoom({ id: Number(data.room_id), viewer_count: 0, ...data }, 'host');
+      await joinRoom({ id: String(data.room_id || data.id), viewer_count: 0, ...data }, 'host');
     } catch (err) {
-      setError(err?.response?.data?.message || 'تعذر إنشاء البث.');
+      setError(err?.response?.data?.message || err?.response?.data?.detail || 'تعذر إنشاء البث.');
     } finally {
       setJoining(false);
     }
@@ -235,6 +240,7 @@ export default function Live() {
     const text = message.trim();
     if (!text || !activeRoomIdRef.current) return;
     socket.emit('send_comment', {
+      token,
       room_id: String(activeRoomIdRef.current),
       user: currentUser,
       text,
@@ -245,6 +251,7 @@ export default function Live() {
   const handleHeart = () => {
     if (!activeRoomIdRef.current) return;
     socket.emit('send_heart', {
+      token,
       room_id: String(activeRoomIdRef.current),
       user: currentUser,
     });
@@ -258,7 +265,7 @@ export default function Live() {
       await refreshRooms();
       setStatus('تم إنهاء البث المباشر.');
     } catch (err) {
-      setError(err?.response?.data?.message || 'تعذر إنهاء البث.');
+      setError(err?.response?.data?.message || err?.response?.data?.detail || 'تعذر إنهاء البث.');
     }
   };
 

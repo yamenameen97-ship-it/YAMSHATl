@@ -9,6 +9,7 @@ import AdminReports from './pages/admin/AdminReports.jsx';
 import AdminSettings from './pages/admin/AdminSettings.jsx';
 import AdminRbac from './pages/admin/AdminRbac.jsx';
 import Login from './pages/Login.jsx';
+import AdminLogin from './pages/AdminLogin.jsx';
 import Register from './pages/Register.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Feed from './pages/Feed.jsx';
@@ -28,7 +29,7 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
-        <Route path="/admin/login" element={<Navigate to="/login" replace />} />
+        <Route path="/admin/login" element={<AdminLogin />} />
         <Route path="/admin/register" element={<Navigate to="/register" replace />} />
 
         <Route path="/" element={<ProtectedRoute><Feed /></ProtectedRoute>} />

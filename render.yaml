@@ -32,7 +32,7 @@ services:
       - key: ENABLE_TRACING
         value: 'false'
       - key: DB_BOOTSTRAP_ON_START
-        value: 'false'
+        value: 'true'
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT

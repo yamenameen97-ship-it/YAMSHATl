@@ -27,31 +27,40 @@
     return origin;
   };
 
+  const inferredBackendOrigin = inferBackendOrigin();
+  const inferredApi = inferredBackendOrigin ? `${inferredBackendOrigin}/api` : '';
+  const isRenderHost = (value) => /\.onrender\.com$/i.test(trim(value));
+  const originLooksCurrent = (value) => {
+    const candidate = trim(value);
+    if (!candidate || !inferredBackendOrigin) return false;
+    return candidate === inferredBackendOrigin || candidate === trim(window.location.origin);
+  };
+  const apiLooksCurrent = (value) => {
+    const candidate = toApiBase(value);
+    if (!candidate) return false;
+    return candidate === toApiBase(inferredApi) || candidate === toApiBase(`${window.location.origin}/api`);
+  };
+
+  const safeStoredBackend = originLooksCurrent(storedBackend) || !isRenderHost(storedBackend) ? storedBackend : '';
+  const safeStoredApi = apiLooksCurrent(storedApi) || !isRenderHost(apiToOrigin(storedApi)) ? storedApi : '';
+
   const backendOrigin =
     trim(queryBackend) ||
     apiToOrigin(queryApi) ||
-    trim(storedBackend) ||
-    apiToOrigin(storedApi) ||
-    inferBackendOrigin() ||
+    inferredBackendOrigin ||
+    safeStoredBackend ||
+    apiToOrigin(safeStoredApi) ||
     trim(window.location.origin);
 
   const apiBase =
     toApiBase(queryApi) ||
-    toApiBase(storedApi) ||
     toApiBase(`${backendOrigin}/api`) ||
+    safeStoredApi ||
     toApiBase(`${window.location.origin}/api`);
 
   try {
-    if (queryApi) {
-      localStorage.setItem('apiBase', apiBase);
-      localStorage.setItem('backendOrigin', apiToOrigin(apiBase));
-    } else if (queryBackend) {
-      localStorage.setItem('backendOrigin', backendOrigin);
-      localStorage.setItem('apiBase', apiBase);
-    } else if (!storedApi || !storedBackend) {
-      localStorage.setItem('backendOrigin', backendOrigin);
-      localStorage.setItem('apiBase', apiBase);
-    }
+    localStorage.setItem('backendOrigin', backendOrigin);
+    localStorage.setItem('apiBase', apiBase);
   } catch (_) {}
 
   window.APP_API_BASE = apiBase;

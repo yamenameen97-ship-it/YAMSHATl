@@ -34,24 +34,42 @@ const runtimeBackendOrigin = trim(window.YAMSHAT_BACKEND_ORIGIN || window.APP_BA
 const envApi = toApiBase(import.meta.env.VITE_API_BASE || '');
 const envBackendOrigin = trim(import.meta.env.VITE_BACKEND_ORIGIN || apiToOrigin(envApi));
 const envSocketUrl = trim(import.meta.env.VITE_SOCKET_URL || envBackendOrigin);
+const inferredBackendOrigin = inferBackendOrigin();
+const inferredApi = inferredBackendOrigin ? `${inferredBackendOrigin}/api` : '';
+
+const isRenderHost = (value) => /\.onrender\.com$/i.test(trim(value));
+const originLooksCurrent = (value) => {
+  const candidate = trim(value);
+  if (!candidate || !inferredBackendOrigin) return false;
+  return candidate === inferredBackendOrigin || candidate === trim(window.location.origin);
+};
+
+const apiLooksCurrent = (value) => {
+  const candidate = toApiBase(value);
+  if (!candidate) return false;
+  return candidate === toApiBase(inferredApi) || candidate === toApiBase(`${window.location.origin}/api`);
+};
+
+const safeStoredBackend = originLooksCurrent(storedBackend) || !isRenderHost(storedBackend) ? storedBackend : '';
+const safeStoredApi = apiLooksCurrent(storedApi) || !isRenderHost(apiToOrigin(storedApi)) ? storedApi : '';
 
 export const BACKEND_ORIGIN = trim(
   queryBackend ||
     apiToOrigin(queryApi) ||
     runtimeBackendOrigin ||
-    storedBackend ||
-    apiToOrigin(storedApi) ||
     envBackendOrigin ||
-    inferBackendOrigin() ||
+    inferredBackendOrigin ||
+    safeStoredBackend ||
+    apiToOrigin(safeStoredApi) ||
     window.location.origin
 );
 
 export const API_BASE = toApiBase(
   queryApi ||
-    storedApi ||
     window.APP_API_BASE ||
     envApi ||
-    (BACKEND_ORIGIN ? `${BACKEND_ORIGIN}/api` : `${window.location.origin}/api`)
+    (BACKEND_ORIGIN ? `${BACKEND_ORIGIN}/api` : `${window.location.origin}/api`) ||
+    safeStoredApi
 );
 
 export const SOCKET_URL = trim(
@@ -61,5 +79,13 @@ export const SOCKET_URL = trim(
     envSocketUrl ||
     window.YAMSHAT_SOCKET_URL ||
     BACKEND_ORIGIN ||
+    safeStoredBackend ||
     window.location.origin
 );
+
+try {
+  localStorage.setItem('backendOrigin', BACKEND_ORIGIN);
+  localStorage.setItem('apiBase', API_BASE);
+} catch {
+  // ignore storage failures
+}

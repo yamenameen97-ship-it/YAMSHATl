@@ -1,0 +1,1 @@
+import{A as s}from"./axios-OL6OFkpz.js";const n=()=>s.get("/posts"),p=t=>s.post("/posts",t),m=(t,o)=>{const a=new FormData;return a.append("file",t),s.post("/upload",a,{headers:{"Content-Type":"multipart/form-data"},onUploadProgress:o})},r=(t,o)=>s.post(`/posts/${t}/comment`,{text:o}),c=t=>s.get(`/posts/${t}/comments`);export{r as a,c as b,p as c,n as g,m as u};

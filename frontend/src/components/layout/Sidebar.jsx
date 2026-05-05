@@ -6,6 +6,7 @@ const links = [
   { to: '/reels', label: 'الريلز', meta: 'فيديوهات قصيرة', icon: '▣' },
   { to: '/live', label: 'البث المباشر', meta: 'غرف مباشرة', icon: '◉' },
   { to: '/inbox', label: 'الدردشة', meta: 'الرسائل', icon: '✉' },
+  { to: '/notifications', label: 'الإشعارات', meta: 'مركز التنبيهات', icon: '🔔' },
   { to: '/users', label: 'الأصدقاء', meta: 'ابدأ محادثة', icon: '◎' },
   { to: '/groups', label: 'المجموعات', meta: 'إنشاء ومتابعة', icon: '◍' },
   { to: '/profile', label: 'الملف الشخصي', meta: 'إحصائياتك', icon: '◌' },
@@ -20,14 +21,14 @@ export default function Sidebar() {
           <div className="brand-mark">ي</div>
           <div>
             <h1 className="brand-title">Yamshat</h1>
-            <p className="brand-subtitle">تواصل، شارك، عش اللحظة — نفس روح المرجع الداكن البنفسجي على صفحات التطبيق.</p>
+            <p className="brand-subtitle">تواصل، شارك، عش اللحظة — والآن بنفس الاستايل الموحد على الويب والجوال مع مركز إشعارات مستقل.</p>
           </div>
         </div>
 
         <div className="sidebar-highlight card">
           <div className="page-eyebrow">واجهة احترافية</div>
-          <strong>هوية اجتماعية عربية</strong>
-          <p className="muted no-margin">تنظيم أوضح، بطاقات ناعمة، وحضور بصري مطابق أكثر للصورة المرجعية.</p>
+          <strong>هوية اجتماعية عربية موحدة</strong>
+          <p className="muted no-margin">المنشورات، الستوري، الريلز، الرسائل، البث، والإشعارات كلها بنفس الروح الداكنة البنفسجية.</p>
         </div>
       </div>
 
@@ -49,7 +50,7 @@ export default function Sidebar() {
 
       <div className="sidebar-footer">
         <div className="glass-chip">ريلز وستوري</div>
-        <div className="glass-chip">دردشة وبث</div>
+        <div className="glass-chip">دردشة وبث وإشعارات</div>
         <div className="glass-chip">Dark Purple UI</div>
       </div>
     </aside>

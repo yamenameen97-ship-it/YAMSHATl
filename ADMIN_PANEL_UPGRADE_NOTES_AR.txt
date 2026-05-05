@@ -1,0 +1,34 @@
+تم تنفيذ تحسينات احترافية على لوحة الأدمن داخل هذا الإصدار:
+
+1) Dashboard مطور:
+- مؤشرات KPI أوضح مع دلتا لحظية.
+- بطاقات صحة الخدمات Service Health.
+- صف مراقبة Moderation Queue.
+- عرض ربط الأنظمة بين Backend / Web / Mobile / Socket / Uploads.
+- سجل تشغيلي وتنبيهات تشغيلية.
+
+2) تحسين تجربة الإدارة:
+- تعريب وتسميات أوضح للشريط الجانبي والعنوان العلوي.
+- أعلى الصفحة يعرض حالة التحديث اللحظي ونمط النشر.
+- تحسين مركز الإشعارات مع قوالب جاهزة وفلاتر وبث مباشر.
+- تحسين شاشة التقارير مع ملخصات أسرع وتصدير PDF / Excel.
+
+3) تحسين الباك إند للإدارة:
+- توسيع /api/admin/overview لإرجاع:
+  service_health
+  moderation_queue
+  platform_links
+  meta تشغيلية أدق
+- الإبقاء على CRUD للمستخدمين والمحتوى كما هو مع دعم التحديث اللحظي عبر Socket.IO.
+
+4) التحقق من الربط:
+- الويب production مضبوط على:
+  https://yamshatl.onrender.com/api
+  https://yamshatl.onrender.com
+- الموبايل ما زال مربوطاً على نفس الـ backend عبر gradle.properties و BuildConfig و UrlConfig.
+- backend يستخدم FRONTEND_ORIGIN / BACKEND_ORIGIN مع CORS ديناميكي.
+
+5) التحقق الفني:
+- Frontend build: ناجح.
+- Backend compile check: ناجح.
+- Android build: تم التحقق من إعدادات الربط، لكن تجميع APK داخل بيئة الساندبوكس قد يتأخر بسبب تنزيلات Gradle/SDK ويحتاج وقت أطول.

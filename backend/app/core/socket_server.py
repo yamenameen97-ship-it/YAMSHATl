@@ -333,10 +333,15 @@ async def follow_user_event(sid, data):
                 'new_notification',
                 {
                     'id': notification.id,
+                    'title': 'متابع جديد 🔥',
                     'message': notification.body,
                     'text': notification.body,
+                    'body': notification.body,
                     'created_at': notification.created_at.isoformat(),
                     'seen': False,
+                    'screen': 'profile',
+                    'path': f'/profile/{user.username}',
+                    'data': {'username': user.username, 'screen': 'profile', 'path': f'/profile/{user.username}'},
                 },
                 room=f'user:{target_user.id}',
             )

@@ -10,7 +10,7 @@ from app.core.admin_access import effective_role, is_primary_admin_user
 from app.core.config import settings
 from app.core.live_store import live_store
 from app.core.rate_limit import allow_socket_message
-from app.core.security import TokenError, decode_token
+from app.core.security import ACCESS_TOKEN_TYPE, TokenError, decode_token
 from app.db.session import SessionLocal
 from app.models.comment import Comment
 from app.models.follow import Follow
@@ -74,7 +74,7 @@ async def _resolve_authenticated_user(sid: str, token: str | None = None) -> tup
         return None, None
 
     try:
-        payload = decode_token(token)
+        payload = decode_token(token, expected_type=ACCESS_TOKEN_TYPE)
     except TokenError:
         return None, None
 

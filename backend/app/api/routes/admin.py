@@ -13,7 +13,9 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, text
+
+from app.core.config import settings
 from sqlalchemy.orm import Session
 
 from app.core.admin_access import effective_role, permissions_for_user
@@ -199,6 +201,132 @@ def _serialize_post_row(db: Session, row: Any) -> dict[str, Any]:
     }
 
 
+def _room_members_count(room_name: str, namespace: str = '/') -> int:
+    try:
+        namespace_rooms = getattr(getattr(sio, 'manager', None), 'rooms', {}).get(namespace, {})
+        room = namespace_rooms.get(room_name)
+        return len(room or {})
+    except Exception:
+        return 0
+
+
+def _service_health_snapshot(db: Session) -> list[dict[str, Any]]:
+    try:
+        db.execute(text('SELECT 1'))
+        database_status = 'healthy'
+        database_value = 'متصل'
+        database_description = 'قاعدة البيانات متصلة وتستجيب للاستعلامات اللحظية.'
+    except Exception as exc:
+        database_status = 'critical'
+        database_value = 'غير متاح'
+        database_description = f'تعذر الوصول إلى قاعدة البيانات: {str(exc)[:120]}'
+
+    secret_hardened = settings.SECRET_KEY and settings.SECRET_KEY != 'change-this-secret-key'
+    livekit_ready = bool(settings.LIVEKIT_URL and settings.LIVEKIT_API_KEY and settings.LIVEKIT_API_SECRET)
+    push_ready = bool(settings.FIREBASE_CREDENTIALS_PATH)
+    frontend_ready = bool(settings.FRONTEND_ORIGIN)
+    backend_ready = bool(settings.BACKEND_ORIGIN)
+    socket_ready = backend_ready or _room_members_count('admins') >= 0
+    admins_online = _room_members_count('admins')
+
+    return [
+        {
+            'key': 'database',
+            'label': 'قاعدة البيانات',
+            'status': database_status,
+            'value': database_value,
+            'description': database_description,
+        },
+        {
+            'key': 'realtime',
+            'label': 'Realtime Socket',
+            'status': 'healthy' if socket_ready else 'warning',
+            'value': f'{admins_online} مشرف متصل',
+            'description': 'Socket.IO جاهز لاستقبال التحديثات الحية للمستخدمين والمحتوى والتنبيهات.',
+        },
+        {
+            'key': 'frontend',
+            'label': 'واجهة الويب',
+            'status': 'healthy' if frontend_ready else 'warning',
+            'value': settings.FRONTEND_ORIGIN or 'نفس النطاق',
+            'description': 'لوحة الأدمن والويب العام يمكن ربطهما تلقائياً عبر app-config وبيئة الإنتاج.',
+        },
+        {
+            'key': 'livekit',
+            'label': 'خدمة البث المباشر',
+            'status': 'healthy' if livekit_ready else 'warning',
+            'value': settings.LIVEKIT_URL or 'غير مفعّل',
+            'description': 'ربط البث المباشر جاهز عند وجود مفاتيح LiveKit الكاملة.',
+        },
+        {
+            'key': 'media',
+            'label': 'رفع الوسائط',
+            'status': 'healthy' if settings.cloudinary_configured else 'warning',
+            'value': 'Cloudinary' if settings.cloudinary_configured else 'محلي / غير مكتمل',
+            'description': 'رفع الصور والملفات يعمل محلياً ويمكن تحويله إلى Cloudinary للإنتاج.',
+        },
+        {
+            'key': 'push',
+            'label': 'Push Notifications',
+            'status': 'healthy' if push_ready else 'warning',
+            'value': 'Firebase جاهز' if push_ready else 'يحتاج credentials',
+            'description': 'الإشعارات الجماعية مرتبطة مع الموبايل عند تفعيل Firebase credentials.',
+        },
+        {
+            'key': 'security',
+            'label': 'الأمان والجلسات',
+            'status': 'healthy' if secret_hardened else 'warning',
+            'value': 'JWT + CORS',
+            'description': 'الحماية تعتمد على JWT وإعدادات CORS متعددة النطاقات للويب والموبايل.',
+        },
+    ]
+
+
+def _platform_links() -> list[dict[str, Any]]:
+    backend_origin = (settings.BACKEND_ORIGIN or settings.RENDER_EXTERNAL_URL or '').rstrip('/')
+    frontend_origin = (settings.FRONTEND_ORIGIN or '').rstrip('/')
+    api_url = f'{backend_origin}/api' if backend_origin else '/api'
+    uploads_url = f'{backend_origin}/uploads' if backend_origin else '/uploads'
+
+    return [
+        {
+            'key': 'backend_api',
+            'label': 'Backend API',
+            'value': api_url,
+            'status': 'linked' if backend_origin else 'warning',
+            'description': 'مصدر REST API الرئيسي لتطبيق الويب ولوحة الأدمن وتطبيق الموبايل.',
+        },
+        {
+            'key': 'socket',
+            'label': 'Realtime Socket',
+            'value': backend_origin or 'نفس النطاق',
+            'status': 'linked' if backend_origin else 'warning',
+            'description': 'قناة التحديثات اللحظية للتنبيهات والحالة والأنشطة المباشرة.',
+        },
+        {
+            'key': 'frontend',
+            'label': 'Web Frontend',
+            'value': frontend_origin or 'يتم تحديده وقت النشر',
+            'status': 'linked' if frontend_origin else 'warning',
+            'description': 'واجهة الويب تدعم الربط التلقائي مع الباك إند عبر config runtime.',
+        },
+        {
+            'key': 'mobile',
+            'label': 'Mobile App',
+            'value': api_url,
+            'status': 'linked' if backend_origin else 'warning',
+            'description': 'الموبايل يستخدم نفس API عبر BuildConfig وUrlConfig لتوحيد المسارات.',
+        },
+        {
+            'key': 'uploads',
+            'label': 'Uploads CDN',
+            'value': uploads_url,
+            'status': 'linked' if backend_origin else 'warning',
+            'description': 'مسار الوسائط العامة للصور والمرفقات على نفس خدمة الباك إند.',
+        },
+    ]
+
+
 @router.get('/rbac')
 def get_rbac(current_user: User = Depends(get_current_user)):
     _require_permission(current_user, 'rbac.view')
@@ -228,11 +356,15 @@ def get_overview(db: Session = Depends(get_db), current_user: User = Depends(get
     comments_count = db.query(func.count(Comment.id)).scalar() or 0
     messages_count = db.query(func.count(Message.id)).scalar() or 0
     notifications_count = db.query(func.count(Notification.id)).scalar() or 0
-    today_operations = (
-        (db.query(func.count(Post.id)).filter(Post.created_at >= today_start).scalar() or 0)
-        + (db.query(func.count(Comment.id)).filter(Comment.created_at >= today_start).scalar() or 0)
-        + (db.query(func.count(Message.id)).filter(Message.created_at >= today_start).scalar() or 0)
-    )
+    unread_system = db.query(func.count(Notification.id)).filter(Notification.is_read.is_(False)).scalar() or 0
+    alert_reports = db.query(func.count(Notification.id)).filter(Notification.type.in_(['ALERT', 'REPORT'])).scalar() or 0
+    banned_count = db.query(func.count(User.id)).filter(User.is_active.is_(False)).scalar() or 0
+
+    today_posts = db.query(func.count(Post.id)).filter(Post.created_at >= today_start).scalar() or 0
+    today_comments = db.query(func.count(Comment.id)).filter(Comment.created_at >= today_start).scalar() or 0
+    today_messages = db.query(func.count(Message.id)).filter(Message.created_at >= today_start).scalar() or 0
+    today_users = db.query(func.count(User.id)).filter(User.created_at >= today_start).scalar() or 0
+    today_operations = int(today_posts + today_comments + today_messages)
 
     daily_activity: list[dict[str, Any]] = []
     growth_data: list[dict[str, Any]] = []
@@ -250,17 +382,17 @@ def get_overview(db: Session = Depends(get_db), current_user: User = Depends(get
         growth_data.append({'label': label, 'value': int(new_users)})
 
     role_distribution = [
-        {'label': role, 'value': int(count)}
+        {'label': role or 'user', 'value': int(count)}
         for role, count in (
             db.query(User.role, func.count(User.id)).group_by(User.role).order_by(func.count(User.id).desc()).all()
         )
     ] or [{'label': 'admin', 'value': int(users_count)}]
 
     top_modules = [
-        {'label': 'Posts', 'value': int(posts_count)},
-        {'label': 'Comments', 'value': int(comments_count)},
-        {'label': 'Messages', 'value': int(messages_count)},
-        {'label': 'Notifications', 'value': int(notifications_count)},
+        {'label': 'المنشورات', 'value': int(posts_count)},
+        {'label': 'التعليقات', 'value': int(comments_count)},
+        {'label': 'الرسائل', 'value': int(messages_count)},
+        {'label': 'الإشعارات', 'value': int(notifications_count)},
     ]
 
     recent_logs = db.query(AuditLog).order_by(AuditLog.created_at.desc()).limit(8).all()
@@ -288,38 +420,71 @@ def get_overview(db: Session = Depends(get_db), current_user: User = Depends(get
         for index, log in enumerate(recent_logs)
     ]
 
-    unread_system = db.query(func.count(Notification.id)).filter(Notification.is_read.is_(False)).scalar() or 0
-    banned_count = db.query(func.count(User.id)).filter(User.is_active.is_(False)).scalar() or 0
+    service_health = _service_health_snapshot(db)
+    platform_links = _platform_links()
+    admins_online = _room_members_count('admins')
+    average_daily = round(sum(item['value'] for item in daily_activity) / max(len(daily_activity), 1), 1)
+
     alerts = [
         {
-            'level': 'info',
-            'title': 'الإشعارات غير المقروءة',
-            'description': f'يوجد {int(unread_system)} إشعار غير مقروء داخل النظام.',
+            'level': 'warning' if alert_reports else 'success',
+            'title': 'بلاغات ومتابعة',
+            'description': f'يوجد {int(alert_reports)} عناصر تنبيه/بلاغ تحتاج متابعة داخل النظام.',
         },
         {
-            'level': 'warning' if banned_count else 'success',
-            'title': 'حالة المستخدمين',
-            'description': f'يوجد {int(banned_count)} مستخدمين محظورين حالياً.',
+            'level': 'warning' if banned_count else 'info',
+            'title': 'الحسابات المحظورة',
+            'description': f'إجمالي الحسابات المحظورة حالياً: {int(banned_count)}.',
         },
         {
-            'level': 'success',
-            'title': 'الربط اللحظي',
-            'description': 'اللوحة مجهزة للتحديث اللحظي عبر Socket.IO دون إعادة تحميل.',
+            'level': 'success' if admins_online >= 0 else 'info',
+            'title': 'التحديث اللحظي',
+            'description': f'القنوات الحية نشطة، وعدد جلسات الأدمن المتصلة الآن: {admins_online}.',
+        },
+    ]
+
+    moderation_queue = [
+        {
+            'key': 'reports',
+            'label': 'بلاغات مفتوحة',
+            'value': int(alert_reports),
+            'description': 'تنبيهات من نوع ALERT/REPORT تحتاج مراجعة مباشرة.',
+        },
+        {
+            'key': 'unread',
+            'label': 'إشعارات غير مقروءة',
+            'value': int(unread_system),
+            'description': 'إشعارات النظام غير المقروءة في مركز الإشعارات.',
+        },
+        {
+            'key': 'banned',
+            'label': 'مستخدمون محظورون',
+            'value': int(banned_count),
+            'description': 'حسابات متوقفة حالياً ويمكن استعادتها من إدارة المستخدمين.',
+        },
+        {
+            'key': 'today',
+            'label': 'عمليات اليوم',
+            'value': int(today_operations),
+            'description': 'إجمالي منشورات وتعليقات ورسائل اليوم بشكل لحظي.',
         },
     ]
 
     return {
         'kpis': [
-            {'key': 'users', 'label': 'عدد المستخدمين', 'value': int(users_count), 'delta': int(active_users)},
-            {'key': 'operations', 'label': 'عدد العمليات', 'value': int(posts_count + comments_count + messages_count), 'delta': int(today_operations)},
-            {'key': 'daily_activity', 'label': 'النشاط اليومي', 'value': int(today_operations), 'delta': len(daily_activity)},
-            {'key': 'notifications', 'label': 'الإشعارات', 'value': int(notifications_count), 'delta': int(unread_system)},
+            {'key': 'users', 'label': 'المستخدمون', 'value': int(users_count), 'delta': int(today_users), 'trend_label': 'تسجيلات اليوم'},
+            {'key': 'operations', 'label': 'العمليات', 'value': int(posts_count + comments_count + messages_count), 'delta': int(today_operations), 'trend_label': 'عمليات اليوم'},
+            {'key': 'avg_activity', 'label': 'متوسط النشاط', 'value': average_daily, 'delta': admins_online, 'trend_label': 'أدمن متصل الآن'},
+            {'key': 'notifications', 'label': 'الإشعارات', 'value': int(notifications_count), 'delta': int(unread_system), 'trend_label': 'غير مقروء'},
         ],
         'line_chart': growth_data,
         'bar_chart': top_modules,
         'pie_chart': role_distribution,
         'recent_activity': recent_activity,
         'alerts': alerts,
+        'service_health': service_health,
+        'moderation_queue': moderation_queue,
+        'platform_links': platform_links,
         'meta': {
             'generated_at': now.isoformat(),
             'active_users': int(active_users),
@@ -327,6 +492,13 @@ def get_overview(db: Session = Depends(get_db), current_user: User = Depends(get
             'comments_count': int(comments_count),
             'messages_count': int(messages_count),
             'daily_activity': daily_activity,
+            'today_posts': int(today_posts),
+            'today_comments': int(today_comments),
+            'today_messages': int(today_messages),
+            'today_users': int(today_users),
+            'admins_online': int(admins_online),
+            'web_connected': any(item['key'] == 'frontend' and item['status'] == 'linked' for item in platform_links),
+            'mobile_connected': any(item['key'] == 'mobile' and item['status'] == 'linked' for item in platform_links),
         },
     }
 

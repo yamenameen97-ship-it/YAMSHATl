@@ -9,6 +9,7 @@ from sqlalchemy import text
 
 import app.models  # noqa: F401
 from app.api.routes import admin, auth, chat, comments, follow, groups, inbox, live, notifications, posts, search, stories, upload, users, ws
+from app.core.api_guard import api_rate_guard
 from app.core.config import settings
 from app.core.observability import configure_metrics, configure_tracing, make_metrics_router
 from app.core.security_extra import security_headers
@@ -49,6 +50,7 @@ fastapi_app.add_middleware(
     allow_methods=['*'],
     allow_headers=['*'],
 )
+fastapi_app.middleware('http')(api_rate_guard)
 fastapi_app.middleware('http')(security_headers)
 
 if settings.ENABLE_METRICS:
@@ -101,6 +103,7 @@ def health() -> dict:
         'metrics': '/metrics',
         'service': settings.SERVICE_NAME,
         'livekit_configured': bool(settings.LIVEKIT_URL and settings.LIVEKIT_API_KEY and settings.LIVEKIT_API_SECRET),
+        'cloudinary_configured': bool(settings.cloudinary_configured),
     }
 
 

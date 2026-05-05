@@ -32,12 +32,13 @@ class Settings:
     SERVICE_NAME: str = os.getenv('SERVICE_NAME', 'yamshat-backend')
     API_PREFIX: str = '/api'
     DEBUG: bool = env_bool('DEBUG', False)
-    DATABASE_URL: str = normalize_database_url(
-        os.getenv('DATABASE_URL', 'sqlite:///./yamshat.db')
-    )
+    DATABASE_URL: str = normalize_database_url(os.getenv('DATABASE_URL', 'sqlite:///./yamshat.db'))
     SECRET_KEY: str = os.getenv('SECRET_KEY', 'change-this-secret-key')
     ALGORITHM: str = os.getenv('ALGORITHM', 'HS256')
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv('ACCESS_TOKEN_EXPIRE_MINUTES', '1440'))
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv('ACCESS_TOKEN_EXPIRE_MINUTES', '60'))
+    REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv('REFRESH_TOKEN_EXPIRE_DAYS', '30'))
+    EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES: int = int(os.getenv('EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES', '15'))
+    PASSWORD_RESET_CODE_EXPIRE_MINUTES: int = int(os.getenv('PASSWORD_RESET_CODE_EXPIRE_MINUTES', '15'))
     FIREBASE_CREDENTIALS_PATH: str = os.getenv('FIREBASE_CREDENTIALS_PATH', '')
     REDIS_URL: str = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
     ENABLE_METRICS: bool = env_bool('ENABLE_METRICS', True)
@@ -67,6 +68,10 @@ class Settings:
     LIVEKIT_API_SECRET: str = os.getenv('LIVEKIT_API_SECRET', '')
     DB_BOOTSTRAP_ON_START: bool = env_bool('DB_BOOTSTRAP_ON_START', False)
     CORS_ORIGIN_REGEX_RAW: str = os.getenv('CORS_ORIGIN_REGEX', '').strip()
+    CLOUDINARY_CLOUD_NAME: str = (os.getenv('CLOUDINARY_CLOUD_NAME') or os.getenv('CLOUD_NAME') or '').strip()
+    CLOUDINARY_API_KEY: str = (os.getenv('CLOUDINARY_API_KEY') or os.getenv('CLOUD_API_KEY') or '').strip()
+    CLOUDINARY_API_SECRET: str = (os.getenv('CLOUDINARY_API_SECRET') or os.getenv('CLOUD_API_SECRET') or '').strip()
+    CLOUDINARY_FOLDER: str = (os.getenv('CLOUDINARY_FOLDER') or 'yamshat').strip()
 
     @property
     def cors_origin_regex(self) -> str | None:
@@ -118,6 +123,10 @@ class Settings:
             for ext in self.ALLOWED_UPLOAD_EXTENSIONS_RAW.split(',')
             if ext.strip()
         }
+
+    @property
+    def cloudinary_configured(self) -> bool:
+        return bool(self.CLOUDINARY_CLOUD_NAME and self.CLOUDINARY_API_KEY and self.CLOUDINARY_API_SECRET)
 
 
 settings = Settings()

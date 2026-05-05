@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user, get_db
 from app.core.rate_limit import allow_socket_message
-from app.core.security import TokenError, decode_token
+from app.core.security import ACCESS_TOKEN_TYPE, TokenError, decode_token
 from app.core.socket_server import is_user_online, sio
 from app.db.session import SessionLocal
 from app.models.message import Message
@@ -41,7 +41,7 @@ def _authenticate_websocket_user(websocket: WebSocket, user_id: int, db: Session
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Token is required')
 
     try:
-        payload = decode_token(token)
+        payload = decode_token(token, expected_type=ACCESS_TOKEN_TYPE)
     except TokenError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
 

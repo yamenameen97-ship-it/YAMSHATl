@@ -23,6 +23,7 @@ class UserOut(BaseModel):
     username: str
     email: EmailStr
     avatar: Optional[str] = None
+    email_verified: bool = False
     followers_count: int = 0
     following_count: int = 0
     created_at: datetime
@@ -30,6 +31,7 @@ class UserOut(BaseModel):
 
 class Token(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str = 'bearer'
 
 

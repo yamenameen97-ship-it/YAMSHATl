@@ -11,10 +11,10 @@ from app.core.config import settings
 from app.core.security import hash_password
 from app.db.base import Base
 
-CURRENT_ALEMBIC_REVISION = '20260503_0001'
+CURRENT_ALEMBIC_REVISION = '20260505_0002'
 LEGACY_USER_TABLE_NAMES = ('suser', 'user')
 REQUIRED_SCHEMA_COLUMNS: dict[str, set[str]] = {
-    'users': {'username', 'email', 'hashed_password', 'role', 'is_active'},
+    'users': {'username', 'email', 'hashed_password', 'role', 'is_active', 'email_verified'},
     'posts': {'user_id'},
     'comments': {'user_id', 'content'},
     'messages': {'sender_id', 'receiver_id', 'content'},
@@ -109,6 +109,14 @@ def _migrate_users_table(engine: Engine) -> None:
     _add_column_if_missing(engine, 'users', 'hashed_password', 'hashed_password VARCHAR(255)')
     _add_column_if_missing(engine, 'users', 'role', "role VARCHAR(20) DEFAULT 'user'")
     _add_column_if_missing(engine, 'users', 'is_active', 'is_active BOOLEAN DEFAULT TRUE')
+    _add_column_if_missing(engine, 'users', 'email_verified', 'email_verified BOOLEAN DEFAULT TRUE')
+    _add_column_if_missing(engine, 'users', 'email_verification_code', 'email_verification_code VARCHAR(128)')
+    _add_column_if_missing(engine, 'users', 'email_verification_expires_at', 'email_verification_expires_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'users', 'password_reset_code', 'password_reset_code VARCHAR(128)')
+    _add_column_if_missing(engine, 'users', 'password_reset_expires_at', 'password_reset_expires_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'users', 'refresh_token_hash', 'refresh_token_hash VARCHAR(255)')
+    _add_column_if_missing(engine, 'users', 'refresh_token_expires_at', 'refresh_token_expires_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'users', 'password_changed_at', 'password_changed_at TIMESTAMP NULL')
     _add_column_if_missing(engine, 'users', 'followers_count', 'followers_count INTEGER NOT NULL DEFAULT 0')
     _add_column_if_missing(engine, 'users', 'following_count', 'following_count INTEGER NOT NULL DEFAULT 0')
     _add_column_if_missing(engine, 'users', 'fcm_token', 'fcm_token VARCHAR(1024)')
@@ -119,7 +127,21 @@ def _migrate_users_table(engine: Engine) -> None:
     columns = _column_names(engine, 'users')
     select_columns = [
         'id',
-        *[column for column in ['name', 'username', 'email', 'password', 'hashed_password', 'role', 'is_active', 'created_at'] if column in columns],
+        *[
+            column
+            for column in [
+                'name',
+                'username',
+                'email',
+                'password',
+                'hashed_password',
+                'role',
+                'is_active',
+                'email_verified',
+                'created_at',
+            ]
+            if column in columns
+        ],
     ]
 
     with engine.begin() as connection:
@@ -147,6 +169,8 @@ def _migrate_users_table(engine: Engine) -> None:
                 updates['role'] = desired_role
             if row.get('is_active') is None:
                 updates['is_active'] = True
+            if row.get('email_verified') is None:
+                updates['email_verified'] = True
             if row.get('created_at') is None:
                 updates['created_at'] = datetime.utcnow()
 

@@ -1,10 +1,12 @@
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.dependencies import get_current_user, get_db
 from app.core.live_store import live_store
-from app.core.security import create_access_token
+from app.core.socket_server import sio
 from app.models.user import User
 
 try:
@@ -13,6 +15,20 @@ except Exception:  # pragma: no cover
     livekit_api = None
 
 router = APIRouter()
+
+
+def _sanitize_room_segment(value: str) -> str:
+    cleaned = re.sub(r'[^a-zA-Z0-9_-]+', '-', value.strip().lower())
+    return cleaned.strip('-') or 'user'
+
+
+def _build_private_call_room(first_username: str, second_username: str, call_type: str) -> str:
+    users = sorted([
+        _sanitize_room_segment(first_username),
+        _sanitize_room_segment(second_username),
+    ])
+    mode = 'video' if str(call_type).lower() == 'video' else 'audio'
+    return f"call-{users[0]}-{users[1]}-{mode}"
 
 
 def create_livekit_token(user_id: int, username: str, room_name: str) -> str:
@@ -68,6 +84,49 @@ def get_live_token(payload: dict, current_user: User = Depends(get_current_user)
         'token': token,
         'livekit_url': settings.LIVEKIT_URL,
     }
+
+
+@router.post('/create_call_token')
+async def create_call_token(payload: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    receiver_username = str(payload.get('receiver') or '').strip()
+    if not receiver_username:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='receiver is required')
+
+    receiver = db.query(User).filter(User.username == receiver_username, User.is_active.is_(True)).first()
+    if receiver is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Receiver not found')
+
+    if receiver.id == current_user.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Cannot call yourself')
+
+    call_type = 'video' if str(payload.get('call_type') or '').strip().lower() == 'video' else 'audio'
+    requested_room_id = str(payload.get('room_id') or '').strip()
+    room_name = requested_room_id or _build_private_call_room(current_user.username, receiver.username, call_type)
+
+    token = create_livekit_token(current_user.id, current_user.username, room_name)
+    response = {
+        'ok': True,
+        'message': 'Call session prepared',
+        'room_id': room_name,
+        'room_name': room_name,
+        'receiver': receiver.username,
+        'call_type': call_type,
+        'token': token,
+        'livekit_url': settings.LIVEKIT_URL,
+    }
+
+    await sio.emit(
+        'incoming_call',
+        {
+            'room_id': room_name,
+            'room_name': room_name,
+            'caller': current_user.username,
+            'receiver': receiver.username,
+            'call_type': call_type,
+        },
+        room=f'username:{receiver.username}',
+    )
+    return response
 
 
 @router.get('/live_comments/{room_id}')

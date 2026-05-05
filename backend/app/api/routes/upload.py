@@ -1,5 +1,5 @@
-import os
 import shutil
+import uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -9,6 +9,7 @@ from werkzeug.utils import secure_filename
 from app.core.config import settings
 from app.core.dependencies import get_current_user
 from app.models.user import User
+from app.services.cloudinary_service import is_configured as cloudinary_is_configured
 from app.services.cloudinary_service import upload_file as cloudinary_upload_file
 
 router = APIRouter()
@@ -39,13 +40,9 @@ def save_upload(file: UploadFile) -> dict:
     if not safe_name or not allowed_file(safe_name):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Unsupported file type')
 
-    path = UPLOAD_DIR / safe_name
-    counter = 1
-    while path.exists():
-        stem = path.stem
-        suffix = path.suffix
-        path = UPLOAD_DIR / f'{stem}_{counter}{suffix}'
-        counter += 1
+    extension = Path(safe_name).suffix.lower()
+    unique_name = f'{Path(safe_name).stem[:40]}_{uuid.uuid4().hex[:12]}{extension}'
+    path = UPLOAD_DIR / unique_name
 
     with open(path, 'wb') as buffer:
         shutil.copyfileobj(file.file, buffer)
@@ -56,13 +53,15 @@ def save_upload(file: UploadFile) -> dict:
         'local_path': relative,
         'file_url': _public_upload_url(relative),
         'url': _public_upload_url(relative),
+        'storage': 'local',
     }
 
-    if os.getenv('CLOUD_NAME') and os.getenv('CLOUD_API_KEY') and os.getenv('CLOUD_API_SECRET'):
+    if cloudinary_is_configured():
         try:
             response['cloud_url'] = cloudinary_upload_file(str(path))
             response['file_url'] = response['cloud_url']
             response['url'] = response['cloud_url']
+            response['storage'] = 'cloudinary'
         except Exception as exc:
             response['cloud_error'] = str(exc)
 

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
-from app.core.security import TokenError, decode_token
+from app.core.security import ACCESS_TOKEN_TYPE, TokenError, decode_token
 from app.core.socket_manager import manager
 from app.db.session import SessionLocal
 from app.models.user import User
@@ -14,7 +14,7 @@ def _is_websocket_authorized(websocket: WebSocket, user_id: int, db) -> bool:
         return False
 
     try:
-        payload = decode_token(token)
+        payload = decode_token(token, expected_type=ACCESS_TOKEN_TYPE)
     except TokenError:
         return False
 

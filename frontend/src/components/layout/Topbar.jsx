@@ -5,7 +5,6 @@ import { getNotifications, markNotificationsRead } from '../../api/notifications
 import socket from '../../api/socket.js';
 import { clearStoredUser, getAuthToken, getCurrentUsername, getStoredUser } from '../../utils/auth.js';
 import { browserNotificationsSupported, normalizeNotification } from '../../utils/notificationCenter.js';
-import { useAppStore } from '../../store/appStore.js';
 
 const titles = {
   '/': 'الصفحة الرئيسية',
@@ -26,9 +25,6 @@ export default function Topbar() {
   const user = getStoredUser();
   const token = getAuthToken();
   const currentUsername = getCurrentUsername();
-  const toggleTheme = useAppStore((state) => state.toggleTheme);
-  const theme = useAppStore((state) => state.theme);
-  const isOnline = useAppStore((state) => state.isOnline);
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -130,7 +126,7 @@ export default function Topbar() {
       <div>
         <div className="page-eyebrow">Yamshat unified web/mobile style</div>
         <h2 className="page-title">{title}</h2>
-        <p className="muted no-margin topbar-note">واجهة أسرع مع وضع داكن/فاتح، كاش مركزي، وتنبيهات فورية وتجربة موبايل أفضل.</p>
+        <p className="muted no-margin topbar-note">واجهة مرتبة للجوال والويب بألوان بنفسجية داكنة وخدمات موحدة وإشعارات جاهزة.</p>
         <div className="topbar-shortcuts">
           <Link to="/live" className="mini-action">🔴 البث المباشر</Link>
           <Link to="/groups" className="mini-action">👥 المجموعات</Link>
@@ -140,16 +136,12 @@ export default function Topbar() {
       </div>
 
       <div className="topbar-actions">
-        <div className="search-shell" title="البحث المباشر داخل الصفحات المتاحة">
+        <div className="search-shell">
           <span>⌕</span>
-          <input placeholder="استخدم البحث داخل الصفحات مثل المستخدمين والرسائل" disabled />
+          <input placeholder="بحث داخل يمشات قريباً" disabled />
         </div>
 
-        <div className={`glass-chip live-pill ${isOnline ? '' : 'offline'}`}>{isOnline ? 'LIVE' : 'OFFLINE'}</div>
-
-        <button type="button" className="ghost-btn browser-push-btn" onClick={toggleTheme}>
-          {theme === 'dark' ? 'الوضع الفاتح' : 'الوضع الداكن'}
-        </button>
+        <div className="glass-chip live-pill">LIVE</div>
 
         <button type="button" className="ghost-btn browser-push-btn" onClick={handleEnableBrowserNotifications}>
           {permissionState === 'granted' ? 'إشعارات المتصفح مفعلة' : 'تفعيل إشعارات المتصفح'}
@@ -204,7 +196,7 @@ export default function Topbar() {
         </div>
 
         <Link to="/profile" className="profile-pill">
-          <span className={`status-dot ${isOnline ? 'active' : ''}`}></span>
+          <span className="status-dot active"></span>
           <div>
             <strong>{user?.user || user?.username || 'مستخدم'}</strong>
             <small>{user?.role || 'member'}</small>

@@ -3,12 +3,11 @@ import API from './axios.js';
 export const getPosts = () => API.get('/posts');
 export const createPost = (data) => API.post('/posts', data);
 
-export const uploadPostMedia = (file, onUploadProgress) => {
+export const uploadPostMedia = (file) => {
   const formData = new FormData();
   formData.append('file', file);
   return API.post('/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
-    onUploadProgress,
   });
 };
 

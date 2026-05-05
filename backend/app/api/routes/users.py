@@ -42,25 +42,6 @@ def get_me(current_user: User = Depends(get_current_user)):
     return _user_payload(current_user)
 
 
-@router.patch('/me')
-def update_me(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    requested_username = str(payload.get('username') or current_user.username).strip().replace(' ', '_')
-    requested_avatar = str(payload.get('avatar') or '').strip() or None
-
-    if not requested_username:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Username is required')
-
-    existing = db.query(User).filter(User.username == requested_username, User.id != current_user.id).first()
-    if existing is not None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Username already exists')
-
-    current_user.username = requested_username
-    current_user.avatar = requested_avatar
-    db.commit()
-    db.refresh(current_user)
-    return _user_payload(current_user)
-
-
 @router.get('/followers/{username}')
 def get_followers_summary(username: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     _ = current_user

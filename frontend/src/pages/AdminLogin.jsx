@@ -9,6 +9,13 @@ import { PRIMARY_ADMIN_EMAIL, isPrimaryAdminSession } from '../utils/access.js';
 
 const canAccessAdminPanel = (session) => isPrimaryAdminSession(session);
 
+function extractAuthError(err) {
+  const detail = err?.response?.data?.detail;
+  if (typeof detail === 'string') return { message: detail };
+  if (detail && typeof detail === 'object') return detail;
+  return { message: 'فشل تسجيل دخول الإدارة، راجع البيانات.' };
+}
+
 export default function AdminLogin() {
   const [form, setForm] = useState({ identifier: '', password: '' });
   const [loading, setLoading] = useState(false);
@@ -53,7 +60,18 @@ export default function AdminLogin() {
       navigate(targetPath, { replace: true });
     } catch (err) {
       clearStoredUser();
-      setError(err?.response?.data?.detail || 'فشل تسجيل دخول الإدارة، راجع البيانات.');
+      const authError = extractAuthError(err);
+      if (authError?.message === 'Email verification required') {
+        navigate('/verify-email', {
+          state: {
+            email: authError.email || form.identifier.trim(),
+            message: 'لازم تفعّل البريد الإلكتروني للحساب الإداري الأول.',
+            devCode: authError.dev_verification_code || '',
+          },
+        });
+        return;
+      }
+      setError(authError?.message || 'فشل تسجيل دخول الإدارة، راجع البيانات.');
     } finally {
       setLoading(false);
     }

@@ -7,6 +7,13 @@ import { loginUser } from '../api/auth.js';
 import { setStoredUser } from '../utils/auth.js';
 import { getDefaultPostLoginPath } from '../utils/access.js';
 
+function extractAuthError(err) {
+  const detail = err?.response?.data?.detail;
+  if (typeof detail === 'string') return { message: detail };
+  if (detail && typeof detail === 'object') return detail;
+  return { message: 'فشل تسجيل الدخول، راجع البيانات.' };
+}
+
 export default function Login() {
   const [form, setForm] = useState({ identifier: '', password: '' });
   const [loading, setLoading] = useState(false);
@@ -34,7 +41,18 @@ export default function Login() {
       const fallbackPath = getDefaultPostLoginPath(data);
       navigate(location.state?.from?.pathname || fallbackPath, { replace: true });
     } catch (err) {
-      setError(err?.response?.data?.detail || 'فشل تسجيل الدخول، راجع البيانات.');
+      const authError = extractAuthError(err);
+      if (authError?.message === 'Email verification required') {
+        navigate('/verify-email', {
+          state: {
+            email: authError.email || form.identifier.trim(),
+            message: 'لازم تفعّل البريد الإلكتروني الأول قبل الدخول.',
+            devCode: authError.dev_verification_code || '',
+          },
+        });
+        return;
+      }
+      setError(authError?.message || 'فشل تسجيل الدخول، راجع البيانات.');
     } finally {
       setLoading(false);
     }
@@ -53,7 +71,7 @@ export default function Login() {
       }
       footer={
         <>
-          دخول الإدارة يتم من الرابط المخصص للإدارة فقط، أما هذه الصفحة فهي للمشتركين. <Link to="/register">إنشاء حساب جديد</Link>
+          دخول الإدارة يتم من الرابط المخصص للإدارة فقط، أما هذه الصفحة فهي للمشتركين. <Link to="/forgot-password">نسيت كلمة المرور</Link>
         </>
       }
     >

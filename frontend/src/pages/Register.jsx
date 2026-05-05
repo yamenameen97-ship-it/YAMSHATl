@@ -4,8 +4,6 @@ import Input from '../components/ui/Input.jsx';
 import Button from '../components/ui/Button.jsx';
 import AuthShell from '../components/auth/AuthShell.jsx';
 import { registerUser } from '../api/auth.js';
-import { setStoredUser } from '../utils/auth.js';
-import { getDefaultPostLoginPath } from '../utils/access.js';
 
 export default function Register() {
   const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '' });
@@ -37,8 +35,14 @@ export default function Register() {
     try {
       setLoading(true);
       const { data } = await registerUser({ name: form.name.trim(), email: form.email.trim(), password: form.password });
-      setStoredUser(data);
-      navigate(getDefaultPostLoginPath(data), { replace: true });
+      navigate('/verify-email', {
+        replace: true,
+        state: {
+          email: data?.email || form.email.trim(),
+          message: data?.message || 'تم إنشاء الحساب. راجع بريدك للتفعيل.',
+          devCode: data?.dev_verification_code || '',
+        },
+      });
     } catch (err) {
       setError(err?.response?.data?.detail || 'تعذر إنشاء الحساب حالياً.');
     } finally {
@@ -59,14 +63,14 @@ export default function Register() {
       }
       footer={
         <>
-          الحسابات الجديدة تُنشأ كمشتركين عاديين، ودخول الإدارة يبقى منفصلاً عن واجهة المشتركين. <Link to="/login">لدي حساب بالفعل</Link>
+          الحسابات الجديدة تحتاج تفعيل بالبريد قبل الدخول. <Link to="/login">لدي حساب بالفعل</Link>
         </>
       }
     >
       <form className="auth-form auth-form-enhanced" onSubmit={handleSubmit}>
         <div className="auth-form-head">
           <h2>إنشاء حساب جديد</h2>
-          <p className="muted">أكمل بياناتك وادخل مباشرة إلى تجربة يمشات الاجتماعية على الجوال.</p>
+          <p className="muted">أكمل بياناتك وفعّل البريد وبعدها ادخل لتجربة يمشات الاجتماعية على الجوال.</p>
         </div>
 
         <Input label="اسم المستخدم" placeholder="yamshat_user" value={form.name} onChange={handleChange('name')} hint="يُحفظ بدون مسافات" />

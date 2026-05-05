@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { logoutUser } from '../../api/auth.js';
 import { searchAdmin } from '../../api/admin.js';
@@ -12,6 +12,8 @@ export default function AdminTopbar({ title, onToggleSidebar, notifications = []
   const navigate = useNavigate();
   const user = getStoredUser();
   const debouncedQuery = useDebouncedValue(query, 350);
+  const unreadCount = useMemo(() => notifications.filter((item) => !item.is_read).length, [notifications]);
+  const deployMode = window.YAMSHAT_DEPLOY_MODE === 'split-services' ? 'split-services' : 'single-service';
 
   useEffect(() => {
     let active = true;
@@ -50,6 +52,10 @@ export default function AdminTopbar({ title, onToggleSidebar, notifications = []
         <div>
           <div className="page-eyebrow">لوحة تحكم احترافية</div>
           <h1 className="page-title">{title}</h1>
+          <div className="topbar-meta-row">
+            <span className="live-pill"><span className="status-dot live-dot" />تحديث لحظي</span>
+            <span className="deploy-pill">{deployMode === 'split-services' ? 'Web + Backend منفصلان' : 'نشر موحد'}</span>
+          </div>
         </div>
       </div>
 
@@ -61,7 +67,7 @@ export default function AdminTopbar({ title, onToggleSidebar, notifications = []
             <div className="search-results-panel">
               {results.users.length ? (
                 <div>
-                  <strong>Users</strong>
+                  <strong>المستخدمون</strong>
                   {results.users.map((item) => (
                     <button key={item.id} type="button" className="search-result-item" onClick={() => navigate('/admin/users')}>
                       <span>{item.username}</span>
@@ -72,7 +78,7 @@ export default function AdminTopbar({ title, onToggleSidebar, notifications = []
               ) : null}
               {results.posts.length ? (
                 <div>
-                  <strong>Posts</strong>
+                  <strong>المحتوى</strong>
                   {results.posts.map((item) => (
                     <button key={item.id} type="button" className="search-result-item" onClick={() => navigate('/admin/content')}>
                       <span>{item.username}</span>
@@ -87,13 +93,13 @@ export default function AdminTopbar({ title, onToggleSidebar, notifications = []
 
         <button type="button" className="ghost-btn notification-button" onClick={() => setOpen((prev) => !prev)}>
           🔔
-          <span>{notifications.filter((item) => !item.is_read).length}</span>
+          <span>{unreadCount}</span>
         </button>
 
         {open ? (
           <div className="notification-popover">
             <div className="notification-popover-head">
-              <strong>مركز الإشعارات</strong>
+              <strong>آخر الإشعارات</strong>
               <Link to="/admin/notifications">عرض الكل</Link>
             </div>
             <div className="notification-popover-list">

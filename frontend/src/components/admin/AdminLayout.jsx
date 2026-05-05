@@ -9,13 +9,13 @@ import AdminTopbar from './AdminTopbar.jsx';
 import { useToast } from './ToastProvider.jsx';
 
 const routeMeta = {
-  '/admin/dashboard': { title: 'Dashboard', breadcrumb: ['Admin', 'Dashboard'] },
-  '/admin/users': { title: 'Users Management', breadcrumb: ['Admin', 'Users'] },
-  '/admin/rbac': { title: 'RBAC & Permissions', breadcrumb: ['Admin', 'RBAC'] },
-  '/admin/content': { title: 'Content Management', breadcrumb: ['Admin', 'Content'] },
-  '/admin/notifications': { title: 'Notifications Center', breadcrumb: ['Admin', 'Notifications'] },
-  '/admin/reports': { title: 'Reports', breadcrumb: ['Admin', 'Reports'] },
-  '/admin/settings': { title: 'Settings', breadcrumb: ['Admin', 'Settings'] },
+  '/admin/dashboard': { title: 'نظرة عامة لحظية', breadcrumb: ['الإدارة', 'النظرة العامة'] },
+  '/admin/users': { title: 'إدارة المستخدمين', breadcrumb: ['الإدارة', 'المستخدمون'] },
+  '/admin/rbac': { title: 'الأدوار والصلاحيات', breadcrumb: ['الإدارة', 'الصلاحيات'] },
+  '/admin/content': { title: 'إدارة المحتوى', breadcrumb: ['الإدارة', 'المحتوى'] },
+  '/admin/notifications': { title: 'مركز الإشعارات', breadcrumb: ['الإدارة', 'الإشعارات'] },
+  '/admin/reports': { title: 'التقارير والتحليلات', breadcrumb: ['الإدارة', 'التقارير'] },
+  '/admin/settings': { title: 'الإعدادات', breadcrumb: ['الإدارة', 'الإعدادات'] },
 };
 
 export default function AdminLayout({ children }) {
@@ -34,26 +34,33 @@ export default function AdminLayout({ children }) {
 
   useEffect(() => {
     let active = true;
-    getAdminNotifications(20)
-      .then(({ data }) => {
+    const loadNotifications = async () => {
+      try {
+        const { data } = await getAdminNotifications(20);
         if (active) setNotifications(data?.items || []);
-      })
-      .catch(() => {
+      } catch {
         if (active) setNotifications([]);
-      });
+      }
+    };
+
+    loadNotifications();
 
     if (!socket.connected) socket.connect();
     socket.emit('register_user', { token, user: user?.username });
 
     const onAdminNotification = (payload) => {
       pushToast({ title: payload?.title || 'إشعار مباشر', description: payload?.body || 'تم وصول تحديث جديد.', type: 'info' });
-      setNotifications((prev) => [{ id: `${Date.now()}`, ...payload, is_read: false }, ...prev]);
+      setNotifications((prev) => [{ id: `${Date.now()}`, ...payload, is_read: false }, ...prev].slice(0, 20));
     };
 
+    const syncEvents = ['admin:user_updated', 'admin:user_status_changed', 'admin:user_deleted', 'admin:post_created', 'admin:post_updated', 'admin:post_deleted', 'admin:posts_bulk_deleted'];
     socket.on('admin:notification', onAdminNotification);
+    syncEvents.forEach((eventName) => socket.on(eventName, loadNotifications));
+
     return () => {
       active = false;
       socket.off('admin:notification', onAdminNotification);
+      syncEvents.forEach((eventName) => socket.off(eventName, loadNotifications));
     };
   }, [pushToast, token, user?.username]);
 

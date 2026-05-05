@@ -1,13 +1,13 @@
 import { NavLink } from 'react-router-dom';
 
 const items = [
-  { to: '/admin/dashboard', label: 'Dashboard', icon: '📊', permission: 'dashboard.view' },
-  { to: '/admin/users', label: 'Users', icon: '👥', permission: 'users.view' },
-  { to: '/admin/rbac', label: 'RBAC', icon: '🔐', permission: 'rbac.view' },
-  { to: '/admin/content', label: 'Content', icon: '📝', permission: 'posts.view' },
-  { to: '/admin/notifications', label: 'Notifications', icon: '🔔', permission: 'notifications.manage' },
-  { to: '/admin/reports', label: 'Reports', icon: '📈', permission: 'reports.view' },
-  { to: '/admin/settings', label: 'Settings', icon: '⚙️', permission: 'settings.manage' },
+  { to: '/admin/dashboard', label: 'نظرة عامة', icon: '📊', permission: 'dashboard.view' },
+  { to: '/admin/users', label: 'المستخدمون', icon: '👥', permission: 'users.view' },
+  { to: '/admin/rbac', label: 'الصلاحيات', icon: '🔐', permission: 'rbac.view' },
+  { to: '/admin/content', label: 'المحتوى', icon: '📝', permission: 'posts.view' },
+  { to: '/admin/notifications', label: 'الإشعارات', icon: '🔔', permission: 'notifications.manage' },
+  { to: '/admin/reports', label: 'التقارير', icon: '📈', permission: 'reports.view' },
+  { to: '/admin/settings', label: 'الإعدادات', icon: '⚙️', permission: 'settings.manage' },
 ];
 
 export default function AdminSidebar({ collapsed, permissions = [], role = 'user' }) {
@@ -20,7 +20,7 @@ export default function AdminSidebar({ collapsed, permissions = [], role = 'user
         {!collapsed ? (
           <div>
             <strong>Yamshat Admin</strong>
-            <span>Realtime control center</span>
+            <span>مركز تحكم لحظي احترافي</span>
           </div>
         ) : null}
       </div>
@@ -37,7 +37,7 @@ export default function AdminSidebar({ collapsed, permissions = [], role = 'user
       {!collapsed ? (
         <div className="sidebar-promo">
           <span className="badge">Realtime</span>
-          <p>لوحة احترافية موحدة، بحث فوري، صلاحيات، تقارير، وإدارة كاملة للمحتوى والمستخدمين.</p>
+          <p>لوحة موحدة للمراقبة، CRUD كامل، تقارير تصدير، إشعارات جماعية، وربط مباشر مع الويب والموبايل.</p>
         </div>
       ) : null}
     </aside>

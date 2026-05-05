@@ -1577,3 +1577,191 @@ input::placeholder {
     width: 100%;
   }
 }
+
+.topbar-meta-row,
+.hero-card-topline,
+.hero-actions-wrap,
+.dashboard-mini-summary,
+.service-health-grid,
+.service-status-head,
+.queue-grid,
+.integration-grid,
+.integration-label-row,
+.quick-template-row,
+.notification-header-inline {
+  display: flex;
+  gap: 12px;
+}
+
+.topbar-meta-row,
+.hero-card-topline,
+.integration-label-row,
+.notification-header-inline,
+.service-status-head {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.hero-actions-wrap,
+.quick-template-row {
+  flex-wrap: wrap;
+}
+
+.live-pill,
+.deploy-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(15, 23, 42, 0.76);
+  color: #e2e8f0;
+}
+
+.live-dot {
+  background: #22c55e;
+  box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.14);
+}
+
+.polished-hero-card {
+  display: grid;
+  gap: 18px;
+}
+
+.spotlight-card,
+.section-card-block {
+  display: grid;
+  gap: 18px;
+}
+
+.dashboard-mini-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dashboard-mini-summary > div,
+.queue-card,
+.integration-card,
+.service-status-card {
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.dashboard-mini-summary > div {
+  display: grid;
+  gap: 8px;
+}
+
+.with-top-gap {
+  margin-top: 14px;
+}
+
+.service-health-grid,
+.queue-grid,
+.integration-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.service-health-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.queue-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.queue-grid.compact-cards {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.integration-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.service-status-card.healthy,
+.integration-card.linked {
+  background: linear-gradient(180deg, rgba(34, 197, 94, 0.12), rgba(15, 23, 42, 0.82));
+}
+
+.service-status-card.warning,
+.integration-card.warning {
+  background: linear-gradient(180deg, rgba(245, 158, 11, 0.12), rgba(15, 23, 42, 0.82));
+}
+
+.service-status-card.critical {
+  background: linear-gradient(180deg, rgba(239, 68, 68, 0.16), rgba(15, 23, 42, 0.82));
+}
+
+.service-status-value,
+.integration-value {
+  margin: 10px 0 8px;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.service-status-card p,
+.integration-card p,
+.queue-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.queue-card strong {
+  display: block;
+  font-size: 28px;
+  margin: 12px 0 8px;
+}
+
+.queue-card.compact strong {
+  font-size: 22px;
+}
+
+.queue-label {
+  color: #c4b5fd;
+}
+
+.warning-soft {
+  background: rgba(245, 158, 11, 0.14);
+  color: #fde68a;
+}
+
+.enhanced-notification-row {
+  justify-content: space-between;
+}
+
+@media (max-width: 1180px) {
+  .service-health-grid,
+  .queue-grid,
+  .integration-grid,
+  .dashboard-mini-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  .dashboard-hero-grid,
+  .dashboard-hero-grid.small-gap,
+  .two-column-grid,
+  .analytics-grid,
+  .service-health-grid,
+  .queue-grid,
+  .integration-grid,
+  .dashboard-mini-summary,
+  .queue-grid.compact-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar-meta-row,
+  .hero-card-topline,
+  .service-status-head,
+  .integration-label-row,
+  .notification-header-inline,
+  .topbar-controls {
+    flex-wrap: wrap;
+  }
+}

@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
+import EmptyState from '../components/feedback/EmptyState.jsx';
+import ErrorState from '../components/feedback/ErrorState.jsx';
 import socket from '../api/socket.js';
 import {
   createLiveRoom,
@@ -12,27 +14,23 @@ import {
   updateLivePresence,
 } from '../api/live.js';
 import { getAuthToken, getCurrentUsername } from '../utils/auth.js';
+import { sanitizeInputText } from '../utils/sanitize.js';
+import { useAppStore } from '../store/appStore.js';
 
 const livekitCache = { module: null };
 
 async function loadLiveKit() {
-  if (!livekitCache.module) {
-    livekitCache.module = await import('livekit-client');
-  }
+  if (!livekitCache.module) livekitCache.module = await import('livekit-client');
   return livekitCache.module;
 }
 
 function ensureSocketConnected() {
-  if (socket.connected && socket.id) {
-    return Promise.resolve(socket.id);
-  }
-
+  if (socket.connected && socket.id) return Promise.resolve(socket.id);
   return new Promise((resolve) => {
     const handleConnect = () => {
       socket.off('connect', handleConnect);
       resolve(socket.id || '');
     };
-
     socket.on('connect', handleConnect);
     socket.connect();
   });
@@ -41,6 +39,7 @@ function ensureSocketConnected() {
 export default function Live() {
   const currentUser = getCurrentUsername();
   const token = getAuthToken();
+  const isOnline = useAppStore((state) => state.isOnline);
   const roomRef = useRef(null);
   const videosRef = useRef(null);
   const activeRoomIdRef = useRef(null);
@@ -55,9 +54,12 @@ export default function Live() {
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState('');
+  const [quality, setQuality] = useState('auto');
+  const [showFallback, setShowFallback] = useState(false);
 
   const refreshRooms = async () => {
     try {
+      setLoading(true);
       const { data } = await getLiveRooms();
       setRooms(Array.isArray(data) ? data : []);
     } catch {
@@ -73,7 +75,6 @@ export default function Live() {
 
   useEffect(() => {
     if (!currentUser) return undefined;
-
     if (!socket.connected) socket.connect();
     socket.emit('register_user', { token, user: currentUser });
 
@@ -102,10 +103,17 @@ export default function Live() {
   }, [currentUser, token]);
 
   const clearVideoContainer = () => {
-    if (videosRef.current) {
-      videosRef.current.innerHTML = '';
-    }
+    if (videosRef.current) videosRef.current.innerHTML = '';
   };
+
+  const applyQualityPreference = () => {
+    if (!videosRef.current) return;
+    videosRef.current.dataset.quality = quality;
+  };
+
+  useEffect(() => {
+    applyQualityPreference();
+  }, [quality]);
 
   const attachVideoTrack = (track, participantLabel) => {
     if (!videosRef.current || track.kind !== 'video') return;
@@ -124,6 +132,7 @@ export default function Live() {
     wrapper.appendChild(element);
     wrapper.appendChild(label);
     videosRef.current.appendChild(wrapper);
+    applyQualityPreference();
   };
 
   const disconnectRoom = async () => {
@@ -131,19 +140,11 @@ export default function Live() {
       if (activeRoomIdRef.current) {
         const socketId = await ensureSocketConnected();
         socket.emit('leave_live', { token, room_id: String(activeRoomIdRef.current) });
-        await updateLivePresence({
-          room_id: activeRoomIdRef.current,
-          socket_id: socketId,
-          platform: 'web',
-          device_type: 'browser',
-          is_host: activeRoom?.role === 'host',
-          active: false,
-        });
+        await updateLivePresence({ room_id: activeRoomIdRef.current, socket_id: socketId, platform: 'web', device_type: 'browser', is_host: activeRoom?.role === 'host', active: false });
       }
     } catch {
-      // ignore presence errors on disconnect
+      // ignore disconnect errors
     }
-
     if (roomRef.current) {
       roomRef.current.disconnect();
       roomRef.current = null;
@@ -158,37 +159,49 @@ export default function Live() {
 
   const connectToLiveKit = async (session, role) => {
     if (!session?.token || !session?.livekit_url) {
-      setStatus('تم الدخول إلى غرفة البث، لكن LiveKit غير مفعّل حالياً. فعّل مفاتيح LiveKit في الباك-إند لعرض الفيديو.');
+      setShowFallback(true);
+      setStatus('تم الدخول إلى غرفة البث لكن LiveKit غير مفعّل حالياً، لذلك تم تفعيل وضع المتابعة النصي كبديل.');
       return;
     }
 
-    const { connect, RoomEvent } = await loadLiveKit();
-    const room = await connect(session.livekit_url, session.token);
-    roomRef.current = room;
+    try {
+      const { connect, RoomEvent } = await loadLiveKit();
+      const room = await connect(session.livekit_url, session.token);
+      roomRef.current = room;
 
-    room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
-      attachVideoTrack(track, participant.identity);
-    });
-
-    room.on(RoomEvent.TrackUnsubscribed, (track) => {
-      track.detach().forEach((element) => element.remove());
-    });
-
-    if (role === 'host') {
-      await room.localParticipant.setCameraEnabled(true);
-      await room.localParticipant.setMicrophoneEnabled(true);
-      room.localParticipant.trackPublications.forEach((publication) => {
-        if (publication.track) attachVideoTrack(publication.track, `${currentUser} (Host)`);
+      room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+        attachVideoTrack(track, participant.identity);
       });
+
+      room.on(RoomEvent.TrackUnsubscribed, (track) => {
+        track.detach().forEach((element) => element.remove());
+      });
+
+      room.on(RoomEvent.Disconnected, () => {
+        setShowFallback(true);
+        setStatus('انقطع الاتصال المرئي. تم التحويل إلى وضع fallback مع استمرار الشات والإحصاءات.');
+      });
+
+      if (role === 'host') {
+        await room.localParticipant.setCameraEnabled(true);
+        await room.localParticipant.setMicrophoneEnabled(true);
+        room.localParticipant.trackPublications.forEach((publication) => {
+          if (publication.track) attachVideoTrack(publication.track, `${currentUser} (Host)`);
+        });
+      }
+
+      room.participants.forEach((participant) => {
+        participant.trackPublications.forEach((publication) => {
+          if (publication.track) attachVideoTrack(publication.track, participant.identity);
+        });
+      });
+
+      setShowFallback(false);
+      setStatus('تم الاتصال بالبث المباشر بنجاح.');
+    } catch (err) {
+      setShowFallback(true);
+      setStatus(err?.message || 'فشل الاتصال المرئي. تم تفعيل وضع fallback.');
     }
-
-    room.participants.forEach((participant) => {
-      participant.trackPublications.forEach((publication) => {
-        if (publication.track) attachVideoTrack(publication.track, participant.identity);
-      });
-    });
-
-    setStatus('تم الاتصال بالبث المباشر بنجاح عبر LiveKit.');
   };
 
   const joinRoom = async (roomRecord, role = 'viewer') => {
@@ -196,15 +209,9 @@ export default function Live() {
       setJoining(true);
       setError('');
       clearVideoContainer();
-
       const { data: tokenData } = await getLiveToken({ room_id: roomRecord.id, role, platform: 'web' });
       const { data: commentsData } = await getLiveComments(roomRecord.id);
-
-      const session = {
-        ...roomRecord,
-        ...tokenData,
-        role,
-      };
+      const session = { ...roomRecord, ...tokenData, role };
 
       activeRoomIdRef.current = roomRecord.id;
       setActiveRoom(session);
@@ -213,24 +220,8 @@ export default function Live() {
       setHeartsCount(Number(roomRecord.hearts_count || 0));
 
       const socketId = await ensureSocketConnected();
-      socket.emit('join_live', {
-        token,
-        room_id: String(roomRecord.id),
-        user: currentUser,
-        role,
-        platform: 'web',
-        device_type: 'browser',
-      });
-
-      await updateLivePresence({
-        room_id: roomRecord.id,
-        socket_id: socketId,
-        platform: 'web',
-        device_type: 'browser',
-        is_host: role === 'host',
-        active: true,
-      });
-
+      socket.emit('join_live', { token, room_id: String(roomRecord.id), user: currentUser, role, platform: 'web', device_type: 'browser' });
+      await updateLivePresence({ room_id: roomRecord.id, socket_id: socketId, platform: 'web', device_type: 'browser', is_host: role === 'host', active: true });
       await connectToLiveKit(session, role);
     } catch (err) {
       setError(err?.response?.data?.message || err?.response?.data?.detail || err?.message || 'تعذر الانضمام إلى البث.');
@@ -243,7 +234,8 @@ export default function Live() {
     try {
       setJoining(true);
       setError('');
-      const { data } = await createLiveRoom({ title, platform: 'web' });
+      const safeTitle = sanitizeInputText(title, { maxLength: 120 }) || 'بث مباشر جديد';
+      const { data } = await createLiveRoom({ title: safeTitle, platform: 'web' });
       await refreshRooms();
       await joinRoom({ id: String(data.room_id || data.id), viewer_count: 0, ...data }, 'host');
     } catch (err) {
@@ -254,24 +246,15 @@ export default function Live() {
   };
 
   const handleSendComment = () => {
-    const text = message.trim();
+    const text = sanitizeInputText(message, { maxLength: 600 });
     if (!text || !activeRoomIdRef.current) return;
-    socket.emit('send_comment', {
-      token,
-      room_id: String(activeRoomIdRef.current),
-      user: currentUser,
-      text,
-    });
+    socket.emit('send_comment', { token, room_id: String(activeRoomIdRef.current), user: currentUser, text });
     setMessage('');
   };
 
   const handleHeart = () => {
     if (!activeRoomIdRef.current) return;
-    socket.emit('send_heart', {
-      token,
-      room_id: String(activeRoomIdRef.current),
-      user: currentUser,
-    });
+    socket.emit('send_heart', { token, room_id: String(activeRoomIdRef.current), user: currentUser });
   };
 
   const handleEndLive = async () => {
@@ -290,6 +273,11 @@ export default function Live() {
     disconnectRoom();
   }, []);
 
+  const viewerExperienceLabel = useMemo(() => {
+    if (!activeRoom) return 'اختر بثاً لمتابعته.';
+    return activeRoom.role === 'host' ? 'أنت الآن كمضيف ويمكنك إنهاء البث.' : 'أنت الآن كمشاهد مع شات مباشر وإحصاءات فورية.';
+  }, [activeRoom]);
+
   return (
     <MainLayout>
       <section className="live-layout">
@@ -298,7 +286,7 @@ export default function Live() {
             <div className="section-head compact">
               <div>
                 <h3 className="section-title">🔴 Live Streaming</h3>
-                <p className="muted">واجهة بث مباشر جاهزة مع Socket.io للتنسيق وLiveKit للاتصال المرئي.</p>
+                <p className="muted">واجهة بث مباشر محسّنة مع Start/End، عداد مشاهدين، quality selector، fallback، وتجربة مشاهد أوضح.</p>
               </div>
               <div className="live-stage-stats">
                 <span className="glass-chip">👀 {viewerCount}</span>
@@ -307,17 +295,26 @@ export default function Live() {
             </div>
 
             <div ref={videosRef} className="live-video-grid" />
+            {showFallback ? <div className="live-fallback-card">تم تفعيل وضع المتابعة النصي بسبب تعذر الاتصال المرئي. ما زال بإمكانك متابعة التعليقات والإحصاءات.</div> : null}
+            {!activeRoom && !loading ? <EmptyState icon="📡" title="لا يوجد بث نشط في المعاينة" description="أنشئ بثاً جديداً أو ادخل لأحد البثوث الحالية." /> : null}
 
-            <div className="live-toolbar">
+            <div className="live-toolbar wrap-composer-actions">
               <input className="input" placeholder="عنوان البث..." value={title} onChange={(event) => setTitle(event.target.value)} />
-              <Button onClick={handleCreateLive} disabled={joining}>{joining ? 'جارٍ التجهيز...' : 'بدء بث جديد'}</Button>
-              {activeRoom?.role === 'host' ? (
-                <Button variant="secondary" onClick={handleEndLive}>إنهاء البث</Button>
-              ) : null}
+              <select className="input live-quality-select" value={quality} onChange={(event) => setQuality(event.target.value)}>
+                <option value="auto">الجودة: تلقائي</option>
+                <option value="high">عالية</option>
+                <option value="medium">متوسطة</option>
+                <option value="low">منخفضة</option>
+              </select>
+              <Button onClick={handleCreateLive} disabled={joining || !isOnline}>{joining ? 'جارٍ التجهيز...' : 'Start Live'}</Button>
+              {activeRoom?.role === 'host' ? <Button variant="secondary" onClick={handleEndLive}>End Live</Button> : null}
+              {activeRoom ? <Button variant="secondary" onClick={() => joinRoom(activeRoom, activeRoom.role || 'viewer')}>إعادة الاتصال</Button> : null}
             </div>
 
             <div className="muted">{status}</div>
-            {error ? <div className="alert error">{error}</div> : null}
+            <div className="muted">{viewerExperienceLabel}</div>
+            {!isOnline ? <div className="alert warning">لا يوجد اتصال إنترنت حالياً، لذا تم إيقاف إنشاء/الاتصال بالبث مؤقتاً.</div> : null}
+            {error ? <ErrorState title="خطأ في البث المباشر" description={error} onRetry={refreshRooms} /> : null}
           </Card>
         </div>
 

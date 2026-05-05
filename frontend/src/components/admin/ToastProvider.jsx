@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
 const ToastContext = createContext({ pushToast: () => {} });
 
@@ -13,12 +13,18 @@ export function ToastProvider({ children }) {
     }, toast?.duration || 3200);
   };
 
+  useEffect(() => {
+    const handleToast = (event) => pushToast(event.detail || {});
+    window.addEventListener('yamshat:toast', handleToast);
+    return () => window.removeEventListener('yamshat:toast', handleToast);
+  }, []);
+
   const value = useMemo(() => ({ pushToast }), []);
 
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="toast-stack">
+      <div className="toast-stack" aria-live="polite" aria-atomic="true">
         {toasts.map((toast) => (
           <div key={toast.id} className={`toast toast-${toast.type}`}>
             <strong>{toast.title}</strong>

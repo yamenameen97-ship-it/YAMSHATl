@@ -6,5 +6,15 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          motion: ['framer-motion'],
+          realtime: ['socket.io-client', 'livekit-client'],
+          query: ['@tanstack/react-query'],
+        },
+      },
+    },
   },
 });

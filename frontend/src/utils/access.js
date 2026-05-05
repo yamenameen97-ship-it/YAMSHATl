@@ -1,4 +1,6 @@
-export const PRIMARY_ADMIN_EMAIL = 'adminadminya@gmail.com';
+export const PRIMARY_ADMIN_EMAIL = String(import.meta.env.VITE_PRIMARY_ADMIN_EMAIL || 'yamenameen97@gmail.com')
+  .trim()
+  .toLowerCase();
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 

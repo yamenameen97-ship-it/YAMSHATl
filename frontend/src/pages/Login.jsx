@@ -4,6 +4,7 @@ import Input from '../components/ui/Input.jsx';
 import Button from '../components/ui/Button.jsx';
 import AuthShell from '../components/auth/AuthShell.jsx';
 import { loginUser } from '../api/auth.js';
+import { sanitizeInputText } from '../utils/sanitize.js';
 import { setStoredUser } from '../utils/auth.js';
 import { getDefaultPostLoginPath } from '../utils/access.js';
 
@@ -32,9 +33,9 @@ export default function Login() {
 
     try {
       const { data } = await loginUser({
-        identifier: form.identifier.trim(),
-        email: form.identifier.trim(),
-        username: form.identifier.trim(),
+        identifier: sanitizeInputText(form.identifier, { maxLength: 120 }),
+        email: sanitizeInputText(form.identifier, { maxLength: 120 }),
+        username: sanitizeInputText(form.identifier, { maxLength: 120 }),
         password: form.password,
       });
       setStoredUser(data);

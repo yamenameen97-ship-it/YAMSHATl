@@ -1,22 +1,35 @@
-import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
+import Input from '../components/ui/Input.jsx';
 import socket from '../api/socket.js';
-import { getFollowersSummary, getRelationship, getUserPosts, followUser } from '../api/users.js';
-import { getAuthToken, getCurrentUsername } from '../utils/auth.js';
+import { getFollowersSummary, getRelationship, getUserPosts, followUser, updateMyProfile, uploadAvatar } from '../api/users.js';
+import { getAuthToken, getCurrentUsername, mergeStoredUser } from '../utils/auth.js';
+import { sanitizeInputText } from '../utils/sanitize.js';
 
 export default function Profile() {
   const { username: routeUsername } = useParams();
+  const navigate = useNavigate();
   const currentUser = getCurrentUsername();
   const token = getAuthToken();
   const username = routeUsername || currentUser;
+  const isOwnProfile = username === currentUser;
   const [posts, setPosts] = useState([]);
   const [counts, setCounts] = useState({ followers: 0, following: 0 });
   const [following, setFollowing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [profileForm, setProfileForm] = useState({ username: username || '', avatar: '' });
+
+  const avatarPreview = useMemo(() => {
+    if (avatarFile) return URL.createObjectURL(avatarFile);
+    return profileForm.avatar || '';
+  }, [avatarFile, profileForm.avatar]);
 
   const loadProfile = async () => {
     try {
@@ -31,6 +44,8 @@ export default function Profile() {
       });
       setPosts(Array.isArray(postsRes?.data) ? postsRes.data : []);
       setFollowing(Boolean(relationRes?.data?.following));
+      const firstAvatar = Array.isArray(postsRes?.data) ? '' : '';
+      setProfileForm((prev) => ({ ...prev, username, avatar: prev.avatar || firstAvatar || '' }));
     } catch (err) {
       setError(err?.response?.data?.message || err?.response?.data?.detail || 'تعذر تحميل الملف الشخصي.');
     } finally {
@@ -41,6 +56,14 @@ export default function Profile() {
   useEffect(() => {
     if (username) loadProfile();
   }, [username]);
+
+  useEffect(() => {
+    return () => {
+      if (avatarPreview && avatarPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(avatarPreview);
+      }
+    };
+  }, [avatarPreview]);
 
   useEffect(() => {
     if (!currentUser) return undefined;
@@ -77,12 +100,57 @@ export default function Profile() {
     }
   };
 
+  const handleAvatarChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('يمكن رفع صور فقط للصورة الشخصية.');
+      return;
+    }
+    setError('');
+    setAvatarFile(file);
+  };
+
+  const handleProfileSave = async () => {
+    try {
+      setSaving(true);
+      setError('');
+      let avatarUrl = profileForm.avatar;
+      if (avatarFile) {
+        const formData = new FormData();
+        formData.append('file', avatarFile);
+        const { data } = await uploadAvatar(formData);
+        avatarUrl = data?.file_url || data?.url || avatarUrl;
+      }
+      const payload = {
+        username: sanitizeInputText(profileForm.username, { maxLength: 50 }),
+        avatar: avatarUrl,
+      };
+      const { data } = await updateMyProfile(payload);
+      mergeStoredUser(data);
+      setProfileForm({ username: data?.username || payload.username, avatar: data?.avatar || avatarUrl || '' });
+      setAvatarFile(null);
+      setEditing(false);
+      if (routeUsername && routeUsername !== (data?.username || payload.username)) {
+        navigate(`/profile/${encodeURIComponent(data?.username || payload.username)}`, { replace: true });
+      }
+    } catch (err) {
+      setError(err?.response?.data?.detail || err?.response?.data?.message || 'تعذر حفظ الملف الشخصي.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <MainLayout>
       <div className="profile-grid">
         <Card className="profile-card">
           <div className="profile-header">
-            <div className="avatar-circle large">{username?.slice(0, 1)?.toUpperCase() || 'U'}</div>
+            {avatarPreview ? (
+              <img src={avatarPreview} alt={username} className="avatar-circle large avatar-image" />
+            ) : (
+              <div className="avatar-circle large">{username?.slice(0, 1)?.toUpperCase() || 'U'}</div>
+            )}
             <div className="user-meta">
               <h3 className="section-title">{username}</h3>
               <p className="muted">ملف شخصي اجتماعي متصل بالمنشورات والمتابعات بنفس هوية Yamshat الجديدة.</p>
@@ -91,7 +159,11 @@ export default function Profile() {
               <Button variant={following ? 'secondary' : 'primary'} onClick={handleFollow}>
                 {following ? 'إلغاء المتابعة' : 'متابعة'}
               </Button>
-            ) : null}
+            ) : (
+              <Button variant="secondary" onClick={() => setEditing((prev) => !prev)}>
+                {editing ? 'إغلاق التعديل' : 'تعديل الملف الشخصي'}
+              </Button>
+            )}
           </div>
 
           <div className="stats-grid compact-stats profile-stats">
@@ -99,6 +171,26 @@ export default function Profile() {
             <div className="mini-stat"><strong>{counts.followers}</strong><span>المتابعون</span></div>
             <div className="mini-stat"><strong>{counts.following}</strong><span>يتابع</span></div>
           </div>
+
+          {isOwnProfile && editing ? (
+            <div className="profile-edit-grid">
+              <Input
+                label="اسم المستخدم"
+                value={profileForm.username}
+                onChange={(event) => setProfileForm((prev) => ({ ...prev, username: event.target.value }))}
+                placeholder="اسم المستخدم"
+              />
+              <div className="profile-edit-actions">
+                <label className="upload-label">
+                  <input type="file" accept="image/*" onChange={handleAvatarChange} hidden />
+                  رفع صورة شخصية
+                </label>
+                <Button onClick={handleProfileSave} disabled={saving}>
+                  {saving ? 'جارٍ الحفظ...' : 'حفظ التعديلات'}
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </Card>
 
         {error ? <div className="alert error">{error}</div> : null}

@@ -1,4 +1,9 @@
 import { isPrimaryAdminSession } from './access.js';
+import { secureGet, secureRemove, secureSet } from './secureStorage.js';
+import { useAppStore } from '../store/appStore.js';
+
+const STORAGE_KEY = 'yamshat_user_session';
+const EXPIRY_LEEWAY_SECONDS = 30;
 
 function normalizeUserShape(user) {
   if (!user || typeof user !== 'object') return null;
@@ -26,9 +31,49 @@ function normalizeUserShape(user) {
   };
 }
 
+function decodeJwtPayload(token) {
+  if (!token || typeof token !== 'string' || token.split('.').length < 2) return null;
+  try {
+    const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const normalized = payload.padEnd(Math.ceil(payload.length / 4) * 4, '=');
+    const decoded = typeof window !== 'undefined' && typeof window.atob === 'function'
+      ? window.atob(normalized)
+      : Buffer.from(normalized, 'base64').toString('utf-8');
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+}
+
+export function getTokenExpiryMs(token) {
+  const payload = decodeJwtPayload(token);
+  if (!payload?.exp) return null;
+  const exp = Number(payload.exp);
+  return Number.isFinite(exp) ? exp * 1000 : null;
+}
+
+export function isTokenExpired(token, leewaySeconds = EXPIRY_LEEWAY_SECONDS) {
+  const expiryMs = getTokenExpiryMs(token);
+  if (!expiryMs) return false;
+  return expiryMs <= Date.now() + leewaySeconds * 1000;
+}
+
+function syncStore(user) {
+  const state = useAppStore.getState();
+  if (user) state.setSession?.(user);
+  else state.clearSession?.();
+}
+
 export function getStoredUser() {
   try {
-    return normalizeUserShape(JSON.parse(localStorage.getItem('user') || 'null'));
+    const raw = secureGet(STORAGE_KEY);
+    const parsed = normalizeUserShape(raw ? JSON.parse(raw) : null);
+    if (parsed?.access_token && isTokenExpired(parsed.access_token)) {
+      clearStoredUser();
+      return null;
+    }
+    syncStore(parsed);
+    return parsed;
   } catch {
     return null;
   }
@@ -37,10 +82,12 @@ export function getStoredUser() {
 export function setStoredUser(user) {
   const normalized = normalizeUserShape(user);
   if (!normalized) {
-    localStorage.removeItem('user');
+    secureRemove(STORAGE_KEY);
+    syncStore(null);
     return;
   }
-  localStorage.setItem('user', JSON.stringify(normalized));
+  secureSet(STORAGE_KEY, JSON.stringify(normalized));
+  syncStore(normalized);
 }
 
 export function mergeStoredUser(nextValues) {
@@ -49,7 +96,8 @@ export function mergeStoredUser(nextValues) {
 }
 
 export function clearStoredUser() {
-  localStorage.removeItem('user');
+  secureRemove(STORAGE_KEY);
+  syncStore(null);
 }
 
 export function getAuthToken() {
@@ -65,6 +113,13 @@ export function getRefreshToken() {
 export function getCurrentUsername() {
   const user = getStoredUser();
   return user?.user || user?.username || '';
+}
+
+export function getSessionTtlMs() {
+  const token = getAuthToken();
+  const expiryMs = getTokenExpiryMs(token);
+  if (!expiryMs) return null;
+  return Math.max(expiryMs - Date.now(), 0);
 }
 
 export function hasPermission(permission) {

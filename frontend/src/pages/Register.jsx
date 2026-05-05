@@ -4,6 +4,7 @@ import Input from '../components/ui/Input.jsx';
 import Button from '../components/ui/Button.jsx';
 import AuthShell from '../components/auth/AuthShell.jsx';
 import { registerUser } from '../api/auth.js';
+import { sanitizeInputText } from '../utils/sanitize.js';
 
 export default function Register() {
   const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '' });
@@ -34,7 +35,7 @@ export default function Register() {
 
     try {
       setLoading(true);
-      const { data } = await registerUser({ name: form.name.trim(), email: form.email.trim(), password: form.password });
+      const { data } = await registerUser({ name: sanitizeInputText(form.name, { maxLength: 50 }), email: sanitizeInputText(form.email, { maxLength: 120 }), password: form.password });
       navigate('/verify-email', {
         replace: true,
         state: {

@@ -1,1 +1,0 @@
-import{j as o}from"./query-CqeYTS7a.js";import{m as r}from"./motion-DHHcbLyp.js";function s({children:i,className:t="",...a}){return o.jsx(r.div,{initial:{opacity:0,y:10},animate:{opacity:1,y:0},transition:{duration:.25},className:`card ${t}`.trim(),...a,children:i})}export{s as C};

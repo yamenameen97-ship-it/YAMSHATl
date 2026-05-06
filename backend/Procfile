@@ -1,2 +1,0 @@
-web: cd backend && python3 migrate_db.py && gunicorn --worker-class eventlet --workers 1 --bind 0.0.0.0:${PORT:-5000} app:app
-worker: cd backend && celery -A celery.celery_app worker --loglevel=info

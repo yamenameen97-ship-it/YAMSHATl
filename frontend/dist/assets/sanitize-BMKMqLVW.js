@@ -1,0 +1,1 @@
+const i={"<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;","`":"&#96;"};function r(e,{maxLength:n=2e3}={}){return String(e||"").replace(/[<>"'`]/g,t=>i[t]||t).replace(/\s+/g," ").trim().slice(0,n)}export{r as s};

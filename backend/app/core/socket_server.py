@@ -15,9 +15,11 @@ from app.db.session import SessionLocal
 from app.models.comment import Comment
 from app.models.follow import Follow
 from app.models.like import Like
+from app.models.message import Message
 from app.models.notification import Notification
 from app.models.post import Post
 from app.models.user import User
+from app.services.chat_realtime import mark_messages_delivered, serialize_message
 
 cors_allowed_origins = '*' if '*' in settings.cors_origins else settings.cors_origins
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins=cors_allowed_origins)
@@ -93,12 +95,28 @@ async def _resolve_authenticated_user(sid: str, token: str | None = None) -> tup
         db.close()
 
 
+async def _emit_pending_delivery_receipts(user: User, peer: str | None = None) -> None:
+    db = SessionLocal()
+    try:
+        peer_user_id = None
+        if peer:
+            peer_user = db.query(User).filter(User.username == str(peer).strip(), User.is_active.is_(True)).first()
+            peer_user_id = peer_user.id if peer_user else None
+        receipts = mark_messages_delivered(db, user, peer_user_id=peer_user_id)
+    finally:
+        db.close()
+
+    for receipt in receipts:
+        await sio.emit('messages_delivered', receipt, room=f'username:{receipt["sender"]}')
+
+
 @sio.event
 async def connect(sid, environ, auth):
     token = (auth or {}).get('token') if isinstance(auth, dict) else None
     if token:
         _, user = await _resolve_authenticated_user(sid, token)
         if user is not None:
+            await _emit_pending_delivery_receipts(user)
             await sio.emit('presence_update', {'user': user.username, 'is_online': True, 'last_seen': user.last_login_at.isoformat() if user.last_login_at else None})
     return True
 
@@ -142,6 +160,7 @@ async def register_user_event(sid, data):
             await sio.enter_room(sid, f'username:{username}')
         return
     await _save_user_session(sid, user, live_room_id=(session or {}).get('live_room_id'))
+    await _emit_pending_delivery_receipts(user)
     await sio.emit('presence_update', {'user': user.username, 'is_online': True, 'last_seen': user.last_login_at.isoformat() if user.last_login_at else None})
 
 
@@ -231,6 +250,7 @@ async def join_chat_event(sid, data):
         return
     room_name = ':'.join(sorted([user.username, peer]))
     await sio.enter_room(sid, f'chat:{room_name}')
+    await _emit_pending_delivery_receipts(user, peer=peer)
     await sio.emit('presence_update', {'user': user.username, 'is_online': True, 'last_seen': None})
 
 
@@ -243,6 +263,77 @@ async def leave_chat_event(sid, data):
         return
     room_name = ':'.join(sorted([username, peer]))
     await sio.leave_room(sid, f'chat:{room_name}')
+
+
+@sio.on('sync_chat_state')
+async def sync_chat_state_event(sid, data):
+    token = (data or {}).get('token')
+    _, user = await _resolve_authenticated_user(sid, token)
+    peer = (data or {}).get('peer')
+    if user is None:
+        return
+    await _emit_pending_delivery_receipts(user, peer=peer)
+
+
+@sio.on('chat_message')
+async def chat_message_event(sid, data):
+    token = (data or {}).get('token')
+    _, user = await _resolve_authenticated_user(sid, token)
+    receiver_username = str((data or {}).get('receiver') or '').strip()
+    raw_message = str((data or {}).get('message') or '').strip()
+    media_url = str((data or {}).get('media_url') or '').strip()
+    message_type = str((data or {}).get('type') or ('image' if media_url else 'text')).strip() or 'text'
+    client_id = str((data or {}).get('client_id') or '').strip() or None
+    if user is None or not receiver_username or (not raw_message and not media_url):
+        return
+    if not allow_socket_message(f'socket-chat:{user.id}'):
+        await sio.emit('chat_error', {'detail': 'You are sending messages too quickly'}, room=sid)
+        return
+
+    db = SessionLocal()
+    try:
+        receiver = db.query(User).filter(User.username == receiver_username, User.is_active.is_(True)).first()
+        if receiver is None:
+            await sio.emit('chat_error', {'detail': 'Receiver not found'}, room=sid)
+            return
+
+        existing = None
+        if client_id:
+            existing = db.query(Message).filter(Message.sender_id == user.id, Message.client_id == client_id).first()
+
+        if existing is None:
+            delivered_now = is_user_online(username=receiver.username, user_id=receiver.id)
+            message = Message(
+                sender_id=user.id,
+                receiver_id=receiver.id,
+                client_id=client_id,
+                content=bleach.clean(raw_message),
+                media_url=media_url or None,
+                message_type=message_type,
+                is_delivered=delivered_now,
+                delivered_at=datetime.utcnow() if delivered_now else None,
+                is_seen=False,
+            )
+            db.add(message)
+            db.commit()
+            db.refresh(message)
+        else:
+            message = existing
+            delivered_now = bool(message.is_delivered)
+
+        serialized = serialize_message(message, db)
+    finally:
+        db.close()
+
+    await sio.emit('new_private_message', serialized, room=f'username:{receiver_username}')
+    await sio.emit('new_private_message', serialized, room=f'username:{user.username}')
+    await sio.emit('chat_message_ack', {'client_id': client_id, 'message': serialized}, room=sid)
+    if delivered_now:
+        await sio.emit(
+            'messages_delivered',
+            {'sender': user.username, 'viewer': receiver_username, 'message_ids': [serialized['id']]},
+            room=f'username:{user.username}',
+        )
 
 
 @sio.on('like_post')

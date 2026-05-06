@@ -72,6 +72,17 @@ class Settings:
     CLOUDINARY_API_KEY: str = (os.getenv('CLOUDINARY_API_KEY') or os.getenv('CLOUD_API_KEY') or '').strip()
     CLOUDINARY_API_SECRET: str = (os.getenv('CLOUDINARY_API_SECRET') or os.getenv('CLOUD_API_SECRET') or '').strip()
     CLOUDINARY_FOLDER: str = (os.getenv('CLOUDINARY_FOLDER') or 'yamshat').strip()
+    PUSH_PROVIDER: str = (os.getenv('PUSH_PROVIDER') or 'firebase').strip().lower()
+    ANALYTICS_ENABLED: bool = env_bool('ANALYTICS_ENABLED', True)
+    ANALYTICS_PROVIDER: str = (os.getenv('ANALYTICS_PROVIDER') or 'custom-endpoint').strip().lower()
+    ANALYTICS_FORWARD_URL: str = (os.getenv('ANALYTICS_FORWARD_URL') or '').strip()
+    ANALYTICS_SHARED_SECRET: str = (os.getenv('ANALYTICS_SHARED_SECRET') or '').strip()
+    UPLOAD_SCAN_STRATEGY: str = (os.getenv('UPLOAD_SCAN_STRATEGY') or 'best-effort').strip().lower()
+    RESUMABLE_UPLOAD_MAX_SIZE_MB: int = int(os.getenv('RESUMABLE_UPLOAD_MAX_SIZE_MB', '512'))
+    REFRESH_COOKIE_NAME: str = (os.getenv('REFRESH_COOKIE_NAME') or 'yamshat_refresh_token').strip()
+    REFRESH_COOKIE_DOMAIN: str = (os.getenv('REFRESH_COOKIE_DOMAIN') or '').strip()
+    REFRESH_COOKIE_SECURE: bool = env_bool('REFRESH_COOKIE_SECURE', True)
+    COOKIE_SAMESITE: str = (os.getenv('COOKIE_SAMESITE') or 'none').strip().lower()
 
     @property
     def cors_origin_regex(self) -> str | None:
@@ -127,6 +138,19 @@ class Settings:
     @property
     def cloudinary_configured(self) -> bool:
         return bool(self.CLOUDINARY_CLOUD_NAME and self.CLOUDINARY_API_KEY and self.CLOUDINARY_API_SECRET)
+
+    @property
+    def resumable_upload_max_size_bytes(self) -> int:
+        return max(self.RESUMABLE_UPLOAD_MAX_SIZE_MB, 1) * 1024 * 1024
+
+    @property
+    def cookie_samesite(self) -> str:
+        value = self.COOKIE_SAMESITE.lower()
+        if value not in {'lax', 'strict', 'none'}:
+            value = 'lax'
+        if value == 'none' and not self.REFRESH_COOKIE_SECURE:
+            return 'lax'
+        return value
 
 
 settings = Settings()

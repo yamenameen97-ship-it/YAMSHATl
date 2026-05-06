@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.dependencies import get_current_user, get_db
 from app.models.follow import Follow
 from app.models.user import User
+from app.models.user_preference import UserPreference
 from app.services.notification_service import create_and_send_notification
 from app.services.post_service import get_posts_by_username
 
@@ -33,6 +34,16 @@ def _find_active_user_by_username(db: Session, username: str) -> User | None:
     return db.query(User).filter(User.username == username, User.is_active.is_(True)).first()
 
 
+def _get_or_create_preferences(db: Session, user_id: int) -> UserPreference:
+    preference = db.query(UserPreference).filter(UserPreference.user_id == user_id).first()
+    if preference is None:
+        preference = UserPreference(user_id=user_id, language='ar', chat_translation_enabled=True)
+        db.add(preference)
+        db.commit()
+        db.refresh(preference)
+    return preference
+
+
 @router.get('')
 def list_users(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     users = db.query(User).filter(User.is_active.is_(True)).order_by(User.created_at.desc()).all()
@@ -46,6 +57,32 @@ def list_users(db: Session = Depends(get_db), current_user: User = Depends(get_c
 @router.get('/me')
 def get_me(current_user: User = Depends(get_current_user)):
     return _user_payload(current_user)
+
+
+@router.get('/preferences')
+def get_preferences(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    preference = _get_or_create_preferences(db, current_user.id)
+    return {
+        'language': preference.language or 'ar',
+        'chat_translation_enabled': bool(preference.chat_translation_enabled),
+    }
+
+
+@router.put('/preferences')
+def update_preferences(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    preference = _get_or_create_preferences(db, current_user.id)
+    requested_language = str(payload.get('language') or preference.language or 'ar').strip().lower()
+    if requested_language not in {'ar', 'en'}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Unsupported language')
+
+    preference.language = requested_language
+    preference.chat_translation_enabled = bool(payload.get('chat_translation_enabled', preference.chat_translation_enabled))
+    db.commit()
+    db.refresh(preference)
+    return {
+        'language': preference.language,
+        'chat_translation_enabled': bool(preference.chat_translation_enabled),
+    }
 
 
 @router.patch('/me')
@@ -157,10 +194,20 @@ def get_user(user_id: int, db: Session = Depends(get_db), current_user: User = D
 
 @router.post('/fcm-token')
 def save_fcm_token(
-    token: str = Body(..., embed=True),
+    payload: dict = Body(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    current_user.fcm_token = token.strip() or None
+    token = str(payload.get('token') or '').strip()
+    platform = str(payload.get('platform') or 'unknown').strip().lower()[:30]
+    app_version = str(payload.get('app_version') or '').strip()[:40]
+    if token and len(token) < 20:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid push token')
+    current_user.fcm_token = token or None
     db.commit()
-    return {'message': 'Token saved'}
+    return {
+        'message': 'Token saved',
+        'platform': platform,
+        'app_version': app_version or None,
+        'push_enabled': bool(current_user.fcm_token),
+    }

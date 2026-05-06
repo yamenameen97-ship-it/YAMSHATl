@@ -18,7 +18,7 @@ from sqlalchemy import func, or_, text
 from app.core.config import settings
 from sqlalchemy.orm import Session
 
-from app.core.admin_access import effective_role, permissions_for_user
+from app.core.admin_access import effective_role, is_primary_admin_email, is_primary_admin_user, permissions_for_user
 from app.core.dependencies import get_current_user, get_db
 from app.core.live_store import live_store
 from app.core.security import hash_password, verify_password
@@ -133,6 +133,28 @@ def _permissions_for_user(current_user: User) -> list[str]:
 def _require_permission(current_user: User, permission: str) -> None:
     if permission not in _permissions_for_user(current_user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Permission denied')
+
+
+def _guard_user_management(current_user: User, target_user: User, requested_role: str | None = None) -> None:
+    actor_role = effective_role(current_user)
+    target_role = effective_role(target_user)
+    actor_is_primary = is_primary_admin_user(current_user)
+    target_is_primary = is_primary_admin_user(target_user)
+
+    if target_is_primary and not actor_is_primary:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Primary admin account is protected')
+    if current_user.id == target_user.id and requested_role is not None and requested_role != 'admin':
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='You cannot demote your own admin session')
+    if actor_role == 'moderator':
+        if target_role in {'moderator', 'admin'}:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Moderators cannot manage privileged accounts')
+        if requested_role in {'moderator', 'admin'}:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Moderators cannot assign privileged roles')
+    if requested_role == 'admin':
+        if not actor_is_primary:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Only the primary admin can assign admin role')
+        if not is_primary_admin_email(target_user.email):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Admin role is reserved for the primary admin email')
 
 
 def _emit_admin_event(event: str, payload: dict[str, Any]) -> None:
@@ -618,10 +640,13 @@ def update_user(
         if duplicate:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Email already exists')
         user.email = normalized_email
+    requested_role = None
     if payload.role is not None:
         requested_role = payload.role.lower()
         if requested_role not in ROLE_PERMISSIONS:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid role')
+    _guard_user_management(current_user, user, requested_role=requested_role)
+    if requested_role is not None:
         user.role = requested_role
     if payload.is_active is not None:
         user.is_active = payload.is_active
@@ -647,6 +672,7 @@ def ban_or_restore_user(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
     if user.id == current_user.id and not restore:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='You cannot ban yourself')
+    _guard_user_management(current_user, user)
 
     user.is_active = bool(restore)
     user.banned_at = None if restore else datetime.utcnow()
@@ -671,6 +697,7 @@ def delete_user(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
     if user.id == current_user.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='You cannot delete yourself')
+    _guard_user_management(current_user, user)
 
     username = user.username
     db.delete(user)

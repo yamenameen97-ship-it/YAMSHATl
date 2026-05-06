@@ -1,7 +1,8 @@
 from datetime import datetime
 
 import bleach
-from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
+import httpx
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
@@ -12,27 +13,13 @@ from app.core.socket_server import is_user_online, sio
 from app.db.session import SessionLocal
 from app.models.message import Message
 from app.models.user import User
+from app.models.user_block import UserBlock
+from app.services.chat_realtime import mark_messages_delivered, mark_messages_seen_for_sender, serialize_message
 from app.services.connection_manager import manager
 
 router = APIRouter()
 
-
-def _serialize_message(message: Message, db: Session) -> dict:
-    sender = db.query(User).filter(User.id == message.sender_id).first()
-    receiver = db.query(User).filter(User.id == message.receiver_id).first()
-    deleted = bool(message.deleted_at)
-    return {
-        'id': message.id,
-        'sender': sender.username if sender else str(message.sender_id),
-        'receiver': receiver.username if receiver else str(message.receiver_id),
-        'message': 'تم حذف الرسالة' if deleted else message.content,
-        'content': 'تم حذف الرسالة' if deleted else message.content,
-        'media_url': None if deleted else message.media_url,
-        'type': message.message_type or ('image' if message.media_url else 'text'),
-        'created_at': message.created_at.isoformat() if message.created_at else None,
-        'status': 'seen' if message.is_seen else 'delivered' if message.is_delivered else 'sent',
-        'deleted': deleted,
-    }
+TRANSLATE_TIMEOUT_SECONDS = 12
 
 
 def _authenticate_websocket_user(websocket: WebSocket, user_id: int, db: Session) -> User:
@@ -55,17 +42,71 @@ def _authenticate_websocket_user(websocket: WebSocket, user_id: int, db: Session
     return user
 
 
+def _block_status(db: Session, current_user_id: int, other_user_id: int) -> dict:
+    blocked_by_me = db.query(UserBlock).filter(
+        UserBlock.blocker_id == current_user_id,
+        UserBlock.blocked_id == other_user_id,
+    ).first() is not None
+    blocked_me = db.query(UserBlock).filter(
+        UserBlock.blocker_id == other_user_id,
+        UserBlock.blocked_id == current_user_id,
+    ).first() is not None
+    return {
+        'blocked_by_me': blocked_by_me,
+        'blocked_me': blocked_me,
+        'can_chat': not blocked_by_me and not blocked_me,
+    }
+
+
+def _assert_can_chat(db: Session, current_user_id: int, other_user_id: int) -> dict:
+    status_payload = _block_status(db, current_user_id, other_user_id)
+    if not status_payload['can_chat']:
+        detail = 'You blocked this user' if status_payload['blocked_by_me'] else 'This user blocked you'
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+    return status_payload
+
+
+async def _emit_delivered_receipts(db: Session, current_user: User, peer_user_id: int | None = None) -> None:
+    for receipt in mark_messages_delivered(db, current_user, peer_user_id=peer_user_id):
+        await sio.emit('messages_delivered', receipt, room=f'username:{receipt["sender"]}')
+
+
+async def _translate_with_mymemory(text: str, source_lang: str, target_lang: str) -> dict:
+    async with httpx.AsyncClient(timeout=TRANSLATE_TIMEOUT_SECONDS, follow_redirects=True) as client:
+        response = await client.get(
+            'https://api.mymemory.translated.net/get',
+            params={
+                'q': text,
+                'langpair': f'{source_lang}|{target_lang}',
+            },
+            headers={'Accept': 'application/json'},
+        )
+        response.raise_for_status()
+        payload = response.json()
+
+    translated = str((payload.get('responseData') or {}).get('translatedText') or '').strip()
+    if not translated:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='Translation service unavailable')
+    return {
+        'translated_text': translated,
+        'provider': 'MyMemory',
+        'match': payload.get('responseData', {}).get('match'),
+    }
+
+
 @router.get('/messages')
 def get_messages(
     receiver: str,
-    limit: int = Query(default=100, ge=1, le=200),
+    limit: int = Query(default=40, ge=1, le=200),
     before_id: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     other_user = db.query(User).filter(User.username == receiver, User.is_active.is_(True)).first()
     if other_user is None:
-        return []
+        return {'items': [], 'paging': {'limit': limit, 'has_more': False, 'next_before_id': None}}
+
+    _assert_can_chat(db, current_user.id, other_user.id)
 
     query = db.query(Message).filter(
         or_(
@@ -77,7 +118,15 @@ def get_messages(
         query = query.filter(Message.id < before_id)
 
     messages = list(reversed(query.order_by(Message.id.desc()).limit(limit).all()))
-    return [_serialize_message(message, db) for message in messages]
+    items = [serialize_message(message, db) for message in messages]
+    return {
+        'items': items,
+        'paging': {
+            'limit': limit,
+            'has_more': len(messages) >= limit,
+            'next_before_id': messages[0].id if messages else None,
+        },
+    }
 
 
 @router.post('/send_message')
@@ -86,6 +135,7 @@ async def send_message(payload: dict, db: Session = Depends(get_db), current_use
     raw_message = str(payload.get('message') or '').strip()
     media_url = str(payload.get('media_url') or '').strip()
     message_type = str(payload.get('type') or ('image' if media_url else 'text')).strip() or 'text'
+    client_id = str(payload.get('client_id') or '').strip() or None
     if not receiver_username or (not raw_message and not media_url):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='receiver and message or media_url are required')
     if not allow_socket_message(f'chat:{current_user.id}'):
@@ -95,19 +145,30 @@ async def send_message(payload: dict, db: Session = Depends(get_db), current_use
     if receiver is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Receiver not found')
 
+    _assert_can_chat(db, current_user.id, receiver.id)
+
+    if client_id:
+        existing = db.query(Message).filter(Message.sender_id == current_user.id, Message.client_id == client_id).first()
+        if existing is not None:
+            return serialize_message(existing, db)
+
+    delivered_now = is_user_online(username=receiver.username, user_id=receiver.id)
+    delivered_at = datetime.utcnow() if delivered_now else None
     message = Message(
         sender_id=current_user.id,
         receiver_id=receiver.id,
+        client_id=client_id,
         content=bleach.clean(raw_message),
         media_url=media_url or None,
         message_type=message_type,
-        is_delivered=is_user_online(username=receiver.username, user_id=receiver.id),
+        is_delivered=delivered_now,
+        delivered_at=delivered_at,
         is_seen=False,
     )
     db.add(message)
     db.commit()
     db.refresh(message)
-    serialized = _serialize_message(message, db)
+    serialized = serialize_message(message, db)
 
     await sio.emit('new_private_message', serialized, room=f'username:{receiver.username}')
     await sio.emit('new_private_message', serialized, room=f'username:{current_user.username}')
@@ -127,17 +188,11 @@ async def mark_messages_seen(payload: dict, db: Session = Depends(get_db), curre
     if sender is None:
         return {'message_ids': []}
 
-    messages = db.query(Message).filter(
-        Message.sender_id == sender.id,
-        Message.receiver_id == current_user.id,
-        Message.is_seen.is_(False),
-    ).all()
-    message_ids = [message.id for message in messages]
-    for message in messages:
-        message.is_seen = True
-        message.is_delivered = True
-    db.commit()
+    if not _block_status(db, current_user.id, sender.id)['can_chat']:
+        return {'message_ids': []}
 
+    await _emit_delivered_receipts(db, current_user, peer_user_id=sender.id)
+    message_ids = mark_messages_seen_for_sender(db, current_user, sender)
     if message_ids:
         await sio.emit(
             'messages_seen',
@@ -159,6 +214,8 @@ def get_chat_threads(db: Session = Depends(get_db), current_user: User = Depends
         peer = db.query(User).filter(User.id == peer_id, User.is_active.is_(True)).first()
         if peer is None or peer.username in seen:
             continue
+        if not _block_status(db, current_user.id, peer.id)['can_chat']:
+            continue
         seen.add(peer.username)
         unread_count = db.query(Message).filter(
             Message.sender_id == peer.id,
@@ -172,21 +229,109 @@ def get_chat_threads(db: Session = Depends(get_db), current_user: User = Depends
             'last_message': 'تم حذف الرسالة' if message.deleted_at else (message.content or ''),
             'created_at': message.created_at.isoformat() if message.created_at else None,
             'unread_count': int(unread_count),
+            'status': 'seen' if message.is_seen else 'delivered' if message.is_delivered else 'sent',
+            'last_message_status': 'seen' if message.is_seen else 'delivered' if message.is_delivered else 'sent',
+            'last_message_sender': current_user.username if message.sender_id == current_user.id else peer.username,
+            'last_message_type': message.message_type or ('image' if message.media_url else 'text'),
+            'last_message_deleted': bool(message.deleted_at),
+            'last_message_id': message.id,
         })
     return result
 
 
 @router.get('/presence/{username}')
 def get_presence(username: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    _ = current_user
     user = db.query(User).filter(User.username == username, User.is_active.is_(True)).first()
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
+    _assert_can_chat(db, current_user.id, user.id)
     online = is_user_online(username=username, user_id=user.id)
     return {
         'user': username,
         'is_online': online,
         'last_seen': None if online else (user.last_login_at.isoformat() if user.last_login_at else None),
+    }
+
+
+@router.get('/chat_block_status/{username}')
+def get_chat_block_status(username: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    other_user = db.query(User).filter(User.username == username, User.is_active.is_(True)).first()
+    if other_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
+    status_payload = _block_status(db, current_user.id, other_user.id)
+    return {
+        'username': other_user.username,
+        **status_payload,
+    }
+
+
+@router.post('/block_user')
+def block_user(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    target_username = str(payload.get('username') or payload.get('receiver') or '').strip()
+    if not target_username:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='username is required')
+
+    other_user = db.query(User).filter(User.username == target_username, User.is_active.is_(True)).first()
+    if other_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
+    if other_user.id == current_user.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Cannot block yourself')
+
+    existing = db.query(UserBlock).filter(
+        UserBlock.blocker_id == current_user.id,
+        UserBlock.blocked_id == other_user.id,
+    ).first()
+    if existing is None:
+        db.add(UserBlock(blocker_id=current_user.id, blocked_id=other_user.id))
+        db.commit()
+
+    return {
+        'username': other_user.username,
+        **_block_status(db, current_user.id, other_user.id),
+    }
+
+
+@router.post('/unblock_user')
+def unblock_user(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    target_username = str(payload.get('username') or payload.get('receiver') or '').strip()
+    if not target_username:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='username is required')
+
+    other_user = db.query(User).filter(User.username == target_username, User.is_active.is_(True)).first()
+    if other_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
+
+    existing = db.query(UserBlock).filter(
+        UserBlock.blocker_id == current_user.id,
+        UserBlock.blocked_id == other_user.id,
+    ).first()
+    if existing is not None:
+        db.delete(existing)
+        db.commit()
+
+    return {
+        'username': other_user.username,
+        **_block_status(db, current_user.id, other_user.id),
+    }
+
+
+@router.post('/translate_message')
+async def translate_message(payload: dict = Body(...), current_user: User = Depends(get_current_user)):
+    _ = current_user
+    text = str(payload.get('text') or '').strip()
+    source_lang = str(payload.get('source_lang') or 'auto').strip().lower() or 'auto'
+    target_lang = str(payload.get('target_lang') or 'en').strip().lower() or 'en'
+    if not text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='text is required')
+    if target_lang not in {'ar', 'en'}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Unsupported target language')
+
+    result = await _translate_with_mymemory(text, source_lang, target_lang)
+    return {
+        'text': text,
+        'source_lang': source_lang,
+        'target_lang': target_lang,
+        **result,
     }
 
 
@@ -221,6 +366,7 @@ async def delete_message(payload: dict, db: Session = Depends(get_db), current_u
     db.commit()
     payload_out = {
         'id': message.id,
+        'client_id': message.client_id,
         'sender': current_user.username,
         'receiver': receiver.username if receiver else str(message.receiver_id),
         'deleted': True,
@@ -240,20 +386,25 @@ def get_messages_legacy(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    other_user = db.query(User).filter(User.id == other_user_id, User.is_active.is_(True)).first()
+    if other_user is None:
+        return []
+    _assert_can_chat(db, current_user.id, other_user.id)
+
     messages = db.query(Message).filter(
         or_(
             and_(Message.sender_id == current_user.id, Message.receiver_id == other_user_id),
             and_(Message.sender_id == other_user_id, Message.receiver_id == current_user.id),
         )
     ).order_by(Message.created_at.asc()).all()
-    return [_serialize_message(message, db) for message in messages]
+    return [serialize_message(message, db) for message in messages]
 
 
 @router.websocket('/ws/{user_id}')
 async def websocket_endpoint(websocket: WebSocket, user_id: int):
     db = SessionLocal()
     try:
-        _authenticate_websocket_user(websocket, user_id, db)
+        current_user = _authenticate_websocket_user(websocket, user_id, db)
     except HTTPException:
         await websocket.close(code=1008)
         db.close()
@@ -274,6 +425,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
                 data = event.get('data', {})
                 receiver_id = data.get('receiver_id')
                 content = bleach.clean((data.get('content') or '').strip())
+                client_id = str(data.get('client_id') or '').strip() or None
 
                 if not receiver_id or not content:
                     await websocket.send_json({'type': 'error', 'detail': 'receiver_id and content are required'})
@@ -287,21 +439,40 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
                     await websocket.send_json({'type': 'error', 'detail': 'Receiver not found'})
                     continue
 
-                is_delivered = manager.is_online(int(receiver_id))
-                message = Message(sender_id=user_id, receiver_id=int(receiver_id), content=content, is_delivered=is_delivered, is_seen=False)
-                db.add(message)
-                db.commit()
-                db.refresh(message)
-                payload = {'type': 'message', 'data': _serialize_message(message, db)}
+                if not _block_status(db, user_id, int(receiver_id))['can_chat']:
+                    await websocket.send_json({'type': 'error', 'detail': 'Conversation is blocked'})
+                    continue
 
-                if is_delivered:
-                    await manager.send_to_user(int(receiver_id), payload)
+                existing = None
+                if client_id:
+                    existing = db.query(Message).filter(Message.sender_id == user_id, Message.client_id == client_id).first()
 
-                await manager.send_to_user(user_id, {'type': 'delivered', 'data': {'message_id': message.id, 'delivered': is_delivered}})
+                if existing is None:
+                    delivered_now = manager.is_online(int(receiver_id))
+                    message = Message(
+                        sender_id=user_id,
+                        receiver_id=int(receiver_id),
+                        client_id=client_id,
+                        content=content,
+                        is_delivered=delivered_now,
+                        delivered_at=datetime.utcnow() if delivered_now else None,
+                        is_seen=False,
+                    )
+                    db.add(message)
+                    db.commit()
+                    db.refresh(message)
+                else:
+                    message = existing
+                    delivered_now = bool(message.is_delivered)
+
+                payload = {'type': 'message', 'data': serialize_message(message, db)}
+                await manager.send_to_user(int(receiver_id), payload)
+                await manager.send_to_user(user_id, payload)
+                await manager.send_to_user(user_id, {'type': 'delivered', 'data': {'message_id': message.id, 'delivered': delivered_now}})
 
             elif event_type == 'typing':
                 receiver_id = event.get('receiver_id')
-                if receiver_id:
+                if receiver_id and _block_status(db, user_id, int(receiver_id))['can_chat']:
                     await manager.send_to_user(int(receiver_id), {'type': 'typing', 'data': {'from': user_id}})
 
             elif event_type == 'seen':
@@ -312,12 +483,18 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
                 message = db.query(Message).filter(Message.id == int(message_id)).first()
                 if message and message.receiver_id == user_id:
                     message.is_seen = True
+                    message.seen_at = datetime.utcnow()
                     message.is_delivered = True
+                    if message.delivered_at is None:
+                        message.delivered_at = message.seen_at
                     db.commit()
                     await manager.send_to_user(message.sender_id, {'type': 'seen', 'data': {'message_id': message.id, 'seen_by': user_id}})
 
             elif event_type == 'ping':
                 await websocket.send_json({'type': 'pong'})
+            elif event_type == 'sync_delivery':
+                peer_id = event.get('peer_id')
+                await _emit_delivered_receipts(db, current_user, peer_user_id=int(peer_id) if peer_id else None)
             else:
                 await websocket.send_json({'type': 'error', 'detail': 'Unsupported event type'})
 

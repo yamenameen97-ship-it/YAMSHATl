@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.security import hash_password
 from app.db.base import Base
 
-CURRENT_ALEMBIC_REVISION = '20260505_0002'
+CURRENT_ALEMBIC_REVISION = '20260506_0003'
 LEGACY_USER_TABLE_NAMES = ('suser', 'user')
 REQUIRED_SCHEMA_COLUMNS: dict[str, set[str]] = {
     'users': {'username', 'email', 'hashed_password', 'role', 'is_active', 'email_verified'},
@@ -266,8 +266,11 @@ def _migrate_messages_table(engine: Engine) -> None:
     _add_column_if_missing(engine, 'messages', 'content', 'content TEXT')
     _add_column_if_missing(engine, 'messages', 'media_url', 'media_url TEXT')
     _add_column_if_missing(engine, 'messages', 'message_type', "message_type VARCHAR(20) DEFAULT 'text'")
+    _add_column_if_missing(engine, 'messages', 'client_id', 'client_id VARCHAR(80)')
     _add_column_if_missing(engine, 'messages', 'is_delivered', 'is_delivered BOOLEAN DEFAULT FALSE')
+    _add_column_if_missing(engine, 'messages', 'delivered_at', 'delivered_at TIMESTAMP NULL')
     _add_column_if_missing(engine, 'messages', 'is_seen', 'is_seen BOOLEAN DEFAULT FALSE')
+    _add_column_if_missing(engine, 'messages', 'seen_at', 'seen_at TIMESTAMP NULL')
     _add_column_if_missing(engine, 'messages', 'deleted_at', 'deleted_at TIMESTAMP NULL')
     _add_column_if_missing(engine, 'messages', 'created_at', 'created_at TIMESTAMP NULL')
 

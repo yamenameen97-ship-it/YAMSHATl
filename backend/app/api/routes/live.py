@@ -8,6 +8,7 @@ from app.core.dependencies import get_current_user, get_db
 from app.core.live_store import live_store
 from app.core.socket_server import sio
 from app.models.user import User
+from app.models.user_block import UserBlock
 
 try:
     from livekit import api as livekit_api
@@ -15,6 +16,13 @@ except Exception:  # pragma: no cover
     livekit_api = None
 
 router = APIRouter()
+
+
+def _is_call_blocked(db: Session, current_user_id: int, other_user_id: int) -> bool:
+    return db.query(UserBlock).filter(
+        ((UserBlock.blocker_id == current_user_id) & (UserBlock.blocked_id == other_user_id))
+        | ((UserBlock.blocker_id == other_user_id) & (UserBlock.blocked_id == current_user_id))
+    ).first() is not None
 
 
 def _sanitize_room_segment(value: str) -> str:
@@ -98,6 +106,8 @@ async def create_call_token(payload: dict, db: Session = Depends(get_db), curren
 
     if receiver.id == current_user.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Cannot call yourself')
+    if _is_call_blocked(db, current_user.id, receiver.id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Call is blocked between these users')
 
     call_type = 'video' if str(payload.get('call_type') or '').strip().lower() == 'video' else 'audio'
     requested_room_id = str(payload.get('room_id') or '').strip()

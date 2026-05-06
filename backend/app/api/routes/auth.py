@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
+import secrets
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.routes.admin import ROLE_PERMISSIONS
@@ -27,13 +28,68 @@ from app.services.auth_service import (
 from app.services.email import send_password_reset_email, send_verification_email, smtp_configured
 
 router = APIRouter()
+CSRF_COOKIE_NAME = 'yamshat_csrf_token'
 
 
 def utcnow_naive() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def _session_payload(user: User, access_token: str, refresh_token: str) -> dict:
+def _cookie_domain() -> str | None:
+    return settings.REFRESH_COOKIE_DOMAIN or None
+
+
+def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
+    response.set_cookie(
+        key=settings.REFRESH_COOKIE_NAME,
+        value=refresh_token,
+        httponly=True,
+        secure=settings.REFRESH_COOKIE_SECURE,
+        samesite=settings.cookie_samesite,
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        path='/',
+        domain=_cookie_domain(),
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=settings.REFRESH_COOKIE_NAME,
+        path='/',
+        domain=_cookie_domain(),
+        secure=settings.REFRESH_COOKIE_SECURE,
+        samesite=settings.cookie_samesite,
+    )
+
+
+def _issue_csrf_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def _set_csrf_cookie(response: Response, csrf_token: str) -> None:
+    response.set_cookie(
+        key=CSRF_COOKIE_NAME,
+        value=csrf_token,
+        httponly=False,
+        secure=settings.REFRESH_COOKIE_SECURE,
+        samesite=settings.cookie_samesite,
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        path='/',
+        domain=_cookie_domain(),
+    )
+
+
+def _clear_csrf_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=CSRF_COOKIE_NAME,
+        path='/',
+        domain=_cookie_domain(),
+        secure=settings.REFRESH_COOKIE_SECURE,
+        samesite=settings.cookie_samesite,
+    )
+
+
+def _session_payload(user: User, access_token: str, csrf_token: str = '') -> dict:
     effective_user_role = effective_role(user)
     effective_permissions = permissions_for_user(user, ROLE_PERMISSIONS)
     user_payload = {
@@ -49,12 +105,14 @@ def _session_payload(user: User, access_token: str, refresh_token: str) -> dict:
         'following_count': user.following_count,
         'created_at': user.created_at.isoformat() if user.created_at else None,
         'last_login_at': user.last_login_at.isoformat() if user.last_login_at else None,
+        'csrf_token': csrf_token,
     }
     return {
         'token': access_token,
         'access_token': access_token,
-        'refresh_token': refresh_token,
+        'refresh_token': '',
         'token_type': 'bearer',
+        'csrf_token': csrf_token,
         'expires_in_minutes': settings.ACCESS_TOKEN_EXPIRE_MINUTES,
         'refresh_expires_in_days': settings.REFRESH_TOKEN_EXPIRE_DAYS,
         'user': user.username,
@@ -69,11 +127,14 @@ def _session_payload(user: User, access_token: str, refresh_token: str) -> dict:
     }
 
 
-def _issue_session(db: Session, user: User) -> dict:
+def _issue_session(db: Session, user: User, response: Response) -> dict:
     access_token = create_access_token({'user_id': user.id, 'username': user.username, 'role': user.role})
     refresh_token = create_refresh_token({'user_id': user.id, 'username': user.username, 'role': user.role})
+    csrf_token = _issue_csrf_token()
     store_refresh_token(db, user, refresh_token, utcnow_naive() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS))
-    return _session_payload(user, access_token=access_token, refresh_token=refresh_token)
+    _set_refresh_cookie(response, refresh_token)
+    _set_csrf_cookie(response, csrf_token)
+    return _session_payload(user, access_token=access_token, csrf_token=csrf_token)
 
 
 def _client_ip(request: Request) -> str:
@@ -145,7 +206,7 @@ def register(request: Request, payload: dict = Body(...), db: Session = Depends(
 
 
 @router.post('/verify-email')
-def verify_email(payload: dict = Body(...), db: Session = Depends(get_db)):
+def verify_email(response: Response, payload: dict = Body(...), db: Session = Depends(get_db)):
     email = str(payload.get('email') or '').strip().lower()
     code = str(payload.get('code') or '').strip()
     if not email or not code:
@@ -161,7 +222,7 @@ def verify_email(payload: dict = Body(...), db: Session = Depends(get_db)):
     db.refresh(user)
     return {
         'message': 'Email verified successfully',
-        **_issue_session(db, user),
+        **_issue_session(db, user, response),
     }
 
 
@@ -190,7 +251,7 @@ def resend_verification(payload: dict = Body(...), db: Session = Depends(get_db)
 
 
 @router.post('/login')
-def login(request: Request, payload: dict = Body(...), db: Session = Depends(get_db)):
+def login(request: Request, response: Response, payload: dict = Body(...), db: Session = Depends(get_db)):
     identifier = payload.get('identifier') or payload.get('email') or payload.get('username')
     password = payload.get('password')
 
@@ -231,12 +292,12 @@ def login(request: Request, payload: dict = Body(...), db: Session = Depends(get
     db.commit()
     db.refresh(user)
     clear_failed_logins(attempt_key)
-    return _issue_session(db, user)
+    return _issue_session(db, user, response)
 
 
 @router.post('/refresh')
-def refresh_session(payload: dict = Body(...), db: Session = Depends(get_db)):
-    refresh_token = str(payload.get('refresh_token') or payload.get('token') or '').strip()
+def refresh_session(request: Request, response: Response, payload: dict = Body(default={}), db: Session = Depends(get_db)):
+    refresh_token = str(payload.get('refresh_token') or payload.get('token') or request.cookies.get(settings.REFRESH_COOKIE_NAME) or '').strip()
     if not refresh_token:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Refresh token is required')
 
@@ -266,13 +327,20 @@ def refresh_session(payload: dict = Body(...), db: Session = Depends(get_db)):
     user.last_login_at = utcnow_naive()
     db.commit()
     db.refresh(user)
-    return _issue_session(db, user)
+    return _issue_session(db, user, response)
 
 
 @router.post('/logout')
-def logout(payload: dict | None = Body(default=None), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def logout(
+    response: Response,
+    payload: dict | None = Body(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     _ = payload or {}
     clear_refresh_token(db, current_user)
+    _clear_refresh_cookie(response)
+    _clear_csrf_cookie(response)
     return {'message': 'Logged out'}
 
 

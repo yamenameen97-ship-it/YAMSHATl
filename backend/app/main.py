@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 import app.models  # noqa: F401
-from app.api.routes import admin, auth, chat, comments, follow, groups, inbox, live, notifications, posts, search, stories, upload, users, ws
+from app.api.routes import admin, analytics, auth, chat, comments, follow, groups, inbox, live, notifications, posts, search, stories, upload, users, ws
 from app.core.api_guard import api_rate_guard
 from app.core.config import settings
 from app.core.observability import configure_metrics, configure_tracing, make_metrics_router
@@ -71,6 +71,7 @@ fastapi_app.include_router(follow.router, prefix=f'{settings.API_PREFIX}/follows
 fastapi_app.include_router(notifications.router, prefix=f'{settings.API_PREFIX}/notifications', tags=['notifications'])
 fastapi_app.include_router(search.router, prefix=f'{settings.API_PREFIX}/search', tags=['search'])
 fastapi_app.include_router(upload.router, prefix=f'{settings.API_PREFIX}/upload', tags=['upload'])
+fastapi_app.include_router(analytics.router, prefix=f'{settings.API_PREFIX}/analytics', tags=['analytics'])
 fastapi_app.include_router(admin.router, prefix=f'{settings.API_PREFIX}/admin', tags=['admin'])
 fastapi_app.include_router(live.router, prefix=settings.API_PREFIX, tags=['live'])
 fastapi_app.include_router(chat.router, prefix=settings.API_PREFIX, tags=['chat'])
@@ -89,6 +90,7 @@ def root() -> dict:
         'service': settings.SERVICE_NAME,
         'socketio': '/socket.io',
         'uploads': '/uploads',
+        'analytics': f'{settings.API_PREFIX}/analytics/events',
     }
 
 
@@ -104,6 +106,8 @@ def health() -> dict:
         'service': settings.SERVICE_NAME,
         'livekit_configured': bool(settings.LIVEKIT_URL and settings.LIVEKIT_API_KEY and settings.LIVEKIT_API_SECRET),
         'cloudinary_configured': bool(settings.cloudinary_configured),
+        'analytics_enabled': bool(settings.ANALYTICS_ENABLED),
+        'push_provider': settings.PUSH_PROVIDER,
     }
 
 

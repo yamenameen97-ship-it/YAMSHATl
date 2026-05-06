@@ -1,0 +1,1 @@
+import{A as o}from"./index-DkTHpKh8.js";const s=()=>o.get("/live_rooms"),n=e=>o.get(`/live_room/${e}`),a=e=>o.post("/create_live",e),c=e=>o.post("/live_token",e),i=e=>o.post("/create_call_token",e),v=e=>o.get(`/live_comments/${e}`),m=e=>o.post("/live_presence",e),l=e=>o.post(`/end_live/${e}`);export{n as a,v as b,c,a as d,l as e,i as f,s as g,m as u};

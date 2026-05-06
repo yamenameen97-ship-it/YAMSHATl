@@ -20,6 +20,8 @@ import { getAuthToken, getCurrentUsername } from '../utils/auth.js';
 import { sanitizeInputText } from '../utils/sanitize.js';
 import { useAppStore } from '../store/appStore.js';
 
+const QUICK_REPLIES = ['تمام ✅', 'أنا معاك', 'أرسل التفاصيل', 'هراجع وأرد عليك', 'خلينا نكمل هنا'];
+
 function mergeMessages(current, incoming) {
   const map = new Map();
   [...current, ...incoming].forEach((message) => {
@@ -61,6 +63,7 @@ export default function Chat() {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [showJumpLatest, setShowJumpLatest] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const typingTimeout = useRef(null);
   const bottomRef = useRef(null);
   const messagesRef = useRef(null);
@@ -75,6 +78,19 @@ export default function Chat() {
     if (presence?.last_seen) return `آخر ظهور ${new Date(presence.last_seen).toLocaleString('ar-EG')}`;
     return '⚫ غير متصل';
   }, [otherUser, presence, typing]);
+
+  const filteredMessages = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return messages;
+    return messages.filter((message) => `${message.message || message.content || ''}`.toLowerCase().includes(query));
+  }, [messages, searchQuery]);
+
+  const stats = useMemo(() => [
+    { label: 'إجمالي الرسائل', value: messages.length },
+    { label: 'الظاهرة الآن', value: filteredMessages.length },
+    { label: 'وسائط', value: messages.filter((message) => message.type && message.type !== 'text').length },
+    { label: 'الحالة', value: presence?.is_online ? 'متصل' : 'غير متصل' },
+  ], [filteredMessages.length, messages, presence?.is_online]);
 
   const loadMessages = async ({ reset = false } = {}) => {
     if (!otherUser) return;
@@ -107,6 +123,7 @@ export default function Chat() {
     setAttachment(null);
     setError('');
     setTyping(false);
+    setSearchQuery('');
   }, [otherUser]);
 
   useEffect(() => {
@@ -180,8 +197,8 @@ export default function Chat() {
   }, []);
 
   useEffect(() => {
-    if (!showJumpLatest) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, typing, showJumpLatest]);
+    if (!showJumpLatest && !searchQuery) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, typing, showJumpLatest, searchQuery]);
 
   useEffect(() => {
     if (!isOnline || retryQueueRef.current.length === 0) return;
@@ -360,17 +377,37 @@ export default function Chat() {
             </div>
           </div>
 
+          <div className="stories-stats-grid notification-stats-grid-4">
+            {stats.map((item) => (
+              <div key={item.label} className="mini-stat stories-stat-card">
+                <strong>{item.value}</strong>
+                <span>{item.label}</span>
+              </div>
+            ))}
+          </div>
+
           {error ? <div className="alert error">{error}</div> : null}
           {!isOnline ? <div className="alert warning">أنت حالياً بدون إنترنت. سيتم تأجيل الإرسال وإعادة المحاولة تلقائياً.</div> : null}
 
+          <div className="live-toolbar wrap-composer-actions">
+            <Input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="ابحث داخل المحادثة..." />
+            <Button variant="secondary" onClick={() => setSearchQuery('')}>مسح البحث</Button>
+          </div>
+
+          <div className="story-viewer-actions" style={{ marginBottom: 12 }}>
+            {QUICK_REPLIES.map((reply) => (
+              <button key={reply} type="button" className="mini-action" onClick={() => handleTypingChange(reply)}>{reply}</button>
+            ))}
+          </div>
+
           <div className="messages-shell" ref={messagesRef}>
-            {hasMore ? <button type="button" className="mini-action load-more-btn" onClick={() => loadMessages()} disabled={loadingMore}>{loadingMore ? 'جارٍ التحميل...' : 'تحميل رسائل أقدم'}</button> : null}
+            {hasMore && !searchQuery ? <button type="button" className="mini-action load-more-btn" onClick={() => loadMessages()} disabled={loadingMore}>{loadingMore ? 'جارٍ التحميل...' : 'تحميل رسائل أقدم'}</button> : null}
             {loading ? <div className="empty-state">جارٍ تحميل الرسائل...</div> : null}
-            {!loading && messages.length === 0 ? (
-              <EmptyState icon="✉️" title="ابدأ أول رسالة" description="المحادثة فارغة حتى الآن." />
+            {!loading && filteredMessages.length === 0 ? (
+              <EmptyState icon="✉️" title={searchQuery ? 'لا يوجد تطابق' : 'ابدأ أول رسالة'} description={searchQuery ? 'جرّب كلمة بحث مختلفة.' : 'المحادثة فارغة حتى الآن.'} />
             ) : null}
 
-            {messages.map((message) => {
+            {filteredMessages.map((message) => {
               const mine = message.sender === currentUser;
               const content = message.message || message.content;
               const mediaUrl = message.media_url || message.preview_url;

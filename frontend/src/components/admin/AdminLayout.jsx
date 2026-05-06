@@ -14,6 +14,7 @@ const routeMeta = {
   '/admin/rbac': { title: 'الأدوار والصلاحيات', breadcrumb: ['الإدارة', 'الصلاحيات'] },
   '/admin/content': { title: 'إدارة المحتوى', breadcrumb: ['الإدارة', 'المحتوى'] },
   '/admin/notifications': { title: 'مركز الإشعارات', breadcrumb: ['الإدارة', 'الإشعارات'] },
+  '/admin/live': { title: 'مركز تحكم البث المباشر', breadcrumb: ['الإدارة', 'البث المباشر'] },
   '/admin/reports': { title: 'التقارير والتحليلات', breadcrumb: ['الإدارة', 'التقارير'] },
   '/admin/settings': { title: 'الإعدادات', breadcrumb: ['الإدارة', 'الإعدادات'] },
 };
@@ -53,7 +54,7 @@ export default function AdminLayout({ children }) {
       setNotifications((prev) => [{ id: `${Date.now()}`, ...payload, is_read: false }, ...prev].slice(0, 20));
     };
 
-    const syncEvents = ['admin:user_updated', 'admin:user_status_changed', 'admin:user_deleted', 'admin:post_created', 'admin:post_updated', 'admin:post_deleted', 'admin:posts_bulk_deleted'];
+    const syncEvents = ['admin:user_updated', 'admin:user_status_changed', 'admin:user_deleted', 'admin:post_created', 'admin:post_updated', 'admin:post_deleted', 'admin:posts_bulk_deleted', 'admin:live_updated'];
     socket.on('admin:notification', onAdminNotification);
     syncEvents.forEach((eventName) => socket.on(eventName, loadNotifications));
 

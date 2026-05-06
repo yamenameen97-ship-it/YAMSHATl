@@ -9,6 +9,7 @@ import {
   createLiveRoom,
   endLiveRoom,
   getLiveComments,
+  getLiveRoom,
   getLiveRooms,
   getLiveToken,
   updateLivePresence,
@@ -69,9 +70,34 @@ export default function Live() {
     }
   };
 
+  const syncActiveRoom = async (roomId = activeRoomIdRef.current) => {
+    if (!roomId) return;
+    try {
+      const [{ data: roomData }, { data: commentsData }] = await Promise.all([
+        getLiveRoom(roomId),
+        getLiveComments(roomId),
+      ]);
+      setActiveRoom((prev) => ({ ...prev, ...(roomData || {}) }));
+      setViewerCount(Number(roomData?.viewer_count || 0));
+      setHeartsCount(Number(roomData?.hearts_count || 0));
+      setComments(Array.isArray(commentsData) ? commentsData : []);
+    } catch {
+      // ignore background sync failures
+    }
+  };
+
   useEffect(() => {
     refreshRooms();
   }, []);
+
+  useEffect(() => {
+    if (!activeRoomIdRef.current) return undefined;
+    const timer = window.setInterval(() => {
+      syncActiveRoom(activeRoomIdRef.current);
+      refreshRooms();
+    }, 12000);
+    return () => window.clearInterval(timer);
+  }, [activeRoom?.id]);
 
   useEffect(() => {
     if (!currentUser) return undefined;
@@ -87,18 +113,27 @@ export default function Live() {
     const handleComment = (payload) => {
       if (String(payload?.room_id || activeRoomIdRef.current) !== String(activeRoomIdRef.current)) return;
       setComments((prev) => [...prev, payload]);
+      setActiveRoom((prev) => ({ ...prev, latest_comment_preview: payload }));
     };
 
     const handleHeart = ({ count }) => setHeartsCount(Number(count || 0));
+    const handleAdminLiveUpdate = ({ room }) => {
+      if (!room || String(room.id) !== String(activeRoomIdRef.current)) return;
+      setActiveRoom((prev) => ({ ...prev, ...room }));
+      setViewerCount(Number(room.viewer_count || 0));
+      setHeartsCount(Number(room.hearts_count || 0));
+    };
 
     socket.on('room_stats', handleRoomStats);
     socket.on('new_comment', handleComment);
     socket.on('new_heart', handleHeart);
+    socket.on('admin:live_updated', handleAdminLiveUpdate);
 
     return () => {
       socket.off('room_stats', handleRoomStats);
       socket.off('new_comment', handleComment);
       socket.off('new_heart', handleHeart);
+      socket.off('admin:live_updated', handleAdminLiveUpdate);
     };
   }, [currentUser, token]);
 
@@ -140,7 +175,14 @@ export default function Live() {
       if (activeRoomIdRef.current) {
         const socketId = await ensureSocketConnected();
         socket.emit('leave_live', { token, room_id: String(activeRoomIdRef.current) });
-        await updateLivePresence({ room_id: activeRoomIdRef.current, socket_id: socketId, platform: 'web', device_type: 'browser', is_host: activeRoom?.role === 'host', active: false });
+        await updateLivePresence({
+          room_id: activeRoomIdRef.current,
+          socket_id: socketId,
+          platform: 'web',
+          device_type: 'browser',
+          is_host: activeRoom?.role === 'host',
+          active: false,
+        });
       }
     } catch {
       // ignore disconnect errors
@@ -223,6 +265,7 @@ export default function Live() {
       socket.emit('join_live', { token, room_id: String(roomRecord.id), user: currentUser, role, platform: 'web', device_type: 'browser' });
       await updateLivePresence({ room_id: roomRecord.id, socket_id: socketId, platform: 'web', device_type: 'browser', is_host: role === 'host', active: true });
       await connectToLiveKit(session, role);
+      await syncActiveRoom(roomRecord.id);
     } catch (err) {
       setError(err?.response?.data?.message || err?.response?.data?.detail || err?.message || 'تعذر الانضمام إلى البث.');
     } finally {
@@ -269,14 +312,33 @@ export default function Live() {
     }
   };
 
+  const copyRoomIdentifier = async () => {
+    if (!activeRoom?.room_id && !activeRoom?.id) return;
+    try {
+      await navigator.clipboard.writeText(String(activeRoom.room_id || activeRoom.id));
+      setStatus('تم نسخ رقم الغرفة ويمكنك مشاركته مع الفريق أو الدعم.');
+    } catch {
+      setStatus('تعذر نسخ رقم الغرفة من المتصفح الحالي.');
+    }
+  };
+
   useEffect(() => () => {
     disconnectRoom();
   }, []);
 
   const viewerExperienceLabel = useMemo(() => {
     if (!activeRoom) return 'اختر بثاً لمتابعته.';
-    return activeRoom.role === 'host' ? 'أنت الآن كمضيف ويمكنك إنهاء البث.' : 'أنت الآن كمشاهد مع شات مباشر وإحصاءات فورية.';
+    return activeRoom.role === 'host'
+      ? 'أنت الآن كمضيف ويمكنك متابعة الذروة، التعليق المثبّت، وإنهاء البث.'
+      : 'أنت الآن كمشاهد مع شات مباشر وإحصاءات فورية.';
   }, [activeRoom]);
+
+  const liveStats = useMemo(() => [
+    { label: 'غرف نشطة', value: rooms.length },
+    { label: 'مشاهدون الآن', value: viewerCount },
+    { label: 'قلوب البث', value: heartsCount },
+    { label: 'ذروة الغرفة', value: activeRoom?.peak_viewer_count || 0 },
+  ], [activeRoom?.peak_viewer_count, heartsCount, rooms.length, viewerCount]);
 
   return (
     <MainLayout>
@@ -286,17 +348,35 @@ export default function Live() {
             <div className="section-head compact">
               <div>
                 <h3 className="section-title">🔴 Live Streaming</h3>
-                <p className="muted">واجهة بث مباشر محسّنة مع Start/End، عداد مشاهدين، quality selector، fallback، وتجربة مشاهد أوضح.</p>
+                <p className="muted">واجهة بث مباشر محسّنة مع Start/End، عداد مشاهدين، جودة، مزامنة دورية، وتعليق مثبّت يظهر للمستخدم بشكل أوضح.</p>
               </div>
               <div className="live-stage-stats">
                 <span className="glass-chip">👀 {viewerCount}</span>
                 <span className="glass-chip">❤️ {heartsCount}</span>
+                {activeRoom?.featured ? <span className="glass-chip">⭐ مميّز</span> : null}
               </div>
+            </div>
+
+            <div className="stories-stats-grid notification-stats-grid-4">
+              {liveStats.map((item) => (
+                <div key={item.label} className="mini-stat stories-stat-card">
+                  <strong>{item.value}</strong>
+                  <span>{item.label}</span>
+                </div>
+              ))}
             </div>
 
             <div ref={videosRef} className="live-video-grid" />
             {showFallback ? <div className="live-fallback-card">تم تفعيل وضع المتابعة النصي بسبب تعذر الاتصال المرئي. ما زال بإمكانك متابعة التعليقات والإحصاءات.</div> : null}
             {!activeRoom && !loading ? <EmptyState icon="📡" title="لا يوجد بث نشط في المعاينة" description="أنشئ بثاً جديداً أو ادخل لأحد البثوث الحالية." /> : null}
+
+            {activeRoom?.pinned_comment ? (
+              <div className="notification-group-head" style={{ marginTop: 16 }}>
+                <strong>📌 تعليق مثبّت</strong>
+                <span className="muted">{activeRoom.pinned_comment.user}</span>
+                <p>{activeRoom.pinned_comment.text}</p>
+              </div>
+            ) : null}
 
             <div className="live-toolbar wrap-composer-actions">
               <input className="input" placeholder="عنوان البث..." value={title} onChange={(event) => setTitle(event.target.value)} />
@@ -309,6 +389,7 @@ export default function Live() {
               <Button onClick={handleCreateLive} disabled={joining || !isOnline}>{joining ? 'جارٍ التجهيز...' : 'Start Live'}</Button>
               {activeRoom?.role === 'host' ? <Button variant="secondary" onClick={handleEndLive}>End Live</Button> : null}
               {activeRoom ? <Button variant="secondary" onClick={() => joinRoom(activeRoom, activeRoom.role || 'viewer')}>إعادة الاتصال</Button> : null}
+              {activeRoom ? <Button variant="secondary" onClick={copyRoomIdentifier}>نسخ رقم الغرفة</Button> : null}
             </div>
 
             <div className="muted">{status}</div>
@@ -320,14 +401,24 @@ export default function Live() {
 
         <div className="live-side">
           <Card>
-            <h3 className="section-title">البثوث الحالية</h3>
+            <div className="section-head compact">
+              <div>
+                <h3 className="section-title">البثوث الحالية</h3>
+                <p className="muted">الغرف المميزة تظهر أولاً مع مؤشرات الذروة والنشاط.</p>
+              </div>
+            </div>
             {loading ? <div className="empty-mini">جارٍ تحميل الغرف...</div> : null}
             <div className="list-grid">
               {rooms.map((room) => (
                 <div key={room.id} className="live-room-row">
                   <div>
                     <strong>{room.title || room.username}</strong>
-                    <div className="muted">بواسطة {room.username} • {room.viewer_count || 0} مشاهد</div>
+                    <div className="muted">بواسطة {room.username} • {room.viewer_count || 0} مشاهد • ذروة {room.peak_viewer_count || 0}</div>
+                    <div className="story-viewer-actions">
+                      {room.featured ? <span className="glass-chip">مميّز</span> : null}
+                      <span className="glass-chip">💬 {room.comments_count || 0}</span>
+                      <span className="glass-chip">❤️ {room.hearts_count || 0}</span>
+                    </div>
                   </div>
                   <button type="button" className="mini-action" onClick={() => joinRoom(room, room.username === currentUser ? 'host' : 'viewer')}>
                     دخول
@@ -343,14 +434,25 @@ export default function Live() {
             <div className="live-comments">
               {comments.map((comment) => (
                 <div key={comment.id || `${comment.user}-${comment.created_at}-${comment.text}`} className="comment-item">
-                  <b>{comment.user}</b>
+                  <b>{comment.user}{comment.pinned ? ' 📌' : ''}</b>
                   <span>{comment.text}</span>
                 </div>
               ))}
               {comments.length === 0 ? <div className="empty-mini">لا توجد تعليقات بعد.</div> : null}
             </div>
             <div className="comment-composer">
-              <input className="input" placeholder="اكتب رسالة داخل البث..." value={message} onChange={(event) => setMessage(event.target.value)} />
+              <input
+                className="input"
+                placeholder="اكتب رسالة داخل البث..."
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    handleSendComment();
+                  }
+                }}
+              />
               <button type="button" className="mini-action" onClick={handleSendComment}>إرسال</button>
               <button type="button" className="mini-action" onClick={handleHeart}>❤️</button>
             </div>

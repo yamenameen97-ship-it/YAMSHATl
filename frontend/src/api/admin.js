@@ -14,6 +14,10 @@ export const bulkDeleteAdminPosts = (ids) => API.post('/admin/posts/bulk-delete'
 export const getAdminRbac = () => API.get('/admin/rbac');
 export const getAdminNotifications = (limit = 40) => API.get('/admin/notifications', { params: { limit } });
 export const broadcastAdminNotification = (data) => API.post('/admin/notifications/broadcast', data);
+export const getAdminLiveOverview = () => API.get('/admin/live/overview');
+export const featureAdminLiveRoom = (roomId, featured) => API.post(`/admin/live/${roomId}/feature`, { featured });
+export const pinLatestAdminLiveComment = (roomId) => API.post(`/admin/live/${roomId}/pin-latest`);
+export const endAdminLiveRoom = (roomId) => API.post(`/admin/live/${roomId}/end`);
 export const getAdminReportsSummary = () => API.get('/admin/reports/summary');
 export const exportAdminReport = (format) => API.get('/admin/reports/export', { params: { format }, responseType: 'blob' });
 export const getAdminSettings = () => API.get('/admin/settings');

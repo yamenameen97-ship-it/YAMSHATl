@@ -24,6 +24,10 @@ async function fetchReelsPage({ pageParam = 0 }) {
 export default function Reels() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [saveData, setSaveData] = useState(false);
+  const [muted, setMuted] = useState(true);
+  const [likedIds, setLikedIds] = useState({});
+  const [savedIds, setSavedIds] = useState({});
+  const [progressMap, setProgressMap] = useState({});
   const containerRef = useRef(null);
   const videoRefs = useRef({});
   const sentinelRef = useRef(null);
@@ -36,6 +40,7 @@ export default function Reels() {
   });
 
   const reels = useMemo(() => data?.pages.flatMap((page) => page.items) || [], [data]);
+  const activeReel = reels[activeIndex] || null;
 
   useEffect(() => {
     setSaveData(Boolean(navigator.connection?.saveData));
@@ -50,6 +55,7 @@ export default function Reels() {
           if (!video) return;
           if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
             setActiveIndex(index);
+            video.muted = muted;
             video.play().catch(() => null);
             const nextVideo = videoRefs.current[index + 1];
             if (nextVideo) nextVideo.preload = saveData ? 'metadata' : 'auto';
@@ -61,9 +67,9 @@ export default function Reels() {
       { threshold: [0.25, 0.6, 0.9] }
     );
 
-    Object.values(videoRefs.current).forEach((video) => video && observer.observe(video.parentElement));
+    Object.values(videoRefs.current).forEach((video) => video?.parentElement && observer.observe(video.parentElement));
     return () => observer.disconnect();
-  }, [reels, saveData]);
+  }, [reels, saveData, muted]);
 
   useEffect(() => {
     if (!sentinelRef.current) return undefined;
@@ -76,11 +82,62 @@ export default function Reels() {
     return () => observer.disconnect();
   }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
 
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'ArrowDown') handleNext(1);
+      if (event.key === 'ArrowUp') handleNext(-1);
+      if (event.key.toLowerCase() === 'm') setMuted((prev) => !prev);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeIndex, reels.length]);
+
+  useEffect(() => {
+    Object.entries(videoRefs.current).forEach(([index, video]) => {
+      if (!video) return;
+      video.muted = muted || Number(index) !== activeIndex;
+    });
+  }, [activeIndex, muted]);
+
   const handleNext = (direction = 1) => {
     const nextIndex = Math.max(0, Math.min(reels.length - 1, activeIndex + direction));
     const target = containerRef.current?.querySelector(`[data-reel-index="${nextIndex}"]`);
     target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
+
+  const handleToggleLike = (postId) => {
+    setLikedIds((prev) => ({ ...prev, [postId]: !prev[postId] }));
+  };
+
+  const handleToggleSave = (postId) => {
+    setSavedIds((prev) => ({ ...prev, [postId]: !prev[postId] }));
+  };
+
+  const handleShare = async (post) => {
+    const link = post?.media || post?.image_url;
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      window.dispatchEvent(new CustomEvent('yamshat:toast', {
+        detail: { type: 'success', title: 'تم النسخ', description: 'تم نسخ رابط الريل للحافظة.' },
+      }));
+    } catch {
+      // ignore clipboard failure
+    }
+  };
+
+  const handleTimeUpdate = (index, event) => {
+    const video = event.currentTarget;
+    const progress = video.duration ? Math.round((video.currentTime / video.duration) * 100) : 0;
+    setProgressMap((prev) => ({ ...prev, [index]: progress }));
+  };
+
+  const stats = useMemo(() => [
+    { label: 'إجمالي الريلز', value: reels.length },
+    { label: 'ريلز محفوظة', value: Object.values(savedIds).filter(Boolean).length },
+    { label: 'إعجابات محلية', value: Object.values(likedIds).filter(Boolean).length },
+    { label: 'الوضع', value: muted ? 'Muted' : 'Sound On' },
+  ], [likedIds, muted, reels.length, savedIds]);
 
   return (
     <MainLayout>
@@ -88,12 +145,22 @@ export default function Reels() {
         <div className="section-head">
           <div>
             <h3 className="section-title">🎬 الريلز</h3>
-            <p className="muted">سحب رأسي حقيقي، تشغيل/إيقاف ذكي، Preload للفيديو التالي، وكاش أخف عند وضع توفير البيانات.</p>
+            <p className="muted">سحب رأسي حقيقي مع اختصارات كيبورد، كتم/تشغيل صوت، مؤشرات تقدّم، وحفظ/مشاركة سريعة.</p>
           </div>
           <div className="live-stage-stats">
             <span className="glass-chip">Swipe Ready</span>
             <span className="glass-chip">{saveData ? 'Data Saver' : 'HD Streaming'}</span>
+            <span className="glass-chip">{muted ? 'Muted' : 'Sound On'}</span>
           </div>
+        </div>
+
+        <div className="stories-stats-grid notification-stats-grid-4">
+          {stats.map((item) => (
+            <div key={item.label} className="mini-stat stories-stat-card">
+              <strong>{item.value}</strong>
+              <span>{item.label}</span>
+            </div>
+          ))}
         </div>
 
         {isLoading ? <PageLoader label="جارٍ تحميل الريلز..." /> : null}
@@ -108,42 +175,50 @@ export default function Reels() {
           <EmptyState
             icon="🎥"
             title="لا توجد فيديوهات منشورة"
-            description="بمجرد نشر أي فيديو سيظهر هنا تلقائياً بشكل عمودي." 
+            description="بمجرد نشر أي فيديو سيظهر هنا تلقائياً بشكل عمودي."
           />
         ) : null}
 
         {!isLoading && !isError && reels.length > 0 ? (
           <div className="reels-layout-enhanced">
             <div className="reels-viewport" ref={containerRef}>
-              {reels.map((post, index) => (
-                <article key={post.id || index} className="reel-slide" data-reel-index={index}>
-                  <div className="reel-video-shell" data-index={index}>
-                    <video
-                      ref={(node) => {
-                        if (node) videoRefs.current[index] = node;
-                      }}
-                      className="reel-video"
-                      src={post.media || post.image_url}
-                      controls
-                      playsInline
-                      preload={saveData ? 'metadata' : index <= activeIndex + 1 ? 'auto' : 'metadata'}
-                      poster={post.thumbnail || ''}
-                      muted={index !== activeIndex}
-                    />
-                    <div className="reel-overlay">
-                      <div>
-                        <strong>@{post.username}</strong>
-                        <p>{post.content || 'ريل جديد داخل يمشات'}</p>
+              {reels.map((post, index) => {
+                const localLikes = likedIds[post.id] ? 1 : 0;
+                return (
+                  <article key={post.id || index} className="reel-slide" data-reel-index={index}>
+                    <div className="reel-video-shell" data-index={index}>
+                      <video
+                        ref={(node) => {
+                          if (node) videoRefs.current[index] = node;
+                        }}
+                        className="reel-video"
+                        src={post.media || post.image_url}
+                        controls
+                        playsInline
+                        preload={saveData ? 'metadata' : index <= activeIndex + 1 ? 'auto' : 'metadata'}
+                        poster={post.thumbnail || ''}
+                        muted={muted || index !== activeIndex}
+                        onTimeUpdate={(event) => handleTimeUpdate(index, event)}
+                      />
+                      <div className="upload-progress-shell compact-upload-progress">
+                        <div className="upload-progress-bar" style={{ width: `${progressMap[index] || 0}%` }} />
+                        <span>{progressMap[index] || 0}%</span>
                       </div>
-                      <div className="reel-stats-overlay">
-                        <span>❤️ {post.likes || post.like_count || 0}</span>
-                        <span>💬 {post.comments_count || post.comment_count || 0}</span>
-                        <span>📆 {post.created_at ? new Date(post.created_at).toLocaleDateString('ar-EG') : 'اليوم'}</span>
+                      <div className="reel-overlay">
+                        <div>
+                          <strong>@{post.username}</strong>
+                          <p>{post.content || 'ريل جديد داخل يمشات'}</p>
+                        </div>
+                        <div className="reel-stats-overlay">
+                          <span>❤️ {(post.likes || post.like_count || 0) + localLikes}</span>
+                          <span>💬 {post.comments_count || post.comment_count || 0}</span>
+                          <span>📆 {post.created_at ? new Date(post.created_at).toLocaleDateString('ar-EG') : 'اليوم'}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </article>
-              ))}
+                  </article>
+                );
+              })}
               <div ref={sentinelRef} className="reels-sentinel">{isFetchingNextPage ? 'جارٍ تحميل المزيد...' : hasNextPage ? 'اسحب للأسفل للمزيد' : 'تم الوصول لآخر الريلز'}</div>
             </div>
 
@@ -157,9 +232,32 @@ export default function Reels() {
               <div className="reels-control-stack">
                 <button type="button" className="mini-action" onClick={() => handleNext(-1)}>⬆ السابق</button>
                 <button type="button" className="mini-action" onClick={() => handleNext(1)}>⬇ التالي</button>
+                <button type="button" className="mini-action" onClick={() => setMuted((prev) => !prev)}>{muted ? '🔊 تشغيل الصوت' : '🔇 كتم الصوت'}</button>
                 <div className="muted">الحالي: {activeIndex + 1} / {reels.length}</div>
                 <div className="muted">الوضع: {saveData ? 'توفير البيانات مفعّل' : 'تحميل مسبق للفيديو القادم'}</div>
               </div>
+
+              {activeReel ? (
+                <div className="notifications-shortcuts-grid">
+                  <button type="button" className={`mini-action ${likedIds[activeReel.id] ? 'active-filter-chip' : ''}`} onClick={() => handleToggleLike(activeReel.id)}>
+                    {likedIds[activeReel.id] ? '❤️ تم الإعجاب' : '🤍 إعجاب'}
+                  </button>
+                  <button type="button" className={`mini-action ${savedIds[activeReel.id] ? 'active-filter-chip' : ''}`} onClick={() => handleToggleSave(activeReel.id)}>
+                    {savedIds[activeReel.id] ? '📌 محفوظ' : '📁 حفظ'}
+                  </button>
+                  <button type="button" className="mini-action" onClick={() => handleShare(activeReel)}>🔗 نسخ الرابط</button>
+                </div>
+              ) : null}
+
+              {activeReel ? (
+                <div className="integration-grid">
+                  <div className="integration-card linked">
+                    <div className="integration-label-row"><strong>صاحب الريل</strong><span className="glass-chip">@{activeReel.username}</span></div>
+                    <div className="integration-value">{activeReel.created_at ? new Date(activeReel.created_at).toLocaleString('ar-EG') : 'الآن'}</div>
+                    <p>{activeReel.content || 'بدون وصف.'}</p>
+                  </div>
+                </div>
+              ) : null}
             </aside>
           </div>
         ) : null}

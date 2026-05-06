@@ -13,6 +13,7 @@ const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard.jsx'));
 const AdminUsers = lazy(() => import('./pages/admin/AdminUsers.jsx'));
 const AdminPosts = lazy(() => import('./pages/admin/AdminPosts.jsx'));
 const AdminNotifications = lazy(() => import('./pages/admin/AdminNotifications.jsx'));
+const AdminLive = lazy(() => import('./pages/admin/AdminLive.jsx'));
 const AdminReports = lazy(() => import('./pages/admin/AdminReports.jsx'));
 const AdminSettings = lazy(() => import('./pages/admin/AdminSettings.jsx'));
 const AdminRbac = lazy(() => import('./pages/admin/AdminRbac.jsx'));
@@ -92,6 +93,7 @@ export default function App() {
           <Route path="/admin/rbac" element={<ProtectedRoute requiredPermission="rbac.view"><AdminRbac /></ProtectedRoute>} />
           <Route path="/admin/content" element={<ProtectedRoute requiredPermission="posts.view"><AdminPosts /></ProtectedRoute>} />
           <Route path="/admin/notifications" element={<ProtectedRoute requiredPermission="notifications.manage"><AdminNotifications /></ProtectedRoute>} />
+          <Route path="/admin/live" element={<ProtectedRoute requiredPermission="live.manage"><AdminLive /></ProtectedRoute>} />
           <Route path="/admin/reports" element={<ProtectedRoute requiredPermission="reports.view"><AdminReports /></ProtectedRoute>} />
           <Route path="/admin/settings" element={<ProtectedRoute requiredPermission="settings.manage"><AdminSettings /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />

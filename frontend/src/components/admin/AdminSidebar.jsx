@@ -6,6 +6,7 @@ const items = [
   { to: '/admin/rbac', label: 'الصلاحيات', icon: '🔐', permission: 'rbac.view' },
   { to: '/admin/content', label: 'المحتوى', icon: '📝', permission: 'posts.view' },
   { to: '/admin/notifications', label: 'الإشعارات', icon: '🔔', permission: 'notifications.manage' },
+  { to: '/admin/live', label: 'البث المباشر', icon: '📡', permission: 'live.manage' },
   { to: '/admin/reports', label: 'التقارير', icon: '📈', permission: 'reports.view' },
   { to: '/admin/settings', label: 'الإعدادات', icon: '⚙️', permission: 'settings.manage' },
 ];
@@ -37,7 +38,7 @@ export default function AdminSidebar({ collapsed, permissions = [], role = 'user
       {!collapsed ? (
         <div className="sidebar-promo">
           <span className="badge">Realtime</span>
-          <p>لوحة موحدة للمراقبة، CRUD كامل، تقارير تصدير، إشعارات جماعية، وربط مباشر مع الويب والموبايل.</p>
+          <p>لوحة موحدة للمراقبة، CRUD كامل، تحكم مباشر بالبث الحي، تقارير تصدير، إشعارات جماعية، وربط مباشر مع الويب والموبايل.</p>
         </div>
       ) : null}
     </aside>

@@ -6,54 +6,22 @@ import Card from '../components/ui/Card.jsx';
 import EmptyState from '../components/feedback/EmptyState.jsx';
 import ErrorState from '../components/feedback/ErrorState.jsx';
 import { ListSkeleton } from '../components/feedback/Skeleton.jsx';
-import { getChatThreads, getMessages, getPresence, updateOnline } from '../api/chat.js';
+import { getChatThreads, updateOnline } from '../api/chat.js';
 import { getCurrentUsername } from '../utils/auth.js';
 import useDebouncedValue from '../hooks/useDebouncedValue.js';
+import { selectSortedThreads, selectUnreadTotal, useChatStore } from '../store/chatStore.js';
 
 async function fetchThreads(currentUser) {
   await updateOnline(true);
   const { data } = await getChatThreads();
-  const threads = Array.isArray(data) ? data : [];
-  const names = threads
-    .map((item) => ({
-      username: item?.username || item?.name,
-      unread_count: Number(item?.unread_count || 0),
-      avatar: item?.avatar || '',
-      created_at: item?.created_at || null,
-      last_message: item?.last_message || '',
-    }))
-    .filter((item) => Boolean(item.username))
-    .filter((item) => item.username !== currentUser);
+  return (Array.isArray(data) ? data : []).filter((item) => (item?.username || item?.name) !== currentUser);
+}
 
-  const hydrated = await Promise.all(
-    names.map(async (thread) => {
-      try {
-        const [messagesRes, presenceRes] = await Promise.all([
-          getMessages(thread.username, 1),
-          getPresence(thread.username),
-        ]);
-        const lastMessage = Array.isArray(messagesRes.data) ? messagesRes.data.at(-1) : null;
-        return {
-          ...thread,
-          lastMessage,
-          presence: presenceRes.data,
-        };
-      } catch {
-        return {
-          ...thread,
-          lastMessage: null,
-          presence: { is_online: false, last_seen: null },
-        };
-      }
-    })
-  );
-
-  return hydrated.sort((a, b) => {
-    const aUnread = Number(a.unread_count || 0);
-    const bUnread = Number(b.unread_count || 0);
-    if (aUnread !== bUnread) return bUnread - aUnread;
-    return new Date(b.lastMessage?.created_at || b.created_at || 0) - new Date(a.lastMessage?.created_at || a.created_at || 0);
-  });
+function threadReceiptLabel(thread, currentUser) {
+  if (thread?.last_message_sender !== currentUser) return '';
+  if (thread?.last_message_status === 'seen') return '✔✔ مقروءة';
+  if (thread?.last_message_status === 'delivered') return '✔✔ وصلت';
+  return '✔ تم الإرسال';
 }
 
 export default function Inbox() {
@@ -61,23 +29,50 @@ export default function Inbox() {
   const navigate = useNavigate();
   const currentUser = getCurrentUsername();
   const debouncedQuery = useDebouncedValue(query, 250);
-  const { data, isLoading, isError, error, refetch } = useQuery({
+  const threads = useChatStore(selectSortedThreads);
+  const unreadTotal = useChatStore(selectUnreadTotal);
+  const hydrateThreads = useChatStore((state) => state.hydrateThreads);
+
+  const { isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['chat-threads', currentUser],
-    queryFn: () => fetchThreads(currentUser),
+    queryFn: async () => {
+      const nextThreads = await fetchThreads(currentUser);
+      hydrateThreads(nextThreads, { replace: true });
+      return nextThreads;
+    },
+    enabled: Boolean(currentUser),
   });
 
-  const threads = useMemo(() => {
-    const items = data || [];
-    if (!debouncedQuery) return items;
-    return items.filter((thread) => thread.username.toLowerCase().includes(debouncedQuery.toLowerCase()));
-  }, [data, debouncedQuery]);
+  const filteredThreads = useMemo(() => {
+    if (!debouncedQuery) return threads;
+    return threads.filter((thread) => thread.username.toLowerCase().includes(debouncedQuery.toLowerCase()));
+  }, [debouncedQuery, threads]);
 
   return (
     <MainLayout>
       <div className="section-head">
         <div>
           <h3 className="section-title">Inbox</h3>
-          <p className="muted">قائمة المحادثات بترتيب الأهم، مع إبراز الرسائل غير المقروءة وحالة التواجد وآخر رسالة في كل محادثة.</p>
+          <p className="muted">عدادات غير المقروء تعمل لحظياً على مستوى التطبيق كله، مع حالة آخر رسالة وقراءة المحادثات مباشرة من نفس القائمة.</p>
+        </div>
+      </div>
+
+      <div className="stories-stats-grid notification-stats-grid-4" style={{ marginBottom: 16 }}>
+        <div className="mini-stat stories-stat-card">
+          <strong>{threads.length}</strong>
+          <span>إجمالي المحادثات</span>
+        </div>
+        <div className="mini-stat stories-stat-card">
+          <strong>{unreadTotal}</strong>
+          <span>غير مقروءة الآن</span>
+        </div>
+        <div className="mini-stat stories-stat-card">
+          <strong>{threads.filter((item) => item.presence?.is_online).length}</strong>
+          <span>متصلين الآن</span>
+        </div>
+        <div className="mini-stat stories-stat-card">
+          <strong>{isFetching ? '...' : '✓'}</strong>
+          <span>{isFetching ? 'جارٍ التحديث' : 'مُحدّث لحظياً'}</span>
         </div>
       </div>
 
@@ -90,18 +85,17 @@ export default function Inbox() {
 
       {isLoading ? <ListSkeleton count={6} /> : null}
       {isError ? <ErrorState title="تعذر تحميل المحادثات" description={error?.response?.data?.message || error?.message} onRetry={refetch} /> : null}
-      {!isLoading && !isError && threads.length === 0 ? (
+      {!isLoading && !isError && filteredThreads.length === 0 ? (
         <EmptyState icon="💬" title="لا توجد محادثات بعد" description="افتح صفحة المستخدمين وابدأ أول شات." actionLabel="تحديث" onAction={refetch} />
       ) : null}
 
       <div className="thread-list">
-        {threads.map((thread) => {
-          const preview = thread.lastMessage?.deleted
-            ? 'تم حذف هذه الرسالة'
-            : thread.lastMessage?.message || thread.lastMessage?.content || thread.last_message || (thread.lastMessage?.media_url ? '📎 مرفق' : 'ابدأ المحادثة الآن');
-          const time = thread.lastMessage?.created_at || thread.created_at
-            ? new Date(thread.lastMessage?.created_at || thread.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
+        {filteredThreads.map((thread) => {
+          const time = thread.last_message_at || thread.created_at
+            ? new Date(thread.last_message_at || thread.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
             : '—';
+          const preview = thread.last_message || 'ابدأ المحادثة الآن';
+          const receipt = threadReceiptLabel(thread, currentUser);
 
           return (
             <Card key={thread.username} className="thread-row" onClick={() => navigate(`/chat/${encodeURIComponent(thread.username)}`)}>
@@ -121,6 +115,7 @@ export default function Inbox() {
                   </div>
                 </div>
                 <div className="muted truncate">{preview}</div>
+                {receipt ? <div className="muted" style={{ marginTop: 6 }}>{receipt}</div> : null}
               </div>
               <div className="thread-time">{time}</div>
             </Card>

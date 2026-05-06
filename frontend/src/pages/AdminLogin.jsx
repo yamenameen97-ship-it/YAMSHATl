@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Input from '../components/ui/Input.jsx';
 import Button from '../components/ui/Button.jsx';
@@ -23,6 +23,7 @@ export default function AdminLogin() {
   const [error, setError] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
+  const submitLockRef = useRef(false);
 
   useEffect(() => {
     const user = getStoredUser();
@@ -37,6 +38,8 @@ export default function AdminLogin() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (submitLockRef.current || loading) return;
+    submitLockRef.current = true;
     setLoading(true);
     setError('');
 
@@ -74,6 +77,7 @@ export default function AdminLogin() {
       }
       setError(authError?.message || 'فشل تسجيل دخول الإدارة، راجع البيانات.');
     } finally {
+      submitLockRef.current = false;
       setLoading(false);
     }
   };
@@ -106,7 +110,7 @@ export default function AdminLogin() {
 
         {error ? <div className="alert error">{error}</div> : null}
 
-        <Button type="submit" disabled={loading}>{loading ? 'جارٍ دخول الإدارة...' : 'دخول الإدارة'}</Button>
+        <Button type="submit" loading={loading} disabled={loading}>{loading ? 'جارٍ دخول الإدارة...' : 'دخول الإدارة'}</Button>
       </form>
     </AuthShell>
   );

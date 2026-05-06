@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Input from '../components/ui/Input.jsx';
 import Button from '../components/ui/Button.jsx';
@@ -21,6 +21,7 @@ export default function Login() {
   const [error, setError] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
+  const submitLockRef = useRef(false);
 
   const handleChange = (key) => (event) => {
     setForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -28,6 +29,8 @@ export default function Login() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (submitLockRef.current || loading) return;
+    submitLockRef.current = true;
     setLoading(true);
     setError('');
 
@@ -55,6 +58,7 @@ export default function Login() {
       }
       setError(authError?.message || 'فشل تسجيل الدخول، راجع البيانات.');
     } finally {
+      submitLockRef.current = false;
       setLoading(false);
     }
   };
@@ -87,7 +91,7 @@ export default function Login() {
 
         {error ? <div className="alert error">{error}</div> : null}
 
-        <Button type="submit" disabled={loading}>{loading ? 'جارٍ تسجيل الدخول...' : 'تسجيل الدخول'}</Button>
+        <Button type="submit" loading={loading} disabled={loading}>{loading ? 'جارٍ تسجيل الدخول...' : 'تسجيل الدخول'}</Button>
       </form>
     </AuthShell>
   );

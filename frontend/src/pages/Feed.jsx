@@ -586,10 +586,11 @@ export default function Feed() {
                 <h3 className="section-title">واجهة المنشورات الرئيسية</h3>
                 <p className="muted no-margin">تم ترتيب الأزرار العلوية والسفلية، وفصل المنشورات عن الريلز والبث والدردشة كما في الصور المرجعية.</p>
               </div>
-              <div className="feed-service-row">
+              <div className="feed-service-row feed-service-row-balanced">
+                <Link to="/" className="mini-action">المنشورات</Link>
                 <Link to="/reels" className="mini-action">الريلز</Link>
                 <Link to="/live" className="mini-action">البث</Link>
-                <Link to="/notifications" className="mini-action">الإشعارات</Link>
+                <Link to="/inbox" className="mini-action">الدردشة</Link>
               </div>
             </div>
 

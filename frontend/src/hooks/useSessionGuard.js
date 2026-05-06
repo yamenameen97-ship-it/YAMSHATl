@@ -1,33 +1,85 @@
 import { useEffect } from 'react';
-import { clearStoredUser, getSessionTtlMs, getStoredUser } from '../utils/auth.js';
+import { useLocation } from 'react-router-dom';
+import { refreshSession } from '../api/auth.js';
+import { clearStoredUser, getAuthToken, getSessionTtlMs, getStoredUser, hasStoredSession, mergeStoredUser } from '../utils/auth.js';
+import { useAppStore } from '../store/appStore.js';
 
-function redirectToLogin() {
+const PUBLIC_PATHS = new Set(['/login', '/register', '/verify-email', '/forgot-password', '/reset-password', '/admin', '/admin/login']);
+const REFRESH_EARLY_WINDOW_MS = 60_000;
+
+function isPublicPath(pathname) {
+  if (PUBLIC_PATHS.has(pathname)) return true;
+  return pathname.startsWith('/reset-password');
+}
+
+function redirectToLogin(pathname) {
   if (typeof window === 'undefined') return;
-  const loginPath = window.location.pathname.startsWith('/admin') ? '/admin/login' : '/login';
-  if (window.location.pathname !== loginPath) {
-    window.location.href = loginPath;
-  }
+  const loginPath = pathname.startsWith('/admin') ? '/admin/login' : '/login';
+  if (window.location.pathname !== loginPath) window.location.href = loginPath;
 }
 
 export default function useSessionGuard() {
+  const location = useLocation();
+  const setAuthHydrated = useAppStore((state) => state.setAuthHydrated);
+  const setAuthLoading = useAppStore((state) => state.setAuthLoading);
+
   useEffect(() => {
-    const current = getStoredUser();
-    if (!current) return undefined;
+    let cancelled = false;
+
+    const bootstrap = async () => {
+      setAuthLoading(true);
+      try {
+        const stored = getStoredUser();
+        if (!stored || !hasStoredSession()) return;
+
+        const ttl = getSessionTtlMs();
+        const token = getAuthToken();
+        const shouldRefresh = !token || (ttl !== null && ttl <= REFRESH_EARLY_WINDOW_MS);
+        if (!shouldRefresh) return;
+
+        const { data } = await refreshSession();
+        if (cancelled) return;
+        mergeStoredUser(data);
+      } catch {
+        if (cancelled) return;
+        clearStoredUser();
+        if (!isPublicPath(location.pathname)) redirectToLogin(location.pathname);
+      } finally {
+        if (!cancelled) {
+          setAuthHydrated(true);
+          setAuthLoading(false);
+        }
+      }
+    };
+
+    bootstrap();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [location.pathname, setAuthHydrated, setAuthLoading]);
+
+  useEffect(() => {
+    if (!hasStoredSession()) return undefined;
 
     const ttl = getSessionTtlMs();
-    if (ttl !== null && ttl <= 0) {
-      clearStoredUser();
-      redirectToLogin();
-      return undefined;
-    }
-
     if (ttl === null) return undefined;
 
-    const timer = window.setTimeout(() => {
-      clearStoredUser();
-      redirectToLogin();
-    }, ttl + 250);
+    const refreshIn = Math.max(ttl - REFRESH_EARLY_WINDOW_MS, 5_000);
+    const timer = window.setTimeout(async () => {
+      try {
+        setAuthLoading(true);
+        const { data } = await refreshSession();
+        mergeStoredUser(data);
+      } catch {
+        clearStoredUser();
+        if (!isPublicPath(location.pathname)) redirectToLogin(location.pathname);
+      } finally {
+        setAuthHydrated(true);
+        setAuthLoading(false);
+      }
+    }, refreshIn);
 
     return () => window.clearTimeout(timer);
-  }, [typeof window !== 'undefined' ? window.location.pathname : '']);
+  }, [location.pathname, setAuthHydrated, setAuthLoading]);
 }

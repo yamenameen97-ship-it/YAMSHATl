@@ -8,6 +8,7 @@ import { queryClient } from './lib/queryClient.js';
 import { useAppStore } from './store/appStore.js';
 
 if (typeof window !== 'undefined') {
+  window.__YAMSHAT_SW_READY__ = Promise.resolve(null);
   window.addEventListener('beforeinstallprompt', (event) => {
     event.preventDefault();
     useAppStore.getState().setInstallPrompt(event);
@@ -19,7 +20,7 @@ if (typeof window !== 'undefined') {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js').catch(() => null);
+      window.__YAMSHAT_SW_READY__ = navigator.serviceWorker.register('/sw.js').catch(() => null);
     });
   }
 }

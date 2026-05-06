@@ -2,9 +2,15 @@ import axios from 'axios';
 import API from './axios.js';
 import { API_BASE } from './config.js';
 import { getRefreshToken } from '../utils/auth.js';
+import { getCsrfToken } from '../utils/csrf.js';
 
 const plainHttp = axios.create({
   baseURL: API_BASE,
+  withCredentials: true,
+  headers: {
+    'X-Requested-With': 'XMLHttpRequest',
+    'X-Yamshat-Client': 'web',
+  },
 });
 
 export const loginUser = async (data) => {
@@ -44,10 +50,11 @@ export const resetPassword = async (data) => {
 
 export const refreshSession = async (token = '') => {
   const refreshToken = token || getRefreshToken();
-  if (!refreshToken) {
-    throw new Error('No refresh token available');
-  }
-  const response = await plainHttp.post('/auth/refresh', { refresh_token: refreshToken });
+  const payload = refreshToken ? { refresh_token: refreshToken } : {};
+  const csrfToken = getCsrfToken();
+  const response = await plainHttp.post('/auth/refresh', payload, {
+    headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+  });
   return response;
 };
 

@@ -6,45 +6,57 @@ import AppStatusBanner from './components/system/AppStatusBanner.jsx';
 import InstallPrompt from './components/feedback/InstallPrompt.jsx';
 import PageLoader from './components/feedback/PageLoader.jsx';
 import useNetworkStatus from './hooks/useNetworkStatus.js';
+import useOfflineQueue from './hooks/useOfflineQueue.js';
 import useSessionGuard from './hooks/useSessionGuard.js';
+import usePageAnalytics from './hooks/usePageAnalytics.js';
+import useChatRealtime from './hooks/useChatRealtime.js';
 import { useAppStore } from './store/appStore.js';
 
-const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard.jsx'));
-const AdminUsers = lazy(() => import('./pages/admin/AdminUsers.jsx'));
-const AdminPosts = lazy(() => import('./pages/admin/AdminPosts.jsx'));
-const AdminNotifications = lazy(() => import('./pages/admin/AdminNotifications.jsx'));
-const AdminLive = lazy(() => import('./pages/admin/AdminLive.jsx'));
-const AdminReports = lazy(() => import('./pages/admin/AdminReports.jsx'));
-const AdminSettings = lazy(() => import('./pages/admin/AdminSettings.jsx'));
-const AdminRbac = lazy(() => import('./pages/admin/AdminRbac.jsx'));
-const Login = lazy(() => import('./pages/Login.jsx'));
-const AdminLogin = lazy(() => import('./pages/AdminLogin.jsx'));
-const Register = lazy(() => import('./pages/Register.jsx'));
-const VerifyEmail = lazy(() => import('./pages/VerifyEmail.jsx'));
-const ForgotPassword = lazy(() => import('./pages/ForgotPassword.jsx'));
-const ResetPassword = lazy(() => import('./pages/ResetPassword.jsx'));
+const AdminDashboard = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminDashboard })));
+const AdminUsers = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminUsers })));
+const AdminPosts = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminPosts })));
+const AdminNotifications = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminNotifications })));
+const AdminLive = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminLive })));
+const AdminReports = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminReports })));
+const AdminSettings = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminSettings })));
+const AdminRbac = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminRbac })));
+const Login = lazy(() => import('./features/auth/index.js').then((mod) => ({ default: mod.Login })));
+const AdminLogin = lazy(() => import('./features/auth/index.js').then((mod) => ({ default: mod.AdminLogin })));
+const Register = lazy(() => import('./features/auth/index.js').then((mod) => ({ default: mod.Register })));
+const VerifyEmail = lazy(() => import('./features/auth/index.js').then((mod) => ({ default: mod.VerifyEmail })));
+const ForgotPassword = lazy(() => import('./features/auth/index.js').then((mod) => ({ default: mod.ForgotPassword })));
+const ResetPassword = lazy(() => import('./features/auth/index.js').then((mod) => ({ default: mod.ResetPassword })));
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
 const Feed = lazy(() => import('./pages/Feed.jsx'));
 const Stories = lazy(() => import('./pages/Stories.jsx'));
 const Reels = lazy(() => import('./pages/Reels.jsx'));
 const Groups = lazy(() => import('./pages/Groups.jsx'));
 const Live = lazy(() => import('./pages/Live.jsx'));
-const Inbox = lazy(() => import('./pages/Inbox.jsx'));
+const Inbox = lazy(() => import('./features/chat/index.js').then((mod) => ({ default: mod.Inbox })));
 const Users = lazy(() => import('./pages/Users.jsx'));
 const Profile = lazy(() => import('./pages/Profile.jsx'));
-const Chat = lazy(() => import('./pages/Chat.jsx'));
-const Notifications = lazy(() => import('./pages/Notifications.jsx'));
+const Chat = lazy(() => import('./features/chat/index.js').then((mod) => ({ default: mod.Chat })));
+const Notifications = lazy(() => import('./features/notifications/index.js').then((mod) => ({ default: mod.Notifications })));
 
 function AppGuards() {
   useNetworkStatus();
   useSessionGuard();
+  useOfflineQueue();
+  usePageAnalytics();
+  useChatRealtime();
   const theme = useAppStore((state) => state.theme);
+  const language = useAppStore((state) => state.language);
   const activeRequests = useAppStore((state) => state.activeRequests);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.documentElement.style.colorScheme = theme;
   }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('lang', language);
+    document.documentElement.setAttribute('dir', language === 'ar' ? 'rtl' : 'ltr');
+  }, [language]);
 
   return (
     <>

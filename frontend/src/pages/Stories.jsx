@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
+import EmptyState from '../components/feedback/EmptyState.jsx';
+import ErrorState from '../components/feedback/ErrorState.jsx';
+import { ListSkeleton } from '../components/feedback/Skeleton.jsx';
 import { getStories, uploadStory } from '../api/stories.js';
 
 const isVideo = (value) => /\.(mp4|mov|webm|mkv)$/i.test(String(value || ''));
@@ -177,7 +180,7 @@ export default function Stories() {
             <div className="section-head compact">
               <div>
                 <h3 className="section-title">📸 الستوري</h3>
-                <p className="muted">أضفت معاينة أقرب لتطبيقات السوشيال: تقدّم تلقائي، حفظ مشاهدة، انتقال سريع بين العناصر، وتجميع بالحسابات.</p>
+                <p className="muted">تم تحسين حالات التحميل والخطأ والفراغ مع الحفاظ على المعاينة التلقائية وحفظ حالة المشاهدة.</p>
               </div>
               <div className="story-viewer-actions">
                 <span className="glass-chip">Auto Progress</span>
@@ -194,6 +197,8 @@ export default function Stories() {
               ))}
             </div>
           </Card>
+
+          {error ? <ErrorState title="تعذر إكمال تجربة الستوري" description={error} onRetry={() => loadStories({ preserveActive: false })} /> : null}
 
           <Card className="story-viewer-card">
             <div className="section-head compact">
@@ -215,7 +220,8 @@ export default function Stories() {
               </div>
             </div>
 
-            {activeStory ? (
+            {loading ? <ListSkeleton count={2} /> : null}
+            {!loading && activeStory ? (
               <div className="story-viewer-shell">
                 <div className="upload-progress-shell compact-upload-progress">
                   <div className="upload-progress-bar" style={{ width: `${progress}%` }} />
@@ -250,9 +256,8 @@ export default function Stories() {
                   <Button onClick={() => handleMove(1)} disabled={activeIndex >= stories.length - 1}>التالي</Button>
                 </div>
               </div>
-            ) : (
-              <div className="empty-state">لا توجد ستوري حالياً. ارفع أول ستوري من البطاقة الجانبية.</div>
-            )}
+            ) : null}
+            {!loading && !activeStory ? <EmptyState icon="📸" title="لا توجد ستوري حالياً" description="ارفع أول ستوري من البطاقة الجانبية أو أعد التحديث." actionLabel="تحديث" onAction={() => loadStories({ preserveActive: false })} /> : null}
           </Card>
 
           <Card>
@@ -263,8 +268,8 @@ export default function Stories() {
               </div>
             </div>
 
-            {loading ? <div className="empty-state">جارٍ تحميل الستوري...</div> : null}
-            {!loading && stories.length === 0 ? <div className="empty-state">لا توجد ستوري منشورة بعد.</div> : null}
+            {loading ? <ListSkeleton count={4} /> : null}
+            {!loading && stories.length === 0 ? <EmptyState icon="🎞️" title="لا توجد ستوري منشورة بعد" description="لما يتم نشر ستوري هتظهر هنا فوراً." /> : null}
 
             <div className="stories-feed-grid">
               {stories.map((story) => (
@@ -297,7 +302,7 @@ export default function Stories() {
             <div className="section-head compact">
               <div>
                 <h3 className="section-title">رفع ستوري جديدة</h3>
-                <p className="muted">ترفع الملف مباشرة إلى الباك إند باستخدام نفس التوكن المحفوظ في الواجهة.</p>
+                <p className="muted">ترفع الملف مباشرة إلى الباك إند باستخدام الجلسة الحالية بعد تحسين الحماية والتجديد التلقائي.</p>
               </div>
             </div>
 
@@ -345,8 +350,6 @@ export default function Stories() {
               {!loading && storyGroups.length === 0 ? <div className="empty-mini">لا يوجد مستخدمون لديهم ستوري حالياً.</div> : null}
             </div>
           </Card>
-
-          {error ? <div className="alert error">{error}</div> : null}
         </div>
       </section>
     </MainLayout>

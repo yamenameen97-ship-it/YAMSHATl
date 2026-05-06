@@ -3,10 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
+import EmptyState from '../components/feedback/EmptyState.jsx';
+import ErrorState from '../components/feedback/ErrorState.jsx';
+import { ListSkeleton } from '../components/feedback/Skeleton.jsx';
 import { getNotifications, markNotificationsRead } from '../api/notifications.js';
 import socket from '../api/socket.js';
 import { getAuthToken, getCurrentUsername } from '../utils/auth.js';
-import { browserNotificationsSupported, normalizeNotification } from '../utils/notificationCenter.js';
+import { browserNotificationsSupported } from '../utils/notificationCenter.js';
+import { selectUnreadNotificationsCount, useNotificationStore } from '../store/notificationStore.js';
 
 const FILTERS = [
   { key: 'all', label: 'الكل' },
@@ -43,31 +47,39 @@ export default function Notifications() {
   const navigate = useNavigate();
   const token = getAuthToken();
   const currentUsername = getCurrentUsername();
-  const [notifications, setNotifications] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const notifications = useNotificationStore((state) => state.items);
+  const loading = useNotificationStore((state) => state.loading);
+  const storeError = useNotificationStore((state) => state.error);
+  const initialized = useNotificationStore((state) => state.initialized);
+  const setLoading = useNotificationStore((state) => state.setLoading);
+  const setError = useNotificationStore((state) => state.setError);
+  const hydrateNotifications = useNotificationStore((state) => state.hydrateNotifications);
+  const upsertNotification = useNotificationStore((state) => state.upsertNotification);
+  const markAllReadLocal = useNotificationStore((state) => state.markAllRead);
+  const unreadCount = useNotificationStore(selectUnreadNotificationsCount);
   const [markingAll, setMarkingAll] = useState(false);
   const [filterKey, setFilterKey] = useState('all');
   const [permissionState, setPermissionState] = useState(
     browserNotificationsSupported() ? window.Notification.permission : 'unsupported'
   );
 
+  const loadNotifications = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const { data } = await getNotifications();
+      hydrateNotifications(Array.isArray(data) ? data : [], { replace: true });
+    } catch (error) {
+      setError(error?.response?.data?.detail || error?.response?.data?.message || 'تعذر تحميل الإشعارات حالياً.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     let active = true;
 
-    const loadNotifications = async () => {
-      try {
-        setLoading(true);
-        const { data } = await getNotifications();
-        if (!active) return;
-        setNotifications((Array.isArray(data) ? data : []).map(normalizeNotification));
-      } catch {
-        if (active) setNotifications([]);
-      } finally {
-        if (active) setLoading(false);
-      }
-    };
-
-    loadNotifications();
+    if (!initialized) loadNotifications();
 
     if (currentUsername) {
       if (!socket.connected) socket.connect();
@@ -75,7 +87,7 @@ export default function Notifications() {
 
       const handleNotification = (notification) => {
         if (!active) return;
-        setNotifications((prev) => [normalizeNotification(notification), ...prev]);
+        upsertNotification(notification);
       };
 
       socket.on('new_notification', handleNotification);
@@ -88,7 +100,7 @@ export default function Notifications() {
     return () => {
       active = false;
     };
-  }, [currentUsername, token]);
+  }, [currentUsername, initialized, token, upsertNotification]);
 
   const enriched = useMemo(
     () => notifications.map((notification) => ({
@@ -97,11 +109,6 @@ export default function Notifications() {
       timeGroup: detectTimeGroup(notification.created_at),
     })),
     [notifications]
-  );
-
-  const unreadCount = useMemo(
-    () => enriched.filter((notification) => !notification.seen).length,
-    [enriched]
   );
 
   const stats = useMemo(
@@ -143,7 +150,10 @@ export default function Notifications() {
     try {
       setMarkingAll(true);
       await markNotificationsRead();
-      setNotifications((prev) => prev.map((notification) => ({ ...notification, seen: true, is_read: true })));
+      markAllReadLocal();
+      setError('');
+    } catch (error) {
+      setError(error?.response?.data?.detail || error?.response?.data?.message || 'تعذر تحديث حالة الإشعارات.');
     } finally {
       setMarkingAll(false);
     }
@@ -157,11 +167,11 @@ export default function Notifications() {
             <div className="section-head compact">
               <div>
                 <h3 className="section-title">🔔 مركز الإشعارات</h3>
-                <p className="muted">تم تجميع الإشعارات حسب النوع والزمن لتكون أوضح على الويب والجوال.</p>
+                <p className="muted">تم توحيد الحالة بين الشريط العلوي وصفحة الإشعارات بحيث تتزامن الشارات والقراءة فورياً.</p>
               </div>
               <div className="story-viewer-actions">
                 <span className="glass-chip">Realtime</span>
-                <span className="glass-chip">Grouped</span>
+                <span className="glass-chip">Synced</span>
               </div>
             </div>
 
@@ -204,9 +214,10 @@ export default function Notifications() {
               ))}
             </div>
 
-            {loading ? <div className="empty-state">جارٍ تحميل الإشعارات...</div> : null}
-            {!loading && filteredNotifications.length === 0 ? (
-              <div className="empty-state">لا توجد إشعارات ضمن هذا التصنيف حالياً.</div>
+            {loading ? <ListSkeleton count={6} /> : null}
+            {!loading && storeError ? <ErrorState title="تعذر تحميل الإشعارات" description={storeError} onRetry={loadNotifications} /> : null}
+            {!loading && !storeError && filteredNotifications.length === 0 ? (
+              <EmptyState icon="🔕" title="لا توجد إشعارات ضمن هذا التصنيف" description="جرّب فلتر مختلف أو أعد التحديث." actionLabel="تحديث" onAction={loadNotifications} />
             ) : null}
 
             <div className="notifications-group-stack">

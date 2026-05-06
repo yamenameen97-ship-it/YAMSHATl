@@ -1,5 +1,6 @@
 import { isPrimaryAdminSession } from './access.js';
 import { secureGet, secureRemove, secureSet } from './secureStorage.js';
+import { clearCsrfToken, setCsrfToken } from './csrf.js';
 import { useAppStore } from '../store/appStore.js';
 
 const STORAGE_KEY = 'yamshat_user_session';
@@ -8,7 +9,6 @@ const EXPIRY_LEEWAY_SECONDS = 30;
 function normalizeUserShape(user) {
   if (!user || typeof user !== 'object') return null;
   const token = user.token || user.access_token || user?.profile?.token || '';
-  const refreshToken = user.refresh_token || user?.profile?.refresh_token || '';
   const username = user.username || user.user || user?.profile?.username || '';
   const role = user.role || user?.profile?.role || 'user';
   const permissions = Array.isArray(user.permissions)
@@ -16,16 +16,18 @@ function normalizeUserShape(user) {
     : Array.isArray(user?.profile?.permissions)
       ? user.profile.permissions
       : [];
+  const csrf_token = user.csrf_token || user?.profile?.csrf_token || '';
 
   return {
     ...user,
     token,
     access_token: token || user.access_token || '',
-    refresh_token: refreshToken,
+    refresh_token: user.refresh_token || user?.profile?.refresh_token || '',
     username,
     user: username,
     role,
     permissions,
+    csrf_token,
     email_verified: Boolean(user.email_verified ?? user?.profile?.email_verified),
     profile: user.profile || null,
   };
@@ -45,6 +47,21 @@ function decodeJwtPayload(token) {
   }
 }
 
+function syncStore(user) {
+  const state = useAppStore.getState();
+  if (user) state.setSession?.(user);
+  else state.clearSession?.();
+}
+
+function readStoredSession() {
+  try {
+    const raw = secureGet(STORAGE_KEY);
+    return normalizeUserShape(raw ? JSON.parse(raw) : null);
+  } catch {
+    return null;
+  }
+}
+
 export function getTokenExpiryMs(token) {
   const payload = decodeJwtPayload(token);
   if (!payload?.exp) return null;
@@ -58,72 +75,85 @@ export function isTokenExpired(token, leewaySeconds = EXPIRY_LEEWAY_SECONDS) {
   return expiryMs <= Date.now() + leewaySeconds * 1000;
 }
 
-function syncStore(user) {
-  const state = useAppStore.getState();
-  if (user) state.setSession?.(user);
-  else state.clearSession?.();
+export function getStoredUser() {
+  const parsed = readStoredSession();
+  syncStore(parsed);
+  return parsed;
 }
 
-export function getStoredUser() {
-  try {
-    const raw = secureGet(STORAGE_KEY);
-    const parsed = normalizeUserShape(raw ? JSON.parse(raw) : null);
-    if (parsed?.access_token && isTokenExpired(parsed.access_token)) {
-      clearStoredUser();
-      return null;
-    }
-    syncStore(parsed);
-    return parsed;
-  } catch {
-    return null;
-  }
+export function getStoredUserSnapshot() {
+  return readStoredSession();
+}
+
+export function hasStoredSession() {
+  const user = readStoredSession();
+  return Boolean(user?.id || user?.username || user?.user || user?.email);
 }
 
 export function setStoredUser(user) {
   const normalized = normalizeUserShape(user);
   if (!normalized) {
     secureRemove(STORAGE_KEY);
+    clearCsrfToken();
     syncStore(null);
     return;
   }
   secureSet(STORAGE_KEY, JSON.stringify(normalized));
+  setCsrfToken(normalized.csrf_token || '');
   syncStore(normalized);
 }
 
 export function mergeStoredUser(nextValues) {
-  const current = getStoredUser() || {};
-  setStoredUser({ ...current, ...nextValues, profile: { ...(current.profile || {}), ...(nextValues?.profile || {}) } });
+  const current = readStoredSession() || {};
+  const merged = {
+    ...current,
+    ...nextValues,
+    profile: {
+      ...(current.profile || {}),
+      ...(nextValues?.profile || {}),
+    },
+  };
+  setStoredUser(merged);
 }
 
 export function clearStoredUser() {
   secureRemove(STORAGE_KEY);
+  clearCsrfToken();
   syncStore(null);
 }
 
 export function getAuthToken() {
-  const user = getStoredUser();
-  return user?.token || user?.access_token || '';
+  const user = readStoredSession();
+  const token = user?.token || user?.access_token || '';
+  if (!token || isTokenExpired(token)) return '';
+  return token;
 }
 
 export function getRefreshToken() {
-  const user = getStoredUser();
+  const user = readStoredSession();
   return user?.refresh_token || '';
 }
 
 export function getCurrentUsername() {
-  const user = getStoredUser();
+  const user = readStoredSession();
   return user?.user || user?.username || '';
 }
 
 export function getSessionTtlMs() {
-  const token = getAuthToken();
+  const user = readStoredSession();
+  const token = user?.token || user?.access_token || '';
   const expiryMs = getTokenExpiryMs(token);
   if (!expiryMs) return null;
   return Math.max(expiryMs - Date.now(), 0);
 }
 
+export function shouldRefreshSessionSoon(windowMs = 60_000) {
+  const ttl = getSessionTtlMs();
+  return ttl !== null && ttl <= windowMs;
+}
+
 export function hasPermission(permission) {
-  const user = getStoredUser();
+  const user = readStoredSession();
   if (!user) return false;
   if (isPrimaryAdminSession(user)) return true;
   return Array.isArray(user.permissions) && user.permissions.includes(permission);

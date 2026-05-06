@@ -1,6 +1,9 @@
 import API from './axios.js';
 
 export const getUsers = () => API.get('/users');
+export const getMe = () => API.get('/users/me');
+export const getUserPreferences = () => API.get('/users/preferences');
+export const updateUserPreferences = (payload) => API.put('/users/preferences', payload);
 export const getFollowersSummary = (username) => API.get(`/followers/${encodeURIComponent(username)}`);
 export const getRelationship = (username) => API.get(`/relationship/${encodeURIComponent(username)}`);
 export const followUser = (username) => API.post('/follow', { following: username });

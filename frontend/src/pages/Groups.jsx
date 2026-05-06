@@ -3,6 +3,9 @@ import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import Input from '../components/ui/Input.jsx';
+import EmptyState from '../components/feedback/EmptyState.jsx';
+import ErrorState from '../components/feedback/ErrorState.jsx';
+import { ListSkeleton } from '../components/feedback/Skeleton.jsx';
 import { createGroup, getGroups, joinGroup } from '../api/groups.js';
 
 export default function Groups() {
@@ -15,6 +18,7 @@ export default function Groups() {
   const load = async () => {
     try {
       setLoading(true);
+      setError('');
       const { data } = await getGroups();
       setGroups(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -52,6 +56,7 @@ export default function Groups() {
 
   const handleJoin = async (groupId) => {
     try {
+      setError('');
       await joinGroup(groupId);
       await load();
     } catch (err) {
@@ -67,7 +72,7 @@ export default function Groups() {
             <div className="section-head compact">
               <div>
                 <h3 className="section-title">👥 المجموعات</h3>
-                <p className="muted">إنشاء مجموعات ويب خفيفة وقابلة للانضمام مباشرة من الواجهة.</p>
+                <p className="muted">أصبحت الصفحة تعرض حالات تحميل وخطأ وفراغ بشكل واضح بدل الرسائل النصية الخام فقط.</p>
               </div>
             </div>
             <Input label="اسم المجموعة" value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} />
@@ -78,8 +83,12 @@ export default function Groups() {
             </div>
           </Card>
 
-          {error ? <div className="alert error">{error}</div> : null}
-          {loading ? <div className="empty-state">جارٍ تحميل المجموعات...</div> : null}
+          {error ? <ErrorState title="حصلت مشكلة في المجموعات" description={error} onRetry={load} /> : null}
+          {loading ? <ListSkeleton count={4} /> : null}
+
+          {!loading && !error && groups.length === 0 ? (
+            <EmptyState icon="👥" title="لا توجد مجموعات بعد" description="ابدأ أول مجموعة من الأعلى أو أعد التحميل." actionLabel="تحديث" onAction={load} />
+          ) : null}
 
           <div className="feed-stack">
             {groups.map((group) => (
@@ -106,7 +115,6 @@ export default function Groups() {
                 </div>
               </Card>
             ))}
-            {!loading && groups.length === 0 ? <div className="empty-state">لا توجد مجموعات بعد. ابدأ أول مجموعة من الأعلى.</div> : null}
           </div>
         </div>
       </section>

@@ -4,27 +4,35 @@ import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import { logoutUser } from '../api/auth.js';
-import { getUsers } from '../api/users.js';
+import { getUsers, getUserPreferences, updateUserPreferences } from '../api/users.js';
 import { getChatThreads, updateOnline } from '../api/chat.js';
 import { clearStoredUser, getStoredUser } from '../utils/auth.js';
 import { browserNotificationsSupported } from '../utils/notificationCenter.js';
 import { useAppStore } from '../store/appStore.js';
 import { PRIMARY_ADMIN_EMAIL } from '../utils/access.js';
+import { getUiText } from '../utils/i18n.js';
 
 export default function Dashboard() {
   const [usersCount, setUsersCount] = useState(0);
   const [threadsCount, setThreadsCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [savingPrefs, setSavingPrefs] = useState(false);
   const [error, setError] = useState('');
   const [permissionState, setPermissionState] = useState(
     browserNotificationsSupported() ? window.Notification.permission : 'unsupported'
   );
+  const [preferencesForm, setPreferencesForm] = useState({ language: 'ar', chat_translation_enabled: true });
   const user = getStoredUser();
   const navigate = useNavigate();
   const toggleTheme = useAppStore((state) => state.toggleTheme);
   const theme = useAppStore((state) => state.theme);
+  const language = useAppStore((state) => state.language);
+  const setLanguage = useAppStore((state) => state.setLanguage);
+  const chatTranslationEnabled = useAppStore((state) => state.chatTranslationEnabled);
+  const setChatTranslationEnabled = useAppStore((state) => state.setChatTranslationEnabled);
   const isOnline = useAppStore((state) => state.isOnline);
   const queuedActions = useAppStore((state) => state.queuedActions);
+  const ui = getUiText(language);
 
   useEffect(() => {
     let mounted = true;
@@ -32,10 +40,17 @@ export default function Dashboard() {
     const load = async () => {
       try {
         setLoading(true);
-        const [usersRes, threadsRes] = await Promise.all([getUsers(), getChatThreads(), updateOnline(true)]);
+        const [usersRes, threadsRes, prefsRes] = await Promise.all([getUsers(), getChatThreads(), getUserPreferences(), updateOnline(true)]);
         if (!mounted) return;
         setUsersCount(Array.isArray(usersRes.data) ? usersRes.data.length : 0);
         setThreadsCount(Array.isArray(threadsRes.data) ? threadsRes.data.length : 0);
+        const nextPrefs = {
+          language: prefsRes?.data?.language === 'en' ? 'en' : 'ar',
+          chat_translation_enabled: Boolean(prefsRes?.data?.chat_translation_enabled),
+        };
+        setPreferencesForm(nextPrefs);
+        setLanguage(nextPrefs.language);
+        setChatTranslationEnabled(nextPrefs.chat_translation_enabled);
       } catch (err) {
         if (!mounted) return;
         setError(err?.response?.data?.message || 'تعذر تحميل بيانات القائمة.');
@@ -48,30 +63,30 @@ export default function Dashboard() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [setChatTranslationEnabled, setLanguage]);
 
   const stats = useMemo(
     () => [
-      { title: 'المستخدمون', value: loading ? '...' : usersCount, meta: 'عدد الحسابات المتاحة' },
-      { title: 'المحادثات', value: loading ? '...' : threadsCount, meta: 'قائمة الدردشة الحالية' },
-      { title: 'المزامنة', value: queuedActions.length, meta: 'عمليات محفوظة أوفلاين' },
-      { title: 'الحالة', value: isOnline ? 'متصل' : 'غير متصل', meta: user?.user || user?.username || 'member' },
+      { title: language === 'en' ? 'Users' : 'المستخدمون', value: loading ? '...' : usersCount, meta: language === 'en' ? 'Available accounts' : 'عدد الحسابات المتاحة' },
+      { title: language === 'en' ? 'Chats' : 'المحادثات', value: loading ? '...' : threadsCount, meta: language === 'en' ? 'Current private threads' : 'قائمة الدردشة الحالية' },
+      { title: language === 'en' ? 'Sync queue' : 'المزامنة', value: queuedActions.length, meta: language === 'en' ? 'Saved offline actions' : 'عمليات محفوظة أوفلاين' },
+      { title: language === 'en' ? 'Status' : 'الحالة', value: isOnline ? (language === 'en' ? 'Online' : 'متصل') : (language === 'en' ? 'Offline' : 'غير متصل'), meta: user?.user || user?.username || 'member' },
     ],
-    [isOnline, loading, queuedActions.length, threadsCount, user, usersCount]
+    [isOnline, language, loading, queuedActions.length, threadsCount, user, usersCount]
   );
 
   const shortcuts = [
-    { to: '/profile', title: 'الملف الشخصي', desc: 'الحساب والإحصائيات والمنشورات', icon: '◎' },
-    { to: '/notifications', title: 'الإشعارات', desc: 'كل التنبيهات في شاشة مستقلة', icon: '🔔' },
-    { to: '/users', title: 'المستخدمون', desc: 'ابدأ متابعة أو تواصل مباشر', icon: '🧑‍🤝‍🧑' },
-    { to: '/groups', title: 'المجموعات', desc: 'أنشئ مجموعة أو انضم إليها', icon: '👥' },
+    { to: '/profile', title: language === 'en' ? 'Profile' : 'الملف الشخصي', desc: language === 'en' ? 'Account, stats, and posts' : 'الحساب والإحصائيات والمنشورات', icon: '◎' },
+    { to: '/notifications', title: language === 'en' ? 'Notifications' : 'الإشعارات', desc: language === 'en' ? 'All alerts in one page' : 'كل التنبيهات في شاشة مستقلة', icon: '🔔' },
+    { to: '/users', title: language === 'en' ? 'Users' : 'المستخدمون', desc: language === 'en' ? 'Start following or direct chat' : 'ابدأ متابعة أو تواصل مباشر', icon: '🧑‍🤝‍🧑' },
+    { to: '/groups', title: language === 'en' ? 'Groups' : 'المجموعات', desc: language === 'en' ? 'Create or join communities' : 'أنشئ مجموعة أو انضم إليها', icon: '👥' },
   ];
 
   const readinessCards = [
-    { title: 'Responsive', value: 'محسّن', desc: 'تم ضبط البوتوم بار والأزرار العلوية بشكل أدق للجوال والويب.' },
-    { title: 'Offline Sync', value: queuedActions.length ? `${queuedActions.length} محفوظ` : 'جاهز', desc: 'الإعجاب والتعليق والمتابعة والمنشور النصي يتخزنوا عند انقطاع الاتصال.' },
-    { title: 'Notifications', value: 'مجمّعة', desc: 'تم تجميع الإشعارات حسب النوع والزمن لسهولة الوصول.' },
-    { title: 'Admin Access', value: '/admin/login', desc: 'لو الرابط المباشر ما اشتغلش استخدم /admin.html أو سجّل بنفس بريد الأدمن الأساسي.' },
+    { title: 'Responsive', value: language === 'en' ? 'Improved' : 'محسّن', desc: language === 'en' ? 'Top and bottom navigation are now more balanced on web and mobile.' : 'تم ضبط الشريط العلوي والسفلي بشكل أدق للجوال والويب.' },
+    { title: 'Database', value: language === 'en' ? 'Connected' : 'مرتبط', desc: language === 'en' ? 'Preferences and chat blocking now persist in the database.' : 'تم ربط إعدادات اللغة والحظر بقاعدة البيانات.' },
+    { title: 'Chat', value: language === 'en' ? 'Upgraded' : 'مطوّرة', desc: language === 'en' ? 'Online status, last seen, translation, voice and video call entry points are ready.' : 'حالة الاتصال والترجمة والمكالمات الصوتية والمرئية أصبحت جاهزة.' },
+    { title: 'Admin Access', value: '/admin/login', desc: language === 'en' ? 'Use the admin screen directly when needed.' : 'استخدم شاشة الأدمن مباشرة عند الحاجة.' },
   ];
 
   const handleEnableBrowserNotifications = async () => {
@@ -81,6 +96,24 @@ export default function Dashboard() {
     }
     const permission = await window.Notification.requestPermission();
     setPermissionState(permission);
+  };
+
+  const handleSavePreferences = async () => {
+    try {
+      setSavingPrefs(true);
+      const payload = {
+        language: preferencesForm.language,
+        chat_translation_enabled: preferencesForm.chat_translation_enabled,
+      };
+      await updateUserPreferences(payload);
+      setLanguage(payload.language);
+      setChatTranslationEnabled(payload.chat_translation_enabled);
+      setError('');
+    } catch (err) {
+      setError(err?.response?.data?.detail || err?.response?.data?.message || 'تعذر حفظ الإعدادات.');
+    } finally {
+      setSavingPrefs(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -98,19 +131,17 @@ export default function Dashboard() {
       <section className="menu-page-grid menu-page-grid-enhanced">
         <Card className="menu-hero-card">
           <div className="menu-hero-copy">
-            <span className="badge">القائمة الرئيسية</span>
-            <h3>إعدادات + اختبارات + روابط سريعة</h3>
-            <p>
-              هنا جمعنا الاختبارات السريعة، حالة المزامنة، الإعدادات، وروابط الأقسام الثانوية عشان تفضل الصفحة الرئيسية للمنشورات فقط.
-            </p>
+            <span className="badge">Yamshat Settings</span>
+            <h3>{ui.dashboard.title}</h3>
+            <p>{ui.dashboard.description}</p>
           </div>
 
           <div className="menu-user-summary">
             <div className="avatar-circle large">{(user?.user || user?.username || 'U').slice(0, 1).toUpperCase()}</div>
             <div className="user-meta">
-              <strong>{user?.user || user?.username || 'مستخدم'}</strong>
-              <span className="muted">{isOnline ? 'متصل الآن' : 'غير متصل حالياً'}</span>
-              <span className="muted">البريد الإداري الأساسي: {PRIMARY_ADMIN_EMAIL}</span>
+              <strong>{user?.user || user?.username || 'User'}</strong>
+              <span className="muted">{isOnline ? (language === 'en' ? 'Online now' : 'متصل الآن') : (language === 'en' ? 'Currently offline' : 'غير متصل حالياً')}</span>
+              <span className="muted">{language === 'en' ? 'Primary admin email' : 'البريد الإداري الأساسي'}: {PRIMARY_ADMIN_EMAIL}</span>
             </div>
           </div>
         </Card>
@@ -142,34 +173,67 @@ export default function Dashboard() {
         <Card className="menu-settings-card setting-surface">
           <div className="section-head compact">
             <div>
-              <h3 className="section-title">إعدادات سريعة</h3>
-              <p className="muted no-margin">الأزرار اللي كانت مزدحمة فوق الرئيسية اتنقلت هنا بشكل أوضح.</p>
+              <h3 className="section-title">{language === 'en' ? 'Quick settings' : 'إعدادات سريعة'}</h3>
+              <p className="muted no-margin">{language === 'en' ? 'Professional web settings with database persistence.' : 'إعدادات ويب أكثر احترافية مع حفظ مباشر في قاعدة البيانات.'}</p>
             </div>
+          </div>
+
+          <div className="menu-preferences-grid">
+            <label className="field">
+              <span className="field-label">{ui.dashboard.languageLabel}</span>
+              <select
+                className="input"
+                value={preferencesForm.language}
+                onChange={(event) => setPreferencesForm((prev) => ({ ...prev, language: event.target.value === 'en' ? 'en' : 'ar' }))}
+              >
+                <option value="ar">العربية</option>
+                <option value="en">English</option>
+              </select>
+              <small className="muted">{ui.dashboard.languageHint}</small>
+            </label>
+
+            <label className="field checkbox-field">
+              <span className="field-label">{ui.dashboard.translationLabel}</span>
+              <label className="switch-toggle">
+                <input
+                  type="checkbox"
+                  checked={preferencesForm.chat_translation_enabled}
+                  onChange={(event) => setPreferencesForm((prev) => ({ ...prev, chat_translation_enabled: event.target.checked }))}
+                />
+                <span>{preferencesForm.chat_translation_enabled ? (language === 'en' ? 'Enabled' : 'مفعلة') : (language === 'en' ? 'Disabled' : 'متوقفة')}</span>
+              </label>
+              <small className="muted">{ui.dashboard.translationHint}</small>
+            </label>
           </div>
 
           <div className="menu-settings-actions menu-settings-actions-rich">
             <Button variant="secondary" onClick={toggleTheme}>
-              {theme === 'dark' ? 'تبديل للوضع الفاتح' : 'تبديل للوضع الداكن'}
+              {theme === 'dark'
+                ? (language === 'en' ? 'Switch to light mode' : 'تبديل للوضع الفاتح')
+                : (language === 'en' ? 'Switch to dark mode' : 'تبديل للوضع الداكن')}
             </Button>
             <Button variant="secondary" onClick={handleEnableBrowserNotifications}>
               {permissionState === 'granted'
-                ? 'إشعارات المتصفح مفعلة'
+                ? (language === 'en' ? 'Browser notifications enabled' : 'إشعارات المتصفح مفعلة')
                 : permissionState === 'denied'
-                  ? 'الإشعارات مرفوضة'
+                  ? (language === 'en' ? 'Notifications blocked' : 'الإشعارات مرفوضة')
                   : permissionState === 'unsupported'
-                    ? 'المتصفح لا يدعم الإشعارات'
-                    : 'تفعيل إشعارات المتصفح'}
+                    ? (language === 'en' ? 'Browser notifications unsupported' : 'المتصفح لا يدعم الإشعارات')
+                    : (language === 'en' ? 'Enable browser notifications' : 'تفعيل إشعارات المتصفح')}
             </Button>
-            <a href="/admin.html" className="btn btn-secondary">دخول لوحة الأدمن</a>
-            <Button onClick={handleLogout}>تسجيل الخروج</Button>
+            <Button onClick={handleSavePreferences} disabled={savingPrefs}>
+              {savingPrefs ? ui.dashboard.saving : ui.dashboard.save}
+            </Button>
+            <a href="/admin.html" className="btn btn-secondary">{language === 'en' ? 'Admin panel' : 'دخول لوحة الأدمن'}</a>
+            <Button onClick={handleLogout}>{language === 'en' ? 'Logout' : 'تسجيل الخروج'}</Button>
           </div>
         </Card>
 
         <Card className="setting-surface">
           <div className="section-head compact">
             <div>
-              <h3 className="section-title">مركز الاختبار والجاهزية</h3>
-              <p className="muted no-margin">ملخص سريع لأهم التحسينات المطلوبة: الاختبارات، الإشعارات، المزامنة، والدخول الإداري.</p>
+              <h3 className="section-title">{language === 'en' ? 'Readiness center' : 'مركز الاختبار والجاهزية'}</h3>
+              <p className="muted no-margin">{language === 'en' ? 'Quick summary of layout, chat, database, and admin readiness.' : 'ملخص سريع لتحسينات الواجهة والدردشة والربط بقاعدة البيانات.'}</p>
             </div>
           </div>
           <div className="testing-grid">

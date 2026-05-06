@@ -1,3 +1,5 @@
+const shownNotificationIds = new Set();
+
 export function resolveNotificationPath(notification) {
   const payload = notification?.payload || notification?.data || {};
   if (typeof payload?.path === 'string' && payload.path.trim()) return payload.path.trim();
@@ -47,4 +49,48 @@ export function normalizeNotification(item) {
 
 export function browserNotificationsSupported() {
   return typeof window !== 'undefined' && 'Notification' in window;
+}
+
+async function serviceWorkerNotification(notification) {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return false;
+  const registration = await navigator.serviceWorker.ready;
+  await registration.showNotification(notification.title, {
+    body: notification.body,
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    tag: `yamshat:${notification.id}`,
+    data: {
+      path: notification.path,
+      notification,
+    },
+  });
+  return true;
+}
+
+export async function maybeShowBrowserNotification(item) {
+  if (!browserNotificationsSupported()) return false;
+  if (document.visibilityState === 'visible') return false;
+  if (window.Notification.permission !== 'granted') return false;
+
+  const notification = normalizeNotification(item);
+  if (shownNotificationIds.has(String(notification.id))) return false;
+  shownNotificationIds.add(String(notification.id));
+
+  try {
+    await serviceWorkerNotification(notification);
+    return true;
+  } catch {
+    const native = new window.Notification(notification.title, {
+      body: notification.body,
+      icon: '/icons/icon-192.png',
+      tag: `yamshat:${notification.id}`,
+      data: { path: notification.path },
+    });
+    native.onclick = () => {
+      window.focus();
+      window.location.assign(notification.path || '/notifications');
+      native.close();
+    };
+    return true;
+  }
 }

@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import re
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func, inspect, or_, text
@@ -11,6 +12,7 @@ from app.models.user import User
 
 
 VERIFICATION_REQUIRED_DETAIL = 'Email verification required'
+EMAIL_REGEX = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]{2,}$', re.IGNORECASE)
 
 
 def utcnow_naive() -> datetime:
@@ -19,6 +21,14 @@ def utcnow_naive() -> datetime:
 
 def _normalize_username(value: str) -> str:
     return (value or '').strip().replace(' ', '_')
+
+
+def looks_like_email(value: str | None) -> bool:
+    return '@' in str(value or '')
+
+
+def is_valid_email(value: str | None) -> bool:
+    return bool(EMAIL_REGEX.match((value or '').strip()))
 
 
 def _password_matches(plain_password: str, stored_password: str | None) -> bool:
@@ -69,10 +79,15 @@ def register_user(db: Session, username: str, email: str, password: str, avatar:
 
     if not normalized_username or not email or len(password) < 6:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Missing or invalid registration fields')
+    if not is_valid_email(email):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid email format')
 
-    existing_user = db.query(User).filter((User.email == email) | (User.username == normalized_username)).first()
-    if existing_user:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Email or username already exists')
+    existing_email = db.query(User).filter(func.lower(User.email) == email).first()
+    if existing_email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Email already exists')
+    existing_username = db.query(User).filter(func.lower(User.username) == normalized_username.lower()).first()
+    if existing_username:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Username already exists')
 
     role = 'admin' if is_primary_admin_email(email) else 'user'
     user = User(
@@ -92,6 +107,10 @@ def register_user(db: Session, username: str, email: str, password: str, avatar:
 def authenticate_user(db: Session, identifier: str, password: str, require_verified: bool = True) -> User:
     normalized_identifier = (identifier or '').strip()
     lowered_identifier = normalized_identifier.lower()
+
+    if looks_like_email(lowered_identifier) and not is_valid_email(lowered_identifier):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid email address')
+
     user = db.query(User).filter(
         and_(
             User.is_active.is_(True),
@@ -103,7 +122,7 @@ def authenticate_user(db: Session, identifier: str, password: str, require_verif
     ).first()
 
     if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid credentials')
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Email or username not found')
 
     password_is_valid = _password_matches(password or '', user.hashed_password)
     if not password_is_valid:
@@ -111,7 +130,7 @@ def authenticate_user(db: Session, identifier: str, password: str, require_verif
         password_is_valid = _password_matches(password or '', legacy_password)
 
     if not password_is_valid:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid credentials')
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Incorrect password')
 
     desired_role = 'admin' if is_primary_admin_email(user.email) else 'user'
     updated = False

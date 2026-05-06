@@ -6,46 +6,16 @@ import { getAuthToken, getCurrentUsername } from '../../utils/auth.js';
 import { normalizeNotification } from '../../utils/notificationCenter.js';
 
 const routeMeta = {
-  '/': {
-    title: 'الرئيسية',
-    note: 'منشورات وقصص بترتيب واضح من غير تراكب للشاشات.',
-  },
-  '/dashboard': {
-    title: 'القائمة',
-    note: 'مركز سريع للحساب، الإعدادات، والأقسام الثانوية.',
-  },
-  '/users': {
-    title: 'الأصدقاء',
-    note: 'ابحث عن الأصدقاء وابدأ محادثة مباشرة.',
-  },
-  '/profile': {
-    title: 'الملف الشخصي',
-    note: 'إحصائياتك ومنشوراتك وتعديلات الحساب.',
-  },
-  '/inbox': {
-    title: 'الدردشة',
-    note: 'قائمة المحادثات في شاشة مستقلة وواضحة.',
-  },
-  '/stories': {
-    title: 'الستوري',
-    note: 'عرض القصص ورفع قصة جديدة من صفحة مخصصة.',
-  },
-  '/reels': {
-    title: 'الريلز',
-    note: 'فيديوهات قصيرة بصفحة منفصلة مثل التصميم المرجعي.',
-  },
-  '/groups': {
-    title: 'المجموعات',
-    note: 'إنشاء ومتابعة المجموعات بعيدًا عن الصفحة الرئيسية.',
-  },
-  '/live': {
-    title: 'البث المباشر',
-    note: 'صفحة مستقلة للبث والتفاعل اللحظي.',
-  },
-  '/notifications': {
-    title: 'الإشعارات',
-    note: 'كل التنبيهات في مركز واحد بدون تكدس في الهوم.',
-  },
+  '/': { title: 'الرئيسية', note: 'الهوم للمنشورات والقصص مع أزرار أوضح أعلى وأسفل الشاشة.' },
+  '/dashboard': { title: 'القائمة والإعدادات', note: 'اختبارات جاهزية، إعدادات سريعة، وروابط الخدمات.' },
+  '/users': { title: 'المستخدمون', note: 'ابحث عن مستخدمين وابدأ متابعة أو تواصل مباشر.' },
+  '/profile': { title: 'الملف الشخصي', note: 'إحصائياتك ومنشوراتك وتخصيص الحساب.' },
+  '/inbox': { title: 'الدردشة', note: 'قائمة محادثات أوضح بنفس طابع الجوال.' },
+  '/stories': { title: 'الستوري', note: 'شاشة مستقلة للقصص ورفع ستوري جديد.' },
+  '/reels': { title: 'الريلز', note: 'مشاهدة عمودية وفصل كامل عن صفحة المنشورات.' },
+  '/groups': { title: 'المجموعات', note: 'المجتمعات والنقاشات في شاشة مستقلة.' },
+  '/live': { title: 'البث المباشر', note: 'البث والتفاعل المباشر مع عدادات واضحة.' },
+  '/notifications': { title: 'الإشعارات', note: 'تجميع الإشعارات حسب النوع والزمن.' },
 };
 
 export default function Topbar() {
@@ -71,7 +41,7 @@ export default function Topbar() {
 
     return routeMeta[location.pathname] || {
       title: 'YAMSHAT',
-      note: 'واجهة اجتماعية داكنة بتقسيم منطقي بين الشاشات.',
+      note: 'منصة اجتماعية عربية بستايل داكن موحّد بين الويب والجوال.',
     };
   }, [location.pathname]);
 
@@ -111,35 +81,41 @@ export default function Topbar() {
   }, [currentUsername, token]);
 
   return (
-    <header className="topbar yamshat-topbar compact-topbar">
-      <div className="topbar-title-block">
-        <div className="page-eyebrow">YAMSHAT unified mobile layout</div>
-        <h2 className="page-title">{pageMeta.title}</h2>
+    <header className="topbar yamshat-topbar compact-topbar topbar-app-like">
+      <div className="topbar-brand-wrap">
+        <Link to="/" className="topbar-brand-link">
+          <span className="topbar-brand-mark">
+            <img src="/brand/yamshat-logo.jpg" alt="Yamshat" className="brand-logo-img" />
+          </span>
+          <span className="topbar-brand-copy">
+            <span className="page-eyebrow">YAMSHAT</span>
+            <strong>{pageMeta.title}</strong>
+          </span>
+        </Link>
         <p className="muted no-margin topbar-page-note">{pageMeta.note}</p>
       </div>
 
-      <div className="topbar-route-actions">
-        {location.pathname !== '/live' ? (
-          <Link to="/live" className="topbar-icon-link topbar-primary-action">
-            <span aria-hidden="true">🔴</span>
-            <span>البث</span>
-          </Link>
-        ) : null}
+      <div className="topbar-route-actions topbar-actions-rich">
+        <Link to="/notifications" className="topbar-icon-link topbar-badge-link">
+          <span aria-hidden="true">🔔</span>
+          <span>الإشعارات</span>
+          {unreadCount > 0 ? <strong className="topbar-badge">{unreadCount}</strong> : null}
+        </Link>
 
-        {location.pathname !== '/inbox' ? (
-          <Link to="/inbox" className="topbar-icon-link">
-            <span aria-hidden="true">💬</span>
-            <span>الدردشة</span>
-          </Link>
-        ) : null}
+        <Link to="/reels" className="topbar-icon-link">
+          <span aria-hidden="true">🎬</span>
+          <span>الريلز</span>
+        </Link>
 
-        {location.pathname !== '/notifications' ? (
-          <Link to="/notifications" className="topbar-icon-link topbar-badge-link">
-            <span aria-hidden="true">🔔</span>
-            <span>الإشعارات</span>
-            {unreadCount > 0 ? <strong className="topbar-badge">{unreadCount}</strong> : null}
-          </Link>
-        ) : null}
+        <Link to="/live" className="topbar-icon-link topbar-primary-action">
+          <span aria-hidden="true">🔴</span>
+          <span>مباشر</span>
+        </Link>
+
+        <Link to="/inbox" className="topbar-icon-link">
+          <span aria-hidden="true">💬</span>
+          <span>الدردشة</span>
+        </Link>
 
         <Link to="/dashboard" className="topbar-icon-link">
           <span aria-hidden="true">☰</span>

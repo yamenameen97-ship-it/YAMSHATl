@@ -7,13 +7,7 @@ import { loginUser } from '../api/auth.js';
 import { sanitizeInputText } from '../utils/sanitize.js';
 import { setStoredUser } from '../utils/auth.js';
 import { getDefaultPostLoginPath } from '../utils/access.js';
-
-function extractAuthError(err) {
-  const detail = err?.response?.data?.detail;
-  if (typeof detail === 'string') return { message: detail };
-  if (detail && typeof detail === 'object') return detail;
-  return { message: 'فشل تسجيل الدخول، راجع البيانات.' };
-}
+import { isValidEmail, localizeAuthMessage, looksLikeEmail, parseApiDetail } from '../utils/authValidation.js';
 
 export default function Login() {
   const [form, setForm] = useState({ identifier: '', password: '' });
@@ -30,26 +24,41 @@ export default function Login() {
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (submitLockRef.current || loading) return;
+
+    const identifier = sanitizeInputText(form.identifier, { maxLength: 120 });
+    if (!identifier) {
+      setError('اكتب البريد الإلكتروني أو اسم المستخدم.');
+      return;
+    }
+    if (looksLikeEmail(identifier) && !isValidEmail(identifier)) {
+      setError('البريد الإلكتروني غير صحيح.');
+      return;
+    }
+    if (!form.password.trim()) {
+      setError('اكتب كلمة المرور.');
+      return;
+    }
+
     submitLockRef.current = true;
     setLoading(true);
     setError('');
 
     try {
       const { data } = await loginUser({
-        identifier: sanitizeInputText(form.identifier, { maxLength: 120 }),
-        email: sanitizeInputText(form.identifier, { maxLength: 120 }),
-        username: sanitizeInputText(form.identifier, { maxLength: 120 }),
+        identifier,
+        email: identifier,
+        username: identifier,
         password: form.password,
       });
       setStoredUser(data);
       const fallbackPath = getDefaultPostLoginPath(data);
       navigate(location.state?.from?.pathname || fallbackPath, { replace: true });
     } catch (err) {
-      const authError = extractAuthError(err);
-      if (authError?.message === 'Email verification required') {
+      const authError = parseApiDetail(err?.response?.data?.detail, 'فشل تسجيل الدخول، راجع البيانات.');
+      if (authError?.message === localizeAuthMessage('Email verification required', 'لازم تفعّل البريد الإلكتروني الأول.')) {
         navigate('/verify-email', {
           state: {
-            email: authError.email || form.identifier.trim(),
+            email: authError.email || identifier.trim(),
             message: 'لازم تفعّل البريد الإلكتروني الأول قبل الدخول.',
             devCode: authError.dev_verification_code || '',
           },
@@ -76,7 +85,7 @@ export default function Login() {
       }
       footer={
         <>
-          دخول الإدارة يتم من الرابط المخصص للإدارة فقط، أما هذه الصفحة فهي للمشتركين. <Link to="/forgot-password">نسيت كلمة المرور</Link>
+          لو نسيت كلمة المرور استخدم <Link to="/forgot-password">نسيت كلمة المرور</Link>، ولو عايز الإدارة استخدم <Link to="/admin/login">/admin/login</Link>.
         </>
       }
     >
@@ -86,8 +95,8 @@ export default function Login() {
           <p className="muted">استخدم البريد الإلكتروني أو اسم المستخدم للدخول إلى مجتمعك ومحتواك.</p>
         </div>
 
-        <Input label="البريد الإلكتروني أو اسم المستخدم" placeholder="admin@mail.com أو admin" value={form.identifier} onChange={handleChange('identifier')} />
-        <Input label="كلمة المرور" type="password" placeholder="••••••••" value={form.password} onChange={handleChange('password')} hint="الحد الأدنى 6 أحرف" />
+        <Input label="البريد الإلكتروني أو اسم المستخدم" placeholder="admin@mail.com أو admin" value={form.identifier} onChange={handleChange('identifier')} autoComplete="username" />
+        <Input label="كلمة المرور" type="password" placeholder="••••••••" value={form.password} onChange={handleChange('password')} hint="الحد الأدنى 6 أحرف" autoComplete="current-password" />
 
         {error ? <div className="alert error">{error}</div> : null}
 

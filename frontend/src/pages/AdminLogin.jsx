@@ -7,15 +7,9 @@ import { loginUser } from '../api/auth.js';
 import { sanitizeInputText } from '../utils/sanitize.js';
 import { clearStoredUser, getStoredUser, setStoredUser } from '../utils/auth.js';
 import { PRIMARY_ADMIN_EMAIL, isPrimaryAdminSession } from '../utils/access.js';
+import { isValidEmail, localizeAuthMessage, looksLikeEmail, parseApiDetail } from '../utils/authValidation.js';
 
 const canAccessAdminPanel = (session) => isPrimaryAdminSession(session);
-
-function extractAuthError(err) {
-  const detail = err?.response?.data?.detail;
-  if (typeof detail === 'string') return { message: detail };
-  if (detail && typeof detail === 'object') return detail;
-  return { message: 'فشل تسجيل دخول الإدارة، راجع البيانات.' };
-}
 
 export default function AdminLogin() {
   const [form, setForm] = useState({ identifier: '', password: '' });
@@ -39,21 +33,36 @@ export default function AdminLogin() {
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (submitLockRef.current || loading) return;
+
+    const identifier = sanitizeInputText(form.identifier, { maxLength: 120 });
+    if (!identifier) {
+      setError('اكتب بريد الإدارة أو اسم المستخدم.');
+      return;
+    }
+    if (looksLikeEmail(identifier) && !isValidEmail(identifier)) {
+      setError('البريد الإلكتروني غير صحيح.');
+      return;
+    }
+    if (!form.password.trim()) {
+      setError('اكتب كلمة المرور.');
+      return;
+    }
+
     submitLockRef.current = true;
     setLoading(true);
     setError('');
 
     try {
       const { data } = await loginUser({
-        identifier: sanitizeInputText(form.identifier, { maxLength: 120 }),
-        email: sanitizeInputText(form.identifier, { maxLength: 120 }),
-        username: sanitizeInputText(form.identifier, { maxLength: 120 }),
+        identifier,
+        email: identifier,
+        username: identifier,
         password: form.password,
       });
 
       if (!canAccessAdminPanel(data)) {
         clearStoredUser();
-        setError('هذا الحساب لا يملك صلاحية دخول لوحة الإدارة. استخدم صفحة المشتركين العادية.');
+        setError(`هذا الحساب لا يملك صلاحية دخول لوحة الإدارة. البريد الإداري الحالي هو ${PRIMARY_ADMIN_EMAIL}.`);
         return;
       }
 
@@ -64,11 +73,11 @@ export default function AdminLogin() {
       navigate(targetPath, { replace: true });
     } catch (err) {
       clearStoredUser();
-      const authError = extractAuthError(err);
-      if (authError?.message === 'Email verification required') {
+      const authError = parseApiDetail(err?.response?.data?.detail, 'فشل تسجيل دخول الإدارة، راجع البيانات.');
+      if (authError?.message === localizeAuthMessage('Email verification required', 'لازم تفعّل البريد الإلكتروني الأول.')) {
         navigate('/verify-email', {
           state: {
-            email: authError.email || form.identifier.trim(),
+            email: authError.email || identifier.trim(),
             message: 'لازم تفعّل البريد الإلكتروني للحساب الإداري الأول.',
             devCode: authError.dev_verification_code || '',
           },
@@ -86,7 +95,7 @@ export default function AdminLogin() {
     <AuthShell
       badge="YAMSHAT ADMIN"
       title="دخول الإدارة"
-      description="هذه الصفحة مخصصة للأدمن والمشرفين فقط. دخول المشتركين العاديين يتم من الصفحة الرئيسية للتطبيق."
+      description="هذه الصفحة مخصصة للأدمن فقط. لو البريد الإداري مضبوط صح هتدخل مباشرة إلى لوحة التحكم."
       alternateAction={
         <>
           <span className="muted">دخول المشتركين</span>
@@ -95,7 +104,7 @@ export default function AdminLogin() {
       }
       footer={
         <>
-          لو عايز دخول المستخدمين العاديين استخدم <Link to="/login">صفحة المشتركين</Link>.
+          رابط الإدارة الأساسي <Link to="/admin/login">/admin/login</Link> والرابط الاحتياطي <Link to="/admin.html">/admin.html</Link>.
         </>
       }
     >
@@ -105,8 +114,8 @@ export default function AdminLogin() {
           <p className="muted">دخول لوحة الإدارة مقصور على البريد المخصص للإدارة فقط: {PRIMARY_ADMIN_EMAIL}</p>
         </div>
 
-        <Input label="البريد الإلكتروني أو اسم المستخدم" placeholder={PRIMARY_ADMIN_EMAIL} value={form.identifier} onChange={handleChange('identifier')} />
-        <Input label="كلمة المرور" type="password" placeholder="••••••••" value={form.password} onChange={handleChange('password')} hint="الحد الأدنى 6 أحرف" />
+        <Input label="البريد الإلكتروني أو اسم المستخدم" placeholder={PRIMARY_ADMIN_EMAIL} value={form.identifier} onChange={handleChange('identifier')} autoComplete="username" />
+        <Input label="كلمة المرور" type="password" placeholder="••••••••" value={form.password} onChange={handleChange('password')} hint="الحد الأدنى 6 أحرف" autoComplete="current-password" />
 
         {error ? <div className="alert error">{error}</div> : null}
 

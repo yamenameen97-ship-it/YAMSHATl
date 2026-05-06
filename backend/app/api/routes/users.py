@@ -10,8 +10,8 @@ from app.services.post_service import get_posts_by_username
 router = APIRouter()
 
 
-def _user_payload(user: User) -> dict:
-    return {
+def _user_payload(user: User, following: bool | None = None) -> dict:
+    payload = {
         'id': user.id,
         'name': user.username,
         'username': user.username,
@@ -24,6 +24,9 @@ def _user_payload(user: User) -> dict:
         'created_at': user.created_at.isoformat() if user.created_at else None,
         'last_login_at': user.last_login_at.isoformat() if user.last_login_at else None,
     }
+    if following is not None:
+        payload['following'] = following
+    return payload
 
 
 def _find_active_user_by_username(db: Session, username: str) -> User | None:
@@ -32,9 +35,12 @@ def _find_active_user_by_username(db: Session, username: str) -> User | None:
 
 @router.get('')
 def list_users(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    _ = current_user
     users = db.query(User).filter(User.is_active.is_(True)).order_by(User.created_at.desc()).all()
-    return [_user_payload(user) for user in users]
+    following_ids = {
+        follow.following_id
+        for follow in db.query(Follow).filter(Follow.follower_id == current_user.id).all()
+    }
+    return [_user_payload(user, following=user.id in following_ids) for user in users]
 
 
 @router.get('/me')

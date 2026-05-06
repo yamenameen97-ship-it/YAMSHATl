@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.core.admin_access import effective_role, permissions_for_user
 from app.core.dependencies import get_current_user, get_db
+from app.core.live_store import live_store
 from app.core.security import hash_password, verify_password
 from app.core.socket_server import sio
 from app.models.app_setting import AppSetting
@@ -49,6 +50,7 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
         'reports.export',
         'settings.manage',
         'notifications.manage',
+        'live.manage',
         'search.global',
     ],
     'moderator': [
@@ -65,6 +67,7 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
         'reports.view',
         'reports.export',
         'notifications.manage',
+        'live.manage',
         'search.global',
     ],
     'user': [],
@@ -113,6 +116,10 @@ class BroadcastPayload(BaseModel):
 
 class BulkDeletePayload(BaseModel):
     ids: list[int] = Field(default_factory=list)
+
+
+class LiveFeaturePayload(BaseModel):
+    featured: bool | None = None
 
 
 def _permissions_for(role: str | None) -> list[str]:
@@ -422,6 +429,7 @@ def get_overview(db: Session = Depends(get_db), current_user: User = Depends(get
 
     service_health = _service_health_snapshot(db)
     platform_links = _platform_links()
+    live_overview = live_store.admin_overview()
     admins_online = _room_members_count('admins')
     average_daily = round(sum(item['value'] for item in daily_activity) / max(len(daily_activity), 1), 1)
 
@@ -440,6 +448,11 @@ def get_overview(db: Session = Depends(get_db), current_user: User = Depends(get
             'level': 'success' if admins_online >= 0 else 'info',
             'title': 'التحديث اللحظي',
             'description': f'القنوات الحية نشطة، وعدد جلسات الأدمن المتصلة الآن: {admins_online}.',
+        },
+        {
+            'level': 'info' if live_overview['stats']['active_rooms'] else 'warning',
+            'title': 'البث المباشر',
+            'description': f"يوجد {live_overview['stats']['active_rooms']} بث نشط و{live_overview['stats']['current_viewers']} مشاهد حالياً.",
         },
     ]
 
@@ -468,6 +481,12 @@ def get_overview(db: Session = Depends(get_db), current_user: User = Depends(get
             'value': int(today_operations),
             'description': 'إجمالي منشورات وتعليقات ورسائل اليوم بشكل لحظي.',
         },
+        {
+            'key': 'live',
+            'label': 'بثوث مباشرة',
+            'value': int(live_overview['stats']['active_rooms']),
+            'description': 'عدد غرف البث النشطة المتاحة حالياً داخل المنصة.',
+        },
     ]
 
     return {
@@ -492,6 +511,7 @@ def get_overview(db: Session = Depends(get_db), current_user: User = Depends(get
             'comments_count': int(comments_count),
             'messages_count': int(messages_count),
             'daily_activity': daily_activity,
+            'live_overview': live_overview,
             'today_posts': int(today_posts),
             'today_comments': int(today_comments),
             'today_messages': int(today_messages),
@@ -854,6 +874,90 @@ def change_password(
     db.commit()
     _add_audit_log(db, current_user, 'password_changed', 'user', current_user.id, 'تم تغيير كلمة المرور للحساب الحالي.', {})
     return {'message': 'Password updated successfully'}
+
+
+@router.get('/live/overview')
+def get_live_admin_overview(current_user: User = Depends(get_current_user)):
+    _require_permission(current_user, 'live.manage')
+    overview = live_store.admin_overview()
+    rooms = overview['rooms']
+    summary_cards = [
+        {'key': 'active_rooms', 'label': 'الغرف النشطة', 'value': overview['stats']['active_rooms']},
+        {'key': 'featured_rooms', 'label': 'الغرف المميزة', 'value': overview['stats']['featured_rooms']},
+        {'key': 'current_viewers', 'label': 'المشاهدون الآن', 'value': overview['stats']['current_viewers']},
+        {'key': 'comments_count', 'label': 'تعليقات البث', 'value': overview['stats']['comments_count']},
+        {'key': 'hearts_count', 'label': 'القلوب', 'value': overview['stats']['hearts_count']},
+        {'key': 'top_peak_viewers', 'label': 'أعلى ذروة مشاهدة', 'value': overview['stats']['top_peak_viewers']},
+    ]
+    attention_queue = [
+        {
+            'key': room['id'],
+            'title': room['title'],
+            'description': (
+                f"{room['viewer_count']} مشاهد الآن • {room['comments_count']} تعليق • آخر نشاط "
+                f"{room['last_activity_at'] or room['created_at']}"
+            ),
+            'featured': room['featured'],
+            'has_pinned_comment': bool(room.get('pinned_comment')),
+        }
+        for room in rooms[:8]
+    ]
+    return {
+        'stats': overview['stats'],
+        'summary_cards': summary_cards,
+        'attention_queue': attention_queue,
+        'rooms': rooms,
+        'generated_at': datetime.utcnow().isoformat(),
+    }
+
+
+@router.post('/live/{room_id}/feature')
+def feature_live_room(
+    room_id: str,
+    payload: LiveFeaturePayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_permission(current_user, 'live.manage')
+    try:
+        room = live_store.toggle_featured(room_id, payload.featured)
+    except KeyError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Live room not found')
+    _add_audit_log(db, current_user, 'live_featured', 'live_room', room_id, 'تم تحديث حالة تمييز البث المباشر.', {'featured': room['featured']})
+    _emit_admin_event('admin:live_updated', {'room': room})
+    return room
+
+
+@router.post('/live/{room_id}/pin-latest')
+def pin_latest_live_comment(
+    room_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_permission(current_user, 'live.manage')
+    try:
+        room = live_store.pin_latest_comment(room_id)
+    except KeyError as exc:
+        detail = 'Live room not found' if 'Room' in str(exc) else 'No comments available to pin'
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
+    _add_audit_log(db, current_user, 'live_comment_pinned', 'live_room', room_id, 'تم تثبيت آخر تعليق داخل غرفة البث.', {'pinned_comment': room.get('pinned_comment')})
+    _emit_admin_event('admin:live_updated', {'room': room})
+    return room
+
+
+@router.post('/live/{room_id}/end')
+def end_live_room_admin(
+    room_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_permission(current_user, 'live.manage')
+    room = live_store.end_room(room_id)
+    if room is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Live room not found')
+    _add_audit_log(db, current_user, 'live_ended_admin', 'live_room', room_id, 'تم إنهاء البث المباشر من لوحة التحكم.', {})
+    _emit_admin_event('admin:live_updated', {'room': room})
+    return room
 
 
 @router.get('/notifications')

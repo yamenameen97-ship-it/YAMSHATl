@@ -59,18 +59,24 @@ def _authenticate_websocket_user(websocket: WebSocket, user_id: int, db: Session
 def get_messages(
     receiver: str,
     limit: int = Query(default=100, ge=1, le=200),
+    before_id: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     other_user = db.query(User).filter(User.username == receiver, User.is_active.is_(True)).first()
     if other_user is None:
         return []
-    messages = db.query(Message).filter(
+
+    query = db.query(Message).filter(
         or_(
             and_(Message.sender_id == current_user.id, Message.receiver_id == other_user.id),
             and_(Message.sender_id == other_user.id, Message.receiver_id == current_user.id),
         )
-    ).order_by(Message.created_at.asc()).limit(limit).all()
+    )
+    if before_id is not None:
+        query = query.filter(Message.id < before_id)
+
+    messages = list(reversed(query.order_by(Message.id.desc()).limit(limit).all()))
     return [_serialize_message(message, db) for message in messages]
 
 
@@ -154,12 +160,18 @@ def get_chat_threads(db: Session = Depends(get_db), current_user: User = Depends
         if peer is None or peer.username in seen:
             continue
         seen.add(peer.username)
+        unread_count = db.query(Message).filter(
+            Message.sender_id == peer.id,
+            Message.receiver_id == current_user.id,
+            Message.is_seen.is_(False),
+        ).count()
         result.append({
             'name': peer.username,
             'username': peer.username,
             'avatar': peer.avatar,
             'last_message': 'تم حذف الرسالة' if message.deleted_at else (message.content or ''),
             'created_at': message.created_at.isoformat() if message.created_at else None,
+            'unread_count': int(unread_count),
         })
     return result
 

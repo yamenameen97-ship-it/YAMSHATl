@@ -1,0 +1,1 @@
+import{j as s}from"./query-CqeYTS7a.js";function r({label:l,hint:e,className:n="",...a}){return s.jsxs("label",{className:`field ${n}`.trim(),children:[l?s.jsx("span",{className:"field-label",children:l}):null,s.jsx("input",{className:"input",...a}),e?s.jsx("span",{className:"field-hint",children:e}):null]})}export{r as I};

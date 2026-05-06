@@ -1,0 +1,1 @@
+import{r as o}from"./react-C5187tyX.js";function c(e,t=400){const[u,r]=o.useState(e);return o.useEffect(()=>{const n=window.setTimeout(()=>r(e),t);return()=>window.clearTimeout(n)},[e,t]),u}export{c as u};

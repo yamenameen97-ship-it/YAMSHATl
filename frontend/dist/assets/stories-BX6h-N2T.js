@@ -1,0 +1,1 @@
+import{A as o}from"./index-K8bIz5fa.js";const e=()=>o.get("/stories"),s=a=>{const t=new FormData;return t.append("file",a),o.post("/add_story",t,{headers:{"Content-Type":"multipart/form-data"}})};export{e as g,s as u};

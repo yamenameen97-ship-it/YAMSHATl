@@ -1,4 +1,4 @@
-const VERSION = 'yamshat-shell-v3';
+const VERSION = 'yamshat-shell-v4';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/admin.html', '/admin/', '/admin/login/'];
 
 self.addEventListener('install', (event) => {
@@ -14,6 +14,38 @@ self.addEventListener('activate', (event) => {
     caches.keys()
       .then((keys) => Promise.all(keys.filter((key) => key !== VERSION).map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('push', (event) => {
+  const payload = event.data ? event.data.json() : {};
+  const title = payload?.title || 'Yamshat';
+  const body = payload?.body || payload?.message || 'وصلك تحديث جديد.';
+  const path = payload?.path || payload?.data?.path || '/notifications';
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      tag: `yamshat:push:${payload?.id || Date.now()}`,
+      data: { path },
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetPath = event.notification?.data?.path || '/notifications';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const matched = clients.find((client) => 'focus' in client);
+      if (matched) {
+        matched.focus();
+        if ('navigate' in matched) return matched.navigate(targetPath);
+        return matched;
+      }
+      return self.clients.openWindow(targetPath);
+    })
   );
 });
 
@@ -57,7 +89,5 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
-  );
+  event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
 });

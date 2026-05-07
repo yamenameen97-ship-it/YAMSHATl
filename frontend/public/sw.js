@@ -61,8 +61,11 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          const cloned = response.clone();
-          caches.open(VERSION).then((cache) => cache.put('/index.html', cloned)).catch(() => null);
+          const contentType = response.headers.get('content-type') || '';
+          if (response.ok && contentType.includes('text/html')) {
+            const cloned = response.clone();
+            caches.open(VERSION).then((cache) => cache.put('/index.html', cloned)).catch(() => null);
+          }
           return response;
         })
         .catch(async () => {

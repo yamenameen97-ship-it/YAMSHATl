@@ -14,6 +14,16 @@ SMTP_PASSWORD = os.getenv('SMTP_PASSWORD') or os.getenv('EMAIL_PASSWORD')
 SMTP_FROM = os.getenv('SMTP_FROM') or os.getenv('EMAIL_ADDRESS') or SMTP_USERNAME
 SMTP_USE_TLS = os.getenv('SMTP_USE_TLS', 'true').lower() == 'true'
 
+RESEND_API_URL = 'https://api.resend.com/emails'
+RESEND_API_KEY = (os.getenv('RESEND_API_KEY') or '').strip()
+RESEND_FROM = (
+    os.getenv('RESEND_FROM')
+    or os.getenv('SMTP_FROM')
+    or os.getenv('EMAIL_ADDRESS')
+    or ''
+).strip()
+RESEND_REPLY_TO = (os.getenv('RESEND_REPLY_TO') or RESEND_FROM).strip()
+
 BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email'
 BREVO_API_KEY = (os.getenv('BREVO_API_KEY') or '').strip()
 BREVO_SENDER_EMAIL = (
@@ -26,6 +36,10 @@ BREVO_SENDER_NAME = (os.getenv('BREVO_SENDER_NAME') or APP_NAME).strip() or APP_
 BREVO_REPLY_TO = (os.getenv('BREVO_REPLY_TO') or BREVO_SENDER_EMAIL).strip()
 
 
+def resend_configured() -> bool:
+    return bool(RESEND_API_KEY and RESEND_FROM)
+
+
 def brevo_configured() -> bool:
     return bool(BREVO_API_KEY and BREVO_SENDER_EMAIL)
 
@@ -35,15 +49,44 @@ def smtp_credentials_configured() -> bool:
 
 
 def smtp_configured() -> bool:
-    return brevo_configured() or smtp_credentials_configured()
+    return resend_configured() or brevo_configured() or smtp_credentials_configured()
 
 
 def delivery_provider() -> str | None:
+    if resend_configured():
+        return 'resend'
     if brevo_configured():
         return 'brevo'
     if smtp_credentials_configured():
         return 'smtp'
     return None
+
+
+def send_email_via_resend(to_email: str, subject: str, body: str, html_body: str | None = None):
+    payload = {
+        'from': RESEND_FROM,
+        'to': [to_email],
+        'subject': subject,
+    }
+    if html_body:
+        payload['html'] = html_body
+    if body:
+        payload['text'] = body
+    if RESEND_REPLY_TO:
+        payload['reply_to'] = RESEND_REPLY_TO
+    if 'html' not in payload and 'text' not in payload:
+        raise RuntimeError('Email body is empty')
+
+    response = httpx.post(
+        RESEND_API_URL,
+        headers={
+            'Authorization': f'Bearer {RESEND_API_KEY}',
+            'Content-Type': 'application/json',
+        },
+        json=payload,
+        timeout=20,
+    )
+    response.raise_for_status()
 
 
 def send_email_via_brevo(to_email: str, subject: str, body: str, html_body: str | None = None):
@@ -111,6 +154,10 @@ def send_email_via_smtp(to_email: str, subject: str, body: str, html_body: str |
 
 
 def send_email(to_email: str, subject: str, body: str, html_body: str | None = None):
+    if resend_configured():
+        send_email_via_resend(to_email, subject, body, html_body)
+        return
+
     if brevo_configured():
         send_email_via_brevo(to_email, subject, body, html_body)
         return
@@ -120,7 +167,7 @@ def send_email(to_email: str, subject: str, body: str, html_body: str | None = N
         return
 
     raise RuntimeError(
-        'Email delivery is not configured. Set BREVO_API_KEY + BREVO_SENDER_EMAIL or SMTP_USERNAME/SMTP_PASSWORD/SMTP_FROM.'
+        'Email delivery is not configured. Set RESEND_API_KEY + RESEND_FROM, or BREVO_API_KEY + BREVO_SENDER_EMAIL, or SMTP_USERNAME/SMTP_PASSWORD/SMTP_FROM.'
     )
 
 

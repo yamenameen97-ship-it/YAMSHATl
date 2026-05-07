@@ -19,6 +19,8 @@ from app.core.dependencies import get_current_user
 from app.models.user import User
 from app.services.cloudinary_service import is_configured as cloudinary_is_configured
 from app.services.cloudinary_service import upload_file as cloudinary_upload_file
+from app.services.imagekit_service import is_configured as imagekit_is_configured
+from app.services.imagekit_service import upload_file as imagekit_upload_file
 
 router = APIRouter()
 
@@ -189,7 +191,15 @@ def save_upload(file: UploadFile) -> dict:
         'progress': 100,
     }
 
-    if cloudinary_is_configured():
+    if imagekit_is_configured():
+        try:
+            response['imagekit_url'] = imagekit_upload_file(str(path))
+            response['file_url'] = response['imagekit_url']
+            response['url'] = response['imagekit_url']
+            response['storage'] = 'imagekit'
+        except Exception as exc:
+            response['imagekit_error'] = str(exc)
+    elif cloudinary_is_configured():
         try:
             response['cloud_url'] = cloudinary_upload_file(str(path))
             response['file_url'] = response['cloud_url']
@@ -322,7 +332,15 @@ def complete_resumable_upload(session_id: str, current_user: User = Depends(get_
         },
     }
 
-    if cloudinary_is_configured():
+    if imagekit_is_configured():
+        try:
+            response['upload']['imagekit_url'] = imagekit_upload_file(str(final_path))
+            response['upload']['file_url'] = response['upload']['imagekit_url']
+            response['upload']['url'] = response['upload']['imagekit_url']
+            response['upload']['storage'] = 'imagekit'
+        except Exception as exc:
+            response['upload']['imagekit_error'] = str(exc)
+    elif cloudinary_is_configured():
         try:
             response['upload']['cloud_url'] = cloudinary_upload_file(str(final_path))
             response['upload']['file_url'] = response['upload']['cloud_url']

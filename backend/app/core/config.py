@@ -56,7 +56,7 @@ class Settings:
     BACKEND_ORIGIN: str = os.getenv('BACKEND_ORIGIN', '').strip()
     RENDER_EXTERNAL_URL: str = os.getenv('RENDER_EXTERNAL_URL', '').strip()
     RAILWAY_STATIC_URL: str = os.getenv('RAILWAY_STATIC_URL', '').strip()
-    CDN_BASE_URL: str = (os.getenv('CDN_BASE_URL') or os.getenv('BUNNY_CDN_URL') or os.getenv('CLOUDFLARE_CDN_URL') or '').strip().rstrip('/')
+    CDN_BASE_URL: str = (os.getenv('CDN_BASE_URL') or os.getenv('IMAGEKIT_URL_ENDPOINT') or os.getenv('BUNNY_CDN_URL') or os.getenv('CLOUDFLARE_CDN_URL') or '').strip().rstrip('/')
     ALLOWED_UPLOAD_EXTENSIONS_RAW: str = os.getenv(
         'ALLOWED_UPLOAD_EXTENSIONS',
         'png,jpg,jpeg,webp,gif,mp4,webm,mov',
@@ -88,6 +88,10 @@ class Settings:
     CLOUDINARY_API_KEY: str = (os.getenv('CLOUDINARY_API_KEY') or os.getenv('CLOUD_API_KEY') or '').strip()
     CLOUDINARY_API_SECRET: str = (os.getenv('CLOUDINARY_API_SECRET') or os.getenv('CLOUD_API_SECRET') or '').strip()
     CLOUDINARY_FOLDER: str = (os.getenv('CLOUDINARY_FOLDER') or 'yamshat').strip()
+    IMAGEKIT_PUBLIC_KEY: str = (os.getenv('IMAGEKIT_PUBLIC_KEY') or '').strip()
+    IMAGEKIT_PRIVATE_KEY: str = (os.getenv('IMAGEKIT_PRIVATE_KEY') or '').strip()
+    IMAGEKIT_URL_ENDPOINT: str = (os.getenv('IMAGEKIT_URL_ENDPOINT') or '').strip().rstrip('/')
+    IMAGEKIT_FOLDER: str = (os.getenv('IMAGEKIT_FOLDER') or 'yamshat').strip()
     PUSH_PROVIDER: str = (os.getenv('PUSH_PROVIDER') or 'firebase').strip().lower()
     ANALYTICS_ENABLED: bool = env_bool('ANALYTICS_ENABLED', True)
     ANALYTICS_PROVIDER: str = (os.getenv('ANALYTICS_PROVIDER') or 'custom-endpoint').strip().lower()
@@ -159,6 +163,10 @@ class Settings:
     @property
     def cloudinary_configured(self) -> bool:
         return bool(self.CLOUDINARY_CLOUD_NAME and self.CLOUDINARY_API_KEY and self.CLOUDINARY_API_SECRET)
+
+    @property
+    def imagekit_configured(self) -> bool:
+        return bool(self.IMAGEKIT_PRIVATE_KEY and self.IMAGEKIT_URL_ENDPOINT)
 
     @property
     def resumable_upload_max_size_bytes(self) -> int:

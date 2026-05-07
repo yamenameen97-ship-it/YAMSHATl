@@ -1,0 +1,1 @@
+import{n as e}from"./motion-DHEHFET6.js";var t=e();function n({label:e,hint:n,className:r=``,...i}){return(0,t.jsxs)(`label`,{className:`field ${r}`.trim(),children:[e?(0,t.jsx)(`span`,{className:`field-label`,children:e}):null,(0,t.jsx)(`input`,{className:`input`,...i}),n?(0,t.jsx)(`span`,{className:`field-hint`,children:n}):null]})}export{n as t};

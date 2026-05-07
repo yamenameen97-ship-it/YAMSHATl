@@ -60,9 +60,9 @@ export const BACKEND_ORIGIN = trim(
     apiToOrigin(queryApi) ||
     runtimeBackendOrigin ||
     envBackendOrigin ||
-    inferredBackendOrigin ||
     safeStoredBackend ||
     apiToOrigin(safeStoredApi) ||
+    inferredBackendOrigin ||
     window.location.origin
 );
 
@@ -70,8 +70,8 @@ export const API_BASE = toApiBase(
   queryApi ||
     window.APP_API_BASE ||
     envApi ||
-    (BACKEND_ORIGIN ? `${BACKEND_ORIGIN}/api` : `${window.location.origin}/api`) ||
-    safeStoredApi
+    safeStoredApi ||
+    (BACKEND_ORIGIN ? `${BACKEND_ORIGIN}/api` : `${window.location.origin}/api`)
 );
 
 export const SOCKET_URL = trim(
@@ -80,8 +80,8 @@ export const SOCKET_URL = trim(
     runtimeBackendOrigin ||
     envSocketUrl ||
     window.YAMSHAT_SOCKET_URL ||
-    BACKEND_ORIGIN ||
     safeStoredBackend ||
+    BACKEND_ORIGIN ||
     window.location.origin
 );
 

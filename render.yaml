@@ -33,20 +33,34 @@ services:
         value: 'false'
       - key: DB_BOOTSTRAP_ON_START
         value: 'true'
-      - key: SMTP_HOST
-        value: smtp.gmail.com
-      - key: SMTP_PORT
-        value: '587'
-      - key: SMTP_USERNAME
+      - key: RESEND_API_KEY
         sync: false
+      - key: RESEND_FROM
+        sync: false
+      - key: RESEND_REPLY_TO
+        sync: false
+      - key: SMTP_HOST
+        value: smtp.resend.com
+      - key: SMTP_PORT
+        value: '465'
+      - key: SMTP_USERNAME
+        value: resend
       - key: SMTP_PASSWORD
         sync: false
       - key: SMTP_FROM
         sync: false
       - key: SMTP_USE_TLS
         value: 'true'
-      - key: FIREBASE_CREDENTIALS_PATH
-        value: mobile/app/google-services.json
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: IMAGEKIT_PUBLIC_KEY
+        sync: false
+      - key: IMAGEKIT_PRIVATE_KEY
+        sync: false
+      - key: IMAGEKIT_URL_ENDPOINT
+        sync: false
+      - key: IMAGEKIT_FOLDER
+        value: /yamshat
       - key: LIVEKIT_URL
         sync: false
       - key: LIVEKIT_API_KEY

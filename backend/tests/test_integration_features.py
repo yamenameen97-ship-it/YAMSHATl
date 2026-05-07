@@ -50,7 +50,7 @@ def test_resumable_upload_flow(client, tmp_path, monkeypatch):
         json={
             'filename': 'demo.png',
             'content_type': 'image/png',
-            'total_size': 8,
+            'total_size': 68,
             'total_chunks': 2,
         },
     )
@@ -58,8 +58,17 @@ def test_resumable_upload_flow(client, tmp_path, monkeypatch):
     session = start.json()
     session_id = session['session_id']
 
-    first = client.put(f'/api/upload/resumable/{session_id}/chunk/0', content=b'1234')
-    second = client.put(f'/api/upload/resumable/{session_id}/chunk/1', content=b'5678')
+    png_bytes = (
+        b'\x89PNG\r\n\x1a\n'
+        b'\x00\x00\x00\rIHDR'
+        b'\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00'
+        b'\x90wS\xde'
+        b'\x00\x00\x00\x0bIDATx\x9cc```\x00\x00\x00\x04\x00\x01'
+        b'\x0b\xe7\x02\x9d'
+        b'\x00\x00\x00\x00IEND\xaeB`\x82'
+    )
+    first = client.put(f'/api/upload/resumable/{session_id}/chunk/0', content=png_bytes[:34])
+    second = client.put(f'/api/upload/resumable/{session_id}/chunk/1', content=png_bytes[34:])
     assert first.status_code == 200
     assert second.status_code == 200
 
@@ -74,4 +83,4 @@ def test_resumable_upload_flow(client, tmp_path, monkeypatch):
     assert payload['resume_supported'] is True
     final_path = Path(payload['local_path'])
     assert final_path.exists()
-    assert final_path.read_bytes() == b'12345678'
+    assert final_path.read_bytes() == png_bytes

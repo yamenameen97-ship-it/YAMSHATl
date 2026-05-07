@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+import hashlib
+import time
 
 import bleach
 import socketio
@@ -8,8 +10,16 @@ from sqlalchemy import func
 
 from app.core.admin_access import effective_role, is_primary_admin_user
 from app.core.config import settings
+from app.core.content_sanitizer import sanitize_text
 from app.core.live_store import live_store
-from app.core.rate_limit import allow_socket_message
+from app.core.rate_limit import (
+    allow_socket_message,
+    block_socket_subject,
+    is_socket_subject_blocked,
+    register_socket_nonce,
+    score_socket_spam,
+)
+from app.core.request_security import get_client_ip
 from app.core.security import ACCESS_TOKEN_TYPE, TokenError, decode_token
 from app.db.session import SessionLocal
 from app.models.comment import Comment
@@ -47,12 +57,23 @@ async def _get_session_user(sid: str) -> dict | None:
     return None
 
 
-async def _save_user_session(sid: str, user: User, live_room_id: str | None = None) -> dict:
+async def _save_user_session(
+    sid: str,
+    user: User,
+    live_room_id: str | None = None,
+    access_exp: int | float | None = None,
+    client_ip: str | None = None,
+    token_jti: str | None = None,
+) -> dict:
     session = {
         'user_id': user.id,
         'username': user.username,
         'role': effective_role(user),
         'live_room_id': live_room_id,
+        'access_exp': float(access_exp) if access_exp else None,
+        'client_ip': str(client_ip or '').strip()[:120] or None,
+        'token_jti': str(token_jti or '').strip()[:120] or None,
+        'auth_checked_at': time.time(),
     }
     await sio.save_session(sid, session)
     await sio.enter_room(sid, f'user:{user.id}')
@@ -62,9 +83,86 @@ async def _save_user_session(sid: str, user: User, live_room_id: str | None = No
     return session
 
 
-async def _resolve_authenticated_user(sid: str, token: str | None = None) -> tuple[dict | None, User | None]:
+def _session_access_expired(session: dict | None) -> bool:
+    if not session:
+        return False
+    access_exp = session.get('access_exp')
+    if not access_exp:
+        return False
+    try:
+        return float(access_exp) <= datetime.utcnow().timestamp()
+    except (TypeError, ValueError):
+        return False
+
+
+async def _emit_auth_expired(sid: str, detail: str = 'Session expired') -> None:
+    await sio.emit('auth_expired', {'detail': detail}, room=sid)
+    await sio.disconnect(sid)
+
+
+def _event_signature(event_name: str, nonce: str, timestamp: int | str, token_jti: str) -> str:
+    value = f'{event_name}|{nonce}|{timestamp}|{token_jti}'
+    hashed = 0x811C9DC5
+    for char in value:
+        hashed ^= ord(char)
+        hashed = (hashed * 0x01000193) & 0xFFFFFFFF
+    return f'{hashed:08x}'
+
+
+def _event_subjects(session: dict | None, user: User, room_id: str | None = None) -> list[str]:
+    subjects = [f'user:{user.id}', f'account:{user.username}']
+    client_ip = str((session or {}).get('client_ip') or '').strip()
+    if client_ip:
+        subjects.append(f'ip:{client_ip}')
+    if room_id:
+        subjects.append(f'room:{room_id}')
+    return subjects
+
+
+async def _enforce_realtime_security(sid: str, event_name: str, data: dict | None, session: dict | None, user: User, room_id: str | None = None) -> bool:
+    subjects = _event_subjects(session, user, room_id=room_id)
+    if is_socket_subject_blocked(*subjects):
+        await sio.emit('realtime_blocked', {'detail': 'Realtime access temporarily blocked'}, room=sid)
+        return False
+
+    token_jti = str((session or {}).get('token_jti') or '').strip()
+    timestamp = int((data or {}).get('_ts') or 0)
+    nonce = str((data or {}).get('_nonce') or '').strip()[:128]
+    signature = str((data or {}).get('_sig') or '').strip()[:64]
+    if token_jti:
+        now_ms = int(time.time() * 1000)
+        replay_window_ms = max(int(settings.SOCKET_REPLAY_WINDOW_SECONDS), 1) * 1000
+        if not timestamp or abs(now_ms - timestamp) > replay_window_ms:
+            block_socket_subject(*subjects)
+            await sio.emit('chat_error', {'detail': 'Invalid realtime timestamp'}, room=sid)
+            return False
+        if not nonce or not register_socket_nonce(f'{user.id}:{event_name}', nonce, settings.SOCKET_NONCE_TTL_SECONDS):
+            block_socket_subject(*subjects)
+            await sio.emit('chat_error', {'detail': 'Replay attack detected'}, room=sid)
+            return False
+        if signature != _event_signature(event_name, nonce, timestamp, token_jti):
+            block_socket_subject(*subjects)
+            await sio.emit('chat_error', {'detail': 'Invalid realtime signature'}, room=sid)
+            return False
+    return True
+
+
+async def _enforce_message_spam_policy(sid: str, session: dict | None, user: User, scope: str, content: str, room_id: str | None = None) -> bool:
+    subjects = _event_subjects(session, user, room_id=room_id)
+    result = score_socket_spam(f'{scope}:{user.id}:{room_id or "global"}', content)
+    if result.get('blocked'):
+        block_socket_subject(*subjects)
+        await sio.emit('chat_error', {'detail': 'Message blocked as spam', 'reasons': result.get('reasons') or []}, room=sid)
+        return False
+    return True
+
+
+async def _resolve_authenticated_user(sid: str, token: str | None = None, *, client_ip: str | None = None) -> tuple[dict | None, User | None]:
     session = await sio.get_session(sid)
     if session and session.get('user_id'):
+        if _session_access_expired(session):
+            await _emit_auth_expired(sid)
+            return None, None
         db = SessionLocal()
         try:
             user = db.query(User).filter(User.id == int(session['user_id']), User.is_active.is_(True)).first()
@@ -89,7 +187,13 @@ async def _resolve_authenticated_user(sid: str, token: str | None = None) -> tup
         user = db.query(User).filter(User.id == int(user_id), User.is_active.is_(True)).first()
         if user is None:
             return None, None
-        session = await _save_user_session(sid, user)
+        session = await _save_user_session(
+            sid,
+            user,
+            access_exp=payload.get('exp'),
+            client_ip=client_ip,
+            token_jti=payload.get('jti'),
+        )
         return session, user
     finally:
         db.close()
@@ -114,10 +218,12 @@ async def _emit_pending_delivery_receipts(user: User, peer: str | None = None) -
 async def connect(sid, environ, auth):
     token = (auth or {}).get('token') if isinstance(auth, dict) else None
     if token:
-        _, user = await _resolve_authenticated_user(sid, token)
-        if user is not None:
-            await _emit_pending_delivery_receipts(user)
-            await sio.emit('presence_update', {'user': user.username, 'is_online': True, 'last_seen': user.last_login_at.isoformat() if user.last_login_at else None})
+        client_ip = get_client_ip(environ or {})
+        _, user = await _resolve_authenticated_user(sid, token, client_ip=client_ip)
+        if user is None:
+            return False
+        await _emit_pending_delivery_receipts(user)
+        await sio.emit('presence_update', {'user': user.username, 'is_online': True, 'last_seen': user.last_login_at.isoformat() if user.last_login_at else None})
     return True
 
 
@@ -152,14 +258,21 @@ async def disconnect(sid):
 @sio.on('register_user')
 async def register_user_event(sid, data):
     token = (data or {}).get('token')
-    session, user = await _resolve_authenticated_user(sid, token)
+    session, user = await _resolve_authenticated_user(sid, token, client_ip=get_client_ip(sio.get_environ(sid) or {}))
     if user is None:
         username = (data or {}).get('user')
         if username:
             await sio.save_session(sid, {'username': username, 'user_id': None, 'role': 'guest', 'live_room_id': None})
             await sio.enter_room(sid, f'username:{username}')
         return
-    await _save_user_session(sid, user, live_room_id=(session or {}).get('live_room_id'))
+    await _save_user_session(
+        sid,
+        user,
+        live_room_id=(session or {}).get('live_room_id'),
+        access_exp=(session or {}).get('access_exp'),
+        client_ip=(session or {}).get('client_ip'),
+        token_jti=(session or {}).get('token_jti'),
+    )
     await _emit_pending_delivery_receipts(user)
     await sio.emit('presence_update', {'user': user.username, 'is_online': True, 'last_seen': user.last_login_at.isoformat() if user.last_login_at else None})
 
@@ -167,9 +280,11 @@ async def register_user_event(sid, data):
 @sio.on('join_live')
 async def join_live_event(sid, data):
     token = (data or {}).get('token')
-    session, user = await _resolve_authenticated_user(sid, token)
+    session, user = await _resolve_authenticated_user(sid, token, client_ip=get_client_ip(sio.get_environ(sid) or {}))
     room_id = str((data or {}).get('room_id') or '')
     if user is None or not room_id:
+        return
+    if not await _enforce_realtime_security(sid, 'join_live', data or {}, session, user, room_id=room_id):
         return
     role = (data or {}).get('role') or 'viewer'
     await sio.enter_room(sid, room_id)
@@ -181,14 +296,31 @@ async def join_live_event(sid, data):
         platform=str((data or {}).get('platform') or 'web'),
         device_type=str((data or {}).get('device_type') or 'browser'),
     )
-    await _save_user_session(sid, user, live_room_id=room_id)
+    await _save_user_session(
+        sid,
+        user,
+        live_room_id=room_id,
+        access_exp=(session or {}).get('access_exp'),
+        client_ip=(session or {}).get('client_ip'),
+        token_jti=(session or {}).get('token_jti'),
+    )
     await sio.emit('room_stats', {'room_id': room_id, 'viewer_count': room['viewer_count'], 'hearts_count': room['hearts_count']}, room=room_id)
 
 
 @sio.on('leave_live')
 async def leave_live_event(sid, data):
+    session = await sio.get_session(sid)
+    user = None
+    if session and session.get('user_id'):
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == int(session['user_id']), User.is_active.is_(True)).first()
+        finally:
+            db.close()
     room_id = str((data or {}).get('room_id') or '')
     if not room_id:
+        return
+    if user is not None and not await _enforce_realtime_security(sid, 'leave_live', data or {}, session, user, room_id=room_id):
         return
     await sio.leave_room(sid, room_id)
     room = live_store.deactivate_presence(room_id, sid)
@@ -199,14 +331,18 @@ async def leave_live_event(sid, data):
 @sio.on('send_comment')
 async def send_comment_event(sid, data):
     token = (data or {}).get('token')
-    _, user = await _resolve_authenticated_user(sid, token)
+    session, user = await _resolve_authenticated_user(sid, token, client_ip=get_client_ip(sio.get_environ(sid) or {}))
     room_id = str((data or {}).get('room_id') or '')
     raw_text = str((data or {}).get('text') or '')
     if user is None or not room_id or not raw_text.strip():
         return
-    if not allow_socket_message(f'live-comment:{user.id}'):
+    if not await _enforce_realtime_security(sid, 'send_comment', data or {}, session, user, room_id=room_id):
         return
-    clean_text = bleach.clean(raw_text.strip())
+    if not await _enforce_message_spam_policy(sid, session, user, 'live-comment', raw_text, room_id=room_id):
+        return
+    if not allow_socket_message(f'live-comment:{user.id}:{room_id}', burst_limit=8, window_seconds=12):
+        return
+    clean_text = sanitize_text(raw_text.strip(), max_length=600)
     comment = live_store.add_comment(room_id, user.username, clean_text)
     await sio.emit('new_comment', comment, room=room_id)
 
@@ -214,9 +350,13 @@ async def send_comment_event(sid, data):
 @sio.on('send_heart')
 async def send_heart_event(sid, data):
     token = (data or {}).get('token')
-    _, user = await _resolve_authenticated_user(sid, token)
+    session, user = await _resolve_authenticated_user(sid, token, client_ip=get_client_ip(sio.get_environ(sid) or {}))
     room_id = str((data or {}).get('room_id') or '')
     if user is None or not room_id:
+        return
+    if not await _enforce_realtime_security(sid, 'send_heart', data or {}, session, user, room_id=room_id):
+        return
+    if not allow_socket_message(f'live-heart:{user.id}:{room_id}', min_interval_seconds=0.6, burst_limit=10, window_seconds=12):
         return
     room = live_store.add_heart(room_id)
     await sio.emit('new_heart', {'count': room['hearts_count']}, room=room_id)
@@ -226,9 +366,18 @@ async def send_heart_event(sid, data):
 @sio.on('chat_typing')
 async def chat_typing_event(sid, data):
     token = (data or {}).get('token')
-    _, user = await _resolve_authenticated_user(sid, token)
+    session, user = await _resolve_authenticated_user(sid, token, client_ip=get_client_ip(sio.get_environ(sid) or {}))
     receiver = (data or {}).get('receiver')
     if user is None or not receiver:
+        return
+    if not await _enforce_realtime_security(sid, 'chat_typing', data or {}, session, user, room_id=str(receiver)):
+        return
+    if not allow_socket_message(
+        f'chat-typing:{user.id}:{receiver}',
+        min_interval_seconds=settings.SOCKET_TYPING_MIN_INTERVAL_SECONDS,
+        burst_limit=24,
+        window_seconds=12,
+    ):
         return
     await sio.emit(
         'typing_update',
@@ -244,9 +393,11 @@ async def chat_typing_event(sid, data):
 @sio.on('join_chat')
 async def join_chat_event(sid, data):
     token = (data or {}).get('token')
-    _, user = await _resolve_authenticated_user(sid, token)
+    session, user = await _resolve_authenticated_user(sid, token, client_ip=get_client_ip(sio.get_environ(sid) or {}))
     peer = (data or {}).get('peer')
     if user is None or not peer:
+        return
+    if not await _enforce_realtime_security(sid, 'join_chat', data or {}, session, user, room_id=str(peer)):
         return
     room_name = ':'.join(sorted([user.username, peer]))
     await sio.enter_room(sid, f'chat:{room_name}')
@@ -258,8 +409,17 @@ async def join_chat_event(sid, data):
 async def leave_chat_event(sid, data):
     session = await sio.get_session(sid)
     peer = (data or {}).get('peer')
+    user = None
+    if session and session.get('user_id'):
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == int(session['user_id']), User.is_active.is_(True)).first()
+        finally:
+            db.close()
     username = session.get('username') if session else None
     if not username or not peer:
+        return
+    if user is not None and not await _enforce_realtime_security(sid, 'leave_chat', data or {}, session, user, room_id=str(peer)):
         return
     room_name = ':'.join(sorted([username, peer]))
     await sio.leave_room(sid, f'chat:{room_name}')
@@ -268,9 +428,11 @@ async def leave_chat_event(sid, data):
 @sio.on('sync_chat_state')
 async def sync_chat_state_event(sid, data):
     token = (data or {}).get('token')
-    _, user = await _resolve_authenticated_user(sid, token)
+    session, user = await _resolve_authenticated_user(sid, token, client_ip=get_client_ip(sio.get_environ(sid) or {}))
     peer = (data or {}).get('peer')
     if user is None:
+        return
+    if not await _enforce_realtime_security(sid, 'sync_chat_state', data or {}, session, user, room_id=str(peer or '')):
         return
     await _emit_pending_delivery_receipts(user, peer=peer)
 
@@ -278,7 +440,7 @@ async def sync_chat_state_event(sid, data):
 @sio.on('chat_message')
 async def chat_message_event(sid, data):
     token = (data or {}).get('token')
-    _, user = await _resolve_authenticated_user(sid, token)
+    session, user = await _resolve_authenticated_user(sid, token, client_ip=get_client_ip(sio.get_environ(sid) or {}))
     receiver_username = str((data or {}).get('receiver') or '').strip()
     raw_message = str((data or {}).get('message') or '').strip()
     media_url = str((data or {}).get('media_url') or '').strip()
@@ -286,7 +448,11 @@ async def chat_message_event(sid, data):
     client_id = str((data or {}).get('client_id') or '').strip() or None
     if user is None or not receiver_username or (not raw_message and not media_url):
         return
-    if not allow_socket_message(f'socket-chat:{user.id}'):
+    if not await _enforce_realtime_security(sid, 'chat_message', data or {}, session, user, room_id=receiver_username):
+        return
+    if raw_message and not await _enforce_message_spam_policy(sid, session, user, 'chat-message', raw_message, room_id=receiver_username):
+        return
+    if not allow_socket_message(f'socket-chat:{user.id}:{receiver_username}', burst_limit=10, window_seconds=15):
         await sio.emit('chat_error', {'detail': 'You are sending messages too quickly'}, room=sid)
         return
 
@@ -307,7 +473,7 @@ async def chat_message_event(sid, data):
                 sender_id=user.id,
                 receiver_id=receiver.id,
                 client_id=client_id,
-                content=bleach.clean(raw_message),
+                content=sanitize_text(raw_message, max_length=2000),
                 media_url=media_url or None,
                 message_type=message_type,
                 is_delivered=delivered_now,
@@ -339,9 +505,11 @@ async def chat_message_event(sid, data):
 @sio.on('like_post')
 async def like_post_event(sid, data):
     token = (data or {}).get('token')
-    _, user = await _resolve_authenticated_user(sid, token)
+    session, user = await _resolve_authenticated_user(sid, token, client_ip=get_client_ip(sio.get_environ(sid) or {}))
     post_id = (data or {}).get('post_id')
     if user is None or not post_id:
+        return
+    if not await _enforce_realtime_security(sid, 'like_post', data or {}, session, user, room_id=str(post_id)):
         return
     db = SessionLocal()
     try:
@@ -363,16 +531,20 @@ async def like_post_event(sid, data):
 @sio.on('add_comment')
 async def add_comment_event(sid, data):
     token = (data or {}).get('token')
-    _, user = await _resolve_authenticated_user(sid, token)
+    session, user = await _resolve_authenticated_user(sid, token, client_ip=get_client_ip(sio.get_environ(sid) or {}))
     post_id = (data or {}).get('post_id')
     text = str((data or {}).get('text') or '').strip()
     if user is None or not post_id or not text:
         return
-    if not allow_socket_message(f'post-comment:{user.id}'):
+    if not await _enforce_realtime_security(sid, 'add_comment', data or {}, session, user, room_id=str(post_id)):
+        return
+    if not await _enforce_message_spam_policy(sid, session, user, 'post-comment', text, room_id=str(post_id)):
+        return
+    if not allow_socket_message(f'post-comment:{user.id}:{post_id}', burst_limit=8, window_seconds=15):
         return
     db = SessionLocal()
     try:
-        comment = Comment(user_id=user.id, post_id=int(post_id), content=bleach.clean(text))
+        comment = Comment(user_id=user.id, post_id=int(post_id), content=sanitize_text(text, max_length=600))
         db.add(comment)
         db.commit()
         db.refresh(comment)
@@ -394,9 +566,13 @@ async def add_comment_event(sid, data):
 @sio.on('follow_user')
 async def follow_user_event(sid, data):
     token = (data or {}).get('token')
-    _, user = await _resolve_authenticated_user(sid, token)
+    session, user = await _resolve_authenticated_user(sid, token, client_ip=get_client_ip(sio.get_environ(sid) or {}))
     target_username = str((data or {}).get('target_username') or '').strip()
     if user is None or not target_username or target_username == user.username:
+        return
+    if not await _enforce_realtime_security(sid, 'follow_user', data or {}, session, user, room_id=target_username):
+        return
+    if not allow_socket_message(f'follow-user:{user.id}:{target_username}', min_interval_seconds=1.2, burst_limit=4, window_seconds=20):
         return
     db = SessionLocal()
     try:

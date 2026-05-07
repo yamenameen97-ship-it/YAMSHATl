@@ -1,3 +1,4 @@
+import re
 from urllib.parse import urlparse
 
 from fastapi import Request
@@ -16,8 +17,14 @@ def _request_origin(request: Request) -> str:
 def _allowed_origins(request: Request) -> set[str]:
     origins = {origin for origin in settings.cors_origins if origin}
     origins.add(_request_origin(request))
-    if settings.BACKEND_ORIGIN:
-        origins.add(settings.BACKEND_ORIGIN)
+    for candidate in [
+        settings.FRONTEND_ORIGIN,
+        settings.BACKEND_ORIGIN,
+        settings.RENDER_EXTERNAL_URL,
+        settings.RAILWAY_STATIC_URL,
+    ]:
+        if candidate:
+            origins.add(candidate)
     return origins
 
 
@@ -28,12 +35,25 @@ def _normalize_origin(value: str) -> str:
     return f'{parsed.scheme}://{parsed.netloc}'
 
 
+def _origin_matches_regex(candidate: str) -> bool:
+    normalized = _normalize_origin(candidate)
+    pattern = settings.cors_origin_regex
+    if not normalized or not pattern:
+        return False
+    try:
+        return re.match(pattern, normalized) is not None
+    except re.error:
+        return False
+
+
 def _is_allowed_origin(candidate: str, request: Request) -> bool:
     allowed = _allowed_origins(request)
     if '*' in allowed:
         return True
     normalized = _normalize_origin(candidate)
-    return bool(normalized and normalized in allowed)
+    if not normalized:
+        return False
+    return normalized in allowed or _origin_matches_regex(normalized)
 
 
 def _content_security_policy(request: Request) -> str:
@@ -51,7 +71,7 @@ def _content_security_policy(request: Request) -> str:
         "img-src 'self' data: blob: https:",
         f"connect-src {connect_value}",
         "media-src 'self' data: blob: https:",
-        "script-src 'self' 'unsafe-inline'",
+        "script-src 'self'",
         "style-src 'self' 'unsafe-inline'",
         "font-src 'self' data: https:",
         "object-src 'none'",

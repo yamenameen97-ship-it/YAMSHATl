@@ -4,6 +4,8 @@ import json
 import shutil
 import subprocess
 import uuid
+
+import httpx
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
@@ -12,6 +14,7 @@ from fastapi import APIRouter, Body, Depends, File, HTTPException, Request, Uplo
 from werkzeug.utils import secure_filename
 
 from app.core.config import settings
+from app.core.file_security import validate_upload_bytes
 from app.core.dependencies import get_current_user
 from app.models.user import User
 from app.services.cloudinary_service import is_configured as cloudinary_is_configured
@@ -43,26 +46,69 @@ def _public_upload_url(relative_path: str) -> str:
     return f'/{cleaned}'
 
 
+
+
+def _external_scan_file(path: Path) -> dict | None:
+    if not settings.EXTERNAL_SCAN_URL:
+        return None
+    headers = {}
+    if settings.EXTERNAL_SCAN_API_KEY:
+        headers['Authorization'] = f'Bearer {settings.EXTERNAL_SCAN_API_KEY}'
+    try:
+        with path.open('rb') as file_handle:
+            response = httpx.post(
+                settings.EXTERNAL_SCAN_URL,
+                files={'file': (path.name, file_handle, 'application/octet-stream')},
+                headers=headers,
+                timeout=60,
+            )
+        payload = response.json() if 'application/json' in response.headers.get('content-type', '') else {}
+        infected = bool(payload.get('infected') or payload.get('malicious') or payload.get('blocked'))
+        return {
+            'status': 'infected' if infected else ('clean' if response.is_success else 'error'),
+            'engine': 'external',
+            'infected': infected,
+            'detail': str(payload or response.text)[:500] if payload or response.text else None,
+        }
+    except Exception as exc:  # pragma: no cover - network dependent
+        return {'status': 'error', 'engine': 'external', 'infected': False, 'detail': str(exc)[:500]}
+
+
+def _ensure_upload_allowed(path: Path, filename: str, declared_content_type: str | None) -> dict:
+    data = path.read_bytes()[:512]
+    validation = validate_upload_bytes(filename, declared_content_type, data)
+    scan = _scan_file(path)
+    if scan.get('infected'):
+        path.unlink(missing_ok=True)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Malware detected in uploaded file')
+    if settings.UPLOAD_SCAN_STRATEGY == 'strict' and scan.get('status') not in {'clean'}:
+        path.unlink(missing_ok=True)
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail='Upload scanning unavailable')
+    return {'mime': validation, 'scan': scan}
+
 def _scan_file(path: Path) -> dict:
     strategy = settings.UPLOAD_SCAN_STRATEGY
     if strategy == 'disabled':
         return {'status': 'skipped', 'engine': None, 'infected': False}
     scanner = shutil.which('clamscan')
-    if not scanner:
-        return {'status': 'unavailable', 'engine': 'clamav', 'infected': False}
-    try:
-        result = subprocess.run([scanner, '--no-summary', str(path)], capture_output=True, text=True, timeout=60, check=False)
-        infected = result.returncode == 1
-        clean = result.returncode == 0
-        output = (result.stdout or result.stderr or '').strip()
-        return {
-            'status': 'infected' if infected else ('clean' if clean else 'error'),
-            'engine': 'clamav',
-            'infected': infected,
-            'detail': output[:500] if output else None,
-        }
-    except Exception as exc:  # pragma: no cover - environment dependent
-        return {'status': 'error', 'engine': 'clamav', 'infected': False, 'detail': str(exc)[:500]}
+    if scanner:
+        try:
+            result = subprocess.run([scanner, '--no-summary', str(path)], capture_output=True, text=True, timeout=60, check=False)
+            infected = result.returncode == 1
+            clean = result.returncode == 0
+            output = (result.stdout or result.stderr or '').strip()
+            return {
+                'status': 'infected' if infected else ('clean' if clean else 'error'),
+                'engine': 'clamav',
+                'infected': infected,
+                'detail': output[:500] if output else None,
+            }
+        except Exception as exc:  # pragma: no cover - environment dependent
+            return {'status': 'error', 'engine': 'clamav', 'infected': False, 'detail': str(exc)[:500]}
+    external_result = _external_scan_file(path)
+    if external_result is not None:
+        return external_result
+    return {'status': 'unavailable', 'engine': 'clamav', 'infected': False}
 
 
 def _cache_control_for_extension(extension: str) -> str:
@@ -128,7 +174,7 @@ def save_upload(file: UploadFile) -> dict:
         shutil.copyfileobj(file.file, buffer)
 
     relative = str(path).replace('\\', '/')
-    scan = _scan_file(path)
+    verdict = _ensure_upload_allowed(path, safe_name, file.content_type)
     response = {
         'filename': path.name,
         'local_path': relative,
@@ -136,7 +182,8 @@ def save_upload(file: UploadFile) -> dict:
         'url': _public_upload_url(relative),
         'storage': 'local',
         'size_bytes': path.stat().st_size,
-        'scan': scan,
+        'scan': verdict['scan'],
+        'mime_verification': verdict['mime'],
         'cdn': _cdn_policy(path),
         'resume_supported': True,
         'progress': 100,
@@ -257,6 +304,7 @@ def complete_resumable_upload(session_id: str, current_user: User = Depends(get_
     meta['final_path'] = str(final_path).replace('\\', '/')
     _write_meta(meta_path, meta)
 
+    verdict = _ensure_upload_allowed(final_path, original_name, meta.get('content_type'))
     response = {
         'session': _serialize_resumable_meta(meta),
         'upload': {
@@ -266,7 +314,8 @@ def complete_resumable_upload(session_id: str, current_user: User = Depends(get_
             'url': _public_upload_url(str(final_path).replace('\\', '/')),
             'storage': 'local',
             'size_bytes': final_path.stat().st_size,
-            'scan': _scan_file(final_path),
+            'scan': verdict['scan'],
+            'mime_verification': verdict['mime'],
             'cdn': _cdn_policy(final_path),
             'resume_supported': True,
             'progress': 100,

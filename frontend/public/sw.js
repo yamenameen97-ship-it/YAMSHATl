@@ -1,4 +1,4 @@
-const VERSION = 'yamshat-shell-v4';
+const VERSION = 'yamshat-shell-v5';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/admin.html', '/admin/', '/admin/login/'];
 
 self.addEventListener('install', (event) => {

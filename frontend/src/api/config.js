@@ -36,6 +36,8 @@ const envBackendOrigin = trim(import.meta.env.VITE_BACKEND_ORIGIN || apiToOrigin
 const envSocketUrl = trim(import.meta.env.VITE_SOCKET_URL || envBackendOrigin);
 const inferredBackendOrigin = inferBackendOrigin();
 const inferredApi = inferredBackendOrigin ? `${inferredBackendOrigin}/api` : '';
+const SESSION_STORAGE_KEY = 'yamshat_user_session';
+const CSRF_STORAGE_KEY = 'yamshat_csrf_token';
 
 const isRenderHost = (value) => /\.onrender\.com$/i.test(trim(value));
 const originLooksCurrent = (value) => {
@@ -84,6 +86,12 @@ export const SOCKET_URL = trim(
 );
 
 try {
+  const previousBackendOrigin = trim(localStorage.getItem('backendOrigin'));
+  const backendOriginChanged = Boolean(previousBackendOrigin && previousBackendOrigin !== BACKEND_ORIGIN);
+  if (backendOriginChanged) {
+    localStorage.removeItem(CSRF_STORAGE_KEY);
+    sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  }
   localStorage.setItem('backendOrigin', BACKEND_ORIGIN);
   localStorage.setItem('apiBase', API_BASE);
 } catch {

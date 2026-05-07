@@ -43,9 +43,20 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     let active = true;
+    let timer = null;
     const guardedLoad = async () => {
       if (!active) return;
       await load();
+    };
+    const stopPolling = () => {
+      if (timer) {
+        window.clearInterval(timer);
+        timer = null;
+      }
+    };
+    const startPolling = () => {
+      if (timer || socket.connected) return;
+      timer = window.setInterval(guardedLoad, 30000);
     };
 
     guardedLoad();
@@ -61,12 +72,18 @@ export default function AdminDashboard() {
       'admin:notification',
     ];
     refreshEvents.forEach((eventName) => socket.on(eventName, guardedLoad));
-    const timer = window.setInterval(guardedLoad, 30000);
+    socket.on('connect', guardedLoad);
+    socket.on('connect', stopPolling);
+    socket.on('disconnect', startPolling);
+    if (!socket.connected) startPolling();
 
     return () => {
       active = false;
-      window.clearInterval(timer);
+      stopPolling();
       refreshEvents.forEach((eventName) => socket.off(eventName, guardedLoad));
+      socket.off('connect', guardedLoad);
+      socket.off('connect', stopPolling);
+      socket.off('disconnect', startPolling);
     };
   }, []);
 

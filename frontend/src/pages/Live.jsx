@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
@@ -40,10 +41,12 @@ function ensureSocketConnected() {
 export default function Live() {
   const currentUser = getCurrentUsername();
   const token = getAuthToken();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isOnline = useAppStore((state) => state.isOnline);
   const roomRef = useRef(null);
   const videosRef = useRef(null);
   const activeRoomIdRef = useRef(null);
+  const autoJoinRoomRef = useRef('');
   const [rooms, setRooms] = useState([]);
   const [activeRoom, setActiveRoom] = useState(null);
   const [comments, setComments] = useState([]);
@@ -57,6 +60,7 @@ export default function Live() {
   const [error, setError] = useState('');
   const [quality, setQuality] = useState('auto');
   const [showFallback, setShowFallback] = useState(false);
+  const requestedRoomId = searchParams.get('room')?.trim() || '';
 
   const refreshRooms = async () => {
     try {
@@ -92,11 +96,38 @@ export default function Live() {
 
   useEffect(() => {
     if (!activeRoomIdRef.current) return undefined;
-    const timer = window.setInterval(() => {
+
+    let timer = null;
+    const stopPolling = () => {
+      if (timer) {
+        window.clearInterval(timer);
+        timer = null;
+      }
+    };
+    const startPolling = () => {
+      if (timer || socket.connected) return;
+      timer = window.setInterval(() => {
+        syncActiveRoom(activeRoomIdRef.current);
+        refreshRooms();
+      }, 12000);
+    };
+    const handleSocketConnect = () => {
+      stopPolling();
       syncActiveRoom(activeRoomIdRef.current);
       refreshRooms();
-    }, 12000);
-    return () => window.clearInterval(timer);
+    };
+    const handleSocketDisconnect = () => startPolling();
+
+    if (socket.connected) handleSocketConnect();
+    else startPolling();
+
+    socket.on('connect', handleSocketConnect);
+    socket.on('disconnect', handleSocketDisconnect);
+    return () => {
+      stopPolling();
+      socket.off('connect', handleSocketConnect);
+      socket.off('disconnect', handleSocketDisconnect);
+    };
   }, [activeRoom?.id]);
 
   useEffect(() => {
@@ -138,7 +169,7 @@ export default function Live() {
   }, [currentUser, token]);
 
   const clearVideoContainer = () => {
-    if (videosRef.current) videosRef.current.innerHTML = '';
+    if (videosRef.current) videosRef.current.replaceChildren();
   };
 
   const applyQualityPreference = () => {
@@ -170,6 +201,13 @@ export default function Live() {
     applyQualityPreference();
   };
 
+  const syncRoomQueryParam = (roomId) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (roomId) nextParams.set('room', String(roomId));
+    else nextParams.delete('room');
+    setSearchParams(nextParams, { replace: true });
+  };
+
   const disconnectRoom = async () => {
     try {
       if (activeRoomIdRef.current) {
@@ -193,6 +231,8 @@ export default function Live() {
     }
     clearVideoContainer();
     activeRoomIdRef.current = null;
+    autoJoinRoomRef.current = '';
+    syncRoomQueryParam(null);
     setActiveRoom(null);
     setViewerCount(0);
     setHeartsCount(0);
@@ -256,6 +296,8 @@ export default function Live() {
       const session = { ...roomRecord, ...tokenData, role };
 
       activeRoomIdRef.current = roomRecord.id;
+      autoJoinRoomRef.current = String(roomRecord.id);
+      syncRoomQueryParam(roomRecord.id);
       setActiveRoom(session);
       setComments(Array.isArray(commentsData) ? commentsData : []);
       setViewerCount(Number(roomRecord.viewer_count || 0));
@@ -321,6 +363,21 @@ export default function Live() {
       setStatus('تعذر نسخ رقم الغرفة من المتصفح الحالي.');
     }
   };
+
+  useEffect(() => {
+    if (!requestedRoomId || loading || joining || rooms.length === 0) return;
+    if (String(activeRoomIdRef.current) === String(requestedRoomId)) return;
+    if (autoJoinRoomRef.current === String(requestedRoomId)) return;
+
+    const requestedRoom = rooms.find((room) =>
+      String(room.id) === String(requestedRoomId) || String(room.room_id) === String(requestedRoomId)
+    );
+
+    if (requestedRoom) {
+      autoJoinRoomRef.current = String(requestedRoom.id || requestedRoom.room_id || requestedRoomId);
+      joinRoom(requestedRoom, requestedRoom.username === currentUser ? 'host' : 'viewer');
+    }
+  }, [requestedRoomId, rooms, loading, joining, currentUser]);
 
   useEffect(() => () => {
     disconnectRoom();

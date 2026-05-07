@@ -6,6 +6,7 @@ import App from './App.jsx';
 import './styles/global.css';
 import { queryClient } from './lib/queryClient.js';
 import { useAppStore } from './store/appStore.js';
+import RealtimeProvider from './realtime/RealtimeProvider.jsx';
 
 if (typeof window !== 'undefined') {
   window.__YAMSHAT_SW_READY__ = Promise.resolve(null);
@@ -29,7 +30,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <App />
+        <RealtimeProvider>
+          <App />
+        </RealtimeProvider>
       </BrowserRouter>
     </QueryClientProvider>
   </React.StrictMode>

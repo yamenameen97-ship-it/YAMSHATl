@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { refreshSession } from '../api/auth.js';
-import { clearStoredUser, getAuthToken, getSessionTtlMs, getStoredUser, hasStoredSession, mergeStoredUser } from '../utils/auth.js';
+import sessionManager from '../auth/sessionManager.js';
+import { clearStoredUser, getAuthToken, getSessionTtlMs, getStoredUser, hasStoredSession, shouldRefreshSessionSoon } from '../utils/auth.js';
 import { useAppStore } from '../store/appStore.js';
 
 const PUBLIC_PATHS = new Set(['/login', '/register', '/verify-email', '/forgot-password', '/reset-password', '/admin', '/admin/login']);
@@ -29,17 +29,19 @@ export default function useSessionGuard() {
     const bootstrap = async () => {
       setAuthLoading(true);
       try {
+        const pathname = location.pathname;
+        const publicPath = isPublicPath(pathname);
         const stored = getStoredUser();
-        if (!stored || !hasStoredSession()) return;
-
-        const ttl = getSessionTtlMs();
         const token = getAuthToken();
-        const shouldRefresh = !token || (ttl !== null && ttl <= REFRESH_EARLY_WINDOW_MS);
-        if (!shouldRefresh) return;
+        const shouldAttemptRestore = !publicPath || hasStoredSession();
 
-        const { data } = await refreshSession();
-        if (cancelled) return;
-        mergeStoredUser(data);
+        if (stored && token && !shouldRefreshSessionSoon(REFRESH_EARLY_WINDOW_MS)) return;
+        if (!shouldAttemptRestore) return;
+
+        await sessionManager.refreshSession({
+          reason: publicPath ? 'public-bootstrap' : 'protected-bootstrap',
+          force: !publicPath,
+        });
       } catch {
         if (cancelled) return;
         clearStoredUser();
@@ -69,8 +71,7 @@ export default function useSessionGuard() {
     const timer = window.setTimeout(async () => {
       try {
         setAuthLoading(true);
-        const { data } = await refreshSession();
-        mergeStoredUser(data);
+        await sessionManager.refreshSession({ reason: 'scheduled' });
       } catch {
         clearStoredUser();
         if (!isPublicPath(location.pathname)) redirectToLogin(location.pathname);

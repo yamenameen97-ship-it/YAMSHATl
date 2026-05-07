@@ -22,7 +22,7 @@ function normalizeUserShape(user) {
     ...user,
     token,
     access_token: token || user.access_token || '',
-    refresh_token: user.refresh_token || user?.profile?.refresh_token || '',
+    refresh_token: '',
     username,
     user: username,
     role,
@@ -108,6 +108,7 @@ export function mergeStoredUser(nextValues) {
   const merged = {
     ...current,
     ...nextValues,
+    refresh_token: '',
     profile: {
       ...(current.profile || {}),
       ...(nextValues?.profile || {}),
@@ -130,8 +131,7 @@ export function getAuthToken() {
 }
 
 export function getRefreshToken() {
-  const user = readStoredSession();
-  return user?.refresh_token || '';
+  return '';
 }
 
 export function getCurrentUsername() {

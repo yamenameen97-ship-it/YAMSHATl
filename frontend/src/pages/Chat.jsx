@@ -160,7 +160,7 @@ export default function Chat() {
   const clearCallMedia = useCallback(() => {
     [localMediaRef.current, remoteMediaRef.current].forEach((container) => {
       if (!container) return;
-      container.innerHTML = '';
+      container.replaceChildren();
     });
   }, []);
 

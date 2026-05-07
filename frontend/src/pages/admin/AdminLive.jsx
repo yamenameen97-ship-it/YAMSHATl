@@ -50,17 +50,35 @@ export default function AdminLive() {
   };
 
   useEffect(() => {
-    load();
+    let timer = null;
     const handleRefresh = () => load();
+    const stopPolling = () => {
+      if (timer) {
+        window.clearInterval(timer);
+        timer = null;
+      }
+    };
+    const startPolling = () => {
+      if (timer || socket.connected) return;
+      timer = window.setInterval(handleRefresh, 20000);
+    };
+
+    load();
     socket.on('admin:live_updated', handleRefresh);
     socket.on('room_stats', handleRefresh);
     socket.on('new_comment', handleRefresh);
-    const timer = window.setInterval(handleRefresh, 20000);
+    socket.on('connect', handleRefresh);
+    socket.on('connect', stopPolling);
+    socket.on('disconnect', startPolling);
+    if (!socket.connected) startPolling();
     return () => {
-      window.clearInterval(timer);
+      stopPolling();
       socket.off('admin:live_updated', handleRefresh);
       socket.off('room_stats', handleRefresh);
       socket.off('new_comment', handleRefresh);
+      socket.off('connect', handleRefresh);
+      socket.off('connect', stopPolling);
+      socket.off('disconnect', startPolling);
     };
   }, []);
 

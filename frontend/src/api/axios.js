@@ -3,16 +3,15 @@ import { API_BASE } from './config.js';
 import {
   clearStoredUser,
   getAuthToken,
-  getRefreshToken,
   getStoredUserSnapshot,
   hasStoredSession,
-  mergeStoredUser,
   isTokenExpired,
 } from '../utils/auth.js';
 import { getCsrfToken } from '../utils/csrf.js';
 import { useAppStore } from '../store/appStore.js';
 import logger from '../utils/logger.js';
 import { getBackoffDelayMs, isSafeRetryMethod, sleep } from '../utils/retry.js';
+import sessionManager from '../auth/sessionManager.js';
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 const DEFAULT_CACHE_TTL_MS = 15_000;
@@ -31,17 +30,7 @@ const API = axios.create({
   },
 });
 
-let refreshPromise = null;
 const AUTH_EXCLUDED_PATHS = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/verify-email', '/auth/resend-verification'];
-const plainHttp = axios.create({
-  baseURL: API_BASE,
-  timeout: DEFAULT_TIMEOUT_MS,
-  withCredentials: true,
-  headers: {
-    'X-Requested-With': 'XMLHttpRequest',
-    'X-Yamshat-Client': 'web',
-  },
-});
 
 function deferred() {
   let resolve;
@@ -146,16 +135,6 @@ function attachCommonHeaders(config) {
   return config;
 }
 
-async function refreshSession() {
-  const refreshToken = getRefreshToken();
-  if (typeof navigator !== 'undefined' && !navigator.onLine) throw new Error('Cannot refresh while offline');
-  logger.info('refreshing expired session');
-  const payload = refreshToken ? { refresh_token: refreshToken } : {};
-  return plainHttp.post('/auth/refresh', payload, {
-    headers: getCsrfToken() ? { 'X-CSRF-Token': getCsrfToken() } : {},
-  });
-}
-
 API.interceptors.request.use(async (config) => {
   useAppStore.getState().startRequest();
   attachCommonHeaders(config);
@@ -170,9 +149,7 @@ API.interceptors.request.use(async (config) => {
     config.headers.Authorization = `Bearer ${token}`;
   } else if (!shouldSkipRefresh && hasStoredSession() && hasExpiredAccessToken) {
     try {
-      if (!refreshPromise) refreshPromise = refreshSession();
-      const { data } = await refreshPromise;
-      mergeStoredUser(data);
+      const { data } = await sessionManager.refreshSession({ reason: 'request-interceptor' });
       config.headers.Authorization = `Bearer ${data.access_token}`;
       fireToast({ type: 'info', title: 'تمت استعادة الجلسة', description: 'تم تجديد الجلسة تلقائياً قبل تنفيذ الطلب.' });
     } catch (error) {
@@ -180,8 +157,6 @@ API.interceptors.request.use(async (config) => {
       fireToast({ type: 'warning', title: 'انتهت صلاحية الجلسة', description: 'سيتم تحويلك لتسجيل الدخول من جديد.' });
       redirectToLogin();
       return Promise.reject(new axios.Cancel(error?.message || 'Session refresh failed'));
-    } finally {
-      refreshPromise = null;
     }
   }
 
@@ -293,9 +268,7 @@ API.interceptors.response.use(
 
     try {
       originalRequest._retry = true;
-      if (!refreshPromise) refreshPromise = refreshSession();
-      const { data } = await refreshPromise;
-      mergeStoredUser(data);
+      const { data } = await sessionManager.refreshSession({ reason: '401-retry' });
       originalRequest.headers = {
         ...(originalRequest.headers || {}),
         Authorization: `Bearer ${data.access_token}`,
@@ -316,8 +289,6 @@ API.interceptors.response.use(
       fireToast({ type: 'warning', title: 'انتهت صلاحية الجلسة', description: 'سيتم تسجيل الخروج تلقائياً لحماية الحساب.' });
       redirectToLogin();
       return Promise.reject(refreshError);
-    } finally {
-      refreshPromise = null;
     }
   },
 );

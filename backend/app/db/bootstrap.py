@@ -138,6 +138,8 @@ def _migrate_users_table(engine: Engine) -> None:
                 'role',
                 'is_active',
                 'email_verified',
+                'email_verification_code',
+                'email_verification_expires_at',
                 'created_at',
             ]
             if column in columns
@@ -169,7 +171,14 @@ def _migrate_users_table(engine: Engine) -> None:
                 updates['role'] = desired_role
             if row.get('is_active') is None:
                 updates['is_active'] = True
-            if row.get('email_verified') is None:
+            if is_primary_admin_email(email):
+                if row.get('email_verified') is not True:
+                    updates['email_verified'] = True
+                if 'email_verification_code' in columns and row.get('email_verification_code') not in (None, ''):
+                    updates['email_verification_code'] = None
+                if 'email_verification_expires_at' in columns and row.get('email_verification_expires_at') is not None:
+                    updates['email_verification_expires_at'] = None
+            elif row.get('email_verified') is None:
                 updates['email_verified'] = True
             if row.get('created_at') is None:
                 updates['created_at'] = datetime.utcnow()

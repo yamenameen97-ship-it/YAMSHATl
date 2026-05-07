@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import re
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func, inspect, or_, text
@@ -6,11 +7,12 @@ from sqlalchemy.orm import Session
 
 from app.core.admin_access import is_primary_admin_email
 from app.core.config import settings
+from app.core.request_security import stable_hash
 from app.core.security import generate_numeric_code, hash_password, verify_password
 from app.models.user import User
 
-
 VERIFICATION_REQUIRED_DETAIL = 'Email verification required'
+EMAIL_REGEX = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]{2,}$', re.IGNORECASE)
 
 
 def utcnow_naive() -> datetime:
@@ -19,6 +21,14 @@ def utcnow_naive() -> datetime:
 
 def _normalize_username(value: str) -> str:
     return (value or '').strip().replace(' ', '_')
+
+
+def looks_like_email(value: str | None) -> bool:
+    return '@' in str(value or '')
+
+
+def is_valid_email(value: str | None) -> bool:
+    return bool(EMAIL_REGEX.match((value or '').strip()))
 
 
 def _password_matches(plain_password: str, stored_password: str | None) -> bool:
@@ -62,6 +72,26 @@ def get_user_by_email(db: Session, email: str) -> User | None:
     return db.query(User).filter(func.lower(User.email) == normalized_email).first()
 
 
+def _sync_primary_admin_flags(user: User) -> bool:
+    if user is None or not is_primary_admin_email(getattr(user, 'email', None)):
+        return False
+
+    changed = False
+    if getattr(user, 'role', None) != 'admin':
+        user.role = 'admin'
+        changed = True
+    if not bool(getattr(user, 'email_verified', False)):
+        user.email_verified = True
+        changed = True
+    if getattr(user, 'email_verification_code', None):
+        user.email_verification_code = None
+        changed = True
+    if getattr(user, 'email_verification_expires_at', None) is not None:
+        user.email_verification_expires_at = None
+        changed = True
+    return changed
+
+
 def register_user(db: Session, username: str, email: str, password: str, avatar: str | None = None) -> User:
     normalized_username = _normalize_username(username)
     email = (email or '').strip().lower()
@@ -69,10 +99,15 @@ def register_user(db: Session, username: str, email: str, password: str, avatar:
 
     if not normalized_username or not email or len(password) < 6:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Missing or invalid registration fields')
+    if not is_valid_email(email):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid email format')
 
-    existing_user = db.query(User).filter((User.email == email) | (User.username == normalized_username)).first()
-    if existing_user:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Email or username already exists')
+    existing_email = db.query(User).filter(func.lower(User.email) == email).first()
+    if existing_email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Email already exists')
+    existing_username = db.query(User).filter(func.lower(User.username) == normalized_username.lower()).first()
+    if existing_username:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Username already exists')
 
     role = 'admin' if is_primary_admin_email(email) else 'user'
     user = User(
@@ -80,7 +115,7 @@ def register_user(db: Session, username: str, email: str, password: str, avatar:
         email=email,
         avatar=avatar,
         role=role,
-        email_verified=False,
+        email_verified=bool(role == 'admin'),
         hashed_password=hash_password(password),
     )
     db.add(user)
@@ -92,6 +127,10 @@ def register_user(db: Session, username: str, email: str, password: str, avatar:
 def authenticate_user(db: Session, identifier: str, password: str, require_verified: bool = True) -> User:
     normalized_identifier = (identifier or '').strip()
     lowered_identifier = normalized_identifier.lower()
+
+    if looks_like_email(lowered_identifier) and not is_valid_email(lowered_identifier):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid email address')
+
     user = db.query(User).filter(
         and_(
             User.is_active.is_(True),
@@ -103,7 +142,7 @@ def authenticate_user(db: Session, identifier: str, password: str, require_verif
     ).first()
 
     if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid credentials')
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Email or username not found')
 
     password_is_valid = _password_matches(password or '', user.hashed_password)
     if not password_is_valid:
@@ -111,7 +150,7 @@ def authenticate_user(db: Session, identifier: str, password: str, require_verif
         password_is_valid = _password_matches(password or '', legacy_password)
 
     if not password_is_valid:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid credentials')
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Incorrect password')
 
     desired_role = 'admin' if is_primary_admin_email(user.email) else 'user'
     updated = False
@@ -122,6 +161,8 @@ def authenticate_user(db: Session, identifier: str, password: str, require_verif
     if not _looks_like_modern_hash(user.hashed_password):
         user.hashed_password = hash_password(password or '')
         updated = True
+
+    updated = _sync_primary_admin_flags(user) or updated
 
     if require_verified and not bool(user.email_verified):
         if updated:
@@ -181,14 +222,20 @@ def verify_password_reset_code(user: User, code: str) -> None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid reset code')
 
 
-def store_refresh_token(db: Session, user: User, refresh_token: str, expires_at: datetime) -> None:
+def store_refresh_token(db: Session, user: User, refresh_token: str, expires_at: datetime, binding_context: dict | None = None) -> None:
+    binding_context = binding_context or {}
     user.refresh_token_hash = hash_password(refresh_token)
     user.refresh_token_expires_at = expires_at
+    user.refresh_token_device_hash = binding_context.get('device_id_hash') or None
+    user.refresh_token_ip_hash = binding_context.get('ip_hash') or None
+    user.refresh_token_user_agent_hash = binding_context.get('user_agent_hash') or None
+    user.refresh_token_session_id = stable_hash(refresh_token)[:64]
+    user.refresh_token_rotated_at = utcnow_naive()
     db.commit()
     db.refresh(user)
 
 
-def validate_refresh_token(user: User, refresh_token: str) -> None:
+def validate_refresh_token(user: User, refresh_token: str, binding_context: dict | None = None) -> None:
     if not user.refresh_token_hash or not user.refresh_token_expires_at:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Refresh session not found')
     if user.refresh_token_expires_at < utcnow_naive():
@@ -196,10 +243,29 @@ def validate_refresh_token(user: User, refresh_token: str) -> None:
     if not verify_password(refresh_token, user.refresh_token_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid refresh token')
 
+    binding_context = binding_context or {}
+    expected_device = (user.refresh_token_device_hash or '').strip()
+    expected_ip = (user.refresh_token_ip_hash or '').strip()
+    expected_ua = (user.refresh_token_user_agent_hash or '').strip()
+    provided_device = (binding_context.get('device_id_hash') or '').strip()
+    provided_ip = (binding_context.get('ip_hash') or '').strip()
+    provided_ua = (binding_context.get('user_agent_hash') or '').strip()
+
+    if expected_device and expected_device != provided_device:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Refresh token device mismatch')
+    if expected_ua and expected_ua != provided_ua:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Refresh token user agent mismatch')
+    if expected_ip and expected_ip != provided_ip:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Refresh token IP mismatch')
+
 
 def clear_refresh_token(db: Session, user: User) -> None:
     user.refresh_token_hash = None
     user.refresh_token_expires_at = None
+    user.refresh_token_device_hash = None
+    user.refresh_token_ip_hash = None
+    user.refresh_token_user_agent_hash = None
+    user.refresh_token_session_id = None
     db.commit()
     db.refresh(user)
 
@@ -214,6 +280,10 @@ def update_password(db: Session, user: User, new_password: str) -> User:
     user.password_reset_expires_at = None
     user.refresh_token_hash = None
     user.refresh_token_expires_at = None
+    user.refresh_token_device_hash = None
+    user.refresh_token_ip_hash = None
+    user.refresh_token_user_agent_hash = None
+    user.refresh_token_session_id = None
     db.commit()
     db.refresh(user)
     return user

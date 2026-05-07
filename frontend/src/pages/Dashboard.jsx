@@ -3,6 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
+import EmptyState from '../components/feedback/EmptyState.jsx';
+import ErrorState from '../components/feedback/ErrorState.jsx';
+import { DashboardSkeleton } from '../components/feedback/Skeleton.jsx';
 import { logoutUser } from '../api/auth.js';
 import { getUsers, getUserPreferences, updateUserPreferences } from '../api/users.js';
 import { getChatThreads, updateOnline } from '../api/chat.js';
@@ -40,6 +43,7 @@ export default function Dashboard() {
     const load = async () => {
       try {
         setLoading(true);
+        setError('');
         const [usersRes, threadsRes, prefsRes] = await Promise.all([getUsers(), getChatThreads(), getUserPreferences(), updateOnline(true)]);
         if (!mounted) return;
         setUsersCount(Array.isArray(usersRes.data) ? usersRes.data.length : 0);
@@ -67,12 +71,12 @@ export default function Dashboard() {
 
   const stats = useMemo(
     () => [
-      { title: language === 'en' ? 'Users' : 'المستخدمون', value: loading ? '...' : usersCount, meta: language === 'en' ? 'Available accounts' : 'عدد الحسابات المتاحة' },
-      { title: language === 'en' ? 'Chats' : 'المحادثات', value: loading ? '...' : threadsCount, meta: language === 'en' ? 'Current private threads' : 'قائمة الدردشة الحالية' },
+      { title: language === 'en' ? 'Users' : 'المستخدمون', value: usersCount, meta: language === 'en' ? 'Available accounts' : 'عدد الحسابات المتاحة' },
+      { title: language === 'en' ? 'Chats' : 'المحادثات', value: threadsCount, meta: language === 'en' ? 'Current private threads' : 'قائمة الدردشة الحالية' },
       { title: language === 'en' ? 'Sync queue' : 'المزامنة', value: queuedActions.length, meta: language === 'en' ? 'Saved offline actions' : 'عمليات محفوظة أوفلاين' },
       { title: language === 'en' ? 'Status' : 'الحالة', value: isOnline ? (language === 'en' ? 'Online' : 'متصل') : (language === 'en' ? 'Offline' : 'غير متصل'), meta: user?.user || user?.username || 'member' },
     ],
-    [isOnline, language, loading, queuedActions.length, threadsCount, user, usersCount]
+    [isOnline, language, queuedActions.length, threadsCount, user, usersCount]
   );
 
   const shortcuts = [
@@ -126,6 +130,24 @@ export default function Dashboard() {
     navigate('/login', { replace: true });
   };
 
+  const isWorkspaceEmpty = !loading && usersCount === 0 && threadsCount === 0 && queuedActions.length === 0;
+
+  if (loading) {
+    return (
+      <MainLayout>
+        <DashboardSkeleton />
+      </MainLayout>
+    );
+  }
+
+  if (error && usersCount === 0 && threadsCount === 0) {
+    return (
+      <MainLayout>
+        <ErrorState title="تعذر تحميل لوحة البداية" description={error} />
+      </MainLayout>
+    );
+  }
+
   return (
     <MainLayout>
       <section className="menu-page-grid menu-page-grid-enhanced">
@@ -169,6 +191,14 @@ export default function Dashboard() {
             </Card>
           ))}
         </section>
+
+        {isWorkspaceEmpty ? (
+          <EmptyState
+            icon="✨"
+            title={language === 'en' ? 'Your workspace is ready' : 'مساحة العمل جاهزة للبدء'}
+            description={language === 'en' ? 'No users, chats, or pending sync actions yet. Start by inviting users or creating your first conversation.' : 'لسه مافيش مستخدمين أو محادثات أو عمليات مزامنة معلقة. ابدأ بدعوة مستخدمين أو إنشاء أول محادثة.'}
+          />
+        ) : null}
 
         <Card className="menu-settings-card setting-surface">
           <div className="section-head compact">
@@ -221,7 +251,7 @@ export default function Dashboard() {
                     ? (language === 'en' ? 'Browser notifications unsupported' : 'المتصفح لا يدعم الإشعارات')
                     : (language === 'en' ? 'Enable browser notifications' : 'تفعيل إشعارات المتصفح')}
             </Button>
-            <Button onClick={handleSavePreferences} disabled={savingPrefs}>
+            <Button onClick={handleSavePreferences} loading={savingPrefs}>
               {savingPrefs ? ui.dashboard.saving : ui.dashboard.save}
             </Button>
             <a href="/admin.html" className="btn btn-secondary">{language === 'en' ? 'Admin panel' : 'دخول لوحة الأدمن'}</a>

@@ -19,7 +19,8 @@ export default function Button({
   const [internalBusy, setInternalBusy] = useState(false);
   const mountedRef = useRef(true);
 
-  const locked = disabled || loading || internalBusy;
+  const busy = loading || internalBusy;
+  const locked = disabled || busy;
 
   useEffect(() => () => {
     mountedRef.current = false;
@@ -49,13 +50,14 @@ export default function Button({
     <button
       type={type}
       disabled={locked}
-      aria-busy={loading || internalBusy}
-      data-busy={loading || internalBusy ? 'true' : 'false'}
-      className={`btn btn-${variant} ${className}`.trim()}
+      aria-busy={busy}
+      data-busy={busy ? 'true' : 'false'}
+      className={`btn btn-${variant} ${busy ? 'is-busy' : ''} ${className}`.trim()}
       onClick={handleClick}
       {...props}
     >
-      {children}
+      {busy ? <span className="btn-spinner" aria-hidden="true" /> : null}
+      <span className="btn-label">{children}</span>
     </button>
   );
 }

@@ -5,7 +5,7 @@ import { ToastProvider } from './components/admin/ToastProvider.jsx';
 import AppStatusBanner from './components/system/AppStatusBanner.jsx';
 import AppErrorBoundary from './components/system/AppErrorBoundary.jsx';
 import InstallPrompt from './components/feedback/InstallPrompt.jsx';
-import PageLoader from './components/feedback/PageLoader.jsx';
+import { RoutePageSkeleton } from './components/feedback/Skeleton.jsx';
 import useNetworkStatus from './hooks/useNetworkStatus.js';
 import useOfflineQueue from './hooks/useOfflineQueue.js';
 import useSessionGuard from './hooks/useSessionGuard.js';
@@ -59,6 +59,31 @@ function AppGuards() {
     document.documentElement.setAttribute('dir', language === 'ar' ? 'rtl' : 'ltr');
   }, [language]);
 
+  useEffect(() => {
+    const timers = new WeakMap();
+    const clickableSelector = 'button, a.btn, .mini-action, .ghost-btn, .reaction-btn, .table-link, .story-user-card';
+
+    const handlePointerFeedback = (event) => {
+      const target = event.target instanceof Element ? event.target.closest(clickableSelector) : null;
+      if (!target) return;
+      const isDisabled = target.matches?.(':disabled') || target.getAttribute('aria-disabled') === 'true';
+      if (isDisabled || target.getAttribute('aria-busy') === 'true' || target.dataset.busy === 'true') return;
+
+      target.dataset.autoBusy = 'true';
+      const activeTimer = timers.get(target);
+      if (activeTimer) window.clearTimeout(activeTimer);
+      const nextTimer = window.setTimeout(() => {
+        delete target.dataset.autoBusy;
+      }, 650);
+      timers.set(target, nextTimer);
+    };
+
+    document.addEventListener('click', handlePointerFeedback, true);
+    return () => {
+      document.removeEventListener('click', handlePointerFeedback, true);
+    };
+  }, []);
+
   return (
     <>
       <AppStatusBanner />
@@ -69,7 +94,7 @@ function AppGuards() {
 }
 
 function RouteFallback() {
-  return <PageLoader label="جارٍ تحميل الصفحة..." />;
+  return <RoutePageSkeleton />;
 }
 
 export default function App() {

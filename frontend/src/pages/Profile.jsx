@@ -4,6 +4,9 @@ import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import Input from '../components/ui/Input.jsx';
+import EmptyState from '../components/feedback/EmptyState.jsx';
+import ErrorState from '../components/feedback/ErrorState.jsx';
+import { ProfileSkeleton } from '../components/feedback/Skeleton.jsx';
 import socket from '../api/socket.js';
 import { getFollowersSummary, getRelationship, getUserPosts, followUser, updateMyProfile, uploadAvatar } from '../api/users.js';
 import { getAuthToken, getCurrentUsername, mergeStoredUser } from '../utils/auth.js';
@@ -44,8 +47,7 @@ export default function Profile() {
       });
       setPosts(Array.isArray(postsRes?.data) ? postsRes.data : []);
       setFollowing(Boolean(relationRes?.data?.following));
-      const firstAvatar = Array.isArray(postsRes?.data) ? '' : '';
-      setProfileForm((prev) => ({ ...prev, username, avatar: prev.avatar || firstAvatar || '' }));
+      setProfileForm((prev) => ({ ...prev, username, avatar: prev.avatar || '' }));
     } catch (err) {
       setError(err?.response?.data?.message || err?.response?.data?.detail || 'تعذر تحميل الملف الشخصي.');
     } finally {
@@ -141,6 +143,24 @@ export default function Profile() {
     }
   };
 
+  const fatalError = Boolean(error) && !loading && posts.length === 0 && counts.followers === 0 && counts.following === 0;
+
+  if (loading) {
+    return (
+      <MainLayout>
+        <ProfileSkeleton />
+      </MainLayout>
+    );
+  }
+
+  if (fatalError) {
+    return (
+      <MainLayout>
+        <ErrorState title="تعذر فتح الملف الشخصي" description={error} onRetry={loadProfile} />
+      </MainLayout>
+    );
+  }
+
   return (
     <MainLayout>
       <div className="profile-grid">
@@ -185,7 +205,7 @@ export default function Profile() {
                   <input type="file" accept="image/*" onChange={handleAvatarChange} hidden />
                   رفع صورة شخصية
                 </label>
-                <Button onClick={handleProfileSave} disabled={saving}>
+                <Button onClick={handleProfileSave} loading={saving}>
                   {saving ? 'جارٍ الحفظ...' : 'حفظ التعديلات'}
                 </Button>
               </div>
@@ -193,8 +213,7 @@ export default function Profile() {
           ) : null}
         </Card>
 
-        {error ? <div className="alert error">{error}</div> : null}
-        {loading ? <div className="empty-state">جارٍ تحميل الملف الشخصي...</div> : null}
+        {error && !fatalError ? <div className="alert error">{error}</div> : null}
 
         <div className="feed-stack">
           {posts.map((post) => {
@@ -220,7 +239,13 @@ export default function Profile() {
             );
           })}
 
-          {!loading && posts.length === 0 ? <Card className="empty-card">لا توجد منشورات لهذا الحساب بعد.</Card> : null}
+          {posts.length === 0 ? (
+            <EmptyState
+              icon="📝"
+              title="لا توجد منشورات لهذا الحساب بعد"
+              description={isOwnProfile ? 'أول منشور ليك هيظهر هنا فوراً بعد النشر.' : 'الحساب ده لسه ما نشرش أي محتوى.'}
+            />
+          ) : null}
         </div>
       </div>
     </MainLayout>

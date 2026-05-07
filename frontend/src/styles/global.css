@@ -1,18 +1,56 @@
 :root {
   color-scheme: dark;
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --bg: #08111f;
-  --panel: rgba(11, 18, 32, 0.86);
-  --panel-strong: rgba(14, 22, 38, 0.94);
-  --panel-soft: rgba(148, 163, 184, 0.08);
-  --text: #e2e8f0;
-  --muted: #94a3b8;
-  --line: rgba(148, 163, 184, 0.14);
-  --primary: #8b5cf6;
-  --secondary: #06b6d4;
-  --success: #22c55e;
-  --warning: #f59e0b;
-  --danger: #ef4444;
+  font-family: var(--font-sans);
+  --font-sans: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-display: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-md: 16px;
+  --text-lg: 18px;
+  --text-xl: 24px;
+  --text-2xl: 32px;
+  --leading-tight: 1.2;
+  --leading-normal: 1.6;
+  --leading-relaxed: 1.8;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
+  --color-bg: #08111f;
+  --color-bg-alt: #0b1320;
+  --color-panel: rgba(11, 18, 32, 0.86);
+  --color-panel-strong: rgba(14, 22, 38, 0.94);
+  --color-panel-soft: rgba(148, 163, 184, 0.08);
+  --color-text: #e2e8f0;
+  --color-text-soft: #cbd5e1;
+  --color-muted: #94a3b8;
+  --color-line: rgba(148, 163, 184, 0.14);
+  --color-primary: #8b5cf6;
+  --color-primary-strong: #7c3aed;
+  --color-secondary: #06b6d4;
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+  --bg: var(--color-bg);
+  --panel: var(--color-panel);
+  --panel-strong: var(--color-panel-strong);
+  --panel-soft: var(--color-panel-soft);
+  --text: var(--color-text);
+  --muted: var(--color-muted);
+  --line: var(--color-line);
+  --primary: var(--color-primary);
+  --secondary: var(--color-secondary);
+  --success: var(--color-success);
+  --warning: var(--color-warning);
+  --danger: var(--color-danger);
 }
 
 * {
@@ -30,6 +68,38 @@ body {
     radial-gradient(circle at bottom right, rgba(6, 182, 212, 0.18), transparent 24%),
     linear-gradient(160deg, #07101d 0%, #091321 55%, #060c17 100%);
   color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+  letter-spacing: 0.01em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display);
+  line-height: var(--leading-tight);
+}
+
+h1 {
+  font-size: clamp(30px, 4vw, 42px);
+}
+
+h2 {
+  font-size: clamp(24px, 3vw, 32px);
+}
+
+h3 {
+  font-size: clamp(18px, 2.4vw, 24px);
+}
+
+p {
+  line-height: var(--leading-relaxed);
 }
 
 a {
@@ -46,6 +116,22 @@ textarea {
 
 button {
   cursor: pointer;
+  transition: transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button[aria-busy='true'],
+.btn.is-busy,
+.mini-action[aria-busy='true'],
+.reaction-btn[aria-busy='true'],
+.table-link[aria-busy='true'],
+.story-user-card[aria-busy='true'],
+.ghost-btn[aria-busy='true'] {
+  opacity: 0.78;
+  pointer-events: none;
 }
 
 input,
@@ -622,10 +708,31 @@ small,
 
 .btn {
   border: none;
-  border-radius: 16px;
+  border-radius: var(--radius-md);
   padding: 12px 18px;
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: var(--text-sm);
   font-weight: 700;
   color: #fff;
+}
+
+.btn-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.24);
+  border-top-color: #fff;
+  animation: spin 0.8s linear infinite;
 }
 
 .btn-primary {
@@ -644,6 +751,12 @@ small,
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .mini-action.danger {

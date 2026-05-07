@@ -156,7 +156,7 @@ export default function PasswordRecoveryFlow({ initialStep = 'request' }) {
         />
 
         {step === 'request' ? (
-          <Button type="submit" disabled={loading}>{loading ? 'جارٍ إرسال الرمز...' : 'إرسال رمز التحقق'}</Button>
+          <Button type="submit" loading={loading} disabled={loading}>{loading ? 'جارٍ إرسال الرمز...' : 'إرسال رمز التحقق'}</Button>
         ) : null}
 
         {step !== 'request' ? (
@@ -170,10 +170,10 @@ export default function PasswordRecoveryFlow({ initialStep = 'request' }) {
               hint="لو نسخت الرمز من البريد أو الحافظة هيتوزع تلقائياً على المربعات."
             />
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-              <Button type="button" disabled={verifying || code.length !== 6} onClick={() => verifyCode(code)}>
+              <Button type="button" loading={verifying} disabled={verifying || code.length !== 6} onClick={() => verifyCode(code)}>
                 {verifying ? 'جارٍ التحقق...' : step === 'reset' ? 'تم التحقق' : 'تأكيد الرمز'}
               </Button>
-              <Button type="button" variant="secondary" disabled={loading} onClick={sendCode}>
+              <Button type="button" variant="secondary" loading={loading} disabled={loading} onClick={sendCode}>
                 إعادة إرسال الرمز
               </Button>
             </div>
@@ -199,7 +199,7 @@ export default function PasswordRecoveryFlow({ initialStep = 'request' }) {
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.target.value)}
             />
-            <Button type="submit" disabled={saving}>{saving ? 'جارٍ حفظ كلمة المرور...' : 'حفظ كلمة المرور الجديدة'}</Button>
+            <Button type="submit" loading={saving} disabled={saving}>{saving ? 'جارٍ حفظ كلمة المرور...' : 'حفظ كلمة المرور الجديدة'}</Button>
           </>
         ) : null}
 

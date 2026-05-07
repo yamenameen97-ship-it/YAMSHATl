@@ -4,6 +4,10 @@ import AdminLayout from '../../components/admin/AdminLayout.jsx';
 import KpiCard from '../../components/admin/KpiCard.jsx';
 import { BarChart, DonutChart, LineChart } from '../../components/admin/Charts.jsx';
 import Card from '../../components/ui/Card.jsx';
+import Button from '../../components/ui/Button.jsx';
+import EmptyState from '../../components/feedback/EmptyState.jsx';
+import ErrorState from '../../components/feedback/ErrorState.jsx';
+import { AdminOverviewSkeleton } from '../../components/feedback/Skeleton.jsx';
 import { getAdminOverview } from '../../api/admin.js';
 import socket from '../../api/socket.js';
 
@@ -30,12 +34,16 @@ function statusText(status) {
 export default function AdminDashboard() {
   const [overview, setOverview] = useState(overviewFallback);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const load = async () => {
     try {
       setLoading(true);
+      setError('');
       const { data } = await getAdminOverview();
       setOverview({ ...overviewFallback, ...data });
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'تعذر تحميل بيانات لوحة الأدمن.');
     } finally {
       setLoading(false);
     }
@@ -93,9 +101,30 @@ export default function AdminDashboard() {
   }, [overview.meta?.generated_at]);
 
   const serviceHealthyCount = (overview.service_health || []).filter((item) => item.status === 'healthy' || item.status === 'linked').length;
+  const hasOverviewData = Boolean(
+    overview.kpis.length || overview.service_health.length || overview.alerts.length || overview.recent_activity.length || overview.platform_links.length
+  );
+
+  if (loading && !hasOverviewData) {
+    return (
+      <AdminLayout>
+        <AdminOverviewSkeleton />
+      </AdminLayout>
+    );
+  }
+
+  if (error && !hasOverviewData) {
+    return (
+      <AdminLayout>
+        <ErrorState title="تعذر تحميل لوحة التحكم" description={error} onRetry={load} />
+      </AdminLayout>
+    );
+  }
 
   return (
     <AdminLayout>
+      {error ? <div className="alert error">{error}</div> : null}
+
       <section className="dashboard-hero-grid">
         <Card className="hero-card admin-hero-card polished-hero-card">
           <div className="hero-card-topline">
@@ -114,7 +143,7 @@ export default function AdminDashboard() {
         <Card className="spotlight-card">
           <div className="card-head split">
             <h3 className="section-title">حالة التشغيل</h3>
-            <button type="button" className="ghost-btn" onClick={load}>تحديث</button>
+            <Button variant="secondary" onClick={load}>تحديث</Button>
           </div>
           <div className="status-list compact-grid">
             <div><strong>{overview.meta?.active_users || 0}</strong><span>مستخدم نشط</span></div>
@@ -140,8 +169,10 @@ export default function AdminDashboard() {
       </section>
 
       <section className="kpi-grid">
-        {(loading ? Array.from({ length: 4 }, (_, index) => ({ label: '...', value: '...', delta: index + 1, trend_label: 'جارٍ التحميل' })) : overview.kpis).map((item) => (
+        {(overview.kpis || []).length ? (overview.kpis || []).map((item) => (
           <KpiCard key={item.key || item.label} item={item} />
+        )) : Array.from({ length: 4 }, (_, index) => (
+          <KpiCard key={`placeholder-${index}`} item={{ label: 'قيد التحميل', value: '—', delta: index + 1, trend_label: 'بانتظار البيانات' }} />
         ))}
       </section>
 
@@ -153,32 +184,36 @@ export default function AdminDashboard() {
           </div>
           <span className="badge">{serviceHealthyCount} خدمات سليمة</span>
         </div>
-        <div className="service-health-grid">
-          {(overview.service_health || []).map((item) => (
-            <div key={item.key} className={`service-status-card ${item.status}`}>
-              <div className="service-status-head">
-                <strong>{item.label}</strong>
-                <span className={`status-pill ${item.status === 'healthy' || item.status === 'linked' ? 'active' : item.status === 'critical' ? 'banned' : 'warning-soft'}`}>{statusText(item.status)}</span>
+        {(overview.service_health || []).length ? (
+          <div className="service-health-grid">
+            {(overview.service_health || []).map((item) => (
+              <div key={item.key} className={`service-status-card ${item.status}`}>
+                <div className="service-status-head">
+                  <strong>{item.label}</strong>
+                  <span className={`status-pill ${item.status === 'healthy' || item.status === 'linked' ? 'active' : item.status === 'critical' ? 'banned' : 'warning-soft'}`}>{statusText(item.status)}</span>
+                </div>
+                <div className="service-status-value">{item.value}</div>
+                <p>{item.description}</p>
               </div>
-              <div className="service-status-value">{item.value}</div>
-              <p>{item.description}</p>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState icon="🧩" title="لا توجد مؤشرات خدمات حالياً" description="بمجرد وصول بيانات الصحة والربط هتظهر هنا تلقائياً." actionLabel="إعادة التحميل" onAction={load} />
+        )}
       </Card>
 
       <section className="analytics-grid">
         <Card>
           <div className="card-head"><h3 className="section-title">نمو التسجيلات</h3></div>
-          <LineChart data={overview.line_chart} />
+          {(overview.line_chart || []).length ? <LineChart data={overview.line_chart} /> : <EmptyState icon="📈" title="لا توجد بيانات للرسم" description="بانتظار نقاط كافية لعرض خط النمو." />}
         </Card>
         <Card>
           <div className="card-head"><h3 className="section-title">أعلى الوحدات نشاطاً</h3></div>
-          <BarChart data={overview.bar_chart} />
+          {(overview.bar_chart || []).length ? <BarChart data={overview.bar_chart} /> : <EmptyState icon="📊" title="لا توجد بيانات كافية" description="هيظهر الرسم أول ما تتوفر بيانات النشاط." />}
         </Card>
         <Card>
           <div className="card-head"><h3 className="section-title">توزيع الأدوار</h3></div>
-          <DonutChart data={overview.pie_chart} />
+          {(overview.pie_chart || []).length ? <DonutChart data={overview.pie_chart} /> : <EmptyState icon="🧠" title="لا يوجد توزيع أدوار بعد" description="هيظهر التوزيع بمجرد وصول إحصائيات المستخدمين." />}
         </Card>
       </section>
 
@@ -190,15 +225,19 @@ export default function AdminDashboard() {
           </div>
           <Link className="btn btn-secondary" to="/admin/notifications">فتح المركز</Link>
         </div>
-        <div className="queue-grid">
-          {(overview.moderation_queue || []).map((item) => (
-            <div key={item.key} className="queue-card">
-              <span className="queue-label">{item.label}</span>
-              <strong>{item.value}</strong>
-              <p>{item.description}</p>
-            </div>
-          ))}
-        </div>
+        {(overview.moderation_queue || []).length ? (
+          <div className="queue-grid">
+            {(overview.moderation_queue || []).map((item) => (
+              <div key={item.key} className="queue-card">
+                <span className="queue-label">{item.label}</span>
+                <strong>{item.value}</strong>
+                <p>{item.description}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState icon="🛡️" title="لا توجد عناصر مراقبة حالياً" description="الصف ده هيمتلئ تلقائياً بأي عناصر محتاجة تدخل إداري." />
+        )}
       </Card>
 
       <Card className="section-card-block">
@@ -208,46 +247,58 @@ export default function AdminDashboard() {
             <p className="muted no-margin">تأكد الربط بين لوحة الأدمن والويب والموبايل والباك إند من نفس شاشة المتابعة.</p>
           </div>
         </div>
-        <div className="integration-grid">
-          {(overview.platform_links || []).map((item) => (
-            <div key={item.key} className={`integration-card ${item.status}`}>
-              <div className="integration-label-row">
-                <strong>{item.label}</strong>
-                <span className="glass-chip">{item.status === 'linked' ? 'مرتبط' : 'مراجعة'}</span>
+        {(overview.platform_links || []).length ? (
+          <div className="integration-grid">
+            {(overview.platform_links || []).map((item) => (
+              <div key={item.key} className={`integration-card ${item.status}`}>
+                <div className="integration-label-row">
+                  <strong>{item.label}</strong>
+                  <span className="glass-chip">{item.status === 'linked' ? 'مرتبط' : 'مراجعة'}</span>
+                </div>
+                <div className="integration-value">{item.value}</div>
+                <p>{item.description}</p>
               </div>
-              <div className="integration-value">{item.value}</div>
-              <p>{item.description}</p>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState icon="🔗" title="لا توجد خريطة ربط حالياً" description="هيتم عرض الروابط بين الأنظمة أول ما الباك إند يرسلها." />
+        )}
       </Card>
 
       <section className="two-column-grid">
         <Card>
           <div className="card-head"><h3 className="section-title">السجل التشغيلي</h3></div>
-          <div className="timeline-list">
-            {(overview.recent_activity || []).map((item) => (
-              <div key={item.id} className="timeline-item">
-                <span className="timeline-dot" />
-                <div>
-                  <strong>{item.title}</strong>
-                  <p>{item.description}</p>
-                  <small>{new Date(item.created_at).toLocaleString('ar-EG')}</small>
+          {(overview.recent_activity || []).length ? (
+            <div className="timeline-list">
+              {(overview.recent_activity || []).map((item) => (
+                <div key={item.id} className="timeline-item">
+                  <span className="timeline-dot" />
+                  <div>
+                    <strong>{item.title}</strong>
+                    <p>{item.description}</p>
+                    <small>{new Date(item.created_at).toLocaleString('ar-EG')}</small>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState icon="🗂️" title="لا توجد أحداث تشغيلية حتى الآن" description="هيظهر هنا آخر النشاطات الإدارية والنظامية." />
+          )}
         </Card>
         <Card>
           <div className="card-head"><h3 className="section-title">التنبيهات والتوصيات</h3></div>
-          <div className="alert-stack enhanced">
-            {(overview.alerts || []).map((item, index) => (
-              <div key={`${item.title}-${index}`} className={`alert-card ${item.level}`}>
-                <strong>{item.title}</strong>
-                <p>{item.description}</p>
-              </div>
-            ))}
-          </div>
+          {(overview.alerts || []).length ? (
+            <div className="alert-stack enhanced">
+              {(overview.alerts || []).map((item, index) => (
+                <div key={`${item.title}-${index}`} className={`alert-card ${item.level}`}>
+                  <strong>{item.title}</strong>
+                  <p>{item.description}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState icon="🔔" title="لا توجد تنبيهات حالياً" description="ممتاز، لا توجد توصيات أو تنبيهات عاجلة الآن." />
+          )}
         </Card>
       </section>
     </AdminLayout>

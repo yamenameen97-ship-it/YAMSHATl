@@ -93,7 +93,7 @@ export default function Register() {
 
         {error ? <div className="alert error">{error}</div> : null}
 
-        <Button type="submit" disabled={loading}>{loading ? 'جارٍ إنشاء الحساب...' : 'إنشاء الحساب'}</Button>
+        <Button type="submit" loading={loading} disabled={loading}>{loading ? 'جارٍ إنشاء الحساب...' : 'إنشاء الحساب'}</Button>
       </form>
     </AuthShell>
   );

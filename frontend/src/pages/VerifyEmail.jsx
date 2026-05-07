@@ -93,8 +93,8 @@ export default function VerifyEmail() {
         {devCode ? <div className="alert">كود التطوير: {devCode}</div> : null}
         {error ? <div className="alert error">{error}</div> : null}
 
-        <Button type="submit" disabled={loading}>{loading ? 'جارٍ التأكيد...' : 'تأكيد البريد'}</Button>
-        <Button type="button" variant="secondary" disabled={resending || !form.email.trim()} onClick={handleResend}>
+        <Button type="submit" loading={loading} disabled={loading}>{loading ? 'جارٍ التأكيد...' : 'تأكيد البريد'}</Button>
+        <Button type="button" variant="secondary" loading={resending} disabled={resending || !form.email.trim()} onClick={handleResend}>
           {resending ? 'جارٍ الإرسال...' : 'إعادة إرسال الكود'}
         </Button>
       </form>

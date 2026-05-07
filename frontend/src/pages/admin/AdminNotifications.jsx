@@ -3,6 +3,9 @@ import AdminLayout from '../../components/admin/AdminLayout.jsx';
 import Card from '../../components/ui/Card.jsx';
 import Button from '../../components/ui/Button.jsx';
 import Input from '../../components/ui/Input.jsx';
+import EmptyState from '../../components/feedback/EmptyState.jsx';
+import ErrorState from '../../components/feedback/ErrorState.jsx';
+import { ListSkeleton } from '../../components/feedback/Skeleton.jsx';
 import { broadcastAdminNotification, getAdminNotifications } from '../../api/admin.js';
 import socket from '../../api/socket.js';
 import { useToast } from '../../components/admin/ToastProvider.jsx';
@@ -18,11 +21,24 @@ export default function AdminNotifications() {
   const [filterType, setFilterType] = useState('ALL');
   const [query, setQuery] = useState('');
   const [form, setForm] = useState({ title: '', body: '', type: 'SYSTEM', target_role: '' });
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const { pushToast } = useToast();
 
   const loadNotifications = async () => {
-    const { data } = await getAdminNotifications(60);
-    setNotifications(data.items || []);
+    try {
+      setLoading(true);
+      setLoadError('');
+      const { data } = await getAdminNotifications(60);
+      setNotifications(data.items || []);
+    } catch (error) {
+      const message = error?.response?.data?.detail || 'تعذر تحميل مركز الإشعارات.';
+      setLoadError(message);
+      pushToast({ title: 'تعذر تحميل الإشعارات', description: message, type: 'error' });
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -54,10 +70,17 @@ export default function AdminNotifications() {
   }), [notifications]);
 
   const handleSend = async () => {
-    await broadcastAdminNotification({ ...form, target_role: form.target_role || null });
-    pushToast({ title: 'تم إرسال الإشعار', description: form.title, type: 'success' });
-    setForm({ title: '', body: '', type: 'SYSTEM', target_role: '' });
-    loadNotifications();
+    try {
+      setSending(true);
+      await broadcastAdminNotification({ ...form, target_role: form.target_role || null });
+      pushToast({ title: 'تم إرسال الإشعار', description: form.title, type: 'success' });
+      setForm({ title: '', body: '', type: 'SYSTEM', target_role: '' });
+      await loadNotifications();
+    } catch (error) {
+      pushToast({ title: 'تعذر إرسال الإشعار', description: error?.response?.data?.detail || 'تحقق من البيانات ثم حاول تاني.', type: 'error' });
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -75,6 +98,8 @@ export default function AdminNotifications() {
                   key={template.label}
                   type="button"
                   className="mini-action"
+                  disabled={sending}
+                  aria-busy={sending}
                   onClick={() => setForm({ title: template.title, body: template.body, type: template.type, target_role: '' })}
                 >
                   {template.label}
@@ -87,7 +112,7 @@ export default function AdminNotifications() {
               <label className="field select-field"><span className="field-label">النوع</span><select className="input" value={form.type} onChange={(event) => setForm((prev) => ({ ...prev, type: event.target.value }))}><option value="SYSTEM">SYSTEM</option><option value="ALERT">ALERT</option><option value="UPDATE">UPDATE</option></select></label>
               <label className="field select-field"><span className="field-label">الفئة المستهدفة</span><select className="input" value={form.target_role} onChange={(event) => setForm((prev) => ({ ...prev, target_role: event.target.value }))}><option value="">كل الأدوار</option><option value="admin">Admin</option><option value="moderator">Moderator</option><option value="user">User</option></select></label>
             </div>
-            <Button onClick={handleSend}>إرسال الآن</Button>
+            <Button onClick={handleSend} loading={sending}>{sending ? 'جارٍ الإرسال...' : 'إرسال الآن'}</Button>
           </div>
         </Card>
 
@@ -107,6 +132,8 @@ export default function AdminNotifications() {
         </Card>
       </section>
 
+      {loadError && !loading ? <ErrorState title="تعذر تحميل مركز الإشعارات" description={loadError} onRetry={loadNotifications} /> : null}
+
       <Card>
         <div className="card-head split">
           <div>
@@ -118,22 +145,30 @@ export default function AdminNotifications() {
             <label className="field select-field"><span className="field-label">النوع</span><select className="input" value={filterType} onChange={(event) => setFilterType(event.target.value)}><option value="ALL">الكل</option><option value="SYSTEM">SYSTEM</option><option value="ALERT">ALERT</option><option value="UPDATE">UPDATE</option></select></label>
           </div>
         </div>
-        <div className="timeline-list">
-          {filteredNotifications.map((item) => (
-            <div key={item.id} className="notification-row-card enhanced-notification-row">
-              <div>
-                <div className="notification-header-inline">
-                  <strong>{item.title}</strong>
-                  <span className={`role-pill ${item.type === 'ALERT' ? 'admin' : item.type === 'UPDATE' ? 'moderator' : 'neutral'}`}>{item.type}</span>
+
+        {loading ? <ListSkeleton count={5} /> : null}
+
+        {!loading && filteredNotifications.length === 0 ? (
+          <EmptyState icon="📣" title="لا توجد إشعارات مطابقة" description="جرّب فلتر مختلف أو أرسل إشعار جديد من البطاقة الجانبية." actionLabel="إعادة التحميل" onAction={loadNotifications} />
+        ) : null}
+
+        {!loading && filteredNotifications.length > 0 ? (
+          <div className="timeline-list">
+            {filteredNotifications.map((item) => (
+              <div key={item.id} className="notification-row-card enhanced-notification-row">
+                <div>
+                  <div className="notification-header-inline">
+                    <strong>{item.title}</strong>
+                    <span className={`role-pill ${item.type === 'ALERT' ? 'admin' : item.type === 'UPDATE' ? 'moderator' : 'neutral'}`}>{item.type}</span>
+                  </div>
+                  <p>{item.body}</p>
+                  <small>{item.username || 'system'} · {item.created_at ? new Date(item.created_at).toLocaleString('ar-EG') : 'الآن'}</small>
                 </div>
-                <p>{item.body}</p>
-                <small>{item.username || 'system'} · {item.created_at ? new Date(item.created_at).toLocaleString('ar-EG') : 'الآن'}</small>
+                <span className={`status-pill ${item.is_read ? 'active' : 'banned'}`}>{item.is_read ? 'Read' : 'Unread'}</span>
               </div>
-              <span className={`status-pill ${item.is_read ? 'active' : 'banned'}`}>{item.is_read ? 'Read' : 'Unread'}</span>
-            </div>
-          ))}
-          {!filteredNotifications.length ? <div className="table-empty">لا توجد نتائج مطابقة للفلاتر الحالية.</div> : null}
-        </div>
+            ))}
+          </div>
+        ) : null}
       </Card>
     </AdminLayout>
   );

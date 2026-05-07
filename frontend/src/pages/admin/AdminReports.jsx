@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout.jsx';
 import Card from '../../components/ui/Card.jsx';
 import Button from '../../components/ui/Button.jsx';
+import EmptyState from '../../components/feedback/EmptyState.jsx';
+import ErrorState from '../../components/feedback/ErrorState.jsx';
+import { AdminOverviewSkeleton } from '../../components/feedback/Skeleton.jsx';
 import { exportAdminReport, getAdminReportsSummary } from '../../api/admin.js';
 import { DonutChart } from '../../components/admin/Charts.jsx';
 import { useToast } from '../../components/admin/ToastProvider.jsx';
@@ -15,18 +18,48 @@ function saveBlob(blob, filename) {
   window.URL.revokeObjectURL(url);
 }
 
+const defaultSummary = { totals: {}, roles: [], generated_at: '' };
+
 export default function AdminReports() {
-  const [summary, setSummary] = useState({ totals: {}, roles: [], generated_at: '' });
+  const [summary, setSummary] = useState(defaultSummary);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [exportingFormat, setExportingFormat] = useState('');
   const { pushToast } = useToast();
 
+  const hasData = Boolean(Object.keys(summary.totals || {}).length || (summary.roles || []).length || summary.generated_at);
+
+  const loadSummary = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const { data } = await getAdminReportsSummary();
+      setSummary({ ...defaultSummary, ...(data || {}) });
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'تعذر تحميل ملخص التقارير حالياً.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    getAdminReportsSummary().then(({ data }) => setSummary(data));
+    loadSummary();
   }, []);
 
   const handleExport = async (format) => {
-    const { data } = await exportAdminReport(format);
-    saveBlob(data, `yamshat-admin-report.${format}`);
-    pushToast({ title: `تم تصدير ${format.toUpperCase()}`, description: 'الملف جاهز للتحميل.', type: 'success' });
+    setExportingFormat(format);
+    setError('');
+    try {
+      const { data } = await exportAdminReport(format);
+      saveBlob(data, `yamshat-admin-report.${format}`);
+      pushToast({ title: `تم تصدير ${format.toUpperCase()}`, description: 'الملف جاهز للتحميل.', type: 'success' });
+    } catch (err) {
+      const message = err?.response?.data?.detail || `تعذر تصدير ملف ${format.toUpperCase()} حالياً.`;
+      setError(message);
+      pushToast({ title: 'تعذر التصدير', description: message, type: 'error' });
+    } finally {
+      setExportingFormat('');
+    }
   };
 
   const insights = useMemo(() => {
@@ -45,25 +78,48 @@ export default function AdminReports() {
     ];
   }, [summary]);
 
+  if (loading && !hasData) {
+    return (
+      <AdminLayout>
+        <AdminOverviewSkeleton />
+      </AdminLayout>
+    );
+  }
+
+  if (error && !hasData) {
+    return (
+      <AdminLayout>
+        <ErrorState title="تعذر تحميل التقارير" description={error} onRetry={loadSummary} />
+      </AdminLayout>
+    );
+  }
+
   return (
     <AdminLayout>
+      {error ? <div className="alert error">{error}</div> : null}
+
       <section className="dashboard-hero-grid small-gap">
         <Card className="hero-card">
           <h3 className="section-title">التقارير والتحليلات</h3>
           <p className="muted">تصدير PDF و Excel مع ملخص مؤشرات فوري وقابل للتقديم للإدارة أو فرق التشغيل.</p>
           <div className="action-row wide">
-            <Button onClick={() => handleExport('pdf')}>تصدير PDF</Button>
-            <Button variant="secondary" onClick={() => handleExport('xlsx')}>تصدير Excel</Button>
+            <Button loading={exportingFormat === 'pdf'} disabled={Boolean(exportingFormat)} onClick={() => handleExport('pdf')}>تصدير PDF</Button>
+            <Button variant="secondary" loading={exportingFormat === 'xlsx'} disabled={Boolean(exportingFormat)} onClick={() => handleExport('xlsx')}>تصدير Excel</Button>
+            <Button variant="secondary" loading={loading} disabled={loading} onClick={loadSummary}>تحديث الملخص</Button>
           </div>
         </Card>
         <Card>
           <h3 className="section-title">ملخص سريع</h3>
-          <div className="status-list compact-grid">
-            <div><strong>{summary.totals?.users || 0}</strong><span>مستخدم</span></div>
-            <div><strong>{summary.totals?.active_users || 0}</strong><span>نشط</span></div>
-            <div><strong>{summary.totals?.posts || 0}</strong><span>منشور</span></div>
-            <div><strong>{summary.totals?.messages || 0}</strong><span>رسالة</span></div>
-          </div>
+          {Object.keys(summary.totals || {}).length ? (
+            <div className="status-list compact-grid">
+              <div><strong>{summary.totals?.users || 0}</strong><span>مستخدم</span></div>
+              <div><strong>{summary.totals?.active_users || 0}</strong><span>نشط</span></div>
+              <div><strong>{summary.totals?.posts || 0}</strong><span>منشور</span></div>
+              <div><strong>{summary.totals?.messages || 0}</strong><span>رسالة</span></div>
+            </div>
+          ) : (
+            <EmptyState icon="🗂️" title="لا يوجد ملخص جاهز بعد" description="بمجرد توفر أرقام من الباك إند سيظهر الملخص هنا تلقائياً." actionLabel="تحديث الآن" onAction={loadSummary} />
+          )}
         </Card>
       </section>
 
@@ -80,33 +136,45 @@ export default function AdminReports() {
       <section className="two-column-grid">
         <Card>
           <div className="card-head"><h3 className="section-title">إجمالي المؤشرات</h3></div>
-          <div className="queue-grid compact-cards">
-            {Object.entries(summary.totals || {}).map(([key, value]) => (
-              <div key={key} className="queue-card compact">
-                <span className="queue-label">{key}</span>
-                <strong>{value}</strong>
-                <p>بيانات محدثة مباشرة من قاعدة البيانات.</p>
-              </div>
-            ))}
-          </div>
+          {Object.entries(summary.totals || {}).length ? (
+            <div className="queue-grid compact-cards">
+              {Object.entries(summary.totals || {}).map(([key, value]) => (
+                <div key={key} className="queue-card compact">
+                  <span className="queue-label">{key}</span>
+                  <strong>{value}</strong>
+                  <p>بيانات محدثة مباشرة من قاعدة البيانات.</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState icon="📊" title="لا توجد مؤشرات رقمية حالياً" description="الواجهة جاهزة لكن الملخص لم يرجع أي قيم بعد." />
+          )}
         </Card>
 
         <Card>
           <div className="card-head"><h3 className="section-title">توزيع الأدوار</h3></div>
-          <DonutChart data={(summary.roles || []).map((role) => ({ label: role.role, value: role.count }))} />
+          {(summary.roles || []).length ? (
+            <DonutChart data={(summary.roles || []).map((role) => ({ label: role.role, value: role.count }))} />
+          ) : (
+            <EmptyState icon="👥" title="لا يوجد توزيع أدوار بعد" description="سيظهر الرسم بمجرد وصول بيانات الأدوار من الخادم." />
+          )}
         </Card>
       </section>
 
       <Card>
         <div className="card-head"><h3 className="section-title">تفاصيل الأدوار</h3></div>
-        <div className="rbac-grid">
-          {(summary.roles || []).map((role) => (
-            <div key={role.role} className="permission-card">
-              <strong>{role.role}</strong>
-              <span>{role.count} مستخدم</span>
-            </div>
-          ))}
-        </div>
+        {(summary.roles || []).length ? (
+          <div className="rbac-grid">
+            {(summary.roles || []).map((role) => (
+              <div key={role.role} className="permission-card">
+                <strong>{role.role}</strong>
+                <span>{role.count} مستخدم</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState icon="🧭" title="تفاصيل الأدوار غير متوفرة" description="لم تصل أي عناصر لأدوار المستخدمين حتى الآن." actionLabel="إعادة التحميل" onAction={loadSummary} />
+        )}
       </Card>
     </AdminLayout>
   );

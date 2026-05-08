@@ -176,7 +176,11 @@ def _delivery_metadata() -> dict:
 def _send_verification_message(user: User, code: str) -> dict:
     delivery = _delivery_metadata()
     delivery['sent'] = False
-    if delivery['smtp_configured']:
+    try:
+    send_verification_email(user.email, code)
+    delivery['sent'] = True
+except Exception as exc:
+    delivery['error'] = str(exc)
         try:
             send_verification_email(user.email, code)
             delivery['sent'] = True
@@ -454,8 +458,11 @@ def forgot_password(payload: dict = Body(...), db: Session = Depends(get_db)):
         'sent': False,
         'code_expires_in_minutes': settings.PASSWORD_RESET_CODE_EXPIRE_MINUTES,
     }
-    if delivery['smtp_configured']:
-        try:
+    try:
+    send_verification_email(user.email, code)
+    delivery['sent'] = True
+except Exception as exc:
+    delivery['error'] = str(exc)
             send_password_reset_email(user.email, code)
             delivery['sent'] = True
         except Exception as exc:

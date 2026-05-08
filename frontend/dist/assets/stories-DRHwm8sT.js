@@ -1,1 +1,0 @@
-import{y as e}from"./index-DCryHO2o.js";var t=()=>e.get(`/stories`),n=t=>{let n=new FormData;return n.append(`file`,t),e.post(`/add_story`,n,{headers:{"Content-Type":`multipart/form-data`}})};export{n,t};

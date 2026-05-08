@@ -1,9 +1,46 @@
-const VERSION = 'yamshat-shell-v5';
-const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/admin.html', '/admin/', '/admin/login/'];
+const VERSION = 'yamshat-shell-v6';
+const SHELL_CACHE = `${VERSION}:shell`;
+const STATIC_CACHE = `${VERSION}:static`;
+const MEDIA_CACHE = `${VERSION}:media`;
+const API_CACHE = `${VERSION}:api`;
+const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/admin.html', '/admin/', '/admin/login/', '/app-config.js'];
+const API_CACHE_ALLOWLIST = ['/api/posts', '/api/notifications', '/api/admin/overview', '/api/users/profile'];
+
+function shouldCacheApi(requestUrl) {
+  return API_CACHE_ALLOWLIST.some((item) => requestUrl.pathname.startsWith(item));
+}
+
+async function staleWhileRevalidate(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(request);
+  const networkFetch = fetch(request)
+    .then((response) => {
+      if (response && response.ok) cache.put(request, response.clone()).catch(() => null);
+      return response;
+    })
+    .catch(() => cached);
+  return cached || networkFetch;
+}
+
+async function networkFirst(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  try {
+    const response = await fetch(request);
+    if (response && response.ok) cache.put(request, response.clone()).catch(() => null);
+    return response;
+  } catch {
+    return cache.match(request);
+  }
+}
+
+async function notifyClients(type) {
+  const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  await Promise.all(clients.map((client) => client.postMessage({ type })));
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(VERSION)
+    caches.open(SHELL_CACHE)
       .then((cache) => cache.addAll(APP_SHELL))
       .then(() => self.skipWaiting())
   );
@@ -12,9 +49,21 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== VERSION).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(keys.filter((key) => ![SHELL_CACHE, STATIC_CACHE, MEDIA_CACHE, API_CACHE].includes(key)).map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'yamshat:queue-sync') {
+    event.waitUntil(notifyClients('yamshat:sync-now'));
+  }
+});
+
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'yamshat-background-sync') {
+    event.waitUntil(notifyClients('yamshat:sync-now'));
+  }
 });
 
 self.addEventListener('push', (event) => {
@@ -56,39 +105,32 @@ self.addEventListener('fetch', (event) => {
   const isSameOrigin = requestUrl.origin === self.location.origin;
   const isNavigation = event.request.mode === 'navigate';
   const isStaticAsset = /\.(?:js|css|png|jpg|jpeg|svg|webp|gif|ico|woff2?)$/i.test(requestUrl.pathname);
+  const isMedia = /\.(?:mp4|webm|mov|m4v)$/i.test(requestUrl.pathname);
+  const isApiRequest = requestUrl.pathname.startsWith('/api/');
 
   if (isNavigation) {
     event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          const contentType = response.headers.get('content-type') || '';
-          if (response.ok && contentType.includes('text/html')) {
-            const cloned = response.clone();
-            caches.open(VERSION).then((cache) => cache.put('/index.html', cloned)).catch(() => null);
-          }
-          return response;
-        })
-        .catch(async () => {
-          const cache = await caches.open(VERSION);
-          return (await cache.match('/index.html')) || (await cache.match('/'));
-        })
+      networkFirst(event.request, SHELL_CACHE).then(async (response) => {
+        if (response) return response;
+        const cache = await caches.open(SHELL_CACHE);
+        return (await cache.match('/index.html')) || (await cache.match('/'));
+      })
     );
     return;
   }
 
-  if (isSameOrigin && isStaticAsset) {
-    event.respondWith(
-      caches.match(event.request).then((cached) => {
-        const networkFetch = fetch(event.request)
-          .then((response) => {
-            const cloned = response.clone();
-            caches.open(VERSION).then((cache) => cache.put(event.request, cloned)).catch(() => null);
-            return response;
-          })
-          .catch(() => cached);
-        return cached || networkFetch;
-      })
-    );
+  if ((isSameOrigin && isStaticAsset) || requestUrl.pathname === '/app-config.js') {
+    event.respondWith(staleWhileRevalidate(event.request, STATIC_CACHE));
+    return;
+  }
+
+  if (isMedia || /imagekit\.io|cloudinary\.com/i.test(requestUrl.host)) {
+    event.respondWith(staleWhileRevalidate(event.request, MEDIA_CACHE));
+    return;
+  }
+
+  if (isSameOrigin && isApiRequest && shouldCacheApi(requestUrl)) {
+    event.respondWith(networkFirst(event.request, API_CACHE));
     return;
   }
 

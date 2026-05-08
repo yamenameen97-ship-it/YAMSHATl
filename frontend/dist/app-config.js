@@ -69,6 +69,8 @@
   } catch (_) {}
 
   window.APP_API_BASE = apiBase;
+  window.APP_CDN_BASE = '';
+  window.YAMSHAT_CDN_BASE = window.APP_CDN_BASE;
   window.YAMSHAT_SOCKET_URL = backendOrigin;
   window.YAMSHAT_BACKEND_ORIGIN = backendOrigin;
   window.YAMSHAT_FRONTEND_ORIGIN = trim(window.location.origin);

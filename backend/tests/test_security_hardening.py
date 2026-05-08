@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -58,7 +59,7 @@ def test_primary_admin_account_is_protected_from_moderator(client, db_session, c
 
     protected_user = User(
         username='primary-admin',
-        email='yamenameen97@gmail.com',
+        email=os.getenv('PRIMARY_ADMIN_EMAIL','yamenameen97@gmail.com'),
         hashed_password='hash',
         email_verified=True,
         is_active=True,

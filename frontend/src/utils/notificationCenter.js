@@ -1,3 +1,5 @@
+import { redirectToAppPath } from './router.js';
+
 const shownNotificationIds = new Set();
 
 export function resolveNotificationPath(notification) {
@@ -88,7 +90,7 @@ export async function maybeShowBrowserNotification(item) {
     });
     native.onclick = () => {
       window.focus();
-      window.location.assign(notification.path || '/notifications');
+      redirectToAppPath(notification.path || '/notifications', { replace: false });
       native.close();
     };
     return true;

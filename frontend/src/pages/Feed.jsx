@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
@@ -103,6 +103,7 @@ async function loadFeedData(currentUser) {
 }
 
 export default function Feed() {
+  const location = useLocation();
   const currentUser = getCurrentUsername();
   const token = getAuthToken();
   const queryClient = useQueryClient();
@@ -173,9 +174,7 @@ export default function Feed() {
   }, []);
 
   useEffect(() => {
-    const shouldOpenComposer = typeof window !== 'undefined'
-      ? window.location.hash === '#composer' || new URLSearchParams(window.location.search).get('compose') === '1'
-      : false;
+    const shouldOpenComposer = location.hash === '#composer' || new URLSearchParams(location.search || '').get('compose') === '1';
 
     if (!shouldOpenComposer) return;
 
@@ -185,7 +184,7 @@ export default function Feed() {
     }, 180);
 
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [location.hash, location.search]);
 
   useEffect(() => {
     if (!currentUser) return undefined;

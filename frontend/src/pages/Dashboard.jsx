@@ -254,7 +254,7 @@ export default function Dashboard() {
             <Button onClick={handleSavePreferences} loading={savingPrefs}>
               {savingPrefs ? ui.dashboard.saving : ui.dashboard.save}
             </Button>
-            <a href="/admin.html" className="btn btn-secondary">{language === 'en' ? 'Admin panel' : 'دخول لوحة الأدمن'}</a>
+            <Link to="/admin/login" className="btn btn-secondary">{language === 'en' ? 'Admin panel' : 'دخول لوحة الأدمن'}</Link>
             <Button onClick={handleLogout}>{language === 'en' ? 'Logout' : 'تسجيل الخروج'}</Button>
           </div>
         </Card>

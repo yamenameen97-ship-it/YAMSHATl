@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { Link, NavLink } from 'react-router-dom';
 import { useAppStore } from '../../store/appStore.js';
 import { selectUnreadTotal, useChatStore } from '../../store/chatStore.js';
 import { getUiText } from '../../utils/i18n.js';
@@ -69,7 +69,7 @@ export default function Sidebar() {
         <div className="glass-chip">DB linked</div>
         <div className="glass-chip">Top bar</div>
         <div className="glass-chip">Bottom bar</div>
-        <a href="/admin.html" className="glass-chip admin-entry-chip">Admin</a>
+        <Link to="/admin/login" className="glass-chip admin-entry-chip">Admin</Link>
       </div>
     </aside>
   );

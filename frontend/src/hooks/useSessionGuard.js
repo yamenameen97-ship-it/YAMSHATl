@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import sessionManager from '../auth/sessionManager.js';
 import { clearStoredUser, getAuthToken, getSessionTtlMs, getStoredUser, hasStoredSession, shouldRefreshSessionSoon } from '../utils/auth.js';
 import { useAppStore } from '../store/appStore.js';
+import { getCurrentAppPathname, redirectToAppPath } from '../utils/router.js';
 
 const PUBLIC_PATHS = new Set(['/login', '/register', '/verify-email', '/forgot-password', '/reset-password', '/admin', '/admin/login']);
 const REFRESH_EARLY_WINDOW_MS = 60_000;
@@ -14,8 +15,9 @@ function isPublicPath(pathname) {
 
 function redirectToLogin(pathname) {
   if (typeof window === 'undefined') return;
-  const loginPath = pathname.startsWith('/admin') ? '/admin/login' : '/login';
-  if (window.location.pathname !== loginPath) window.location.href = loginPath;
+  const currentPath = getCurrentAppPathname();
+  const loginPath = pathname.startsWith('/admin') || currentPath.startsWith('/admin') ? '/admin/login' : '/login';
+  redirectToAppPath(loginPath);
 }
 
 export default function useSessionGuard() {

@@ -30,7 +30,7 @@ export default function MobileDock() {
           </NavLink>
         ))}
 
-        <Link to="/?compose=1#composer" className="mobile-dock-link mobile-dock-center" aria-label={ui.nav.publish}>
+        <Link to={{ pathname: '/', search: '?compose=1', hash: '#composer' }} className="mobile-dock-link mobile-dock-center" aria-label={ui.nav.publish}>
           <span className="mobile-dock-icon">＋</span>
           <span>{ui.nav.publish}</span>
         </Link>

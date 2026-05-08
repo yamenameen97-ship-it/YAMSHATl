@@ -3,6 +3,7 @@ import socket from '../api/socket.js';
 import { clearStoredUser } from '../utils/auth.js';
 import { useAppStore } from '../store/appStore.js';
 import logger from '../utils/logger.js';
+import { getCurrentAppPathname, redirectToAppPath } from '../utils/router.js';
 
 const RealtimeContext = createContext({
   socket,
@@ -12,8 +13,9 @@ const RealtimeContext = createContext({
 
 function redirectToLogin() {
   if (typeof window === 'undefined') return;
-  const loginPath = window.location.pathname.startsWith('/admin') ? '/admin/login' : '/login';
-  if (window.location.pathname !== loginPath) window.location.href = loginPath;
+  const currentPath = getCurrentAppPathname();
+  const loginPath = currentPath.startsWith('/admin') ? '/admin/login' : '/login';
+  redirectToAppPath(loginPath);
 }
 
 export function RealtimeProvider({ children }) {

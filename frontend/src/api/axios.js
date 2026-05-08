@@ -12,6 +12,7 @@ import { useAppStore } from '../store/appStore.js';
 import logger from '../utils/logger.js';
 import { getBackoffDelayMs, isSafeRetryMethod, sleep } from '../utils/retry.js';
 import sessionManager from '../auth/sessionManager.js';
+import { getCurrentAppPathname, redirectToAppPath } from '../utils/router.js';
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 const DEFAULT_CACHE_TTL_MS = 15_000;
@@ -118,10 +119,9 @@ function fireToast(toast) {
 
 function redirectToLogin() {
   if (typeof window === 'undefined') return;
-  const loginPath = window.location.pathname.startsWith('/admin') ? '/admin/login' : '/login';
-  if (window.location.pathname !== loginPath) {
-    window.location.href = loginPath;
-  }
+  const currentPath = getCurrentAppPathname();
+  const loginPath = currentPath.startsWith('/admin') ? '/admin/login' : '/login';
+  redirectToAppPath(loginPath);
 }
 
 function attachCommonHeaders(config) {

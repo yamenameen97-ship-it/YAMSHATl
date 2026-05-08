@@ -1,9 +1,12 @@
 import os
 import smtplib
+import logging
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 APP_NAME = os.getenv('PROJECT_NAME', 'YAMSHAT')
 
@@ -12,13 +15,7 @@ SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
 SMTP_USERNAME = os.getenv('SMTP_USERNAME') or os.getenv('EMAIL_ADDRESS')
 SMTP_PASSWORD = os.getenv('SMTP_PASSWORD') or os.getenv('EMAIL_PASSWORD')
 SMTP_FROM = os.getenv('SMTP_FROM') or os.getenv('EMAIL_ADDRESS') or SMTP_USERNAME
-SMTP_USE_SSL = os.getenv('SMTP_USE_SSL', '').strip().lower() in {'1', 'true', 'yes', 'on'}
 SMTP_USE_TLS = os.getenv('SMTP_USE_TLS', 'true').lower() == 'true'
-
-if not SMTP_USE_SSL and SMTP_PORT == 465:
-    SMTP_USE_SSL = True
-if SMTP_USE_SSL:
-    SMTP_USE_TLS = False
 
 RESEND_API_URL = 'https://api.resend.com/emails'
 RESEND_API_KEY = (os.getenv('RESEND_API_KEY') or '').strip()
@@ -83,16 +80,22 @@ def send_email_via_resend(to_email: str, subject: str, body: str, html_body: str
     if 'html' not in payload and 'text' not in payload:
         raise RuntimeError('Email body is empty')
 
-    response = httpx.post(
-        RESEND_API_URL,
-        headers={
-            'Authorization': f'Bearer {RESEND_API_KEY}',
-            'Content-Type': 'application/json',
-        },
-        json=payload,
-        timeout=20,
-    )
-    response.raise_for_status()
+    try:
+        response = httpx.post(
+            RESEND_API_URL,
+            headers={
+                'Authorization': f'Bearer {RESEND_API_KEY}',
+                'Content-Type': 'application/json',
+            },
+            json=payload,
+            timeout=20,
+        )
+        if response.status_code >= 400:
+            logger.error(f"Resend API error: {response.status_code} - {response.text}")
+        response.raise_for_status()
+    except Exception as e:
+        logger.error(f"Failed to send email via Resend: {str(e)}")
+        raise
 
 
 def send_email_via_brevo(to_email: str, subject: str, body: str, html_body: str | None = None):
@@ -146,13 +149,10 @@ def send_email_via_smtp(to_email: str, subject: str, body: str, html_body: str |
     if html_body:
         msg.attach(MIMEText(html_body, 'html', 'utf-8'))
 
-    server_factory = smtplib.SMTP_SSL if SMTP_USE_SSL else smtplib.SMTP
-    server = server_factory(SMTP_SERVER, SMTP_PORT, timeout=20)
+    server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=20)
     try:
-        server.ehlo()
-        if SMTP_USE_TLS and not SMTP_USE_SSL:
+        if SMTP_USE_TLS:
             server.starttls()
-            server.ehlo()
         server.login(SMTP_USERNAME, SMTP_PASSWORD)
         server.send_message(msg)
     finally:

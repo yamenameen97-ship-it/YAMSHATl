@@ -176,11 +176,15 @@ def _delivery_metadata() -> dict:
 def _send_verification_message(user: User, code: str) -> dict:
     delivery = _delivery_metadata()
     delivery['sent'] = False
-    try:
-        send_verification_email(user.email, code)
-        delivery['sent'] = True
-    except Exception as exc:
-        delivery['error'] = str(exc)
+    if delivery['smtp_configured']:
+        try:
+            send_verification_email(user.email, code)
+            delivery['sent'] = True
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).error(f"Verification email failed: {str(exc)}")
+            delivery['error'] = str(exc)
+            delivery['provider'] = os.getenv('RESEND_API_KEY') and 'resend' or 'smtp'
     return delivery
 
 
@@ -453,11 +457,8 @@ def forgot_password(payload: dict = Body(...), db: Session = Depends(get_db)):
         'sent': False,
         'code_expires_in_minutes': settings.PASSWORD_RESET_CODE_EXPIRE_MINUTES,
     }
-    try:
-    send_verification_email(user.email, code)
-    delivery['sent'] = True
-except Exception as exc:
-    delivery['error'] = str(exc)
+    if delivery['smtp_configured']:
+        try:
             send_password_reset_email(user.email, code)
             delivery['sent'] = True
         except Exception as exc:

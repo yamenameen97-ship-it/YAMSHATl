@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import secrets
 
+
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
@@ -28,7 +29,7 @@ from app.services.auth_service import (
     verify_email_code,
     verify_password_reset_code,
 )
-from app.services.email import send_password_reset_email, send_verification_email, smtp_configured
+from app.services.email import delivery_provider, send_password_reset_email, send_verification_email, smtp_configured
 
 router = APIRouter()
 CSRF_COOKIE_NAME = 'yamshat_csrf_token'
@@ -169,6 +170,7 @@ def _normalize_rate_key_part(value: str | None, fallback: str) -> str:
 def _delivery_metadata() -> dict:
     return {
         'smtp_configured': smtp_configured(),
+        'provider': delivery_provider(),
         'code_expires_in_minutes': settings.EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES,
     }
 
@@ -184,7 +186,7 @@ def _send_verification_message(user: User, code: str) -> dict:
             import logging
             logging.getLogger(__name__).error(f"Verification email failed: {str(exc)}")
             delivery['error'] = str(exc)
-            delivery['provider'] = os.getenv('RESEND_API_KEY') and 'resend' or 'smtp'
+            delivery['provider'] = delivery_provider()
     return delivery
 
 
@@ -441,6 +443,15 @@ def logout(
     return {'message': 'Logged out'}
 
 
+def _password_reset_delivery_metadata() -> dict:
+    return {
+        'smtp_configured': smtp_configured(),
+        'provider': delivery_provider(),
+        'sent': False,
+        'code_expires_in_minutes': settings.PASSWORD_RESET_CODE_EXPIRE_MINUTES,
+    }
+
+
 @router.post('/forgot-password')
 def forgot_password(payload: dict = Body(...), db: Session = Depends(get_db)):
     email = str(payload.get('email') or '').strip().lower()
@@ -452,17 +463,14 @@ def forgot_password(payload: dict = Body(...), db: Session = Depends(get_db)):
         return {'message': 'If the account exists, a reset code has been sent'}
 
     code = issue_password_reset_code(db, user)
-    delivery = {
-        'smtp_configured': smtp_configured(),
-        'sent': False,
-        'code_expires_in_minutes': settings.PASSWORD_RESET_CODE_EXPIRE_MINUTES,
-    }
+    delivery = _password_reset_delivery_metadata()
     if delivery['smtp_configured']:
         try:
             send_password_reset_email(user.email, code)
             delivery['sent'] = True
         except Exception as exc:
             delivery['error'] = str(exc)
+            delivery['provider'] = delivery_provider()
 
     response = {
         'message': 'If the account exists, a reset code has been sent',

@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.core.rate_limit import enforce_rate_limit
+from app.core.threat_monitor import assess_request
 
 
 PUBLIC_AUTH_PATHS = {
@@ -33,8 +34,19 @@ def client_ip(request: Request) -> str:
 
 async def api_rate_guard(request: Request, call_next):
     path = request.url.path
+    assessment = None
     if path.startswith(settings.API_PREFIX):
         short_path = path[len(settings.API_PREFIX):] or '/'
+        assessment = assess_request(request, short_path)
+        if assessment.get('blocked'):
+            return JSONResponse(
+                status_code=int(assessment.get('status_code') or 403),
+                content={
+                    'detail': assessment.get('detail') or 'Request blocked',
+                    'reason': assessment.get('reason') or 'security_policy',
+                },
+            )
+
         rate_limit = settings.API_RATE_LIMIT_PER_MINUTE
         if short_path in PUBLIC_AUTH_PATHS:
             rate_limit = max(rate_limit, settings.LOGIN_RATE_LIMIT_PER_MINUTE * 3)
@@ -46,4 +58,6 @@ async def api_rate_guard(request: Request, call_next):
     response = await call_next(request)
     if path.startswith(f'{settings.API_PREFIX}/auth'):
         response.headers['Cache-Control'] = 'no-store'
+    if assessment is not None:
+        response.headers['X-Yamshat-Threat-Level'] = str(assessment.get('level') or 'low')
     return response

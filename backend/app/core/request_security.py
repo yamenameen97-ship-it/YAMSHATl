@@ -9,6 +9,8 @@ from typing import Any
 
 from fastapi import Request, Response
 
+from app.core.config import settings
+
 DEVICE_COOKIE_NAME = 'yamshat_device_id'
 DEVICE_HEADER_NAME = 'x-device-id'
 FORWARDED_FOR_HEADERS = ('x-forwarded-for', 'cf-connecting-ip', 'x-real-ip')
@@ -75,8 +77,8 @@ def ensure_device_cookie(response: Response, request: Request) -> str:
         key=DEVICE_COOKIE_NAME,
         value=device_id,
         httponly=False,
-        secure=bool(request.url.scheme == 'https'),
-        samesite='lax',
+        secure=bool(settings.REFRESH_COOKIE_SECURE or request.url.scheme == 'https'),
+        samesite=settings.cookie_samesite,
         path='/',
         max_age=60 * 60 * 24 * 365,
     )

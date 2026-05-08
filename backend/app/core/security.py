@@ -20,7 +20,7 @@ def utcnow() -> datetime:
 
 
 def hash_password(password: str) -> str:
-    return generate_password_hash(password, method='pbkdf2:sha256')
+    return generate_password_hash(password, method='scrypt')
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:

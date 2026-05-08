@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import subprocess
@@ -32,6 +33,14 @@ RESUMABLE_DIR.mkdir(exist_ok=True)
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open('rb') as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def allowed_file(filename: str) -> bool:
@@ -175,6 +184,10 @@ def save_upload(file: UploadFile) -> dict:
     with open(path, 'wb') as buffer:
         shutil.copyfileobj(file.file, buffer)
 
+    if path.stat().st_size > settings.resumable_upload_max_size_bytes:
+        path.unlink(missing_ok=True)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Uploaded file is too large')
+
     relative = str(path).replace('\\', '/')
     verdict = _ensure_upload_allowed(path, safe_name, file.content_type)
     response = {
@@ -273,6 +286,10 @@ async def upload_chunk(session_id: str, chunk_index: int, request: Request, curr
     if not body:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Chunk body is empty')
 
+    expected_chunk_limit = max(int(meta.get('total_size') or 0) // max(total_chunks, 1) + 2 * 1024 * 1024, 4 * 1024 * 1024)
+    if len(body) > expected_chunk_limit:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Chunk size is invalid')
+
     session_dir = _session_dir(session_id)
     chunks_dir = session_dir / 'chunks'
     chunk_path = chunks_dir / f'{chunk_index:06d}.part'
@@ -308,6 +325,19 @@ def complete_resumable_upload(session_id: str, current_user: User = Depends(get_
             if not chunk_path.exists():
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f'Missing chunk {index}')
             output.write(chunk_path.read_bytes())
+
+    actual_size = final_path.stat().st_size
+    declared_size = int(meta.get('total_size') or 0)
+    if declared_size and abs(actual_size - declared_size) > 1024:
+        final_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Uploaded file size does not match declared size')
+
+    expected_checksum = str(meta.get('checksum') or '').strip().lower()
+    if expected_checksum:
+        actual_checksum = _sha256_file(final_path)
+        if actual_checksum != expected_checksum:
+            final_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Upload checksum mismatch')
 
     meta['status'] = 'completed'
     meta['completed_at'] = _now_iso()

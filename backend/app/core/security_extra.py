@@ -63,19 +63,25 @@ def _content_security_policy(request: Request) -> str:
             connect_sources.append(origin)
     connect_sources.extend(['wss:', 'https:'])
     connect_value = ' '.join(dict.fromkeys(connect_sources))
-    return '; '.join([
+    directives = [
         "default-src 'self'",
         "base-uri 'self'",
         "form-action 'self'",
         "frame-ancestors 'none'",
+        "frame-src 'none'",
+        "manifest-src 'self'",
         "img-src 'self' data: blob: https:",
         f"connect-src {connect_value}",
         "media-src 'self' data: blob: https:",
         "script-src 'self'",
         "style-src 'self' 'unsafe-inline'",
         "font-src 'self' data: https:",
+        "worker-src 'self' blob:",
         "object-src 'none'",
-    ])
+    ]
+    if settings.REFRESH_COOKIE_SECURE:
+        directives.append('upgrade-insecure-requests')
+    return '; '.join(directives)
 
 
 def _csrf_cookie_matches_header(request: Request) -> bool:
@@ -106,12 +112,17 @@ async def security_headers(request: Request, call_next):
             return JSONResponse(status_code=403, content={'detail': 'CSRF protection blocked the request'})
 
     response = await call_next(request)
+    response.headers['Vary'] = 'Origin'
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Referrer-Policy'] = 'same-origin'
-    response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
+    response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=(), interest-cohort=()'
     response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
     response.headers['Cross-Origin-Resource-Policy'] = 'same-origin'
+    response.headers['Origin-Agent-Cluster'] = '?1'
+    response.headers['X-Permitted-Cross-Domain-Policies'] = 'none'
     response.headers['Content-Security-Policy'] = _content_security_policy(request)
+    if request.url.scheme == 'https' or settings.REFRESH_COOKIE_SECURE:
+        response.headers['Strict-Transport-Security'] = f"max-age={int(settings.HSTS_MAX_AGE_SECONDS or 31536000)}; includeSubDomains; preload"
     return response

@@ -187,7 +187,7 @@ def get_live_comments(room_id: str, current_user: User = Depends(get_current_use
 
 
 @router.post('/live_presence')
-def update_live_presence(payload: dict = Body(...), request: Request | None = None, current_user: User = Depends(get_current_user)):
+def update_live_presence(payload: dict = Body(...), request: Request = None, current_user: User = Depends(get_current_user)):
     room_id = str(payload.get('room_id') or '')
     socket_id = payload.get('socket_id') or (request.headers.get('x-socket-id') if request else None)
     if not room_id or not socket_id:

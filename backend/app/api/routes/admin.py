@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.core.admin_access import effective_role, is_primary_admin_email, is_primary_admin_user, permissions_for_user
 from app.core.dependencies import get_current_user, get_db
 from app.core.live_store import live_store
+from app.core.threat_monitor import get_threat_monitor_snapshot
 from app.core.security import hash_password, verify_password
 from app.core.socket_server import sio
 from app.models.app_setting import AppSetting
@@ -30,6 +31,7 @@ from app.models.message import Message
 from app.models.notification import Notification
 from app.models.post import Post
 from app.models.user import User
+from app.models.user_wallet import UserWallet
 
 router = APIRouter()
 
@@ -73,6 +75,29 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
     'user': [],
 }
 
+DEFAULT_NOTIFICATION_SETTINGS = {
+    'push_enabled': True,
+    'browser_enabled': True,
+    'mobile_enabled': True,
+    'smart_notifications': True,
+    'grouped_notifications': True,
+    'silent_notifications': False,
+    'realtime_notifications': True,
+    'sound': 'classic',
+    'categories': {
+        'chat': True,
+        'follow': True,
+        'interaction': True,
+        'live': True,
+        'system': True,
+        'reports': True,
+    },
+}
+
+DEFAULT_MODERATION_REGISTRY = {
+    'shadow_banned_user_ids': [],
+}
+
 DEFAULT_SETTINGS = {
     'platform_name': 'Yamshat Admin',
     'support_email': 'support@yamshat.app',
@@ -82,6 +107,7 @@ DEFAULT_SETTINGS = {
     'session_timeout_minutes': 120,
     'theme': 'midnight',
     'locale': 'ar-EG',
+    'notifications': DEFAULT_NOTIFICATION_SETTINGS,
 }
 
 
@@ -186,6 +212,103 @@ def _add_audit_log(
     db.commit()
 
 
+def _deep_merge_dicts(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
+    result = dict(base)
+    for key, value in (overrides or {}).items():
+        if isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = _deep_merge_dicts(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+def _save_setting(db: Session, key: str, value: dict[str, Any]) -> dict[str, Any]:
+    record = db.query(AppSetting).filter(AppSetting.key == key).first()
+    if record is None:
+        record = AppSetting(key=key, value=value)
+        db.add(record)
+    else:
+        record.value = value
+    db.commit()
+    db.refresh(record)
+    return record.value if isinstance(record.value, dict) else value
+
+
+def _coerce_int_set(values: Any) -> set[int]:
+    normalized: set[int] = set()
+    for value in values or []:
+        try:
+            normalized.add(int(value))
+        except (TypeError, ValueError):
+            continue
+    return normalized
+
+
+def _serialize_audit_log(log: AuditLog, *, now: datetime | None = None, fallback_id: int = 0) -> dict[str, Any]:
+    current_now = now or datetime.utcnow()
+    return {
+        'id': log.id or fallback_id,
+        'title': log.action.replace('_', ' ').title(),
+        'action': log.action,
+        'description': log.description,
+        'entity_type': log.entity_type,
+        'entity_id': log.entity_id,
+        'created_at': log.created_at.isoformat() if log.created_at else current_now.isoformat(),
+        'meta': log.meta or {},
+    }
+
+
+def _enrich_user_records(db: Session, users: list[User]) -> list[dict[str, Any]]:
+    if not users:
+        return []
+
+    user_ids = [user.id for user in users]
+    entity_ids = [str(user_id) for user_id in user_ids]
+    registry = _get_setting(db, 'moderation_registry', DEFAULT_MODERATION_REGISTRY)
+    shadow_banned_ids = _coerce_int_set(registry.get('shadow_banned_user_ids'))
+
+    report_counts = {
+        int(user_id): int(count)
+        for user_id, count in db.query(Notification.user_id, func.count(Notification.id))
+        .filter(Notification.user_id.in_(user_ids), Notification.type.in_(['ALERT', 'REPORT']))
+        .group_by(Notification.user_id)
+        .all()
+    }
+    ban_history_counts = {
+        int(entity_id): int(count)
+        for entity_id, count in db.query(AuditLog.entity_id, func.count(AuditLog.id))
+        .filter(
+            AuditLog.entity_type == 'user',
+            AuditLog.entity_id.in_(entity_ids),
+            AuditLog.action.in_(['user_banned', 'user_restored', 'shadow_ban_enabled', 'shadow_ban_disabled']),
+        )
+        .group_by(AuditLog.entity_id)
+        .all()
+        if str(entity_id).isdigit()
+    }
+
+    enriched: list[dict[str, Any]] = []
+    for user in users:
+        base = _serialize_user(user)
+        report_count = int(report_counts.get(user.id, 0))
+        suspicious_logins = int(user.suspicious_login_count or 0)
+        shadow_banned = user.id in shadow_banned_ids
+        spam_flags = report_count + (1 if suspicious_logins >= 3 else 0)
+        abuse_score = report_count + suspicious_logins + (2 if shadow_banned else 0) + (1 if not user.is_active else 0)
+        risk_level = 'high' if abuse_score >= 5 else 'medium' if abuse_score >= 2 else 'low'
+        base.update({
+            'shadow_banned': shadow_banned,
+            'ban_history_count': int(ban_history_counts.get(user.id, 0)),
+            'abuse_reports_count': report_count,
+            'spam_flags_count': int(spam_flags),
+            'spam_detection_status': 'blocked' if spam_flags >= 4 else 'watch' if spam_flags >= 2 else 'clear',
+            'risk_level': risk_level,
+            'abuse_detection_status': 'critical' if risk_level == 'high' else 'watch' if risk_level == 'medium' else 'clear',
+        })
+        enriched.append(base)
+    return enriched
+
+
 def _get_setting(db: Session, key: str, default: dict[str, Any]) -> dict[str, Any]:
     record = db.query(AppSetting).filter(AppSetting.key == key).first()
     if record is None:
@@ -193,7 +316,9 @@ def _get_setting(db: Session, key: str, default: dict[str, Any]) -> dict[str, An
         db.add(record)
         db.commit()
         db.refresh(record)
-    return record.value if isinstance(record.value, dict) else default
+    if isinstance(record.value, dict):
+        return _deep_merge_dicts(default, record.value)
+    return default
 
 
 def _serialize_user(user: User) -> dict[str, Any]:
@@ -388,6 +513,27 @@ def get_overview(db: Session = Depends(get_db), current_user: User = Depends(get
     unread_system = db.query(func.count(Notification.id)).filter(Notification.is_read.is_(False)).scalar() or 0
     alert_reports = db.query(func.count(Notification.id)).filter(Notification.type.in_(['ALERT', 'REPORT'])).scalar() or 0
     banned_count = db.query(func.count(User.id)).filter(User.is_active.is_(False)).scalar() or 0
+    suspicious_users = db.query(func.count(User.id)).filter(User.suspicious_login_count >= 3).scalar() or 0
+    moderation_registry = _get_setting(db, 'moderation_registry', DEFAULT_MODERATION_REGISTRY)
+    shadow_banned_count = len(_coerce_int_set(moderation_registry.get('shadow_banned_user_ids')))
+    wallet_totals = db.query(
+        func.coalesce(func.sum(UserWallet.total_earned), 0),
+        func.coalesce(func.sum(UserWallet.total_spent), 0),
+        func.coalesce(func.sum(UserWallet.coin_balance), 0),
+    ).one()
+    coins_earned = int(wallet_totals[0] or 0)
+    coins_spent = int(wallet_totals[1] or 0)
+    coins_balance = int(wallet_totals[2] or 0)
+    report_notifications = db.query(Notification).filter(Notification.type.in_(['ALERT', 'REPORT'])).all()
+    user_reports = 0
+    stream_reports = 0
+    for notification in report_notifications:
+        data = notification.data if isinstance(notification.data, dict) else {}
+        scope_text = ' '.join([str(notification.title or ''), str(notification.body or ''), str(data.get('scope') or ''), str(data.get('target') or ''), str(data.get('channel') or '')]).lower()
+        if any(keyword in scope_text for keyword in ['stream', 'live', 'broadcast', 'room']):
+            stream_reports += 1
+        else:
+            user_reports += 1
 
     today_posts = db.query(func.count(Post.id)).filter(Post.created_at >= today_start).scalar() or 0
     today_comments = db.query(func.count(Comment.id)).filter(Comment.created_at >= today_start).scalar() or 0
@@ -423,6 +569,16 @@ def get_overview(db: Session = Depends(get_db), current_user: User = Depends(get
         {'label': 'الرسائل', 'value': int(messages_count)},
         {'label': 'الإشعارات', 'value': int(notifications_count)},
     ]
+    content_rows = db.query(Post, User.username.label('username')).join(User, User.id == Post.user_id).order_by(Post.created_at.desc()).limit(5).all()
+    content_queue = [
+        {
+            'key': f'post-{post.id}',
+            'title': username,
+            'description': (post.content or 'منشور بدون نص')[:140],
+            'meta': post.created_at.isoformat() if post.created_at else now.isoformat(),
+        }
+        for post, username in content_rows
+    ]
 
     recent_logs = db.query(AuditLog).order_by(AuditLog.created_at.desc()).limit(8).all()
     if not recent_logs:
@@ -437,22 +593,13 @@ def get_overview(db: Session = Depends(get_db), current_user: User = Depends(get
             )
         ]
 
-    recent_activity = [
-        {
-            'id': log.id or index + 1,
-            'title': log.action.replace('_', ' ').title(),
-            'description': log.description,
-            'entity_type': log.entity_type,
-            'entity_id': log.entity_id,
-            'created_at': log.created_at.isoformat() if log.created_at else now.isoformat(),
-        }
-        for index, log in enumerate(recent_logs)
-    ]
+    recent_activity = [_serialize_audit_log(log, now=now, fallback_id=index + 1) for index, log in enumerate(recent_logs)]
 
     service_health = _service_health_snapshot(db)
     platform_links = _platform_links()
     live_overview = live_store.admin_overview()
     admins_online = _room_members_count('admins')
+    threat_snapshot = get_threat_monitor_snapshot()
     average_daily = round(sum(item['value'] for item in daily_activity) / max(len(daily_activity), 1), 1)
 
     alerts = [
@@ -498,6 +645,18 @@ def get_overview(db: Session = Depends(get_db), current_user: User = Depends(get
             'description': 'حسابات متوقفة حالياً ويمكن استعادتها من إدارة المستخدمين.',
         },
         {
+            'key': 'shadow',
+            'label': 'Shadow Ban',
+            'value': int(shadow_banned_count),
+            'description': 'حسابات تم كتم ظهورها بدون حظر مباشر.',
+        },
+        {
+            'key': 'abuse',
+            'label': 'Abuse Detection',
+            'value': int(suspicious_users),
+            'description': 'حسابات عليها مؤشرات دخول أو نشاط مريب وتحتاج متابعة.',
+        },
+        {
             'key': 'today',
             'label': 'عمليات اليوم',
             'value': int(today_operations),
@@ -509,6 +668,53 @@ def get_overview(db: Session = Depends(get_db), current_user: User = Depends(get
             'value': int(live_overview['stats']['active_rooms']),
             'description': 'عدد غرف البث النشطة المتاحة حالياً داخل المنصة.',
         },
+    ]
+
+    report_management = {
+        'open_reports': int(alert_reports),
+        'user_reports': int(user_reports),
+        'stream_reports': int(stream_reports),
+        'unread_notifications': int(unread_system),
+        'shadow_banned_users': int(shadow_banned_count),
+    }
+    revenue_dashboard = {
+        'coins_earned': int(coins_earned),
+        'coins_spent': int(coins_spent),
+        'coins_balance': int(coins_balance),
+        'estimated_revenue': round(coins_spent / 100, 2),
+    }
+    advanced_analytics = [
+        {
+            'key': 'engagement_velocity',
+            'label': 'Advanced Analytics',
+            'value': round(((comments_count + messages_count) / max(posts_count, 1)), 2),
+            'description': 'متوسط التفاعل والرسائل لكل منشور منشور على المنصة.',
+        },
+        {
+            'key': 'moderation_load',
+            'label': 'Content Queue',
+            'value': int(alert_reports + unread_system + shadow_banned_count),
+            'description': 'مؤشر فوري لحجم الأعمال المعلقة على الإدارة والمراقبة.',
+        },
+        {
+            'key': 'spam_detection',
+            'label': 'Spam Detection',
+            'value': int(suspicious_users),
+            'description': 'عدد الحسابات التي تجاوزت حد الاشتباه وتحتاج مراجعة.' ,
+        },
+        {
+            'key': 'blocked_ips',
+            'label': 'IP Monitoring',
+            'value': int(threat_snapshot.get('blocked_ip_count', 0)),
+            'description': 'عناوين IP المحظورة مؤقتاً بسبب سلوك هجومي أو بوتات.' ,
+        },
+    ]
+    realtime_monitoring = [
+        {'key': 'admins_online', 'label': 'Realtime Monitoring', 'value': int(admins_online), 'description': 'جلسات الأدمن المتصلة حالياً.'},
+        {'key': 'active_live_rooms', 'label': 'Live Rooms', 'value': int(live_overview['stats']['active_rooms']), 'description': 'غرف البث النشطة الآن.'},
+        {'key': 'current_viewers', 'label': 'Current Viewers', 'value': int(live_overview['stats']['current_viewers']), 'description': 'إجمالي المشاهدين اللحظيين عبر غرف البث.'},
+        {'key': 'today_messages', 'label': 'Realtime Messages', 'value': int(today_messages), 'description': 'رسائل اليوم التي دخلت النظام.'},
+        {'key': 'blocked_ips', 'label': 'Blocked IPs', 'value': int(threat_snapshot.get('blocked_ip_count', 0)), 'description': 'حالة درع الحماية ضد DDoS والبوتات.'},
     ]
 
     return {
@@ -541,6 +747,12 @@ def get_overview(db: Session = Depends(get_db), current_user: User = Depends(get
             'admins_online': int(admins_online),
             'web_connected': any(item['key'] == 'frontend' and item['status'] == 'linked' for item in platform_links),
             'mobile_connected': any(item['key'] == 'mobile' and item['status'] == 'linked' for item in platform_links),
+            'advanced_analytics': advanced_analytics,
+            'realtime_monitoring': realtime_monitoring,
+            'revenue_dashboard': revenue_dashboard,
+            'report_management': report_management,
+            'content_queue': content_queue,
+            'security_monitoring': threat_snapshot,
         },
     }
 
@@ -604,7 +816,7 @@ def list_users(
     total = query.count()
     items = query.order_by(User.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return {
-        'items': [_serialize_user(user) for user in items],
+        'items': _enrich_user_records(db, items),
         'pagination': {
             'page': page,
             'page_size': page_size,
@@ -655,8 +867,9 @@ def update_user(
     db.commit()
     db.refresh(user)
     _add_audit_log(db, current_user, 'user_updated', 'user', user.id, f'تم تحديث المستخدم {user.username}.', {'user_id': user.id})
-    _emit_admin_event('admin:user_updated', {'user': _serialize_user(user)})
-    return _serialize_user(user)
+    enriched_user = _enrich_user_records(db, [user])[0]
+    _emit_admin_event('admin:user_updated', {'user': enriched_user})
+    return enriched_user
 
 
 @router.post('/users/{user_id}/ban')
@@ -681,8 +894,9 @@ def ban_or_restore_user(
     action = 'user_restored' if restore else 'user_banned'
     description = f"تم {'استعادة' if restore else 'حظر'} المستخدم {user.username}."
     _add_audit_log(db, current_user, action, 'user', user.id, description, {'user_id': user.id})
-    _emit_admin_event('admin:user_status_changed', {'user': _serialize_user(user)})
-    return _serialize_user(user)
+    enriched_user = _enrich_user_records(db, [user])[0]
+    _emit_admin_event('admin:user_status_changed', {'user': enriched_user})
+    return enriched_user
 
 
 @router.delete('/users/{user_id}')
@@ -863,7 +1077,7 @@ def get_settings(db: Session = Depends(get_db), current_user: User = Depends(get
     _require_permission(current_user, 'settings.manage')
     return {
         'general': _get_setting(db, 'general', DEFAULT_SETTINGS),
-        'profile': _serialize_user(current_user),
+        'profile': _enrich_user_records(db, [current_user])[0],
     }
 
 
@@ -1059,6 +1273,27 @@ def get_report_summary(db: Session = Depends(get_db), current_user: User = Depen
     comments = db.query(func.count(Comment.id)).scalar() or 0
     messages = db.query(func.count(Message.id)).scalar() or 0
     per_role = db.query(User.role, func.count(User.id)).group_by(User.role).all()
+    report_notifications = db.query(Notification).filter(Notification.type.in_(['ALERT', 'REPORT'])).all()
+    user_reports = 0
+    stream_reports = 0
+    for notification in report_notifications:
+        data = notification.data if isinstance(notification.data, dict) else {}
+        scope_text = ' '.join([str(notification.title or ''), str(notification.body or ''), str(data.get('scope') or ''), str(data.get('target') or ''), str(data.get('channel') or '')]).lower()
+        if any(keyword in scope_text for keyword in ['stream', 'live', 'broadcast', 'room']):
+            stream_reports += 1
+        else:
+            user_reports += 1
+    moderation_registry = _get_setting(db, 'moderation_registry', DEFAULT_MODERATION_REGISTRY)
+    shadow_banned_count = len(_coerce_int_set(moderation_registry.get('shadow_banned_user_ids')))
+    wallet_totals = db.query(
+        func.coalesce(func.sum(UserWallet.total_earned), 0),
+        func.coalesce(func.sum(UserWallet.total_spent), 0),
+        func.coalesce(func.sum(UserWallet.coin_balance), 0),
+    ).one()
+    coins_earned = int(wallet_totals[0] or 0)
+    coins_spent = int(wallet_totals[1] or 0)
+    coins_balance = int(wallet_totals[2] or 0)
+    recent_logs = db.query(AuditLog).order_by(AuditLog.created_at.desc()).limit(12).all()
     return {
         'generated_at': datetime.utcnow().isoformat(),
         'totals': {
@@ -1069,6 +1304,25 @@ def get_report_summary(db: Session = Depends(get_db), current_user: User = Depen
             'messages': int(messages),
         },
         'roles': [{'role': role, 'count': int(count)} for role, count in per_role],
+        'report_management': {
+            'open_reports': int(len(report_notifications)),
+            'user_reports': int(user_reports),
+            'stream_reports': int(stream_reports),
+            'shadow_banned_users': int(shadow_banned_count),
+        },
+        'revenue_dashboard': {
+            'coins_earned': int(coins_earned),
+            'coins_spent': int(coins_spent),
+            'coins_balance': int(coins_balance),
+            'estimated_revenue': round(coins_spent / 100, 2),
+        },
+        'audit_logs': [_serialize_audit_log(log, fallback_id=index + 1) for index, log in enumerate(recent_logs)],
+        'admin_activity': [
+            {'label': 'Audit Logs', 'value': len(recent_logs), 'description': 'آخر عمليات الإدارة المسجلة.'},
+            {'label': 'User Reports', 'value': int(user_reports), 'description': 'بلاغات مرتبطة بالمستخدمين.'},
+            {'label': 'Stream Reports', 'value': int(stream_reports), 'description': 'بلاغات مرتبطة بالبث والغرف الحية.'},
+            {'label': 'Revenue Dashboard', 'value': round(coins_spent / 100, 2), 'description': 'تقدير مبسط لإجمالي الصرف داخل المنصة.'},
+        ],
     }
 
 

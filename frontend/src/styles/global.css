@@ -3324,3 +3324,63 @@ img {
     padding: 14px;
   }
 }
+
+.remember-me-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.captcha-box,
+.dev-login-card,
+.security-session-card,
+.security-activity-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.captcha-row,
+.security-card-head,
+.security-session-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.captcha-question {
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.captcha-refresh-btn {
+  min-width: 110px;
+}
+
+.error-text {
+  color: #fca5a5;
+}
+
+.security-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.security-column,
+.security-list {
+  display: grid;
+  gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .security-grid {
+    grid-template-columns: 1fr;
+  }
+}

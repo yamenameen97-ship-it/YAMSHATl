@@ -17,6 +17,8 @@ function normalizeUserShape(user) {
       ? user.profile.permissions
       : [];
   const csrf_token = user.csrf_token || user?.profile?.csrf_token || '';
+  const remember_me = Boolean(user.remember_me ?? user?.profile?.remember_me ?? true);
+  const session_id = user.session_id || user?.profile?.session_id || '';
 
   return {
     ...user,
@@ -28,6 +30,8 @@ function normalizeUserShape(user) {
     role,
     permissions,
     csrf_token,
+    remember_me,
+    session_id,
     email_verified: Boolean(user.email_verified ?? user?.profile?.email_verified),
     profile: user.profile || null,
   };
@@ -98,7 +102,7 @@ export function setStoredUser(user) {
     syncStore(null);
     return;
   }
-  secureSet(STORAGE_KEY, JSON.stringify(normalized));
+  secureSet(STORAGE_KEY, JSON.stringify(normalized), { persist: Boolean(normalized.remember_me) });
   setCsrfToken(normalized.csrf_token || '');
   syncStore(normalized);
 }
@@ -108,6 +112,7 @@ export function mergeStoredUser(nextValues) {
   const merged = {
     ...current,
     ...nextValues,
+    remember_me: Boolean(nextValues?.remember_me ?? current?.remember_me ?? true),
     refresh_token: '',
     profile: {
       ...(current.profile || {}),

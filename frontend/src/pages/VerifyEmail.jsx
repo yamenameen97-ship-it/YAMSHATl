@@ -54,7 +54,13 @@ export default function VerifyEmail() {
     setError('');
     try {
       const { data } = await resendVerification({ email: form.email.trim().toLowerCase() });
-      setSuccess(localizeAuthMessage(data?.message, 'تم إرسال كود جديد.'));
+      const deliveryError = data?.delivery?.error ? `فشل إرسال كود التفعيل: ${data.delivery.error}` : '';
+      if (deliveryError) {
+        setSuccess('');
+        setError(deliveryError);
+      } else {
+        setSuccess(localizeAuthMessage(data?.message, 'تم إرسال كود جديد.'));
+      }
       setDevCode(data?.dev_verification_code || '');
     } catch (err) {
       setError(localizeAuthMessage(err?.response?.data?.detail, 'تعذر إعادة إرسال الكود.'));

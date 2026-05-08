@@ -48,11 +48,12 @@ export default function Register() {
     try {
       setLoading(true);
       const { data } = await registerUser({ name: username, username, email, password: form.password });
+      const deliveryError = data?.delivery?.error ? `تم إنشاء الحساب لكن فشل إرسال كود التفعيل: ${data.delivery.error}` : '';
       navigate('/verify-email', {
         replace: true,
         state: {
           email: data?.email || email,
-          message: localizeAuthMessage(data?.message, 'تم إنشاء الحساب. راجع بريدك للتفعيل.'),
+          message: deliveryError || localizeAuthMessage(data?.message, 'تم إنشاء الحساب. راجع بريدك للتفعيل.'),
           devCode: data?.dev_verification_code || '',
         },
       });

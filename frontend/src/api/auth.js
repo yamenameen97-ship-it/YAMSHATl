@@ -6,6 +6,11 @@ export const loginUser = async (data) => {
   return response;
 };
 
+export const devLoginUser = async (data = {}) => {
+  const response = await API.post('/auth/dev-login', data);
+  return response;
+};
+
 export const registerUser = async (data) => {
   const response = await API.post('/auth/register', data);
   return response;
@@ -18,6 +23,11 @@ export const verifyEmail = async (data) => {
 
 export const resendVerification = async (data) => {
   const response = await API.post('/auth/resend-verification', data);
+  return response;
+};
+
+export const getCaptchaChallenge = async () => {
+  const response = await API.get('/auth/captcha', { cache: false, forceRefresh: true });
   return response;
 };
 
@@ -39,3 +49,4 @@ export const resetPassword = async (data) => {
 export const refreshSession = async () => sessionManager.refreshSession({ reason: 'manual' });
 export const getMe = () => API.get('/users/me');
 export const logoutUser = () => API.post('/auth/logout');
+export const logoutAllDevices = () => API.post('/auth/logout-all');

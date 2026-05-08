@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Input from '../components/ui/Input.jsx';
 import Button from '../components/ui/Button.jsx';
@@ -13,12 +13,20 @@ export default function VerifyEmail() {
   const location = useLocation();
   const navigate = useNavigate();
   const initialEmail = useMemo(() => location.state?.email || '', [location.state]);
-  const [form, setForm] = useState({ email: initialEmail, code: normalizeOtpDigits(location.state?.code || '') });
+  const initialCode = useMemo(() => normalizeOtpDigits(location.state?.devCode || location.state?.code || ''), [location.state]);
+  const [form, setForm] = useState({ email: initialEmail, code: initialCode, rememberMe: Boolean(location.state?.rememberMe ?? true) });
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(location.state?.message || '');
   const [devCode, setDevCode] = useState(location.state?.devCode || '');
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return undefined;
+    const timer = window.setTimeout(() => setCooldown((prev) => Math.max(prev - 1, 0)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [cooldown]);
 
   const handleSubmit = async (incomingCode = form.code) => {
     const code = normalizeOtpDigits(incomingCode);
@@ -35,7 +43,7 @@ export default function VerifyEmail() {
     setError('');
 
     try {
-      const { data } = await verifyEmail({ email: form.email.trim().toLowerCase(), code });
+      const { data } = await verifyEmail({ email: form.email.trim().toLowerCase(), code, remember_me: form.rememberMe });
       setStoredUser(data);
       navigate(getDefaultPostLoginPath(data), { replace: true });
     } catch (err) {
@@ -56,6 +64,10 @@ export default function VerifyEmail() {
       const { data } = await resendVerification({ email: form.email.trim().toLowerCase() });
       setSuccess(localizeAuthMessage(data?.message, 'تم إرسال كود جديد.'));
       setDevCode(data?.dev_verification_code || '');
+      if (data?.dev_verification_code) {
+        setForm((prev) => ({ ...prev, code: normalizeOtpDigits(data.dev_verification_code) }));
+      }
+      setCooldown(30);
     } catch (err) {
       setError(localizeAuthMessage(err?.response?.data?.detail, 'تعذر إعادة إرسال الكود.'));
     } finally {
@@ -89,13 +101,18 @@ export default function VerifyEmail() {
         <Input label="البريد الإلكتروني" type="email" placeholder="user@mail.com" value={form.email} onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))} autoComplete="email" />
         <OtpCodeInput value={form.code} onChange={(next) => setForm((prev) => ({ ...prev, code: next }))} onComplete={handleSubmit} disabled={loading} label="كود التفعيل" />
 
+        <label className="remember-me-row">
+          <input type="checkbox" checked={form.rememberMe} onChange={(event) => setForm((prev) => ({ ...prev, rememberMe: event.target.checked }))} />
+          <span>تذكّرني بعد التفعيل</span>
+        </label>
+
         {success ? <div className="alert success">{success}</div> : null}
         {devCode ? <div className="alert">كود التطوير: {devCode}</div> : null}
         {error ? <div className="alert error">{error}</div> : null}
 
         <Button type="submit" loading={loading} disabled={loading}>{loading ? 'جارٍ التأكيد...' : 'تأكيد البريد'}</Button>
-        <Button type="button" variant="secondary" loading={resending} disabled={resending || !form.email.trim()} onClick={handleResend}>
-          {resending ? 'جارٍ الإرسال...' : 'إعادة إرسال الكود'}
+        <Button type="button" variant="secondary" loading={resending} disabled={resending || !form.email.trim() || cooldown > 0} onClick={handleResend}>
+          {resending ? 'جارٍ الإرسال...' : cooldown > 0 ? `إعادة الإرسال بعد ${cooldown}ث` : 'إعادة إرسال الكود'}
         </Button>
       </form>
     </AuthShell>

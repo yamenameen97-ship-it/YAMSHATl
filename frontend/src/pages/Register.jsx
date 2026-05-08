@@ -1,17 +1,40 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Input from '../components/ui/Input.jsx';
 import Button from '../components/ui/Button.jsx';
 import AuthShell from '../components/auth/AuthShell.jsx';
-import { registerUser } from '../api/auth.js';
+import CaptchaBox from '../components/auth/CaptchaBox.jsx';
+import { getCaptchaChallenge, registerUser } from '../api/auth.js';
 import { sanitizeInputText } from '../utils/sanitize.js';
 import { isValidEmail, localizeAuthMessage } from '../utils/authValidation.js';
 
 export default function Register() {
   const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '' });
   const [loading, setLoading] = useState(false);
+  const [captchaLoading, setCaptchaLoading] = useState(false);
+  const [captcha, setCaptcha] = useState(null);
+  const [captchaAnswer, setCaptchaAnswer] = useState('');
   const [error, setError] = useState('');
+  const [captchaError, setCaptchaError] = useState('');
   const navigate = useNavigate();
+
+  const loadCaptcha = async () => {
+    try {
+      setCaptchaLoading(true);
+      setCaptchaError('');
+      const { data } = await getCaptchaChallenge();
+      setCaptcha(data);
+      setCaptchaAnswer('');
+    } catch (err) {
+      setCaptchaError(localizeAuthMessage(err?.response?.data?.detail, 'تعذر تحميل الكابتشا حالياً.'));
+    } finally {
+      setCaptchaLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCaptcha();
+  }, []);
 
   const handleChange = (key) => (event) => {
     setForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -44,20 +67,34 @@ export default function Register() {
       setError('تأكيد كلمة المرور غير مطابق.');
       return;
     }
+    if (!captcha?.captcha_id) {
+      setError('حدّث الكابتشا أولاً.');
+      await loadCaptcha();
+      return;
+    }
 
     try {
       setLoading(true);
-      const { data } = await registerUser({ name: username, username, email, password: form.password });
+      const { data } = await registerUser({
+        name: username,
+        username,
+        email,
+        password: form.password,
+        captcha_id: captcha.captcha_id,
+        captcha_answer: captchaAnswer,
+      });
       navigate('/verify-email', {
         replace: true,
         state: {
           email: data?.email || email,
           message: localizeAuthMessage(data?.message, 'تم إنشاء الحساب. راجع بريدك للتفعيل.'),
           devCode: data?.dev_verification_code || '',
+          rememberMe: true,
         },
       });
     } catch (err) {
       setError(localizeAuthMessage(err?.response?.data?.detail, 'تعذر إنشاء الحساب حالياً.'));
+      await loadCaptcha();
     } finally {
       setLoading(false);
     }
@@ -90,6 +127,16 @@ export default function Register() {
         <Input label="البريد الإلكتروني" placeholder="user@mail.com" type="email" value={form.email} onChange={handleChange('email')} autoComplete="email" />
         <Input label="كلمة المرور" type="password" placeholder="••••••••" value={form.password} onChange={handleChange('password')} hint="6 أحرف على الأقل" autoComplete="new-password" />
         <Input label="تأكيد كلمة المرور" type="password" placeholder="••••••••" value={form.confirmPassword} onChange={handleChange('confirmPassword')} autoComplete="new-password" />
+
+        <CaptchaBox
+          challenge={captcha}
+          value={captchaAnswer}
+          onChange={setCaptchaAnswer}
+          onRefresh={loadCaptcha}
+          loading={captchaLoading}
+          disabled={loading}
+          error={captchaError}
+        />
 
         {error ? <div className="alert error">{error}</div> : null}
 

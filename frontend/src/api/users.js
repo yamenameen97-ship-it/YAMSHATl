@@ -2,6 +2,9 @@ import API from './axios.js';
 
 export const getUsers = () => API.get('/users');
 export const getMe = () => API.get('/users/me');
+export const getUserSessions = () => API.get('/users/sessions', { cache: false, forceRefresh: true });
+export const revokeUserSession = (sessionId) => API.delete(`/users/sessions/${encodeURIComponent(sessionId)}`);
+export const getLoginActivity = (limit = 20) => API.get('/users/login-activity', { params: { limit }, cache: false, forceRefresh: true });
 export const getUserPreferences = () => API.get('/users/preferences');
 export const updateUserPreferences = (payload) => API.put('/users/preferences', payload);
 export const getFollowersSummary = (username) => API.get(`/followers/${encodeURIComponent(username)}`);

@@ -6,20 +6,25 @@ import Button from '../components/ui/Button.jsx';
 import EmptyState from '../components/feedback/EmptyState.jsx';
 import ErrorState from '../components/feedback/ErrorState.jsx';
 import { DashboardSkeleton } from '../components/feedback/Skeleton.jsx';
-import { logoutUser } from '../api/auth.js';
-import { getUsers, getUserPreferences, updateUserPreferences } from '../api/users.js';
+import { logoutAllDevices, logoutUser } from '../api/auth.js';
 import { getChatThreads, updateOnline } from '../api/chat.js';
+import { getLoginActivity, getUserPreferences, getUserSessions, getUsers, revokeUserSession, updateUserPreferences } from '../api/users.js';
 import { clearStoredUser, getStoredUser } from '../utils/auth.js';
 import { browserNotificationsSupported } from '../utils/notificationCenter.js';
 import { useAppStore } from '../store/appStore.js';
 import { PRIMARY_ADMIN_EMAIL } from '../utils/access.js';
 import { getUiText } from '../utils/i18n.js';
+import { localizeAuthMessage } from '../utils/authValidation.js';
 
 export default function Dashboard() {
   const [usersCount, setUsersCount] = useState(0);
   const [threadsCount, setThreadsCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [savingPrefs, setSavingPrefs] = useState(false);
+  const [securityLoading, setSecurityLoading] = useState(true);
+  const [securityAction, setSecurityAction] = useState('');
+  const [sessions, setSessions] = useState([]);
+  const [activity, setActivity] = useState([]);
   const [error, setError] = useState('');
   const [permissionState, setPermissionState] = useState(
     browserNotificationsSupported() ? window.Notification.permission : 'unsupported'
@@ -31,11 +36,23 @@ export default function Dashboard() {
   const theme = useAppStore((state) => state.theme);
   const language = useAppStore((state) => state.language);
   const setLanguage = useAppStore((state) => state.setLanguage);
-  const chatTranslationEnabled = useAppStore((state) => state.chatTranslationEnabled);
   const setChatTranslationEnabled = useAppStore((state) => state.setChatTranslationEnabled);
   const isOnline = useAppStore((state) => state.isOnline);
   const queuedActions = useAppStore((state) => state.queuedActions);
   const ui = getUiText(language);
+
+  const loadSecurity = async () => {
+    try {
+      setSecurityLoading(true);
+      const [sessionsRes, activityRes] = await Promise.all([getUserSessions(), getLoginActivity(12)]);
+      setSessions(Array.isArray(sessionsRes?.data?.sessions) ? sessionsRes.data.sessions : []);
+      setActivity(Array.isArray(activityRes?.data?.activity) ? activityRes.data.activity : []);
+    } catch (err) {
+      setError(localizeAuthMessage(err?.response?.data?.detail, 'تعذر تحميل جلسات الأجهزة.'));
+    } finally {
+      setSecurityLoading(false);
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -64,6 +81,7 @@ export default function Dashboard() {
     };
 
     load();
+    loadSecurity();
     return () => {
       mounted = false;
     };
@@ -128,6 +146,32 @@ export default function Dashboard() {
     }
     clearStoredUser();
     navigate('/login', { replace: true });
+  };
+
+  const handleLogoutAllDevices = async () => {
+    try {
+      setSecurityAction('logout-all');
+      await logoutAllDevices();
+      clearStoredUser();
+      navigate('/login', { replace: true });
+    } catch (err) {
+      setError(localizeAuthMessage(err?.response?.data?.detail, 'تعذر تسجيل الخروج من كل الأجهزة.'));
+    } finally {
+      setSecurityAction('');
+    }
+  };
+
+  const handleRevokeSession = async (sessionId) => {
+    try {
+      setSecurityAction(sessionId);
+      await revokeUserSession(sessionId);
+      setSessions((prev) => prev.filter((item) => item.session_id !== sessionId));
+      await loadSecurity();
+    } catch (err) {
+      setError(localizeAuthMessage(err?.response?.data?.detail, 'تعذر إنهاء الجلسة المحددة.'));
+    } finally {
+      setSecurityAction('');
+    }
   };
 
   const isWorkspaceEmpty = !loading && usersCount === 0 && threadsCount === 0 && queuedActions.length === 0;
@@ -255,7 +299,64 @@ export default function Dashboard() {
               {savingPrefs ? ui.dashboard.saving : ui.dashboard.save}
             </Button>
             <Link to="/admin/login" className="btn btn-secondary">{language === 'en' ? 'Admin panel' : 'دخول لوحة الأدمن'}</Link>
+            <Button variant="secondary" onClick={handleLogoutAllDevices} loading={securityAction === 'logout-all'}>
+              {securityAction === 'logout-all' ? 'جارٍ إنهاء كل الجلسات...' : 'تسجيل الخروج من كل الأجهزة'}
+            </Button>
             <Button onClick={handleLogout}>{language === 'en' ? 'Logout' : 'تسجيل الخروج'}</Button>
+          </div>
+        </Card>
+
+        <Card className="setting-surface security-surface">
+          <div className="section-head compact">
+            <div>
+              <h3 className="section-title">أمان الحساب والجلسات</h3>
+              <p className="muted no-margin">كده عندك Remember Me حقيقي، متابعة الأجهزة، نشاط تسجيل الدخول، وإنهاء كل الجلسات من مكان واحد.</p>
+            </div>
+          </div>
+
+          <div className="security-grid">
+            <div className="security-column">
+              <div className="security-card-head">
+                <strong>Device Sessions</strong>
+                <Button type="button" variant="secondary" onClick={loadSecurity} loading={securityLoading}>تحديث</Button>
+              </div>
+              <div className="security-list">
+                {sessions.map((session) => (
+                  <div key={session.session_id} className="security-session-card">
+                    <div>
+                      <strong>{session.label}</strong>
+                      <div className="muted">آخر نشاط: {session.last_seen_at ? new Date(session.last_seen_at).toLocaleString('ar-EG') : '—'}</div>
+                      <div className="muted">{session.remember_me ? 'Remember Me مفعل' : 'جلسة مؤقتة'} • {session.login_method || 'password'}</div>
+                    </div>
+                    <div className="security-session-actions">
+                      {session.is_current ? <span className="pending-badge">الجهاز الحالي</span> : null}
+                      {!session.is_current ? (
+                        <Button type="button" variant="secondary" onClick={() => handleRevokeSession(session.session_id)} loading={securityAction === session.session_id}>
+                          إنهاء الجلسة
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+                {!securityLoading && sessions.length === 0 ? <div className="muted">لا توجد جلسات محفوظة حالياً.</div> : null}
+              </div>
+            </div>
+
+            <div className="security-column">
+              <div className="security-card-head">
+                <strong>Login Activity</strong>
+              </div>
+              <div className="security-list">
+                {activity.map((item) => (
+                  <div key={item.id} className="security-activity-card">
+                    <strong>{item.description || item.action}</strong>
+                    <div className="muted">{item.created_at ? new Date(item.created_at).toLocaleString('ar-EG') : '—'}</div>
+                    <div className="muted">{item.remember_me ? 'تم مع Remember Me' : 'بدون Remember Me'} • {item.login_method || item.action}</div>
+                  </div>
+                ))}
+                {!securityLoading && activity.length === 0 ? <div className="muted">لا توجد سجلات نشاط متاحة حالياً.</div> : null}
+              </div>
+            </div>
           </div>
         </Card>
 

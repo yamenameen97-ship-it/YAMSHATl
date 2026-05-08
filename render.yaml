@@ -50,6 +50,8 @@ services:
       - key: SMTP_FROM
         sync: false
       - key: SMTP_USE_TLS
+        value: 'false'
+      - key: SMTP_USE_SSL
         value: 'true'
       - key: FIREBASE_SERVICE_ACCOUNT_JSON
         sync: false

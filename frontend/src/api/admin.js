@@ -1,0 +1,25 @@
+import API from './axios.js';
+
+export const getAdminOverview = () => API.get('/admin/overview', { cache: true, cacheTtlMs: 15_000 });
+export const searchAdmin = (q) => API.get('/admin/search', { params: { q } });
+export const getAdminUsers = (params) => API.get('/admin/users', { params });
+export const updateAdminUser = (userId, data) => API.patch(`/admin/users/${userId}`, data);
+export const banAdminUser = (userId, restore = false) => API.post(`/admin/users/${userId}/ban`, null, { params: { restore } });
+export const deleteAdminUser = (userId) => API.delete(`/admin/users/${userId}`);
+export const getAdminPosts = (params) => API.get('/admin/posts', { params });
+export const createAdminPost = (data) => API.post('/admin/posts', data);
+export const updateAdminPost = (postId, data) => API.put(`/admin/posts/${postId}`, data);
+export const deleteAdminPost = (postId) => API.delete(`/admin/posts/${postId}`);
+export const bulkDeleteAdminPosts = (ids) => API.post('/admin/posts/bulk-delete', { ids });
+export const getAdminRbac = () => API.get('/admin/rbac', { cache: true, cacheTtlMs: 30_000 });
+export const getAdminNotifications = (limit = 40) => API.get('/admin/notifications', { params: { limit }, cache: true, cacheTtlMs: 10_000 });
+export const broadcastAdminNotification = (data) => API.post('/admin/notifications/broadcast', data);
+export const getAdminLiveOverview = () => API.get('/admin/live/overview', { cache: true, cacheTtlMs: 10_000 });
+export const featureAdminLiveRoom = (roomId, featured) => API.post(`/admin/live/${roomId}/feature`, { featured });
+export const pinLatestAdminLiveComment = (roomId) => API.post(`/admin/live/${roomId}/pin-latest`);
+export const endAdminLiveRoom = (roomId) => API.post(`/admin/live/${roomId}/end`);
+export const getAdminReportsSummary = () => API.get('/admin/reports/summary', { cache: true, cacheTtlMs: 20_000 });
+export const exportAdminReport = (format) => API.get('/admin/reports/export', { params: { format }, responseType: 'blob' });
+export const getAdminSettings = () => API.get('/admin/settings', { cache: true, cacheTtlMs: 30_000 });
+export const updateAdminSettings = (data) => API.put('/admin/settings', data);
+export const changeAdminPassword = (data) => API.post('/admin/settings/change-password', data);

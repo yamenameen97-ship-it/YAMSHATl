@@ -1,0 +1,20 @@
+إعداد Resend الحالي داخل المشروع:
+
+1) المتغيرات الجاهزة في Render:
+RESEND_API_KEY=*** موجود داخل الملف .env.render
+RESEND_FROM=YAMSHAT <onboarding@resend.dev>
+RESEND_REPLY_TO=yamenameen97@gmail.com
+
+2) ملاحظة مهمة:
+قيمة RESEND_FROM يجب أن تكون بريداً فقط أو بالصيغة:
+YAMSHAT <onboarding@resend.dev>
+ولا يجب وضع الشرح العربي داخل نفس القيمة.
+
+3) في وضع التجربة بدون دومين موثق:
+استخدم onboarding@resend.dev فقط لإرسال الرسائل الاختبارية إلى بريد الحساب المسجل في Resend.
+
+4) بعد توثيق الدومين لاحقاً:
+غيّر RESEND_FROM إلى بريد من دومينك الموثق.
+
+5) تم ضبط SMTP_FROM أيضاً على نفس عنوان الاختبار لتجنب أي تعارض عند التبديل لاحقاً.
+6) حسب دليل SMTP في Resend، كلمة مرور SMTP يمكن أن تكون نفس API Key، لذلك تم تجهيز ملف .env.render بهذا الشكل أيضاً.

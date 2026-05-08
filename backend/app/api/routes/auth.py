@@ -32,6 +32,13 @@ from app.services.auth_service import (
     verify_email_code,
     verify_password_reset_code,
 )
+from app.services.auth_feature_service import (
+    issue_login_challenge,
+    is_suspicious_login,
+    mark_successful_login,
+    social_login_or_register,
+    verify_login_challenge,
+)
 from app.services.email import delivery_provider, send_password_reset_email, send_verification_email, smtp_configured
 
 router = APIRouter()
@@ -137,6 +144,8 @@ def _session_payload(user: User, access_token: str, csrf_token: str = '', *, ses
         'following_count': user.following_count,
         'created_at': user.created_at.isoformat() if user.created_at else None,
         'last_login_at': user.last_login_at.isoformat() if user.last_login_at else None,
+        'two_factor_enabled': bool(getattr(user, 'two_factor_enabled', False)),
+        'social_provider': getattr(user, 'social_provider', None),
         'csrf_token': csrf_token,
         'session_id': session_key,
         'remember_me': bool(remember_me),
@@ -158,6 +167,8 @@ def _session_payload(user: User, access_token: str, csrf_token: str = '', *, ses
         'role': effective_user_role,
         'permissions': effective_permissions,
         'email_verified': bool(user.email_verified),
+        'two_factor_enabled': bool(getattr(user, 'two_factor_enabled', False)),
+        'social_provider': getattr(user, 'social_provider', None),
         'profile': user_payload,
         'device_bound': True,
         'remember_me': bool(remember_me),
@@ -504,8 +515,40 @@ def login(request: Request, response: Response, payload: dict = Body(...), db: S
 
     _enforce_admin_ip_policy(request, user)
     _enforce_admin_mfa(user, payload)
+    suspicious, suspicious_meta = is_suspicious_login(user, binding)
+
+    if bool(getattr(user, 'two_factor_enabled', False)) or suspicious:
+        challenge_type = 'suspicious_login' if suspicious else 'two_factor_login'
+        challenge_payload, code = issue_login_challenge(db, user, challenge_type=challenge_type, meta=suspicious_meta)
+        if suspicious:
+            user.suspicious_login_count = int(getattr(user, 'suspicious_login_count', 0) or 0) + 1
+            db.commit()
+        response.status_code = status.HTTP_202_ACCEPTED
+        challenge_payload['remember_me'] = remember_me
+        challenge_payload['identifier'] = identifier
+        challenge_payload['suspicious'] = suspicious
+        challenge_payload['indicators'] = suspicious_meta.get('indicators', [])
+        if settings.DEBUG and not challenge_payload['delivery']['sent']:
+            challenge_payload['dev_verification_code'] = code
+        record_audit_log(
+            db,
+            actor_user_id=user.id,
+            action='login_challenge_issued',
+            entity_type='auth',
+            entity_id=user.id,
+            description='Login verification challenge issued',
+            meta={
+                'ip_hash': binding['ip_hash'],
+                'user_agent_hash': binding['user_agent_hash'],
+                'device_id_hash': binding['device_id_hash'],
+                'challenge_type': challenge_type,
+                'suspicious_indicators': suspicious_meta.get('indicators', []),
+            },
+        )
+        return challenge_payload
 
     user.last_login_at = utcnow_naive()
+    mark_successful_login(user, binding)
     if effective_role(user) == 'admin':
         user.last_admin_ip_hash = binding['ip_hash']
         user.last_admin_user_agent_hash = binding['user_agent_hash']
@@ -537,9 +580,10 @@ def dev_login(request: Request, response: Response, payload: dict = Body(default
 
     user = _resolve_dev_user(db, payload or {})
     user.last_login_at = utcnow_naive()
+    binding = request_binding_context(request)
+    mark_successful_login(user, binding)
     db.commit()
     db.refresh(user)
-    binding = request_binding_context(request)
     record_audit_log(
         db,
         actor_user_id=user.id,
@@ -557,6 +601,108 @@ def dev_login(request: Request, response: Response, payload: dict = Body(default
         remember_me=bool((payload or {}).get('remember_me', True)),
         login_method='development',
     )
+
+
+@router.post('/social-login')
+def social_login(request: Request, response: Response, payload: dict = Body(...), db: Session = Depends(get_db)):
+    provider = str(payload.get('provider') or '').strip().lower() or 'social'
+    email = str(payload.get('email') or '').strip().lower()
+    username_hint = str(payload.get('name') or payload.get('username') or email.split('@')[0]).strip()
+    avatar = str(payload.get('avatar') or '').strip() or None
+    remember_me = bool(payload.get('remember_me', True))
+    user = social_login_or_register(
+        db,
+        provider=provider,
+        email=email,
+        username_hint=username_hint,
+        avatar=avatar,
+        social_subject=payload.get('social_id') or payload.get('subject'),
+    )
+    binding = request_binding_context(request)
+    suspicious, suspicious_meta = is_suspicious_login(user, binding)
+    if bool(getattr(user, 'two_factor_enabled', False)) or suspicious:
+        challenge_type = 'social_suspicious_login' if suspicious else 'social_two_factor_login'
+        challenge_payload, code = issue_login_challenge(db, user, challenge_type=challenge_type, meta=suspicious_meta)
+        if suspicious:
+            user.suspicious_login_count = int(getattr(user, 'suspicious_login_count', 0) or 0) + 1
+            db.commit()
+        response.status_code = status.HTTP_202_ACCEPTED
+        challenge_payload['provider'] = provider
+        challenge_payload['remember_me'] = remember_me
+        if settings.DEBUG and not challenge_payload['delivery']['sent']:
+            challenge_payload['dev_verification_code'] = code
+        return challenge_payload
+    user.last_login_at = utcnow_naive()
+    mark_successful_login(user, binding)
+    db.commit()
+    db.refresh(user)
+    record_audit_log(
+        db,
+        actor_user_id=user.id,
+        action='social_login_success',
+        entity_type='auth',
+        entity_id=user.id,
+        description='User logged in using social provider',
+        meta={'provider': provider, 'ip_hash': binding['ip_hash'], 'device_id_hash': binding['device_id_hash']},
+    )
+    return _issue_session(db, user, response, request, remember_me=remember_me, login_method=provider)
+
+
+@router.post('/verify-2fa-login')
+def verify_two_factor_login(request: Request, response: Response, payload: dict = Body(...), db: Session = Depends(get_db)):
+    email = str(payload.get('email') or '').strip().lower()
+    challenge_id = str(payload.get('challenge_id') or '').strip()
+    code = str(payload.get('code') or '').strip()
+    remember_me = bool(payload.get('remember_me', True))
+    if not email or not challenge_id or not code:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='email, challenge_id and code are required')
+    user = get_user_by_email(db, email)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
+    verify_login_challenge(db, user, challenge_id, code)
+    binding = request_binding_context(request)
+    user.last_login_at = utcnow_naive()
+    mark_successful_login(user, binding)
+    if effective_role(user) == 'admin':
+        user.last_admin_ip_hash = binding['ip_hash']
+        user.last_admin_user_agent_hash = binding['user_agent_hash']
+    db.commit()
+    db.refresh(user)
+    return _issue_session(db, user, response, request, remember_me=remember_me, login_method='2fa')
+
+
+@router.post('/2fa/setup')
+def setup_two_factor(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    challenge_payload, code = issue_login_challenge(db, current_user, challenge_type='two_factor_setup', meta={'user_id': current_user.id})
+    response = {
+        'message': 'Two-factor verification code sent',
+        **challenge_payload,
+    }
+    if settings.DEBUG and not challenge_payload['delivery']['sent']:
+        response['dev_verification_code'] = code
+    return response
+
+
+@router.post('/2fa/verify-setup')
+def verify_two_factor_setup(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    challenge_id = str(payload.get('challenge_id') or '').strip()
+    code = str(payload.get('code') or '').strip()
+    if not challenge_id or not code:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='challenge_id and code are required')
+    verify_login_challenge(db, current_user, challenge_id, code, expected_type='two_factor_setup')
+    current_user.two_factor_enabled = True
+    current_user.two_factor_method = 'email'
+    db.commit()
+    db.refresh(current_user)
+    return {'message': 'Two-factor authentication enabled', 'two_factor_enabled': True}
+
+
+@router.post('/2fa/disable')
+def disable_two_factor(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    current_user.two_factor_enabled = False
+    db.commit()
+    db.refresh(current_user)
+    return {'message': 'Two-factor authentication disabled', 'two_factor_enabled': False}
 
 
 @router.post('/refresh')

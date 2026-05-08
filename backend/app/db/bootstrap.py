@@ -19,8 +19,8 @@ DEFAULT_SUBSCRIBER = {
     'password': '123456',
 }
 REQUIRED_SCHEMA_COLUMNS: dict[str, set[str]] = {
-    'users': {'username', 'email', 'hashed_password', 'role', 'is_active', 'email_verified'},
-    'posts': {'user_id'},
+    'users': {'username', 'email', 'hashed_password', 'role', 'is_active', 'email_verified', 'two_factor_enabled'},
+    'posts': {'user_id', 'media_json', 'is_draft'},
     'comments': {'user_id', 'content'},
     'messages': {'sender_id', 'receiver_id', 'content'},
 }
@@ -126,6 +126,14 @@ def _migrate_users_table(engine: Engine) -> None:
     _add_column_if_missing(engine, 'users', 'following_count', 'following_count INTEGER NOT NULL DEFAULT 0')
     _add_column_if_missing(engine, 'users', 'fcm_token', 'fcm_token VARCHAR(1024)')
     _add_column_if_missing(engine, 'users', 'last_login_at', 'last_login_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'users', 'last_login_ip_hash', 'last_login_ip_hash VARCHAR(128)')
+    _add_column_if_missing(engine, 'users', 'last_login_user_agent_hash', 'last_login_user_agent_hash VARCHAR(128)')
+    _add_column_if_missing(engine, 'users', 'last_device_id_hash', 'last_device_id_hash VARCHAR(128)')
+    _add_column_if_missing(engine, 'users', 'social_provider', 'social_provider VARCHAR(40)')
+    _add_column_if_missing(engine, 'users', 'social_subject', 'social_subject VARCHAR(255)')
+    _add_column_if_missing(engine, 'users', 'two_factor_enabled', 'two_factor_enabled BOOLEAN NOT NULL DEFAULT FALSE')
+    _add_column_if_missing(engine, 'users', 'two_factor_method', "two_factor_method VARCHAR(40) NOT NULL DEFAULT 'email'")
+    _add_column_if_missing(engine, 'users', 'suspicious_login_count', 'suspicious_login_count INTEGER NOT NULL DEFAULT 0')
     _add_column_if_missing(engine, 'users', 'banned_at', 'banned_at TIMESTAMP NULL')
     _add_column_if_missing(engine, 'users', 'created_at', 'created_at TIMESTAMP NULL')
 
@@ -215,10 +223,26 @@ def _migrate_posts_table(engine: Engine) -> None:
 
     _add_column_if_missing(engine, 'posts', 'user_id', 'user_id INTEGER')
     _add_column_if_missing(engine, 'posts', 'image_url', 'image_url TEXT')
+    _add_column_if_missing(engine, 'posts', 'content_html', 'content_html TEXT')
+    _add_column_if_missing(engine, 'posts', 'media_json', 'media_json TEXT')
+    _add_column_if_missing(engine, 'posts', 'hashtags_json', 'hashtags_json TEXT')
+    _add_column_if_missing(engine, 'posts', 'mentions_json', 'mentions_json TEXT')
+    _add_column_if_missing(engine, 'posts', 'poll_options_json', 'poll_options_json TEXT')
+    _add_column_if_missing(engine, 'posts', 'is_draft', 'is_draft BOOLEAN NOT NULL DEFAULT FALSE')
+    _add_column_if_missing(engine, 'posts', 'is_pinned', 'is_pinned BOOLEAN NOT NULL DEFAULT FALSE')
+    _add_column_if_missing(engine, 'posts', 'allow_comments', 'allow_comments BOOLEAN NOT NULL DEFAULT TRUE')
+    _add_column_if_missing(engine, 'posts', 'scheduled_at', 'scheduled_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'posts', 'published_at', 'published_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'posts', 'pinned_at', 'pinned_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'posts', 'updated_at', 'updated_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'posts', 'last_edited_at', 'last_edited_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'posts', 'edit_count', 'edit_count INTEGER NOT NULL DEFAULT 0')
+    _add_column_if_missing(engine, 'posts', 'share_count', 'share_count INTEGER NOT NULL DEFAULT 0')
+    _add_column_if_missing(engine, 'posts', 'save_count', 'save_count INTEGER NOT NULL DEFAULT 0')
     _add_column_if_missing(engine, 'posts', 'created_at', 'created_at TIMESTAMP NULL')
 
     columns = _column_names(engine, 'posts')
-    select_columns = ['id', *[column for column in ['user_id', 'username', 'media', 'image_url', 'created_at'] if column in columns]]
+    select_columns = ['id', *[column for column in ['user_id', 'username', 'media', 'image_url', 'media_json', 'created_at', 'updated_at', 'published_at'] if column in columns]]
 
     with engine.begin() as connection:
         user_lookup = _load_user_lookup(connection)
@@ -232,8 +256,14 @@ def _migrate_posts_table(engine: Engine) -> None:
                     updates['user_id'] = mapped_user_id
             if row.get('image_url') in (None, '') and row.get('media') not in (None, ''):
                 updates['image_url'] = row.get('media')
+            if row.get('media_json') in (None, '') and row.get('image_url') not in (None, ''):
+                updates['media_json'] = f'["{row.get("image_url")}"]'
             if row.get('created_at') is None:
                 updates['created_at'] = datetime.utcnow()
+            if row.get('updated_at') is None:
+                updates['updated_at'] = row.get('created_at') or datetime.utcnow()
+            if row.get('published_at') is None:
+                updates['published_at'] = row.get('created_at') or datetime.utcnow()
             if updates:
                 assignments = ', '.join(f'{key} = :{key}' for key in updates)
                 updates['id'] = row['id']

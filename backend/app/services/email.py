@@ -211,3 +211,19 @@ def send_password_reset_email(to_email: str, code: str):
         '<p>This code will expire soon. If this request was not made by you, please ignore this email.</p>'
     )
     send_email(to_email, subject, body, html_body)
+
+
+def send_security_code_email(to_email: str, code: str, *, reason: str = 'login verification'):
+    subject = f'{APP_NAME} security verification code'
+    body = (
+        f'We detected a {reason} step for your {APP_NAME} account.\n\n'
+        f'Your security code is: {code}\n'
+        'This code will expire soon. If this was not you, please change your password and review your sessions.'
+    )
+    html_body = (
+        f'<h2>{APP_NAME} security verification</h2>'
+        f'<p>We detected a <strong>{reason}</strong> step for your account.</p>'
+        f'<p style="font-size:28px;font-weight:700;letter-spacing:4px;">{code}</p>'
+        '<p>This code will expire soon. If this was not you, please change your password and review your sessions.</p>'
+    )
+    send_email(to_email, subject, body, html_body)

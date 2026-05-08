@@ -182,7 +182,6 @@ def _send_verification_message(user: User, code: str) -> dict:
     delivery['sent'] = True
 except Exception as exc:
     delivery['error'] = str(exc)
-    try:
             send_verification_email(user.email, code)
             delivery['sent'] = True
         except Exception as exc:

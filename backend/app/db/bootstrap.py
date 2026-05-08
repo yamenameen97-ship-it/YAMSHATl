@@ -14,9 +14,9 @@ from app.db.base import Base
 CURRENT_ALEMBIC_REVISION = '20260506_0003'
 LEGACY_USER_TABLE_NAMES = ('suser', 'user')
 DEFAULT_SUBSCRIBER = {
-    'username': 'yasr',
-    'email': 'yasryameen97@gmail.com',
-    'password': '123456',
+    'username': 'dev-subscriber',
+    'email': '',
+    'password': '',
 }
 REQUIRED_SCHEMA_COLUMNS: dict[str, set[str]] = {
     'users': {'username', 'email', 'hashed_password', 'role', 'is_active', 'email_verified', 'two_factor_enabled'},

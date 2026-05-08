@@ -335,9 +335,14 @@ def _resolve_dev_user(db: Session, payload: dict) -> User:
     identifier = str(payload.get('identifier') or payload.get('email') or '').strip()
 
     if preset == 'subscriber':
-        user = get_user_by_email(db, 'yasryameen97@gmail.com')
+        dev_email = settings.DEV_SUBSCRIBER_EMAIL
+        dev_password = settings.DEV_SUBSCRIBER_PASSWORD
+        if not dev_email or not dev_password:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Development subscriber account is not configured')
+        user = get_user_by_email(db, dev_email)
         if user is None:
-            user = register_user(db, username='yasr', email='yasryameen97@gmail.com', password='123456')
+            username = dev_email.split('@')[0][:50] or 'dev-subscriber'
+            user = register_user(db, username=username, email=dev_email, password=dev_password)
             user.email_verified = True
             db.commit()
             db.refresh(user)

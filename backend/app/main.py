@@ -11,6 +11,8 @@ import app.models  # noqa: F401
 from app.api.routes import admin, analytics, auth, chat, comments, follow, groups, inbox, live, notifications, posts, search, stories, upload, users, ws
 from app.core.api_guard import api_rate_guard
 from app.core.config import settings
+from app.core.error_handlers import register_error_handlers
+from app.core.logging_setup import configure_logging
 from app.core.observability import configure_metrics, configure_tracing, make_metrics_router
 from app.core.security_extra import security_headers
 from app.core.socket_server import sio
@@ -36,6 +38,8 @@ def _database_status() -> dict:
         }
 
 
+configure_logging()
+
 fastapi_app = FastAPI(
     title=settings.PROJECT_NAME,
     debug=settings.DEBUG,
@@ -52,6 +56,7 @@ fastapi_app.add_middleware(
 )
 fastapi_app.middleware('http')(api_rate_guard)
 fastapi_app.middleware('http')(security_headers)
+register_error_handlers(fastapi_app)
 
 if settings.ENABLE_METRICS:
     configure_metrics(fastapi_app, settings.SERVICE_NAME)

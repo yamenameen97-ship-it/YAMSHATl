@@ -9,6 +9,38 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 load_dotenv(BASE_DIR / '.env')
 
 
+def env_str(name: str, default: str = '') -> str:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip()
+
+
+def is_placeholder_value(value: str | None) -> bool:
+    raw = (value or '').strip()
+    if not raw:
+        return False
+    upper = raw.upper()
+    placeholder_tokens = {
+        'HOST', 'USER', 'USERNAME', 'PASSWORD', 'DATABASE', 'DB',
+        'YOUR_EMAIL@EXAMPLE.COM', 'YOUR_BACKEND', 'YOUR_FRONTEND',
+        'REPLACE_WITH_A_LONG_RANDOM_SECRET', 'YOUR_LIVEKIT_API_SECRET',
+    }
+    if upper in placeholder_tokens:
+        return True
+    if raw.startswith(('YOUR_', 'REPLACE_WITH_')):
+        return True
+    return False
+
+
+def has_placeholder_segments(value: str | None) -> bool:
+    raw = (value or '').strip()
+    if not raw:
+        return False
+    candidates = re.split(r'[:/@?&=#._-]+', raw)
+    return any(is_placeholder_value(candidate) for candidate in candidates if candidate)
+
+
 def env_bool(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
     if value is None:
@@ -31,9 +63,10 @@ class Settings:
     PROJECT_NAME: str = os.getenv('PROJECT_NAME', 'YAMSHAT API')
     SERVICE_NAME: str = os.getenv('SERVICE_NAME', 'yamshat-backend')
     API_PREFIX: str = '/api'
+    ENVIRONMENT: str = env_str('ENVIRONMENT', env_str('APP_ENV', 'production')).lower()
     DEBUG: bool = env_bool('DEBUG', False)
-    DATABASE_URL: str = normalize_database_url(os.getenv('DATABASE_URL', 'sqlite:///./yamshat.db'))
-    SECRET_KEY: str = os.getenv('SECRET_KEY', 'change-this-secret-key')
+    DATABASE_URL: str = normalize_database_url(env_str('DATABASE_URL', 'sqlite:///./yamshat.db'))
+    SECRET_KEY: str = env_str('SECRET_KEY', 'change-this-secret-key')
     ALGORITHM: str = os.getenv('ALGORITHM', 'HS256')
     JWT_ISSUER: str = (os.getenv('JWT_ISSUER') or 'yamshat-api').strip()
     JWT_AUDIENCE: str = (os.getenv('JWT_AUDIENCE') or 'yamshat-clients').strip()
@@ -43,7 +76,7 @@ class Settings:
     EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES: int = int(os.getenv('EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES', '15'))
     PASSWORD_RESET_CODE_EXPIRE_MINUTES: int = int(os.getenv('PASSWORD_RESET_CODE_EXPIRE_MINUTES', '15'))
     FIREBASE_CREDENTIALS_PATH: str = os.getenv('FIREBASE_CREDENTIALS_PATH', '')
-    REDIS_URL: str = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+    REDIS_URL: str = env_str('REDIS_URL', '')
     REDIS_PREFIX: str = (os.getenv('REDIS_PREFIX') or 'yamshat').strip()
     ENABLE_METRICS: bool = env_bool('ENABLE_METRICS', True)
     ENABLE_TRACING: bool = env_bool('ENABLE_TRACING', False)
@@ -121,6 +154,10 @@ class Settings:
     ADMIN_MFA_ENABLED: bool = env_bool('ADMIN_MFA_ENABLED', False)
     ADMIN_MFA_TOTP_SECRET: str = (os.getenv('ADMIN_MFA_TOTP_SECRET') or '').strip()
     ADMIN_ALLOWED_IPS_RAW: str = (os.getenv('ADMIN_ALLOWED_IPS') or '').strip()
+    CRASH_REPORTING_DSN: str = env_str('CRASH_REPORTING_DSN', env_str('SENTRY_DSN', ''))
+    FRONTEND_CRASH_REPORTING_DSN: str = env_str('FRONTEND_CRASH_REPORTING_DSN', '')
+    DEV_SUBSCRIBER_EMAIL: str = env_str('DEV_SUBSCRIBER_EMAIL', '')
+    DEV_SUBSCRIBER_PASSWORD: str = env_str('DEV_SUBSCRIBER_PASSWORD', '')
 
     @property
     def cors_origin_regex(self) -> str | None:
@@ -201,6 +238,32 @@ class Settings:
     @property
     def dev_login_enabled(self) -> bool:
         return bool(self.DEBUG or self.DEV_LOGIN_ENABLED)
+
+    @property
+    def is_production(self) -> bool:
+        return self.ENVIRONMENT in {'prod', 'production'} and not self.DEBUG
+
+    @property
+    def database_url_configured(self) -> bool:
+        value = normalize_database_url(self.DATABASE_URL)
+        if not value:
+            return False
+        if value.startswith('sqlite'):
+            return True
+        return not has_placeholder_segments(value)
+
+    @property
+    def effective_database_url(self) -> str:
+        value = normalize_database_url(self.DATABASE_URL)
+        if self.database_url_configured:
+            return value
+        return 'sqlite:///./yamshat.db'
+
+    @property
+    def redis_url_configured(self) -> bool:
+        if not self.REDIS_URL:
+            return False
+        return not has_placeholder_segments(self.REDIS_URL)
 
 
 settings = Settings()

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
@@ -8,865 +7,773 @@ import EmptyState from '../components/feedback/EmptyState.jsx';
 import ErrorState from '../components/feedback/ErrorState.jsx';
 import { FeedSkeleton } from '../components/feedback/Skeleton.jsx';
 import { useToast } from '../components/admin/ToastProvider.jsx';
-import socket from '../api/socket.js';
-import { addComment, createPost, getComments, getPosts, likePost, uploadPostMedia } from '../api/posts.js';
-import { getStories } from '../api/stories.js';
-import { getUsers, getFollowersSummary, getRelationship, followUser } from '../api/users.js';
-import { getAuthToken, getCurrentUsername } from '../utils/auth.js';
+import {
+  addComment,
+  createPost,
+  getComments,
+  getDraftPosts,
+  getPostHistory,
+  getPosts,
+  likePost,
+  savePost,
+  sharePost,
+  updatePost,
+  uploadPostMedia,
+  votePoll,
+} from '../api/posts.js';
+import { getUsers } from '../api/users.js';
 import { sanitizeInputText } from '../utils/sanitize.js';
 import { useAppStore } from '../store/appStore.js';
+import { getCurrentUsername } from '../utils/auth.js';
 
-const EMPTY_COUNTS = { followers: 0, following: 0 };
-const isVideo = (value) => /\.(mp4|mov|webm|mkv)$/i.test(String(value || ''));
+const EMOJIS = ['😀', '😂', '😍', '🔥', '👏', '🎉', '❤️', '🤝', '🚀', '💡', '📌', '✅'];
+const VIDEO_RE = /\.(mp4|mov|webm|mkv)$/i;
+const IMAGE_RE = /\.(png|jpe?g|webp|gif)$/i;
 
-function normalizeComment(comment) {
-  return {
-    ...comment,
-    username: comment?.username || comment?.user || 'user',
-    comment: comment?.comment || comment?.text || comment?.content || '',
-  };
+function formatDate(value) {
+  if (!value) return 'الآن';
+  try {
+    return new Date(value).toLocaleString('ar-EG');
+  } catch {
+    return 'الآن';
+  }
 }
 
-function normalizePost(post, comments = []) {
-  return {
-    ...post,
-    media: post?.media || post?.image_url || '',
-    comments: comments.map(normalizeComment),
-    liked_by_me: Boolean(post?.liked_by_me),
-    comments_count: Number(post?.comments_count || post?.comment_count || comments.length || 0),
-    likes: Number(post?.likes || post?.like_count || 0),
-    pending_sync: Boolean(post?.pending_sync),
-  };
+function stripHtml(html = '') {
+  if (typeof window === 'undefined') return String(html || '');
+  const div = window.document.createElement('div');
+  div.innerHTML = html;
+  return div.textContent || div.innerText || '';
 }
 
-function normalizeStoryItem(item) {
-  return {
-    id: item?.id || `${item?.username}-${item?.created_at}`,
-    username: item?.username || 'user',
-    media: item?.media_url || item?.media || '',
-    created_at: item?.created_at || '',
-  };
+function escapeHtml(value = '') {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
-async function loadFeedData(currentUser) {
-  const [{ data: postsData }, { data: usersData }] = await Promise.all([getPosts(), getUsers()]);
-  const rawPosts = Array.isArray(postsData) ? postsData : [];
-  const users = (Array.isArray(usersData) ? usersData : [])
-    .map((item) => item?.username || item?.name)
-    .filter(Boolean)
-    .filter((name) => name !== currentUser);
+function enhanceText(text = '') {
+  return escapeHtml(text)
+    .replace(/(#[\w\u0600-\u06FF]+)/g, '<span class="tag-chip">$1</span>')
+    .replace(/(@[\w.-]+)/g, '<span class="mention-chip">$1</span>')
+    .replace(/\n/g, '<br />');
+}
 
-  const commentsEntries = await Promise.all(
-    rawPosts.slice(0, 30).map(async (post) => {
-      try {
-        const { data } = await getComments(post.id);
-        return [post.id, Array.isArray(data) ? data : []];
-      } catch {
-        return [post.id, []];
-      }
-    })
-  );
+function getMentionQuery(text = '') {
+  const match = String(text).match(/(?:^|\s)@([\w.-]{1,30})$/);
+  return match ? match[1].toLowerCase() : '';
+}
 
-  const commentsMap = Object.fromEntries(commentsEntries);
-  const authors = [...new Set(rawPosts.map((post) => post?.username).filter(Boolean).filter((name) => name !== currentUser))];
-  const profilesToLoad = [...new Set([...authors, ...users.slice(0, 8)])];
+function withMention(text, username) {
+  return String(text).replace(/(?:^|\s)@[\w.-]{0,30}$/, (match) => {
+    const prefix = match.startsWith(' ') ? ' ' : '';
+    return `${prefix}@${username} `;
+  });
+}
 
-  const [relationEntries, countsEntries] = await Promise.all([
-    Promise.all(
-      profilesToLoad.map(async (name) => {
-        try {
-          const { data } = await getRelationship(name);
-          return [name, Boolean(data?.following)];
-        } catch {
-          return [name, false];
-        }
-      })
-    ),
-    Promise.all(
-      profilesToLoad.map(async (name) => {
-        try {
-          const { data } = await getFollowersSummary(name);
-          return [name, { followers: Number(data?.followers || 0), following: Number(data?.following || 0) }];
-        } catch {
-          return [name, EMPTY_COUNTS];
-        }
-      })
-    ),
+async function loadFeedData() {
+  const [{ data: postsData }, { data: draftsData }, { data: usersData }] = await Promise.all([
+    getPosts({ limit: 50 }),
+    getDraftPosts(),
+    getUsers(),
   ]);
-
   return {
-    posts: rawPosts.map((post) => normalizePost(post, commentsMap[post.id] || [])),
-    suggestions: users.slice(0, 8),
-    relationships: Object.fromEntries(relationEntries),
-    socialCounts: Object.fromEntries(countsEntries),
+    posts: Array.isArray(postsData) ? postsData : [],
+    drafts: Array.isArray(draftsData) ? draftsData : [],
+    users: (Array.isArray(usersData) ? usersData : []).map((item) => item?.username || item?.name).filter(Boolean),
   };
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = src;
+  });
+}
+
+async function preprocessImageFile(file, { cropSquare = false } = {}) {
+  if (!file?.type?.startsWith('image/') || file.type === 'image/gif') return file;
+  const source = await readFileAsDataUrl(file);
+  const image = await loadImage(source);
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  const maxSize = 1600;
+  let sx = 0;
+  let sy = 0;
+  let sw = image.width;
+  let sh = image.height;
+
+  if (cropSquare) {
+    const size = Math.min(image.width, image.height);
+    sx = Math.round((image.width - size) / 2);
+    sy = Math.round((image.height - size) / 2);
+    sw = size;
+    sh = size;
+  }
+
+  const scale = Math.min(maxSize / sw, maxSize / sh, 1);
+  canvas.width = Math.max(1, Math.round(sw * scale));
+  canvas.height = Math.max(1, Math.round(sh * scale));
+  context.drawImage(image, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.82));
+  if (!blob) return file;
+  const nextName = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+  return new File([blob], nextName, { type: 'image/jpeg' });
+}
+
+async function preprocessFiles(files, options) {
+  const prepared = [];
+  for (const file of files) {
+    prepared.push(await preprocessImageFile(file, options));
+  }
+  return prepared;
+}
+
+function mediaPreviewUrl(file) {
+  return URL.createObjectURL(file);
+}
+
+function ComposerToolbar({ onCommand, onAddEmoji }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+      <Button variant="secondary" onClick={() => onCommand('bold')}>عريض</Button>
+      <Button variant="secondary" onClick={() => onCommand('italic')}>مائل</Button>
+      <Button variant="secondary" onClick={() => onCommand('insertUnorderedList')}>قائمة</Button>
+      <Button variant="secondary" onClick={() => onCommand('formatBlock', 'blockquote')}>اقتباس</Button>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {EMOJIS.map((emoji) => (
+          <button key={emoji} type="button" className="mini-action" onClick={() => onAddEmoji(emoji)}>{emoji}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MediaGallery({ urls = [] }) {
+  if (!urls.length) return null;
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: urls.length > 1 ? 'repeat(auto-fit, minmax(180px, 1fr))' : '1fr', gap: 12 }}>
+      {urls.map((url, index) => {
+        if (VIDEO_RE.test(url)) {
+          return <video key={`${url}-${index}`} src={url} controls playsInline className="post-media" style={{ width: '100%', borderRadius: 20 }} />;
+        }
+        return <img key={`${url}-${index}`} src={url} alt="post media" className="post-media" style={{ width: '100%', borderRadius: 20, objectFit: 'cover' }} />;
+      })}
+    </div>
+  );
+}
+
+function DraftCard({ draft, onEdit }) {
+  return (
+    <div className="glass-chip" style={{ width: '100%', justifyContent: 'space-between', gap: 12 }}>
+      <div style={{ minWidth: 0 }}>
+        <strong style={{ display: 'block' }}>{draft.content?.slice(0, 48) || 'مسودة بدون عنوان'}</strong>
+        <small className="muted">آخر تحديث: {formatDate(draft.updated_at || draft.created_at)}</small>
+      </div>
+      <Button variant="secondary" onClick={() => onEdit(draft)}>فتح</Button>
+    </div>
+  );
+}
+
+function HistoryList({ items = [] }) {
+  if (!items.length) return <div className="muted">لا يوجد سجل تعديلات بعد.</div>;
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      {items.map((item) => (
+        <div key={item.id} className="glass-chip" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+          <strong>تعديل بتاريخ {formatDate(item.edited_at)}</strong>
+          <div className="muted" style={{ whiteSpace: 'pre-wrap' }}>{item.previous_content || 'بدون نص'}</div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function Feed() {
-  const location = useLocation();
-  const currentUser = getCurrentUsername();
-  const token = getAuthToken();
-  const queryClient = useQueryClient();
   const { pushToast } = useToast();
+  const currentUser = getCurrentUsername();
   const setUploadProgress = useAppStore((state) => state.setUploadProgress);
   const clearUploadProgress = useAppStore((state) => state.clearUploadProgress);
   const uploadProgress = useAppStore((state) => state.uploadProgress.feedComposer || 0);
-  const isOnline = useAppStore((state) => state.isOnline);
-  const queuedActions = useAppStore((state) => state.queuedActions);
-  const queueAction = useAppStore((state) => state.queueAction);
-  const dequeueAction = useAppStore((state) => state.dequeueAction);
-  const [form, setForm] = useState({ text: '', file: null, preview: '' });
+  const [editorText, setEditorText] = useState('');
+  const [editorHtml, setEditorHtml] = useState('');
+  const [attachments, setAttachments] = useState([]);
   const [commentText, setCommentText] = useState({});
-  const [publishing, setPublishing] = useState(false);
-  const [stories, setStories] = useState([]);
-  const composerRef = useRef(null);
-  const isFlushingQueueRef = useRef(false);
+  const [commentsMap, setCommentsMap] = useState({});
+  const [historyMap, setHistoryMap] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+  const [editingPost, setEditingPost] = useState(null);
+  const [scheduledAt, setScheduledAt] = useState('');
+  const [allowComments, setAllowComments] = useState(true);
+  const [pinPost, setPinPost] = useState(false);
+  const [cropImages, setCropImages] = useState(true);
+  const [pollEnabled, setPollEnabled] = useState(false);
+  const [pollOptions, setPollOptions] = useState(['', '']);
+  const [showEmojiPanel, setShowEmojiPanel] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const [activeFilter, setActiveFilter] = useState('feed');
+  const editorRef = useRef(null);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['feed', currentUser],
-    queryFn: () => loadFeedData(currentUser),
+    queryKey: ['feed-v2', currentUser],
+    queryFn: loadFeedData,
   });
 
   const posts = data?.posts || [];
-  const suggestions = data?.suggestions || [];
-  const relationships = data?.relationships || {};
-  const socialCounts = data?.socialCounts || {};
-
-  const storyGroups = useMemo(() => {
-    const grouped = new Map();
-
-    stories.forEach((story) => {
-      const items = grouped.get(story.username) || [];
-      items.push(story);
-      grouped.set(story.username, items);
-    });
-
-    return Array.from(grouped.entries()).map(([username, items]) => ({
-      username,
-      items,
-      latest: items[0],
-    }));
-  }, [stories]);
-
-  const pendingFeedActions = useMemo(
-    () => queuedActions.filter((item) => item?.source === 'feed'),
-    [queuedActions]
+  const drafts = data?.drafts || [];
+  const users = data?.users || [];
+  const mentionQuery = useMemo(() => getMentionQuery(editorText), [editorText]);
+  const mentionSuggestions = useMemo(
+    () => mentionQuery ? users.filter((item) => item && item !== currentUser && item.toLowerCase().includes(mentionQuery)).slice(0, 6) : [],
+    [currentUser, mentionQuery, users]
   );
 
-  useEffect(() => {
-    let mounted = true;
-
-    const loadStoriesStrip = async () => {
-      try {
-        const { data: storiesData } = await getStories();
-        if (!mounted) return;
-        setStories((Array.isArray(storiesData) ? storiesData : []).map(normalizeStoryItem));
-      } catch {
-        if (mounted) setStories([]);
-      }
-    };
-
-    loadStoriesStrip();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    const shouldOpenComposer = location.hash === '#composer' || new URLSearchParams(location.search || '').get('compose') === '1';
-
-    if (!shouldOpenComposer) return;
-
-    const timer = window.setTimeout(() => {
-      composerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      composerRef.current?.querySelector('textarea')?.focus();
-    }, 180);
-
-    return () => window.clearTimeout(timer);
-  }, [location.hash, location.search]);
-
-  useEffect(() => {
-    if (!currentUser) return undefined;
-
-    if (!socket.connected) socket.connect();
-    socket.emit('register_user', { token, user: currentUser });
-
-    const handleLiked = ({ post_id, likes, liked, username }) => {
-      queryClient.setQueryData(['feed', currentUser], (previous) => {
-        if (!previous) return previous;
-        return {
-          ...previous,
-          posts: previous.posts.map((post) =>
-            post.id === post_id
-              ? {
-                  ...post,
-                  likes,
-                  liked_by_me: username === currentUser ? Boolean(liked) : post.liked_by_me,
-                }
-              : post
-          ),
-        };
-      });
-    };
-
-    const handleCommentAdded = ({ post_id, comment }) => {
-      const normalized = normalizeComment(comment || {});
-      queryClient.setQueryData(['feed', currentUser], (previous) => {
-        if (!previous) return previous;
-        return {
-          ...previous,
-          posts: previous.posts.map((post) =>
-            post.id === post_id
-              ? {
-                  ...post,
-                  comments: [...post.comments, normalized],
-                  comments_count: (post.comments_count || post.comments.length || 0) + 1,
-                }
-              : post
-          ),
-        };
-      });
-    };
-
-    const handleFollowUpdate = ({ username, target_username, following, followers_count, following_count }) => {
-      queryClient.setQueryData(['feed', currentUser], (previous) => {
-        if (!previous) return previous;
-        return {
-          ...previous,
-          relationships:
-            username === currentUser
-              ? { ...previous.relationships, [target_username]: following }
-              : previous.relationships,
-          socialCounts: {
-            ...previous.socialCounts,
-            [target_username]: {
-              followers: Number(followers_count || previous.socialCounts[target_username]?.followers || 0),
-              following: Number(following_count || previous.socialCounts[target_username]?.following || 0),
-            },
-          },
-        };
-      });
-    };
-
-    socket.on('post_liked', handleLiked);
-    socket.on('comment_added', handleCommentAdded);
-    socket.on('user_follow_update', handleFollowUpdate);
-
-    return () => {
-      socket.off('post_liked', handleLiked);
-      socket.off('comment_added', handleCommentAdded);
-      socket.off('user_follow_update', handleFollowUpdate);
-    };
-  }, [currentUser, queryClient, token]);
-
   useEffect(() => () => {
-    if (form.preview?.startsWith('blob:')) URL.revokeObjectURL(form.preview);
-  }, [form.preview]);
-
-  useEffect(() => {
-    if (!isOnline || pendingFeedActions.length === 0 || isFlushingQueueRef.current) return;
-
-    let cancelled = false;
-
-    const flushQueue = async () => {
-      isFlushingQueueRef.current = true;
-      let processed = 0;
-
-      for (const action of pendingFeedActions) {
-        if (cancelled) break;
-        try {
-          if (action.type === 'like') {
-            await likePost(action.payload.postId);
-          } else if (action.type === 'comment') {
-            await addComment(action.payload.postId, action.payload.text);
-          } else if (action.type === 'follow') {
-            await followUser(action.payload.username);
-          } else if (action.type === 'createPost') {
-            await createPost(action.payload);
-          }
-          dequeueAction(action.id);
-          processed += 1;
-        } catch {
-          // keep the item queued and stop trying until next reconnect
-          break;
-        }
-      }
-
-      if (processed > 0) {
-        pushToast({
-          type: 'success',
-          title: 'تمت المزامنة',
-          description: `تم تنفيذ ${processed} عملية كانت محفوظة أثناء انقطاع الإنترنت.`,
-        });
-        await refetch();
-      }
-
-      isFlushingQueueRef.current = false;
-    };
-
-    flushQueue();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [dequeueAction, isOnline, pendingFeedActions, pushToast, refetch]);
-
-  const feedStats = useMemo(() => {
-    const totalComments = posts.reduce((sum, post) => sum + Number(post.comments_count || 0), 0);
-    const totalLikes = posts.reduce((sum, post) => sum + Number(post.likes || 0), 0);
-    return [
-      { label: 'المنشورات', value: posts.length },
-      { label: 'التفاعلات', value: totalLikes },
-      { label: 'التعليقات', value: totalComments },
-      { label: 'بانتظار المزامنة', value: pendingFeedActions.length },
-    ];
-  }, [pendingFeedActions.length, posts]);
-
-  const handleFileSelect = (file) => {
-    if (!file) return;
-    if (form.preview?.startsWith('blob:')) URL.revokeObjectURL(form.preview);
-    setForm((prev) => ({ ...prev, file, preview: URL.createObjectURL(file) }));
-  };
+    attachments.forEach((item) => {
+      if (item.preview?.startsWith('blob:')) URL.revokeObjectURL(item.preview);
+    });
+  }, [attachments]);
 
   const resetComposer = () => {
-    if (form.preview?.startsWith('blob:')) URL.revokeObjectURL(form.preview);
-    setForm({ text: '', file: null, preview: '' });
+    attachments.forEach((item) => {
+      if (item.preview?.startsWith('blob:')) URL.revokeObjectURL(item.preview);
+    });
+    setAttachments([]);
+    setEditorText('');
+    setEditorHtml('');
+    setScheduledAt('');
+    setPollEnabled(false);
+    setPollOptions(['', '']);
+    setAllowComments(true);
+    setPinPost(false);
+    setEditingPost(null);
+    setShowEmojiPanel(false);
+    if (editorRef.current) editorRef.current.innerHTML = '';
     clearUploadProgress('feedComposer');
   };
 
-  const enqueueFeedAction = (type, payload, description) => {
-    queueAction({ source: 'feed', type, payload, description });
+  const syncEditorFromDom = () => {
+    const html = editorRef.current?.innerHTML || '';
+    const text = stripHtml(html);
+    setEditorHtml(html);
+    setEditorText(text);
+  };
+
+  const runCommand = (command, value = null) => {
+    editorRef.current?.focus();
+    document.execCommand(command, false, value);
+    syncEditorFromDom();
+  };
+
+  const insertEmoji = (emoji) => {
+    editorRef.current?.focus();
+    document.execCommand('insertText', false, emoji);
+    syncEditorFromDom();
+  };
+
+  const applyDraftToComposer = (draft) => {
+    setEditingPost(draft);
+    setEditorText(draft.content || '');
+    setEditorHtml(draft.content_html || enhanceText(draft.content || ''));
+    if (editorRef.current) editorRef.current.innerHTML = draft.content_html || enhanceText(draft.content || '');
+    setScheduledAt(draft.scheduled_at ? String(draft.scheduled_at).slice(0, 16) : '');
+    setPinPost(Boolean(draft.is_pinned));
+    setAllowComments(Boolean(draft.allow_comments ?? true));
+    setPollEnabled(Boolean(draft.poll?.length));
+    setPollOptions(draft.poll?.length ? draft.poll.map((item) => item.label) : ['', '']);
+    pushToast({ type: 'info', title: 'تم تحميل المسودة', description: 'تقدر تكمل التعديل أو تنشرها مباشرة.' });
+  };
+
+  const handleFilesInput = async (incomingFiles) => {
+    const rawFiles = Array.from(incomingFiles || []).slice(0, 8);
+    if (!rawFiles.length) return;
+    const prepared = await preprocessFiles(rawFiles, { cropSquare: cropImages });
+    const nextItems = prepared.map((file) => ({ file, preview: mediaPreviewUrl(file) }));
+    setAttachments((prev) => [...prev, ...nextItems].slice(0, 8));
     pushToast({
-      type: 'info',
-      title: 'تم الحفظ للمزامنة',
-      description,
+      type: 'success',
+      title: 'تم تجهيز الوسائط',
+      description: 'تم تفعيل الرفع المتعدد مع ضغط الصور ودعم السحب والإفلات.',
     });
   };
 
-  const applyOptimisticLike = (postId) => {
-    queryClient.setQueryData(['feed', currentUser], (previous) => {
-      if (!previous) return previous;
-      return {
-        ...previous,
-        posts: previous.posts.map((post) =>
-          post.id === postId
-            ? {
-                ...post,
-                liked_by_me: !post.liked_by_me,
-                likes: Math.max(0, Number(post.likes || 0) + (post.liked_by_me ? -1 : 1)),
-              }
-            : post
-        ),
-      };
-    });
+  const handleDrop = async (event) => {
+    event.preventDefault();
+    setDragActive(false);
+    await handleFilesInput(event.dataTransfer?.files || []);
   };
 
-  const applyOptimisticComment = (postId, text) => {
-    const optimisticComment = normalizeComment({
-      id: `pending-comment-${Date.now()}`,
-      username: currentUser,
-      comment: text,
-      created_at: new Date().toISOString(),
-    });
-
-    queryClient.setQueryData(['feed', currentUser], (previous) => {
-      if (!previous) return previous;
-      return {
-        ...previous,
-        posts: previous.posts.map((post) =>
-          post.id === postId
-            ? {
-                ...post,
-                comments: [...post.comments, optimisticComment],
-                comments_count: (post.comments_count || post.comments.length || 0) + 1,
-              }
-            : post
-        ),
-      };
-    });
-  };
-
-  const applyOptimisticFollow = (username) => {
-    queryClient.setQueryData(['feed', currentUser], (previous) => {
-      if (!previous) return previous;
-      const wasFollowing = Boolean(previous.relationships?.[username]);
-      const currentCounts = previous.socialCounts?.[username] || EMPTY_COUNTS;
-      return {
-        ...previous,
-        relationships: { ...previous.relationships, [username]: !wasFollowing },
-        socialCounts: {
-          ...previous.socialCounts,
-          [username]: {
-            followers: Math.max(0, Number(currentCounts.followers || 0) + (wasFollowing ? -1 : 1)),
-            following: Number(currentCounts.following || 0),
-          },
-        },
-      };
-    });
-  };
-
-  const handlePublish = async () => {
-    if (!form.text.trim() && !form.file) return;
-    const optimisticId = `optimistic-${Date.now()}`;
-    const cleanContent = sanitizeInputText(form.text, { maxLength: 2000 });
-
-    if (!isOnline && form.file) {
-      pushToast({
-        type: 'warning',
-        title: 'لا يمكن رفع المرفقات أوفلاين',
-        description: 'يمكنك حفظ منشور نصي فقط أثناء انقطاع الإنترنت، ثم رفع الصور والفيديو عند عودة الاتصال.',
+  const uploadAllMedia = async () => {
+    const uploadedUrls = [];
+    if (!attachments.length) return uploadedUrls;
+    for (let index = 0; index < attachments.length; index += 1) {
+      const item = attachments[index];
+      const { data: uploadData } = await uploadPostMedia(item.file, (progressEvent) => {
+        const current = progressEvent?.progress || 0;
+        const totalProgress = ((index + current) / attachments.length) * 100;
+        setUploadProgress('feedComposer', Math.round(totalProgress));
       });
+      uploadedUrls.push(uploadData?.file_url || uploadData?.url || uploadData?.imagekit_url || uploadData?.cloud_url);
+    }
+    clearUploadProgress('feedComposer');
+    return uploadedUrls.filter(Boolean);
+  };
+
+  const buildPayload = async ({ saveAsDraft = false } = {}) => {
+    const uploadedUrls = await uploadAllMedia();
+    return {
+      content: sanitizeInputText(editorText, { maxLength: 5000 }),
+      content_html: (editorHtml || '').slice(0, 12000),
+      media_urls: uploadedUrls.length ? uploadedUrls : (editingPost?.media_urls || []),
+      poll: pollEnabled ? pollOptions.filter(Boolean).map((label) => ({ label: sanitizeInputText(label, { maxLength: 120 }) })) : [],
+      scheduled_at: scheduledAt || null,
+      is_draft: saveAsDraft,
+      is_pinned: pinPost,
+      allow_comments: allowComments,
+    };
+  };
+
+  const submitComposer = async ({ saveAsDraft = false } = {}) => {
+    if (!editorText.trim() && !attachments.length && !(pollEnabled && pollOptions.some(Boolean))) {
+      pushToast({ type: 'warning', title: 'المحتوى ناقص', description: 'اكتب نص أو أضف وسائط أو فعّل استطلاع.' });
       return;
     }
-
-    if (!isOnline) {
-      queryClient.setQueryData(['feed', currentUser], (previous) => {
-        if (!previous) return previous;
-        return {
-          ...previous,
-          posts: [
-            normalizePost({
-              id: optimisticId,
-              username: currentUser,
-              content: cleanContent,
-              media: '',
-              created_at: new Date().toISOString(),
-              likes: 0,
-              liked_by_me: false,
-              comments_count: 0,
-              pending_sync: true,
-            }),
-            ...previous.posts,
-          ],
-        };
-      });
-      enqueueFeedAction('createPost', { content: cleanContent, image_url: '', media: '' }, 'تم حفظ المنشور النصي وسيتم نشره تلقائياً عند رجوع الإنترنت.');
-      resetComposer();
-      return;
-    }
-
     try {
-      setPublishing(true);
-      queryClient.setQueryData(['feed', currentUser], (previous) => {
-        if (!previous) return previous;
-        return {
-          ...previous,
-          posts: [
-            normalizePost({
-              id: optimisticId,
-              username: currentUser,
-              content: cleanContent,
-              media: form.preview,
-              created_at: new Date().toISOString(),
-              likes: 0,
-              liked_by_me: false,
-              comments_count: 0,
-            }),
-            ...previous.posts,
-          ],
-        };
-      });
-
-      let media = '';
-      if (form.file) {
-        const { data } = await uploadPostMedia(form.file, (event) => {
-          const progress = event.total ? Math.round((event.loaded / event.total) * 100) : 0;
-          setUploadProgress('feedComposer', progress);
-        });
-        media = data?.file_url || data?.url || '';
+      setSubmitting(true);
+      const payload = await buildPayload({ saveAsDraft });
+      if (editingPost) {
+        await updatePost(editingPost.id, payload);
+      } else {
+        await createPost(payload);
       }
-      await createPost({ content: cleanContent, image_url: media, media });
-      pushToast({ type: 'success', title: 'تم النشر', description: 'تم نشر المحتوى بنجاح.' });
-      resetComposer();
       await refetch();
-    } catch (err) {
-      queryClient.setQueryData(['feed', currentUser], (previous) => {
-        if (!previous) return previous;
-        return { ...previous, posts: previous.posts.filter((post) => post.id !== optimisticId) };
+      resetComposer();
+      pushToast({
+        type: 'success',
+        title: saveAsDraft ? 'تم حفظ المسودة' : 'تم نشر المنشور',
+        description: saveAsDraft ? 'المسودة اتحفظت مع الجدولة والوسائط.' : 'المنشور اتحدث في الـ Feed بنجاح.',
       });
-      pushToast({ type: 'warning', title: 'فشل النشر', description: err?.response?.data?.message || 'تعذر نشر المنشور.' });
+    } catch (err) {
+      pushToast({ type: 'error', title: 'فشل الحفظ', description: err?.response?.data?.detail || 'حصلت مشكلة أثناء حفظ المنشور.' });
     } finally {
-      setPublishing(false);
+      setSubmitting(false);
       clearUploadProgress('feedComposer');
     }
   };
 
-  const handleLike = async (postId) => {
-    if (!currentUser) return;
+  const toggleLike = async (postId) => {
+    await likePost(postId);
+    await refetch();
+  };
 
-    if (!isOnline) {
-      applyOptimisticLike(postId);
-      enqueueFeedAction('like', { postId }, 'تم حفظ الإعجاب للمزامنة عند عودة الإنترنت.');
-      return;
-    }
+  const toggleSave = async (postId) => {
+    await savePost(postId);
+    await refetch();
+  };
 
+  const handleShare = async (post) => {
+    const shareUrl = `${window.location.origin}${window.location.pathname}#post-${post.id}`;
     try {
-      applyOptimisticLike(postId);
-      await likePost(postId);
-    } catch (err) {
+      if (navigator.share) {
+        await navigator.share({ title: 'Yamshat Post', text: post.content || 'منشور جديد', url: shareUrl });
+        await sharePost(post.id, 'native-share');
+      } else {
+        await navigator.clipboard.writeText(shareUrl);
+        await sharePost(post.id, 'copy-link');
+      }
+      pushToast({ type: 'success', title: 'تمت المشاركة', description: 'رابط المنشور جاهز للمشاركة أو اتحفظ في الحافظة.' });
       await refetch();
-      pushToast({ type: 'warning', title: 'تعذر تحديث الإعجاب', description: err?.response?.data?.message || 'حاول مرة أخرى.' });
+    } catch {
+      pushToast({ type: 'warning', title: 'المشاركة اتلغت', description: 'ممكن تعيد المحاولة أو تنسخ الرابط يدوياً.' });
     }
   };
 
-  const handleComment = async (postId) => {
-    const text = sanitizeInputText(commentText[postId] || '', { maxLength: 600 });
-    if (!text || !currentUser) return;
+  const submitComment = async (postId) => {
+    const text = sanitizeInputText(commentText[postId] || '', { maxLength: 400 });
+    if (!text) return;
+    await addComment(postId, text);
+    const { data: commentsData } = await getComments(postId);
+    setCommentsMap((prev) => ({ ...prev, [postId]: Array.isArray(commentsData) ? commentsData : [] }));
+    setCommentText((prev) => ({ ...prev, [postId]: '' }));
+    await refetch();
+  };
 
-    if (!isOnline) {
-      applyOptimisticComment(postId, text);
-      enqueueFeedAction('comment', { postId, text }, 'تم حفظ التعليق وسيُرسل تلقائياً عند عودة الاتصال.');
-      setCommentText((prev) => ({ ...prev, [postId]: '' }));
+  const toggleComments = async (postId) => {
+    if (commentsMap[postId]) {
+      setCommentsMap((prev) => {
+        const next = { ...prev };
+        delete next[postId];
+        return next;
+      });
       return;
     }
-
-    try {
-      const { data: comment } = await addComment(postId, text);
-      const normalized = normalizeComment(comment || {});
-      queryClient.setQueryData(['feed', currentUser], (previous) => {
-        if (!previous) return previous;
-        return {
-          ...previous,
-          posts: previous.posts.map((post) =>
-            post.id === postId
-              ? {
-                  ...post,
-                  comments: [...post.comments, normalized],
-                  comments_count: (post.comments_count || post.comments.length || 0) + 1,
-                }
-              : post
-          ),
-        };
-      });
-      setCommentText((prev) => ({ ...prev, [postId]: '' }));
-    } catch (err) {
-      pushToast({ type: 'warning', title: 'تعذر إضافة التعليق', description: err?.response?.data?.message || 'حاول مرة أخرى.' });
-    }
+    const { data: commentsData } = await getComments(postId);
+    setCommentsMap((prev) => ({ ...prev, [postId]: Array.isArray(commentsData) ? commentsData : [] }));
   };
 
-  const handleFollow = async (username) => {
-    if (!username || username === currentUser) return;
-
-    if (!isOnline) {
-      applyOptimisticFollow(username);
-      enqueueFeedAction('follow', { username }, 'تم حفظ إجراء المتابعة للمزامنة لاحقاً.');
-      return;
-    }
-
-    try {
-      const { data: response } = await followUser(username);
-      queryClient.setQueryData(['feed', currentUser], (previous) => {
-        if (!previous) return previous;
-        return {
-          ...previous,
-          relationships: { ...previous.relationships, [username]: Boolean(response?.following) },
-          socialCounts: {
-            ...previous.socialCounts,
-            [username]: {
-              followers: Number(response?.followers || previous.socialCounts[username]?.followers || 0),
-              following: Number(response?.following_count || previous.socialCounts[username]?.following || 0),
-            },
-          },
-        };
-      });
-    } catch (err) {
-      pushToast({ type: 'warning', title: 'تعذر تحديث المتابعة', description: err?.response?.data?.message || 'حاول مرة أخرى.' });
-    }
+  const showHistory = async (postId) => {
+    const { data: historyData } = await getPostHistory(postId);
+    setHistoryMap((prev) => ({ ...prev, [postId]: Array.isArray(historyData) ? historyData : [] }));
   };
+
+  const handleVote = async (postId, optionKey) => {
+    await votePoll(postId, optionKey);
+    await refetch();
+  };
+
+  const composerSummary = useMemo(() => {
+    const hashtags = editorText.match(/#[\w\u0600-\u06FF]+/g) || [];
+    const mentions = editorText.match(/@[\w.-]+/g) || [];
+    return {
+      hashtags: hashtags.slice(0, 6),
+      mentions: mentions.slice(0, 6),
+    };
+  }, [editorText]);
+
+  if (isLoading) {
+    return (
+      <MainLayout>
+        <FeedSkeleton />
+      </MainLayout>
+    );
+  }
+
+  if (isError) {
+    return (
+      <MainLayout>
+        <ErrorState title="تعذر تحميل الصفحة" description={error?.message || 'حصل خطأ أثناء تحميل الـ Feed.'} onRetry={refetch} />
+      </MainLayout>
+    );
+  }
+
+  const activePosts = activeFilter === 'drafts' ? drafts : posts;
 
   return (
     <MainLayout>
-      <section className="feed-layout enhanced-feed-layout">
-        <div className="feed-main">
-          <Card className="quick-feed-hero">
-            <div className="section-head compact home-strip-head">
-              <div>
-                <h3 className="section-title">واجهة المنشورات الرئيسية</h3>
-                <p className="muted no-margin">تم ترتيب الأزرار العلوية والسفلية، وفصل المنشورات عن الريلز والبث والدردشة كما في الصور المرجعية.</p>
-              </div>
-              <div className="feed-service-row feed-service-row-balanced">
-                <Link to="/" className="mini-action">المنشورات</Link>
-                <Link to="/reels" className="mini-action">الريلز</Link>
-                <Link to="/live" className="mini-action">البث</Link>
-                <Link to="/inbox" className="mini-action">الدردشة</Link>
-              </div>
+      <div style={{ display: 'grid', gap: 20 }}>
+        <Card className="hero-card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div>
+              <div className="page-eyebrow">Feed Studio</div>
+              <h2 className="page-title">منشورات [Yamshat](#) المتقدمة</h2>
+              <p className="muted" style={{ marginBottom: 0 }}>
+                أضفت محرر Rich Text، مشاركة وحفظ، هاشتاج ومينشن، استطلاعات، جدولة، تثبيت، مسودات، سجل تعديلات، رفع متعدد بالسحب والإفلات، ضغط صور، قص مركزي، GIF وEmoji.
+              </p>
             </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <Button variant={activeFilter === 'feed' ? 'primary' : 'secondary'} onClick={() => setActiveFilter('feed')}>المنشورات</Button>
+              <Button variant={activeFilter === 'drafts' ? 'primary' : 'secondary'} onClick={() => setActiveFilter('drafts')}>المسودات</Button>
+            </div>
+          </div>
+        </Card>
 
-            <div className="feed-quick-grid">
-              {feedStats.map((item) => (
-                <div key={item.label} className="mini-stat notifications-stat-card">
-                  <strong>{item.value}</strong>
-                  <span>{item.label}</span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(320px, 1fr)', gap: 20, alignItems: 'start' }}>
+          <div style={{ display: 'grid', gap: 20 }}>
+            <Card ref={null}>
+              <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <h3>{editingPost ? 'تعديل منشور / مسودة' : 'إنشاء منشور جديد'}</h3>
+                {editingPost ? <Button variant="secondary" onClick={resetComposer}>إلغاء التعديل</Button> : null}
+              </div>
+
+              <ComposerToolbar onCommand={runCommand} onAddEmoji={insertEmoji} />
+
+              <div
+                ref={editorRef}
+                className="input"
+                contentEditable
+                suppressContentEditableWarning
+                onInput={syncEditorFromDom}
+                data-placeholder="اكتب منشورك هنا... استخدم #هاشتاج و @mention"
+                style={{ minHeight: 160, padding: 16, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}
+              />
+
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+                {composerSummary.hashtags.map((item) => <span key={item} className="tag-chip">{item}</span>)}
+                {composerSummary.mentions.map((item) => <span key={item} className="mention-chip">{item}</span>)}
+              </div>
+
+              {mentionSuggestions.length ? (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+                  {mentionSuggestions.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      className="mini-action"
+                      onClick={() => {
+                        const nextText = withMention(editorText, item);
+                        setEditorText(nextText);
+                        setEditorHtml(enhanceText(nextText));
+                        if (editorRef.current) editorRef.current.innerHTML = enhanceText(nextText);
+                      }}
+                    >
+                      @{item}
+                    </button>
+                  ))}
                 </div>
-              ))}
-            </div>
-
-            {!isOnline ? (
-              <div className="sync-banner warning">
-                أنت الآن أوفلاين. الإعجابات والتعليقات والمتابعة والمنشورات النصية سيتم حفظها ومزامنتها تلقائياً عند عودة الاتصال.
-              </div>
-            ) : pendingFeedActions.length > 0 ? (
-              <div className="sync-banner info">فيه {pendingFeedActions.length} عمليات محفوظة للمزامنة وسيتم تنفيذها تلقائياً.</div>
-            ) : null}
-          </Card>
-
-          <Card className="home-story-strip-card">
-            <div className="section-head compact home-strip-head">
-              <div>
-                <h3 className="section-title">القصص</h3>
-                <p className="muted no-margin">شريط قصص علوي منفصل عن المنشورات مثل التطبيق المرجعي.</p>
-              </div>
-              <Link to="/stories" className="mini-action">فتح صفحة الستوري</Link>
-            </div>
-
-            <div className="story-strip-scroll" role="list">
-              <Link to="/stories" className="story-strip-item story-strip-add" role="listitem">
-                <span className="story-strip-avatar">＋</span>
-                <span>إضافة</span>
-              </Link>
-
-              {storyGroups.map((story) => (
-                <Link key={story.username} to="/stories" className="story-strip-item" role="listitem">
-                  <span className="story-ring">
-                    <span className="story-avatar">{story.username.slice(0, 1).toUpperCase()}</span>
-                  </span>
-                  <span>{story.username}</span>
-                </Link>
-              ))}
-
-              {storyGroups.length === 0 ? (
-                <Link to="/stories" className="story-strip-item story-strip-empty" role="listitem">
-                  <span className="story-strip-avatar">◌</span>
-                  <span>لا توجد قصص الآن</span>
-                </Link>
               ) : null}
-            </div>
-          </Card>
 
-          <div ref={composerRef} id="composer">
-            <Card
-              className="composer-card upload-dropzone home-composer-card"
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => {
-                event.preventDefault();
-                handleFileSelect(event.dataTransfer.files?.[0]);
-              }}
-            >
-            <div className="section-head compact">
-              <div>
-                <h3 className="section-title">إنشاء منشور</h3>
-                <p className="muted">زر النشر السفلي بقى يفتح القسم ده مباشرة، مع دعم أقوى للمزامنة الأوفلاين للمنشورات النصية.</p>
+              <div
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setDragActive(true);
+                }}
+                onDragLeave={() => setDragActive(false)}
+                onDrop={handleDrop}
+                style={{
+                  marginTop: 16,
+                  border: `1px dashed ${dragActive ? 'var(--primary)' : 'var(--line)'}`,
+                  borderRadius: 20,
+                  padding: 16,
+                  background: dragActive ? 'rgba(139, 92, 246, 0.12)' : 'rgba(255,255,255,0.03)',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <div>
+                    <strong>رفع متعدد + Drag & Drop</strong>
+                    <div className="muted">الصور هتتضغط تلقائياً، والـ GIF هيترفع كما هو، والفيديوهات مدعومة.</div>
+                  </div>
+                  <label className="upload-label" style={{ margin: 0 }}>
+                    <input type="file" accept="image/*,video/*,.gif" multiple hidden onChange={(event) => handleFilesInput(event.target.files)} />
+                    اختر ملفات
+                  </label>
+                </div>
+
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 12 }}>
+                  <label className="remember-me-row"><input type="checkbox" checked={cropImages} onChange={(event) => setCropImages(event.target.checked)} /><span>قص الصور لمربع 1:1 قبل الرفع</span></label>
+                  <label className="remember-me-row"><input type="checkbox" checked={allowComments} onChange={(event) => setAllowComments(event.target.checked)} /><span>السماح بالتعليقات</span></label>
+                  <label className="remember-me-row"><input type="checkbox" checked={pinPost} onChange={(event) => setPinPost(event.target.checked)} /><span>تثبيت المنشور</span></label>
+                </div>
+
+                {attachments.length ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginTop: 12 }}>
+                    {attachments.map((item, index) => (
+                      <div key={`${item.file.name}-${index}`} style={{ position: 'relative' }}>
+                        {item.file.type.startsWith('video/') ? (
+                          <video src={item.preview} controls style={{ width: '100%', borderRadius: 16 }} />
+                        ) : (
+                          <img src={item.preview} alt={item.file.name} style={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', borderRadius: 16 }} />
+                        )}
+                        <button
+                          type="button"
+                          className="mini-action"
+                          style={{ position: 'absolute', top: 8, insetInlineEnd: 8 }}
+                          onClick={() => setAttachments((prev) => prev.filter((_, currentIndex) => currentIndex !== index))}
+                        >
+                          حذف
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
-              <div className="feed-service-row">
-                <span className="glass-chip">ويب + جوال</span>
-                <span className="glass-chip">Responsive</span>
+
+              <div style={{ display: 'grid', gap: 12, marginTop: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <label className="remember-me-row"><input type="checkbox" checked={pollEnabled} onChange={(event) => setPollEnabled(event.target.checked)} /><span>إضافة استطلاع</span></label>
+                  <label style={{ display: 'grid', gap: 6 }}>
+                    <span className="muted">جدولة النشر</span>
+                    <input className="input" type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} />
+                  </label>
+                </div>
+                {pollEnabled ? (
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {pollOptions.map((option, index) => (
+                      <input
+                        key={`poll-${index}`}
+                        className="input"
+                        value={option}
+                        placeholder={`الخيار ${index + 1}`}
+                        onChange={(event) => setPollOptions((prev) => prev.map((item, itemIndex) => itemIndex === index ? event.target.value : item))}
+                      />
+                    ))}
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <Button variant="secondary" onClick={() => setPollOptions((prev) => [...prev, ''].slice(0, 6))}>إضافة خيار</Button>
+                      <Button variant="secondary" onClick={() => setPollOptions((prev) => prev.length > 2 ? prev.slice(0, -1) : prev)}>حذف خيار</Button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
-            </div>
 
-            <textarea
-              className="composer-textarea"
-              placeholder="اكتب منشورك هنا..."
-              value={form.text}
-              onChange={(event) => setForm((prev) => ({ ...prev, text: event.target.value }))}
-            />
+              {uploadProgress > 0 ? (
+                <div style={{ marginTop: 16 }}>
+                  <div className="muted">رفع الوسائط: {uploadProgress}%</div>
+                  <div style={{ height: 10, borderRadius: 999, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                    <div style={{ width: `${uploadProgress}%`, height: '100%', background: 'linear-gradient(90deg, var(--primary), var(--secondary))' }} />
+                  </div>
+                </div>
+              ) : null}
 
-            {form.preview ? (
-              <div className="upload-preview-shell">
-                {isVideo(form.file?.name || form.preview) ? (
-                  <video className="composer-preview-media" src={form.preview} controls playsInline muted />
-                ) : (
-                  <img className="composer-preview-media" src={form.preview} alt="preview" />
-                )}
-                <button type="button" className="mini-action" onClick={resetComposer}>إزالة المرفق</button>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 18 }}>
+                <Button onClick={() => submitComposer({ saveAsDraft: false })} loading={submitting}>{editingPost ? 'تحديث المنشور' : 'نشر الآن'}</Button>
+                <Button variant="secondary" onClick={() => submitComposer({ saveAsDraft: true })} loading={submitting}>حفظ كمسودة</Button>
+                <Button variant="secondary" onClick={() => setShowEmojiPanel((prev) => !prev)}>Emoji Picker</Button>
               </div>
-            ) : (
-              <div className="dropzone-hint">اسحب ملف هنا أو اختر صورة/فيديو. ولو الإنترنت فصل، المنشور النصي هيتحفظ للمزامنة تلقائياً.</div>
-            )}
 
-            {uploadProgress > 0 ? (
-              <div className="upload-progress-shell">
-                <div className="upload-progress-bar" style={{ width: `${uploadProgress}%` }} />
-                <span>{uploadProgress}%</span>
-              </div>
-            ) : null}
-
-            <div className="composer-actions composer-actions-rich">
-              <label className="upload-label">
-                📷 صورة أو فيديو
-                <input
-                  type="file"
-                  hidden
-                  accept="image/*,video/*"
-                  onChange={(event) => handleFileSelect(event.target.files?.[0])}
-                />
-              </label>
-              <div className="muted truncate composer-file-name">{form.file?.name || 'لا يوجد ملف مرفق'}</div>
-              <Button onClick={handlePublish} disabled={publishing}>
-                {publishing ? 'جارٍ النشر...' : 'نشر الآن'}
-              </Button>
-            </div>
+              {showEmojiPanel ? (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+                  {EMOJIS.map((emoji) => <button key={`panel-${emoji}`} type="button" className="mini-action" onClick={() => insertEmoji(emoji)}>{emoji}</button>)}
+                </div>
+              ) : null}
             </Card>
+
+            {activePosts.map((post) => (
+              <Card key={post.id} className="post-card" id={`post-${post.id}`}>
+                <div className="post-head" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  <div>
+                    <strong>{post.username}</strong>
+                    <div className="muted">{formatDate(post.published_at || post.created_at)}</div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                      {post.is_pinned ? <span className="glass-chip">📌 مثبت</span> : null}
+                      {post.is_draft ? <span className="glass-chip">📝 مسودة</span> : null}
+                      {post.scheduled_at && !post.published_at ? <span className="glass-chip">⏰ مجدول</span> : null}
+                      {post.edit_count ? <span className="glass-chip">🕘 {post.edit_count} تعديل</span> : null}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <span className="glass-chip">❤️ {post.likes || 0}</span>
+                    <span className="glass-chip">🔁 {post.share_count || 0}</span>
+                    <span className="glass-chip">💾 {post.save_count || 0}</span>
+                  </div>
+                </div>
+
+                <div
+                  className="post-text"
+                  style={{ marginTop: 14 }}
+                  dangerouslySetInnerHTML={{ __html: post.content_html || enhanceText(post.content || '') }}
+                />
+
+                <MediaGallery urls={post.media_urls || []} />
+
+                {post.poll?.length ? (
+                  <div style={{ display: 'grid', gap: 8, marginTop: 16 }}>
+                    {post.poll.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className="mini-action"
+                        style={{ justifyContent: 'space-between', width: '100%' }}
+                        onClick={() => handleVote(post.id, option.id)}
+                      >
+                        <span>{option.label}</span>
+                        <span>{option.votes || 0} صوت</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
+                  <Button variant={post.liked_by_me ? 'primary' : 'secondary'} onClick={() => toggleLike(post.id)}>إعجاب</Button>
+                  <Button variant={post.saved_by_me ? 'primary' : 'secondary'} onClick={() => toggleSave(post.id)}>حفظ</Button>
+                  <Button variant="secondary" onClick={() => handleShare(post)}>مشاركة</Button>
+                  <Button variant="secondary" onClick={() => toggleComments(post.id)}>التعليقات</Button>
+                  {post.username === currentUser ? (
+                    <>
+                      <Button variant="secondary" onClick={() => applyDraftToComposer(post)}>تعديل</Button>
+                      <Button variant="secondary" onClick={() => showHistory(post.id)}>سجل التعديل</Button>
+                    </>
+                  ) : null}
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+                  {(post.hashtags || []).map((tag) => <span key={`${post.id}-${tag}`} className="tag-chip">#{tag}</span>)}
+                  {(post.mentions || []).map((mention) => <span key={`${post.id}-${mention}`} className="mention-chip">@{mention}</span>)}
+                </div>
+
+                {historyMap[post.id] ? (
+                  <div style={{ marginTop: 16 }}>
+                    <HistoryList items={historyMap[post.id]} />
+                  </div>
+                ) : null}
+
+                {commentsMap[post.id] ? (
+                  <div style={{ display: 'grid', gap: 10, marginTop: 16 }}>
+                    {(commentsMap[post.id] || []).map((comment) => (
+                      <div key={comment.id || `${comment.username}-${comment.created_at}`} className="glass-chip" style={{ justifyContent: 'space-between', gap: 12 }}>
+                        <strong>{comment.username || comment.user || 'user'}</strong>
+                        <span style={{ flex: 1 }}>{comment.comment || comment.text || comment.content}</span>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <input
+                        className="input"
+                        style={{ flex: 1, minWidth: 220 }}
+                        value={commentText[post.id] || ''}
+                        placeholder="اكتب تعليقاً"
+                        onChange={(event) => setCommentText((prev) => ({ ...prev, [post.id]: event.target.value }))}
+                      />
+                      <Button onClick={() => submitComment(post.id)}>إرسال</Button>
+                    </div>
+                  </div>
+                ) : null}
+              </Card>
+            ))}
+
+            {!activePosts.length ? (
+              <EmptyState
+                icon={activeFilter === 'drafts' ? '📝' : '📰'}
+                title={activeFilter === 'drafts' ? 'لا توجد مسودات بعد' : 'لا توجد منشورات حالياً'}
+                description={activeFilter === 'drafts' ? 'احفظ أول مسودة من المحرر وسيظهر لك هنا مع الجدولة وسجل التعديلات.' : 'ابدأ بنشر أول منشورك باستخدام المحرر الجديد.'}
+              />
+            ) : null}
           </div>
 
-          {isLoading ? <FeedSkeleton count={3} /> : null}
-          {isError ? (
-            <ErrorState
-              title="تعذر تحميل الصفحة الرئيسية"
-              description={error?.response?.data?.message || error?.message || 'حدث خطأ أثناء جلب البيانات.'}
-              onRetry={refetch}
-            />
-          ) : null}
-          {!isLoading && !isError && posts.length === 0 ? (
-            <EmptyState
-              icon="📝"
-              title="لا توجد منشورات"
-              description="ابدأ أول منشور الآن وسيظهر هنا مباشرة."
-            />
-          ) : null}
+          <div style={{ display: 'grid', gap: 20 }}>
+            <Card>
+              <div className="card-head"><h3>لوحة سريعة</h3></div>
+              <div style={{ display: 'grid', gap: 12 }}>
+                <div className="glass-chip" style={{ justifyContent: 'space-between' }}><span>المنشورات</span><strong>{posts.length}</strong></div>
+                <div className="glass-chip" style={{ justifyContent: 'space-between' }}><span>المسودات</span><strong>{drafts.length}</strong></div>
+                <div className="glass-chip" style={{ justifyContent: 'space-between' }}><span>المرفقات الحالية</span><strong>{attachments.length}</strong></div>
+                <div className="glass-chip" style={{ justifyContent: 'space-between' }}><span>الجدولة</span><strong>{scheduledAt ? 'مفعلة' : 'غير مفعلة'}</strong></div>
+              </div>
+            </Card>
 
-          {!isLoading && !isError ? (
-            <div className="feed-stack">
-              {posts.map((post) => {
-                const isFollowing = relationships[post.username];
-                const counts = socialCounts[post.username] || EMPTY_COUNTS;
-                const mediaUrl = post.media || '';
+            <Card>
+              <div className="card-head"><h3>المسودات الجاهزة</h3></div>
+              <div style={{ display: 'grid', gap: 10 }}>
+                {drafts.slice(0, 6).map((draft) => <DraftCard key={draft.id} draft={draft} onEdit={applyDraftToComposer} />)}
+                {!drafts.length ? <div className="muted">احفظ مسودة من فوق وهتظهر هنا تلقائي.</div> : null}
+              </div>
+            </Card>
 
-                return (
-                  <Card key={post.id} className="post-card post-card-refined">
-                    <div className="post-head post-head-rich">
-                      <div className="post-head-main">
-                        <Link to={`/profile/${encodeURIComponent(post.username)}`} className="avatar-circle">
-                          {post.username?.slice(0, 1)?.toUpperCase() || 'U'}
-                        </Link>
-                        <div className="user-meta">
-                          <div className="post-title-row">
-                            <Link to={`/profile/${encodeURIComponent(post.username)}`}><strong>{post.username}</strong></Link>
-                            {post.pending_sync ? <span className="pending-badge">بانتظار المزامنة</span> : null}
-                          </div>
-                          <span className="muted">
-                            {post.created_at ? new Date(post.created_at).toLocaleString('ar-EG') : 'الآن'}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="post-user-actions">
-                        {post.username !== currentUser ? (
-                          <button type="button" className="mini-action" onClick={() => handleFollow(post.username)}>
-                            {isFollowing ? 'إلغاء المتابعة' : 'متابعة'}
-                          </button>
-                        ) : null}
-                        <Link to={`/profile/${encodeURIComponent(post.username)}`} className="mini-action">الملف</Link>
-                      </div>
-                    </div>
-
-                    {post.content ? <p className="post-text">{post.content}</p> : null}
-
-                    {mediaUrl ? (
-                      isVideo(mediaUrl) ? (
-                        <video className="post-media" src={mediaUrl} controls playsInline preload="metadata" />
-                      ) : (
-                        <img className="post-media" src={mediaUrl} alt={post.content || 'post media'} loading="lazy" />
-                      )
-                    ) : null}
-
-                    <div className="post-social-meta post-social-meta-rich">
-                      <span>👥 {counts.followers} متابع</span>
-                      <span>❤️ {post.likes}</span>
-                      <span>💬 {post.comments_count}</span>
-                      <span>➕ {isFollowing ? 'تتابعه الآن' : 'جاهز للمتابعة'}</span>
-                    </div>
-
-                    <div className="post-action-cluster">
-                      <button type="button" className={`reaction-btn ${post.liked_by_me ? 'active' : ''}`} onClick={() => handleLike(post.id)}>
-                        {post.liked_by_me ? '💜' : '🤍'} إعجاب
-                      </button>
-                      {post.username !== currentUser ? (
-                        <button type="button" className="reaction-btn" onClick={() => handleFollow(post.username)}>
-                          👥 {isFollowing ? 'إلغاء المتابعة' : 'متابعة'}
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        className="reaction-btn comment-trigger-btn"
-                        onClick={() => document.getElementById(`comment-${post.id}`)?.focus()}
-                      >
-                        💬 تعليق
-                      </button>
-                      <Link to={`/profile/${encodeURIComponent(post.username)}`} className="reaction-btn link-btn">
-                        👤 الملف الشخصي
-                      </Link>
-                    </div>
-
-                    <div className="comment-list">
-                      {post.comments.slice(-4).map((comment) => (
-                        <div key={comment.id || `${comment.username}-${comment.created_at}-${comment.comment}`} className="comment-item">
-                          <b>{comment.username}</b>
-                          <span>{comment.comment}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="comment-composer comment-composer-rich">
-                      <input
-                        id={`comment-${post.id}`}
-                        className="input"
-                        placeholder="اكتب تعليقاً..."
-                        value={commentText[post.id] || ''}
-                        onChange={(event) =>
-                          setCommentText((prev) => ({
-                            ...prev,
-                            [post.id]: event.target.value,
-                          }))
-                        }
-                      />
-                      <button type="button" className="mini-action" onClick={() => handleComment(post.id)}>
-                        إرسال
-                      </button>
-                    </div>
-                  </Card>
-                );
-              })}
-            </div>
-          ) : null}
+            <Card>
+              <div className="card-head"><h3>اقتراحات Mentions</h3></div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {users.slice(0, 12).map((user) => (
+                  <button
+                    key={user}
+                    type="button"
+                    className="mini-action"
+                    onClick={() => {
+                      const nextText = `${editorText} @${user}`.trim();
+                      setEditorText(nextText);
+                      setEditorHtml(enhanceText(nextText));
+                      if (editorRef.current) editorRef.current.innerHTML = enhanceText(nextText);
+                    }}
+                  >
+                    @{user}
+                  </button>
+                ))}
+              </div>
+            </Card>
+          </div>
         </div>
-
-        <div className="feed-side">
-          <Card>
-            <h3 className="section-title">اقتراحات متابعة</h3>
-            <div className="list-grid compact-list">
-              {suggestions.map((username) => (
-                <button key={username} type="button" className="story-user-card" onClick={() => handleFollow(username)}>
-                  <div className="story-ring"><div className="story-avatar">{username.slice(0, 1).toUpperCase()}</div></div>
-                  <strong>{username}</strong>
-                  <span className="muted">{relationships[username] ? 'تتابعه الآن' : 'اقتراح جديد'}</span>
-                </button>
-              ))}
-              {suggestions.length === 0 ? <div className="empty-mini">ستظهر اقتراحات المتابعة هنا.</div> : null}
-            </div>
-          </Card>
-
-          <Card>
-            <h3 className="section-title">اختصارات سريعة</h3>
-            <div className="feed-side-shortcuts">
-              <Link to="/live" className="quick-action-card card">
-                <div className="quick-action-icon">🔴</div>
-                <div>
-                  <strong>البث المباشر</strong>
-                  <p className="muted no-margin">ادخل الغرف المباشرة بسرعة.</p>
-                </div>
-              </Link>
-              <Link to="/reels" className="quick-action-card card">
-                <div className="quick-action-icon">🎬</div>
-                <div>
-                  <strong>الريلز</strong>
-                  <p className="muted no-margin">افتح الفيديوهات القصيرة في صفحة مستقلة.</p>
-                </div>
-              </Link>
-            </div>
-          </Card>
-        </div>
-      </section>
+      </div>
     </MainLayout>
   );
 }

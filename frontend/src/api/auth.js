@@ -6,6 +6,31 @@ export const loginUser = async (data) => {
   return response;
 };
 
+export const socialLoginUser = async (data) => {
+  const response = await API.post('/auth/social-login', data);
+  return response;
+};
+
+export const verifyTwoFactorLogin = async (data) => {
+  const response = await API.post('/auth/verify-2fa-login', data);
+  return response;
+};
+
+export const setupTwoFactor = async () => {
+  const response = await API.post('/auth/2fa/setup');
+  return response;
+};
+
+export const verifyTwoFactorSetup = async (data) => {
+  const response = await API.post('/auth/2fa/verify-setup', data);
+  return response;
+};
+
+export const disableTwoFactor = async () => {
+  const response = await API.post('/auth/2fa/disable');
+  return response;
+};
+
 export const devLoginUser = async (data = {}) => {
   const response = await API.post('/auth/dev-login', data);
   return response;

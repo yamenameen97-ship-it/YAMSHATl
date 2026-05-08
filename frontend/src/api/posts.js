@@ -1,7 +1,10 @@
 import API from './axios.js';
 
-export const getPosts = () => API.get('/posts');
+export const getPosts = (params = {}) => API.get('/posts', { params });
+export const getDraftPosts = () => API.get('/posts/drafts', { cache: false, forceRefresh: true });
 export const createPost = (data) => API.post('/posts', data);
+export const updatePost = (postId, data) => API.patch(`/posts/${postId}`, data);
+export const getPostHistory = (postId) => API.get(`/posts/${postId}/history`, { cache: false, forceRefresh: true });
 
 export const uploadPostMedia = (file, onUploadProgress) => {
   const formData = new FormData();
@@ -13,5 +16,8 @@ export const uploadPostMedia = (file, onUploadProgress) => {
 };
 
 export const likePost = (postId) => API.post(`/posts/${postId}/like`);
+export const savePost = (postId) => API.post(`/posts/${postId}/save`);
+export const sharePost = (postId, platform = 'copy') => API.post(`/posts/${postId}/share`, { platform });
+export const votePoll = (postId, optionKey) => API.post(`/posts/${postId}/poll-vote`, { option_key: optionKey });
 export const addComment = (postId, text) => API.post(`/posts/${postId}/comment`, { text });
 export const getComments = (postId) => API.get(`/posts/${postId}/comments`);

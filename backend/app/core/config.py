@@ -39,6 +39,7 @@ class Settings:
     JWT_AUDIENCE: str = (os.getenv('JWT_AUDIENCE') or 'yamshat-clients').strip()
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv('ACCESS_TOKEN_EXPIRE_MINUTES', '60'))
     REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv('REFRESH_TOKEN_EXPIRE_DAYS', '30'))
+    SESSION_REFRESH_EXPIRE_HOURS: int = int(os.getenv('SESSION_REFRESH_EXPIRE_HOURS', '12'))
     EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES: int = int(os.getenv('EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES', '15'))
     PASSWORD_RESET_CODE_EXPIRE_MINUTES: int = int(os.getenv('PASSWORD_RESET_CODE_EXPIRE_MINUTES', '15'))
     FIREBASE_CREDENTIALS_PATH: str = os.getenv('FIREBASE_CREDENTIALS_PATH', '')
@@ -78,6 +79,12 @@ class Settings:
     REFRESH_MIN_INTERVAL_SECONDS: float = float(os.getenv('REFRESH_MIN_INTERVAL_SECONDS', '2.0'))
     BRUTE_FORCE_MAX_ATTEMPTS: int = int(os.getenv('BRUTE_FORCE_MAX_ATTEMPTS', '8'))
     BRUTE_FORCE_LOCKOUT_SECONDS: int = int(os.getenv('BRUTE_FORCE_LOCKOUT_SECONDS', '300'))
+    VERIFY_RATE_LIMIT_PER_MINUTE: int = int(os.getenv('VERIFY_RATE_LIMIT_PER_MINUTE', '12'))
+    RESEND_RATE_LIMIT_PER_MINUTE: int = int(os.getenv('RESEND_RATE_LIMIT_PER_MINUTE', '6'))
+    CAPTCHA_RATE_LIMIT_PER_MINUTE: int = int(os.getenv('CAPTCHA_RATE_LIMIT_PER_MINUTE', '20'))
+    CAPTCHA_ENABLED: bool = env_bool('CAPTCHA_ENABLED', True)
+    CAPTCHA_EXPIRE_MINUTES: int = int(os.getenv('CAPTCHA_EXPIRE_MINUTES', '5'))
+    DEV_LOGIN_ENABLED: bool = env_bool('DEV_LOGIN_ENABLED', False)
     LIVEKIT_URL: str = os.getenv('LIVEKIT_URL', '')
     LIVEKIT_API_KEY: str = os.getenv('LIVEKIT_API_KEY', '')
     LIVEKIT_API_SECRET: str = os.getenv('LIVEKIT_API_SECRET', '')
@@ -184,6 +191,10 @@ class Settings:
     @property
     def admin_allowed_ips(self) -> set[str]:
         return {item for item in csv_list(self.ADMIN_ALLOWED_IPS_RAW)}
+
+    @property
+    def dev_login_enabled(self) -> bool:
+        return bool(self.DEBUG or self.DEV_LOGIN_ENABLED)
 
 
 settings = Settings()

@@ -9,3 +9,4 @@ from app.models.post import Post  # noqa: F401
 from app.models.user import User  # noqa: F401
 from app.models.user_block import UserBlock  # noqa: F401
 from app.models.user_preference import UserPreference  # noqa: F401
+from app.models.user_session import UserSession  # noqa: F401

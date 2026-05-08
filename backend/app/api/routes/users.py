@@ -1,10 +1,14 @@
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import get_current_token_payload, get_current_user, get_db
+from app.core.request_security import stable_hash
+from app.models.audit_log import AuditLog
 from app.models.follow import Follow
 from app.models.user import User
 from app.models.user_preference import UserPreference
+from app.models.user_session import UserSession
+from app.services.auth_service import list_login_activity, list_user_sessions, revoke_session
 from app.services.notification_service import create_and_send_notification
 from app.services.post_service import get_posts_by_username
 
@@ -44,6 +48,10 @@ def _get_or_create_preferences(db: Session, user_id: int) -> UserPreference:
     return preference
 
 
+def _session_label(record: UserSession) -> str:
+    return str(record.device_label or 'Unknown browser').strip()[:120] or 'Unknown browser'
+
+
 @router.get('')
 def list_users(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     users = db.query(User).filter(User.is_active.is_(True)).order_by(User.created_at.desc()).all()
@@ -57,6 +65,72 @@ def list_users(db: Session = Depends(get_db), current_user: User = Depends(get_c
 @router.get('/me')
 def get_me(current_user: User = Depends(get_current_user)):
     return _user_payload(current_user)
+
+
+@router.get('/sessions')
+def get_my_sessions(
+    current_user: User = Depends(get_current_user),
+    token_payload: dict = Depends(get_current_token_payload),
+    db: Session = Depends(get_db),
+):
+    current_session_key = str(token_payload.get('sid') or '').strip()
+    items = list_user_sessions(db, current_user)
+    return {
+        'sessions': [
+            {
+                'session_id': record.session_key,
+                'label': _session_label(record),
+                'login_method': record.login_method,
+                'remember_me': bool(record.remember_me),
+                'created_at': record.created_at.isoformat() if record.created_at else None,
+                'last_seen_at': record.last_seen_at.isoformat() if record.last_seen_at else None,
+                'expires_at': record.expires_at.isoformat() if record.expires_at else None,
+                'is_current': record.session_key == current_session_key,
+            }
+            for record in items
+        ],
+        'current_session_id': current_session_key or None,
+    }
+
+
+@router.delete('/sessions/{session_id}')
+def revoke_my_session(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    token_payload: dict = Depends(get_current_token_payload),
+    db: Session = Depends(get_db),
+):
+    current_session_key = str(token_payload.get('sid') or '').strip()
+    revoked = revoke_session(db, current_user, session_id)
+    if not revoked:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Session not found')
+    return {
+        'message': 'Session revoked',
+        'session_id': session_id,
+        'was_current': session_id == current_session_key,
+    }
+
+
+@router.get('/login-activity')
+def get_my_login_activity(
+    limit: int = Query(default=20, ge=1, le=50),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    rows = list_login_activity(db, current_user, limit=limit)
+    return {
+        'activity': [
+            {
+                'id': row.id,
+                'action': row.action,
+                'description': row.description,
+                'created_at': row.created_at.isoformat() if row.created_at else None,
+                'remember_me': bool((row.meta or {}).get('remember_me')),
+                'login_method': (row.meta or {}).get('login_method') or (row.action.replace('_', '-') if row.action else 'unknown'),
+            }
+            for row in rows
+        ]
+    }
 
 
 @router.get('/preferences')

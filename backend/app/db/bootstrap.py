@@ -13,6 +13,11 @@ from app.db.base import Base
 
 CURRENT_ALEMBIC_REVISION = '20260506_0003'
 LEGACY_USER_TABLE_NAMES = ('suser', 'user')
+DEFAULT_SUBSCRIBER = {
+    'username': 'yasr',
+    'email': 'yasryameen97@gmail.com',
+    'password': '123456',
+}
 REQUIRED_SCHEMA_COLUMNS: dict[str, set[str]] = {
     'users': {'username', 'email', 'hashed_password', 'role', 'is_active', 'email_verified'},
     'posts': {'user_id'},
@@ -313,6 +318,52 @@ def _migrate_messages_table(engine: Engine) -> None:
                 connection.execute(text(f'UPDATE messages SET {assignments} WHERE id = :id'), updates)
 
 
+def _ensure_seed_accounts(engine: Engine) -> None:
+    with engine.begin() as connection:
+        existing = connection.execute(
+            text('SELECT id, username FROM users WHERE lower(email) = :email LIMIT 1'),
+            {'email': DEFAULT_SUBSCRIBER['email']},
+        ).mappings().first()
+        password_hash = hash_password(DEFAULT_SUBSCRIBER['password'])
+        if existing:
+            connection.execute(
+                text(
+                    'UPDATE users SET username = :username, hashed_password = :hashed_password, role = :role, '
+                    'is_active = :is_active, email_verified = :email_verified WHERE id = :id'
+                ),
+                {
+                    'id': int(existing['id']),
+                    'username': DEFAULT_SUBSCRIBER['username'],
+                    'hashed_password': password_hash,
+                    'role': 'user',
+                    'is_active': True,
+                    'email_verified': True,
+                },
+            )
+            return
+
+        username_taken = connection.execute(
+            text('SELECT id FROM users WHERE lower(username) = :username LIMIT 1'),
+            {'username': DEFAULT_SUBSCRIBER['username'].lower()},
+        ).mappings().first()
+        username = DEFAULT_SUBSCRIBER['username'] if username_taken is None else f"{DEFAULT_SUBSCRIBER['username']}_1"
+        connection.execute(
+            text(
+                'INSERT INTO users (username, email, hashed_password, role, is_active, email_verified, created_at) '
+                'VALUES (:username, :email, :hashed_password, :role, :is_active, :email_verified, :created_at)'
+            ),
+            {
+                'username': username,
+                'email': DEFAULT_SUBSCRIBER['email'],
+                'hashed_password': password_hash,
+                'role': 'user',
+                'is_active': True,
+                'email_verified': True,
+                'created_at': datetime.utcnow(),
+            },
+        )
+
+
 def initialize_database(engine: Engine, force: bool = False) -> None:
     existing_tables = inspect(engine).get_table_names()
     should_bootstrap = force or settings.DB_BOOTSTRAP_ON_START or _schema_needs_normalization(engine, existing_tables)
@@ -327,4 +378,5 @@ def initialize_database(engine: Engine, force: bool = False) -> None:
     _migrate_comments_table(engine)
     _migrate_messages_table(engine)
     Base.metadata.create_all(bind=engine)
+    _ensure_seed_accounts(engine)
     _set_alembic_revision(engine)

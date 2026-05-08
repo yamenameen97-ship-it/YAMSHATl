@@ -1,0 +1,1 @@
+import{n as e,t}from"./motion-DHEHFET6.js";var n=e();function r({children:e,className:r=``,...i}){return(0,n.jsx)(t.div,{initial:{opacity:0,y:10},animate:{opacity:1,y:0},transition:{duration:.25},className:`card ${r}`.trim(),...i,children:e})}export{r as t};

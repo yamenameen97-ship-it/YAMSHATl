@@ -1,0 +1,1 @@
+import{a as e}from"./rolldown-runtime-BYbx6iT9.js";import{r as t}from"./motion-DHEHFET6.js";var n=e(t(),1);function r(e,t=400){let[r,i]=(0,n.useState)(e);return(0,n.useEffect)(()=>{let n=window.setTimeout(()=>i(e),t);return()=>window.clearTimeout(n)},[e,t]),r}export{r as t};

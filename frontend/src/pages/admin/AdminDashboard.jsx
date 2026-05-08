@@ -78,6 +78,7 @@ export default function AdminDashboard() {
       'admin:posts_bulk_deleted',
       'admin:settings_updated',
       'admin:notification',
+      'admin:live_updated',
     ];
     refreshEvents.forEach((eventName) => socket.on(eventName, guardedLoad));
     socket.on('connect', guardedLoad);
@@ -105,6 +106,12 @@ export default function AdminDashboard() {
     overview.kpis.length || overview.service_health.length || overview.alerts.length || overview.recent_activity.length || overview.platform_links.length
   );
 
+  const advancedAnalytics = overview.meta?.advanced_analytics || [];
+  const realtimeMonitoring = overview.meta?.realtime_monitoring || [];
+  const revenueDashboard = overview.meta?.revenue_dashboard || {};
+  const reportManagement = overview.meta?.report_management || {};
+  const contentQueue = overview.meta?.content_queue || [];
+
   if (loading && !hasOverviewData) {
     return (
       <AdminLayout>
@@ -131,13 +138,13 @@ export default function AdminDashboard() {
             <span className="badge">Enterprise Admin</span>
             <span className="live-pill"><span className="status-dot live-dot" />مباشر الآن</span>
           </div>
-          <h2>لوحة تحكم احترافية موحّدة للمراقبة، الإدارة، والإشعارات اللحظية</h2>
-          <p>تم تجهيز مركز تحكم يربط الويب والموبايل والباك إند مع تحديثات حية، مؤشرات تشغيل دقيقة، ومداخل سريعة لإدارة المستخدمين والمحتوى والتقارير.</p>
+          <h2>لوحة تحكم موحدة فيها Audit Logs و Revenue Dashboard و Realtime Monitoring و Report Management</h2>
+          <p>أضفت للمشروع لمسة إبداعية عملية: متابعة لحظية، مراقبة إساءة الاستخدام، صف محتوى جاهز للمراجعة، وتحليلات أعمق تربط الويب والموبايل والباك إند.</p>
           <div className="hero-actions-wrap">
             <Link className="btn btn-primary" to="/admin/users">إدارة المستخدمين</Link>
             <Link className="btn btn-secondary" to="/admin/content">إدارة المحتوى</Link>
-            <Link className="btn btn-secondary" to="/admin/reports">عرض التقارير</Link>
-            <Link className="btn btn-secondary" to="/admin/notifications">مركز الإشعارات</Link>
+            <Link className="btn btn-secondary" to="/admin/reports">Report Management</Link>
+            <Link className="btn btn-secondary" to="/admin/notifications">Notifications Center</Link>
           </div>
         </Card>
         <Card className="spotlight-card">
@@ -217,13 +224,104 @@ export default function AdminDashboard() {
         </Card>
       </section>
 
+      <section className="two-column-grid">
+        <Card className="section-card-block">
+          <div className="card-head split">
+            <div>
+              <h3 className="section-title">Advanced Analytics</h3>
+              <p className="muted no-margin">قراءة أعمق للحمل والتفاعل والكشف عن المحتوى المحتاج تدخل.</p>
+            </div>
+            <span className="badge">تحليلات متقدمة</span>
+          </div>
+          {advancedAnalytics.length ? (
+            <div className="queue-grid compact-cards">
+              {advancedAnalytics.map((item) => (
+                <div key={item.key} className="queue-card compact">
+                  <span className="queue-label">{item.label}</span>
+                  <strong>{item.value}</strong>
+                  <p>{item.description}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState icon="🧮" title="لا توجد تحليلات متقدمة حالياً" description="ستظهر هنا بمجرد وصول بيانات كافية من النظام." />
+          )}
+        </Card>
+
+        <Card className="section-card-block">
+          <div className="card-head split">
+            <div>
+              <h3 className="section-title">Revenue Dashboard</h3>
+              <p className="muted no-margin">ملخص أرصدة العملات، إجمالي الإنفاق، وتقدير بسيط للدخل.</p>
+            </div>
+            <span className="badge">Coins Economy</span>
+          </div>
+          {Object.keys(revenueDashboard).length ? (
+            <div className="status-list compact-grid">
+              <div><strong>{revenueDashboard.coins_earned || 0}</strong><span>Coins Earned</span></div>
+              <div><strong>{revenueDashboard.coins_spent || 0}</strong><span>Coins Spent</span></div>
+              <div><strong>{revenueDashboard.coins_balance || 0}</strong><span>Wallet Balance</span></div>
+              <div><strong>${(revenueDashboard.estimated_revenue || 0).toFixed(2)}</strong><span>Estimated Revenue</span></div>
+            </div>
+          ) : (
+            <EmptyState icon="💰" title="لا توجد بيانات مالية بعد" description="عند توفر بيانات المحافظ ستظهر هنا لوحة الإيرادات." />
+          )}
+        </Card>
+      </section>
+
+      <section className="two-column-grid">
+        <Card className="section-card-block">
+          <div className="card-head split">
+            <div>
+              <h3 className="section-title">Realtime Monitoring</h3>
+              <p className="muted no-margin">مراقبة مباشرة لعدد الأدمن المتصل، غرف البث، والرسائل اللحظية.</p>
+            </div>
+            <Link className="btn btn-secondary" to="/admin/live">فتح البث</Link>
+          </div>
+          {realtimeMonitoring.length ? (
+            <div className="queue-grid compact-cards">
+              {realtimeMonitoring.map((item) => (
+                <div key={item.key} className="queue-card compact">
+                  <span className="queue-label">{item.label}</span>
+                  <strong>{item.value}</strong>
+                  <p>{item.description}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState icon="📡" title="لا توجد بيانات مراقبة حالياً" description="التحديثات اللحظية ستظهر هنا تلقائياً." />
+          )}
+        </Card>
+
+        <Card className="section-card-block">
+          <div className="card-head split">
+            <div>
+              <h3 className="section-title">Report Management</h3>
+              <p className="muted no-margin">تفصيل User Reports و Stream Reports والإشعارات المفتوحة.</p>
+            </div>
+            <Link className="btn btn-secondary" to="/admin/reports">فتح التقارير</Link>
+          </div>
+          {Object.keys(reportManagement).length ? (
+            <div className="status-list compact-grid">
+              <div><strong>{reportManagement.open_reports || 0}</strong><span>Open Reports</span></div>
+              <div><strong>{reportManagement.user_reports || 0}</strong><span>User Reports</span></div>
+              <div><strong>{reportManagement.stream_reports || 0}</strong><span>Stream Reports</span></div>
+              <div><strong>{reportManagement.shadow_banned_users || 0}</strong><span>Shadow Ban</span></div>
+              <div><strong>{reportManagement.unread_notifications || 0}</strong><span>Unread Alerts</span></div>
+            </div>
+          ) : (
+            <EmptyState icon="🚨" title="لا توجد تقارير مفتوحة حالياً" description="بمجرد وصول بلاغات جديدة سيظهر هذا القسم فوراً." />
+          )}
+        </Card>
+      </section>
+
       <Card className="section-card-block">
         <div className="card-head split">
           <div>
-            <h3 className="section-title">صف المتابعة والمراقبة</h3>
-            <p className="muted no-margin">ملخص فوري لما يحتاج تدخل أو مراقبة من داخل المنصة.</p>
+            <h3 className="section-title">Content Queue & Moderation</h3>
+            <p className="muted no-margin">أهم المنشورات والمهام التي تحتاج مراجعة، مع بطاقات صف المراقبة.</p>
           </div>
-          <Link className="btn btn-secondary" to="/admin/notifications">فتح المركز</Link>
+          <Link className="btn btn-secondary" to="/admin/content">إدارة المحتوى</Link>
         </div>
         {(overview.moderation_queue || []).length ? (
           <div className="queue-grid">
@@ -238,67 +336,77 @@ export default function AdminDashboard() {
         ) : (
           <EmptyState icon="🛡️" title="لا توجد عناصر مراقبة حالياً" description="الصف ده هيمتلئ تلقائياً بأي عناصر محتاجة تدخل إداري." />
         )}
-      </Card>
-
-      <Card className="section-card-block">
-        <div className="card-head split">
-          <div>
-            <h3 className="section-title">خريطة الربط بين الأنظمة</h3>
-            <p className="muted no-margin">تأكد الربط بين لوحة الأدمن والويب والموبايل والباك إند من نفس شاشة المتابعة.</p>
-          </div>
-        </div>
-        {(overview.platform_links || []).length ? (
-          <div className="integration-grid">
-            {(overview.platform_links || []).map((item) => (
-              <div key={item.key} className={`integration-card ${item.status}`}>
-                <div className="integration-label-row">
-                  <strong>{item.label}</strong>
-                  <span className="glass-chip">{item.status === 'linked' ? 'مرتبط' : 'مراجعة'}</span>
-                </div>
-                <div className="integration-value">{item.value}</div>
+        {contentQueue.length ? (
+          <div className="queue-grid compact-cards" style={{ marginTop: 18 }}>
+            {contentQueue.map((item) => (
+              <div key={item.key} className="queue-card compact">
+                <span className="queue-label">{item.title}</span>
+                <strong>{new Date(item.meta).toLocaleString('ar-EG')}</strong>
                 <p>{item.description}</p>
               </div>
             ))}
           </div>
-        ) : (
-          <EmptyState icon="🔗" title="لا توجد خريطة ربط حالياً" description="هيتم عرض الروابط بين الأنظمة أول ما الباك إند يرسلها." />
-        )}
+        ) : null}
       </Card>
 
       <section className="two-column-grid">
-        <Card>
-          <div className="card-head"><h3 className="section-title">السجل التشغيلي</h3></div>
-          {(overview.recent_activity || []).length ? (
-            <div className="timeline-list">
-              {(overview.recent_activity || []).map((item) => (
-                <div key={item.id} className="timeline-item">
-                  <span className="timeline-dot" />
-                  <div>
-                    <strong>{item.title}</strong>
-                    <p>{item.description}</p>
-                    <small>{new Date(item.created_at).toLocaleString('ar-EG')}</small>
-                  </div>
-                </div>
-              ))}
+        <Card className="section-card-block">
+          <div className="card-head split">
+            <div>
+              <h3 className="section-title">Audit Logs / Admin Activity Tracking</h3>
+              <p className="muted no-margin">آخر الأنشطة الإدارية وسجل العمليات المهمة داخل النظام.</p>
             </div>
-          ) : (
-            <EmptyState icon="🗂️" title="لا توجد أحداث تشغيلية حتى الآن" description="هيظهر هنا آخر النشاطات الإدارية والنظامية." />
-          )}
-        </Card>
-        <Card>
-          <div className="card-head"><h3 className="section-title">التنبيهات والتوصيات</h3></div>
-          {(overview.alerts || []).length ? (
-            <div className="alert-stack enhanced">
-              {(overview.alerts || []).map((item, index) => (
-                <div key={`${item.title}-${index}`} className={`alert-card ${item.level}`}>
-                  <strong>{item.title}</strong>
+            <Link className="btn btn-secondary" to="/admin/reports">عرض السجل</Link>
+          </div>
+          {(overview.recent_activity || []).length ? (
+            <div className="queue-grid compact-cards">
+              {(overview.recent_activity || []).map((item) => (
+                <div key={item.id} className="queue-card compact">
+                  <span className="queue-label">{item.title}</span>
+                  <strong>{item.created_at ? new Date(item.created_at).toLocaleString('ar-EG') : 'الآن'}</strong>
                   <p>{item.description}</p>
                 </div>
               ))}
             </div>
           ) : (
-            <EmptyState icon="🔔" title="لا توجد تنبيهات حالياً" description="ممتاز، لا توجد توصيات أو تنبيهات عاجلة الآن." />
+            <EmptyState icon="🧾" title="لا توجد سجلات إدارية بعد" description="أول ما أي أكشن إداري يحصل هيبان هنا فوراً." />
           )}
+        </Card>
+
+        <Card className="section-card-block">
+          <div className="card-head split">
+            <div>
+              <h3 className="section-title">خريطة الربط والتنبيهات</h3>
+              <p className="muted no-margin">روابط الأنظمة والتنبيهات الحرجة من نفس لوحة المتابعة.</p>
+            </div>
+          </div>
+          {(overview.platform_links || []).length ? (
+            <div className="integration-grid">
+              {(overview.platform_links || []).map((item) => (
+                <div key={item.key} className={`integration-card ${item.status}`}>
+                  <div className="integration-label-row">
+                    <strong>{item.label}</strong>
+                    <span className="glass-chip">{item.status === 'linked' ? 'مرتبط' : 'مراجعة'}</span>
+                  </div>
+                  <div className="integration-value">{item.value}</div>
+                  <p>{item.description}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState icon="🔗" title="لا توجد روابط منصات حالياً" description="سيظهر الربط هنا عند توفر بيانات النشر والبيئة." />
+          )}
+          {(overview.alerts || []).length ? (
+            <div className="queue-grid compact-cards" style={{ marginTop: 18 }}>
+              {(overview.alerts || []).map((item, index) => (
+                <div key={`${item.title}-${index}`} className="queue-card compact">
+                  <span className="queue-label">{item.title}</span>
+                  <strong>{item.level}</strong>
+                  <p>{item.description}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </Card>
       </section>
     </AdminLayout>

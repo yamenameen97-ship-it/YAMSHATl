@@ -20,6 +20,7 @@ export default function useOfflineQueue() {
 
   useEffect(() => {
     if (!featureFlags.offlineQueue || !isOnline || runningRef.current || queuedActions.length === 0) return;
+    window.__YAMSHAT_SW_READY__?.then((registration) => registration?.active?.postMessage?.({ type: 'yamshat:queue-sync' })).catch(() => null);
 
     let cancelled = false;
     runningRef.current = true;
@@ -82,6 +83,15 @@ export default function useOfflineQueue() {
 
     flushQueue();
 
+    const handleSyncNow = () => {
+      replaceQueuedActions([...useAppStore.getState().queuedActions]);
+    };
+    const handleServiceWorkerMessage = (event) => {
+      if (event.data?.type === 'yamshat:sync-now') handleSyncNow();
+    };
+    window.addEventListener('yamshat:sync-now', handleSyncNow);
+    navigator.serviceWorker?.addEventListener?.('message', handleServiceWorkerMessage);
+
     const pendingRetryAt = queuedActions
       .map((item) => (item?.nextRetryAt ? new Date(item.nextRetryAt).getTime() : 0))
       .filter((value) => value > Date.now())
@@ -97,6 +107,8 @@ export default function useOfflineQueue() {
       cancelled = true;
       runningRef.current = false;
       if (timer) window.clearTimeout(timer);
+      window.removeEventListener('yamshat:sync-now', handleSyncNow);
+      navigator.serviceWorker?.removeEventListener?.('message', handleServiceWorkerMessage);
     };
   }, [dequeueAction, isOnline, queuedActions, replaceQueuedActions, updateQueuedAction]);
 }

@@ -115,7 +115,8 @@ async function preprocessImageFile(file, { cropSquare = false } = {}) {
   const image = await loadImage(source);
   const canvas = document.createElement('canvas');
   const context = canvas.getContext('2d');
-  const maxSize = 1600;
+  if (context) context.imageSmoothingQuality = 'high';
+  const maxSize = 1400;
   let sx = 0;
   let sy = 0;
   let sw = image.width;

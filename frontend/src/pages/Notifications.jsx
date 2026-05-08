@@ -22,6 +22,33 @@ const FILTERS = [
   { key: 'unread', label: 'غير المقروء' },
 ];
 
+const CATEGORY_KEYS = ['chat', 'follow', 'interaction', 'live', 'system'];
+const SOUND_OPTIONS = [
+  { value: 'classic', label: 'Classic Bell' },
+  { value: 'pulse', label: 'Pulse Ping' },
+  { value: 'soft', label: 'Soft Chime' },
+  { value: 'silent', label: 'Silent Mode' },
+];
+const PREFERENCES_STORAGE_KEY = 'yamshat.notification.preferences';
+
+const defaultPreferences = {
+  push_enabled: true,
+  browser_enabled: true,
+  mobile_enabled: true,
+  smart_notifications: true,
+  grouped_notifications: true,
+  silent_notifications: false,
+  realtime_notifications: true,
+  sound: 'classic',
+  categories: {
+    chat: true,
+    follow: true,
+    interaction: true,
+    live: true,
+    system: true,
+  },
+};
+
 function detectCategory(notification) {
   const title = `${notification?.title || ''} ${notification?.body || ''}`.toLowerCase();
   const path = String(notification?.path || '').toLowerCase();
@@ -43,6 +70,25 @@ function detectTimeGroup(dateValue) {
   return 'أقدم';
 }
 
+function readPreferences() {
+  if (typeof window === 'undefined') return defaultPreferences;
+  try {
+    const raw = window.localStorage.getItem(PREFERENCES_STORAGE_KEY);
+    if (!raw) return defaultPreferences;
+    const parsed = JSON.parse(raw);
+    return {
+      ...defaultPreferences,
+      ...parsed,
+      categories: {
+        ...defaultPreferences.categories,
+        ...(parsed?.categories || {}),
+      },
+    };
+  } catch {
+    return defaultPreferences;
+  }
+}
+
 export default function Notifications() {
   const navigate = useNavigate();
   const token = getAuthToken();
@@ -59,9 +105,15 @@ export default function Notifications() {
   const unreadCount = useNotificationStore(selectUnreadNotificationsCount);
   const [markingAll, setMarkingAll] = useState(false);
   const [filterKey, setFilterKey] = useState('all');
+  const [preferences, setPreferences] = useState(readPreferences);
   const [permissionState, setPermissionState] = useState(
     browserNotificationsSupported() ? window.Notification.permission : 'unsupported'
   );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify(preferences));
+  }, [preferences]);
 
   const loadNotifications = async () => {
     try {
@@ -137,13 +189,76 @@ export default function Notifications() {
     return Array.from(grouped.entries());
   }, [filteredNotifications]);
 
+  const channelCards = useMemo(() => ([
+    {
+      key: 'push_enabled',
+      label: 'Push Notifications',
+      value: preferences.push_enabled ? 'مفعّل' : 'متوقف',
+      description: 'تنبيهات فورية من الخادم للخدمات المرتبطة.',
+    },
+    {
+      key: 'browser_enabled',
+      label: 'Browser Notifications',
+      value: permissionState === 'granted' && preferences.browser_enabled ? 'جاهز' : permissionState === 'denied' ? 'محظور' : 'يحتاج إذن',
+      description: 'عرض إشعارات مباشرة داخل المتصفح عند وصول تحديثات جديدة.',
+    },
+    {
+      key: 'mobile_enabled',
+      label: 'Mobile Notifications',
+      value: preferences.mobile_enabled ? 'مفعّل' : 'متوقف',
+      description: 'مهيّأ للربط مع Firebase أو أي قناة موبايل لاحقاً.',
+    },
+    {
+      key: 'realtime_notifications',
+      label: 'Real-time Notifications',
+      value: preferences.realtime_notifications ? 'Live' : 'Digest',
+      description: 'إرسال الحدث بمجرد وصوله بدل الانتظار للتحديثات المجمعة.',
+    },
+  ]), [permissionState, preferences]);
+
+  const automationCards = useMemo(() => ([
+    {
+      key: 'smart_notifications',
+      label: 'Smart Notifications',
+      value: preferences.smart_notifications ? 'ON' : 'OFF',
+      description: 'ترتيب الأولويات وتخفيف الضوضاء بناءً على التصنيف والنشاط.',
+    },
+    {
+      key: 'grouped_notifications',
+      label: 'Grouped Notifications',
+      value: preferences.grouped_notifications ? 'ON' : 'OFF',
+      description: 'جمع الإشعارات المتشابهة في مجموعات زمنية وتصنيفية.',
+    },
+    {
+      key: 'silent_notifications',
+      label: 'Silent Notifications',
+      value: preferences.silent_notifications ? 'Enabled' : 'Disabled',
+      description: 'استقبال الإشعارات بدون صوت مع بقاء الشارات والعدادات.',
+    },
+    {
+      key: 'sound',
+      label: 'Notification Sounds',
+      value: SOUND_OPTIONS.find((item) => item.value === preferences.sound)?.label || 'Classic Bell',
+      description: 'اختيار صوت التنبيه الافتراضي لمتصفحك أو للموبايل لاحقاً.',
+    },
+  ]), [preferences]);
+
+  const categoryStats = useMemo(() => CATEGORY_KEYS.map((key) => ({
+    key,
+    label: FILTERS.find((item) => item.key === key)?.label || key,
+    count: enriched.filter((item) => item.category === key).length,
+    enabled: Boolean(preferences.categories?.[key]),
+  })), [enriched, preferences.categories]);
+
   const handleEnableBrowserNotifications = async () => {
     if (!browserNotificationsSupported()) {
       setPermissionState('unsupported');
+      setPreferences((prev) => ({ ...prev, browser_enabled: false }));
       return;
     }
     const result = await window.Notification.requestPermission();
     setPermissionState(result);
+    setPreferences((prev) => ({ ...prev, browser_enabled: result === 'granted' }));
   };
 
   const handleMarkAllRead = async () => {
@@ -159,6 +274,24 @@ export default function Notifications() {
     }
   };
 
+  const togglePreference = async (key) => {
+    if (key === 'browser_enabled' && (!preferences.browser_enabled || permissionState !== 'granted')) {
+      await handleEnableBrowserNotifications();
+      return;
+    }
+    setPreferences((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleCategory = (key) => {
+    setPreferences((prev) => ({
+      ...prev,
+      categories: {
+        ...prev.categories,
+        [key]: !prev.categories?.[key],
+      },
+    }));
+  };
+
   return (
     <MainLayout>
       <section className="notifications-page-grid notifications-page-grid-enhanced">
@@ -167,11 +300,12 @@ export default function Notifications() {
             <div className="section-head compact">
               <div>
                 <h3 className="section-title">🔔 مركز الإشعارات</h3>
-                <p className="muted">تم توحيد الحالة بين الشريط العلوي وصفحة الإشعارات بحيث تتزامن الشارات والقراءة فورياً.</p>
+                <p className="muted">دلوقتي الصفحة فيها Push و Browser و Mobile preferences مع Smart / Grouped / Silent / Real-time controls بشكل عملي وسريع.</p>
               </div>
               <div className="story-viewer-actions">
-                <span className="glass-chip">Realtime</span>
-                <span className="glass-chip">Synced</span>
+                <span className="glass-chip">Push</span>
+                <span className="glass-chip">Browser</span>
+                <span className="glass-chip">Mobile</span>
               </div>
             </div>
 
@@ -234,7 +368,7 @@ export default function Notifications() {
                         key={notification.id}
                         type="button"
                         className={`notification-center-item ${notification.seen ? 'seen' : 'unseen'}`}
-                        onClick={() => navigate(notification.path)}
+                        onClick={() => navigate(notification.path || '/dashboard')}
                       >
                         <div className="notification-center-badge">🔔</div>
                         <div className="notification-center-copy">
@@ -261,6 +395,85 @@ export default function Notifications() {
         </div>
 
         <div className="notifications-side-column">
+          <Card>
+            <div className="section-head compact">
+              <div>
+                <h3 className="section-title">قنوات الإشعار</h3>
+                <p className="muted">تفعيل Push / Browser / Mobile وتخصيص السلوك الذكي من مكان واحد.</p>
+              </div>
+            </div>
+            <div className="queue-grid compact-cards">
+              {channelCards.map((item) => (
+                <div key={item.key} className="queue-card compact">
+                  <span className="queue-label">{item.label}</span>
+                  <strong>{item.value}</strong>
+                  <p>{item.description}</p>
+                  <label className="checkbox-row">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(preferences[item.key])}
+                      onChange={() => togglePreference(item.key)}
+                    />
+                    <span>تبديل الحالة</span>
+                  </label>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card>
+            <div className="section-head compact">
+              <div>
+                <h3 className="section-title">Notification Settings</h3>
+                <p className="muted">Smart و Grouped و Silent و Notification Sounds بشكل مباشر للمستخدم.</p>
+              </div>
+            </div>
+            <div className="queue-grid compact-cards">
+              {automationCards.map((item) => (
+                <div key={item.key} className="queue-card compact">
+                  <span className="queue-label">{item.label}</span>
+                  <strong>{item.value}</strong>
+                  <p>{item.description}</p>
+                  {item.key === 'sound' ? (
+                    <label className="field select-field">
+                      <span className="field-label">الصوت</span>
+                      <select className="input" value={preferences.sound} onChange={(event) => setPreferences((prev) => ({ ...prev, sound: event.target.value }))}>
+                        {SOUND_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      </select>
+                    </label>
+                  ) : (
+                    <label className="checkbox-row">
+                      <input type="checkbox" checked={Boolean(preferences[item.key])} onChange={() => togglePreference(item.key)} />
+                      <span>تفعيل</span>
+                    </label>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card>
+            <div className="section-head compact">
+              <div>
+                <h3 className="section-title">Notification Categories</h3>
+                <p className="muted">تحكم سريع في التصنيفات المهمة مع عداد فوري لكل نوع.</p>
+              </div>
+            </div>
+            <div className="queue-grid compact-cards">
+              {categoryStats.map((item) => (
+                <div key={item.key} className="queue-card compact">
+                  <span className="queue-label">{item.label}</span>
+                  <strong>{item.count}</strong>
+                  <p>{item.enabled ? 'هذا التصنيف نشط ضمن التنبيهات الذكية.' : 'هذا التصنيف مستبعد حالياً من التفضيلات.'}</p>
+                  <label className="checkbox-row">
+                    <input type="checkbox" checked={item.enabled} onChange={() => toggleCategory(item.key)} />
+                    <span>{item.enabled ? 'مفعّل' : 'متوقف'}</span>
+                  </label>
+                </div>
+              ))}
+            </div>
+          </Card>
+
           <Card>
             <div className="section-head compact">
               <div>

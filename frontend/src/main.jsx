@@ -7,9 +7,12 @@ import './styles/global.css';
 import { queryClient } from './lib/queryClient.js';
 import { useAppStore } from './store/appStore.js';
 import RealtimeProvider from './realtime/RealtimeProvider.jsx';
+import { initializePerformanceToolkit } from './utils/performance.js';
 
 if (typeof window !== 'undefined') {
   window.__YAMSHAT_SW_READY__ = Promise.resolve(null);
+  initializePerformanceToolkit();
+
   window.addEventListener('beforeinstallprompt', (event) => {
     event.preventDefault();
     useAppStore.getState().setInstallPrompt(event);
@@ -21,7 +24,12 @@ if (typeof window !== 'undefined') {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      window.__YAMSHAT_SW_READY__ = navigator.serviceWorker.register('/sw.js').catch(() => null);
+      window.__YAMSHAT_SW_READY__ = navigator.serviceWorker.register('/sw.js')
+        .then((registration) => {
+          initializePerformanceToolkit({ registration });
+          return registration;
+        })
+        .catch(() => null);
     });
   }
 }

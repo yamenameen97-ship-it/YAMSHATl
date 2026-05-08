@@ -59,8 +59,8 @@ async function buildVideoThumbnail(file) {
       setTimeout(resolve, 200);
     });
     const canvas = document.createElement('canvas');
-    canvas.width = Math.max(320, video.videoWidth || 320);
-    canvas.height = Math.max(180, video.videoHeight || 180);
+    canvas.width = Math.max(320, Math.min(960, video.videoWidth || 320));
+    canvas.height = Math.max(180, Math.min(540, video.videoHeight || 180));
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.82));

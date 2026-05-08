@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { optimizeImageUrl, optimizeVideoUrl } from '../../utils/media.js';
 
 const VIDEO_RE = /\.(mp4|mov|webm|mkv)$/i;
 
 export default function LazyMedia({ src, alt = 'media', className = '', poster = '', priority = false, style = {} }) {
   const hostRef = useRef(null);
   const [visible, setVisible] = useState(Boolean(priority));
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     if (visible || !hostRef.current || typeof IntersectionObserver === 'undefined') return undefined;
@@ -13,10 +15,20 @@ export default function LazyMedia({ src, alt = 'media', className = '', poster =
         setVisible(true);
         observer.disconnect();
       }
-    }, { rootMargin: '300px 0px' });
+    }, { rootMargin: '350px 0px' });
     observer.observe(hostRef.current);
     return () => observer.disconnect();
   }, [visible]);
+
+  const isVideo = VIDEO_RE.test(src);
+  const optimizedSrc = useMemo(
+    () => (isVideo ? optimizeVideoUrl(src, { width: 1280, quality: 80 }) : optimizeImageUrl(src, { width: priority ? 1600 : 1280, quality: 80 })),
+    [isVideo, priority, src]
+  );
+  const optimizedPoster = useMemo(
+    () => optimizeImageUrl(poster || '', { width: 960, quality: 78 }),
+    [poster]
+  );
 
   const shellStyle = {
     width: '100%',
@@ -27,26 +39,33 @@ export default function LazyMedia({ src, alt = 'media', className = '', poster =
     ...style,
   };
 
+  const finalSrc = failed ? src : optimizedSrc || src;
+  const finalPoster = optimizedPoster || poster || '';
+
   return (
     <div ref={hostRef} style={shellStyle} className={className}>
       {visible ? (
-        VIDEO_RE.test(src) ? (
+        isVideo ? (
           <video
-            src={src}
-            poster={poster || ''}
+            src={finalSrc}
+            poster={finalPoster}
             controls
             playsInline
             preload={priority ? 'metadata' : 'none'}
+            controlsList="nodownload noplaybackrate"
             style={{ width: '100%', display: 'block', borderRadius: 20 }}
+            onError={() => setFailed(true)}
           />
         ) : (
           <img
-            src={src}
+            src={finalSrc}
             alt={alt}
             loading={priority ? 'eager' : 'lazy'}
             decoding="async"
             fetchPriority={priority ? 'high' : 'auto'}
+            referrerPolicy="no-referrer"
             style={{ width: '100%', display: 'block', objectFit: 'cover', borderRadius: 20 }}
+            onError={() => setFailed(true)}
           />
         )
       ) : (

@@ -10,6 +10,25 @@ import { changeAdminPassword, getAdminSettings, updateAdminSettings } from '../.
 import { useToast } from '../../components/admin/ToastProvider.jsx';
 import { PRIMARY_ADMIN_EMAIL } from '../../utils/access.js';
 
+const defaultNotificationSettings = {
+  push_enabled: true,
+  browser_enabled: true,
+  mobile_enabled: true,
+  smart_notifications: true,
+  grouped_notifications: true,
+  silent_notifications: false,
+  realtime_notifications: true,
+  sound: 'classic',
+  categories: {
+    chat: true,
+    follow: true,
+    interaction: true,
+    live: true,
+    system: true,
+    reports: true,
+  },
+};
+
 const defaultGeneral = {
   platform_name: '',
   support_email: '',
@@ -19,6 +38,7 @@ const defaultGeneral = {
   session_timeout_minutes: 120,
   theme: 'midnight',
   locale: 'ar-EG',
+  notifications: defaultNotificationSettings,
 };
 
 export default function AdminSettings() {
@@ -36,6 +56,8 @@ export default function AdminSettings() {
     { key: 'support', label: 'بريد الدعم', value: general.support_email || 'غير مضبوط بعد' },
     { key: 'registration', label: 'التسجيل', value: general.allow_registration ? 'مفتوح' : 'مغلق' },
     { key: 'maintenance', label: 'الصيانة', value: general.maintenance_mode ? 'مفعّلة' : 'متوقفة' },
+    { key: 'push', label: 'Push Notifications', value: general.notifications?.push_enabled ? 'مفعلة' : 'مغلقة' },
+    { key: 'grouped', label: 'Grouped Notifications', value: general.notifications?.grouped_notifications ? 'مفعلة' : 'مغلقة' },
   ]), [general]);
 
   const loadSettings = async () => {
@@ -43,7 +65,18 @@ export default function AdminSettings() {
       setLoading(true);
       setError('');
       const { data } = await getAdminSettings();
-      setGeneral({ ...defaultGeneral, ...(data?.general || {}) });
+      setGeneral({
+        ...defaultGeneral,
+        ...(data?.general || {}),
+        notifications: {
+          ...defaultNotificationSettings,
+          ...(data?.general?.notifications || {}),
+          categories: {
+            ...defaultNotificationSettings.categories,
+            ...(data?.general?.notifications?.categories || {}),
+          },
+        },
+      });
     } catch (err) {
       setError(err?.response?.data?.detail || 'تعذر تحميل إعدادات الإدارة حالياً.');
     } finally {
@@ -55,12 +88,35 @@ export default function AdminSettings() {
     loadSettings();
   }, []);
 
+  const updateNotificationSetting = (key, value) => {
+    setGeneral((prev) => ({
+      ...prev,
+      notifications: {
+        ...prev.notifications,
+        [key]: value,
+      },
+    }));
+  };
+
+  const toggleCategory = (key) => {
+    setGeneral((prev) => ({
+      ...prev,
+      notifications: {
+        ...prev.notifications,
+        categories: {
+          ...prev.notifications.categories,
+          [key]: !prev.notifications.categories[key],
+        },
+      },
+    }));
+  };
+
   const handleSaveSettings = async () => {
     setSavingGeneral(true);
     setError('');
     try {
       await updateAdminSettings({ general });
-      pushToast({ title: 'تم حفظ الإعدادات', description: 'تم تحديث الإعدادات العامة بنجاح.', type: 'success' });
+      pushToast({ title: 'تم حفظ الإعدادات', description: 'تم تحديث الإعدادات العامة وإعدادات الإشعارات بنجاح.', type: 'success' });
     } catch (err) {
       const message = err?.response?.data?.detail || 'تعذر حفظ الإعدادات حالياً.';
       setError(message);
@@ -113,8 +169,8 @@ export default function AdminSettings() {
       <section className="dashboard-hero-grid small-gap">
         <Card className="hero-card">
           <span className="badge">System Preferences</span>
-          <h2>توحيد إعدادات المنصة وتجربة الأدمن</h2>
-          <p className="muted">تم تجهيز شاشة إعدادات موحّدة للمنصة مع حالات تحميل للأزرار، شاشة فراغ حقيقية، ورسائل خطأ قابلة لإعادة المحاولة.</p>
+          <h2>توحيد إعدادات المنصة والإشعارات والإدارة</h2>
+          <p className="muted">هنا بقى عندك Push Notifications و Browser Notifications و Mobile Notifications و Smart / Grouped / Silent / Real-time controls محفوظة من الباك إند.</p>
           <div className="action-row wide">
             <Button loading={savingGeneral} disabled={savingGeneral} onClick={handleSaveSettings}>حفظ الإعدادات</Button>
             <Button variant="secondary" loading={loading} disabled={loading} onClick={loadSettings}>تحديث البيانات</Button>
@@ -191,18 +247,71 @@ export default function AdminSettings() {
         </Card>
 
         <Card>
+          <div className="card-head"><h3 className="section-title">Notification Settings</h3></div>
+          <div className="modal-stack">
+            <div className="queue-grid compact-cards">
+              {[
+                ['push_enabled', 'Push Notifications'],
+                ['browser_enabled', 'Browser Notifications'],
+                ['mobile_enabled', 'Mobile Notifications'],
+                ['smart_notifications', 'Smart Notifications'],
+                ['grouped_notifications', 'Grouped Notifications'],
+                ['silent_notifications', 'Silent Notifications'],
+                ['realtime_notifications', 'Real-time Notifications'],
+              ].map(([key, label]) => (
+                <div key={key} className="queue-card compact">
+                  <span className="queue-label">{label}</span>
+                  <strong>{general.notifications?.[key] ? 'مفعّل' : 'متوقف'}</strong>
+                  <label className="checkbox-row">
+                    <input type="checkbox" checked={Boolean(general.notifications?.[key])} onChange={(event) => updateNotificationSetting(key, event.target.checked)} />
+                    <span>تبديل</span>
+                  </label>
+                </div>
+              ))}
+            </div>
+            <label className="field select-field">
+              <span className="field-label">Notification Sounds</span>
+              <select className="input" value={general.notifications?.sound || 'classic'} onChange={(event) => updateNotificationSetting('sound', event.target.value)}>
+                <option value="classic">Classic Bell</option>
+                <option value="pulse">Pulse Ping</option>
+                <option value="soft">Soft Chime</option>
+                <option value="silent">Silent Mode</option>
+              </select>
+            </label>
+            <div className="queue-grid compact-cards">
+              {Object.entries(general.notifications?.categories || {}).map(([key, enabled]) => (
+                <div key={key} className="queue-card compact">
+                  <span className="queue-label">{key}</span>
+                  <strong>{enabled ? 'مفعّل' : 'متوقف'}</strong>
+                  <label className="checkbox-row">
+                    <input type="checkbox" checked={Boolean(enabled)} onChange={() => toggleCategory(key)} />
+                    <span>Toggle Category</span>
+                  </label>
+                </div>
+              ))}
+            </div>
+            <Button loading={savingGeneral} disabled={savingGeneral} onClick={handleSaveSettings}>حفظ إعدادات الإشعارات</Button>
+          </div>
+        </Card>
+      </section>
+
+      <section className="two-column-grid">
+        <Card>
           <div className="card-head"><h3 className="section-title">الأمان والوصول الإداري</h3></div>
           <div className="modal-stack">
             <Input label="كلمة المرور الحالية" type="password" value={passwordForm.current_password} onChange={(event) => setPasswordForm((prev) => ({ ...prev, current_password: event.target.value }))} />
             <Input label="كلمة المرور الجديدة" type="password" value={passwordForm.new_password} onChange={(event) => setPasswordForm((prev) => ({ ...prev, new_password: event.target.value }))} />
             <Button variant="secondary" loading={changingPassword} disabled={changingPassword} onClick={handleChangePassword}>تغيير كلمة المرور</Button>
+          </div>
+        </Card>
 
-            <div className="dropzone-hint admin-access-help">
-              <strong>دخول لوحة الأدمن</strong>
-              <p className="muted no-margin">الرابط الأساسي: /admin/login</p>
-              <p className="muted no-margin">الرابط الاحتياطي: /admin.html</p>
-              <p className="muted no-margin">لازم الدخول يتم بنفس البريد الإداري الأساسي: {PRIMARY_ADMIN_EMAIL}</p>
-            </div>
+        <Card>
+          <div className="card-head"><h3 className="section-title">الأدمن الأساسي</h3></div>
+          <div className="dropzone-hint admin-access-help">
+            <strong>دخول لوحة الأدمن</strong>
+            <p className="muted no-margin">الرابط الأساسي: /admin/login</p>
+            <p className="muted no-margin">الرابط الاحتياطي: /admin.html</p>
+            <p className="muted no-margin">لازم الدخول يتم بنفس البريد الإداري الأساسي: {PRIMARY_ADMIN_EMAIL}</p>
           </div>
         </Card>
       </section>

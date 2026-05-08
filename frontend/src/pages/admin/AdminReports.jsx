@@ -18,7 +18,15 @@ function saveBlob(blob, filename) {
   window.URL.revokeObjectURL(url);
 }
 
-const defaultSummary = { totals: {}, roles: [], generated_at: '' };
+const defaultSummary = {
+  totals: {},
+  roles: [],
+  generated_at: '',
+  report_management: {},
+  revenue_dashboard: {},
+  audit_logs: [],
+  admin_activity: [],
+};
 
 export default function AdminReports() {
   const [summary, setSummary] = useState(defaultSummary);
@@ -27,7 +35,14 @@ export default function AdminReports() {
   const [exportingFormat, setExportingFormat] = useState('');
   const { pushToast } = useToast();
 
-  const hasData = Boolean(Object.keys(summary.totals || {}).length || (summary.roles || []).length || summary.generated_at);
+  const hasData = Boolean(
+    Object.keys(summary.totals || {}).length ||
+    (summary.roles || []).length ||
+    summary.generated_at ||
+    Object.keys(summary.report_management || {}).length ||
+    Object.keys(summary.revenue_dashboard || {}).length ||
+    (summary.audit_logs || []).length
+  );
 
   const loadSummary = async () => {
     try {
@@ -73,7 +88,7 @@ export default function AdminReports() {
     const engagementLoad = posts ? Math.round(((comments + messages) / posts) * 100) : 0;
     return [
       { key: 'activity', label: 'معدل النشاط', value: `${activityRate}%`, description: 'نسبة المستخدمين النشطين إلى إجمالي المستخدمين.' },
-      { key: 'engagement', label: 'كثافة التفاعل', value: `${engagementLoad}%`, description: 'مؤشر مبسط للعلاقة بين المحتوى والتفاعل والرسائل.' },
+      { key: 'engagement', label: 'Advanced Analytics', value: `${engagementLoad}%`, description: 'مؤشر مبسط للعلاقة بين المحتوى والتفاعل والرسائل.' },
       { key: 'generated', label: 'آخر توليد', value: summary.generated_at ? new Date(summary.generated_at).toLocaleString('ar-EG') : '—', description: 'توقيت آخر ملخص تم سحبه من الباك إند.' },
     ];
   }, [summary]);
@@ -100,8 +115,8 @@ export default function AdminReports() {
 
       <section className="dashboard-hero-grid small-gap">
         <Card className="hero-card">
-          <h3 className="section-title">التقارير والتحليلات</h3>
-          <p className="muted">تصدير PDF و Excel مع ملخص مؤشرات فوري وقابل للتقديم للإدارة أو فرق التشغيل.</p>
+          <h3 className="section-title">Report Management & Advanced Analytics</h3>
+          <p className="muted">التقارير دلوقتي فيها Audit Logs و User Reports و Stream Reports و Revenue Dashboard جنب التصدير لـ PDF و Excel.</p>
           <div className="action-row wide">
             <Button loading={exportingFormat === 'pdf'} disabled={Boolean(exportingFormat)} onClick={() => handleExport('pdf')}>تصدير PDF</Button>
             <Button variant="secondary" loading={exportingFormat === 'xlsx'} disabled={Boolean(exportingFormat)} onClick={() => handleExport('xlsx')}>تصدير Excel</Button>
@@ -135,6 +150,36 @@ export default function AdminReports() {
 
       <section className="two-column-grid">
         <Card>
+          <div className="card-head"><h3 className="section-title">Report Management</h3></div>
+          {Object.keys(summary.report_management || {}).length ? (
+            <div className="queue-grid compact-cards">
+              <div className="queue-card compact"><span className="queue-label">Open Reports</span><strong>{summary.report_management.open_reports || 0}</strong><p>إجمالي البلاغات المفتوحة.</p></div>
+              <div className="queue-card compact"><span className="queue-label">User Reports</span><strong>{summary.report_management.user_reports || 0}</strong><p>بلاغات مرتبطة بالمستخدمين.</p></div>
+              <div className="queue-card compact"><span className="queue-label">Stream Reports</span><strong>{summary.report_management.stream_reports || 0}</strong><p>بلاغات مرتبطة بالبث والغرف الحية.</p></div>
+              <div className="queue-card compact"><span className="queue-label">Shadow Ban</span><strong>{summary.report_management.shadow_banned_users || 0}</strong><p>عدد الحسابات الموجودة ضمن الشادو بان.</p></div>
+            </div>
+          ) : (
+            <EmptyState icon="🚨" title="لا توجد بيانات تقارير حالياً" description="سيظهر هذا القسم بعد وصول بلاغات أو بيانات مراجعة." />
+          )}
+        </Card>
+
+        <Card>
+          <div className="card-head"><h3 className="section-title">Revenue Dashboard</h3></div>
+          {Object.keys(summary.revenue_dashboard || {}).length ? (
+            <div className="status-list compact-grid">
+              <div><strong>{summary.revenue_dashboard.coins_earned || 0}</strong><span>Coins Earned</span></div>
+              <div><strong>{summary.revenue_dashboard.coins_spent || 0}</strong><span>Coins Spent</span></div>
+              <div><strong>{summary.revenue_dashboard.coins_balance || 0}</strong><span>Balance</span></div>
+              <div><strong>${(summary.revenue_dashboard.estimated_revenue || 0).toFixed(2)}</strong><span>Estimated Revenue</span></div>
+            </div>
+          ) : (
+            <EmptyState icon="💰" title="لا توجد بيانات مالية بعد" description="عند توفر بيانات المحافظ سيتم عرض الإيرادات هنا." />
+          )}
+        </Card>
+      </section>
+
+      <section className="two-column-grid">
+        <Card>
           <div className="card-head"><h3 className="section-title">إجمالي المؤشرات</h3></div>
           {Object.entries(summary.totals || {}).length ? (
             <div className="queue-grid compact-cards">
@@ -157,6 +202,42 @@ export default function AdminReports() {
             <DonutChart data={(summary.roles || []).map((role) => ({ label: role.role, value: role.count }))} />
           ) : (
             <EmptyState icon="👥" title="لا يوجد توزيع أدوار بعد" description="سيظهر الرسم بمجرد وصول بيانات الأدوار من الخادم." />
+          )}
+        </Card>
+      </section>
+
+      <section className="two-column-grid">
+        <Card>
+          <div className="card-head"><h3 className="section-title">Admin Activity Tracking</h3></div>
+          {(summary.admin_activity || []).length ? (
+            <div className="queue-grid compact-cards">
+              {(summary.admin_activity || []).map((item) => (
+                <div key={item.label} className="queue-card compact">
+                  <span className="queue-label">{item.label}</span>
+                  <strong>{item.value}</strong>
+                  <p>{item.description}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState icon="🧭" title="لا توجد مؤشرات نشاط حالياً" description="سيظهر تتبع نشاط الإدارة بمجرد توفر السجلات." />
+          )}
+        </Card>
+
+        <Card>
+          <div className="card-head"><h3 className="section-title">Audit Logs</h3></div>
+          {(summary.audit_logs || []).length ? (
+            <div className="queue-grid compact-cards">
+              {(summary.audit_logs || []).map((log) => (
+                <div key={log.id} className="queue-card compact">
+                  <span className="queue-label">{log.title}</span>
+                  <strong>{log.created_at ? new Date(log.created_at).toLocaleString('ar-EG') : 'الآن'}</strong>
+                  <p>{log.description}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState icon="📜" title="لا يوجد Audit Logs بعد" description="أول ما أي إجراء إداري يحصل هيظهر هنا." actionLabel="إعادة التحميل" onAction={loadSummary} />
           )}
         </Card>
       </section>

@@ -8,6 +8,7 @@ export const featureFlags = {
   offlineQueue: readFlag('VITE_ENABLE_OFFLINE_QUEUE', true),
   chatCache: readFlag('VITE_ENABLE_CHAT_CACHE', true),
   frontendLogging: readFlag('VITE_ENABLE_FRONTEND_LOGGING', true),
+  performanceMetrics: readFlag('VITE_ENABLE_PERFORMANCE_METRICS', true),
 };
 
 export default featureFlags;

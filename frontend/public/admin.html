@@ -6,7 +6,7 @@
     <title>Yamshat Admin</title>
     <script>
       (function () {
-        var target = new URL('/admin/login', window.location.origin);
+        var target = new URL('/#/admin/login', window.location.origin);
         if (window.location.search) target.search = window.location.search;
         if (window.location.hash) target.hash = window.location.hash;
         window.location.replace(target.toString());

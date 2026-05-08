@@ -275,6 +275,7 @@ def _migrate_comments_table(engine: Engine) -> None:
         return
 
     _add_column_if_missing(engine, 'comments', 'user_id', 'user_id INTEGER')
+    _add_column_if_missing(engine, 'comments', 'parent_id', 'parent_id INTEGER NULL')
     _add_column_if_missing(engine, 'comments', 'content', 'content TEXT')
     _add_column_if_missing(engine, 'comments', 'created_at', 'created_at TIMESTAMP NULL')
 

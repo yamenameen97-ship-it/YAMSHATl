@@ -16,7 +16,7 @@ def create(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return create_comment(db, user_id=current_user.id, post_id=post_id, content=comment.content)
+    return create_comment(db, user_id=current_user.id, post_id=post_id, content=comment.content, parent_id=comment.parent_id)
 
 
 @router.get('/{post_id}')

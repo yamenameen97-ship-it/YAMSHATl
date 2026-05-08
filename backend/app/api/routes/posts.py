@@ -13,6 +13,7 @@ from app.services.post_service import (
     delete_post,
     get_post_history,
     get_posts,
+    get_post_insights,
     get_user_drafts,
     like_post,
     share_post,
@@ -124,12 +125,17 @@ def add_comment(post_id: int, payload: dict = Body(...), db: Session = Depends(g
     text = str(payload.get('text') or payload.get('comment') or payload.get('content') or '').strip()
     if not text:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='comment text is required')
-    return create_comment(db, user_id=current_user.id, post_id=post_id, content=text)
+    return create_comment(db, user_id=current_user.id, post_id=post_id, content=text, parent_id=payload.get('parent_id'))
 
 
 @router.get('/{post_id}/comments')
 def comments(post_id: int, db: Session = Depends(get_db)):
     return get_comments(db, post_id)
+
+
+@router.get('/{post_id}/insights')
+def insights(post_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return get_post_insights(db, post_id=post_id, current_user=current_user)
 
 
 @router.delete('/{post_id}')

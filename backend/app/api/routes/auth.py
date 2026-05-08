@@ -176,6 +176,7 @@ def _delivery_metadata() -> dict:
 def _send_verification_message(user: User, code: str) -> dict:
     delivery = _delivery_metadata()
     delivery['sent'] = False
+    
     try:
     send_verification_email(user.email, code)
     delivery['sent'] = True

@@ -342,6 +342,45 @@ def get_post_history(db: Session, post_id: int, user_id: int) -> list[dict]:
     ]
 
 
+def get_post_insights(db: Session, post_id: int, current_user: User | None = None) -> dict:
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if post is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Post not found')
+    if not _can_view_post(post, current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Not allowed')
+
+    like_count = db.query(func.count(Like.id)).filter(Like.post_id == post_id).scalar() or 0
+    comment_count = db.query(func.count(Comment.id)).filter(Comment.post_id == post_id).scalar() or 0
+    save_count = db.query(func.count(PostSave.id)).filter(PostSave.post_id == post_id).scalar() or 0
+    share_count = db.query(func.count(PostShare.id)).filter(PostShare.post_id == post_id).scalar() or 0
+    latest_comments = db.query(Comment).filter(Comment.post_id == post_id).order_by(Comment.created_at.desc()).limit(5).all()
+    recent_commenters = []
+    for comment in latest_comments:
+        user = db.query(User).filter(User.id == comment.user_id).first()
+        recent_commenters.append({
+            'id': comment.id,
+            'username': user.username if user else 'unknown',
+            'content': comment.content,
+            'created_at': comment.created_at,
+            'parent_id': comment.parent_id,
+        })
+
+    engagement_score = int(like_count + (comment_count * 2) + share_count + save_count)
+    return {
+        'post_id': post_id,
+        'likes': int(like_count),
+        'comments': int(comment_count),
+        'shares': int(share_count),
+        'saves': int(save_count),
+        'edits': int(post.edit_count or 0),
+        'engagement_score': engagement_score,
+        'comment_velocity': 'مرتفع' if comment_count >= 10 else ('متوسط' if comment_count >= 3 else 'منخفض'),
+        'share_url': _share_url(post_id),
+        'recent_commenters': recent_commenters,
+        'updated_at': post.updated_at or post.created_at,
+    }
+
+
 def like_post(db: Session, user_id: int, post_id: int) -> dict:
     post = db.query(Post).filter(Post.id == post_id).first()
     if post is None:

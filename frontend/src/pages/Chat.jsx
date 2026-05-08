@@ -31,8 +31,12 @@ import logger from '../utils/logger.js';
 import featureFlags from '../utils/featureFlags.js';
 import { trackEvent } from '../utils/analytics.js';
 import VirtualMessageList from '../components/chat/VirtualMessageList.jsx';
+import AudioWaveform from '../components/chat/AudioWaveform.jsx';
+import MediaViewerModal from '../components/chat/MediaViewerModal.jsx';
+import { buildReplyText, compressImageFile, exportConversation, getMessageReactions, getScheduledMessages, isArchivedChat, isPinnedChat, parseReplyText, queueScheduledMessage, removeScheduledMessage, toggleArchivedChat, toggleMessageReaction, togglePinnedChat } from '../utils/chatEnhancements.js';
 
 const QUICK_REPLIES = ['تمام ✅', 'أنا معاك', 'أرسل التفاصيل', 'هراجع وأرد عليك', 'خلينا نكمل هنا'];
+const MESSAGE_REACTIONS = ['❤️', '🔥', '😂', '👏', '👍'];
 const VIRTUALIZATION_THRESHOLD = 120;
 const PAGE_SIZE = 40;
 const TYPING_IDLE_MS = 1200;
@@ -110,6 +114,15 @@ export default function Chat() {
   const [translatingIds, setTranslatingIds] = useState({});
   const [callState, setCallState] = useState({ open: false, type: 'audio', status: '', fallback: false, room_id: '' });
   const [incomingCall, setIncomingCall] = useState(null);
+  const [messageReactions, setMessageReactions] = useState(() => getMessageReactions(otherUser));
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [mediaViewer, setMediaViewer] = useState(null);
+  const [dragActive, setDragActive] = useState(false);
+  const [isPinned, setIsPinned] = useState(() => isPinnedChat(otherUser));
+  const [isArchived, setIsArchived] = useState(() => isArchivedChat(otherUser));
+  const [scheduledFor, setScheduledFor] = useState('');
+  const [scheduledMessages, setScheduledMessages] = useState(() => getScheduledMessages().filter((item) => item.peer === otherUser));
+  const [screenSharing, setScreenSharing] = useState(false);
 
   const typingTimeout = useRef(null);
   const remoteTypingTimeout = useRef(null);
@@ -331,6 +344,11 @@ export default function Chat() {
     setSearchQuery('');
     setTranslations({});
     setIncomingCall(null);
+    setReplyingTo(null);
+    setMessageReactions(getMessageReactions(otherUser));
+    setIsPinned(isPinnedChat(otherUser));
+    setIsArchived(isArchivedChat(otherUser));
+    setScheduledMessages(getScheduledMessages().filter((item) => item.peer === otherUser));
     disconnectCall();
 
     if (featureFlags.chatCache && currentUser && otherUser) {
@@ -500,6 +518,26 @@ export default function Chat() {
     });
   }, [blockState, currentUser, messages, otherUser, presence]);
 
+  useEffect(() => {
+    if (!otherUser) return undefined;
+    const timer = window.setInterval(async () => {
+      if (!isOnline) return;
+      const due = getScheduledMessages().filter((item) => item.peer === otherUser && new Date(item.scheduled_for).getTime() <= Date.now());
+      for (const item of due) {
+        try {
+          const { data } = await sendMessageApi(item.payload);
+          const saved = data?.data || data;
+          setMessages((prev) => mergeMessages(prev, [saved]));
+          removeScheduledMessage(item.schedule_id);
+        } catch {
+          // keep scheduled item for next retry window
+        }
+      }
+      setScheduledMessages(getScheduledMessages().filter((item) => item.peer === otherUser));
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, [isOnline, otherUser]);
+
   useEffect(() => () => {
     if (typingTimeout.current) clearTimeout(typingTimeout.current);
     if (remoteTypingTimeout.current) clearTimeout(remoteTypingTimeout.current);
@@ -522,7 +560,7 @@ export default function Chat() {
     }, TYPING_IDLE_MS);
   };
 
-  const handleAttachmentChange = (event) => {
+  const handleAttachmentChange = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
     if (file.size > 25 * 1024 * 1024) {
@@ -530,8 +568,9 @@ export default function Chat() {
       return;
     }
     setError('');
-    setAttachment(file);
-    trackEvent('chat_attachment_selected', { size_bytes: file.size, mime_type: file.type || 'unknown' }, { category: 'chat' }).catch(() => null);
+    const optimizedFile = file.type?.startsWith('image/') ? await compressImageFile(file) : file;
+    setAttachment(optimizedFile);
+    trackEvent('chat_attachment_selected', { size_bytes: optimizedFile.size, mime_type: optimizedFile.type || 'unknown' }, { category: 'chat' }).catch(() => null);
   };
 
   const clearComposerMedia = () => {
@@ -559,10 +598,11 @@ export default function Chat() {
     const client_id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const payload = {
       receiver: otherUser,
-      message: sanitizeInputText(text, { maxLength: 2000 }),
+      message: sanitizeInputText(replyingTo ? buildReplyText(text, replyingTo) : text, { maxLength: 2000 }),
       media_url: mediaUrl,
       type,
       client_id,
+      reply_to_id: replyingTo?.id || replyingTo?.client_id || null,
     };
 
     const optimisticMessage = {
@@ -580,6 +620,7 @@ export default function Chat() {
       const saved = data?.data || data;
       setMessages((prev) => mergeMessages(prev.filter((item) => item.client_id !== client_id), [saved]));
       setText('');
+      setReplyingTo(null);
       clearComposerMedia();
       typingActiveRef.current = false;
       socket.emit('chat_typing', { sender: currentUser, receiver: otherUser, is_typing: false });
@@ -625,7 +666,7 @@ export default function Chat() {
       const client_id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       const queuedPayload = {
         receiver: otherUser,
-        message: sanitizeInputText(text, { maxLength: 2000 }),
+        message: sanitizeInputText(replyingTo ? buildReplyText(text, replyingTo) : text, { maxLength: 2000 }),
         media_url: '',
         type: 'text',
         client_id,
@@ -635,6 +676,7 @@ export default function Chat() {
         queueAction({ type: 'chat:send_message', payload: queuedPayload });
       }
       setText('');
+      setReplyingTo(null);
       sendLockRef.current = false;
       setSending(false);
       pushToast({ type: 'info', title: 'Offline', description: language === 'en' ? 'Message queued until connection returns.' : 'تم تجهيز الرسالة للإرسال تلقائياً عند رجوع الإنترنت.' });
@@ -642,6 +684,55 @@ export default function Chat() {
     }
 
     await sendPayload(attachment);
+  };
+
+  const handleTogglePinned = () => {
+    togglePinnedChat(otherUser);
+    setIsPinned(isPinnedChat(otherUser));
+  };
+
+  const handleToggleArchived = () => {
+    toggleArchivedChat(otherUser);
+    setIsArchived(isArchivedChat(otherUser));
+  };
+
+  const handleToggleReaction = (messageKey, emoji) => {
+    const next = toggleMessageReaction(otherUser, messageKey, emoji);
+    setMessageReactions(next);
+  };
+
+  const handleForwardMessage = (message) => {
+    const parsed = parseReplyText(message.message || message.content || '');
+    handleTypingChange(`↗ من ${message.sender}: ${parsed.body || message.message || message.content || ''}`);
+  };
+
+  const handleScheduleMessage = () => {
+    if (!text.trim() || !scheduledFor || !otherUser) return;
+    const schedule_id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const payload = {
+      receiver: otherUser,
+      message: sanitizeInputText(replyingTo ? buildReplyText(text, replyingTo) : text, { maxLength: 2000 }),
+      media_url: '',
+      type: 'text',
+      client_id: `scheduled-${schedule_id}`,
+    };
+    queueScheduledMessage({ schedule_id, peer: otherUser, scheduled_for: scheduledFor, payload });
+    setScheduledMessages(getScheduledMessages().filter((item) => item.peer === otherUser));
+    setText('');
+    setReplyingTo(null);
+    setScheduledFor('');
+    pushToast({ type: 'success', title: language === 'en' ? 'Scheduled' : 'تمت الجدولة', description: language === 'en' ? 'Message will be sent when its time arrives while the app is active.' : 'سيتم إرسال الرسالة عند موعدها طالما التطبيق مفتوح ونشط.' });
+  };
+
+  const toggleScreenShare = async () => {
+    if (!roomRef.current?.localParticipant?.setScreenShareEnabled) return;
+    try {
+      const nextState = !screenSharing;
+      await roomRef.current.localParticipant.setScreenShareEnabled(nextState);
+      setScreenSharing(nextState);
+    } catch (err) {
+      pushToast({ type: 'warning', title: language === 'en' ? 'Screen share failed' : 'تعذر مشاركة الشاشة', description: err?.message || 'Screen share error' });
+    }
   };
 
   const retryMessage = async (message) => {
@@ -782,16 +873,26 @@ export default function Chat() {
 
   const renderMessageRow = (message) => {
     const mine = message.sender === currentUser;
-    const content = message.message || message.content;
+    const rawContent = message.message || message.content || '';
+    const { replyMeta, body } = parseReplyText(rawContent);
+    const content = body || rawContent;
     const mediaUrl = message.media_url || message.preview_url;
     const translationKey = message.id || message.client_id;
+    const reactions = messageReactions?.[translationKey] || [];
+    const groupedReactions = reactions.reduce((acc, emoji) => ({ ...acc, [emoji]: Number(acc[emoji] || 0) + 1 }), {});
     return (
       <div key={translationKey} className={`message-row ${mine ? 'mine' : ''}`}>
         <div className={`message-bubble ${mine ? 'mine' : 'other'} ${message.deleted ? 'deleted' : ''}`}>
+          {replyMeta ? <div className="reply-preview-chip">↪ {replyMeta}</div> : null}
           {content ? <p>{content}</p> : null}
-          {message.type === 'image' && mediaUrl ? <img src={mediaUrl} alt="attachment" className="message-image" /> : null}
-          {message.type === 'audio' && mediaUrl ? <audio src={mediaUrl} controls className="message-audio" /> : null}
-          {message.type === 'video' && mediaUrl ? <video src={mediaUrl} controls className="message-video" /> : null}
+          {message.type === 'image' && mediaUrl ? <img src={mediaUrl} alt="attachment" className="message-image" onClick={() => setMediaViewer({ url: mediaUrl, type: 'image', title: message.sender })} /> : null}
+          {message.type === 'audio' && mediaUrl ? (
+            <div className="audio-message-shell">
+              <AudioWaveform seed={translationKey} />
+              <audio src={mediaUrl} controls className="message-audio" />
+            </div>
+          ) : null}
+          {message.type === 'video' && mediaUrl ? <video src={mediaUrl} controls className="message-video" onClick={() => setMediaViewer({ url: mediaUrl, type: 'video', title: message.sender })} /> : null}
           {message.type === 'file' && mediaUrl ? <a href={mediaUrl} target="_blank" rel="noreferrer" className="mini-action">{language === 'en' ? 'Open attachment' : 'فتح المرفق'}</a> : null}
 
           {translations[translationKey] ? (
@@ -800,6 +901,25 @@ export default function Chat() {
               <p>{translations[translationKey]}</p>
             </div>
           ) : null}
+
+          {Object.keys(groupedReactions).length ? (
+            <div className="message-reactions-summary">
+              {Object.entries(groupedReactions).map(([emoji, count]) => <span key={emoji} className="glass-chip">{emoji} {count}</span>)}
+            </div>
+          ) : null}
+
+          <div className="message-tools-row">
+            {MESSAGE_REACTIONS.map((emoji) => (
+              <button key={emoji} type="button" className="mini-action" onClick={() => handleToggleReaction(translationKey, emoji)}>{emoji}</button>
+            ))}
+            <button type="button" className="mini-action" onClick={() => setReplyingTo(message)}>{language === 'en' ? 'Reply' : 'رد'}</button>
+            <button type="button" className="mini-action" onClick={() => handleForwardMessage(message)}>{language === 'en' ? 'Forward' : 'تحويل'}</button>
+            {(message.type === 'image' || message.type === 'video') && mediaUrl ? (
+              <button type="button" className="mini-action" onClick={() => setMediaViewer({ url: mediaUrl, type: message.type, title: message.sender })}>
+                {language === 'en' ? 'Viewer' : 'عارض'}
+              </button>
+            ) : null}
+          </div>
 
           <div className="message-meta message-meta-pro">
             <span>
@@ -848,6 +968,9 @@ export default function Chat() {
             <div className="chat-header-actions chat-header-actions-pro">
               <Button variant="secondary" onClick={() => startCall('audio')} disabled={!blockState.can_chat}>{ui.chat.audioCall}</Button>
               <Button variant="secondary" onClick={() => startCall('video')} disabled={!blockState.can_chat}>{ui.chat.videoCall}</Button>
+              <Button variant="secondary" onClick={handleTogglePinned}>{isPinned ? 'إلغاء التثبيت' : '📌 تثبيت'}</Button>
+              <Button variant="secondary" onClick={handleToggleArchived}>{isArchived ? 'إلغاء الأرشفة' : '🗂️ أرشفة'}</Button>
+              <Button variant="secondary" onClick={() => exportConversation(otherUser, messages)}>{language === 'en' ? 'Backup' : 'نسخة احتياطية'}</Button>
               <Button variant="secondary" onClick={handleBlockToggle}>{blockState.blocked_by_me ? ui.chat.unblock : ui.chat.block}</Button>
               <Button variant="secondary" onClick={() => navigate(`/profile/${encodeURIComponent(otherUser)}`)}>{language === 'en' ? 'Profile' : 'الملف الشخصي'}</Button>
               <Button variant="secondary" onClick={() => navigate('/inbox')}>{language === 'en' ? 'Back to inbox' : 'الرجوع للـ Inbox'}</Button>
@@ -927,7 +1050,10 @@ export default function Chat() {
                   <p className="muted no-margin">{callState.status}</p>
                   {callState.room_id ? <small className="muted">Room: {callState.room_id}</small> : null}
                 </div>
-                <Button variant="secondary" onClick={() => disconnectCall(language === 'en' ? 'Call ended.' : 'تم إنهاء المكالمة.')}>{ui.chat.hangup}</Button>
+                <div className="call-banner-actions">
+                  <Button variant="secondary" onClick={toggleScreenShare}>{screenSharing ? (language === 'en' ? 'Stop share' : 'إيقاف مشاركة الشاشة') : (language === 'en' ? 'Share screen' : 'مشاركة الشاشة')}</Button>
+                  <Button variant="secondary" onClick={() => disconnectCall(language === 'en' ? 'Call ended.' : 'تم إنهاء المكالمة.')}>{ui.chat.hangup}</Button>
+                </div>
               </div>
               <div className="call-session-grid">
                 <div className="call-session-media remote" ref={remoteMediaRef} />
@@ -936,12 +1062,44 @@ export default function Chat() {
             </div>
           ) : null}
 
-          <div className="composer composer-pro">
+          <div
+            className={`composer composer-pro ${dragActive ? 'drag-active' : ''}`}
+            onDragOver={(event) => { event.preventDefault(); setDragActive(true); }}
+            onDragLeave={() => setDragActive(false)}
+            onDrop={async (event) => {
+              event.preventDefault();
+              setDragActive(false);
+              const droppedFile = event.dataTransfer?.files?.[0];
+              if (!droppedFile) return;
+              const optimizedFile = droppedFile.type?.startsWith('image/') ? await compressImageFile(droppedFile) : droppedFile;
+              setAttachment(optimizedFile);
+            }}
+          >
+            {replyingTo ? (
+              <div className="replying-banner">
+                <strong>{language === 'en' ? 'Replying to' : 'الرد على'} {replyingTo.sender}</strong>
+                <p>{parseReplyText(replyingTo.message || replyingTo.content || '').body || replyingTo.message || replyingTo.content || ''}</p>
+                <button type="button" className="mini-action" onClick={() => setReplyingTo(null)}>{language === 'en' ? 'Cancel' : 'إلغاء'}</button>
+              </div>
+            ) : null}
+
             {attachment ? (
               <div className="attachment-preview-card">
                 <strong>{attachment.name}</strong>
                 <div className="muted">{inferMessageType(attachment)} • {(attachment.size / (1024 * 1024)).toFixed(2)} MB</div>
+                {attachment.type?.startsWith('audio/') ? <AudioWaveform seed={attachment.name} compact /> : null}
                 <button type="button" className="mini-action" onClick={clearComposerMedia}>{language === 'en' ? 'Remove' : 'إزالة'}</button>
+              </div>
+            ) : null}
+
+            {scheduledMessages.length ? (
+              <div className="scheduled-list">
+                {scheduledMessages.slice(0, 3).map((item) => (
+                  <div key={item.schedule_id} className="scheduled-item">
+                    <span>{language === 'en' ? 'Scheduled for' : 'مجدولة'} {new Date(item.scheduled_for).toLocaleString(language === 'en' ? 'en-US' : 'ar-EG')}</span>
+                    <button type="button" className="mini-action" onClick={() => { removeScheduledMessage(item.schedule_id); setScheduledMessages(getScheduledMessages().filter((entry) => entry.peer === otherUser)); }}>✕</button>
+                  </div>
+                ))}
               </div>
             ) : null}
 
@@ -964,6 +1122,8 @@ export default function Chat() {
                 📎 {language === 'en' ? 'Attach' : 'مرفق'}
                 <input type="file" hidden accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.txt" onChange={handleAttachmentChange} disabled={!blockState.can_chat} />
               </label>
+              <Input type="datetime-local" value={scheduledFor} onChange={(event) => setScheduledFor(event.target.value)} />
+              <button type="button" className="mini-action" onClick={handleScheduleMessage} disabled={!blockState.can_chat || !text.trim() || !scheduledFor}>⏰ {language === 'en' ? 'Schedule' : 'جدولة'}</button>
               <button type="button" className={`mini-action ${isRecording ? 'recording' : ''}`} onClick={toggleRecording} disabled={!blockState.can_chat}>
                 {isRecording ? (language === 'en' ? '⏹ Stop recording' : '⏹ إيقاف التسجيل') : (language === 'en' ? '🎙 Voice note' : '🎙 تسجيل صوتي')}
               </button>
@@ -972,6 +1132,7 @@ export default function Chat() {
           </div>
         </Card>
       </div>
+      <MediaViewerModal item={mediaViewer} onClose={() => setMediaViewer(null)} />
     </MainLayout>
   );
 }

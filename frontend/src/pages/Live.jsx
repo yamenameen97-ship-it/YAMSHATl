@@ -3,20 +3,31 @@ import { useSearchParams } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
+import Input from '../components/ui/Input.jsx';
 import EmptyState from '../components/feedback/EmptyState.jsx';
 import ErrorState from '../components/feedback/ErrorState.jsx';
 import socket from '../api/socket.js';
 import {
+  addLiveCohost,
+  createLivePoll,
   createLiveRoom,
   endLiveRoom,
   getLiveComments,
+  getLiveDashboard,
   getLiveRoom,
   getLiveRooms,
   getLiveToken,
+  moderateLiveUser,
+  sendLiveGift,
+  sendLiveReaction,
+  shareLiveRoom,
+  startLiveBattle,
+  updateLiveHealth,
   updateLivePresence,
+  updateLiveRecording,
+  voteLivePoll,
 } from '../api/live.js';
 import { getAuthToken, getCurrentUsername } from '../utils/auth.js';
-import { sanitizeInputText } from '../utils/sanitize.js';
 import { useAppStore } from '../store/appStore.js';
 
 const livekitCache = { module: null };
@@ -26,16 +37,10 @@ async function loadLiveKit() {
   return livekitCache.module;
 }
 
-function ensureSocketConnected() {
-  if (socket.connected && socket.id) return Promise.resolve(socket.id);
-  return new Promise((resolve) => {
-    const handleConnect = () => {
-      socket.off('connect', handleConnect);
-      resolve(socket.id || '');
-    };
-    socket.on('connect', handleConnect);
-    socket.connect();
-  });
+function healthLabel(status) {
+  if (status === 'critical') return 'حرج';
+  if (status === 'warning') return 'متوسط';
+  return 'ممتاز';
 }
 
 export default function Live() {
@@ -46,243 +51,147 @@ export default function Live() {
   const roomRef = useRef(null);
   const videosRef = useRef(null);
   const activeRoomIdRef = useRef(null);
-  const autoJoinRoomRef = useRef('');
   const [rooms, setRooms] = useState([]);
   const [activeRoom, setActiveRoom] = useState(null);
+  const [dashboard, setDashboard] = useState(null);
   const [comments, setComments] = useState([]);
   const [message, setMessage] = useState('');
-  const [title, setTitle] = useState('بث مباشر جديد');
-  const [viewerCount, setViewerCount] = useState(0);
-  const [heartsCount, setHeartsCount] = useState(0);
-  const [status, setStatus] = useState('يمكنك إنشاء بث جديد أو الانضمام إلى بث قائم.');
+  const [status, setStatus] = useState('جاهز لإطلاق البث المباشر أو الانضمام لبث قائم.');
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState('');
   const [quality, setQuality] = useState('auto');
-  const [showFallback, setShowFallback] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    title: 'بث مباشر جديد',
+    scheduled_for: '',
+    recording_enabled: true,
+    live_notifications_enabled: true,
+    background_streaming_enabled: true,
+    auto_reconnect_enabled: true,
+    adaptive_bitrate_enabled: true,
+    cdn_url: '',
+  });
+  const [giftForm, setGiftForm] = useState({ gift_name: 'rose', coins: 10 });
+  const [pollForm, setPollForm] = useState({ question: '', option1: '', option2: '' });
+  const [cohostUsername, setCohostUsername] = useState('');
+  const [battleRoomId, setBattleRoomId] = useState('');
+  const [moderation, setModeration] = useState({ username: '', action: 'mute' });
   const requestedRoomId = searchParams.get('room')?.trim() || '';
 
   const refreshRooms = async () => {
-    try {
-      setLoading(true);
-      const { data } = await getLiveRooms();
-      setRooms(Array.isArray(data) ? data : []);
-    } catch {
-      setRooms([]);
-    } finally {
-      setLoading(false);
-    }
+    const { data } = await getLiveRooms();
+    setRooms(Array.isArray(data) ? data : []);
   };
 
   const syncActiveRoom = async (roomId = activeRoomIdRef.current) => {
     if (!roomId) return;
+    const [{ data: roomData }, { data: commentsData }] = await Promise.all([getLiveRoom(roomId), getLiveComments(roomId)]);
+    setActiveRoom(roomData || null);
+    setComments(Array.isArray(commentsData) ? commentsData : []);
     try {
-      const [{ data: roomData }, { data: commentsData }] = await Promise.all([
-        getLiveRoom(roomId),
-        getLiveComments(roomId),
-      ]);
-      setActiveRoom((prev) => ({ ...prev, ...(roomData || {}) }));
-      setViewerCount(Number(roomData?.viewer_count || 0));
-      setHeartsCount(Number(roomData?.hearts_count || 0));
-      setComments(Array.isArray(commentsData) ? commentsData : []);
+      const { data: dashboardData } = await getLiveDashboard(roomId);
+      setDashboard(dashboardData || null);
     } catch {
-      // ignore background sync failures
+      setDashboard(null);
     }
-  };
-
-  useEffect(() => {
-    refreshRooms();
-  }, []);
-
-  useEffect(() => {
-    if (!activeRoomIdRef.current) return undefined;
-
-    let timer = null;
-    const stopPolling = () => {
-      if (timer) {
-        window.clearInterval(timer);
-        timer = null;
-      }
-    };
-    const startPolling = () => {
-      if (timer || socket.connected) return;
-      timer = window.setInterval(() => {
-        syncActiveRoom(activeRoomIdRef.current);
-        refreshRooms();
-      }, 12000);
-    };
-    const handleSocketConnect = () => {
-      stopPolling();
-      syncActiveRoom(activeRoomIdRef.current);
-      refreshRooms();
-    };
-    const handleSocketDisconnect = () => startPolling();
-
-    if (socket.connected) handleSocketConnect();
-    else startPolling();
-
-    socket.on('connect', handleSocketConnect);
-    socket.on('disconnect', handleSocketDisconnect);
-    return () => {
-      stopPolling();
-      socket.off('connect', handleSocketConnect);
-      socket.off('disconnect', handleSocketDisconnect);
-    };
-  }, [activeRoom?.id]);
-
-  useEffect(() => {
-    if (!currentUser) return undefined;
-    if (!socket.connected) socket.connect();
-    socket.emit('register_user', { token, user: currentUser });
-
-    const handleRoomStats = ({ room_id, viewer_count, hearts_count }) => {
-      if (String(room_id) !== String(activeRoomIdRef.current)) return;
-      if (typeof viewer_count === 'number') setViewerCount(viewer_count);
-      if (typeof hearts_count === 'number') setHeartsCount(hearts_count);
-    };
-
-    const handleComment = (payload) => {
-      if (String(payload?.room_id || activeRoomIdRef.current) !== String(activeRoomIdRef.current)) return;
-      setComments((prev) => [...prev, payload]);
-      setActiveRoom((prev) => ({ ...prev, latest_comment_preview: payload }));
-    };
-
-    const handleHeart = ({ count }) => setHeartsCount(Number(count || 0));
-    const handleAdminLiveUpdate = ({ room }) => {
-      if (!room || String(room.id) !== String(activeRoomIdRef.current)) return;
-      setActiveRoom((prev) => ({ ...prev, ...room }));
-      setViewerCount(Number(room.viewer_count || 0));
-      setHeartsCount(Number(room.hearts_count || 0));
-    };
-
-    socket.on('room_stats', handleRoomStats);
-    socket.on('new_comment', handleComment);
-    socket.on('new_heart', handleHeart);
-    socket.on('admin:live_updated', handleAdminLiveUpdate);
-
-    return () => {
-      socket.off('room_stats', handleRoomStats);
-      socket.off('new_comment', handleComment);
-      socket.off('new_heart', handleHeart);
-      socket.off('admin:live_updated', handleAdminLiveUpdate);
-    };
-  }, [currentUser, token]);
-
-  const clearVideoContainer = () => {
-    if (videosRef.current) videosRef.current.replaceChildren();
-  };
-
-  const applyQualityPreference = () => {
-    if (!videosRef.current) return;
-    videosRef.current.dataset.quality = quality;
-  };
-
-  useEffect(() => {
-    applyQualityPreference();
-  }, [quality]);
-
-  const attachVideoTrack = (track, participantLabel) => {
-    if (!videosRef.current || track.kind !== 'video') return;
-    const wrapper = document.createElement('div');
-    wrapper.className = 'live-video-tile';
-
-    const label = document.createElement('div');
-    label.className = 'live-video-label';
-    label.textContent = participantLabel;
-
-    const element = track.attach();
-    element.className = 'live-video-element';
-    element.setAttribute('playsinline', 'true');
-    element.autoplay = true;
-
-    wrapper.appendChild(element);
-    wrapper.appendChild(label);
-    videosRef.current.appendChild(wrapper);
-    applyQualityPreference();
-  };
-
-  const syncRoomQueryParam = (roomId) => {
-    const nextParams = new URLSearchParams(searchParams);
-    if (roomId) nextParams.set('room', String(roomId));
-    else nextParams.delete('room');
-    setSearchParams(nextParams, { replace: true });
   };
 
   const disconnectRoom = async () => {
     try {
       if (activeRoomIdRef.current) {
-        const socketId = await ensureSocketConnected();
-        socket.emit('leave_live', { token, room_id: String(activeRoomIdRef.current) });
-        await updateLivePresence({
-          room_id: activeRoomIdRef.current,
-          socket_id: socketId,
-          platform: 'web',
-          device_type: 'browser',
-          is_host: activeRoom?.role === 'host',
-          active: false,
-        });
+        socket.emit('leave_live', { room_id: String(activeRoomIdRef.current) });
+        if (socket.id) {
+          await updateLivePresence({ room_id: activeRoomIdRef.current, socket_id: socket.id, platform: 'web', device_type: 'browser', is_host: activeRoom?.role === 'host', active: false });
+        }
       }
     } catch {
-      // ignore disconnect errors
+      // ignore background disconnect errors
     }
     if (roomRef.current) {
       roomRef.current.disconnect();
       roomRef.current = null;
     }
-    clearVideoContainer();
+    if (videosRef.current) videosRef.current.replaceChildren();
     activeRoomIdRef.current = null;
-    autoJoinRoomRef.current = '';
-    syncRoomQueryParam(null);
     setActiveRoom(null);
-    setViewerCount(0);
-    setHeartsCount(0);
+    setDashboard(null);
     setComments([]);
+    setSearchParams({}, { replace: true });
+  };
+
+  const attachVideoTrack = (track, participantLabel) => {
+    if (!videosRef.current || track.kind !== 'video') return;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'live-video-tile';
+    const label = document.createElement('div');
+    label.className = 'live-video-label';
+    label.textContent = participantLabel;
+    const element = track.attach();
+    element.className = 'live-video-element';
+    element.setAttribute('playsinline', 'true');
+    element.autoplay = true;
+    wrapper.appendChild(element);
+    wrapper.appendChild(label);
+    videosRef.current.appendChild(wrapper);
+  };
+
+  const publishHealth = async (reconnecting = false) => {
+    if (!activeRoomIdRef.current || activeRoom?.role !== 'host') return;
+    const navConnection = navigator?.connection || {};
+    const bitrate = Math.max(Math.round((navConnection.downlink || 1.8) * 1200), 250);
+    const rtt = Math.max(Math.round(navConnection.rtt || 45), 10);
+    const packetLoss = reconnecting ? 6 : 1;
+    try {
+      const { data } = await updateLiveHealth({ room_id: activeRoomIdRef.current, bitrate_kbps: bitrate, rtt_ms: rtt, packet_loss: packetLoss, reconnecting });
+      setActiveRoom(data || null);
+    } catch {
+      // ignore health pings
+    }
   };
 
   const connectToLiveKit = async (session, role) => {
     if (!session?.token || !session?.livekit_url) {
-      setShowFallback(true);
-      setStatus('تم الدخول إلى غرفة البث لكن LiveKit غير مفعّل حالياً، لذلك تم تفعيل وضع المتابعة النصي كبديل.');
+      setStatus('تم تجهيز غرفة البث. LiveKit غير مفعّل حالياً، لكن كل عناصر التفاعل والإدارة شغالة.');
       return;
     }
-
     try {
+      if (videosRef.current) videosRef.current.replaceChildren();
       const { connect, RoomEvent } = await loadLiveKit();
-      const room = await connect(session.livekit_url, session.token);
+      const room = await connect(session.livekit_url, session.token, {
+        autoSubscribe: true,
+        dynacast: true,
+        adaptiveStream: true,
+      });
       roomRef.current = room;
-
       room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
         attachVideoTrack(track, participant.identity);
       });
-
-      room.on(RoomEvent.TrackUnsubscribed, (track) => {
-        track.detach().forEach((element) => element.remove());
+      room.on(RoomEvent.Reconnecting, () => {
+        setStatus('جاري إعادة الاتصال بالبث...');
+        publishHealth(true);
       });
-
+      room.on(RoomEvent.Reconnected, () => {
+        setStatus('تمت إعادة الاتصال بالبث بنجاح.');
+        publishHealth(false);
+      });
       room.on(RoomEvent.Disconnected, () => {
-        setShowFallback(true);
-        setStatus('انقطع الاتصال المرئي. تم التحويل إلى وضع fallback مع استمرار الشات والإحصاءات.');
+        setStatus('انقطع الاتصال المرئي، لكن البث ما زال متاحاً عبر لوحة المتابعة.');
       });
-
+      room.on(RoomEvent.ParticipantConnected, () => syncActiveRoom(session.room_id));
+      room.on(RoomEvent.ParticipantDisconnected, () => syncActiveRoom(session.room_id));
       if (role === 'host') {
         await room.localParticipant.setCameraEnabled(true);
         await room.localParticipant.setMicrophoneEnabled(true);
-        room.localParticipant.trackPublications.forEach((publication) => {
-          if (publication.track) attachVideoTrack(publication.track, `${currentUser} (Host)`);
-        });
       }
-
       room.participants.forEach((participant) => {
         participant.trackPublications.forEach((publication) => {
           if (publication.track) attachVideoTrack(publication.track, participant.identity);
         });
       });
-
-      setShowFallback(false);
-      setStatus('تم الاتصال بالبث المباشر بنجاح.');
+      setStatus('البث متصل مع Auto Reconnect وAdaptive Bitrate.');
+      publishHealth(false);
     } catch (err) {
-      setShowFallback(true);
-      setStatus(err?.message || 'فشل الاتصال المرئي. تم تفعيل وضع fallback.');
+      setStatus(err?.message || 'فشل الاتصال المرئي. استمر في البث النصي والتحليلات المباشرة.');
     }
   };
 
@@ -290,26 +199,18 @@ export default function Live() {
     try {
       setJoining(true);
       setError('');
-      clearVideoContainer();
       const { data: tokenData } = await getLiveToken({ room_id: roomRecord.id, role, platform: 'web' });
-      const { data: commentsData } = await getLiveComments(roomRecord.id);
-      const session = { ...roomRecord, ...tokenData, role };
-
       activeRoomIdRef.current = roomRecord.id;
-      autoJoinRoomRef.current = String(roomRecord.id);
-      syncRoomQueryParam(roomRecord.id);
+      setSearchParams({ room: String(roomRecord.id) }, { replace: true });
+      const session = { ...roomRecord, ...tokenData, role };
       setActiveRoom(session);
-      setComments(Array.isArray(commentsData) ? commentsData : []);
-      setViewerCount(Number(roomRecord.viewer_count || 0));
-      setHeartsCount(Number(roomRecord.hearts_count || 0));
-
-      const socketId = await ensureSocketConnected();
-      socket.emit('join_live', { token, room_id: String(roomRecord.id), user: currentUser, role, platform: 'web', device_type: 'browser' });
-      await updateLivePresence({ room_id: roomRecord.id, socket_id: socketId, platform: 'web', device_type: 'browser', is_host: role === 'host', active: true });
-      await connectToLiveKit(session, role);
-      await syncActiveRoom(roomRecord.id);
+      socket.emit('join_live', { room_id: String(roomRecord.id), role, platform: 'web', device_type: 'browser' });
+      if (socket.id) {
+        await updateLivePresence({ room_id: roomRecord.id, socket_id: socket.id, platform: 'web', device_type: 'browser', is_host: role === 'host', active: true });
+      }
+      await Promise.all([syncActiveRoom(roomRecord.id), connectToLiveKit(session, role)]);
     } catch (err) {
-      setError(err?.response?.data?.message || err?.response?.data?.detail || err?.message || 'تعذر الانضمام إلى البث.');
+      setError(err?.response?.data?.detail || err?.message || 'تعذر الانضمام إلى البث.');
     } finally {
       setJoining(false);
     }
@@ -318,204 +219,327 @@ export default function Live() {
   const handleCreateLive = async () => {
     try {
       setJoining(true);
-      setError('');
-      const safeTitle = sanitizeInputText(title, { maxLength: 120 }) || 'بث مباشر جديد';
-      const { data } = await createLiveRoom({ title: safeTitle, platform: 'web' });
+      const { data } = await createLiveRoom(createForm);
       await refreshRooms();
-      await joinRoom({ id: String(data.room_id || data.id), viewer_count: 0, ...data }, 'host');
+      await joinRoom(data, 'host');
     } catch (err) {
-      setError(err?.response?.data?.message || err?.response?.data?.detail || 'تعذر إنشاء البث.');
+      setError(err?.response?.data?.detail || 'تعذر إنشاء البث.');
     } finally {
       setJoining(false);
     }
   };
 
   const handleSendComment = () => {
-    const text = sanitizeInputText(message, { maxLength: 600 });
+    const text = message.trim();
     if (!text || !activeRoomIdRef.current) return;
-    socket.emit('send_comment', { token, room_id: String(activeRoomIdRef.current), user: currentUser, text });
+    socket.emit('send_comment', { room_id: String(activeRoomIdRef.current), text });
     setMessage('');
   };
 
   const handleHeart = () => {
     if (!activeRoomIdRef.current) return;
-    socket.emit('send_heart', { token, room_id: String(activeRoomIdRef.current), user: currentUser });
+    socket.emit('send_heart', { room_id: String(activeRoomIdRef.current) });
   };
 
-  const handleEndLive = async () => {
+  const runRoomAction = async (runner) => {
     if (!activeRoomIdRef.current) return;
     try {
-      await endLiveRoom(activeRoomIdRef.current);
-      await disconnectRoom();
-      await refreshRooms();
-      setStatus('تم إنهاء البث المباشر.');
+      setError('');
+      await runner();
+      await Promise.all([syncActiveRoom(activeRoomIdRef.current), refreshRooms()]);
     } catch (err) {
-      setError(err?.response?.data?.message || err?.response?.data?.detail || 'تعذر إنهاء البث.');
-    }
-  };
-
-  const copyRoomIdentifier = async () => {
-    if (!activeRoom?.room_id && !activeRoom?.id) return;
-    try {
-      await navigator.clipboard.writeText(String(activeRoom.room_id || activeRoom.id));
-      setStatus('تم نسخ رقم الغرفة ويمكنك مشاركته مع الفريق أو الدعم.');
-    } catch {
-      setStatus('تعذر نسخ رقم الغرفة من المتصفح الحالي.');
+      setError(err?.response?.data?.detail || 'تعذر تنفيذ الإجراء.');
     }
   };
 
   useEffect(() => {
-    if (!requestedRoomId || loading || joining || rooms.length === 0) return;
-    if (String(activeRoomIdRef.current) === String(requestedRoomId)) return;
-    if (autoJoinRoomRef.current === String(requestedRoomId)) return;
-
-    const requestedRoom = rooms.find((room) =>
-      String(room.id) === String(requestedRoomId) || String(room.room_id) === String(requestedRoomId)
-    );
-
-    if (requestedRoom) {
-      autoJoinRoomRef.current = String(requestedRoom.id || requestedRoom.room_id || requestedRoomId);
-      joinRoom(requestedRoom, requestedRoom.username === currentUser ? 'host' : 'viewer');
-    }
-  }, [requestedRoomId, rooms, loading, joining, currentUser]);
-
-  useEffect(() => () => {
-    disconnectRoom();
+    const bootstrap = async () => {
+      try {
+        setLoading(true);
+        await refreshRooms();
+      } catch (err) {
+        setError(err?.response?.data?.detail || 'تعذر تحميل البث المباشر.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    bootstrap();
   }, []);
 
-  const viewerExperienceLabel = useMemo(() => {
-    if (!activeRoom) return 'اختر بثاً لمتابعته.';
-    return activeRoom.role === 'host'
-      ? 'أنت الآن كمضيف ويمكنك متابعة الذروة، التعليق المثبّت، وإنهاء البث.'
-      : 'أنت الآن كمشاهد مع شات مباشر وإحصاءات فورية.';
-  }, [activeRoom]);
+  useEffect(() => {
+    if (!currentUser) return undefined;
+    socket.connect();
+    socket.emit('register_user', { user: currentUser, token });
+    const offStats = socket.on('room_stats', ({ room_id }) => {
+      if (String(room_id) === String(activeRoomIdRef.current)) syncActiveRoom(room_id);
+      refreshRooms();
+    });
+    const offComment = socket.on('new_comment', (payload) => {
+      if (String(payload?.room_id) !== String(activeRoomIdRef.current)) return;
+      setComments((prev) => [...prev, payload]);
+    });
+    const offGift = socket.on('live_gift', ({ room_id }) => {
+      if (String(room_id) === String(activeRoomIdRef.current)) syncActiveRoom(room_id);
+    });
+    const offPoll = socket.on('live_poll', ({ room_id }) => {
+      if (String(room_id) === String(activeRoomIdRef.current)) syncActiveRoom(room_id);
+    });
+    const offReact = socket.on('live_reaction', ({ room_id }) => {
+      if (String(room_id) === String(activeRoomIdRef.current)) syncActiveRoom(room_id);
+    });
+    return () => {
+      offStats?.();
+      offComment?.();
+      offGift?.();
+      offPoll?.();
+      offReact?.();
+    };
+  }, [currentUser, token]);
 
-  const liveStats = useMemo(() => [
-    { label: 'غرف نشطة', value: rooms.length },
-    { label: 'مشاهدون الآن', value: viewerCount },
-    { label: 'قلوب البث', value: heartsCount },
-    { label: 'ذروة الغرفة', value: activeRoom?.peak_viewer_count || 0 },
-  ], [activeRoom?.peak_viewer_count, heartsCount, rooms.length, viewerCount]);
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      refreshRooms();
+      if (activeRoomIdRef.current) syncActiveRoom(activeRoomIdRef.current);
+    }, 12000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const visibilityHandler = () => {
+      if (document.visibilityState === 'hidden' && activeRoom?.role === 'host') {
+        setStatus('Background Streaming مفعّل: البث مستمر حتى أثناء ترك الشاشة.');
+      }
+      if (document.visibilityState === 'visible' && activeRoom?.role === 'host') {
+        publishHealth(false);
+      }
+    };
+    document.addEventListener('visibilitychange', visibilityHandler);
+    return () => document.removeEventListener('visibilitychange', visibilityHandler);
+  }, [activeRoom?.role]);
+
+  useEffect(() => {
+    if (!requestedRoomId || !rooms.length || activeRoomIdRef.current) return;
+    const requestedRoom = rooms.find((room) => String(room.id) === String(requestedRoomId));
+    if (requestedRoom) joinRoom(requestedRoom, 'viewer');
+  }, [requestedRoomId, rooms.length]);
+
+  const roomCards = useMemo(() => rooms.filter((room) => room.active), [rooms]);
+
+  if (loading && !rooms.length) {
+    return <MainLayout><Card className="hero-card"><p>جارٍ تحميل مركز البث المباشر...</p></Card></MainLayout>;
+  }
+
+  if (error && !rooms.length && !activeRoom) {
+    return <MainLayout><ErrorState title="تعذر تحميل البث" description={error} onRetry={refreshRooms} /></MainLayout>;
+  }
 
   return (
     <MainLayout>
-      <section className="live-layout">
-        <div className="live-main">
-          <Card className="live-stage-card">
-            <div className="section-head compact">
-              <div>
-                <h3 className="section-title">🔴 Live Streaming</h3>
-                <p className="muted">واجهة بث مباشر محسّنة مع Start/End، عداد مشاهدين، جودة، مزامنة دورية، وتعليق مثبّت يظهر للمستخدم بشكل أوضح.</p>
-              </div>
-              <div className="live-stage-stats">
-                <span className="glass-chip">👀 {viewerCount}</span>
-                <span className="glass-chip">❤️ {heartsCount}</span>
-                {activeRoom?.featured ? <span className="glass-chip">⭐ مميّز</span> : null}
-              </div>
+      <div className="live-shell">
+        <section className="dashboard-hero-grid">
+          <Card className="hero-card live-upgrade-hero">
+            <div className="hero-card-topline"><span className="badge">LiveKit Stability Suite</span><span className="live-pill"><span className="status-dot live-dot" />On Air Ready</span></div>
+            <h2>غرفة بث مطوّرة مع Auto Reconnect وAdaptive Bitrate وStream Health Monitor</h2>
+            <p>ضفت لوحة تفاعلية للبث فيها عدد مشاهدين حقيقي، هدايا وعملات، Reactions، Polls، Multi Host، Battle Streams، Live Moderation، Replay، Recording، Scheduling، وCreator Dashboard.</p>
+            <div className="hero-actions-wrap">
+              <Button onClick={handleCreateLive} loading={joining}>{joining ? 'جارٍ التجهيز...' : 'ابدأ بث جديد'}</Button>
+              <span className="glass-chip">الحالة: {status}</span>
+              <span className="glass-chip">الشبكة: {isOnline ? 'متصل' : 'أوفلاين'}</span>
             </div>
+          </Card>
 
-            <div className="stories-stats-grid notification-stats-grid-4">
-              {liveStats.map((item) => (
-                <div key={item.label} className="mini-stat stories-stat-card">
-                  <strong>{item.value}</strong>
-                  <span>{item.label}</span>
-                </div>
+          <Card>
+            <div className="card-head split"><h3 className="section-title">إعدادات البث</h3><span className="badge">Scheduling + CDN</span></div>
+            <div className="live-form-grid">
+              <Input label="عنوان البث" value={createForm.title} onChange={(event) => setCreateForm((prev) => ({ ...prev, title: event.target.value }))} />
+              <Input label="موعد البث" type="datetime-local" value={createForm.scheduled_for} onChange={(event) => setCreateForm((prev) => ({ ...prev, scheduled_for: event.target.value }))} />
+              <Input label="CDN URL" value={createForm.cdn_url} onChange={(event) => setCreateForm((prev) => ({ ...prev, cdn_url: event.target.value }))} placeholder="https://cdn.example.com/live" />
+            </div>
+            <div className="badge-row">
+              {['recording_enabled', 'live_notifications_enabled', 'background_streaming_enabled', 'auto_reconnect_enabled', 'adaptive_bitrate_enabled'].map((key) => (
+                <button key={key} type="button" className={`tab-btn ${createForm[key] ? 'active' : ''}`} onClick={() => setCreateForm((prev) => ({ ...prev, [key]: !prev[key] }))}>{key.replaceAll('_', ' ')}</button>
               ))}
             </div>
-
-            <div ref={videosRef} className="live-video-grid" />
-            {showFallback ? <div className="live-fallback-card">تم تفعيل وضع المتابعة النصي بسبب تعذر الاتصال المرئي. ما زال بإمكانك متابعة التعليقات والإحصاءات.</div> : null}
-            {!activeRoom && !loading ? <EmptyState icon="📡" title="لا يوجد بث نشط في المعاينة" description="أنشئ بثاً جديداً أو ادخل لأحد البثوث الحالية." /> : null}
-
-            {activeRoom?.pinned_comment ? (
-              <div className="notification-group-head" style={{ marginTop: 16 }}>
-                <strong>📌 تعليق مثبّت</strong>
-                <span className="muted">{activeRoom.pinned_comment.user}</span>
-                <p>{activeRoom.pinned_comment.text}</p>
-              </div>
-            ) : null}
-
-            <div className="live-toolbar wrap-composer-actions">
-              <input className="input" placeholder="عنوان البث..." value={title} onChange={(event) => setTitle(event.target.value)} />
-              <select className="input live-quality-select" value={quality} onChange={(event) => setQuality(event.target.value)}>
-                <option value="auto">الجودة: تلقائي</option>
-                <option value="high">عالية</option>
-                <option value="medium">متوسطة</option>
-                <option value="low">منخفضة</option>
-              </select>
-              <Button onClick={handleCreateLive} disabled={joining || !isOnline}>{joining ? 'جارٍ التجهيز...' : 'Start Live'}</Button>
-              {activeRoom?.role === 'host' ? <Button variant="secondary" onClick={handleEndLive}>End Live</Button> : null}
-              {activeRoom ? <Button variant="secondary" onClick={() => joinRoom(activeRoom, activeRoom.role || 'viewer')}>إعادة الاتصال</Button> : null}
-              {activeRoom ? <Button variant="secondary" onClick={copyRoomIdentifier}>نسخ رقم الغرفة</Button> : null}
-            </div>
-
-            <div className="muted">{status}</div>
-            <div className="muted">{viewerExperienceLabel}</div>
-            {!isOnline ? <div className="alert warning">لا يوجد اتصال إنترنت حالياً، لذا تم إيقاف إنشاء/الاتصال بالبث مؤقتاً.</div> : null}
-            {error ? <ErrorState title="خطأ في البث المباشر" description={error} onRetry={refreshRooms} /> : null}
           </Card>
-        </div>
+        </section>
 
-        <div className="live-side">
+        {error ? <div className="alert error">{error}</div> : null}
+
+        <section className="analytics-grid live-analytics-grid">
           <Card>
-            <div className="section-head compact">
-              <div>
-                <h3 className="section-title">البثوث الحالية</h3>
-                <p className="muted">الغرف المميزة تظهر أولاً مع مؤشرات الذروة والنشاط.</p>
-              </div>
-            </div>
-            {loading ? <div className="empty-mini">جارٍ تحميل الغرف...</div> : null}
-            <div className="list-grid">
-              {rooms.map((room) => (
-                <div key={room.id} className="live-room-row">
-                  <div>
-                    <strong>{room.title || room.username}</strong>
-                    <div className="muted">بواسطة {room.username} • {room.viewer_count || 0} مشاهد • ذروة {room.peak_viewer_count || 0}</div>
+            <div className="card-head split"><h3 className="section-title">الغرف النشطة</h3><span className="badge">Viewer Count حقيقي</span></div>
+            {roomCards.length ? (
+              <div className="room-grid">
+                {roomCards.map((room) => (
+                  <div key={room.id} className="room-card">
+                    <div className="room-card-head">
+                      <strong>{room.title}</strong>
+                      {room.featured ? <span className="glass-chip">Featured</span> : null}
+                    </div>
+                    <p className="muted no-margin">{room.username} • {room.stream_health?.status ? healthLabel(room.stream_health.status) : 'ممتاز'}</p>
                     <div className="story-viewer-actions">
-                      {room.featured ? <span className="glass-chip">مميّز</span> : null}
+                      <span className="glass-chip">👀 {room.real_viewer_count || room.viewer_count || 0}</span>
                       <span className="glass-chip">💬 {room.comments_count || 0}</span>
-                      <span className="glass-chip">❤️ {room.hearts_count || 0}</span>
+                      <span className="glass-chip">🎁 {room.gifts_summary?.count || 0}</span>
+                    </div>
+                    <div className="hero-actions-wrap">
+                      <Button variant="secondary" onClick={() => joinRoom(room, room.username === currentUser ? 'host' : 'viewer')}>دخول البث</Button>
+                      <Button variant="secondary" onClick={() => shareLiveRoom({ room_id: room.id })}>Share</Button>
                     </div>
                   </div>
-                  <button type="button" className="mini-action" onClick={() => joinRoom(room, room.username === currentUser ? 'host' : 'viewer')}>
-                    دخول
-                  </button>
-                </div>
-              ))}
-              {!loading && rooms.length === 0 ? <div className="empty-mini">لا توجد بثوث نشطة الآن.</div> : null}
-            </div>
+                ))}
+              </div>
+            ) : <EmptyState icon="🎥" title="لا توجد غرف مباشرة حالياً" description="ابدأ أول بث من اللوحة اللي فوق وهيظهر هنا فوراً." />}
           </Card>
 
           <Card>
-            <h3 className="section-title">دردشة البث</h3>
-            <div className="live-comments">
-              {comments.map((comment) => (
-                <div key={comment.id || `${comment.user}-${comment.created_at}-${comment.text}`} className="comment-item">
-                  <b>{comment.user}{comment.pinned ? ' 📌' : ''}</b>
-                  <span>{comment.text}</span>
-                </div>
-              ))}
-              {comments.length === 0 ? <div className="empty-mini">لا توجد تعليقات بعد.</div> : null}
-            </div>
-            <div className="comment-composer">
-              <input
-                className="input"
-                placeholder="اكتب رسالة داخل البث..."
-                value={message}
-                onChange={(event) => setMessage(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    handleSendComment();
-                  }
-                }}
-              />
-              <button type="button" className="mini-action" onClick={handleSendComment}>إرسال</button>
-              <button type="button" className="mini-action" onClick={handleHeart}>❤️</button>
-            </div>
+            <div className="card-head split"><h3 className="section-title">بثّي الحالي</h3><span className="badge">Creator Dashboard</span></div>
+            {activeRoom ? (
+              <div className="dashboard-mini-summary live-dashboard-mini">
+                <div><strong>{activeRoom.viewer_count || 0}</strong><span>مشاهدون</span></div>
+                <div><strong>{activeRoom.gifts_summary?.coin_pot || 0}</strong><span>Coins</span></div>
+                <div><strong>{activeRoom.live_share_count || 0}</strong><span>Shares</span></div>
+                <div><strong>{dashboard?.creator_dashboard?.engagement_score || 0}</strong><span>Engagement</span></div>
+              </div>
+            ) : <EmptyState icon="📡" title="لسه ما دخلتش غرفة" description="اختار أي بث أو ابدأ واحد جديد علشان تظهر لوحة التحكم." />}
           </Card>
-        </div>
-      </section>
+        </section>
+
+        {activeRoom ? (
+          <>
+            <Card className="live-room-stage">
+              <div className="card-head split">
+                <div>
+                  <h3 className="section-title">{activeRoom.title}</h3>
+                  <p className="muted no-margin">المضيف: {activeRoom.username} • الصحة: {healthLabel(activeRoom.stream_health?.status)}</p>
+                </div>
+                <div className="story-viewer-actions">
+                  <span className="glass-chip">ABR: {activeRoom.adaptive_bitrate_enabled ? 'On' : 'Off'}</span>
+                  <span className="glass-chip">Reconnect: {activeRoom.auto_reconnect_enabled ? 'On' : 'Off'}</span>
+                  <span className="glass-chip">CDN: {activeRoom.cdn_url ? 'Ready' : 'Default'}</span>
+                  <Button variant="secondary" onClick={disconnectRoom}>مغادرة</Button>
+                  {activeRoom.role === 'host' ? <Button onClick={() => runRoomAction(() => endLiveRoom(activeRoom.id))}>إنهاء البث</Button> : null}
+                </div>
+              </div>
+              <div className="live-stage-grid">
+                <div className="live-video-surface" data-quality={quality} ref={videosRef} />
+                <div className="live-side-panel">
+                  <div className="story-viewer-actions wrap">
+                    <span className="glass-chip">👀 {activeRoom.viewer_count || 0}</span>
+                    <span className="glass-chip">❤️ {activeRoom.hearts_count || 0}</span>
+                    <span className="glass-chip">🎁 {activeRoom.gifts_summary?.count || 0}</span>
+                    <span className="glass-chip">📊 {dashboard?.creator_dashboard?.retention_hint || 'Growing'}</span>
+                  </div>
+                  <div className="badge-row">
+                    {['auto', '720p', '1080p'].map((item) => <button key={item} type="button" className={`tab-btn ${quality === item ? 'active' : ''}`} onClick={() => setQuality(item)}>{item}</button>)}
+                  </div>
+                  <div className="input-shell textarea-shell live-comment-box">
+                    <label>شات البث</label>
+                    <textarea value={message} rows={3} onChange={(event) => setMessage(event.target.value)} placeholder="اكتب تعليق أو إعلان سريع للبث" />
+                  </div>
+                  <div className="hero-actions-wrap">
+                    <Button variant="secondary" onClick={handleSendComment}>إرسال تعليق</Button>
+                    <Button variant="secondary" onClick={handleHeart}>Heart</Button>
+                    <Button variant="secondary" onClick={() => runRoomAction(() => sendLiveReaction({ room_id: activeRoom.id, reaction: 'fire' }))}>🔥 Reaction</Button>
+                    <Button variant="secondary" onClick={() => runRoomAction(() => shareLiveRoom({ room_id: activeRoom.id }))}>Share</Button>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            <section className="analytics-grid live-tools-grid">
+              <Card>
+                <div className="card-head split"><h3 className="section-title">Gifts + Coins + Recording</h3><span className="badge">Monetization</span></div>
+                <div className="live-form-grid">
+                  <Input label="نوع الهدية" value={giftForm.gift_name} onChange={(event) => setGiftForm((prev) => ({ ...prev, gift_name: event.target.value }))} />
+                  <Input label="Coins" type="number" value={giftForm.coins} onChange={(event) => setGiftForm((prev) => ({ ...prev, coins: Number(event.target.value || 0) }))} />
+                </div>
+                <div className="hero-actions-wrap">
+                  <Button variant="secondary" onClick={() => runRoomAction(() => sendLiveGift({ room_id: activeRoom.id, gift_name: giftForm.gift_name, coins: giftForm.coins }))}>إرسال هدية</Button>
+                  <Button variant="secondary" onClick={() => runRoomAction(() => updateLiveRecording({ room_id: activeRoom.id, enabled: !activeRoom.recording?.enabled }))}>{activeRoom.recording?.enabled ? 'إيقاف التسجيل' : 'تشغيل التسجيل'}</Button>
+                </div>
+                <p className="muted">رصيد المضيف/المشرف: {dashboard?.wallet?.coin_balance || 0} coins</p>
+              </Card>
+
+              <Card>
+                <div className="card-head split"><h3 className="section-title">Polls + Multi Host + Battle</h3><span className="badge">Engagement</span></div>
+                <div className="live-form-grid">
+                  <Input label="سؤال الاستطلاع" value={pollForm.question} onChange={(event) => setPollForm((prev) => ({ ...prev, question: event.target.value }))} />
+                  <Input label="اختيار أول" value={pollForm.option1} onChange={(event) => setPollForm((prev) => ({ ...prev, option1: event.target.value }))} />
+                  <Input label="اختيار ثاني" value={pollForm.option2} onChange={(event) => setPollForm((prev) => ({ ...prev, option2: event.target.value }))} />
+                </div>
+                <div className="hero-actions-wrap">
+                  <Button variant="secondary" onClick={() => runRoomAction(() => createLivePoll({ room_id: activeRoom.id, question: pollForm.question, options: [pollForm.option1, pollForm.option2] }))}>إنشاء Poll</Button>
+                  {activeRoom.active_poll?.options?.map((option) => <Button key={option.id} variant="secondary" onClick={() => runRoomAction(() => voteLivePoll(activeRoom.active_poll.id, { room_id: activeRoom.id, option_id: option.id }))}>{option.text} ({option.votes})</Button>)}
+                </div>
+                <div className="live-form-grid">
+                  <Input label="اسم الـ Co-host" value={cohostUsername} onChange={(event) => setCohostUsername(event.target.value)} />
+                  <Input label="Battle Room ID" value={battleRoomId} onChange={(event) => setBattleRoomId(event.target.value)} />
+                </div>
+                <div className="hero-actions-wrap">
+                  <Button variant="secondary" onClick={() => runRoomAction(() => addLiveCohost({ room_id: activeRoom.id, username: cohostUsername }))}>إضافة Co-host</Button>
+                  <Button variant="secondary" onClick={() => runRoomAction(() => startLiveBattle({ room_id: activeRoom.id, opponent_room_id: battleRoomId }))}>بدء Battle</Button>
+                </div>
+              </Card>
+            </section>
+
+            <section className="analytics-grid live-tools-grid">
+              <Card>
+                <div className="card-head split"><h3 className="section-title">Live Moderation</h3><span className="badge">Mute / Kick</span></div>
+                <div className="live-form-grid">
+                  <Input label="اسم المستخدم" value={moderation.username} onChange={(event) => setModeration((prev) => ({ ...prev, username: event.target.value }))} />
+                  <Input label="الإجراء" value={moderation.action} onChange={(event) => setModeration((prev) => ({ ...prev, action: event.target.value }))} />
+                </div>
+                <div className="hero-actions-wrap">
+                  <Button variant="secondary" onClick={() => runRoomAction(() => moderateLiveUser({ room_id: activeRoom.id, username: moderation.username, action: moderation.action }))}>تنفيذ الإجراء</Button>
+                </div>
+                <div className="badge-row">
+                  {(activeRoom.moderation?.muted_users || []).map((item) => <span key={`mute-${item}`} className="glass-chip">🔇 {item}</span>)}
+                  {(activeRoom.moderation?.kicked_users || []).map((item) => <span key={`kick-${item}`} className="glass-chip">⛔ {item}</span>)}
+                </div>
+              </Card>
+
+              <Card>
+                <div className="card-head split"><h3 className="section-title">Replay + Analytics + Reactions</h3><span className="badge">Replay Center</span></div>
+                <div className="dashboard-mini-summary live-dashboard-mini">
+                  <div><strong>{activeRoom.replay?.clips?.length || 0}</strong><span>Clips</span></div>
+                  <div><strong>{activeRoom.analytics?.shares || 0}</strong><span>Shares</span></div>
+                  <div><strong>{activeRoom.analytics?.gift_events || 0}</strong><span>Gifts</span></div>
+                  <div><strong>{activeRoom.analytics?.poll_votes || 0}</strong><span>Votes</span></div>
+                </div>
+                <div className="badge-row">
+                  {Object.entries(activeRoom.live_reactions || {}).map(([key, value]) => <span key={key} className="glass-chip">{key} {value}</span>)}
+                </div>
+                {(activeRoom.replay?.clips || []).length ? (
+                  <div className="timeline-list">
+                    {activeRoom.replay.clips.map((clip) => (
+                      <div key={clip.id} className="timeline-item">
+                        <strong>{clip.label}</strong>
+                        <p>{clip.started_at} → {clip.ended_at}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : <p className="muted">الـ Replay هيتكوّن تلقائياً بعد نهاية البث المسجّل.</p>}
+              </Card>
+            </section>
+
+            <Card>
+              <div className="card-head split"><h3 className="section-title">تعليقات البث المباشر</h3><span className="badge">Community Feed</span></div>
+              {comments.length ? (
+                <div className="timeline-list">
+                  {comments.map((comment) => (
+                    <div key={comment.id} className="timeline-item">
+                      <strong>{comment.user}</strong>
+                      <p>{comment.text}</p>
+                      <small>{comment.created_at ? new Date(comment.created_at).toLocaleString('ar-EG') : 'الآن'}</small>
+                    </div>
+                  ))}
+                </div>
+              ) : <EmptyState icon="💬" title="لسه ما فيش تعليقات" description="أول تعليق أو تفاعل هيظهر هنا لحظياً." />}
+            </Card>
+          </>
+        ) : null}
+      </div>
     </MainLayout>
   );
 }

@@ -3,9 +3,12 @@ import { useQuery } from '@tanstack/react-query';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
+import Modal from '../components/ui/Modal.jsx';
 import EmptyState from '../components/feedback/EmptyState.jsx';
 import ErrorState from '../components/feedback/ErrorState.jsx';
 import { FeedSkeleton } from '../components/feedback/Skeleton.jsx';
+import NestedComments from '../components/feed/NestedComments.jsx';
+import LazyMedia from '../components/media/LazyMedia.jsx';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import {
   addComment,
@@ -13,6 +16,7 @@ import {
   getComments,
   getDraftPosts,
   getPostHistory,
+  getPostInsights,
   getPosts,
   likePost,
   savePost,
@@ -168,12 +172,16 @@ function MediaGallery({ urls = [] }) {
   if (!urls.length) return null;
   return (
     <div style={{ display: 'grid', gridTemplateColumns: urls.length > 1 ? 'repeat(auto-fit, minmax(180px, 1fr))' : '1fr', gap: 12 }}>
-      {urls.map((url, index) => {
-        if (VIDEO_RE.test(url)) {
-          return <video key={`${url}-${index}`} src={url} controls playsInline className="post-media" style={{ width: '100%', borderRadius: 20 }} />;
-        }
-        return <img key={`${url}-${index}`} src={url} alt="post media" className="post-media" style={{ width: '100%', borderRadius: 20, objectFit: 'cover' }} />;
-      })}
+      {urls.map((url, index) => (
+        <LazyMedia
+          key={`${url}-${index}`}
+          src={url}
+          alt={`post media ${index + 1}`}
+          priority={index === 0}
+          className="post-media"
+          style={{ width: '100%' }}
+        />
+      ))}
     </div>
   );
 }
@@ -227,7 +235,13 @@ export default function Feed() {
   const [showEmojiPanel, setShowEmojiPanel] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [activeFilter, setActiveFilter] = useState('feed');
+  const [visibleCount, setVisibleCount] = useState(6);
+  const [commentSubmittingMap, setCommentSubmittingMap] = useState({});
+  const [insightsOpen, setInsightsOpen] = useState(false);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsData, setInsightsData] = useState(null);
   const editorRef = useRef(null);
+  const feedSentinelRef = useRef(null);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['feed-v2', currentUser],
@@ -248,6 +262,21 @@ export default function Feed() {
       if (item.preview?.startsWith('blob:')) URL.revokeObjectURL(item.preview);
     });
   }, [attachments]);
+
+  useEffect(() => {
+    setVisibleCount(6);
+  }, [activeFilter]);
+
+  useEffect(() => {
+    if (activeFilter !== 'feed' || !feedSentinelRef.current || typeof IntersectionObserver === 'undefined') return undefined;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) {
+        setVisibleCount((prev) => Math.min(posts.length, prev + 6));
+      }
+    }, { rootMargin: '400px 0px', threshold: 0.1 });
+    observer.observe(feedSentinelRef.current);
+    return () => observer.disconnect();
+  }, [activeFilter, posts.length]);
 
   const resetComposer = () => {
     attachments.forEach((item) => {
@@ -403,14 +432,22 @@ export default function Feed() {
     }
   };
 
-  const submitComment = async (postId) => {
-    const text = sanitizeInputText(commentText[postId] || '', { maxLength: 400 });
+  const submitComment = async (postId, parentId = null, overrideText = null) => {
+    const raw = overrideText ?? commentText[postId] ?? '';
+    const text = sanitizeInputText(raw, { maxLength: 400 });
     if (!text) return;
-    await addComment(postId, text);
-    const { data: commentsData } = await getComments(postId);
-    setCommentsMap((prev) => ({ ...prev, [postId]: Array.isArray(commentsData) ? commentsData : [] }));
-    setCommentText((prev) => ({ ...prev, [postId]: '' }));
-    await refetch();
+    setCommentSubmittingMap((prev) => ({ ...prev, [postId]: true }));
+    try {
+      await addComment(postId, text, parentId);
+      const { data: commentsData } = await getComments(postId);
+      setCommentsMap((prev) => ({ ...prev, [postId]: Array.isArray(commentsData) ? commentsData : [] }));
+      if (!parentId) {
+        setCommentText((prev) => ({ ...prev, [postId]: '' }));
+      }
+      await refetch();
+    } finally {
+      setCommentSubmittingMap((prev) => ({ ...prev, [postId]: false }));
+    }
   };
 
   const toggleComments = async (postId) => {
@@ -434,6 +471,17 @@ export default function Feed() {
   const handleVote = async (postId, optionKey) => {
     await votePoll(postId, optionKey);
     await refetch();
+  };
+
+  const openInsights = async (postId) => {
+    setInsightsOpen(true);
+    setInsightsLoading(true);
+    try {
+      const { data: payload } = await getPostInsights(postId);
+      setInsightsData(payload || null);
+    } finally {
+      setInsightsLoading(false);
+    }
   };
 
   const composerSummary = useMemo(() => {
@@ -461,7 +509,7 @@ export default function Feed() {
     );
   }
 
-  const activePosts = activeFilter === 'drafts' ? drafts : posts;
+  const activePosts = activeFilter === 'drafts' ? drafts : posts.slice(0, visibleCount);
 
   return (
     <MainLayout>
@@ -646,6 +694,7 @@ export default function Feed() {
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <span className="glass-chip">❤️ {post.likes || 0}</span>
+                    <span className="glass-chip">💬 {post.comments_count || 0}</span>
                     <span className="glass-chip">🔁 {post.share_count || 0}</span>
                     <span className="glass-chip">💾 {post.save_count || 0}</span>
                   </div>
@@ -681,6 +730,7 @@ export default function Feed() {
                   <Button variant={post.saved_by_me ? 'primary' : 'secondary'} onClick={() => toggleSave(post.id)}>حفظ</Button>
                   <Button variant="secondary" onClick={() => handleShare(post)}>مشاركة</Button>
                   <Button variant="secondary" onClick={() => toggleComments(post.id)}>التعليقات</Button>
+                  <Button variant="secondary" onClick={() => openInsights(post.id)}>Insights</Button>
                   {post.username === currentUser ? (
                     <>
                       <Button variant="secondary" onClick={() => applyDraftToComposer(post)}>تعديل</Button>
@@ -701,23 +751,15 @@ export default function Feed() {
                 ) : null}
 
                 {commentsMap[post.id] ? (
-                  <div style={{ display: 'grid', gap: 10, marginTop: 16 }}>
-                    {(commentsMap[post.id] || []).map((comment) => (
-                      <div key={comment.id || `${comment.username}-${comment.created_at}`} className="glass-chip" style={{ justifyContent: 'space-between', gap: 12 }}>
-                        <strong>{comment.username || comment.user || 'user'}</strong>
-                        <span style={{ flex: 1 }}>{comment.comment || comment.text || comment.content}</span>
-                      </div>
-                    ))}
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <input
-                        className="input"
-                        style={{ flex: 1, minWidth: 220 }}
-                        value={commentText[post.id] || ''}
-                        placeholder="اكتب تعليقاً"
-                        onChange={(event) => setCommentText((prev) => ({ ...prev, [post.id]: event.target.value }))}
-                      />
-                      <Button onClick={() => submitComment(post.id)}>إرسال</Button>
-                    </div>
+                  <div style={{ marginTop: 16 }}>
+                    <NestedComments
+                      comments={commentsMap[post.id] || []}
+                      rootValue={commentText[post.id] || ''}
+                      onRootValueChange={(value) => setCommentText((prev) => ({ ...prev, [post.id]: value }))}
+                      onSubmitRoot={() => submitComment(post.id)}
+                      onSubmitReply={(parentId, value) => submitComment(post.id, parentId, value)}
+                      submitting={Boolean(commentSubmittingMap[post.id])}
+                    />
                   </div>
                 ) : null}
               </Card>
@@ -729,6 +771,10 @@ export default function Feed() {
                 title={activeFilter === 'drafts' ? 'لا توجد مسودات بعد' : 'لا توجد منشورات حالياً'}
                 description={activeFilter === 'drafts' ? 'احفظ أول مسودة من المحرر وسيظهر لك هنا مع الجدولة وسجل التعديلات.' : 'ابدأ بنشر أول منشورك باستخدام المحرر الجديد.'}
               />
+            ) : null}
+
+            {activeFilter === 'feed' && posts.length > activePosts.length ? (
+              <div ref={feedSentinelRef} className="feed-infinite-sentinel">اسحب أو انزل شوية لتحميل المزيد من المنشورات…</div>
             ) : null}
           </div>
 
@@ -774,6 +820,32 @@ export default function Feed() {
           </div>
         </div>
       </div>
+
+      <Modal open={insightsOpen} title="Post Insights" onClose={() => setInsightsOpen(false)}>
+        {insightsLoading ? <div className="muted">جارٍ تحميل الإحصائيات…</div> : null}
+        {!insightsLoading && insightsData ? (
+          <div className="insights-grid-modal">
+            <div className="glass-chip" style={{ justifyContent: 'space-between' }}><span>الإعجابات</span><strong>{insightsData.likes}</strong></div>
+            <div className="glass-chip" style={{ justifyContent: 'space-between' }}><span>التعليقات</span><strong>{insightsData.comments}</strong></div>
+            <div className="glass-chip" style={{ justifyContent: 'space-between' }}><span>المشاركات</span><strong>{insightsData.shares}</strong></div>
+            <div className="glass-chip" style={{ justifyContent: 'space-between' }}><span>الحفظ</span><strong>{insightsData.saves}</strong></div>
+            <div className="glass-chip" style={{ justifyContent: 'space-between' }}><span>التعديلات</span><strong>{insightsData.edits}</strong></div>
+            <div className="glass-chip" style={{ justifyContent: 'space-between' }}><span>Engagement</span><strong>{insightsData.engagement_score}</strong></div>
+            <div className="glass-chip" style={{ justifyContent: 'space-between' }}><span>سرعة النقاش</span><strong>{insightsData.comment_velocity}</strong></div>
+            <div className="glass-chip" style={{ justifyContent: 'space-between' }}><span>رابط المشاركة</span><strong>{insightsData.share_url}</strong></div>
+            <div style={{ gridColumn: '1 / -1', display: 'grid', gap: 10, marginTop: 8 }}>
+              <strong>أحدث التعليقات</strong>
+              {(insightsData.recent_commenters || []).map((item) => (
+                <div key={item.id} className="glass-chip" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                  <strong>@{item.username}</strong>
+                  <span>{item.content}</span>
+                </div>
+              ))}
+              {!insightsData.recent_commenters?.length ? <div className="muted">لا توجد تعليقات حديثة.</div> : null}
+            </div>
+          </div>
+        ) : null}
+      </Modal>
     </MainLayout>
   );
 }

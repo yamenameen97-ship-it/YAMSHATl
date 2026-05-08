@@ -19,5 +19,6 @@ export const likePost = (postId) => API.post(`/posts/${postId}/like`);
 export const savePost = (postId) => API.post(`/posts/${postId}/save`);
 export const sharePost = (postId, platform = 'copy') => API.post(`/posts/${postId}/share`, { platform });
 export const votePoll = (postId, optionKey) => API.post(`/posts/${postId}/poll-vote`, { option_key: optionKey });
-export const addComment = (postId, text) => API.post(`/posts/${postId}/comment`, { text });
+export const addComment = (postId, text, parentId = null) => API.post(`/posts/${postId}/comment`, { text, parent_id: parentId });
 export const getComments = (postId) => API.get(`/posts/${postId}/comments`);
+export const getPostInsights = (postId) => API.get(`/posts/${postId}/insights`, { cache: false, forceRefresh: true });

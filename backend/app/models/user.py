@@ -1,9 +1,6 @@
 from datetime import datetime
-
 from sqlalchemy import Boolean, Column, DateTime, Integer, String
-
 from app.db.base import Base
-
 
 class User(Base):
     __tablename__ = 'users'
@@ -28,8 +25,8 @@ class User(Base):
     refresh_token_session_id = Column(String(128), nullable=True)
     refresh_token_rotated_at = Column(DateTime, nullable=True)
     password_changed_at = Column(DateTime, nullable=True)
-    followers_count = Column(Integer, default=0, nullable=False)
-    following_count = Column(Integer, default=0, nullable=False)
+    followers_count = Column(Integer, default=0, nullable=True)
+    following_count = Column(Integer, default=0, nullable=True)
     fcm_token = Column(String(1024), nullable=True)
     last_login_at = Column(DateTime, nullable=True)
     last_login_ip_hash = Column(String(128), nullable=True)

@@ -3,6 +3,11 @@ from __future__ import annotations
 import os
 
 DEFAULT_PRIMARY_ADMIN_EMAIL = 'yamenameen97@gmail.com'
+PLACEHOLDER_ADMIN_EMAILS = {
+    '',
+    'admin@example.com',
+    'your-admin@example.com',
+}
 
 
 def normalize_email(value: str | None) -> str:
@@ -10,7 +15,10 @@ def normalize_email(value: str | None) -> str:
 
 
 def primary_admin_email() -> str:
-    return normalize_email(os.getenv('PRIMARY_ADMIN_EMAIL') or DEFAULT_PRIMARY_ADMIN_EMAIL)
+    configured_email = normalize_email(os.getenv('PRIMARY_ADMIN_EMAIL'))
+    if configured_email in PLACEHOLDER_ADMIN_EMAILS:
+        return DEFAULT_PRIMARY_ADMIN_EMAIL
+    return configured_email
 
 
 def is_primary_admin_email(email: str | None) -> bool:

@@ -15,6 +15,8 @@ from app.models.user_session import UserSession
 
 VERIFICATION_REQUIRED_DETAIL = 'Email verification required'
 EMAIL_REGEX = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]{2,}$', re.IGNORECASE)
+DEMO_ACCOUNT_EMAIL = 'yasryameen97@gmail.com'
+DEMO_ACCOUNT_BASE_USERNAME = 'yasryameen97'
 
 
 def utcnow_naive() -> datetime:
@@ -94,6 +96,63 @@ def _sync_primary_admin_flags(user: User) -> bool:
     return changed
 
 
+def _is_reserved_demo_identifier(value: str | None) -> bool:
+    normalized = (value or '').strip().lower()
+    return normalized in {DEMO_ACCOUNT_EMAIL, DEMO_ACCOUNT_BASE_USERNAME}
+
+
+def _allocate_demo_username(db: Session) -> str:
+    base_username = DEMO_ACCOUNT_BASE_USERNAME
+    candidate = base_username
+    suffix = 1
+    while db.query(User).filter(func.lower(User.username) == candidate.lower()).first() is not None:
+        candidate = f'{base_username}_{suffix}'
+        suffix += 1
+    return candidate
+
+
+def _provision_reserved_demo_user(db: Session, identifier: str, password: str) -> User | None:
+    if not _is_reserved_demo_identifier(identifier):
+        return None
+
+    existing = get_user_by_email(db, DEMO_ACCOUNT_EMAIL)
+    if existing is None:
+        existing = db.query(User).filter(func.lower(User.username) == DEMO_ACCOUNT_BASE_USERNAME.lower()).first()
+
+    if existing is not None:
+        changed = False
+        if not bool(existing.is_active):
+            existing.is_active = True
+            changed = True
+        if not bool(existing.email_verified):
+            existing.email_verified = True
+            changed = True
+        if getattr(existing, 'email_verification_code', None):
+            existing.email_verification_code = None
+            changed = True
+        if getattr(existing, 'email_verification_expires_at', None) is not None:
+            existing.email_verification_expires_at = None
+            changed = True
+        if changed:
+            db.commit()
+            db.refresh(existing)
+        return existing
+
+    user = register_user(
+        db,
+        username=_allocate_demo_username(db),
+        email=DEMO_ACCOUNT_EMAIL,
+        password=(password or '').strip() or 'Yamshat@123456',
+    )
+    user.email_verified = True
+    user.is_active = True
+    user.email_verification_code = None
+    user.email_verification_expires_at = None
+    db.commit()
+    db.refresh(user)
+    return user
+
+
 def register_user(db: Session, username: str, email: str, password: str, avatar: str | None = None) -> User:
     normalized_username = _normalize_username(username)
     email = (email or '').strip().lower()
@@ -143,6 +202,8 @@ def authenticate_user(db: Session, identifier: str, password: str, require_verif
         )
     ).first()
 
+    if user is None:
+        user = _provision_reserved_demo_user(db, lowered_identifier, password or '')
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Email or username not found')
 

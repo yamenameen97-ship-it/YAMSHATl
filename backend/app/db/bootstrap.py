@@ -153,6 +153,11 @@ def _migrate_users_table(engine: Engine) -> None:
                 'email_verified',
                 'email_verification_code',
                 'email_verification_expires_at',
+                'followers_count',
+                'following_count',
+                'two_factor_enabled',
+                'two_factor_method',
+                'suspicious_login_count',
                 'created_at',
             ]
             if column in columns
@@ -193,6 +198,16 @@ def _migrate_users_table(engine: Engine) -> None:
                     updates['email_verification_expires_at'] = None
             elif row.get('email_verified') is None:
                 updates['email_verified'] = True
+            if row.get('followers_count') is None:
+                updates['followers_count'] = 0
+            if row.get('following_count') is None:
+                updates['following_count'] = 0
+            if row.get('two_factor_enabled') is None:
+                updates['two_factor_enabled'] = False
+            if row.get('two_factor_method') in (None, ''):
+                updates['two_factor_method'] = 'email'
+            if row.get('suspicious_login_count') is None:
+                updates['suspicious_login_count'] = 0
             if row.get('created_at') is None:
                 updates['created_at'] = datetime.utcnow()
 
@@ -360,7 +375,10 @@ def _ensure_seed_accounts(engine: Engine) -> None:
             connection.execute(
                 text(
                     'UPDATE users SET username = :username, hashed_password = :hashed_password, role = :role, '
-                    'is_active = :is_active, email_verified = :email_verified WHERE id = :id'
+                    'is_active = :is_active, email_verified = :email_verified, followers_count = :followers_count, '
+                    'following_count = :following_count, two_factor_enabled = :two_factor_enabled, '
+                    'two_factor_method = :two_factor_method, suspicious_login_count = :suspicious_login_count '
+                    'WHERE id = :id'
                 ),
                 {
                     'id': int(existing['id']),
@@ -369,6 +387,11 @@ def _ensure_seed_accounts(engine: Engine) -> None:
                     'role': 'user',
                     'is_active': True,
                     'email_verified': True,
+                    'followers_count': 0,
+                    'following_count': 0,
+                    'two_factor_enabled': False,
+                    'two_factor_method': 'email',
+                    'suspicious_login_count': 0,
                 },
             )
             return
@@ -380,8 +403,15 @@ def _ensure_seed_accounts(engine: Engine) -> None:
         username = DEFAULT_SUBSCRIBER['username'] if username_taken is None else f"{DEFAULT_SUBSCRIBER['username']}_1"
         connection.execute(
             text(
-                'INSERT INTO users (username, email, hashed_password, role, is_active, email_verified, created_at) '
-                'VALUES (:username, :email, :hashed_password, :role, :is_active, :email_verified, :created_at)'
+                'INSERT INTO users ('
+                'username, email, hashed_password, role, is_active, email_verified, '
+                'followers_count, following_count, two_factor_enabled, two_factor_method, '
+                'suspicious_login_count, created_at'
+                ') VALUES ('
+                ':username, :email, :hashed_password, :role, :is_active, :email_verified, '
+                ':followers_count, :following_count, :two_factor_enabled, :two_factor_method, '
+                ':suspicious_login_count, :created_at'
+                ')'
             ),
             {
                 'username': username,
@@ -390,6 +420,11 @@ def _ensure_seed_accounts(engine: Engine) -> None:
                 'role': 'user',
                 'is_active': True,
                 'email_verified': True,
+                'followers_count': 0,
+                'following_count': 0,
+                'two_factor_enabled': False,
+                'two_factor_method': 'email',
+                'suspicious_login_count': 0,
                 'created_at': datetime.utcnow(),
             },
         )

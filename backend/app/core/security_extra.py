@@ -8,6 +8,16 @@ from app.core.config import settings
 
 SAFE_METHODS = {'GET', 'HEAD', 'OPTIONS'}
 CSRF_COOKIE_NAME = 'yamshat_csrf_token'
+PUBLIC_AUTH_PATHS = {
+    '/auth/login',
+    '/auth/register',
+    '/auth/verify-email',
+    '/auth/resend-verification',
+    '/auth/forgot-password',
+    '/auth/verify-reset-code',
+    '/auth/reset-password',
+}
+TRUSTED_NATIVE_CLIENTS = {'android', 'ios', 'mobile'}
 
 
 def _request_origin(request: Request) -> str:
@@ -97,18 +107,22 @@ async def security_headers(request: Request, call_next):
     method = request.method.upper()
 
     if path.startswith(settings.API_PREFIX) and method not in SAFE_METHODS:
+        short_path = path[len(settings.API_PREFIX):] or '/'
         origin = request.headers.get('origin', '')
         referer = request.headers.get('referer', '')
         authorization = request.headers.get('authorization', '')
         requested_with = request.headers.get('x-requested-with', '')
+        client_name = str(request.headers.get('x-yamshat-client') or '').strip().lower()
+        is_public_auth = short_path in PUBLIC_AUTH_PATHS
+        is_trusted_native = client_name in TRUSTED_NATIVE_CLIENTS
 
         if origin and not _is_allowed_origin(origin, request):
             return JSONResponse(status_code=403, content={'detail': 'Origin not allowed'})
         if not origin and referer and not _is_allowed_origin(referer, request):
             return JSONResponse(status_code=403, content={'detail': 'Referer not allowed'})
-        if not _csrf_cookie_matches_header(request):
+        if not is_public_auth and not is_trusted_native and not _csrf_cookie_matches_header(request):
             return JSONResponse(status_code=403, content={'detail': 'CSRF token mismatch'})
-        if not origin and not referer and not authorization and requested_with != 'XMLHttpRequest':
+        if not origin and not referer and not authorization and requested_with != 'XMLHttpRequest' and not is_trusted_native:
             return JSONResponse(status_code=403, content={'detail': 'CSRF protection blocked the request'})
 
     response = await call_next(request)

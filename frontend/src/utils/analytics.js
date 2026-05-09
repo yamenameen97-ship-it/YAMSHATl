@@ -1,5 +1,6 @@
 import { API_BASE } from '../api/config.js';
 import { getAuthToken } from './auth.js';
+import { getCsrfToken } from './csrf.js';
 
 const QUEUE_KEY = 'yamshat-analytics-queue';
 
@@ -46,6 +47,8 @@ function buildHeaders() {
   };
   const token = getAuthToken();
   if (token) headers.Authorization = `Bearer ${token}`;
+  const csrfToken = getCsrfToken();
+  if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
   return headers;
 }
 

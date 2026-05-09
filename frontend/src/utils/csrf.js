@@ -1,7 +1,12 @@
 const CSRF_COOKIE_NAME = 'yamshat_csrf_token';
+const CSRF_STORAGE_KEY = 'yamshat_csrf_token';
 
 function canUseDocument() {
   return typeof document !== 'undefined';
+}
+
+function canUseStorage() {
+  return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 }
 
 function readCookie(name) {
@@ -14,17 +19,38 @@ function readCookie(name) {
   return raw ? decodeURIComponent(raw.slice(prefix.length)) : '';
 }
 
-export function getCsrfToken() {
-  return readCookie(CSRF_COOKIE_NAME);
+function readStoredToken() {
+  if (!canUseStorage()) return '';
+  try {
+    return String(window.localStorage.getItem(CSRF_STORAGE_KEY) || window.sessionStorage.getItem(CSRF_STORAGE_KEY) || '').trim();
+  } catch {
+    return '';
+  }
 }
 
-export function setCsrfToken() {
-  // CSRF token is delivered and rotated by secure cookies only.
+export function getCsrfToken() {
+  return readStoredToken() || readCookie(CSRF_COOKIE_NAME);
+}
+
+export function setCsrfToken(value = '') {
+  if (!canUseStorage()) return;
+  const token = String(value || '').trim();
+  try {
+    if (token) {
+      window.localStorage.setItem(CSRF_STORAGE_KEY, token);
+      window.sessionStorage.setItem(CSRF_STORAGE_KEY, token);
+      return;
+    }
+    window.localStorage.removeItem(CSRF_STORAGE_KEY);
+    window.sessionStorage.removeItem(CSRF_STORAGE_KEY);
+  } catch {
+    // ignore storage failures
+  }
 }
 
 export function clearCsrfToken() {
-  // Cookie lifecycle is controlled by the backend.
+  setCsrfToken('');
 }
 
 export const csrfCookieName = CSRF_COOKIE_NAME;
-export const csrfStorageKey = '';
+export const csrfStorageKey = CSRF_STORAGE_KEY;

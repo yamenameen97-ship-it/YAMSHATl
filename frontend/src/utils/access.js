@@ -1,4 +1,4 @@
-export const PRIMARY_ADMIN_EMAIL = String(import.meta.env.VITE_PRIMARY_ADMIN_EMAIL || 'yamenameen97@gmail.com')
+export const PRIMARY_ADMIN_EMAIL = String(import.meta.env.VITE_PRIMARY_ADMIN_EMAIL || '')
   .trim()
   .toLowerCase();
 

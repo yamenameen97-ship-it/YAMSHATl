@@ -21,6 +21,10 @@ const AdminLive = lazy(() => import('./features/admin/index.js').then((mod) => (
 const AdminReports = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminReports })));
 const AdminSettings = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminSettings })));
 const AdminRbac = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminRbac })));
+const AdminChat = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminChat })));
+const AdminStories = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminStories })));
+const AdminReels = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminReels })));
+const AdminGroups = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminGroups })));
 const Login = lazy(() => import('./features/auth/index.js').then((mod) => ({ default: mod.Login })));
 const AdminLogin = lazy(() => import('./features/auth/index.js').then((mod) => ({ default: mod.AdminLogin })));
 const Register = lazy(() => import('./features/auth/index.js').then((mod) => ({ default: mod.Register })));
@@ -130,11 +134,16 @@ export default function App() {
             <Route path="/admin/dashboard" element={<ProtectedRoute requiredPermission="dashboard.view"><AdminDashboard /></ProtectedRoute>} />
             <Route path="/admin/users" element={<ProtectedRoute requiredPermission="users.view"><AdminUsers /></ProtectedRoute>} />
             <Route path="/admin/rbac" element={<ProtectedRoute requiredPermission="rbac.view"><AdminRbac /></ProtectedRoute>} />
-            <Route path="/admin/content" element={<ProtectedRoute requiredPermission="posts.view"><AdminPosts /></ProtectedRoute>} />
+            <Route path="/admin/posts" element={<ProtectedRoute requiredPermission="posts.view"><AdminPosts /></ProtectedRoute>} />
+            <Route path="/admin/content" element={<Navigate to="/admin/posts" replace />} />
             <Route path="/admin/notifications" element={<ProtectedRoute requiredPermission="notifications.manage"><AdminNotifications /></ProtectedRoute>} />
             <Route path="/admin/live" element={<ProtectedRoute requiredPermission="live.manage"><AdminLive /></ProtectedRoute>} />
             <Route path="/admin/reports" element={<ProtectedRoute requiredPermission="reports.view"><AdminReports /></ProtectedRoute>} />
             <Route path="/admin/settings" element={<ProtectedRoute requiredPermission="settings.manage"><AdminSettings /></ProtectedRoute>} />
+            <Route path="/admin/chat" element={<ProtectedRoute><AdminChat /></ProtectedRoute>} />
+            <Route path="/admin/stories" element={<ProtectedRoute><AdminStories /></ProtectedRoute>} />
+            <Route path="/admin/reels" element={<ProtectedRoute><AdminReels /></ProtectedRoute>} />
+            <Route path="/admin/groups" element={<ProtectedRoute><AdminGroups /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>

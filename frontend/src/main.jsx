@@ -8,10 +8,12 @@ import { queryClient } from './lib/queryClient.js';
 import { useAppStore } from './store/appStore.js';
 import RealtimeProvider from './realtime/RealtimeProvider.jsx';
 import { initializePerformanceToolkit } from './utils/performance.js';
+import { initializeRuntimeErrorCapture } from './utils/runtimeErrors.js';
 
 if (typeof window !== 'undefined') {
   window.__YAMSHAT_SW_READY__ = Promise.resolve(null);
   initializePerformanceToolkit();
+  initializeRuntimeErrorCapture();
 
   window.addEventListener('beforeinstallprompt', (event) => {
     event.preventDefault();

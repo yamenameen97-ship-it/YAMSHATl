@@ -9,14 +9,19 @@ import AdminTopbar from './AdminTopbar.jsx';
 import { useToast } from './ToastProvider.jsx';
 
 const routeMeta = {
-  '/admin/dashboard': { title: 'نظرة عامة لحظية', breadcrumb: ['الإدارة', 'النظرة العامة'] },
+  '/admin/dashboard': { title: 'لوحة التحكم', breadcrumb: ['الإدارة', 'الرئيسية'] },
+  '/admin/posts': { title: 'إدارة المنشورات', breadcrumb: ['الإدارة', 'المنشورات'] },
+  '/admin/content': { title: 'إدارة المنشورات', breadcrumb: ['الإدارة', 'المنشورات'] },
+  '/admin/chat': { title: 'إدارة الشات', breadcrumb: ['الإدارة', 'الشات'] },
+  '/admin/stories': { title: 'إدارة الستوري', breadcrumb: ['الإدارة', 'الستوري'] },
+  '/admin/reels': { title: 'إدارة الريلز', breadcrumb: ['الإدارة', 'الريلز'] },
+  '/admin/groups': { title: 'إدارة المجموعات', breadcrumb: ['الإدارة', 'المجموعات'] },
+  '/admin/live': { title: 'إدارة البث المباشر', breadcrumb: ['الإدارة', 'البث'] },
   '/admin/users': { title: 'إدارة المستخدمين', breadcrumb: ['الإدارة', 'المستخدمون'] },
   '/admin/rbac': { title: 'الأدوار والصلاحيات', breadcrumb: ['الإدارة', 'الصلاحيات'] },
-  '/admin/content': { title: 'إدارة المحتوى', breadcrumb: ['الإدارة', 'المحتوى'] },
-  '/admin/notifications': { title: 'مركز الإشعارات', breadcrumb: ['الإدارة', 'الإشعارات'] },
-  '/admin/live': { title: 'مركز تحكم البث المباشر', breadcrumb: ['الإدارة', 'البث المباشر'] },
-  '/admin/reports': { title: 'التقارير والتحليلات', breadcrumb: ['الإدارة', 'التقارير'] },
-  '/admin/settings': { title: 'الإعدادات', breadcrumb: ['الإدارة', 'الإعدادات'] },
+  '/admin/notifications': { title: 'الإشعارات', breadcrumb: ['الإدارة', 'الإشعارات'] },
+  '/admin/reports': { title: 'التقارير والإحصائيات', breadcrumb: ['الإدارة', 'التقارير'] },
+  '/admin/settings': { title: 'الإعدادات العامة', breadcrumb: ['الإدارة', 'الإعدادات'] },
 };
 
 export default function AdminLayout({ children }) {
@@ -66,11 +71,11 @@ export default function AdminLayout({ children }) {
   }, [pushToast, token, user?.username]);
 
   return (
-    <div className="admin-app-shell">
+    <div className="admin-app-shell admin-reference-shell">
       <AdminSidebar collapsed={collapsed} permissions={user?.permissions || []} role={user?.role || 'user'} />
       <div className="admin-main-shell">
         <AdminTopbar title={meta.title} onToggleSidebar={() => setCollapsed((prev) => !prev)} notifications={notifications} />
-        <main className="admin-page-shell">
+        <main className="admin-page-shell admin-reference-page-shell">
           <Breadcrumbs items={breadcrumbs} />
           {children}
         </main>

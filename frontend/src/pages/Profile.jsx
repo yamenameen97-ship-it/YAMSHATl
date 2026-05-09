@@ -10,6 +10,7 @@ import { ProfileSkeleton } from '../components/feedback/Skeleton.jsx';
 import {
   addCloseFriend,
   followUser,
+  getMe,
   getProfileBundle,
   muteUser,
   removeCloseFriend,
@@ -38,8 +39,9 @@ export default function Profile() {
   const { username: routeUsername } = useParams();
   const navigate = useNavigate();
   const currentUser = getCurrentUsername();
-  const username = routeUsername || currentUser;
-  const isOwnProfile = username === currentUser;
+  const [resolvedUsername, setResolvedUsername] = useState(routeUsername || currentUser || '');
+  const username = routeUsername || resolvedUsername || currentUser;
+  const isOwnProfile = Boolean(username) && username === currentUser;
   const [bundle, setBundle] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -59,8 +61,39 @@ export default function Profile() {
     badges: [],
   });
 
+  useEffect(() => {
+    let active = true;
+
+    const resolveUsername = async () => {
+      if (routeUsername) {
+        setResolvedUsername(routeUsername);
+        return;
+      }
+      if (currentUser) {
+        setResolvedUsername(currentUser);
+        return;
+      }
+      try {
+        const { data } = await getMe();
+        if (!active) return;
+        setResolvedUsername(data?.username || data?.user || '');
+      } catch {
+        if (active) setResolvedUsername('');
+      }
+    };
+
+    resolveUsername();
+    return () => {
+      active = false;
+    };
+  }, [currentUser, routeUsername]);
+
   const loadProfile = async () => {
-    if (!username) return;
+    if (!username) {
+      setLoading(false);
+      setError('تعذر تحديد الحساب المطلوب فتحه.');
+      return;
+    }
     try {
       setLoading(true);
       setError('');

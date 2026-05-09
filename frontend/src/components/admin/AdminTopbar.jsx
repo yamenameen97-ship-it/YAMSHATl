@@ -13,7 +13,6 @@ export default function AdminTopbar({ title, onToggleSidebar, notifications = []
   const user = getStoredUser();
   const debouncedQuery = useDebouncedValue(query, 350);
   const unreadCount = useMemo(() => notifications.filter((item) => !item.is_read).length, [notifications]);
-  const deployMode = window.YAMSHAT_DEPLOY_MODE === 'split-services' ? 'split-services' : 'single-service';
 
   useEffect(() => {
     let active = true;
@@ -46,23 +45,12 @@ export default function AdminTopbar({ title, onToggleSidebar, notifications = []
   };
 
   return (
-    <header className="admin-topbar">
-      <div className="topbar-main">
-        <button type="button" className="ghost-btn icon-btn" onClick={onToggleSidebar}>☰</button>
-        <div>
-          <div className="page-eyebrow">لوحة تحكم احترافية</div>
-          <h1 className="page-title">{title}</h1>
-          <div className="topbar-meta-row">
-            <span className="live-pill"><span className="status-dot live-dot" />تحديث لحظي</span>
-            <span className="deploy-pill">{deployMode === 'split-services' ? 'Web + Backend منفصلان' : 'نشر موحد'}</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="topbar-controls">
-        <div className="admin-search-box">
+    <header className="admin-topbar admin-reference-topbar">
+      <div className="admin-topbar-search-row">
+        <button type="button" className="ghost-btn icon-btn admin-menu-toggle" onClick={onToggleSidebar}>☰</button>
+        <div className="admin-search-box admin-reference-search-box">
           <span>⌕</span>
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="بحث فوري في المستخدمين والمنشورات" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="بحث عن مستخدم، بث، منشور..." />
           {(results.users.length || results.posts.length) ? (
             <div className="search-results-panel">
               {results.users.length ? (
@@ -78,11 +66,11 @@ export default function AdminTopbar({ title, onToggleSidebar, notifications = []
               ) : null}
               {results.posts.length ? (
                 <div>
-                  <strong>المحتوى</strong>
+                  <strong>المنشورات</strong>
                   {results.posts.map((item) => (
-                    <button key={item.id} type="button" className="search-result-item" onClick={() => navigate('/admin/content')}>
+                    <button key={item.id} type="button" className="search-result-item" onClick={() => navigate('/admin/posts')}>
                       <span>{item.username}</span>
-                      <small>{item.content.slice(0, 42)}</small>
+                      <small>{item.content?.slice(0, 42)}</small>
                     </button>
                   ))}
                 </div>
@@ -90,11 +78,34 @@ export default function AdminTopbar({ title, onToggleSidebar, notifications = []
             </div>
           ) : null}
         </div>
+      </div>
 
-        <button type="button" className="ghost-btn notification-button" onClick={() => setOpen((prev) => !prev)}>
+      <div className="admin-topbar-meta-block">
+        <div>
+          <div className="page-eyebrow">لوحة التحكم</div>
+          <h1 className="page-title admin-reference-title">{title}</h1>
+          <div className="topbar-meta-row">
+            <span className="live-pill"><span className="status-dot live-dot" />تحديث لحظي</span>
+            <span className="deploy-pill">واجهة RTL داكنة محسّنة</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="topbar-controls admin-reference-controls">
+        <button type="button" className="ghost-btn notification-button admin-reference-utility" onClick={() => setOpen((prev) => !prev)}>
           🔔
           <span>{unreadCount}</span>
         </button>
+        <Link className="ghost-btn admin-reference-utility" to="/admin/reports">📈</Link>
+        <Link className="ghost-btn admin-reference-utility" to="/admin/notifications">✉</Link>
+        <div className="profile-pill admin-profile-pill admin-reference-profile">
+          <div className="admin-reference-profile-avatar">{(user?.username || 'A').slice(0, 1).toUpperCase()}</div>
+          <div>
+            <strong>{user?.username || 'admin'}</strong>
+            <small>{user?.role || 'admin'}</small>
+          </div>
+        </div>
+        <button type="button" className="ghost-btn" onClick={handleLogout}>خروج</button>
 
         {open ? (
           <div className="notification-popover">
@@ -113,14 +124,6 @@ export default function AdminTopbar({ title, onToggleSidebar, notifications = []
             </div>
           </div>
         ) : null}
-
-        <div className="profile-pill admin-profile-pill">
-          <div>
-            <strong>{user?.username || 'admin'}</strong>
-            <small>{user?.role || 'admin'}</small>
-          </div>
-        </div>
-        <button type="button" className="ghost-btn" onClick={handleLogout}>خروج</button>
       </div>
     </header>
   );

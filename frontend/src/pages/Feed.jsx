@@ -511,17 +511,23 @@ export default function Feed() {
   }
 
   const activePosts = activeFilter === 'drafts' ? drafts : posts.slice(0, visibleCount);
+  const dashboardStats = [
+    { label: 'إجمالي المنشورات', value: posts.length, hint: 'كل المنشورات اللي اتحملت في الصفحة الرئيسية.' },
+    { label: 'المسودات الجاهزة', value: drafts.length, hint: 'مسودات تقدر ترجع تكملها أو تنشرها بسرعة.' },
+    { label: 'الوسائط الحالية', value: attachments.length, hint: 'عدد الملفات اللي مجهزة للنشر الآن.' },
+    { label: 'وضع العرض', value: activeFilter === 'drafts' ? 'المسودات' : 'المنشورات', hint: scheduledAt ? 'فيه منشور مجدول داخل المحرر.' : 'النشر الفوري جاهز من نفس الشاشة.' },
+  ];
 
   return (
     <MainLayout>
-      <div style={{ display: 'grid', gap: 20 }}>
-        <Card className="hero-card">
+      <div className="feed-page-shell">
+        <Card className="hero-card feed-hero-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
             <div>
               <div className="page-eyebrow">Feed Studio</div>
-              <h2 className="page-title">منشورات [Yamshat](#) المتقدمة</h2>
-              <p className="muted" style={{ marginBottom: 0 }}>
-                أضفت محرر Rich Text، مشاركة وحفظ، هاشتاج ومينشن، استطلاعات، جدولة، تثبيت، مسودات، سجل تعديلات، رفع متعدد بالسحب والإفلات، ضغط صور، قص مركزي، GIF وEmoji.
+              <h2 className="page-title">الصفحة الرئيسية المطوّرة في Yamshat</h2>
+              <p className="muted feed-hero-copy" style={{ marginBottom: 0 }}>
+                رتبت الصفحة الرئيسية عشان تبقى أوضح وأسرع: محرر نشر متكامل، مسودات، رفع متعدد، جدولة، استطلاعات، منشن وهاشتاج، وسجل تعديلات كله من شاشة واحدة بشكل أنضف وأسهل في المتابعة.
               </p>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -531,7 +537,17 @@ export default function Feed() {
           </div>
         </Card>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(320px, 1fr)', gap: 20, alignItems: 'start' }}>
+        <div className="feed-overview-grid">
+          {dashboardStats.map((item) => (
+            <Card key={item.label} className="overview-stat-card">
+              <strong className="overview-stat-value">{item.value}</strong>
+              <span className="overview-stat-label">{item.label}</span>
+              <small className="overview-stat-hint">{item.hint}</small>
+            </Card>
+          ))}
+        </div>
+
+        <div className="feed-content-grid">
           <div style={{ display: 'grid', gap: 20 }}>
             <Card ref={null}>
               <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -779,7 +795,7 @@ export default function Feed() {
             ) : null}
           </div>
 
-          <div style={{ display: 'grid', gap: 20 }}>
+          <div className="feed-side-rail">
             <Card>
               <div className="card-head"><h3>لوحة سريعة</h3></div>
               <div style={{ display: 'grid', gap: 12 }}>

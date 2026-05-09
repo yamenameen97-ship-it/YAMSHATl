@@ -174,7 +174,7 @@ export default function Login() {
         {showDevTools ? (
           <div className="dev-login-card">
             <strong>Development Login</strong>
-            <p className="muted no-margin">زر سريع لحساب التطوير المشترك: yasryameen97@gmail.com / 123456</p>
+            <p className="muted no-margin">زر سريع لدخول التطوير المحلي بعد تفعيل متغيرات البيئة الخاصة به.</p>
             <Button type="button" variant="secondary" onClick={handleDevLogin} loading={devLoading} disabled={loading || devLoading}>
               {devLoading ? 'جارٍ الدخول التطويري...' : 'دخول حساب التطوير'}
             </Button>

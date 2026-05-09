@@ -956,6 +956,22 @@ export default function Chat() {
   return (
     <MainLayout>
       <div className="chat-layout">
+        <Card className="hero-card chat-hero-card">
+          <div className="chat-hero-topline">
+            <div>
+              <div className="page-eyebrow">Chat Suite</div>
+              <h2 className="page-title">محادثة خاصة منظّمة وسريعة</h2>
+              <p className="muted no-margin">حسّنت شاشة الشات عشان تبقى أوضح في المتابعة اليومية: وصول أسرع للبحث، مؤشرات الحالة، الوسائط، المكالمات، والرسائل المجدولة من نفس المكان.</p>
+            </div>
+            <div className="page-summary-row">
+              <span className="glass-chip">👤 {otherUser}</span>
+              <span className="glass-chip">{presence?.is_online ? '🟢 متصل' : '⚫ غير متصل'}</span>
+              <span className="glass-chip">📌 {isPinned ? 'مثبّت' : 'غير مثبّت'}</span>
+              <span className="glass-chip">🗂️ {isArchived ? 'مؤرشف' : 'نشط'}</span>
+            </div>
+          </div>
+        </Card>
+
         <Card className="chat-panel chat-panel-pro">
           <div className="chat-header chat-header-pro">
             <div className="chat-user-block">

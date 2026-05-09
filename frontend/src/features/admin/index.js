@@ -6,3 +6,7 @@ export { default as AdminLive } from '../../pages/admin/AdminLive.jsx';
 export { default as AdminReports } from '../../pages/admin/AdminReports.jsx';
 export { default as AdminSettings } from '../../pages/admin/AdminSettings.jsx';
 export { default as AdminRbac } from '../../pages/admin/AdminRbac.jsx';
+export { default as AdminChat } from '../../pages/admin/AdminChat.jsx';
+export { default as AdminStories } from '../../pages/admin/AdminStories.jsx';
+export { default as AdminReels } from '../../pages/admin/AdminReels.jsx';
+export { default as AdminGroups } from '../../pages/admin/AdminGroups.jsx';

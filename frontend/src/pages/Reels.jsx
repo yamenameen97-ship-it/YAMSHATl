@@ -23,13 +23,14 @@ import {
 import { useAppStore } from '../store/appStore.js';
 
 const isVideo = (value) => /\.(mp4|mov|webm|mkv)$/i.test(String(value || ''));
+const reelMediaUrl = (post) => post?.media_urls?.[0] || post?.media || post?.image_url || '';
 const PAGE_SIZE = 12;
 const MODERATION_BLOCKLIST = ['ممنوع', 'abuse', 'hate'];
 
 async function fetchReelsPage({ pageParam = 0 }) {
   const { data } = await getPosts({ skip: pageParam, limit: PAGE_SIZE });
   const posts = Array.isArray(data) ? data : [];
-  const reels = posts.filter((post) => isVideo(post.media || post.image_url));
+  const reels = posts.filter((post) => isVideo(reelMediaUrl(post)));
   return {
     items: reels,
     nextCursor: posts.length === PAGE_SIZE ? pageParam + PAGE_SIZE : undefined,
@@ -90,7 +91,7 @@ export default function Reels() {
   const [studioFile, setStudioFile] = useState(null);
   const [studioPreview, setStudioPreview] = useState('');
   const [studioCaption, setStudioCaption] = useState('');
-  const [studioDraft, setStudioDraft] = useState(true);
+  const [studioDraft, setStudioDraft] = useState(false);
   const [studioMusic, setStudioMusic] = useState('Original');
   const [studioEffect, setStudioEffect] = useState('Clean');
   const [studioThumbnailName, setStudioThumbnailName] = useState('');
@@ -146,7 +147,7 @@ export default function Reels() {
   useEffect(() => {
     let ignore = false;
     getDraftPosts().then(({ data: drafts }) => {
-      if (!ignore) setDraftsCount((Array.isArray(drafts) ? drafts : []).filter((post) => isVideo(post.media || post.image_url)).length);
+      if (!ignore) setDraftsCount((Array.isArray(drafts) ? drafts : []).filter((post) => isVideo(reelMediaUrl(post))).length);
     }).catch(() => null);
     return () => {
       ignore = true;
@@ -211,6 +212,16 @@ export default function Reels() {
       video.muted = muted || Number(index) !== activeIndex;
     });
   }, [activeIndex, muted]);
+
+  useEffect(() => {
+    if (!reels.length) {
+      setActiveIndex(0);
+      return;
+    }
+    if (activeIndex > reels.length - 1) {
+      setActiveIndex(reels.length - 1);
+    }
+  }, [activeIndex, reels.length]);
 
   const handleNext = (direction = 1) => {
     const nextIndex = Math.max(0, Math.min(reels.length - 1, activeIndex + direction));
@@ -345,6 +356,9 @@ export default function Reels() {
         setUploadProgress('reelStudio', value);
       });
       const videoUrl = uploadData?.file_url || uploadData?.url || uploadData?.imagekit_url || uploadData?.cloud_url;
+      if (!videoUrl || !isVideo(videoUrl)) {
+        throw new Error('لم يتم استلام رابط فيديو صالح بعد الرفع.');
+      }
       const decoratedCaption = [studioCaption.trim(), studioMusic !== 'Original' ? `🎵 ${studioMusic}` : '', studioEffect !== 'Clean' ? `✨ ${studioEffect}` : '']
         .filter(Boolean)
         .join(' • ');
@@ -365,7 +379,7 @@ export default function Reels() {
       clearUploadProgress('reelStudio');
       await refetch();
       const { data: drafts } = await getDraftPosts();
-      setDraftsCount((Array.isArray(drafts) ? drafts : []).filter((post) => isVideo(post.media || post.image_url)).length);
+      setDraftsCount((Array.isArray(drafts) ? drafts : []).filter((post) => isVideo(reelMediaUrl(post))).length);
     } catch (err) {
       emitToast({ type: 'error', title: 'فشل رفع الريل', description: err?.response?.data?.detail || 'حصلت مشكلة أثناء رفع الفيديو.' });
     } finally {
@@ -432,7 +446,7 @@ export default function Reels() {
                         if (node) videoRefs.current[index] = node;
                       }}
                       className="reel-video"
-                      src={post.media || post.image_url}
+                      src={reelMediaUrl(post)}
                       controls
                       playsInline
                       preload={saveData ? 'metadata' : index <= activeIndex + 1 ? 'auto' : 'metadata'}
@@ -526,7 +540,7 @@ export default function Reels() {
                       <option>Retro</option>
                     </select>
                   </div>
-                  <label className="remember-me-row"><input type="checkbox" checked={studioDraft} onChange={(event) => setStudioDraft(event.target.checked)} /><span>حفظ كـ Draft</span></label>
+                  <label className="remember-me-row"><input type="checkbox" checked={studioDraft} onChange={(event) => setStudioDraft(event.target.checked)} /><span>{studioDraft ? 'حفظ كمسودة فقط' : 'نشر مباشر بعد الرفع'}</span></label>
                   {studioPreview ? <video src={studioPreview} className="reel-studio-preview" controls playsInline /> : null}
                   {studioThumbnailName ? <div className="glass-chip">Thumbnail: {studioThumbnailName}</div> : null}
                   {studioUploading ? (
@@ -536,7 +550,7 @@ export default function Reels() {
                     </div>
                   ) : null}
                   <Button onClick={submitStudio} loading={studioUploading}>رفع الريل</Button>
-                  <div className="muted">Compression: يتم التحسين حسب الشبكة والمتصفح قبل الرفع، مع توليد Thumbnail محلي سريع.</div>
+                  <div className="muted">سيتم نشر الريل مباشرة ما لم تُفعِّل خيار المسودة. كما يتم تحسين الفيديو حسب الشبكة والمتصفح قبل الرفع مع توليد Thumbnail محلي سريع.</div>
                 </div>
               </div>
 

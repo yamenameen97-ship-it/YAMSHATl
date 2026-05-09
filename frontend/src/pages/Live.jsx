@@ -37,10 +37,40 @@ async function loadLiveKit() {
   return livekitCache.module;
 }
 
+async function waitForSocketConnection(timeoutMs = 4000) {
+  if (socket.connected) return true;
+  socket.connect();
+  await new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      socket.off('connect', handleConnect);
+      resolve();
+    };
+    const handleConnect = () => finish();
+    const timer = window.setTimeout(finish, timeoutMs);
+    socket.on('connect', handleConnect);
+  });
+  return socket.connected;
+}
+
 function healthLabel(status) {
   if (status === 'critical') return 'حرج';
   if (status === 'warning') return 'متوسط';
   return 'ممتاز';
+}
+
+function featureLabel(key) {
+  const labels = {
+    recording_enabled: 'التسجيل',
+    live_notifications_enabled: 'إشعارات البث',
+    background_streaming_enabled: 'البث بالخلفية',
+    auto_reconnect_enabled: 'إعادة الاتصال',
+    adaptive_bitrate_enabled: 'جودة تلقائية',
+  };
+  return labels[key] || key;
 }
 
 export default function Live() {
@@ -123,6 +153,7 @@ export default function Live() {
     if (!videosRef.current || track.kind !== 'video') return;
     const wrapper = document.createElement('div');
     wrapper.className = 'live-video-tile';
+    wrapper.dataset.participant = participantLabel;
     const label = document.createElement('div');
     label.className = 'live-video-label';
     label.textContent = participantLabel;
@@ -182,6 +213,9 @@ export default function Live() {
       if (role === 'host') {
         await room.localParticipant.setCameraEnabled(true);
         await room.localParticipant.setMicrophoneEnabled(true);
+        room.localParticipant.trackPublications.forEach((publication) => {
+          if (publication.track) attachVideoTrack(publication.track, `${currentUser || 'أنت'} (أنت)`);
+        });
       }
       room.participants.forEach((participant) => {
         participant.trackPublications.forEach((publication) => {
@@ -204,6 +238,7 @@ export default function Live() {
       setSearchParams({ room: String(roomRecord.id) }, { replace: true });
       const session = { ...roomRecord, ...tokenData, role };
       setActiveRoom(session);
+      await waitForSocketConnection();
       socket.emit('join_live', { room_id: String(roomRecord.id), role, platform: 'web', device_type: 'browser' });
       if (socket.id) {
         await updateLivePresence({ room_id: roomRecord.id, socket_id: socket.id, platform: 'web', device_type: 'browser', is_host: role === 'host', active: true });
@@ -239,6 +274,19 @@ export default function Live() {
   const handleHeart = () => {
     if (!activeRoomIdRef.current) return;
     socket.emit('send_heart', { room_id: String(activeRoomIdRef.current) });
+  };
+
+  const handleShareRoom = async (roomId) => {
+    try {
+      const { data } = await shareLiveRoom({ room_id: roomId });
+      const shareUrl = data?.share_url || `${window.location.origin}/#/live?room=${roomId}`;
+      if (navigator.share) await navigator.share({ title: 'Yamshat Live', url: shareUrl });
+      else await navigator.clipboard.writeText(shareUrl);
+      setStatus('تم تجهيز رابط البث للمشاركة.');
+      await refreshRooms();
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'تعذر تجهيز رابط المشاركة.');
+    }
   };
 
   const runRoomAction = async (runner) => {
@@ -324,6 +372,12 @@ export default function Live() {
   }, [requestedRoomId, rooms.length]);
 
   const roomCards = useMemo(() => rooms.filter((room) => room.active), [rooms]);
+  const liveOverview = useMemo(() => ([
+    { label: 'الغرف النشطة', value: roomCards.length, hint: 'الغرف المباشرة الجاهزة للدخول الآن.' },
+    { label: 'الغرفة الحالية', value: activeRoom?.title || 'لا يوجد', hint: activeRoom ? 'إدارة البث الحالي من اللوحة السفلية.' : 'ابدأ بث جديد أو ادخل غرفة موجودة.' },
+    { label: 'إجمالي التفاعل', value: (activeRoom?.hearts_count || 0) + comments.length, hint: 'مجموع القلوب والتعليقات في الجلسة الحالية.' },
+    { label: 'رصيد العملات', value: dashboard?.wallet?.coin_balance || 0, hint: 'الرصيد الظاهر في لوحة المبدع.' },
+  ]), [activeRoom, comments.length, dashboard?.wallet?.coin_balance, roomCards.length]);
 
   if (loading && !rooms.length) {
     return <MainLayout><Card className="hero-card"><p>جارٍ تحميل مركز البث المباشر...</p></Card></MainLayout>;
@@ -357,10 +411,20 @@ export default function Live() {
             </div>
             <div className="badge-row">
               {['recording_enabled', 'live_notifications_enabled', 'background_streaming_enabled', 'auto_reconnect_enabled', 'adaptive_bitrate_enabled'].map((key) => (
-                <button key={key} type="button" className={`tab-btn ${createForm[key] ? 'active' : ''}`} onClick={() => setCreateForm((prev) => ({ ...prev, [key]: !prev[key] }))}>{key.replaceAll('_', ' ')}</button>
+                <button key={key} type="button" className={`tab-btn ${createForm[key] ? 'active' : ''}`} onClick={() => setCreateForm((prev) => ({ ...prev, [key]: !prev[key] }))}>{featureLabel(key)}</button>
               ))}
             </div>
           </Card>
+        </section>
+
+        <section className="live-overview-grid">
+          {liveOverview.map((item) => (
+            <Card key={item.label} className="overview-stat-card live-overview-card">
+              <strong className="overview-stat-value">{item.value}</strong>
+              <span className="overview-stat-label">{item.label}</span>
+              <small className="overview-stat-hint">{item.hint}</small>
+            </Card>
+          ))}
         </section>
 
         {error ? <div className="alert error">{error}</div> : null}
@@ -384,7 +448,7 @@ export default function Live() {
                     </div>
                     <div className="hero-actions-wrap">
                       <Button variant="secondary" onClick={() => joinRoom(room, room.username === currentUser ? 'host' : 'viewer')}>دخول البث</Button>
-                      <Button variant="secondary" onClick={() => shareLiveRoom({ room_id: room.id })}>Share</Button>
+                      <Button variant="secondary" onClick={() => handleShareRoom(room.id)}>مشاركة</Button>
                     </div>
                   </div>
                 ))}
@@ -439,9 +503,9 @@ export default function Live() {
                   </div>
                   <div className="hero-actions-wrap">
                     <Button variant="secondary" onClick={handleSendComment}>إرسال تعليق</Button>
-                    <Button variant="secondary" onClick={handleHeart}>Heart</Button>
-                    <Button variant="secondary" onClick={() => runRoomAction(() => sendLiveReaction({ room_id: activeRoom.id, reaction: 'fire' }))}>🔥 Reaction</Button>
-                    <Button variant="secondary" onClick={() => runRoomAction(() => shareLiveRoom({ room_id: activeRoom.id }))}>Share</Button>
+                    <Button variant="secondary" onClick={handleHeart}>إرسال قلب</Button>
+                    <Button variant="secondary" onClick={() => runRoomAction(() => sendLiveReaction({ room_id: activeRoom.id, reaction: 'fire' }))}>🔥 تفاعل</Button>
+                    <Button variant="secondary" onClick={() => handleShareRoom(activeRoom.id)}>مشاركة</Button>
                   </div>
                 </div>
               </div>

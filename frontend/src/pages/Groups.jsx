@@ -13,7 +13,9 @@ export default function Groups() {
   const [form, setForm] = useState({ name: '', description: '', members: '' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [joiningGroupId, setJoiningGroupId] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
   const load = async () => {
     try {
@@ -40,12 +42,14 @@ export default function Groups() {
     try {
       setSaving(true);
       setError('');
+      setNotice('');
       await createGroup({
         name: form.name.trim(),
         description: form.description.trim(),
         members: form.members.split(',').map((item) => item.trim()).filter(Boolean),
       });
       setForm({ name: '', description: '', members: '' });
+      setNotice('تم إنشاء المجموعة بنجاح.');
       await load();
     } catch (err) {
       setError(err?.response?.data?.detail || 'تعذر إنشاء المجموعة.');
@@ -56,11 +60,16 @@ export default function Groups() {
 
   const handleJoin = async (groupId) => {
     try {
+      setJoiningGroupId(String(groupId));
       setError('');
-      await joinGroup(groupId);
+      setNotice('');
+      const { data } = await joinGroup(groupId);
+      setNotice(data?.joined ? 'تم الانضمام للمجموعة بنجاح.' : 'أنت منضم بالفعل إلى هذه المجموعة.');
       await load();
     } catch (err) {
       setError(err?.response?.data?.detail || 'تعذر الانضمام للمجموعة.');
+    } finally {
+      setJoiningGroupId('');
     }
   };
 
@@ -83,6 +92,7 @@ export default function Groups() {
             </div>
           </Card>
 
+          {notice ? <div className="alert success">{notice}</div> : null}
           {error ? <ErrorState title="حصلت مشكلة في المجموعات" description={error} onRetry={load} /> : null}
           {loading ? <ListSkeleton count={4} /> : null}
 
@@ -98,7 +108,9 @@ export default function Groups() {
                     <strong>{group.name}</strong>
                     <div className="muted">بواسطة {group.owner_username}</div>
                   </div>
-                  <button type="button" className="mini-action" onClick={() => handleJoin(group.id)}>انضمام</button>
+                  <Button variant="secondary" className="group-join-btn" loading={joiningGroupId === String(group.id)} onClick={() => handleJoin(group.id)}>
+                    {joiningGroupId === String(group.id) ? 'جارٍ الانضمام...' : 'انضمام'}
+                  </Button>
                 </div>
                 <p className="post-text">{group.description || 'بدون وصف'}</p>
                 <div className="post-social-meta">

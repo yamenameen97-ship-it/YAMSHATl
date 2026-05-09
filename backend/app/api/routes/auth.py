@@ -128,7 +128,15 @@ def _clear_csrf_cookie(response: Response) -> None:
     )
 
 
-def _session_payload(user: User, access_token: str, csrf_token: str = '', *, session_key: str, remember_me: bool) -> dict:
+def _session_payload(
+    user: User,
+    access_token: str,
+    csrf_token: str = '',
+    *,
+    session_key: str,
+    remember_me: bool,
+    refresh_token: str = '',
+) -> dict:
     effective_user_role = effective_role(user)
     effective_permissions = permissions_for_user(user, ROLE_PERMISSIONS)
     user_payload = {
@@ -153,7 +161,7 @@ def _session_payload(user: User, access_token: str, csrf_token: str = '', *, ses
     return {
         'token': access_token,
         'access_token': access_token,
-        'refresh_token': '',
+        'refresh_token': refresh_token,
         'token_type': 'bearer',
         'csrf_token': csrf_token,
         'expires_in_minutes': settings.ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -174,6 +182,11 @@ def _session_payload(user: User, access_token: str, csrf_token: str = '', *, ses
         'remember_me': bool(remember_me),
         'session_id': session_key,
     }
+
+
+def _trusted_native_client(request: Request) -> bool:
+    client = str(request.headers.get('x-yamshat-client') or '').strip().lower()
+    return client in {'android', 'ios', 'mobile'}
 
 
 def _issue_session(
@@ -226,7 +239,15 @@ def _issue_session(
     )
     _set_refresh_cookie(response, refresh_token, remember_me=remember_me)
     _set_csrf_cookie(response, csrf_token, remember_me=remember_me)
-    return _session_payload(user, access_token=access_token, csrf_token=csrf_token, session_key=active_session_key, remember_me=remember_me)
+    expose_refresh_token = refresh_token if _trusted_native_client(request) else ''
+    return _session_payload(
+        user,
+        access_token=access_token,
+        csrf_token=csrf_token,
+        session_key=active_session_key,
+        remember_me=remember_me,
+        refresh_token=expose_refresh_token,
+    )
 
 
 def _normalize_rate_key_part(value: str | None, fallback: str) -> str:
@@ -389,7 +410,8 @@ def register(request: Request, payload: dict = Body(...), db: Session = Depends(
     if not enforce_rate_limit(rate_key, settings.REGISTER_RATE_LIMIT_PER_MINUTE, 60):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='Too many registration attempts')
 
-    _require_captcha(payload, context='register')
+    if not _trusted_native_client(request):
+        _require_captcha(payload, context='register')
     user = register_user(db, username=username, email=email, password=password, avatar=avatar)
     code = issue_email_verification_code(db, user)
     delivery = _send_verification_message(user, code)
@@ -486,7 +508,8 @@ def login(request: Request, response: Response, payload: dict = Body(...), db: S
     if is_ip_locked(attempt_key):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='Too many attempts, try again later')
 
-    _require_captcha(payload, context='login')
+    if not _trusted_native_client(request):
+        _require_captcha(payload, context='login')
 
     try:
         user = authenticate_user(db, identifier=identifier, password=password, require_verified=True)

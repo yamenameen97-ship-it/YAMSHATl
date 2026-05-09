@@ -59,7 +59,7 @@ function syncStore(user) {
 
 function readStoredSession() {
   try {
-    const raw = secureGet(STORAGE_KEY);
+    const raw = secureGet(STORAGE_KEY) || secureGet('yamshatAuth') || secureGet('user');
     return normalizeUserShape(raw ? JSON.parse(raw) : null);
   } catch {
     return null;
@@ -102,7 +102,10 @@ export function setStoredUser(user) {
     syncStore(null);
     return;
   }
-  secureSet(STORAGE_KEY, JSON.stringify(normalized), { persist: Boolean(normalized.remember_me) });
+  const raw = JSON.stringify(normalized);
+  secureSet(STORAGE_KEY, raw, { persist: Boolean(normalized.remember_me) });
+  secureSet('yamshatAuth', raw, { persist: Boolean(normalized.remember_me) });
+  secureSet('user', raw, { persist: Boolean(normalized.remember_me) });
   setCsrfToken(normalized.csrf_token || '');
   syncStore(normalized);
 }
@@ -124,6 +127,8 @@ export function mergeStoredUser(nextValues) {
 
 export function clearStoredUser() {
   secureRemove(STORAGE_KEY);
+  secureRemove('yamshatAuth');
+  secureRemove('user');
   clearCsrfToken();
   syncStore(null);
 }

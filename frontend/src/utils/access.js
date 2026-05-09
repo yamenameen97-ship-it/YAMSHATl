@@ -1,8 +1,13 @@
-export const PRIMARY_ADMIN_EMAIL = String(import.meta.env.VITE_PRIMARY_ADMIN_EMAIL || '')
-  .trim()
-  .toLowerCase();
+const DEFAULT_PRIMARY_ADMIN_EMAIL = 'yamenameen97@gmail.com';
+const PLACEHOLDER_ADMIN_EMAILS = new Set(['', 'admin@example.com', 'your-admin@example.com']);
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+
+const configuredPrimaryAdminEmail = normalizeEmail(import.meta.env.VITE_PRIMARY_ADMIN_EMAIL || '');
+
+export const PRIMARY_ADMIN_EMAIL = PLACEHOLDER_ADMIN_EMAILS.has(configuredPrimaryAdminEmail)
+  ? DEFAULT_PRIMARY_ADMIN_EMAIL
+  : configuredPrimaryAdminEmail;
 
 export const isPrimaryAdminEmail = (value) => normalizeEmail(value) === PRIMARY_ADMIN_EMAIL;
 

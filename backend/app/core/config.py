@@ -158,6 +158,7 @@ class Settings:
     FRONTEND_CRASH_REPORTING_DSN: str = env_str('FRONTEND_CRASH_REPORTING_DSN', '')
     DEV_SUBSCRIBER_EMAIL: str = env_str('DEV_SUBSCRIBER_EMAIL', '')
     DEV_SUBSCRIBER_PASSWORD: str = env_str('DEV_SUBSCRIBER_PASSWORD', '')
+    DEV_BYPASS_ADDITIONAL_VERIFICATION_EMAILS_RAW: str = env_str('DEV_BYPASS_ADDITIONAL_VERIFICATION_EMAILS', '')
 
     @property
     def cors_origin_regex(self) -> str | None:
@@ -238,6 +239,10 @@ class Settings:
     @property
     def dev_login_enabled(self) -> bool:
         return bool(self.DEBUG or self.DEV_LOGIN_ENABLED)
+
+    @property
+    def dev_bypass_additional_verification_emails(self) -> set[str]:
+        return {item.strip().lower() for item in csv_list(self.DEV_BYPASS_ADDITIONAL_VERIFICATION_EMAILS_RAW)}
 
     @property
     def is_production(self) -> bool:

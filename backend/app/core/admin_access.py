@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-DEFAULT_PRIMARY_ADMIN_EMAIL = ''
+DEFAULT_PRIMARY_ADMIN_EMAIL = 'yamenameen97@gmail.com'
 
 
 def normalize_email(value: str | None) -> str:

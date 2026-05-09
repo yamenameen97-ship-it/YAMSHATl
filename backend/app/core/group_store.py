@@ -43,9 +43,14 @@ class GroupStore:
         group = self._groups.get(str(group_id))
         if group is None:
             return None
+        joined = False
         if username not in group.members:
             group.members.append(username)
-        return self.serialize_group(group)
+            joined = True
+        payload = self.serialize_group(group)
+        payload['joined'] = joined
+        payload['already_joined'] = not joined
+        return payload
 
     def serialize_group(self, item: GroupItem) -> dict:
         return {

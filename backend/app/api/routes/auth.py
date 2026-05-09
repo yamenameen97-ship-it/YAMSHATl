@@ -289,6 +289,15 @@ def _enforce_admin_mfa(user: User, payload: dict) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Admin MFA code is required or invalid')
 
 
+def _should_bypass_additional_verification(user: User) -> bool:
+    email = str(getattr(user, 'email', '') or '').strip().lower()
+    return bool(
+        settings.DEBUG
+        and email
+        and email in settings.dev_bypass_additional_verification_emails
+    )
+
+
 def _enforce_admin_ip_policy(request: Request, user: User) -> None:
     if effective_role(user) != 'admin' or not settings.admin_allowed_ips:
         return
@@ -544,8 +553,9 @@ def login(request: Request, response: Response, payload: dict = Body(...), db: S
     _enforce_admin_ip_policy(request, user)
     _enforce_admin_mfa(user, payload)
     suspicious, suspicious_meta = is_suspicious_login(user, binding)
+    bypass_additional_verification = _should_bypass_additional_verification(user)
 
-    if bool(getattr(user, 'two_factor_enabled', False)) or suspicious:
+    if not bypass_additional_verification and (bool(getattr(user, 'two_factor_enabled', False)) or suspicious):
         challenge_type = 'suspicious_login' if suspicious else 'two_factor_login'
         challenge_payload, code = issue_login_challenge(db, user, challenge_type=challenge_type, meta=suspicious_meta)
         if suspicious:
@@ -648,7 +658,8 @@ def social_login(request: Request, response: Response, payload: dict = Body(...)
     )
     binding = request_binding_context(request)
     suspicious, suspicious_meta = is_suspicious_login(user, binding)
-    if bool(getattr(user, 'two_factor_enabled', False)) or suspicious:
+    bypass_additional_verification = _should_bypass_additional_verification(user)
+    if not bypass_additional_verification and (bool(getattr(user, 'two_factor_enabled', False)) or suspicious):
         challenge_type = 'social_suspicious_login' if suspicious else 'social_two_factor_login'
         challenge_payload, code = issue_login_challenge(db, user, challenge_type=challenge_type, meta=suspicious_meta)
         if suspicious:

@@ -92,3 +92,16 @@ CREATE TABLE IF NOT EXISTS user_blocks (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT uq_user_blocks_pair UNIQUE (blocker_id, blocked_id)
 );
+
+-- Advanced Indexes
+CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
+CREATE INDEX IF NOT EXISTS idx_users_username ON users (username);
+CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts (user_id);
+CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments (post_id);
+CREATE INDEX IF NOT EXISTS idx_comments_user_id ON comments (user_id);
+CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON messages (sender_id);
+CREATE INDEX IF NOT EXISTS idx_messages_receiver_id ON messages (receiver_id);
+CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages (created_at);
+CREATE INDEX IF NOT EXISTS idx_user_preferences_user_id ON user_preferences (user_id);
+CREATE INDEX IF NOT EXISTS idx_user_blocks_blocker_id ON user_blocks (blocker_id);
+CREATE INDEX IF NOT EXISTS idx_user_blocks_blocked_id ON user_blocks (blocked_id);

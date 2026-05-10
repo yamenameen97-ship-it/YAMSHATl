@@ -1,0 +1,1 @@
+import{c as e}from"./index-DL5VYNEy.js";var t=()=>e.get(`/groups`),n=t=>e.post(`/groups`,t),r=t=>e.post(`/groups/${t}/join`);export{t as n,r,n as t};

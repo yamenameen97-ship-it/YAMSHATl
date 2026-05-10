@@ -3,8 +3,10 @@ import smtplib
 import logging
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-
 import httpx
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
+
+from app.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
@@ -51,10 +53,6 @@ def smtp_credentials_configured() -> bool:
     return bool(SMTP_USERNAME and SMTP_PASSWORD and SMTP_FROM)
 
 
-def smtp_configured() -> bool:
-    return resend_configured() or brevo_configured() or smtp_credentials_configured()
-
-
 def delivery_provider() -> str | None:
     if resend_configured():
         return 'resend'
@@ -65,6 +63,7 @@ def delivery_provider() -> str | None:
     return None
 
 
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(2), retry=retry_if_exception_type(httpx.RequestError))
 def send_email_via_resend(to_email: str, subject: str, body: str, html_body: str | None = None):
     payload = {
         'from': RESEND_FROM,
@@ -80,24 +79,19 @@ def send_email_via_resend(to_email: str, subject: str, body: str, html_body: str
     if 'html' not in payload and 'text' not in payload:
         raise RuntimeError('Email body is empty')
 
-    try:
-        response = httpx.post(
-            RESEND_API_URL,
-            headers={
-                'Authorization': f'Bearer {RESEND_API_KEY}',
-                'Content-Type': 'application/json',
-            },
-            json=payload,
-            timeout=20,
-        )
-        if response.status_code >= 400:
-            logger.error(f"Resend API error: {response.status_code} - {response.text}")
-        response.raise_for_status()
-    except Exception as e:
-        logger.error(f"Failed to send email via Resend: {str(e)}")
-        raise
+    response = httpx.post(
+        RESEND_API_URL,
+        headers={
+            'Authorization': f'Bearer {RESEND_API_KEY}',
+            'Content-Type': 'application/json',
+        },
+        json=payload,
+        timeout=20,
+    )
+    response.raise_for_status()
 
 
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(2), retry=retry_if_exception_type(httpx.RequestError))
 def send_email_via_brevo(to_email: str, subject: str, body: str, html_body: str | None = None):
     payload = {
         'sender': {
@@ -140,6 +134,7 @@ def send_email_via_brevo(to_email: str, subject: str, body: str, html_body: str 
     response.raise_for_status()
 
 
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(2), retry=retry_if_exception_type(smtplib.SMTPException))
 def send_email_via_smtp(to_email: str, subject: str, body: str, html_body: str | None = None):
     msg = MIMEMultipart('alternative')
     msg['Subject'] = subject
@@ -163,22 +158,48 @@ def send_email_via_smtp(to_email: str, subject: str, body: str, html_body: str |
             pass
 
 
-def send_email(to_email: str, subject: str, body: str, html_body: str | None = None):
+@celery_app.task(bind=True, retry_backoff=True, max_retries=5)
+def send_email_task(self, to_email: str, subject: str, body: str, html_body: str | None = None):
+    providers = []
     if resend_configured():
-        send_email_via_resend(to_email, subject, body, html_body)
-        return
-
+        providers.append('resend')
     if brevo_configured():
-        send_email_via_brevo(to_email, subject, body, html_body)
-        return
-
+        providers.append('brevo')
     if smtp_credentials_configured():
-        send_email_via_smtp(to_email, subject, body, html_body)
-        return
+        providers.append('smtp')
 
-    raise RuntimeError(
-        'Email delivery is not configured. Set RESEND_API_KEY + RESEND_FROM, or BREVO_API_KEY + BREVO_SENDER_EMAIL, or SMTP_USERNAME/SMTP_PASSWORD/SMTP_FROM.'
-    )
+    if not providers:
+        logger.error('No email delivery providers configured.')
+        raise RuntimeError('No email delivery providers configured.')
+
+    for provider in providers:
+        try:
+            if provider == 'resend':
+                send_email_via_resend(to_email, subject, body, html_body)
+            elif provider == 'brevo':
+                send_email_via_brevo(to_email, subject, body, html_body)
+            elif provider == 'smtp':
+                send_email_via_smtp(to_email, subject, body, html_body)
+            logger.info(f'Email sent successfully via {provider} to {to_email}')
+            # Placeholder for email analytics
+            log_email_analytics(to_email, subject, provider, 'success')
+            return
+        except Exception as e:
+            logger.warning(f'Failed to send email via {provider} to {to_email}: {e}')
+            log_email_analytics(to_email, subject, provider, 'failure', str(e))
+            # If it's the last provider, re-raise the exception for Celery to handle retries
+            if provider == providers[-1]:
+                raise self.retry(exc=e)
+
+def log_email_analytics(to_email: str, subject: str, provider: str, status: str, error_message: str | None = None):
+    # This is a placeholder function for logging email analytics.
+    # In a real application, this would involve storing data in a database,
+    # sending it to an analytics service, or logging it in a structured format.
+    logger.info(f'Email Analytics: to={to_email}, subject={subject}, provider={provider}, status={status}, error={error_message}')
+
+
+def send_email(to_email: str, subject: str, body: str, html_body: str | None = None):
+    send_email_task.delay(to_email, subject, body, html_body)
 
 
 def send_verification_email(to_email: str, code: str):

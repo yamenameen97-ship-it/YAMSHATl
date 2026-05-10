@@ -52,7 +52,7 @@ async def api_rate_guard(request: Request, call_next):
             rate_limit = max(rate_limit, settings.LOGIN_RATE_LIMIT_PER_MINUTE * 3)
 
         key = f'api:{client_ip(request)}:{request.method}:{short_path}'
-        if not enforce_rate_limit(key, rate_limit, 60):
+        if not await enforce_rate_limit(key, rate_limit, 60):
             return JSONResponse(status_code=429, content={'detail': 'Too many requests'})
 
     response = await call_next(request)

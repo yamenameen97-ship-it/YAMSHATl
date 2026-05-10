@@ -16,6 +16,9 @@ from app.core.security import REFRESH_TOKEN_TYPE, create_access_token, create_re
 from app.models.user import User
 from app.services.audit_service import record_audit_log
 from app.services.auth_service import (
+    get_google_oauth_user_info,
+    get_facebook_oauth_user_info,
+    social_authenticate_or_register_user,
     VERIFICATION_REQUIRED_DETAIL,
     authenticate_user,
     clear_all_refresh_tokens,
@@ -33,6 +36,7 @@ from app.services.auth_service import (
     verify_password_reset_code,
 )
 from app.services.auth_feature_service import (
+    evaluate_login_risk,
     issue_login_challenge,
     is_suspicious_login,
     mark_successful_login,
@@ -939,3 +943,96 @@ def reset_password(payload: dict = Body(...), db: Session = Depends(get_db)):
         meta={},
     )
     return {'message': 'Password reset successfully'}
+
+
+import requests
+
+@router.get('/oauth/google/login')
+async def google_oauth_login(request: Request):
+    if not settings.GOOGLE_OAUTH_CLIENT_ID:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail='Google OAuth not configured')
+    redirect_uri = settings.GOOGLE_OAUTH_REDIRECT_URI
+    return {'url': f'https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id={settings.GOOGLE_OAUTH_CLIENT_ID}&redirect_uri={redirect_uri}&scope=openid%20email%20profile'}
+
+
+@router.get('/oauth/google/callback')
+async def google_oauth_callback(request: Request, response: Response, db: Session = Depends(get_db), code: str = None):
+    if not settings.GOOGLE_OAUTH_CLIENT_ID:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail='Google OAuth not configured')
+    if not code:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Authorization code not provided')
+
+    token_url = 'https://oauth2.googleapis.com/token'
+    data = {
+        'code': code,
+        'client_id': settings.GOOGLE_OAUTH_CLIENT_ID,
+        'client_secret': settings.GOOGLE_OAUTH_CLIENT_SECRET,
+        'redirect_uri': settings.GOOGLE_OAUTH_REDIRECT_URI,
+        'grant_type': 'authorization_code',
+    }
+    try:
+        token_response = requests.post(token_url, data=data)
+        token_response.raise_for_status()
+        access_token = token_response.json()['access_token']
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f'Failed to get Google access token: {e}')
+
+    user_info = get_google_oauth_user_info(access_token)
+    user = social_authenticate_or_register_user(
+        db, 
+        provider='google', 
+        email=user_info['email'], 
+        username_hint=user_info.get('username_hint'), 
+        avatar=user_info.get('avatar'),
+        social_subject=user_info.get('social_subject')
+    )
+    
+    binding = request_binding_context(request)
+    mark_successful_login(db, user, binding)
+    record_audit_log(db, user.id, 'login', 'user', user.id, 'User logged in successfully via Google OAuth')
+    return _issue_session(db, user, response, request, remember_me=False, login_method='google')
+
+
+@router.get('/oauth/facebook/login')
+async def facebook_oauth_login(request: Request):
+    if not settings.FACEBOOK_OAUTH_CLIENT_ID:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail='Facebook OAuth not configured')
+    redirect_uri = settings.FACEBOOK_OAUTH_REDIRECT_URI
+    return {'url': f'https://www.facebook.com/v18.0/dialog/oauth?client_id={settings.FACEBOOK_OAUTH_CLIENT_ID}&redirect_uri={redirect_uri}&scope=email,public_profile'}
+
+
+@router.get('/oauth/facebook/callback')
+async def facebook_oauth_callback(request: Request, response: Response, db: Session = Depends(get_db), code: str = None):
+    if not settings.FACEBOOK_OAUTH_CLIENT_ID:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail='Facebook OAuth not configured')
+    if not code:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Authorization code not provided')
+
+    token_url = 'https://graph.facebook.com/v18.0/oauth/access_token'
+    data = {
+        'code': code,
+        'client_id': settings.FACEBOOK_OAUTH_CLIENT_ID,
+        'client_secret': settings.FACEBOOK_OAUTH_CLIENT_SECRET,
+        'redirect_uri': settings.FACEBOOK_OAUTH_REDIRECT_URI,
+    }
+    try:
+        token_response = requests.post(token_url, data=data)
+        token_response.raise_for_status()
+        access_token = token_response.json()['access_token']
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f'Failed to get Facebook access token: {e}')
+
+    user_info = get_facebook_oauth_user_info(access_token)
+    user = social_authenticate_or_register_user(
+        db, 
+        provider='facebook', 
+        email=user_info['email'], 
+        username_hint=user_info.get('username_hint'), 
+        avatar=user_info.get('avatar'),
+        social_subject=user_info.get('social_subject')
+    )
+
+    binding = request_binding_context(request)
+    mark_successful_login(db, user, binding)
+    record_audit_log(db, user.id, 'login', 'user', user.id, 'User logged in successfully via Facebook OAuth')
+    return _issue_session(db, user, response, request, remember_me=False, login_method='facebook')

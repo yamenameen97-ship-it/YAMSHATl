@@ -8,6 +8,12 @@ from sqlalchemy.orm import Session
 from app.core.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.services.comment_service import create_comment, get_comments
+from app.services.ai_service import (
+    moderate_content,
+    rank_posts,
+    get_recommendations,
+)
+from app.services.background_tasks import schedule_post_publishing
 from app.services.post_service import (
     create_post,
     delete_post,
@@ -42,9 +48,17 @@ def _parse_datetime(value):
 @router.post('/', status_code=status.HTTP_201_CREATED)
 def create(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     content = str(payload.get('content') or '').strip()
+    
+    # AI Moderation Hook
+    if not moderate_content(content):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Content failed AI moderation.')
+        
     image_url = payload.get('image_url') or payload.get('media')
     media_urls = payload.get('media_urls') or payload.get('media') or payload.get('attachments') or ([] if not image_url else [image_url])
-    return create_post(
+    
+    scheduled_at = _parse_datetime(payload.get('scheduled_at'))
+    
+    post = create_post(
         db,
         user_id=current_user.id,
         content=content,
@@ -52,11 +66,17 @@ def create(payload: dict = Body(...), db: Session = Depends(get_db), current_use
         content_html=payload.get('content_html'),
         media_urls=media_urls,
         poll=payload.get('poll') or payload.get('poll_options'),
-        scheduled_at=_parse_datetime(payload.get('scheduled_at')),
+        scheduled_at=scheduled_at,
         is_draft=bool(payload.get('is_draft', False)),
         is_pinned=bool(payload.get('is_pinned', False)),
         allow_comments=bool(payload.get('allow_comments', True)),
     )
+    
+    # Scheduled publishing queue & Background processing
+    if scheduled_at:
+        schedule_post_publishing(post_id=post.id, scheduled_at=scheduled_at)
+        
+    return post
 
 
 @router.get('/')
@@ -67,7 +87,18 @@ def get_all(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return get_posts(db, current_user=current_user, skip=skip, limit=limit, include_drafts=include_drafts)
+    posts = get_posts(db, current_user=current_user, skip=skip, limit=limit, include_drafts=include_drafts)
+    
+    # Smart feed ranking
+    ranked_posts = rank_posts(posts, current_user)
+    
+    # Recommendation engine hooks
+    recommended_posts = get_recommendations(current_user)
+    
+    return {
+        "posts": ranked_posts,
+        "recommendations": recommended_posts
+    }
 
 
 @router.get('/drafts')

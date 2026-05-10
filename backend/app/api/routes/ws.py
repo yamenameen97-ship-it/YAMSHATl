@@ -40,6 +40,6 @@ async def websocket_notifications_endpoint(websocket: WebSocket, user_id: int):
             while True:
                 await websocket.receive_text()
         except WebSocketDisconnect:
-            manager.disconnect(user_id, websocket)
+            await manager.disconnect(user_id, websocket)
     finally:
         db.close()

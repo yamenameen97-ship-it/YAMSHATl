@@ -1,22 +1,34 @@
 from fastapi import WebSocket
 
 
+from app.core.redis import redis_client
+import json
+
 class ConnectionManager:
     def __init__(self) -> None:
         self.active_connections: dict[int, list[WebSocket]] = {}
+        self.pubsub = None
 
     async def connect(self, user_id: int, websocket: WebSocket) -> bool:
         await websocket.accept()
         connections = self.active_connections.setdefault(user_id, [])
         connections.append(websocket)
+        
+        # Distributed presence tracking
+        await redis_client.sadd("online_users", user_id)
+        await redis_client.publish("user_presence", json.dumps({"user_id": user_id, "status": "online"}))
+        
         return len(connections) == 1
 
-    def disconnect(self, user_id: int, websocket: WebSocket) -> bool:
+    async def disconnect(self, user_id: int, websocket: WebSocket) -> bool:
         connections = self.active_connections.get(user_id, [])
         if websocket in connections:
             connections.remove(websocket)
         if not connections and user_id in self.active_connections:
             del self.active_connections[user_id]
+            # Distributed presence tracking
+            await redis_client.srem("online_users", user_id)
+            await redis_client.publish("user_presence", json.dumps({"user_id": user_id, "status": "offline"}))
             return True
         return False
 

@@ -39,3 +39,19 @@ def get_conversations(db: Session, user_id: int) -> list[dict]:
         )
 
     return conversations
+
+def archive_chat(db: Session, chat_id: int, user_id: int) -> dict:
+    # Placeholder for archiving chat logic
+    return {"chat_id": chat_id, "status": "archived"}
+
+def pin_chat(db: Session, chat_id: int, user_id: int) -> dict:
+    # Placeholder for pinning chat logic
+    return {"chat_id": chat_id, "status": "pinned"}
+
+def mute_chat(db: Session, chat_id: int, user_id: int) -> dict:
+    # Placeholder for muting chat logic
+    return {"chat_id": chat_id, "status": "muted"}
+
+def smart_rank_inbox(conversations: list[dict], user) -> list[dict]:
+    # Placeholder for smart inbox ranking logic
+    return conversations

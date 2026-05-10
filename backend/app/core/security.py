@@ -62,6 +62,14 @@ def create_refresh_token(data: dict, expires_delta: timedelta | None = None) -> 
     return _create_jwt_token(data, expires_delta=expires_delta, token_type=REFRESH_TOKEN_TYPE)
 
 
+def log_security_event_to_siem(event_type: str, details: dict):
+    """
+    إرسال الأحداث الأمنية إلى نظام SIEM (محاكاة).
+    """
+    # في الإنتاج، سيتم إرسال هذا إلى Splunk أو ELK أو Datadog
+    import json
+    print(f"SIEM_EVENT: {event_type} - {json.dumps(details)}")
+
 def decode_token(token: str, expected_type: str | None = None) -> dict:
     raw_token = (token or '').replace('Bearer ', '').replace('bearer ', '').strip()
     if not raw_token:

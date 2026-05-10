@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 import hashlib
+import re
 import time
+from urllib.parse import urlparse
 
 import bleach
 import socketio
@@ -31,9 +33,71 @@ from app.models.post import Post
 from app.models.user import User
 from app.services.chat_realtime import mark_messages_delivered, serialize_message
 
-cors_allowed_origins = '*' if '*' in settings.cors_origins else settings.cors_origins
-sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins=cors_allowed_origins)
+# Distributed WebSocket Scaling with Redis Pub/Sub
+mgr = None
+if settings.REDIS_URL:
+    try:
+        mgr = socketio.AsyncRedisManager(settings.REDIS_URL)
+    except Exception:
+        mgr = None
+
+sio = socketio.AsyncServer(
+    async_mode='asgi', 
+    cors_allowed_origins='*',
+    client_manager=mgr
+)
 sio_app = socketio.ASGIApp(sio)
+
+
+def _normalize_origin(value: str | None) -> str:
+    raw = str(value or '').strip().rstrip('/')
+    if not raw:
+        return ''
+    parsed = urlparse(raw)
+    if parsed.scheme and parsed.netloc:
+        return f'{parsed.scheme}://{parsed.netloc}'.rstrip('/')
+    return raw
+
+
+def _origin_from_environ(environ: dict | None) -> str:
+    source = environ or {}
+    origin = _normalize_origin(source.get('HTTP_ORIGIN') or source.get('ORIGIN'))
+    if origin:
+        return origin
+    referer = str(source.get('HTTP_REFERER') or '').strip()
+    if not referer:
+        return ''
+    parsed = urlparse(referer)
+    if parsed.scheme and parsed.netloc:
+        return f'{parsed.scheme}://{parsed.netloc}'.rstrip('/')
+    return ''
+
+
+def _origin_matches_regex(origin: str) -> bool:
+    regex = str(settings.cors_origin_regex or '').strip()
+    if not origin or not regex:
+        return False
+    try:
+        return re.match(regex, origin) is not None
+    except re.error:
+        return False
+
+
+def _socket_origin_allowed(origin: str | None) -> bool:
+    normalized = _normalize_origin(origin)
+    if not normalized:
+        return True
+    if '*' in settings.cors_origins:
+        return True
+
+    allowed_origins = {
+        _normalize_origin(candidate)
+        for candidate in settings.cors_origins
+        if candidate and candidate != '*'
+    }
+    if normalized in allowed_origins:
+        return True
+    return _origin_matches_regex(normalized)
 
 
 def _room_has_members(room_name: str, namespace: str = '/') -> bool:
@@ -216,6 +280,9 @@ async def _emit_pending_delivery_receipts(user: User, peer: str | None = None) -
 
 @sio.event
 async def connect(sid, environ, auth):
+    if not _socket_origin_allowed(_origin_from_environ(environ)):
+        return False
+
     token = (auth or {}).get('token') if isinstance(auth, dict) else None
     if token:
         client_ip = get_client_ip(environ or {})

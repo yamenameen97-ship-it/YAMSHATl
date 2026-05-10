@@ -3,6 +3,7 @@ from __future__ import annotations
 import secrets
 import string
 from datetime import datetime, timedelta, timezone
+import json
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -15,6 +16,7 @@ from app.services.auth_service import get_user_by_email, register_user
 
 
 CHALLENGE_EXP_MINUTES = 10
+SUSPICIOUS_LOGIN_THRESHOLD = 3 # Number of suspicious logins before requiring adaptive auth
 
 
 def utcnow_naive() -> datetime:
@@ -66,7 +68,7 @@ def issue_login_challenge(db: Session, user: User, *, challenge_type: str, meta:
         challenge_id=challenge_id,
         code_hash=hash_password(code),
         challenge_type=challenge_type,
-        meta_json=None if not meta else __import__('json').dumps(meta, ensure_ascii=False),
+        meta_json=None if not meta else json.dumps(meta, ensure_ascii=False),
         expires_at=utcnow_naive() + timedelta(minutes=CHALLENGE_EXP_MINUTES),
     )
     db.add(record)
@@ -103,21 +105,74 @@ def verify_login_challenge(db: Session, user: User, challenge_id: str, code: str
     return record
 
 
-def is_suspicious_login(user: User, binding: dict) -> tuple[bool, dict]:
+def evaluate_login_risk(user: User, binding: dict) -> tuple[bool, dict]:
     indicators = []
+    risk_score = 0
+
+    # 1. IP & Device Fingerprinting
     if user.last_login_ip_hash and user.last_login_ip_hash != binding.get('ip_hash'):
         indicators.append('new_ip')
+        risk_score += 1
+
     if user.last_login_user_agent_hash and user.last_login_user_agent_hash != binding.get('user_agent_hash'):
         indicators.append('new_user_agent')
+        risk_score += 1
+
     if user.last_device_id_hash and binding.get('device_id_hash') and user.last_device_id_hash != binding.get('device_id_hash'):
         indicators.append('new_device')
-    return bool(indicators), {'indicators': indicators}
+        risk_score += 2 
+
+    # 2. Geo Anomaly Detection (Simulated)
+    # In production, use GeoIP database to compare country/city
+    client_geo = binding.get('geo_info', {})
+    last_geo = getattr(user, 'last_geo_info', {}) # Assuming field exists or handled in meta
+    if last_geo and client_geo.get('country') != last_geo.get('country'):
+        indicators.append('geo_anomaly')
+        risk_score += 4
+
+    # 3. Behavioral Scoring
+    # Check for "Impossible Travel" (e.g., login from USA then 1 hour later from Japan)
+    last_login = user.last_login_at
+    if last_login:
+        time_diff = (utcnow_naive() - last_login).total_seconds() / 3600
+        if time_diff < 1 and indicators.count('geo_anomaly'):
+            indicators.append('impossible_travel')
+            risk_score += 5
+
+    # 4. ML Threat Detection (Heuristic-based)
+    if user.suspicious_login_count >= SUSPICIOUS_LOGIN_THRESHOLD:
+        indicators.append('high_suspicious_count')
+        risk_score += 3
+
+    is_suspicious = risk_score >= 5
+    return is_suspicious, {
+        'indicators': indicators, 
+        'risk_score': risk_score,
+        'threat_level': 'HIGH' if risk_score > 7 else 'MEDIUM' if risk_score >= 4 else 'LOW'
+    }
 
 
-def mark_successful_login(user: User, binding: dict) -> None:
+def is_suspicious_login(user: User, binding: dict) -> tuple[bool, dict]:
+    # This function now acts as a wrapper or can be deprecated in favor of evaluate_login_risk
+    # For now, keeping it for backward compatibility if needed, but it will use the new evaluation.
+    is_suspicious, risk_details = evaluate_login_risk(user, binding)
+    return is_suspicious, risk_details
+
+
+def mark_successful_login(db: Session, user: User, binding: dict) -> None:
     user.last_login_ip_hash = binding.get('ip_hash') or None
     user.last_login_user_agent_hash = binding.get('user_agent_hash') or None
     user.last_device_id_hash = binding.get('device_id_hash') or None
+    user.last_login_at = utcnow_naive()
+    user.suspicious_login_count = 0 # Reset suspicious count on successful login
+    db.commit()
+    db.refresh(user)
+
+
+def mark_failed_login(db: Session, user: User) -> None:
+    user.suspicious_login_count = (user.suspicious_login_count or 0) + 1
+    db.commit()
+    db.refresh(user)
 
 
 def social_login_or_register(

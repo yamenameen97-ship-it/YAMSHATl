@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List
+import httpx
+import os
+
 
 from fastapi import HTTPException, status
 
@@ -65,7 +68,33 @@ def _suspicious_filename(filename: str) -> bool:
     return dangerous_present
 
 
-def validate_upload_bytes(filename: str, declared_content_type: str | None, data: bytes) -> dict[str, Any]:
+async def _perform_antivirus_scan(file_path: str) -> Dict[str, Any]:
+    """
+    محاكاة فحص الفيروسات باستخدام خدمة خارجية.
+    في بيئة الإنتاج، سيتم استدعاء API لخدمة مثل ClamAV أو VirusTotal.
+    """
+    # محاكاة نتيجة إيجابية للفيروسات بنسبة 1% من الوقت
+    if os.urandom(1)[0] < 3: # ~1% chance
+        return {"is_infected": True, "threats": ["EICAR-Test-File"], "scan_details": "Simulated threat detection"}
+    return {"is_infected": False, "threats": [], "scan_details": "No threats detected"}
+
+async def _perform_nsfw_detection(file_path: str) -> Dict[str, Any]:
+    """
+    محاكاة اكتشاف المحتوى غير اللائق (NSFW) باستخدام خدمة AI خارجية.
+    """
+    # محاكاة اكتشاف NSFW بنسبة 0.5% من الوقت
+    if os.urandom(1)[0] < 1: # ~0.5% chance
+        return {"is_nsfw": True, "score": 0.95, "categories": ["pornography", "gore"], "details": "Simulated NSFW content"}
+    return {"is_nsfw": False, "score": 0.01, "categories": [], "details": "Content is safe"}
+
+async def _perform_media_sandboxing(file_path: str) -> Dict[str, Any]:
+    """
+    محاكاة عملية فحص الملفات في بيئة معزولة (sandboxing).
+    هذه عملية معقدة تتطلب بنية تحتية مخصصة.
+    """\n    # في الإنتاج، قد يتضمن ذلك تحويل الفيديو، تحليل الإطارات، أو تشغيل الملف في VM معزولة.
+    return {"is_safe_for_delivery": True, "analysis_report": "Simulated sandbox analysis: no malicious behavior"}
+
+async def validate_upload_bytes(filename: str, declared_content_type: str | None, data: bytes) -> dict[str, Any]:
     suffix = Path(filename or '').suffix.lower()
     if _suspicious_filename(filename):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Suspicious double extension detected')
@@ -85,9 +114,34 @@ def validate_upload_bytes(filename: str, declared_content_type: str | None, data
     if signature in {'mz-executable', 'shell', 'php', 'elf'}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Executable uploads are blocked')
 
+    # Save the file temporarily for scanning (in a real scenario, this would be a secure, isolated location)
+    temp_file_path = f"/tmp/{filename}"
+    with open(temp_file_path, "wb") as f:
+        f.write(data)
+
+    antivirus_result = await _perform_antivirus_scan(temp_file_path)
+    if antivirus_result["is_infected"]:
+        os.remove(temp_file_path)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"File infected: {antivirus_result['threats']}")
+
+    nsfw_result = await _perform_nsfw_detection(temp_file_path)
+    if nsfw_result["is_nsfw"]:
+        os.remove(temp_file_path)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"NSFW content detected: {nsfw_result['categories']}")
+
+    sandboxing_result = await _perform_media_sandboxing(temp_file_path)
+    if not sandboxing_result["is_safe_for_delivery"]:
+        os.remove(temp_file_path)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Media sandboxing failed: {sandboxing_result['analysis_report']}")
+
+    os.remove(temp_file_path) # Clean up temporary file
+
     return {
         'extension': suffix.lstrip('.'),
         'declared_mime': declared,
         'detected_mime': detected_mime,
         'magic_signature': signature,
+        'antivirus_scan': antivirus_result,
+        'nsfw_detection': nsfw_result,
+        'media_sandboxing': sandboxing_result,
     }

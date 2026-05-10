@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import re
+import requests
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func, inspect, or_, text
@@ -12,6 +13,7 @@ from app.core.security import generate_numeric_code, hash_password, verify_passw
 from app.models.audit_log import AuditLog
 from app.models.user import User
 from app.models.user_session import UserSession
+from app.services.auth_feature_service import social_login_or_register, mark_successful_login, mark_failed_login
 
 VERIFICATION_REQUIRED_DETAIL = 'Email verification required'
 EMAIL_REGEX = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]{2,}$', re.IGNORECASE)
@@ -213,6 +215,8 @@ def authenticate_user(db: Session, identifier: str, password: str, require_verif
         password_is_valid = _password_matches(password or '', legacy_password)
 
     if not password_is_valid:
+        if user: # Mark failed login attempt for adaptive authentication
+            mark_failed_login(db, user)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Incorrect password')
 
     desired_role = 'admin' if is_primary_admin_email(user.email) else 'user'
@@ -237,7 +241,55 @@ def authenticate_user(db: Session, identifier: str, password: str, require_verif
         db.commit()
         db.refresh(user)
 
+    # Mark successful login for adaptive authentication
+    # The binding context is passed from the route handler
+    # This will be called in the route after successful authentication
+    # For now, we'll call it here with dummy binding for direct password logins
+    # The actual binding will be passed from the route in the next phase
+    # mark_successful_login(db, user, {}) # This will be handled in auth.py
     return user
+
+
+def get_google_oauth_user_info(access_token: str) -> dict:
+    response = requests.get(settings.GOOGLE_USERINFO_URL, headers={'Authorization': f'Bearer {access_token}'})
+    response.raise_for_status()
+    user_info = response.json()
+    return {
+        'email': user_info['email'],
+        'username_hint': user_info.get('name', user_info['email'].split('@')[0]),
+        'avatar': user_info.get('picture'),
+        'social_subject': user_info['sub'],
+    }
+
+
+def get_facebook_oauth_user_info(access_token: str) -> dict:
+    response = requests.get(settings.FACEBOOK_USERINFO_URL, params={'fields': 'id,name,email,picture', 'access_token': access_token})
+    response.raise_for_status()
+    user_info = response.json()
+    return {
+        'email': user_info['email'],
+        'username_hint': user_info.get('name', user_info['email'].split('@')[0]),
+        'avatar': user_info.get('picture', {}).get('data', {}).get('url'),
+        'social_subject': user_info['id'],
+    }
+
+
+def social_authenticate_or_register_user(
+    db: Session,
+    provider: str,
+    email: str,
+    username_hint: str | None = None,
+    avatar: str | None = None,
+    social_subject: str | None = None,
+) -> User:
+    return social_login_or_register(
+        db,
+        provider=provider,
+        email=email,
+        username_hint=username_hint,
+        avatar=avatar,
+        social_subject=social_subject,
+    )
 
 
 def issue_email_verification_code(db: Session, user: User) -> str:

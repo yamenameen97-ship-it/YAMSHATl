@@ -28,6 +28,30 @@ function pushMetric(metric) {
   window.dispatchEvent(new CustomEvent('yamshat:performance-metric', { detail: metric }));
 }
 
+// 1. Image Optimization Helper
+export const getOptimizedImageUrl = (url, width = 800, quality = 80) => {
+  if (!url) return '';
+  if (url.includes('cdn.yamshat.com') || url.includes(CDN_BASE)) {
+    return `${url}?w=${width}&q=${quality}&fmt=webp`;
+  }
+  return url;
+};
+
+// 2. Memory Optimization: Clear heavy objects from large lists
+export const optimizeMemoryUsage = (list, threshold = 500) => {
+  if (list.length > threshold) {
+    console.log(`[Performance] Optimizing memory for list of size ${list.length}`);
+    return list.slice(0, threshold);
+  }
+  return list;
+};
+
+// 3. CDN Caching Strategy Helper
+export const getCDNConfig = () => ({
+  cacheControl: 'public, max-age=31536000, immutable',
+  headers: { 'X-CDN-Cache-Strategy': 'Yamshat-Edge-v1' }
+});
+
 function observePerformanceEntries() {
   if (!canUseWindow() || typeof PerformanceObserver === 'undefined' || !featureFlags.performanceMetrics) return;
 
@@ -72,6 +96,12 @@ function sampleMemory() {
     jsHeapSizeLimit: memory.jsHeapSizeLimit,
     recordedAt: new Date().toISOString(),
   };
+  
+  // Advanced Memory Protection
+  if (memory.usedJSHeapSize > memory.jsHeapSizeLimit * 0.8) {
+    console.warn('[Performance] Memory usage critical. Triggering emergency cleanup.');
+    window.dispatchEvent(new CustomEvent('yamshat:memory-critical'));
+  }
 }
 
 function ensurePreconnect(url) {
@@ -87,11 +117,6 @@ function ensurePreconnect(url) {
   document.head.appendChild(link);
 }
 
-function broadcastOnlineSync(registration) {
-  if (!registration || typeof registration.sync?.register !== 'function') return;
-  registration.sync.register('yamshat-background-sync').catch(() => null);
-}
-
 export function initializePerformanceToolkit({ registration = null } = {}) {
   if (initialized || !canUseWindow()) return;
   initialized = true;
@@ -100,6 +125,4 @@ export function initializePerformanceToolkit({ registration = null } = {}) {
   observePerformanceEntries();
   sampleMemory();
   window.setInterval(sampleMemory, 60_000);
-  window.addEventListener('online', () => broadcastOnlineSync(registration));
-  if (registration) broadcastOnlineSync(registration);
 }

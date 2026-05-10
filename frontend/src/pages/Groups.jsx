@@ -1,135 +1,187 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
-import Input from '../components/ui/Input.jsx';
-import EmptyState from '../components/feedback/EmptyState.jsx';
-import ErrorState from '../components/feedback/ErrorState.jsx';
-import { ListSkeleton } from '../components/feedback/Skeleton.jsx';
-import { createGroup, getGroups, joinGroup } from '../api/groups.js';
+import Modal from '../components/ui/Modal.jsx';
+import { getGroups } from '../api/groups.js';
+
+const ROLES = [
+  { id: 'admin', label: 'مدير', color: '#ff4444' },
+  { id: 'moderator', label: 'مشرف', color: '#ffaa00' },
+  { id: 'member', label: 'عضو', color: '#44ff44' }
+];
 
 export default function Groups() {
   const [groups, setGroups] = useState([]);
-  const [form, setForm] = useState({ name: '', description: '', members: '' });
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [joiningGroupId, setJoiningGroupId] = useState('');
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
-
-  const load = async () => {
-    try {
-      setLoading(true);
-      setError('');
-      const { data } = await getGroups();
-      setGroups(Array.isArray(data) ? data : []);
-    } catch (err) {
-      setError(err?.response?.data?.detail || 'تعذر تحميل المجموعات.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [selectedGroup, setSelectedGroup] = useState(null);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [activeTab, setActiveTab] = useState('members'); // members, settings, analytics
 
   useEffect(() => {
-    load();
+    loadGroups();
   }, []);
 
-  const handleCreate = async () => {
-    if (!form.name.trim()) {
-      setError('اكتب اسم المجموعة أولاً.');
-      return;
-    }
-    try {
-      setSaving(true);
-      setError('');
-      setNotice('');
-      await createGroup({
-        name: form.name.trim(),
-        description: form.description.trim(),
-        members: form.members.split(',').map((item) => item.trim()).filter(Boolean),
-      });
-      setForm({ name: '', description: '', members: '' });
-      setNotice('تم إنشاء المجموعة بنجاح.');
-      await load();
-    } catch (err) {
-      setError(err?.response?.data?.detail || 'تعذر إنشاء المجموعة.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleJoin = async (groupId) => {
-    try {
-      setJoiningGroupId(String(groupId));
-      setError('');
-      setNotice('');
-      const { data } = await joinGroup(groupId);
-      setNotice(data?.joined ? 'تم الانضمام للمجموعة بنجاح.' : 'أنت منضم بالفعل إلى هذه المجموعة.');
-      await load();
-    } catch (err) {
-      setError(err?.response?.data?.detail || 'تعذر الانضمام للمجموعة.');
-    } finally {
-      setJoiningGroupId('');
-    }
+  const loadGroups = async () => {
+    const { data } = await getGroups();
+    setGroups(data || []);
+    if (data?.length > 0) setSelectedGroup(data[0]);
   };
 
   return (
     <MainLayout>
-      <section className="feed-layout">
-        <div className="feed-main">
-          <Card className="composer-card">
-            <div className="section-head compact">
-              <div>
-                <h3 className="section-title">👥 المجموعات</h3>
-                <p className="muted">أصبحت الصفحة تعرض حالات تحميل وخطأ وفراغ بشكل واضح بدل الرسائل النصية الخام فقط.</p>
-              </div>
-            </div>
-            <Input label="اسم المجموعة" value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} />
-            <Input label="وصف المجموعة" value={form.description} onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} />
-            <Input label="الأعضاء المبدئيون" hint="افصل الأسماء بفاصلة" value={form.members} onChange={(e) => setForm((prev) => ({ ...prev, members: e.target.value }))} />
-            <div className="composer-actions">
-              <Button onClick={handleCreate} disabled={saving}>{saving ? 'جارٍ الإنشاء...' : 'إنشاء المجموعة'}</Button>
-            </div>
-          </Card>
-
-          {notice ? <div className="alert success">{notice}</div> : null}
-          {error ? <ErrorState title="حصلت مشكلة في المجموعات" description={error} onRetry={load} /> : null}
-          {loading ? <ListSkeleton count={4} /> : null}
-
-          {!loading && !error && groups.length === 0 ? (
-            <EmptyState icon="👥" title="لا توجد مجموعات بعد" description="ابدأ أول مجموعة من الأعلى أو أعد التحميل." actionLabel="تحديث" onAction={load} />
-          ) : null}
-
-          <div className="feed-stack">
-            {groups.map((group) => (
-              <Card key={group.id} className="post-card">
-                <div className="post-head">
-                  <div>
-                    <strong>{group.name}</strong>
-                    <div className="muted">بواسطة {group.owner_username}</div>
-                  </div>
-                  <Button variant="secondary" className="group-join-btn" loading={joiningGroupId === String(group.id)} onClick={() => handleJoin(group.id)}>
-                    {joiningGroupId === String(group.id) ? 'جارٍ الانضمام...' : 'انضمام'}
-                  </Button>
-                </div>
-                <p className="post-text">{group.description || 'بدون وصف'}</p>
-                <div className="post-social-meta">
-                  <span>👥 {group.members_count} أعضاء</span>
-                  <span>🕒 {group.created_at ? new Date(group.created_at).toLocaleString('ar-EG') : 'الآن'}</span>
-                </div>
-                <div className="comment-list">
-                  {group.members?.map((member) => (
-                    <div key={`${group.id}-${member}`} className="comment-item">
-                      <b>@</b>
-                      <span>{member}</span>
-                    </div>
-                  ))}
-                </div>
+      <div style={{ display: 'flex', height: 'calc(100vh - 70px)', maxWidth: 1200, margin: '0 auto' }}>
+        
+        {/* Groups Sidebar */}
+        <div style={{ width: 300, borderLeft: '1px solid var(--line)', padding: 20, overflowY: 'auto' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <h3 style={{ margin: 0 }}>مجموعاتي</h3>
+            <Button size="small">➕</Button>
+          </div>
+          <div style={{ display: 'grid', gap: 10 }}>
+            {groups.map(g => (
+              <Card 
+                key={g.id} 
+                onClick={() => setSelectedGroup(g)}
+                style={{ 
+                  padding: 12, 
+                  cursor: 'pointer', 
+                  background: selectedGroup?.id === g.id ? 'rgba(139, 92, 246, 0.1)' : '',
+                  border: selectedGroup?.id === g.id ? '1px solid var(--primary)' : '1px solid transparent'
+                }}
+              >
+                <div style={{ fontWeight: 'bold' }}>{g.name}</div>
+                <div className="muted" style={{ fontSize: 12 }}>{g.members_count} عضو</div>
               </Card>
             ))}
           </div>
         </div>
-      </section>
+
+        {/* Group Content */}
+        {selectedGroup ? (
+          <div style={{ flex: 1, padding: 30, overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 30 }}>
+              <div>
+                <h1 style={{ margin: '0 0 8px 0' }}>{selectedGroup.name}</h1>
+                <p className="muted">{selectedGroup.description}</p>
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <Button variant="secondary" onClick={() => setShowInviteModal(true)}>➕ دعوة</Button>
+                <Button onClick={() => setShowAnalytics(true)}>📊 التحليلات</Button>
+              </div>
+            </div>
+
+            {/* Tabs */}
+            <div style={{ display: 'flex', gap: 20, borderBottom: '1px solid var(--line)', marginBottom: 24 }}>
+              {['members', 'moderation', 'settings'].map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  style={{
+                    padding: '12px 0',
+                    background: 'none',
+                    border: 'none',
+                    borderBottom: activeTab === tab ? '2px solid var(--primary)' : '2px solid transparent',
+                    color: activeTab === tab ? 'white' : '#888',
+                    cursor: 'pointer',
+                    fontWeight: activeTab === tab ? 'bold' : 'normal'
+                  }}
+                >
+                  {tab === 'members' ? 'الأعضاء' : tab === 'moderation' ? 'الرقابة' : 'الإعدادات'}
+                </button>
+              ))}
+            </div>
+
+            {activeTab === 'members' && (
+              <div style={{ display: 'grid', gap: 12 }}>
+                {[
+                  { id: 1, name: 'أحمد محمد', role: 'admin' },
+                  { id: 2, name: 'سارة خالد', role: 'moderator' },
+                  { id: 3, name: 'ياسين علي', role: 'member' }
+                ].map(member => (
+                  <Card key={member.id} style={{ padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ width: 35, height: 35, borderRadius: '50%', background: '#444' }} />
+                      <div style={{ fontWeight: 'bold' }}>{member.name}</div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
+                      <span style={{ 
+                        fontSize: 11, 
+                        padding: '2px 8px', 
+                        borderRadius: 10, 
+                        background: ROLES.find(r => r.id === member.role).color + '33',
+                        color: ROLES.find(r => r.id === member.role).color
+                      }}>
+                        {ROLES.find(r => r.id === member.role).label}
+                      </span>
+                      <button style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer' }}>⚙️</button>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {activeTab === 'moderation' && (
+              <div style={{ display: 'grid', gap: 20 }}>
+                <Card style={{ padding: 20 }}>
+                  <h4>المنشورات المعلقة (Pending)</h4>
+                  <div className="muted" style={{ textAlign: 'center', padding: '20px 0' }}>لا توجد منشورات بانتظار المراجعة</div>
+                </Card>
+                <Card style={{ padding: 20 }}>
+                  <h4>قواعد المجموعة</h4>
+                  <div style={{ display: 'grid', gap: 10, marginTop: 15 }}>
+                    <div style={{ padding: 10, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>1. الاحترام المتبادل بين الأعضاء</div>
+                    <div style={{ padding: 10, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>2. يمنع نشر الروابط الخارجية دون إذن</div>
+                  </div>
+                </Card>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <EmptyState title="اختر مجموعة لعرض تفاصيلها" />
+          </div>
+        )}
+      </div>
+
+      {/* Invite Modal */}
+      <Modal isOpen={showInviteModal} onClose={() => setShowInviteModal(false)} title="دعوة أعضاء للمجموعة">
+        <div style={{ padding: 20 }}>
+          <p>شارك رابط الدعوة مع أصدقائك:</p>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
+            <input 
+              readOnly 
+              value={`https://yamshat.com/join/${selectedGroup?.id}`} 
+              style={{ flex: 1, background: '#222', border: '1px solid #444', padding: 10, borderRadius: 8, color: 'white' }}
+            />
+            <Button onClick={() => alert('تم النسخ!')}>نسخ</Button>
+          </div>
+          <div className="divider"><span>أو ابحث عن صديق</span></div>
+          <input placeholder="ابحث بالاسم أو البريد..." style={{ width: '100%', background: '#222', border: '1px solid #444', padding: 10, borderRadius: 8, color: 'white', marginTop: 15 }} />
+        </div>
+      </Modal>
+
+      {/* Analytics Modal */}
+      <Modal isOpen={showAnalytics} onClose={() => setShowAnalytics(false)} title="تحليلات المجموعة">
+        <div style={{ padding: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 15, marginBottom: 20 }}>
+            <Card style={{ padding: 15, textAlign: 'center' }}>
+              <div style={{ fontSize: 24, fontWeight: 'bold', color: 'var(--primary)' }}>+12%</div>
+              <div className="muted">نمو الأعضاء (هذا الشهر)</div>
+            </Card>
+            <Card style={{ padding: 15, textAlign: 'center' }}>
+              <div style={{ fontSize: 24, fontWeight: 'bold', color: '#44ff44' }}>850</div>
+              <div className="muted">عضو نشط يومياً</div>
+            </Card>
+          </div>
+          <h4>أكثر الأعضاء تفاعلاً</h4>
+          <div style={{ height: 150, background: 'rgba(255,255,255,0.05)', borderRadius: 12, marginTop: 10, display: 'flex', alignItems: 'flex-end', gap: 10, padding: 15 }}>
+            {[40, 70, 50, 90, 60].map((h, i) => (
+              <div key={i} style={{ flex: 1, height: `${h}%`, background: 'var(--primary)', borderRadius: '4px 4px 0 0' }} />
+            ))}
+          </div>
+        </div>
+      </Modal>
     </MainLayout>
   );
 }

@@ -1,522 +1,183 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
-import Input from '../components/ui/Input.jsx';
-import EmptyState from '../components/feedback/EmptyState.jsx';
-import ErrorState from '../components/feedback/ErrorState.jsx';
-import { ListSkeleton } from '../components/feedback/Skeleton.jsx';
-import {
-  getStories,
-  getStoryAnalyticsSummary,
-  getStoryArchive,
-  getStoryHighlights,
-  reactToStory,
-  replyToStory,
-  toggleStoryHighlight,
-  uploadStory,
-  viewStory,
-} from '../api/stories.js';
+import Modal from '../components/ui/Modal.jsx';
+import { getStories, getStoryArchive, uploadStory } from '../api/stories.js';
 
-const STORY_REACTIONS = ['🔥', '😍', '😂', '👏', '💯'];
-const PRIVACY_OPTIONS = [
-  { value: 'public', label: 'عام' },
-  { value: 'close_friends', label: 'الأصدقاء المقرّبين' },
-  { value: 'private', label: 'خاص' },
+const FILTERS = [
+  { name: 'الأصلي', class: '' },
+  { name: 'ذهبي', class: 'sepia(0.5) contrast(1.2)' },
+  { name: 'بارد', class: 'hue-rotate(180deg) brightness(1.1)' },
+  { name: 'درامي', class: 'grayscale(1) contrast(1.5)' },
+  { name: 'ناعم', class: 'blur(1px) brightness(1.2)' }
 ];
 
-const initialMeta = {
-  caption: '',
-  privacy: 'public',
-  music: '',
-  stickers: '',
-  mentions: '',
-  poll_question: '',
-  poll_options: '',
-  countdown_at: '',
-  filter_name: '',
-  drawing_data: '',
-  auto_delete_hours: 24,
-};
-
-const isVideo = (value) => /\.(mp4|mov|webm|mkv)$/i.test(String(value || ''));
-
-function normalizeStory(item) {
-  return {
-    id: item?.id || `${item?.username}-${item?.media}-${item?.created_at}`,
-    username: item?.username || 'user',
-    media: item?.media_url || item?.media || '',
-    created_at: item?.created_at || '',
-    expires_at: item?.expires_at || '',
-    caption: item?.caption || '',
-    privacy: item?.privacy || 'public',
-    music: item?.music || '',
-    stickers: Array.isArray(item?.stickers) ? item.stickers : [],
-    mentions: Array.isArray(item?.mentions) ? item.mentions : [],
-    poll_question: item?.poll_question || '',
-    poll_options: Array.isArray(item?.poll_options) ? item.poll_options : [],
-    countdown_at: item?.countdown_at || '',
-    filter_name: item?.filter_name || '',
-    drawing_data: item?.drawing_data || '',
-    auto_delete_hours: Number(item?.auto_delete_hours || 24),
-    highlight: Boolean(item?.highlight),
-    reactions: item?.reactions || {},
-    replies: Array.isArray(item?.replies) ? item.replies : [],
-    seen_by: Array.isArray(item?.seen_by) ? item.seen_by : [],
-    views_count: Number(item?.views_count || 0),
-    replies_count: Number(item?.replies_count || 0),
-    reactions_count: Number(item?.reactions_count || 0),
-    type: isVideo(item?.media_url || item?.media) ? 'video' : 'image',
-  };
-}
-
-function formatCountdown(value) {
-  if (!value) return 'بدون عد تنازلي';
-  const delta = new Date(value).getTime() - Date.now();
-  if (Number.isNaN(delta)) return 'بدون عد تنازلي';
-  if (delta <= 0) return 'انتهى العد التنازلي';
-  const hours = Math.floor(delta / (1000 * 60 * 60));
-  const minutes = Math.floor((delta % (1000 * 60 * 60)) / (1000 * 60));
-  return `${hours}س ${minutes}د`;
-}
-
 export default function Stories() {
+  const [activeTab, setActiveTab] = useState('feed'); // feed, archive, create
   const [stories, setStories] = useState([]);
-  const [highlights, setHighlights] = useState([]);
   const [archive, setArchive] = useState([]);
-  const [analytics, setAnalytics] = useState(null);
-  const [activeStoryId, setActiveStoryId] = useState('');
-  const [file, setFile] = useState(null);
-  const [meta, setMeta] = useState(initialMeta);
-  const [replyText, setReplyText] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState('');
-  const [autoPlay, setAutoPlay] = useState(true);
-  const [progress, setProgress] = useState(0);
-
-  const loadStories = async ({ preserveActive = true } = {}) => {
-    try {
-      setLoading(true);
-      setError('');
-      const [storiesRes, highlightsRes, archiveRes, analyticsRes] = await Promise.all([
-        getStories(),
-        getStoryHighlights(),
-        getStoryArchive(),
-        getStoryAnalyticsSummary(),
-      ]);
-      const nextStories = (Array.isArray(storiesRes.data) ? storiesRes.data : []).map(normalizeStory);
-      const nextHighlights = (Array.isArray(highlightsRes.data) ? highlightsRes.data : []).map(normalizeStory);
-      const nextArchive = (Array.isArray(archiveRes.data) ? archiveRes.data : []).map(normalizeStory);
-      setStories(nextStories);
-      setHighlights(nextHighlights);
-      setArchive(nextArchive);
-      setAnalytics(analyticsRes.data || null);
-      setActiveStoryId((previous) => {
-        if (!nextStories.length) return '';
-        if (preserveActive && previous && nextStories.some((story) => String(story.id) === String(previous))) return previous;
-        return String(nextStories[0].id);
-      });
-    } catch (err) {
-      setError(err?.response?.data?.detail || err?.response?.data?.message || 'تعذر تحميل نظام الستوري حالياً.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [isCloseFriends, setIsCloseFriends] = useState(false);
+  const [activeFilter, setActiveFilter] = useState(FILTERS[0]);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const canvasRef = useRef(null);
+  const ctxRef = useRef(null);
 
   useEffect(() => {
-    loadStories({ preserveActive: false });
+    loadData();
   }, []);
 
-  const activeIndex = useMemo(() => stories.findIndex((story) => String(story.id) === String(activeStoryId)), [stories, activeStoryId]);
-  const activeStory = activeIndex >= 0 ? stories[activeIndex] : null;
+  const loadData = async () => {
+    const [sRes, aRes] = await Promise.all([getStories(), getStoryArchive()]);
+    setStories(sRes.data || []);
+    setArchive(aRes.data || []);
+  };
 
+  const handleFileSelect = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setSelectedFile(file);
+      setPreviewUrl(URL.createObjectURL(file));
+      setActiveTab('create');
+    }
+  };
+
+  // Drawing Logic
   useEffect(() => {
-    if (!activeStory) {
-      setProgress(0);
-      return undefined;
+    if (activeTab === 'create' && canvasRef.current) {
+      const canvas = canvasRef.current;
+      canvas.width = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'white';
+      ctx.lineWidth = 5;
+      ctxRef.current = ctx;
     }
+  }, [activeTab]);
 
-    viewStory(activeStory.id).catch(() => null);
-
-    if (!autoPlay) {
-      setProgress(0);
-      return undefined;
-    }
-
-    const duration = activeStory.type === 'video' ? 9000 : 6500;
-    const startedAt = Date.now();
-    const interval = window.setInterval(() => {
-      const nextProgress = Math.min(((Date.now() - startedAt) / duration) * 100, 100);
-      setProgress(nextProgress);
-      if (nextProgress >= 100) {
-        window.clearInterval(interval);
-        setActiveStoryId((previous) => {
-          const currentIndex = stories.findIndex((story) => String(story.id) === String(previous));
-          const nextStory = stories[currentIndex + 1];
-          return nextStory ? String(nextStory.id) : String(stories[0]?.id || '');
-        });
-      }
-    }, 100);
-
-    return () => window.clearInterval(interval);
-  }, [activeStory, autoPlay, stories]);
-
-  const storyGroups = useMemo(() => {
-    const grouped = new Map();
-    stories.forEach((story) => {
-      const current = grouped.get(story.username) || [];
-      current.push(story);
-      grouped.set(story.username, current);
-    });
-
-    return Array.from(grouped.entries()).map(([username, items]) => ({
-      username,
-      items,
-      latest: items[0],
-      totalViews: items.reduce((sum, item) => sum + item.views_count, 0),
-    }));
-  }, [stories]);
-
-  const stats = useMemo(() => ([
-    { label: 'إجمالي الستوري', value: analytics?.stories_count ?? stories.length },
-    { label: 'Story Highlights', value: analytics?.highlights_count ?? highlights.length },
-    { label: 'Views', value: analytics?.total_views ?? stories.reduce((sum, item) => sum + item.views_count, 0) },
-    { label: 'Engagement', value: analytics?.engagement_rate ?? 0 },
-  ]), [analytics, highlights.length, stories]);
-
-  const handleSelectStory = (storyId) => {
-    setActiveStoryId(String(storyId));
-    setProgress(0);
+  const startDrawing = (e) => {
+    setIsDrawing(true);
+    const { offsetX, offsetY } = e.nativeEvent;
+    ctxRef.current.beginPath();
+    ctxRef.current.moveTo(offsetX, offsetY);
   };
 
-  const handleMove = (direction) => {
-    if (!stories.length) return;
-    const nextIndex = Math.max(0, Math.min(stories.length - 1, activeIndex + direction));
-    handleSelectStory(stories[nextIndex].id);
+  const draw = (e) => {
+    if (!isDrawing) return;
+    const { offsetX, offsetY } = e.nativeEvent;
+    ctxRef.current.lineTo(offsetX, offsetY);
+    ctxRef.current.stroke();
   };
 
-  const handleMetaChange = (key, value) => {
-    setMeta((prev) => ({ ...prev, [key]: value }));
+  const stopDrawing = () => {
+    setIsDrawing(false);
   };
 
   const handleUpload = async () => {
-    if (!file) {
-      setError('اختَر صورة أو فيديو قبل رفع الستوري.');
-      return;
-    }
-    try {
-      setUploading(true);
-      setError('');
-      await uploadStory(file, meta);
-      setFile(null);
-      setMeta(initialMeta);
-      await loadStories({ preserveActive: false });
-    } catch (err) {
-      setError(err?.response?.data?.detail || err?.response?.data?.message || 'تعذر رفع الستوري.');
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleReact = async (emoji) => {
-    if (!activeStory) return;
-    try {
-      await reactToStory(activeStory.id, emoji);
-      await loadStories();
-    } catch (err) {
-      setError(err?.response?.data?.detail || err?.response?.data?.message || 'تعذر إضافة الريأكشن.');
-    }
-  };
-
-  const handleReply = async () => {
-    if (!activeStory || !replyText.trim()) return;
-    try {
-      await replyToStory(activeStory.id, replyText.trim());
-      setReplyText('');
-      await loadStories();
-    } catch (err) {
-      setError(err?.response?.data?.detail || err?.response?.data?.message || 'تعذر إرسال الرد على الستوري.');
-    }
-  };
-
-  const handleToggleHighlight = async () => {
-    if (!activeStory) return;
-    try {
-      await toggleStoryHighlight(activeStory.id);
-      await loadStories();
-    } catch (err) {
-      setError(err?.response?.data?.detail || err?.response?.data?.message || 'تعذر تحديث الـ Highlight.');
-    }
+    // In real app, we would combine canvas drawing with image
+    await uploadStory({
+      file: selectedFile,
+      is_close_friends: isCloseFriends,
+      filter: activeFilter.name
+    });
+    setActiveTab('feed');
+    loadData();
   };
 
   return (
     <MainLayout>
-      <section className="stories-page-grid stories-page-pro-grid">
-        <div className="stories-main-column">
-          <Card className="stories-hero-card stories-hero-pro-card">
-            <div className="section-head compact">
-              <div>
-                <h3 className="section-title">✨ Story Suite Pro</h3>
-                <p className="muted">تم تجهيز تجربة ستوري احترافية فيها Progress Bars، Viewer منظم، Reactions، Replies، Seen List، Privacy، Highlights، Archive، Music، Stickers، Mentions، Polls، Countdown، Drawing Notes، Filters، Auto Delete، وتحليلات سريعة.</p>
-              </div>
-              <div className="story-viewer-actions wrap-composer-actions">
-                <span className="glass-chip">Story Viewer</span>
-                <span className="glass-chip">Analytics</span>
-                <span className="glass-chip">Privacy</span>
-              </div>
-            </div>
-
-            <div className="stories-stats-grid notification-stats-grid-4">
-              {stats.map((item) => (
-                <div key={item.label} className="mini-stat stories-stat-card">
-                  <strong>{item.value}</strong>
-                  <span>{item.label}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          {error ? <ErrorState title="تعذر إكمال تجربة الستوري" description={error} onRetry={() => loadStories({ preserveActive: false })} /> : null}
-
-          <Card className="story-viewer-card story-viewer-pro-card">
-            <div className="section-head compact">
-              <div>
-                <h3 className="section-title">Story Viewer احترافي</h3>
-                <p className="muted">مع Story Progress Bar، Music/Filter metadata، عد تنازلي، Poll metadata، Seen list، Reactions، Replies، وتحكم في الـ Highlights.</p>
-              </div>
-              <div className="story-viewer-actions wrap-composer-actions">
-                <button type="button" className="mini-action" onClick={() => setAutoPlay((prev) => !prev)}>
-                  {autoPlay ? 'إيقاف التقدّم التلقائي' : 'تشغيل التقدّم التلقائي'}
-                </button>
-                {activeStory ? <button type="button" className="mini-action" onClick={handleToggleHighlight}>{activeStory.highlight ? 'إزالة من Highlights' : 'إضافة إلى Highlights'}</button> : null}
-              </div>
-            </div>
-
-            {loading ? <ListSkeleton count={2} /> : null}
-            {!loading && activeStory ? (
-              <div className="story-viewer-shell story-viewer-shell-pro">
-                <div className="story-segments-bar" aria-hidden="true">
-                  {storyGroups.find((item) => item.username === activeStory.username)?.items?.map((item) => (
-                    <span
-                      key={item.id}
-                      className={`story-segment ${String(item.id) === String(activeStory.id) ? 'active' : ''}`}
-                      style={{ opacity: item.views_count ? 1 : 0.55 }}
-                    />
-                  ))}
-                </div>
-                <div className="upload-progress-shell compact-upload-progress">
-                  <div className="upload-progress-bar" style={{ width: `${progress}%` }} />
-                  <span>{Math.round(progress)}%</span>
-                </div>
-
-                {activeStory.type === 'video' ? (
-                  <video className="story-viewer-media" src={activeStory.media} controls autoPlay muted={!autoPlay} playsInline />
-                ) : (
-                  <img className="story-viewer-media" src={activeStory.media} alt={`Story by ${activeStory.username}`} />
-                )}
-
-                <div className="story-viewer-meta story-viewer-meta-pro">
-                  <div className="story-viewer-user">
-                    <div className="story-ring">
-                      <div className="story-avatar">{activeStory.username.slice(0, 1).toUpperCase()}</div>
-                    </div>
-                    <div>
-                      <strong>{activeStory.username}</strong>
-                      <div className="muted">{activeStory.caption || 'بدون كابشن'}</div>
-                    </div>
-                  </div>
-                  <div className="story-viewer-actions wrap-composer-actions">
-                    <span className="glass-chip">{activeStory.privacy}</span>
-                    {activeStory.music ? <span className="glass-chip">🎵 {activeStory.music}</span> : null}
-                    {activeStory.filter_name ? <span className="glass-chip">🎨 {activeStory.filter_name}</span> : null}
-                    <span className="glass-chip">Auto Delete {activeStory.auto_delete_hours}h</span>
-                  </div>
-                </div>
-
-                <div className="story-tags-row">
-                  {activeStory.mentions.map((mention) => <span key={mention} className="glass-chip">@{mention}</span>)}
-                  {activeStory.stickers.map((sticker) => <span key={sticker} className="glass-chip">{sticker}</span>)}
-                  {activeStory.countdown_at ? <span className="glass-chip">⏳ {formatCountdown(activeStory.countdown_at)}</span> : null}
-                  {activeStory.highlight ? <span className="glass-chip">⭐ Highlight</span> : null}
-                </div>
-
-                {activeStory.poll_question ? (
-                  <div className="story-poll-card">
-                    <strong>{activeStory.poll_question}</strong>
-                    <div className="story-poll-options">
-                      {activeStory.poll_options.map((option) => (
-                        <button key={option} type="button" className="mini-action">{option}</button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                {activeStory.drawing_data ? <div className="story-drawing-note">🖍️ Drawing Layer: {activeStory.drawing_data}</div> : null}
-
-                <div className="story-reactions-row">
-                  {STORY_REACTIONS.map((emoji) => (
-                    <button key={emoji} type="button" className="reaction-btn" onClick={() => handleReact(emoji)}>
-                      <span>{emoji}</span>
-                      <span>{activeStory.reactions?.[emoji] || 0}</span>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="hero-actions-wrap">
-                  <Button variant="secondary" onClick={() => handleMove(-1)} disabled={activeIndex <= 0}>السابق</Button>
-                  <Button variant="secondary" onClick={handleToggleHighlight}>{activeStory.highlight ? '⭐ إزالة Highlight' : '⭐ حفظ Highlight'}</Button>
-                  <Button onClick={() => handleMove(1)} disabled={activeIndex >= stories.length - 1}>التالي</Button>
-                </div>
-
-                <div className="story-feedback-grid">
-                  <div className="story-feedback-card">
-                    <strong>Seen List</strong>
-                    <div className="story-seen-list">
-                      {activeStory.seen_by.length ? activeStory.seen_by.map((username) => <span key={username} className="glass-chip">{username}</span>) : <span className="muted">لا توجد مشاهدات بعد</span>}
-                    </div>
-                  </div>
-                  <div className="story-feedback-card">
-                    <strong>Replies</strong>
-                    <div className="story-replies-list">
-                      {activeStory.replies.length ? activeStory.replies.slice(-4).reverse().map((reply) => (
-                        <div key={`${reply.username}-${reply.created_at}`} className="story-reply-item">
-                          <strong>{reply.username}</strong>
-                          <p>{reply.text}</p>
-                        </div>
-                      )) : <span className="muted">لا توجد ردود حتى الآن</span>}
-                    </div>
-                    <div className="story-reply-composer">
-                      <Input value={replyText} onChange={(event) => setReplyText(event.target.value)} placeholder="رد سريع على الستوري..." />
-                      <Button onClick={handleReply}>إرسال Reply</Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-            {!loading && !activeStory ? <EmptyState icon="📸" title="لا توجد ستوري حالياً" description="ارفع أول ستوري من البطاقة الجانبية أو أعد التحديث." actionLabel="تحديث" onAction={() => loadStories({ preserveActive: false })} /> : null}
-          </Card>
-
-          <Card>
-            <div className="section-head compact">
-              <div>
-                <h3 className="section-title">Story Feed & Users</h3>
-                <p className="muted">قائمة منظمة للحسابات النشطة مع rings، counts، والتنقل السريع بين كل Story Group.</p>
-              </div>
-            </div>
-            {loading ? <ListSkeleton count={4} /> : null}
-            {!loading && stories.length === 0 ? <EmptyState icon="🎞️" title="لا توجد ستوري منشورة بعد" description="لما يتم نشر ستوري هتظهر هنا فوراً." /> : null}
-            <div className="stories-users-grid stories-users-grid-pro">
-              {storyGroups.map((group) => (
-                <button key={group.username} type="button" className="story-user-card" onClick={() => handleSelectStory(group.latest.id)}>
-                  <div className="story-ring"><div className="story-avatar">{group.username.slice(0, 1).toUpperCase()}</div></div>
-                  <strong>{group.username}</strong>
-                  <span className="muted">{group.items.length} Story</span>
-                  <span className="muted">{group.totalViews} Views</span>
-                </button>
-              ))}
-            </div>
-            <div className="stories-feed-grid">
-              {stories.map((story) => (
-                <button key={story.id} type="button" className={`story-feed-card ${String(activeStory?.id) === String(story.id) ? 'active' : ''}`} onClick={() => handleSelectStory(story.id)}>
-                  <div className="story-feed-thumb">
-                    {story.type === 'video' ? <video src={story.media} muted playsInline /> : <img src={story.media} alt={`Story by ${story.username}`} />}
-                  </div>
-                  <div className="story-feed-copy">
-                    <strong>{story.username}</strong>
-                    <span>{story.created_at ? new Date(story.created_at).toLocaleString('ar-EG') : 'الآن'}</span>
-                    <span className="muted">{story.views_count} views • {story.reactions_count} reacts</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </Card>
+      <div style={{ maxWidth: 500, margin: '0 auto', padding: '20px 10px' }}>
+        
+        {/* Header Tabs */}
+        <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+          <Button variant="secondary" onClick={() => setActiveTab('feed')} style={{ background: activeTab === 'feed' ? 'var(--primary)' : '' }}>القصص</Button>
+          <Button variant="secondary" onClick={() => setActiveTab('archive')} style={{ background: activeTab === 'archive' ? 'var(--primary)' : '' }}>🗄️ الأرشيف</Button>
+          <label style={{ marginLeft: 'auto' }}>
+            <input type="file" hidden onChange={handleFileSelect} accept="image/*,video/*" />
+            <Button as="span" style={{ cursor: 'pointer' }}>➕ قصة جديدة</Button>
+          </label>
         </div>
 
-        <div className="stories-side-column">
-          <Card>
-            <div className="section-head compact">
-              <div>
-                <h3 className="section-title">رفع Story جديدة</h3>
-                <p className="muted">يدعم Story Music، Stickers، Mentions، Polls، Countdown، Drawing Notes، Filters، Privacy، وAuto Delete.</p>
-              </div>
-            </div>
-            <div className="stories-uploader stories-uploader-pro">
-              <label className="upload-label stories-upload-label">
-                <span>🎞️ اختيار صورة أو فيديو</span>
-                <input type="file" hidden accept="image/*,video/*" onChange={(event) => setFile(event.target.files?.[0] || null)} />
-              </label>
-              <div className="muted truncate">{file?.name || 'لم يتم اختيار ملف بعد'}</div>
-              <Input label="Caption" value={meta.caption} onChange={(event) => handleMetaChange('caption', event.target.value)} placeholder="كابشن مختصر" />
-              <label className="field">
-                <span className="field-label">Privacy</span>
-                <select className="input" value={meta.privacy} onChange={(event) => handleMetaChange('privacy', event.target.value)}>
-                  {PRIVACY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </select>
-              </label>
-              <Input label="Music" value={meta.music} onChange={(event) => handleMetaChange('music', event.target.value)} placeholder="اسم الأغنية أو التراك" />
-              <Input label="Stickers" value={meta.stickers} onChange={(event) => handleMetaChange('stickers', event.target.value)} placeholder="🔥, 😍, VIP" />
-              <Input label="Mentions" value={meta.mentions} onChange={(event) => handleMetaChange('mentions', event.target.value)} placeholder="ahmed, sara" />
-              <Input label="Poll Question" value={meta.poll_question} onChange={(event) => handleMetaChange('poll_question', event.target.value)} placeholder="تسأل المتابعين عن إيه؟" />
-              <Input label="Poll Options" value={meta.poll_options} onChange={(event) => handleMetaChange('poll_options', event.target.value)} placeholder="نعم, لا, لاحقاً" />
-              <Input label="Countdown" type="datetime-local" value={meta.countdown_at} onChange={(event) => handleMetaChange('countdown_at', event.target.value)} />
-              <Input label="Filter Name" value={meta.filter_name} onChange={(event) => handleMetaChange('filter_name', event.target.value)} placeholder="Golden Hour / Neon Glow" />
-              <Input label="Drawing Notes" value={meta.drawing_data} onChange={(event) => handleMetaChange('drawing_data', event.target.value)} placeholder="خطوط يدوية / سهم على المنتج" />
-              <Input label="Auto Delete Hours" type="number" min="1" max="72" value={meta.auto_delete_hours} onChange={(event) => handleMetaChange('auto_delete_hours', event.target.value)} />
-              <Button onClick={handleUpload} disabled={uploading}>{uploading ? 'جارٍ الرفع...' : 'رفع الستوري'}</Button>
-            </div>
-          </Card>
+        {activeTab === 'feed' && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+            {stories.map(story => (
+              <Card key={story.id} style={{ 
+                height: 250, 
+                position: 'relative', 
+                overflow: 'hidden',
+                border: story.is_close_friends ? '3px solid #44ff44' : '1px solid var(--line)'
+              }}>
+                <img src={story.media_url} alt="story" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: 10, background: 'linear-gradient(transparent, rgba(0,0,0,0.8))' }}>
+                  <div style={{ fontWeight: 'bold', fontSize: 12 }}>{story.username}</div>
+                  {story.is_close_friends && <div style={{ color: '#44ff44', fontSize: 10 }}>⭐ الأصدقاء المقربون</div>}
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
 
-          <Card>
-            <div className="section-head compact">
-              <div>
-                <h3 className="section-title">Highlights</h3>
-                <p className="muted">أرشفة مميزة للستوري المهمة.</p>
+        {activeTab === 'archive' && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+            {archive.map(story => (
+              <div key={story.id} style={{ aspectRatio: '9/16', background: '#222', borderRadius: 8, overflow: 'hidden' }}>
+                <img src={story.media_url} alt="archived" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.6 }} />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {activeTab === 'create' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ position: 'relative', aspectRatio: '9/16', background: '#000', borderRadius: 16, overflow: 'hidden' }}>
+              <img 
+                src={previewUrl} 
+                alt="preview" 
+                style={{ width: '100%', height: '100%', objectFit: 'contain', filter: activeFilter.class }} 
+              />
+              <canvas 
+                ref={canvasRef}
+                onMouseDown={startDrawing}
+                onMouseMove={draw}
+                onMouseUp={stopDrawing}
+                onMouseLeave={stopDrawing}
+                style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', cursor: 'crosshair' }}
+              />
+              <div style={{ position: 'absolute', top: 20, right: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <button onClick={() => ctxRef.current.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height)} style={{ background: 'rgba(0,0,0,0.5)', border: 'none', color: 'white', padding: 8, borderRadius: '50%' }}>🔄</button>
+                <button onClick={() => setIsCloseFriends(!isCloseFriends)} style={{ background: isCloseFriends ? '#44ff44' : 'rgba(0,0,0,0.5)', border: 'none', color: 'white', padding: 8, borderRadius: '50%' }}>⭐</button>
               </div>
             </div>
-            <div className="story-mini-list">
-              {highlights.length ? highlights.map((story) => (
-                <button key={story.id} type="button" className="story-mini-item" onClick={() => handleSelectStory(story.id)}>
-                  <strong>{story.caption || story.username}</strong>
-                  <span className="muted">⭐ Highlight</span>
+
+            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 8 }}>
+              {FILTERS.map(f => (
+                <button 
+                  key={f.name} 
+                  onClick={() => setActiveFilter(f)}
+                  style={{ 
+                    padding: '6px 12px', 
+                    borderRadius: 20, 
+                    background: activeFilter.name === f.name ? 'var(--primary)' : '#222',
+                    color: 'white',
+                    border: 'none',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {f.name}
                 </button>
-              )) : <div className="empty-mini">لا توجد Highlights بعد.</div>}
+              ))}
             </div>
-          </Card>
 
-          <Card>
-            <div className="section-head compact">
-              <div>
-                <h3 className="section-title">Story Archive</h3>
-                <p className="muted">كل الستوري اللي رفعتها محفوظة هنا للرجوع والتحليل.</p>
-              </div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <Button variant="secondary" onClick={() => setActiveTab('feed')} style={{ flex: 1 }}>إلغاء</Button>
+              <Button onClick={handleUpload} style={{ flex: 2 }}>نشر القصة {isCloseFriends ? '(المقربون)' : ''}</Button>
             </div>
-            <div className="story-mini-list">
-              {archive.length ? archive.slice(0, 6).map((story) => (
-                <button key={story.id} type="button" className="story-mini-item" onClick={() => handleSelectStory(story.id)}>
-                  <strong>{story.caption || story.username}</strong>
-                  <span className="muted">{story.created_at ? new Date(story.created_at).toLocaleDateString('ar-EG') : 'الآن'}</span>
-                </button>
-              )) : <div className="empty-mini">الأرشيف فارغ حالياً.</div>}
-            </div>
-          </Card>
-
-          <Card>
-            <div className="section-head compact">
-              <div>
-                <h3 className="section-title">Story Analytics</h3>
-                <p className="muted">ملخص سريع للأداء والمشاهدة والتفاعل.</p>
-              </div>
-            </div>
-            <div className="story-analytics-list">
-              <div className="mini-stat stories-stat-card"><strong>{analytics?.total_replies ?? 0}</strong><span>Replies</span></div>
-              <div className="mini-stat stories-stat-card"><strong>{analytics?.total_reactions ?? 0}</strong><span>Reactions</span></div>
-              <div className="mini-stat stories-stat-card"><strong>{analytics?.total_views ?? 0}</strong><span>Seen</span></div>
-              <div className="mini-stat stories-stat-card"><strong>{analytics?.engagement_rate ?? 0}</strong><span>ER</span></div>
-            </div>
-          </Card>
-        </div>
-      </section>
+          </div>
+        )}
+      </div>
     </MainLayout>
   );
 }

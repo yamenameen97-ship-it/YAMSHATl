@@ -7,6 +7,7 @@ import EmptyState from '../../components/feedback/EmptyState.jsx';
 import ErrorState from '../../components/feedback/ErrorState.jsx';
 import { AdminOverviewSkeleton } from '../../components/feedback/Skeleton.jsx';
 import { changeAdminPassword, getAdminSettings, updateAdminSettings } from '../../api/admin.js';
+import socket from '../../api/socket.js';
 import { useToast } from '../../components/admin/ToastProvider.jsx';
 import { PRIMARY_ADMIN_EMAIL } from '../../utils/access.js';
 
@@ -41,8 +42,24 @@ const defaultGeneral = {
   notifications: defaultNotificationSettings,
 };
 
+function normalizeSettingsPayload(data) {
+  return {
+    ...defaultGeneral,
+    ...(data?.general || {}),
+    notifications: {
+      ...defaultNotificationSettings,
+      ...(data?.general?.notifications || {}),
+      categories: {
+        ...defaultNotificationSettings.categories,
+        ...(data?.general?.notifications?.categories || {}),
+      },
+    },
+  };
+}
+
 export default function AdminSettings() {
   const [general, setGeneral] = useState(defaultGeneral);
+  const [lastLoadedGeneral, setLastLoadedGeneral] = useState(defaultGeneral);
   const [passwordForm, setPasswordForm] = useState({ current_password: '', new_password: '' });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -60,23 +77,15 @@ export default function AdminSettings() {
     { key: 'grouped', label: 'Grouped Notifications', value: general.notifications?.grouped_notifications ? 'مفعلة' : 'مغلقة' },
   ]), [general]);
 
-  const loadSettings = async () => {
+  const loadSettings = async (showToast = false) => {
     try {
       setLoading(true);
       setError('');
       const { data } = await getAdminSettings();
-      setGeneral({
-        ...defaultGeneral,
-        ...(data?.general || {}),
-        notifications: {
-          ...defaultNotificationSettings,
-          ...(data?.general?.notifications || {}),
-          categories: {
-            ...defaultNotificationSettings.categories,
-            ...(data?.general?.notifications?.categories || {}),
-          },
-        },
-      });
+      const normalized = normalizeSettingsPayload(data);
+      setGeneral(normalized);
+      setLastLoadedGeneral(normalized);
+      if (showToast) pushToast({ title: 'تمت إعادة التحميل', description: 'تم استرجاع آخر إعدادات محفوظة من الخادم.', type: 'success' });
     } catch (err) {
       setError(err?.response?.data?.detail || 'تعذر تحميل إعدادات الإدارة حالياً.');
     } finally {
@@ -86,6 +95,17 @@ export default function AdminSettings() {
 
   useEffect(() => {
     loadSettings();
+
+    const onSettingsUpdated = (payload) => {
+      const normalized = normalizeSettingsPayload({ general: payload?.general || {} });
+      setGeneral(normalized);
+      setLastLoadedGeneral(normalized);
+    };
+
+    socket.on('admin:settings_updated', onSettingsUpdated);
+    return () => {
+      socket.off('admin:settings_updated', onSettingsUpdated);
+    };
   }, []);
 
   const updateNotificationSetting = (key, value) => {
@@ -115,7 +135,10 @@ export default function AdminSettings() {
     setSavingGeneral(true);
     setError('');
     try {
-      await updateAdminSettings({ general });
+      const { data } = await updateAdminSettings({ general });
+      const normalized = normalizeSettingsPayload(data);
+      setGeneral(normalized);
+      setLastLoadedGeneral(normalized);
       pushToast({ title: 'تم حفظ الإعدادات', description: 'تم تحديث الإعدادات العامة وإعدادات الإشعارات بنجاح.', type: 'success' });
     } catch (err) {
       const message = err?.response?.data?.detail || 'تعذر حفظ الإعدادات حالياً.';
@@ -124,6 +147,10 @@ export default function AdminSettings() {
     } finally {
       setSavingGeneral(false);
     }
+  };
+
+  const handleResetSettings = async () => {
+    await loadSettings(true);
   };
 
   const handleChangePassword = async () => {
@@ -170,10 +197,10 @@ export default function AdminSettings() {
         <Card className="hero-card">
           <span className="badge">System Preferences</span>
           <h2>توحيد إعدادات المنصة والإشعارات والإدارة</h2>
-          <p className="muted">هنا بقى عندك Push Notifications و Browser Notifications و Mobile Notifications و Smart / Grouped / Silent / Real-time controls محفوظة من الباك إند.</p>
+          <p className="muted">تم ربط الحفظ والـ reset مع الـ API الحقيقي، مع مزامنة مباشرة لو الإعدادات اتغيرت من جلسة أدمن تانية.</p>
           <div className="action-row wide">
             <Button loading={savingGeneral} disabled={savingGeneral} onClick={handleSaveSettings}>حفظ الإعدادات</Button>
-            <Button variant="secondary" loading={loading} disabled={loading} onClick={loadSettings}>تحديث البيانات</Button>
+            <Button variant="secondary" loading={loading} disabled={loading} onClick={handleResetSettings}>{loading ? 'جارٍ الاسترجاع...' : 'Reset / إعادة من الخادم'}</Button>
           </div>
         </Card>
 
@@ -312,6 +339,7 @@ export default function AdminSettings() {
             <p className="muted no-margin">الرابط الأساسي: /admin/login</p>
             <p className="muted no-margin">الرابط الاحتياطي: /admin.html</p>
             <p className="muted no-margin">لازم الدخول يتم بنفس البريد الإداري الأساسي: {PRIMARY_ADMIN_EMAIL}</p>
+            <p className="muted no-margin">آخر نسخة محملة من الخادم: {lastLoadedGeneral.platform_name || 'غير متوفرة حالياً'}</p>
           </div>
         </Card>
       </section>

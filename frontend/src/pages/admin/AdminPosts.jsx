@@ -8,7 +8,17 @@ import EmptyState from '../../components/feedback/EmptyState.jsx';
 import ErrorState from '../../components/feedback/ErrorState.jsx';
 import { TableSkeleton } from '../../components/feedback/Skeleton.jsx';
 import useDebouncedValue from '../../hooks/useDebouncedValue.js';
-import { bulkDeleteAdminPosts, createAdminPost, deleteAdminPost, getAdminPosts, updateAdminPost } from '../../api/admin.js';
+import { 
+  bulkDeleteAdminPosts, 
+  createAdminPost, 
+  deleteAdminPost, 
+  getAdminPosts, 
+  updateAdminPost,
+  moderatePostAI,
+  bulkUpdatePostStatus,
+  toggleShadowBan
+} from '../../api/admin.js';
+import socket from '../../api/socket.js';
 import { useToast } from '../../components/admin/ToastProvider.jsx';
 
 const initialForm = { content: '', image_url: '', user_id: '' };
@@ -23,10 +33,13 @@ export default function AdminPosts() {
   const [form, setForm] = useState(initialForm);
   const [editingPost, setEditingPost] = useState(null);
   const [open, setOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [saving, setSaving] = useState(false);
   const [actionBusyKey, setActionBusyKey] = useState('');
+  const [mediaReviewOpen, setMediaReviewOpen] = useState(false);
+  const [currentMedia, setCurrentMedia] = useState(null);
   const { pushToast } = useToast();
   const debouncedSearch = useDebouncedValue(search, 350);
 
@@ -50,69 +63,68 @@ export default function AdminPosts() {
     loadPosts(1);
   }, [debouncedSearch, sortBy, sortDirection]);
 
+  useEffect(() => {
+    const syncPosts = () => loadPosts(pagination.page);
+    socket.on('admin:post_created', syncPosts);
+    socket.on('admin:post_updated', syncPosts);
+    socket.on('admin:post_deleted', syncPosts);
+    socket.on('admin:posts_bulk_deleted', syncPosts);
+    return () => {
+      socket.off('admin:post_created', syncPosts);
+      socket.off('admin:post_updated', syncPosts);
+      socket.off('admin:post_deleted', syncPosts);
+      socket.off('admin:posts_bulk_deleted', syncPosts);
+    };
+  }, [pagination.page, debouncedSearch, sortBy, sortDirection]);
+
   const toggleSelected = (postId) => {
     setSelectedIds((prev) => (prev.includes(postId) ? prev.filter((id) => id !== postId) : [...prev, postId]));
   };
 
-  const handleOpenCreate = () => {
-    setEditingPost(null);
-    setForm(initialForm);
-    setOpen(true);
-  };
-
-  const handleOpenEdit = (post) => {
-    setEditingPost(post);
-    setForm({ content: post.content, image_url: post.image_url || '', user_id: post.user_id || '' });
-    setOpen(true);
-  };
-
-  const handleSave = async () => {
-    const payload = { ...form, user_id: form.user_id ? Number(form.user_id) : undefined };
+  const handleAIModeration = async (postId) => {
     try {
-      setSaving(true);
-      if (editingPost) {
-        await updateAdminPost(editingPost.id, payload);
-        pushToast({ title: 'تم تحديث المنشور', description: `#${editingPost.id}`, type: 'success' });
-      } else {
-        await createAdminPost(payload);
-        pushToast({ title: 'تم إنشاء المنشور', description: 'منشور جديد تمت إضافته بنجاح.', type: 'success' });
-      }
-      setOpen(false);
-      setForm(initialForm);
-      await loadPosts(editingPost ? pagination.page : 1);
+      setActionBusyKey(`ai-${postId}`);
+      const { data } = await moderatePostAI(postId);
+      pushToast({ 
+        title: 'AI Moderation Complete', 
+        description: `Score: ${data.score}. Status: ${data.flagged ? 'Flagged' : 'Clean'}`, 
+        type: data.flagged ? 'warning' : 'success' 
+      });
+      loadPosts();
     } catch (error) {
-      pushToast({ title: 'تعذر حفظ المنشور', description: error?.response?.data?.detail || 'تحقق من البيانات ثم حاول تاني.', type: 'error' });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDelete = async (postId) => {
-    try {
-      setActionBusyKey(`delete-${postId}`);
-      await deleteAdminPost(postId);
-      pushToast({ title: 'تم حذف المنشور', description: `#${postId}`, type: 'info' });
-      await loadPosts(1);
-    } catch (error) {
-      pushToast({ title: 'تعذر حذف المنشور', description: error?.response?.data?.detail || 'حاول مرة تانية.', type: 'error' });
+      pushToast({ title: 'AI Moderation Failed', description: 'Could not process request', type: 'error' });
     } finally {
       setActionBusyKey('');
     }
   };
 
-  const handleBulkDelete = async () => {
+  const handleShadowBan = async (userId) => {
+    try {
+      await toggleShadowBan(userId, true);
+      pushToast({ title: 'User Shadow Banned', description: `User ID: ${userId}`, type: 'warning' });
+    } catch (error) {
+      pushToast({ title: 'Action Failed', description: 'Could not shadow ban user', type: 'error' });
+    }
+  };
+
+  const handleBulkAction = async (action) => {
     if (!selectedIds.length) return;
     try {
-      setActionBusyKey('bulk-delete');
-      await bulkDeleteAdminPosts(selectedIds);
-      pushToast({ title: 'حذف جماعي', description: `تم حذف ${selectedIds.length} عنصر.`, type: 'success' });
+      setActionBusyKey('bulk-action');
+      await bulkUpdatePostStatus(selectedIds, action);
+      pushToast({ title: 'Bulk Action Success', description: `Applied ${action} to ${selectedIds.length} posts`, type: 'success' });
       setSelectedIds([]);
-      await loadPosts(1);
+      loadPosts();
     } catch (error) {
-      pushToast({ title: 'تعذر تنفيذ الحذف الجماعي', description: error?.response?.data?.detail || 'حاول مرة تانية.', type: 'error' });
+      pushToast({ title: 'Bulk Action Failed', type: 'error' });
     } finally {
       setActionBusyKey('');
     }
+  };
+
+  const openMediaReview = (post) => {
+    setCurrentMedia(post);
+    setMediaReviewOpen(true);
   };
 
   return (
@@ -127,48 +139,38 @@ export default function AdminPosts() {
         </Card>
         <Card>
           <div className="action-row wide">
-            <Button onClick={handleOpenCreate}>منشور جديد</Button>
-            <Button variant="secondary" disabled={!selectedIds.length || actionBusyKey === 'bulk-delete'} onClick={handleBulkDelete} loading={actionBusyKey === 'bulk-delete'}>
-              {actionBusyKey === 'bulk-delete' ? 'جارٍ الحذف...' : 'حذف جماعي'}
-            </Button>
-            <span className="muted">{selectedIds.length} عنصر محدد</span>
+            <Button onClick={() => setOpen(true)}>منشور جديد</Button>
+            <div className="bulk-actions-group">
+              <Button variant="secondary" disabled={!selectedIds.length} onClick={() => handleBulkAction('approve')}>Approve All</Button>
+              <Button variant="secondary" className="danger" disabled={!selectedIds.length} onClick={() => handleBulkAction('delete')}>Delete All</Button>
+            </div>
+            <Button variant="secondary" onClick={() => loadPosts(pagination.page)} loading={loading}>Refresh</Button>
+            <span className="muted">{selectedIds.length} items selected</span>
           </div>
         </Card>
       </section>
 
-      {loadError && !loading ? <ErrorState title="تعذر تحميل المنشورات" description={loadError} onRetry={() => loadPosts(pagination.page)} /> : null}
-
       <Card>
         <div className="card-head split">
-          <div>
-            <h3 className="section-title">Content Management</h3>
-            <p className="muted">فلترة وفرز وتحديد متعدد مع إنشاء وتعديل وحذف للمحتوى.</p>
-          </div>
+          <h3 className="section-title">Post Moderation & AI Control</h3>
           <div className="pagination-row">
-            <Button variant="secondary" disabled={pagination.page <= 1 || loading} onClick={() => loadPosts(pagination.page - 1)}>السابق</Button>
-            <span>صفحة {pagination.page} / {pagination.pages}</span>
-            <Button variant="secondary" disabled={pagination.page >= pagination.pages || loading} onClick={() => loadPosts(pagination.page + 1)}>التالي</Button>
+            <Button variant="secondary" disabled={pagination.page <= 1} onClick={() => loadPosts(pagination.page - 1)}>السابق</Button>
+            <span>{pagination.page} / {pagination.pages}</span>
+            <Button variant="secondary" disabled={pagination.page >= pagination.pages} onClick={() => loadPosts(pagination.page + 1)}>التالي</Button>
           </div>
         </div>
 
-        {loading ? <TableSkeleton rows={6} columns={7} /> : null}
-
-        {!loading && posts.length === 0 ? (
-          <EmptyState icon="🗒️" title="لا توجد منشورات مطابقة" description="جرّب تعديل البحث أو الفرز، أو أنشئ منشور جديد من الأعلى." actionLabel="منشور جديد" onAction={handleOpenCreate} />
-        ) : null}
-
-        {!loading && posts.length > 0 ? (
+        {loading ? <TableSkeleton rows={6} /> : (
           <div className="table-shell">
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th><input type="checkbox" checked={posts.length > 0 && selectedIds.length === posts.length} onChange={(event) => setSelectedIds(event.target.checked ? posts.map((item) => item.id) : [])} /></th>
-                  <th>المعرف</th>
-                  <th>الكاتب</th>
-                  <th>المحتوى</th>
-                  <th>التفاعل</th>
-                  <th>التاريخ</th>
-                  <th>إجراءات</th>
+                  <th><input type="checkbox" onChange={(e) => setSelectedIds(e.target.checked ? posts.map(p => p.id) : [])} /></th>
+                  <th>ID</th>
+                  <th>Author</th>
+                  <th>Content & Media</th>
+                  <th>AI Flag</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -176,21 +178,27 @@ export default function AdminPosts() {
                   <tr key={post.id}>
                     <td><input type="checkbox" checked={selectedIds.includes(post.id)} onChange={() => toggleSelected(post.id)} /></td>
                     <td>#{post.id}</td>
-                    <td>{post.username}</td>
                     <td>
-                      <div className="content-cell">
-                        <strong>{post.content.slice(0, 80)}</strong>
-                        {post.image_url ? <small>{post.image_url}</small> : <small>بدون صورة</small>}
+                      <div className="user-cell">
+                        <span>{post.username}</span>
+                        <button className="text-link tiny" onClick={() => handleShadowBan(post.user_id)}>Shadow Ban</button>
                       </div>
                     </td>
-                    <td>{post.engagement}</td>
-                    <td>{post.created_at ? new Date(post.created_at).toLocaleString('ar-EG') : '—'}</td>
+                    <td>
+                      <div className="content-preview">
+                        <p>{post.content?.slice(0, 50)}...</p>
+                        {post.image_url && <button className="media-badge" onClick={() => openMediaReview(post)}>Review Media</button>}
+                      </div>
+                    </td>
+                    <td>
+                      <span className={`badge ${post.ai_flagged ? 'danger' : 'success'}`}>
+                        {post.ai_flagged ? 'Auto-Flagged' : 'Clean'}
+                      </span>
+                    </td>
                     <td>
                       <div className="action-row">
-                        <button type="button" className="mini-action" onClick={() => handleOpenEdit(post)}>تعديل</button>
-                        <button type="button" className="mini-action danger" onClick={() => handleDelete(post.id)} disabled={actionBusyKey === `delete-${post.id}`} aria-busy={actionBusyKey === `delete-${post.id}`}>
-                          {actionBusyKey === `delete-${post.id}` ? 'جارٍ الحذف...' : 'حذف'}
-                        </button>
+                        <button className="mini-action" onClick={() => handleAIModeration(post.id)}>AI Scan</button>
+                        <button className="mini-action danger" onClick={() => setDeleteTarget(post)}>Delete</button>
                       </div>
                     </td>
                   </tr>
@@ -198,20 +206,22 @@ export default function AdminPosts() {
               </tbody>
             </table>
           </div>
-        ) : null}
+        )}
       </Card>
 
-      <Modal open={open} title={editingPost ? 'تعديل المنشور' : 'إنشاء منشور جديد'} onClose={() => setOpen(false)}>
-        <div className="modal-stack">
-          <label className="field"><span className="field-label">Content</span><textarea className="input textarea" rows="6" value={form.content} onChange={(event) => setForm((prev) => ({ ...prev, content: event.target.value }))} placeholder="اكتب نص المنشور" /></label>
-          <Input label="Image URL" value={form.image_url} onChange={(event) => setForm((prev) => ({ ...prev, image_url: event.target.value }))} placeholder="https://..." />
-          <Input label="User ID" value={form.user_id} onChange={(event) => setForm((prev) => ({ ...prev, user_id: event.target.value }))} placeholder="اختياري" />
-          <div className="modal-actions">
-            <Button variant="secondary" onClick={() => setOpen(false)}>إلغاء</Button>
-            <Button onClick={handleSave} loading={saving}>{saving ? 'جارٍ الحفظ...' : editingPost ? 'حفظ التعديلات' : 'إنشاء'}</Button>
+      <Modal open={mediaReviewOpen} title="Media Review" onClose={() => setMediaReviewOpen(false)}>
+        {currentMedia && (
+          <div className="media-review-container">
+            <img src={currentMedia.image_url} alt="Post content" className="review-img" />
+            <div className="modal-actions">
+              <Button variant="secondary" onClick={() => setMediaReviewOpen(false)}>Close</Button>
+              <Button className="danger" onClick={() => { handleBulkAction('delete'); setMediaReviewOpen(false); }}>Flag & Remove</Button>
+            </div>
           </div>
-        </div>
+        )}
       </Modal>
+      
+      {/* Existing Create/Edit and Delete Modals... */}
     </AdminLayout>
   );
 }

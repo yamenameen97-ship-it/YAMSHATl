@@ -37,8 +37,15 @@ export const useNotificationStore = create((set) => ({
     map.set(String(normalized.id), { ...(map.get(String(normalized.id)) || {}), ...normalized });
     return { items: sortNotifications([...map.values()]), initialized: true };
   }),
+  markRead: (notificationId, nextValues = {}) => set((state) => ({
+    items: state.items.map((item) => (
+      String(item.id) === String(notificationId)
+        ? normalizeNotification({ ...item, ...nextValues, seen: true, is_read: true })
+        : item
+    )),
+  })),
   markAllRead: () => set((state) => ({
-    items: state.items.map((item) => ({ ...item, seen: true, is_read: true })),
+    items: state.items.map((item) => normalizeNotification({ ...item, seen: true, is_read: true })),
   })),
 }));
 

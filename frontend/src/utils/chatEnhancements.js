@@ -150,3 +150,45 @@ export function removeScheduledMessage(scheduleId) {
   saveScheduledMessages(next);
   return next;
 }
+
+function normalizeSearchText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFKC')
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/[^\p{L}\p{N}\s._-]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function tokenizeSearch(value) {
+  return normalizeSearchText(value)
+    .split(' ')
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+export function buildMessageSearchIndex(messages = [], resolveMessageText = (message) => message?.message || message?.content || '') {
+  return messages.map((message) => {
+    const resolved = resolveMessageText(message);
+    const text = typeof resolved === 'string' ? resolved : (resolved?.text || '');
+    const fileName = String(message?.file_name || message?.media_name || message?.attachment_name || '');
+    const sender = String(message?.sender || '');
+    const type = String(message?.type || 'text');
+    const searchable = normalizeSearchText([text, fileName, sender, type].filter(Boolean).join(' '));
+    return {
+      key: message?.id || message?.client_id,
+      message,
+      searchable,
+      tokens: tokenizeSearch(searchable),
+    };
+  });
+}
+
+export function searchIndexedMessages(index = [], query = '') {
+  const terms = tokenizeSearch(query);
+  if (!terms.length) return index.map((entry) => entry.message);
+  return index
+    .filter((entry) => terms.every((term) => entry.searchable.includes(term) || entry.tokens.includes(term)))
+    .map((entry) => entry.message);
+}

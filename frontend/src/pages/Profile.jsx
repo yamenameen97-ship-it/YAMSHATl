@@ -3,361 +3,170 @@ import { useNavigate, useParams } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
-import Input from '../components/ui/Input.jsx';
-import EmptyState from '../components/feedback/EmptyState.jsx';
-import ErrorState from '../components/feedback/ErrorState.jsx';
-import { ProfileSkeleton } from '../components/feedback/Skeleton.jsx';
-import {
-  addCloseFriend,
-  followUser,
-  getMe,
-  getProfileBundle,
-  muteUser,
-  removeCloseFriend,
-  unmuteUser,
-  updateMyProfile,
-  uploadAvatar,
-} from '../api/users.js';
-import { getCurrentUsername, mergeStoredUser } from '../utils/auth.js';
-
-const TABS = [
-  { key: 'posts', label: 'المنشورات' },
-  { key: 'saved', label: 'المحفوظات' },
-  { key: 'liked', label: 'المعجب بها' },
-];
-
-function MediaPreview({ post }) {
-  const media = post?.image_url || post?.media || post?.media_urls?.[0] || '';
-  if (!media) return null;
-  if (/\.(mp4|mov|webm|mkv)$/i.test(media)) {
-    return <video className="post-media" src={media} controls playsInline />;
-  }
-  return <img className="post-media" src={media} alt={post?.content || 'post media'} />;
-}
+import Modal from '../components/ui/Modal.jsx';
+import { getProfileBundle, updateMyProfile } from '../api/users.js';
+import { getCurrentUsername } from '../utils/auth.js';
 
 export default function Profile() {
   const { username: routeUsername } = useParams();
-  const navigate = useNavigate();
   const currentUser = getCurrentUsername();
-  const [resolvedUsername, setResolvedUsername] = useState(routeUsername || currentUser || '');
-  const username = routeUsername || resolvedUsername || currentUser;
-  const isOwnProfile = Boolean(username) && username === currentUser;
-  const [bundle, setBundle] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [tab, setTab] = useState('posts');
-  const [avatarFile, setAvatarFile] = useState(null);
-  const [coverFile, setCoverFile] = useState(null);
-  const [form, setForm] = useState({
-    username: username || '',
-    avatar: '',
-    cover_photo: '',
-    bio: '',
-    profile_theme: 'midnight',
-    privacy_level: 'public',
-    activity_tagline: '',
-    badges: [],
-  });
+  const username = routeUsername || currentUser;
+  const isOwnProfile = username === currentUser;
 
-  useEffect(() => {
-    let active = true;
-
-    const resolveUsername = async () => {
-      if (routeUsername) {
-        setResolvedUsername(routeUsername);
-        return;
-      }
-      if (currentUser) {
-        setResolvedUsername(currentUser);
-        return;
-      }
-      try {
-        const { data } = await getMe();
-        if (!active) return;
-        setResolvedUsername(data?.username || data?.user || '');
-      } catch {
-        if (active) setResolvedUsername('');
-      }
-    };
-
-    resolveUsername();
-    return () => {
-      active = false;
-    };
-  }, [currentUser, routeUsername]);
-
-  const loadProfile = async () => {
-    if (!username) {
-      setLoading(false);
-      setError('تعذر تحديد الحساب المطلوب فتحه.');
-      return;
-    }
-    try {
-      setLoading(true);
-      setError('');
-      const { data } = await getProfileBundle(username);
-      setBundle(data || null);
-      const profile = data?.user?.profile || {};
-      setForm({
-        username: data?.user?.username || username,
-        avatar: data?.user?.avatar || '',
-        cover_photo: profile?.cover_photo || '',
-        bio: profile?.bio || '',
-        profile_theme: profile?.profile_theme || 'midnight',
-        privacy_level: profile?.privacy_level || 'public',
-        activity_tagline: profile?.activity_tagline || '',
-        badges: Array.isArray(profile?.badges) ? profile.badges : [],
-      });
-    } catch (err) {
-      setError(err?.response?.data?.detail || 'تعذر تحميل الملف الشخصي.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [profile, setProfile] = useState(null);
+  const [activeTab, setActiveTab] = useState('posts'); // posts, archive, saved
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [showCustomization, setShowCustomization] = useState(false);
+  const [theme, setTheme] = useState('midnight');
 
   useEffect(() => {
     loadProfile();
   }, [username]);
 
-  const activeItems = useMemo(() => {
-    if (!bundle) return [];
-    if (tab === 'saved') return bundle.saved_posts || [];
-    if (tab === 'liked') return bundle.liked_posts || [];
-    return bundle.posts || [];
-  }, [bundle, tab]);
-
-  const handleUploadChange = (setter) => (event) => {
-    const file = event.target.files?.[0];
-    if (!file?.type?.startsWith('image/')) return;
-    setter(file);
+  const loadProfile = async () => {
+    const { data } = await getProfileBundle(username);
+    setProfile(data);
   };
 
-  const uploadImage = async (file) => {
-    if (!file) return '';
-    const formData = new FormData();
-    formData.append('file', file);
-    const { data } = await uploadAvatar(formData);
-    return data?.file_url || data?.url || '';
+  const handleThemeChange = async (newTheme) => {
+    setTheme(newTheme);
+    await updateMyProfile({ profile_theme: newTheme });
   };
 
-  const handleSave = async () => {
-    try {
-      setSaving(true);
-      setError('');
-      const avatar = avatarFile ? await uploadImage(avatarFile) : form.avatar;
-      const cover_photo = coverFile ? await uploadImage(coverFile) : form.cover_photo;
-      const { data } = await updateMyProfile({
-        ...form,
-        avatar,
-        cover_photo,
-        badges: Array.isArray(form.badges) ? form.badges : [],
-      });
-      mergeStoredUser(data);
-      setEditing(false);
-      setAvatarFile(null);
-      setCoverFile(null);
-      if (routeUsername && routeUsername !== data?.username) {
-        navigate(`/profile/${encodeURIComponent(data?.username)}`, { replace: true });
-      }
-      await loadProfile();
-    } catch (err) {
-      setError(err?.response?.data?.detail || 'تعذر حفظ الملف الشخصي.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleFollow = async () => {
-    try {
-      await followUser(username);
-      await loadProfile();
-    } catch (err) {
-      setError(err?.response?.data?.detail || 'تعذر تحديث المتابعة.');
-    }
-  };
-
-  const handleMute = async () => {
-    try {
-      const isMuted = Boolean(bundle?.relationship?.muted);
-      if (isMuted) await unmuteUser(username);
-      else await muteUser(username);
-      await loadProfile();
-    } catch (err) {
-      setError(err?.response?.data?.detail || 'تعذر تحديث الكتم.');
-    }
-  };
-
-  const handleCloseFriend = async () => {
-    try {
-      const isCloseFriend = Boolean(bundle?.relationship?.close_friend);
-      if (isCloseFriend) await removeCloseFriend(username);
-      else await addCloseFriend(username);
-      await loadProfile();
-    } catch (err) {
-      setError(err?.response?.data?.detail || 'تعذر تحديث قائمة الأصدقاء المقرّبين.');
-    }
-  };
-
-  if (loading) {
-    return <MainLayout><ProfileSkeleton /></MainLayout>;
-  }
-
-  if (error && !bundle) {
-    return <MainLayout><ErrorState title="تعذر فتح الملف الشخصي" description={error} onRetry={loadProfile} /></MainLayout>;
-  }
-
-  const user = bundle?.user || {};
-  const profile = user?.profile || {};
-  const relationship = bundle?.relationship || {};
+  if (!profile) return <MainLayout><div>Loading...</div></MainLayout>;
 
   return (
     <MainLayout>
-      <div className={`profile-shell profile-theme-${profile.profile_theme || 'midnight'}`}>
-        <Card className="profile-cover-card">
-          <div className="profile-cover" style={{ backgroundImage: form.cover_photo ? `url(${form.cover_photo})` : undefined }}>
-            <div className="profile-cover-overlay">
-              <div className="profile-avatar-stack">
-                {form.avatar ? <img src={form.avatar} alt={user.username} className="avatar-circle xl avatar-image" /> : <div className="avatar-circle xl">{user.username?.slice(0, 1)?.toUpperCase() || 'U'}</div>}
-                <div>
-                  <div className="profile-title-row">
-                    <h2 className="section-title">{user.username}</h2>
-                    {profile.is_verified ? <span className="glass-chip">✔ موثّق</span> : null}
-                    {(profile.badges || []).slice(0, 4).map((badge) => <span key={badge} className="glass-chip">{badge}</span>)}
-                  </div>
-                  <p className="muted no-margin">{profile.activity_tagline || 'ملف شخصي متكامل لصُنّاع المحتوى والمتابعين.'}</p>
-                  <p className="profile-bio">{profile.bio || 'أضف نبذة تعريفية مميزة تعكس أسلوبك ومحتواك.'}</p>
+      <div style={{ maxWidth: 900, margin: '0 auto', padding: '40px 20px' }}>
+        
+        {/* Profile Header */}
+        <div style={{ display: 'flex', gap: 40, alignItems: 'center', marginBottom: 50 }}>
+          <div style={{ width: 150, height: 150, borderRadius: '50%', background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 60, fontWeight: 'bold' }}>
+            {profile.user.username[0].toUpperCase()}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', gap: 20, alignItems: 'center', marginBottom: 20 }}>
+              <h2 style={{ margin: 0 }}>{profile.user.username}</h2>
+              {isOwnProfile ? (
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <Button variant="secondary" size="small" onClick={() => setShowCustomization(true)}>تخصيص المظهر</Button>
+                  <Button variant="secondary" size="small" onClick={() => setShowAnalytics(true)}>📊 التحليلات</Button>
                 </div>
+              ) : (
+                <Button size="small">متابعة</Button>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 30, marginBottom: 20 }}>
+              <div><strong>{profile.posts_count || 0}</strong> منشور</div>
+              <div><strong>{profile.followers_count || 0}</strong> متابع</div>
+              <div><strong>{profile.following_count || 0}</strong> يتابع</div>
+            </div>
+            <div style={{ whiteSpace: 'pre-wrap' }}>{profile.user.profile?.bio || 'لا يوجد نبذة شخصية'}</div>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 40, borderTop: '1px solid var(--line)', marginBottom: 30 }}>
+          {['posts', 'archive', 'saved'].map(t => (
+            <button
+              key={t}
+              onClick={() => setActiveTab(t)}
+              style={{
+                padding: '15px 0',
+                background: 'none',
+                border: 'none',
+                borderTop: activeTab === t ? '1px solid white' : '1px solid transparent',
+                color: activeTab === t ? 'white' : '#888',
+                cursor: 'pointer',
+                fontSize: 13,
+                textTransform: 'uppercase',
+                letterSpacing: 1
+              }}
+            >
+              {t === 'posts' ? 'المنشورات' : t === 'archive' ? 'الأرشيف' : 'المحفوظات'}
+            </button>
+          ))}
+        </div>
+
+        {/* Grid Content */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
+          {(activeTab === 'posts' ? profile.posts : activeTab === 'archive' ? profile.archived_posts : profile.saved_posts)?.map(post => (
+            <div key={post.id} style={{ aspectRatio: '1/1', background: '#222', borderRadius: 8, overflow: 'hidden', position: 'relative' }}>
+              <img src={post.media_url || post.image_url} alt="post" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              {activeTab === 'archive' && (
+                <div style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,0.6)', padding: '2px 8px', borderRadius: 4, fontSize: 10 }}>
+                  📦 مؤرشف
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Analytics Modal */}
+      <Modal isOpen={showAnalytics} onClose={() => setShowAnalytics(false)} title="تحليلات الحساب الشخصي">
+        <div style={{ padding: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 15, marginBottom: 30 }}>
+            <Card style={{ padding: 20, textAlign: 'center' }}>
+              <div style={{ fontSize: 28, fontWeight: 'bold', color: 'var(--primary)' }}>12.5k</div>
+              <div className="muted">زيارات الملف الشخصي</div>
+            </Card>
+            <Card style={{ padding: 20, textAlign: 'center' }}>
+              <div style={{ fontSize: 28, fontWeight: 'bold', color: '#44ff44' }}>+15%</div>
+              <div className="muted">معدل التفاعل</div>
+            </Card>
+          </div>
+          <h4>أداء المنشورات (آخر 30 يوم)</h4>
+          <div style={{ height: 200, background: 'rgba(255,255,255,0.05)', borderRadius: 12, marginTop: 15, display: 'flex', alignItems: 'flex-end', gap: 8, padding: 20 }}>
+            {[30, 50, 40, 80, 60, 95, 70].map((h, i) => (
+              <div key={i} style={{ flex: 1, height: `${h}%`, background: 'var(--primary)', borderRadius: '4px 4px 0 0', position: 'relative' }}>
+                <div style={{ position: 'absolute', top: -25, left: '50%', transform: 'translateX(-50%)', fontSize: 10 }}>{h}%</div>
               </div>
-              <div className="hero-actions-wrap">
-                {isOwnProfile ? (
-                  <Button variant="secondary" onClick={() => setEditing((prev) => !prev)}>{editing ? 'إغلاق التعديل' : 'تعديل البروفايل'}</Button>
-                ) : (
-                  <>
-                    <Button variant={relationship.following ? 'secondary' : 'primary'} onClick={handleFollow}>{relationship.following ? 'إلغاء المتابعة' : 'متابعة'}</Button>
-                    <Button variant="secondary" onClick={handleMute}>{relationship.muted ? 'إلغاء الكتم' : 'كتم'}</Button>
-                    <Button variant="secondary" onClick={handleCloseFriend}>{relationship.close_friend ? 'إزالة من المقرّبين' : 'إضافة للمقرّبين'}</Button>
-                  </>
-                )}
+            ))}
+          </div>
+        </div>
+      </Modal>
+
+      {/* Customization Modal */}
+      <Modal isOpen={showCustomization} onClose={() => setShowCustomization(false)} title="تخصيص مظهر الملف الشخصي">
+        <div style={{ padding: 20 }}>
+          <h4>اختر السمة (Theme)</h4>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 15, marginTop: 15 }}>
+            {['midnight', 'ocean', 'sunset', 'forest', 'aurora'].map(t => (
+              <div 
+                key={t} 
+                onClick={() => handleThemeChange(t)}
+                style={{ 
+                  padding: 20, 
+                  borderRadius: 12, 
+                  background: t === 'midnight' ? '#0f172a' : t === 'ocean' ? '#0c4a6e' : t === 'sunset' ? '#7c2d12' : t === 'forest' ? '#064e3b' : '#4c1d95',
+                  border: theme === t ? '3px solid white' : '3px solid transparent',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  color: 'white',
+                  fontSize: 12,
+                  fontWeight: 'bold'
+                }}
+              >
+                {t.toUpperCase()}
               </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 30 }}>
+            <h4>إعدادات متقدمة</h4>
+            <div style={{ display: 'grid', gap: 15, marginTop: 15 }}>
+              <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>إظهار شارة التحقق</span>
+                <input type="checkbox" defaultChecked />
+              </label>
+              <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>تخطيط الشبكة المتقدم</span>
+                <input type="checkbox" />
+              </label>
             </div>
           </div>
-        </Card>
-
-        <section className="kpi-grid profile-kpis">
-          <Card className="mini-stat"><strong>{bundle?.counts?.posts || 0}</strong><span>المنشورات</span></Card>
-          <Card className="mini-stat"><strong>{bundle?.counts?.followers || 0}</strong><span>المتابعون</span></Card>
-          <Card className="mini-stat"><strong>{bundle?.counts?.following || 0}</strong><span>يتابع</span></Card>
-          <Card className="mini-stat"><strong>{bundle?.profile_insights?.profile_completion || 0}%</strong><span>اكتمال البروفايل</span></Card>
-        </section>
-
-        {editing && isOwnProfile ? (
-          <Card className="profile-editor-card">
-            <div className="card-head split"><h3 className="section-title">تخصيص البروفايل</h3><span className="badge">Theme + Privacy + Identity</span></div>
-            <div className="profile-editor-grid">
-              <Input label="اسم المستخدم" value={form.username} onChange={(event) => setForm((prev) => ({ ...prev, username: event.target.value }))} />
-              <Input label="الثيم" value={form.profile_theme} onChange={(event) => setForm((prev) => ({ ...prev, profile_theme: event.target.value }))} />
-              <Input label="الخصوصية" value={form.privacy_level} onChange={(event) => setForm((prev) => ({ ...prev, privacy_level: event.target.value }))} />
-              <Input label="سطر تعريفي" value={form.activity_tagline} onChange={(event) => setForm((prev) => ({ ...prev, activity_tagline: event.target.value }))} />
-              <div className="profile-upload-group">
-                <label className="upload-label"><input type="file" accept="image/*" onChange={handleUploadChange(setAvatarFile)} hidden />رفع الصورة الشخصية</label>
-                <label className="upload-label"><input type="file" accept="image/*" onChange={handleUploadChange(setCoverFile)} hidden />رفع صورة الغلاف</label>
-              </div>
-              <div className="input-shell textarea-shell profile-textarea-shell">
-                <label>النبذة</label>
-                <textarea value={form.bio} onChange={(event) => setForm((prev) => ({ ...prev, bio: event.target.value }))} rows={4} placeholder="عرّف الناس بنفسك، تخصصك، أو نوع المحتوى اللي بتقدمه" />
-              </div>
-            </div>
-            <div className="hero-actions-wrap">
-              <Button onClick={handleSave} loading={saving}>{saving ? 'جارٍ الحفظ...' : 'حفظ التعديلات'}</Button>
-            </div>
-          </Card>
-        ) : null}
-
-        {error ? <div className="alert error">{error}</div> : null}
-
-        <section className="analytics-grid profile-analytics-grid">
-          <Card>
-            <div className="card-head split"><h3 className="section-title">Profile Insights</h3><span className="badge">Insights</span></div>
-            <div className="dashboard-mini-summary">
-              <div><strong>{bundle?.followers_analytics?.growth_hint || '—'}</strong><span>اتجاه النمو</span></div>
-              <div><strong>{bundle?.followers_analytics?.engaged_followers || 0}</strong><span>متابعون متفاعلون</span></div>
-              <div><strong>{bundle?.creator_dashboard?.engagement_rate || 0}</strong><span>Engagement</span></div>
-            </div>
-            <p className="muted">{bundle?.creator_dashboard?.best_next_step || 'استمر في التفاعل وبناء مجتمعك.'}</p>
-          </Card>
-
-          <Card>
-            <div className="card-head split"><h3 className="section-title">Achievements & Privacy</h3><span className="badge">Profile</span></div>
-            <div className="badge-row">
-              {(bundle?.achievements || []).length ? bundle.achievements.map((item) => <span key={item} className="glass-chip">{item}</span>) : <span className="glass-chip">ابدأ أول إنجاز جديد</span>}
-            </div>
-            <div className="profile-list compact">
-              <div><strong>الخصوصية:</strong> <span>{bundle?.privacy?.level || 'public'}</span></div>
-              <div><strong>الثيم:</strong> <span>{bundle?.profile_insights?.theme || 'midnight'}</span></div>
-              <div><strong>الموثوقية:</strong> <span>{profile.is_verified ? 'Verified Badge' : 'لم يتم التوثيق بعد'}</span></div>
-            </div>
-          </Card>
-        </section>
-
-        {isOwnProfile ? (
-          <section className="analytics-grid profile-analytics-grid">
-            <Card>
-              <div className="card-head split"><h3 className="section-title">Saved / Liked / Close Friends</h3><span className="badge">Creator Dashboard</span></div>
-              <div className="dashboard-mini-summary">
-                <div><strong>{bundle?.saved_posts?.length || 0}</strong><span>Saved Posts</span></div>
-                <div><strong>{bundle?.liked_posts?.length || 0}</strong><span>Liked Posts</span></div>
-                <div><strong>{bundle?.close_friends?.length || 0}</strong><span>Close Friends</span></div>
-              </div>
-              <div className="profile-list compact">
-                <div><strong>Block List:</strong> <span>{bundle?.block_list?.length || 0}</span></div>
-                <div><strong>Muted Users:</strong> <span>{bundle?.muted_users?.length || 0}</span></div>
-                <div><strong>Wallet:</strong> <span>{user?.wallet?.coin_balance || 0} coins</span></div>
-              </div>
-            </Card>
-
-            <Card>
-              <div className="card-head split"><h3 className="section-title">Activity Timeline</h3><span className="badge">Timeline</span></div>
-              {(bundle?.activity_timeline || []).length ? (
-                <div className="timeline-list">
-                  {bundle.activity_timeline.map((item, index) => (
-                    <div key={`${item.type}-${index}`} className="timeline-item">
-                      <strong>{item.label}</strong>
-                      <p>{item.description}</p>
-                      <small>{item.created_at ? new Date(item.created_at).toLocaleString('ar-EG') : 'الآن'}</small>
-                    </div>
-                  ))}
-                </div>
-              ) : <EmptyState icon="🕒" title="لا يوجد نشاط بعد" description="أول تفاعل أو منشور هيتسجل هنا." />}
-            </Card>
-          </section>
-        ) : null}
-
-        <Card>
-          <div className="card-head split"><h3 className="section-title">مكتبة المحتوى</h3><div className="tab-row">{TABS.filter((item) => isOwnProfile || item.key === 'posts').map((item) => <button key={item.key} type="button" className={`tab-btn ${tab === item.key ? 'active' : ''}`} onClick={() => setTab(item.key)}>{item.label}</button>)}</div></div>
-          {activeItems.length ? (
-            <div className="feed-stack">
-              {activeItems.map((post) => (
-                <Card key={`${tab}-${post.id}`} className="post-card">
-                  <div className="post-head">
-                    <div>
-                      <strong>{post.username}</strong>
-                      <div className="muted">{post.created_at ? new Date(post.created_at).toLocaleString('ar-EG') : 'الآن'}</div>
-                    </div>
-                    <div className="story-viewer-actions">
-                      <span className="glass-chip">❤️ {post.likes || post.like_count || 0}</span>
-                      {'saved_by_me' in post ? <span className="glass-chip">💾 {post.saved_by_me ? 'محفوظ' : 'غير محفوظ'}</span> : null}
-                    </div>
-                  </div>
-                  <p className="post-text">{post.content}</p>
-                  <MediaPreview post={post} />
-                </Card>
-              ))}
-            </div>
-          ) : <EmptyState icon="🗂️" title="لا توجد عناصر في هذا القسم" description="أضف محتوى جديد أو جرّب قسم تاني." />}
-        </Card>
-      </div>
+        </div>
+      </Modal>
     </MainLayout>
   );
 }

@@ -1,6 +1,6 @@
 (function () {
-  const DEPLOY_BACKEND_ORIGIN = 'https://yamshatl.onrender.com';
-  const DEPLOY_API_BASE = 'https://yamshatl.onrender.com/api';
+  const DEPLOY_BACKEND_ORIGIN = '';
+  const DEPLOY_API_BASE = '';
 
   const trim = (value) => String(value || '').trim().replace(/\/+$/, '');
   const toApiBase = (value) => {
@@ -52,13 +52,14 @@
     apiToOrigin(queryApi) ||
     safeStoredBackend ||
     apiToOrigin(safeStoredApi) ||
-    trim(DEPLOY_BACKEND_ORIGIN) ||
     inferredBackendOrigin ||
+    trim(DEPLOY_BACKEND_ORIGIN) ||
     trim(window.location.origin);
 
   const apiBase =
     toApiBase(queryApi) ||
     safeStoredApi ||
+    toApiBase(inferredApi) ||
     toApiBase(DEPLOY_API_BASE) ||
     toApiBase(`${backendOrigin}/api`) ||
     toApiBase(`${window.location.origin}/api`);

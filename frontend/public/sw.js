@@ -1,3 +1,4 @@
+
 const VERSION = 'yamshat-shell-v6';
 const SHELL_CACHE = `${VERSION}:shell`;
 const STATIC_CACHE = `${VERSION}:static`;
@@ -5,6 +6,9 @@ const MEDIA_CACHE = `${VERSION}:media`;
 const API_CACHE = `${VERSION}:api`;
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/admin.html', '/admin/', '/admin/login/', '/app-config.js'];
 const API_CACHE_ALLOWLIST = ['/api/posts', '/api/notifications', '/api/admin/overview', '/api/users/profile'];
+
+// Import background sync logic
+importScripts('/background-sync.js');
 
 function shouldCacheApi(requestUrl) {
   return API_CACHE_ALLOWLIST.some((item) => requestUrl.pathname.startsWith(item));
@@ -31,6 +35,18 @@ async function networkFirst(request, cacheName) {
   } catch {
     return cache.match(request);
   }
+}
+
+async function cacheFirst(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const cachedResponse = await cache.match(request);
+  if (cachedResponse) return cachedResponse;
+
+  const networkResponse = await fetch(request);
+  if (networkResponse && networkResponse.ok) {
+    cache.put(request, networkResponse.clone());
+  }
+  return networkResponse;
 }
 
 async function notifyClients(type) {
@@ -60,11 +76,12 @@ self.addEventListener('message', (event) => {
   }
 });
 
-self.addEventListener('sync', (event) => {
-  if (event.tag === 'yamshat-background-sync') {
-    event.waitUntil(notifyClients('yamshat:sync-now'));
-  }
-});
+// Background Sync event listener - now handled by background-sync.js
+// self.addEventListener('sync', (event) => {
+//   if (event.tag === 'yamshat-background-sync') {
+//     event.waitUntil(notifyClients('yamshat:sync-now'));
+//   }
+// });
 
 self.addEventListener('push', (event) => {
   const payload = event.data ? event.data.json() : {};
@@ -78,6 +95,9 @@ self.addEventListener('push', (event) => {
       badge: '/icons/icon-192.png',
       tag: `yamshat:push:${payload?.id || Date.now()}`,
       data: { path },
+      // Add renotify and requireInteraction for better reliability
+      renotify: true,
+      requireInteraction: true,
     })
   );
 });
@@ -99,7 +119,13 @@ self.addEventListener('notificationclick', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
+  if (event.request.method !== 'GET') {
+    // For non-GET requests, if offline, store in IndexedDB for background sync
+    if (!navigator.onLine) {
+      event.waitUntil(storeRequest(event.request.clone()));
+    }
+    return;
+  }
 
   const requestUrl = new URL(event.request.url);
   const isSameOrigin = requestUrl.origin === self.location.origin;
@@ -130,9 +156,11 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (isSameOrigin && isApiRequest && shouldCacheApi(requestUrl)) {
+    // Use networkFirst for API requests to ensure fresh data, but fallback to cache
     event.respondWith(networkFirst(event.request, API_CACHE));
     return;
   }
 
-  event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
+  // For other requests, try network first, then cache (advanced offline cache)
+  event.respondWith(networkFirst(event.request, 'fallback-cache'));
 });

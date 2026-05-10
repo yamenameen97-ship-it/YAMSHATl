@@ -1,3 +1,6 @@
+# استخدم هذا الملف وقت النشر بالأمر التالي:
+# pip install -r deployment_packages.txt
+
 fastapi==0.115.12
 uvicorn[standard]==0.34.2
 sqlalchemy==2.0.41

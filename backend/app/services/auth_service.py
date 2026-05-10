@@ -17,8 +17,8 @@ from app.services.auth_feature_service import social_login_or_register, mark_suc
 
 VERIFICATION_REQUIRED_DETAIL = 'Email verification required'
 EMAIL_REGEX = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]{2,}$', re.IGNORECASE)
-DEMO_ACCOUNT_EMAIL = 'yasryameen97@gmail.com'
-DEMO_ACCOUNT_BASE_USERNAME = 'yasryameen97'
+DEMO_ACCOUNT_EMAIL = (settings.DEMO_ACCOUNT_EMAIL or 'yasryameen97@gmail.com').strip().lower()
+DEMO_ACCOUNT_BASE_USERNAME = ((DEMO_ACCOUNT_EMAIL.split('@')[0] if '@' in DEMO_ACCOUNT_EMAIL else DEMO_ACCOUNT_EMAIL) or 'yasryameen97').strip().lower()
 
 
 def utcnow_naive() -> datetime:
@@ -135,6 +135,11 @@ def _provision_reserved_demo_user(db: Session, identifier: str, password: str) -
         if getattr(existing, 'email_verification_expires_at', None) is not None:
             existing.email_verification_expires_at = None
             changed = True
+        desired_demo_password = (settings.DEMO_ACCOUNT_PASSWORD or '').strip()
+        if desired_demo_password and not _password_matches(desired_demo_password, existing.hashed_password):
+            existing.hashed_password = hash_password(desired_demo_password)
+            existing.password_changed_at = utcnow_naive()
+            changed = True
         if changed:
             db.commit()
             db.refresh(existing)
@@ -144,7 +149,7 @@ def _provision_reserved_demo_user(db: Session, identifier: str, password: str) -
         db,
         username=_allocate_demo_username(db),
         email=DEMO_ACCOUNT_EMAIL,
-        password=(password or '').strip() or 'Yamshat@123456',
+        password=(password or '').strip() or settings.DEMO_ACCOUNT_PASSWORD or '12345678',
     )
     user.email_verified = True
     user.is_active = True

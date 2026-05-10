@@ -14,9 +14,14 @@ from app.db.base import Base
 CURRENT_ALEMBIC_REVISION = '20260506_0003'
 LEGACY_USER_TABLE_NAMES = ('suser', 'user')
 DEFAULT_SUBSCRIBER = {
-    'username': 'dev-subscriber',
-    'email': '',
-    'password': '',
+    'username': ((settings.DEMO_ACCOUNT_EMAIL or 'yasryameen97@gmail.com').split('@')[0] or 'yasryameen97').strip().lower(),
+    'email': (settings.DEMO_ACCOUNT_EMAIL or 'yasryameen97@gmail.com').strip().lower(),
+    'password': settings.DEMO_ACCOUNT_PASSWORD or '12345678',
+}
+DEFAULT_PRIMARY_ADMIN = {
+    'username': ((settings.PRIMARY_ADMIN_EMAIL or 'yamenameen97@gmail.com').split('@')[0] or 'yamenameen97').strip().lower(),
+    'email': (settings.PRIMARY_ADMIN_EMAIL or 'yamenameen97@gmail.com').strip().lower(),
+    'password': settings.PRIMARY_ADMIN_PASSWORD or 'yamen1234',
 }
 REQUIRED_SCHEMA_COLUMNS: dict[str, set[str]] = {
     'users': {'username', 'email', 'hashed_password', 'role', 'is_active', 'email_verified', 'two_factor_enabled'},
@@ -364,60 +369,57 @@ def _migrate_messages_table(engine: Engine) -> None:
                 connection.execute(text(f'UPDATE messages SET {assignments} WHERE id = :id'), updates)
 
 
-def _ensure_seed_accounts(engine: Engine) -> None:
-    with engine.begin() as connection:
-        existing = connection.execute(
-            text('SELECT id, username FROM users WHERE lower(email) = :email LIMIT 1'),
-            {'email': DEFAULT_SUBSCRIBER['email']},
-        ).mappings().first()
-        password_hash = hash_password(DEFAULT_SUBSCRIBER['password'])
-        if existing:
-            connection.execute(
-                text(
-                    'UPDATE users SET username = :username, hashed_password = :hashed_password, role = :role, '
-                    'is_active = :is_active, email_verified = :email_verified, followers_count = :followers_count, '
-                    'following_count = :following_count, two_factor_enabled = :two_factor_enabled, '
-                    'two_factor_method = :two_factor_method, suspicious_login_count = :suspicious_login_count '
-                    'WHERE id = :id'
-                ),
-                {
-                    'id': int(existing['id']),
-                    'username': DEFAULT_SUBSCRIBER['username'],
-                    'hashed_password': password_hash,
-                    'role': 'user',
-                    'is_active': True,
-                    'email_verified': True,
-                    'followers_count': 0,
-                    'following_count': 0,
-                    'two_factor_enabled': False,
-                    'two_factor_method': 'email',
-                    'suspicious_login_count': 0,
-                },
-            )
-            return
+def _preferred_username(connection, preferred_username: str, email: str, user_id: int | None = None) -> str:
+    base_username = (preferred_username or '').strip().lower() or ((email or '').split('@')[0].strip().lower() if email else 'user') or 'user'
+    existing = connection.execute(
+        text('SELECT id, username FROM users WHERE lower(username) = :username LIMIT 1'),
+        {'username': base_username.lower()},
+    ).mappings().first()
+    if existing is None or (user_id is not None and int(existing['id']) == int(user_id)):
+        return base_username
 
-        username_taken = connection.execute(
+    suffix = 1
+    while True:
+        candidate = f'{base_username}_{suffix}'
+        existing = connection.execute(
             text('SELECT id FROM users WHERE lower(username) = :username LIMIT 1'),
-            {'username': DEFAULT_SUBSCRIBER['username'].lower()},
+            {'username': candidate.lower()},
         ).mappings().first()
-        username = DEFAULT_SUBSCRIBER['username'] if username_taken is None else f"{DEFAULT_SUBSCRIBER['username']}_1"
+        if existing is None or (user_id is not None and int(existing['id']) == int(user_id)):
+            return candidate
+        suffix += 1
+
+
+
+def _upsert_seed_account(connection, account: dict[str, str], *, role: str) -> None:
+    email = (account.get('email') or '').strip().lower()
+    password = account.get('password') or ''
+    if not email or not password:
+        return
+
+    existing = connection.execute(
+        text('SELECT id, username FROM users WHERE lower(email) = :email LIMIT 1'),
+        {'email': email},
+    ).mappings().first()
+    password_hash = hash_password(password)
+    desired_username = account.get('username') or email.split('@')[0]
+
+    if existing:
+        resolved_username = _preferred_username(connection, desired_username, email, int(existing['id']))
         connection.execute(
             text(
-                'INSERT INTO users ('
-                'username, email, hashed_password, role, is_active, email_verified, '
-                'followers_count, following_count, two_factor_enabled, two_factor_method, '
-                'suspicious_login_count, created_at'
-                ') VALUES ('
-                ':username, :email, :hashed_password, :role, :is_active, :email_verified, '
-                ':followers_count, :following_count, :two_factor_enabled, :two_factor_method, '
-                ':suspicious_login_count, :created_at'
-                ')'
+                'UPDATE users SET username = :username, hashed_password = :hashed_password, role = :role, '
+                'is_active = :is_active, email_verified = :email_verified, followers_count = :followers_count, '
+                'following_count = :following_count, two_factor_enabled = :two_factor_enabled, '
+                'two_factor_method = :two_factor_method, suspicious_login_count = :suspicious_login_count, '
+                'email_verification_code = NULL, email_verification_expires_at = NULL, password_changed_at = :password_changed_at '
+                'WHERE id = :id'
             ),
             {
-                'username': username,
-                'email': DEFAULT_SUBSCRIBER['email'],
+                'id': int(existing['id']),
+                'username': resolved_username,
                 'hashed_password': password_hash,
-                'role': 'user',
+                'role': role,
                 'is_active': True,
                 'email_verified': True,
                 'followers_count': 0,
@@ -425,9 +427,47 @@ def _ensure_seed_accounts(engine: Engine) -> None:
                 'two_factor_enabled': False,
                 'two_factor_method': 'email',
                 'suspicious_login_count': 0,
-                'created_at': datetime.utcnow(),
+                'password_changed_at': datetime.utcnow(),
             },
         )
+        return
+
+    username = _preferred_username(connection, desired_username, email)
+    connection.execute(
+        text(
+            'INSERT INTO users ('
+            'username, email, hashed_password, role, is_active, email_verified, '
+            'followers_count, following_count, two_factor_enabled, two_factor_method, '
+            'suspicious_login_count, created_at, password_changed_at'
+            ') VALUES ('
+            ':username, :email, :hashed_password, :role, :is_active, :email_verified, '
+            ':followers_count, :following_count, :two_factor_enabled, :two_factor_method, '
+            ':suspicious_login_count, :created_at, :password_changed_at'
+            ')'
+        ),
+        {
+            'username': username,
+            'email': email,
+            'hashed_password': password_hash,
+            'role': role,
+            'is_active': True,
+            'email_verified': True,
+            'followers_count': 0,
+            'following_count': 0,
+            'two_factor_enabled': False,
+            'two_factor_method': 'email',
+            'suspicious_login_count': 0,
+            'created_at': datetime.utcnow(),
+            'password_changed_at': datetime.utcnow(),
+        },
+    )
+
+
+
+def _ensure_seed_accounts(engine: Engine) -> None:
+    with engine.begin() as connection:
+        _upsert_seed_account(connection, DEFAULT_SUBSCRIBER, role='user')
+        _upsert_seed_account(connection, DEFAULT_PRIMARY_ADMIN, role='admin')
 
 
 def initialize_database(engine: Engine, force: bool = False) -> None:

@@ -323,6 +323,8 @@ def _issue_captcha() -> dict:
     left = secrets.randbelow(8) + 1
     right = secrets.randbelow(8) + 1
     operator = secrets.choice(['+', '-'])
+    if operator == '-' and right > left:
+        left, right = right, left
     answer = left + right if operator == '+' else left - right
     captcha_id = secrets.token_urlsafe(18)
     with _CAPTCHA_LOCK:
@@ -590,7 +592,7 @@ async def login(request: Request, response: Response, payload: dict = Body(...),
         return challenge_payload
 
     user.last_login_at = utcnow_naive()
-    mark_successful_login(user, binding)
+    mark_successful_login(db, user, binding)
     if effective_role(user) == 'admin':
         user.last_admin_ip_hash = binding['ip_hash']
         user.last_admin_user_agent_hash = binding['user_agent_hash']
@@ -623,7 +625,7 @@ def dev_login(request: Request, response: Response, payload: dict = Body(default
     user = _resolve_dev_user(db, payload or {})
     user.last_login_at = utcnow_naive()
     binding = request_binding_context(request)
-    mark_successful_login(user, binding)
+    mark_successful_login(db, user, binding)
     db.commit()
     db.refresh(user)
     record_audit_log(
@@ -676,7 +678,7 @@ def social_login(request: Request, response: Response, payload: dict = Body(...)
             challenge_payload['dev_verification_code'] = code
         return challenge_payload
     user.last_login_at = utcnow_naive()
-    mark_successful_login(user, binding)
+    mark_successful_login(db, user, binding)
     db.commit()
     db.refresh(user)
     record_audit_log(
@@ -705,7 +707,7 @@ def verify_two_factor_login(request: Request, response: Response, payload: dict 
     verify_login_challenge(db, user, challenge_id, code)
     binding = request_binding_context(request)
     user.last_login_at = utcnow_naive()
-    mark_successful_login(user, binding)
+    mark_successful_login(db, user, binding)
     if effective_role(user) == 'admin':
         user.last_admin_ip_hash = binding['ip_hash']
         user.last_admin_user_agent_hash = binding['user_agent_hash']

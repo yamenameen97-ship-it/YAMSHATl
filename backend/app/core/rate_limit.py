@@ -95,7 +95,7 @@ async def register_socket_nonce(key: str, nonce: str, ttl_seconds: int | None = 
 async def block_socket_subject(*subjects: str, seconds: int | None = None) -> None:
     block_for = max(int(seconds or settings.SOCKET_ABUSE_BLOCK_SECONDS), 1)
     for subject in subjects:
-        normalized = str(subject or \'\').strip()[:180]
+        normalized = str(subject or "").strip()[:180]
         if normalized:
             await redis_client.set(f"abuse_block:{normalized}", 1, ex=block_for)
 

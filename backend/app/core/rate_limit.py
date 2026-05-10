@@ -81,7 +81,7 @@ async def clear_failed_logins(ip_address: str) -> None:
 
 
 async def register_socket_nonce(key: str, nonce: str, ttl_seconds: int | None = None) -> bool:
-    nonce = str(nonce or \'\').strip()[:128]
+    nonce = str(nonce or "").strip()
     if not nonce:
         return False
     ttl = max(int(ttl_seconds or settings.SOCKET_NONCE_TTL_SECONDS), 1)

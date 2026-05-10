@@ -53,6 +53,10 @@ def smtp_credentials_configured() -> bool:
     return bool(SMTP_USERNAME and SMTP_PASSWORD and SMTP_FROM)
 
 
+def smtp_configured() -> bool:
+    return smtp_credentials_configured()
+
+
 def delivery_provider() -> str | None:
     if resend_configured():
         return 'resend'

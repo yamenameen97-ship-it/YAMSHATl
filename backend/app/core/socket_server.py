@@ -185,7 +185,7 @@ def _event_subjects(session: dict | None, user: User, room_id: str | None = None
 
 async def _enforce_realtime_security(sid: str, event_name: str, data: dict | None, session: dict | None, user: User, room_id: str | None = None) -> bool:
     subjects = _event_subjects(session, user, room_id=room_id)
-    if is_socket_subject_blocked(*subjects):
+    if await is_socket_subject_blocked(*subjects):
         await sio.emit('realtime_blocked', {'detail': 'Realtime access temporarily blocked'}, room=sid)
         return False
 
@@ -197,15 +197,15 @@ async def _enforce_realtime_security(sid: str, event_name: str, data: dict | Non
         now_ms = int(time.time() * 1000)
         replay_window_ms = max(int(settings.SOCKET_REPLAY_WINDOW_SECONDS), 1) * 1000
         if not timestamp or abs(now_ms - timestamp) > replay_window_ms:
-            block_socket_subject(*subjects)
+            await block_socket_subject(*subjects)
             await sio.emit('chat_error', {'detail': 'Invalid realtime timestamp'}, room=sid)
             return False
-        if not nonce or not register_socket_nonce(f'{user.id}:{event_name}', nonce, settings.SOCKET_NONCE_TTL_SECONDS):
-            block_socket_subject(*subjects)
+        if not nonce or not await register_socket_nonce(f'{user.id}:{event_name}', nonce, settings.SOCKET_NONCE_TTL_SECONDS):
+            await block_socket_subject(*subjects)
             await sio.emit('chat_error', {'detail': 'Replay attack detected'}, room=sid)
             return False
         if signature != _event_signature(event_name, nonce, timestamp, token_jti):
-            block_socket_subject(*subjects)
+            await block_socket_subject(*subjects)
             await sio.emit('chat_error', {'detail': 'Invalid realtime signature'}, room=sid)
             return False
     return True
@@ -213,7 +213,7 @@ async def _enforce_realtime_security(sid: str, event_name: str, data: dict | Non
 
 async def _enforce_message_spam_policy(sid: str, session: dict | None, user: User, scope: str, content: str, room_id: str | None = None) -> bool:
     subjects = _event_subjects(session, user, room_id=room_id)
-    result = score_socket_spam(f'{scope}:{user.id}:{room_id or "global"}', content)
+    result = await score_socket_spam(f'{scope}:{user.id}:{room_id or "global"}', content)
     if result.get('blocked'):
         block_socket_subject(*subjects)
         await sio.emit('chat_error', {'detail': 'Message blocked as spam', 'reasons': result.get('reasons') or []}, room=sid)
@@ -407,7 +407,7 @@ async def send_comment_event(sid, data):
         return
     if not await _enforce_message_spam_policy(sid, session, user, 'live-comment', raw_text, room_id=room_id):
         return
-    if not allow_socket_message(f'live-comment:{user.id}:{room_id}', burst_limit=8, window_seconds=12):
+    if not await allow_socket_message(f'live-comment:{user.id}:{room_id}', burst_limit=8, window_seconds=12):
         return
     clean_text = sanitize_text(raw_text.strip(), max_length=600)
     comment = live_store.add_comment(room_id, user.username, clean_text)
@@ -423,7 +423,7 @@ async def send_heart_event(sid, data):
         return
     if not await _enforce_realtime_security(sid, 'send_heart', data or {}, session, user, room_id=room_id):
         return
-    if not allow_socket_message(f'live-heart:{user.id}:{room_id}', min_interval_seconds=0.6, burst_limit=10, window_seconds=12):
+    if not await allow_socket_message(f'live-heart:{user.id}:{room_id}', min_interval_seconds=0.6, burst_limit=10, window_seconds=12):
         return
     room = live_store.add_heart(room_id)
     await sio.emit('new_heart', {'count': room['hearts_count']}, room=room_id)
@@ -439,7 +439,7 @@ async def chat_typing_event(sid, data):
         return
     if not await _enforce_realtime_security(sid, 'chat_typing', data or {}, session, user, room_id=str(receiver)):
         return
-    if not allow_socket_message(
+    if not await allow_socket_message(
         f'chat-typing:{user.id}:{receiver}',
         min_interval_seconds=settings.SOCKET_TYPING_MIN_INTERVAL_SECONDS,
         burst_limit=24,
@@ -519,7 +519,7 @@ async def chat_message_event(sid, data):
         return
     if raw_message and not await _enforce_message_spam_policy(sid, session, user, 'chat-message', raw_message, room_id=receiver_username):
         return
-    if not allow_socket_message(f'socket-chat:{user.id}:{receiver_username}', burst_limit=10, window_seconds=15):
+    if not await allow_socket_message(f'socket-chat:{user.id}:{receiver_username}', burst_limit=10, window_seconds=15):
         await sio.emit('chat_error', {'detail': 'You are sending messages too quickly'}, room=sid)
         return
 
@@ -607,7 +607,7 @@ async def add_comment_event(sid, data):
         return
     if not await _enforce_message_spam_policy(sid, session, user, 'post-comment', text, room_id=str(post_id)):
         return
-    if not allow_socket_message(f'post-comment:{user.id}:{post_id}', burst_limit=8, window_seconds=15):
+    if not await allow_socket_message(f'post-comment:{user.id}:{post_id}', burst_limit=8, window_seconds=15):
         return
     db = SessionLocal()
     try:
@@ -639,7 +639,7 @@ async def follow_user_event(sid, data):
         return
     if not await _enforce_realtime_security(sid, 'follow_user', data or {}, session, user, room_id=target_username):
         return
-    if not allow_socket_message(f'follow-user:{user.id}:{target_username}', min_interval_seconds=1.2, burst_limit=4, window_seconds=20):
+    if not await allow_socket_message(f'follow-user:{user.id}:{target_username}', min_interval_seconds=1.2, burst_limit=4, window_seconds=20):
         return
     db = SessionLocal()
     try:

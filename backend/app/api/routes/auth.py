@@ -399,16 +399,16 @@ def _resolve_dev_user(db: Session, payload: dict) -> User:
 
 
 @router.get('/captcha')
-def get_captcha(request: Request):
+async def get_captcha(request: Request):
     binding = request_binding_context(request)
     rate_key = f"captcha:{binding['ip_address']}"
-    if not enforce_rate_limit(rate_key, settings.CAPTCHA_RATE_LIMIT_PER_MINUTE, 60):
+    if not await enforce_rate_limit(rate_key, settings.CAPTCHA_RATE_LIMIT_PER_MINUTE, 60):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='Too many captcha requests')
     return _issue_captcha()
 
 
 @router.post('/register', status_code=status.HTTP_201_CREATED)
-def register(request: Request, payload: dict = Body(...), db: Session = Depends(get_db)):
+async def register(request: Request, payload: dict = Body(...), db: Session = Depends(get_db)):
     username = payload.get('username') or payload.get('name') or payload.get('user')
     email = payload.get('email')
     password = payload.get('password')
@@ -420,7 +420,7 @@ def register(request: Request, payload: dict = Body(...), db: Session = Depends(
     binding = request_binding_context(request)
     identity = _normalize_rate_key_part(email, _normalize_rate_key_part(username, 'anonymous'))
     rate_key = f"register:{binding['ip_address']}:{identity}"
-    if not enforce_rate_limit(rate_key, settings.REGISTER_RATE_LIMIT_PER_MINUTE, 60):
+    if not await enforce_rate_limit(rate_key, settings.REGISTER_RATE_LIMIT_PER_MINUTE, 60):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='Too many registration attempts')
 
     if not _trusted_native_client(request):
@@ -449,7 +449,7 @@ def register(request: Request, payload: dict = Body(...), db: Session = Depends(
 
 
 @router.post('/verify-email')
-def verify_email(request: Request, response: Response, payload: dict = Body(...), db: Session = Depends(get_db)):
+async def verify_email(request: Request, response: Response, payload: dict = Body(...), db: Session = Depends(get_db)):
     email = str(payload.get('email') or '').strip().lower()
     code = str(payload.get('code') or '').strip()
     if not email or not code:
@@ -457,7 +457,7 @@ def verify_email(request: Request, response: Response, payload: dict = Body(...)
 
     binding = request_binding_context(request)
     rate_key = f"verify:{binding['ip_address']}:{email}"
-    if not enforce_rate_limit(rate_key, settings.VERIFY_RATE_LIMIT_PER_MINUTE, 60):
+    if not await enforce_rate_limit(rate_key, settings.VERIFY_RATE_LIMIT_PER_MINUTE, 60):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='Too many verification attempts')
 
     user = get_user_by_email(db, email)
@@ -475,14 +475,14 @@ def verify_email(request: Request, response: Response, payload: dict = Body(...)
 
 
 @router.post('/resend-verification')
-def resend_verification(request: Request, payload: dict = Body(...), db: Session = Depends(get_db)):
+async def resend_verification(request: Request, payload: dict = Body(...), db: Session = Depends(get_db)):
     email = str(payload.get('email') or '').strip().lower()
     if not email:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Email is required')
 
     binding = request_binding_context(request)
     rate_key = f"resend:{binding['ip_address']}:{email}"
-    if not enforce_rate_limit(rate_key, settings.RESEND_RATE_LIMIT_PER_MINUTE, 60):
+    if not await enforce_rate_limit(rate_key, settings.RESEND_RATE_LIMIT_PER_MINUTE, 60):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='Too many resend attempts')
 
     user = get_user_by_email(db, email)
@@ -504,7 +504,7 @@ def resend_verification(request: Request, payload: dict = Body(...), db: Session
 
 
 @router.post('/login')
-def login(request: Request, response: Response, payload: dict = Body(...), db: Session = Depends(get_db)):
+async def login(request: Request, response: Response, payload: dict = Body(...), db: Session = Depends(get_db)):
     identifier = payload.get('identifier') or payload.get('email') or payload.get('username')
     password = payload.get('password')
     remember_me = bool(payload.get('remember_me', True))
@@ -516,9 +516,9 @@ def login(request: Request, response: Response, payload: dict = Body(...), db: S
     normalized_identifier = _normalize_rate_key_part(identifier, 'anonymous')
     attempt_key = f"{binding['ip_address']}:{normalized_identifier}"
 
-    if not enforce_rate_limit(f'login:{attempt_key}', settings.LOGIN_RATE_LIMIT_PER_MINUTE, 60):
+    if not await enforce_rate_limit(f'login:{attempt_key}', settings.LOGIN_RATE_LIMIT_PER_MINUTE, 60):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='Too many login attempts')
-    if is_ip_locked(attempt_key):
+    if await is_ip_locked(attempt_key):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='Too many attempts, try again later')
 
     if not _trusted_native_client(request):
@@ -542,7 +542,7 @@ def login(request: Request, response: Response, payload: dict = Body(...), db: S
                 if settings.DEBUG and not delivery['sent']:
                     detail['dev_verification_code'] = code
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail) from exc
-        register_failed_login(attempt_key)
+        await register_failed_login(attempt_key)
         record_audit_log(
             db,
             actor_user_id=None,
@@ -596,7 +596,7 @@ def login(request: Request, response: Response, payload: dict = Body(...), db: S
         user.last_admin_user_agent_hash = binding['user_agent_hash']
     db.commit()
     db.refresh(user)
-    clear_failed_logins(attempt_key)
+    await clear_failed_logins(attempt_key)
     record_audit_log(
         db,
         actor_user_id=user.id,
@@ -749,10 +749,10 @@ def disable_two_factor(db: Session = Depends(get_db), current_user: User = Depen
 
 
 @router.post('/refresh')
-def refresh_session(request: Request, response: Response, payload: dict = Body(default={}), db: Session = Depends(get_db)):
+async def refresh_session(request: Request, response: Response, payload: dict = Body(default={}), db: Session = Depends(get_db)):
     binding = request_binding_context(request)
     ip_address = binding['ip_address']
-    if not enforce_rate_limit(f'refresh:{ip_address}', settings.REFRESH_RATE_LIMIT_PER_MINUTE, 60):
+    if not await enforce_rate_limit(f'refresh:{ip_address}', settings.REFRESH_RATE_LIMIT_PER_MINUTE, 60):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='Too many refresh attempts')
 
     refresh_token = str(payload.get('refresh_token') or payload.get('token') or request.cookies.get(settings.REFRESH_COOKIE_NAME) or '').strip()
@@ -775,7 +775,7 @@ def refresh_session(request: Request, response: Response, payload: dict = Body(d
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
     if not bool(user.email_verified):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Email verification required')
-    if not allow_min_interval(f'refresh-user:{user.id}:{ip_address}', settings.REFRESH_MIN_INTERVAL_SECONDS):
+    if not await allow_min_interval(f'refresh-user:{user.id}:{ip_address}', settings.REFRESH_MIN_INTERVAL_SECONDS):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='Refresh cooldown active')
 
     session_record = validate_refresh_token(

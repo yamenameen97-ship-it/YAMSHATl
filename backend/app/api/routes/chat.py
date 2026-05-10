@@ -141,7 +141,7 @@ async def send_message(payload: dict, db: Session = Depends(get_db), current_use
     client_id = str(payload.get('client_id') or '').strip() or None
     if not receiver_username or (not raw_message and not media_url):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='receiver and message or media_url are required')
-    if not allow_socket_message(f'chat:{current_user.id}'):
+    if not await allow_socket_message(f'chat:{current_user.id}'):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='You are sending messages too quickly')
 
     receiver = db.query(User).filter(User.username == receiver_username, User.is_active.is_(True)).first()

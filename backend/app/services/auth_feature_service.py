@@ -12,7 +12,6 @@ from app.services.email import delivery_provider, send_security_code_email, smtp
 from app.core.security import hash_password, verify_password
 from app.models.login_challenge import LoginChallenge
 from app.models.user import User
-from app.services.auth_service import get_user_by_email, register_user
 
 
 CHALLENGE_EXP_MINUTES = 10
@@ -184,6 +183,8 @@ def social_login_or_register(
     avatar: str | None = None,
     social_subject: str | None = None,
 ) -> User:
+    from app.services.auth_service import get_user_by_email, register_user
+
     normalized_email = str(email or '').strip().lower()
     if not normalized_email:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Email is required for social login')

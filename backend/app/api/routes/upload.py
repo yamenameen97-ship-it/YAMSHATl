@@ -22,6 +22,23 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 CHUNKS_DIR = UPLOAD_DIR / 'chunks'
 CHUNKS_DIR.mkdir(exist_ok=True)
 
+
+def save_upload(file: UploadFile) -> dict:
+    """Save an uploaded file locally and return a consistent payload."""
+    original_name = file.filename or 'upload.bin'
+    safe_name = secure_filename(original_name) or f'upload_{uuid.uuid4().hex}'
+    target_path = UPLOAD_DIR / f"{uuid.uuid4().hex}_{safe_name}"
+    file.file.seek(0)
+    with open(target_path, 'wb') as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    return {
+        'status': 'saved',
+        'filename': original_name,
+        'stored_name': target_path.name,
+        'file_url': f'/uploads/{target_path.name}',
+        'url': f'/uploads/{target_path.name}',
+    }
+
 # --- Background Workers for Media Processing ---
 async def process_media_background(file_path: str, user_id: int):
     """عامل في الخلفية لمعالجة وتحويل الميديا بشكل غير متزامن"""

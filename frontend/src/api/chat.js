@@ -100,3 +100,4 @@ export async function uploadMediaWithResume(file, onProgress = () => {}) {
     data: response.data?.upload || response.data,
   };
 }
+export const restoreMessage = (message_id) => API.post('/restore_message', { message_id });

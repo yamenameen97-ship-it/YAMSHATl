@@ -28,3 +28,8 @@ export const exportAdminReport = (format) => API.get('/admin/reports/export', { 
 export const getAdminSettings = () => API.get('/admin/settings', { cache: true, cacheTtlMs: 30_000 });
 export const updateAdminSettings = (data) => API.put('/admin/settings', data);
 export const changeAdminPassword = (data) => API.post('/admin/settings/change-password', data);
+export const moderatePostAI = (postId) => API.post(`/admin/posts/${postId}/moderate-ai`);
+export const bulkUpdatePostStatus = (ids, status) => API.post('/admin/posts/bulk-update-status', { ids, status });
+export const toggleShadowBan = (userId, enabled = true) => API.post(`/admin/users/${userId}/shadow-ban`, null, { params: { enabled } });
+export const updateReportStatus = (reportId, status) => API.post(`/admin/reports/${reportId}/status`, { status });
+export const escalateReport = (reportId) => API.post(`/admin/reports/${reportId}/escalate`);

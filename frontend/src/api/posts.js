@@ -22,3 +22,7 @@ export const votePoll = (postId, optionKey) => API.post(`/posts/${postId}/poll-v
 export const addComment = (postId, text, parentId = null) => API.post(`/posts/${postId}/comment`, { text, parent_id: parentId });
 export const getComments = (postId) => API.get(`/posts/${postId}/comments`);
 export const getPostInsights = (postId) => API.get(`/posts/${postId}/insights`, { cache: false, forceRefresh: true });
+export const getScheduledPosts = () => API.get('/posts/scheduled', { cache: false, forceRefresh: true });
+export const getPostAnalytics = (postId) => API.get(`/posts/${postId}/analytics`, { cache: false, forceRefresh: true });
+export const getRecommendedPosts = (params = {}) => API.get('/posts/recommended', { params });
+export const deletePost = (postId) => API.delete(`/posts/${postId}`);

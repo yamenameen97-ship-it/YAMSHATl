@@ -342,9 +342,9 @@ export default function RegisterEnhanced() {
         </div>
 
         <CaptchaBox
-          captcha={captcha}
+          challenge={captcha}
           value={captchaAnswer}
-          onChange={(e) => setCaptchaAnswer(e.target.value)}
+          onChange={(event) => setCaptchaAnswer(event.target.value)}
           onRefresh={loadCaptcha}
           loading={captchaLoading}
           error={captchaError}

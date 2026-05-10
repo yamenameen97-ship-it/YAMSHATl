@@ -182,7 +182,7 @@ export default function AdminLogin() {
         <CaptchaBox
           challenge={captcha}
           value={form.captchaAnswer}
-          onChange={(value) => setForm((prev) => ({ ...prev, captchaAnswer: value }))}
+          onChange={(event) => setForm((prev) => ({ ...prev, captchaAnswer: event.target.value }))}
           onRefresh={loadCaptcha}
           loading={captchaLoading}
           disabled={loading || devLoading}

@@ -113,7 +113,7 @@ async def is_socket_subject_blocked(*subjects: str) -> bool:
 async def score_socket_spam(subject: str, message: str, *, duplicate_window_seconds: int | None = None) -> dict:
     window = max(int(duplicate_window_seconds or settings.SOCKET_DUPLICATE_WINDOW_SECONDS), 1)
     now = time.time()
-    normalized_message = \' \'.join(str(message or \'\').strip().lower().split())[:500]
+    normalized = str(subject or '').strip()[:180]
     fingerprint = hashlib.sha256(normalized_message.encode(\'utf-8\')).hexdigest() if normalized_message else \'\'
     key = str(subject or \'anonymous\')[:180]
     score = 0

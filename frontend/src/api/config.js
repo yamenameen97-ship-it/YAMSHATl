@@ -9,7 +9,12 @@ const toApiBase = (value) => {
 const apiToOrigin = (value) => trim(toApiBase(value).replace(/\/api$/, ''));
 
 const inferBackendOrigin = () => {
-  return trim(window.location.origin);
+  const origin = trim(window.location.origin);
+  const host = window.location.hostname || '';
+  if (/-\d+\.onrender\.com$/i.test(host)) {
+    return `${window.location.protocol}//${host.replace(/-\d+(?=\.onrender\.com$)/i, '')}`;
+  }
+  return origin;
 };
 
 const readStored = (key) => {

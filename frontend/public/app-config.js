@@ -21,14 +21,7 @@
     storedBackend = trim(localStorage.getItem('backendOrigin'));
   } catch (_) {}
 
-  const inferBackendOrigin = () => {
-    const origin = trim(window.location.origin);
-    const host = window.location.hostname || '';
-    if (/-\d+\.onrender\.com$/i.test(host)) {
-      return `${window.location.protocol}//${host.replace(/-\d+(?=\.onrender\.com$)/i, '')}`;
-    }
-    return origin;
-  };
+  const inferBackendOrigin = () => trim(window.location.origin);
 
   const inferredBackendOrigin = inferBackendOrigin();
   const inferredApi = inferredBackendOrigin ? `${inferredBackendOrigin}/api` : '';
@@ -50,17 +43,17 @@
   const backendOrigin =
     trim(queryBackend) ||
     apiToOrigin(queryApi) ||
+    trim(DEPLOY_BACKEND_ORIGIN) ||
     safeStoredBackend ||
     apiToOrigin(safeStoredApi) ||
     inferredBackendOrigin ||
-    trim(DEPLOY_BACKEND_ORIGIN) ||
     trim(window.location.origin);
 
   const apiBase =
     toApiBase(queryApi) ||
+    toApiBase(DEPLOY_API_BASE) ||
     safeStoredApi ||
     toApiBase(inferredApi) ||
-    toApiBase(DEPLOY_API_BASE) ||
     toApiBase(`${backendOrigin}/api`) ||
     toApiBase(`${window.location.origin}/api`);
 

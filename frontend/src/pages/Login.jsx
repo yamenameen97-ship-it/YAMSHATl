@@ -436,7 +436,7 @@ export default function LoginEnhanced() {
         </div>
 
         <CaptchaBox
-          captcha={captcha}
+          challenge={captcha}
           value={form.captchaAnswer}
           onChange={handleChange('captchaAnswer')}
           onRefresh={loadCaptcha}

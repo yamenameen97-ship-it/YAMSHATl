@@ -696,3 +696,30 @@ async def follow_user_event(sid, data):
     finally:
         db.close()
     await sio.emit('user_follow_update', payload)
+
+
+@sio.on('ping')
+async def ping_event(sid, data):
+    session = await sio.get_session(sid)
+    response = {
+        'sid': sid,
+        'server_ts': int(time.time() * 1000),
+        'echo_ts': (data or {}).get('ts'),
+        'username': (session or {}).get('username'),
+    }
+    await sio.emit('pong', response, room=sid)
+
+
+@sio.on('presence_snapshot')
+async def presence_snapshot_event(sid, data):
+    users = (data or {}).get('users') or []
+    payload = []
+    for username in users[:50]:
+        normalized = str(username or '').strip()
+        if not normalized:
+            continue
+        payload.append({
+            'user': normalized,
+            'is_online': is_user_online(username=normalized),
+        })
+    await sio.emit('presence_snapshot', payload, room=sid)

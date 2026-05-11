@@ -40,7 +40,9 @@ def add_story(
     poll_options: str = Form(default=''),
     countdown_at: str = Form(default=''),
     filter_name: str = Form(default=''),
+    filter: str = Form(default=''),
     drawing_data: str = Form(default=''),
+    is_close_friends: bool = Form(default=False),
     auto_delete_hours: int = Form(default=24),
     current_user: User = Depends(get_current_user),
 ):
@@ -48,22 +50,24 @@ def add_story(
     media_url = upload_result.get('file_url') or upload_result.get('url')
     if not media_url:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Story media upload failed')
+    resolved_privacy = 'close_friends' if is_close_friends else (privacy or 'public')
     return story_store.add_story(
         user_id=current_user.id,
         username=current_user.username,
         media_url=media_url,
         metadata={
             'caption': caption,
-            'privacy': privacy,
+            'privacy': resolved_privacy,
             'music': music,
             'stickers': stickers,
             'mentions': mentions,
             'poll_question': poll_question,
             'poll_options': poll_options,
             'countdown_at': countdown_at,
-            'filter_name': filter_name,
+            'filter_name': filter_name or filter,
             'drawing_data': drawing_data,
             'auto_delete_hours': auto_delete_hours,
+            'is_close_friends': bool(is_close_friends),
         },
     )
 

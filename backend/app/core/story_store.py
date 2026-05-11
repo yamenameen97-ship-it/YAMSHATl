@@ -41,6 +41,7 @@ class StoryItem:
     filter_name: str = ''
     drawing_data: str = ''
     auto_delete_hours: int = 24
+    is_close_friends: bool = False
     highlight: bool = False
     reactions: dict[str, int] = field(default_factory=dict)
     seen_by: list[str] = field(default_factory=list)
@@ -56,6 +57,7 @@ class StoryStore:
         metadata = metadata or {}
         now = datetime.utcnow()
         auto_delete_hours = int(metadata.get('auto_delete_hours') or 24)
+        privacy = str(metadata.get('privacy') or 'public').strip() or 'public'
         story = StoryItem(
             id=str(self._next_id),
             user_id=user_id,
@@ -64,7 +66,7 @@ class StoryStore:
             created_at=now.isoformat(),
             expires_at=(now + timedelta(hours=max(1, auto_delete_hours))).isoformat(),
             caption=str(metadata.get('caption') or '').strip()[:300],
-            privacy=str(metadata.get('privacy') or 'public').strip() or 'public',
+            privacy=privacy,
             music=str(metadata.get('music') or '').strip()[:120],
             stickers=_safe_list(metadata.get('stickers'))[:8],
             mentions=_safe_list(metadata.get('mentions'))[:8],
@@ -74,6 +76,7 @@ class StoryStore:
             filter_name=str(metadata.get('filter_name') or '').strip()[:80],
             drawing_data=str(metadata.get('drawing_data') or '').strip()[:5000],
             auto_delete_hours=auto_delete_hours,
+            is_close_friends=bool(metadata.get('is_close_friends')) or privacy == 'close_friends',
         )
         self._next_id += 1
         self._stories[story.id] = story
@@ -159,6 +162,7 @@ class StoryStore:
             'filter_name': item.filter_name,
             'drawing_data': item.drawing_data,
             'auto_delete_hours': item.auto_delete_hours,
+            'is_close_friends': item.is_close_friends,
             'highlight': item.highlight,
             'reactions': item.reactions,
             'replies': [reply.__dict__ for reply in item.replies],
@@ -175,7 +179,7 @@ class StoryStore:
             raise KeyError('Story not found')
         return story
 
-    def _is_visible(self, story: StoryItem, viewer_username: str | None, viewer_user_id: int | None) -> bool:
+    def _is_visible(self, story: StoryItem, _viewer_username: str | None, viewer_user_id: int | None) -> bool:
         if story.privacy == 'private':
             return story.user_id == viewer_user_id
         return True

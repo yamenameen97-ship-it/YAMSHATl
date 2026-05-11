@@ -4,6 +4,25 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import compression from 'vite-plugin-compression';
 
+function getAssetName(assetInfo) {
+  if (typeof assetInfo?.name === 'string' && assetInfo.name.trim()) {
+    return assetInfo.name;
+  }
+
+  if (Array.isArray(assetInfo?.names) && assetInfo.names.length > 0) {
+    const candidate = assetInfo.names.find((name) => typeof name === 'string' && name.trim());
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  if (typeof assetInfo?.fileName === 'string' && assetInfo.fileName.trim()) {
+    return assetInfo.fileName;
+  }
+
+  return '';
+}
+
 /**
  * Advanced manual chunk splitting strategy
  */
@@ -211,27 +230,7 @@ export default defineConfig({
             src: '/icons/icon-512.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'any',
-          },
-          {
-            src: '/icons/icon-512-maskable.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'maskable',
-          },
-        ],
-        screenshots: [
-          {
-            src: '/screenshots/screenshot-540.png',
-            sizes: '540x720',
-            type: 'image/png',
-            form_factor: 'narrow',
-          },
-          {
-            src: '/screenshots/screenshot-1280.png',
-            sizes: '1280x720',
-            type: 'image/png',
-            form_factor: 'wide',
+            purpose: 'any maskable',
           },
         ],
       },
@@ -247,16 +246,7 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     cssCodeSplit: true,
-    minify: 'terser',
-    terserOptions: {
-      compress: {
-        drop_console: true,
-        drop_debugger: true,
-      },
-      output: {
-        comments: false,
-      },
-    },
+    minify: false,
     modulePreload: {
       polyfill: true,
     },
@@ -273,22 +263,28 @@ export default defineConfig({
         chunkFileNames: 'chunks/[name]-[hash].js',
         entryFileNames: '[name]-[hash].js',
         assetFileNames: (assetInfo) => {
-          const info = assetInfo.name.split('.');
-          const ext = info[info.length - 1];
+          const assetName = getAssetName(assetInfo);
+          const ext = assetName.includes('.')
+            ? assetName.split('.').pop().toLowerCase()
+            : '';
+
+          if (!ext) {
+            return 'assets/[name]-[hash][extname]';
+          }
 
           if (/png|jpe?g|gif|svg|webp/.test(ext)) {
-            return `images/[name]-[hash][extname]`;
+            return 'images/[name]-[hash][extname]';
           }
 
           if (/woff|woff2|ttf|otf|eot/.test(ext)) {
-            return `fonts/[name]-[hash][extname]`;
+            return 'fonts/[name]-[hash][extname]';
           }
 
           if (ext === 'css') {
-            return `styles/[name]-[hash][extname]`;
+            return 'styles/[name]-[hash][extname]';
           }
 
-          return `assets/[name]-[hash][extname]`;
+          return 'assets/[name]-[hash][extname]';
         },
       },
 

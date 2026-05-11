@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { getChatThreads } from '../api/chat.js';
-import socket from '../api/socket.js';
+import socketManager from '../services/socketManager.js';
 import { getAuthToken, getCurrentUsername } from '../utils/auth.js';
 import { useChatStore } from '../store/appStore.js';
 import logger from '../utils/logger.js';
@@ -49,11 +49,11 @@ export default function useChatRealtime() {
     if (!currentUser) return undefined;
 
     const emitRegister = () => {
-      socket.emit('register_user', { token, user: currentUser });
-      socket.emit('sync_chat_state', { token, peer: activePeerRef.current || undefined });
+      socketManager.emit('register_user', { token, user: currentUser }, { skipSignature: true });
+      socketManager.emit('sync_chat_state', { peer: activePeerRef.current || undefined });
     };
 
-    if (!socket.connected) socket.connect();
+    socketManager.connect();
     emitRegister();
 
     const handleConnect = () => emitRegister();
@@ -89,18 +89,28 @@ export default function useChatRealtime() {
       setPresence(payload.user, payload);
     };
 
-    socket.on('connect', handleConnect);
-    socket.on('new_private_message', handleNewMessage);
-    socket.on('messages_delivered', handleDelivered);
-    socket.on('messages_seen', handleSeen);
-    socket.on('presence_update', handlePresence);
+    const handleTyping = (payload) => {
+      if (!payload?.sender) return;
+      setPresence(payload.sender, {
+        is_typing: Boolean(payload?.is_typing),
+        typing_updated_at: new Date().toISOString(),
+      });
+    };
+
+    socketManager.on('connect', handleConnect);
+    socketManager.on('new_private_message', handleNewMessage);
+    socketManager.on('messages_delivered', handleDelivered);
+    socketManager.on('messages_seen', handleSeen);
+    socketManager.on('presence_update', handlePresence);
+    socketManager.on('typing_update', handleTyping);
 
     return () => {
-      socket.off('connect', handleConnect);
-      socket.off('new_private_message', handleNewMessage);
-      socket.off('messages_delivered', handleDelivered);
-      socket.off('messages_seen', handleSeen);
-      socket.off('presence_update', handlePresence);
+      socketManager.off('connect', handleConnect);
+      socketManager.off('new_private_message', handleNewMessage);
+      socketManager.off('messages_delivered', handleDelivered);
+      socketManager.off('messages_seen', handleSeen);
+      socketManager.off('presence_update', handlePresence);
+      socketManager.off('typing_update', handleTyping);
     };
   }, [activePeer, applyIncomingMessage, currentUser, markThreadRead, setPresence, token, updateMessageStatus]);
 }

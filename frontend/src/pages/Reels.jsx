@@ -1,8 +1,12 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Button from '../components/ui/Button.jsx';
 import Modal from '../components/ui/Modal.jsx';
-import { getPosts } from '../api/posts.js';
+import VideoUploader from '../components/upload/VideoUploader.jsx';
+import { useToast } from '../components/admin/ToastProvider.jsx';
+import { addComment, createPost, getComments, getPosts, likePost, sharePost } from '../api/posts.js';
+import { followUser } from '../api/users.js';
+import { getCurrentUsername } from '../utils/auth.js';
 
 const ReelSkeleton = () => (
   <div style={{ height: '100%', width: '100%', background: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -14,242 +18,218 @@ const ReelSkeleton = () => (
   </div>
 );
 
-/**
- * Advanced Reels Component
- * Features: 
- * - Video Preloading & Autoplay Optimization
- * - Adaptive Quality based on Network
- * - Memory Management (Pause/Unload offscreen)
- * - Prevent Rerenders & Memory Leaks
- */
 export default function ReelsPage() {
+  const { pushToast } = useToast();
+  const currentUser = getCurrentUsername();
   const [reels, setReels] = useState([]);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [showMonetization, setShowMonetization] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [hasNextPage, setHasNextPage] = useState(true);
-  const [page, setPage] = useState(1);
-  
-  const videoRefs = useRef([]);
-  const containerRef = useRef(null);
-  const observerRef = useRef(null);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showCommentsModal, setShowCommentsModal] = useState(false);
+  const [commentDraft, setCommentDraft] = useState('');
+  const [activeReel, setActiveReel] = useState(null);
+  const [activeComments, setActiveComments] = useState([]);
+  const [busyId, setBusyId] = useState('');
+  const [uploadState, setUploadState] = useState({ mediaUrl: '', uploading: false, content: '' });
 
-  // Adaptive Quality Logic
-  const getAdaptiveUrl = useCallback((url) => {
-    const connection = navigator.connection || {};
-    const type = connection.effectiveType || '4g';
-    if (['slow-2g', '2g', '3g'].includes(type) || connection.saveData) {
-      return `${url}?quality=low`; // Simulated adaptive quality
-    }
-    return url;
-  }, []);
-
-  const loadReels = useCallback(async (pageNum) => {
+  const loadReels = async () => {
+    setIsLoading(true);
     try {
-      setIsLoading(true);
-      const { data } = await getPosts({ limit: 5, filter: 'trending', page: pageNum });
-      const videoPosts = (data || []).filter(p => p.media_url?.match(/\.(mp4|webm|mov)$/i));
-      
-      if (videoPosts.length === 0) {
-        setHasNextPage(false);
-      } else {
-        const enhancedPosts = videoPosts.map(post => ({
-          ...post,
-          adaptiveUrl: getAdaptiveUrl(post.media_url)
-        }));
-        setReels(prev => pageNum === 1 ? enhancedPosts : [...prev, ...enhancedPosts]);
-      }
+      const { data } = await getPosts({ limit: 20, page: 1 });
+      const source = Array.isArray(data) ? data : data?.items || [];
+      const onlyVideos = source.filter((post) => /\.(mp4|webm|mov)$/i.test(post?.media_url || ''));
+      setReels(onlyVideos);
     } catch (err) {
-      console.error('Failed to load reels:', err);
+      pushToast({ type: 'error', title: 'تعذر تحميل الريلز', description: err?.response?.data?.detail || err?.message });
     } finally {
       setIsLoading(false);
     }
-  }, [getAdaptiveUrl]);
+  };
 
   useEffect(() => {
-    loadReels(1);
-  }, [loadReels]);
+    loadReels();
+  }, []);
 
-  // Infinite Scroll Logic
-  useEffect(() => {
-    if (activeIndex >= reels.length - 2 && hasNextPage && !isLoading) {
-      setPage(prev => {
-        const next = prev + 1;
-        loadReels(next);
-        return next;
-      });
+  const refreshComments = async (postId) => {
+    const { data } = await getComments(postId);
+    setActiveComments(Array.isArray(data) ? data : data?.items || []);
+  };
+
+  const openComments = async (reel) => {
+    setActiveReel(reel);
+    setShowCommentsModal(true);
+    try {
+      await refreshComments(reel.id);
+    } catch (err) {
+      pushToast({ type: 'error', title: 'تعذر تحميل التعليقات', description: err?.response?.data?.detail || err?.message });
     }
-  }, [activeIndex, reels.length, hasNextPage, isLoading, loadReels]);
+  };
 
-  // Intersection Observer for Video Management
-  useEffect(() => {
-    if (observerRef.current) observerRef.current.disconnect();
+  const updateReel = (reelId, patch) => {
+    setReels((prev) => prev.map((item) => item.id === reelId ? { ...item, ...patch } : item));
+  };
 
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        entries.forEach(entry => {
-          const index = parseInt(entry.target.dataset.index);
-          const video = videoRefs.current[index];
-          
-          if (entry.isIntersecting) {
-            setActiveIndex(index);
-            if (video) {
-              // Autoplay Optimization
-              video.play().catch(() => {
-                // Handle autoplay block by showing play button or muting
-                video.muted = true;
-                video.play();
-              });
-              
-              // Preload next 2 reels (Video Preloading)
-              for (let i = 1; i <= 2; i++) {
-                const nextVideo = videoRefs.current[index + i];
-                if (nextVideo) nextVideo.preload = 'auto';
-              }
-            }
-          } else {
-            if (video) {
-              // Pause offscreen videos
-              video.pause();
-              
-              // Memory Management: Unload distant videos
-              if (Math.abs(index - activeIndex) > 3) {
-                video.preload = 'none';
-                const currentSrc = video.src;
-                video.src = ''; 
-                video.load();
-                // Store src to restore later if needed
-                video.dataset.src = currentSrc;
-              }
-            }
-          }
-        });
-      },
-      { threshold: 0.7 }
-    );
+  const handleLike = async (reel) => {
+    try {
+      setBusyId(`like-${reel.id}`);
+      const { data } = await likePost(reel.id);
+      updateReel(reel.id, {
+        is_liked: Boolean(data?.liked ?? !reel.is_liked),
+        likes_count: Number(data?.likes_count ?? data?.likes ?? reel.likes_count ?? 0),
+      });
+    } catch (err) {
+      pushToast({ type: 'error', title: 'تعذر تنفيذ اللايك', description: err?.response?.data?.detail || err?.message });
+    } finally {
+      setBusyId('');
+    }
+  };
 
-    const elements = document.querySelectorAll('.reel-item');
-    elements.forEach(el => observerRef.current.observe(el));
+  const handleShare = async (reel) => {
+    try {
+      setBusyId(`share-${reel.id}`);
+      await navigator.clipboard.writeText(`${window.location.origin}/post/${reel.id}`);
+      await sharePost(reel.id, 'copy');
+      updateReel(reel.id, { share_count: Number(reel.share_count || 0) + 1 });
+      pushToast({ type: 'success', title: 'تم نسخ رابط الريل' });
+    } catch (err) {
+      pushToast({ type: 'error', title: 'تعذر مشاركة الريل', description: err?.response?.data?.detail || err?.message });
+    } finally {
+      setBusyId('');
+    }
+  };
 
-    return () => {
-      if (observerRef.current) observerRef.current.disconnect();
-    };
-  }, [reels, activeIndex]);
+  const handleFollow = async (reel) => {
+    try {
+      setBusyId(`follow-${reel.id}`);
+      const { data } = await followUser(reel.username);
+      updateReel(reel.id, { following: Boolean(data?.following) });
+      pushToast({ type: 'success', title: data?.following ? `أنت تتابع ${reel.username}` : `تم إلغاء متابعة ${reel.username}` });
+    } catch (err) {
+      pushToast({ type: 'error', title: 'تعذر تحديث المتابعة', description: err?.response?.data?.detail || err?.message });
+    } finally {
+      setBusyId('');
+    }
+  };
 
-  // Memoized Reel Items to prevent unnecessary rerenders
-  const renderedReels = useMemo(() => {
-    return reels.map((reel, i) => (
-      <div 
-        key={`${reel.id}-${i}`}
-        data-index={i}
-        className="reel-item"
-        style={{ 
-          height: '100%', 
-          scrollSnapAlign: 'start', 
-          position: 'relative',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: '#000'
-        }}
-      >
-        {Math.abs(i - activeIndex) <= 3 ? (
-          <video 
-            ref={el => videoRefs.current[i] = el}
-            src={reel.adaptiveUrl} 
-            loop 
-            playsInline
-            preload={Math.abs(i - activeIndex) <= 1 ? 'auto' : 'metadata'}
-            style={{ 
-              width: '100%', 
-              height: '100%', 
-              objectFit: 'contain'
-            }}
-          />
-        ) : (
-          <ReelSkeleton />
-        )}
+  const handleAddComment = async () => {
+    if (!activeReel || !commentDraft.trim()) return;
+    try {
+      setBusyId(`comment-${activeReel.id}`);
+      await addComment(activeReel.id, commentDraft.trim());
+      setCommentDraft('');
+      await refreshComments(activeReel.id);
+      updateReel(activeReel.id, { comments_count: Number(activeReel.comments_count || 0) + 1 });
+    } catch (err) {
+      pushToast({ type: 'error', title: 'تعذر إضافة التعليق', description: err?.response?.data?.detail || err?.message });
+    } finally {
+      setBusyId('');
+    }
+  };
 
-        {/* Interaction Overlay */}
-        <div style={{ position: 'absolute', right: 16, bottom: 100, display: 'flex', flexDirection: 'column', gap: 24, alignItems: 'center', zIndex: 10 }}>
-          <div style={{ width: 50, height: 50, borderRadius: '50%', border: '2px solid white', overflow: 'hidden', marginBottom: 10 }}>
+  const renderedReels = useMemo(() => reels.map((reel) => {
+    const ownReel = reel.username === currentUser;
+    return (
+      <div key={reel.id} className="reel-item" style={{ minHeight: 'calc(100vh - 60px)', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <video src={reel.media_url} loop controls playsInline style={{ width: '100%', height: '100%', objectFit: 'contain', maxHeight: 'calc(100vh - 60px)' }} />
+
+        <div style={{ position: 'absolute', right: 16, bottom: 110, display: 'flex', flexDirection: 'column', gap: 20, alignItems: 'center', zIndex: 10 }}>
+          <div style={{ width: 52, height: 52, borderRadius: '50%', border: '2px solid white', overflow: 'hidden', marginBottom: 6 }}>
             <img src={reel.avatar || `https://ui-avatars.com/api/?name=${reel.username}`} alt="User" style={{ width: '100%', height: '100%' }} />
           </div>
-          
-          <div style={{ textAlign: 'center' }}>
-            <button className="reel-action-btn">❤️</button>
-            <div style={{ fontSize: 12, color: 'white', marginTop: 4 }}>{reel.likes_count || '0'}</div>
-          </div>
-
-          <div style={{ textAlign: 'center' }}>
-            <button className="reel-action-btn">💬</button>
-            <div style={{ fontSize: 12, color: 'white', marginTop: 4 }}>{reel.comments_count || '0'}</div>
-          </div>
-
-          <button className="reel-action-btn">📤</button>
-          
-          <button 
-            onClick={() => setShowMonetization(true)} 
-            style={{ background: 'linear-gradient(45deg, #FFD700, #FFA500)', border: 'none', width: 45, height: 45, borderRadius: '50%', color: 'black', fontSize: 20, boxShadow: '0 0 15px rgba(255,215,0,0.5)' }}
-          >💰</button>
+          <button className="reel-action-btn" onClick={() => handleLike(reel)} disabled={busyId === `like-${reel.id}`}>{reel.is_liked ? '❤️' : '🤍'}</button>
+          <div style={{ color: 'white', fontSize: 12 }}>{reel.likes_count || 0}</div>
+          <button className="reel-action-btn" onClick={() => openComments(reel)}>💬</button>
+          <div style={{ color: 'white', fontSize: 12 }}>{reel.comments_count || 0}</div>
+          <button className="reel-action-btn" onClick={() => handleShare(reel)} disabled={busyId === `share-${reel.id}`}>📤</button>
+          {!ownReel ? (
+            <button className="reel-action-btn" onClick={() => handleFollow(reel)} disabled={busyId === `follow-${reel.id}`}>{reel.following ? '✓' : '➕'}</button>
+          ) : null}
         </div>
 
-        {/* Content Info */}
-        <div style={{ position: 'absolute', bottom: 30, left: 20, right: 80, zIndex: 10, color: 'white', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>
+        <div style={{ position: 'absolute', bottom: 30, left: 20, right: 90, zIndex: 10, color: 'white', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>
           <div style={{ fontWeight: 'bold', fontSize: 18, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
             @{reel.username}
-            <button style={{ background: 'rgba(255,255,255,0.2)', border: '1px solid white', color: 'white', padding: '4px 12px', borderRadius: 20, fontSize: 12 }}>متابعة</button>
+            {!ownReel ? (
+              <button onClick={() => handleFollow(reel)} style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid white', color: 'white', padding: '4px 12px', borderRadius: 20, fontSize: 12 }}>
+                {reel.following ? 'إلغاء المتابعة' : 'متابعة'}
+              </button>
+            ) : null}
           </div>
-          <div style={{ fontSize: 14, opacity: 0.9, maxWidth: '80%' }}>{reel.content}</div>
+          <div style={{ fontSize: 14, opacity: 0.92, maxWidth: '80%' }}>{reel.content}</div>
         </div>
       </div>
-    ));
-  }, [reels, activeIndex]);
+    );
+  }), [busyId, currentUser, reels]);
 
   return (
     <MainLayout>
       <div style={{ height: 'calc(100vh - 60px)', background: '#000', position: 'relative', overflow: 'hidden' }}>
-        
-        <div 
-          ref={containerRef}
-          style={{ 
-            height: '100%', 
-            overflowY: 'scroll', 
-            scrollSnapType: 'y mandatory',
-            scrollbarWidth: 'none',
-            msOverflowStyle: 'none'
-          }}
-          className="reels-scroll-container"
-        >
-          {renderedReels}
+        <div style={{ position: 'absolute', top: 14, left: 14, zIndex: 20, display: 'flex', gap: 10 }}>
+          <Button onClick={() => setShowUploadModal(true)}>رفع ريلز</Button>
+          <Button variant="secondary" onClick={loadReels} loading={isLoading}>تحديث</Button>
+        </div>
 
-          {isLoading && reels.length === 0 && (
-            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
-              <ReelSkeleton />
-            </div>
-          )}
+        <div style={{ height: '100%', overflowY: 'scroll', scrollSnapType: 'y mandatory', scrollbarWidth: 'none' }} className="reels-scroll-container">
+          {isLoading && reels.length === 0 ? <ReelSkeleton /> : null}
+          {!isLoading && reels.length === 0 ? <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>لا يوجد ريلز حالياً</div> : null}
+          {renderedReels}
         </div>
       </div>
 
-      <Modal isOpen={showMonetization} onClose={() => setShowMonetization(false)} title="نظام الأرباح">
-        <div style={{ padding: 24, textAlign: 'center' }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>💰</div>
-          <h3>أرباح المحتوى</h3>
-          <div style={{ fontSize: 36, fontWeight: 'bold', color: '#FFD700', margin: '20px 0' }}>$124.50</div>
-          <Button style={{ marginTop: 24, width: '100%', height: 50 }}>سحب الأرباح للمحفظة</Button>
+      <Modal open={showUploadModal} onClose={() => setShowUploadModal(false)} title="رفع ريلز جديد">
+        <div style={{ display: 'grid', gap: 14 }}>
+          <textarea value={uploadState.content} onChange={(event) => setUploadState((prev) => ({ ...prev, content: event.target.value }))} rows={4} placeholder="اكتب وصف الريل" style={{ width: '100%', borderRadius: 12, padding: 12 }} />
+          <VideoUploader
+            label="رفع فيديو الريلز"
+            onUploadComplete={({ url }) => setUploadState((prev) => ({ ...prev, mediaUrl: url }))}
+            onError={(message) => pushToast({ type: 'error', title: 'تعذر رفع الفيديو', description: message })}
+          />
+          <Button
+            loading={uploadState.uploading}
+            disabled={!uploadState.mediaUrl}
+            onClick={async () => {
+              try {
+                setUploadState((prev) => ({ ...prev, uploading: true }));
+                await createPost({ content: uploadState.content || 'ريل جديد', media_url: uploadState.mediaUrl });
+                pushToast({ type: 'success', title: 'تم نشر الريل' });
+                setShowUploadModal(false);
+                setUploadState({ mediaUrl: '', uploading: false, content: '' });
+                await loadReels();
+              } catch (err) {
+                pushToast({ type: 'error', title: 'تعذر نشر الريل', description: err?.response?.data?.detail || err?.message });
+                setUploadState((prev) => ({ ...prev, uploading: false }));
+              }
+            }}
+          >
+            نشر الريل
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal open={showCommentsModal} onClose={() => setShowCommentsModal(false)} title="التعليقات">
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div style={{ maxHeight: 320, overflowY: 'auto', display: 'grid', gap: 10 }}>
+            {activeComments.length ? activeComments.map((comment) => (
+              <div key={comment.id} style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: 12 }}>
+                <div style={{ fontWeight: 'bold', marginBottom: 6 }}>{comment.username || comment.user}</div>
+                <div>{comment.content || comment.text || comment.comment}</div>
+              </div>
+            )) : <div>لا توجد تعليقات بعد.</div>}
+          </div>
+          <textarea value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} rows={3} placeholder="اكتب تعليقك" style={{ width: '100%', borderRadius: 12, padding: 12 }} />
+          <Button onClick={handleAddComment} loading={busyId === `comment-${activeReel?.id || ''}`}>إرسال التعليق</Button>
         </div>
       </Modal>
 
       <style>{`
         .reels-scroll-container::-webkit-scrollbar { display: none; }
-        .reel-action-btn { 
-          background: rgba(255,255,255,0.15); 
+        .reel-action-btn {
+          background: rgba(255,255,255,0.15);
           backdrop-filter: blur(5px);
-          border: none; 
-          width: 48px; 
-          height: 48px; 
-          border-radius: 50%; 
-          color: white; 
+          border: none;
+          width: 48px;
+          height: 48px;
+          border-radius: 50%;
+          color: white;
           font-size: 22px;
           cursor: pointer;
           transition: 0.2s;
@@ -257,7 +237,7 @@ export default function ReelsPage() {
           align-items: center;
           justify-content: center;
         }
-        .reel-action-btn:hover { transform: scale(1.1); background: rgba(255,255,255,0.25); }
+        .reel-action-btn:hover { transform: scale(1.08); background: rgba(255,255,255,0.25); }
       `}</style>
     </MainLayout>
   );

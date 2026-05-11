@@ -1,4 +1,4 @@
-const VERSION = 'yamshat-v9';
+const VERSION = 'yamshat-v10';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -10,6 +10,7 @@ const CACHE_NAMES = {
 const APP_SHELL = [
   '/',
   '/index.html',
+  '/offline.html',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
@@ -49,6 +50,11 @@ async function cacheFirst(request, cacheName) {
   }
 }
 
+async function broadcastMessage(message) {
+  const clientsList = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+  clientsList.forEach((client) => client.postMessage(message));
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAMES.SHELL).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting())
@@ -71,7 +77,18 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
   if (request.mode === 'navigate') {
-    event.respondWith(networkFirst(request, CACHE_NAMES.SHELL));
+    event.respondWith(
+      fetch(request)
+        .then(async (response) => {
+          const cache = await caches.open(CACHE_NAMES.SHELL);
+          cache.put(request, response.clone()).catch(() => null);
+          return response;
+        })
+        .catch(async () => {
+          const cache = await caches.open(CACHE_NAMES.SHELL);
+          return cache.match(request) || cache.match('/offline.html') || cache.match('/index.html');
+        })
+    );
     return;
   }
 
@@ -98,9 +115,15 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(networkFirst(request, CACHE_NAMES.OFFLINE));
 });
 
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'yamshat:queue-sync') {
+    event.waitUntil(broadcastMessage({ type: 'yamshat:sync-now' }));
+  }
+});
+
 self.addEventListener('sync', (event) => {
   if (event.tag === 'sync-posts' || event.tag === 'sync-messages' || event.tag === 'sync-notifications') {
-    event.waitUntil(Promise.resolve());
+    event.waitUntil(broadcastMessage({ type: 'yamshat:sync-now' }));
   }
 });
 

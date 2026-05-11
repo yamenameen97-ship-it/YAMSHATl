@@ -1,69 +1,60 @@
 import { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar.jsx';
 import Topbar from './Topbar.jsx';
 import MobileDock from './MobileDock.jsx';
 import { isNativeShell } from '../../utils/runtime.js';
+import { getScrollPosition, prefetchCriticalRoutes, saveScrollPosition } from '../../utils/navigation.js';
 
-/**
- * MainLayout Component
- * Features: Transitions, Scroll restoration, Responsive polish, Adaptive navigation
- */
 export default function MainLayout({ children }) {
   const nativeShell = isNativeShell();
+  const location = useLocation();
   const mainRef = useRef(null);
+  const frameRef = useRef(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [scrollPosition, setScrollPosition] = useState(0);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
-  /**
-   * Handles scroll restoration
-   */
   useEffect(() => {
+    const container = mainRef.current;
+    if (!container) return undefined;
+
+    const restore = () => {
+      const cachedPosition = getScrollPosition(location.pathname);
+      container.scrollTo({ top: cachedPosition, behavior: 'auto' });
+      setIsTransitioning(true);
+      window.clearTimeout(container.__yamshatTransitionTimer__);
+      container.__yamshatTransitionTimer__ = window.setTimeout(() => setIsTransitioning(false), 260);
+    };
+
+    const rafId = window.requestAnimationFrame(restore);
+    prefetchCriticalRoutes(location.pathname);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.clearTimeout(container.__yamshatTransitionTimer__);
+    };
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const container = mainRef.current;
+    if (!container) return undefined;
+
     const handleScroll = () => {
-      setScrollPosition(window.scrollY);
+      if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
+      frameRef.current = window.requestAnimationFrame(() => {
+        saveScrollPosition(location.pathname, container.scrollTop);
+      });
     };
 
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  /**
-   * Restores scroll position on page navigation
-   */
-  useEffect(() => {
-    // Restore scroll position
-    window.scrollTo(0, scrollPosition);
-
-    // Add transition animation
-    setIsTransitioning(true);
-    const timer = setTimeout(() => setIsTransitioning(false), 300);
-
-    return () => clearTimeout(timer);
-  }, [children]);
-
-  /**
-   * Handles responsive layout changes
-   */
-  useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 768);
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
     };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  /**
-   * Handles page transitions
-   */
-  const handlePageTransition = () => {
-    setIsTransitioning(true);
-    setTimeout(() => setIsTransitioning(false), 300);
-  };
+  }, [location.pathname]);
 
   return (
     <div className={`app-shell yamshat-shell ${nativeShell ? 'native-shell' : ''}`}>
-      {!nativeShell && <Sidebar onNavigate={handlePageTransition} />}
+      {!nativeShell && <Sidebar />}
 
       <div className={`main-shell ${nativeShell ? 'native-shell' : ''}`}>
         {!nativeShell && <Topbar />}
@@ -72,19 +63,23 @@ export default function MainLayout({ children }) {
           className={`page-content ${nativeShell ? 'native-shell' : ''} ${isTransitioning ? 'is-transitioning' : ''}`}
           ref={mainRef}
         >
-          <div className="page-shell-glow">{children}</div>
+          <div className="page-shell-glow" key={location.pathname}>
+            {children}
+          </div>
         </main>
       </div>
 
-      {!nativeShell && <MobileDock onNavigate={handlePageTransition} />}
+      {!nativeShell && <MobileDock />}
 
       <style dangerouslySetInnerHTML={{
         __html: `
-          /* App Shell */
           .app-shell {
             display: flex;
+            min-height: 100vh;
             height: 100vh;
-            background: #ffffff;
+            background:
+              radial-gradient(circle at top, rgba(59,130,246,0.08), transparent 34%),
+              linear-gradient(180deg, #07111f 0%, #0f172a 34%, #08101d 100%);
             overflow: hidden;
           }
 
@@ -92,62 +87,46 @@ export default function MainLayout({ children }) {
             flex-direction: column;
           }
 
-          /* Main Shell */
           .main-shell {
             display: flex;
             flex-direction: column;
             flex: 1;
             overflow: hidden;
+            min-width: 0;
           }
 
           .main-shell.native-shell {
             width: 100%;
           }
 
-          /* Page Content */
           .page-content {
             flex: 1;
             overflow-y: auto;
             overflow-x: hidden;
             scroll-behavior: smooth;
-            transition: opacity 0.3s ease-out;
+            overscroll-behavior: contain;
+            -webkit-overflow-scrolling: touch;
+            transition: opacity 220ms ease, transform 260ms cubic-bezier(0.22, 1, 0.36, 1), filter 260ms ease;
+            will-change: transform, opacity;
           }
 
           .page-content.is-transitioning {
-            opacity: 0.95;
+            opacity: 0.96;
+            transform: translate3d(0, 8px, 0);
+            filter: saturate(0.95);
           }
 
           .page-content.native-shell {
-            padding-bottom: 60px;
+            padding-bottom: 68px;
           }
 
-          /* Page Shell Glow */
           .page-shell-glow {
             min-height: 100%;
-            animation: fadeIn 0.3s ease-out;
+            animation: pageFadeIn 260ms cubic-bezier(0.22, 1, 0.36, 1);
+            content-visibility: auto;
+            contain-intrinsic-size: 900px;
           }
 
-          /* Responsive adjustments */
-          @media (max-width: 768px) {
-            .app-shell {
-              flex-direction: column;
-            }
-
-            .main-shell {
-              width: 100%;
-            }
-
-            .page-content {
-              padding-bottom: 60px;
-            }
-          }
-
-          /* Smooth scroll behavior */
-          html {
-            scroll-behavior: smooth;
-          }
-
-          /* Scrollbar styling */
           .page-content::-webkit-scrollbar {
             width: 8px;
           }
@@ -157,76 +136,45 @@ export default function MainLayout({ children }) {
           }
 
           .page-content::-webkit-scrollbar-thumb {
-            background: #d1d5db;
-            border-radius: 4px;
+            background: rgba(148, 163, 184, 0.35);
+            border-radius: 999px;
           }
 
           .page-content::-webkit-scrollbar-thumb:hover {
-            background: #9ca3af;
+            background: rgba(148, 163, 184, 0.55);
           }
 
-          /* Animations */
-          @keyframes fadeIn {
+          @keyframes pageFadeIn {
             from {
               opacity: 0;
+              transform: translate3d(0, 12px, 0) scale(0.995);
             }
             to {
               opacity: 1;
+              transform: translate3d(0, 0, 0) scale(1);
             }
           }
 
-          @keyframes slideInUp {
-            from {
-              transform: translateY(20px);
-              opacity: 0;
+          @media (max-width: 768px) {
+            .app-shell {
+              flex-direction: column;
             }
-            to {
-              transform: translateY(0);
-              opacity: 1;
+
+            .page-content {
+              padding-bottom: 78px;
             }
           }
 
-          @keyframes slideInDown {
-            from {
-              transform: translateY(-20px);
-              opacity: 0;
-            }
-            to {
-              transform: translateY(0);
-              opacity: 1;
-            }
-          }
-
-          /* Reduced motion support */
           @media (prefers-reduced-motion: reduce) {
             .page-content,
             .page-shell-glow {
               animation: none;
               transition: none;
-            }
-
-            html {
               scroll-behavior: auto;
             }
           }
-
-          /* Dark mode support */
-          @media (prefers-color-scheme: dark) {
-            .app-shell {
-              background: #111827;
-            }
-
-            .page-content::-webkit-scrollbar-thumb {
-              background: #4b5563;
-            }
-
-            .page-content::-webkit-scrollbar-thumb:hover {
-              background: #6b7280;
-            }
-          }
         `,
-      }}
-      />
+      }} />
     </div>
   );
 }

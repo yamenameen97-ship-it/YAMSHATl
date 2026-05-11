@@ -63,7 +63,12 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
       if (String(payload?.post_id) !== String(post.id)) return;
       setComments((prev) => {
         const exists = prev.some((item) => String(item.id) === String(payload.id));
-        return exists ? prev : [...prev, payload];
+        if (exists) return prev;
+        const next = [...prev, { ...payload, justArrived: true }];
+        window.setTimeout(() => {
+          setComments((current) => current.map((item) => String(item.id) === String(payload.id) ? { ...item, justArrived: false } : item));
+        }, 2600);
+        return next;
       });
     };
     socketManager.on('post_comment', handleIncomingComment);
@@ -106,21 +111,42 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
 
   const handleAddComment = async ({ content, parentId = null }) => {
     if (!content?.trim()) return;
+    const cleanContent = content.trim();
+    const optimisticId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const optimisticComment = {
+      id: optimisticId,
+      username: currentUser,
+      content: cleanContent,
+      parent_id: parentId,
+      created_at: new Date().toISOString(),
+      reactions: {},
+      optimistic: true,
+      justArrived: true,
+    };
+
+    setComments((prev) => [...prev, optimisticComment]);
+    setCommentDraft('');
+
     try {
-      const { data } = await addComment(post.id, content.trim(), parentId);
-      const optimistic = data || {
-        id: Date.now(),
-        username: currentUser,
-        content,
-        parent_id: parentId,
-        created_at: new Date().toISOString(),
-        reactions: {},
+      const { data } = await addComment(post.id, cleanContent, parentId);
+      const confirmedComment = {
+        ...(data || optimisticComment),
+        optimistic: false,
+        justArrived: true,
       };
-      setComments((prev) => [...prev, optimistic]);
-      setCommentDraft('');
+
+      setComments((prev) => prev.map((item) => (
+        String(item.id) === optimisticId
+          ? { ...confirmedComment, id: data?.id || optimisticId }
+          : item
+      )));
       queryClient.invalidateQueries(['feed-data']);
-      socketManager.emit?.('post_comment', { ...optimistic, post_id: post.id });
+      socketManager.emit?.('post_comment', { ...confirmedComment, post_id: post.id });
+      window.setTimeout(() => {
+        setComments((prev) => prev.map((item) => item.id === (data?.id || optimisticId) ? { ...item, justArrived: false } : item));
+      }, 2600);
     } catch (error) {
+      setComments((prev) => prev.filter((item) => String(item.id) !== optimisticId));
       pushToast({ type: 'error', title: 'تعذر إضافة التعليق', description: error?.response?.data?.detail || error?.message });
     }
   };

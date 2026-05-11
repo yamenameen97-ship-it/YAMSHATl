@@ -14,15 +14,42 @@ export default function InstallPrompt() {
   };
 
   return (
-    <div className="install-banner card">
-      <div>
+    <div className="install-banner card enhanced-install-banner">
+      <div style={{ display: 'grid', gap: 8 }}>
         <strong>تثبيت التطبيق</strong>
-        <div className="muted">يمكنك تثبيت يمشات كتطبيق PWA على الموبايل أو سطح المكتب.</div>
+        <div className="muted">ثبّت يمشات كتطبيق PWA للوصول السريع، والإشعارات، وتجربة أفضل عند ضعف الشبكة.</div>
+        <div className="install-benefits-row">
+          <span className="install-benefit-pill">فتح أسرع</span>
+          <span className="install-benefit-pill">Offline pages</span>
+          <span className="install-benefit-pill">Background sync</span>
+        </div>
       </div>
       <div className="install-banner-actions">
         <Button onClick={handleInstall}>تثبيت الآن</Button>
         <Button variant="secondary" onClick={clearInstallPrompt}>لاحقاً</Button>
       </div>
+
+      <style>{`
+        .enhanced-install-banner {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          flex-wrap: wrap;
+        }
+        .install-benefits-row {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .install-benefit-pill {
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: rgba(59,130,246,0.08);
+          border: 1px solid rgba(59,130,246,0.14);
+          font-size: 12px;
+        }
+      `}</style>
     </div>
   );
 }

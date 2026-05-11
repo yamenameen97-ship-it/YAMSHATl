@@ -2,6 +2,7 @@ import { Link, NavLink } from 'react-router-dom';
 import { useAppStore } from '../../store/appStore.js';
 import { selectUnreadTotal, useChatStore } from '../../store/appStore.js';
 import { getUiText } from '../../utils/i18n.js';
+import { getPrefetchHandlers } from '../../utils/navigation.js';
 
 export default function Sidebar() {
   const language = useAppStore((state) => state.language);
@@ -17,7 +18,7 @@ export default function Sidebar() {
     { to: '/users', label: ui.nav.users, meta: ui.navMeta.users, icon: '◎' },
     { to: '/groups', label: ui.nav.groups, meta: ui.navMeta.groups, icon: '◍' },
     { to: '/stories', label: ui.nav.stories, meta: ui.navMeta.stories, icon: '◌' },
-    { to: '/profile', label: ui.nav.profile, meta: ui.navMeta.profile, icon: '◌' },
+    { to: '/profile', label: ui.nav.profile, meta: ui.navMeta.profile, icon: '◍' },
     { to: '/dashboard', label: ui.nav.dashboard, meta: ui.navMeta.dashboard, icon: '☰' },
   ];
 
@@ -36,11 +37,11 @@ export default function Sidebar() {
 
         <div className="sidebar-highlight card sidebar-highlight-rich">
           <div className="page-eyebrow">Yamshat UI</div>
-          <strong>{language === 'en' ? 'Posts · Reels · Live · Chat' : 'المنشورات · الريلز · البث · الدردشة'}</strong>
+          <strong>{language === 'en' ? 'Fast navigation · cached pages · smoother transitions' : 'تنقل أسرع · كاش للصفحات · انتقالات أنعم'}</strong>
           <p className="muted no-margin">
             {language === 'en'
-              ? 'Every service now has its own page with cleaner top and bottom navigation.'
-              : 'كل خدمة الآن في صفحة مستقلة مع شريط علوي وسفلي أكثر توازناً.'}
+              ? 'The sidebar now prefetches main routes for quicker navigation between feed, reels, stories, and inbox.'
+              : 'الشريط الجانبي صار يعمل prefetch للمسارات الأساسية علشان التنقل بين الفيد والريلز والستوري والإنبوكس يبقى أسرع.'}
           </p>
         </div>
       </div>
@@ -53,6 +54,7 @@ export default function Sidebar() {
               key={link.to}
               to={link.to}
               className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+              {...getPrefetchHandlers(link.to)}
             >
               <span className="nav-link-icon">{link.icon}</span>
               <span className="nav-link-copy">
@@ -66,10 +68,10 @@ export default function Sidebar() {
       </nav>
 
       <div className="sidebar-footer sidebar-footer-rich">
-        <div className="glass-chip">DB linked</div>
-        <div className="glass-chip">Top bar</div>
-        <div className="glass-chip">Bottom bar</div>
-        <Link to="/admin/login" className="glass-chip admin-entry-chip">Admin</Link>
+        <div className="glass-chip">prefetch</div>
+        <div className="glass-chip">page cache</div>
+        <div className="glass-chip">smooth UI</div>
+        <Link to="/admin/login" className="glass-chip admin-entry-chip" {...getPrefetchHandlers('/dashboard')}>Admin</Link>
       </div>
     </aside>
   );

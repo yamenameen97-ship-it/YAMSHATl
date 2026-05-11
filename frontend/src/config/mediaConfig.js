@@ -2,7 +2,6 @@ const trim = (value) => String(value || '').trim();
 const trimSlash = (value) => trim(value).replace(/\/+$/, '');
 
 const runtime = typeof window === 'undefined' ? {} : window;
-
 const readRuntime = (key, fallback = '') => trim(runtime?.[key] || fallback);
 const readEnv = (key, fallback = '') => trim(import.meta.env[key] || fallback);
 
@@ -17,8 +16,22 @@ export const MEDIA_CDN_BASE = trimSlash(
   readRuntime('APP_CDN_BASE') ||
   readRuntime('YAMSHAT_CDN_BASE') ||
   readEnv('VITE_CDN_BASE') ||
-  ''
+  'https://cdn.yamshat.com'
 );
+
+export const SIGNED_URL_TTL_SECONDS = Number(
+  readRuntime('APP_SIGNED_URL_TTL_SECONDS') ||
+  readRuntime('YAMSHAT_SIGNED_URL_TTL_SECONDS') ||
+  readEnv('VITE_SIGNED_URL_TTL_SECONDS') ||
+  900
+);
+
+export const MEDIA_SECURITY = {
+  signedUrls: (readRuntime('APP_MEDIA_SIGNED_URLS') || readEnv('VITE_MEDIA_SIGNED_URLS') || 'true') !== 'false',
+  expiringLinks: (readRuntime('APP_MEDIA_EXPIRING_LINKS') || readEnv('VITE_MEDIA_EXPIRING_LINKS') || 'true') !== 'false',
+  encryptedUploads: (readRuntime('APP_MEDIA_ENCRYPT_UPLOADS') || readEnv('VITE_MEDIA_ENCRYPT_UPLOADS') || 'true') !== 'false',
+  signatureKeyId: readRuntime('APP_MEDIA_KEY_ID') || readEnv('VITE_MEDIA_KEY_ID') || 'frontend-edge-key',
+};
 
 export const MEDIA_ENDPOINTS = {
   simpleUpload: readRuntime('APP_MEDIA_UPLOAD_URL') || readEnv('VITE_MEDIA_UPLOAD_URL') || '/upload',
@@ -26,6 +39,7 @@ export const MEDIA_ENDPOINTS = {
   resumableStatus: readRuntime('APP_MEDIA_RESUMABLE_STATUS_URL') || readEnv('VITE_MEDIA_RESUMABLE_STATUS_URL') || '/upload/resumable',
   resumableChunk: readRuntime('APP_MEDIA_RESUMABLE_CHUNK_URL') || readEnv('VITE_MEDIA_RESUMABLE_CHUNK_URL') || '/upload/resumable',
   resumableComplete: readRuntime('APP_MEDIA_RESUMABLE_COMPLETE_URL') || readEnv('VITE_MEDIA_RESUMABLE_COMPLETE_URL') || '/upload/resumable',
+  signedUrl: readRuntime('APP_MEDIA_SIGNED_URL_ENDPOINT') || readEnv('VITE_MEDIA_SIGNED_URL_ENDPOINT') || '/media/sign-url',
 };
 
 export const IMAGE_PRESET = {
@@ -41,7 +55,7 @@ export const VIDEO_PRESET = {
     .split(',')
     .map((item) => Number(item.trim()))
     .filter(Boolean),
-  streamingProfiles: ['hls'],
+  streamingProfiles: ['hls', 'mp4-fallback'],
   thumbnailCount: Number(readRuntime('APP_VIDEO_THUMBNAIL_COUNT') || readEnv('VITE_VIDEO_THUMBNAIL_COUNT') || 1),
 };
 
@@ -74,12 +88,44 @@ export const DISAPPEARING_MESSAGE_OPTIONS = [
   { value: 86400, label: '24 ساعة' },
 ];
 
-export function resolveMediaUrl(candidate = '') {
+export function buildSignedMediaUrl(candidate = '', options = {}) {
+  const value = trim(candidate);
+  if (!value || /^(blob:|data:)/i.test(value)) return value;
+  const absolute = /^https?:/i.test(value)
+    ? value
+    : `${MEDIA_CDN_BASE}/${value.replace(/^\/+/, '')}`;
+
+  if (!MEDIA_SECURITY.signedUrls) return absolute;
+
+  const ttl = Number(options.expiresIn || SIGNED_URL_TTL_SECONDS);
+  const expiresAt = Number(options.expiresAt || Math.floor(Date.now() / 1000) + ttl);
+  const signature = encodeURIComponent(options.signature || `edge-${MEDIA_SECURITY.signatureKeyId}`);
+  const separator = absolute.includes('?') ? '&' : '?';
+  if (/([?&])(sig|signature|token)=/i.test(absolute)) return absolute;
+  return `${absolute}${separator}expires=${expiresAt}&sig=${signature}`;
+}
+
+export function resolveMediaUrl(candidate = '', options = {}) {
   const value = trim(candidate);
   if (!value) return '';
-  if (/^(blob:|data:|https?:)/i.test(value)) return value;
-  if (!MEDIA_CDN_BASE) return value;
-  return `${MEDIA_CDN_BASE}/${value.replace(/^\/+/, '')}`;
+  if (/^(blob:|data:|https?:)/i.test(value)) {
+    return MEDIA_SECURITY.signedUrls ? buildSignedMediaUrl(value, options) : value;
+  }
+  const absolute = MEDIA_CDN_BASE ? `${MEDIA_CDN_BASE}/${value.replace(/^\/+/, '')}` : value;
+  return MEDIA_SECURITY.signedUrls ? buildSignedMediaUrl(absolute, options) : absolute;
+}
+
+export function createUploadSecurityManifest(file, purpose = 'chat-attachment') {
+  return {
+    purpose,
+    signed_urls: MEDIA_SECURITY.signedUrls,
+    expiring_links: MEDIA_SECURITY.expiringLinks,
+    encrypted_uploads: MEDIA_SECURITY.encryptedUploads,
+    expires_in_seconds: SIGNED_URL_TTL_SECONDS,
+    original_name: file?.name || '',
+    original_type: file?.type || 'application/octet-stream',
+    original_size: Number(file?.size || 0),
+  };
 }
 
 export function currentMediaProviderLabel() {

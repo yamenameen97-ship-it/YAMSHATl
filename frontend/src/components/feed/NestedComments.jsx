@@ -1,168 +1,145 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState } from 'react';
 import Button from '../ui/Button.jsx';
-import Card from '../ui/Card.jsx';
 
-const EMOJIS = ['😀', '😂', '😍', '🔥', '👏', '🎉', '❤️', '🙌', '✨', '💯'];
+const EMOJIS = ['❤️', '🔥', '😂', '👏', '😮', '💯'];
 
-export default function NestedComments({ comments = [], onAddComment }) {
-  const [commentText, setCommentText] = useState('');
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [showGifPicker, setShowGifPicker] = useState(false);
-  const [sortBy, setSortBy] = useState('newest'); // newest, popular, controversial
+function enrichMentions(text = '') {
+  return text.split(/(\s+)/).map((part, index) => {
+    if (part.startsWith('@')) return <span key={index} style={{ color: 'var(--primary)', fontWeight: 700 }}>{part}</span>;
+    return part;
+  });
+}
 
-  const sortedComments = useMemo(() => {
-    const items = [...comments];
-    if (sortBy === 'newest') return items.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    if (sortBy === 'popular') return items.sort((a, b) => (b.likes || 0) - (a.likes || 0));
-    return items;
-  }, [comments, sortBy]);
+function buildTree(items = []) {
+  const map = new Map();
+  const roots = [];
+  items.forEach((item) => map.set(String(item.id), { ...item, replies: [...(item.replies || [])] }));
+  map.forEach((item) => {
+    const parentId = item.parent_id ?? item.parentId ?? null;
+    if (parentId && map.has(String(parentId))) map.get(String(parentId)).replies.push(item);
+    else roots.push(item);
+  });
+  return roots;
+}
 
-  const handleAddEmoji = (emoji) => {
-    setCommentText(prev => prev + emoji);
-    setShowEmojiPicker(false);
-  };
-
-  const handleSelectGif = (gifUrl) => {
-    onAddComment({ content: gifUrl, type: 'gif' });
-    setShowGifPicker(false);
-  };
+function CommentNode({ item, depth = 0, onReply, onReact }) {
+  const [replyValue, setReplyValue] = useState('');
+  const [showReplyBox, setShowReplyBox] = useState(false);
 
   return (
-    <div className="comments-section" style={{ marginTop: 20 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h4 style={{ margin: 0 }}>التعليقات ({comments.length})</h4>
-        <select 
-          value={sortBy} 
-          onChange={(e) => setSortBy(e.target.value)}
-          style={{ background: '#222', color: 'white', border: '1px solid #444', padding: '4px 8px', borderRadius: 4 }}
-        >
-          <option value="newest">الأحدث</option>
-          <option value="popular">الأكثر تفاعلاً</option>
-          <option value="controversial">المثير للجدل</option>
-        </select>
-      </div>
-
-      {/* Comment Input */}
-      <div style={{ marginBottom: 24, position: 'relative' }}>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <textarea
-            placeholder="اكتب تعليقاً... (يخضع للرقابة الآلية)"
-            value={commentText}
-            onChange={(e) => setCommentText(e.target.value)}
-            style={{
-              flex: 1,
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid #333',
-              borderRadius: 12,
-              padding: 12,
-              color: 'white',
-              minHeight: 60,
-              resize: 'none'
-            }}
-          />
-          <Button 
-            onClick={() => { onAddComment({ content: commentText }); setCommentText(''); }}
-            disabled={!commentText.trim()}
-          >
-            نشر
-          </Button>
+    <div style={{ display: 'grid', gap: 10, marginInlineStart: depth ? 18 : 0, paddingInlineStart: depth ? 12 : 0, borderInlineStart: depth ? '2px solid rgba(59,130,246,0.12)' : 'none' }}>
+      <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 16, padding: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginBottom: 6, alignItems: 'center' }}>
+          <strong>{item.username || item.user || 'مستخدم'}</strong>
+          <span className="muted" style={{ fontSize: 12 }}>{item.created_at ? new Date(item.created_at).toLocaleString('ar-EG') : 'الآن'}</span>
         </div>
+        <div style={{ lineHeight: 1.7 }}>{enrichMentions(item.content || item.text || item.comment || '')}</div>
 
-        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-          <button 
-            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18 }}
-            title="إضافة إيموجي"
-          >
-            😊
-          </button>
-          <button 
-            onClick={() => setShowGifPicker(!showGifPicker)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18 }}
-            title="إضافة GIF"
-          >
-            🖼️ GIF
-          </button>
-        </div>
-
-        {showEmojiPicker && (
-          <div style={{
-            position: 'absolute',
-            bottom: '100%',
-            left: 0,
-            background: '#1a1a1a',
-            border: '1px solid #333',
-            borderRadius: 12,
-            padding: 10,
-            display: 'grid',
-            gridTemplateColumns: 'repeat(5, 1fr)',
-            gap: 8,
-            zIndex: 10,
-            marginBottom: 8
-          }}>
-            {EMOJIS.map(e => (
-              <button key={e} onClick={() => handleAddEmoji(e)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>
-                {e}
+        <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+          {EMOJIS.map((emoji) => {
+            const count = Number(item.reactions?.[emoji] || 0);
+            return (
+              <button key={emoji} type="button" className="comment-emoji-btn" onClick={() => onReact(item.id, emoji)}>
+                {emoji} {count ? count : ''}
               </button>
+            );
+          })}
+          <button type="button" className="comment-link-btn" onClick={() => setShowReplyBox((prev) => !prev)}>رد</button>
+        </div>
+
+        {showReplyBox ? (
+          <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
+            <textarea value={replyValue} onChange={(event) => setReplyValue(event.target.value)} rows={2} placeholder="اكتب رد مع @منشن لو حابب" style={{ width: '100%', borderRadius: 12, padding: 10 }} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <Button variant="secondary" onClick={() => { setShowReplyBox(false); setReplyValue(''); }}>إلغاء</Button>
+              <Button onClick={() => {
+                if (!replyValue.trim()) return;
+                onReply(item.id, replyValue.trim());
+                setReplyValue('');
+                setShowReplyBox(false);
+              }}>إرسال الرد</Button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {item.replies?.length ? item.replies.map((reply) => (
+        <CommentNode key={reply.id} item={reply} depth={depth + 1} onReply={onReply} onReact={onReact} />
+      )) : null}
+    </div>
+  );
+}
+
+export default function NestedComments({ comments = [], onAddComment, onReply, onToggleReaction }) {
+  const [commentText, setCommentText] = useState('');
+  const [selectedMention, setSelectedMention] = useState('');
+  const [sortBy, setSortBy] = useState('newest');
+
+  const commentTree = useMemo(() => {
+    const items = [...comments];
+    items.sort((a, b) => {
+      if (sortBy === 'popular') {
+        const totalA = Object.values(a.reactions || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+        const totalB = Object.values(b.reactions || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+        return totalB - totalA;
+      }
+      return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+    });
+    return buildTree(items);
+  }, [comments, sortBy]);
+
+  return (
+    <div style={{ display: 'grid', gap: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <h4 style={{ margin: 0 }}>التعليقات ({comments.length})</h4>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input value={selectedMention} onChange={(event) => setSelectedMention(event.target.value)} placeholder="منشن سريع" style={{ borderRadius: 999, padding: '8px 12px' }} />
+          <select value={sortBy} onChange={(event) => setSortBy(event.target.value)} style={{ borderRadius: 999, padding: '8px 12px' }}>
+            <option value="newest">الأحدث</option>
+            <option value="popular">الأكثر تفاعلاً</option>
+          </select>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gap: 10 }}>
+        <textarea
+          placeholder="اكتب تعليقك... دعم @mentions + realtime updates"
+          value={commentText}
+          onChange={(event) => setCommentText(event.target.value)}
+          rows={3}
+          style={{ width: '100%', borderRadius: 16, padding: 12 }}
+        />
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {EMOJIS.map((emoji) => (
+              <button key={emoji} type="button" className="comment-emoji-btn" onClick={() => setCommentText((prev) => `${prev}${emoji}`)}>{emoji}</button>
             ))}
+            <button type="button" className="comment-link-btn" onClick={() => setCommentText((prev) => `${prev}${prev && !prev.endsWith(' ') ? ' ' : ''}@${selectedMention || 'username'} `)}>إضافة منشن</button>
           </div>
-        )}
-
-        {showGifPicker && (
-          <div style={{
-            position: 'absolute',
-            bottom: '100%',
-            left: 0,
-            background: '#1a1a1a',
-            border: '1px solid #333',
-            borderRadius: 12,
-            padding: 12,
-            width: 250,
-            zIndex: 10,
-            marginBottom: 8
-          }}>
-            <div style={{ fontSize: 14, marginBottom: 8, fontWeight: 'bold' }}>GIFs الشائعة</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              {['https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJqZ3R4Z3R4Z3R4Z3R4Z3R4Z3R4Z3R4Z3R4Z3R4Z3R4JmVwPXYxX2ludGVybmFsX2dpZl9ieV9pZCZjdD1n/3o7TKQN7vTfTHP9X8I/giphy.gif', 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJqZ3R4Z3R4Z3R4Z3R4Z3R4Z3R4Z3R4Z3R4Z3R4Z3R4JmVwPXYxX2ludGVybmFsX2dpZl9ieV9pZCZjdD1n/l0HlHFRbmaZtBRhXG/giphy.gif'].map((url, i) => (
-                <img 
-                  key={i} 
-                  src={url} 
-                  alt="gif" 
-                  style={{ width: '100%', borderRadius: 4, cursor: 'pointer' }} 
-                  onClick={() => handleSelectGif(url)}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+          <Button onClick={() => {
+            if (!commentText.trim()) return;
+            onAddComment({ content: commentText.trim() });
+            setCommentText('');
+          }}>نشر التعليق</Button>
+        </div>
       </div>
 
-      {/* Comments List */}
-      <div style={{ display: 'grid', gap: 16 }}>
-        {sortedComments.map(comment => (
-          <div key={comment.id} style={{ display: 'flex', gap: 12 }}>
-            <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#444', flexShrink: 0 }} />
-            <div style={{ flex: 1 }}>
-              <div style={{ background: 'rgba(255,255,255,0.05)', padding: '10px 14px', borderRadius: 16 }}>
-                <div style={{ fontWeight: 'bold', fontSize: 13, marginBottom: 2 }}>{comment.username}</div>
-                <div style={{ fontSize: 14 }}>
-                  {comment.type === 'gif' ? (
-                    <img src={comment.content} alt="gif comment" style={{ maxWidth: '100%', borderRadius: 8, marginTop: 4 }} />
-                  ) : (
-                    comment.content
-                  )}
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 16, marginTop: 4, paddingRight: 8, fontSize: 12 }} className="muted">
-                <span>{new Date(comment.created_at).toLocaleString('ar-EG')}</span>
-                <button style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>إعجاب</button>
-                <button style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>رد</button>
-                {comment.is_flagged && <span style={{ color: '#ff4444' }}>⚠️ تم الإبلاغ (قيد المراجعة)</span>}
-              </div>
-            </div>
-          </div>
-        ))}
+      <div style={{ display: 'grid', gap: 12 }}>
+        {commentTree.length ? commentTree.map((item) => (
+          <CommentNode key={item.id} item={item} onReply={onReply} onReact={onToggleReaction} />
+        )) : <div className="muted">لا توجد تعليقات بعد.</div>}
       </div>
+
+      <style>{`
+        .comment-emoji-btn,
+        .comment-link-btn {
+          border: 1px solid rgba(59,130,246,0.12);
+          background: rgba(59,130,246,0.06);
+          border-radius: 999px;
+          padding: 6px 10px;
+          cursor: pointer;
+        }
+      `}</style>
     </div>
   );
 }

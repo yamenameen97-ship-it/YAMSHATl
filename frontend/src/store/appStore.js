@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import sessionManager from '../auth/sessionManager.js';
+export { useChatStore, selectUnreadTotal } from '../stores/chatStore.js';
 
 const THEME_KEY = 'yamshat-theme';
 const LANGUAGE_KEY = 'yamshat-language';

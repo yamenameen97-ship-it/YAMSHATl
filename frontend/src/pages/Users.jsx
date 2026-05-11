@@ -14,6 +14,7 @@ import { banAdminUser, deleteAdminUser, updateAdminUser } from '../api/admin.js'
 import { blockUserApi, unblockUserApi } from '../api/chat.js';
 import { getCurrentUsername, hasPermission } from '../utils/auth.js';
 import useDebouncedValue from '../hooks/useDebouncedValue.js';
+import { rankSuggestedUsers } from '../services/recommendationService.js';
 
 const emptyEditForm = { username: '', email: '', role: 'user', is_active: true };
 
@@ -47,20 +48,24 @@ export default function Users() {
     setItems(Array.isArray(data) ? data : []);
   }, [data]);
 
-  const users = useMemo(() => {
-    const list = (items || [])
+  const enrichedUsers = useMemo(() => rankSuggestedUsers(
+    (items || [])
       .filter((user) => (user?.username || user?.name) && (user.username || user.name) !== currentUser)
       .map((user) => ({
         ...user,
         username: user.username || user.name,
         blocked_by_me: Boolean(user.blocked_by_me),
-      }));
+      })),
+    currentUser,
+  ), [currentUser, items]);
 
-    if (!debouncedQuery) return list;
-    return list.filter((user) => user.username.toLowerCase().includes(debouncedQuery.toLowerCase()));
-  }, [currentUser, items, debouncedQuery]);
+  const users = useMemo(() => {
+    if (!debouncedQuery) return enrichedUsers;
+    return enrichedUsers.filter((user) => user.username.toLowerCase().includes(debouncedQuery.toLowerCase()));
+  }, [debouncedQuery, enrichedUsers]);
 
-  const suggestions = useMemo(() => users.slice(0, 5).map((user) => user.username), [users]);
+  const suggestions = useMemo(() => enrichedUsers.slice(0, 5).map((user) => user.username), [enrichedUsers]);
+  const suggestedUsers = useMemo(() => enrichedUsers.slice(0, 6), [enrichedUsers]);
 
   const syncUser = (username, updater) => {
     setItems((prev) => prev.map((item) => {
@@ -117,11 +122,6 @@ export default function Users() {
       setActionError('');
       const { data: updated } = await updateAdminUser(editingUser.id, editForm);
       syncUser(editingUser.username, updated || {});
-      if (updated?.username && updated.username !== editingUser.username) {
-        setItems((prev) => prev.map((item) => (
-          item.id === editingUser.id ? { ...item, ...(updated || {}) } : item
-        )));
-      }
       setEditingUser(null);
     } catch (err) {
       setActionError(err?.response?.data?.detail || 'تعذر حفظ بيانات المستخدم.');
@@ -155,80 +155,96 @@ export default function Users() {
     <MainLayout>
       <div className="section-head">
         <div>
-          <h3 className="section-title">Users</h3>
-          <p className="muted">بحث مباشر، فتح الملف الشخصي، بدء الشات، متابعة، حظر، ومع أدوات إدارة للمشرفين حسب الصلاحيات.</p>
+          <h3 className="section-title">Suggested users + people discovery</h3>
+          <p className="muted">تمت إضافة ترتيب اقتراح المستخدمين حسب التفاعل، النشاط، والمتابعين المشتركين.</p>
         </div>
       </div>
 
-      <Card className="search-panel-card">
-        <div className="search-shell large enabled-search-shell">
-          <span>⌕</span>
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحث باسم المستخدم..." />
-        </div>
-        {suggestions.length > 0 ? (
-          <div className="search-suggestions">
-            {suggestions.map((username) => (
-              <button key={username} type="button" className="mini-action" onClick={() => setQuery(username)}>{username}</button>
+      <div style={{ display: 'grid', gap: 18, gridTemplateColumns: 'minmax(0, 1fr) 320px' }}>
+        <div>
+          <Card className="search-panel-card">
+            <div className="search-shell large enabled-search-shell">
+              <span>⌕</span>
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحث باسم المستخدم..." />
+            </div>
+            {suggestions.length > 0 ? (
+              <div className="search-suggestions">
+                {suggestions.map((username) => (
+                  <button key={username} type="button" className="mini-action" onClick={() => setQuery(username)}>{username}</button>
+                ))}
+              </div>
+            ) : null}
+          </Card>
+
+          {actionError ? <div className="alert error">{actionError}</div> : null}
+          {isLoading ? <ListSkeleton count={8} /> : null}
+          {isError ? (
+            <ErrorState title="تعذر تحميل المستخدمين" description={error?.response?.data?.message || error?.message} onRetry={refetch} />
+          ) : null}
+          {!isLoading && !isError && users.length === 0 ? (
+            <EmptyState icon="🧑‍🤝‍🧑" title="لا يوجد مستخدمون مطابقون" description="جرّب كلمة بحث مختلفة أو أعد التحديث." actionLabel="تحديث" onAction={refetch} />
+          ) : null}
+
+          <div className="list-grid users-rich-grid">
+            {users.map((user) => (
+              <Card key={user.username} className="user-row responsive-user-row users-rich-row">
+                {user.avatar ? (
+                  <img src={user.avatar} alt={user.username} className="avatar-circle avatar-image" />
+                ) : (
+                  <div className="avatar-circle">{user.username.slice(0, 1).toUpperCase()}</div>
+                )}
+                <div className="user-meta expanded-user-meta">
+                  <strong>{user.username}</strong>
+                  <span className="muted">{user.recommendation_reason}</span>
+                  <div className="profile-mini-stats">
+                    <span>Score {Math.round(user.recommendation_score || 0)}</span>
+                    <span>المتابعون {Number(user.followers_count || 0)}</span>
+                    <span>يتابع {Number(user.following_count || 0)}</span>
+                    {user.role ? <span>الدور {user.role}</span> : null}
+                  </div>
+                </div>
+                <div className="user-row-actions">
+                  <Button variant="secondary" onClick={() => navigate(`/profile/${encodeURIComponent(user.username)}`)}>الملف الشخصي</Button>
+                  <Button variant="secondary" onClick={() => navigate(`/chat/${encodeURIComponent(user.username)}`)} disabled={user.blocked_by_me}>فتح الشات</Button>
+                  <Button variant="secondary" onClick={() => handleBlockToggle(user)} disabled={busyUser === `block-${user.username}`}>
+                    {busyUser === `block-${user.username}` ? 'جارٍ التحديث...' : user.blocked_by_me ? 'إلغاء الحظر' : 'حظر'}
+                  </Button>
+                  <Button onClick={() => handleFollowToggle(user)} disabled={busyUser === `follow-${user.username}`}>
+                    {busyUser === `follow-${user.username}` ? 'جارٍ التحديث...' : user.following ? 'إلغاء المتابعة' : 'متابعة'}
+                  </Button>
+                  {canEditUsers ? <Button variant="secondary" onClick={() => openEdit(user)}>تعديل</Button> : null}
+                  {canBanUsers ? (
+                    <Button variant="secondary" onClick={() => setConfirmAction({ type: 'ban', user })} disabled={busyUser === `ban-${user.username}`}>
+                      {busyUser === `ban-${user.username}` ? 'جارٍ التنفيذ...' : user.is_active ? 'حظر' : 'استعادة'}
+                    </Button>
+                  ) : null}
+                  {canDeleteUsers ? (
+                    <Button variant="secondary" onClick={() => setConfirmAction({ type: 'delete', user })} disabled={busyUser === `delete-${user.username}`}>
+                      {busyUser === `delete-${user.username}` ? 'جارٍ الحذف...' : 'حذف'}
+                    </Button>
+                  ) : null}
+                </div>
+              </Card>
             ))}
           </div>
-        ) : null}
-      </Card>
+        </div>
 
-      {actionError ? <div className="alert error">{actionError}</div> : null}
-      {isLoading ? <ListSkeleton count={8} /> : null}
-      {isError ? (
-        <ErrorState title="تعذر تحميل المستخدمين" description={error?.response?.data?.message || error?.message} onRetry={refetch} />
-      ) : null}
-      {!isLoading && !isError && users.length === 0 ? (
-        <EmptyState icon="🧑‍🤝‍🧑" title="لا يوجد مستخدمون مطابقون" description="جرّب كلمة بحث مختلفة أو أعد التحديث." actionLabel="تحديث" onAction={refetch} />
-      ) : null}
-
-      <div className="list-grid users-rich-grid">
-        {users.map((user) => (
-          <Card key={user.username} className="user-row responsive-user-row users-rich-row">
-            {user.avatar ? (
-              <img src={user.avatar} alt={user.username} className="avatar-circle avatar-image" />
-            ) : (
-              <div className="avatar-circle">{user.username.slice(0, 1).toUpperCase()}</div>
-            )}
-            <div className="user-meta expanded-user-meta">
-              <strong>{user.username}</strong>
-              <span className="muted">
-                {user.blocked_by_me
-                  ? 'تم حظر هذا الحساب من جهتك.'
-                  : user.following
-                    ? 'أنت متابع الحساب ده'
-                    : 'جاهز للدردشة والمتابعة'}
-              </span>
-              <div className="profile-mini-stats">
-                <span>المتابعون {Number(user.followers_count || 0)}</span>
-                <span>يتابع {Number(user.following_count || 0)}</span>
-                {user.role ? <span>الدور {user.role}</span> : null}
+        <Card style={{ padding: 18, alignSelf: 'start' }}>
+          <h3 style={{ marginTop: 0 }}>Suggested users</h3>
+          <div style={{ display: 'grid', gap: 12 }}>
+            {suggestedUsers.map((user, index) => (
+              <div key={user.username} style={{ padding: 12, borderRadius: 14, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(15,23,42,0.58)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                  <div>
+                    <strong>#{index + 1} {user.username}</strong>
+                    <div className="muted" style={{ marginTop: 6 }}>{user.recommendation_reason}</div>
+                  </div>
+                  <span style={{ opacity: 0.75 }}>{Math.round(user.recommendation_score || 0)}</span>
+                </div>
               </div>
-            </div>
-            <div className="user-row-actions">
-              <Button variant="secondary" onClick={() => navigate(`/profile/${encodeURIComponent(user.username)}`)}>الملف الشخصي</Button>
-              <Button variant="secondary" onClick={() => navigate(`/chat/${encodeURIComponent(user.username)}`)} disabled={user.blocked_by_me}>فتح الشات</Button>
-              <Button variant="secondary" onClick={() => handleBlockToggle(user)} disabled={busyUser === `block-${user.username}`}>
-                {busyUser === `block-${user.username}` ? 'جارٍ التحديث...' : user.blocked_by_me ? 'إلغاء الحظر' : 'حظر'}
-              </Button>
-              <Button onClick={() => handleFollowToggle(user)} disabled={busyUser === `follow-${user.username}`}>
-                {busyUser === `follow-${user.username}` ? 'جارٍ التحديث...' : user.following ? 'إلغاء المتابعة' : 'متابعة'}
-              </Button>
-              {canEditUsers ? <Button variant="secondary" onClick={() => openEdit(user)}>تعديل</Button> : null}
-              {canBanUsers ? (
-                <Button variant="secondary" onClick={() => setConfirmAction({ type: 'ban', user })} disabled={busyUser === `ban-${user.username}`}>
-                  {busyUser === `ban-${user.username}` ? 'جارٍ التنفيذ...' : user.is_active ? 'حظر' : 'استعادة'}
-                </Button>
-              ) : null}
-              {canDeleteUsers ? (
-                <Button variant="secondary" onClick={() => setConfirmAction({ type: 'delete', user })} disabled={busyUser === `delete-${user.username}`}>
-                  {busyUser === `delete-${user.username}` ? 'جارٍ الحذف...' : 'حذف'}
-                </Button>
-              ) : null}
-            </div>
-          </Card>
-        ))}
+            ))}
+          </div>
+        </Card>
       </div>
 
       <Modal open={Boolean(editingUser)} title="تعديل بيانات المستخدم" onClose={() => setEditingUser(null)}>

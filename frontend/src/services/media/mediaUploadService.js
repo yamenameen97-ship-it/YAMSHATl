@@ -2,7 +2,7 @@ import imageCompression from 'browser-image-compression';
 import SparkMD5 from 'spark-md5';
 import API from '../../api/axios.js';
 import logger from '../../utils/logger.js';
-import { FILE_RULES, IMAGE_PRESET, MEDIA_CDN_BASE, MEDIA_ENDPOINTS, MEDIA_PROVIDER, VIDEO_PRESET, resolveMediaUrl } from '../../config/mediaConfig.js';
+import { FILE_RULES, IMAGE_PRESET, MEDIA_CDN_BASE, MEDIA_ENDPOINTS, MEDIA_PROVIDER, MEDIA_SECURITY, VIDEO_PRESET, createUploadSecurityManifest, resolveMediaUrl } from '../../config/mediaConfig.js';
 
 const SESSION_PREFIX = 'yamshat-media-upload';
 const DEFAULT_CHUNK_SIZE = VIDEO_PRESET.chunkSizeBytes || 5 * 1024 * 1024;
@@ -181,6 +181,7 @@ async function prepareImage(file, onProgress) {
       webp: true,
       resize: IMAGE_PRESET.maxWidthOrHeight,
       cdn: Boolean(MEDIA_CDN_BASE),
+      security: createUploadSecurityManifest(file, 'image-upload'),
     },
   };
 }
@@ -199,6 +200,7 @@ async function prepareVideo(file, onProgress) {
       streaming: VIDEO_PRESET.streamingProfiles,
       chunkUpload: true,
       cdn: Boolean(MEDIA_CDN_BASE),
+      security: createUploadSecurityManifest(file, 'video-upload'),
     },
   };
 }
@@ -212,6 +214,7 @@ async function prepareAudio(file, onProgress) {
       codec: file.type || 'audio/ogg',
       streamingUpload: true,
       cdn: Boolean(MEDIA_CDN_BASE),
+      security: createUploadSecurityManifest(file, 'audio-upload'),
     },
   };
 }
@@ -227,6 +230,7 @@ async function prepareGenericFile(file, onProgress) {
       validation: true,
       progressBar: true,
       resumeUpload: true,
+      security: createUploadSecurityManifest(file, 'file-upload'),
     },
   };
 }
@@ -243,6 +247,11 @@ function normalizeUploadResponse(response, extra = {}) {
     cdnUrl: url,
     provider: MEDIA_PROVIDER,
     cdnBase: MEDIA_CDN_BASE,
+    secureDelivery: {
+      signed: MEDIA_SECURITY.signedUrls,
+      expiring: MEDIA_SECURITY.expiringLinks,
+      encryptedUpload: MEDIA_SECURITY.encryptedUploads,
+    },
   };
 }
 
@@ -386,6 +395,7 @@ class MediaUploadService {
       original_size: file.size,
       thumbnail_count: prepared.thumbnail ? 1 : 0,
       attachment_kind: isImage(file) ? 'image' : isVideo(file) ? 'video' : isAudio(file) ? 'audio' : 'file',
+      upload_security: prepared.manifest?.security || createUploadSecurityManifest(file, options?.purpose || 'chat-attachment'),
     };
 
     if (prepared.thumbnail) {

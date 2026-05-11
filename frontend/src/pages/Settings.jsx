@@ -1,245 +1,339 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
-import Input from '../components/ui/Input.jsx';
-import Modal from '../components/ui/Modal.jsx';
+import { CooldownUI, RateLimitUI, createAntiSpamReport } from '../security/spam.js';
+import deviceTrustService from '../services/deviceTrustService.js';
+import notificationService from '../services/notificationService.js';
+import { MEDIA_SECURITY, SIGNED_URL_TTL_SECONDS, currentMediaProviderLabel } from '../config/mediaConfig.js';
+import { getCDNConfig, getMediaDeliveryProfile } from '../utils/performance.js';
 
 const TABS = [
-  { key: 'security', label: '🔒 الأمان والحماية' },
-  { key: 'privacy', label: '👁️ الخصوصية' },
-  { key: 'data', label: '📊 بياناتي' },
-  { key: 'notifications', label: '🔔 الإشعارات' },
+  { key: 'security', label: 'الأمان' },
+  { key: 'devices', label: 'الأجهزة الموثوقة' },
+  { key: 'media', label: 'حماية الوسائط' },
+  { key: 'notifications', label: 'Push Notifications' },
+  { key: 'sync', label: 'Multi Device' },
 ];
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState('security');
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState('');
-  
-  // Security Activity Log
-  const [activityLog] = useState([
-    { id: 1, event: 'تسجيل دخول ناجح', device: 'Chrome / Windows', location: 'الرياض، السعودية', time: 'منذ ساعتين', status: 'success' },
-    { id: 2, event: 'تغيير كلمة المرور', device: 'Safari / iPhone', location: 'جدة، السعودية', time: 'أمس الساعة 10:30 م', status: 'warning' },
-    { id: 3, event: 'محاولة دخول مشبوهة', device: 'Firefox / Unknown', location: 'موسكو، روسيا', time: 'منذ 3 أيام', status: 'danger' },
-  ]);
+  const [trustedDevices, setTrustedDevices] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [alerts, setAlerts] = useState([]);
+  const [pushState, setPushState] = useState(notificationService.getPushReadiness());
+  const [syncState, setSyncState] = useState(deviceTrustService.getSyncState());
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState('');
 
-  // Privacy Controls
-  const [privacy, setPrivacy] = useState({
-    profileVisibility: 'public',
-    showOnlineStatus: true,
-    allowDirectMessages: 'everyone',
-    readReceipts: true,
-    dataSharing: false,
-  });
+  const antiSpam = useMemo(() => createAntiSpamReport({
+    actionKey: 'settings-preview',
+    content: 'preview',
+    behavior: { pointerMoves: 6, keyStrokes: 14, typingDurationMs: 4200, pasteRatio: 0.1, retryBursts: 0, formFillMs: 4200 },
+  }), []);
 
-  // Data Management
-  const [exportLoading, setExportLoading] = useState(false);
+  const cdnConfig = useMemo(() => getCDNConfig(), []);
+  const imageDelivery = useMemo(() => getMediaDeliveryProfile('image'), []);
+  const videoDelivery = useMemo(() => getMediaDeliveryProfile('video'), []);
+  const fileDelivery = useMemo(() => getMediaDeliveryProfile('file'), []);
 
-  const handleExportData = () => {
-    setExportLoading(true);
-    // Simulate data preparation
-    setTimeout(() => {
-      setExportLoading(false);
-      setSuccess('يتم تجهيز بياناتك الآن. ستتلقى رابط التحميل عبر البريد الإلكتروني خلال دقائق.');
-    }, 2000);
+  useEffect(() => {
+    let unsubscribe = () => {};
+    const load = async () => {
+      const [devicesResult, sessionsResult, alertsResult] = await Promise.all([
+        deviceTrustService.getTrustedDevices(),
+        deviceTrustService.getSessions(),
+        deviceTrustService.getLoginAlerts(),
+      ]);
+      setTrustedDevices(Array.isArray(devicesResult) ? devicesResult : devicesResult?.items || []);
+      setSessions(Array.isArray(sessionsResult) ? sessionsResult : sessionsResult?.items || []);
+      setAlerts(Array.isArray(alertsResult) ? alertsResult : alertsResult?.items || []);
+      setPushState(notificationService.getPushReadiness());
+      setSyncState(deviceTrustService.getSyncState());
+      unsubscribe = deviceTrustService.subscribe((payload) => setSyncState((prev) => ({ ...prev, ...(payload || {}) })));
+    };
+    load();
+    return () => unsubscribe();
+  }, []);
+
+  const setSuccess = (text) => {
+    setMessage(text);
+    window.setTimeout(() => setMessage(''), 2500);
   };
 
-  const handleSavePrivacy = () => {
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      setSuccess('تم تحديث إعدادات الخصوصية بنجاح.');
-    }, 1000);
+  const handleTrustCurrentDevice = async () => {
+    setBusy('trust-device');
+    await deviceTrustService.trustCurrentDevice();
+    setTrustedDevices(await deviceTrustService.getTrustedDevices());
+    setSuccess('تم اعتبار الجهاز الحالي موثوق.');
+    setBusy('');
+  };
+
+  const handleRemoveDevice = async (deviceId) => {
+    setBusy(deviceId);
+    await deviceTrustService.untrustDevice(deviceId);
+    setTrustedDevices(await deviceTrustService.getTrustedDevices());
+    setSuccess('تم إزالة الجهاز من قائمة الأجهزة الموثوقة.');
+    setBusy('');
+  };
+
+  const handleRevokeSession = async (sessionId) => {
+    setBusy(sessionId);
+    await deviceTrustService.revokeSession(sessionId);
+    setSessions(await deviceTrustService.getSessions());
+    setSuccess('تم إنهاء الجلسة المحددة.');
+    setBusy('');
+  };
+
+  const handleEnablePush = async () => {
+    setBusy('push');
+    await notificationService.initialize();
+    await notificationService.subscribeToPushNotifications().catch(() => null);
+    setPushState(notificationService.getPushReadiness());
+    setSuccess('تم تجهيز إشعارات الـ Push للجهاز الحالي.');
+    setBusy('');
+  };
+
+  const handleSyncNow = () => {
+    const next = deviceTrustService.updateSyncState({
+      profile_revision: Number(syncState.profile_revision || 1) + 1,
+      notifications_revision: Number(syncState.notifications_revision || 1) + 1,
+      inbox_revision: Number(syncState.inbox_revision || 1) + 1,
+      devices_online: Math.max(1, trustedDevices.length),
+    });
+    setSyncState(next);
+    setSuccess('تم بث حالة المزامنة لكل الأجهزة المفتوحة.');
   };
 
   return (
     <MainLayout>
-      <div className="settings-container">
-        <div className="settings-header">
-          <h1>إعدادات الحساب</h1>
-          <p className="muted">تحكم في أمانك، خصوصيتك، وبياناتك في مكان واحد.</p>
+      <div style={{ maxWidth: 1080, margin: '0 auto', padding: 20 }}>
+        <div style={{ marginBottom: 20 }}>
+          <h1 style={{ marginBottom: 8 }}>إعدادات الأمان والتوسّع</h1>
+          <p className="muted" style={{ margin: 0 }}>تم إضافة طبقات Frontend للأمان، الأجهزة الموثوقة، الروابط الموقعة، المزامنة متعددة الأجهزة، وإشعارات الـ Push الاحترافية.</p>
         </div>
 
-        <div className="settings-layout">
-          <aside className="settings-sidebar">
-            {TABS.map(tab => (
-              <button 
-                key={tab.key}
-                className={`tab-nav-item ${activeTab === tab.key ? 'active' : ''}`}
-                onClick={() => setActiveTab(tab.key)}
-              >
+        {message ? <div className="settings-banner">{message}</div> : null}
+
+        <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 18 }}>
+          <aside style={{ display: 'grid', gap: 10, alignSelf: 'start' }}>
+            {TABS.map((tab) => (
+              <Button key={tab.key} variant={activeTab === tab.key ? 'primary' : 'secondary'} onClick={() => setActiveTab(tab.key)} fullWidth>
                 {tab.label}
-              </button>
+              </Button>
             ))}
           </aside>
 
-          <main className="settings-content">
-            {success && <div className="settings-alert success">{success}</div>}
+          <main style={{ display: 'grid', gap: 16 }}>
+            {activeTab === 'security' ? (
+              <>
+                <Card style={{ padding: 18 }}>
+                  <h3 style={{ marginTop: 0 }}>Anti-Spam / Bot Detection / Shadow Ban</h3>
+                  <div className="stats-grid">
+                    <div className="metric-card"><span>Rate limit</span><strong>{antiSpam.remainingRequests} متبقي</strong></div>
+                    <div className="metric-card"><span>Bot score</span><strong>{antiSpam.bot.score}/100</strong></div>
+                    <div className="metric-card"><span>Verdict</span><strong>{antiSpam.bot.verdict}</strong></div>
+                    <div className="metric-card"><span>Shadow ban</span><strong>{antiSpam.shadowBanned ? 'مفعّل' : 'غير مفعّل'}</strong></div>
+                  </div>
+                  <div style={{ marginTop: 16, display: 'grid', gap: 12 }}>
+                    <RateLimitUI remaining={antiSpam.remainingRequests} resetTime={antiSpam.resetInMs} />
+                    <CooldownUI remaining={antiSpam.bot.score >= 35 ? 9000 : 0} action="إعادة المحاولة" />
+                    <div className="muted">المنظومة دلوقتي بتدعم rate limits على مستوى الإجراء، تقييم سلوك الـ bot من سرعة التفاعل، وإمكانية shadow ban للمراجعة الهادية.</div>
+                  </div>
+                </Card>
 
-            {activeTab === 'security' && (
-              <div className="tab-pane animate-fade-in">
-                <Card title="سجل نشاط الأمان">
-                  <p className="muted mb-4">راقب الأجهزة والمواقع التي سجلت الدخول إلى حسابك.</p>
-                  <div className="activity-timeline">
-                    {activityLog.map(log => (
-                      <div key={log.id} className={`activity-log-item ${log.status}`}>
-                        <div className="log-icon">{log.status === 'danger' ? '⚠️' : '🛡️'}</div>
-                        <div className="log-details">
-                          <div className="log-header">
-                            <strong>{log.event}</strong>
-                            <span className="log-time">{log.time}</span>
-                          </div>
-                          <p>{log.device} • {log.location}</p>
+                <Card style={{ padding: 18 }}>
+                  <h3 style={{ marginTop: 0 }}>Login Alerts</h3>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {alerts.map((alert) => (
+                      <div key={alert.id} className="list-row">
+                        <div>
+                          <strong>{alert.title}</strong>
+                          <div className="muted">{alert.description}</div>
+                        </div>
+                        <span className="score-pill">{alert.severity}</span>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              </>
+            ) : null}
+
+            {activeTab === 'devices' ? (
+              <>
+                <Card style={{ padding: 18 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div>
+                      <h3 style={{ margin: '0 0 6px' }}>Trusted Devices</h3>
+                      <div className="muted">إدارة الأجهزة الموثوقة ومدير الجلسات والتنبيهات وقت تسجيل الدخول.</div>
+                    </div>
+                    <Button onClick={handleTrustCurrentDevice} loading={busy === 'trust-device'}>توثيق الجهاز الحالي</Button>
+                  </div>
+                  <div style={{ display: 'grid', gap: 12, marginTop: 16 }}>
+                    {trustedDevices.map((device) => (
+                      <div key={device.id || device.device_id} className="list-row">
+                        <div>
+                          <strong>{device.label || device.device_label || 'Device'}</strong>
+                          <div className="muted">آخر ظهور: {new Date(device.lastSeenAt || device.last_active_at || Date.now()).toLocaleString('ar-EG')}</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span className="score-pill">{device.current ? 'Current' : 'Trusted'}</span>
+                          {!device.current ? <Button variant="secondary" size="small" onClick={() => handleRemoveDevice(device.id || device.device_id)} loading={busy === (device.id || device.device_id)}>إزالة</Button> : null}
                         </div>
                       </div>
                     ))}
                   </div>
-                  <Button variant="secondary" className="mt-4">تسجيل الخروج من جميع الأجهزة الأخرى</Button>
                 </Card>
 
-                <Card title="المصادقة الثنائية (2FA)" className="mt-4">
-                  <div className="flex-between">
+                <Card style={{ padding: 18 }}>
+                  <h3 style={{ marginTop: 0 }}>Session Manager</h3>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {sessions.map((session) => (
+                      <div key={session.id} className="list-row">
+                        <div>
+                          <strong>{session.device_label || session.label || 'Session'}</strong>
+                          <div className="muted">آخر نشاط: {new Date(session.last_active_at || Date.now()).toLocaleString('ar-EG')}</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span className="score-pill">{session.sync_state || 'healthy'}</span>
+                          {!session.current ? <Button variant="secondary" size="small" onClick={() => handleRevokeSession(session.id)} loading={busy === session.id}>إنهاء</Button> : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              </>
+            ) : null}
+
+            {activeTab === 'media' ? (
+              <>
+                <Card style={{ padding: 18 }}>
+                  <h3 style={{ marginTop: 0 }}>Media Protection</h3>
+                  <div className="stats-grid">
+                    <div className="metric-card"><span>Signed URLs</span><strong>{MEDIA_SECURITY.signedUrls ? 'On' : 'Off'}</strong></div>
+                    <div className="metric-card"><span>Expiring links</span><strong>{MEDIA_SECURITY.expiringLinks ? `${SIGNED_URL_TTL_SECONDS}s` : 'Off'}</strong></div>
+                    <div className="metric-card"><span>Encrypted uploads</span><strong>{MEDIA_SECURITY.encryptedUploads ? 'Enabled' : 'Disabled'}</strong></div>
+                    <div className="metric-card"><span>Provider</span><strong>{currentMediaProviderLabel()}</strong></div>
+                  </div>
+                </Card>
+
+                <Card style={{ padding: 18 }}>
+                  <h3 style={{ marginTop: 0 }}>CDN Acceleration</h3>
+                  <div className="muted" style={{ marginBottom: 12 }}>الصور والفيديو والملفات بيتم تحضيرهم للتسريع من خلال CDN عالمي وسياسات edge caching.</div>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {[imageDelivery, videoDelivery, fileDelivery].map((profile) => (
+                      <div key={profile.strategy} className="list-row">
+                        <div>
+                          <strong>{profile.strategy}</strong>
+                          <div className="muted">{profile.preferredCdn}</div>
+                        </div>
+                        <span className="score-pill">TTL {profile.ttl}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="muted" style={{ marginTop: 12 }}>المناطق المدعومة: {cdnConfig.regions.join(' • ')}</div>
+                </Card>
+              </>
+            ) : null}
+
+            {activeTab === 'notifications' ? (
+              <>
+                <Card style={{ padding: 18 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
                     <div>
-                      <strong>تأمين الحساب بخطوتين</strong>
-                      <p className="muted">أضف طبقة حماية إضافية باستخدام تطبيق المصادقة.</p>
+                      <h3 style={{ margin: '0 0 6px' }}>Push Notifications احترافية</h3>
+                      <div className="muted">Android + PWA + foreground/background + service worker registration.</div>
                     </div>
-                    <div className="toggle-switch active">مفعل</div>
+                    <Button onClick={handleEnablePush} loading={busy === 'push'}>تفعيل الـ Push</Button>
+                  </div>
+                  <div className="stats-grid" style={{ marginTop: 16 }}>
+                    <div className="metric-card"><span>Permission</span><strong>{pushState.permission}</strong></div>
+                    <div className="metric-card"><span>Android</span><strong>{pushState.androidReady ? 'جاهز' : 'غير متاح'}</strong></div>
+                    <div className="metric-card"><span>PWA</span><strong>{pushState.pwaReady ? 'Installed' : 'Browser'}</strong></div>
+                    <div className="metric-card"><span>Background</span><strong>{pushState.supportsBackground ? 'Enabled' : 'No'}</strong></div>
                   </div>
                 </Card>
-              </div>
-            )}
+              </>
+            ) : null}
 
-            {activeTab === 'privacy' && (
-              <div className="tab-pane animate-fade-in">
-                <Card title="إعدادات الخصوصية الكاملة">
-                  <div className="privacy-options">
-                    <div className="option-group">
-                      <label>ظهور الملف الشخصي</label>
-                      <select 
-                        value={privacy.profileVisibility} 
-                        onChange={e => setPrivacy({...privacy, profileVisibility: e.target.value})}
-                      >
-                        <option value="public">عام (للجميع)</option>
-                        <option value="friends">للأصدقاء فقط</option>
-                        <option value="private">خاص (أنا فقط)</option>
-                      </select>
+            {activeTab === 'sync' ? (
+              <>
+                <Card style={{ padding: 18 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div>
+                      <h3 style={{ margin: '0 0 6px' }}>Multi Device Sync</h3>
+                      <div className="muted">مزامنة الحالة بين الأجهزة باستخدام BroadcastChannel مع fallback للتخزين المحلي.</div>
                     </div>
-
-                    <div className="option-toggle mt-4">
-                      <div className="flex-between">
-                        <div>
-                          <strong>حالة الاتصال</strong>
-                          <p className="muted">السماح للآخرين برؤية متى تكون متصلاً.</p>
-                        </div>
-                        <input 
-                          type="checkbox" 
-                          checked={privacy.showOnlineStatus} 
-                          onChange={e => setPrivacy({...privacy, showOnlineStatus: e.target.checked})} 
-                        />
-                      </div>
-                    </div>
-
-                    <div className="option-toggle mt-4">
-                      <div className="flex-between">
-                        <div>
-                          <strong>مؤشرات القراءة</strong>
-                          <p className="muted">إذا أوقفت هذا الخيار، لن تتمكن من رؤية مؤشرات القراءة للآخرين.</p>
-                        </div>
-                        <input 
-                          type="checkbox" 
-                          checked={privacy.readReceipts} 
-                          onChange={e => setPrivacy({...privacy, readReceipts: e.target.checked})} 
-                        />
-                      </div>
-                    </div>
-
-                    <div className="option-toggle mt-4">
-                      <div className="flex-between">
-                        <div>
-                          <strong>تحسين التجربة (مشاركة البيانات)</strong>
-                          <p className="muted">مشاركة بيانات الاستخدام المجهولة لتحسين التطبيق.</p>
-                        </div>
-                        <input 
-                          type="checkbox" 
-                          checked={privacy.dataSharing} 
-                          onChange={e => setPrivacy({...privacy, dataSharing: e.target.checked})} 
-                        />
-                      </div>
-                    </div>
+                    <Button onClick={handleSyncNow}>Sync state now</Button>
                   </div>
-                  <Button onClick={handleSavePrivacy} loading={loading} className="mt-6">حفظ التغييرات</Button>
-                </Card>
-              </div>
-            )}
-
-            {activeTab === 'data' && (
-              <div className="tab-pane animate-fade-in">
-                <Card title="إدارة بياناتك">
-                  <div className="data-management">
-                    <div className="data-action-card">
-                      <div className="action-icon">📥</div>
-                      <div className="action-text">
-                        <h4>تحميل بياناتي</h4>
-                        <p className="muted">احصل على نسخة كاملة من منشوراتك، صورك، وإعداداتك بصيغة JSON و ZIP.</p>
-                        <Button 
-                          variant="secondary" 
-                          onClick={handleExportData} 
-                          loading={exportLoading}
-                          className="mt-2"
-                        >
-                          بدء التصدير
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="data-action-card mt-4 danger-zone">
-                      <div className="action-icon">🗑️</div>
-                      <div className="action-text">
-                        <h4>حذف الحساب نهائياً</h4>
-                        <p className="muted">سيتم حذف جميع بياناتك ولا يمكن التراجع عن هذا الإجراء.</p>
-                        <Button variant="danger" className="mt-2">حذف حسابي</Button>
-                      </div>
-                    </div>
+                  <div className="stats-grid" style={{ marginTop: 16 }}>
+                    <div className="metric-card"><span>Devices online</span><strong>{syncState.devices_online || trustedDevices.length || 1}</strong></div>
+                    <div className="metric-card"><span>Profile rev</span><strong>{syncState.profile_revision || 1}</strong></div>
+                    <div className="metric-card"><span>Notifications rev</span><strong>{syncState.notifications_revision || 1}</strong></div>
+                    <div className="metric-card"><span>Inbox rev</span><strong>{syncState.inbox_revision || 1}</strong></div>
                   </div>
+                  <div className="muted" style={{ marginTop: 12 }}>آخر مزامنة: {new Date(syncState.last_sync_at || Date.now()).toLocaleString('ar-EG')}</div>
                 </Card>
-              </div>
-            )}
+              </>
+            ) : null}
           </main>
         </div>
       </div>
 
-      <style dangerouslySetInnerHTML={{ __html: `
-        .settings-container { max-width: 1000px; margin: 0 auto; padding: 20px; }
-        .settings-header { margin-bottom: 30px; }
-        .settings-layout { display: grid; grid-template-columns: 250px 1fr; gap: 30px; }
-        .settings-sidebar { display: flex; flex-direction: column; gap: 5px; }
-        .tab-nav-item { 
-          padding: 12px 15px; border: none; background: transparent; text-align: right; 
-          border-radius: 8px; cursor: pointer; transition: all 0.2s; font-size: 15px;
+      <style>{`
+        .settings-banner {
+          padding: 14px 16px;
+          border-radius: 14px;
+          background: rgba(34,197,94,0.14);
+          color: #86efac;
+          border: 1px solid rgba(34,197,94,0.24);
+          margin-bottom: 18px;
         }
-        .tab-nav-item:hover { background: #f3f4f6; }
-        .tab-nav-item.active { background: #3b82f6; color: white; font-weight: bold; }
-        .activity-timeline { display: flex; flex-direction: column; gap: 15px; margin-top: 15px; }
-        .activity-log-item { display: flex; gap: 15px; padding: 15px; background: #f9fafb; border-radius: 10px; border-right: 4px solid #e5e7eb; }
-        .activity-log-item.success { border-right-color: #10b981; }
-        .activity-log-item.warning { border-right-color: #f59e0b; }
-        .activity-log-item.danger { border-right-color: #ef4444; }
-        .log-icon { font-size: 20px; }
-        .log-header { display: flex; justify-content: space-between; margin-bottom: 5px; }
-        .log-time { font-size: 12px; color: #9ca3af; }
-        .settings-alert { padding: 15px; border-radius: 8px; margin-bottom: 20px; }
-        .settings-alert.success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
-        .data-action-card { display: flex; gap: 20px; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; }
-        .danger-zone { border-color: #fee2e2; background: #fffafb; }
-        .action-icon { font-size: 30px; }
-        .flex-between { display: flex; justify-content: space-between; align-items: center; }
-        .mt-4 { margin-top: 1rem; }
-        .mt-6 { margin-top: 1.5rem; }
-        .mb-4 { margin-bottom: 1rem; }
-        @media (max-width: 768px) { .settings-layout { grid-template-columns: 1fr; } }
-      `}} />
+        .stats-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+          gap: 12px;
+        }
+        .metric-card {
+          padding: 16px;
+          border-radius: 16px;
+          background: rgba(15,23,42,0.45);
+          border: 1px solid rgba(148,163,184,0.12);
+          display: grid;
+          gap: 6px;
+        }
+        .metric-card span { color: rgba(226,232,240,0.72); font-size: 13px; }
+        .metric-card strong { font-size: 18px; }
+        .list-row {
+          border: 1px solid rgba(148,163,184,0.12);
+          background: rgba(15,23,42,0.38);
+          border-radius: 16px;
+          padding: 14px 16px;
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          align-items: center;
+        }
+        .score-pill {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 78px;
+          padding: 7px 12px;
+          border-radius: 999px;
+          background: rgba(59,130,246,0.14);
+          color: #93c5fd;
+          border: 1px solid rgba(147,197,253,0.26);
+          font-size: 12px;
+        }
+        @media (max-width: 920px) {
+          .settings-layout { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 900px) {
+          main, aside { width: 100%; }
+          div[style*='grid-template-columns: 240px 1fr'] { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
     </MainLayout>
   );
 }

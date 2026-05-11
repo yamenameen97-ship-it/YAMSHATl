@@ -6,51 +6,38 @@ const OFFLINE_QUEUE_KEY = 'yamshat_offline_queue';
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 1000;
 const OFFLINE_QUEUE_MAX_SIZE = 100;
+const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || '';
 
-/**
- * Generates or retrieves device ID for push notifications
- */
+function safeJsonParse(raw, fallback) {
+  try {
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function getOrCreateDeviceId() {
   let deviceId = localStorage.getItem(DEVICE_ID_KEY);
   if (!deviceId) {
-    deviceId = `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    deviceId = `device_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     localStorage.setItem(DEVICE_ID_KEY, deviceId);
   }
   return deviceId;
 }
 
-/**
- * Loads offline queue from storage
- */
 function loadOfflineQueue() {
-  try {
-    const stored = localStorage.getItem(OFFLINE_QUEUE_KEY);
-    return stored ? JSON.parse(stored) : [];
-  } catch (error) {
-    console.warn('Failed to load offline queue:', error);
-    return [];
-  }
+  return safeJsonParse(localStorage.getItem(OFFLINE_QUEUE_KEY), []);
 }
 
-/**
- * Saves offline queue to storage
- */
 function saveOfflineQueue(queue) {
-  try {
-    const limited = queue.slice(0, OFFLINE_QUEUE_MAX_SIZE);
-    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(limited));
-  } catch (error) {
-    console.warn('Failed to save offline queue:', error);
-  }
+  const limited = Array.isArray(queue) ? queue.slice(0, OFFLINE_QUEUE_MAX_SIZE) : [];
+  localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(limited));
 }
 
-/**
- * Adds a notification to offline queue
- */
 function addToOfflineQueue(action, payload) {
   const queue = loadOfflineQueue();
   queue.push({
-    id: `${Date.now()}_${Math.random()}`,
+    id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     action,
     payload,
     timestamp: Date.now(),
@@ -60,59 +47,53 @@ function addToOfflineQueue(action, payload) {
   return queue;
 }
 
-/**
- * Removes item from offline queue
- */
 function removeFromOfflineQueue(itemId) {
-  const queue = loadOfflineQueue();
-  const filtered = queue.filter((item) => item.id !== itemId);
+  const filtered = loadOfflineQueue().filter((item) => item.id !== itemId);
   saveOfflineQueue(filtered);
   return filtered;
 }
 
-/**
- * Retries a failed request with exponential backoff
- */
 async function retryWithBackoff(fn, maxAttempts = MAX_RETRY_ATTEMPTS) {
   let lastError;
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
       return await fn();
     } catch (error) {
       lastError = error;
       if (attempt < maxAttempts - 1) {
-        const delay = RETRY_DELAY_MS * Math.pow(2, attempt);
-        await new Promise((resolve) => setTimeout(resolve, delay));
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS * (2 ** attempt)));
       }
     }
   }
   throw lastError;
 }
 
-/**
- * Notification Service - Handles push notifications, device registration, retry logic, and offline queue
- */
+function getPlatform() {
+  const ua = navigator.userAgent;
+  if (/android/i.test(ua)) return 'android';
+  if (/iphone|ipad|ipod/i.test(ua)) return 'ios';
+  if (/windows/i.test(ua)) return 'windows';
+  if (/mac/i.test(ua)) return 'macos';
+  if (/linux/i.test(ua)) return 'linux';
+  return 'web';
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
+}
+
 export const notificationService = {
-  /**
-   * Initializes the notification service
-   */
   async initialize() {
     try {
-      // Register device for push notifications
       await this.registerDevice();
-
-      // Request notification permission if available
       if ('Notification' in window && Notification.permission === 'default') {
         await Notification.requestPermission();
       }
-
-      // Process offline queue
       await this.processOfflineQueue();
-
-      // Setup online/offline listeners
       window.addEventListener('online', () => this.processOfflineQueue());
-      window.addEventListener('offline', () => console.log('App is offline'));
-
       return true;
     } catch (error) {
       console.error('Failed to initialize notification service:', error);
@@ -120,68 +101,122 @@ export const notificationService = {
     }
   },
 
-  /**
-   * Registers device for push notifications
-   */
-  async registerDevice() {
-    try {
-      const deviceId = getOrCreateDeviceId();
-      const deviceInfo = {
-        device_id: deviceId,
-        platform: this.getPlatform(),
-        user_agent: navigator.userAgent,
-        notification_enabled: 'Notification' in window && Notification.permission === 'granted',
-      };
-
-      await retryWithBackoff(async () => {
-        return await API.post('/notifications/register-device', deviceInfo);
-      });
-
-      return deviceId;
-    } catch (error) {
-      console.error('Failed to register device:', error);
-      throw error;
-    }
+  getCapabilities() {
+    const platform = getPlatform();
+    return {
+      platform,
+      supportsBrowserNotifications: 'Notification' in window,
+      supportsServiceWorker: 'serviceWorker' in navigator,
+      supportsPushManager: 'PushManager' in window,
+      supportsBackgroundSync: 'serviceWorker' in navigator && 'SyncManager' in window,
+      supportsForeground: true,
+      supportsBackground: 'serviceWorker' in navigator,
+      androidReady: platform === 'android' && 'serviceWorker' in navigator,
+      pwaReady: window.matchMedia?.('(display-mode: standalone)')?.matches || false,
+      permission: 'Notification' in window ? Notification.permission : 'unsupported',
+    };
   },
 
-  /**
-   * Unregisters device from push notifications
-   */
+  getPushReadiness() {
+    const capabilities = this.getCapabilities();
+    return {
+      ...capabilities,
+      subscribed: Boolean(localStorage.getItem('yamshat_push_subscription')),
+      deviceId: getOrCreateDeviceId(),
+      queueSize: loadOfflineQueue().length,
+    };
+  },
+
+  async requestPermission() {
+    if (!('Notification' in window)) return 'unsupported';
+    const permission = await Notification.requestPermission();
+    await this.registerDevice();
+    return permission;
+  },
+
+  async registerDevice() {
+    const payload = {
+      device_id: getOrCreateDeviceId(),
+      platform: getPlatform(),
+      user_agent: navigator.userAgent,
+      notification_enabled: 'Notification' in window && Notification.permission === 'granted',
+      pwa_installed: window.matchMedia?.('(display-mode: standalone)')?.matches || false,
+      service_worker_ready: 'serviceWorker' in navigator,
+    };
+
+    try {
+      await retryWithBackoff(() => API.post('/notifications/register-device', payload));
+    } catch {
+      localStorage.setItem('yamshat_device_registration', JSON.stringify({ ...payload, fallback: true, registered_at: new Date().toISOString() }));
+    }
+    return payload.device_id;
+  },
+
   async unregisterDevice() {
     try {
-      const deviceId = getOrCreateDeviceId();
-      await retryWithBackoff(async () => {
-        return await API.post('/notifications/unregister-device', { device_id: deviceId });
-      });
+      await retryWithBackoff(() => API.post('/notifications/unregister-device', { device_id: getOrCreateDeviceId() }));
     } catch (error) {
       console.error('Failed to unregister device:', error);
     }
   },
 
-  /**
-   * Fetches notifications with retry logic
-   */
+  async subscribeToPushNotifications() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
+    const registration = await navigator.serviceWorker.ready;
+    const existing = await registration.pushManager.getSubscription();
+    if (existing) {
+      localStorage.setItem('yamshat_push_subscription', JSON.stringify(existing.toJSON()));
+      return existing;
+    }
+
+    const permission = await this.requestPermission();
+    if (permission !== 'granted') throw new Error('لم يتم منح إذن الإشعارات.');
+
+    const subscribeOptions = {
+      userVisibleOnly: true,
+    };
+    if (VAPID_PUBLIC_KEY) subscribeOptions.applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+
+    const subscription = await registration.pushManager.subscribe(subscribeOptions);
+    localStorage.setItem('yamshat_push_subscription', JSON.stringify(subscription.toJSON()));
+
+    try {
+      await API.post('/notifications/subscribe-push', {
+        device_id: getOrCreateDeviceId(),
+        subscription: subscription.toJSON(),
+      });
+    } catch {
+      // keep local subscription for graceful fallback
+    }
+
+    return subscription;
+  },
+
+  async unsubscribePushNotifications() {
+    if (!('serviceWorker' in navigator)) return false;
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    if (!subscription) return true;
+    await subscription.unsubscribe();
+    localStorage.removeItem('yamshat_push_subscription');
+    try {
+      await API.post('/notifications/unsubscribe-push', { device_id: getOrCreateDeviceId() });
+    } catch {
+      // ignore network failures
+    }
+    return true;
+  },
+
   async fetchNotifications(limit = 50) {
     const store = useNotificationStore.getState();
     store.setLoading(true);
-
     try {
-      const response = await retryWithBackoff(async () => {
-        return await API.get('/notifications', {
-          params: { limit },
-          cache: true,
-          cacheTtlMs: 20_000,
-        });
-      });
-
+      const response = await retryWithBackoff(() => API.get('/notifications', { params: { limit }, cache: true, cacheTtlMs: 20_000 }));
       store.hydrateNotifications(response.data || []);
       store.setError('');
       return response.data;
     } catch (error) {
-      console.error('Failed to fetch notifications:', error);
       store.setError('Failed to load notifications');
-      
-      // Try to restore from storage if fetch fails
       store.restoreFromStorage();
       throw error;
     } finally {
@@ -189,219 +224,96 @@ export const notificationService = {
     }
   },
 
-  /**
-   * Marks notification as read with offline queue support
-   */
   async markNotificationRead(notificationId) {
     const store = useNotificationStore.getState();
-    
-    // Optimistic update
     store.markRead(notificationId);
-
     try {
-      await retryWithBackoff(async () => {
-        return await API.post(`/notifications/${encodeURIComponent(notificationId)}/read`);
-      });
+      await retryWithBackoff(() => API.post(`/notifications/${encodeURIComponent(notificationId)}/read`));
     } catch (error) {
-      console.error('Failed to mark notification as read:', error);
-      
-      // Add to offline queue if online request fails
-      if (!navigator.onLine) {
-        addToOfflineQueue('markRead', { notificationId });
-      }
+      if (!navigator.onLine) addToOfflineQueue('markRead', { notificationId });
       throw error;
     }
   },
 
-  /**
-   * Marks all notifications as read with offline queue support
-   */
   async markAllNotificationsRead() {
     const store = useNotificationStore.getState();
-    
-    // Optimistic update
     store.markAllRead();
-
     try {
-      await retryWithBackoff(async () => {
-        return await API.put('/notifications/read');
-      });
+      await retryWithBackoff(() => API.put('/notifications/read'));
     } catch (error) {
-      console.error('Failed to mark all notifications as read:', error);
-      
-      // Add to offline queue if online request fails
-      if (!navigator.onLine) {
-        addToOfflineQueue('markAllRead', {});
-      }
+      if (!navigator.onLine) addToOfflineQueue('markAllRead', {});
       throw error;
     }
   },
 
-  /**
-   * Deletes a notification with offline queue support
-   */
   async deleteNotification(notificationId) {
     const store = useNotificationStore.getState();
-    
-    // Optimistic update
     store.removeNotification(notificationId);
-
     try {
-      await retryWithBackoff(async () => {
-        return await API.delete(`/notifications/${encodeURIComponent(notificationId)}`);
-      });
+      await retryWithBackoff(() => API.delete(`/notifications/${encodeURIComponent(notificationId)}`));
     } catch (error) {
-      console.error('Failed to delete notification:', error);
-      
-      // Add to offline queue if online request fails
-      if (!navigator.onLine) {
-        addToOfflineQueue('deleteNotification', { notificationId });
-      }
+      if (!navigator.onLine) addToOfflineQueue('deleteNotification', { notificationId });
       throw error;
     }
   },
 
-  /**
-   * Processes offline queue when connection is restored
-   */
   async processOfflineQueue() {
     if (!navigator.onLine) return;
-
     const queue = loadOfflineQueue();
-    if (queue.length === 0) return;
-
-    console.log(`Processing ${queue.length} offline notifications`);
-
     for (const item of queue) {
       try {
         await this.processOfflineQueueItem(item);
         removeFromOfflineQueue(item.id);
-      } catch (error) {
-        console.error(`Failed to process offline item ${item.id}:`, error);
-        
-        // Increment retry count
-        const queue = loadOfflineQueue();
-        const updated = queue.map((q) =>
-          q.id === item.id ? { ...q, retries: (q.retries || 0) + 1 } : q
-        );
-        
-        // Remove if max retries exceeded
-        const filtered = updated.filter((q) => q.retries < MAX_RETRY_ATTEMPTS);
-        saveOfflineQueue(filtered);
+      } catch {
+        const next = loadOfflineQueue().map((queued) => queued.id === item.id ? { ...queued, retries: Number(queued.retries || 0) + 1 } : queued).filter((queued) => Number(queued.retries || 0) < MAX_RETRY_ATTEMPTS);
+        saveOfflineQueue(next);
       }
     }
   },
 
-  /**
-   * Processes a single offline queue item
-   */
   async processOfflineQueueItem(item) {
     switch (item.action) {
       case 'markRead':
-        return await this.markNotificationRead(item.payload.notificationId);
+        return this.markNotificationRead(item.payload.notificationId);
       case 'markAllRead':
-        return await this.markAllNotificationsRead();
+        return this.markAllNotificationsRead();
       case 'deleteNotification':
-        return await this.deleteNotification(item.payload.notificationId);
+        return this.deleteNotification(item.payload.notificationId);
       default:
-        console.warn(`Unknown offline action: ${item.action}`);
+        return null;
     }
   },
 
-  /**
-   * Sends a push notification (for testing/admin purposes)
-   */
   async sendPushNotification(title, options = {}) {
-    if (!('Notification' in window)) {
-      console.warn('Notifications not supported');
-      return;
-    }
-
-    if (Notification.permission === 'granted') {
-      new Notification(title, {
-        icon: '/logo.png',
-        badge: '/badge.png',
+    const readiness = this.getPushReadiness();
+    if (readiness.permission === 'granted') {
+      if ('serviceWorker' in navigator) {
+        const registration = await navigator.serviceWorker.ready;
+        return registration.showNotification(title, {
+          icon: '/icons/icon-192.png',
+          badge: '/icons/icon-192.png',
+          tag: options.tag || 'yamshat-local-push',
+          data: { url: options.url || '/' },
+          ...options,
+        });
+      }
+      return new Notification(title, {
+        icon: '/icons/icon-192.png',
+        badge: '/icons/icon-192.png',
         ...options,
       });
     }
+    return null;
   },
 
-  /**
-   * Subscribes to push notifications (Service Worker)
-   */
-  async subscribeToPushNotifications() {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-      console.warn('Push notifications not supported');
-      return null;
-    }
-
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: this.urlBase64ToUint8Array(
-          process.env.VITE_VAPID_PUBLIC_KEY || ''
-        ),
-      });
-
-      // Send subscription to server
-      await API.post('/notifications/subscribe-push', {
-        subscription: subscription.toJSON(),
-      });
-
-      return subscription;
-    } catch (error) {
-      console.error('Failed to subscribe to push notifications:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Converts VAPID public key to Uint8Array
-   */
-  urlBase64ToUint8Array(base64String) {
-    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-    const base64 = (base64String + padding)
-      .replace(/\-/g, '+')
-      .replace(/_/g, '/');
-
-    const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-
-    for (let i = 0; i < rawData.length; ++i) {
-      outputArray[i] = rawData.charCodeAt(i);
-    }
-    return outputArray;
-  },
-
-  /**
-   * Gets platform information
-   */
-  getPlatform() {
-    const ua = navigator.userAgent;
-    if (ua.includes('Windows')) return 'windows';
-    if (ua.includes('Mac')) return 'macos';
-    if (ua.includes('Linux')) return 'linux';
-    if (ua.includes('Android')) return 'android';
-    if (ua.includes('iPhone') || ua.includes('iPad')) return 'ios';
-    return 'unknown';
-  },
-
-  /**
-   * Gets offline queue status
-   */
   getOfflineQueueStatus() {
-    const queue = loadOfflineQueue();
     return {
-      size: queue.length,
-      items: queue,
+      size: loadOfflineQueue().length,
+      items: loadOfflineQueue(),
       isOnline: navigator.onLine,
     };
   },
 
-  /**
-   * Clears offline queue
-   */
   clearOfflineQueue() {
     localStorage.removeItem(OFFLINE_QUEUE_KEY);
   },

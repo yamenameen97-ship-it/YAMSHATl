@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
@@ -8,212 +8,239 @@ import EmptyState from '../components/feedback/EmptyState.jsx';
 import ErrorState from '../components/feedback/ErrorState.jsx';
 import { ListSkeleton } from '../components/feedback/Skeleton.jsx';
 import useDebounce from '../hooks/useDebounce';
-import axios from 'axios';
+import { getPosts } from '../api/posts.js';
+import { getUsers } from '../api/users.js';
+import { buildTrendingHashtags, explainRecommendation } from '../services/recommendationService.js';
+import { groupSearchResults, searchInCollections } from '../utils/fuzzySearch.js';
 
 const SEARCH_FILTERS = [
   { key: 'all', label: 'الكل' },
-  { key: 'users', label: 'المستخدمون' },
+  { key: 'users', label: 'الأشخاص' },
   { key: 'posts', label: 'المنشورات' },
-  { key: 'groups', label: 'المجموعات' },
+  { key: 'reels', label: 'الريلز' },
   { key: 'hashtags', label: 'الهاشتاجات' },
 ];
 
-const SORT_OPTIONS = [
-  { value: 'relevance', label: 'الملاءمة' },
-  { value: 'recent', label: 'الأحدث' },
-  { value: 'popular', label: 'الأكثر شهرة' },
-];
-
 const SEARCH_HISTORY_KEY = 'yamshat.search.history';
-const SEARCH_CACHE = new Map();
+
+function isVideoUrl(url = '') {
+  return /\.(mp4|webm|mov|m3u8)(\?.*)?$/i.test(String(url || ''));
+}
 
 export default function Search() {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
-  const debouncedQuery = useDebounce(query, 500);
+  const debouncedQuery = useDebounce(query, 250);
   const [filterKey, setFilterKey] = useState('all');
-  const [sortBy, setSortBy] = useState('relevance');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [searching, setSearching] = useState(false);
   const [error, setError] = useState('');
-  const [results, setResults] = useState([]);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const abortControllerRef = useRef(null);
-
+  const [collections, setCollections] = useState({ users: [], posts: [], reels: [], hashtags: [] });
   const [history, setHistory] = useState(() => {
-    const saved = localStorage.getItem(SEARCH_HISTORY_KEY);
-    return saved ? JSON.parse(saved) : [];
+    try {
+      return JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY) || '[]');
+    } catch {
+      return [];
+    }
   });
 
-  const trending = [
-    { id: 1, tag: '#Yamshat_2026', count: '120K' },
-    { id: 2, tag: '#AI_Future', count: '85K' },
-    { id: 3, tag: '#Web3', count: '45K' }
-  ];
-
-  const suggestions = useMemo(() => {
-    if (!query) return [];
-    return history.filter(h => h.toLowerCase().includes(query.toLowerCase())).slice(0, 5);
-  }, [query, history]);
-
-  const performSearch = useCallback(async (isNewSearch = true) => {
-    if (!debouncedQuery.trim()) return;
-
-    // Cancel previous request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    abortControllerRef.current = new AbortController();
-
-    const currentPage = isNewSearch ? 1 : page;
-    const cacheKey = `${debouncedQuery}-${filterKey}-${sortBy}-${currentPage}`;
-
-    // Check Cache
-    if (isNewSearch && SEARCH_CACHE.has(cacheKey)) {
-      setResults(SEARCH_CACHE.get(cacheKey));
-      setLoading(false);
-      return;
-    }
-
+  const hydrateCollections = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
-
-      // Mock API Call with Abort Signal
-      const response = await axios.get('/api/search', {
-        params: { q: debouncedQuery, filter: filterKey, sort: sortBy, page: currentPage },
-        signal: abortControllerRef.current.signal
-      }).catch(err => {
-        if (axios.isCancel(err)) return { data: { results: [], hasMore: false } };
-        throw err;
-      });
-
-      const newResults = response.data.results || [];
-      if (isNewSearch) {
-        setResults(newResults);
-        SEARCH_CACHE.set(cacheKey, newResults);
-      } else {
-        setResults(prev => [...prev, ...newResults]);
-      }
-      
-      setHasMore(response.data.hasMore);
-      
-      // Save to history
-      if (isNewSearch && !history.includes(debouncedQuery)) {
-        const newHistory = [debouncedQuery, ...history].slice(0, 10);
-        setHistory(newHistory);
-        localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(newHistory));
-      }
+      const [{ data: usersData }, { data: postsData }] = await Promise.all([getUsers(), getPosts({ limit: 80, page: 1 })]);
+      const users = Array.isArray(usersData) ? usersData : usersData?.items || [];
+      const posts = Array.isArray(postsData) ? postsData : postsData?.items || [];
+      const reels = posts.filter((item) => isVideoUrl(item.media_url || item.video_url || ''));
+      const hashtags = buildTrendingHashtags(posts);
+      setCollections({ users, posts, reels, hashtags });
     } catch (err) {
-      if (err.name !== 'CanceledError') {
-        setError('حدث خطأ أثناء البحث. حاول مرة أخرى.');
-      }
+      setError(err?.response?.data?.detail || err?.message || 'تعذر تحميل بيانات البحث الذكي.');
     } finally {
       setLoading(false);
     }
-  }, [debouncedQuery, filterKey, sortBy, page, history]);
+  }, []);
 
   useEffect(() => {
-    if (debouncedQuery) {
-      setPage(1);
-      performSearch(true);
-    } else {
-      setResults([]);
-    }
-  }, [debouncedQuery, filterKey, sortBy]);
+    hydrateCollections();
+  }, [hydrateCollections]);
 
-  const loadMore = () => {
-    if (!loading && hasMore) {
-      setPage(prev => prev + 1);
-      performSearch(false);
+  useEffect(() => {
+    if (!debouncedQuery.trim()) return;
+    setSearching(true);
+    const timer = window.setTimeout(() => {
+      setSearching(false);
+      if (!history.includes(debouncedQuery.trim())) {
+        const next = [debouncedQuery.trim(), ...history].slice(0, 12);
+        setHistory(next);
+        localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(next));
+      }
+    }, 140);
+    return () => window.clearTimeout(timer);
+  }, [debouncedQuery, history]);
+
+  const results = useMemo(() => searchInCollections(debouncedQuery, collections, { filter: filterKey }), [debouncedQuery, collections, filterKey]);
+  const grouped = useMemo(() => groupSearchResults(results), [results]);
+  const suggestions = useMemo(() => {
+    if (!query.trim()) return history.slice(0, 6);
+    return history.filter((item) => item.toLowerCase().includes(query.toLowerCase())).slice(0, 6);
+  }, [history, query]);
+
+  const openResult = (item) => {
+    if (item.type === 'hashtags') {
+      setQuery(item.title.replace(/^#/, ''));
+      setFilterKey('hashtags');
+      return;
     }
+    navigate(item.route || '/search');
   };
 
   return (
     <MainLayout>
-      <div style={{ maxWidth: 800, margin: '0 auto', padding: 20, color: 'white' }}>
-        <Card style={{ padding: 20, marginBottom: 20 }}>
-          <Input 
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="ابحث عن أي شيء..."
-            style={{ fontSize: 18 }}
-          />
-          
-          {suggestions.length > 0 && (
-            <div style={{ marginTop: 10, background: '#222', borderRadius: 8, padding: 10 }}>
-              <div style={{ fontSize: 12, opacity: 0.5, marginBottom: 5 }}>مقترحات</div>
-              {suggestions.map(s => (
-                <div key={s} onClick={() => setQuery(s)} style={{ padding: '5px 0', cursor: 'pointer' }}>🕒 {s}</div>
+      <div style={{ maxWidth: 980, margin: '0 auto', padding: 20 }}>
+        <Card style={{ padding: 20, marginBottom: 18 }}>
+          <div style={{ display: 'grid', gap: 14 }}>
+            <div>
+              <h2 style={{ margin: '0 0 8px' }}>البحث الذكي</h2>
+              <p className="muted" style={{ margin: 0 }}>Fuzzy search للناس والمنشورات والريلز والهاشتاجات مع ترتيب حسب الصلة والانتشار.</p>
+            </div>
+            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحث باسم شخص أو هاشتاج أو محتوى..." />
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {SEARCH_FILTERS.map((filter) => (
+                <Button key={filter.key} variant={filterKey === filter.key ? 'primary' : 'secondary'} size="small" onClick={() => setFilterKey(filter.key)}>
+                  {filter.label}
+                </Button>
               ))}
             </div>
-          )}
+            {suggestions.length ? (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {suggestions.map((item) => (
+                  <button key={item} type="button" className="mini-chip" onClick={() => setQuery(item)}>{item}</button>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </Card>
 
-        {!debouncedQuery && (
-          <div className="search-discovery">
-            <div style={{ marginBottom: 30 }}>
-              <h3>البحث الأخير</h3>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 10 }}>
-                {history.map(h => (
-                  <span key={h} onClick={() => setQuery(h)} style={{ padding: '5px 15px', background: '#333', borderRadius: 20, cursor: 'pointer' }}>{h}</span>
+        {loading ? <ListSkeleton count={6} /> : null}
+        {!loading && error ? <ErrorState title="تعذر فتح البحث الذكي" description={error} onRetry={hydrateCollections} /> : null}
+
+        {!loading && !error && !debouncedQuery ? (
+          <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 0.9fr', gap: 16 }}>
+            <Card style={{ padding: 18 }}>
+              <h3 style={{ marginTop: 0 }}>جاهز تدور على إيه؟</h3>
+              <p className="muted">البحث بيدعم الأخطاء الإملائية البسيطة وكمان بيلمّح لك بالنتائج القريبة.</p>
+              <div style={{ display: 'grid', gap: 12, marginTop: 14 }}>
+                {['مصممين UI', '#yamshat', 'ريلز طبخ', 'منشورات الذكاء الاصطناعي'].map((item) => (
+                  <button key={item} type="button" className="discovery-row" onClick={() => setQuery(item)}>
+                    <span>{item}</span>
+                    <span>↖</span>
+                  </button>
                 ))}
               </div>
-            </div>
+            </Card>
+            <Card style={{ padding: 18 }}>
+              <h3 style={{ marginTop: 0 }}>الترند الآن</h3>
+              <div style={{ display: 'grid', gap: 12 }}>
+                {collections.hashtags.slice(0, 8).map((item) => (
+                  <button key={item.tag} type="button" className="trending-row" onClick={() => setQuery(item.tag.replace(/^#/, ''))}>
+                    <div>
+                      <strong>{item.tag}</strong>
+                      <div className="muted">{item.count} منشور</div>
+                    </div>
+                    <span className="score-pill">{Math.round(item.score)}</span>
+                  </button>
+                ))}
+              </div>
+            </Card>
+          </div>
+        ) : null}
 
-            <div>
-              <h3>الأكثر رواجاً 🔥</h3>
-              <div style={{ marginTop: 10 }}>
-                {trending.map(t => (
-                  <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid #222' }}>
-                    <span>{t.tag}</span>
-                    <span style={{ opacity: 0.5 }}>{t.count} منشور</span>
+        {!loading && !error && debouncedQuery ? (
+          <div style={{ display: 'grid', gap: 16 }}>
+            <Card style={{ padding: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div>
+                  <strong>نتائج البحث</strong>
+                  <div className="muted">{results.length} نتيجة • {searching ? 'جاري الترتيب...' : 'تم الترتيب حسب الصلة'}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {Object.entries(grouped).map(([key, items]) => (
+                    <span key={key} className="score-pill">{key} {items.length}</span>
+                  ))}
+                </div>
+              </div>
+            </Card>
+
+            {!results.length ? <EmptyState icon="🔎" title="مفيش نتائج مناسبة" description="جرّب كلمة تانية أو وسيّع البحث باستخدام فلتر الكل." /> : null}
+
+            {results.map((item) => (
+              <Card key={`${item.type}-${item.id}`} style={{ padding: 18 }}>
+                <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                  <div style={{ width: 54, height: 54, borderRadius: 16, background: 'rgba(59,130,246,0.12)', display: 'grid', placeItems: 'center', fontSize: 20, overflow: 'hidden', flexShrink: 0 }}>
+                    {item.avatar ? <img src={item.avatar} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : item.type === 'hashtags' ? '#' : item.type === 'reels' ? '🎬' : item.type === 'posts' ? '📝' : '👤'}
                   </div>
-                ))}
-              </div>
-            </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <div>
+                        <h3 style={{ margin: '0 0 6px' }}>{item.title}</h3>
+                        <div className="muted">{item.type === 'users' ? 'شخص' : item.type === 'posts' ? 'منشور' : item.type === 'reels' ? 'ريل' : 'هاشتاج'}</div>
+                      </div>
+                      <span className="score-pill">match {Math.round(item.score * 100)}%</span>
+                    </div>
+                    <p style={{ margin: '10px 0', opacity: 0.86 }}>{item.description || item.content || 'بدون وصف إضافي'}</p>
+                    {item.hashtags?.length ? <div className="muted" style={{ marginBottom: 10 }}>{item.hashtags.slice(0, 4).join(' • ')}</div> : null}
+                    <div className="muted" style={{ marginBottom: 12 }}>إشارة الترتيب: {explainRecommendation(item) || 'مطابقة قريبة للاسم أو النص'}</div>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      <Button size="small" onClick={() => openResult(item)}>{item.type === 'hashtags' ? 'تصفية بالهاشتاج' : 'فتح'}</Button>
+                      {item.type !== 'hashtags' ? <Button variant="secondary" size="small" onClick={() => setQuery(item.name || item.title)}>بحث مشابه</Button> : null}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            ))}
           </div>
-        )}
-
-        {debouncedQuery && (
-          <div className="results">
-            <div style={{ display: 'flex', gap: 10, marginBottom: 20, overflowX: 'auto' }}>
-              {SEARCH_FILTERS.map(f => (
-                <button 
-                  key={f.key}
-                  onClick={() => setFilterKey(f.key)}
-                  style={{ 
-                    padding: '5px 15px', 
-                    borderRadius: 20, 
-                    background: filterKey === f.key ? 'var(--primary)' : '#222',
-                    border: 'none', color: 'white', whiteSpace: 'nowrap'
-                  }}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-
-            {loading && page === 1 ? <ListSkeleton /> : (
-              <>
-                {results.length === 0 ? <EmptyState message="لا توجد نتائج" /> : (
-                  results.map(r => (
-                    <Card key={r.id} style={{ padding: 15, marginBottom: 10 }}>
-                      <h4>{r.title || r.name}</h4>
-                      <p style={{ opacity: 0.7 }}>{r.description || r.content}</p>
-                    </Card>
-                  ))
-                )}
-                {hasMore && (
-                  <Button onClick={loadMore} disabled={loading} style={{ width: '100%', marginTop: 20 }}>
-                    {loading ? 'جاري التحميل...' : 'تحميل المزيد'}
-                  </Button>
-                )}
-              </>
-            )}
-          </div>
-        )}
+        ) : null}
       </div>
+
+      <style>{`
+        .mini-chip {
+          border: 1px solid rgba(148,163,184,0.18);
+          background: rgba(15,23,42,0.58);
+          color: white;
+          padding: 8px 12px;
+          border-radius: 999px;
+          cursor: pointer;
+        }
+        .discovery-row, .trending-row {
+          width: 100%;
+          border: 1px solid rgba(148,163,184,0.14);
+          background: rgba(15,23,42,0.45);
+          color: white;
+          border-radius: 16px;
+          padding: 14px 16px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          text-align: inherit;
+          cursor: pointer;
+        }
+        .score-pill {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 68px;
+          padding: 7px 12px;
+          border-radius: 999px;
+          background: rgba(59,130,246,0.14);
+          color: #93c5fd;
+          border: 1px solid rgba(147,197,253,0.3);
+          font-size: 12px;
+        }
+        @media (max-width: 900px) {
+          .search-discovery-grid { grid-template-columns: 1fr; }
+        }
+      `}</style>
     </MainLayout>
   );
 }

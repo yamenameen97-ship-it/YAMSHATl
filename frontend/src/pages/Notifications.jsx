@@ -1,153 +1,230 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import Modal from '../components/ui/Modal.jsx';
-import { getNotifications, markNotificationsRead } from '../api/notifications.js';
+import { getNotifications } from '../api/notifications.js';
+import { useNotificationStore } from '../store/notificationStore.js';
+import { maybeShowBrowserNotification, normalizeNotification } from '../utils/notificationCenter.js';
+import { redirectToAppPath } from '../utils/router.js';
+import socket from '../api/socket.js';
 
-const CATEGORIES = [
-  { id: 'all', label: 'الكل', icon: '🔔' },
-  { id: 'chat', label: 'الرسائل', icon: '💬' },
-  { id: 'interaction', label: 'التفاعلات', icon: '❤️' },
-  { id: 'system', label: 'النظام', icon: '⚙️' }
+const FILTERS = [
+  { id: 'all', label: 'الكل' },
+  { id: 'unread', label: 'غير مقروء' },
+  { id: 'mention', label: 'Mentions' },
+  { id: 'chat', label: 'الرسائل' },
+  { id: 'live', label: 'البث' },
 ];
 
+function groupNotifications(items = []) {
+  const groups = new Map();
+  items.forEach((item) => {
+    const dateKey = new Date(item.created_at || Date.now()).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
+    if (!groups.has(dateKey)) groups.set(dateKey, []);
+    groups.get(dateKey).push(item);
+  });
+  return Array.from(groups.entries());
+}
+
 export default function Notifications() {
-  const [notifications, setNotifications] = useState([]);
-  const [activeTab, setActiveTab] = useState('all');
+  const items = useNotificationStore((state) => state.items);
+  const hydrateNotifications = useNotificationStore((state) => state.hydrateNotifications);
+  const markRead = useNotificationStore((state) => state.markRead);
+  const markAllRead = useNotificationStore((state) => state.markAllRead);
+  const removeNotification = useNotificationStore((state) => state.removeNotification);
+  const [activeFilter, setActiveFilter] = useState('all');
   const [showSettings, setShowSettings] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [settings, setSettings] = useState({
-    push_enabled: true,
-    email_summary: false,
-    chat_alerts: true,
-    interaction_alerts: true,
-    segmentation: 'personalized' // personalized, all, essential
+    pushEnabled: true,
+    realtimeEnabled: true,
+    groupedNotifications: true,
+    deepLinking: true,
+    browserPermission: typeof Notification !== 'undefined' ? Notification.permission : 'unsupported',
   });
 
   useEffect(() => {
-    loadNotifications();
-  }, []);
+    let active = true;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const { data } = await getNotifications();
+        if (!active) return;
+        hydrateNotifications(Array.isArray(data) ? data.map(normalizeNotification) : [], { replace: true });
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    load();
+    return () => { active = false; };
+  }, [hydrateNotifications]);
 
-  const loadNotifications = async () => {
-    const { data } = await getNotifications();
-    setNotifications(data || []);
+  useEffect(() => {
+    if (!settings.realtimeEnabled) return undefined;
+    if (!socket.connected) socket.connect();
+    const handleIncoming = async (incoming) => {
+      const nextItem = normalizeNotification(incoming);
+      hydrateNotifications([nextItem], { replace: false });
+      if (settings.pushEnabled) await maybeShowBrowserNotification(nextItem).catch(() => null);
+    };
+    socket.on('new_notification', handleIncoming);
+    return () => socket.off('new_notification', handleIncoming);
+  }, [hydrateNotifications, settings.pushEnabled, settings.realtimeEnabled]);
+
+  const filteredItems = useMemo(() => {
+    const normalized = items.map(normalizeNotification);
+    return normalized.filter((item) => {
+      if (activeFilter === 'all') return true;
+      if (activeFilter === 'unread') return !item.seen;
+      if (activeFilter === 'mention') return item.type === 'mention' || item.category === 'mention';
+      return item.type === activeFilter || item.category === activeFilter || item.payload?.screen === activeFilter;
+    });
+  }, [activeFilter, items]);
+
+  const grouped = useMemo(() => groupNotifications(filteredItems), [filteredItems]);
+  const unreadCount = useMemo(() => items.filter((item) => !normalizeNotification(item).seen).length, [items]);
+
+  const enablePush = async () => {
+    if (!('Notification' in window)) return;
+    const permission = await Notification.requestPermission();
+    setSettings((prev) => ({ ...prev, browserPermission: permission, pushEnabled: permission === 'granted' }));
   };
-
-  const filtered = notifications.filter(n => {
-    if (activeTab === 'all') return true;
-    return n.category === activeTab;
-  });
 
   return (
     <MainLayout>
-      <div style={{ maxWidth: 700, margin: '0 auto', padding: '20px 10px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <h2 style={{ margin: 0 }}>الإشعارات</h2>
-          <Button variant="secondary" size="small" onClick={() => setShowSettings(true)}>⚙️ الإعدادات المتقدمة</Button>
-        </div>
+      <div style={{ maxWidth: 860, margin: '0 auto', padding: '20px 10px', display: 'grid', gap: 18 }}>
+        <Card style={{ padding: 18 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div>
+              <h2 style={{ margin: 0 }}>الإشعارات الحقيقية</h2>
+              <div className="muted" style={{ marginTop: 6 }}>Push + realtime + grouped notifications + deep linking</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <Button variant="secondary" onClick={() => setShowSettings(true)}>⚙️ الإعدادات</Button>
+              <Button variant="secondary" onClick={() => markAllRead()}>تحديد الكل كمقروء</Button>
+              <Button onClick={enablePush}>{settings.browserPermission === 'granted' ? 'Push مفعّل' : 'تفعيل Push'}</Button>
+            </div>
+          </div>
 
-        {/* Filter Tabs */}
-        <div style={{ display: 'flex', gap: 10, marginBottom: 20, overflowX: 'auto', paddingBottom: 8 }}>
-          {CATEGORIES.map(cat => (
-            <button
-              key={cat.id}
-              onClick={() => setActiveTab(cat.id)}
-              style={{
-                padding: '8px 16px',
-                borderRadius: 20,
-                background: activeTab === cat.id ? 'var(--primary)' : 'rgba(255,255,255,0.05)',
-                color: 'white',
-                border: 'none',
-                whiteSpace: 'nowrap',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8
-              }}
-            >
-              <span>{cat.icon}</span>
-              <span>{cat.label}</span>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginTop: 16 }}>
+            <div className="notif-stat-card"><strong>{items.length}</strong><span>إجمالي الإشعارات</span></div>
+            <div className="notif-stat-card"><strong>{unreadCount}</strong><span>غير مقروء</span></div>
+            <div className="notif-stat-card"><strong>{settings.realtimeEnabled ? 'ON' : 'OFF'}</strong><span>Realtime socket</span></div>
+            <div className="notif-stat-card"><strong>{settings.deepLinking ? 'جاهز' : 'متوقف'}</strong><span>Deep Linking</span></div>
+          </div>
+        </Card>
+
+        <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
+          {FILTERS.map((filter) => (
+            <button key={filter.id} type="button" onClick={() => setActiveFilter(filter.id)} className={`notif-filter-chip ${activeFilter === filter.id ? 'active' : ''}`}>
+              {filter.label}
             </button>
           ))}
         </div>
 
-        {/* Notifications List */}
-        <div style={{ display: 'grid', gap: 12 }}>
-          {filtered.length === 0 ? (
-            <Card style={{ padding: 40, textAlign: 'center' }}>
-              <div style={{ fontSize: 40, marginBottom: 10 }}>📭</div>
-              <div className="muted">لا توجد إشعارات حالياً</div>
-            </Card>
-          ) : (
-            filtered.map(n => (
-              <Card key={n.id} style={{ padding: 16, display: 'flex', gap: 15, alignItems: 'flex-start', opacity: n.seen ? 0.7 : 1 }}>
-                <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
-                  {n.category === 'chat' ? '💬' : n.category === 'interaction' ? '❤️' : '⚙️'}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 'bold', marginBottom: 4 }}>{n.title}</div>
-                  <div className="muted" style={{ fontSize: 14 }}>{n.body}</div>
-                  <div className="muted" style={{ fontSize: 11, marginTop: 8 }}>{new Date(n.created_at).toLocaleString('ar-EG')}</div>
-                </div>
-                {!n.seen && <div style={{ width: 8, height: 8, background: 'var(--primary)', borderRadius: '50%', marginTop: 6 }} />}
-              </Card>
-            ))
-          )}
+        {loading ? <Card style={{ padding: 24 }}>جارٍ تحميل الإشعارات...</Card> : null}
+
+        {!loading && grouped.length === 0 ? (
+          <Card style={{ padding: 36, textAlign: 'center' }}>
+            <div style={{ fontSize: 42 }}>📭</div>
+            <div className="muted">لا توجد إشعارات مطابقة للفلاتر الحالية</div>
+          </Card>
+        ) : null}
+
+        <div style={{ display: 'grid', gap: 18 }}>
+          {grouped.map(([dateLabel, dayItems]) => (
+            <div key={dateLabel}>
+              <div className="muted" style={{ marginBottom: 8, fontSize: 13 }}>{dateLabel}</div>
+              <div style={{ display: 'grid', gap: 10 }}>
+                {dayItems.map((notification) => (
+                  <Card key={notification.id} style={{ padding: 16, display: 'flex', gap: 14, alignItems: 'start', border: notification.seen ? '1px solid var(--line)' : '1px solid rgba(59,130,246,0.25)', background: notification.seen ? 'var(--bg-card)' : 'rgba(59,130,246,0.04)' }}>
+                    <div style={{ width: 46, height: 46, borderRadius: 16, background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', display: 'grid', placeItems: 'center', color: 'white', fontSize: 20 }}>
+                      {notification.category === 'chat' || notification.type === 'chat' ? '💬' : notification.category === 'live' || notification.type === 'live' ? '🔴' : notification.type === 'mention' ? '@' : '🔔'}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'start' }}>
+                        <div>
+                          <div style={{ fontWeight: 700 }}>{notification.title}</div>
+                          <div className="muted" style={{ marginTop: 4, lineHeight: 1.6 }}>{notification.body}</div>
+                        </div>
+                        {!notification.seen ? <span className="notif-dot" /> : null}
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span className="muted" style={{ fontSize: 12 }}>{new Date(notification.created_at || Date.now()).toLocaleString('ar-EG')}</span>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          {!notification.seen ? <Button variant="secondary" onClick={() => markRead(notification.id)}>مقروء</Button> : null}
+                          <Button variant="secondary" onClick={() => {
+                            markRead(notification.id);
+                            if (settings.deepLinking) redirectToAppPath(notification.path || '/notifications', { replace: false });
+                          }}>فتح</Button>
+                          <Button variant="secondary" onClick={() => removeNotification(notification.id)}>إخفاء</Button>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Advanced Settings Modal */}
-      <Modal isOpen={showSettings} onClose={() => setShowSettings(false)} title="إعدادات الإشعارات المتقدمة">
-        <div style={{ padding: 20 }}>
-          <section style={{ marginBottom: 30 }}>
-            <h4 style={{ marginBottom: 15 }}>تقسيم الإشعارات (Push Segmentation)</h4>
-            <div style={{ display: 'grid', gap: 10 }}>
-              {[
-                { id: 'personalized', title: 'مخصص (Personalized)', desc: 'إشعارات بناءً على اهتماماتك وتفاعلاتك فقط' },
-                { id: 'essential', title: 'الأساسي فقط (Essential)', desc: 'الرسائل والتحذيرات الأمنية فقط' },
-                { id: 'all', title: 'الكل (All)', desc: 'استلام كافة التنبيهات دون استثناء' }
-              ].map(seg => (
-                <div 
-                  key={seg.id} 
-                  onClick={() => setSettings({...settings, segmentation: seg.id})}
-                  style={{ 
-                    padding: 15, 
-                    borderRadius: 12, 
-                    background: 'rgba(255,255,255,0.05)', 
-                    border: settings.segmentation === seg.id ? '2px solid var(--primary)' : '2px solid transparent',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <div style={{ fontWeight: 'bold', marginBottom: 4 }}>{seg.title}</div>
-                  <div className="muted" style={{ fontSize: 12 }}>{seg.desc}</div>
-                </div>
-              ))}
-            </div>
-          </section>
+      <Modal open={showSettings} onClose={() => setShowSettings(false)} title="إعدادات الإشعارات الحقيقية">
+        <div style={{ display: 'grid', gap: 14 }}>
+          {[
+            ['pushEnabled', 'Push notifications'],
+            ['realtimeEnabled', 'Realtime notifications'],
+            ['groupedNotifications', 'Grouped notifications'],
+            ['deepLinking', 'Deep linking'],
+          ].map(([key, label]) => (
+            <label key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, background: 'rgba(59,130,246,0.05)' }}>
+              <div>
+                <strong>{label}</strong>
+                <div className="muted" style={{ fontSize: 12 }}>{key === 'pushEnabled' ? 'Browser / Service Worker alerts' : key === 'deepLinking' ? 'فتح الشاشة المستهدفة مباشرة' : 'تحسين التجربة الاجتماعية اللحظية'}</div>
+              </div>
+              <input type="checkbox" checked={Boolean(settings[key])} onChange={(event) => setSettings((prev) => ({ ...prev, [key]: event.target.checked }))} />
+            </label>
+          ))}
 
-          <section>
-            <h4 style={{ marginBottom: 15 }}>تفضيلات القنوات</h4>
-            <div style={{ display: 'grid', gap: 15 }}>
-              <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div>إشعارات الدفع (Push)</div>
-                  <div className="muted" style={{ fontSize: 12 }}>تنبيهات فورية على المتصفح/الجهاز</div>
-                </div>
-                <input type="checkbox" checked={settings.push_enabled} onChange={e => setSettings({...settings, push_enabled: e.target.checked})} />
-              </label>
-              <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div>ملخص البريد الإلكتروني</div>
-                  <div className="muted" style={{ fontSize: 12 }}>إرسال ملخص يومي للنشاط الفائت</div>
-                </div>
-                <input type="checkbox" checked={settings.email_summary} onChange={e => setSettings({...settings, email_summary: e.target.checked})} />
-              </label>
-            </div>
-          </section>
+          <Card style={{ padding: 14 }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Browser permission</div>
+            <div className="muted">{settings.browserPermission}</div>
+          </Card>
 
-          <Button style={{ width: '100%', marginTop: 30 }} onClick={() => setShowSettings(false)}>حفظ الإعدادات</Button>
+          <Button onClick={() => setShowSettings(false)}>تم</Button>
         </div>
       </Modal>
+
+      <style>{`
+        .notif-stat-card {
+          padding: 14px;
+          border-radius: 16px;
+          background: rgba(59,130,246,0.06);
+          border: 1px solid rgba(59,130,246,0.12);
+          display: grid;
+          gap: 6px;
+        }
+        .notif-filter-chip {
+          border: none;
+          border-radius: 999px;
+          padding: 10px 14px;
+          background: rgba(59,130,246,0.08);
+          cursor: pointer;
+        }
+        .notif-filter-chip.active {
+          background: linear-gradient(135deg, #3b82f6, #2563eb);
+          color: white;
+        }
+        .notif-dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          background: #2563eb;
+          flex-shrink: 0;
+          margin-top: 6px;
+        }
+      `}</style>
     </MainLayout>
   );
 }

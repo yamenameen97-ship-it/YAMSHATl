@@ -1,0 +1,1 @@
+import{n as r}from"./vendor-motion-DK89H9OG.js";var s=r();function t({label:e,hint:l,className:n="",...i}){return(0,s.jsxs)("label",{className:`field ${n}`.trim(),children:[e?(0,s.jsx)("span",{className:"field-label",children:e}):null,(0,s.jsx)("input",{className:"input",...i}),l?(0,s.jsx)("span",{className:"field-hint",children:l}):null]})}export{t};

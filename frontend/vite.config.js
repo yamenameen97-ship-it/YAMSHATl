@@ -31,6 +31,11 @@ function manualChunks(id) {
     return 'vendor-socket';
   }
 
+  // Encryption / heavy crypto client
+  if (id.includes('@signalapp/libsignal-client')) {
+    return 'vendor-signal';
+  }
+
   // State management
   if (id.includes('zustand')) {
     return 'vendor-state';
@@ -227,7 +232,9 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     cssCodeSplit: true,
-    minify: false,
+    minify: 'esbuild',
+    cssMinify: true,
+    assetsInlineLimit: 4096,
     modulePreload: {
       polyfill: true,
     },

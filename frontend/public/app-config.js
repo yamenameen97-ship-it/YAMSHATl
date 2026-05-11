@@ -89,6 +89,13 @@
   window.APP_BACKEND_ORIGIN = backendOrigin;
   window.APP_API_BASE = apiBase;
   window.APP_CDN_BASE = '';
+  window.APP_MEDIA_PROVIDER = window.APP_MEDIA_PROVIDER || 'cloudflare-r2';
+  window.APP_MEDIA_UPLOAD_URL = window.APP_MEDIA_UPLOAD_URL || '/upload';
+  window.APP_MEDIA_RESUMABLE_START_URL = window.APP_MEDIA_RESUMABLE_START_URL || '/upload/resumable/start';
+  window.APP_MEDIA_RESUMABLE_STATUS_URL = window.APP_MEDIA_RESUMABLE_STATUS_URL || '/upload/resumable';
+  window.APP_MEDIA_RESUMABLE_CHUNK_URL = window.APP_MEDIA_RESUMABLE_CHUNK_URL || '/upload/resumable';
+  window.APP_MEDIA_RESUMABLE_COMPLETE_URL = window.APP_MEDIA_RESUMABLE_COMPLETE_URL || '/upload/resumable';
+  window.APP_SIGNAL_SERVER_SUPPORT = Boolean(window.APP_SIGNAL_SERVER_SUPPORT || false);
   window.YAMSHAT_CDN_BASE = window.APP_CDN_BASE;
   window.YAMSHAT_SOCKET_URL = backendOrigin;
   window.YAMSHAT_BACKEND_ORIGIN = backendOrigin;

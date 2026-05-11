@@ -1,1 +1,0 @@
-import{c as e}from"./index-CGF3J72y.js";var t=()=>e.get(`/users`),n=t=>e.get(`/users/profile/${encodeURIComponent(t)}`,{cache:!1,forceRefresh:!0}),r=t=>e.post(`/users/follow`,{following:t}),i=t=>e.patch(`/users/me`,t);export{i,n,t as r,r as t};

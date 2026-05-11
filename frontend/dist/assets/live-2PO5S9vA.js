@@ -1,1 +1,0 @@
-import{y as e}from"./index-DtqtqgyU.js";var t=()=>e.get(`/live_rooms`),n=t=>e.get(`/live_room/${t}`),r=t=>e.post(`/create_live`,t),i=t=>e.post(`/live_token`,t),a=t=>e.post(`/create_call_token`,t),o=t=>e.get(`/live_comments/${t}`),s=t=>e.post(`/live_presence`,t),c=t=>e.post(`/end_live/${t}`);export{n as a,s as c,o as i,r as n,t as o,c as r,i as s,a as t};

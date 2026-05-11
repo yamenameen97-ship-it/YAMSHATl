@@ -1,1 +1,0 @@
-import{y as e}from"./index-Cjpc7iTu.js";var t=()=>e.get(`/groups`),n=t=>e.post(`/groups`,t),r=t=>e.post(`/groups/${t}/join`);export{t as n,r,n as t};

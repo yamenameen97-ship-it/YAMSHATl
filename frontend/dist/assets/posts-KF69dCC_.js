@@ -1,1 +1,0 @@
-import{c as e}from"./index-CftTVsrz.js";var t=(t={})=>e.get(`/posts`,{params:t}),n=()=>e.get(`/posts/drafts`,{cache:!1,forceRefresh:!0}),r=t=>e.post(`/posts`,t),i=()=>e.get(`/posts/scheduled`,{cache:!1,forceRefresh:!0}),a=(t={})=>e.get(`/posts/recommended`,{params:t});export{i as a,a as i,n,t as r,r as t};

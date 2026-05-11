@@ -10,6 +10,7 @@ import { useAppStore } from './store/appStore.js';
 import RealtimeProvider from './realtime/RealtimeProvider.jsx';
 import { initializePerformanceToolkit } from './utils/performance.js';
 import { initializeRuntimeErrorCapture } from './utils/runtimeErrors.js';
+import notificationService from './services/notificationService.js';
 
 if (typeof window !== 'undefined') {
   window.__YAMSHAT_SW_READY__ = Promise.resolve(null);
@@ -30,6 +31,7 @@ if (typeof window !== 'undefined') {
       window.__YAMSHAT_SW_READY__ = navigator.serviceWorker.register('/sw.js')
         .then((registration) => {
           initializePerformanceToolkit({ registration });
+          notificationService.initialize().catch(() => null);
           return registration;
         })
         .catch(() => null);

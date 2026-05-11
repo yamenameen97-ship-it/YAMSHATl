@@ -13,6 +13,7 @@ function perfStore() {
     window.__YAMSHAT_PERF__ = {
       metrics: [],
       longTasks: 0,
+      cdnHits: 0,
       lastMemorySample: null,
       startedAt: Date.now(),
     };
@@ -24,37 +25,57 @@ function pushMetric(metric) {
   const store = perfStore();
   if (!store || !featureFlags.performanceMetrics) return;
   store.metrics.push({ ...metric, recordedAt: new Date().toISOString() });
-  if (store.metrics.length > 40) store.metrics.splice(0, store.metrics.length - 40);
+  if (store.metrics.length > 60) store.metrics.splice(0, store.metrics.length - 60);
   window.dispatchEvent(new CustomEvent('yamshat:performance-metric', { detail: metric }));
 }
 
-// 1. Image Optimization Helper
-export const getOptimizedImageUrl = (url, width = 800, quality = 80) => {
+export const getOptimizedImageUrl = (url, width = 800, quality = 80, format = 'webp') => {
   if (!url) return '';
-  if (url.includes('cdn.yamshat.com') || url.includes(CDN_BASE)) {
-    return `${url}?w=${width}&q=${quality}&fmt=webp`;
-  }
-  return url;
+  const target = String(url);
+  if (!CDN_BASE && !target.includes('cdn.')) return target;
+  const separator = target.includes('?') ? '&' : '?';
+  if (/[?&](w|width)=/i.test(target)) return target;
+  return `${target}${separator}w=${width}&q=${quality}&fmt=${format}`;
 };
 
-// 2. Memory Optimization: Clear heavy objects from large lists
-export const optimizeMemoryUsage = (list, threshold = 500) => {
-  if (list.length > threshold) {
-    console.log(`[Performance] Optimizing memory for list of size ${list.length}`);
-    return list.slice(0, threshold);
+export const getMediaDeliveryProfile = (kind = 'image') => {
+  if (kind === 'video') {
+    return {
+      preferredCdn: CDN_BASE || 'https://cdn.yamshat.com',
+      ttl: '7d',
+      strategy: 'edge-cache + adaptive bitrate + signed playback URLs',
+    };
   }
+  if (kind === 'file') {
+    return {
+      preferredCdn: CDN_BASE || 'https://cdn.yamshat.com',
+      ttl: '24h',
+      strategy: 'download acceleration + regional edge caching',
+    };
+  }
+  return {
+    preferredCdn: CDN_BASE || 'https://cdn.yamshat.com',
+    ttl: '30d',
+    strategy: 'image resize on edge + webp/avif negotiation',
+  };
+};
+
+export const optimizeMemoryUsage = (list, threshold = 500) => {
+  if (!Array.isArray(list)) return [];
+  if (list.length > threshold) return list.slice(0, threshold);
   return list;
 };
 
-// 3. CDN Caching Strategy Helper
 export const getCDNConfig = () => ({
-  cacheControl: 'public, max-age=31536000, immutable',
-  headers: { 'X-CDN-Cache-Strategy': 'Yamshat-Edge-v1' }
+  baseUrl: CDN_BASE || 'https://cdn.yamshat.com',
+  regions: ['mea', 'eu', 'us', 'apac'],
+  cacheControl: 'public, max-age=31536000, stale-while-revalidate=86400, immutable',
+  acceleration: ['images', 'video segments', 'downloads'],
+  signedDelivery: true,
 });
 
 function observePerformanceEntries() {
   if (!canUseWindow() || typeof PerformanceObserver === 'undefined' || !featureFlags.performanceMetrics) return;
-
   const safeObserve = (type, handler) => {
     try {
       const observer = new PerformanceObserver((list) => handler(list.getEntries()));
@@ -77,11 +98,11 @@ function observePerformanceEntries() {
     if (score > 0) pushMetric({ type: 'cls', value: Number(score.toFixed(4)) });
   });
 
-  safeObserve('longtask', (entries) => {
-    const total = entries.reduce((sum, entry) => sum + Math.round(entry.duration || 0), 0);
+  safeObserve('resource', (entries) => {
+    const cdnEntries = entries.filter((entry) => String(entry.name || '').includes(CDN_BASE || 'cdn.'));
     const store = perfStore();
-    if (store) store.longTasks += entries.length;
-    if (entries.length) pushMetric({ type: 'longtask', value: total, count: entries.length });
+    if (store) store.cdnHits += cdnEntries.length;
+    if (cdnEntries.length) pushMetric({ type: 'cdn-hit', count: cdnEntries.length });
   });
 }
 
@@ -96,10 +117,7 @@ function sampleMemory() {
     jsHeapSizeLimit: memory.jsHeapSizeLimit,
     recordedAt: new Date().toISOString(),
   };
-  
-  // Advanced Memory Protection
   if (memory.usedJSHeapSize > memory.jsHeapSizeLimit * 0.8) {
-    console.warn('[Performance] Memory usage critical. Triggering emergency cleanup.');
     window.dispatchEvent(new CustomEvent('yamshat:memory-critical'));
   }
 }
@@ -121,8 +139,11 @@ export function initializePerformanceToolkit({ registration = null } = {}) {
   if (initialized || !canUseWindow()) return;
   initialized = true;
   ensurePreconnect(BACKEND_ORIGIN);
-  ensurePreconnect(CDN_BASE);
+  ensurePreconnect(CDN_BASE || 'https://cdn.yamshat.com');
   observePerformanceEntries();
   sampleMemory();
+  if (registration?.active) {
+    pushMetric({ type: 'sw-active', value: 1 });
+  }
   window.setInterval(sampleMemory, 60_000);
 }

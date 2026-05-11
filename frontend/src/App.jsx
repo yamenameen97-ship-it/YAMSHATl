@@ -19,6 +19,7 @@ const AdminPosts = lazy(() => import('./features/admin/index.js').then((mod) => 
 const AdminNotifications = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminNotifications })));
 const AdminLive = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminLive })));
 const AdminReports = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminReports })));
+const AdminAudit = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminAudit })));
 const AdminSettings = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminSettings })));
 const AdminRbac = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminRbac })));
 const AdminChat = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminChat })));
@@ -43,6 +44,7 @@ const Profile = lazy(() => import('./pages/Profile.jsx'));
 const Chat = lazy(() => import('./features/chat/index.js').then((mod) => ({ default: mod.Chat })));
 const Notifications = lazy(() => import('./features/notifications/index.js').then((mod) => ({ default: mod.Notifications })));
 const Search = lazy(() => import('./pages/Search.jsx'));
+const Settings = lazy(() => import('./pages/Settings.jsx'));
 
 function AppGuards() {
   useNetworkStatus();
@@ -129,6 +131,7 @@ export default function App() {
             <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
             <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
             <Route path="/search" element={<ProtectedRoute><Search /></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/profile/:username" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
             <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
             <Route path="/chat/:userId" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
@@ -141,6 +144,7 @@ export default function App() {
             <Route path="/admin/notifications" element={<ProtectedRoute requiredPermission="notifications.manage"><AdminNotifications /></ProtectedRoute>} />
             <Route path="/admin/live" element={<ProtectedRoute requiredPermission="live.manage"><AdminLive /></ProtectedRoute>} />
             <Route path="/admin/reports" element={<ProtectedRoute requiredPermission="reports.view"><AdminReports /></ProtectedRoute>} />
+            <Route path="/admin/audit" element={<ProtectedRoute requiredPermission="dashboard.view"><AdminAudit /></ProtectedRoute>} />
             <Route path="/admin/settings" element={<ProtectedRoute requiredPermission="settings.manage"><AdminSettings /></ProtectedRoute>} />
             <Route path="/admin/chat" element={<ProtectedRoute><AdminChat /></ProtectedRoute>} />
             <Route path="/admin/stories" element={<ProtectedRoute><AdminStories /></ProtectedRoute>} />

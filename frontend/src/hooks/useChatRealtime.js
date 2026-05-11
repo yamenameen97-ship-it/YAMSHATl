@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { getChatThreads } from '../api/chat.js';
 import socket from '../api/socket.js';
 import { getAuthToken, getCurrentUsername } from '../utils/auth.js';
-import { useChatStore } from '../store/chatStore.js';
+import { useChatStore } from '../store/appStore.js';
 import logger from '../utils/logger.js';
 
 export default function useChatRealtime() {

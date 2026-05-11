@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Input from '../components/ui/Input.jsx';
 import Button from '../components/ui/Button.jsx';
@@ -8,25 +8,54 @@ import { resendVerification, verifyEmail } from '../api/auth.js';
 import { setStoredUser } from '../utils/auth.js';
 import { getDefaultPostLoginPath } from '../utils/access.js';
 import { isValidEmail, localizeAuthMessage, normalizeOtpDigits } from '../utils/authValidation.js';
+import useSingleFlight from '../hooks/useSingleFlight.js';
 
 export default function VerifyEmail() {
   const location = useLocation();
   const navigate = useNavigate();
   const initialEmail = useMemo(() => location.state?.email || '', [location.state]);
   const initialCode = useMemo(() => normalizeOtpDigits(location.state?.devCode || location.state?.code || ''), [location.state]);
-  const [form, setForm] = useState({ email: initialEmail, code: initialCode, rememberMe: Boolean(location.state?.rememberMe ?? true) });
+  
+  const [form, setForm] = useState({ 
+    email: initialEmail, 
+    code: initialCode, 
+    rememberMe: Boolean(location.state?.rememberMe ?? true) 
+  });
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(location.state?.message || '');
   const [devCode, setDevCode] = useState(location.state?.devCode || '');
-  const [cooldown, setCooldown] = useState(0);
+  const [cooldown, setCooldown] = useState(30); // Initial cooldown
+  const [attempts, setAttempts] = useState(0);
+  const [showFallback, setShowFallback] = useState(false);
+  const [isTimeout, setIsTimeout] = useState(false);
+  
+  const { run: runVerify } = useSingleFlight();
+  const timerRef = useRef(null);
 
+  // Countdown timer for resend
   useEffect(() => {
-    if (cooldown <= 0) return undefined;
-    const timer = window.setTimeout(() => setCooldown((prev) => Math.max(prev - 1, 0)), 1000);
-    return () => window.clearTimeout(timer);
+    if (cooldown <= 0) {
+      if (timerRef.current) clearInterval(timerRef.current);
+      return;
+    }
+    timerRef.current = setInterval(() => {
+      setCooldown((prev) => Math.max(prev - 1, 0));
+    }, 1000);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
   }, [cooldown]);
+
+  // Session timeout detection (e.g. 10 minutes)
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setIsTimeout(true);
+      setError('انتهت صلاحية الجلسة. يرجى طلب كود جديد.');
+    }, 10 * 60 * 1000);
+    return () => clearTimeout(timeout);
+  }, []);
 
   const handleSubmit = async (incomingCode = form.code) => {
     const code = normalizeOtpDigits(incomingCode);
@@ -35,7 +64,7 @@ export default function VerifyEmail() {
       return;
     }
     if (code.length !== 6) {
-      setError('اكتب رمز التفعيل كامل من 6 أرقام.');
+      setError('يرجى إدخال الرمز المكون من 6 أرقام.');
       return;
     }
 
@@ -43,78 +72,155 @@ export default function VerifyEmail() {
     setError('');
 
     try {
-      const { data } = await verifyEmail({ email: form.email.trim().toLowerCase(), code, remember_me: form.rememberMe });
+      const result = await runVerify(async () => {
+        return await verifyEmail({ 
+          email: form.email.trim().toLowerCase(), 
+          code, 
+          remember_me: form.rememberMe 
+        });
+      });
+
+      const { data } = result;
       setStoredUser(data);
       navigate(getDefaultPostLoginPath(data), { replace: true });
     } catch (err) {
-      setError(localizeAuthMessage(err?.response?.data?.detail, 'تعذر تأكيد البريد حالياً.'));
+      const msg = localizeAuthMessage(err?.response?.data?.detail, 'رمز التفعيل غير صحيح أو انتهت صلاحيته.');
+      setError(msg);
+      setAttempts(prev => prev + 1);
+      
+      // Show fallback if too many attempts
+      if (attempts >= 2) {
+        setShowFallback(true);
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const handleResend = async () => {
+    if (cooldown > 0 || resending) return;
+    
     if (!isValidEmail(form.email)) {
-      setError('اكتب بريد إلكتروني صحيح أولاً.');
+      setError('يرجى إدخال بريد إلكتروني صحيح.');
       return;
     }
+
     setResending(true);
     setError('');
+    setSuccess('');
+    
     try {
       const { data } = await resendVerification({ email: form.email.trim().toLowerCase() });
-      setSuccess(localizeAuthMessage(data?.message, 'تم إرسال كود جديد.'));
+      setSuccess(localizeAuthMessage(data?.message, 'تم إرسال كود جديد إلى بريدك الإلكتروني.'));
       setDevCode(data?.dev_verification_code || '');
+      
       if (data?.dev_verification_code) {
         setForm((prev) => ({ ...prev, code: normalizeOtpDigits(data.dev_verification_code) }));
       }
-      setCooldown(30);
+      
+      setCooldown(60); // Increase cooldown after resend
+      setIsTimeout(false);
+      setAttempts(0);
+      setShowFallback(false);
     } catch (err) {
-      setError(localizeAuthMessage(err?.response?.data?.detail, 'تعذر إعادة إرسال الكود.'));
+      setError(localizeAuthMessage(err?.response?.data?.detail, 'تعذر إعادة إرسال الكود حالياً. حاول مجدداً بعد قليل.'));
     } finally {
       setResending(false);
     }
   };
 
+  // Auto-detect code from URL or clipboard if possible
+  useEffect(() => {
+    if (form.code.length === 6 && !loading) {
+      handleSubmit(form.code);
+    }
+  }, [form.code]);
+
   return (
     <AuthShell
       badge="YAMSHAT"
-      title="تأكيد البريد الإلكتروني"
-      description="فعّل حسابك بكود التحقق اللي اتبعت على البريد علشان تقدر تدخل وتستخدم المشروع بشكل كامل."
+      title="تأكيد الحساب"
+      description="أدخل رمز التحقق المرسل إلى بريدك الإلكتروني لتفعيل حسابك."
       alternateAction={
         <>
-          <span className="muted">رجوع</span>
-          <Link to="/login" className="auth-inline-link">تسجيل الدخول</Link>
-        </>
-      }
-      footer={
-        <>
-          لو ماوصلكش الكود، اطلب إعادة الإرسال أو ارجع <Link to="/register">سجل من جديد</Link>.
+          <span className="muted">هل تريد تغيير البريد؟</span>
+          <Link to="/register" className="auth-inline-link">العودة للتسجيل</Link>
         </>
       }
     >
       <form className="auth-form auth-form-enhanced" onSubmit={(event) => { event.preventDefault(); handleSubmit(); }}>
         <div className="auth-form-head">
-          <h2>تفعيل الحساب</h2>
-          <p className="muted">الرمز بيتقسم تلقائياً على الخانات، ولو كان صحيح هتدخل مباشرة.</p>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
+            <div className="icon-circle" style={{ width: 64, height: 64, background: 'rgba(var(--accent-rgb), 0.1)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)' }}>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
+              </svg>
+            </div>
+          </div>
+          <h2>تحقق من بريدك</h2>
+          <p className="muted">أرسلنا كود التفعيل إلى <strong style={{ color: 'var(--text)' }}>{form.email}</strong></p>
         </div>
 
-        <Input label="البريد الإلكتروني" type="email" placeholder="user@mail.com" value={form.email} onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))} autoComplete="email" />
-        <OtpCodeInput value={form.code} onChange={(next) => setForm((prev) => ({ ...prev, code: next }))} onComplete={handleSubmit} disabled={loading} label="كود التفعيل" />
+        <OtpCodeInput 
+          value={form.code} 
+          onChange={(next) => setForm((prev) => ({ ...prev, code: next }))} 
+          onComplete={handleSubmit} 
+          disabled={loading || isTimeout} 
+          label="رمز التحقق" 
+        />
 
-        <label className="remember-me-row">
-          <input type="checkbox" checked={form.rememberMe} onChange={(event) => setForm((prev) => ({ ...prev, rememberMe: event.target.checked }))} />
-          <span>تذكّرني بعد التفعيل</span>
-        </label>
+        <div style={{ margin: '16px 0' }}>
+          <label className="remember-me-row" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <input 
+              type="checkbox" 
+              checked={form.rememberMe} 
+              onChange={(event) => setForm((prev) => ({ ...prev, rememberMe: event.target.checked }))} 
+              disabled={loading}
+            />
+            <span style={{ fontSize: 14 }}>تذكّرني على هذا الجهاز</span>
+          </label>
+        </div>
 
-        {success ? <div className="alert success">{success}</div> : null}
-        {devCode ? <div className="alert">كود التطوير: {devCode}</div> : null}
-        {error ? <div className="alert error">{error}</div> : null}
+        {success && <div className="alert success animate-fade-in">{success}</div>}
+        {devCode && <div className="alert info" style={{ background: 'rgba(255,255,255,0.05)', border: '1px dashed var(--line)' }}>كود المطور المحاكي: <code>{devCode}</code></div>}
+        {error && <div className="alert error animate-shake">{error}</div>}
 
-        <Button type="submit" loading={loading} disabled={loading}>{loading ? 'جارٍ التأكيد...' : 'تأكيد البريد'}</Button>
-        <Button type="button" variant="secondary" loading={resending} disabled={resending || !form.email.trim() || cooldown > 0} onClick={handleResend}>
-          {resending ? 'جارٍ الإرسال...' : cooldown > 0 ? `إعادة الإرسال بعد ${cooldown}ث` : 'إعادة إرسال الكود'}
+        <Button type="submit" loading={loading} disabled={loading || isTimeout || form.code.length !== 6} style={{ height: 50 }}>
+          {loading ? 'جاري التحقق...' : 'تأكيد الرمز'}
         </Button>
+
+        <div style={{ textAlign: 'center', marginTop: 16 }}>
+          <button 
+            type="button" 
+            className="link-btn" 
+            disabled={resending || cooldown > 0} 
+            onClick={handleResend}
+            style={{ opacity: cooldown > 0 ? 0.6 : 1 }}
+          >
+            {resending ? 'جاري الإرسال...' : cooldown > 0 ? `إعادة الإرسال خلال ${cooldown}ث` : 'لم يصلك الكود؟ إعادة إرسال'}
+          </button>
+        </div>
+
+        {showFallback && (
+          <div className="fallback-section animate-fade-in" style={{ marginTop: 24, padding: 16, background: 'var(--bg-soft)', borderRadius: 12, border: '1px solid var(--line)' }}>
+            <h4 style={{ marginBottom: 8, fontSize: 14 }}>تواجه مشكلة؟</h4>
+            <ul style={{ fontSize: 13, paddingRight: 20, margin: 0, color: 'var(--muted)' }}>
+              <li>تأكد من مجلد الرسائل غير المرغوب فيها (Spam).</li>
+              <li>تأكد من كتابة البريد الإلكتروني بشكل صحيح.</li>
+              <li><Link to="/support" className="auth-inline-link">تواصل مع الدعم الفني</Link></li>
+            </ul>
+          </div>
+        )}
       </form>
+
+      <style>{`
+        .animate-fade-in { animation: fadeIn 0.4s ease-out; }
+        .animate-shake { animation: shake 0.4s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+        .icon-circle { animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.4); } 70% { box-shadow: 0 0 0 15px rgba(var(--accent-rgb), 0); } 100% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0); } }
+      `}</style>
     </AuthShell>
   );
 }

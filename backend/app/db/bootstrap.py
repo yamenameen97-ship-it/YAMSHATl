@@ -14,8 +14,8 @@ from app.db.base import Base
 CURRENT_ALEMBIC_REVISION = '20260506_0003'
 LEGACY_USER_TABLE_NAMES = ('suser', 'user')
 DEFAULT_SUBSCRIBER = {
-    'username': ((settings.DEMO_ACCOUNT_EMAIL or 'yasryameen97@gmail.com').split('@')[0] or 'yasryameen97').strip().lower(),
-    'email': (settings.DEMO_ACCOUNT_EMAIL or 'yasryameen97@gmail.com').strip().lower(),
+    'username': ((settings.DEMO_ACCOUNT_EMAIL or 'yasryameen21@gmail.com').split('@')[0] or 'yasryameen21').strip().lower(),
+    'email': (settings.DEMO_ACCOUNT_EMAIL or 'yasryameen21@gmail.com').strip().lower(),
     'password': settings.DEMO_ACCOUNT_PASSWORD or '12345678',
 }
 DEFAULT_PRIMARY_ADMIN = {

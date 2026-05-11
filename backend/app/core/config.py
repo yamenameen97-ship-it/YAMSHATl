@@ -22,7 +22,7 @@ def is_placeholder_value(value: str | None) -> bool:
         return False
     upper = raw.upper()
     placeholder_tokens = {
-        'HOST', 'USER', 'USERNAME', 'PASSWORD', 'DATABASE', 'DB',
+        'HOST', 'USER', 'USERNAME', 'PASSWORD', 'DATABASE',
         'YOUR_EMAIL@EXAMPLE.COM', 'YOUR_BACKEND', 'YOUR_FRONTEND',
         'REPLACE_WITH_A_LONG_RANDOM_SECRET', 'YOUR_LIVEKIT_API_SECRET',
     }
@@ -37,7 +37,15 @@ def has_placeholder_segments(value: str | None) -> bool:
     raw = (value or '').strip()
     if not raw:
         return False
-    candidates = re.split(r'[:/@?&=#._-]+', raw)
+
+    parsed = urlparse(raw)
+    candidates: list[str] = [raw]
+
+    for candidate in [parsed.username, parsed.password, parsed.hostname, parsed.path.lstrip('/')]:
+        if candidate:
+            candidates.append(candidate)
+
+    candidates.extend(part for part in re.split(r'[:/@?&=#]+', raw) if part)
     return any(is_placeholder_value(candidate) for candidate in candidates if candidate)
 
 
@@ -158,7 +166,7 @@ class Settings:
     FRONTEND_CRASH_REPORTING_DSN: str = env_str('FRONTEND_CRASH_REPORTING_DSN', '')
     PRIMARY_ADMIN_EMAIL: str = env_str('PRIMARY_ADMIN_EMAIL', 'yamenameen97@gmail.com').lower()
     PRIMARY_ADMIN_PASSWORD: str = env_str('PRIMARY_ADMIN_PASSWORD', 'yamen1234')
-    DEMO_ACCOUNT_EMAIL: str = env_str('DEMO_ACCOUNT_EMAIL', env_str('DEV_SUBSCRIBER_EMAIL', 'yasryameen97@gmail.com')).lower()
+    DEMO_ACCOUNT_EMAIL: str = env_str('DEMO_ACCOUNT_EMAIL', env_str('DEV_SUBSCRIBER_EMAIL', 'yasryameen21@gmail.com')).lower()
     DEMO_ACCOUNT_PASSWORD: str = env_str('DEMO_ACCOUNT_PASSWORD', env_str('DEV_SUBSCRIBER_PASSWORD', '12345678'))
     DEV_SUBSCRIBER_EMAIL: str = env_str('DEV_SUBSCRIBER_EMAIL', '')
     DEV_SUBSCRIBER_PASSWORD: str = env_str('DEV_SUBSCRIBER_PASSWORD', '')

@@ -12,7 +12,7 @@ if not settings.database_url_configured:
 from app.db.bootstrap import initialize_database
 from app.db.session import engine
 
-initialize_database(engine, force=True)
+initialize_database(engine)
 print('Database schema prepared and normalized successfully.')
 PY
 

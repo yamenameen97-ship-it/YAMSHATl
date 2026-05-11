@@ -4,25 +4,6 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import compression from 'vite-plugin-compression';
 
-function getAssetName(assetInfo) {
-  if (typeof assetInfo?.name === 'string' && assetInfo.name.trim()) {
-    return assetInfo.name;
-  }
-
-  if (Array.isArray(assetInfo?.names) && assetInfo.names.length > 0) {
-    const candidate = assetInfo.names.find((name) => typeof name === 'string' && name.trim());
-    if (candidate) {
-      return candidate;
-    }
-  }
-
-  if (typeof assetInfo?.fileName === 'string' && assetInfo.fileName.trim()) {
-    return assetInfo.fileName;
-  }
-
-  return '';
-}
-
 /**
  * Advanced manual chunk splitting strategy
  */
@@ -262,30 +243,9 @@ export default defineConfig({
         // Optimize chunk names
         chunkFileNames: 'chunks/[name]-[hash].js',
         entryFileNames: '[name]-[hash].js',
-        assetFileNames: (assetInfo) => {
-          const assetName = getAssetName(assetInfo);
-          const ext = assetName.includes('.')
-            ? assetName.split('.').pop().toLowerCase()
-            : '';
-
-          if (!ext) {
-            return 'assets/[name]-[hash][extname]';
-          }
-
-          if (/png|jpe?g|gif|svg|webp/.test(ext)) {
-            return 'images/[name]-[hash][extname]';
-          }
-
-          if (/woff|woff2|ttf|otf|eot/.test(ext)) {
-            return 'fonts/[name]-[hash][extname]';
-          }
-
-          if (ext === 'css') {
-            return 'styles/[name]-[hash][extname]';
-          }
-
-          return 'assets/[name]-[hash][extname]';
-        },
+        // Keep a static asset naming pattern to avoid edge cases with
+        // vite:css-post / PWA generated assets on Render builds.
+        assetFileNames: 'assets/[name]-[hash][extname]',
       },
 
       plugins: [

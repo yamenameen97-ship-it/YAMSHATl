@@ -30,6 +30,11 @@ def _notification_route(notification_type: str, data: dict) -> tuple[str, str]:
     return screen, path
 
 
+async def increment_unread_counter(user_id: int):
+    """زيادة عداد الإشعارات غير المقروءة في Redis"""
+    # Placeholder for Redis increment logic
+    pass
+
 async def create_and_send_notification(
     db: Session,
     user_id: int,
@@ -69,6 +74,7 @@ async def create_and_send_notification(
         },
     }
     await manager.send_to_user(user_id, realtime_payload)
+    await increment_unread_counter(user_id)
 
     user = db.query(User).filter(User.id == user_id).first()
     if user and user.fcm_token and not manager.is_online(user_id):

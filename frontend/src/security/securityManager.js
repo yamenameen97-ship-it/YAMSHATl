@@ -1,20 +1,81 @@
 /**
  * Advanced Security Manager - Yamshat Enterprise Edition
- * Features: CSP Strict Mode, Device Fingerprinting, Abuse Protection, XSS Sanitization
+ * Features: Suspicious Activity Detection, Rate Limiting, Anti-Spam, CSP Support, Device Fingerprinting
  */
 
 import DOMPurify from 'dompurify';
 import FingerprintJS from '@fingerprintjs/fingerprintjs';
 
-// XSS Sanitization
-export const sanitizeHTML = (html) => {
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'a', 'p', 'br'],
-    ALLOWED_ATTR: ['href', 'target', 'rel']
-  });
+// --- Suspicious Activity Detection ---
+const suspiciousPatterns = [
+  /<script.*?>.*?<\/script>/gi,
+  /javascript:/gi,
+  /onload=/gi,
+  /onerror=/gi,
+  /eval\(/gi,
+  /base64/gi
+];
+
+export const detectSuspiciousActivity = (input) => {
+  if (typeof input !== 'string') return false;
+  return suspiciousPatterns.some(pattern => pattern.test(input));
 };
 
-// Advanced Device Fingerprinting
+// --- Rate Limit Handling ---
+const rateLimits = new Map();
+export const checkRateLimit = (action, limit = 10, windowMs = 60000) => {
+  const now = Date.now();
+  const record = rateLimits.get(action) || { count: 0, startTime: now };
+
+  if (now - record.startTime > windowMs) {
+    record.count = 1;
+    record.startTime = now;
+  } else {
+    record.count++;
+  }
+
+  rateLimits.set(action, record);
+  return record.count <= limit;
+};
+
+// --- Anti-Spam Layer ---
+const lastSubmissionTime = new Map();
+export const isSpam = (userId, minIntervalMs = 2000) => {
+  const now = Date.now();
+  const lastTime = lastSubmissionTime.get(userId) || 0;
+  if (now - lastTime < minIntervalMs) {
+    return true;
+  }
+  lastSubmissionTime.set(userId, now);
+  return false;
+};
+
+// --- CSP Support ---
+export const injectStrictCSP = () => {
+  if (typeof document === 'undefined') return;
+  
+  const existingMeta = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+  if (existingMeta) return;
+
+  const meta = document.createElement('meta');
+  meta.httpEquiv = "Content-Security-Policy";
+  meta.content = `
+    default-src 'self';
+    script-src 'self' 'unsafe-inline' https://cdn.yamshat.com https://apis.google.com;
+    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+    img-src 'self' data: https: blob:;
+    connect-src 'self' wss: https:;
+    font-src 'self' data: https://fonts.gstatic.com;
+    object-src 'none';
+    media-src 'self' https: blob:;
+    frame-src 'self' https://www.youtube.com;
+    base-uri 'self';
+    upgrade-insecure-requests;
+  `.replace(/\s+/g, ' ').trim();
+  document.head.appendChild(meta);
+};
+
+// --- Device Fingerprinting ---
 let cachedFingerprint = null;
 export const getDeviceFingerprint = async () => {
   if (cachedFingerprint) return cachedFingerprint;
@@ -24,28 +85,28 @@ export const getDeviceFingerprint = async () => {
     cachedFingerprint = result.visitorId;
     return cachedFingerprint;
   } catch (err) {
-    console.error('Fingerprint error:', err);
-    return 'unknown_device';
+    console.error('[Security] Fingerprint error:', err);
+    return 'unknown_device_' + Math.random().toString(36).substr(2, 9);
   }
 };
 
-// Abuse Protection: Anti-Spam Rate Limiting
-const actionLog = new Map();
-export const validateSecurityAction = (actionType, limitMs = 1000) => {
-  const now = Date.now();
-  const lastTime = actionLog.get(actionType) || 0;
-  if (now - lastTime < limitMs) {
-    console.warn(`[Security] Rate limit hit for ${actionType}`);
-    return false;
-  }
-  actionLog.set(actionType, now);
-  return true;
+// --- XSS Sanitization ---
+export const sanitizeHTML = (html, options = {}) => {
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: options.tags || ['b', 'i', 'em', 'strong', 'a', 'p', 'br', 'span', 'ul', 'li'],
+    ALLOWED_ATTR: options.attrs || ['href', 'target', 'rel', 'class', 'style'],
+    ...options
+  });
 };
 
-// Secure Storage with Base64 Encoding
+// --- Secure Storage ---
 export const setSecureItem = (key, value) => {
-  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(value))));
-  localStorage.setItem(`_secure_${key}`, encoded);
+  try {
+    const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(value))));
+    localStorage.setItem(`_secure_${key}`, encoded);
+  } catch (e) {
+    console.error('[Security] Storage error:', e);
+  }
 };
 
 export const getSecureItem = (key) => {
@@ -58,25 +119,7 @@ export const getSecureItem = (key) => {
   }
 };
 
-// CSP Strict Mode Injection
-export const injectStrictCSP = () => {
-  const meta = document.createElement('meta');
-  meta.httpEquiv = "Content-Security-Policy";
-  meta.content = `
-    default-src 'self';
-    script-src 'self' 'unsafe-inline' https://cdn.yamshat.com;
-    style-src 'self' 'unsafe-inline';
-    img-src 'self' data: https:;
-    connect-src 'self' wss: https:;
-    font-src 'self' data:;
-    object-src 'none';
-    base-uri 'self';
-    upgrade-insecure-requests;
-  `.replace(/\s+/g, ' ').trim();
-  document.head.appendChild(meta);
-};
-
-// Auto-initialize strict security on load
+// Auto-initialize
 if (typeof window !== 'undefined') {
   injectStrictCSP();
   getDeviceFingerprint();

@@ -42,6 +42,7 @@ const Users = lazy(() => import('./pages/Users.jsx'));
 const Profile = lazy(() => import('./pages/Profile.jsx'));
 const Chat = lazy(() => import('./features/chat/index.js').then((mod) => ({ default: mod.Chat })));
 const Notifications = lazy(() => import('./features/notifications/index.js').then((mod) => ({ default: mod.Notifications })));
+const Search = lazy(() => import('./pages/Search.jsx'));
 
 function AppGuards() {
   useNetworkStatus();
@@ -127,6 +128,7 @@ export default function App() {
             <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
             <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
+            <Route path="/search" element={<ProtectedRoute><Search /></ProtectedRoute>} />
             <Route path="/profile/:username" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
             <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
             <Route path="/chat/:userId" element={<ProtectedRoute><Chat /></ProtectedRoute>} />

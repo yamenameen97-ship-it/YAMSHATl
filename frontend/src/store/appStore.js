@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import sessionManager from '../auth/sessionManager.js';
 
 const THEME_KEY = 'yamshat-theme';
 const LANGUAGE_KEY = 'yamshat-language';
@@ -47,6 +48,7 @@ export const useAppStore = create((set, get) => ({
   authHydrated: false,
   authLoading: false,
   isOnline: typeof navigator === 'undefined' ? true : navigator.onLine,
+  isReconnecting: false,
   lastOfflineAt: null,
   activeRequests: 0,
   theme: getInitialTheme(),
@@ -55,15 +57,44 @@ export const useAppStore = create((set, get) => ({
   installPrompt: null,
   uploadProgress: {},
   queuedActions: loadQueuedActions(),
-  setSession: (session) => set({ session }),
-  clearSession: () => set({ session: null }),
+  
+  setSession: (session) => set({ session, authHydrated: true }),
+  clearSession: () => set({ session: null, authHydrated: true }),
   setAuthHydrated: (authHydrated = true) => set({ authHydrated: Boolean(authHydrated) }),
   setAuthLoading: (authLoading = false) => set({ authLoading: Boolean(authLoading) }),
-  setOnlineStatus: (isOnline) =>
+  
+  setOnlineStatus: (isOnline) => {
+    const wasOffline = !get().isOnline;
     set({
       isOnline,
       lastOfflineAt: isOnline ? null : new Date().toISOString(),
-    }),
+    });
+    
+    // Reconnect Auth Recovery
+    if (wasOffline && isOnline) {
+      get().recoverSession();
+    }
+  },
+
+  recoverSession: async () => {
+    if (get().isReconnecting) return;
+    set({ isReconnecting: true });
+    try {
+      console.log('[AppStore] Connection restored, attempting session recovery...');
+      await sessionManager.refreshSession({ reason: 'reconnect' });
+    } catch (err) {
+      console.warn('[AppStore] Session recovery failed after reconnect.');
+    } finally {
+      set({ isReconnecting: false });
+    }
+  },
+
+  syncFromStorage: (userData) => {
+    if (JSON.stringify(userData) !== JSON.stringify(get().session)) {
+      set({ session: userData, authHydrated: true });
+    }
+  },
+
   startRequest: () => set((state) => ({ activeRequests: state.activeRequests + 1 })),
   finishRequest: () => set((state) => ({ activeRequests: Math.max(0, state.activeRequests - 1) })),
   setTheme: (theme) => {
@@ -136,3 +167,20 @@ export const useAppStore = create((set, get) => ({
     set({ queuedActions: [] });
   },
 }));
+
+// Global Event Listeners for Multi-tab Sync and Connection
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => useAppStore.getState().setOnlineStatus(true));
+  window.addEventListener('offline', () => useAppStore.getState().setOnlineStatus(false));
+  
+  window.addEventListener('storage', (event) => {
+    if (event.key === 'yamshat_auth_user') {
+      try {
+        const userData = event.newValue ? JSON.parse(event.newValue) : null;
+        useAppStore.getState().syncFromStorage(userData);
+      } catch (e) {
+        // ignore malformed data
+      }
+    }
+  });
+}

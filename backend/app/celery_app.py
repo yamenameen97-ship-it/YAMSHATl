@@ -1,13 +1,19 @@
 from celery import Celery
+from celery.schedules import crontab
 import os
 
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 
 celery_app = Celery(
-    'yamshat_email_tasks',
+    'yamshat_tasks',
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=['app.services.email']
+    include=[
+        'app.services.email',
+        'app.services.media_service',
+        'app.services.notification_service',
+        'app.services.analytics_service'
+    ]
 )
 
 celery_app.conf.update(
@@ -20,3 +26,19 @@ celery_app.conf.update(
     timezone='UTC',
     enable_utc=True,
 )
+
+# جدولة مهام التنظيف التلقائية
+celery_app.conf.beat_schedule = {
+    'cleanup-media-every-night': {
+        'task': 'app.services.media_service.cleanup_job',
+        'schedule': crontab(hour=2, minute=0),
+    },
+    'cleanup-expired-sessions': {
+        'task': 'app.services.auth_service.cleanup_sessions',
+        'schedule': crontab(hour=3, minute=0),
+    },
+    'cleanup-dead-rooms': {
+        'task': 'app.services.live_service.cleanup_dead_rooms',
+        'schedule': crontab(minute='*/30'),
+    }
+}

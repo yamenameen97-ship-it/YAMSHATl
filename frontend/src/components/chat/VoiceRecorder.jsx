@@ -1,134 +1,252 @@
-import React, { useState, useRef } from 'react';
-import PropTypes from 'prop-types';
-import { tokens } from '../../styles/designTokens';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import AudioWaveform from './AudioWaveform.jsx';
 
-/**
- * VoiceRecorder Component
- * Handles audio recording for chat messages
- */
-const VoiceRecorder = ({ onSend, onCancel }) => {
-  const [isRecording, setIsRecording] = useState(false);
+const CODEC_PRIORITY = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/webm'];
+
+function pickSupportedMimeType() {
+  if (typeof MediaRecorder === 'undefined') return '';
+  return CODEC_PRIORITY.find((codec) => MediaRecorder.isTypeSupported?.(codec)) || '';
+}
+
+function formatTime(seconds = 0) {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${String(secs).padStart(2, '0')}`;
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+export default function VoiceRecorder({ onSend, onCancel, onStateChange }) {
+  const [recordingState, setRecordingState] = useState('idle');
   const [duration, setDuration] = useState(0);
-  const mediaRecorder = useRef(null);
-  const audioChunks = useRef([]);
+  const [waveSeed, setWaveSeed] = useState(`voice-${Date.now()}`);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [previewBlob, setPreviewBlob] = useState(null);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const mediaRecorderRef = useRef(null);
+  const mediaStreamRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const durationRef = useRef(0);
   const timerRef = useRef(null);
+  const audioRef = useRef(null);
+
+  useEffect(() => {
+    onStateChange?.(recordingState);
+  }, [onStateChange, recordingState]);
+
+  useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    if (timerRef.current) window.clearInterval(timerRef.current);
+    mediaStreamRef.current?.getTracks()?.forEach((track) => track.stop());
+  }, [previewUrl]);
+
+  const mimeType = useMemo(() => pickSupportedMimeType(), []);
+
+  const clearPreview = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl('');
+    setPreviewBlob(null);
+    setPlaybackSpeed(1);
+  };
+
+  const startTimer = () => {
+    if (timerRef.current) window.clearInterval(timerRef.current);
+    timerRef.current = window.setInterval(() => {
+      durationRef.current += 1;
+      setDuration(durationRef.current);
+    }, 1000);
+  };
+
+  const stopTimer = () => {
+    if (timerRef.current) {
+      window.clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder.current = new MediaRecorder(stream);
-      audioChunks.current = [];
+      clearPreview();
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      mediaStreamRef.current = stream;
+      audioChunksRef.current = [];
+      durationRef.current = 0;
+      setDuration(0);
+      setWaveSeed(`voice-${Date.now()}`);
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      mediaRecorderRef.current = recorder;
 
-      mediaRecorder.current.ondataavailable = (event) => {
-        audioChunks.current.push(event.data);
+      recorder.ondataavailable = (event) => {
+        if (event.data?.size) audioChunksRef.current.push(event.data);
       };
 
-      mediaRecorder.current.onstop = () => {
-        const audioBlob = new Blob(audioChunks.current, { type: 'audio/wav' });
-        if (audioChunks.current.length > 0) {
-          onSend(audioBlob, duration);
+      recorder.onstop = () => {
+        stopTimer();
+        const blob = new Blob(audioChunksRef.current, { type: mimeType || 'audio/webm' });
+        if (!blob.size) {
+          setRecordingState('idle');
+          return;
         }
-        stream.getTracks().forEach(track => track.stop());
+        const url = URL.createObjectURL(blob);
+        setPreviewBlob(blob);
+        setPreviewUrl(url);
+        setRecordingState('preview');
+        mediaStreamRef.current?.getTracks()?.forEach((track) => track.stop());
       };
 
-      mediaRecorder.current.start();
-      setIsRecording(true);
-      
-      timerRef.current = setInterval(() => {
-        setDuration(prev => prev + 1);
-      }, 1000);
-    } catch (err) {
-      console.error('Error accessing microphone:', err);
-      alert('لا يمكن الوصول إلى الميكروفون');
+      recorder.start(250);
+      setRecordingState('recording');
+      startTimer();
+    } catch (error) {
+      console.error(error);
+      window.alert('لا يمكن الوصول إلى الميكروفون أو المتصفح لا يدعم التسجيل الصوتي.');
+    }
+  };
+
+  const pauseRecording = () => {
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.pause();
+      stopTimer();
+      setRecordingState('paused');
+    }
+  };
+
+  const resumeRecording = () => {
+    if (mediaRecorderRef.current?.state === 'paused') {
+      mediaRecorderRef.current.resume();
+      startTimer();
+      setRecordingState('recording');
     }
   };
 
   const stopRecording = () => {
-    if (mediaRecorder.current && isRecording) {
-      mediaRecorder.current.stop();
-      setIsRecording(false);
-      clearInterval(timerRef.current);
-      setDuration(0);
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
     }
   };
 
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  const cancelRecording = () => {
+    stopTimer();
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    mediaStreamRef.current?.getTracks()?.forEach((track) => track.stop());
+    clearPreview();
+    setDuration(0);
+    durationRef.current = 0;
+    setRecordingState('idle');
+    onCancel?.();
+  };
+
+  const handleSend = () => {
+    if (!previewBlob) return;
+    const file = new File([previewBlob], `voice-note-${Date.now()}.${mimeType.includes('ogg') ? 'ogg' : 'webm'}`, {
+      type: mimeType || previewBlob.type || 'audio/webm',
+      lastModified: Date.now(),
+    });
+
+    onSend?.({
+      blob: previewBlob,
+      file,
+      durationSeconds: durationRef.current,
+      mimeType: file.type,
+      waveformSeed: waveSeed,
+    });
+
+    clearPreview();
+    setDuration(0);
+    durationRef.current = 0;
+    setRecordingState('idle');
   };
 
   return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: tokens.spacing.md,
-      padding: tokens.spacing.sm,
-      backgroundColor: isRecording ? tokens.colors.error + '11' : 'transparent',
-      borderRadius: tokens.borderRadius.full,
-      transition: tokens.animations.transitions.default,
-    }}>
-      {isRecording && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: tokens.spacing.sm }}>
-          <span style={{ 
-            width: '10px', 
-            height: '10px', 
-            backgroundColor: tokens.colors.error, 
-            borderRadius: '50%',
-            animation: 'pulse 1s infinite'
-          }} />
-          <span style={{ fontSize: tokens.typography.sizes.sm, fontWeight: 'bold' }}>
-            {formatTime(duration)}
-          </span>
+    <div style={{ padding: 12, borderRadius: 18, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', display: 'grid', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <div style={{ fontWeight: 700 }}>رسالة صوتية</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+            {recordingState === 'idle' ? 'Opus codec + waveform + playback controls' : null}
+            {recordingState === 'recording' ? 'جارٍ التسجيل...' : null}
+            {recordingState === 'paused' ? 'التسجيل متوقف مؤقتًا' : null}
+            {recordingState === 'preview' ? 'راجع التسجيل قبل الإرسال' : null}
+          </div>
         </div>
-      )}
+        <div style={{ fontSize: 14, fontWeight: 700, color: recordingState === 'recording' ? '#ff7b7b' : 'var(--text)' }}>
+          {formatTime(duration)}
+        </div>
+      </div>
 
-      <button
-        onMouseDown={startRecording}
-        onMouseUp={stopRecording}
-        onTouchStart={startRecording}
-        onTouchEnd={stopRecording}
-        style={{
-          width: '40px',
-          height: '40px',
-          borderRadius: '50%',
-          border: 'none',
-          backgroundColor: isRecording ? tokens.colors.error : tokens.colors.primary[600],
-          color: 'white',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '20px',
-          boxShadow: tokens.shadows.md,
-        }}
-      >
-        {isRecording ? '⏹️' : '🎤'}
-      </button>
+      {(recordingState === 'recording' || recordingState === 'paused') ? (
+        <div style={{ display: 'grid', gap: 8 }}>
+          <AudioWaveform seed={waveSeed} />
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {recordingState === 'recording' ? (
+              <button type="button" onClick={pauseRecording} style={{ padding: '8px 14px', borderRadius: 999, border: 'none', background: '#2e3350', color: '#fff' }}>إيقاف مؤقت</button>
+            ) : (
+              <button type="button" onClick={resumeRecording} style={{ padding: '8px 14px', borderRadius: 999, border: 'none', background: '#2e3350', color: '#fff' }}>استكمال</button>
+            )}
+            <button type="button" onClick={stopRecording} style={{ padding: '8px 14px', borderRadius: 999, border: 'none', background: '#8b5cf6', color: '#fff' }}>إنهاء</button>
+            <button type="button" onClick={cancelRecording} style={{ padding: '8px 14px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#fff' }}>إلغاء</button>
+          </div>
+        </div>
+      ) : null}
 
-      {isRecording && (
-        <button 
-          onClick={() => { stopRecording(); onCancel(); }}
-          style={{ background: 'none', border: 'none', color: tokens.colors.text.secondary, cursor: 'pointer' }}
-        >
-          إلغاء
-        </button>
-      )}
+      {recordingState === 'idle' ? (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" onClick={startRecording} style={{ padding: '10px 16px', borderRadius: 999, border: 'none', background: '#8b5cf6', color: '#fff', fontWeight: 700 }}>ابدأ التسجيل</button>
+          <button type="button" onClick={() => onCancel?.()} style={{ padding: '10px 16px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#fff' }}>رجوع</button>
+        </div>
+      ) : null}
 
-      <style>{`
-        @keyframes pulse {
-          0% { opacity: 1; }
-          50% { opacity: 0.3; }
-          100% { opacity: 1; }
-        }
-      `}</style>
+      {recordingState === 'preview' && previewUrl ? (
+        <div style={{ display: 'grid', gap: 10 }}>
+          <AudioWaveform seed={waveSeed} />
+          <audio ref={audioRef} src={previewUrl} controls preload="metadata" style={{ width: '100%' }} onLoadedMetadata={() => {
+            const mediaDuration = clamp(audioRef.current?.duration || durationRef.current || 0, 0, 3600);
+            if (mediaDuration) {
+              durationRef.current = Math.round(mediaDuration);
+              setDuration(Math.round(mediaDuration));
+            }
+          }} />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <label style={{ fontSize: 12, color: 'var(--muted)' }}>السرعة</label>
+            {[1, 1.5, 2].map((speed) => (
+              <button
+                key={speed}
+                type="button"
+                onClick={() => {
+                  setPlaybackSpeed(speed);
+                  if (audioRef.current) audioRef.current.playbackRate = speed;
+                }}
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: 999,
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  background: playbackSpeed === speed ? 'rgba(139,92,246,0.2)' : 'transparent',
+                  color: '#fff',
+                }}
+              >
+                ×{speed}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" onClick={handleSend} style={{ padding: '10px 16px', borderRadius: 999, border: 'none', background: '#22c55e', color: '#06110a', fontWeight: 700 }}>إرسال</button>
+            <button type="button" onClick={startRecording} style={{ padding: '10px 16px', borderRadius: 999, border: 'none', background: '#2e3350', color: '#fff' }}>إعادة تسجيل</button>
+            <button type="button" onClick={cancelRecording} style={{ padding: '10px 16px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#fff' }}>إلغاء</button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
-};
+}
 
-VoiceRecorder.propTypes = {
-  onSend: PropTypes.func.isRequired,
-  onCancel: PropTypes.func,
-};
-
-export default VoiceRecorder;

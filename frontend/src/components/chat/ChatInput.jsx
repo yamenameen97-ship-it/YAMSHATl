@@ -1,176 +1,366 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import Button from '../ui/Button';
-import socketManager from '../../services/socketManager';
-import mediaUploadPipeline from '../../services/chat/mediaUpload';
-import encryptionService from '../../services/chat/encryption';
-import retryQueue from '../../services/chat/retryQueue';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import Button from '../ui/Button.jsx';
+import VoiceRecorder from './VoiceRecorder.jsx';
+import socketManager from '../../services/socketManager.js';
+import mediaUploadService from '../../services/media/mediaUploadService.js';
+import signalProtocolService from '../../services/chat/signalProtocol.js';
+import { DISAPPEARING_MESSAGE_OPTIONS } from '../../config/mediaConfig.js';
 
-export default function ChatInput({ replyTo, onCancelReply, onSend, chatId }) {
+function emitToast(detail) {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('yamshat:toast', { detail }));
+}
+
+function attachmentKind(file) {
+  if (file?.type?.startsWith('image/')) return 'image';
+  if (file?.type?.startsWith('video/')) return 'video';
+  if (file?.type?.startsWith('audio/')) return 'audio';
+  return 'file';
+}
+
+function createAttachmentEntry(file) {
+  const kind = attachmentKind(file);
+  const previewUrl = ['image', 'video', 'audio'].includes(kind) ? URL.createObjectURL(file) : '';
+  return {
+    id: `attachment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    file,
+    kind,
+    previewUrl,
+    status: 'queued',
+    progress: 0,
+    stage: 'queued',
+    error: '',
+    uploadResult: null,
+  };
+}
+
+function revokeAttachments(entries = []) {
+  entries.forEach((entry) => {
+    if (entry?.previewUrl) URL.revokeObjectURL(entry.previewUrl);
+  });
+}
+
+function timerLabel(value) {
+  const option = DISAPPEARING_MESSAGE_OPTIONS.find((item) => Number(item.value) === Number(value));
+  return option?.label || 'بدون';
+}
+
+export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend, peer, securitySnapshot }) {
   const [text, setText] = useState('');
-  const [isRecording, setIsRecording] = useState(false);
+  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
   const [attachments, setAttachments] = useState([]);
-  const [uploadProgress, setUploadProgress] = useState(null);
+  const [sending, setSending] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [messageTimer, setMessageTimer] = useState(0);
   const typingTimeoutRef = useRef(null);
   const isTypingRef = useRef(false);
-
-  // Typing indicator with debounce
-  const handleTyping = useCallback(() => {
-    if (!isTypingRef.current) {
-      isTypingRef.current = true;
-      socketManager.emit('typing_start', { chatId });
-    }
-
-    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-
-    typingTimeoutRef.current = setTimeout(() => {
-      isTypingRef.current = false;
-      socketManager.emit('typing_stop', { chatId });
-    }, 2000); // 2 seconds debounce
-  }, [chatId]);
+  const fileInputRef = useRef(null);
+  const attachmentsRef = useRef([]);
 
   useEffect(() => {
-    return () => {
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    };
+    attachmentsRef.current = attachments;
+  }, [attachments]);
+
+  useEffect(() => () => {
+    revokeAttachments(attachmentsRef.current);
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
   }, []);
 
-  const handleInputChange = (e) => {
-    setText(e.target.value);
-    handleTyping();
+  const pendingAttachmentCount = useMemo(
+    () => attachments.filter((item) => item.status === 'queued' || item.status === 'uploading').length,
+    [attachments],
+  );
+
+  const stopTyping = () => {
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    if (!isTypingRef.current) return;
+    isTypingRef.current = false;
+    if (peer) {
+      socketManager.emit('chat_typing', { receiver: peer, is_typing: false });
+    }
+  };
+
+  const emitRecordingState = (value) => {
+    setIsRecording(value === 'recording' || value === 'paused');
+    if (peer) {
+      socketManager.emit('chat_recording', { receiver: peer, is_recording: value === 'recording' || value === 'paused' });
+    }
+  };
+
+  const handleTyping = (nextValue) => {
+    setText(nextValue);
+    if (!peer) return;
+    if (!isTypingRef.current && nextValue.trim()) {
+      isTypingRef.current = true;
+      socketManager.emit('chat_typing', { receiver: peer, is_typing: true });
+    }
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(stopTyping, 1800);
+  };
+
+  const updateAttachment = (attachmentId, patch) => {
+    setAttachments((prev) => prev.map((item) => item.id === attachmentId ? { ...item, ...(patch || {}) } : item));
+  };
+
+  const resetComposer = () => {
+    revokeAttachments(attachments);
+    setText('');
+    setAttachments([]);
+    setSending(false);
+    setShowVoiceRecorder(false);
+    setIsRecording(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (onCancelReply) onCancelReply();
+    stopTyping();
+    if (peer) socketManager.emit('chat_recording', { receiver: peer, is_recording: false });
+  };
+
+  const handleFilesAdded = (fileList) => {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+
+    const accepted = [];
+    const rejected = [];
+
+    files.forEach((file) => {
+      try {
+        mediaUploadService.validate(file);
+        accepted.push(createAttachmentEntry(file));
+      } catch (error) {
+        rejected.push({ file, error: error?.message || 'ملف غير صالح' });
+      }
+    });
+
+    if (accepted.length) {
+      setAttachments((prev) => [...prev, ...accepted]);
+      setShowVoiceRecorder(false);
+    }
+
+    if (rejected.length) {
+      emitToast({
+        type: 'error',
+        title: 'بعض الملفات مرفوضة',
+        description: rejected.map((item) => `${item.file.name}: ${item.error}`).join(' | '),
+      });
+    }
+  };
+
+  const removeAttachment = (attachmentId) => {
+    setAttachments((prev) => {
+      const target = prev.find((item) => item.id === attachmentId);
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((item) => item.id !== attachmentId);
+    });
+  };
+
+  const uploadAttachment = async (entry) => {
+    updateAttachment(entry.id, { status: 'uploading', progress: 0, stage: 'preparing', error: '' });
+    try {
+      const uploadResult = await mediaUploadService.uploadFile(entry.file, {
+        onProgress: (payload) => {
+          updateAttachment(entry.id, {
+            status: payload?.percent >= 100 ? 'uploaded' : 'uploading',
+            progress: Number(payload?.percent || 0),
+            stage: payload?.stage || 'uploading',
+          });
+        },
+      });
+      updateAttachment(entry.id, { status: 'uploaded', progress: 100, stage: 'done', uploadResult });
+      return uploadResult;
+    } catch (error) {
+      updateAttachment(entry.id, { status: 'failed', error: error?.message || 'فشل الرفع', stage: 'failed' });
+      throw error;
+    }
+  };
+
+  const buildMessageSecurityPayload = async (plainText) => {
+    if (!currentUser || !peer || !plainText.trim()) return null;
+    try {
+      return await signalProtocolService.encryptMessage({
+        username: currentUser,
+        peer,
+        plaintext: plainText.trim(),
+      });
+    } catch (error) {
+      emitToast({ type: 'warning', title: 'تعذر تجهيز طبقة التشفير', description: error?.message || 'سيتم الإرسال بتوافقية مؤقتة.' });
+      return null;
+    }
   };
 
   const handleSend = async () => {
-    if (!text.trim() && attachments.length === 0) return;
+    if (sending || (!text.trim() && attachments.length === 0)) return;
+    setSending(true);
 
-    let messageData = {
-      id: Date.now().toString(),
-      chatId,
-      text: text.trim(),
-      timestamp: new Date().toISOString(),
-      replyTo: replyTo?.id
-    };
-
-    // 1. Handle Media Upload if any
-    if (attachments.length > 0) {
-      try {
-        setUploadProgress(0);
-        const uploadedFiles = [];
-        for (const file of attachments) {
-          const result = await mediaUploadPipeline.uploadWithProgress(file, (progress) => {
-            setUploadProgress(progress);
-          });
-          uploadedFiles.push(result.url);
-        }
-        messageData.media = uploadedFiles;
-        messageData.type = 'media';
-      } catch (error) {
-        console.error('Media upload failed', error);
-        // Add to retry queue or show error
-        alert('فشل رفع الوسائط، سيتم المحاولة لاحقاً');
-      }
-    } else {
-      messageData.type = 'text';
+    try {
+      const uploadResults = await Promise.all(attachments.map((entry) => uploadAttachment(entry)));
+      const securityPayload = await buildMessageSecurityPayload(text);
+      await onSend?.({
+        text: text.trim(),
+        media_url: uploadResults[0]?.mediaUrl || '',
+        media_urls: uploadResults.map((item) => item.mediaUrl).filter(Boolean),
+        attachments: uploadResults,
+        type: uploadResults.length ? (uploadResults[0]?.mediaType || 'media') : 'text',
+        replyTo,
+        securityPayload,
+        disappearing_in_seconds: Number(messageTimer || 0),
+        message_status: {
+          sent: false,
+          delivered: false,
+          seen: false,
+          typing: false,
+          recording: false,
+        },
+      });
+      resetComposer();
+    } catch (error) {
+      emitToast({
+        type: 'error',
+        title: 'تعذر إرسال الرسالة',
+        description: error?.response?.data?.detail || error?.message || 'حاول مرة تانية.',
+      });
+      setSending(false);
     }
-
-    // 2. Apply E2E Encryption
-    if (messageData.text) {
-      messageData.text = await encryptionService.encrypt(messageData.text, 'user-secret-key');
-    }
-
-    // 3. Send via Socket or Retry Queue
-    if (socketManager.socket.connected) {
-      onSend(messageData);
-    } else {
-      retryQueue.addToQueue(messageData);
-      // Optimistic UI update could happen here
-    }
-
-    // Reset state
-    setText('');
-    setAttachments([]);
-    setUploadProgress(null);
-    if (onCancelReply) onCancelReply();
-    
-    // Stop typing indicator
-    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    isTypingRef.current = false;
-    socketManager.emit('typing_stop', { chatId });
   };
 
-  const startRecording = () => {
-    setIsRecording(true);
-    // Logic for voice recording
+  const handleVoiceSend = async (voicePayload) => {
+    setSending(true);
+    try {
+      const upload = await mediaUploadService.uploadVoiceNote(voicePayload.file, {
+        fileName: voicePayload.file.name,
+        onProgress: () => {},
+      });
+      await onSend?.({
+        text: '',
+        media_url: upload.mediaUrl,
+        media_urls: [upload.mediaUrl],
+        attachments: [upload],
+        type: 'voice',
+        waveform_seed: voicePayload.waveformSeed,
+        audio_duration_seconds: voicePayload.durationSeconds,
+        replyTo,
+        securityPayload: null,
+        disappearing_in_seconds: Number(messageTimer || 0),
+        message_status: {
+          sent: false,
+          delivered: false,
+          seen: false,
+          typing: false,
+          recording: false,
+        },
+      });
+      resetComposer();
+    } catch (error) {
+      emitToast({ type: 'error', title: 'فشل إرسال التسجيل', description: error?.message || 'جرّب مرة تانية.' });
+      setSending(false);
+    }
   };
 
-  const stopRecording = () => {
-    setIsRecording(false);
-    // In a real app, this would upload the audio file first
-    handleSend();
-  };
+  const signalSummary = securitySnapshot?.enabled
+    ? `${securitySnapshot.protocol || 'Signal'} • ${securitySnapshot.status || 'ready'}`
+    : 'Signal bootstrap pending';
 
   return (
-    <div style={{ padding: 10, background: '#111', borderTop: '1px solid #333' }}>
-      {/* Reply Preview */}
-      {replyTo && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 10px', background: 'rgba(255,255,255,0.05)', borderRadius: 8, marginBottom: 10 }}>
+    <div style={{ padding: 12, background: '#111827', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'grid', gap: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+          🔐 {signalSummary}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <label style={{ fontSize: 12, color: 'var(--muted)' }}>الرسائل المختفية</label>
+          <select value={messageTimer} onChange={(event) => setMessageTimer(Number(event.target.value || 0))} style={{ background: '#0f172a', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '8px 10px' }}>
+            {DISAPPEARING_MESSAGE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+          <span style={{ fontSize: 12, color: 'var(--muted)' }}>⏱ {timerLabel(messageTimer)}</span>
+        </div>
+      </div>
+
+      {replyTo ? (
+        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(255,255,255,0.05)', borderRadius: 12, gap: 10 }}>
           <div style={{ fontSize: 12, borderRight: '2px solid var(--primary)', paddingRight: 8 }}>
             <div style={{ fontWeight: 'bold' }}>الرد على {replyTo.sender}</div>
-            <div style={{ opacity: 0.7 }}>{replyTo.text}</div>
+            <div style={{ opacity: 0.75 }}>{replyTo.content || replyTo.message}</div>
           </div>
-          <button onClick={onCancelReply} style={{ background: 'none', border: 'none', color: 'white' }}>×</button>
+          <button type="button" onClick={onCancelReply} style={{ background: 'none', border: 'none', color: 'white' }}>×</button>
         </div>
-      )}
+      ) : null}
 
-      {/* Attachments Preview */}
-      {attachments.length > 0 && (
-        <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-          {attachments.map((file, i) => (
-            <div key={i} style={{ position: 'relative', width: 50, height: 50, background: '#222', borderRadius: 8, overflow: 'hidden' }}>
-              {file.type.startsWith('image/') ? (
-                <img src={URL.createObjectURL(file)} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>📄</div>
-              )}
-              {uploadProgress !== null && (
-                <div style={{ position: 'absolute', bottom: 0, left: 0, height: 4, background: 'var(--primary)', width: `${uploadProgress}%`, transition: 'width 0.3s' }} />
-              )}
+      {attachments.length > 0 ? (
+        <div style={{ display: 'grid', gap: 8 }}>
+          {attachments.map((entry) => (
+            <div key={entry.id} style={{ display: 'grid', gap: 8, padding: 10, borderRadius: 14, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                  {entry.previewUrl && entry.kind === 'image' ? <img src={entry.previewUrl} alt={entry.file.name} style={{ width: 56, height: 56, borderRadius: 12, objectFit: 'cover' }} /> : null}
+                  {entry.previewUrl && entry.kind === 'video' ? <video src={entry.previewUrl} style={{ width: 56, height: 56, borderRadius: 12, objectFit: 'cover' }} /> : null}
+                  {entry.kind === 'audio' && entry.previewUrl ? <audio src={entry.previewUrl} controls style={{ maxWidth: 220 }} /> : null}
+                  {!entry.previewUrl ? <div style={{ width: 56, height: 56, borderRadius: 12, display: 'grid', placeItems: 'center', background: 'rgba(139,92,246,0.15)' }}>📄</div> : null}
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{entry.file.name}</div>
+                    <div style={{ fontSize: 12, color: 'var(--muted)' }}>{entry.stage} • {entry.progress}%</div>
+                    {entry.error ? <div style={{ fontSize: 12, color: '#fca5a5' }}>{entry.error}</div> : null}
+                  </div>
+                </div>
+                <button type="button" onClick={() => removeAttachment(entry.id)} style={{ background: 'none', border: 'none', color: '#fca5a5' }}>حذف</button>
+              </div>
+              <div style={{ height: 6, borderRadius: 999, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                <div style={{ width: `${entry.progress}%`, height: '100%', background: entry.status === 'failed' ? '#ef4444' : '#8b5cf6', transition: 'width 0.2s ease' }} />
+              </div>
             </div>
           ))}
         </div>
-      )}
+      ) : null}
+
+      {showVoiceRecorder ? (
+        <VoiceRecorder
+          onStateChange={emitRecordingState}
+          onSend={handleVoiceSend}
+          onCancel={() => {
+            emitRecordingState('idle');
+            setShowVoiceRecorder(false);
+          }}
+        />
+      ) : null}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <button style={{ background: 'none', border: 'none', fontSize: 20 }}>😊</button>
+        <button type="button" style={{ background: 'none', border: 'none', fontSize: 20 }} onClick={() => emitToast({ type: 'info', title: 'الإيموجي', description: 'استخدم لوحة الإيموجي في جهازك أو لوحة المفاتيح.' })}>😊</button>
         <label style={{ cursor: 'pointer' }}>
-          <input type="file" hidden multiple onChange={(e) => setAttachments(Array.from(e.target.files))} />
+          <input ref={fileInputRef} type="file" hidden multiple onChange={(event) => handleFilesAdded(event.target.files)} />
           <span style={{ fontSize: 20 }}>📎</span>
         </label>
-        
-        <input 
-          type="text" 
-          placeholder="اكتب رسالة..." 
+        <button
+          type="button"
+          onClick={() => setShowVoiceRecorder((prev) => !prev)}
+          style={{
+            background: showVoiceRecorder || isRecording ? '#8b5cf6' : 'transparent',
+            border: '1px solid rgba(255,255,255,0.12)',
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            color: 'white',
+          }}
+        >
+          🎤
+        </button>
+
+        <input
+          type="text"
+          placeholder={peer ? `اكتب رسالة إلى ${peer}...` : 'اكتب رسالة...'}
           value={text}
-          onChange={handleInputChange}
-          onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-          style={{ flex: 1, background: '#222', border: 'none', padding: '10px 15px', borderRadius: 20, color: 'white', outline: 'none' }}
+          onChange={(event) => handleTyping(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault();
+              handleSend();
+            }
+          }}
+          style={{ flex: 1, background: '#1f2937', border: '1px solid rgba(255,255,255,0.08)', padding: '12px 14px', borderRadius: 18, color: 'white', outline: 'none' }}
         />
 
-        {text.trim() || attachments.length > 0 ? (
-          <Button onClick={handleSend}>إرسال</Button>
-        ) : (
-          <button 
-            onMouseDown={startRecording}
-            onMouseUp={stopRecording}
-            style={{ 
-              background: isRecording ? '#ff4444' : 'var(--primary)', 
-              border: 'none', width: 40, height: 40, borderRadius: '50%', color: 'white', cursor: 'pointer',
-              transition: '0.2s',
-              transform: isRecording ? 'scale(1.2)' : 'scale(1)'
-            }}
-          >
-            🎤
-          </button>
-        )}
+        <Button onClick={handleSend} loading={sending} disabled={sending || (!text.trim() && attachments.length === 0)}>
+          إرسال
+        </Button>
       </div>
     </div>
   );

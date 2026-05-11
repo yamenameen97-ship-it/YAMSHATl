@@ -1,25 +1,37 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 const ToastContext = createContext({ pushToast: () => {} });
+
+function normalizeToast(toast = {}) {
+  const title = toast.title || toast.message || toast.label || (toast.type === 'error' ? 'حدث خطأ' : toast.type === 'success' ? 'تم بنجاح' : 'تنبيه');
+  const description = toast.description || (toast.title && toast.message && toast.title !== toast.message ? toast.message : '') || '';
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    type: toast.type || 'info',
+    title,
+    description,
+    duration: Number(toast.duration || 3200),
+  };
+}
 
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
 
-  const pushToast = (toast) => {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    setToasts((prev) => [...prev, { id, type: 'info', ...toast }]);
+  const pushToast = useCallback((toast) => {
+    const nextToast = normalizeToast(toast);
+    setToasts((prev) => [...prev, nextToast]);
     window.setTimeout(() => {
-      setToasts((prev) => prev.filter((item) => item.id !== id));
-    }, toast?.duration || 3200);
-  };
+      setToasts((prev) => prev.filter((item) => item.id !== nextToast.id));
+    }, nextToast.duration);
+  }, []);
 
   useEffect(() => {
     const handleToast = (event) => pushToast(event.detail || {});
     window.addEventListener('yamshat:toast', handleToast);
     return () => window.removeEventListener('yamshat:toast', handleToast);
-  }, []);
+  }, [pushToast]);
 
-  const value = useMemo(() => ({ pushToast }), []);
+  const value = useMemo(() => ({ pushToast }), [pushToast]);
 
   return (
     <ToastContext.Provider value={value}>

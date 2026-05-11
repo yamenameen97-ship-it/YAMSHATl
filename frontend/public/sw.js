@@ -3,7 +3,7 @@
  * Features: Advanced Caching, Offline Sync, Stale-While-Revalidate, Media Cache
  */
 
-const VERSION = 'yamshat-v7';
+const VERSION = 'yamshat-v8';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -16,7 +16,6 @@ const APP_SHELL = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/app-config.js',
   '/offline.html'
 ];
 
@@ -26,7 +25,7 @@ const APP_SHELL = [
 async function staleWhileRevalidate(request, cacheName) {
   const cache = await caches.open(cacheName);
   const cachedResponse = await cache.match(request);
-  
+
   const fetchPromise = fetch(request).then(async (networkResponse) => {
     if (networkResponse && networkResponse.status === 200) {
       await cache.put(request, networkResponse.clone());
@@ -69,6 +68,19 @@ async function cacheFirst(request, cacheName) {
   }
 }
 
+async function networkFirstNoStore(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  try {
+    const networkResponse = await fetch(request, { cache: 'no-store' });
+    if (networkResponse && networkResponse.status === 200) {
+      await cache.put(request, networkResponse.clone());
+    }
+    return networkResponse;
+  } catch (error) {
+    return cache.match(request);
+  }
+}
+
 // --- Lifecycle Events ---
 
 self.addEventListener('install', (event) => {
@@ -80,7 +92,7 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => 
+    caches.keys().then((keys) =>
       Promise.all(keys.filter((key) => !Object.values(CACHE_NAMES).includes(key)).map((key) => caches.delete(key)))
     ).then(() => self.clients.claim())
   );
@@ -94,6 +106,11 @@ self.addEventListener('fetch', (event) => {
 
   // Skip non-GET requests
   if (request.method !== 'GET') return;
+
+  if (url.pathname === '/app-config.js') {
+    event.respondWith(networkFirstNoStore(request, CACHE_NAMES.STATIC));
+    return;
+  }
 
   // 1. Navigation (HTML)
   if (request.mode === 'navigate') {
@@ -160,7 +177,7 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   if (event.action === 'close') return;
-  
+
   event.waitUntil(
     clients.matchAll({ type: 'window' }).then((clientList) => {
       for (const client of clientList) {

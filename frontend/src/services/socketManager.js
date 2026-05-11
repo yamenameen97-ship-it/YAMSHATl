@@ -14,12 +14,40 @@ class SocketManager {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 30000,
       timeout: 20000,
-      auth: (cb) => cb(this.buildAuthPayload()),
+      auth: this.buildAuthPayload(),
     });
 
-    this.offlineQueue = JSON.parse(localStorage.getItem('socket_offline_queue') || '[]');
+    this.offlineQueue = this.readOfflineQueue();
     this.heartbeatInterval = null;
     this.setupRobustListeners();
+  }
+
+  get connected() {
+    return Boolean(this.socket?.connected);
+  }
+
+  get id() {
+    return this.socket?.id || '';
+  }
+
+  readOfflineQueue() {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = window.localStorage.getItem('socket_offline_queue') || '[]';
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  persistOfflineQueue() {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem('socket_offline_queue', JSON.stringify(this.offlineQueue));
+    } catch {
+      // ignore storage failures
+    }
   }
 
   setupRobustListeners() {
@@ -59,9 +87,24 @@ class SocketManager {
     return token ? { token } : {};
   }
 
+  syncAuth() {
+    const authPayload = this.buildAuthPayload();
+    this.socket.auth = authPayload;
+    if (this.socket.io?.opts) {
+      this.socket.io.opts.auth = authPayload;
+    }
+    return authPayload;
+  }
+
   connect() {
     if (!getAuthToken()) return;
+    this.syncAuth();
     if (!this.socket.connected) this.socket.connect();
+  }
+
+  disconnect() {
+    this.stopHeartbeat();
+    if (this.socket.connected) this.socket.disconnect();
   }
 
   emit(eventName, payload = {}) {
@@ -70,7 +113,7 @@ class SocketManager {
     } else {
       this.offlineQueue.push({ eventName, payload, ts: Date.now() });
       if (this.offlineQueue.length > 100) this.offlineQueue.shift(); // Limit queue size
-      localStorage.setItem('socket_offline_queue', JSON.stringify(this.offlineQueue));
+      this.persistOfflineQueue();
     }
   }
 
@@ -81,7 +124,13 @@ class SocketManager {
       this.socket.emit(item.eventName, item.payload);
     });
     this.offlineQueue = [];
-    localStorage.removeItem('socket_offline_queue');
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem('socket_offline_queue');
+      } catch {
+        // ignore storage failures
+      }
+    }
   }
 
   on(event, handler) {

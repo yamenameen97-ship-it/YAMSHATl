@@ -7,7 +7,7 @@ import { useAppStore } from '../../store/appStore.js';
 import { getUiText } from '../../utils/i18n.js';
 import { selectUnreadNotificationsCount, useNotificationStore } from '../../store/notificationStore.js';
 import { maybeShowBrowserNotification } from '../../utils/notificationCenter.js';
-import { selectUnreadTotal, useChatStore } from '../../store/chatStore.js';
+import { selectUnreadTotal, useChatStore } from '../../store/appStore.js';
 
 export default function Topbar() {
   const location = useLocation();

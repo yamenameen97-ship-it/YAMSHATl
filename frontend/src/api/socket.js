@@ -1,3 +1,3 @@
-import socketManager from '../realtime/socketManager.js';
+import socketManager from '../services/socketManager.js';
 
 export default socketManager;

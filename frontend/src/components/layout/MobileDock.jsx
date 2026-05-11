@@ -1,6 +1,6 @@
 import { Link, NavLink } from 'react-router-dom';
 import { useAppStore } from '../../store/appStore.js';
-import { selectUnreadTotal, useChatStore } from '../../store/chatStore.js';
+import { selectUnreadTotal, useChatStore } from '../../store/appStore.js';
 import { getUiText } from '../../utils/i18n.js';
 
 export default function MobileDock() {

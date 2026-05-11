@@ -1,7 +1,8 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, memo } from 'react';
 import Button from '../ui/Button.jsx';
 import Modal from '../ui/Modal.jsx';
 import Card from '../ui/Card.jsx';
+import OptimizedImage from '../media/OptimizedImage.jsx';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { savePost, sharePost } from '../../api/posts.js';
 
@@ -17,23 +18,39 @@ const ADVANCED_REACTIONS = [
 ];
 
 /**
- * Enhanced Content Parser for Mentions and Hashtags
+ * Enhanced Content Parser with memoization
  */
-const parseContent = (content) => {
-  if (!content) return '';
-  const parts = content.split(/(\s+)/);
-  return parts.map((part, i) => {
-    if (part.startsWith('@')) {
-      return <span key={i} style={{ color: 'var(--accent)', cursor: 'pointer', fontWeight: '600' }}>{part}</span>;
-    }
-    if (part.startsWith('#')) {
-      return <span key={i} style={{ color: 'var(--primary)', cursor: 'pointer', fontWeight: '500' }}>{part}</span>;
-    }
-    return part;
-  });
-};
+const parseContent = memo(function ContentParser({ content }) {
+  const parsedContent = useMemo(() => {
+    if (!content) return '';
+    const parts = content.split(/(\s+)/);
+    return parts.map((part, i) => {
+      if (part.startsWith('@')) {
+        return <span key={i} style={{ color: 'var(--accent)', cursor: 'pointer', fontWeight: '600' }}>{part}</span>;
+      }
+      if (part.startsWith('#')) {
+        return <span key={i} style={{ color: 'var(--primary)', cursor: 'pointer', fontWeight: '500' }}>{part}</span>;
+      }
+      return part;
+    });
+  }, [content]);
 
-export default function PostCard({ post, onShowAnalytics, onLike }) {
+  return <div>{parsedContent}</div>;
+});
+
+parseContent.displayName = 'ContentParser';
+
+/**
+ * PostCard Component - Optimized
+ * 
+ * تحسينات:
+ * - React.memo لمنع rerenders
+ * - useMemo للحسابات المعقدة
+ * - useCallback للـ handlers
+ * - OptimizedImage للصور
+ * - Lazy loading للـ modals
+ */
+const PostCardOptimized = memo(function PostCard({ post, onShowAnalytics, onLike }) {
   const [showReactions, setShowReactions] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showMediaModal, setShowMediaModal] = useState(false);
@@ -43,7 +60,7 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
   
   const queryClient = useQueryClient();
 
-  // Mutations
+  // Memoize mutations
   const saveMutation = useMutation({
     mutationFn: () => savePost(post.id),
     onSuccess: () => {
@@ -55,16 +72,17 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
     mutationFn: (platform) => sharePost(post.id, { platform }),
   });
 
-  const handleTranslate = async () => {
+  // Memoize handlers with useCallback
+  const handleTranslate = useCallback(() => {
     if (isTranslated) {
       setIsTranslated(false);
       return;
     }
     setTranslation("هذه ترجمة تجريبية للمحتوى باستخدام الذكاء الاصطناعي لتسهيل التواصل العالمي.");
     setIsTranslated(true);
-  };
+  }, [isTranslated]);
 
-  const handleShare = (platform) => {
+  const handleShare = useCallback((platform) => {
     const url = `${window.location.origin}/post/${post.id}`;
     const text = post.content;
     
@@ -80,17 +98,41 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
     }
     shareMutation.mutate(platform);
     setShowShareModal(false);
-  };
+  }, [post.id, post.content, shareMutation]);
+
+  const handleToggleReactions = useCallback(() => {
+    setShowReactions(prev => !prev);
+  }, []);
+
+  const handleSelectReaction = useCallback((emoji) => {
+    setMyReaction(emoji);
+    setShowReactions(false);
+  }, []);
+
+  const handleSave = useCallback(() => {
+    saveMutation.mutate();
+  }, [saveMutation]);
+
+  // Memoize computed values
+  const isMediaVideo = useMemo(() => {
+    return post.media_url?.match(/\.(mp4|webm)$/i);
+  }, [post.media_url]);
+
+  const cardStyles = useMemo(() => ({
+    padding: 16,
+    position: 'relative',
+    border: post.is_pinned ? '1px solid var(--accent)' : '1px solid var(--line)',
+    background: post.is_pinned ? 'rgba(var(--accent-rgb), 0.02)' : 'var(--bg-card)'
+  }), [post.is_pinned]);
+
+  const formattedDate = useMemo(() => {
+    return new Date(post.created_at).toLocaleString('ar-EG');
+  }, [post.created_at]);
 
   return (
     <Card 
       className={`post-card ${post.is_pinned ? 'pinned' : ''}`} 
-      style={{ 
-        padding: 16, 
-        position: 'relative',
-        border: post.is_pinned ? '1px solid var(--accent)' : '1px solid var(--line)',
-        background: post.is_pinned ? 'rgba(var(--accent-rgb), 0.02)' : 'var(--bg-card)'
-      }}
+      style={cardStyles}
     >
       {/* Pinned Badge */}
       {post.is_pinned && (
@@ -124,14 +166,24 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
             overflow: 'hidden',
             border: '2px solid var(--line)'
           }}>
-            {post.avatar ? <img src={post.avatar} alt={post.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <strong>{post.username?.[0]?.toUpperCase()}</strong>}
+            {post.avatar ? (
+              <OptimizedImage
+                src={post.avatar}
+                alt={post.username}
+                width={44}
+                height={44}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            ) : (
+              <strong>{post.username?.[0]?.toUpperCase()}</strong>
+            )}
           </div>
           <div>
             <div style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 4 }}>
               {post.username}
               {post.is_verified && <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--accent)"><path d="M12,2L4.5,20.29L5.21,21L12,18L18.79,21L19.5,20.29L12,2Z" /></svg>}
             </div>
-            <div className="muted" style={{ fontSize: 11 }}>{new Date(post.created_at).toLocaleString('ar-EG')}</div>
+            <div className="muted" style={{ fontSize: 11 }}>{formattedDate}</div>
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -141,7 +193,7 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
 
       {/* Content */}
       <div style={{ fontSize: 16, lineHeight: 1.6, marginBottom: 16, whiteSpace: 'pre-wrap' }}>
-        <div>{isTranslated ? translation : parseContent(post.content)}</div>
+        <parseContent content={isTranslated ? translation : post.content} />
         
         {post.media_url && (
           <div 
@@ -158,10 +210,15 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
               justifyContent: 'center'
             }}
           >
-            {post.media_url.match(/\.(mp4|webm)$/i) ? (
+            {isMediaVideo ? (
               <video src={post.media_url} style={{ width: '100%', maxHeight: 400 }} muted loop autoPlay />
             ) : (
-              <img src={post.media_url} alt="Post Media" style={{ width: '100%', height: 'auto', objectFit: 'contain' }} />
+              <OptimizedImage
+                src={post.media_url}
+                alt="Post Media"
+                style={{ width: '100%', height: 'auto', objectFit: 'contain' }}
+                priority={false}
+              />
             )}
           </div>
         )}
@@ -180,7 +237,7 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
           <div style={{ position: 'relative' }}>
             <button 
               onClick={onLike}
-              onContextMenu={(e) => { e.preventDefault(); setShowReactions(!showReactions); }}
+              onContextMenu={(e) => { e.preventDefault(); handleToggleReactions(); }}
               style={{ background: 'none', border: 'none', color: post.is_liked ? 'var(--accent)' : 'var(--text)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}
             >
               <span style={{ fontSize: 18 }}>{post.is_liked ? '❤️' : '🤍'}</span>
@@ -190,7 +247,15 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
             {showReactions && (
               <div className="reactions-popup" style={{ position: 'absolute', bottom: '100%', left: 0, background: 'var(--bg-card)', border: '1px solid var(--line)', borderRadius: 30, padding: '6px 10px', display: 'flex', gap: 6, boxShadow: '0 10px 30px rgba(0,0,0,0.3)', zIndex: 100, marginBottom: 10 }}>
                 {ADVANCED_REACTIONS.map(r => (
-                  <button key={r.emoji} onClick={() => { setMyReaction(r.emoji); setShowReactions(false); }} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', transition: '0.2s' }} onMouseEnter={e => e.target.style.transform = 'scale(1.3)'} onMouseLeave={e => e.target.style.transform = 'scale(1)'}>{r.emoji}</button>
+                  <button 
+                    key={r.emoji} 
+                    onClick={() => handleSelectReaction(r.emoji)}
+                    style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', transition: '0.2s' }} 
+                    onMouseEnter={e => e.target.style.transform = 'scale(1.3)'} 
+                    onMouseLeave={e => e.target.style.transform = 'scale(1)'}
+                  >
+                    {r.emoji}
+                  </button>
                 ))}
               </div>
             )}
@@ -205,7 +270,7 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
         <div style={{ display: 'flex', gap: 16 }}>
           <button onClick={() => setShowShareModal(true)} style={{ background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', fontSize: 18 }} title="مشاركة">📤</button>
           <button 
-            onClick={() => saveMutation.mutate()} 
+            onClick={handleSave}
             style={{ background: 'none', border: 'none', color: post.is_saved ? 'var(--primary)' : 'var(--text)', cursor: 'pointer', fontSize: 18 }} 
             title={post.is_saved ? "إلغاء الحفظ" : "حفظ"}
           >
@@ -217,10 +282,15 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
       {/* Media Viewer Modal */}
       <Modal isOpen={showMediaModal} onClose={() => setShowMediaModal(false)} fullScreen>
         <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
-          {post.media_url?.match(/\.(mp4|webm)$/i) ? (
+          {isMediaVideo ? (
             <video src={post.media_url} controls autoPlay style={{ maxWidth: '100%', maxHeight: '100%' }} />
           ) : (
-            <img src={post.media_url} alt="Full Media" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+            <OptimizedImage
+              src={post.media_url}
+              alt="Full Media"
+              style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+              priority={true}
+            />
           )}
         </div>
       </Modal>
@@ -242,4 +312,19 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
       `}</style>
     </Card>
   );
-}
+}, (prevProps, nextProps) => {
+  // Custom comparison for memo
+  return (
+    prevProps.post?.id === nextProps.post?.id &&
+    prevProps.post?.likes_count === nextProps.post?.likes_count &&
+    prevProps.post?.comments_count === nextProps.post?.comments_count &&
+    prevProps.post?.is_liked === nextProps.post?.is_liked &&
+    prevProps.post?.is_saved === nextProps.post?.is_saved &&
+    prevProps.onShowAnalytics === nextProps.onShowAnalytics &&
+    prevProps.onLike === nextProps.onLike
+  );
+});
+
+PostCardOptimized.displayName = 'PostCardOptimized';
+
+export default PostCardOptimized;

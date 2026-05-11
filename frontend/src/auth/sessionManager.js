@@ -1,9 +1,9 @@
 import axios from 'axios';
 import { API_BASE } from '../api/config.js';
 import { getCsrfToken } from '../utils/csrf.js';
-import { clearStoredUser, getSessionTtlMs, mergeStoredUser } from '../utils/auth.js';
+import { clearStoredUser, getSessionTtlMs, mergeStoredUser, getStoredUser } from '../utils/auth.js';
 import logger from '../utils/logger.js';
-import { getBackoffDelayMs } from '../utils/retry.js';
+import { getBackoffDelayMs, sleep } from '../utils/retry.js';
 
 const plainHttp = axios.create({
   baseURL: API_BASE,
@@ -35,9 +35,10 @@ function notify() {
   });
 }
 
-function createRefreshError(message, code = 'REFRESH_BLOCKED') {
+function createRefreshError(message, code = 'REFRESH_BLOCKED', status = 0) {
   const error = new Error(message);
   error.code = code;
+  error.status = status;
   return error;
 }
 
@@ -75,6 +76,32 @@ function csrfHeaders() {
   return csrfToken ? { 'X-CSRF-Token': csrfToken } : {};
 }
 
+/**
+ * Centralized Error Normalization
+ */
+export function normalizeAuthError(error) {
+  if (!error.response) {
+    return {
+      message: 'تعذر الاتصال بالخادم، يرجى التحقق من اتصال الإنترنت.',
+      type: 'NETWORK_ERROR',
+      status: 0
+    };
+  }
+  const status = error.response.status;
+  const detail = error.response.data?.detail;
+  let message = 'حدث خطأ غير متوقع في المصادقة.';
+  
+  if (typeof detail === 'string') message = detail;
+  else if (detail?.message) message = detail.message;
+  
+  return {
+    message,
+    status,
+    type: status >= 500 ? 'SERVER_ERROR' : 'CLIENT_ERROR',
+    original: error
+  };
+}
+
 export function getRefreshState() {
   return {
     inFlight: Boolean(state.refreshPromise),
@@ -97,41 +124,74 @@ export function shouldRefreshSoon(windowMs = 60_000) {
   return ttl !== null && ttl <= windowMs;
 }
 
+/**
+ * Multi-tab Session Sync
+ */
+export function initMultiTabSync() {
+  if (typeof window === 'undefined') return;
+  window.addEventListener('storage', (event) => {
+    if (event.key === 'yamshat_auth_user' || event.key === 'yamshat_session_active') {
+      logger.info('Auth storage changed in another tab, syncing state...');
+      // Usually the store or app-level hook will react to this
+      // We can also force a refresh if needed
+      if (!event.newValue) {
+        window.location.reload(); // Session cleared elsewhere
+      }
+    }
+  });
+}
+
+/**
+ * Enhanced Refresh with Retry Logic
+ */
 export async function refreshSession(options = {}) {
-  const { reason = 'manual', force = false } = options;
+  const { reason = 'manual', force = false, retryCount = 0 } = options;
 
   if (state.refreshPromise) return state.refreshPromise;
-  if (isOffline()) throw createRefreshError('Cannot refresh while offline', 'OFFLINE');
+  if (isOffline()) throw createRefreshError('لا يمكن التحديث أثناء عدم الاتصال بالإنترنت', 'OFFLINE');
 
   const now = currentTime();
   if (!force && state.circuitOpenUntil > now) {
-    throw createRefreshError('Refresh circuit breaker is open', 'CIRCUIT_OPEN');
+    throw createRefreshError('نظام الحماية مفعل حالياً، حاول مجدداً لاحقاً', 'CIRCUIT_OPEN');
   }
   if (!force && state.cooldownUntil > now) {
-    throw createRefreshError('Refresh cooldown is active', 'COOLDOWN_ACTIVE');
+    throw createRefreshError('يرجى الانتظار قليلاً قبل المحاولة مجدداً', 'COOLDOWN_ACTIVE');
   }
 
-  logger.info('refresh session requested', { reason });
-  state.refreshPromise = plainHttp.post('/auth/refresh', {}, { headers: csrfHeaders() });
-  notify();
+  logger.info('refresh session requested', { reason, retryCount });
+  
+  state.refreshPromise = (async () => {
+    try {
+      const response = await plainHttp.post('/auth/refresh', {}, { headers: csrfHeaders() });
+      mergeStoredUser(response.data);
+      resetFailureState();
+      state.lastSuccessAt = currentTime();
+      return response;
+    } catch (error) {
+      const normalized = normalizeAuthError(error);
+      
+      // Retry logic for transient errors
+      if (retryCount < 2 && (normalized.type === 'NETWORK_ERROR' || normalized.status >= 500)) {
+        const delay = getBackoffDelayMs(retryCount);
+        await sleep(delay);
+        state.refreshPromise = null;
+        return refreshSession({ ...options, retryCount: retryCount + 1, force: true });
+      }
 
-  try {
-    const response = await state.refreshPromise;
-    mergeStoredUser(response.data);
-    resetFailureState();
-    state.lastSuccessAt = currentTime();
-    return response;
-  } catch (error) {
-    registerFailure(error);
-    const status = Number(error?.response?.status || 0);
-    if ([400, 401, 403, 404].includes(status)) {
-      clearStoredUser();
+      registerFailure(error);
+      const status = Number(error?.response?.status || 0);
+      if ([400, 401, 403, 404].includes(status)) {
+        clearStoredUser();
+      }
+      throw normalized;
+    } finally {
+      state.refreshPromise = null;
+      notify();
     }
-    throw error;
-  } finally {
-    state.refreshPromise = null;
-    notify();
-  }
+  })();
+
+  notify();
+  return state.refreshPromise;
 }
 
 const sessionManager = {
@@ -139,6 +199,8 @@ const sessionManager = {
   shouldRefreshSoon,
   subscribeToRefreshState,
   getRefreshState,
+  normalizeAuthError,
+  initMultiTabSync
 };
 
 export default sessionManager;

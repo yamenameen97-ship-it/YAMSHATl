@@ -17,8 +17,8 @@ from app.services.auth_feature_service import social_login_or_register, mark_suc
 
 VERIFICATION_REQUIRED_DETAIL = 'Email verification required'
 EMAIL_REGEX = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]{2,}$', re.IGNORECASE)
-DEMO_ACCOUNT_EMAIL = (settings.DEMO_ACCOUNT_EMAIL or 'yasryameen97@gmail.com').strip().lower()
-DEMO_ACCOUNT_BASE_USERNAME = ((DEMO_ACCOUNT_EMAIL.split('@')[0] if '@' in DEMO_ACCOUNT_EMAIL else DEMO_ACCOUNT_EMAIL) or 'yasryameen97').strip().lower()
+DEMO_ACCOUNT_EMAIL = (settings.DEMO_ACCOUNT_EMAIL or 'yasryameen21@gmail.com').strip().lower()
+DEMO_ACCOUNT_BASE_USERNAME = ((DEMO_ACCOUNT_EMAIL.split('@')[0] if '@' in DEMO_ACCOUNT_EMAIL else DEMO_ACCOUNT_EMAIL) or 'yasryameen21').strip().lower()
 
 
 def utcnow_naive() -> datetime:

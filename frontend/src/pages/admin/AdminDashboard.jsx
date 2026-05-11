@@ -30,6 +30,7 @@ function fallbackOverview() {
   }));
 
   const activityStream = Array.from({ length: 6 }, (_, index) => ({
+    id: `ACT-${index + 1}`,
     action: ['New report', 'Post approved', 'Live room flagged', 'User restored'][index % 4],
     description: 'تحديث حي على لوحة الإدارة مرتبط بالـ socket أو polling.',
     timestamp: new Date(now - index * 7 * 60 * 1000).toISOString(),
@@ -99,12 +100,20 @@ function getPerformanceSnapshot() {
   };
 }
 
+function levelTone(level = 'info') {
+  if (['critical', 'error'].includes(level)) return '#ef4444';
+  if (['warning', 'pending'].includes(level)) return '#f97316';
+  return '#22c55e';
+}
+
 export default function AdminDashboard() {
   const { pushToast } = useToast();
   const [dashboard, setDashboard] = useState(() => normalizeOverview(fallbackOverview()));
   const [performanceSnapshot, setPerformanceSnapshot] = useState(() => getPerformanceSnapshot());
   const [refreshInterval, setRefreshInterval] = useState(7000);
   const [loading, setLoading] = useState(true);
+  const [tableFilter, setTableFilter] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
 
   const loadDashboard = useCallback(async () => {
     try {
@@ -118,7 +127,7 @@ export default function AdminDashboard() {
       const normalized = normalizeOverview(overviewPayload);
       if (auditResponse.status === 'fulfilled') {
         normalized.audit_logs = Array.isArray(auditResponse.value?.items)
-          ? auditResponse.value.items.slice(0, 8)
+          ? auditResponse.value.items.slice(0, 10)
           : normalized.audit_logs;
       }
       setDashboard(normalized);
@@ -158,10 +167,10 @@ export default function AdminDashboard() {
       }));
     };
     const onAuditLog = (log) => {
-      setDashboard((prev) => ({ ...prev, audit_logs: [log, ...prev.audit_logs].slice(0, 8) }));
+      setDashboard((prev) => ({ ...prev, audit_logs: [log, ...prev.audit_logs].slice(0, 10) }));
     };
     const onActivity = (activity) => {
-      setDashboard((prev) => ({ ...prev, activity_stream: [activity, ...prev.activity_stream].slice(0, 8) }));
+      setDashboard((prev) => ({ ...prev, activity_stream: [{ ...activity, id: activity.id || `act-${Date.now()}` }, ...prev.activity_stream].slice(0, 10) }));
     };
 
     window.addEventListener('yamshat:performance-metric', onMetric);
@@ -196,16 +205,41 @@ export default function AdminDashboard() {
     return { label: 'مستقر', color: '#22c55e' };
   }, [metrics.cpu_usage, metrics.memory_usage, performanceSnapshot.longTasks]);
 
+  const liveTableRows = useMemo(() => {
+    const auditRows = auditLogs.map((log, index) => ({
+      id: log.id || `audit-${index}`,
+      kind: 'audit',
+      title: log.message || log.summary || 'Audit log',
+      actor: log.admin_name || log.actor || 'Admin',
+      level: log.type || 'info',
+      time: log.timestamp,
+    }));
+    const activityRows = activityStream.map((activity, index) => ({
+      id: activity.id || `activity-${index}`,
+      kind: 'activity',
+      title: activity.action || activity.title || 'Activity',
+      actor: activity.actor || 'Realtime engine',
+      level: activity.level || 'info',
+      time: activity.timestamp,
+      description: activity.description,
+    }));
+
+    return [...auditRows, ...activityRows]
+      .filter((item) => tableFilter === 'all' ? true : item.kind === tableFilter)
+      .filter((item) => `${item.title} ${item.actor} ${item.description || ''}`.toLowerCase().includes(searchTerm.trim().toLowerCase()))
+      .sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0));
+  }, [activityStream, auditLogs, searchTerm, tableFilter]);
+
   return (
     <AdminLayout>
       <section style={{ display: 'grid', gap: 18 }}>
         <Card style={{ padding: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ color: '#60a5fa', fontSize: 13, marginBottom: 8 }}>Active Users • Traffic • Growth • Live Metrics</div>
+              <div style={{ color: '#60a5fa', fontSize: 13, marginBottom: 8 }}>Charts • Live dashboards • Better tables • Filters</div>
               <h2 style={{ margin: 0, color: '#f8fafc' }}>لوحة الإدارة الحية</h2>
               <p style={{ margin: '10px 0 0', color: '#94a3b8', maxWidth: 820 }}>
-                تم تحسين لوحة الأدمن لتعرض إحصائيات حقيقية لحظيًا، مع محرك تحليلات خفيف على الجوال، وسجل نشاط مرتبط بالتدقيق الإداري والأداء الفعلي للمتصفح.
+                تم تطوير لوحة الأدمن بواجهات Dashboard مباشرة، وجداول محسّنة مع فلترة وبحث، ورسوم بيانية تساعد الفريق يتابع الأداء والعمليات في لحظتها.
               </p>
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -267,7 +301,77 @@ export default function AdminDashboard() {
           </Card>
         </section>
 
+        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+          {[
+            { label: 'البث المباشر', value: metrics.live_mix?.[0]?.value || 0, hint: 'الغرف النشطة الآن' },
+            { label: 'الريلز النشطة', value: metrics.live_mix?.[1]?.value || 0, hint: 'محتوى سريع مباشر' },
+            { label: 'القصص النشطة', value: metrics.live_mix?.[2]?.value || 0, hint: 'قصص قيد العرض' },
+            { label: 'التقارير المفتوحة', value: metrics.reports_open || 0, hint: 'يحتاج متابعة' },
+          ].map((item) => (
+            <Card key={item.label} style={{ padding: 18 }}>
+              <div style={{ color: '#94a3b8', fontSize: 12 }}>{item.label}</div>
+              <div style={{ color: '#f8fafc', fontSize: 24, fontWeight: 800, margin: '10px 0 8px' }}>{item.value}</div>
+              <div style={{ color: '#64748b', fontSize: 12 }}>{item.hint}</div>
+            </Card>
+          ))}
+        </section>
+
         <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(320px, 0.9fr)', gap: 18 }}>
+          <Card style={{ padding: 18 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+              <div>
+                <h3 style={{ margin: 0, color: '#f8fafc' }}>الجدول الحي المحسّن</h3>
+                <div className="muted" style={{ marginTop: 6 }}>بحث + فلاتر + دمج النشاطات والتدقيق في جدول واحد</div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {[
+                  ['all', 'الكل'],
+                  ['audit', 'Audit'],
+                  ['activity', 'Activity'],
+                ].map(([value, label]) => (
+                  <button key={value} type="button" className={`dashboard-filter-chip ${tableFilter === value ? 'active' : ''}`} onClick={() => setTableFilter(value)}>{label}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+              <input className="input" style={{ flex: 1, minWidth: 220 }} value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="ابحث في الجداول..." />
+            </div>
+            <div className="table-shell">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>النوع</th>
+                    <th>العنوان</th>
+                    <th>المسؤول</th>
+                    <th>الحالة</th>
+                    <th>الوقت</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {liveTableRows.map((row) => (
+                    <tr key={row.id}>
+                      <td><span className="row-kind-pill">{row.kind === 'audit' ? 'Audit' : 'Activity'}</span></td>
+                      <td>
+                        <div style={{ display: 'grid', gap: 4 }}>
+                          <strong style={{ color: '#f8fafc' }}>{row.title}</strong>
+                          {row.description ? <span className="muted" style={{ fontSize: 12 }}>{row.description}</span> : null}
+                        </div>
+                      </td>
+                      <td>{row.actor}</td>
+                      <td><span className="row-level-pill" style={{ '--level-tone': levelTone(row.level) }}>{row.level}</span></td>
+                      <td>{new Date(row.time).toLocaleString('ar-EG')}</td>
+                    </tr>
+                  ))}
+                  {!liveTableRows.length ? (
+                    <tr>
+                      <td colSpan="5" className="table-empty">لا توجد بيانات مطابقة للفلاتر الحالية.</td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
           <Card style={{ padding: 18 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', marginBottom: 12 }}>
               <h3 style={{ margin: 0, color: '#f8fafc' }}>Admin activity stream</h3>
@@ -283,29 +387,6 @@ export default function AdminDashboard() {
                   <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 6 }}>{activity.description}</div>
                 </div>
               ))}
-            </div>
-          </Card>
-
-          <Card style={{ padding: 18 }}>
-            <h3 style={{ marginTop: 0, color: '#f8fafc' }}>Audit snapshot</h3>
-            <div style={{ display: 'grid', gap: 10 }}>
-              {auditLogs.map((log, index) => {
-                const tone = log.type === 'critical' || log.type === 'error'
-                  ? '#ef4444'
-                  : log.type === 'warning'
-                    ? '#f97316'
-                    : '#22c55e';
-                return (
-                  <div key={log.id || index} style={{ borderRadius: 16, padding: 14, background: 'rgba(15,23,42,0.72)', border: '1px solid rgba(148,163,184,0.12)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-                      <span style={{ padding: '4px 10px', borderRadius: 999, background: `${tone}22`, color: tone, fontSize: 12 }}>{log.type || 'info'}</span>
-                      <span style={{ color: '#64748b', fontSize: 12 }}>{new Date(log.timestamp).toLocaleString('ar-EG')}</span>
-                    </div>
-                    <div style={{ color: '#f8fafc', fontSize: 14, marginTop: 8 }}>{log.message || log.summary}</div>
-                    <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>بواسطة {log.admin_name || log.actor || 'Admin'}</div>
-                  </div>
-                );
-              })}
             </div>
           </Card>
         </section>
@@ -325,6 +406,38 @@ export default function AdminDashboard() {
           ))}
         </section>
       </section>
+
+      <style>{`
+        .dashboard-filter-chip {
+          border: 1px solid rgba(148,163,184,0.18);
+          background: rgba(255,255,255,0.04);
+          color: #e2e8f0;
+          padding: 8px 12px;
+          border-radius: 999px;
+          cursor: pointer;
+        }
+        .dashboard-filter-chip.active {
+          background: linear-gradient(135deg, #8b5cf6, #06b6d4);
+          border-color: transparent;
+        }
+        .row-kind-pill,
+        .row-level-pill {
+          display: inline-flex;
+          padding: 4px 10px;
+          border-radius: 999px;
+          font-size: 12px;
+          font-weight: 700;
+        }
+        .row-kind-pill {
+          background: rgba(59,130,246,0.12);
+          color: #bfdbfe;
+        }
+        .row-level-pill {
+          --level-tone: #22c55e;
+          background: color-mix(in srgb, var(--level-tone) 16%, transparent);
+          color: var(--level-tone);
+        }
+      `}</style>
     </AdminLayout>
   );
 }

@@ -12,8 +12,6 @@ import { appendVideoQuality, getDeviceProfile } from '../utils/deviceProfile.js'
 import { getOptimizedImageUrl } from '../utils/performance.js';
 import { fetchSuggestedReels } from '../services/recommendationService.js';
 
-const ITEM_HEIGHT = 760;
-
 function computeReelScore(item) {
   const likes = Number(item.likes_count || 0);
   const comments = Number(item.comments_count || 0);
@@ -48,9 +46,14 @@ export default function ReelsPage() {
   const videoRefs = useRef(new Map());
   const viewTimersRef = useRef(new Map());
   const rafRef = useRef(0);
+  const preloadNodesRef = useRef([]);
+  const [viewportHeight, setViewportHeight] = useState(typeof window === 'undefined' ? 760 : window.innerHeight - 70);
   const [reels, setReels] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [playbackProgress, setPlaybackProgress] = useState(0);
+  const [buffering, setBuffering] = useState(false);
+  const [heartBurstId, setHeartBurstId] = useState('');
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showCommentsModal, setShowCommentsModal] = useState(false);
   const [activeReel, setActiveReel] = useState(null);
@@ -58,8 +61,14 @@ export default function ReelsPage() {
   const [busyId, setBusyId] = useState('');
   const [uploadState, setUploadState] = useState({ mediaUrl: '', uploading: false, content: '' });
   const deviceProfile = useMemo(() => getDeviceProfile(), []);
+  const preloadRange = Math.max(1, Number(deviceProfile.videoPreloadRange || 2));
+  const itemHeight = Math.max(620, viewportHeight);
 
-  const preloadRange = deviceProfile.videoPreloadRange;
+  useEffect(() => {
+    const handleResize = () => setViewportHeight(window.innerHeight - 70);
+    window.addEventListener('resize', handleResize, { passive: true });
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const loadReels = useCallback(async () => {
     setIsLoading(true);
@@ -74,6 +83,7 @@ export default function ReelsPage() {
           recommendation_score: computeReelScore(item),
           views_count: Number(item.views_count || item.view_count || 0),
           poster_url: getPosterUrl(item),
+          duration_label: item.duration_label || item.duration || '',
         }));
       const rankedReels = await fetchSuggestedReels(onlyVideos);
       setReels(rankedReels);
@@ -89,7 +99,30 @@ export default function ReelsPage() {
     loadReels();
   }, [loadReels]);
 
+  useEffect(() => {
+    preloadNodesRef.current.forEach((node) => node.remove?.());
+    preloadNodesRef.current = [];
+
+    const nextItems = reels.slice(activeIndex + 1, activeIndex + 3);
+    nextItems.forEach((reel) => {
+      const href = getAdaptiveVideoSrc(reel, deviceProfile, false);
+      if (!href) return;
+      const link = document.createElement('link');
+      link.rel = 'preload';
+      link.as = 'video';
+      link.href = href;
+      document.head.appendChild(link);
+      preloadNodesRef.current.push(link);
+    });
+
+    return () => {
+      preloadNodesRef.current.forEach((node) => node.remove?.());
+      preloadNodesRef.current = [];
+    };
+  }, [activeIndex, deviceProfile, reels]);
+
   const visibleRange = useMemo(() => {
+    if (!reels.length) return { start: 0, end: 0 };
     const start = Math.max(0, activeIndex - preloadRange);
     const end = Math.min(reels.length - 1, activeIndex + preloadRange);
     return { start, end };
@@ -110,15 +143,16 @@ export default function ReelsPage() {
       const shouldKeepLoaded = Math.abs(index - activeIndex) <= preloadRange;
       const nextSrc = getAdaptiveVideoSrc(reel, deviceProfile, index === activeIndex);
       if (shouldKeepLoaded) {
-        if (!video.dataset.src || video.dataset.src !== nextSrc) {
+        if (video.dataset.src !== nextSrc) {
           video.dataset.src = nextSrc;
         }
-        if (video.src !== nextSrc) {
+        if (video.getAttribute('src') !== nextSrc) {
           video.src = nextSrc;
           video.load();
         }
         video.preload = index === activeIndex ? 'auto' : 'metadata';
         video.muted = index !== activeIndex;
+        video.playsInline = true;
         if (index === activeIndex) {
           video.play?.().catch(() => null);
         } else {
@@ -144,6 +178,12 @@ export default function ReelsPage() {
     viewTimersRef.current.set(timerKey, timer);
     return () => window.clearTimeout(timer);
   }, [activeIndex, deviceProfile, preloadRange, reels]);
+
+  useEffect(() => () => {
+    if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
+    viewTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    preloadNodesRef.current.forEach((node) => node.remove?.());
+  }, []);
 
   const setVideoRef = (index, node) => {
     if (!node) {
@@ -179,7 +219,11 @@ export default function ReelsPage() {
     setReels((prev) => prev.map((item) => item.id === reelId ? { ...item, ...patch } : item));
   };
 
-  const handleLike = async (reel) => {
+  const handleLike = async (reel, { burst = false } = {}) => {
+    if (burst) {
+      setHeartBurstId(String(reel.id));
+      window.setTimeout(() => setHeartBurstId(''), 650);
+    }
     try {
       setBusyId(`like-${reel.id}`);
       const { data } = await likePost(reel.id);
@@ -251,47 +295,88 @@ export default function ReelsPage() {
     const top = event.currentTarget.scrollTop;
     if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
     rafRef.current = window.requestAnimationFrame(() => {
-      const nextIndex = Math.round(top / ITEM_HEIGHT);
+      const nextIndex = Math.round(top / itemHeight);
       setActiveIndex(Math.max(0, Math.min(reels.length - 1, nextIndex)));
     });
   };
+
+  const currentReel = reels[activeIndex];
 
   return (
     <MainLayout>
       <div style={{ height: 'calc(100vh - 60px)', background: '#000', position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', top: 14, left: 14, zIndex: 20, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <Button onClick={() => setShowUploadModal(true)}>رفع ريلز</Button>
+          <Button onClick={() => setShowUploadModal(true)}>رفع ريل</Button>
           <Button variant="secondary" onClick={loadReels} loading={isLoading}>تحديث</Button>
-          <span className="reels-info-chip">suggested reels</span>
-          <span className="reels-info-chip">ranking + trending</span>
+          <span className="reels-info-chip">سحب أنعم</span>
+          <span className="reels-info-chip">preload مجاور</span>
+          <span className="reels-info-chip">FPS friendly</span>
           <span className="reels-info-chip">adaptive {deviceProfile.preferredVideoQuality}</span>
-          <span className="reels-info-chip">{deviceProfile.isLowEndDevice ? 'low-end mode' : 'standard mode'}</span>
+          <span className="reels-info-chip">{deviceProfile.isLowEndDevice ? 'وضع خفيف للجوال' : 'وضع عادي'}</span>
         </div>
 
-        <div ref={scrollRef} onScroll={handleScroll} style={{ height: '100%', overflowY: 'auto', scrollSnapType: 'y mandatory', scrollbarWidth: 'none' }} className="reels-scroll-container">
+        {currentReel ? (
+          <div style={{ position: 'absolute', top: 14, right: 14, zIndex: 20, display: 'grid', gap: 8, justifyItems: 'end' }}>
+            <span className="reels-status-pill">{buffering ? 'جارٍ التحميل...' : 'تشغيل سلس'}</span>
+            <span className="reels-status-pill">{Math.round(playbackProgress)}%</span>
+          </div>
+        ) : null}
+
+        <div
+          ref={scrollRef}
+          onScroll={handleScroll}
+          style={{ height: '100%', overflowY: 'auto', scrollSnapType: 'y mandatory', scrollbarWidth: 'none', overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch' }}
+          className="reels-scroll-container"
+        >
           {isLoading && reels.length === 0 ? <div style={{ height: '100%', display: 'grid', placeItems: 'center', color: 'white' }}>جارٍ تحميل الريلز...</div> : null}
           {!isLoading && reels.length === 0 ? <div style={{ height: '100%', display: 'grid', placeItems: 'center', color: 'white' }}>لا يوجد ريلز حالياً</div> : null}
-          <div style={{ height: `${Math.max(reels.length, 1) * ITEM_HEIGHT}px`, position: 'relative' }}>
+          <div style={{ height: `${Math.max(reels.length, 1) * itemHeight}px`, position: 'relative' }}>
             {renderedReels.map(({ reel, index }) => {
               const ownReel = reel.username === currentUser;
               const isActive = index === activeIndex;
               const isNear = Math.abs(index - activeIndex) <= preloadRange;
               const adaptiveSrc = getAdaptiveVideoSrc(reel, deviceProfile, isActive);
               return (
-                <div key={reel.id} style={{ position: 'absolute', insetInline: 0, top: index * ITEM_HEIGHT, height: ITEM_HEIGHT, scrollSnapAlign: 'start', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                <div
+                  key={reel.id}
+                  style={{
+                    position: 'absolute',
+                    insetInline: 0,
+                    top: index * itemHeight,
+                    height: itemHeight,
+                    scrollSnapAlign: 'start',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: '#000',
+                    borderBottom: '1px solid rgba(255,255,255,0.08)',
+                  }}
+                >
                   {isNear ? (
-                    <video
-                      ref={(node) => setVideoRef(index, node)}
-                      src={adaptiveSrc}
-                      loop
-                      controls={isActive}
-                      muted={!isActive}
-                      playsInline
-                      preload={isActive ? 'auto' : 'metadata'}
-                      poster={reel.poster_url || ''}
-                      disablePictureInPicture={deviceProfile.isLowEndDevice}
-                      style={{ width: '100%', height: '100%', objectFit: 'contain', maxHeight: ITEM_HEIGHT }}
-                    />
+                    <div style={{ position: 'relative', width: '100%', height: '100%' }} onDoubleClick={() => handleLike(reel, { burst: true })}>
+                      <video
+                        ref={(node) => setVideoRef(index, node)}
+                        src={adaptiveSrc}
+                        loop
+                        controls={isActive}
+                        muted={!isActive}
+                        playsInline
+                        preload={isActive ? 'auto' : 'metadata'}
+                        poster={reel.poster_url || ''}
+                        disablePictureInPicture={deviceProfile.isLowEndDevice}
+                        onWaiting={() => isActive && setBuffering(true)}
+                        onPlaying={() => isActive && setBuffering(false)}
+                        onTimeUpdate={(event) => {
+                          if (!isActive) return;
+                          const duration = event.currentTarget.duration || 0;
+                          const current = event.currentTarget.currentTime || 0;
+                          setPlaybackProgress(duration ? (current / duration) * 100 : 0);
+                        }}
+                        style={{ width: '100%', height: '100%', objectFit: 'contain', maxHeight: itemHeight, willChange: 'transform, opacity' }}
+                      />
+                      <div className={`reel-heart-burst ${heartBurstId === String(reel.id) ? 'visible' : ''}`}>❤️</div>
+                      <div className="reel-surface-glow" />
+                    </div>
                   ) : reel.poster_url ? (
                     <img
                       src={reel.poster_url}
@@ -307,15 +392,15 @@ export default function ReelsPage() {
                   )}
 
                   <div style={{ position: 'absolute', top: 20, right: 20, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <span className="reels-info-chip">views {reel.views_count || 0}</span>
-                    <span className="reels-info-chip">score {Math.round(reel.ranking_score || reel.recommendation_score || 0)}</span>
+                    <span className="reels-info-chip">👁️ {reel.views_count || 0}</span>
+                    <span className="reels-info-chip">⚡ {Math.round(reel.ranking_score || reel.recommendation_score || 0)}</span>
                     <span className="reels-info-chip">{reel.trending_badge || 'Suggested'}</span>
                     <span className="reels-info-chip">{reel.media_url?.endsWith('.m3u8') ? 'HLS' : 'MP4/WebM'}</span>
-                    <span className="reels-info-chip">{isNear ? 'loaded' : 'unloaded'}</span>
+                    <span className="reels-info-chip">{isNear ? 'loaded' : 'lazy'}</span>
                   </div>
 
-                  <div style={{ position: 'absolute', right: 16, bottom: 110, display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center', zIndex: 10 }}>
-                    <div style={{ width: 52, height: 52, borderRadius: '50%', border: '2px solid white', overflow: 'hidden', marginBottom: 6 }}>
+                  <div style={{ position: 'absolute', right: 16, bottom: 110, display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center', zIndex: 10 }}>
+                    <div style={{ width: 54, height: 54, borderRadius: '50%', border: '2px solid white', overflow: 'hidden', marginBottom: 2, boxShadow: '0 16px 30px rgba(0,0,0,0.25)' }}>
                       <img src={reel.avatar || `https://ui-avatars.com/api/?name=${reel.username}`} alt="User" loading="lazy" decoding="async" style={{ width: '100%', height: '100%' }} />
                     </div>
                     <button type="button" className="reel-action-btn" onClick={() => handleLike(reel)} disabled={busyId === `like-${reel.id}`}>{reel.is_liked ? '❤️' : '🤍'}</button>
@@ -327,18 +412,21 @@ export default function ReelsPage() {
                     {!ownReel ? <button type="button" className="reel-action-btn" onClick={() => handleFollow(reel)} disabled={busyId === `follow-${reel.id}`}>{reel.following ? '✓' : '➕'}</button> : null}
                   </div>
 
-                  <div style={{ position: 'absolute', bottom: 30, left: 20, right: 90, zIndex: 10, color: 'white', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>
+                  <div style={{ position: 'absolute', insetInlineStart: 0, insetInlineEnd: 0, bottom: 0, padding: '60px 20px 26px', zIndex: 10, color: 'white', background: 'linear-gradient(transparent, rgba(0,0,0,0.88))' }}>
                     <div style={{ fontWeight: 'bold', fontSize: 18, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       @{reel.username}
                       {!ownReel ? (
-                        <button type="button" onClick={() => handleFollow(reel)} style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid white', color: 'white', padding: '4px 12px', borderRadius: 20, fontSize: 12 }}>
+                        <button type="button" onClick={() => handleFollow(reel)} className="reel-follow-btn">
                           {reel.following ? 'إلغاء المتابعة' : 'متابعة'}
                         </button>
                       ) : null}
                     </div>
-                    <div style={{ fontSize: 14, opacity: 0.92, maxWidth: '80%', marginBottom: 8 }}>{reel.content}</div>
-                    <div className="muted" style={{ color: 'rgba(255,255,255,0.72)', fontSize: 12 }}>
-                      unload hidden videos + preload nearby + adaptive quality + requestAnimationFrame scroll
+                    <div style={{ fontSize: 14, opacity: 0.94, maxWidth: '80%', marginBottom: 8, lineHeight: 1.7 }}>{reel.content || 'بدون وصف'}</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      <span className="reels-info-chip">scroll snap</span>
+                      <span className="reels-info-chip">requestAnimationFrame</span>
+                      <span className="reels-info-chip">nearby preload</span>
+                      <span className="reels-info-chip">memory cleanup</span>
                     </div>
                   </div>
                 </div>
@@ -348,7 +436,7 @@ export default function ReelsPage() {
         </div>
       </div>
 
-      <Modal open={showUploadModal} onClose={() => setShowUploadModal(false)} title="رفع ريلز جديد">
+      <Modal open={showUploadModal} onClose={() => setShowUploadModal(false)} title="رفع ريل جديد">
         <div style={{ display: 'grid', gap: 14 }}>
           <textarea value={uploadState.content} onChange={(event) => setUploadState((prev) => ({ ...prev, content: event.target.value }))} rows={4} placeholder="اكتب وصف الريل" style={{ width: '100%', borderRadius: 12, padding: 12 }} />
           <VideoUploader
@@ -387,22 +475,28 @@ export default function ReelsPage() {
       <style>{`
         .reels-scroll-container::-webkit-scrollbar { display: none; }
         .reel-action-btn {
-          background: rgba(255,255,255,0.15);
-          backdrop-filter: blur(5px);
-          border: none;
+          background: rgba(255,255,255,0.14);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(255,255,255,0.12);
           width: 48px;
           height: 48px;
           border-radius: 50%;
           color: white;
           font-size: 22px;
           cursor: pointer;
-          transition: 0.2s;
+          transition: transform 180ms ease, background 180ms ease, box-shadow 180ms ease;
           display: flex;
           align-items: center;
           justify-content: center;
+          box-shadow: 0 14px 32px rgba(0,0,0,0.24);
         }
-        .reel-action-btn:hover { transform: scale(1.08); background: rgba(255,255,255,0.25); }
-        .reels-info-chip {
+        .reel-action-btn:hover {
+          transform: translateY(-2px) scale(1.04);
+          background: rgba(255,255,255,0.24);
+          box-shadow: 0 18px 36px rgba(0,0,0,0.3);
+        }
+        .reels-info-chip,
+        .reels-status-pill {
           display: inline-flex;
           align-items: center;
           gap: 6px;
@@ -412,7 +506,50 @@ export default function ReelsPage() {
           background: rgba(15,23,42,0.72);
           border: 1px solid rgba(255,255,255,0.12);
           font-size: 12px;
-          backdrop-filter: blur(6px);
+          backdrop-filter: blur(10px);
+          box-shadow: 0 12px 30px rgba(0,0,0,0.18);
+        }
+        .reels-status-pill {
+          justify-content: center;
+          min-width: 102px;
+        }
+        .reel-follow-btn {
+          background: rgba(255,255,255,0.14);
+          border: 1px solid rgba(255,255,255,0.2);
+          color: white;
+          padding: 5px 12px;
+          border-radius: 999px;
+          font-size: 12px;
+          cursor: pointer;
+          transition: background 180ms ease, transform 180ms ease;
+        }
+        .reel-follow-btn:hover {
+          background: rgba(255,255,255,0.22);
+          transform: translateY(-1px);
+        }
+        .reel-heart-burst {
+          position: absolute;
+          inset: 0;
+          display: grid;
+          place-items: center;
+          font-size: 88px;
+          opacity: 0;
+          transform: scale(0.6);
+          pointer-events: none;
+        }
+        .reel-heart-burst.visible {
+          animation: reelHeartPop 650ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .reel-surface-glow {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          background: radial-gradient(circle at 50% 100%, rgba(59,130,246,0.12), transparent 42%);
+        }
+        @keyframes reelHeartPop {
+          0% { opacity: 0; transform: scale(0.5); }
+          25% { opacity: 1; transform: scale(1.05); }
+          100% { opacity: 0; transform: scale(1.3); }
         }
         @media (max-width: 768px) {
           .reel-action-btn {

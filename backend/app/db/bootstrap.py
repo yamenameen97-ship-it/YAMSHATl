@@ -24,10 +24,38 @@ DEFAULT_PRIMARY_ADMIN = {
     'password': settings.PRIMARY_ADMIN_PASSWORD or 'yamen1234',
 }
 REQUIRED_SCHEMA_COLUMNS: dict[str, set[str]] = {
-    'users': {'username', 'email', 'hashed_password', 'role', 'is_active', 'email_verified', 'two_factor_enabled'},
+    'users': {
+        'username',
+        'email',
+        'hashed_password',
+        'role',
+        'is_active',
+        'email_verified',
+        'refresh_token_hash',
+        'refresh_token_expires_at',
+        'refresh_token_device_hash',
+        'refresh_token_ip_hash',
+        'refresh_token_user_agent_hash',
+        'refresh_token_session_id',
+        'refresh_token_rotated_at',
+        'last_login_ip_hash',
+        'last_login_user_agent_hash',
+        'last_device_id_hash',
+        'last_admin_ip_hash',
+        'last_admin_user_agent_hash',
+        'two_factor_enabled',
+        'two_factor_method',
+        'suspicious_login_count',
+    },
     'posts': {'user_id', 'media_json', 'is_draft'},
     'comments': {'user_id', 'content'},
     'messages': {'sender_id', 'receiver_id', 'content'},
+}
+REQUIRED_TABLES = {
+    'users',
+    'user_sessions',
+    'audit_logs',
+    'login_challenges',
 }
 
 
@@ -101,6 +129,9 @@ def _schema_needs_normalization(engine: Engine, existing_tables: list[str] | Non
     if any(table in tables for table in LEGACY_USER_TABLE_NAMES):
         return True
 
+    if not REQUIRED_TABLES.issubset(tables):
+        return True
+
     for table_name, required_columns in REQUIRED_SCHEMA_COLUMNS.items():
         if table_name not in tables:
             continue
@@ -126,6 +157,11 @@ def _migrate_users_table(engine: Engine) -> None:
     _add_column_if_missing(engine, 'users', 'password_reset_expires_at', 'password_reset_expires_at TIMESTAMP NULL')
     _add_column_if_missing(engine, 'users', 'refresh_token_hash', 'refresh_token_hash VARCHAR(255)')
     _add_column_if_missing(engine, 'users', 'refresh_token_expires_at', 'refresh_token_expires_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'users', 'refresh_token_device_hash', 'refresh_token_device_hash VARCHAR(128)')
+    _add_column_if_missing(engine, 'users', 'refresh_token_ip_hash', 'refresh_token_ip_hash VARCHAR(128)')
+    _add_column_if_missing(engine, 'users', 'refresh_token_user_agent_hash', 'refresh_token_user_agent_hash VARCHAR(128)')
+    _add_column_if_missing(engine, 'users', 'refresh_token_session_id', 'refresh_token_session_id VARCHAR(128)')
+    _add_column_if_missing(engine, 'users', 'refresh_token_rotated_at', 'refresh_token_rotated_at TIMESTAMP NULL')
     _add_column_if_missing(engine, 'users', 'password_changed_at', 'password_changed_at TIMESTAMP NULL')
     _add_column_if_missing(engine, 'users', 'followers_count', 'followers_count INTEGER NOT NULL DEFAULT 0')
     _add_column_if_missing(engine, 'users', 'following_count', 'following_count INTEGER NOT NULL DEFAULT 0')
@@ -134,6 +170,8 @@ def _migrate_users_table(engine: Engine) -> None:
     _add_column_if_missing(engine, 'users', 'last_login_ip_hash', 'last_login_ip_hash VARCHAR(128)')
     _add_column_if_missing(engine, 'users', 'last_login_user_agent_hash', 'last_login_user_agent_hash VARCHAR(128)')
     _add_column_if_missing(engine, 'users', 'last_device_id_hash', 'last_device_id_hash VARCHAR(128)')
+    _add_column_if_missing(engine, 'users', 'last_admin_ip_hash', 'last_admin_ip_hash VARCHAR(128)')
+    _add_column_if_missing(engine, 'users', 'last_admin_user_agent_hash', 'last_admin_user_agent_hash VARCHAR(128)')
     _add_column_if_missing(engine, 'users', 'social_provider', 'social_provider VARCHAR(40)')
     _add_column_if_missing(engine, 'users', 'social_subject', 'social_subject VARCHAR(255)')
     _add_column_if_missing(engine, 'users', 'two_factor_enabled', 'two_factor_enabled BOOLEAN NOT NULL DEFAULT FALSE')
@@ -163,6 +201,13 @@ def _migrate_users_table(engine: Engine) -> None:
                 'two_factor_enabled',
                 'two_factor_method',
                 'suspicious_login_count',
+                'last_admin_ip_hash',
+                'last_admin_user_agent_hash',
+                'refresh_token_device_hash',
+                'refresh_token_ip_hash',
+                'refresh_token_user_agent_hash',
+                'refresh_token_session_id',
+                'refresh_token_rotated_at',
                 'created_at',
             ]
             if column in columns

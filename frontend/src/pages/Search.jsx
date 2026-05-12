@@ -12,6 +12,8 @@ import { getPosts } from '../api/posts.js';
 import { getUsers } from '../api/users.js';
 import { buildTrendingHashtags, explainRecommendation } from '../services/recommendationService.js';
 import { groupSearchResults, searchInCollections } from '../utils/fuzzySearch.js';
+import { FixedSizeList as List } from 'react-window';
+import AutoSizer from 'react-virtualized-auto-sizer';
 
 const SEARCH_FILTERS = [
   { key: 'all', label: 'الكل' },
@@ -26,6 +28,40 @@ const SEARCH_HISTORY_KEY = 'yamshat.search.history';
 function isVideoUrl(url = '') {
   return /\.(mp4|webm|mov|m3u8)(\?.*)?$/i.test(String(url || ''));
 }
+
+const SearchResultRow = ({ index, style, data }) => {
+  const { results, openResult, setQuery, explainRecommendation } = data;
+  const item = results[index];
+  if (!item) return null;
+
+  return (
+    <div style={{ ...style, padding: '8px 0' }}>
+      <Card style={{ padding: 18, height: '100%', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+          <div style={{ width: 54, height: 54, borderRadius: 16, background: 'rgba(59,130,246,0.12)', display: 'grid', placeItems: 'center', fontSize: 20, overflow: 'hidden', flexShrink: 0 }}>
+            {item.avatar ? <img src={item.avatar} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : item.type === 'hashtags' ? '#' : item.type === 'reels' ? '🎬' : item.type === 'posts' ? '📝' : '👤'}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div>
+                <h3 style={{ margin: '0 0 6px', fontSize: 16 }}>{item.title}</h3>
+                <div className="muted" style={{ fontSize: 12 }}>{item.type === 'users' ? 'شخص' : item.type === 'posts' ? 'منشور' : item.type === 'reels' ? 'ريل' : 'هاشتاج'}</div>
+              </div>
+              <span className="score-pill">match {Math.round(item.score * 100)}%</span>
+            </div>
+            <p style={{ margin: '10px 0', opacity: 0.86, fontSize: 13, lineClamp: 2, display: '-webkit-box', WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+              {item.description || item.content || 'بدون وصف إضافي'}
+            </p>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <Button size="small" onClick={() => openResult(item)}>{item.type === 'hashtags' ? 'تصفية بالهاشتاج' : 'فتح'}</Button>
+              {item.type !== 'hashtags' ? <Button variant="secondary" size="small" onClick={() => setQuery(item.name || item.title)}>بحث مشابه</Button> : null}
+            </div>
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+};
 
 export default function Search() {
   const navigate = useNavigate();
@@ -86,23 +122,30 @@ export default function Search() {
     return history.filter((item) => item.toLowerCase().includes(query.toLowerCase())).slice(0, 6);
   }, [history, query]);
 
-  const openResult = (item) => {
+  const openResult = useCallback((item) => {
     if (item.type === 'hashtags') {
       setQuery(item.title.replace(/^#/, ''));
       setFilterKey('hashtags');
       return;
     }
     navigate(item.route || '/search');
-  };
+  }, [navigate]);
+
+  const listData = useMemo(() => ({
+    results,
+    openResult,
+    setQuery,
+    explainRecommendation
+  }), [results, openResult]);
 
   return (
     <MainLayout>
-      <div style={{ maxWidth: 980, margin: '0 auto', padding: 20 }}>
+      <div style={{ maxWidth: 980, margin: '0 auto', padding: 20, height: 'calc(100vh - 70px)', display: 'flex', flexDirection: 'column' }}>
         <Card style={{ padding: 20, marginBottom: 18 }}>
           <div style={{ display: 'grid', gap: 14 }}>
             <div>
               <h2 style={{ margin: '0 0 8px' }}>البحث الذكي</h2>
-              <p className="muted" style={{ margin: 0 }}>Fuzzy search للناس والمنشورات والريلز والهاشتاجات مع ترتيب حسب الصلة والانتشار.</p>
+              <p className="muted" style={{ margin: 0 }}>Fuzzy search للناس والمنشورات والريلز والهاشتاجات.</p>
             </div>
             <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحث باسم شخص أو هاشتاج أو محتوى..." />
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -112,106 +155,81 @@ export default function Search() {
                 </Button>
               ))}
             </div>
-            {suggestions.length ? (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {suggestions.map((item) => (
-                  <button key={item} type="button" className="mini-chip" onClick={() => setQuery(item)}>{item}</button>
-                ))}
-              </div>
-            ) : null}
           </div>
         </Card>
 
-        {loading ? <ListSkeleton count={6} /> : null}
-        {!loading && error ? <ErrorState title="تعذر فتح البحث الذكي" description={error} onRetry={hydrateCollections} /> : null}
+        <div style={{ flex: 1 }}>
+          {loading ? <ListSkeleton count={6} /> : null}
+          {!loading && error ? <ErrorState title="تعذر فتح البحث الذكي" description={error} onRetry={hydrateCollections} /> : null}
 
-        {!loading && !error && !debouncedQuery ? (
-          <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 0.9fr', gap: 16 }}>
-            <Card style={{ padding: 18 }}>
-              <h3 style={{ marginTop: 0 }}>جاهز تدور على إيه؟</h3>
-              <p className="muted">البحث بيدعم الأخطاء الإملائية البسيطة وكمان بيلمّح لك بالنتائج القريبة.</p>
-              <div style={{ display: 'grid', gap: 12, marginTop: 14 }}>
-                {['مصممين UI', '#yamshat', 'ريلز طبخ', 'منشورات الذكاء الاصطناعي'].map((item) => (
-                  <button key={item} type="button" className="discovery-row" onClick={() => setQuery(item)}>
-                    <span>{item}</span>
-                    <span>↖</span>
-                  </button>
-                ))}
-              </div>
-            </Card>
-            <Card style={{ padding: 18 }}>
-              <h3 style={{ marginTop: 0 }}>الترند الآن</h3>
-              <div style={{ display: 'grid', gap: 12 }}>
-                {collections.hashtags.slice(0, 8).map((item) => (
-                  <button key={item.tag} type="button" className="trending-row" onClick={() => setQuery(item.tag.replace(/^#/, ''))}>
-                    <div>
-                      <strong>{item.tag}</strong>
-                      <div className="muted">{item.count} منشور</div>
-                    </div>
-                    <span className="score-pill">{Math.round(item.score)}</span>
-                  </button>
-                ))}
-              </div>
-            </Card>
-          </div>
-        ) : null}
-
-        {!loading && !error && debouncedQuery ? (
-          <div style={{ display: 'grid', gap: 16 }}>
-            <Card style={{ padding: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                <div>
-                  <strong>نتائج البحث</strong>
-                  <div className="muted">{results.length} نتيجة • {searching ? 'جاري الترتيب...' : 'تم الترتيب حسب الصلة'}</div>
-                </div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {Object.entries(grouped).map(([key, items]) => (
-                    <span key={key} className="score-pill">{key} {items.length}</span>
+          {!loading && !error && !debouncedQuery ? (
+            <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 0.9fr', gap: 16 }}>
+              <Card style={{ padding: 18 }}>
+                <h3 style={{ marginTop: 0 }}>جاهز تدور على إيه؟</h3>
+                <div style={{ display: 'grid', gap: 12, marginTop: 14 }}>
+                  {['مصممين UI', '#yamshat', 'ريلز طبخ', 'منشورات الذكاء الاصطناعي'].map((item) => (
+                    <button key={item} type="button" className="discovery-row" onClick={() => setQuery(item)}>
+                      <span>{item}</span>
+                      <span>↖</span>
+                    </button>
                   ))}
                 </div>
-              </div>
-            </Card>
-
-            {!results.length ? <EmptyState icon="🔎" title="مفيش نتائج مناسبة" description="جرّب كلمة تانية أو وسيّع البحث باستخدام فلتر الكل." /> : null}
-
-            {results.map((item) => (
-              <Card key={`${item.type}-${item.id}`} style={{ padding: 18 }}>
-                <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-                  <div style={{ width: 54, height: 54, borderRadius: 16, background: 'rgba(59,130,246,0.12)', display: 'grid', placeItems: 'center', fontSize: 20, overflow: 'hidden', flexShrink: 0 }}>
-                    {item.avatar ? <img src={item.avatar} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : item.type === 'hashtags' ? '#' : item.type === 'reels' ? '🎬' : item.type === 'posts' ? '📝' : '👤'}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              </Card>
+              <Card style={{ padding: 18 }}>
+                <h3 style={{ marginTop: 0 }}>الترند الآن</h3>
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {collections.hashtags.slice(0, 8).map((item) => (
+                    <button key={item.tag} type="button" className="trending-row" onClick={() => setQuery(item.tag.replace(/^#/, ''))}>
                       <div>
-                        <h3 style={{ margin: '0 0 6px' }}>{item.title}</h3>
-                        <div className="muted">{item.type === 'users' ? 'شخص' : item.type === 'posts' ? 'منشور' : item.type === 'reels' ? 'ريل' : 'هاشتاج'}</div>
+                        <strong>{item.tag}</strong>
+                        <div className="muted">{item.count} منشور</div>
                       </div>
-                      <span className="score-pill">match {Math.round(item.score * 100)}%</span>
-                    </div>
-                    <p style={{ margin: '10px 0', opacity: 0.86 }}>{item.description || item.content || 'بدون وصف إضافي'}</p>
-                    {item.hashtags?.length ? <div className="muted" style={{ marginBottom: 10 }}>{item.hashtags.slice(0, 4).join(' • ')}</div> : null}
-                    <div className="muted" style={{ marginBottom: 12 }}>إشارة الترتيب: {explainRecommendation(item) || 'مطابقة قريبة للاسم أو النص'}</div>
-                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                      <Button size="small" onClick={() => openResult(item)}>{item.type === 'hashtags' ? 'تصفية بالهاشتاج' : 'فتح'}</Button>
-                      {item.type !== 'hashtags' ? <Button variant="secondary" size="small" onClick={() => setQuery(item.name || item.title)}>بحث مشابه</Button> : null}
-                    </div>
+                    </button>
+                  ))}
+                </div>
+              </Card>
+            </div>
+          ) : null}
+
+          {!loading && !error && debouncedQuery ? (
+            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <Card style={{ padding: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                  <strong>النتائج ({results.length})</strong>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {Object.entries(grouped).map(([key, items]) => (
+                      <span key={key} className="score-pill">{key} {items.length}</span>
+                    ))}
                   </div>
                 </div>
               </Card>
-            ))}
-          </div>
-        ) : null}
+
+              <div style={{ flex: 1 }}>
+                {!results.length ? (
+                  <EmptyState icon="🔎" title="مفيش نتائج مناسبة" />
+                ) : (
+                  <AutoSizer>
+                    {({ height, width }) => (
+                      <List
+                        height={height}
+                        width={width}
+                        itemCount={results.length}
+                        itemSize={180}
+                        itemData={listData}
+                        className="no-scrollbar"
+                      >
+                        {SearchResultRow}
+                      </List>
+                    )}
+                  </AutoSizer>
+                )}
+              </div>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <style>{`
-        .mini-chip {
-          border: 1px solid rgba(148,163,184,0.18);
-          background: rgba(15,23,42,0.58);
-          color: white;
-          padding: 8px 12px;
-          border-radius: 999px;
-          cursor: pointer;
-        }
         .discovery-row, .trending-row {
           width: 100%;
           border: 1px solid rgba(148,163,184,0.14);
@@ -229,17 +247,15 @@ export default function Search() {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          min-width: 68px;
-          padding: 7px 12px;
+          padding: 4px 12px;
           border-radius: 999px;
           background: rgba(59,130,246,0.14);
           color: #93c5fd;
           border: 1px solid rgba(147,197,253,0.3);
-          font-size: 12px;
+          font-size: 11px;
         }
-        @media (max-width: 900px) {
-          .search-discovery-grid { grid-template-columns: 1fr; }
-        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
     </MainLayout>
   );

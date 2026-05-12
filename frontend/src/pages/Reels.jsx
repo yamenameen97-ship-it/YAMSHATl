@@ -11,6 +11,8 @@ import { getCurrentUsername } from '../utils/auth.js';
 import { appendVideoQuality, getDeviceProfile } from '../utils/deviceProfile.js';
 import { getOptimizedImageUrl } from '../utils/performance.js';
 import { fetchSuggestedReels } from '../services/recommendationService.js';
+import { FixedSizeList as List } from 'react-window';
+import AutoSizer from 'react-virtualized-auto-sizer';
 
 function computeReelScore(item) {
   const likes = Number(item.likes_count || 0);
@@ -39,20 +41,129 @@ function getAdaptiveVideoSrc(reel, profile, active = false) {
   return appendVideoQuality(reel.media_url || reel.video_url || '', quality);
 }
 
+const ReelItem = ({ index, style, data }) => {
+  const { reels, activeIndex, setVideoRef, handleLike, openComments, handleSave, handleShare, busyId, heartBurstId, currentUser } = data;
+  const reel = reels[index];
+  const isActive = index === activeIndex;
+  const videoRef = useRef(null);
+
+  useEffect(() => {
+    setVideoRef(index, videoRef.current);
+    return () => setVideoRef(index, null);
+  }, [index, setVideoRef]);
+
+  if (!reel) return null;
+
+  return (
+    <div style={style} className="reel-container">
+      <div className="reel-card relative bg-black overflow-hidden h-full w-full">
+        {/* Video Element */}
+        <video
+          ref={videoRef}
+          className="w-full h-full object-cover"
+          loop
+          playsInline
+          muted={!isActive}
+          poster={getPosterUrl(reel)}
+          onClick={() => {
+            if (videoRef.current) {
+              if (videoRef.current.paused) videoRef.current.play();
+              else videoRef.current.pause();
+            }
+          }}
+          onDoubleClick={() => handleLike(reel, { burst: true })}
+        />
+
+        {/* Overlay Info */}
+        <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent text-white pointer-events-none">
+          <div className="flex items-center gap-3 mb-2 pointer-events-auto">
+            <div className="w-10 h-10 rounded-full bg-gray-600 overflow-hidden border border-white/20">
+              <img src={getOptimizedImageUrl(reel.user_avatar, 80)} alt="" className="w-full h-full object-cover" />
+            </div>
+            <span className="font-bold text-sm">@{reel.username}</span>
+            {reel.username !== currentUser && (
+              <button className="text-xs bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full transition-colors">
+                متابعة
+              </button>
+            )}
+          </div>
+          <p className="text-sm line-clamp-2 mb-2 pointer-events-auto">{reel.content}</p>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="absolute right-4 bottom-20 flex flex-col gap-6 items-center z-10">
+          <div className="flex flex-col items-center gap-1">
+            <button 
+              onClick={() => handleLike(reel)}
+              disabled={busyId === `like-${reel.id}`}
+              className={`p-3 rounded-full transition-all transform active:scale-90 ${reel.is_liked ? 'text-red-500 bg-red-500/10' : 'text-white bg-white/10'}`}
+            >
+              <svg className="w-7 h-7" fill={reel.is_liked ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+              </svg>
+            </button>
+            <span className="text-white text-xs font-medium">{reel.likes_count || 0}</span>
+          </div>
+
+          <div className="flex flex-col items-center gap-1">
+            <button 
+              onClick={() => openComments(reel)}
+              className="p-3 rounded-full bg-white/10 text-white hover:bg-white/20 transition-all"
+            >
+              <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+            </button>
+            <span className="text-white text-xs font-medium">{reel.comments_count || 0}</span>
+          </div>
+
+          <div className="flex flex-col items-center gap-1">
+            <button 
+              onClick={() => handleSave(reel)}
+              disabled={busyId === `save-${reel.id}`}
+              className={`p-3 rounded-full transition-all ${reel.is_saved ? 'text-yellow-500 bg-yellow-500/10' : 'text-white bg-white/10'}`}
+            >
+              <svg className="w-7 h-7" fill={reel.is_saved ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+              </svg>
+            </button>
+          </div>
+
+          <button 
+            onClick={() => handleShare(reel)}
+            className="p-3 rounded-full bg-white/10 text-white hover:bg-white/20 transition-all"
+          >
+            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Heart Burst Animation */}
+        {heartBurstId === String(reel.id) && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-50">
+            <div className="animate-ping">
+              <svg className="w-24 h-24 text-red-500" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+              </svg>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export default function ReelsPage() {
   const { pushToast } = useToast();
   const currentUser = getCurrentUsername();
-  const scrollRef = useRef(null);
+  const listRef = useRef(null);
   const videoRefs = useRef(new Map());
   const viewTimersRef = useRef(new Map());
-  const rafRef = useRef(0);
   const preloadNodesRef = useRef([]);
-  const [viewportHeight, setViewportHeight] = useState(typeof window === 'undefined' ? 760 : window.innerHeight - 70);
   const [reels, setReels] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [playbackProgress, setPlaybackProgress] = useState(0);
-  const [buffering, setBuffering] = useState(false);
   const [heartBurstId, setHeartBurstId] = useState('');
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showCommentsModal, setShowCommentsModal] = useState(false);
@@ -60,15 +171,9 @@ export default function ReelsPage() {
   const [activeComments, setActiveComments] = useState([]);
   const [busyId, setBusyId] = useState('');
   const [uploadState, setUploadState] = useState({ mediaUrl: '', uploading: false, content: '' });
+  
   const deviceProfile = useMemo(() => getDeviceProfile(), []);
-  const preloadRange = Math.max(1, Number(deviceProfile.videoPreloadRange || 2));
-  const itemHeight = Math.max(620, viewportHeight);
-
-  useEffect(() => {
-    const handleResize = () => setViewportHeight(window.innerHeight - 70);
-    window.addEventListener('resize', handleResize, { passive: true });
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  const preloadRange = deviceProfile.isLowEndDevice ? 1 : 2;
 
   const loadReels = useCallback(async () => {
     setIsLoading(true);
@@ -87,9 +192,8 @@ export default function ReelsPage() {
         }));
       const rankedReels = await fetchSuggestedReels(onlyVideos);
       setReels(rankedReels);
-      setActiveIndex((prev) => Math.min(prev, Math.max(0, rankedReels.length - 1)));
     } catch (error) {
-      pushToast({ type: 'error', title: 'تعذر تحميل الريلز', description: error?.response?.data?.detail || error?.message });
+      pushToast({ type: 'error', title: 'تعذر تحميل الريلز', description: error?.message });
     } finally {
       setIsLoading(false);
     }
@@ -99,11 +203,12 @@ export default function ReelsPage() {
     loadReels();
   }, [loadReels]);
 
+  // Intelligent Preload
   useEffect(() => {
     preloadNodesRef.current.forEach((node) => node.remove?.());
     preloadNodesRef.current = [];
 
-    const nextItems = reels.slice(activeIndex + 1, activeIndex + 3);
+    const nextItems = reels.slice(activeIndex + 1, activeIndex + 1 + preloadRange);
     nextItems.forEach((reel) => {
       const href = getAdaptiveVideoSrc(reel, deviceProfile, false);
       if (!href) return;
@@ -117,447 +222,196 @@ export default function ReelsPage() {
 
     return () => {
       preloadNodesRef.current.forEach((node) => node.remove?.());
-      preloadNodesRef.current = [];
     };
-  }, [activeIndex, deviceProfile, reels]);
+  }, [activeIndex, deviceProfile, reels, preloadRange]);
 
-  const visibleRange = useMemo(() => {
-    if (!reels.length) return { start: 0, end: 0 };
-    const start = Math.max(0, activeIndex - preloadRange);
-    const end = Math.min(reels.length - 1, activeIndex + preloadRange);
-    return { start, end };
-  }, [activeIndex, reels.length, preloadRange]);
-
-  const renderedReels = useMemo(() => {
-    const overscan = deviceProfile.isLowEndDevice ? 0 : 1;
-    return reels
-      .map((reel, index) => ({ reel, index }))
-      .filter(({ index }) => index >= Math.max(0, visibleRange.start - overscan) && index <= Math.min(reels.length - 1, visibleRange.end + overscan));
-  }, [deviceProfile.isLowEndDevice, reels, visibleRange.end, visibleRange.start]);
-
+  // Unload and Memory Management
   useEffect(() => {
     videoRefs.current.forEach((video, index) => {
       if (!video) return;
+      const isVisible = Math.abs(index - activeIndex) <= 1;
+      const isPreload = Math.abs(index - activeIndex) <= preloadRange;
       const reel = reels[index];
-      if (!reel) return;
-      const shouldKeepLoaded = Math.abs(index - activeIndex) <= preloadRange;
-      const nextSrc = getAdaptiveVideoSrc(reel, deviceProfile, index === activeIndex);
-      if (shouldKeepLoaded) {
-        if (video.dataset.src !== nextSrc) {
-          video.dataset.src = nextSrc;
-        }
-        if (video.getAttribute('src') !== nextSrc) {
-          video.src = nextSrc;
+      
+      if (!isPreload) {
+        // Unload far videos to save RAM/GPU
+        video.pause();
+        video.src = '';
+        video.load();
+        video.removeAttribute('src');
+        video.preload = 'none';
+      } else if (reel) {
+        const src = getAdaptiveVideoSrc(reel, deviceProfile, index === activeIndex);
+        if (video.src !== src) {
+          video.src = src;
           video.load();
         }
         video.preload = index === activeIndex ? 'auto' : 'metadata';
-        video.muted = index !== activeIndex;
-        video.playsInline = true;
+        
         if (index === activeIndex) {
-          video.play?.().catch(() => null);
+          video.play().catch(() => {});
         } else {
-          video.pause?.();
+          video.pause();
         }
-      } else {
-        video.pause?.();
-        if (video.getAttribute('src')) {
-          video.removeAttribute('src');
-          video.load();
-        }
-        video.preload = 'none';
       }
     });
 
+    // View tracking
     const activeReelItem = reels[activeIndex];
-    if (!activeReelItem) return undefined;
-    const timerKey = String(activeReelItem.id);
-    if (viewTimersRef.current.has(timerKey)) window.clearTimeout(viewTimersRef.current.get(timerKey));
-    const timer = window.setTimeout(() => {
-      setReels((prev) => prev.map((item, index) => index === activeIndex ? { ...item, views_count: Number(item.views_count || 0) + 1 } : item));
-    }, deviceProfile.isLowEndDevice ? 2300 : 1800);
-    viewTimersRef.current.set(timerKey, timer);
-    return () => window.clearTimeout(timer);
-  }, [activeIndex, deviceProfile, preloadRange, reels]);
+    if (activeReelItem) {
+      const timerKey = String(activeReelItem.id);
+      if (viewTimersRef.current.has(timerKey)) clearTimeout(viewTimersRef.current.get(timerKey));
+      const timer = setTimeout(() => {
+        setReels(prev => prev.map((r, i) => i === activeIndex ? { ...r, views_count: (r.views_count || 0) + 1 } : r));
+      }, 2000);
+      viewTimersRef.current.set(timerKey, timer);
+      return () => clearTimeout(timer);
+    }
+  }, [activeIndex, reels, deviceProfile, preloadRange]);
 
-  useEffect(() => () => {
-    if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
-    viewTimersRef.current.forEach((timer) => window.clearTimeout(timer));
-    preloadNodesRef.current.forEach((node) => node.remove?.());
+  const setVideoRef = useCallback((index, node) => {
+    if (node) videoRefs.current.set(index, node);
+    else videoRefs.current.delete(index);
   }, []);
 
-  const setVideoRef = (index, node) => {
-    if (!node) {
-      videoRefs.current.delete(index);
-      return;
+  const handleScroll = useCallback(({ startIndex }) => {
+    if (startIndex !== activeIndex) {
+      setActiveIndex(startIndex);
     }
-    const reel = reels[index];
-    const shouldKeepLoaded = Math.abs(index - activeIndex) <= preloadRange;
-    if (reel && shouldKeepLoaded) {
-      const src = getAdaptiveVideoSrc(reel, deviceProfile, index === activeIndex);
-      node.dataset.src = src;
-      if (!node.getAttribute('src')) node.src = src;
+  }, [activeIndex]);
+
+  const handleLike = async (reel, { burst = false } = {}) => {
+    if (burst) {
+      setHeartBurstId(String(reel.id));
+      setTimeout(() => setHeartBurstId(''), 650);
     }
-    videoRefs.current.set(index, node);
+    // Optimistic Update
+    const originalReels = [...reels];
+    setReels(prev => prev.map(r => r.id === reel.id ? { 
+      ...r, 
+      is_liked: !r.is_liked, 
+      likes_count: r.is_liked ? (r.likes_count - 1) : (r.likes_count + 1) 
+    } : r));
+
+    try {
+      await likePost(reel.id);
+    } catch (error) {
+      setReels(originalReels);
+      pushToast({ type: 'error', title: 'خطأ', description: 'تعذر تحديث الإعجاب' });
+    }
   };
 
-  const refreshComments = async (postId) => {
-    const { data } = await getComments(postId);
-    setActiveComments(Array.isArray(data) ? data : data?.items || []);
+  const handleSave = async (reel) => {
+    const originalReels = [...reels];
+    setReels(prev => prev.map(r => r.id === reel.id ? { ...r, is_saved: !r.is_saved } : r));
+    try {
+      await savePost(reel.id);
+    } catch (error) {
+      setReels(originalReels);
+      pushToast({ type: 'error', title: 'خطأ', description: 'تعذر حفظ الريل' });
+    }
+  };
+
+  const handleShare = async (reel) => {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/reels/${reel.id}`);
+      pushToast({ type: 'success', title: 'تم نسخ الرابط' });
+      await sharePost(reel.id, 'copy');
+    } catch (e) {}
   };
 
   const openComments = async (reel) => {
     setActiveReel(reel);
     setShowCommentsModal(true);
     try {
-      await refreshComments(reel.id);
-    } catch (error) {
-      pushToast({ type: 'error', title: 'تعذر تحميل التعليقات', description: error?.response?.data?.detail || error?.message });
-    }
+      const { data } = await getComments(reel.id);
+      setActiveComments(Array.isArray(data) ? data : data?.items || []);
+    } catch (e) {}
   };
 
-  const updateReel = (reelId, patch) => {
-    setReels((prev) => prev.map((item) => item.id === reelId ? { ...item, ...patch } : item));
-  };
-
-  const handleLike = async (reel, { burst = false } = {}) => {
-    if (burst) {
-      setHeartBurstId(String(reel.id));
-      window.setTimeout(() => setHeartBurstId(''), 650);
-    }
-    try {
-      setBusyId(`like-${reel.id}`);
-      const { data } = await likePost(reel.id);
-      updateReel(reel.id, {
-        is_liked: Boolean(data?.liked ?? !reel.is_liked),
-        likes_count: Number(data?.likes_count ?? data?.likes ?? (reel.likes_count || 0) + (reel.is_liked ? -1 : 1)),
-      });
-    } catch (error) {
-      pushToast({ type: 'error', title: 'تعذر تنفيذ اللايك', description: error?.response?.data?.detail || error?.message });
-    } finally {
-      setBusyId('');
-    }
-  };
-
-  const handleSave = async (reel) => {
-    try {
-      setBusyId(`save-${reel.id}`);
-      await savePost(reel.id);
-      updateReel(reel.id, { is_saved: !reel.is_saved, saved_count: Number(reel.saved_count || 0) + (reel.is_saved ? -1 : 1) });
-    } catch (error) {
-      pushToast({ type: 'error', title: 'تعذر حفظ الريل', description: error?.response?.data?.detail || error?.message });
-    } finally {
-      setBusyId('');
-    }
-  };
-
-  const handleShare = async (reel) => {
-    try {
-      setBusyId(`share-${reel.id}`);
-      await navigator.clipboard.writeText(`${window.location.origin}/post/${reel.id}`);
-      await sharePost(reel.id, 'copy');
-      updateReel(reel.id, { share_count: Number(reel.share_count || 0) + 1 });
-      pushToast({ type: 'success', title: 'تم نسخ رابط الريل' });
-    } catch (error) {
-      pushToast({ type: 'error', title: 'تعذر مشاركة الريل', description: error?.response?.data?.detail || error?.message });
-    } finally {
-      setBusyId('');
-    }
-  };
-
-  const handleFollow = async (reel) => {
-    try {
-      setBusyId(`follow-${reel.id}`);
-      const { data } = await followUser(reel.username);
-      updateReel(reel.id, { following: Boolean(data?.following) });
-    } catch (error) {
-      pushToast({ type: 'error', title: 'تعذر تحديث المتابعة', description: error?.response?.data?.detail || error?.message });
-    } finally {
-      setBusyId('');
-    }
-  };
-
-  const handleAddComment = async ({ content, parentId = null }) => {
-    if (!activeReel || !content?.trim()) return;
-    try {
-      setBusyId(`comment-${activeReel.id}`);
-      const { data } = await addComment(activeReel.id, content.trim(), parentId);
-      const nextComment = data || { id: Date.now(), username: currentUser, content, parent_id: parentId, created_at: new Date().toISOString(), reactions: {} };
-      setActiveComments((prev) => [...prev, nextComment]);
-      updateReel(activeReel.id, { comments_count: Number(activeReel.comments_count || 0) + 1 });
-    } catch (error) {
-      pushToast({ type: 'error', title: 'تعذر إضافة التعليق', description: error?.response?.data?.detail || error?.message });
-    } finally {
-      setBusyId('');
-    }
-  };
-
-  const handleScroll = (event) => {
-    const top = event.currentTarget.scrollTop;
-    if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
-    rafRef.current = window.requestAnimationFrame(() => {
-      const nextIndex = Math.round(top / itemHeight);
-      setActiveIndex(Math.max(0, Math.min(reels.length - 1, nextIndex)));
-    });
-  };
-
-  const currentReel = reels[activeIndex];
+  const listData = useMemo(() => ({
+    reels,
+    activeIndex,
+    setVideoRef,
+    handleLike,
+    openComments,
+    handleSave,
+    handleShare,
+    busyId,
+    heartBurstId,
+    currentUser
+  }), [reels, activeIndex, setVideoRef, busyId, heartBurstId, currentUser]);
 
   return (
-    <MainLayout>
-      <div style={{ height: 'calc(100vh - 60px)', background: '#000', position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', top: 14, left: 14, zIndex: 20, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <Button onClick={() => setShowUploadModal(true)}>رفع ريل</Button>
-          <Button variant="secondary" onClick={loadReels} loading={isLoading}>تحديث</Button>
-          <span className="reels-info-chip">سحب أنعم</span>
-          <span className="reels-info-chip">preload مجاور</span>
-          <span className="reels-info-chip">FPS friendly</span>
-          <span className="reels-info-chip">adaptive {deviceProfile.preferredVideoQuality}</span>
-          <span className="reels-info-chip">{deviceProfile.isLowEndDevice ? 'وضع خفيف للجوال' : 'وضع عادي'}</span>
+    <MainLayout hideNav={true}>
+      <div className="h-screen bg-black flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="absolute top-0 left-0 right-0 z-20 p-4 flex justify-between items-center bg-gradient-to-b from-black/60 to-transparent">
+          <h1 className="text-white font-bold text-xl">Reels</h1>
+          <button 
+            onClick={() => setShowUploadModal(true)}
+            className="bg-white/20 hover:bg-white/30 p-2 rounded-full text-white transition-all"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
         </div>
 
-        {currentReel ? (
-          <div style={{ position: 'absolute', top: 14, right: 14, zIndex: 20, display: 'grid', gap: 8, justifyItems: 'end' }}>
-            <span className="reels-status-pill">{buffering ? 'جارٍ التحميل...' : 'تشغيل سلس'}</span>
-            <span className="reels-status-pill">{Math.round(playbackProgress)}%</span>
-          </div>
-        ) : null}
-
-        <div
-          ref={scrollRef}
-          onScroll={handleScroll}
-          style={{ height: '100%', overflowY: 'auto', scrollSnapType: 'y mandatory', scrollbarWidth: 'none', overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch' }}
-          className="reels-scroll-container"
-        >
-          {isLoading && reels.length === 0 ? <div style={{ height: '100%', display: 'grid', placeItems: 'center', color: 'white' }}>جارٍ تحميل الريلز...</div> : null}
-          {!isLoading && reels.length === 0 ? <div style={{ height: '100%', display: 'grid', placeItems: 'center', color: 'white' }}>لا يوجد ريلز حالياً</div> : null}
-          <div style={{ height: `${Math.max(reels.length, 1) * itemHeight}px`, position: 'relative' }}>
-            {renderedReels.map(({ reel, index }) => {
-              const ownReel = reel.username === currentUser;
-              const isActive = index === activeIndex;
-              const isNear = Math.abs(index - activeIndex) <= preloadRange;
-              const adaptiveSrc = getAdaptiveVideoSrc(reel, deviceProfile, isActive);
-              return (
-                <div
-                  key={reel.id}
-                  style={{
-                    position: 'absolute',
-                    insetInline: 0,
-                    top: index * itemHeight,
-                    height: itemHeight,
-                    scrollSnapAlign: 'start',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: '#000',
-                    borderBottom: '1px solid rgba(255,255,255,0.08)',
-                  }}
+        {/* Virtualized Reels List */}
+        <div className="flex-1">
+          {isLoading ? (
+            <div className="h-full flex items-center justify-center bg-black">
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
+            </div>
+          ) : (
+            <AutoSizer>
+              {({ height, width }) => (
+                <List
+                  ref={listRef}
+                  height={height}
+                  width={width}
+                  itemCount={reels.length}
+                  itemSize={height}
+                  onItemsRendered={({ visibleStartIndex }) => handleScroll({ startIndex: visibleStartIndex })}
+                  itemData={listData}
+                  className="no-scrollbar"
                 >
-                  {isNear ? (
-                    <div style={{ position: 'relative', width: '100%', height: '100%' }} onDoubleClick={() => handleLike(reel, { burst: true })}>
-                      <video
-                        ref={(node) => setVideoRef(index, node)}
-                        src={adaptiveSrc}
-                        loop
-                        controls={isActive}
-                        muted={!isActive}
-                        playsInline
-                        preload={isActive ? 'auto' : 'metadata'}
-                        poster={reel.poster_url || ''}
-                        disablePictureInPicture={deviceProfile.isLowEndDevice}
-                        onWaiting={() => isActive && setBuffering(true)}
-                        onPlaying={() => isActive && setBuffering(false)}
-                        onTimeUpdate={(event) => {
-                          if (!isActive) return;
-                          const duration = event.currentTarget.duration || 0;
-                          const current = event.currentTarget.currentTime || 0;
-                          setPlaybackProgress(duration ? (current / duration) * 100 : 0);
-                        }}
-                        style={{ width: '100%', height: '100%', objectFit: 'contain', maxHeight: itemHeight, willChange: 'transform, opacity' }}
-                      />
-                      <div className={`reel-heart-burst ${heartBurstId === String(reel.id) ? 'visible' : ''}`}>❤️</div>
-                      <div className="reel-surface-glow" />
-                    </div>
-                  ) : reel.poster_url ? (
-                    <img
-                      src={reel.poster_url}
-                      alt={reel.content || 'reel preview'}
-                      loading="lazy"
-                      decoding="async"
-                      style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.72 }}
-                    />
-                  ) : (
-                    <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: 'rgba(255,255,255,0.5)', background: 'radial-gradient(circle at top, rgba(59,130,246,0.26), rgba(0,0,0,1))' }}>
-                      تحميل عند الاقتراب للحفاظ على الذاكرة
-                    </div>
-                  )}
-
-                  <div style={{ position: 'absolute', top: 20, right: 20, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <span className="reels-info-chip">👁️ {reel.views_count || 0}</span>
-                    <span className="reels-info-chip">⚡ {Math.round(reel.ranking_score || reel.recommendation_score || 0)}</span>
-                    <span className="reels-info-chip">{reel.trending_badge || 'Suggested'}</span>
-                    <span className="reels-info-chip">{reel.media_url?.endsWith('.m3u8') ? 'HLS' : 'MP4/WebM'}</span>
-                    <span className="reels-info-chip">{isNear ? 'loaded' : 'lazy'}</span>
-                  </div>
-
-                  <div style={{ position: 'absolute', right: 16, bottom: 110, display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center', zIndex: 10 }}>
-                    <div style={{ width: 54, height: 54, borderRadius: '50%', border: '2px solid white', overflow: 'hidden', marginBottom: 2, boxShadow: '0 16px 30px rgba(0,0,0,0.25)' }}>
-                      <img src={reel.avatar || `https://ui-avatars.com/api/?name=${reel.username}`} alt="User" loading="lazy" decoding="async" style={{ width: '100%', height: '100%' }} />
-                    </div>
-                    <button type="button" className="reel-action-btn" onClick={() => handleLike(reel)} disabled={busyId === `like-${reel.id}`}>{reel.is_liked ? '❤️' : '🤍'}</button>
-                    <div style={{ color: 'white', fontSize: 12 }}>{reel.likes_count || 0}</div>
-                    <button type="button" className="reel-action-btn" onClick={() => openComments(reel)}>💬</button>
-                    <div style={{ color: 'white', fontSize: 12 }}>{reel.comments_count || 0}</div>
-                    <button type="button" className="reel-action-btn" onClick={() => handleSave(reel)} disabled={busyId === `save-${reel.id}`}>{reel.is_saved ? '🔖' : '📑'}</button>
-                    <button type="button" className="reel-action-btn" onClick={() => handleShare(reel)} disabled={busyId === `share-${reel.id}`}>📤</button>
-                    {!ownReel ? <button type="button" className="reel-action-btn" onClick={() => handleFollow(reel)} disabled={busyId === `follow-${reel.id}`}>{reel.following ? '✓' : '➕'}</button> : null}
-                  </div>
-
-                  <div style={{ position: 'absolute', insetInlineStart: 0, insetInlineEnd: 0, bottom: 0, padding: '60px 20px 26px', zIndex: 10, color: 'white', background: 'linear-gradient(transparent, rgba(0,0,0,0.88))' }}>
-                    <div style={{ fontWeight: 'bold', fontSize: 18, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      @{reel.username}
-                      {!ownReel ? (
-                        <button type="button" onClick={() => handleFollow(reel)} className="reel-follow-btn">
-                          {reel.following ? 'إلغاء المتابعة' : 'متابعة'}
-                        </button>
-                      ) : null}
-                    </div>
-                    <div style={{ fontSize: 14, opacity: 0.94, maxWidth: '80%', marginBottom: 8, lineHeight: 1.7 }}>{reel.content || 'بدون وصف'}</div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      <span className="reels-info-chip">scroll snap</span>
-                      <span className="reels-info-chip">requestAnimationFrame</span>
-                      <span className="reels-info-chip">nearby preload</span>
-                      <span className="reels-info-chip">memory cleanup</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                  {ReelItem}
+                </List>
+              )}
+            </AutoSizer>
+          )}
         </div>
+
+        {/* Modals */}
+        <Modal isOpen={showUploadModal} onClose={() => setShowUploadModal(false)} title="إضافة ريل جديد">
+          <VideoUploader 
+            onUploadSuccess={(url) => {
+              setShowUploadModal(false);
+              loadReels();
+              pushToast({ type: 'success', title: 'تم الرفع بنجاح' });
+            }}
+          />
+        </Modal>
+
+        <Modal isOpen={showCommentsModal} onClose={() => setShowCommentsModal(false)} title="التعليقات">
+          <div className="max-h-[70vh] overflow-y-auto p-4">
+            <NestedComments 
+              comments={activeComments} 
+              onAddComment={async (content) => {
+                const { data } = await addComment(activeReel.id, { content });
+                setActiveComments(prev => [data, ...prev]);
+              }}
+            />
+          </div>
+        </Modal>
       </div>
 
-      <Modal open={showUploadModal} onClose={() => setShowUploadModal(false)} title="رفع ريل جديد">
-        <div style={{ display: 'grid', gap: 14 }}>
-          <textarea value={uploadState.content} onChange={(event) => setUploadState((prev) => ({ ...prev, content: event.target.value }))} rows={4} placeholder="اكتب وصف الريل" style={{ width: '100%', borderRadius: 12, padding: 12 }} />
-          <VideoUploader
-            label="رفع فيديو الريلز"
-            onUploadComplete={({ url }) => setUploadState((prev) => ({ ...prev, mediaUrl: url }))}
-            onError={(message) => pushToast({ type: 'error', title: 'تعذر رفع الفيديو', description: message })}
-          />
-          <Button
-            loading={uploadState.uploading}
-            disabled={!uploadState.mediaUrl}
-            onClick={async () => {
-              try {
-                setUploadState((prev) => ({ ...prev, uploading: true }));
-                await createPost({ content: uploadState.content || 'ريل جديد', media_url: uploadState.mediaUrl });
-                setShowUploadModal(false);
-                setUploadState({ mediaUrl: '', uploading: false, content: '' });
-                await loadReels();
-              } catch (error) {
-                pushToast({ type: 'error', title: 'تعذر نشر الريل', description: error?.response?.data?.detail || error?.message });
-                setUploadState((prev) => ({ ...prev, uploading: false }));
-              }
-            }}
-          >نشر الريل</Button>
-        </div>
-      </Modal>
-
-      <Modal open={showCommentsModal} onClose={() => setShowCommentsModal(false)} title="تعليقات الريل" size="large">
-        <NestedComments
-          comments={activeComments}
-          onAddComment={handleAddComment}
-          onReply={(parentId, content) => handleAddComment({ content, parentId })}
-          onToggleReaction={(commentId, emoji) => setActiveComments((prev) => prev.map((item) => String(item.id) === String(commentId) ? { ...item, reactions: { ...(item.reactions || {}), [emoji]: Number(item.reactions?.[emoji] || 0) + 1 } } : item))}
-        />
-      </Modal>
-
       <style>{`
-        .reels-scroll-container::-webkit-scrollbar { display: none; }
-        .reel-action-btn {
-          background: rgba(255,255,255,0.14);
-          backdrop-filter: blur(10px);
-          border: 1px solid rgba(255,255,255,0.12);
-          width: 48px;
-          height: 48px;
-          border-radius: 50%;
-          color: white;
-          font-size: 22px;
-          cursor: pointer;
-          transition: transform 180ms ease, background 180ms ease, box-shadow 180ms ease;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: 0 14px 32px rgba(0,0,0,0.24);
-        }
-        .reel-action-btn:hover {
-          transform: translateY(-2px) scale(1.04);
-          background: rgba(255,255,255,0.24);
-          box-shadow: 0 18px 36px rgba(0,0,0,0.3);
-        }
-        .reels-info-chip,
-        .reels-status-pill {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 7px 12px;
-          border-radius: 999px;
-          color: white;
-          background: rgba(15,23,42,0.72);
-          border: 1px solid rgba(255,255,255,0.12);
-          font-size: 12px;
-          backdrop-filter: blur(10px);
-          box-shadow: 0 12px 30px rgba(0,0,0,0.18);
-        }
-        .reels-status-pill {
-          justify-content: center;
-          min-width: 102px;
-        }
-        .reel-follow-btn {
-          background: rgba(255,255,255,0.14);
-          border: 1px solid rgba(255,255,255,0.2);
-          color: white;
-          padding: 5px 12px;
-          border-radius: 999px;
-          font-size: 12px;
-          cursor: pointer;
-          transition: background 180ms ease, transform 180ms ease;
-        }
-        .reel-follow-btn:hover {
-          background: rgba(255,255,255,0.22);
-          transform: translateY(-1px);
-        }
-        .reel-heart-burst {
-          position: absolute;
-          inset: 0;
-          display: grid;
-          place-items: center;
-          font-size: 88px;
-          opacity: 0;
-          transform: scale(0.6);
-          pointer-events: none;
-        }
-        .reel-heart-burst.visible {
-          animation: reelHeartPop 650ms cubic-bezier(0.22, 1, 0.36, 1);
-        }
-        .reel-surface-glow {
-          position: absolute;
-          inset: 0;
-          pointer-events: none;
-          background: radial-gradient(circle at 50% 100%, rgba(59,130,246,0.12), transparent 42%);
-        }
-        @keyframes reelHeartPop {
-          0% { opacity: 0; transform: scale(0.5); }
-          25% { opacity: 1; transform: scale(1.05); }
-          100% { opacity: 0; transform: scale(1.3); }
-        }
-        @media (max-width: 768px) {
-          .reel-action-btn {
-            width: 42px;
-            height: 42px;
-            font-size: 20px;
-          }
-        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .reel-container { scroll-snap-align: start; }
       `}</style>
     </MainLayout>
   );

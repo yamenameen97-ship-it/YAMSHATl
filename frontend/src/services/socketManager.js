@@ -52,6 +52,8 @@ class SocketManager {
     this.lastHeartbeatAt = 0;
     this.lastPongAt = 0;
     this.lastLatencyMs = null;
+    this.eventDeduper = new Set();
+    this.activeListeners = new Map();
     this.setupRobustListeners();
   }
 
@@ -94,6 +96,11 @@ class SocketManager {
       this.emitBrowserEvent('yamshat:socket-state', { connected: true, id: this.socket.id, latencyMs: this.lastLatencyMs });
       this.processOfflineQueue();
       this.startHeartbeat();
+      
+      // Re-register all listeners on reconnect
+      this.activeListeners.forEach((handlers, event) => {
+        handlers.forEach(handler => this.socket.on(event, handler));
+      });
     });
 
     this.socket.on('disconnect', (reason) => {
@@ -216,12 +223,33 @@ class SocketManager {
     }
   }
 
+  // Enhanced event subscription with deduplication
   on(event, handler) {
-    this.socket.on(event, handler);
-    return () => this.socket.off(event, handler);
+    if (!this.activeListeners.has(event)) {
+      this.activeListeners.set(event, new Set());
+    }
+    this.activeListeners.get(event).add(handler);
+
+    const wrappedHandler = (data) => {
+      // Event Deduplication
+      const eventId = `${event}-${JSON.stringify(data)}`;
+      if (this.eventDeduper.has(eventId)) return;
+      
+      this.eventDeduper.add(eventId);
+      setTimeout(() => this.eventDeduper.delete(eventId), 1000);
+      
+      handler(data);
+    };
+
+    this.socket.on(event, wrappedHandler);
+    return () => {
+      this.activeListeners.get(event)?.delete(handler);
+      this.socket.off(event, wrappedHandler);
+    };
   }
 
   off(event, handler) {
+    this.activeListeners.get(event)?.delete(handler);
     this.socket.off(event, handler);
   }
 }

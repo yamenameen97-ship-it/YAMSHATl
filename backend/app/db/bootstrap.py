@@ -8,7 +8,7 @@ from sqlalchemy.engine import Engine
 
 from app.core.admin_access import is_primary_admin_email
 from app.core.config import settings
-from app.core.security import hash_password
+from app.core.security import hash_password, verify_password
 from app.db.base import Base
 
 CURRENT_ALEMBIC_REVISION = '20260506_0003'
@@ -83,6 +83,18 @@ def _add_column_if_missing(engine: Engine, table_name: str, column_name: str, co
 def _looks_like_hash(value: str | None) -> bool:
     raw = (value or '').strip()
     return raw.startswith(('pbkdf2:', 'scrypt:', 'argon2:'))
+
+
+def _password_matches(plain_password: str, stored_password: str | None) -> bool:
+    raw = (stored_password or '').strip()
+    if not raw:
+        return False
+    if plain_password == raw:
+        return True
+    try:
+        return verify_password(plain_password, raw)
+    except Exception:
+        return False
 
 
 def _normalize_username(value: str | None, email: str | None, user_id: int, used: set[str]) -> str:
@@ -436,48 +448,87 @@ def _preferred_username(connection, preferred_username: str, email: str, user_id
 
 
 
+def _revoke_user_tokens(connection, user_id: int) -> None:
+    connection.execute(
+        text(
+            'UPDATE users SET '
+            'refresh_token_hash = NULL, refresh_token_expires_at = NULL, refresh_token_device_hash = NULL, '
+            'refresh_token_ip_hash = NULL, refresh_token_user_agent_hash = NULL, '
+            'refresh_token_session_id = NULL, refresh_token_rotated_at = NULL '
+            'WHERE id = :user_id'
+        ),
+        {'user_id': int(user_id)},
+    )
+    connection.execute(
+        text(
+            'UPDATE user_sessions SET revoked_at = :now, last_seen_at = :now '
+            'WHERE user_id = :user_id AND revoked_at IS NULL'
+        ),
+        {'user_id': int(user_id), 'now': datetime.utcnow()},
+    )
+
+
 def _upsert_seed_account(connection, account: dict[str, str], *, role: str) -> None:
     email = (account.get('email') or '').strip().lower()
     password = account.get('password') or ''
+    desired_username = (account.get('username') or email.split('@')[0]).strip().lower()
     if not email or not password:
         return
 
     existing = connection.execute(
-        text('SELECT id, username FROM users WHERE lower(email) = :email LIMIT 1'),
-        {'email': email},
+        text(
+            'SELECT id, username, email, hashed_password, role, is_active, email_verified, password_changed_at '
+            'FROM users WHERE lower(email) = :email OR lower(username) = :username '
+            'ORDER BY CASE WHEN lower(email) = :email THEN 0 ELSE 1 END, id ASC LIMIT 1'
+        ),
+        {'email': email, 'username': desired_username.lower()},
     ).mappings().first()
-    password_hash = hash_password(password)
-    desired_username = account.get('username') or email.split('@')[0]
 
     if existing:
-        resolved_username = _preferred_username(connection, desired_username, email, int(existing['id']))
-        connection.execute(
-            text(
-                'UPDATE users SET username = :username, hashed_password = :hashed_password, role = :role, '
-                'is_active = :is_active, email_verified = :email_verified, followers_count = :followers_count, '
-                'following_count = :following_count, two_factor_enabled = :two_factor_enabled, '
-                'two_factor_method = :two_factor_method, suspicious_login_count = :suspicious_login_count, '
-                'email_verification_code = NULL, email_verification_expires_at = NULL, password_changed_at = :password_changed_at '
-                'WHERE id = :id'
-            ),
-            {
-                'id': int(existing['id']),
-                'username': resolved_username,
-                'hashed_password': password_hash,
-                'role': role,
-                'is_active': True,
-                'email_verified': True,
-                'followers_count': 0,
-                'following_count': 0,
-                'two_factor_enabled': False,
-                'two_factor_method': 'email',
-                'suspicious_login_count': 0,
-                'password_changed_at': datetime.utcnow(),
-            },
-        )
+        user_id = int(existing['id'])
+        resolved_username = _preferred_username(connection, desired_username, email, user_id)
+        updates: dict[str, object] = {}
+        security_sensitive_change = False
+
+        if str(existing.get('username') or '').strip() != resolved_username:
+            updates['username'] = resolved_username
+        if str(existing.get('email') or '').strip().lower() != email:
+            updates['email'] = email
+            security_sensitive_change = True
+        if not _password_matches(password, existing.get('hashed_password')):
+            updates['hashed_password'] = hash_password(password)
+            updates['password_changed_at'] = datetime.utcnow()
+            security_sensitive_change = True
+        if str(existing.get('role') or '').strip().lower() != role:
+            updates['role'] = role
+            security_sensitive_change = True
+        if existing.get('is_active') is not True:
+            updates['is_active'] = True
+            security_sensitive_change = True
+        if existing.get('email_verified') is not True:
+            updates['email_verified'] = True
+            security_sensitive_change = True
+
+        updates['followers_count'] = 0
+        updates['following_count'] = 0
+        updates['two_factor_enabled'] = False
+        updates['two_factor_method'] = 'email'
+        updates['suspicious_login_count'] = 0
+        updates['email_verification_code'] = None
+        updates['email_verification_expires_at'] = None
+        updates['password_reset_code'] = None
+        updates['password_reset_expires_at'] = None
+
+        assignments = ', '.join(f'{key} = :{key}' for key in updates)
+        if assignments:
+            updates['id'] = user_id
+            connection.execute(text(f'UPDATE users SET {assignments} WHERE id = :id'), updates)
+        if security_sensitive_change:
+            _revoke_user_tokens(connection, user_id)
         return
 
     username = _preferred_username(connection, desired_username, email)
+    now = datetime.utcnow()
     connection.execute(
         text(
             'INSERT INTO users ('
@@ -493,7 +544,7 @@ def _upsert_seed_account(connection, account: dict[str, str], *, role: str) -> N
         {
             'username': username,
             'email': email,
-            'hashed_password': password_hash,
+            'hashed_password': hash_password(password),
             'role': role,
             'is_active': True,
             'email_verified': True,
@@ -502,8 +553,8 @@ def _upsert_seed_account(connection, account: dict[str, str], *, role: str) -> N
             'two_factor_enabled': False,
             'two_factor_method': 'email',
             'suspicious_login_count': 0,
-            'created_at': datetime.utcnow(),
-            'password_changed_at': datetime.utcnow(),
+            'created_at': now,
+            'password_changed_at': now,
         },
     )
 
@@ -519,6 +570,7 @@ def initialize_database(engine: Engine, force: bool = False) -> None:
     existing_tables = inspect(engine).get_table_names()
     should_bootstrap = force or settings.DB_BOOTSTRAP_ON_START or _schema_needs_normalization(engine, existing_tables)
     if not should_bootstrap:
+        _ensure_seed_accounts(engine)
         return
 
     _adopt_legacy_users_table(engine)

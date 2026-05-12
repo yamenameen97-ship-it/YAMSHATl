@@ -5,6 +5,7 @@ import Button from '../components/ui/Button.jsx';
 import AuthShell from '../components/auth/AuthShell.jsx';
 import CaptchaBox from '../components/auth/CaptchaBox.jsx';
 import { getCaptchaChallenge, loginUser } from '../api/auth.js';
+import { API_BASE, BACKEND_ORIGIN } from '../api/config.js';
 import { sanitizeInputText } from '../utils/sanitize.js';
 import { setStoredUser } from '../utils/auth.js';
 import { getDefaultPostLoginPath } from '../utils/access.js';
@@ -179,10 +180,13 @@ export default function LoginEnhanced() {
     } catch (err) {
       setRetryCount(prev => prev + 1);
       const apiError = parseApiDetail(err?.response?.data?.detail);
-      const message = localizeAuthMessage(apiError?.message || err?.message, 'فشل تسجيل الدخول. يرجى التأكد من البيانات والمحاولة مرة أخرى.');
+      const networkHint = !err?.response
+        ? `تعذر الوصول إلى الخادم حالياً. تأكد أن الواجهة مربوطة بالباك الصحيح وأن CORS يسمح بالدومين الحالي. API الحالي: ${API_BASE} — Origin المتوقع: ${BACKEND_ORIGIN}`
+        : '';
+      const message = networkHint || localizeAuthMessage(apiError?.message || err?.message, 'فشل تسجيل الدخول. يرجى التأكد من البيانات والمحاولة مرة أخرى.');
       setError(message);
       
-      if (apiError?.field === 'captcha' || message.includes('كابتشا')) {
+      if (!err?.response || apiError?.field === 'captcha' || message.includes('كابتشا')) {
         loadCaptcha();
       }
     } finally {

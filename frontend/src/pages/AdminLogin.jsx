@@ -5,6 +5,7 @@ import Button from '../components/ui/Button.jsx';
 import AuthShell from '../components/auth/AuthShell.jsx';
 import CaptchaBox from '../components/auth/CaptchaBox.jsx';
 import { devLoginUser, getCaptchaChallenge, loginUser } from '../api/auth.js';
+import { API_BASE, BACKEND_ORIGIN } from '../api/config.js';
 import { sanitizeInputText } from '../utils/sanitize.js';
 import { clearStoredUser, getStoredUser, setStoredUser } from '../utils/auth.js';
 import { PRIMARY_ADMIN_EMAIL, isPrimaryAdminSession } from '../utils/access.js';
@@ -122,7 +123,10 @@ export default function AdminLogin() {
         });
         return;
       }
-      setError(authError?.message || 'فشل تسجيل دخول الإدارة، راجع البيانات.');
+      const networkHint = !err?.response
+        ? `تعذر الوصول إلى خادم الإدارة. راجع ربط الواجهة مع الباك وتأكد أن CORS يسمح بالدومين الحالي. API الحالي: ${API_BASE} — Origin المتوقع: ${BACKEND_ORIGIN}`
+        : '';
+      setError(networkHint || authError?.message || 'فشل تسجيل دخول الإدارة، راجع البيانات.');
       await loadCaptcha();
     } finally {
       submitLockRef.current = false;

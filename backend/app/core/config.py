@@ -187,17 +187,36 @@ class Settings:
         if self.CORS_ORIGIN_REGEX_RAW:
             return self.CORS_ORIGIN_REGEX_RAW
 
-        for candidate in [self.FRONTEND_ORIGIN, self.BACKEND_ORIGIN, self.RENDER_EXTERNAL_URL]:
+        provider_patterns = [
+            r'http://(?:localhost|127\.0\.0\.1)(?::\d+)?',
+            r'https://[a-z0-9-]+(?:-\d+)?\.onrender\.com',
+            r'https://[a-z0-9-]+\.vercel\.app',
+            r'https://[a-z0-9-]+\.netlify\.app',
+            r'https://[a-z0-9-]+\.pages\.dev',
+            r'https://[a-z0-9-]+\.github\.io',
+        ]
+
+        exact_hosts: list[str] = []
+        for candidate in [self.FRONTEND_ORIGIN, self.BACKEND_ORIGIN, self.RENDER_EXTERNAL_URL, self.RAILWAY_STATIC_URL]:
             parsed = urlparse(candidate)
             host = (parsed.hostname or '').strip().lower()
-            if not host.endswith('.onrender.com'):
+            if not host:
                 continue
-            base = re.sub(r'-\d+(?=\.onrender\.com$)', '', host)
-            service = base.removesuffix('.onrender.com')
-            if service:
-                return rf'^https://{re.escape(service)}(?:-\d+)?\.onrender\.com$'
+            exact_hosts.append(rf'https://{re.escape(host)}')
+            if host.endswith('.onrender.com'):
+                base = re.sub(r'-\d+(?=\.onrender\.com$)', '', host)
+                service = base.removesuffix('.onrender.com')
+                if service:
+                    exact_hosts.append(rf'https://{re.escape(service)}(?:-\d+)?\.onrender\.com')
 
-        return r'^https://[a-z0-9-]+(?:-\d+)?\.onrender\.com$'
+        unique_patterns: list[str] = []
+        seen: set[str] = set()
+        for pattern in [*exact_hosts, *provider_patterns]:
+            if pattern not in seen:
+                unique_patterns.append(pattern)
+                seen.add(pattern)
+
+        return r'^(?:' + '|'.join(unique_patterns) + r')$'
 
     @property
     def cors_origins(self) -> list[str]:

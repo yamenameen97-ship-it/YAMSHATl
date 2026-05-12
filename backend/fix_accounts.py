@@ -3,8 +3,8 @@ import sys
 from sqlalchemy import create_engine
 import re
 from datetime import datetime
-from passlib.context import CryptContext
 from sqlalchemy import text
+import bcrypt
 
 # Minimal config loading
 from dotenv import load_dotenv
@@ -16,10 +16,9 @@ PRIMARY_ADMIN_PASSWORD = os.getenv('PRIMARY_ADMIN_PASSWORD', 'yamen1234')
 DEMO_ACCOUNT_EMAIL = os.getenv('DEMO_ACCOUNT_EMAIL', 'yasryameen21@gmail.com').lower()
 DEMO_ACCOUNT_PASSWORD = os.getenv('DEMO_ACCOUNT_PASSWORD', '12345678')
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
 
 def _upsert_user(connection, email, password, role, username):
     print(f"Upserting user: {email} with role: {role}")
@@ -51,8 +50,9 @@ def _upsert_user(connection, email, password, role, username):
     else:
         connection.execute(
             text(
-                'INSERT INTO users (username, email, hashed_password, role, is_active, email_verified, created_at, password_changed_at) '
-                'VALUES (:username, :email, :hashed_password, :role, :is_active, :email_verified, :now, :now)'
+                'INSERT INTO users (username, email, hashed_password, role, is_active, email_verified, created_at, password_changed_at, '
+                'followers_count, following_count, two_factor_enabled, two_factor_method, suspicious_login_count) '
+                'VALUES (:username, :email, :hashed_password, :role, :is_active, :email_verified, :now, :now, 0, 0, 0, "email", 0)'
             ),
             {
                 'username': username,
@@ -83,7 +83,6 @@ def run_fix():
         print("Successfully updated admin and demo accounts.")
         
         # Verify accounts
-        from sqlalchemy import text
         with engine.connect() as conn:
             result = conn.execute(text("SELECT email, role, is_active, email_verified FROM users WHERE email IN ('yamenameen97@gmail.com', 'yasryameen21@gmail.com')"))
             accounts = result.mappings().all()

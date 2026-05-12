@@ -1,0 +1,1 @@
+import{n as a,t as n}from"./vendor-motion-4LZqcBTs.js";var o=a();function s({children:i,className:t="",...r}){return(0,o.jsx)(n.div,{initial:{opacity:0,y:10},animate:{opacity:1,y:0},transition:{duration:.25},className:`card ${t}`.trim(),...r,children:i})}export{s as t};

@@ -1,172 +1,166 @@
-/**
- * Advanced Service Worker - Yamshat PWA
- * Features: Advanced Caching, Offline Sync, Stale-While-Revalidate, Media Cache
- */
-
-const VERSION = 'yamshat-v7';
+const VERSION = 'yamshat-v10';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
   MEDIA: `${VERSION}:media`,
   API: `${VERSION}:api`,
-  OFFLINE: `${VERSION}:offline`
+  OFFLINE: `${VERSION}:offline`,
 };
 
 const APP_SHELL = [
   '/',
   '/index.html',
+  '/offline.html',
   '/manifest.webmanifest',
-  '/app-config.js',
-  '/offline.html'
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
 ];
 
-// --- Advanced Caching Strategies ---
-
-// Stale-While-Revalidate: Serve from cache, update in background
 async function staleWhileRevalidate(request, cacheName) {
   const cache = await caches.open(cacheName);
-  const cachedResponse = await cache.match(request);
-  
-  const fetchPromise = fetch(request).then(async (networkResponse) => {
-    if (networkResponse && networkResponse.status === 200) {
-      await cache.put(request, networkResponse.clone());
-    }
-    return networkResponse;
+  const cached = await cache.match(request);
+  const network = fetch(request).then(async (response) => {
+    if (response?.status === 200) await cache.put(request, response.clone());
+    return response;
   }).catch(() => null);
-
-  return cachedResponse || fetchPromise;
+  return cached || network;
 }
 
-// Network-First: Try network, fallback to cache
 async function networkFirst(request, cacheName) {
   const cache = await caches.open(cacheName);
   try {
-    const networkResponse = await fetch(request);
-    if (networkResponse && networkResponse.status === 200) {
-      await cache.put(request, networkResponse.clone());
-    }
-    return networkResponse;
-  } catch (error) {
-    const cachedResponse = await cache.match(request);
-    return cachedResponse || (request.mode === 'navigate' ? caches.match('/offline.html') : null);
+    const response = await fetch(request);
+    if (response?.status === 200) await cache.put(request, response.clone());
+    return response;
+  } catch {
+    return cache.match(request);
   }
 }
 
-// Cache-First: Serve from cache, only fetch if missing (good for media/fonts)
 async function cacheFirst(request, cacheName) {
   const cache = await caches.open(cacheName);
-  const cachedResponse = await cache.match(request);
-  if (cachedResponse) return cachedResponse;
-
+  const cached = await cache.match(request);
+  if (cached) return cached;
   try {
-    const networkResponse = await fetch(request);
-    if (networkResponse && networkResponse.status === 200) {
-      await cache.put(request, networkResponse.clone());
-    }
-    return networkResponse;
-  } catch (error) {
+    const response = await fetch(request);
+    if (response?.status === 200) await cache.put(request, response.clone());
+    return response;
+  } catch {
     return null;
   }
 }
 
-// --- Lifecycle Events ---
+async function broadcastMessage(message) {
+  const clientsList = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+  clientsList.forEach((client) => client.postMessage(message));
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAMES.SHELL).then((cache) => cache.addAll(APP_SHELL))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE_NAMES.SHELL).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting())
   );
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => 
-      Promise.all(keys.filter((key) => !Object.values(CACHE_NAMES).includes(key)).map((key) => caches.delete(key)))
-    ).then(() => self.clients.claim())
+    caches.keys().then((keys) => Promise.all(keys.filter((key) => !Object.values(CACHE_NAMES).includes(key)).map((key) => caches.delete(key)))).then(() => self.clients.claim())
   );
 });
 
-// --- Fetch Event Handling ---
+function isSignedMedia(url) {
+  return /([?&])(sig|signature|token|expires)=/i.test(url.search);
+}
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-  const url = new URL(request.url);
-
-  // Skip non-GET requests
   if (request.method !== 'GET') return;
 
-  // 1. Navigation (HTML)
+  const url = new URL(request.url);
   if (request.mode === 'navigate') {
-    event.respondWith(networkFirst(request, CACHE_NAMES.SHELL));
+    event.respondWith(
+      fetch(request)
+        .then(async (response) => {
+          const cache = await caches.open(CACHE_NAMES.SHELL);
+          cache.put(request, response.clone()).catch(() => null);
+          return response;
+        })
+        .catch(async () => {
+          const cache = await caches.open(CACHE_NAMES.SHELL);
+          return cache.match(request) || cache.match('/offline.html') || cache.match('/index.html');
+        })
+    );
     return;
   }
 
-  // 2. Static Assets (JS, CSS, Fonts)
   if (/\.(?:js|css|woff2?|ttf|otf)$/i.test(url.pathname)) {
     event.respondWith(staleWhileRevalidate(request, CACHE_NAMES.STATIC));
     return;
   }
 
-  // 3. Media Assets (Images, Videos)
-  if (/\.(?:png|jpg|jpeg|svg|webp|gif|mp4|webm|mp3|wav)$/i.test(url.pathname) || url.host.includes('imagekit.io')) {
-    event.respondWith(cacheFirst(request, CACHE_NAMES.MEDIA));
-    return;
-  }
-
-  // 4. API Requests
-  if (url.pathname.startsWith('/api/')) {
+  if (/\/(api|notifications)\//i.test(url.pathname)) {
     event.respondWith(networkFirst(request, CACHE_NAMES.API));
     return;
   }
 
-  // Default: Network first
+  if (/\.(?:png|jpg|jpeg|svg|webp|gif|avif)$/i.test(url.pathname)) {
+    event.respondWith(staleWhileRevalidate(request, CACHE_NAMES.MEDIA));
+    return;
+  }
+
+  if (/\.(?:mp4|webm|mp3|wav|m3u8)$/i.test(url.pathname)) {
+    event.respondWith(isSignedMedia(url) ? networkFirst(request, CACHE_NAMES.MEDIA) : cacheFirst(request, CACHE_NAMES.MEDIA));
+    return;
+  }
+
   event.respondWith(networkFirst(request, CACHE_NAMES.OFFLINE));
 });
 
-// --- Offline Sync ---
-
-self.addEventListener('sync', (event) => {
-  if (event.tag === 'sync-posts') {
-    event.waitUntil(syncOfflineData('posts'));
-  } else if (event.tag === 'sync-messages') {
-    event.waitUntil(syncOfflineData('messages'));
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'yamshat:queue-sync') {
+    event.waitUntil(broadcastMessage({ type: 'yamshat:sync-now' }));
   }
 });
 
-async function syncOfflineData(type) {
-  console.log(`[SW] Syncing offline ${type}...`);
-  // Implementation would typically involve reading from IndexedDB and sending to API
-  // This is a placeholder for the logic that would be triggered
-}
-
-// --- Push Notifications ---
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'sync-posts' || event.tag === 'sync-messages' || event.tag === 'sync-notifications') {
+    event.waitUntil(broadcastMessage({ type: 'yamshat:sync-now' }));
+  }
+});
 
 self.addEventListener('push', (event) => {
-  const data = event.data ? event.data.json() : { title: 'Yamshat', body: 'New update!' };
+  const data = event.data ? event.data.json() : { title: 'Yamshat', body: 'لديك تحديث جديد', url: '/' };
   const options = {
     body: data.body,
-    icon: '/icons/icon-192.png',
-    badge: '/icons/icon-192.png',
-    data: { url: data.url || '/' },
-    vibrate: [100, 50, 100],
+    icon: data.icon || '/icons/icon-192.png',
+    badge: data.badge || '/icons/icon-192.png',
+    image: data.image,
+    tag: data.tag || 'yamshat-push',
+    renotify: Boolean(data.renotify),
+    vibrate: [120, 60, 120],
+    data: {
+      url: data.url || '/',
+      channel: data.channel || 'default',
+    },
     actions: [
-      { action: 'open', title: 'Open App' },
-      { action: 'close', title: 'Close' }
-    ]
+      { action: 'open', title: 'فتح' },
+      { action: 'mute', title: 'كتم' },
+    ],
   };
-  event.waitUntil(self.registration.showNotification(data.title, options));
+  event.waitUntil(self.registration.showNotification(data.title || 'Yamshat', options));
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  if (event.action === 'close') return;
-  
+  if (event.action === 'mute') return;
+  const targetUrl = event.notification.data?.url || '/';
   event.waitUntil(
-    clients.matchAll({ type: 'window' }).then((clientList) => {
-      for (const client of clientList) {
-        if (client.url === '/' && 'focus' in client) return client.focus();
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      const existing = clientList.find((client) => 'focus' in client);
+      if (existing) {
+        existing.navigate?.(targetUrl);
+        return existing.focus();
       }
-      if (clients.openWindow) return clients.openWindow(event.notification.data.url);
+      return clients.openWindow(targetUrl);
     })
   );
 });

@@ -362,6 +362,50 @@ export function getSafeAreaInsets() {
   };
 }
 
+/**
+ * Get device profile information for performance monitoring
+ * @returns {object} Device profile
+ */
+/**
+ * Append quality parameter to video URL
+ * @param {string} url - Video URL
+ * @param {string} quality - Quality level (low, medium, high)
+ * @returns {string} URL with quality parameter
+ */
+export function appendVideoQuality(url, quality) {
+  if (!url) return '';
+  try {
+    const urlObj = new URL(url, window.location.origin);
+    urlObj.searchParams.set('quality', quality);
+    return urlObj.toString();
+  } catch {
+    return `${url}${url.includes('?') ? '&' : '?'}quality=${quality}`;
+  }
+}
+
+/**
+ * Get device profile information for performance monitoring
+ * @returns {object} Device profile
+ */
+export function getDeviceProfile() {
+  const width = window.innerWidth;
+  const isLowEndDevice = (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) || 
+                         (navigator.deviceMemory && navigator.deviceMemory <= 4);
+  
+  let effectiveType = 'unknown';
+  if (navigator.connection) {
+    effectiveType = navigator.connection.effectiveType || 'unknown';
+  }
+
+  return {
+    isLowEndDevice,
+    effectiveType,
+    preferredVideoQuality: isLowEndDevice ? 'low' : 'high',
+    breakpoint: getCurrentBreakpoint(),
+    width
+  };
+}
+
 export default {
   BREAKPOINTS,
   getCurrentBreakpoint,
@@ -389,4 +433,6 @@ export default {
   getResponsiveColumns,
   handleResponsiveOverflow,
   getSafeAreaInsets,
+  getDeviceProfile,
+  appendVideoQuality,
 };

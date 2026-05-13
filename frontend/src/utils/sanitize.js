@@ -27,6 +27,13 @@ export function sanitizeHTML(dirty, config = {}) {
  * @param {object} options - Sanitization options
  * @returns {string} Sanitized text
  */
+/**
+ * Alias for sanitizeText to maintain compatibility
+ */
+export function sanitizeInputText(text, options = {}) {
+  return sanitizeText(text, options);
+}
+
 export function sanitizeText(text, options = {}) {
   const {
     maxLength = 1000,
@@ -337,6 +344,7 @@ export function sanitizeObject(obj, options = {}) {
 export default {
   sanitizeHTML,
   sanitizeText,
+  sanitizeInputText,
   sanitizeEmail,
   sanitizeURL,
   validateFileUpload,

@@ -1,127 +1,57 @@
-import { useEffect, useState } from 'react';
-import AdminLayout from '../../components/admin/AdminLayout.jsx';
+import { useState, useEffect } from 'react';
 import Card from '../../components/ui/Card.jsx';
-import Button from '../../components/ui/Button.jsx';
-import Modal from '../../components/ui/Modal.jsx';
-import { getAdminLiveOverview, endAdminLiveRoom } from '../../api/admin.js';
-import socket from '../../api/socket.js';
-import { useToast } from '../../components/admin/ToastProvider.jsx';
 
 export default function AdminLive() {
-  const [rooms, setRooms] = useState([]);
-  const [stats, setStats] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [selectedRoom, setSelectedRoom] = useState(null);
-  const { pushToast } = useToast();
-
-  const loadLiveStatus = async () => {
-    try {
-      setLoading(true);
-      const { data } = await getAdminLiveOverview();
-      setRooms(data.rooms || []);
-      setStats(data.stats || {});
-    } catch (err) {
-      pushToast({ title: 'Monitoring Failed', type: 'error' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadLiveStatus();
-    socket.on('stream_metrics_update', (data) => {
-      setStats(prev => ({ ...prev, ...data }));
-    });
-    return () => socket.off('stream_metrics_update');
-  }, []);
-
-  const handleEmergencyStop = async (roomId) => {
-    if (!window.confirm('Are you sure you want to trigger an EMERGENCY STOP?')) return;
-    try {
-      await endAdminLiveRoom(roomId);
-      pushToast({ title: 'Emergency Stop Triggered', description: `Stream ${roomId} terminated`, type: 'error' });
-      loadLiveStatus();
-    } catch (err) {
-      pushToast({ title: 'Action Failed', type: 'error' });
-    }
-  };
+  const [streams, setStreams] = useState([
+    { id: 1, host: 'GamerX', viewers: 1250, bitrate: '4500kbps', health: 'Excellent', fps: 60 },
+    { id: 2, host: 'NewsLive', viewers: 840, bitrate: '2100kbps', health: 'Stable', fps: 30 },
+  ]);
 
   return (
-    <AdminLayout>
-      <section className="live-monitoring-header">
-        <Card className="metrics-bar">
-          <div className="metric-item">
-            <span className="label">Active Streams</span>
-            <span className="value">{stats.active_rooms || 0}</span>
-          </div>
-          <div className="metric-item">
-            <span className="label">Total Viewers</span>
-            <span className="value">{stats.current_viewers || 0}</span>
-          </div>
-          <div className="metric-item">
-            <span className="label">Avg Bitrate</span>
-            <span className="value">{stats.avg_bitrate || '0 kbps'}</span>
-          </div>
-        </Card>
-      </section>
-
-      <section className="streams-grid">
-        <Card>
-          <div className="card-head split">
-            <h3 className="section-title">Live Stream Monitoring</h3>
-            <span className="live-indicator">Real-time Feed Active</span>
-          </div>
-
-          <div className="table-shell">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Host</th>
-                  <th>Title</th>
-                  <th>Metrics (V/L/B)</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rooms.map(room => (
-                  <tr key={room.id}>
-                    <td>{room.username}</td>
-                    <td>{room.title}</td>
-                    <td>{room.viewer_count} / {room.likes} / {room.bitrate}k</td>
-                    <td><span className="badge success">Live</span></td>
-                    <td>
-                      <div className="action-row">
-                        <button className="mini-action" onClick={() => setSelectedRoom(room)}>Monitor</button>
-                        <button className="mini-action danger" onClick={() => handleEmergencyStop(room.id)}>Emergency Stop</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      </section>
-
-      <Modal open={!!selectedRoom} title="Stream Moderation & Metrics" onClose={() => setSelectedRoom(null)}>
-        {selectedRoom && (
-          <div className="stream-mod-container">
-            <div className="stream-preview-placeholder">
-              {/* Stream Video Player would go here */}
-              <div className="overlay-metrics">
-                <span>FPS: {selectedRoom.fps || 30}</span>
-                <span>Latency: {selectedRoom.latency || '120ms'}</span>
+    <div className="admin-live-page">
+      <Card>
+        <h2>مراقبة البث المباشر (Stream Analytics)</h2>
+        <div className="streams-grid mt-4">
+          {streams.map(stream => (
+            <Card key={stream.id} className="stream-monitor-card">
+              <div className="stream-header">
+                <strong>{stream.host}</strong>
+                <span className="live-badge">LIVE</span>
               </div>
-            </div>
-            <div className="mod-controls">
-              <Button variant="secondary">Mute Audio</Button>
-              <Button variant="secondary">Hide Chat</Button>
-              <Button className="danger" onClick={() => handleEmergencyStop(selectedRoom.id)}>Terminate Stream</Button>
-            </div>
-          </div>
-        )}
-      </Modal>
-    </AdminLayout>
+              <div className="stream-metrics">
+                <div className="metric">
+                  <label>المشاهدون</label>
+                  <span>{stream.viewers}</span>
+                </div>
+                <div className="metric">
+                  <label>Bitrate</label>
+                  <span>{stream.bitrate}</span>
+                </div>
+                <div className="metric">
+                  <label>الصحة</label>
+                  <span className={`health ${stream.health.toLowerCase()}`}>{stream.health}</span>
+                </div>
+              </div>
+              <div className="stream-health-bar">
+                <div className="health-fill" style={{ width: stream.health === 'Excellent' ? '100%' : '70%' }} />
+              </div>
+            </Card>
+          ))}
+        </div>
+      </Card>
+      <style dangerouslySetInnerHTML={{ __html: `
+        .admin-live-page { padding: 20px; }
+        .streams-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+        .stream-monitor-card { background: #111827; color: white; }
+        .live-badge { background: #ef4444; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; }
+        .stream-metrics { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin: 15px 0; }
+        .metric label { display: block; font-size: 10px; color: #9ca3af; }
+        .metric span { font-weight: bold; font-size: 14px; }
+        .health.excellent { color: #10b981; }
+        .health.stable { color: #f59e0b; }
+        .stream-health-bar { height: 4px; background: #374151; border-radius: 2px; overflow: hidden; }
+        .health-fill { height: 100%; background: #10b981; }
+      `}} />
+    </div>
   );
 }

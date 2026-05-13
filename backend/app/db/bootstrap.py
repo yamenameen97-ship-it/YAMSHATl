@@ -473,16 +473,18 @@ def _ensure_seed_accounts(engine: Engine) -> None:
 def initialize_database(engine: Engine, force: bool = False) -> None:
     existing_tables = inspect(engine).get_table_names()
     should_bootstrap = force or settings.DB_BOOTSTRAP_ON_START or _schema_needs_normalization(engine, existing_tables)
-    if not should_bootstrap:
-        return
 
-    _adopt_legacy_users_table(engine)
-    Base.metadata.create_all(bind=engine)
-    _migrate_users_table(engine)
-    Base.metadata.create_all(bind=engine)
-    _migrate_posts_table(engine)
-    _migrate_comments_table(engine)
-    _migrate_messages_table(engine)
-    Base.metadata.create_all(bind=engine)
+    if should_bootstrap:
+        _adopt_legacy_users_table(engine)
+        Base.metadata.create_all(bind=engine)
+        _migrate_users_table(engine)
+        Base.metadata.create_all(bind=engine)
+        _migrate_posts_table(engine)
+        _migrate_comments_table(engine)
+        _migrate_messages_table(engine)
+        Base.metadata.create_all(bind=engine)
+        _set_alembic_revision(engine)
+    else:
+        Base.metadata.create_all(bind=engine)
+
     _ensure_seed_accounts(engine)
-    _set_alembic_revision(engine)

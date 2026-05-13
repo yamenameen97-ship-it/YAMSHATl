@@ -27,13 +27,6 @@ export function sanitizeHTML(dirty, config = {}) {
  * @param {object} options - Sanitization options
  * @returns {string} Sanitized text
  */
-/**
- * Alias for sanitizeText to maintain compatibility
- */
-export function sanitizeInputText(text, options = {}) {
-  return sanitizeText(text, options);
-}
-
 export function sanitizeText(text, options = {}) {
   const {
     maxLength = 1000,
@@ -67,6 +60,15 @@ export function sanitizeText(text, options = {}) {
   }
 
   return result;
+}
+
+/**
+ * Sanitize input text specifically for form fields
+ * @param {string} text - The input text
+ * @returns {string} Sanitized input text
+ */
+export function sanitizeInputText(text) {
+  return sanitizeText(text, { maxLength: 500, trim: true });
 }
 
 /**

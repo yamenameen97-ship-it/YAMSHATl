@@ -363,47 +363,39 @@ export function getSafeAreaInsets() {
 }
 
 /**
- * Get device profile information for performance monitoring
- * @returns {object} Device profile
+ * Get device performance profile
+ * @returns {object} Device profile information
  */
+export function getDeviceProfile() {
+  const isLowEnd = typeof navigator !== 'undefined' && 
+    ((navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) || 
+     (navigator.deviceMemory && navigator.deviceMemory <= 4));
+  
+  const connection = typeof navigator !== 'undefined' && navigator.connection ? 
+    navigator.connection.effectiveType : 'unknown';
+
+  return {
+    isLowEndDevice: isLowEnd,
+    effectiveType: connection,
+    preferredVideoQuality: isLowEnd ? '480p' : '1080p',
+  };
+}
+
 /**
  * Append quality parameter to video URL
- * @param {string} url - Video URL
- * @param {string} quality - Quality level (low, medium, high)
+ * @param {string} url - The video URL
+ * @param {string} quality - The desired quality
  * @returns {string} URL with quality parameter
  */
 export function appendVideoQuality(url, quality) {
   if (!url) return '';
   try {
     const urlObj = new URL(url, window.location.origin);
-    urlObj.searchParams.set('quality', quality);
+    urlObj.searchParams.set('q', quality);
     return urlObj.toString();
   } catch {
-    return `${url}${url.includes('?') ? '&' : '?'}quality=${quality}`;
+    return `${url}${url.includes('?') ? '&' : '?'}q=${quality}`;
   }
-}
-
-/**
- * Get device profile information for performance monitoring
- * @returns {object} Device profile
- */
-export function getDeviceProfile() {
-  const width = window.innerWidth;
-  const isLowEndDevice = (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) || 
-                         (navigator.deviceMemory && navigator.deviceMemory <= 4);
-  
-  let effectiveType = 'unknown';
-  if (navigator.connection) {
-    effectiveType = navigator.connection.effectiveType || 'unknown';
-  }
-
-  return {
-    isLowEndDevice,
-    effectiveType,
-    preferredVideoQuality: isLowEndDevice ? 'low' : 'high',
-    breakpoint: getCurrentBreakpoint(),
-    width
-  };
 }
 
 export default {

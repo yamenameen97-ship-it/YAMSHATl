@@ -1,6 +1,6 @@
 (function () {
-  const DEPLOY_BACKEND_ORIGIN = 'https://yamshatl.onrender.com';
-  const DEPLOY_API_BASE = 'https://yamshatl.onrender.com/api';
+  const DEPLOY_BACKEND_ORIGIN = '';
+  const DEPLOY_API_BASE = '';
 
   const trim = (value) => String(value || '').trim().replace(/\/+$/, '');
   const toApiBase = (value) => {
@@ -26,6 +26,12 @@
         if (origin && origin !== currentOrigin) return origin;
       }
     } catch (_) {}
+
+    const host = trim(window.location.hostname).toLowerCase();
+    const renderSibling = host.match(/^(.*)-\d+\.onrender\.com$/i);
+    if (renderSibling?.[1]) {
+      return `${window.location.protocol}//${renderSibling[1]}.onrender.com`;
+    }
 
     return currentOrigin;
   };
@@ -76,11 +82,6 @@
     toApiBase(`${currentOrigin}/api`);
 
   try {
-    const previousBackendOrigin = trim(localStorage.getItem('backendOrigin'));
-    if (previousBackendOrigin && previousBackendOrigin !== backendOrigin) {
-      localStorage.removeItem('yamshat_csrf_token');
-      sessionStorage.removeItem('yamshat_user_session');
-    }
     localStorage.setItem('backendOrigin', backendOrigin);
     localStorage.setItem('apiBase', apiBase);
   } catch (_) {}

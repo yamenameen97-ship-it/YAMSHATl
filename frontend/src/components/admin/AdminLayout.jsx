@@ -20,7 +20,8 @@ const routeMeta = {
   '/admin/users': { title: 'إدارة المستخدمين', breadcrumb: ['الإدارة', 'المستخدمون'] },
   '/admin/rbac': { title: 'الأدوار والصلاحيات', breadcrumb: ['الإدارة', 'الصلاحيات'] },
   '/admin/notifications': { title: 'الإشعارات', breadcrumb: ['الإدارة', 'الإشعارات'] },
-  '/admin/reports': { title: 'التقارير والإحصائيات', breadcrumb: ['الإدارة', 'التقارير'] },
+  '/admin/reports': { title: 'مركز البلاغات والإشراف', breadcrumb: ['الإدارة', 'مركز البلاغات'] },
+  '/admin/audit': { title: 'سجل نشاط الأدمن', breadcrumb: ['الإدارة', 'سجل الأدمن'] },
   '/admin/settings': { title: 'الإعدادات العامة', breadcrumb: ['الإدارة', 'الإعدادات'] },
 };
 

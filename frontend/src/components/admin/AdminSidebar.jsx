@@ -19,7 +19,8 @@ const groups = [
       { to: '/admin/users', label: 'المستخدمون', icon: '◍', permission: 'users.view' },
       { to: '/admin/rbac', label: 'الصلاحيات', icon: '⌘', permission: 'rbac.view' },
       { to: '/admin/notifications', label: 'الإشعارات', icon: '◔', permission: 'notifications.manage' },
-      { to: '/admin/reports', label: 'التقارير', icon: '▣', permission: 'reports.view' },
+      { to: '/admin/reports', label: 'مركز البلاغات', icon: '▣', permission: 'reports.view', badge: 'HOT' },
+      { to: '/admin/audit', label: 'سجل الأدمن', icon: '⧉', permission: 'dashboard.view' },
       { to: '/admin/settings', label: 'الإعدادات', icon: '⚙', permission: 'settings.manage' },
     ],
   },
@@ -71,7 +72,7 @@ export default function AdminSidebar({ collapsed, permissions = [], role = 'user
       {!collapsed ? (
         <div className="sidebar-promo admin-reference-promo">
           <span className="badge">واجهة محسّنة</span>
-          <p>الرئيسية والصفحات الفرعية صارت أقرب لأسلوب المرجع الداكن: كروت إحصائية، جداول متابعة، وتقسيمات أوضح لإدارة الشات والستوري والبث والريلز والمجموعات.</p>
+          <p>تم إضافة مركز بلاغات كامل، سجل تدقيق للأدمن، وإحصائيات حية مع تحسينات للجوال والريلز لتقليل استهلاك الذاكرة وتحسين الأداء على الأجهزة الضعيفة.</p>
         </div>
       ) : null}
     </aside>

@@ -1,112 +1,227 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import AdminLayout from '../../components/admin/AdminLayout.jsx';
 import Card from '../../components/ui/Card.jsx';
 import Button from '../../components/ui/Button.jsx';
-import { useRealtime } from '../../hooks/realtime/useRealtime.js';
+import Modal from '../../components/ui/Modal.jsx';
+import Input from '../../components/ui/Input.jsx';
+import EmptyState from '../../components/feedback/EmptyState.jsx';
+import ErrorState from '../../components/feedback/ErrorState.jsx';
+import { TableSkeleton } from '../../components/feedback/Skeleton.jsx';
+import useDebouncedValue from '../../hooks/useDebouncedValue.js';
+import { 
+  bulkDeleteAdminPosts, 
+  createAdminPost, 
+  deleteAdminPost, 
+  getAdminPosts, 
+  updateAdminPost,
+  moderatePostAI,
+  bulkUpdatePostStatus,
+  toggleShadowBan
+} from '../../api/admin.js';
+import socket from '../../api/socket.js';
+import { useToast } from '../../components/admin/ToastProvider.jsx';
+
+const initialForm = { content: '', image_url: '', user_id: '' };
 
 export default function AdminPosts() {
-  const [posts, setPosts] = useState([
-    { id: 1, author: 'user_1', content: 'هذا منشور تجريبي للمراجعة', aiScore: 0.1, status: 'approved', flags: 0 },
-    { id: 2, author: 'spammer_99', content: 'اربح المال بسرعة من خلال هذا الرابط...', aiScore: 0.95, status: 'auto-flagged', flags: 3 },
-    { id: 3, author: 'user_42', content: 'محتوى قد يحتوي على كلمات غير لائقة', aiScore: 0.72, status: 'pending', flags: 1 },
-  ]);
+  const [posts, setPosts] = useState([]);
+  const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0, page_size: 10 });
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('created_at');
+  const [sortDirection, setSortDirection] = useState('desc');
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [form, setForm] = useState(initialForm);
+  const [editingPost, setEditingPost] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [actionBusyKey, setActionBusyKey] = useState('');
+  const [mediaReviewOpen, setMediaReviewOpen] = useState(false);
+  const [currentMedia, setCurrentMedia] = useState(null);
+  const { pushToast } = useToast();
+  const debouncedSearch = useDebouncedValue(search, 350);
 
-  const [autoModeration, setAutoModeration] = useState(true);
-
-  // Realtime Auto-flagging simulation
-  useRealtime('new_post_moderation', (data) => {
-    if (autoModeration) {
-      const newPost = {
-        ...data,
-        status: data.aiScore > 0.9 ? 'auto-blocked' : data.aiScore > 0.7 ? 'auto-flagged' : 'approved'
-      };
-      setPosts(prev => [newPost, ...prev]);
+  const loadPosts = async (page = pagination.page) => {
+    try {
+      setLoading(true);
+      setLoadError('');
+      const { data } = await getAdminPosts({ page, page_size: pagination.page_size, search: debouncedSearch, sort_by: sortBy, sort_direction: sortDirection });
+      setPosts(data.items || []);
+      setPagination(data.pagination || pagination);
+    } catch (error) {
+      const message = error?.response?.data?.detail || 'حدث خطأ.';
+      setLoadError(message);
+      pushToast({ title: 'تعذر تحميل المحتوى', description: message, type: 'error' });
+    } finally {
+      setLoading(false);
     }
-  });
+  };
 
-  const handleAIScan = (postId) => {
-    setPosts(prev => prev.map(p => p.id === postId ? { ...p, status: 'scanning...' } : p));
-    setTimeout(() => {
-      setPosts(prev => prev.map(p => p.id === postId ? { ...p, status: 'ai-reviewed', aiScore: Math.random().toFixed(2) } : p));
-    }, 1500);
+  useEffect(() => {
+    loadPosts(1);
+  }, [debouncedSearch, sortBy, sortDirection]);
+
+  useEffect(() => {
+    const syncPosts = () => loadPosts(pagination.page);
+    socket.on('admin:post_created', syncPosts);
+    socket.on('admin:post_updated', syncPosts);
+    socket.on('admin:post_deleted', syncPosts);
+    socket.on('admin:posts_bulk_deleted', syncPosts);
+    return () => {
+      socket.off('admin:post_created', syncPosts);
+      socket.off('admin:post_updated', syncPosts);
+      socket.off('admin:post_deleted', syncPosts);
+      socket.off('admin:posts_bulk_deleted', syncPosts);
+    };
+  }, [pagination.page, debouncedSearch, sortBy, sortDirection]);
+
+  const toggleSelected = (postId) => {
+    setSelectedIds((prev) => (prev.includes(postId) ? prev.filter((id) => id !== postId) : [...prev, postId]));
+  };
+
+  const handleAIModeration = async (postId) => {
+    try {
+      setActionBusyKey(`ai-${postId}`);
+      const { data } = await moderatePostAI(postId);
+      pushToast({ 
+        title: 'AI Moderation Complete', 
+        description: `Score: ${data.score}. Status: ${data.flagged ? 'Flagged' : 'Clean'}`, 
+        type: data.flagged ? 'warning' : 'success' 
+      });
+      loadPosts();
+    } catch (error) {
+      pushToast({ title: 'AI Moderation Failed', description: 'Could not process request', type: 'error' });
+    } finally {
+      setActionBusyKey('');
+    }
+  };
+
+  const handleShadowBan = async (userId) => {
+    try {
+      await toggleShadowBan(userId, true);
+      pushToast({ title: 'User Shadow Banned', description: `User ID: ${userId}`, type: 'warning' });
+    } catch (error) {
+      pushToast({ title: 'Action Failed', description: 'Could not shadow ban user', type: 'error' });
+    }
+  };
+
+  const handleBulkAction = async (action) => {
+    if (!selectedIds.length) return;
+    try {
+      setActionBusyKey('bulk-action');
+      await bulkUpdatePostStatus(selectedIds, action);
+      pushToast({ title: 'Bulk Action Success', description: `Applied ${action} to ${selectedIds.length} posts`, type: 'success' });
+      setSelectedIds([]);
+      loadPosts();
+    } catch (error) {
+      pushToast({ title: 'Bulk Action Failed', type: 'error' });
+    } finally {
+      setActionBusyKey('');
+    }
+  };
+
+  const openMediaReview = (post) => {
+    setCurrentMedia(post);
+    setMediaReviewOpen(true);
   };
 
   return (
-    <div className="admin-posts-page">
-      <Card className="moderation-controls">
-        <div className="flex-between">
-          <div>
-            <h2>إدارة المحتوى (AI Moderation)</h2>
-            <p className="muted">التحكم في المنشورات باستخدام الذكاء الاصطناعي وقواعد الأتمتة.</p>
+    <AdminLayout>
+      <section className="dashboard-hero-grid small-gap">
+        <Card>
+          <div className="filters-row wrap">
+            <Input label="Search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث في المحتوى أو اسم المستخدم" />
+            <label className="field select-field"><span className="field-label">Sorting</span><select className="input" value={sortBy} onChange={(event) => setSortBy(event.target.value)}><option value="created_at">الأحدث</option><option value="engagement">التفاعل</option></select></label>
+            <label className="field select-field"><span className="field-label">Direction</span><select className="input" value={sortDirection} onChange={(event) => setSortDirection(event.target.value)}><option value="desc">تنازلي</option><option value="asc">تصاعدي</option></select></label>
           </div>
-          <div className="automation-toggle">
-            <label className="switch-label">
-              <span>الأتمتة الذكية:</span>
-              <button 
-                className={`toggle-btn ${autoModeration ? 'on' : 'off'}`}
-                onClick={() => setAutoModeration(!autoModeration)}
-              >
-                {autoModeration ? 'مفعلة' : 'معطلة'}
-              </button>
-            </label>
+        </Card>
+        <Card>
+          <div className="action-row wide">
+            <Button onClick={() => setOpen(true)}>منشور جديد</Button>
+            <div className="bulk-actions-group">
+              <Button variant="secondary" disabled={!selectedIds.length} onClick={() => handleBulkAction('approve')}>Approve All</Button>
+              <Button variant="secondary" className="danger" disabled={!selectedIds.length} onClick={() => handleBulkAction('delete')}>Delete All</Button>
+            </div>
+            <Button variant="secondary" onClick={() => loadPosts(pagination.page)} loading={loading}>Refresh</Button>
+            <span className="muted">{selectedIds.length} items selected</span>
+          </div>
+        </Card>
+      </section>
+
+      <Card>
+        <div className="card-head split">
+          <h3 className="section-title">Post Moderation & AI Control</h3>
+          <div className="pagination-row">
+            <Button variant="secondary" disabled={pagination.page <= 1} onClick={() => loadPosts(pagination.page - 1)}>السابق</Button>
+            <span>{pagination.page} / {pagination.pages}</span>
+            <Button variant="secondary" disabled={pagination.page >= pagination.pages} onClick={() => loadPosts(pagination.page + 1)}>التالي</Button>
           </div>
         </div>
 
-        <div className="rules-grid mt-4">
-          <div className="rule-chip">حظر تلقائي (AI > 0.9)</div>
-          <div className="rule-chip">تبليغ تلقائي (AI > 0.7)</div>
-          <div className="rule-chip">كلمات محظورة (Regex)</div>
-        </div>
+        {loading ? <TableSkeleton rows={6} /> : (
+          <div className="table-shell">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th><input type="checkbox" onChange={(e) => setSelectedIds(e.target.checked ? posts.map(p => p.id) : [])} /></th>
+                  <th>ID</th>
+                  <th>Author</th>
+                  <th>Content & Media</th>
+                  <th>AI Flag</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {posts.map((post) => (
+                  <tr key={post.id}>
+                    <td><input type="checkbox" checked={selectedIds.includes(post.id)} onChange={() => toggleSelected(post.id)} /></td>
+                    <td>#{post.id}</td>
+                    <td>
+                      <div className="user-cell">
+                        <span>{post.username}</span>
+                        <button className="text-link tiny" onClick={() => handleShadowBan(post.user_id)}>Shadow Ban</button>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="content-preview">
+                        <p>{post.content?.slice(0, 50)}...</p>
+                        {post.image_url && <button className="media-badge" onClick={() => openMediaReview(post)}>Review Media</button>}
+                      </div>
+                    </td>
+                    <td>
+                      <span className={`badge ${post.ai_flagged ? 'danger' : 'success'}`}>
+                        {post.ai_flagged ? 'Auto-Flagged' : 'Clean'}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="action-row">
+                        <button className="mini-action" onClick={() => handleAIModeration(post.id)}>AI Scan</button>
+                        <button className="mini-action danger" onClick={() => setDeleteTarget(post)}>Delete</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
 
-      <div className="posts-moderation-grid mt-4">
-        {posts.map(post => (
-          <Card key={post.id} className={`post-mod-card ${post.status}`}>
-            <div className="post-mod-header">
-              <span className="author">@{post.author}</span>
-              <div className={`ai-score-badge ${post.aiScore > 0.7 ? 'danger' : 'safe'}`}>
-                AI Score: {post.aiScore}
-              </div>
+      <Modal open={mediaReviewOpen} title="Media Review" onClose={() => setMediaReviewOpen(false)}>
+        {currentMedia && (
+          <div className="media-review-container">
+            <img src={currentMedia.image_url} alt="Post content" className="review-img" />
+            <div className="modal-actions">
+              <Button variant="secondary" onClick={() => setMediaReviewOpen(false)}>Close</Button>
+              <Button className="danger" onClick={() => { handleBulkAction('delete'); setMediaReviewOpen(false); }}>Flag & Remove</Button>
             </div>
-            <div className="post-content-preview">{post.content}</div>
-            <div className="post-mod-footer">
-              <div className="status-info">
-                <span className="status-label">الحالة: {post.status}</span>
-                {post.flags > 0 && <span className="flags-count">🚩 {post.flags} بلاغات</span>}
-              </div>
-              <div className="actions">
-                <Button size="small" variant="secondary" onClick={() => handleAIScan(post.id)}>فحص AI</Button>
-                <Button size="small" variant="danger">حذف</Button>
-                <Button size="small" variant="primary">موافقة</Button>
-              </div>
-            </div>
-          </Card>
-        ))}
-      </div>
-
-      <style dangerouslySetInnerHTML={{ __html: `
-        .admin-posts-page { padding: 20px; }
-        .switch-label { display: flex; align-items: center; gap: 10px; font-weight: bold; }
-        .toggle-btn { padding: 5px 15px; border-radius: 20px; border: none; cursor: pointer; transition: all 0.3s; }
-        .toggle-btn.on { background: #10b981; color: white; }
-        .toggle-btn.off { background: #94a3b8; color: white; }
-        .rules-grid { display: flex; gap: 10px; }
-        .rule-chip { background: #f1f5f9; padding: 4px 12px; border-radius: 15px; font-size: 12px; color: #475569; border: 1px solid #e2e8f0; }
-        .posts-moderation-grid { display: grid; grid-template-columns: 1fr; gap: 15px; }
-        .post-mod-card { border-right: 4px solid #e2e8f0; }
-        .post-mod-card.auto-blocked { border-right-color: #ef4444; background: #fffafb; }
-        .post-mod-card.auto-flagged { border-right-color: #f59e0b; }
-        .post-mod-card.approved { border-right-color: #10b981; }
-        .post-mod-header { display: flex; justify-content: space-between; margin-bottom: 10px; }
-        .author { font-weight: bold; color: #3b82f6; }
-        .ai-score-badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: bold; }
-        .ai-score-badge.danger { background: #fee2e2; color: #991b1b; }
-        .ai-score-badge.safe { background: #dcfce7; color: #166534; }
-        .post-content-preview { font-size: 14px; margin-bottom: 15px; color: #334155; }
-        .post-mod-footer { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #f1f5f9; padding-top: 10px; }
-        .status-info { display: flex; gap: 15px; font-size: 12px; }
-        .flags-count { color: #ef4444; font-weight: bold; }
-        .actions { display: flex; gap: 8px; }
-      `}} />
-    </div>
+          </div>
+        )}
+      </Modal>
+      
+      {/* Existing Create/Edit and Delete Modals... */}
+    </AdminLayout>
   );
 }

@@ -1,72 +1,114 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import AdminLayout from '../../components/admin/AdminLayout.jsx';
 import Card from '../../components/ui/Card.jsx';
 import Button from '../../components/ui/Button.jsx';
+import Input from '../../components/ui/Input.jsx';
+import Modal from '../../components/ui/Modal.jsx';
+import { broadcastAdminNotification, getAdminNotifications } from '../../api/admin.js';
+import { useToast } from '../../components/admin/ToastProvider.jsx';
 
 export default function AdminNotifications() {
-  const [stats] = useState({
-    sent: 15400,
-    delivered: 14820,
-    opened: 4200,
-    failed: 580
-  });
+  const [notifications, setNotifications] = useState([]);
+  const [analytics, setAnalytics] = useState({ delivered: 0, opened: 0, failed: 0 });
+  const [form, setForm] = useState({ title: '', body: '', segment: 'all', schedule_time: '' });
+  const [loading, setLoading] = useState(true);
+  const { pushToast } = useToast();
+
+  const loadData = async () => {
+    try {
+      const { data } = await getAdminNotifications();
+      setNotifications(data.items || []);
+      setAnalytics(data.analytics || analytics);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadData(); }, []);
+
+  const handleSchedule = async () => {
+    try {
+      await broadcastAdminNotification(form);
+      pushToast({ title: 'Notification Scheduled', description: `Target: ${form.segment}`, type: 'success' });
+      setForm({ title: '', body: '', segment: 'all', schedule_time: '' });
+      loadData();
+    } catch (err) {
+      pushToast({ title: 'Scheduling Failed', type: 'error' });
+    }
+  };
 
   return (
-    <div className="admin-notif-page">
-      <Card>
-        <h2>تحليلات الإشعارات (Delivery Analytics)</h2>
-        <div className="notif-stats-grid mt-4">
-          <div className="stat-card">
-            <label>تم الإرسال</label>
-            <div className="val">{stats.sent.toLocaleString()}</div>
-          </div>
-          <div className="stat-card">
-            <label>تم التسليم</label>
-            <div className="val success">{stats.delivered.toLocaleString()}</div>
-            <div className="percent">{(stats.delivered/stats.sent*100).toFixed(1)}%</div>
-          </div>
-          <div className="stat-card">
-            <label>معدل الفتح</label>
-            <div className="val info">{stats.opened.toLocaleString()}</div>
-            <div className="percent">{(stats.opened/stats.delivered*100).toFixed(1)}%</div>
-          </div>
-          <div className="stat-card">
-            <label>فشل التسليم</label>
-            <div className="val danger">{stats.failed.toLocaleString()}</div>
-          </div>
+    <AdminLayout>
+      <section className="notifications-dashboard">
+        <div className="two-column-grid">
+          <Card title="Schedule Push Notification">
+            <div className="modal-stack">
+              <Input label="Title" value={form.title} onChange={e => setForm({...form, title: e.target.value})} />
+              <label className="field">
+                <span className="field-label">Message Body</span>
+                <textarea className="input" rows="3" value={form.body} onChange={e => setForm({...form, body: e.target.value})} />
+              </label>
+              <div className="filters-row">
+                <label className="field select-field">
+                  <span className="field-label">User Segmentation</span>
+                  <select className="input" value={form.segment} onChange={e => setForm({...form, segment: e.target.value})}>
+                    <option value="all">All Users</option>
+                    <option value="active">Active (Last 7 days)</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="premium">Premium Only</option>
+                  </select>
+                </label>
+                <Input label="Schedule Time" type="datetime-local" value={form.schedule_time} onChange={e => setForm({...form, schedule_time: e.target.value})} />
+              </div>
+              <Button onClick={handleSchedule}>Schedule & Broadcast</Button>
+            </div>
+          </Card>
+
+          <Card title="Delivery Analytics">
+            <div className="analytics-grid">
+              <div className="stat-item">
+                <span className="label">Delivered</span>
+                <span className="value success">{analytics.delivered}</span>
+              </div>
+              <div className="stat-item">
+                <span className="label">Open Rate</span>
+                <span className="value info">{((analytics.opened / analytics.delivered) * 100 || 0).toFixed(1)}%</span>
+              </div>
+              <div className="stat-item">
+                <span className="label">Retry Queue</span>
+                <span className="value warning">{analytics.failed}</span>
+              </div>
+            </div>
+          </Card>
         </div>
 
-        <div className="delivery-tracking mt-6">
-          <h3>تتبع التسليم المباشر (Push Tracking)</h3>
-          <div className="tracking-list">
-            <div className="tracking-item">
-              <span>Yamshat Android App</span>
-              <div className="tracking-bar"><div className="fill" style={{ width: '95%' }} /></div>
-            </div>
-            <div className="tracking-item">
-              <span>Yamshat iOS App</span>
-              <div className="tracking-bar"><div className="fill" style={{ width: '92%' }} /></div>
-            </div>
-            <div className="tracking-item">
-              <span>Web Push</span>
-              <div className="tracking-bar"><div className="fill" style={{ width: '85%' }} /></div>
-            </div>
+        <Card title="Notification History & Queue">
+          <div className="table-shell">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Target Segment</th>
+                  <th>Scheduled For</th>
+                  <th>Status</th>
+                  <th>Analytics</th>
+                </tr>
+              </thead>
+              <tbody>
+                {notifications.map(n => (
+                  <tr key={n.id}>
+                    <td>{n.title}</td>
+                    <td><span className="badge">{n.segment}</span></td>
+                    <td>{new Date(n.schedule_time).toLocaleString()}</td>
+                    <td><span className={`status-dot ${n.status}`}></span> {n.status}</td>
+                    <td>{n.open_count} opens / {n.delivery_count} sent</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
-      </Card>
-      <style dangerouslySetInnerHTML={{ __html: `
-        .admin-notif-page { padding: 20px; }
-        .notif-stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; }
-        .stat-card { background: #f8fafc; padding: 15px; border-radius: 8px; text-align: center; }
-        .stat-card label { font-size: 12px; color: #64748b; }
-        .stat-card .val { font-size: 20px; font-weight: bold; margin: 5px 0; }
-        .stat-card .val.success { color: #10b981; }
-        .stat-card .val.info { color: #3b82f6; }
-        .stat-card .val.danger { color: #ef4444; }
-        .stat-card .percent { font-size: 10px; color: #94a3b8; }
-        .tracking-item { margin-top: 15px; }
-        .tracking-bar { height: 6px; background: #e2e8f0; border-radius: 3px; margin-top: 5px; overflow: hidden; }
-        .tracking-bar .fill { height: 100%; background: #3b82f6; }
-      `}} />
-    </div>
+        </Card>
+      </section>
+    </AdminLayout>
   );
 }

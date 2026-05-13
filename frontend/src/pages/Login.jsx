@@ -1,58 +1,70 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Input from '../components/ui/Input.jsx';
 import Button from '../components/ui/Button.jsx';
 import AuthShell from '../components/auth/AuthShell.jsx';
 import CaptchaBox from '../components/auth/CaptchaBox.jsx';
-import { getCaptchaChallenge, loginUser } from '../api/auth.js';
+import { getCaptchaChallenge, loginUser, verifyTwoFactorLogin } from '../api/auth.js';
 import { sanitizeInputText } from '../utils/sanitize.js';
 import { setStoredUser } from '../utils/auth.js';
 import { getDefaultPostLoginPath } from '../utils/access.js';
 import { isValidEmail, localizeAuthMessage, looksLikeEmail, parseApiDetail } from '../utils/authValidation.js';
 import useSingleFlight from '../hooks/useSingleFlight.js';
 
-function TwoFactorModal({ isOpen, onClose, onSubmit, loading }) {
+function TwoFactorModal({ isOpen, onClose, onSubmit, loading, challenge }) {
   const [code, setCode] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) setCode('');
+  }, [isOpen]);
 
   const handleSubmit = () => {
     if (code.length === 6) {
       onSubmit(code);
-      setCode('');
     }
   };
 
   if (!isOpen) return null;
 
+  const helperText = challenge?.delivery?.sent
+    ? `تم إرسال رمز التحقق إلى ${challenge?.email || 'بريدك الإلكتروني'}.`
+    : 'أدخل رمز التحقق الإضافي لإكمال تسجيل الدخول.';
+
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(0,0,0,0.8)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 2000,
-      backdropFilter: 'blur(8px)'
-    }}>
-      <div className="glass-card" style={{
-        background: 'var(--bg)',
-        borderRadius: 16,
-        padding: 32,
-        maxWidth: 400,
-        width: '90%',
-        border: '1px solid var(--line)',
-        boxShadow: '0 20px 50px rgba(0,0,0,0.3)'
-      }}>
-        <h3 style={{ marginBottom: 12, textAlign: 'center' }}>التحقق بخطوتين (2FA)</h3>
-        <p className="muted" style={{ textAlign: 'center', marginBottom: 24 }}>أدخل رمز التحقق من تطبيق المصادقة الخاص بك لضمان أمان حسابك.</p>
+    <div
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0,0,0,0.8)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 2000,
+        backdropFilter: 'blur(8px)',
+      }}
+    >
+      <div
+        className="glass-card"
+        style={{
+          background: 'var(--bg)',
+          borderRadius: 16,
+          padding: 32,
+          maxWidth: 400,
+          width: '90%',
+          border: '1px solid var(--line)',
+          boxShadow: '0 20px 50px rgba(0,0,0,0.3)',
+        }}
+      >
+        <h3 style={{ marginBottom: 12, textAlign: 'center' }}>التحقق الإضافي</h3>
+        <p className="muted" style={{ textAlign: 'center', marginBottom: 24 }}>{helperText}</p>
         <Input
           type="text"
           placeholder="000000"
           value={code}
-          onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+          onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
           maxLength="6"
           style={{ textAlign: 'center', fontSize: 28, letterSpacing: 8, height: 60 }}
           autoFocus
@@ -61,7 +73,9 @@ function TwoFactorModal({ isOpen, onClose, onSubmit, loading }) {
           <Button onClick={handleSubmit} loading={loading} disabled={code.length !== 6 || loading} style={{ flex: 2 }}>
             تأكيد الرمز
           </Button>
-          <Button variant="secondary" onClick={onClose} style={{ flex: 1 }}>إلغاء</Button>
+          <Button variant="secondary" onClick={onClose} style={{ flex: 1 }}>
+            إلغاء
+          </Button>
         </div>
       </div>
     </div>
@@ -81,17 +95,17 @@ export default function LoginEnhanced() {
   const [error, setError] = useState('');
   const [captchaError, setCaptchaError] = useState('');
   const [show2FAModal, setShow2FAModal] = useState(false);
-  const [sessionToken, setSessionToken] = useState('');
+  const [twoFactorChallenge, setTwoFactorChallenge] = useState(null);
   const [captchaCooldown, setCaptchaCooldown] = useState(0);
   const [retryCount, setRetryCount] = useState(0);
-  
+
   const navigate = useNavigate();
   const location = useLocation();
   const { run: runLogin } = useSingleFlight();
 
   useEffect(() => {
-    if (captchaCooldown <= 0) return;
-    const timer = setInterval(() => setCaptchaCooldown(c => c - 1), 1000);
+    if (captchaCooldown <= 0) return undefined;
+    const timer = setInterval(() => setCaptchaCooldown((current) => current - 1), 1000);
     return () => clearInterval(timer);
   }, [captchaCooldown]);
 
@@ -122,14 +136,14 @@ export default function LoginEnhanced() {
   };
 
   const completeLogin = (data) => {
-    setStoredUser(data, { persist: form.rememberMe });
+    setStoredUser(data);
     const fallbackPath = getDefaultPostLoginPath(data);
     navigate(location.state?.from?.pathname || fallbackPath, { replace: true });
   };
 
   const handleSubmit = async (event) => {
     if (event) event.preventDefault();
-    
+
     const identifier = sanitizeInputText(form.identifier, { maxLength: 120 });
     if (!identifier) {
       setError('يرجى إدخال البريد الإلكتروني أو اسم المستخدم.');
@@ -157,31 +171,35 @@ export default function LoginEnhanced() {
     setError('');
 
     try {
-      const result = await runLogin(async () => {
-        return await loginUser({
-          identifier,
-          password: form.password,
-          remember_me: form.rememberMe,
-          captcha_id: captcha.captcha_id,
-          captcha_answer: form.captchaAnswer,
-        });
-      });
+      const result = await runLogin(async () => loginUser({
+        identifier,
+        password: form.password,
+        remember_me: form.rememberMe,
+        captcha_id: captcha.captcha_id,
+        captcha_answer: form.captchaAnswer,
+      }));
 
       const { data } = result;
 
       if (data?.requires_2fa) {
-        setSessionToken(data?.session_token || '');
+        setTwoFactorChallenge({
+          challenge_id: data.challenge_id,
+          email: data.email,
+          remember_me: form.rememberMe,
+          delivery: data.delivery,
+        });
         setShow2FAModal(true);
+        setError('تم إرسال رمز تحقق إضافي. أدخله لإكمال تسجيل الدخول.');
         return;
       }
 
       completeLogin(data);
     } catch (err) {
-      setRetryCount(prev => prev + 1);
+      setRetryCount((prev) => prev + 1);
       const apiError = parseApiDetail(err?.response?.data?.detail);
       const message = localizeAuthMessage(apiError?.message || err?.message, 'فشل تسجيل الدخول. يرجى التأكد من البيانات والمحاولة مرة أخرى.');
       setError(message);
-      
+
       if (apiError?.field === 'captcha' || message.includes('كابتشا')) {
         loadCaptcha();
       }
@@ -190,12 +208,31 @@ export default function LoginEnhanced() {
     }
   };
 
+  const handleVerifyTwoFactor = async (code) => {
+    if (!twoFactorChallenge?.challenge_id) return;
+
+    setLoading(true);
+    setError('');
+    try {
+      const { data } = await verifyTwoFactorLogin({
+        email: twoFactorChallenge.email || sanitizeInputText(form.identifier, { maxLength: 120 }).trim().toLowerCase(),
+        challenge_id: twoFactorChallenge.challenge_id,
+        code,
+        remember_me: twoFactorChallenge.remember_me ?? form.rememberMe,
+      });
+      setShow2FAModal(false);
+      setTwoFactorChallenge(null);
+      completeLogin(data);
+    } catch (err) {
+      const apiError = parseApiDetail(err?.response?.data?.detail);
+      setError(localizeAuthMessage(apiError?.message || err?.message, 'رمز التحقق غير صحيح أو منتهي الصلاحية.'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <AuthShell
-      badge="YAMSHAT"
-      title="تسجيل الدخول"
-      description="مرحباً بك مجدداً في يمشات. سجل دخولك للمتابعة."
-    >
+    <AuthShell badge="YAMSHAT" title="تسجيل الدخول" description="مرحباً بك مجدداً في يمشات. سجل دخولك للمتابعة.">
       <form className="auth-form auth-form-enhanced" onSubmit={handleSubmit} noValidate>
         <div className="auth-form-head">
           <h2>تسجيل الدخول</h2>
@@ -223,11 +260,7 @@ export default function LoginEnhanced() {
             disabled={loading}
             required
           />
-          <Link 
-            to="/forgot-password" 
-            className="auth-inline-link" 
-            style={{ position: 'absolute', top: 0, left: 0, fontSize: 12 }}
-          >
+          <Link to="/forgot-password" className="auth-inline-link" style={{ position: 'absolute', top: 0, left: 0, fontSize: 12 }}>
             نسيت كلمة المرور؟
           </Link>
         </div>
@@ -245,12 +278,7 @@ export default function LoginEnhanced() {
 
         <div style={{ margin: '16px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
-            <input 
-              type="checkbox" 
-              checked={form.rememberMe} 
-              onChange={handleChange('rememberMe')} 
-              disabled={loading}
-            />
+            <input type="checkbox" checked={form.rememberMe} onChange={handleChange('rememberMe')} disabled={loading} />
             <span style={{ fontSize: 14 }}>تذكرني على هذا الجهاز</span>
           </label>
         </div>
@@ -258,23 +286,30 @@ export default function LoginEnhanced() {
         {error && (
           <div className="alert error" style={{ display: 'flex', alignItems: 'center', gap: 10, animation: 'shake 0.4s ease' }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
             <div style={{ flex: 1 }}>
               <div>{error}</div>
-              {retryCount > 2 && <div style={{ fontSize: 11, marginTop: 4, opacity: 0.8 }}>إذا كنت تواجه مشكلة مستمرة، يرجى إعادة تعيين كلمة المرور.</div>}
+              {retryCount > 2 ? <div style={{ fontSize: 11, marginTop: 4, opacity: 0.8 }}>إذا كنت تواجه مشكلة مستمرة، يرجى إعادة تعيين كلمة المرور.</div> : null}
             </div>
-            {retryCount > 1 && (
-              <button type="button" onClick={handleSubmit} disabled={loading} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', textDecoration: 'underline', fontSize: 12 }}>
+            {retryCount > 1 ? (
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={loading}
+                style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', textDecoration: 'underline', fontSize: 12 }}
+              >
                 إعادة المحاولة
               </button>
-            )}
+            ) : null}
           </div>
         )}
 
-        <Button 
-          type="submit" 
-          loading={loading} 
+        <Button
+          type="submit"
+          loading={loading}
           disabled={loading || !form.identifier || !form.password || !form.captchaAnswer}
           style={{ height: 50, fontSize: 16, fontWeight: 'bold' }}
         >
@@ -287,20 +322,15 @@ export default function LoginEnhanced() {
         </div>
       </form>
 
-      <TwoFactorModal 
-        isOpen={show2FAModal} 
-        onClose={() => setShow2FAModal(false)} 
-        onSubmit={async (code) => {
-          setLoading(true);
-          try {
-            // Implementation for 2FA verification would go here
-          } catch (err) {
-            setError('رمز التحقق غير صحيح.');
-          } finally {
-            setLoading(false);
-          }
+      <TwoFactorModal
+        isOpen={show2FAModal}
+        onClose={() => {
+          setShow2FAModal(false);
+          setTwoFactorChallenge(null);
         }}
+        onSubmit={handleVerifyTwoFactor}
         loading={loading}
+        challenge={twoFactorChallenge}
       />
 
       <style>{`

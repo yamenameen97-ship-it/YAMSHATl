@@ -9,7 +9,7 @@ import { useFeed } from '../hooks/useFeed.js';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { likePost } from '../api/posts.js';
 import { FixedSizeList as List } from 'react-window';
-import AutoSizer from 'react-virtualized-auto-sizer';
+import { AutoSizer } from 'react-virtualized-auto-sizer';
 
 const PostItem = ({ index, style, data }) => {
   const { posts, onLike } = data;

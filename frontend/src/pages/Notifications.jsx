@@ -10,7 +10,7 @@ import { redirectToAppPath } from '../utils/router.js';
 import socketManager from '../services/socketManager.js';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import { FixedSizeList as List } from 'react-window';
-import AutoSizer from 'react-virtualized-auto-sizer';
+import { AutoSizer } from 'react-virtualized-auto-sizer';
 
 const FILTERS = [
   { id: 'all', label: 'الكل' },

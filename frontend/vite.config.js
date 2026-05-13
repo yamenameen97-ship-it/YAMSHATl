@@ -186,6 +186,8 @@ export default defineConfig({
   // Server configuration
   server: {
     middlewareMode: false,
+    host: '0.0.0.0',
+    port: 5173,
     hmr: {
       protocol: 'ws',
       host: 'localhost',
@@ -195,6 +197,7 @@ export default defineConfig({
 
   // Preview configuration
   preview: {
+    host: '0.0.0.0',
     port: 4173,
   },
 });

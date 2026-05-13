@@ -28,6 +28,12 @@ const inferBackendOrigin = () => {
     // ignore DOM parsing failures
   }
 
+  const host = trim(window.location.hostname).toLowerCase();
+  const renderSibling = host.match(/^(.*)-\d+\.onrender\.com$/i);
+  if (renderSibling?.[1]) {
+    return `${window.location.protocol}//${renderSibling[1]}.onrender.com`;
+  }
+
   return currentOrigin;
 };
 

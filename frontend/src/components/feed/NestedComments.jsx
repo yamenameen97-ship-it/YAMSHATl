@@ -2,7 +2,7 @@ import { useMemo, useState, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import Button from '../ui/Button.jsx';
 import { FixedSizeList as List } from 'react-window';
-import { AutoSizer } from 'react-virtualized-auto-sizer';
+import AutoSizer from 'react-virtualized-auto-sizer';
 
 const EMOJIS = ['❤️', '🔥', '😂', '👏', '😮', '💯'];
 

@@ -67,10 +67,13 @@
     inferredBackendOrigin ||
     currentOrigin;
 
+  const queryBackendApi = queryBackend ? toApiBase(queryBackend) : '';
+
   const apiBase =
     toApiBase(queryApi) ||
-    toApiBase(DEPLOY_API_BASE) ||
+    queryBackendApi ||
     safeStoredApi ||
+    toApiBase(DEPLOY_API_BASE) ||
     toApiBase(`${backendOrigin}/api`) ||
     toApiBase(inferredApi) ||
     toApiBase(`${currentOrigin}/api`);

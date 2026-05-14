@@ -7,60 +7,14 @@ import compression from 'vite-plugin-compression';
 const enableAnalyze = process.env.ANALYZE === 'true';
 
 /**
- * Advanced manual chunk splitting strategy
+ * Keep chunking conservative to avoid circular dependencies between
+ * React, React Router, and packages that consume React context.
+ *
+ * The previous aggressive vendor splitting produced a runtime crash on
+ * Render: `Cannot read properties of undefined (reading 'createContext')`.
+ * Let Vite/Rollup own the chunk graph for safety and deployment stability.
  */
-function manualChunks(id) {
-  // Vendor chunks
-  if (!id.includes('node_modules')) return undefined;
-
-  // Core React ecosystem
-  if (id.includes('react-dom') || id.includes('react-router-dom') || id.includes('/react/')) {
-    return 'vendor-react';
-  }
-
-  // Animation library
-  if (id.includes('framer-motion')) {
-    return 'vendor-motion';
-  }
-
-  // Real-time communication
-  if (id.includes('livekit-client')) {
-    return 'vendor-livekit';
-  }
-
-  // WebSocket
-  if (id.includes('socket.io-client')) {
-    return 'vendor-socket';
-  }
-
-  // Encryption / heavy crypto client
-  if (id.includes('@signalapp/libsignal-client')) {
-    return 'vendor-signal';
-  }
-
-  // State management
-  if (id.includes('zustand')) {
-    return 'vendor-state';
-  }
-
-  // Data fetching
-  if (id.includes('@tanstack/react-query') || id.includes('axios')) {
-    return 'vendor-network';
-  }
-
-  // UI libraries
-  if (id.includes('@radix-ui') || id.includes('react-hook-form')) {
-    return 'vendor-ui';
-  }
-
-  // Utilities
-  if (id.includes('lodash') || id.includes('date-fns') || id.includes('uuid')) {
-    return 'vendor-utils';
-  }
-
-  // Default vendor chunk
-  return 'vendor';
-}
+const manualChunks = undefined;
 
 export default defineConfig({
   plugins: [
@@ -246,8 +200,8 @@ export default defineConfig({
 
     rollupOptions: {
       output: {
-        // Advanced chunk splitting
-        manualChunks,
+        // Avoid custom vendor chunk graphs that can break React runtime on Render.
+        ...(manualChunks ? { manualChunks } : {}),
 
         // Optimize chunk names
         chunkFileNames: 'chunks/[name]-[hash].js',

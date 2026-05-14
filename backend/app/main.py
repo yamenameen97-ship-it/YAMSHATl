@@ -46,6 +46,9 @@ fastapi_app = FastAPI(
     lifespan=lifespan,
 )
 
+fastapi_app.middleware('http')(api_rate_guard)
+fastapi_app.middleware('http')(security_headers)
+register_error_handlers(fastapi_app)
 fastapi_app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -54,9 +57,6 @@ fastapi_app.add_middleware(
     allow_methods=['*'],
     allow_headers=['*'],
 )
-fastapi_app.middleware('http')(api_rate_guard)
-fastapi_app.middleware('http')(security_headers)
-register_error_handlers(fastapi_app)
 
 if settings.ENABLE_METRICS:
     configure_metrics(fastapi_app, settings.SERVICE_NAME)

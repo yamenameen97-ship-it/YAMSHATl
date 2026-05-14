@@ -1,0 +1,1 @@
+import{r as n}from"./vendor-motion-Dlm2umSl.js";var s=n();function t({label:e,hint:l,className:r="",...i}){return(0,s.jsxs)("label",{className:`field ${r}`.trim(),children:[e?(0,s.jsx)("span",{className:"field-label",children:e}):null,(0,s.jsx)("input",{className:"input",...i}),l?(0,s.jsx)("span",{className:"field-hint",children:l}):null]})}export{t};

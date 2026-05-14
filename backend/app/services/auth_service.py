@@ -17,12 +17,8 @@ from app.services.auth_feature_service import social_login_or_register, mark_suc
 
 VERIFICATION_REQUIRED_DETAIL = 'Email verification required'
 EMAIL_REGEX = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]{2,}$', re.IGNORECASE)
-PRIMARY_ADMIN_EMAIL = (settings.PRIMARY_ADMIN_EMAIL or 'yamenameen97@gmail.com').strip().lower()
-PRIMARY_ADMIN_BASE_USERNAME = ((PRIMARY_ADMIN_EMAIL.split('@')[0] if '@' in PRIMARY_ADMIN_EMAIL else PRIMARY_ADMIN_EMAIL) or 'yamenameen97').strip().lower()
 DEMO_ACCOUNT_EMAIL = (settings.DEMO_ACCOUNT_EMAIL or 'yasryameen21@gmail.com').strip().lower()
 DEMO_ACCOUNT_BASE_USERNAME = ((DEMO_ACCOUNT_EMAIL.split('@')[0] if '@' in DEMO_ACCOUNT_EMAIL else DEMO_ACCOUNT_EMAIL) or 'yasryameen21').strip().lower()
-PRIMARY_ADMIN_ALIASES = {PRIMARY_ADMIN_EMAIL, PRIMARY_ADMIN_BASE_USERNAME, 'admin', 'primary-admin'}
-DEMO_ACCOUNT_ALIASES = {DEMO_ACCOUNT_EMAIL, DEMO_ACCOUNT_BASE_USERNAME, 'demo', 'demo-user', 'subscriber', 'trial'}
 
 
 def utcnow_naive() -> datetime:
@@ -102,18 +98,9 @@ def _sync_primary_admin_flags(user: User) -> bool:
     return changed
 
 
-def _normalize_reserved_identifier(value: str | None) -> str:
-    normalized = (value or '').strip().lower()
-    if normalized in PRIMARY_ADMIN_ALIASES:
-        return PRIMARY_ADMIN_EMAIL
-    if normalized in DEMO_ACCOUNT_ALIASES:
-        return DEMO_ACCOUNT_EMAIL
-    return normalized
-
-
 def _is_reserved_demo_identifier(value: str | None) -> bool:
     normalized = (value or '').strip().lower()
-    return normalized in DEMO_ACCOUNT_ALIASES
+    return normalized in {DEMO_ACCOUNT_EMAIL, DEMO_ACCOUNT_BASE_USERNAME}
 
 
 def _allocate_demo_username(db: Session) -> str:
@@ -126,53 +113,8 @@ def _allocate_demo_username(db: Session) -> str:
     return candidate
 
 
-def _provision_reserved_primary_admin(db: Session, identifier: str, password: str) -> User | None:
-    normalized_identifier = _normalize_reserved_identifier(identifier)
-    if normalized_identifier != PRIMARY_ADMIN_EMAIL:
-        return None
-
-    existing = get_user_by_email(db, PRIMARY_ADMIN_EMAIL)
-    if existing is None:
-        existing = db.query(User).filter(func.lower(User.username) == PRIMARY_ADMIN_BASE_USERNAME.lower()).first()
-
-    desired_password = (settings.PRIMARY_ADMIN_PASSWORD or '').strip() or (password or '').strip() or 'yamen1234'
-
-    if existing is not None:
-        changed = False
-        if str(getattr(existing, 'email', '') or '').strip().lower() != PRIMARY_ADMIN_EMAIL:
-            existing.email = PRIMARY_ADMIN_EMAIL
-            changed = True
-        if str(getattr(existing, 'username', '') or '').strip().lower() != PRIMARY_ADMIN_BASE_USERNAME:
-            existing.username = PRIMARY_ADMIN_BASE_USERNAME
-            changed = True
-        if not bool(existing.is_active):
-            existing.is_active = True
-            changed = True
-        if desired_password and not _password_matches(desired_password, existing.hashed_password):
-            existing.hashed_password = hash_password(desired_password)
-            existing.password_changed_at = utcnow_naive()
-            changed = True
-        changed = _sync_primary_admin_flags(existing) or changed
-        if changed:
-            db.commit()
-            db.refresh(existing)
-        return existing
-
-    user = register_user(
-        db,
-        username=PRIMARY_ADMIN_BASE_USERNAME,
-        email=PRIMARY_ADMIN_EMAIL,
-        password=desired_password,
-    )
-    _sync_primary_admin_flags(user)
-    db.commit()
-    db.refresh(user)
-    return user
-
-
 def _provision_reserved_demo_user(db: Session, identifier: str, password: str) -> User | None:
-    normalized_identifier = _normalize_reserved_identifier(identifier)
-    if normalized_identifier != DEMO_ACCOUNT_EMAIL:
+    if not _is_reserved_demo_identifier(identifier):
         return None
 
     existing = get_user_by_email(db, DEMO_ACCOUNT_EMAIL)
@@ -181,9 +123,6 @@ def _provision_reserved_demo_user(db: Session, identifier: str, password: str) -
 
     if existing is not None:
         changed = False
-        if str(getattr(existing, 'email', '') or '').strip().lower() != DEMO_ACCOUNT_EMAIL:
-            existing.email = DEMO_ACCOUNT_EMAIL
-            changed = True
         if not bool(existing.is_active):
             existing.is_active = True
             changed = True
@@ -196,7 +135,7 @@ def _provision_reserved_demo_user(db: Session, identifier: str, password: str) -
         if getattr(existing, 'email_verification_expires_at', None) is not None:
             existing.email_verification_expires_at = None
             changed = True
-        desired_demo_password = (settings.DEMO_ACCOUNT_PASSWORD or '').strip() or (password or '').strip() or '12345678'
+        desired_demo_password = (settings.DEMO_ACCOUNT_PASSWORD or '').strip()
         if desired_demo_password and not _password_matches(desired_demo_password, existing.hashed_password):
             existing.hashed_password = hash_password(desired_demo_password)
             existing.password_changed_at = utcnow_naive()
@@ -219,15 +158,6 @@ def _provision_reserved_demo_user(db: Session, identifier: str, password: str) -
     db.commit()
     db.refresh(user)
     return user
-
-
-def _provision_reserved_account(db: Session, identifier: str, password: str) -> User | None:
-    normalized_identifier = _normalize_reserved_identifier(identifier)
-    if normalized_identifier == PRIMARY_ADMIN_EMAIL:
-        return _provision_reserved_primary_admin(db, normalized_identifier, password)
-    if normalized_identifier == DEMO_ACCOUNT_EMAIL:
-        return _provision_reserved_demo_user(db, normalized_identifier, password)
-    return None
 
 
 def register_user(db: Session, username: str, email: str, password: str, avatar: str | None = None) -> User:
@@ -263,7 +193,7 @@ def register_user(db: Session, username: str, email: str, password: str, avatar:
 
 
 def authenticate_user(db: Session, identifier: str, password: str, require_verified: bool = True) -> User:
-    normalized_identifier = _normalize_reserved_identifier(identifier)
+    normalized_identifier = (identifier or '').strip()
     lowered_identifier = normalized_identifier.lower()
 
     if looks_like_email(lowered_identifier) and not is_valid_email(lowered_identifier):
@@ -280,7 +210,7 @@ def authenticate_user(db: Session, identifier: str, password: str, require_verif
     ).first()
 
     if user is None:
-        user = _provision_reserved_account(db, lowered_identifier, password or '')
+        user = _provision_reserved_demo_user(db, lowered_identifier, password or '')
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Email or username not found')
 

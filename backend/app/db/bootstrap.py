@@ -46,7 +46,15 @@ REQUIRED_SCHEMA_COLUMNS: dict[str, set[str]] = {
         'two_factor_enabled',
         'two_factor_method',
         'suspicious_login_count',
+        'password_reset_code',
+        'password_reset_expires_at',
+        'email_verification_code',
+        'email_verification_expires_at',
+        'password_changed_at',
     },
+    'audit_logs': {'action', 'entity_type', 'description', 'meta', 'created_at'},
+    'user_sessions': {'user_id', 'session_key', 'refresh_token_hash', 'expires_at', 'revoked_at', 'last_seen_at'},
+    'login_challenges': {'user_id', 'challenge_id', 'code_hash', 'challenge_type', 'expires_at', 'consumed_at'},
     'posts': {'user_id', 'media_json', 'is_draft'},
     'comments': {'user_id', 'content'},
     'messages': {'sender_id', 'receiver_id', 'content'},
@@ -426,6 +434,51 @@ def _migrate_messages_table(engine: Engine) -> None:
                 connection.execute(text(f'UPDATE messages SET {assignments} WHERE id = :id'), updates)
 
 
+def _migrate_audit_logs_table(engine: Engine) -> None:
+    if not _table_exists(engine, 'audit_logs'):
+        return
+
+    _add_column_if_missing(engine, 'audit_logs', 'actor_user_id', 'actor_user_id INTEGER')
+    _add_column_if_missing(engine, 'audit_logs', 'action', 'action VARCHAR(100)')
+    _add_column_if_missing(engine, 'audit_logs', 'entity_type', 'entity_type VARCHAR(100)')
+    _add_column_if_missing(engine, 'audit_logs', 'entity_id', 'entity_id VARCHAR(100)')
+    _add_column_if_missing(engine, 'audit_logs', 'description', "description VARCHAR(500) NOT NULL DEFAULT ''")
+    _add_column_if_missing(engine, 'audit_logs', 'meta', 'meta JSON')
+    _add_column_if_missing(engine, 'audit_logs', 'created_at', 'created_at TIMESTAMP NULL')
+
+
+def _migrate_user_sessions_table(engine: Engine) -> None:
+    if not _table_exists(engine, 'user_sessions'):
+        return
+
+    _add_column_if_missing(engine, 'user_sessions', 'user_id', 'user_id INTEGER')
+    _add_column_if_missing(engine, 'user_sessions', 'session_key', 'session_key VARCHAR(128)')
+    _add_column_if_missing(engine, 'user_sessions', 'refresh_token_hash', 'refresh_token_hash VARCHAR(255)')
+    _add_column_if_missing(engine, 'user_sessions', 'device_id_hash', 'device_id_hash VARCHAR(128)')
+    _add_column_if_missing(engine, 'user_sessions', 'ip_hash', 'ip_hash VARCHAR(128)')
+    _add_column_if_missing(engine, 'user_sessions', 'user_agent_hash', 'user_agent_hash VARCHAR(128)')
+    _add_column_if_missing(engine, 'user_sessions', 'expires_at', 'expires_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'user_sessions', 'created_at', 'created_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'user_sessions', 'last_seen_at', 'last_seen_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'user_sessions', 'revoked_at', 'revoked_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'user_sessions', 'remember_me', 'remember_me BOOLEAN NOT NULL DEFAULT TRUE')
+    _add_column_if_missing(engine, 'user_sessions', 'login_method', "login_method VARCHAR(40) NOT NULL DEFAULT 'password'")
+
+
+def _migrate_login_challenges_table(engine: Engine) -> None:
+    if not _table_exists(engine, 'login_challenges'):
+        return
+
+    _add_column_if_missing(engine, 'login_challenges', 'user_id', 'user_id INTEGER')
+    _add_column_if_missing(engine, 'login_challenges', 'challenge_id', 'challenge_id VARCHAR(128)')
+    _add_column_if_missing(engine, 'login_challenges', 'code_hash', 'code_hash VARCHAR(255)')
+    _add_column_if_missing(engine, 'login_challenges', 'challenge_type', 'challenge_type VARCHAR(64)')
+    _add_column_if_missing(engine, 'login_challenges', 'meta_json', 'meta_json TEXT')
+    _add_column_if_missing(engine, 'login_challenges', 'expires_at', 'expires_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'login_challenges', 'consumed_at', 'consumed_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'login_challenges', 'created_at', 'created_at TIMESTAMP NULL')
+
+
 def _preferred_username(connection, preferred_username: str, email: str, user_id: int | None = None) -> str:
     base_username = (preferred_username or '').strip().lower() or ((email or '').split('@')[0].strip().lower() if email else 'user') or 'user'
     existing = connection.execute(
@@ -580,6 +633,9 @@ def initialize_database(engine: Engine, force: bool = False) -> None:
     _migrate_posts_table(engine)
     _migrate_comments_table(engine)
     _migrate_messages_table(engine)
+    _migrate_audit_logs_table(engine)
+    _migrate_user_sessions_table(engine)
+    _migrate_login_challenges_table(engine)
     Base.metadata.create_all(bind=engine)
     _ensure_seed_accounts(engine)
     _set_alembic_revision(engine)

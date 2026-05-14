@@ -4,7 +4,7 @@ import Input from '../components/ui/Input.jsx';
 import Button from '../components/ui/Button.jsx';
 import AuthShell from '../components/auth/AuthShell.jsx';
 import CaptchaBox from '../components/auth/CaptchaBox.jsx';
-import { devLoginUser, getCaptchaChallenge, loginUser } from '../api/auth.js';
+import { devLoginUser, getCaptchaChallenge, loginUser, verifyTwoFactorLogin } from '../api/auth.js';
 import { sanitizeInputText } from '../utils/sanitize.js';
 import { clearStoredUser, getStoredUser, setStoredUser } from '../utils/auth.js';
 import { PRIMARY_ADMIN_EMAIL, isPrimaryAdminSession } from '../utils/access.js';
@@ -25,10 +25,27 @@ export default function AdminLogin() {
   const [captcha, setCaptcha] = useState(null);
   const [error, setError] = useState('');
   const [captchaError, setCaptchaError] = useState('');
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [twoFactorChallenge, setTwoFactorChallenge] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
   const submitLockRef = useRef(false);
   const showDevTools = useMemo(() => canShowDevTools(), []);
+
+  const finishAdminLogin = (data) => {
+    if (!canAccessAdminPanel(data)) {
+      clearStoredUser();
+      setError(`هذا الحساب لا يملك صلاحية دخول لوحة الإدارة. البريد الإداري الحالي هو ${PRIMARY_ADMIN_EMAIL}.`);
+      return false;
+    }
+
+    setStoredUser(data);
+    const targetPath = location.state?.from?.pathname?.startsWith('/admin')
+      ? location.state.from.pathname
+      : '/admin/dashboard';
+    navigate(targetPath, { replace: true });
+    return true;
+  };
 
   const loadCaptcha = async () => {
     try {
@@ -56,6 +73,7 @@ export default function AdminLogin() {
   const handleChange = (key) => (event) => {
     const value = key === 'rememberMe' ? event.target.checked : event.target.value;
     setForm((prev) => ({ ...prev, [key]: value }));
+    if (error) setError('');
   };
 
   const handleSubmit = async (event) => {
@@ -80,6 +98,10 @@ export default function AdminLogin() {
       await loadCaptcha();
       return;
     }
+    if (!form.captchaAnswer) {
+      setError('اكتب نتيجة الكابتشا أولاً.');
+      return;
+    }
 
     submitLockRef.current = true;
     setLoading(true);
@@ -96,18 +118,23 @@ export default function AdminLogin() {
         captcha_answer: form.captchaAnswer,
       });
 
-      if (!canAccessAdminPanel(data)) {
+      if (data?.requires_2fa) {
         clearStoredUser();
-        setError(`هذا الحساب لا يملك صلاحية دخول لوحة الإدارة. البريد الإداري الحالي هو ${PRIMARY_ADMIN_EMAIL}.`);
-        await loadCaptcha();
+        setTwoFactorChallenge({
+          challenge_id: data.challenge_id,
+          email: data.email || identifier.trim().toLowerCase(),
+          remember_me: form.rememberMe,
+          delivery: data.delivery,
+        });
+        setTwoFactorCode('');
+        setError(data?.delivery?.sent ? 'تم إرسال رمز تحقق إضافي لبريد الإدارة. أدخله لإكمال الدخول.' : 'مطلوب رمز تحقق إضافي لإكمال دخول الإدارة.');
         return;
       }
 
-      setStoredUser(data);
-      const targetPath = location.state?.from?.pathname?.startsWith('/admin')
-        ? location.state.from.pathname
-        : '/admin/dashboard';
-      navigate(targetPath, { replace: true });
+      const success = finishAdminLogin(data);
+      if (!success) {
+        await loadCaptcha();
+      }
     } catch (err) {
       clearStoredUser();
       const authError = parseApiDetail(err?.response?.data?.detail, 'فشل تسجيل دخول الإدارة، راجع البيانات.');
@@ -126,6 +153,36 @@ export default function AdminLogin() {
       await loadCaptcha();
     } finally {
       submitLockRef.current = false;
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyChallenge = async () => {
+    if (!twoFactorChallenge?.challenge_id) return;
+    if (twoFactorCode.length !== 6) {
+      setError('اكتب رمز التحقق المكوّن من 6 أرقام.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    try {
+      const { data } = await verifyTwoFactorLogin({
+        email: twoFactorChallenge.email,
+        challenge_id: twoFactorChallenge.challenge_id,
+        code: twoFactorCode,
+        remember_me: twoFactorChallenge.remember_me ?? form.rememberMe,
+      });
+      setTwoFactorChallenge(null);
+      setTwoFactorCode('');
+      const success = finishAdminLogin(data);
+      if (!success) {
+        await loadCaptcha();
+      }
+    } catch (err) {
+      const authError = parseApiDetail(err?.response?.data?.detail, 'رمز التحقق غير صحيح أو منتهي الصلاحية.');
+      setError(authError?.message || 'رمز التحقق غير صحيح أو منتهي الصلاحية.');
+    } finally {
       setLoading(false);
     }
   };
@@ -189,6 +246,42 @@ export default function AdminLogin() {
           error={captchaError}
         />
 
+        {twoFactorChallenge ? (
+          <div className="dev-login-card" style={{ borderColor: 'rgba(59,130,246,0.25)' }}>
+            <strong>التحقق الإضافي للإدارة</strong>
+            <p className="muted no-margin">
+              {twoFactorChallenge?.delivery?.sent
+                ? `تم إرسال رمز إلى ${twoFactorChallenge.email}.`
+                : 'أدخل رمز التحقق الإضافي لإكمال دخول الأدمن.'}
+            </p>
+            <Input
+              label="رمز التحقق"
+              placeholder="000000"
+              value={twoFactorCode}
+              onChange={(event) => setTwoFactorCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+              maxLength="6"
+              autoComplete="one-time-code"
+            />
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <Button type="button" onClick={handleVerifyChallenge} loading={loading} disabled={loading || twoFactorCode.length !== 6}>
+                تأكيد الرمز
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={loading}
+                onClick={async () => {
+                  setTwoFactorChallenge(null);
+                  setTwoFactorCode('');
+                  await loadCaptcha();
+                }}
+              >
+                إلغاء والتحقق بكابتشا جديدة
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
         {showDevTools ? (
           <div className="dev-login-card">
             <strong>Development Login</strong>
@@ -201,7 +294,9 @@ export default function AdminLogin() {
 
         {error ? <div className="alert error">{error}</div> : null}
 
-        <Button type="submit" loading={loading} disabled={loading || devLoading}>{loading ? 'جارٍ دخول الإدارة...' : 'دخول الإدارة'}</Button>
+        <Button type="submit" loading={loading} disabled={loading || devLoading}>
+          {loading ? 'جارٍ دخول الإدارة...' : twoFactorChallenge ? 'إعادة إرسال محاولة الدخول' : 'دخول الإدارة'}
+        </Button>
       </form>
     </AuthShell>
   );

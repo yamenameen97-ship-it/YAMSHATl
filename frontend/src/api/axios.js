@@ -7,6 +7,18 @@ import { redirectToAppPath } from '../utils/router.js';
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 const RETRYABLE_STATUSES = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
+const AUTH_REFRESH_SKIP_PATTERNS = [
+  '/auth/login',
+  '/auth/dev-login',
+  '/auth/register',
+  '/auth/verify-email',
+  '/auth/verify-2fa-login',
+  '/auth/resend-verification',
+  '/auth/captcha',
+  '/auth/forgot-password',
+  '/auth/verify-reset-code',
+  '/auth/reset-password',
+];
 
 // Smart Cache Layer
 const cache = new Map();
@@ -20,6 +32,11 @@ const API = axios.create({
   timeout: DEFAULT_TIMEOUT_MS,
   withCredentials: true,
 });
+
+const shouldSkipRefresh = (config = {}) => {
+  const url = String(config?.url || '');
+  return AUTH_REFRESH_SKIP_PATTERNS.some((pattern) => url.includes(pattern));
+};
 
 API.interceptors.request.use(async (config) => {
   const token = getAuthToken();
@@ -80,7 +97,7 @@ API.interceptors.response.use(
     }
 
     // Token Refresh Logic
-    if (response?.status === 401 && !config._retry) {
+    if (response?.status === 401 && !config._retry && !shouldSkipRefresh(config)) {
       config._retry = true;
       try {
         const { data } = await sessionManager.refreshSession();

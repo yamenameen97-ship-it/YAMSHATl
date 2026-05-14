@@ -15,7 +15,7 @@ import { currentMediaProviderLabel, resolveMediaUrl } from '../config/mediaConfi
 import { getCurrentUsername } from '../utils/auth.js';
 import { useChatStore } from '../store/appStore.js';
 import { FixedSizeList as List } from 'react-window';
-import AutoSizer from 'react-virtualized-auto-sizer';
+import { AutoSizer } from 'react-virtualized-auto-sizer';
 
 const MessageRow = ({ index, style, data }) => {
   const { messages, currentUser } = data;

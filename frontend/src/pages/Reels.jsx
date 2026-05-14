@@ -12,7 +12,7 @@ import { appendVideoQuality, getDeviceProfile } from '../utils/deviceProfile.js'
 import { getOptimizedImageUrl } from '../utils/performance.js';
 import { fetchSuggestedReels } from '../services/recommendationService.js';
 import { FixedSizeList as List } from 'react-window';
-import AutoSizer from 'react-virtualized-auto-sizer';
+import { AutoSizer } from 'react-virtualized-auto-sizer';
 
 function computeReelScore(item) {
   const likes = Number(item.likes_count || 0);

@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 /**
- * OptimizedImage Component
+ * OptimizedImage Component - Enhanced
  * 
  * تحسين الصور مع:
  * - WebP format support مع fallback
  * - Lazy loading باستخدام Intersection Observer
  * - Responsive images مع srcset
  * - Progressive loading مع placeholder
+ * - Blur placeholder (LQIP - Low Quality Image Placeholder)
+ * - Image viewer transitions
  * - Error handling و retry logic
  */
 export default function OptimizedImage({
@@ -23,12 +25,15 @@ export default function OptimizedImage({
   quality = 'auto',
   sizes = '100vw',
   retryCount = 3,
+  blurPlaceholder = true,
+  blurDataUrl = null,
   ...props
 }) {
   const [imageSrc, setImageSrc] = useState(priority ? src : null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [error, setError] = useState(null);
   const [retries, setRetries] = useState(0);
+  const [isInView, setIsInView] = useState(priority);
   const imgRef = useRef(null);
   const observerRef = useRef(null);
 
@@ -64,6 +69,15 @@ export default function OptimizedImage({
       .join(', ');
   }, []);
 
+  // Generate blur placeholder
+  const generateBlurPlaceholder = useCallback((imageUrl) => {
+    if (!imageUrl || !blurPlaceholder) return null;
+    if (blurDataUrl) return blurDataUrl;
+    
+    // Use a simple gradient as fallback blur placeholder
+    return 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Cdefs%3E%3ClinearGradient id="grad" x1="0%25" y1="0%25" x2="100%25" y2="100%25"%3E%3Cstop offset="0%25" style="stop-color:rgb(200,200,200);stop-opacity:0.3" /%3E%3Cstop offset="100%25" style="stop-color:rgb(100,100,100);stop-opacity:0.1" /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width="400" height="300" fill="url(%23grad)"/%3E%3C/svg%3E';
+  }, [blurPlaceholder, blurDataUrl]);
+
   // Setup Intersection Observer for lazy loading
   useEffect(() => {
     if (priority || !imgRef.current) return;
@@ -72,6 +86,7 @@ export default function OptimizedImage({
       ([entry]) => {
         if (entry.isIntersecting) {
           setImageSrc(src);
+          setIsInView(true);
           observer.unobserve(entry.target);
         }
       },
@@ -117,6 +132,7 @@ export default function OptimizedImage({
   const webpSrc = getWebPUrl(imageSrc);
   const srcSet = generateSrcSet(imageSrc);
   const webpSrcSet = generateSrcSet(webpSrc);
+  const blurUrl = generateBlurPlaceholder(imageSrc);
 
   return (
     <picture ref={imgRef} style={{ display: 'block', ...style }}>
@@ -147,8 +163,12 @@ export default function OptimizedImage({
         height={height}
         className={`optimized-image ${isLoaded ? 'loaded' : 'loading'} ${error ? 'error' : ''} ${className}`}
         style={{
+          backgroundImage: blurUrl && !isLoaded ? `url(${blurUrl})` : 'none',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
           opacity: isLoaded ? 1 : 0.7,
-          transition: 'opacity 0.3s ease-in-out',
+          transition: 'opacity 0.3s ease-in-out, filter 0.3s ease-in-out',
+          filter: !isLoaded && blurPlaceholder ? 'blur(10px)' : 'blur(0px)',
           backgroundColor: error ? '#f0f0f0' : 'transparent',
           ...style,
         }}
@@ -213,8 +233,18 @@ export default function OptimizedImage({
         }
 
         @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
+          from { 
+            opacity: 0;
+            filter: blur(5px);
+          }
+          to { 
+            opacity: 1;
+            filter: blur(0px);
+          }
+        }
+
+        .optimized-image.error {
+          background: linear-gradient(135deg, #f0f0f0 0%, #e0e0e0 100%);
         }
       `}</style>
     </picture>

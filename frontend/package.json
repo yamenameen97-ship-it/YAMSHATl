@@ -52,10 +52,10 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.54.2",
-    "@vitejs/plugin-react": "^6.0.1",
+    "@vitejs/plugin-react": "5.2.0",
     "esbuild": "^0.28.0",
-    "rollup-plugin-visualizer": "^7.0.1",
-    "vite": "^8.0.10",
+    "rollup-plugin-visualizer": "6.0.11",
+    "vite": "7.3.3",
     "vite-plugin-compression": "^0.5.1",
     "workbox-build": "^7.3.0"
   }

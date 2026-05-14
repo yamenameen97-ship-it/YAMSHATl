@@ -63,15 +63,6 @@ export function sanitizeText(text, options = {}) {
 }
 
 /**
- * Legacy wrapper for sanitizeText used in login
- * @param {string} text - The text to sanitize
- * @returns {string} Sanitized text
- */
-export function sanitizeInputText(text) {
-  return sanitizeText(text, { maxLength: 255, trim: true });
-}
-
-/**
  * Validate and sanitize email addresses
  * @param {string} email - The email to validate
  * @returns {string|null} Sanitized email or null if invalid
@@ -346,7 +337,6 @@ export function sanitizeObject(obj, options = {}) {
 export default {
   sanitizeHTML,
   sanitizeText,
-  sanitizeInputText,
   sanitizeEmail,
   sanitizeURL,
   validateFileUpload,

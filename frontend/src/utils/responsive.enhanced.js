@@ -362,48 +362,6 @@ export function getSafeAreaInsets() {
   };
 }
 
-/**
- * Get device profile snapshot for performance monitoring
- * @returns {object} Device profile
- */
-export function getDeviceProfile() {
-  const connection = (typeof navigator !== 'undefined' && (navigator.connection || navigator.mozConnection || navigator.webkitConnection)) || {};
-  const isLowEndDevice = 
-    (typeof navigator !== 'undefined' && (
-      (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) || 
-      (navigator.deviceMemory && navigator.deviceMemory <= 4)
-    )) ||
-    (connection.saveData === true) ||
-    (['slow-2g', '2g', '3g'].includes(connection.effectiveType));
-
-  return {
-    isLowEndDevice,
-    effectiveType: connection.effectiveType || 'unknown',
-    saveData: !!connection.saveData,
-    preferredVideoQuality: isLowEndDevice ? 'low' : 'high',
-    hardwareConcurrency: typeof navigator !== 'undefined' ? navigator.hardwareConcurrency || 0 : 0,
-    deviceMemory: typeof navigator !== 'undefined' ? navigator.deviceMemory || 0 : 0,
-  };
-}
-
-/**
- * Append quality parameter to video URL
- * @param {string} url - Original video URL
- * @param {string} quality - Desired quality (low, medium, high)
- * @returns {string} URL with quality parameter
- */
-export function appendVideoQuality(url, quality) {
-  if (!url) return '';
-  try {
-    const urlObj = new URL(url, window.location.origin);
-    urlObj.searchParams.set('quality', quality);
-    return urlObj.toString();
-  } catch {
-    const separator = url.includes('?') ? '&' : '?';
-    return `${url}${separator}quality=${quality}`;
-  }
-}
-
 export default {
   BREAKPOINTS,
   getCurrentBreakpoint,
@@ -431,6 +389,4 @@ export default {
   getResponsiveColumns,
   handleResponsiveOverflow,
   getSafeAreaInsets,
-  getDeviceProfile,
-  appendVideoQuality,
 };

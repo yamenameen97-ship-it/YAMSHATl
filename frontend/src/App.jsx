@@ -27,12 +27,12 @@ const AdminChat = lazy(() => import('./features/admin/index.js').then((mod) => (
 const AdminStories = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminStories })));
 const AdminReels = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminReels })));
 const AdminGroups = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminGroups })));
-const Login = lazy(() => import('./features/auth/index.js').then((mod) => ({ default: mod.Login })));
-const AdminLogin = lazy(() => import('./features/auth/index.js').then((mod) => ({ default: mod.AdminLogin })));
-const Register = lazy(() => import('./features/auth/index.js').then((mod) => ({ default: mod.Register })));
-const VerifyEmail = lazy(() => import('./features/auth/index.js').then((mod) => ({ default: mod.VerifyEmail })));
-const ForgotPassword = lazy(() => import('./features/auth/index.js').then((mod) => ({ default: mod.ForgotPassword })));
-const ResetPassword = lazy(() => import('./features/auth/index.js').then((mod) => ({ default: mod.ResetPassword })));
+const Login = lazy(() => import('./pages/Login.jsx'));
+const AdminLogin = lazy(() => import('./pages/AdminLogin.jsx'));
+const Register = lazy(() => import('./pages/Register.jsx'));
+const VerifyEmail = lazy(() => import('./pages/VerifyEmail.jsx'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword.jsx'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword.jsx'));
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
 const Feed = lazy(() => import('./pages/Feed.jsx'));
 const Stories = lazy(() => import('./pages/Stories.jsx'));

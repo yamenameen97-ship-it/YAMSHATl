@@ -185,6 +185,7 @@ export default defineConfig({
 
   // Server configuration
   server: {
+    allowedHosts: true,
     middlewareMode: false,
     hmr: {
       protocol: 'ws',

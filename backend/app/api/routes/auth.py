@@ -118,7 +118,7 @@ def dev_login(db: Session = Depends(get_db)):
 
 @router.post("/logout")
 def logout():
-    return {"message": "Logged out successfully"})
+    return {"message": "Logged out successfully"}
 from app.services.auth_feature_service import (
     evaluate_login_risk,
     issue_login_challenge,

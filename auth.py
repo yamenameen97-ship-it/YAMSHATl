@@ -1,55 +1,44 @@
-import sys
+from fastapi import APIRouter, Depends, HTTPException, status, Request
+from sqlalchemy.orm import Session
+from app.core.security import verify_password, create_access_token
+from app.db.session import get_db
+from app.models.user import User
+from app.schemas.auth import LoginRequest, TokenResponse
 
-from flask import Blueprint, jsonify, request, session
-
-
-auth = Blueprint("auth", __name__)
-
-
-def chat_runtime():
-    return sys.modules.get("chat_server") or sys.modules.get("__main__")
+router = APIRouter()
 
 
-@auth.route("/login", methods=["POST"])
-def login_route():
-    runtime = chat_runtime()
+@router.post("/login", response_model=TokenResponse)
+async def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    
+    # البحث عن المستخدم
+    user = db.query(User).filter(User.email == payload.email).first()
 
-    data = request.get_json(silent=True) or {}
-    username = (data.get("username") or "").strip()
-    password = data.get("password") or ""
-
-    user = runtime.authenticate_credentials(username, password)
     if not user:
-        return jsonify({"status": "error", "message": "اسم المستخدم أو كلمة المرور غير صحيحين"}), 401
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Email not found"
+        )
 
-    session["user"] = user["username"]
-    token = runtime.create_access_token(user["username"])
-    return jsonify(
-        {
-            "status": "ok",
-            "access_token": token,
-            "token": token,
-            "user": user["username"],
-            "email": user.get("email", ""),
-            "role": user.get("role", "user"),
-            "profile": runtime.serialize_user(user),
-        }
+    # التحقق من كلمة المرور
+    if not verify_password(payload.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Wrong password"
+        )
+
+    # إنشاء التوكن
+    access_token = create_access_token(
+        data={"sub": str(user.id)}
     )
 
-
-@auth.route("/logout", methods=["POST"])
-def logout_route():
-    session.pop("user", None)
-    return jsonify({"status": "ok"})
-
-
-@auth.route("/me", methods=["GET"])
-def me_route():
-    runtime = chat_runtime()
-
-    username = runtime.resolve_request_user()
-    if not username:
-        return jsonify({"error": "not logged in"}), 401
-
-    user = runtime.get_user_by_username(username)
-    return jsonify({"username": username, "profile": runtime.serialize_user(user) if user else None})
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "username": user.username,
+            "is_admin": user.is_admin
+        }
+    }

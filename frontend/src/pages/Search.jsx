@@ -13,7 +13,7 @@ import { getUsers } from '../api/users.js';
 import { buildTrendingHashtags, explainRecommendation } from '../services/recommendationService.js';
 import { groupSearchResults, searchInCollections } from '../utils/fuzzySearch.js';
 import { FixedSizeList as List } from 'react-window';
-import { AutoSizer } from 'react-virtualized-auto-sizer';
+import AutoSizer from 'react-virtualized-auto-sizer';
 
 const SEARCH_FILTERS = [
   { key: 'all', label: 'الكل' },

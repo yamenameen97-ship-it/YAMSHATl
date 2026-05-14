@@ -4,6 +4,8 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import compression from 'vite-plugin-compression';
 
+const enableAnalyze = process.env.ANALYZE === 'true';
+
 /**
  * Advanced manual chunk splitting strategy
  */
@@ -239,7 +241,7 @@ export default defineConfig({
       polyfill: true,
     },
     chunkSizeWarningLimit: 1000,
-    reportCompressedSize: true,
+    reportCompressedSize: false,
     sourcemap: false,
 
     rollupOptions: {
@@ -255,16 +257,16 @@ export default defineConfig({
         assetFileNames: 'assets/[name]-[hash][extname]',
       },
 
-      plugins: [
+      plugins: enableAnalyze ? [
         // Bundle analyzer
         visualizer({
           open: false,
           filename: './dist/bundle-analyzer.html',
           title: 'Bundle Analyzer',
           gzipSize: true,
-          brotliSize: true,
+          brotliSize: false,
         }),
-      ],
+      ] : [],
     },
   },
 

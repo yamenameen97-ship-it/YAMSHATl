@@ -73,7 +73,10 @@ const safeStoredApi = apiLooksCurrent(storedApi) || !isRenderHost(apiToOrigin(st
 const runtimeBackendIsFrontendOrigin = Boolean(runtimeBackendOrigin && runtimeBackendOrigin === currentOrigin && inferredBackendOrigin !== currentOrigin);
 const runtimeApiIsFrontendOrigin = Boolean(runtimeApi && runtimeApi === toApiBase(`${currentOrigin}/api`) && inferredBackendOrigin !== currentOrigin);
 const safeRuntimeBackendOrigin = runtimeBackendIsFrontendOrigin ? '' : runtimeBackendOrigin;
-const safeRuntimeApi = runtimeApiIsFrontendOrigin ? '' : runtimeApi;
+const runtimeApiMatchesRuntimeBackend = Boolean(!safeRuntimeBackendOrigin || !runtimeApi || apiToOrigin(runtimeApi) === safeRuntimeBackendOrigin);
+const safeRuntimeApi = runtimeApiIsFrontendOrigin || !runtimeApiMatchesRuntimeBackend ? '' : runtimeApi;
+const queryBackendApi = queryBackend ? `${queryBackend}/api` : '';
+const runtimeBackendApi = safeRuntimeBackendOrigin ? `${safeRuntimeBackendOrigin}/api` : '';
 
 export const BACKEND_ORIGIN = trim(
   queryBackend ||
@@ -88,7 +91,9 @@ export const BACKEND_ORIGIN = trim(
 
 export const API_BASE = toApiBase(
   queryApi ||
+    queryBackendApi ||
     safeRuntimeApi ||
+    runtimeBackendApi ||
     envApi ||
     safeStoredApi ||
     (BACKEND_ORIGIN ? `${BACKEND_ORIGIN}/api` : `${currentOrigin}/api`)

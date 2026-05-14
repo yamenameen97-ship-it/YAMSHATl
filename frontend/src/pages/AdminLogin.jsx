@@ -4,7 +4,8 @@ import Input from '../components/ui/Input.jsx';
 import Button from '../components/ui/Button.jsx';
 import AuthShell from '../components/auth/AuthShell.jsx';
 import CaptchaBox from '../components/auth/CaptchaBox.jsx';
-import { devLoginUser, getCaptchaChallenge, loginUser } from '../api/auth.js';
+import TwoFactorChallengeModal from '../components/auth/TwoFactorChallengeModal.jsx';
+import { devLoginUser, getCaptchaChallenge, loginUser, verifyTwoFactorLogin } from '../api/auth.js';
 import { sanitizeInputText } from '../utils/sanitize.js';
 import { clearStoredUser, getStoredUser, setStoredUser } from '../utils/auth.js';
 import { PRIMARY_ADMIN_EMAIL, isPrimaryAdminSession } from '../utils/access.js';
@@ -25,6 +26,10 @@ export default function AdminLogin() {
   const [captcha, setCaptcha] = useState(null);
   const [error, setError] = useState('');
   const [captchaError, setCaptchaError] = useState('');
+  const [show2FAModal, setShow2FAModal] = useState(false);
+  const [pendingChallenge, setPendingChallenge] = useState(null);
+  const [twoFactorError, setTwoFactorError] = useState('');
+  const [twoFactorLoading, setTwoFactorLoading] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const submitLockRef = useRef(false);
@@ -58,6 +63,55 @@ export default function AdminLogin() {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  const completeAdminLogin = (data) => {
+    if (!canAccessAdminPanel(data)) {
+      clearStoredUser();
+      setError(`هذا الحساب لا يملك صلاحية دخول لوحة الإدارة. البريد الإداري الحالي هو ${PRIMARY_ADMIN_EMAIL}.`);
+      return false;
+    }
+
+    setStoredUser(data);
+    const targetPath = location.state?.from?.pathname?.startsWith('/admin')
+      ? location.state.from.pathname
+      : '/admin/dashboard';
+    navigate(targetPath, { replace: true });
+    return true;
+  };
+
+  const closeTwoFactorModal = () => {
+    setShow2FAModal(false);
+    setPendingChallenge(null);
+    setTwoFactorError('');
+  };
+
+  const handleTwoFactorSubmit = async (code) => {
+    if (!pendingChallenge?.challenge_id || !pendingChallenge?.email) {
+      setTwoFactorError('بيانات التحقق الإضافي غير مكتملة. حاول تسجيل الدخول من جديد.');
+      return;
+    }
+
+    try {
+      setTwoFactorLoading(true);
+      setTwoFactorError('');
+      const { data } = await verifyTwoFactorLogin({
+        email: pendingChallenge.email,
+        challenge_id: pendingChallenge.challenge_id,
+        code,
+        remember_me: pendingChallenge.remember_me,
+      });
+      closeTwoFactorModal();
+      const allowed = completeAdminLogin(data);
+      if (!allowed) {
+        await loadCaptcha();
+      }
+    } catch (err) {
+      const parsed = parseApiDetail(err?.response?.data?.detail, 'رمز التحقق غير صحيح أو انتهت صلاحيته.');
+      setTwoFactorError(parsed?.message || 'رمز التحقق غير صحيح أو انتهت صلاحيته.');
+    } finally {
+      setTwoFactorLoading(false);
+    }
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (submitLockRef.current || loading) return;
@@ -80,6 +134,10 @@ export default function AdminLogin() {
       await loadCaptcha();
       return;
     }
+    if (!form.captchaAnswer.trim()) {
+      setError('اكتب إجابة الكابتشا أولاً.');
+      return;
+    }
 
     submitLockRef.current = true;
     setLoading(true);
@@ -96,18 +154,23 @@ export default function AdminLogin() {
         captcha_answer: form.captchaAnswer,
       });
 
-      if (!canAccessAdminPanel(data)) {
-        clearStoredUser();
-        setError(`هذا الحساب لا يملك صلاحية دخول لوحة الإدارة. البريد الإداري الحالي هو ${PRIMARY_ADMIN_EMAIL}.`);
-        await loadCaptcha();
+      if (data?.requires_2fa && data?.challenge_id) {
+        setPendingChallenge({
+          challenge_id: data.challenge_id,
+          email: data.email,
+          remember_me: form.rememberMe,
+          delivery: data.delivery || null,
+          devCode: data.dev_verification_code || '',
+        });
+        setTwoFactorError('');
+        setShow2FAModal(true);
         return;
       }
 
-      setStoredUser(data);
-      const targetPath = location.state?.from?.pathname?.startsWith('/admin')
-        ? location.state.from.pathname
-        : '/admin/dashboard';
-      navigate(targetPath, { replace: true });
+      const allowed = completeAdminLogin(data);
+      if (!allowed) {
+        await loadCaptcha();
+      }
     } catch (err) {
       clearStoredUser();
       const authError = parseApiDetail(err?.response?.data?.detail, 'فشل تسجيل دخول الإدارة، راجع البيانات.');
@@ -203,6 +266,17 @@ export default function AdminLogin() {
 
         <Button type="submit" loading={loading} disabled={loading || devLoading}>{loading ? 'جارٍ دخول الإدارة...' : 'دخول الإدارة'}</Button>
       </form>
+
+      <TwoFactorChallengeModal
+        isOpen={show2FAModal}
+        onClose={closeTwoFactorModal}
+        onSubmit={handleTwoFactorSubmit}
+        loading={twoFactorLoading}
+        error={twoFactorError}
+        email={pendingChallenge?.email || ''}
+        devCode={pendingChallenge?.devCode || ''}
+        delivery={pendingChallenge?.delivery || null}
+      />
     </AuthShell>
   );
 }

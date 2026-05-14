@@ -8,7 +8,15 @@ The problem: The admin panel rejects login even with correct credentials because
 
 Solution: This script patches the authentication flow to be more flexible during development.
 """
+import os
 
+FLAG_FILE = "admin_fix_done.flag"
+
+if os.path.exists(FLAG_FILE):
+    print("Fix already executed.")
+    exit()
+
+print("Running admin fix...")
 import os
 import sys
 from pathlib import Path
@@ -207,3 +215,7 @@ def fix_admin_accounts():
 if __name__ == "__main__":
     success = fix_admin_accounts()
     sys.exit(0 if success else 1)
+with open(FLAG_FILE, "w") as f:
+    f.write("done")
+
+print("Fix completed successfully.")

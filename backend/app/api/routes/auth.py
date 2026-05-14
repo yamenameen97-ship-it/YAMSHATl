@@ -1,124 +1,40 @@
-from datetime import datetime, timedelta
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
-from sqlalchemy.orm import Session
+from datetime import datetime, timedelta, timezone
 import secrets
+from threading import Lock
 
-from app.core.dependencies import get_db
-from app.core.security import create_access_token, create_refresh_token
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
+from sqlalchemy.orm import Session
+
+from app.api.routes.admin import ROLE_PERMISSIONS
+from app.core.admin_access import effective_role, permissions_for_user, primary_admin_email
+from app.core.admin_mfa import verify_totp
+from app.core.config import settings
+from app.core.dependencies import get_current_token_payload, get_current_user, get_db
+from app.core.rate_limit import allow_min_interval, clear_failed_logins, enforce_rate_limit, is_ip_locked, register_failed_login
+from app.core.request_security import ensure_device_cookie, request_binding_context
+from app.core.security import REFRESH_TOKEN_TYPE, create_access_token, create_refresh_token, decode_token
 from app.models.user import User
-from app.services.auth_service import authenticate_user, get_user_by_email, register_user
-
-router = APIRouter()
-
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
-REFRESH_TOKEN_EXPIRE_DAYS = 30
-
-
-def utcnow():
-    return datetime.utcnow()
-
-
-def create_session(user: User):
-    access_token = create_access_token({
-        "user_id": user.id,
-        "username": user.username,
-        "role": user.role
-    })
-
-    refresh_token = create_refresh_token({
-        "user_id": user.id
-    })
-
-    return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer",
-        "user": {
-            "id": user.id,
-            "username": user.username,
-            "email": user.email,
-            "avatar": user.avatar,
-            "role": user.role
-        }
-    }
-
-
-@router.post("/register")
-def register(payload: dict = Body(...), db: Session = Depends(get_db)):
-
-    username = payload.get("username")
-    email = payload.get("email")
-    password = payload.get("password")
-
-    if not username or not email or not password:
-        raise HTTPException(status_code=400, detail="Missing fields")
-
-    user = get_user_by_email(db, email)
-
-    if user:
-        raise HTTPException(status_code=400, detail="Email already exists")
-
-    user = register_user(
-        db,
-        username=username,
-        email=email,
-        password=password
-    )
-
-    return {
-        "message": "Account created successfully",
-        "user_id": user.id
-    }
-
-
-@router.post("/login")
-def login(payload: dict = Body(...), db: Session = Depends(get_db)):
-
-    identifier = payload.get("identifier") or payload.get("email") or payload.get("username")
-    password = payload.get("password")
-
-    if not identifier or not password:
-        raise HTTPException(status_code=400, detail="Email/username and password required")
-
-    user = get_user_by_email(db, identifier)
-
-    if not user:
-        user = db.query(User).filter(User.username == identifier).first()
-
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-
-    auth = authenticate_user(
-        db,
-        identifier=identifier,
-        password=password,
-        require_verified=False
-    )
-
-    if not auth:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-
-    user.last_login_at = utcnow()
-    db.commit()
-    db.refresh(user)
-
-    return create_session(user)
-
-
-@router.post("/dev-login")
-def dev_login(db: Session = Depends(get_db)):
-
-    user = db.query(User).filter(User.role == "admin").first()
-
-    if not user:
-        raise HTTPException(status_code=404, detail="Admin not found")
-
-    return create_session(user)
-
-
-@router.post("/logout")
-def logout():
-    return {"message": "Logged out successfully"}
+from app.services.audit_service import record_audit_log
+from app.services.auth_service import (
+    get_google_oauth_user_info,
+    get_facebook_oauth_user_info,
+    social_authenticate_or_register_user,
+    VERIFICATION_REQUIRED_DETAIL,
+    authenticate_user,
+    clear_all_refresh_tokens,
+    clear_refresh_token,
+    get_active_session,
+    get_user_by_email,
+    issue_email_verification_code,
+    issue_password_reset_code,
+    register_user,
+    revoke_session,
+    store_refresh_token,
+    update_password,
+    validate_refresh_token,
+    verify_email_code,
+    verify_password_reset_code,
+)
 from app.services.auth_feature_service import (
     evaluate_login_risk,
     issue_login_challenge,

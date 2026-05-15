@@ -23,7 +23,7 @@ export function useFeed(options = {}) {
       return response.data;
     },
     getNextPageParam: (lastPage, allPages) => {
-      return lastPage.length === limit ? allPages.length + 1 : undefined;
+      return lastPage?.length === limit ? allPages.length + 1 : undefined;
     },
     // Stale data handling
     staleTime: 5 * 60 * 1000, // 5 minutes
@@ -32,7 +32,7 @@ export function useFeed(options = {}) {
     // Polling fallback for real-time updates
     refetchInterval: (data) => {
       // Only poll if on the first page and window is focused
-      return (data?.pages.length === 1 && document.visibilityState === 'visible') ? pollingInterval : false;
+      return (data?.pages?.length === 1 && document.visibilityState === 'visible') ? pollingInterval : false;
     }
   });
 

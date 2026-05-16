@@ -24,8 +24,19 @@ export default function Profile() {
   }, [username]);
 
   const loadProfile = async () => {
-    const { data } = await getProfileBundle(username);
-    setProfile(data);
+    try {
+      const { data } = await getProfileBundle(username);
+      setProfile(data);
+      setTheme(data?.profile_insights?.theme || data?.user?.profile?.profile_theme || 'midnight');
+    } catch (error) {
+      console.error('Failed to load profile', error);
+      setProfile({
+        user: { username, avatar: '', profile: { bio: '' } },
+        counts: { posts: 0, followers: 0, following: 0 },
+        posts: [],
+        saved_posts: [],
+      });
+    }
   };
 
   const handleThemeChange = async (newTheme) => {
@@ -41,8 +52,8 @@ export default function Profile() {
         
         {/* Profile Header */}
         <div style={{ display: 'flex', gap: 40, alignItems: 'center', marginBottom: 50 }}>
-          <div style={{ width: 150, height: 150, borderRadius: '50%', background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 60, fontWeight: 'bold' }}>
-            {profile.user.username[0].toUpperCase()}
+          <div style={{ width: 150, height: 150, borderRadius: '50%', background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 60, fontWeight: 'bold', overflow: 'hidden' }}>
+            {profile.user.avatar ? <img src={profile.user.avatar} alt={profile.user.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : profile.user.username[0].toUpperCase()}
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', gap: 20, alignItems: 'center', marginBottom: 20 }}>
@@ -57,9 +68,9 @@ export default function Profile() {
               )}
             </div>
             <div style={{ display: 'flex', gap: 30, marginBottom: 20 }}>
-              <div><strong>{profile.posts_count || 0}</strong> منشور</div>
-              <div><strong>{profile.followers_count || 0}</strong> متابع</div>
-              <div><strong>{profile.following_count || 0}</strong> يتابع</div>
+              <div><strong>{profile.counts?.posts ?? profile.posts_count ?? 0}</strong> منشور</div>
+              <div><strong>{profile.counts?.followers ?? profile.followers_count ?? 0}</strong> متابع</div>
+              <div><strong>{profile.counts?.following ?? profile.following_count ?? 0}</strong> يتابع</div>
             </div>
             <div style={{ whiteSpace: 'pre-wrap' }}>{profile.user.profile?.bio || 'لا يوجد نبذة شخصية'}</div>
           </div>
@@ -90,7 +101,7 @@ export default function Profile() {
 
         {/* Grid Content */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
-          {(activeTab === 'posts' ? profile.posts : activeTab === 'archive' ? profile.archived_posts : profile.saved_posts)?.map(post => (
+          {(activeTab === 'posts' ? profile.posts : activeTab === 'archive' ? profile.archived_posts || [] : profile.saved_posts || [])?.map(post => (
             <div key={post.id} style={{ aspectRatio: '1/1', background: '#222', borderRadius: 8, overflow: 'hidden', position: 'relative' }}>
               <img src={post.media_url || post.image_url} alt="post" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               {activeTab === 'archive' && (

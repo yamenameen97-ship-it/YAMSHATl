@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import Modal from '../components/ui/Modal.jsx';
-import { getGroups } from '../api/groups.js';
+import EmptyState from '../components/feedback/EmptyState.jsx';
+import { createGroup, getGroups } from '../api/groups.js';
 
 const ROLES = [
   { id: 'admin', label: 'مدير', color: '#ff4444' },
@@ -16,6 +17,9 @@ export default function Groups() {
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: '', description: '' });
+  const [savingGroup, setSavingGroup] = useState(false);
   const [activeTab, setActiveTab] = useState('members'); // members, settings, analytics
 
   useEffect(() => {
@@ -36,7 +40,7 @@ export default function Groups() {
         <div style={{ width: 300, borderLeft: '1px solid var(--line)', padding: 20, overflowY: 'auto' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
             <h3 style={{ margin: 0 }}>مجموعاتي</h3>
-            <Button size="small">➕</Button>
+            <Button size="small" onClick={() => setShowCreateModal(true)}>➕</Button>
           </div>
           <div style={{ display: 'grid', gap: 10 }}>
             {groups.map(g => (
@@ -158,6 +162,51 @@ export default function Groups() {
           </div>
           <div className="divider"><span>أو ابحث عن صديق</span></div>
           <input placeholder="ابحث بالاسم أو البريد..." style={{ width: '100%', background: '#222', border: '1px solid #444', padding: 10, borderRadius: 8, color: 'white', marginTop: 15 }} />
+        </div>
+      </Modal>
+
+      <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="إنشاء مجموعة جديدة">
+        <div style={{ padding: 20, display: 'grid', gap: 14 }}>
+          <label style={{ display: 'grid', gap: 8 }}>
+            <span style={{ fontWeight: 700 }}>اسم المجموعة</span>
+            <input
+              value={createForm.name}
+              onChange={(event) => setCreateForm((prev) => ({ ...prev, name: event.target.value }))}
+              placeholder="اكتب اسم المجموعة"
+              style={{ width: '100%', borderRadius: 12, padding: 12 }}
+            />
+          </label>
+          <label style={{ display: 'grid', gap: 8 }}>
+            <span style={{ fontWeight: 700 }}>وصف المجموعة</span>
+            <textarea
+              value={createForm.description}
+              onChange={(event) => setCreateForm((prev) => ({ ...prev, description: event.target.value }))}
+              placeholder="اكتب وصف واضح للمجموعة"
+              rows={4}
+              style={{ width: '100%', borderRadius: 12, padding: 12 }}
+            />
+          </label>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <Button variant="secondary" onClick={() => setShowCreateModal(false)}>إلغاء</Button>
+            <Button
+              onClick={async () => {
+                if (!createForm.name.trim()) return;
+                try {
+                  setSavingGroup(true);
+                  const { data } = await createGroup({ name: createForm.name.trim(), description: createForm.description.trim() });
+                  const createdGroup = data || { id: `local-${Date.now()}`, name: createForm.name.trim(), description: createForm.description.trim(), members_count: 1 };
+                  setGroups((prev) => [createdGroup, ...prev]);
+                  setSelectedGroup(createdGroup);
+                  setCreateForm({ name: '', description: '' });
+                  setShowCreateModal(false);
+                } finally {
+                  setSavingGroup(false);
+                }
+              }}
+              loading={savingGroup}
+              disabled={!createForm.name.trim()}
+            >إنشاء المجموعة</Button>
+          </div>
         </div>
       </Modal>
 

@@ -64,6 +64,7 @@ export default function Stories() {
   const fileInputRef = useRef(null);
   const progressTimerRef = useRef(0);
   const prefetchCleanupRef = useRef([]);
+  const viewedStoryIdsRef = useRef(new Set());
   const [activeTab, setActiveTab] = useState('feed');
   const [viewerMode, setViewerMode] = useState('feed');
   const [stories, setStories] = useState([]);
@@ -150,8 +151,19 @@ export default function Stories() {
   useEffect(() => {
     if (!viewerOpen || !activeStory) return undefined;
     setProgress(0);
-    viewStory(activeStory.id).catch(() => null);
-    setStories((prev) => prev.map((item) => String(item.id) === String(activeStory.id) ? { ...item, views_count: Number(item.views_count || 0) + 1 } : item));
+    if (!viewedStoryIdsRef.current.has(String(activeStory.id))) {
+      viewedStoryIdsRef.current.add(String(activeStory.id));
+      viewStory(activeStory.id)
+        .then(({ data }) => {
+          const nextViews = Number(data?.views_count ?? data?.view_count ?? activeStory.views_count ?? 0);
+          const updater = (items) => items.map((item) => String(item.id) === String(activeStory.id)
+            ? { ...item, views_count: nextViews, viewer_count: nextViews, seen_by: data?.seen_by || item.seen_by || [] }
+            : item);
+          if (viewerMode === 'archive') setArchive((prev) => updater(prev));
+          else setStories((prev) => updater(prev));
+        })
+        .catch(() => null);
+    }
 
     if (progressTimerRef.current) window.clearInterval(progressTimerRef.current);
     if (!paused) {
@@ -459,7 +471,7 @@ export default function Stories() {
                 onTouchEnd={() => setPaused(false)}
               >
                 {isVideoStory(activeStory)
-                  ? <video src={activeStory.media_url} controls autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                  ? <video key={activeStory.id} src={activeStory.media_url} controls autoPlay playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                   : <img src={activeStory.media_url} alt="story" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
 
                 <div style={{ position: 'absolute', top: 18, left: 18, display: 'flex', gap: 8, flexWrap: 'wrap' }}>

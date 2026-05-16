@@ -5,7 +5,8 @@ import { createPortal } from 'react-dom';
  * Modal Component
  * Features: Animations, Accessibility, Focus trap, Keyboard support
  */
-export default function Modal({ open, title, children, onClose, size = 'medium' }) {
+export default function Modal({ open, isOpen, title, children, onClose, size = 'medium' }) {
+  const resolvedOpen = typeof open === 'boolean' ? open : Boolean(isOpen);
   const modalRef = useRef(null);
   const previousFocus = useRef(null);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -46,7 +47,7 @@ export default function Modal({ open, title, children, onClose, size = 'medium' 
    * Sets up keyboard listeners and focus management
    */
   useEffect(() => {
-    if (open) {
+    if (resolvedOpen) {
       setIsAnimating(true);
       previousFocus.current = document.activeElement;
       document.body.style.overflow = 'hidden';
@@ -75,16 +76,16 @@ export default function Modal({ open, title, children, onClose, size = 'medium' 
     } else {
       setIsAnimating(false);
     }
-  }, [open, onClose, handleTabKey]);
+  }, [resolvedOpen, onClose, handleTabKey]);
 
-  if (!open && !isAnimating) return null;
+  if (!resolvedOpen && !isAnimating) return null;
 
   return createPortal(
     <div
       className={`modal-backdrop ${isAnimating ? 'fade-in' : 'fade-out'}`}
       onClick={onClose}
       role="presentation"
-      aria-hidden={!open}
+      aria-hidden={!resolvedOpen}
       style={{
         opacity: isAnimating ? 1 : 0,
         pointerEvents: isAnimating ? 'auto' : 'none',
@@ -136,7 +137,9 @@ export default function Modal({ open, title, children, onClose, size = 'medium' 
           }
 
           .modal-card {
-            background: white;
+            background: var(--panel-strong, #0f172a);
+            color: var(--text, #e2e8f0);
+            border: 1px solid var(--line, rgba(148, 163, 184, 0.18));
             border-radius: 16px;
             width: 90%;
             max-height: 90vh;
@@ -160,7 +163,7 @@ export default function Modal({ open, title, children, onClose, size = 'medium' 
 
           .modal-header {
             padding: 20px;
-            border-bottom: 1px solid #f3f4f6;
+            border-bottom: 1px solid var(--line, rgba(148, 163, 184, 0.18));
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -177,19 +180,19 @@ export default function Modal({ open, title, children, onClose, size = 'medium' 
             border: none;
             font-size: 1.5rem;
             cursor: pointer;
-            color: #9ca3af;
+            color: var(--muted, #94a3b8);
             transition: all 0.2s ease;
             padding: 4px 8px;
             border-radius: 4px;
           }
 
           .modal-close:hover {
-            color: #111827;
-            background: #f3f4f6;
+            color: var(--text, #e2e8f0);
+            background: rgba(255,255,255,0.08);
           }
 
           .modal-close:focus {
-            outline: 2px solid #3b82f6;
+            outline: 2px solid var(--primary, #8b5cf6);
             outline-offset: 2px;
           }
 
@@ -197,6 +200,22 @@ export default function Modal({ open, title, children, onClose, size = 'medium' 
             padding: 20px;
             overflow-y: auto;
             flex: 1;
+            color: inherit;
+          }
+
+          .modal-card input,
+          .modal-card textarea,
+          .modal-card select {
+            width: 100%;
+            background: rgba(255,255,255,0.06);
+            color: var(--text, #e2e8f0);
+            border: 1px solid var(--line, rgba(148, 163, 184, 0.18));
+          }
+
+          .modal-card input::placeholder,
+          .modal-card textarea::placeholder {
+            color: var(--muted, #94a3b8);
+            opacity: 1;
           }
 
           .fade-in {

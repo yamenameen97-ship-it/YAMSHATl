@@ -188,25 +188,44 @@ class LiveStore:
         return False
 
     def serialize_room(self, room: LiveRoom) -> dict:
+        packet_loss_events = int(room.stream_analytics.get("packet_loss_events", 0) or 0)
+        avg_bitrate = int(room.stream_analytics.get("avg_bitrate", 0) or 0)
+        gift_revenue = int(room.stream_analytics.get("gift_revenue", 0) or 0)
         return {
             'id': room.id,
             'host': room.username,
+            'username': room.username,
             'title': room.title,
+            'created_at': room.created_at,
+            'last_activity_at': room.last_activity_at,
             'viewer_count': room.viewer_count,
+            'peak_viewer_count': room.peak_viewer_count,
+            'hearts_count': room.hearts_count,
             'active': room.active,
+            'recording_status': room.recording_status,
+            'recording_url': room.recording_url,
             'recording': {
                 'status': room.recording_status,
                 'url': room.recording_url
             },
+            'stream_analytics': {
+                'bitrate_kbps': avg_bitrate,
+                'packet_loss_percent': round(packet_loss_events * 0.6, 2),
+                'total_watch_time': room.stream_analytics.get('total_watch_time', 0),
+                'unique_viewers': len(room.stream_analytics.get('unique_viewers', set()) or []),
+                'gift_revenue': gift_revenue,
+            },
             'analytics': {
-                'gift_revenue': room.stream_analytics["gift_revenue"],
-                'avg_bitrate': room.stream_analytics["avg_bitrate"],
-                'health_score': max(0, 100 - (room.stream_analytics["packet_loss_events"] * 10))
+                'gift_revenue': gift_revenue,
+                'avg_bitrate': avg_bitrate,
+                'health_score': max(0, 100 - (packet_loss_events * 10))
             },
             'economy': {
-                'pot': room.economy["current_pot"],
+                'current_pot': room.economy["current_pot"],
+                'total_coins': room.economy["current_pot"],
                 'top_gifters': sorted(room.economy["top_gifters"].items(), key=lambda x: x[1], reverse=True)[:5]
             },
+            'co_hosts': list(room.multi_host_config.get('current_hosts', [])),
             'multi_host': room.multi_host_config,
             'recovery': room.recovery_data
         }

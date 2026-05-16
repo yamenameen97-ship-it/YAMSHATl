@@ -161,6 +161,7 @@ export default function ReelsPage() {
   const videoRefs = useRef(new Map());
   const viewTimersRef = useRef(new Map());
   const preloadNodesRef = useRef([]);
+  const viewedReelsRef = useRef(new Set());
   const [reels, setReels] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -256,16 +257,18 @@ export default function ReelsPage() {
       }
     });
 
-    // View tracking
+    // View tracking: count each reel once per session only
     const activeReelItem = reels[activeIndex];
     if (activeReelItem) {
       const timerKey = String(activeReelItem.id);
       if (viewTimersRef.current.has(timerKey)) clearTimeout(viewTimersRef.current.get(timerKey));
-      const timer = setTimeout(() => {
-        setReels(prev => prev.map((r, i) => i === activeIndex ? { ...r, views_count: (r.views_count || 0) + 1 } : r));
-      }, 2000);
-      viewTimersRef.current.set(timerKey, timer);
-      return () => clearTimeout(timer);
+      if (!viewedReelsRef.current.has(timerKey)) {
+        const timer = setTimeout(() => {
+          viewedReelsRef.current.add(timerKey);
+        }, 2000);
+        viewTimersRef.current.set(timerKey, timer);
+        return () => clearTimeout(timer);
+      }
     }
   }, [activeIndex, reels, deviceProfile, preloadRange]);
 
@@ -386,13 +389,36 @@ export default function ReelsPage() {
 
         {/* Modals */}
         <Modal isOpen={showUploadModal} onClose={() => setShowUploadModal(false)} title="إضافة ريل جديد">
-          <VideoUploader 
-            onUploadSuccess={(url) => {
-              setShowUploadModal(false);
-              loadReels();
-              pushToast({ type: 'success', title: 'تم الرفع بنجاح' });
-            }}
-          />
+          <div style={{ display: 'grid', gap: 14 }}>
+            <textarea
+              value={uploadState.content}
+              onChange={(event) => setUploadState((prev) => ({ ...prev, content: event.target.value }))}
+              rows={4}
+              placeholder="وصف الريل أو الكابشن"
+              style={{ width: '100%', borderRadius: 14, padding: 12 }}
+            />
+            <VideoUploader 
+              onUploadComplete={async ({ url }) => {
+                try {
+                  setUploadState((prev) => ({ ...prev, uploading: true, mediaUrl: url || '' }));
+                  await createPost({
+                    content: uploadState.content?.trim() || 'ريل جديد',
+                    media_url: url || '',
+                    media: url || '',
+                    media_urls: url ? [url] : [],
+                  });
+                  setShowUploadModal(false);
+                  setUploadState({ mediaUrl: '', uploading: false, content: '' });
+                  await loadReels();
+                  pushToast({ type: 'success', title: 'تم رفع الريل ونشره بنجاح' });
+                } catch (error) {
+                  setUploadState((prev) => ({ ...prev, uploading: false }));
+                  pushToast({ type: 'error', title: 'فشل نشر الريل', description: error?.response?.data?.detail || error?.message });
+                }
+              }}
+              onError={(message) => pushToast({ type: 'error', title: 'فشل رفع الفيديو', description: message })}
+            />
+          </div>
         </Modal>
 
         <Modal isOpen={showCommentsModal} onClose={() => setShowCommentsModal(false)} title="التعليقات">
@@ -400,7 +426,7 @@ export default function ReelsPage() {
             <NestedComments 
               comments={activeComments} 
               onAddComment={async (content) => {
-                const { data } = await addComment(activeReel.id, { content });
+                const { data } = await addComment(activeReel.id, content);
                 setActiveComments(prev => [data, ...prev]);
               }}
             />

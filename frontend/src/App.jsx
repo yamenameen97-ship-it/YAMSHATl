@@ -124,7 +124,7 @@ export default function App() {
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/admin/register" element={<Navigate to="/register" replace />} />
 
-            <Route path="/" element={<Feed />} />
+            <Route path="/" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/livestream-dashboard" element={<ProtectedRoute><LiveStreamDashboard /></ProtectedRoute>} />
             <Route path="/stories" element={<ProtectedRoute><Stories /></ProtectedRoute>} />

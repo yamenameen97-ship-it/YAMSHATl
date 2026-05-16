@@ -79,7 +79,16 @@ export default function AdminLayout({ children }) {
         <main className="admin-page-shell admin-reference-page-shell">
           <Breadcrumbs items={breadcrumbs} />
           {children}
-        </main>
+        
+<div className="bottom-mobile-nav">
+  <a className="nav-btn" href="/">🏠<span>الرئيسية</span></a>
+  <a className="nav-btn" href="/reels">🎬<span>الريلز</span></a>
+  <div className="add-btn">+</div>
+  <a className="nav-btn" href="/messages">💬<span>الدردشة</span></a>
+  <a className="nav-btn" href="/profile">👤<span>حسابي</span></a>
+</div>
+
+</main>
       </div>
     </div>
   );

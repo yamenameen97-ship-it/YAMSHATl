@@ -81,7 +81,7 @@ export default function Profile() {
         {/* Banner */}
         <div className="h-64 bg-gradient-to-r from-purple-600 via-blue-600 to-cyan-600 relative overflow-hidden">
           <div className="absolute inset-0 opacity-20">
-            <div className="absolute inset-0 bg-[url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="20" cy="20" r="2" fill="white"/><circle cx="80" cy="80" r="2" fill="white"/></svg>')] bg-repeat"></div>
+            <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2220%22 cy=%2220%22 r=%222%22 fill=%22white%22/%3E%3Ccircle cx=%2280%22 cy=%2280%22 r=%222%22 fill=%22white%22/%3E%3C/svg%3E')] bg-repeat"></div>
           </div>
         </div>
 

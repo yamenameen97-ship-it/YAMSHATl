@@ -11,3 +11,5 @@ export const getLiveAnalytics = (roomId) => API.get(`/live/${roomId}/analytics`,
 export const manageLiveCohost = ({ room_id, ...payload }) => API.post(`/live/${room_id}/multi-host`, payload);
 export const triggerLiveRecovery = (roomId) => API.post(`/live/${roomId}/recovery`);
 export const addLiveComment = ({ room_id, ...payload }) => API.post(`/live/${room_id}/comment`, payload);
+export const getLiveShares = (roomId) => API.get(`/live/${roomId}/shares`, { cache: false, forceRefresh: true });
+export const shareMediaInLive = ({ room_id, ...payload }) => API.post(`/live/${room_id}/share-media`, payload);

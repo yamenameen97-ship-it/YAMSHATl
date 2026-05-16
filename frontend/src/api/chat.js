@@ -29,6 +29,7 @@ export const uploadMedia = (formData, onUploadProgress) =>
     onUploadProgress,
   });
 export const deleteMessageApi = (message_id) => API.post('/delete_message', { message_id });
+export const restoreMessage = (message_id) => API.post('/restore_message', { message_id });
 
 export const startResumableUpload = (payload) => API.post('/upload/resumable/start', payload);
 export const getResumableUploadStatus = (sessionId) => API.get(`/upload/resumable/${sessionId}`);
@@ -61,8 +62,10 @@ export async function uploadMediaWithResume(file, onProgress = () => {}) {
     // ignore storage cleanup failures
   }
 
-  return {
-    data: responseShape,
-  };
+  return { data: responseShape };
 }
-export const restoreMessage = (message_id) => API.post('/restore_message', { message_id });
+
+// ─── call api ────────────────────────────────────────────────────────────────────
+
+export const getCallSession = (callId) => API.get(`/call/${callId}`);
+export const getCallHistory = (options = {}) => API.get('/call_history', { signal: options.signal, cache: false });

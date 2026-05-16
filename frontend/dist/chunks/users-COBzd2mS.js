@@ -1,1 +1,0 @@
-import{y as r}from"../index-Jj8fatP0.js";var o=()=>r.get("/users"),a=e=>r.get(`/users/profile/${encodeURIComponent(e)}`,{cache:!1,forceRefresh:!0}),t=e=>r.post("/users/follow",{following:e}),l=e=>r.patch("/users/me",e);export{l as i,a as n,o as r,t};

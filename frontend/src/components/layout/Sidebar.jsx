@@ -1,40 +1,23 @@
 import { NavLink } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { getUsers } from '../../api/users.js';
-import { getLiveRooms } from '../../api/live.js';
-import { useAppStore } from '../../store/appStore.js';
-import { selectUnreadTotal, useChatStore } from '../../store/appStore.js';
-import { avatarGradient, formatCompactNumber, initialsFromName } from '../yamshat/YamshatDesign.js';
+import { avatarGradient, initialsFromName } from '../yamshat/YamshatDesign.js';
+import { suggestedGroups, suggestedUsers } from '../yamshat/showcaseData.js';
+import YamshatIcon from '../yamshat/YamshatIcon.jsx';
 
 const NAV_ITEMS = [
-  { to: '/', label: 'الصفحة الرئيسية', icon: '⌂' },
-  { to: '/search', label: 'اكتشف', icon: '⌕' },
-  { to: '/users', label: 'المتابعون', icon: '◌' },
-  { to: '/notifications', label: 'الإشعارات', icon: '◔', badgeType: 'notifications' },
-  { to: '/inbox', label: 'الرسائل', icon: '✉', badgeType: 'messages' },
-  { to: '/profile', label: 'العلامات المحفوظة', icon: '▣' },
+  { to: '/', label: 'الصفحة الرئيسية', icon: 'home' },
+  { to: '/search', label: 'اكتشف', icon: 'discover' },
+  { to: '/users', label: 'المتابعون', icon: 'users' },
+  { to: '/notifications', label: 'الإشعارات', icon: 'bell', badge: '3' },
+  { to: '/inbox', label: 'الرسائل', icon: 'message' },
+  { to: '/profile', label: 'العلامات المحفوظة', icon: 'bookmark' },
 ];
 
-function Avatar({ name, src, size = 42 }) {
-  return src ? (
-    <img
-      src={src}
-      alt={name}
-      style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
-    />
-  ) : (
+function Avatar({ name, size = 44 }) {
+  return (
     <div
-      style={{
-        width: size,
-        height: size,
-        borderRadius: '50%',
-        display: 'grid',
-        placeItems: 'center',
-        color: 'white',
-        fontWeight: 800,
-        background: avatarGradient(name),
-        flexShrink: 0,
-      }}
+      className="yam-side-avatar"
+      style={{ width: size, height: size, background: avatarGradient(name) }}
+      aria-label={name}
     >
       {initialsFromName(name).slice(0, 1)}
     </div>
@@ -42,288 +25,257 @@ function Avatar({ name, src, size = 42 }) {
 }
 
 export default function Sidebar() {
-  const notificationCount = 0;
-  const unreadInboxCount = useChatStore(selectUnreadTotal);
-  const language = useAppStore((state) => state.language);
-
-  const { data: usersData = [] } = useQuery({
-    queryKey: ['sidebar-users'],
-    queryFn: async () => (await getUsers()).data || [],
-    staleTime: 60_000,
-  });
-
-  const { data: liveData = [] } = useQuery({
-    queryKey: ['sidebar-live-rooms'],
-    queryFn: async () => (await getLiveRooms()).data || [],
-    staleTime: 20_000,
-    refetchInterval: 25_000,
-  });
-
-  const liveUsers = Array.isArray(liveData) ? liveData.slice(0, 5) : [];
-  const suggestedUsers = Array.isArray(usersData) ? usersData.slice(0, 3) : [];
-  const suggestedGroups = [
-    { name: 'Gamers Hub', members: '12.5K عضو' },
-    { name: 'Tech Talk', members: '5.2K عضو' },
-    { name: 'Music Vibes', members: '8.2K عضو' },
-  ];
-
   return (
-    <aside className="yamshat-side-rail">
-      <div className="yamshat-side-section yam-brand-card">
-        <div className="yam-brand-mark">🜲</div>
-        <div>
-          <div className="yam-brand-title">YAMSHAT PRO</div>
-          <p className="yam-brand-copy">
-            {language === 'en' ? 'Upgrade for an ad-free gaming social experience.' : 'ترقية لحسابك لتجربة يامشات الخاصة بك بمميزات حصرية وإشعارات خاصة والمزيد.'}
-          </p>
-          <button type="button" className="yam-primary-btn">ترقية الآن</button>
-        </div>
-      </div>
-
-      <nav className="yamshat-side-section yam-side-nav">
-        {NAV_ITEMS.map((item) => {
-          const badge = item.badgeType === 'messages' ? unreadInboxCount : item.badgeType === 'notifications' ? notificationCount : 0;
-          return (
-            <NavLink key={item.to} to={item.to} className={({ isActive }) => `yam-side-link ${isActive ? 'active' : ''}`}>
-              <span className="yam-side-icon">{item.icon}</span>
-              <span>{item.label}</span>
-              {badge > 0 ? <span className="yam-side-badge">{badge}</span> : null}
-            </NavLink>
-          );
-        })}
-      </nav>
-
-      <section className="yamshat-side-section">
-        <div className="yam-section-head">
-          <h3>القنوات التي تتابعها</h3>
-          <span>عرض الكل</span>
-        </div>
-        <div className="yam-stack-list">
-          {liveUsers.length ? liveUsers.map((room) => (
-            <div key={room.id} className="yam-entity-row">
-              <Avatar name={room.host || room.username || 'Live'} src={room.avatar} />
-              <div className="yam-entity-copy">
-                <strong>{room.host || room.username || 'PlayerOne'}</strong>
-                <small>{room.title || 'Gaming'}</small>
-              </div>
-              <div className="yam-live-metric">
-                <span className="dot" />
-                {formatCompactNumber(room.viewer_count || 0)}
-              </div>
-            </div>
-          )) : (
-            ['PlayerOne', 'Ahmed_King', 'ShadowGirl'].map((name, index) => (
-              <div key={name} className="yam-entity-row">
-                <Avatar name={name} />
-                <div className="yam-entity-copy">
-                  <strong>{name}</strong>
-                  <small>{['Just Chatting', 'VALORANT', 'Fortnite'][index]}</small>
-                </div>
-                <div className="yam-live-metric"><span className="dot" />{['1.2K', '980', '756'][index]}</div>
-              </div>
-            ))
-          )}
+    <aside className="yam-ref-sidebar">
+      <section className="yam-ref-pro-card">
+        <div className="yam-ref-pro-crown">♛</div>
+        <div className="yam-ref-pro-copy">
+          <h2>YAMSHAT PRO</h2>
+          <p>ترقية تجربة يامشات الخاصة بك بمميزات حصرية وإشعارات خاصة والمزيد.</p>
+          <button type="button">ترقية الآن</button>
         </div>
       </section>
 
-      <section className="yamshat-side-section">
-        <div className="yam-section-head">
+      <nav className="yam-ref-side-nav" aria-label="القائمة الجانبية">
+        {NAV_ITEMS.map((item) => (
+          <NavLink key={item.to} to={item.to} className={({ isActive }) => `yam-ref-side-link ${isActive ? 'active' : ''}`}>
+            <span className="yam-ref-side-link-main">
+              <span className="yam-ref-side-icon"><YamshatIcon name={item.icon} size={18} /></span>
+              <span>{item.label}</span>
+            </span>
+            {item.badge ? <span className="yam-ref-side-badge">{item.badge}</span> : null}
+          </NavLink>
+        ))}
+      </nav>
+
+      <section className="yam-ref-side-card">
+        <div className="yam-ref-card-head">
           <h3>اقتراحات للمتابعة</h3>
           <span>عرض الكل</span>
         </div>
-        <div className="yam-stack-list">
+        <div className="yam-ref-list">
           {suggestedUsers.map((user) => (
-            <div key={user.username || user.id} className="yam-entity-row compact">
-              <Avatar name={user.username || 'User'} src={user.avatar} size={40} />
-              <div className="yam-entity-copy">
-                <strong>{user.username}</strong>
-                <small>{user.profile?.activity_tagline || user.email || 'Gaming Creator'}</small>
+            <div key={user.id} className="yam-ref-user-row">
+              <div className="yam-ref-user-main">
+                <Avatar name={user.username} />
+                <div>
+                  <strong>
+                    {user.username}
+                    {user.verified ? <span className="yam-ref-verify">✓</span> : null}
+                  </strong>
+                  <small>{user.tagline}</small>
+                </div>
               </div>
-              <button type="button" className="yam-follow-btn">متابعة</button>
+              <button type="button" className="yam-mini-btn">متابعة</button>
             </div>
           ))}
         </div>
       </section>
 
-      <section className="yamshat-side-section">
-        <div className="yam-section-head">
+      <section className="yam-ref-side-card">
+        <div className="yam-ref-card-head">
           <h3>المجموعات الموصى بها</h3>
           <span>عرض الكل</span>
         </div>
-        <div className="yam-stack-list">
+        <div className="yam-ref-list">
           {suggestedGroups.map((group) => (
-            <div key={group.name} className="yam-entity-row compact">
-              <div className="yam-group-badge">🎮</div>
-              <div className="yam-entity-copy">
-                <strong>{group.name}</strong>
-                <small>{group.members}</small>
+            <div key={group.id} className="yam-ref-user-row">
+              <div className="yam-ref-user-main">
+                <div className="yam-ref-group-badge">🎮</div>
+                <div>
+                  <strong>{group.name}</strong>
+                  <small>{group.members}</small>
+                </div>
               </div>
-              <button type="button" className="yam-join-btn">انضمام</button>
+              <button type="button" className="yam-mini-btn">انضمام</button>
             </div>
           ))}
         </div>
       </section>
 
       <style>{`
-        .yamshat-side-rail {
-          width: 330px;
+        .yam-ref-sidebar {
+          width: 320px;
           flex-shrink: 0;
           height: 100vh;
           overflow-y: auto;
-          padding: 22px 18px 32px;
-          background: rgba(5, 10, 22, 0.94);
-          border-inline-end: 1px solid rgba(148, 163, 184, 0.08);
+          padding: 18px 16px 22px;
+          display: grid;
+          align-content: start;
+          gap: 16px;
+          background: rgba(4, 9, 20, 0.96);
+          border-inline-end: 1px solid rgba(255,255,255,0.04);
+        }
+        .yam-ref-sidebar::-webkit-scrollbar { width: 6px; }
+        .yam-ref-sidebar::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.18); border-radius: 999px; }
+        .yam-ref-pro-card,
+        .yam-ref-side-nav,
+        .yam-ref-side-card {
+          background: rgba(10, 16, 30, 0.92);
+          border: 1px solid rgba(255,255,255,0.05);
+          border-radius: 24px;
+          box-shadow: 0 18px 42px rgba(2, 6, 23, 0.25);
+        }
+        .yam-ref-pro-card {
+          padding: 20px;
           display: grid;
           gap: 16px;
-          backdrop-filter: blur(16px);
+          background: radial-gradient(circle at top, rgba(124,58,237,0.26), transparent 58%), linear-gradient(180deg, rgba(17, 10, 40, 0.96), rgba(9, 15, 28, 0.96));
         }
-        .yamshat-side-rail::-webkit-scrollbar { width: 6px; }
-        .yamshat-side-rail::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 999px; }
-        .yamshat-side-section {
-          border-radius: 24px;
-          background: rgba(12, 18, 34, 0.88);
-          border: 1px solid rgba(255,255,255,0.05);
-          box-shadow: 0 20px 40px rgba(2,6,23,0.24);
-          padding: 18px;
-          display: grid;
-          gap: 14px;
-        }
-        .yam-brand-card {
-          background: radial-gradient(circle at top, rgba(139,92,246,0.28), transparent 65%), linear-gradient(180deg, rgba(20, 13, 48, 0.98), rgba(12,18,34,0.96));
-          grid-template-columns: 72px 1fr;
-          align-items: start;
-        }
-        .yam-brand-mark {
-          width: 56px;
-          height: 56px;
-          border-radius: 18px;
+        .yam-ref-pro-crown {
+          width: 60px;
+          height: 60px;
+          border-radius: 20px;
           display: grid;
           place-items: center;
-          font-size: 28px;
-          background: linear-gradient(135deg, rgba(139,92,246,0.3), rgba(6,182,212,0.18));
-          color: #d8b4fe;
-          border: 1px solid rgba(167,139,250,0.24);
+          color: #c4b5fd;
+          font-size: 26px;
+          background: rgba(76, 29, 149, 0.32);
+          border: 1px solid rgba(167,139,250,0.2);
         }
-        .yam-brand-title { font-size: 20px; font-weight: 900; letter-spacing: 0.04em; }
-        .yam-brand-copy { margin: 6px 0 14px; color: #94a3b8; font-size: 13px; line-height: 1.8; }
-        .yam-primary-btn, .yam-follow-btn, .yam-join-btn {
-          border: none;
-          border-radius: 16px;
-          padding: 12px 16px;
-          font-weight: 800;
-          color: white;
-          background: linear-gradient(135deg, #7c3aed, #8b5cf6);
-          box-shadow: 0 16px 30px rgba(124,58,237,0.24);
+        .yam-ref-pro-copy h2,
+        .yam-ref-card-head h3 {
+          margin: 0;
         }
-        .yam-follow-btn, .yam-join-btn {
-          padding: 8px 14px;
-          border-radius: 12px;
+        .yam-ref-pro-copy p {
+          margin: 8px 0 16px;
+          color: #cbd5e1;
           font-size: 13px;
-          box-shadow: none;
+          line-height: 1.8;
         }
-        .yam-side-nav { padding: 10px; gap: 8px; }
-        .yam-side-link {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 14px 16px;
-          border-radius: 16px;
-          color: #dbe4ff;
-          background: transparent;
-          transition: 0.2s ease;
-          font-weight: 700;
-        }
-        .yam-side-link.active,
-        .yam-side-link:hover {
-          background: linear-gradient(135deg, rgba(124,58,237,0.22), rgba(99,102,241,0.14));
-          color: white;
-        }
-        .yam-side-icon {
-          width: 30px;
-          height: 30px;
-          display: grid;
-          place-items: center;
-          border-radius: 10px;
-          background: rgba(255,255,255,0.04);
-          font-size: 16px;
-        }
-        .yam-side-badge {
-          margin-inline-start: auto;
-          min-width: 24px;
-          height: 24px;
-          padding: 0 8px;
-          border-radius: 999px;
-          display: grid;
-          place-items: center;
-          background: #7c3aed;
-          color: white;
-          font-size: 12px;
+        .yam-ref-pro-copy button,
+        .yam-mini-btn {
+          border: none;
+          border-radius: 14px;
+          padding: 12px 16px;
+          color: #fff;
           font-weight: 800;
+          background: linear-gradient(135deg, #6d28d9, #8b5cf6 75%);
+          box-shadow: 0 12px 24px rgba(109, 40, 217, 0.22);
         }
-        .yam-section-head {
+        .yam-mini-btn {
+          padding: 9px 14px;
+          border-radius: 12px;
+          box-shadow: none;
+          font-size: 13px;
+        }
+        .yam-ref-side-nav {
+          padding: 12px;
+          display: grid;
+          gap: 8px;
+        }
+        .yam-ref-side-link {
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 10px;
-        }
-        .yam-section-head h3 {
-          margin: 0;
-          font-size: 17px;
-        }
-        .yam-section-head span {
-          color: #8b5cf6;
-          font-size: 13px;
+          padding: 14px 16px;
+          border-radius: 16px;
+          color: #e2e8f0;
           font-weight: 700;
         }
-        .yam-stack-list { display: grid; gap: 12px; }
-        .yam-entity-row {
+        .yam-ref-side-link.active,
+        .yam-ref-side-link:hover {
+          background: linear-gradient(135deg, rgba(109,40,217,0.24), rgba(99,102,241,0.14));
+        }
+        .yam-ref-side-link-main,
+        .yam-ref-user-main,
+        .yam-ref-card-head {
           display: flex;
           align-items: center;
           gap: 12px;
         }
-        .yam-entity-row.compact { gap: 10px; }
-        .yam-entity-copy { min-width: 0; display: grid; gap: 2px; }
-        .yam-entity-copy strong {
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          font-size: 15px;
+        .yam-ref-card-head {
+          justify-content: space-between;
+          margin-bottom: 14px;
         }
-        .yam-entity-copy small {
-          color: #94a3b8;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .yam-live-metric {
-          margin-inline-start: auto;
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          color: #fda4af;
+        .yam-ref-card-head span {
+          color: #8b5cf6;
           font-size: 13px;
           font-weight: 700;
         }
-        .yam-live-metric .dot {
-          width: 7px;
-          height: 7px;
-          border-radius: 50%;
-          background: #ef4444;
-          box-shadow: 0 0 0 4px rgba(239,68,68,0.14);
-        }
-        .yam-group-badge {
-          width: 40px;
-          height: 40px;
-          border-radius: 14px;
+        .yam-ref-side-icon {
+          width: 34px;
+          height: 34px;
+          border-radius: 12px;
           display: grid;
           place-items: center;
-          background: linear-gradient(135deg, rgba(99,102,241,0.26), rgba(139,92,246,0.18));
+          color: #ddd6fe;
+          background: rgba(255,255,255,0.04);
+        }
+        .yam-ref-side-badge {
+          min-width: 24px;
+          height: 24px;
+          padding: 0 6px;
+          border-radius: 999px;
+          display: grid;
+          place-items: center;
+          background: #7c3aed;
+          color: #fff;
+          font-size: 11px;
+          font-weight: 900;
+        }
+        .yam-ref-side-card {
+          padding: 18px;
+        }
+        .yam-ref-list {
+          display: grid;
+          gap: 12px;
+        }
+        .yam-ref-user-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+        }
+        .yam-side-avatar,
+        .yam-ref-group-badge {
+          width: 44px;
+          height: 44px;
+          border-radius: 50%;
+          display: grid;
+          place-items: center;
+          color: #fff;
+          font-weight: 900;
+          flex-shrink: 0;
+        }
+        .yam-ref-group-badge {
+          border-radius: 16px;
+          background: linear-gradient(135deg, rgba(109,40,217,0.28), rgba(59,130,246,0.18));
+          font-size: 20px;
+        }
+        .yam-ref-user-row strong {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 15px;
+        }
+        .yam-ref-user-row small {
+          display: block;
+          margin-top: 3px;
+          color: #94a3b8;
+          font-size: 12px;
+        }
+        .yam-ref-verify {
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          display: inline-grid;
+          place-items: center;
+          background: #3b82f6;
+          color: white;
+          font-size: 10px;
+          font-weight: 900;
         }
         @media (max-width: 1180px) {
-          .yamshat-side-rail { width: 290px; }
+          .yam-ref-sidebar {
+            width: 286px;
+          }
         }
-        @media (max-width: 1024px) {
-          .yamshat-side-rail { display: none; }
+        @media (max-width: 767px) {
+          .yam-ref-sidebar {
+            display: none;
+          }
         }
       `}</style>
     </aside>

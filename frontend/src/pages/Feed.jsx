@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import MainLayout from '../components/layout/MainLayout.jsx';
+// import MainLayout from '../components/layout/MainLayout.jsx';
 import PostComposer from '../components/feed/PostComposer.jsx';
 import { useFeed } from '../hooks/useFeed.js';
 import { likePost } from '../api/posts.js';
@@ -164,8 +164,7 @@ export default function Feed() {
   );
 
   return (
-    <MainLayout>
-      <div className="yam-feed-page">
+      <div className="yam-feed-page desktop-post mobile-post">
         <div className="yam-feed-main-column">
           <section className="yam-feed-composer-shell">
             <div className="yam-feed-composer-head">
@@ -294,6 +293,15 @@ export default function Feed() {
           grid-template-columns: minmax(0, 1fr) 360px;
           gap: 18px;
           padding: 18px;
+        }
+        @media (max-width: 1023px) {
+          .yam-feed-page {
+            grid-template-columns: 1fr;
+            padding: 10px;
+          }
+          .yam-feed-right-column {
+            display: none;
+          }
         }
         .yam-feed-main-column { min-width: 0; display: grid; gap: 16px; }
         .yam-feed-right-column { display: grid; gap: 16px; align-content: start; }
@@ -534,6 +542,5 @@ export default function Feed() {
           .yam-trending-thumb { width: 74px; height: 74px; }
         }
       `}</style>
-    </MainLayout>
   );
 }

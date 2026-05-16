@@ -7,7 +7,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import MainLayout from '../components/layout/MainLayout.jsx';
+// import MainLayout from '../components/layout/MainLayout.jsx';
 import ChatInput from '../components/chat/ChatInput.jsx';
 import CallExperience from '../components/chat/CallExperience.jsx';
 import { useToast } from '../components/admin/ToastProvider.jsx';
@@ -348,8 +348,7 @@ export default function Chat() {
   const peerThread = threads.find(t => t.username === peer) || {};
 
   return (
-    <MainLayout>
-      <div className="yam-chat-shell">
+      <div className="yam-chat-shell desktop-post mobile-post">
 
         {/* ── LEFT: Thread list ─────────────────────────────────────── */}
         <aside className="yam-chat-sidebar">
@@ -532,9 +531,20 @@ export default function Chat() {
           .yam-chat-shell { grid-template-columns: 280px minmax(0,1fr); }
           .yam-chat-info-panel { display: none; }
         }
-        @media (max-width: 700px) {
-          .yam-chat-shell { grid-template-columns: 1fr; }
-          .yam-chat-sidebar { display: ${peer ? 'none' : 'flex'}; }
+        @media (max-width: 1023px) {
+          .yam-chat-shell { 
+            grid-template-columns: 1fr; 
+            height: calc(100vh - 100px);
+            border-radius: 0;
+          }
+          .yam-chat-sidebar { 
+            display: ${peer ? 'none' : 'flex'}; 
+            width: 100% !important;
+          }
+          .yam-chat-info-panel { display: none; }
+          .yam-chat-conversation {
+            display: ${peer ? 'flex' : 'none'};
+          }
         }
 
         /* ── Left sidebar ──────────────────────────────────────────── */
@@ -881,6 +891,5 @@ export default function Chat() {
           font-weight: 700;
         }
       `}</style>
-    </MainLayout>
   );
 }

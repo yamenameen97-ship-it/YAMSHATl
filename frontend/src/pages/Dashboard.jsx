@@ -1,221 +1,287 @@
-import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
-import { DashboardSkeleton } from '../components/feedback/Skeleton.jsx';
 import { useAppStore } from '../store/appStore.js';
-import { getStoredUser } from '../utils/auth.js';
+import { clearStoredUser, getStoredUser } from '../utils/auth.js';
 
-// Mock Chart Component for Realtime visualization
-const RealtimeChart = ({ data, color = '#3b82f6', label }) => {
-  const max = Math.max(...data, 1);
-  return (
-    <div className="realtime-chart-container">
-      <div className="chart-label">{label}</div>
-      <div className="chart-bars">
-        {data.map((v, i) => (
-          <div 
-            key={i} 
-            className="chart-bar" 
-            style={{ 
-              height: `${(v / max) * 100}%`, 
-              backgroundColor: color,
-              transition: 'height 0.3s ease'
-            }}
-          />
-        ))}
-      </div>
-    </div>
-  );
-};
+const QUICK_TILES = [
+  { title: 'الملف الشخصي', note: 'تعديل الحساب والصورة والمنشورات', icon: '👤', to: '/profile', tone: 'linear-gradient(135deg, rgba(139,92,246,0.34), rgba(99,102,241,0.14))' },
+  { title: 'المناسبات', note: 'واجهة الفعاليات القادمة', icon: '📅', to: '/groups', tone: 'linear-gradient(135deg, rgba(236,72,153,0.26), rgba(139,92,246,0.12))' },
+  { title: 'آخر منشوراتك', note: 'راجع نشاطك ومحتواك', icon: '📝', to: '/', tone: 'linear-gradient(135deg, rgba(59,130,246,0.28), rgba(6,182,212,0.12))' },
+  { title: 'الريلز', note: 'شاهد وارفع فيديوهات قصيرة', icon: '🎬', to: '/reels', tone: 'linear-gradient(135deg, rgba(168,85,247,0.28), rgba(236,72,153,0.14))' },
+  { title: 'المجموعات', note: 'ادخل المجتمعات والغرف', icon: '👥', to: '/groups', tone: 'linear-gradient(135deg, rgba(34,197,94,0.24), rgba(6,182,212,0.12))' },
+  { title: 'الرسائل', note: 'افتح الدردشات الخاصة', icon: '💬', to: '/inbox', tone: 'linear-gradient(135deg, rgba(14,165,233,0.24), rgba(99,102,241,0.12))' },
+];
+
+const SETTINGS_TILES = [
+  { title: 'الإشعارات', to: '/notifications', icon: '🔔' },
+  { title: 'البث المباشر', to: '/live', icon: '📡' },
+  { title: 'القصص', to: '/stories', icon: '📖' },
+  { title: 'المستخدمون', to: '/users', icon: '✨' },
+  { title: 'الإعدادات', to: '/settings', icon: '⚙️' },
+];
 
 export default function Dashboard() {
-  const [loading, setLoading] = useState(true);
-  const [metrics, setMetrics] = useState({
-    onlineUsers: Array(20).fill(0).map(() => Math.floor(Math.random() * 100 + 500)),
-    postActivity: Array(20).fill(0).map(() => Math.floor(Math.random() * 50 + 100)),
-    systemLoad: 24,
-    storageUsed: 65,
-  });
-  
+  const navigate = useNavigate();
   const user = getStoredUser();
-  const language = useAppStore((state) => state.language);
   const isOnline = useAppStore((state) => state.isOnline);
 
-  // Deep Analytics State
-  const analytics = useMemo(() => ({
-    topPosts: [
-      { id: 1, title: 'تحديث يمشات الجديد', engagement: '98%', reach: '12.5k' },
-      { id: 2, title: 'كيف تستخدم الذكاء الاصطناعي', engagement: '85%', reach: '8.2k' },
-    ],
-    userGrowth: '+15% هذا الأسبوع',
-    avgSession: '12m 45s',
-  }), []);
+  const handleLogout = () => {
+    clearStoredUser();
+    navigate('/login');
+  };
 
-  // Realtime Update Simulation
-  useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 800);
-    
-    const interval = setInterval(() => {
-      setMetrics(prev => ({
-        ...prev,
-        onlineUsers: [...prev.onlineUsers.slice(1), Math.floor(Math.random() * 100 + 500)],
-        postActivity: [...prev.postActivity.slice(1), Math.floor(Math.random() * 50 + 100)],
-        systemLoad: Math.min(100, Math.max(10, prev.systemLoad + (Math.random() * 10 - 5))),
-      }));
-    }, 2000);
-
-    return () => {
-      clearTimeout(timer);
-      clearInterval(interval);
-    };
-  }, []);
-
-  if (loading) return <MainLayout><DashboardSkeleton /></MainLayout>;
+  const stats = [
+    { label: 'المنشورات', value: user?.posts_count ?? 128 },
+    { label: 'المتابعون', value: user?.followers_count ?? '12.5K' },
+    { label: 'المتابَعون', value: user?.following_count ?? 560 },
+  ];
 
   return (
     <MainLayout>
-      <section className="dashboard-grid">
-        {/* Header Widget */}
-        <Card className="welcome-widget">
-          <div className="welcome-flex">
-            <div className="user-info">
-              <h2>أهلاً بك، {user?.username || 'مستخدم يمشات'} 👋</h2>
-              <p className="muted">إليك نظرة سريعة على نشاط حسابك ومنصتك اليوم.</p>
+      <div className="yam-page yam-page-wide menu-page-shell">
+        <div className="yam-hero menu-hero-reference" style={{ marginBottom: 22 }}>
+          <div className="menu-hero-card-ref">
+            <div className="menu-hero-copy-ref">
+              <div className="yam-badge primary">☰ القائمة</div>
+              <h1 className="yam-section-title" style={{ marginTop: 14 }}>القائمة الرئيسية</h1>
+              <p className="yam-section-note" style={{ margin: '10px 0 0', maxWidth: 720 }}>
+                دي الصفحة اللي المفروض تبان على الموبايل بشكل مرتب: اختصارات واضحة، إحصائيات الحساب، وروابط سريعة لكل الصفحات الأساسية بدل شاشة عشوائية أو مزدحمة.
+              </p>
+
+              <div className="menu-status-row">
+                <span className={`menu-status-pill ${isOnline ? 'online' : 'offline'}`}>{isOnline ? 'متصل' : 'غير متصل'}</span>
+                <span className="menu-status-pill neutral">YAMSHAT UI</span>
+              </div>
             </div>
-            <div className="status-badges">
-              <span className={`status-pill ${isOnline ? 'online' : 'offline'}`}>
-                {isOnline ? 'متصل بالخادم' : 'غير متصل'}
-              </span>
-              <span className="status-pill security">حماية مفعلة</span>
+
+            <div className="menu-user-summary-ref">
+              <div className="menu-avatar-ref">{(user?.username || user?.user || 'Y').slice(0, 1).toUpperCase()}</div>
+              <div>
+                <strong style={{ fontSize: '1.2rem' }}>{user?.full_name || user?.username || 'Yamshat User'}</strong>
+                <div className="yam-meta" style={{ marginTop: 6 }}>@{user?.username || user?.user || 'yamshat_user'}</div>
+              </div>
+              <div className="yam-stat-grid menu-stats-grid-ref">
+                {stats.map((item) => (
+                  <div key={item.label} className="yam-stat">
+                    <strong>{item.value}</strong>
+                    <span className="yam-meta">{item.label}</span>
+                  </div>
+                ))}
+              </div>
+              <Button fullWidth onClick={() => navigate('/profile')}>تعديل الملف الشخصي</Button>
             </div>
           </div>
-        </Card>
-
-        {/* Realtime Monitoring Widgets */}
-        <div className="monitoring-row">
-          <Card className="metric-card">
-            <RealtimeChart data={metrics.onlineUsers} label="المستخدمون المتصلون (الآن)" color="#10b981" />
-            <div className="metric-footer">
-              <span className="current-val">{metrics.onlineUsers[metrics.onlineUsers.length - 1]}</span>
-              <span className="trend up">+2.4%</span>
-            </div>
-          </Card>
-          
-          <Card className="metric-card">
-            <RealtimeChart data={metrics.postActivity} label="نشاط المنشورات / دقيقة" color="#6366f1" />
-            <div className="metric-footer">
-              <span className="current-val">{metrics.postActivity[metrics.postActivity.length - 1]}</span>
-              <span className="trend up">+5.1%</span>
-            </div>
-          </Card>
-
-          <Card className="system-health-card">
-            <h4>صحة النظام</h4>
-            <div className="health-grid">
-              <div className="health-item">
-                <label>حمولة المعالج</label>
-                <div className="progress-bar">
-                  <div className="progress-fill" style={{ width: `${metrics.systemLoad}%`, backgroundColor: metrics.systemLoad > 80 ? '#ef4444' : '#3b82f6' }} />
-                </div>
-                <span>{Math.round(metrics.systemLoad)}%</span>
-              </div>
-              <div className="health-item">
-                <label>مساحة التخزين</label>
-                <div className="progress-bar">
-                  <div className="progress-fill" style={{ width: `${metrics.storageUsed}%` }} />
-                </div>
-                <span>{metrics.storageUsed}%</span>
-              </div>
-            </div>
-          </Card>
         </div>
 
-        {/* Deep Analytics Section */}
-        <div className="analytics-main-row">
-          <Card className="analytics-details">
-            <div className="card-header">
-              <h3>تحليلات عميقة (Deep Analytics)</h3>
-              <Button size="small" variant="secondary">تصدير التقرير</Button>
+        <div className="menu-grid-sections">
+          <Card className="menu-surface-ref">
+            <div className="yam-toolbar">
+              <h3 style={{ margin: 0 }}>روابط سريعة</h3>
+              <span className="yam-badge">{QUICK_TILES.length}</span>
             </div>
-            <div className="analytics-stats-grid">
-              <div className="stat-box">
-                <span className="stat-label">نمو المستخدمين</span>
-                <span className="stat-value">{analytics.userGrowth}</span>
-              </div>
-              <div className="stat-box">
-                <span className="stat-label">متوسط الجلسة</span>
-                <span className="stat-value">{analytics.avgSession}</span>
-              </div>
-              <div className="stat-box">
-                <span className="stat-label">معدل الارتداد</span>
-                <span className="stat-value">24.2%</span>
-              </div>
-            </div>
-            
-            <div className="top-content">
-              <h4>المحتوى الأكثر تفاعلاً</h4>
-              <table className="analytics-table">
-                <thead>
-                  <tr>
-                    <th>العنوان</th>
-                    <th>التفاعل</th>
-                    <th>الوصول</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {analytics.topPosts.map(post => (
-                    <tr key={post.id}>
-                      <td>{post.title}</td>
-                      <td><span className="engagement-badge">{post.engagement}</span></td>
-                      <td>{post.reach}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+
+            <div className="menu-action-grid-ref">
+              {QUICK_TILES.map((item) => (
+                <Link key={item.title} to={item.to} className="menu-action-card-ref" style={{ background: item.tone }}>
+                  <span className="menu-action-icon-ref">{item.icon}</span>
+                  <strong>{item.title}</strong>
+                  <span className="yam-meta">{item.note}</span>
+                </Link>
+              ))}
             </div>
           </Card>
 
-          <Card className="quick-actions-sidebar">
-            <h3>إجراءات سريعة</h3>
-            <div className="actions-list">
-              <Link to="/profile" className="action-item">👤 تعديل الملف الشخصي</Link>
-              <Link to="/settings" className="action-item">⚙️ إعدادات الأمان</Link>
-              <Link to="/notifications" className="action-item">🔔 إدارة التنبيهات</Link>
-              <button className="action-item danger">🚪 تسجيل الخروج</button>
-            </div>
-          </Card>
+          <div className="menu-side-stack-ref">
+            <Card className="menu-surface-ref">
+              <div className="yam-toolbar">
+                <h3 style={{ margin: 0 }}>اختصارات إضافية</h3>
+                <span className="yam-badge success">جاهزة</span>
+              </div>
+              <div className="menu-mini-grid-ref">
+                {SETTINGS_TILES.map((item) => (
+                  <Link key={item.title} to={item.to} className="menu-mini-link-ref">
+                    <span>{item.icon}</span>
+                    <span>{item.title}</span>
+                  </Link>
+                ))}
+              </div>
+            </Card>
+
+            <Card className="menu-surface-ref menu-danger-zone-ref">
+              <div className="yam-toolbar">
+                <h3 style={{ margin: 0 }}>الجلسة</h3>
+                <span className="yam-badge">آمن</span>
+              </div>
+              <p className="yam-section-note" style={{ marginTop: 0 }}>
+                لو حبيت تنهي الجلسة وتدخل بحساب تاني، استخدم الزر ده.
+              </p>
+              <Button variant="danger" fullWidth onClick={handleLogout}>تسجيل خروج</Button>
+            </Card>
+          </div>
         </div>
-      </section>
 
-      <style dangerouslySetInnerHTML={{ __html: `
-        .dashboard-grid { display: flex; flex-direction: column; gap: 20px; padding: 20px; }
-        .monitoring-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
-        .realtime-chart-container { height: 120px; display: flex; flex-direction: column; gap: 10px; }
-        .chart-bars { display: flex; align-items: flex-end; gap: 4px; height: 80px; }
-        .chart-bar { flex: 1; border-radius: 2px 2px 0 0; }
-        .metric-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
-        .current-val { font-size: 24px; font-weight: bold; }
-        .trend.up { color: #10b981; font-size: 14px; }
-        .health-grid { display: flex; flex-direction: column; gap: 15px; margin-top: 15px; }
-        .progress-bar { height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden; margin: 5px 0; }
-        .progress-fill { height: 100%; transition: width 0.5s ease; }
-        .analytics-main-row { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
-        .analytics-stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin: 20px 0; }
-        .stat-box { background: #f9fafb; padding: 15px; border-radius: 8px; text-align: center; }
-        .stat-label { display: block; font-size: 12px; color: #6b7280; margin-bottom: 5px; }
-        .stat-value { font-size: 18px; font-weight: bold; color: #111827; }
-        .analytics-table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        .analytics-table th { text-align: right; padding: 10px; border-bottom: 2px solid #f3f4f6; color: #6b7280; font-size: 13px; }
-        .analytics-table td { padding: 12px 10px; border-bottom: 1px solid #f3f4f6; }
-        .engagement-badge { background: #dcfce7; color: #166534; padding: 2px 8px; border-radius: 12px; font-size: 12px; }
-        .actions-list { display: flex; flex-direction: column; gap: 10px; margin-top: 15px; }
-        .action-item { padding: 12px; background: #f9fafb; border-radius: 8px; text-decoration: none; color: #374151; transition: all 0.2s; }
-        .action-item:hover { background: #f3f4f6; transform: translateX(-5px); }
-        .action-item.danger { color: #ef4444; border: none; text-align: right; cursor: pointer; }
-        @media (max-width: 768px) { .analytics-main-row { grid-template-columns: 1fr; } }
-      `}} />
+        <style>{`
+          .menu-page-shell {
+            display: grid;
+            gap: 22px;
+          }
+
+          .menu-hero-reference {
+            overflow: hidden;
+          }
+
+          .menu-hero-card-ref {
+            display: grid;
+            grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.85fr);
+            gap: 18px;
+            align-items: stretch;
+          }
+
+          .menu-hero-copy-ref,
+          .menu-user-summary-ref,
+          .menu-grid-sections,
+          .menu-side-stack-ref {
+            display: grid;
+            gap: 16px;
+          }
+
+          .menu-user-summary-ref {
+            padding: 18px;
+            border-radius: 28px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            align-content: start;
+          }
+
+          .menu-avatar-ref {
+            width: 88px;
+            height: 88px;
+            border-radius: 50%;
+            display: grid;
+            place-items: center;
+            font-size: 2rem;
+            font-weight: 800;
+            color: white;
+            background: linear-gradient(135deg, #8b5cf6, #06b6d4);
+            box-shadow: 0 18px 36px rgba(139,92,246,0.26);
+          }
+
+          .menu-status-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 16px;
+          }
+
+          .menu-status-pill {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 38px;
+            padding: 0 14px;
+            border-radius: 999px;
+            border: 1px solid rgba(255,255,255,0.08);
+            background: rgba(255,255,255,0.05);
+            color: #e5e7eb;
+          }
+
+          .menu-status-pill.online { background: rgba(34,197,94,0.16); color: #bbf7d0; }
+          .menu-status-pill.offline { background: rgba(249,115,22,0.16); color: #fdba74; }
+          .menu-status-pill.neutral { background: rgba(139,92,246,0.16); color: #ddd6fe; }
+
+          .menu-grid-sections {
+            grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.82fr);
+            align-items: start;
+          }
+
+          .menu-surface-ref {
+            border-radius: 28px;
+          }
+
+          .menu-action-grid-ref {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 16px;
+          }
+
+          .menu-action-card-ref {
+            display: grid;
+            gap: 12px;
+            min-height: 168px;
+            padding: 18px;
+            border-radius: 24px;
+            border: 1px solid rgba(255,255,255,0.08);
+            color: #f8fafc;
+            box-shadow: 0 22px 50px rgba(8,9,24,0.24);
+          }
+
+          .menu-action-icon-ref {
+            width: 56px;
+            height: 56px;
+            border-radius: 18px;
+            display: grid;
+            place-items: center;
+            font-size: 1.5rem;
+            background: rgba(11,18,32,0.66);
+            border: 1px solid rgba(255,255,255,0.08);
+          }
+
+          .menu-mini-grid-ref {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+          }
+
+          .menu-mini-link-ref {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-height: 56px;
+            padding: 0 14px;
+            border-radius: 18px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            color: #e2e8f0;
+          }
+
+          .menu-danger-zone-ref {
+            background: linear-gradient(180deg, rgba(127,29,29,0.22), rgba(15,23,42,0.92));
+          }
+
+          .menu-stats-grid-ref {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+
+          @media (max-width: 1100px) {
+            .menu-hero-card-ref,
+            .menu-grid-sections {
+              grid-template-columns: 1fr;
+            }
+          }
+
+          @media (max-width: 720px) {
+            .menu-action-grid-ref,
+            .menu-mini-grid-ref,
+            .menu-stats-grid-ref {
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+          }
+
+          @media (max-width: 520px) {
+            .menu-action-grid-ref,
+            .menu-mini-grid-ref,
+            .menu-stats-grid-ref {
+              grid-template-columns: 1fr;
+            }
+
+            .menu-action-card-ref {
+              min-height: 132px;
+            }
+          }
+        `}</style>
+      </div>
     </MainLayout>
   );
 }

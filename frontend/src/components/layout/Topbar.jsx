@@ -33,7 +33,7 @@ export default function Topbar() {
     if (location.pathname.startsWith('/chat/')) {
       return language === 'en'
         ? { title: 'Conversation', note: 'Private chat with live status, calls, encrypted media, and smoother navigation.' }
-        : { title: 'المحادثة', note: 'دردشة خاصة بحالة فورية ومكالمات ووسائط وتنقل أنعم.' };
+        : { title: 'المحادثة', note: 'دردشة خاصة بحالة فورية ومكالمات ووسائط مشفرة وتنقل أنعم.' };
     }
 
     if (location.pathname.startsWith('/profile/')) {
@@ -105,18 +105,9 @@ export default function Topbar() {
     liveNotificationSummary.mentions > 0 ? { label: `${liveNotificationSummary.mentions} منشن`, tone: '#f59e0b' } : null,
   ].filter(Boolean);
 
-  const quickLinks = [
-    { to: '/notifications', label: ui.nav.notifications, icon: '🔔', badge: unreadCount, live: liveNotificationSummary.liveItems > 0 ? 'حي' : '' },
-    { to: '/reels', label: ui.nav.reels, icon: '🎬' },
-    { to: '/stories', label: ui.nav.stories, icon: '📖', live: liveNotificationSummary.mentions > 0 ? '@' : '' },
-    { to: '/groups', label: ui.nav.groups, icon: '👥' },
-    { to: '/inbox', label: ui.nav.inbox, icon: '💬', badge: unreadInboxCount },
-    { to: '/dashboard', label: ui.nav.dashboard, icon: '☰' },
-  ];
-
   return (
-    <header className="topbar yamshat-topbar compact-topbar topbar-app-like topbar-professional-shell topbar-reference-shell">
-      <div className="topbar-brand-wrap topbar-brand-reference">
+    <header className="topbar yamshat-topbar compact-topbar topbar-app-like topbar-professional-shell">
+      <div className="topbar-brand-wrap">
         <Link to="/" className="topbar-brand-link" {...getPrefetchHandlers('/')}>
           <span className="topbar-brand-mark">
             <img src="/brand/yamshat-logo.jpg" alt="Yamshat" className="brand-logo-img" />
@@ -137,34 +128,44 @@ export default function Topbar() {
         </div>
       </div>
 
-      <div className="topbar-route-actions topbar-actions-rich topbar-actions-equal topbar-actions-responsive-scroll">
-        {quickLinks.map((item) => (
-          <Link key={item.to} to={item.to} className="topbar-icon-link topbar-badge-link" {...getPrefetchHandlers(item.to)}>
-            <span aria-hidden="true">{item.icon}</span>
-            <span>{item.label}</span>
-            {item.badge > 0 ? <strong className="topbar-badge">{item.badge}</strong> : null}
-            {item.live ? <span className={`topbar-link-live ${item.live === '@' ? 'accent' : ''}`}>{item.live}</span> : null}
-          </Link>
-        ))}
+      <div className="topbar-route-actions topbar-actions-rich topbar-actions-equal">
+        <Link to="/notifications" className="topbar-icon-link topbar-badge-link" {...getPrefetchHandlers('/notifications')}>
+          <span aria-hidden="true">🔔</span>
+          <span>{ui.nav.notifications}</span>
+          {unreadCount > 0 ? <strong className="topbar-badge">{unreadCount}</strong> : null}
+          {liveNotificationSummary.liveItems > 0 ? <span className="topbar-link-live">حي</span> : null}
+        </Link>
+
+        <Link to="/reels" className="topbar-icon-link" {...getPrefetchHandlers('/reels')}>
+          <span aria-hidden="true">🎬</span>
+          <span>{ui.nav.reels}</span>
+        </Link>
+
+        <Link to="/stories" className="topbar-icon-link" {...getPrefetchHandlers('/stories')}>
+          <span aria-hidden="true">📖</span>
+          <span>{ui.nav.stories}</span>
+          {liveNotificationSummary.mentions > 0 ? <span className="topbar-link-live accent">@</span> : null}
+        </Link>
+
+        <Link to="/inbox" className="topbar-icon-link topbar-badge-link" {...getPrefetchHandlers('/inbox')}>
+          <span aria-hidden="true">💬</span>
+          <span>{ui.nav.inbox}</span>
+          {unreadInboxCount > 0 ? <strong className="topbar-badge">{unreadInboxCount}</strong> : null}
+        </Link>
+
+        <Link to="/dashboard" className="topbar-icon-link" {...getPrefetchHandlers('/dashboard')}>
+          <span aria-hidden="true">☰</span>
+          <span>{ui.nav.dashboard}</span>
+        </Link>
       </div>
 
       <style>{`
-        .topbar-reference-shell {
-          border-radius: 0 0 26px 26px;
-          margin: 0 10px;
-        }
-
-        .topbar-brand-reference {
-          min-width: 0;
-        }
-
         .topbar-live-strip {
           display: flex;
           gap: 8px;
           flex-wrap: wrap;
           margin-top: 10px;
         }
-
         .topbar-live-pill {
           --pill-tone: #22c55e;
           display: inline-flex;
@@ -177,7 +178,6 @@ export default function Topbar() {
           background: color-mix(in srgb, var(--pill-tone) 16%, transparent);
           border: 1px solid color-mix(in srgb, var(--pill-tone) 40%, transparent);
         }
-
         .topbar-live-dot {
           width: 8px;
           height: 8px;
@@ -186,7 +186,6 @@ export default function Topbar() {
           box-shadow: 0 0 0 6px color-mix(in srgb, var(--pill-tone) 18%, transparent);
           animation: topbar-live-pulse 1.8s infinite;
         }
-
         .topbar-link-live {
           padding: 2px 8px;
           border-radius: 999px;
@@ -195,56 +194,10 @@ export default function Topbar() {
           font-size: 11px;
           font-weight: 800;
         }
-
         .topbar-link-live.accent {
           background: rgba(245,158,11,0.16);
           color: #fcd34d;
         }
-
-        @media (max-width: 1080px) {
-          .topbar-reference-shell {
-            margin: 0;
-            border-radius: 0;
-          }
-
-          .topbar-actions-responsive-scroll {
-            display: flex;
-            align-items: stretch;
-            gap: 10px;
-            overflow-x: auto;
-            flex-wrap: nowrap;
-            padding-bottom: 4px;
-            scrollbar-width: none;
-          }
-
-          .topbar-actions-responsive-scroll::-webkit-scrollbar {
-            display: none;
-          }
-
-          .topbar-actions-responsive-scroll .topbar-icon-link {
-            flex: 0 0 auto;
-            min-width: 110px;
-          }
-        }
-
-        @media (max-width: 720px) {
-          .topbar-page-note {
-            font-size: 13px;
-            line-height: 1.7;
-          }
-
-          .topbar-live-strip {
-            flex-wrap: nowrap;
-            overflow-x: auto;
-            padding-bottom: 4px;
-            scrollbar-width: none;
-          }
-
-          .topbar-live-strip::-webkit-scrollbar {
-            display: none;
-          }
-        }
-
         @keyframes topbar-live-pulse {
           0% { transform: scale(0.95); opacity: 0.85; }
           70% { transform: scale(1.15); opacity: 1; }

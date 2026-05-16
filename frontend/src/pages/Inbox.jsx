@@ -1,191 +1,163 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import MainLayout from '../components/layout/MainLayout.jsx';
+import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
+import EmptyState from '../components/feedback/EmptyState.jsx';
+import { ListSkeleton } from '../components/feedback/Skeleton.jsx';
 import { getChatThreads } from '../api/chat.js';
 import { getCurrentUsername } from '../utils/auth.js';
-
-function formatThreadTime(value) {
-  if (!value) return 'الآن';
-  try {
-    return new Date(value).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return 'الآن';
-  }
-}
 
 export default function Inbox() {
   const navigate = useNavigate();
   const currentUser = getCurrentUsername();
-  const [activeTab, setActiveTab] = useState('all');
+  const [activeTab, setActiveTab] = useState('all'); // all, archived, pinned
   const [searchQuery, setSearchQuery] = useState('');
-  const [pinnedChats, setPinnedChats] = useState(() => new Set());
-  const [archivedChats, setArchivedChats] = useState(() => new Set());
-  const [mutedChats, setMutedChats] = useState(() => new Set());
+  
+  // Local state for UI enhancements (in real app, these would be synced with backend)
+  const [pinnedChats, setPinnedChats] = useState(new Set());
+  const [archivedChats, setArchivedChats] = useState(new Set());
+  const [mutedChats, setMutedChats] = useState(new Set());
 
   const { data: threads = [], isLoading, refetch } = useQuery({
     queryKey: ['chat-threads', currentUser],
     queryFn: async () => {
       const { data } = await getChatThreads();
       return data || [];
-    },
+    }
   });
 
   const filteredThreads = useMemo(() => {
-    const normalizedSearch = searchQuery.trim().toLowerCase();
-    return threads
-      .filter((thread) => {
-        const username = String(thread.username || '').toLowerCase();
-        const isArchived = archivedChats.has(thread.username);
-        const isPinned = pinnedChats.has(thread.username);
-        const isUnread = Number(thread.unread_count || 0) > 0;
-        const matchesSearch = !normalizedSearch || username.includes(normalizedSearch);
+    return threads.filter(thread => {
+      const isArchived = archivedChats.has(thread.username);
+      const isPinned = pinnedChats.has(thread.username);
+      const matchesSearch = thread.username.toLowerCase().includes(searchQuery.toLowerCase());
 
-        if (!matchesSearch) return false;
-        if (activeTab === 'archived') return isArchived;
-        if (activeTab === 'pinned') return isPinned && !isArchived;
-        if (activeTab === 'unread') return isUnread && !isArchived;
-        return !isArchived;
-      })
-      .sort((a, b) => {
-        const aPinned = pinnedChats.has(a.username);
-        const bPinned = pinnedChats.has(b.username);
-        if (aPinned && !bPinned) return -1;
-        if (!aPinned && bPinned) return 1;
-        return new Date(b.last_message_at || 0) - new Date(a.last_message_at || 0);
-      });
-  }, [threads, searchQuery, activeTab, pinnedChats, archivedChats]);
+      if (activeTab === 'archived') return isArchived && matchesSearch;
+      if (activeTab === 'pinned') return isPinned && matchesSearch;
+      return !isArchived && matchesSearch;
+    }).sort((a, b) => {
+      const aPinned = pinnedChats.has(a.username);
+      const bPinned = pinnedChats.has(b.username);
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+      return new Date(b.last_message_at) - new Date(a.last_message_at);
+    });
+  }, [threads, activeTab, searchQuery, archivedChats, pinnedChats]);
 
-  const totalUnread = useMemo(() => threads.reduce((sum, thread) => sum + Number(thread.unread_count || 0), 0), [threads]);
-
-  const toggleSetMember = (setter, currentSet, username) => {
-    const next = new Set(currentSet);
+  const togglePin = (username, e) => {
+    e.stopPropagation();
+    const next = new Set(pinnedChats);
     if (next.has(username)) next.delete(username);
     else next.add(username);
-    setter(next);
+    setPinnedChats(next);
+  };
+
+  const toggleArchive = (username, e) => {
+    e.stopPropagation();
+    const next = new Set(archivedChats);
+    if (next.has(username)) next.delete(username);
+    else next.add(username);
+    setArchivedChats(next);
+  };
+
+  const toggleMute = (username, e) => {
+    e.stopPropagation();
+    const next = new Set(mutedChats);
+    if (next.has(username)) next.delete(username);
+    else next.add(username);
+    setMutedChats(next);
   };
 
   return (
     <MainLayout>
-      <div className="yam-page yam-page-wide">
-        <div className="yam-hero" style={{ marginBottom: 22 }}>
-          <div className="yam-toolbar" style={{ marginBottom: 0 }}>
-            <div>
-              <div className="yam-badge primary" style={{ marginBottom: 12 }}>💬 الرسائل</div>
-              <h1 className="yam-section-title">الإنبوكس الجديد</h1>
-              <p className="yam-section-note" style={{ margin: '10px 0 0' }}>
-                تم تحديث شاشة الرسائل إلى تصميم أقرب للواجهة الجديدة، مع بقاء جلب المحادثات والانتقال للدردشة كما هو.
-              </p>
-            </div>
-            <div className="yam-action-row">
-              <Button variant="secondary" onClick={() => refetch()} loading={isLoading}>تحديث</Button>
-              <Button variant="secondary" onClick={() => navigate('/users')}>رسالة جديدة</Button>
-            </div>
+      <div style={{ maxWidth: 600, margin: '0 auto', padding: '20px 10px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <h2 style={{ margin: 0 }}>الرسائل</h2>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button variant="secondary" onClick={() => setActiveTab('all')} style={{ background: activeTab === 'all' ? 'var(--primary)' : '' }}>الكل</Button>
+            <Button variant="secondary" onClick={() => setActiveTab('pinned')} style={{ background: activeTab === 'pinned' ? 'var(--primary)' : '' }}>📌 المثبتة</Button>
+            <Button variant="secondary" onClick={() => setActiveTab('archived')} style={{ background: activeTab === 'archived' ? 'var(--primary)' : '' }}>📦 مؤرشف</Button>
           </div>
         </div>
 
-        <div className="yam-grid-main">
-          <div className="yam-card">
-            <div className="yam-toolbar">
-              <div className="yam-tabs">
-                {[
-                  { id: 'all', label: 'الكل' },
-                  { id: 'unread', label: 'غير مقروء' },
-                  { id: 'pinned', label: 'المثبتة' },
-                  { id: 'archived', label: 'المؤرشفة' },
-                ].map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    className={`yam-tab ${activeTab === tab.id ? 'active' : ''}`}
-                    onClick={() => setActiveTab(tab.id)}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-              <span className="yam-badge">{filteredThreads.length}</span>
-            </div>
+        <div style={{ marginBottom: 20 }}>
+          <input 
+            type="text" 
+            placeholder="ابحث في المحادثات..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid #333', padding: '12px 16px', borderRadius: 12, color: 'white' }}
+          />
+        </div>
 
-            <input
-              className="yam-search"
-              placeholder="ابحث عن محادثة..."
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              style={{ marginBottom: 18 }}
-            />
-
-            {isLoading ? (
-              <div className="yam-empty-state">جارٍ تحميل المحادثات...</div>
-            ) : filteredThreads.length ? (
-              <div className="yam-list">
-                {filteredThreads.map((thread) => (
-                  <div
-                    key={thread.username}
-                    className="yam-thread"
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => navigate(`/chat/${encodeURIComponent(thread.username)}`)}
-                  >
-                    <div style={{ position: 'relative' }}>
-                      <div className="yam-avatar">{thread.username?.slice(0, 1)?.toUpperCase() || 'U'}</div>
-                      {thread.presence?.is_online ? (
-                        <span style={{ position: 'absolute', width: 12, height: 12, borderRadius: '50%', background: '#22c55e', bottom: 2, insetInlineEnd: 2, border: '2px solid #08111f' }} />
-                      ) : null}
-                    </div>
-
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginBottom: 6 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                          <strong style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>@{thread.username}</strong>
-                          {mutedChats.has(thread.username) ? <span title="مكتوم">🔇</span> : null}
-                          {pinnedChats.has(thread.username) ? <span title="مثبت">📌</span> : null}
-                        </div>
-                        <span className="yam-meta" style={{ fontSize: 12 }}>{formatThreadTime(thread.last_message_at)}</span>
-                      </div>
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
-                        <div className="yam-meta" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {thread.last_message || 'ابدأ المحادثة الآن'}
-                        </div>
-                        {Number(thread.unread_count || 0) > 0 ? <span className="yam-pill-count">{thread.unread_count}</span> : null}
-                      </div>
-                    </div>
-
-                    <div className="yam-action-row" onClick={(event) => event.stopPropagation()}>
-                      <button type="button" className="yam-tab" onClick={() => toggleSetMember(setPinnedChats, pinnedChats, thread.username)}>
-                        {pinnedChats.has(thread.username) ? 'إلغاء التثبيت' : 'تثبيت'}
-                      </button>
-                      <button type="button" className="yam-tab" onClick={() => toggleSetMember(setMutedChats, mutedChats, thread.username)}>
-                        {mutedChats.has(thread.username) ? 'إلغاء الكتم' : 'كتم'}
-                      </button>
-                      <button type="button" className="yam-tab" onClick={() => toggleSetMember(setArchivedChats, archivedChats, thread.username)}>
-                        {archivedChats.has(thread.username) ? 'إلغاء الأرشفة' : 'أرشفة'}
-                      </button>
-                    </div>
+        {isLoading ? (
+          <ListSkeleton />
+        ) : filteredThreads.length === 0 ? (
+          <EmptyState title="لا توجد محادثات" description="ابدأ دردشة جديدة مع أصدقائك الآن." />
+        ) : (
+          <div style={{ display: 'grid', gap: 10 }}>
+            {filteredThreads.map(thread => (
+              <Card 
+                key={thread.username} 
+                onClick={() => navigate(`/chat/${thread.username}`)}
+                style={{ 
+                  padding: 16, 
+                  cursor: 'pointer', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 16,
+                  border: pinnedChats.has(thread.username) ? '1px solid var(--primary)' : '1px solid transparent',
+                  background: thread.unread_count > 0 ? 'rgba(139, 92, 246, 0.05)' : ''
+                }}
+              >
+                <div style={{ position: 'relative' }}>
+                  <div style={{ width: 50, height: 50, borderRadius: '50%', background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: 20 }}>
+                    {thread.username[0].toUpperCase()}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="yam-empty-state">
-                <div style={{ fontSize: 42, marginBottom: 10 }}>📭</div>
-                <div style={{ fontWeight: 700, marginBottom: 8 }}>لا توجد محادثات في هذا التبويب</div>
-                <div className="yam-empty-copy">ابدأ محادثة جديدة أو غيّر الفلتر الحالي.</div>
-              </div>
-            )}
-          </div>
+                  {thread.presence?.is_online && (
+                    <div style={{ position: 'absolute', bottom: 2, right: 2, width: 12, height: 12, background: '#44ff44', borderRadius: '50%', border: '2px solid #111' }} />
+                  )}
+                </div>
 
-          <aside className="yam-sidebar-stack">
-            <div className="yam-card">
-              <div className="yam-stat-grid">
-                <div className="yam-stat"><strong>{threads.length}</strong><span className="yam-meta">كل المحادثات</span></div>
-                <div className="yam-stat"><strong>{totalUnread}</strong><span className="yam-meta">الرسائل غير المقروءة</span></div>
-                <div className="yam-stat"><strong>{pinnedChats.size}</strong><span className="yam-meta">المثبتة</span></div>
-                <div className="yam-stat"><strong>{archivedChats.size}</strong><span className="yam-meta">المؤرشفة</span></div>
-              </div>
-            </div>
-          </aside>
-        </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <div style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {thread.username}
+                      {mutedChats.has(thread.username) && <span style={{ fontSize: 12 }}>🔇</span>}
+                      {pinnedChats.has(thread.username) && <span style={{ fontSize: 12 }}>📌</span>}
+                    </div>
+                    <div className="muted" style={{ fontSize: 11 }}>{new Date(thread.last_message_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</div>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div className="muted" style={{ fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {thread.last_message || 'لا توجد رسائل بعد'}
+                    </div>
+                    {thread.unread_count > 0 && (
+                      <div style={{ background: 'var(--primary)', color: 'white', fontSize: 10, padding: '2px 6px', borderRadius: 10, fontWeight: 'bold' }}>
+                        {thread.unread_count}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Quick Actions Menu (Visible on hover or long press in real app) */}
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <button onClick={(e) => togglePin(thread.username, e)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16 }} title="تثبيت">
+                    {pinnedChats.has(thread.username) ? '📍' : '📌'}
+                  </button>
+                  <button onClick={(e) => toggleMute(thread.username, e)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16 }} title="كتم">
+                    {mutedChats.has(thread.username) ? '🔊' : '🔇'}
+                  </button>
+                  <button onClick={(e) => toggleArchive(thread.username, e)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16 }} title="أرشفة">
+                    {archivedChats.has(thread.username) ? '📤' : '📦'}
+                  </button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     </MainLayout>
   );

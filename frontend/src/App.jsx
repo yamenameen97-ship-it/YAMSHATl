@@ -34,6 +34,7 @@ const VerifyEmail = lazy(() => import('./pages/VerifyEmail.jsx'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword.jsx'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword.jsx'));
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
+const LiveStreamDashboard = lazy(() => import('./pages/LiveStreamDashboard.jsx'));
 const Feed = lazy(() => import('./pages/Feed.jsx'));
 const Stories = lazy(() => import('./pages/Stories.jsx'));
 const Reels = lazy(() => import('./pages/Reels.jsx'));
@@ -124,6 +125,7 @@ export default function App() {
 
             <Route path="/" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/livestream-dashboard" element={<ProtectedRoute><LiveStreamDashboard /></ProtectedRoute>} />
             <Route path="/stories" element={<ProtectedRoute><Stories /></ProtectedRoute>} />
             <Route path="/reels" element={<ProtectedRoute><Reels /></ProtectedRoute>} />
             <Route path="/groups" element={<ProtectedRoute><Groups /></ProtectedRoute>} />

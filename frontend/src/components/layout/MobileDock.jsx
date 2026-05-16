@@ -1,5 +1,6 @@
 import { Link, NavLink } from 'react-router-dom';
 import { useAppStore } from '../../store/appStore.js';
+import { selectUnreadTotal, useChatStore } from '../../store/appStore.js';
 import { selectUnreadNotificationsCount, useNotificationStore } from '../../store/notificationStore.js';
 import { getUiText } from '../../utils/i18n.js';
 import { getPrefetchHandlers } from '../../utils/navigation.js';
@@ -8,18 +9,20 @@ export default function MobileDock() {
   const language = useAppStore((state) => state.language);
   const isOnline = useAppStore((state) => state.isOnline);
   const ui = getUiText(language);
+  const unreadInboxCount = useChatStore(selectUnreadTotal);
   const unreadNotifications = useNotificationStore(selectUnreadNotificationsCount);
 
   const dockLinks = [
-    { to: '/', label: ui.nav.home, icon: '⌂' },
-    { to: '/reels', label: ui.nav.reels, icon: '▣' },
-    { to: '/live', label: ui.nav.live, icon: '◉', badge: isOnline ? 'live' : null },
-    { to: '/groups', label: ui.nav.groups, icon: '◍', badge: unreadNotifications > 0 ? unreadNotifications : null },
+    { to: '/', label: ui.nav.home, icon: '⌂', badge: 0 },
+    { to: '/reels', label: ui.nav.reels, icon: '▣', badge: 0 },
+    { to: '/live', label: ui.nav.live, icon: '◉', badge: isOnline ? 'live' : 0 },
+    { to: '/inbox', label: ui.nav.inbox, icon: '✉', badge: unreadInboxCount },
+    { to: '/dashboard', label: ui.nav.dashboard, icon: '☰', badge: unreadNotifications },
   ];
 
   return (
     <nav className="mobile-dock mobile-dock-professional" aria-label={language === 'en' ? 'Quick navigation' : 'التنقل السريع'}>
-      <div className="mobile-dock-inner mobile-dock-grid-5 mobile-dock-balanced-grid mobile-dock-reference-grid">
+      <div className="mobile-dock-inner mobile-dock-grid-5 mobile-dock-balanced-grid">
         {dockLinks.slice(0, 2).map((link) => (
           <NavLink
             key={link.to}
@@ -62,28 +65,6 @@ export default function MobileDock() {
           box-shadow: 0 0 0 5px rgba(34,197,94,0.18);
           animation: mobile-live-pulse 1.6s infinite;
         }
-
-        .mobile-dock-reference-grid .mobile-dock-link {
-          position: relative;
-          overflow: hidden;
-        }
-
-        .mobile-dock-reference-grid .mobile-dock-link::after {
-          content: '';
-          position: absolute;
-          inset: auto 18% 8px;
-          height: 3px;
-          border-radius: 999px;
-          background: linear-gradient(90deg, rgba(139,92,246,0), rgba(139,92,246,0.85), rgba(6,182,212,0));
-          opacity: 0;
-          transition: opacity 180ms ease;
-        }
-
-        .mobile-dock-reference-grid .mobile-dock-link.active::after,
-        .mobile-dock-reference-grid .mobile-dock-center::after {
-          opacity: 1;
-        }
-
         @keyframes mobile-live-pulse {
           0% { transform: scale(0.9); opacity: 0.75; }
           70% { transform: scale(1.15); opacity: 1; }

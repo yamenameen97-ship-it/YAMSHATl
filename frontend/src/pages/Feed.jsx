@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-// import MainLayout from '../components/layout/MainLayout.jsx';
+import MainLayout from '../components/layout/MainLayout.jsx';
 import PostComposer from '../components/feed/PostComposer.jsx';
 import { useFeed } from '../hooks/useFeed.js';
 import { likePost } from '../api/posts.js';
@@ -164,6 +164,7 @@ export default function Feed() {
   );
 
   return (
+    <MainLayout>
       <div className="yam-feed-page desktop-post mobile-post">
         <div className="yam-feed-main-column">
           <section className="yam-feed-composer-shell">
@@ -542,5 +543,6 @@ export default function Feed() {
           .yam-trending-thumb { width: 74px; height: 74px; }
         }
       `}</style>
+    </MainLayout>
   );
 }

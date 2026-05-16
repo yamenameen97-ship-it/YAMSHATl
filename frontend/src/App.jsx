@@ -13,7 +13,6 @@ import useSessionGuard from './hooks/useSessionGuard.js';
 import usePageAnalytics from './hooks/usePageAnalytics.js';
 import useChatRealtime from './hooks/useChatRealtime.js';
 import { useAppStore } from './store/appStore.js';
-import MainLayout from './layouts/MainLayout';
 import './styles/theme.css';
 
 const AdminDashboard = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminDashboard })));
@@ -115,7 +114,6 @@ export default function App() {
       <AppErrorBoundary>
         <AppGuards />
         <Suspense fallback={<RouteFallback />}>
-          <MainLayout>
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
@@ -159,7 +157,6 @@ export default function App() {
             <Route path="/admin/groups" element={<ProtectedRoute><AdminGroups /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-          </MainLayout>
         </Suspense>
       </AppErrorBoundary>
     </ToastProvider>

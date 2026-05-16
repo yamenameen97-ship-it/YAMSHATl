@@ -7,7 +7,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-// import MainLayout from '../components/layout/MainLayout.jsx';
+import MainLayout from '../components/layout/MainLayout.jsx';
 import ChatInput from '../components/chat/ChatInput.jsx';
 import CallExperience from '../components/chat/CallExperience.jsx';
 import { useToast } from '../components/admin/ToastProvider.jsx';
@@ -348,6 +348,7 @@ export default function Chat() {
   const peerThread = threads.find(t => t.username === peer) || {};
 
   return (
+    <MainLayout>
       <div className="yam-chat-shell desktop-post mobile-post">
 
         {/* ── LEFT: Thread list ─────────────────────────────────────── */}
@@ -891,5 +892,6 @@ export default function Chat() {
           font-weight: 700;
         }
       `}</style>
+    </MainLayout>
   );
 }

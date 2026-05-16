@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-// import MainLayout from '../components/layout/MainLayout.jsx';
+import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import Modal from '../components/ui/Modal.jsx';
@@ -47,6 +47,7 @@ export default function Profile() {
   if (!profile) return <div>Loading...</div>;
 
   return (
+    <MainLayout>
       <div className="profile-page desktop-post mobile-post" style={{ maxWidth: 900, margin: '0 auto', padding: '40px 20px' }}>
         
         {/* Profile Header */}
@@ -177,5 +178,6 @@ export default function Profile() {
           </div>
         </div>
       </Modal>
+    </MainLayout>
   );
 }

@@ -1,1 +1,92 @@
-if(!self.define){let e,s={};const c=(c,n)=>(c=new URL(c+".js",n).href,s[c]||new Promise(s=>{if("document"in self){const e=document.createElement("script");e.src=c,e.onload=s,document.head.appendChild(e)}else e=c,importScripts(c),s()}).then(()=>{let e=s[c];if(!e)throw new Error(`Module ${c} didn’t register its module`);return e}));self.define=(n,i)=>{const a=e||("document"in self?document.currentScript.src:"")||location.href;if(s[a])return;let r={};const d=e=>c(e,a),u={module:{uri:a},exports:r,require:d};s[a]=Promise.all(n.map(e=>u[e]||d(e))).then(e=>(i(...e),r))}}define(["./workbox-7334f08a"],function(e){"use strict";self.skipWaiting(),e.clientsClaim(),e.precacheAndRoute([{url:"registerSW.js",revision:"1872c500de691dce40960bb85481de07"},{url:"offline.html",revision:"b13c27271be4676278a1cbb83095508a"},{url:"index.html",revision:"aa38309a08c81b19b117b1356f7f2f49"},{url:"index-BOmwylhg.js",revision:"9a6411eaec1820c7162c6348bebe1aa7"},{url:"background-sync.js",revision:"445a88f32c8c79dc1c4a927f33cbd7b0"},{url:"app-config.js",revision:"f7524e13a7889096c2e4deeccde7aaf8"},{url:"admin.html",revision:"e098158993b17b9a38d500e9fec9d399"},{url:"404.html",revision:"7d9cfd48d972aedd61cff5eb1fe2e2c0"},{url:"chunks/users-BTGaga8Z.js",revision:"ec4ddd4769433b1dd2c97b26f1050d9a"},{url:"chunks/useSingleFlight-BC3eKZnY.js",revision:"a4b60e53c675ab9dfffb998a340fd5c8"},{url:"chunks/useQuery-CjItkxld.js",revision:"7c29d44a828d453e38925c831a44df08"},{url:"chunks/useDebouncedValue-DaiRSHpp.js",revision:"ef968eacc103c17fefaff198786f354e"},{url:"chunks/useBaseQuery-B_5Rmreq.js",revision:"7f01cee1e7616ad327a96c4d4491ec95"},{url:"chunks/stories-DmZbSV72.js",revision:"5b07c2a580c7e50553d72ea1e87d03d0"},{url:"chunks/sanitize-Z0AdoBrd.js",revision:"e6e85bed7dc23acd84fb6e825fbfad24"},{url:"chunks/recommendationService--x75xBSm.js",revision:"8e76a8ab5369bbb0c913a4e3c9a3ac42"},{url:"chunks/react-virtualized-auto-sizer.esm-C0Nwq8Y_.js",revision:"a5dad8b8f016d44b1962fd63f516e00f"},{url:"chunks/proxy-CGWyWqSt.js",revision:"3f5a8045775e214a162030b8bb4266de"},{url:"chunks/posts-BDsqSQ0V.js",revision:"8bbaa5a386b280eeb0aff64f49d4c6d2"},{url:"chunks/index-bP53xdTv.js",revision:"c31c1d01b4fc519824f3ea05b3b13922"},{url:"chunks/index-MPQ2lHZY.js",revision:"ee10e86169035eabaa304959f6567690"},{url:"chunks/index-DHwnWt8u.js",revision:"1e62c7fb8718655cee7a7d1386238f80"},{url:"chunks/groups-CV_FU442.js",revision:"274cb5edd72c39177b75fb8d4720d16e"},{url:"chunks/authValidation-DTcrL5c9.js",revision:"d627873d1132482c3e7bc75db08aa5e2"},{url:"chunks/auth-7P1N303e.js",revision:"6a7577f110ec9230e42d18c31d93b6d0"},{url:"chunks/VerifyEmail-DathxHDw.js",revision:"ace829e49c4bcff62a31ddee5a0b00d9"},{url:"chunks/Users-BoaDfS1u.js",revision:"f06b0ddaa7a8282d85cc2ff98e45165f"},{url:"chunks/TwoFactorChallengeModal-z00dlv2-.js",revision:"a204609a886700639d642c9d514be837"},{url:"chunks/Stories-DfvOZbOt.js",revision:"18a6a88a56390cdd6d6517dbe65ce1a5"},{url:"chunks/Settings-_KxPfLSm.js",revision:"cda8778c53b3e2120e6e22e9d267eb91"},{url:"chunks/Search-BvHwrPTw.js",revision:"268e3aaf16b5da17362f786f2e45ca7a"},{url:"chunks/ResetPassword-NuO88Fuj.js",revision:"3bc1fb93e7cb14f7c9adc9774c3059be"},{url:"chunks/Register-BkZ4CDBK.js",revision:"90cf2d85234ef519983b21da2f1774ff"},{url:"chunks/Reels--NM6O-lB.js",revision:"5baa2d8ae0ee9f67a5d8a56b5ee22c29"},{url:"chunks/Profile-CLkujjTj.js",revision:"a475b0f8960e15dbfee1425720ea192d"},{url:"chunks/PasswordRecoveryFlow-17x0heoo.js",revision:"e6f29319871133fb0c09b6007843b786"},{url:"chunks/OtpCodeInput-CdkJ_Twj.js",revision:"0854375e9408de2b99a7f0fbc4b601db"},{url:"chunks/Modal-vsgrOIBs.js",revision:"dc5b9d73822e3fa59f38690ff1104ad6"},{url:"chunks/MainLayout-BFwSeUBC.js",revision:"85b83944a6f6db10d83105940def7a62"},{url:"chunks/Login-X4RhCyP5.js",revision:"e05ca72282b4d19ba2364b1e0b99153a"},{url:"chunks/Live-yN6rB1gR.js",revision:"dfa6c47d7c6015c6572fcd810240bc1e"},{url:"chunks/Input-CYUfbtAY.js",revision:"9c08b872269c6654d3a00984de0bace0"},{url:"chunks/Inbox-Dkn74YuI.js",revision:"df013b4c87e6b39729a8175e4a6f4393"},{url:"chunks/Groups-CNUzO9rX.js",revision:"2fa4dc29e0dd3bcd1d2645a95105d77a"},{url:"chunks/ForgotPassword-BA6j3xiW.js",revision:"ed1de287b7daf8bf29fafcfb272d7b5f"},{url:"chunks/Feed-BplcEF9m.js",revision:"37e395984b3589830e5bfbac63234de3"},{url:"chunks/ErrorState-D_p-A1YC.js",revision:"42a39f8311bd6abe5a638a2aa892a5ef"},{url:"chunks/Dashboard-BJefepY2.js",revision:"d1099c5d7abba88c105368f1161ba049"},{url:"chunks/Chat-DVKWgagV.js",revision:"37903d1408dcf958ee7822ece36eebdf"},{url:"chunks/Card-CH6UC0x0.js",revision:"d7176da68586b3ef5191afe2d825a6b6"},{url:"chunks/AdminLogin-BnGCFKuI.js",revision:"bcc36e9273a2144dbcbe6c1060ee5ffd"},{url:"assets/index-Zqc3e3Op.css",revision:null},{url:"admin/index.html",revision:"97fb9249f6715cbd6329e51b206576df"},{url:"admin/login/index.html",revision:"5d8b463a6ec8b1339051b00fa8288f29"},{url:"icons/icon-192.png",revision:"d918245f749e34e0489f1fb3711aa75c"},{url:"icons/icon-512.png",revision:"a51f2274c9bcea71ea36cc86d6a59494"},{url:"manifest.webmanifest",revision:"aa23893204620f694e66955ee152ee6c"}],{}),e.cleanupOutdatedCaches(),e.registerRoute(new e.NavigationRoute(e.createHandlerBoundToURL("index.html"))),e.registerRoute(/^https:\/\/fonts\.googleapis\.com\/.*/i,new e.CacheFirst({cacheName:"google-fonts-cache",plugins:[new e.ExpirationPlugin({maxEntries:10,maxAgeSeconds:31536e3}),new e.CacheableResponsePlugin({statuses:[0,200]})]}),"GET"),e.registerRoute(/^https:\/\/fonts\.gstatic\.com\/.*/i,new e.CacheFirst({cacheName:"gstatic-fonts-cache",plugins:[new e.ExpirationPlugin({maxEntries:10,maxAgeSeconds:31536e3}),new e.CacheableResponsePlugin({statuses:[0,200]})]}),"GET"),e.registerRoute(/\.(?:png|jpg|jpeg|svg|gif|webp)$/i,new e.StaleWhileRevalidate({cacheName:"images-cache",plugins:[new e.ExpirationPlugin({maxEntries:100,maxAgeSeconds:2592e3}),new e.CacheableResponsePlugin({statuses:[0,200]})]}),"GET"),e.registerRoute(/\.(?:mp4|webm|ogg)$/i,new e.CacheFirst({cacheName:"videos-cache",plugins:[new e.ExpirationPlugin({maxEntries:20,maxAgeSeconds:604800}),new e.CacheableResponsePlugin({statuses:[0,200]})]}),"GET"),e.registerRoute(/\/api\/.*/i,new e.NetworkFirst({cacheName:"api-cache",networkTimeoutSeconds:10,plugins:[new e.ExpirationPlugin({maxEntries:200,maxAgeSeconds:86400}),new e.CacheableResponsePlugin({statuses:[0,200]})]}),"GET"),e.registerRoute(/\.(?:js|css|woff|woff2)$/i,new e.CacheFirst({cacheName:"static-assets-cache",plugins:[new e.ExpirationPlugin({maxEntries:50,maxAgeSeconds:2592e3}),new e.CacheableResponsePlugin({statuses:[0,200]})]}),"GET")});
+const VERSION = 'yamshat-v11-fresh';
+const STATIC_CACHE = `${VERSION}:static`;
+const MEDIA_CACHE = `${VERSION}:media`;
+
+async function clearLegacyCaches() {
+  const keys = await caches.keys();
+  await Promise.all(keys.filter((key) => !key.startsWith(VERSION)).map((key) => caches.delete(key)));
+}
+
+async function networkFirst(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  try {
+    const response = await fetch(request, { cache: 'no-store' });
+    if (response && response.status === 200) {
+      await cache.put(request, response.clone());
+    }
+    return response;
+  } catch (error) {
+    return cache.match(request);
+  }
+}
+
+async function cacheImages(request) {
+  const cache = await caches.open(MEDIA_CACHE);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  try {
+    const response = await fetch(request);
+    if (response && response.status === 200) {
+      await cache.put(request, response.clone());
+    }
+    return response;
+  } catch (error) {
+    return cached || Response.error();
+  }
+}
+
+async function broadcastMessage(message) {
+  const clientsList = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+  clientsList.forEach((client) => client.postMessage(message));
+}
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(self.skipWaiting());
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    clearLegacyCaches().then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  if (request.method !== 'GET') return;
+
+  const url = new URL(request.url);
+
+  if (request.mode === 'navigate') {
+    event.respondWith(fetch(request, { cache: 'no-store' }).catch(() => caches.match('/index.html')));
+    return;
+  }
+
+  if (/\.(?:js|css|woff2?|ttf|otf)$/i.test(url.pathname)) {
+    event.respondWith(networkFirst(request, STATIC_CACHE));
+    return;
+  }
+
+  if (/\.(?:png|jpg|jpeg|svg|webp|gif|avif|mp4|webm|mp3|wav|m3u8)$/i.test(url.pathname)) {
+    event.respondWith(cacheImages(request));
+    return;
+  }
+
+  if (/\/(api|notifications)\//i.test(url.pathname)) {
+    event.respondWith(fetch(request, { cache: 'no-store' }).catch(() => Response.error()));
+    return;
+  }
+
+  event.respondWith(fetch(request, { cache: 'no-store' }).catch(() => caches.match(request)));
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'yamshat:queue-sync') {
+    event.waitUntil(broadcastMessage({ type: 'yamshat:sync-now' }));
+  }
+});
+
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'sync-posts' || event.tag === 'sync-messages' || event.tag === 'sync-notifications') {
+    event.waitUntil(broadcastMessage({ type: 'yamshat:sync-now' }));
+  }
+});

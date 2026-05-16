@@ -7,7 +7,7 @@
  *  - real-time room stats via socket.io
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-// import MainLayout from '../components/layout/MainLayout.jsx';
+import MainLayout from '../components/layout/MainLayout.jsx';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import {
   createLiveRoom,
@@ -265,6 +265,7 @@ export default function Live() {
   };
 
   return (
+    <MainLayout>
       <div className="yam-live-page desktop-post mobile-post">
         {/* ── Main live stage ────────────────────────────────────────── */}
         <div className="yam-live-main">
@@ -832,5 +833,6 @@ export default function Live() {
           min-width: 88px;
         }
       `}</style>
+    </MainLayout>
   );
 }

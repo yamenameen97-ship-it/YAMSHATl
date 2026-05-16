@@ -1,153 +1,247 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Button from '../components/ui/Button.jsx';
-import Card from '../components/ui/Card.jsx';
 import Modal from '../components/ui/Modal.jsx';
 import ChatInput from '../components/chat/ChatInput.jsx';
-import AudioWaveform from '../components/chat/AudioWaveform.jsx';
 import CallExperience from '../components/chat/CallExperience.jsx';
 import { useToast } from '../components/admin/ToastProvider.jsx';
-import { deleteMessageApi, getMessages, markMessagesSeen, sendMessageApi } from '../api/chat.js';
+import { getChatThreads, getMessages, markMessagesSeen, sendMessageApi } from '../api/chat.js';
 import socketManager from '../services/socketManager.js';
-import signalProtocolService from '../services/chat/signalProtocol.js';
-import { currentMediaProviderLabel, resolveMediaUrl } from '../config/mediaConfig.js';
 import { getCurrentUsername } from '../utils/auth.js';
-import { useChatStore } from '../store/appStore.js';
-import { FixedSizeList as List } from 'react-window';
-import AutoSizer from 'react-virtualized-auto-sizer';
 
-const MessageRow = ({ index, style, data }) => {
-  const { messages, currentUser } = data;
-  const message = messages[index];
-  if (!message) return null;
-
-  const isMe = message.sender === currentUser;
-
-  return (
-    <div style={{ ...style, display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start', padding: '5px 15px' }}>
-      <div className={`max-w-[80%] p-3 rounded-2xl ${isMe ? 'bg-primary text-white rounded-tr-none' : 'bg-gray-100 text-gray-800 rounded-tl-none'}`}>
-        <p className="text-sm">{message.content || message.message}</p>
-        <div className={`text-[10px] mt-1 ${isMe ? 'text-white/70' : 'text-gray-500'}`}>
-          {new Date(message.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
-        </div>
-      </div>
-    </div>
-  );
-};
+function formatMessageTime(value) {
+  if (!value) return 'الآن';
+  try {
+    return new Date(value).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return 'الآن';
+  }
+}
 
 export default function Chat() {
+  const navigate = useNavigate();
   const { userId } = useParams();
   const peer = decodeURIComponent(userId || '').trim();
   const currentUser = getCurrentUsername();
   const { pushToast } = useToast();
-  const listRef = useRef(null);
   const [messages, setMessages] = useState([]);
-  const [loading, setLoading] = useState(Boolean(peer));
+  const [loadingMessages, setLoadingMessages] = useState(Boolean(peer));
   const [presence, setPresence] = useState({ is_online: false, is_typing: false });
-  const setActivePeer = useChatStore((state) => state.setActivePeer);
+  const [callState, setCallState] = useState({ open: false, mode: 'voice', callType: 'direct', status: 'idle' });
 
-  const loadMessages = useCallback(async () => {
+  const { data: threads = [], refetch: refetchThreads } = useQuery({
+    queryKey: ['chat-threads-sidebar'],
+    queryFn: async () => {
+      const { data } = await getChatThreads();
+      return data || [];
+    },
+  });
+
+  const activeThread = useMemo(() => threads.find((thread) => String(thread.username) === String(peer)) || null, [threads, peer]);
+
+  const loadMessages = async () => {
     if (!peer) return;
-    setLoading(true);
+    setLoadingMessages(true);
     try {
-      const { data } = await getMessages(peer, 50);
-      setMessages(data?.items || []);
+      const { data } = await getMessages(peer, 80);
+      const items = data?.items || data || [];
+      setMessages(Array.isArray(items) ? items : []);
       await markMessagesSeen(peer);
-    } catch (err) {
-      pushToast({ type: 'error', title: 'خطأ', description: 'تعذر تحميل الرسائل' });
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر تحميل الرسائل', description: error?.response?.data?.detail || error?.message || 'حاول مرة أخرى.' });
     } finally {
-      setLoading(false);
-    }
-  }, [peer, pushToast]);
-
-  useEffect(() => {
-    loadMessages();
-    setActivePeer(peer);
-    
-    const unsubscribe = socketManager.on('new_private_message', (msg) => {
-      if (msg.sender === peer || msg.receiver === peer) {
-        setMessages(prev => [...prev, msg]);
-        if (msg.sender === peer) markMessagesSeen(peer);
-      }
-    });
-
-    return () => {
-      unsubscribe();
-      setActivePeer(null);
-    };
-  }, [peer, loadMessages, setActivePeer]);
-
-  useEffect(() => {
-    if (listRef.current && messages.length > 0) {
-      listRef.current.scrollToItem(messages.length - 1);
-    }
-  }, [messages.length]);
-
-  const handleSend = async (content) => {
-    const tempId = Date.now();
-    const newMsg = { id: tempId, sender: currentUser, content, created_at: new Date().toISOString(), status: 'sending' };
-    setMessages(prev => [...prev, newMsg]);
-
-    try {
-      await sendMessageApi(peer, { content });
-      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'sent' } : m));
-    } catch (e) {
-      setMessages(prev => prev.filter(m => m.id !== tempId));
-      pushToast({ type: 'error', title: 'خطأ', description: 'فشل إرسال الرسالة' });
+      setLoadingMessages(false);
     }
   };
 
-  const listData = useMemo(() => ({
-    messages,
-    currentUser
-  }), [messages, currentUser]);
+  useEffect(() => {
+    loadMessages();
+  }, [peer]);
+
+  useEffect(() => {
+    if (!peer) return undefined;
+    socketManager.connect?.();
+
+    const handleNewMessage = (payload) => {
+      const sender = payload?.sender || payload?.username;
+      const receiver = payload?.receiver;
+      if (String(sender) === String(peer) || String(receiver) === String(peer)) {
+        setMessages((prev) => [...prev, payload]);
+        if (String(sender) === String(peer)) markMessagesSeen(peer).catch(() => null);
+      }
+    };
+
+    const handlePresence = (payload) => {
+      if (!payload || String(payload.username) !== String(peer)) return;
+      setPresence({
+        is_online: Boolean(payload.is_online),
+        is_typing: Boolean(payload.is_typing),
+      });
+    };
+
+    socketManager.on?.('new_private_message', handleNewMessage);
+    socketManager.on?.('presence_update', handlePresence);
+
+    return () => {
+      socketManager.off?.('new_private_message', handleNewMessage);
+      socketManager.off?.('presence_update', handlePresence);
+    };
+  }, [peer]);
+
+  const handleSend = async (content) => {
+    const text = typeof content === 'string' ? content.trim() : '';
+    if (!peer || !text) return;
+
+    const optimistic = {
+      id: `temp-${Date.now()}`,
+      sender: currentUser,
+      receiver: peer,
+      content: text,
+      created_at: new Date().toISOString(),
+      status: 'sending',
+    };
+
+    setMessages((prev) => [...prev, optimistic]);
+
+    try {
+      await sendMessageApi({ receiver: peer, content: text });
+      setMessages((prev) => prev.map((item) => item.id === optimistic.id ? { ...item, status: 'sent' } : item));
+      refetchThreads();
+    } catch (error) {
+      setMessages((prev) => prev.filter((item) => item.id !== optimistic.id));
+      pushToast({ type: 'error', title: 'فشل إرسال الرسالة', description: error?.response?.data?.detail || error?.message || 'حاول مرة أخرى.' });
+    }
+  };
+
+  const startCall = (mode, callType) => {
+    setCallState({ open: true, mode, callType, status: 'connecting' });
+  };
 
   return (
     <MainLayout>
-      <div className="flex flex-col h-[calc(100vh-70px)] bg-white">
-        {/* Chat Header */}
-        <div className="p-4 border-b flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gray-200"></div>
+      <div className="yam-page yam-page-wide">
+        <div className="yam-hero" style={{ marginBottom: 22 }}>
+          <div className="yam-toolbar" style={{ marginBottom: 0 }}>
             <div>
-              <div className="font-bold">@{peer}</div>
-              <div className="text-xs text-green-500">{presence.is_online ? 'متصل الآن' : 'غير متصل'}</div>
+              <div className="yam-badge primary" style={{ marginBottom: 12 }}>💬 المحادثة</div>
+              <h1 className="yam-section-title">واجهة الدردشة الجديدة</h1>
+              <p className="yam-section-note" style={{ margin: '10px 0 0' }}>
+                تم استبدال شكل شاشة المحادثة مع الحفاظ على نفس خدمات جلب الرسائل، الإرسال، وتحديث حالة القراءة.
+              </p>
+            </div>
+            <div className="yam-action-row">
+              <Button variant="secondary" onClick={() => loadMessages()} loading={loadingMessages} disabled={!peer}>تحديث</Button>
             </div>
           </div>
         </div>
 
-        {/* Messages List */}
-        <div className="flex-1">
-          {loading ? (
-            <div className="flex items-center justify-center h-full">جارٍ التحميل...</div>
-          ) : (
-            <AutoSizer>
-              {({ height, width }) => (
-                <List
-                  ref={listRef}
-                  height={height}
-                  width={width}
-                  itemCount={messages.length}
-                  itemSize={70}
-                  itemData={listData}
-                  className="no-scrollbar"
+        <div className="yam-split-chat">
+          <aside className="yam-card">
+            <div className="yam-toolbar">
+              <h3 style={{ margin: 0 }}>المحادثات</h3>
+              <span className="yam-badge">{threads.length}</span>
+            </div>
+            <div className="yam-list">
+              {threads.length ? threads.map((thread) => (
+                <button
+                  key={thread.username}
+                  type="button"
+                  className={`yam-thread ${peer === thread.username ? 'active' : ''}`}
+                  style={{ cursor: 'pointer', textAlign: 'inherit' }}
+                  onClick={() => navigate(`/chat/${encodeURIComponent(thread.username)}`)}
                 >
-                  {MessageRow}
-                </List>
-              )}
-            </AutoSizer>
-          )}
+                  <div style={{ position: 'relative' }}>
+                    <div className="yam-avatar">{thread.username?.slice(0, 1)?.toUpperCase() || 'U'}</div>
+                    {thread.presence?.is_online ? (
+                      <span style={{ position: 'absolute', width: 12, height: 12, borderRadius: '50%', background: '#22c55e', bottom: 2, insetInlineEnd: 2, border: '2px solid #08111f' }} />
+                    ) : null}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginBottom: 6 }}>
+                      <strong>@{thread.username}</strong>
+                      <span className="yam-meta" style={{ fontSize: 12 }}>{formatMessageTime(thread.last_message_at)}</span>
+                    </div>
+                    <div className="yam-meta" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {thread.last_message || 'ابدأ المحادثة'}
+                    </div>
+                  </div>
+                  {Number(thread.unread_count || 0) > 0 ? <span className="yam-pill-count">{thread.unread_count}</span> : null}
+                </button>
+              )) : <div className="yam-empty-copy">لا توجد محادثات حالياً.</div>}
+            </div>
+          </aside>
+
+          <section className="yam-card" style={{ display: 'flex', flexDirection: 'column', minHeight: 680 }}>
+            {peer ? (
+              <>
+                <div className="yam-toolbar">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                    <div className="yam-avatar">{peer.slice(0, 1).toUpperCase()}</div>
+                    <div>
+                      <strong style={{ display: 'block', marginBottom: 4 }}>@{peer}</strong>
+                      <span className="yam-meta">{presence.is_typing ? 'يكتب الآن...' : presence.is_online || activeThread?.presence?.is_online ? 'متصل الآن' : 'غير متصل'}</span>
+                    </div>
+                  </div>
+
+                  <div className="yam-action-row">
+                    <Button variant="secondary" size="small" onClick={() => startCall('voice', 'direct')}>📞 صوتي</Button>
+                    <Button variant="secondary" size="small" onClick={() => startCall('video', 'direct')}>🎥 فيديو</Button>
+                    <Button variant="secondary" size="small" onClick={() => startCall('video', 'group')}>👥 جماعي</Button>
+                  </div>
+                </div>
+
+                <div className="yam-soft-divider" />
+
+                <div className="yam-messages" style={{ flex: 1, maxHeight: 'none' }}>
+                  {loadingMessages ? (
+                    <div className="yam-empty-copy">جارٍ تحميل الرسائل...</div>
+                  ) : messages.length ? messages.map((message) => {
+                    const isMine = String(message.sender) === String(currentUser);
+                    return (
+                      <div key={message.id || `${message.sender}-${message.created_at}`} className={`yam-message ${isMine ? 'me' : 'peer'}`}>
+                        <div>{message.content || message.message || message.text || ''}</div>
+                        <div className="yam-meta" style={{ fontSize: 12, marginTop: 8 }}>
+                          {formatMessageTime(message.created_at)}{message.status ? ` · ${message.status}` : ''}
+                        </div>
+                      </div>
+                    );
+                  }) : <div className="yam-empty-copy">ابدأ أول رسالة في هذه المحادثة.</div>}
+                </div>
+
+                <div className="yam-soft-divider" />
+
+                <ChatInput onSend={handleSend} />
+              </>
+            ) : (
+              <div className="yam-empty-state" style={{ minHeight: 420, display: 'grid', placeItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 48, marginBottom: 12 }}>💭</div>
+                  <div style={{ fontWeight: 700, marginBottom: 8 }}>اختر محادثة من القائمة الجانبية</div>
+                  <div className="yam-empty-copy">أو افتح الإنبوكس لبدء رسالة جديدة.</div>
+                </div>
+              </div>
+            )}
+          </section>
         </div>
 
-        {/* Input Area */}
-        <ChatInput onSend={handleSend} />
+        <Modal
+          open={callState.open}
+          onClose={() => setCallState((prev) => ({ ...prev, open: false, status: 'ended' }))}
+          title={callState.callType === 'group' ? 'مكالمة جماعية' : callState.mode === 'video' ? 'مكالمة فيديو' : 'مكالمة صوتية'}
+          size="large"
+        >
+          <CallExperience
+            open={callState.open}
+            mode={callState.mode}
+            callType={callState.callType}
+            participantName={peer || 'مستخدم'}
+            onClose={() => setCallState((prev) => ({ ...prev, open: false, status: 'ended' }))}
+            onStatusChange={(status) => setCallState((prev) => ({ ...prev, status }))}
+          />
+        </Modal>
       </div>
-
-      <style>{`
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-      `}</style>
     </MainLayout>
   );
 }

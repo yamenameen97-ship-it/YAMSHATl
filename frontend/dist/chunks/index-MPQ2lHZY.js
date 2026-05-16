@@ -1,0 +1,1 @@
+import{default as x}from"./Chat-DVKWgagV.js";import{default as l}from"./Inbox-Dkn74YuI.js";import"../index-BOmwylhg.js";import"./useQuery-CjItkxld.js";import"./useBaseQuery-B_5Rmreq.js";import"./MainLayout-BFwSeUBC.js";import"./Modal-vsgrOIBs.js";import"./Card-CH6UC0x0.js";import"./proxy-CGWyWqSt.js";export{x as Chat,l as Inbox};

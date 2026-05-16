@@ -1,0 +1,1 @@
+import{j as r}from"../index-BOmwylhg.js";import{P as o}from"./PasswordRecoveryFlow-17x0heoo.js";import"./Input-CYUfbtAY.js";import"./authValidation-DTcrL5c9.js";import"./proxy-CGWyWqSt.js";import"./OtpCodeInput-CdkJ_Twj.js";import"./auth-7P1N303e.js";function f(){return r.jsx(o,{initialStep:"verify"})}export{f as default};

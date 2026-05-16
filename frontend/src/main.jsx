@@ -5,6 +5,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import App from './App.jsx';
 import './styles/global.css';
 import './styles/responsive.css';
+import './styles/enhanced-ui.css';
 import { queryClient } from './lib/queryClient.js';
 import { useAppStore } from './store/appStore.js';
 import RealtimeProvider from './realtime/RealtimeProvider.jsx';

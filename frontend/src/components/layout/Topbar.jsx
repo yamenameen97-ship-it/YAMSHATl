@@ -1,5 +1,5 @@
-import { Link, NavLink, useLocation } from 'react-router-dom';
-import { useMemo } from 'react';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getNotifications } from '../../api/notifications.js';
 import { getCurrentUsername, getStoredUserSnapshot } from '../../utils/auth.js';
@@ -27,12 +27,16 @@ function Avatar({ username, avatar }) {
 
 export default function Topbar() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const searchInputRef = useRef(null);
   const unreadInboxCount = useChatStore(selectUnreadTotal);
   const toggleTheme = useAppStore((state) => state.toggleTheme);
   const theme = useAppStore((state) => state.theme);
   const isOnline = useAppStore((state) => state.isOnline);
   const currentUsername = getCurrentUsername();
   const session = getStoredUserSnapshot();
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const { data: notifications = [] } = useQuery({
     queryKey: ['topbar-notifications-count'],
@@ -51,15 +55,33 @@ export default function Topbar() {
     if (location.pathname.startsWith('/inbox') || location.pathname.startsWith('/chat')) return 'الدردشات';
     if (location.pathname.startsWith('/notifications')) return 'الإشعارات';
     if (location.pathname.startsWith('/groups')) return 'المجموعات';
+    if (location.pathname.startsWith('/dashboard')) return 'القائمة';
     return 'YAMSHAT';
   }, [location.pathname]);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    const timer = window.setTimeout(() => searchInputRef.current?.focus(), 60);
+    return () => window.clearTimeout(timer);
+  }, [searchOpen]);
+
+  const handleSearchSubmit = (event) => {
+    event?.preventDefault?.();
+    const value = searchQuery.trim();
+    if (typeof window !== 'undefined') {
+      if (value) window.sessionStorage.setItem('yamshat.topbarSearch', value);
+      else window.sessionStorage.removeItem('yamshat.topbarSearch');
+    }
+    navigate(value ? `/search?q=${encodeURIComponent(value)}` : '/search');
+    setSearchOpen(false);
+  };
 
   return (
     <header className="yam-topbar-shell">
       <div className="yam-topbar-left">
-        <Link to="/" className="yam-logo-lockup">
-          <div className="yam-logo-mark">🜲</div>
-          <div>
+        <Link to="/" className="yam-logo-lockup" aria-label="YAMSHAT">
+          <div className="yam-logo-mark">👑</div>
+          <div className="yam-logo-copy">
             <div className="yam-logo-title">YAMSHAT</div>
             <div className="yam-logo-subtitle">{pageTitle}</div>
           </div>
@@ -74,20 +96,32 @@ export default function Topbar() {
         </nav>
       </div>
 
-      <div className="yam-topbar-center">
-        <label className="yam-search-box">
-          <span>⌕</span>
-          <input type="search" placeholder="ابحث في يامشات" aria-label="ابحث في يامشات" />
-        </label>
+      <div className="yam-topbar-center yam-desktop-only">
+        <form className="yam-search-box" onSubmit={handleSearchSubmit}>
+          <button type="submit" className="yam-search-trigger" aria-label="ابحث في يامشات">⌕</button>
+          <input
+            type="search"
+            placeholder="ابحث في يامشات"
+            aria-label="ابحث في يامشات"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+          />
+        </form>
       </div>
 
       <div className="yam-topbar-right">
+        <button type="button" className="yam-icon-btn yam-mobile-only" onClick={() => setSearchOpen((prev) => !prev)} title="البحث">
+          ⌕
+        </button>
         <button type="button" className="yam-icon-btn" onClick={toggleTheme} title="تبديل النمط">
           {theme === 'dark' ? '☾' : '☀'}
         </button>
         <Link to="/notifications" className="yam-icon-btn with-badge" title="الإشعارات">
           🔔
           {unreadNotificationCount > 0 ? <span className="yam-count-badge">{unreadNotificationCount}</span> : null}
+        </Link>
+        <Link to="/dashboard" className="yam-icon-btn" title="القائمة">
+          ☰
         </Link>
         <Link to="/inbox" className="yam-icon-btn with-badge" title="الرسائل">
           💬
@@ -101,6 +135,20 @@ export default function Topbar() {
           <Avatar username={currentUsername || session?.username || 'Y'} avatar={session?.avatar || session?.profile?.avatar} />
         </Link>
       </div>
+
+      {searchOpen ? (
+        <form className="yam-mobile-search-sheet yam-mobile-only" onSubmit={handleSearchSubmit}>
+          <input
+            ref={searchInputRef}
+            type="search"
+            placeholder="ابحث في يامشات"
+            aria-label="ابحث في يامشات"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+          />
+          <button type="submit" className="yam-mobile-search-btn">بحث</button>
+        </form>
+      ) : null}
 
       <style>{`
         .yam-topbar-shell {
@@ -116,10 +164,14 @@ export default function Topbar() {
           border-bottom: 1px solid rgba(255,255,255,0.05);
           backdrop-filter: blur(18px);
         }
-        .yam-topbar-left, .yam-topbar-right {
+        .yam-topbar-left,
+        .yam-topbar-right {
           display: flex;
           align-items: center;
           gap: 14px;
+        }
+        .yam-topbar-left {
+          min-width: 0;
         }
         .yam-logo-lockup {
           display: flex;
@@ -134,9 +186,13 @@ export default function Topbar() {
           display: grid;
           place-items: center;
           background: linear-gradient(135deg, rgba(124,58,237,0.36), rgba(99,102,241,0.2));
-          color: #d8b4fe;
-          font-size: 22px;
+          color: #f5d0fe;
+          font-size: 20px;
           border: 1px solid rgba(167,139,250,0.22);
+        }
+        .yam-logo-copy {
+          display: grid;
+          gap: 2px;
         }
         .yam-logo-title { font-weight: 900; letter-spacing: 0.08em; }
         .yam-logo-subtitle { color: #64748b; font-size: 12px; }
@@ -164,11 +220,22 @@ export default function Topbar() {
           display: flex;
           align-items: center;
           gap: 10px;
-          padding: 12px 16px;
+          padding: 8px 10px;
           border-radius: 18px;
           background: rgba(15,23,42,0.76);
           border: 1px solid rgba(255,255,255,0.06);
           color: #94a3b8;
+        }
+        .yam-search-trigger {
+          width: 40px;
+          height: 40px;
+          border: none;
+          border-radius: 14px;
+          background: rgba(255,255,255,0.04);
+          color: #cbd5e1;
+          display: grid;
+          place-items: center;
+          font-size: 18px;
         }
         .yam-search-box input {
           width: 100%;
@@ -226,6 +293,10 @@ export default function Topbar() {
         .presence-dot.online { background: #22c55e; box-shadow: 0 0 0 5px rgba(34,197,94,0.12); }
         .presence-dot.offline { background: #f97316; }
         .yam-profile-pill { display: flex; align-items: center; }
+        .yam-mobile-only { display: none; }
+        .yam-mobile-search-sheet {
+          display: none;
+        }
         @media (max-width: 1180px) {
           .yam-topbar-shell {
             grid-template-columns: 1fr;
@@ -236,9 +307,64 @@ export default function Topbar() {
           .yam-topbar-center { order: 3; }
         }
         @media (max-width: 768px) {
-          .yam-main-tabs { display: none; }
-          .yam-presence-pill { display: none; }
-          .yam-topbar-shell { padding: 14px; }
+          .yam-main-tabs,
+          .yam-presence-pill,
+          .yam-desktop-only {
+            display: none;
+          }
+          .yam-mobile-only {
+            display: inline-grid;
+          }
+          .yam-topbar-shell {
+            grid-template-columns: 1fr auto;
+            gap: 10px;
+            padding: 12px 14px;
+          }
+          .yam-topbar-left {
+            justify-content: flex-start;
+          }
+          .yam-topbar-right {
+            gap: 8px;
+            flex-wrap: nowrap;
+            justify-content: flex-end;
+          }
+          .yam-logo-copy {
+            display: none;
+          }
+          .yam-logo-mark {
+            width: 38px;
+            height: 38px;
+            border-radius: 12px;
+            font-size: 18px;
+          }
+          .yam-icon-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+          }
+          .yam-mobile-search-sheet {
+            grid-column: 1 / -1;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 8px;
+            padding-top: 4px;
+          }
+          .yam-mobile-search-sheet input {
+            min-height: 42px;
+            border-radius: 14px;
+            padding: 0 14px;
+            background: rgba(15,23,42,0.82);
+            border: 1px solid rgba(255,255,255,0.06);
+            color: white;
+          }
+          .yam-mobile-search-btn {
+            min-width: 72px;
+            border: 1px solid rgba(167,139,250,0.22);
+            border-radius: 14px;
+            background: linear-gradient(135deg, rgba(124,58,237,0.36), rgba(99,102,241,0.22));
+            color: white;
+            font-weight: 700;
+          }
         }
       `}</style>
     </header>

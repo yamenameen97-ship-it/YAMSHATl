@@ -220,6 +220,14 @@ export default function Live() {
     }
   };
 
+  const handleFollowHost = () => {
+    pushToast({ type: 'success', title: `تمت متابعة ${hostName}` });
+  };
+
+  const handleEnableAlerts = () => {
+    pushToast({ type: 'success', title: 'تم تفعيل تنبيه البث المباشر' });
+  };
+
   const handleCreateRoom = async () => {
     try {
       setBusy('create');
@@ -305,8 +313,8 @@ export default function Live() {
                 </div>
               </div>
               <div className="yam-live-footer-actions">
-                <button type="button" className="yam-live-pill-btn">متابعة</button>
-                <button type="button" className="yam-live-pill-btn">تنبيه</button>
+                <button type="button" className="yam-live-pill-btn" onClick={handleFollowHost}>متابعة</button>
+                <button type="button" className="yam-live-pill-btn" onClick={handleEnableAlerts}>تنبيه</button>
                 <button type="button" className="yam-live-pill-btn" onClick={handleShare}>نسخ الرابط</button>
               </div>
             </div>

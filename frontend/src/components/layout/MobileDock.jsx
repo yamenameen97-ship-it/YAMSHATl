@@ -1,7 +1,6 @@
 import { Link, NavLink } from 'react-router-dom';
 import { useAppStore } from '../../store/appStore.js';
 import { selectUnreadTotal, useChatStore } from '../../store/appStore.js';
-import { selectUnreadNotificationsCount, useNotificationStore } from '../../store/notificationStore.js';
 import { getUiText } from '../../utils/i18n.js';
 import { getPrefetchHandlers } from '../../utils/navigation.js';
 
@@ -10,14 +9,12 @@ export default function MobileDock() {
   const isOnline = useAppStore((state) => state.isOnline);
   const ui = getUiText(language);
   const unreadInboxCount = useChatStore(selectUnreadTotal);
-  const unreadNotifications = useNotificationStore(selectUnreadNotificationsCount);
 
   const dockLinks = [
     { to: '/', label: ui.nav.home, icon: '⌂', badge: 0 },
     { to: '/reels', label: ui.nav.reels, icon: '▣', badge: 0 },
     { to: '/live', label: ui.nav.live, icon: '◉', badge: isOnline ? 'live' : 0 },
     { to: '/inbox', label: ui.nav.inbox, icon: '✉', badge: unreadInboxCount },
-    { to: '/dashboard', label: ui.nav.dashboard, icon: '☰', badge: unreadNotifications },
   ];
 
   return (

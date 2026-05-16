@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
@@ -24,9 +24,18 @@ const SEARCH_FILTERS = [
 ];
 
 const SEARCH_HISTORY_KEY = 'yamshat.search.history';
+const TOPBAR_SEARCH_KEY = 'yamshat.topbarSearch';
 
 function isVideoUrl(url = '') {
   return /\.(mp4|webm|mov|m3u8)(\?.*)?$/i.test(String(url || ''));
+}
+
+function resolveIncomingSearch(search = '') {
+  const params = new URLSearchParams(search);
+  const queryFromUrl = params.get('q') || '';
+  if (queryFromUrl) return queryFromUrl;
+  if (typeof window === 'undefined') return '';
+  return window.sessionStorage.getItem(TOPBAR_SEARCH_KEY) || '';
 }
 
 const SearchResultRow = ({ index, style, data }) => {
@@ -64,8 +73,9 @@ const SearchResultRow = ({ index, style, data }) => {
 };
 
 export default function Search() {
+  const location = useLocation();
   const navigate = useNavigate();
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(() => resolveIncomingSearch(location.search));
   const debouncedQuery = useDebounce(query, 250);
   const [filterKey, setFilterKey] = useState('all');
   const [loading, setLoading] = useState(true);
@@ -79,6 +89,19 @@ export default function Search() {
       return [];
     }
   });
+
+  useEffect(() => {
+    const incomingQuery = resolveIncomingSearch(location.search);
+    if (incomingQuery && incomingQuery !== query) {
+      setQuery(incomingQuery);
+    }
+  }, [location.search]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (query.trim()) window.sessionStorage.setItem(TOPBAR_SEARCH_KEY, query.trim());
+    else window.sessionStorage.removeItem(TOPBAR_SEARCH_KEY);
+  }, [query]);
 
   const hydrateCollections = useCallback(async () => {
     try {

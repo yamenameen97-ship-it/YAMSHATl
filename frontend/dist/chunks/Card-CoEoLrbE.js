@@ -1,1 +1,0 @@
-import{j as o}from"./vendor-react-DMNlipa8.js";import{m as r}from"./vendor-motion-DlA_7xNF.js";function s({children:i,className:t="",...a}){return o.jsx(r.div,{initial:{opacity:0,y:10},animate:{opacity:1,y:0},transition:{duration:.25},className:`card ${t}`.trim(),...a,children:i})}export{s as C};

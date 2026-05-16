@@ -1,207 +1,244 @@
-import { useEffect, useMemo } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { getNotifications } from '../../api/notifications.js';
-import socket from '../../api/socket.js';
-import { getAuthToken, getCurrentUsername } from '../../utils/auth.js';
+import { getCurrentUsername, getStoredUserSnapshot } from '../../utils/auth.js';
 import { useAppStore } from '../../store/appStore.js';
-import { getUiText } from '../../utils/i18n.js';
-import { selectUnreadNotificationsCount, useNotificationStore } from '../../store/notificationStore.js';
-import { maybeShowBrowserNotification, normalizeNotification } from '../../utils/notificationCenter.js';
 import { selectUnreadTotal, useChatStore } from '../../store/appStore.js';
-import { getPrefetchHandlers } from '../../utils/navigation.js';
+import { avatarGradient, initialsFromName } from '../yamshat/YamshatDesign.js';
 
-function emitToast(detail) {
-  if (typeof window === 'undefined') return;
-  window.dispatchEvent(new CustomEvent('yamshat:toast', { detail }));
+const MAIN_TABS = [
+  { to: '/', label: 'الرئيسية' },
+  { to: '/live', label: 'البث المباشر' },
+  { to: '/groups', label: 'المجموعات' },
+  { to: '/reels', label: 'المقاطع' },
+  { to: '/stories', label: 'القصص' },
+];
+
+function Avatar({ username, avatar }) {
+  return avatar ? (
+    <img src={avatar} alt={username} style={{ width: 42, height: 42, borderRadius: '50%', objectFit: 'cover' }} />
+  ) : (
+    <div style={{ width: 42, height: 42, borderRadius: '50%', display: 'grid', placeItems: 'center', color: 'white', fontWeight: 900, background: avatarGradient(username) }}>
+      {initialsFromName(username).slice(0, 1)}
+    </div>
+  );
 }
 
 export default function Topbar() {
   const location = useLocation();
-  const token = getAuthToken();
-  const currentUsername = getCurrentUsername();
-  const language = useAppStore((state) => state.language);
-  const isOnline = useAppStore((state) => state.isOnline);
-  const ui = getUiText(language);
-  const unreadCount = useNotificationStore(selectUnreadNotificationsCount);
-  const notificationsInitialized = useNotificationStore((state) => state.initialized);
-  const hydrateNotifications = useNotificationStore((state) => state.hydrateNotifications);
-  const upsertNotification = useNotificationStore((state) => state.upsertNotification);
-  const notificationItems = useNotificationStore((state) => state.items);
   const unreadInboxCount = useChatStore(selectUnreadTotal);
+  const toggleTheme = useAppStore((state) => state.toggleTheme);
+  const theme = useAppStore((state) => state.theme);
+  const isOnline = useAppStore((state) => state.isOnline);
+  const currentUsername = getCurrentUsername();
+  const session = getStoredUserSnapshot();
 
-  const pageMeta = useMemo(() => {
-    if (location.pathname.startsWith('/chat/')) {
-      return language === 'en'
-        ? { title: 'Conversation', note: 'Private chat with live status, calls, encrypted media, and smoother navigation.' }
-        : { title: 'المحادثة', note: 'دردشة خاصة بحالة فورية ومكالمات ووسائط مشفرة وتنقل أنعم.' };
-    }
+  const { data: notifications = [] } = useQuery({
+    queryKey: ['topbar-notifications-count'],
+    queryFn: async () => (await getNotifications(20)).data || [],
+    staleTime: 15_000,
+    refetchInterval: 20_000,
+  });
 
-    if (location.pathname.startsWith('/profile/')) {
-      return language === 'en'
-        ? { title: 'User profile', note: 'View account details and connected posts in a separate page.' }
-        : { title: 'ملف المستخدم', note: 'استعراض الحساب ومنشوراته في صفحة مستقلة.' };
-    }
+  const unreadNotificationCount = useMemo(
+    () => (Array.isArray(notifications) ? notifications.filter((item) => !item.is_read).length : 0),
+    [notifications],
+  );
 
-    return ui.routeMeta[location.pathname] || ui.topbarFallback;
-  }, [language, location.pathname, ui]);
-
-  const liveNotificationSummary = useMemo(() => {
-    const items = notificationItems.map(normalizeNotification);
-    const mentions = items.filter((item) => item.type === 'mention' || item.category === 'mention').length;
-    const liveItems = items.filter((item) => item.type === 'live' || item.category === 'live').length;
-    return { mentions, liveItems };
-  }, [notificationItems]);
-
-  useEffect(() => {
-    if (!currentUsername) return undefined;
-
-    let active = true;
-
-    const loadNotifications = async () => {
-      if (notificationsInitialized) return;
-      try {
-        const { data } = await getNotifications();
-        if (!active) return;
-        hydrateNotifications(Array.isArray(data) ? data : [], { replace: true });
-      } catch {
-        if (active) hydrateNotifications([], { replace: true });
-      }
-    };
-
-    loadNotifications();
-
-    if (!socket.connected) socket.connect();
-    socket.emit('register_user', { token, user: currentUsername });
-
-    const handleNotification = (incoming) => {
-      if (!active) return;
-      const normalized = normalizeNotification(incoming);
-      upsertNotification(normalized);
-      if (document.visibilityState === 'visible') {
-        emitToast({
-          type: normalized.type === 'mention' ? 'success' : 'info',
-          title: normalized.title,
-          description: normalized.body,
-          duration: 4600,
-          actionLabel: 'فتح',
-          onAction: () => { window.location.hash = `#${normalized.path}`; },
-        });
-      }
-      maybeShowBrowserNotification(normalized).catch(() => null);
-    };
-
-    socket.on('new_notification', handleNotification);
-
-    return () => {
-      active = false;
-      socket.off('new_notification', handleNotification);
-    };
-  }, [currentUsername, hydrateNotifications, notificationsInitialized, token, upsertNotification]);
-
-  const badges = [
-    { label: isOnline ? 'Live' : 'Offline', tone: isOnline ? '#22c55e' : '#f97316' },
-    { label: `${unreadCount} إشعار`, tone: unreadCount > 0 ? '#8b5cf6' : '#64748b' },
-    { label: `${unreadInboxCount} رسائل`, tone: unreadInboxCount > 0 ? '#06b6d4' : '#64748b' },
-    liveNotificationSummary.mentions > 0 ? { label: `${liveNotificationSummary.mentions} منشن`, tone: '#f59e0b' } : null,
-  ].filter(Boolean);
+  const pageTitle = useMemo(() => {
+    if (location.pathname.startsWith('/live')) return 'البث المباشر';
+    if (location.pathname.startsWith('/inbox') || location.pathname.startsWith('/chat')) return 'الدردشات';
+    if (location.pathname.startsWith('/notifications')) return 'الإشعارات';
+    if (location.pathname.startsWith('/groups')) return 'المجموعات';
+    return 'YAMSHAT';
+  }, [location.pathname]);
 
   return (
-    <header className="topbar yamshat-topbar compact-topbar topbar-app-like topbar-professional-shell">
-      <div className="topbar-brand-wrap">
-        <Link to="/" className="topbar-brand-link" {...getPrefetchHandlers('/')}>
-          <span className="topbar-brand-mark">
-            <img src="/brand/yamshat-logo.jpg" alt="Yamshat" className="brand-logo-img" />
-          </span>
-          <span className="topbar-brand-copy">
-            <span className="page-eyebrow">YAMSHAT</span>
-            <strong>{pageMeta.title}</strong>
-          </span>
+    <header className="yam-topbar-shell">
+      <div className="yam-topbar-left">
+        <Link to="/" className="yam-logo-lockup">
+          <div className="yam-logo-mark">🜲</div>
+          <div>
+            <div className="yam-logo-title">YAMSHAT</div>
+            <div className="yam-logo-subtitle">{pageTitle}</div>
+          </div>
         </Link>
-        <p className="muted no-margin topbar-page-note">{pageMeta.note}</p>
-        <div className="topbar-live-strip">
-          {badges.map((item) => (
-            <span key={item.label} className="topbar-live-pill" style={{ '--pill-tone': item.tone }}>
-              <span className="topbar-live-dot" />
-              {item.label}
-            </span>
+
+        <nav className="yam-main-tabs">
+          {MAIN_TABS.map((tab) => (
+            <NavLink key={tab.to} to={tab.to} className={({ isActive }) => `yam-main-tab ${isActive ? 'active' : ''}`}>
+              {tab.label}
+            </NavLink>
           ))}
-        </div>
+        </nav>
       </div>
 
-      <div className="topbar-route-actions topbar-actions-rich topbar-actions-equal">
-        <Link to="/notifications" className="topbar-icon-link topbar-badge-link" {...getPrefetchHandlers('/notifications')}>
-          <span aria-hidden="true">🔔</span>
-          <span>{ui.nav.notifications}</span>
-          {unreadCount > 0 ? <strong className="topbar-badge">{unreadCount}</strong> : null}
-          {liveNotificationSummary.liveItems > 0 ? <span className="topbar-link-live">حي</span> : null}
-        </Link>
+      <div className="yam-topbar-center">
+        <label className="yam-search-box">
+          <span>⌕</span>
+          <input type="search" placeholder="ابحث في يامشات" aria-label="ابحث في يامشات" />
+        </label>
+      </div>
 
-        <Link to="/reels" className="topbar-icon-link" {...getPrefetchHandlers('/reels')}>
-          <span aria-hidden="true">🎬</span>
-          <span>{ui.nav.reels}</span>
+      <div className="yam-topbar-right">
+        <button type="button" className="yam-icon-btn" onClick={toggleTheme} title="تبديل النمط">
+          {theme === 'dark' ? '☾' : '☀'}
+        </button>
+        <Link to="/notifications" className="yam-icon-btn with-badge" title="الإشعارات">
+          🔔
+          {unreadNotificationCount > 0 ? <span className="yam-count-badge">{unreadNotificationCount}</span> : null}
         </Link>
-
-        <Link to="/stories" className="topbar-icon-link" {...getPrefetchHandlers('/stories')}>
-          <span aria-hidden="true">📖</span>
-          <span>{ui.nav.stories}</span>
-          {liveNotificationSummary.mentions > 0 ? <span className="topbar-link-live accent">@</span> : null}
+        <Link to="/inbox" className="yam-icon-btn with-badge" title="الرسائل">
+          💬
+          {unreadInboxCount > 0 ? <span className="yam-count-badge">{unreadInboxCount}</span> : null}
         </Link>
-
-        <Link to="/inbox" className="topbar-icon-link topbar-badge-link" {...getPrefetchHandlers('/inbox')}>
-          <span aria-hidden="true">💬</span>
-          <span>{ui.nav.inbox}</span>
-          {unreadInboxCount > 0 ? <strong className="topbar-badge">{unreadInboxCount}</strong> : null}
-        </Link>
-
-        <Link to="/dashboard" className="topbar-icon-link" {...getPrefetchHandlers('/dashboard')}>
-          <span aria-hidden="true">☰</span>
-          <span>{ui.nav.dashboard}</span>
+        <div className="yam-presence-pill">
+          <span className={`presence-dot ${isOnline ? 'online' : 'offline'}`} />
+          {isOnline ? 'متصل' : 'غير متصل'}
+        </div>
+        <Link to="/profile" className="yam-profile-pill" title="الملف الشخصي">
+          <Avatar username={currentUsername || session?.username || 'Y'} avatar={session?.avatar || session?.profile?.avatar} />
         </Link>
       </div>
 
       <style>{`
-        .topbar-live-strip {
+        .yam-topbar-shell {
+          position: sticky;
+          top: 0;
+          z-index: 30;
+          display: grid;
+          grid-template-columns: auto minmax(280px, 1fr) auto;
+          align-items: center;
+          gap: 18px;
+          padding: 14px 22px;
+          background: rgba(4, 8, 18, 0.88);
+          border-bottom: 1px solid rgba(255,255,255,0.05);
+          backdrop-filter: blur(18px);
+        }
+        .yam-topbar-left, .yam-topbar-right {
           display: flex;
+          align-items: center;
+          gap: 14px;
+        }
+        .yam-logo-lockup {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          min-width: max-content;
+        }
+        .yam-logo-mark {
+          width: 42px;
+          height: 42px;
+          border-radius: 14px;
+          display: grid;
+          place-items: center;
+          background: linear-gradient(135deg, rgba(124,58,237,0.36), rgba(99,102,241,0.2));
+          color: #d8b4fe;
+          font-size: 22px;
+          border: 1px solid rgba(167,139,250,0.22);
+        }
+        .yam-logo-title { font-weight: 900; letter-spacing: 0.08em; }
+        .yam-logo-subtitle { color: #64748b; font-size: 12px; }
+        .yam-main-tabs {
+          display: flex;
+          align-items: center;
           gap: 8px;
           flex-wrap: wrap;
-          margin-top: 10px;
         }
-        .topbar-live-pill {
-          --pill-tone: #22c55e;
+        .yam-main-tab {
+          padding: 10px 14px;
+          border-radius: 14px;
+          color: #94a3b8;
+          font-weight: 700;
+          transition: 0.2s ease;
+        }
+        .yam-main-tab.active,
+        .yam-main-tab:hover {
+          color: white;
+          background: rgba(124,58,237,0.18);
+        }
+        .yam-topbar-center { display: flex; justify-content: center; }
+        .yam-search-box {
+          width: min(620px, 100%);
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 12px 16px;
+          border-radius: 18px;
+          background: rgba(15,23,42,0.76);
+          border: 1px solid rgba(255,255,255,0.06);
+          color: #94a3b8;
+        }
+        .yam-search-box input {
+          width: 100%;
+          border: none;
+          outline: none;
+          color: white;
+          background: transparent;
+        }
+        .yam-icon-btn {
+          width: 42px;
+          height: 42px;
+          border-radius: 14px;
+          border: 1px solid rgba(255,255,255,0.05);
+          background: rgba(15,23,42,0.72);
+          color: white;
+          display: grid;
+          place-items: center;
+          font-size: 17px;
+          position: relative;
+        }
+        .yam-count-badge {
+          position: absolute;
+          top: -4px;
+          inset-inline-end: -4px;
+          min-width: 20px;
+          height: 20px;
+          padding: 0 6px;
+          border-radius: 999px;
+          background: #ef4444;
+          color: white;
+          display: grid;
+          place-items: center;
+          font-size: 11px;
+          font-weight: 800;
+          border: 2px solid rgba(4,8,18,0.92);
+        }
+        .yam-presence-pill {
           display: inline-flex;
           align-items: center;
           gap: 8px;
-          padding: 6px 10px;
+          padding: 9px 12px;
           border-radius: 999px;
-          font-size: 12px;
-          color: #e2e8f0;
-          background: color-mix(in srgb, var(--pill-tone) 16%, transparent);
-          border: 1px solid color-mix(in srgb, var(--pill-tone) 40%, transparent);
+          background: rgba(15,23,42,0.72);
+          border: 1px solid rgba(255,255,255,0.06);
+          color: #cbd5e1;
+          font-size: 13px;
+          font-weight: 700;
         }
-        .topbar-live-dot {
+        .presence-dot {
           width: 8px;
           height: 8px;
           border-radius: 50%;
-          background: var(--pill-tone);
-          box-shadow: 0 0 0 6px color-mix(in srgb, var(--pill-tone) 18%, transparent);
-          animation: topbar-live-pulse 1.8s infinite;
+          background: #64748b;
         }
-        .topbar-link-live {
-          padding: 2px 8px;
-          border-radius: 999px;
-          background: rgba(34,197,94,0.16);
-          color: #bbf7d0;
-          font-size: 11px;
-          font-weight: 800;
+        .presence-dot.online { background: #22c55e; box-shadow: 0 0 0 5px rgba(34,197,94,0.12); }
+        .presence-dot.offline { background: #f97316; }
+        .yam-profile-pill { display: flex; align-items: center; }
+        @media (max-width: 1180px) {
+          .yam-topbar-shell {
+            grid-template-columns: 1fr;
+            gap: 12px;
+          }
+          .yam-topbar-left,
+          .yam-topbar-right { justify-content: space-between; flex-wrap: wrap; }
+          .yam-topbar-center { order: 3; }
         }
-        .topbar-link-live.accent {
-          background: rgba(245,158,11,0.16);
-          color: #fcd34d;
-        }
-        @keyframes topbar-live-pulse {
-          0% { transform: scale(0.95); opacity: 0.85; }
-          70% { transform: scale(1.15); opacity: 1; }
-          100% { transform: scale(0.95); opacity: 0.85; }
+        @media (max-width: 768px) {
+          .yam-main-tabs { display: none; }
+          .yam-presence-pill { display: none; }
+          .yam-topbar-shell { padding: 14px; }
         }
       `}</style>
     </header>

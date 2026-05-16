@@ -15,7 +15,7 @@ from app.models.message import Message
 from app.models.user import User
 from app.models.user_block import UserBlock
 from app.services.chat_realtime import mark_messages_delivered, mark_messages_seen_for_sender, serialize_message
-from app.services.encryption_service import encrypt_message, decrypt_message
+from app.services.encryption_service import encrypt_message
 from app.services.media_service import scan_media_for_malware
 from app.services.chat_features import recall_message, add_reaction, apply_retention_policy
 from app.services.connection_manager import manager
@@ -45,6 +45,10 @@ def _authenticate_websocket_user(websocket: WebSocket, user_id: int, db: Session
     return user
 
 
+def _find_active_user_by_username(db: Session, username: str) -> User | None:
+    return db.query(User).filter(User.username == str(username or '').strip(), User.is_active.is_(True)).first()
+
+
 def _block_status(db: Session, current_user_id: int, other_user_id: int) -> dict:
     blocked_by_me = db.query(UserBlock).filter(
         UserBlock.blocker_id == current_user_id,
@@ -69,6 +73,13 @@ def _assert_can_chat(db: Session, current_user_id: int, other_user_id: int) -> d
     return status_payload
 
 
+def _presence_payload(other_user: User) -> dict:
+    return {
+        'is_online': is_user_online(username=other_user.username, user_id=other_user.id),
+        'last_seen': other_user.last_login_at.isoformat() if other_user.last_login_at else None,
+    }
+
+
 async def _emit_delivered_receipts(db: Session, current_user: User, peer_user_id: int | None = None) -> None:
     for receipt in mark_messages_delivered(db, current_user, peer_user_id=peer_user_id):
         await sio.emit('messages_delivered', receipt, room=f'username:{receipt["sender"]}')
@@ -78,10 +89,7 @@ async def _translate_with_mymemory(text: str, source_lang: str, target_lang: str
     async with httpx.AsyncClient(timeout=TRANSLATE_TIMEOUT_SECONDS, follow_redirects=True) as client:
         response = await client.get(
             'https://api.mymemory.translated.net/get',
-            params={
-                'q': text,
-                'langpair': f'{source_lang}|{target_lang}',
-            },
+            params={'q': text, 'langpair': f'{source_lang}|{target_lang}'},
             headers={'Accept': 'application/json'},
         )
         response.raise_for_status()
@@ -105,7 +113,7 @@ def get_messages(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    other_user = db.query(User).filter(User.username == receiver, User.is_active.is_(True)).first()
+    other_user = _find_active_user_by_username(db, receiver)
     if other_user is None:
         return {'items': [], 'paging': {'limit': limit, 'has_more': False, 'next_before_id': None}}
 
@@ -135,7 +143,7 @@ def get_messages(
 @router.post('/send_message')
 async def send_message(payload: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     receiver_username = str(payload.get('receiver') or '').strip()
-    raw_message = str(payload.get('message') or '').strip()
+    raw_message = str(payload.get('message') or payload.get('content') or '').strip()
     media_url = str(payload.get('media_url') or '').strip()
     message_type = str(payload.get('type') or ('image' if media_url else 'text')).strip() or 'text'
     client_id = str(payload.get('client_id') or '').strip() or None
@@ -144,7 +152,7 @@ async def send_message(payload: dict, db: Session = Depends(get_db), current_use
     if not await allow_socket_message(f'chat:{current_user.id}'):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='You are sending messages too quickly')
 
-    receiver = db.query(User).filter(User.username == receiver_username, User.is_active.is_(True)).first()
+    receiver = _find_active_user_by_username(db, receiver_username)
     if receiver is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Receiver not found')
 
@@ -155,7 +163,6 @@ async def send_message(payload: dict, db: Session = Depends(get_db), current_use
         if existing is not None:
             return serialize_message(existing, db)
 
-    # Media Scanning Hook
     if media_url and not scan_media_for_malware(media_url):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Media failed malware scan.')
 
@@ -165,7 +172,7 @@ async def send_message(payload: dict, db: Session = Depends(get_db), current_use
         sender_id=current_user.id,
         receiver_id=receiver.id,
         client_id=client_id,
-        content=encrypt_message(bleach.clean(raw_message)), # E2E Encryption Hook
+        content=encrypt_message(bleach.clean(raw_message)),
         media_url=media_url or None,
         message_type=message_type,
         is_delivered=delivered_now,
@@ -191,7 +198,7 @@ async def send_message(payload: dict, db: Session = Depends(get_db), current_use
 @router.post('/message_seen')
 async def mark_messages_seen(payload: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     sender_username = str(payload.get('sender') or '').strip()
-    sender = db.query(User).filter(User.username == sender_username, User.is_active.is_(True)).first()
+    sender = _find_active_user_by_username(db, sender_username)
     if sender is None:
         return {'message_ids': []}
 
@@ -207,6 +214,89 @@ async def mark_messages_seen(payload: dict, db: Session = Depends(get_db), curre
             room=f'username:{sender.username}',
         )
     return {'message_ids': message_ids}
+
+
+@router.get('/chat_block_status/{username}')
+def get_chat_block_status(username: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    other_user = _find_active_user_by_username(db, username)
+    if other_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
+    return {
+        **_block_status(db, current_user.id, other_user.id),
+        **_presence_payload(other_user),
+        'username': other_user.username,
+    }
+
+
+@router.post('/block_user')
+def block_user(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    username = str(payload.get('username') or '').strip()
+    other_user = _find_active_user_by_username(db, username)
+    if other_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
+    if other_user.id == current_user.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Cannot block yourself')
+
+    existing = db.query(UserBlock).filter(
+        UserBlock.blocker_id == current_user.id,
+        UserBlock.blocked_id == other_user.id,
+    ).first()
+    if existing is None:
+        db.add(UserBlock(blocker_id=current_user.id, blocked_id=other_user.id))
+        db.commit()
+
+    return {
+        'username': other_user.username,
+        'blocked_by_me': True,
+        'blocked_me': False,
+        'can_chat': False,
+    }
+
+
+@router.post('/unblock_user')
+def unblock_user(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    username = str(payload.get('username') or '').strip()
+    other_user = _find_active_user_by_username(db, username)
+    if other_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
+
+    existing = db.query(UserBlock).filter(
+        UserBlock.blocker_id == current_user.id,
+        UserBlock.blocked_id == other_user.id,
+    ).first()
+    if existing is not None:
+        db.delete(existing)
+        db.commit()
+
+    other_status = _block_status(db, current_user.id, other_user.id)
+    return {
+        'username': other_user.username,
+        **other_status,
+    }
+
+
+@router.post('/delete_message')
+def delete_message(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    message_id = int(payload.get('message_id') or 0)
+    message = db.query(Message).filter(Message.id == message_id, Message.sender_id == current_user.id).first()
+    if message is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Message not found')
+    message.deleted_at = datetime.utcnow()
+    db.commit()
+    db.refresh(message)
+    return serialize_message(message, db)
+
+
+@router.post('/restore_message')
+def restore_message(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    message_id = int(payload.get('message_id') or 0)
+    message = db.query(Message).filter(Message.id == message_id, Message.sender_id == current_user.id).first()
+    if message is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Message not found')
+    message.deleted_at = None
+    db.commit()
+    db.refresh(message)
+    return serialize_message(message, db)
 
 
 @router.post('/{message_id}/recall')
@@ -238,12 +328,14 @@ def get_chat_threads(db: Session = Depends(get_db), current_user: User = Depends
     ).order_by(Message.created_at.desc()).all()
     seen: set[str] = set()
     result: list[dict] = []
+
     for message in conversations:
         peer_id = message.receiver_id if message.sender_id == current_user.id else message.sender_id
         peer = db.query(User).filter(User.id == peer_id, User.is_active.is_(True)).first()
         if peer is None or peer.username in seen:
             continue
-        if not _block_status(db, current_user.id, peer.id)['can_chat']:
+        relationship = _block_status(db, current_user.id, peer.id)
+        if not relationship['can_chat']:
             continue
         seen.add(peer.username)
         unread_count = db.query(Message).filter(
@@ -251,6 +343,7 @@ def get_chat_threads(db: Session = Depends(get_db), current_user: User = Depends
             Message.receiver_id == current_user.id,
             Message.is_seen.is_(False),
         ).count()
+        presence = _presence_payload(peer)
         result.append({
             'name': peer.username,
             'username': peer.username,
@@ -264,20 +357,23 @@ def get_chat_threads(db: Session = Depends(get_db), current_user: User = Depends
             'last_message_type': message.message_type or ('image' if message.media_url else 'text'),
             'last_message_deleted': bool(message.deleted_at),
             'last_message_id': message.id,
+            'presence': presence,
+            'last_seen': presence['last_seen'],
         })
     return result
 
 
 @router.get('/presence/{username}')
-def get_presence(username: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    other_user = db.query(User).filter(User.username == username, User.is_active.is_(True)).first()
+def get_presence(username: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    other_user = _find_active_user_by_username(db, username)
     if other_user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
-    _assert_can_chat(db, current_user.id, other_user.id)
-    return {'is_online': is_user_online(username=username, user_id=other_user.id)}
+    relationship = _assert_can_chat(db, current_user.id, other_user.id)
+    return {
+        **_presence_payload(other_user),
+        **relationship,
+        'username': other_user.username,
+    }
 
 
 @router.websocket('/ws/{user_id}')
@@ -287,8 +383,6 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int, db: Session = D
     try:
         while True:
             data = await websocket.receive_text()
-            # Handle incoming websocket messages (e.g., chat messages, typing indicators)
-            # This part would typically involve parsing JSON data and calling appropriate services
             print(f'Received from {user.username}: {data}')
     except WebSocketDisconnect:
         manager.disconnect(websocket, user.username, user.id)

@@ -1,180 +1,135 @@
-import { useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import Card from '../../components/ui/Card.jsx';
+import Button from '../../components/ui/Button.jsx';
+import { useRealtime } from '../../hooks/realtime/useRealtime.js';
+
+// Enterprise Monitoring Widget
+const MonitoringWidget = ({ title, value, status, trend }) => (
+  <Card className={`monitoring-widget ${status}`}>
+    <div className="flex-between">
+      <span className="widget-title">{title}</span>
+      <span className={`status-dot ${status}`}></span>
+    </div>
+    <div className="widget-value">{value}</div>
+    <div className={`widget-trend ${trend > 0 ? 'up' : 'down'}`}>
+      {trend > 0 ? '↑' : '↓'} {Math.abs(trend)}% vs last hour
+    </div>
+  </Card>
+);
 
 export default function AdminDashboard() {
-  const stats = useMemo(() => ([
-    { title: 'إجمالي المستخدمين', value: '128,560', growth: '+12.5%', icon: '👥' },
-    { title: 'البث المباشر', value: '1,245', growth: '+18.7%', icon: '📡' },
-    { title: 'المشاهدات الكلية', value: '2.45M', growth: '+15.3%', icon: '👁️' },
-    { title: 'الإيرادات', value: '$45,231', growth: '+21.4%', icon: '💰' },
-  ]), []);
+  const [metrics, setMetrics] = useState({
+    activeUsers: 1240,
+    apiRequests: 45200,
+    errorRate: 0.02,
+    serverLoad: 42,
+  });
 
-  const logs = [
-    '[INFO] تم تشغيل البث بنجاح',
-    '[LIVE] مستخدم جديد بدأ البث',
-    '[WARN] ارتفاع بسيط في الضغط',
-    '[INFO] تمت إضافة منشور جديد',
-    '[OK] النظام يعمل بكفاءة',
-  ];
+  // Realtime Monitoring Integration
+  const { isConnected } = useRealtime('admin_metrics_update', (data) => {
+    setMetrics(prev => ({ ...prev, ...data }));
+  });
 
-  const users = ['PlayerOne', 'ShadowGirl', 'KhaledGamer', 'MoxX'];
+  const deepAnalytics = useMemo(() => ({
+    userRetention: '68%',
+    avgRevenuePerUser: '$4.20',
+    topRegions: ['الشرق الأوسط', 'أوروبا', 'شمال أفريقيا'],
+    fraudAttemptsBlocked: 142,
+  }), []);
 
   return (
-    <div dir="rtl" style={{
-      minHeight: '100vh',
-      background: '#050816',
-      color: '#fff',
-      padding: '24px',
-      fontFamily: 'sans-serif'
-    }}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:30}}>
-        <div>
-          <h1 style={{fontSize:32,fontWeight:'bold'}}>لوحة التحكم</h1>
-          <p style={{color:'#94a3b8'}}>نظام الإدارة الحديث</p>
+    <div className="admin-dashboard-container">
+      <header className="admin-header">
+        <h1>لوحة التحكم المؤسسية (Enterprise Admin)</h1>
+        <div className="system-status">
+          <span className={`status-badge ${isConnected ? 'online' : 'offline'}`}>
+            {isConnected ? 'اتصال حي نشط' : 'جاري إعادة الاتصال...'}
+          </span>
         </div>
+      </header>
 
-        <input
-          placeholder="بحث..."
-          style={{
-            width:320,
-            background:'#0f172a',
-            border:'1px solid #312e81',
-            borderRadius:16,
-            padding:'14px 18px',
-            color:'#fff'
-          }}
-        />
-      </div>
+      {/* Live Monitoring Grid */}
+      <section className="monitoring-grid">
+        <MonitoringWidget title="المستخدمون النشطون" value={metrics.activeUsers.toLocaleString()} status="success" trend={12} />
+        <MonitoringWidget title="طلبات API / ثانية" value={(metrics.apiRequests / 3600).toFixed(2)} status="success" trend={5} />
+        <MonitoringWidget title="معدل الأخطاء" value={`${(metrics.errorRate * 100).toFixed(2)}%`} status={metrics.errorRate > 0.05 ? 'danger' : 'success'} trend={-2} />
+        <MonitoringWidget title="حمولة الخادم" value={`${metrics.serverLoad}%`} status={metrics.serverLoad > 80 ? 'warning' : 'success'} trend={8} />
+      </section>
 
-      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:20,marginBottom:30}}>
-        {stats.map((item) => (
-          <div key={item.title} style={{
-            background:'#0f172a',
-            border:'1px solid rgba(255,255,255,.08)',
-            borderRadius:24,
-            padding:24,
-            boxShadow:'0 0 25px rgba(124,58,237,.18)'
-          }}>
-            <div style={{display:'flex',justifyContent:'space-between',marginBottom:15}}>
-              <span style={{fontSize:28}}>{item.icon}</span>
-              <span style={{color:'#22c55e'}}>{item.growth}</span>
+      {/* Deep Analytics & Enterprise Charts */}
+      <div className="admin-main-content">
+        <Card className="analytics-card">
+          <div className="card-header">
+            <h3>تحليلات معمقة (Deep Analytics)</h3>
+            <Button size="small" variant="secondary">تقرير PDF مفصل</Button>
+          </div>
+          <div className="analytics-details-grid">
+            <div className="detail-item">
+              <label>معدل الاحتفاظ بالمستخدمين</label>
+              <div className="big-val">{deepAnalytics.userRetention}</div>
             </div>
-
-            <div style={{color:'#94a3b8',marginBottom:8}}>{item.title}</div>
-            <div style={{fontSize:34,fontWeight:'bold'}}>{item.value}</div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:20,marginBottom:20}}>
-        <div style={{
-          background:'#0f172a',
-          borderRadius:28,
-          padding:24,
-          border:'1px solid rgba(255,255,255,.08)'
-        }}>
-          <h2 style={{fontSize:24,fontWeight:'bold',marginBottom:20}}>المشاهدات خلال 7 أيام</h2>
-
-          <div style={{height:320,display:'flex',alignItems:'end',gap:16}}>
-            {[120,220,180,300,160,260,340].map((h,i) => (
-              <div key={i} style={{flex:1,textAlign:'center'}}>
-                <div style={{
-                  height:h,
-                  borderRadius:'20px 20px 0 0',
-                  background:'linear-gradient(to top,#7c3aed,#c026d3)',
-                  boxShadow:'0 0 20px rgba(168,85,247,.45)'
-                }} />
-                <div style={{marginTop:10,color:'#94a3b8',fontSize:12}}>{12+i} مايو</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div style={{
-          background:'#0f172a',
-          borderRadius:28,
-          padding:24,
-          border:'1px solid rgba(255,255,255,.08)'
-        }}>
-          <h2 style={{fontSize:24,fontWeight:'bold',marginBottom:20}}>سجل الأحداث</h2>
-
-          <div style={{display:'flex',flexDirection:'column',gap:12}}>
-            {logs.map((log,index) => (
-              <div key={index} style={{
-                background:'#111827',
-                borderRadius:16,
-                padding:14,
-                color:'#cbd5e1',
-                border:'1px solid rgba(255,255,255,.05)'
-              }}>
-                {log}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div style={{
-        background:'#0f172a',
-        borderRadius:28,
-        padding:24,
-        border:'1px solid rgba(255,255,255,.08)'
-      }}>
-        <div style={{display:'flex',justifyContent:'space-between',marginBottom:20}}>
-          <h2 style={{fontSize:24,fontWeight:'bold'}}>إدارة المستخدمين</h2>
-          <button style={{
-            background:'linear-gradient(to left,#7c3aed,#c026d3)',
-            border:'none',
-            color:'#fff',
-            padding:'12px 18px',
-            borderRadius:14,
-            cursor:'pointer'
-          }}>
-            إضافة مستخدم
-          </button>
-        </div>
-
-        <div style={{display:'grid',gap:14}}>
-          {users.map((user,index) => (
-            <div key={user} style={{
-              background:'#111827',
-              borderRadius:18,
-              padding:18,
-              display:'flex',
-              justifyContent:'space-between',
-              alignItems:'center'
-            }}>
-              <div style={{display:'flex',alignItems:'center',gap:12}}>
-                <div style={{
-                  width:48,
-                  height:48,
-                  borderRadius:14,
-                  background:'linear-gradient(to bottom right,#7c3aed,#ec4899)',
-                  display:'flex',
-                  alignItems:'center',
-                  justifyContent:'center',
-                  fontWeight:'bold'
-                }}>
-                  {index+1}
-                </div>
-
-                <div>
-                  <div style={{fontWeight:'bold'}}>{user}</div>
-                  <div style={{fontSize:13,color:'#94a3b8'}}>مستخدم نشط</div>
-                </div>
-              </div>
-
-              <span style={{
-                background:'rgba(34,197,94,.15)',
-                color:'#22c55e',
-                padding:'8px 12px',
-                borderRadius:999
-              }}>
-                نشط
-              </span>
+            <div className="detail-item">
+              <label>متوسط الربح لكل مستخدم</label>
+              <div className="big-val">{deepAnalytics.avgRevenuePerUser}</div>
             </div>
-          ))}
-        </div>
+            <div className="detail-item">
+              <label>محاولات الاحتيال المحظورة</label>
+              <div className="big-val danger-text">{deepAnalytics.fraudAttemptsBlocked}</div>
+            </div>
+          </div>
+          
+          <div className="regions-section mt-6">
+            <h4>أعلى المناطق الجغرافية</h4>
+            <div className="regions-list">
+              {deepAnalytics.topRegions.map((region, i) => (
+                <div key={i} className="region-bar">
+                  <span>{region}</span>
+                  <div className="bar-bg"><div className="bar-fill" style={{ width: `${100 - (i * 20)}%` }} /></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+
+        <Card className="live-logs-card">
+          <h3>سجل النظام المباشر (Live Monitoring)</h3>
+          <div className="logs-container">
+            <div className="log-entry info"><span>[INFO]</span> API Gateway healthy - 200 OK</div>
+            <div className="log-entry warning"><span>[WARN]</span> High latency detected in Node-4</div>
+            <div className="log-entry info"><span>[INFO]</span> Backup task completed successfully</div>
+            <div className="log-entry danger"><span>[ERR]</span> Database connection pool near limit</div>
+          </div>
+        </Card>
       </div>
+
+      <style dangerouslySetInnerHTML={{ __html: `
+        .admin-dashboard-container { padding: 20px; background: #f8fafc; min-height: 100vh; }
+        .admin-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        .monitoring-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .monitoring-widget { padding: 20px; }
+        .widget-value { font-size: 28px; font-weight: bold; margin: 10px 0; }
+        .widget-trend { font-size: 12px; font-weight: 500; }
+        .widget-trend.up { color: #10b981; }
+        .widget-trend.down { color: #ef4444; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .status-dot.success { background: #10b981; box-shadow: 0 0 8px #10b981; }
+        .status-dot.danger { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+        .status-dot.warning { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
+        .admin-main-content { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+        .analytics-details-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 20px; }
+        .big-val { font-size: 24px; font-weight: bold; color: #1e293b; }
+        .danger-text { color: #ef4444; }
+        .region-bar { margin-bottom: 15px; }
+        .bar-bg { height: 8px; background: #e2e8f0; border-radius: 4px; margin-top: 5px; overflow: hidden; }
+        .bar-fill { height: 100%; background: #3b82f6; border-radius: 4px; }
+        .logs-container { background: #1e293b; color: #94a3b8; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 12px; height: 300px; overflow-y: auto; margin-top: 15px; }
+        .log-entry { margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #334155; }
+        .log-entry span { font-weight: bold; }
+        .log-entry.info span { color: #38bdf8; }
+        .log-entry.warning span { color: #fbbf24; }
+        .log-entry.danger span { color: #f87171; }
+        @media (max-width: 1024px) { .admin-main-content { grid-template-columns: 1fr; } }
+      `}} />
     </div>
   );
 }

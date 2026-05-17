@@ -660,3 +660,55 @@ body {
     grid-template-columns:320px 1fr 360px;
   }
 }
+
+
+/* ===== IMPERIAL ADMIN DASHBOARD UPGRADE ===== */
+
+body{
+    background:#070b17 !important;
+    color:#ffffff;
+}
+
+.admin-layout,
+.admin-dashboard,
+.dashboard-wrapper{
+    background:linear-gradient(180deg,#081120,#0a1020,#070b17) !important;
+}
+
+.glass-card,
+.dashboard-card,
+.stat-card,
+.analytics-card{
+    background:rgba(15,20,40,.78) !important;
+    border:1px solid rgba(132,0,255,.18) !important;
+    box-shadow:0 0 25px rgba(132,0,255,.12);
+    backdrop-filter:blur(18px);
+    border-radius:22px;
+    transition:.3s ease;
+}
+
+.glass-card:hover,
+.dashboard-card:hover,
+.stat-card:hover,
+.analytics-card:hover{
+    transform:translateY(-4px);
+    box-shadow:0 0 35px rgba(132,0,255,.28);
+}
+
+.sidebar,
+.admin-sidebar{
+    background:rgba(7,10,20,.96) !important;
+    border-left:1px solid rgba(255,255,255,.06);
+}
+
+.topbar,
+.admin-topbar{
+    background:rgba(8,12,25,.82) !important;
+    border-bottom:1px solid rgba(255,255,255,.06);
+    backdrop-filter:blur(14px);
+}
+
+button{
+    border-radius:14px !important;
+}
+

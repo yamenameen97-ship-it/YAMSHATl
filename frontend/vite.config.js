@@ -6,7 +6,7 @@ import compression from 'vite-plugin-compression';
 
 const enableAnalyze = process.env.ANALYZE === 'true';
 const enableCompression = process.env.COMPRESS === 'true';
-const enablePwa = process.env.PWA === 'true';
+const enablePwa = false; // Fixed to prevent Render serving old cached admin dashboard
 
 /**
  * Keep chunking conservative to avoid circular dependencies between

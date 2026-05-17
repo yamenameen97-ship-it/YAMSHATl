@@ -19,3 +19,4 @@ from app.models.user_preference import UserPreference  # noqa: F401
 from app.models.user_profile import UserProfile  # noqa: F401
 from app.models.user_session import UserSession  # noqa: F401
 from app.models.user_wallet import UserWallet  # noqa: F401
+from app.models.live_session import LiveRoomSession  # noqa: F401

@@ -12,8 +12,13 @@ const RETRYABLE_STATUSES = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
 const cache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-// Request Deduplication Layer
-const pendingRequests = new Map();
+function getCacheOptions(config = {}) {
+  const useCache = Boolean(config.useCache ?? config.cache);
+  const forceRefresh = Boolean(config.forceRefresh);
+  const cacheTtlMs = Number(config.cacheTtlMs) > 0 ? Number(config.cacheTtlMs) : CACHE_TTL;
+  const cacheKey = `${config.baseURL || ''}${config.url}${JSON.stringify(config.params || {})}`;
+  return { useCache, forceRefresh, cacheTtlMs, cacheKey };
+}
 
 const API = axios.create({
   baseURL: API_BASE,
@@ -29,10 +34,12 @@ API.interceptors.request.use(async (config) => {
   if (csrfToken) config.headers['X-CSRF-Token'] = csrfToken;
 
   // Smart Cache Check
-  if (config.method === 'get' && config.useCache) {
-    const cacheKey = `${config.url}${JSON.stringify(config.params)}`;
+  const { useCache, forceRefresh, cacheTtlMs, cacheKey } = getCacheOptions(config);
+  config.metadata = { ...(config.metadata || {}), cacheKey, cacheTtlMs, useCache };
+
+  if (config.method === 'get' && useCache && !forceRefresh) {
     const cachedResponse = cache.get(cacheKey);
-    if (cachedResponse && (Date.now() - cachedResponse.timestamp < CACHE_TTL)) {
+    if (cachedResponse && (Date.now() - cachedResponse.timestamp < cacheTtlMs)) {
       config.adapter = () => Promise.resolve({
         data: cachedResponse.data,
         status: 200,
@@ -44,43 +51,25 @@ API.interceptors.request.use(async (config) => {
     }
   }
 
-  // Request Deduplication
-  const requestKey = `${config.method}_${config.url}_${JSON.stringify(config.params || config.data)}`;
-  if (pendingRequests.has(requestKey)) {
-    return Promise.reject({ isDeduplicated: true, requestKey });
-  }
-  pendingRequests.set(requestKey, true);
-
   return config;
 });
 
 API.interceptors.response.use(
   (response) => {
-    const requestKey = `${response.config.method}_${response.config.url}_${JSON.stringify(response.config.params || response.config.data)}`;
-    pendingRequests.delete(requestKey);
+    const { cacheKey, useCache } = response.config.metadata || {};
 
     // Smart Cache Storage
-    if (response.config.method === 'get' && response.config.useCache) {
-      const cacheKey = `${response.config.url}${JSON.stringify(response.config.params)}`;
+    if (response.config.method === 'get' && useCache && cacheKey) {
       cache.set(cacheKey, { data: response.data, timestamp: Date.now() });
     }
 
     return response;
   },
   async (error) => {
-    if (error.isDeduplicated) {
-      console.log(`Request deduplicated: ${error.requestKey}`);
-      return Promise.reject(error);
-    }
-
     const { config, response } = error;
-    if (config) {
-      const requestKey = `${config.method}_${config.url}_${JSON.stringify(config.params || config.data)}`;
-      pendingRequests.delete(requestKey);
-    }
 
     // Token Refresh Logic
-    if (response?.status === 401 && !config._retry) {
+    if (response?.status === 401 && config && !config._retry) {
       config._retry = true;
       try {
         const { data } = await sessionManager.refreshSession();
@@ -95,8 +84,8 @@ API.interceptors.response.use(
     }
 
     // Advanced Retry Strategy (Exponential Backoff)
-    const retryCount = config._retryCount || 0;
-    if (RETRYABLE_STATUSES.has(response?.status) && retryCount < 3) {
+    const retryCount = config?._retryCount || 0;
+    if (config && RETRYABLE_STATUSES.has(response?.status) && retryCount < 3) {
       config._retryCount = retryCount + 1;
       const delay = Math.pow(2, retryCount) * 1000 + Math.random() * 1000;
       await new Promise(resolve => setTimeout(resolve, delay));

@@ -175,7 +175,7 @@ if (typeof window !== 'undefined') {
   window.addEventListener('offline', () => useAppStore.getState().setOnlineStatus(false));
   
   window.addEventListener('storage', (event) => {
-    if (event.key === 'yamshat_auth_user') {
+    if (['yamshat_user_session', 'yamshatAuth', 'user'].includes(event.key)) {
       try {
         const userData = event.newValue ? JSON.parse(event.newValue) : null;
         useAppStore.getState().syncFromStorage(userData);

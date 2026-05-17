@@ -45,7 +45,7 @@ function timerLabel(value) {
   return option?.label || 'بدون';
 }
 
-export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend, peer, securitySnapshot }) {
+export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend, peer, securitySnapshot, disabled = false }) {
   const [text, setText] = useState('');
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
   const [attachments, setAttachments] = useState([]);
@@ -71,6 +71,8 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
     [attachments],
   );
 
+  const composerDisabled = disabled || !peer;
+
   const stopTyping = () => {
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     if (!isTypingRef.current) return;
@@ -81,6 +83,7 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
   };
 
   const emitRecordingState = (value) => {
+    if (composerDisabled) return;
     setIsRecording(value === 'recording' || value === 'paused');
     if (peer) {
       socketManager.emit('chat_recording', { receiver: peer, is_recording: value === 'recording' || value === 'paused' });
@@ -88,6 +91,7 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
   };
 
   const handleTyping = (nextValue) => {
+    if (composerDisabled) return;
     setText(nextValue);
     if (!peer) return;
     if (!isTypingRef.current && nextValue.trim()) {
@@ -116,6 +120,7 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
   };
 
   const handleFilesAdded = (fileList) => {
+    if (composerDisabled) return;
     const files = Array.from(fileList || []);
     if (!files.length) return;
 
@@ -188,7 +193,7 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
   };
 
   const handleSend = async () => {
-    if (sending || (!text.trim() && attachments.length === 0)) return;
+    if (composerDisabled || sending || (!text.trim() && attachments.length === 0)) return;
     setSending(true);
 
     try {
@@ -223,6 +228,7 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
   };
 
   const handleVoiceSend = async (voicePayload) => {
+    if (composerDisabled) return;
     setSending(true);
     try {
       const upload = await mediaUploadService.uploadVoiceNote(voicePayload.file, {
@@ -267,7 +273,7 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <label style={{ fontSize: 12, color: 'var(--muted)' }}>الرسائل المختفية</label>
-          <select value={messageTimer} onChange={(event) => setMessageTimer(Number(event.target.value || 0))} style={{ background: '#0f172a', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '8px 10px' }}>
+          <select value={messageTimer} disabled={composerDisabled} onChange={(event) => setMessageTimer(Number(event.target.value || 0))} style={{ background: '#0f172a', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '8px 10px' }}>
             {DISAPPEARING_MESSAGE_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
@@ -282,7 +288,7 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
             <div style={{ fontWeight: 'bold' }}>الرد على {replyTo.sender}</div>
             <div style={{ opacity: 0.75 }}>{replyTo.content || replyTo.message}</div>
           </div>
-          <button type="button" onClick={onCancelReply} style={{ background: 'none', border: 'none', color: 'white' }}>×</button>
+          <button type="button" onClick={onCancelReply} disabled={composerDisabled} style={{ background: 'none', border: 'none', color: 'white' }}>×</button>
         </div>
       ) : null}
 
@@ -302,7 +308,7 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
                     {entry.error ? <div style={{ fontSize: 12, color: '#fca5a5' }}>{entry.error}</div> : null}
                   </div>
                 </div>
-                <button type="button" onClick={() => removeAttachment(entry.id)} style={{ background: 'none', border: 'none', color: '#fca5a5' }}>حذف</button>
+                <button type="button" onClick={() => removeAttachment(entry.id)} disabled={composerDisabled} style={{ background: 'none', border: 'none', color: '#fca5a5' }}>حذف</button>
               </div>
               <div style={{ height: 6, borderRadius: 999, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
                 <div style={{ width: `${entry.progress}%`, height: '100%', background: entry.status === 'failed' ? '#ef4444' : '#8b5cf6', transition: 'width 0.2s ease' }} />
@@ -324,13 +330,14 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
       ) : null}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <button type="button" style={{ background: 'none', border: 'none', fontSize: 20 }} onClick={() => emitToast({ type: 'info', title: 'الإيموجي', description: 'استخدم لوحة الإيموجي في جهازك أو لوحة المفاتيح.' })}>😊</button>
-        <label style={{ cursor: 'pointer' }}>
-          <input ref={fileInputRef} type="file" hidden multiple onChange={(event) => handleFilesAdded(event.target.files)} />
+        <button type="button" disabled={composerDisabled} style={{ background: 'none', border: 'none', fontSize: 20 }} onClick={() => emitToast({ type: 'info', title: 'الإيموجي', description: 'استخدم لوحة الإيموجي في جهازك أو لوحة المفاتيح.' })}>😊</button>
+        <label style={{ cursor: composerDisabled ? 'not-allowed' : 'pointer', opacity: composerDisabled ? 0.55 : 1 }}>
+          <input ref={fileInputRef} type="file" hidden multiple disabled={composerDisabled} onChange={(event) => handleFilesAdded(event.target.files)} />
           <span style={{ fontSize: 20 }}>📎</span>
         </label>
         <button
           type="button"
+          disabled={composerDisabled}
           onClick={() => setShowVoiceRecorder((prev) => !prev)}
           style={{
             background: showVoiceRecorder || isRecording ? '#8b5cf6' : 'transparent',
@@ -346,7 +353,8 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
 
         <input
           type="text"
-          placeholder={peer ? `اكتب رسالة إلى ${peer}...` : 'اكتب رسالة...'}
+          disabled={composerDisabled}
+          placeholder={disabled ? 'المحادثة معطلة حالياً' : peer ? `اكتب رسالة إلى ${peer}...` : 'اكتب رسالة...'}
           value={text}
           onChange={(event) => handleTyping(event.target.value)}
           onKeyDown={(event) => {
@@ -358,7 +366,7 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
           style={{ flex: 1, background: '#1f2937', border: '1px solid rgba(255,255,255,0.08)', padding: '12px 14px', borderRadius: 18, color: 'white', outline: 'none' }}
         />
 
-        <Button onClick={handleSend} loading={sending} disabled={sending || (!text.trim() && attachments.length === 0)}>
+        <Button onClick={handleSend} loading={sending} disabled={composerDisabled || sending || (!text.trim() && attachments.length === 0)}>
           إرسال
         </Button>
       </div>

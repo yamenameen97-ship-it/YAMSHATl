@@ -84,13 +84,20 @@ export default function Live() {
       const { data } = await getLiveRooms();
       const next = Array.isArray(data) ? data : [];
       setRooms(next);
-      if (!activeRoom && next.length) setActiveRoom(next[0]);
+      setActiveRoom((prev) => {
+        if (!next.length) return null;
+        if (prev?.id) {
+          const matchedRoom = next.find((room) => room.id === prev.id);
+          if (matchedRoom) return matchedRoom;
+        }
+        return next[0];
+      });
     } catch (error) {
       pushToast({ type: 'error', title: 'تعذر تحميل البثوث', description: error?.response?.data?.detail || error?.message });
     } finally {
       setLoadingRooms(false);
     }
-  }, [activeRoom, pushToast]);
+  }, [pushToast]);
 
   const loadRoomDetails = useCallback(async (roomId) => {
     if (!roomId) return;
@@ -272,6 +279,14 @@ export default function Live() {
     }
   };
 
+  const handleCohostChipClick = (name) => {
+    pushToast({
+      type: 'info',
+      title: `حالة ${name}`,
+      description: name === hostName ? 'المضيف الرئيسي متصل الآن.' : 'الضيف المشارك متصل في هذه الغرفة حالياً.',
+    });
+  };
+
   return (
     <MainLayout>
       <div className="yam-live-page desktop-post mobile-post">
@@ -371,7 +386,7 @@ export default function Live() {
                       <strong>{name}</strong>
                       <small>{index === 0 ? 'Host' : 'Co-host'}</small>
                     </div>
-                    <button type="button" className="yam-mini-chip">Live</button>
+                    <button type="button" className="yam-mini-chip" onClick={() => handleCohostChipClick(name)}>Live</button>
                   </div>
                 ))}
               </div>

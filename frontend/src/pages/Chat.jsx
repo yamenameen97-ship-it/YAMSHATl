@@ -151,6 +151,7 @@ export default function Chat() {
   const [callMode, setCallMode] = useState(null);          // null | 'voice' | 'video'
   const [searchQuery, setSearchQuery] = useState('');
   const [flyingHearts, setFlyingHearts] = useState([]);
+  const [isMutedConversation, setIsMutedConversation] = useState(false);
   const messagesEndRef = useRef(null);
   const setActivePeer = useChatStore((state) => state.setActivePeer);
 
@@ -208,6 +209,10 @@ export default function Chat() {
     if (!currentUser) return;
     socketManager.connect();
     socketManager.emit('register_user', { user: currentUser }, { skipSignature: true });
+    if (peer) {
+      socketManager.emit('join_chat', { peer });
+      socketManager.emit('sync_chat_state', { peer });
+    }
 
     const onMsg = (msg) => {
       const participants = [msg?.sender, msg?.receiver];
@@ -266,6 +271,7 @@ export default function Chat() {
     socketManager.on('typing_update', onTyping);
 
     return () => {
+      if (peer) socketManager.emit('leave_chat', { peer });
       socketManager.off('new_private_message', onMsg);
       socketManager.off('messages_delivered', onDelivered);
       socketManager.off('messages_seen', onSeen);
@@ -328,6 +334,34 @@ export default function Chat() {
     } catch { pushToast({ type: 'error', title: 'تعذرت العملية' }); }
   };
 
+  const handleSearchInConversation = () => {
+    if (!peer) return;
+    setSearchQuery(peer);
+    pushToast({ type: 'info', title: 'تم تجهيز البحث', description: `ابحث داخل المحادثة مع ${peer} من مربع البحث أعلى القائمة.` });
+  };
+
+  const handleMuteConversation = () => {
+    setIsMutedConversation((prev) => {
+      const next = !prev;
+      pushToast({
+        type: 'success',
+        title: next ? 'تم كتم إشعارات المحادثة' : 'تم إلغاء كتم المحادثة',
+        description: peer ? `تم تحديث حالة إشعارات ${peer}.` : undefined,
+      });
+      return next;
+    });
+  };
+
+  const handleDeleteConversation = () => {
+    setMessages([]);
+    pushToast({ type: 'success', title: 'تم تنظيف المحادثة المعروضة', description: 'تم تفريغ الشاشة الحالية بدون حذف السجل من السيرفر.' });
+  };
+
+  const handleUpgradePro = () => {
+    pushToast({ type: 'info', title: 'ترقية YAMSHAT PRO', description: 'فتحنا لك صفحة الإعدادات لإدارة الخطة والمزايا.' });
+    navigate('/settings');
+  };
+
   /* flying hearts */
   const spawnHeart = () => {
     const id = Date.now();
@@ -384,7 +418,7 @@ export default function Chat() {
             <div>
               <strong>YAMSHAT PRO</strong>
               <p>ترقية لتجربة أفضل بدون إعلانات</p>
-              <button type="button" className="yam-pro-btn">ترقية الآن</button>
+              <button type="button" className="yam-pro-btn" onClick={handleUpgradePro}>ترقية الآن</button>
             </div>
           </div>
         </aside>
@@ -415,7 +449,7 @@ export default function Chat() {
               <div className="yam-conv-actions">
                 <button type="button" className="yam-icon-ghost" onClick={() => setCallMode('video')} title="مكالمة فيديو">📹</button>
                 <button type="button" className="yam-icon-ghost" onClick={() => setCallMode('voice')} title="مكالمة صوتية">📞</button>
-                <button type="button" className="yam-icon-ghost" title="بحث">⌕</button>
+                <button type="button" className="yam-icon-ghost" onClick={handleSearchInConversation} title="بحث">⌕</button>
                 <button type="button" className="yam-icon-ghost" onClick={spawnHeart} title="قلب طائر">💜</button>
               </div>
             </div>
@@ -490,8 +524,8 @@ export default function Chat() {
               <p>{isTyping ? '✏ يكتب...' : formatLastSeen(lastSeen, isOnline)}</p>
             </div>
             <div className="yam-info-actions">
-              <button type="button" className="yam-info-action-btn" title="بحث">⌕ بحث</button>
-              <button type="button" className="yam-info-action-btn" title="كتم">🔔 كتم</button>
+              <button type="button" className="yam-info-action-btn" onClick={handleSearchInConversation} title="بحث">⌕ بحث</button>
+              <button type="button" className="yam-info-action-btn" onClick={handleMuteConversation} title="كتم">{isMutedConversation ? '🔕 إلغاء الكتم' : '🔔 كتم'}</button>
               <button
                 type="button"
                 className={`yam-info-action-btn ${blockStatus.blocked_by_me ? 'danger' : ''}`}
@@ -513,7 +547,7 @@ export default function Chat() {
               <div className="yam-info-section-head">الروابط المشتركة</div>
               <div className="muted" style={{ fontSize: 13 }}>لا توجد روابط</div>
             </div>
-            <button type="button" className="yam-delete-conv-btn">🗑 حذف المحادثة</button>
+            <button type="button" className="yam-delete-conv-btn" onClick={handleDeleteConversation}>🗑 حذف المحادثة</button>
           </aside>
         )}
       </div>

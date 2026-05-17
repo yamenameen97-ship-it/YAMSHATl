@@ -45,7 +45,7 @@ function timerLabel(value) {
   return option?.label || 'بدون';
 }
 
-export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend, peer, securitySnapshot, disabled = false }) {
+export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend, peer, securitySnapshot, disabled = false, compact = false }) {
   const [text, setText] = useState('');
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
   const [attachments, setAttachments] = useState([]);
@@ -266,24 +266,34 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
     : 'Signal bootstrap pending';
 
   return (
-    <div style={{ padding: 12, background: '#111827', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'grid', gap: 10 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-          🔐 {signalSummary}
+    <div
+      style={{
+        padding: compact ? 10 : 12,
+        background: compact ? 'rgba(8,15,29,0.96)' : '#111827',
+        borderTop: '1px solid rgba(255,255,255,0.08)',
+        display: 'grid',
+        gap: 10,
+      }}
+    >
+      {!compact ? (
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+            🔐 {signalSummary}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <label style={{ fontSize: 12, color: 'var(--muted)' }}>الرسائل المختفية</label>
+            <select value={messageTimer} disabled={composerDisabled} onChange={(event) => setMessageTimer(Number(event.target.value || 0))} style={{ background: '#0f172a', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '8px 10px' }}>
+              {DISAPPEARING_MESSAGE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+            <span style={{ fontSize: 12, color: 'var(--muted)' }}>⏱ {timerLabel(messageTimer)}</span>
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <label style={{ fontSize: 12, color: 'var(--muted)' }}>الرسائل المختفية</label>
-          <select value={messageTimer} disabled={composerDisabled} onChange={(event) => setMessageTimer(Number(event.target.value || 0))} style={{ background: '#0f172a', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '8px 10px' }}>
-            {DISAPPEARING_MESSAGE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-          <span style={{ fontSize: 12, color: 'var(--muted)' }}>⏱ {timerLabel(messageTimer)}</span>
-        </div>
-      </div>
+      ) : null}
 
       {replyTo ? (
-        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(255,255,255,0.05)', borderRadius: 12, gap: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', padding: compact ? '8px 10px' : '8px 12px', background: 'rgba(255,255,255,0.05)', borderRadius: 14, gap: 10 }}>
           <div style={{ fontSize: 12, borderRight: '2px solid var(--primary)', paddingRight: 8 }}>
             <div style={{ fontWeight: 'bold' }}>الرد على {replyTo.sender}</div>
             <div style={{ opacity: 0.75 }}>{replyTo.content || replyTo.message}</div>
@@ -329,7 +339,7 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
         />
       ) : null}
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, direction: 'rtl' }}>
         <button type="button" disabled={composerDisabled} style={{ background: 'none', border: 'none', fontSize: 20 }} onClick={() => emitToast({ type: 'info', title: 'الإيموجي', description: 'استخدم لوحة الإيموجي في جهازك أو لوحة المفاتيح.' })}>😊</button>
         <label style={{ cursor: composerDisabled ? 'not-allowed' : 'pointer', opacity: composerDisabled ? 0.55 : 1 }}>
           <input ref={fileInputRef} type="file" hidden multiple disabled={composerDisabled} onChange={(event) => handleFilesAdded(event.target.files)} />
@@ -342,10 +352,11 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
           style={{
             background: showVoiceRecorder || isRecording ? '#8b5cf6' : 'transparent',
             border: '1px solid rgba(255,255,255,0.12)',
-            width: 40,
-            height: 40,
-            borderRadius: '50%',
+            width: compact ? 46 : 40,
+            height: compact ? 46 : 40,
+            borderRadius: compact ? 16 : '50%',
             color: 'white',
+            flexShrink: 0,
           }}
         >
           🎤
@@ -363,13 +374,30 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
               handleSend();
             }
           }}
-          style={{ flex: 1, background: '#1f2937', border: '1px solid rgba(255,255,255,0.08)', padding: '12px 14px', borderRadius: 18, color: 'white', outline: 'none' }}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            background: '#1f2937',
+            border: '1px solid rgba(255,255,255,0.08)',
+            padding: compact ? '15px 18px' : '12px 14px',
+            borderRadius: compact ? 20 : 18,
+            color: 'white',
+            outline: 'none',
+            minHeight: compact ? 54 : 48,
+          }}
         />
 
         <Button onClick={handleSend} loading={sending} disabled={composerDisabled || sending || (!text.trim() && attachments.length === 0)}>
           إرسال
         </Button>
       </div>
+
+      {compact ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, color: '#94a3b8', fontSize: 11 }}>
+          <span>{pendingAttachmentCount > 0 ? `مرفقات قيد الإرسال: ${pendingAttachmentCount}` : 'مساحة كتابة واسعة بدون هيدر جانبي'}</span>
+          <span>{messageTimer ? `الاختفاء: ${timerLabel(messageTimer)}` : 'الرسائل العادية مفعلة'}</span>
+        </div>
+      ) : null}
     </div>
   );
 }

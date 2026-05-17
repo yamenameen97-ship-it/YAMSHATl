@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import Sidebar from './Sidebar.jsx';
 import Topbar from './Topbar.jsx';
 import MobileDock from './MobileDock.jsx';
 import { isNativeShell } from '../../utils/runtime.js';
@@ -13,9 +12,13 @@ export default function MainLayout({ children }) {
   const frameRef = useRef(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
 
+  const isConversationRoute = /^\/chat\/[^/]+/.test(location.pathname);
+  const showTopbar = !nativeShell && !isConversationRoute;
+  const showDock = !nativeShell && !isConversationRoute;
+
   useEffect(() => {
     const container = mainRef.current;
-    if (!container) return undefined;
+    if (!container || isConversationRoute) return undefined;
 
     const restore = () => {
       const cachedPosition = getScrollPosition(location.pathname);
@@ -32,11 +35,11 @@ export default function MainLayout({ children }) {
       window.cancelAnimationFrame(rafId);
       window.clearTimeout(container.__yamshatTransitionTimer__);
     };
-  }, [location.pathname]);
+  }, [isConversationRoute, location.pathname]);
 
   useEffect(() => {
     const container = mainRef.current;
-    if (!container) return undefined;
+    if (!container || isConversationRoute) return undefined;
 
     const handleScroll = () => {
       if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
@@ -50,26 +53,24 @@ export default function MainLayout({ children }) {
       container.removeEventListener('scroll', handleScroll);
       if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
     };
-  }, [location.pathname]);
+  }, [isConversationRoute, location.pathname]);
 
   return (
-    <div className={`app-shell yamshat-shell ${nativeShell ? 'native-shell' : ''}`}>
-      {!nativeShell && <Sidebar />}
-
+    <div className={`app-shell yamshat-shell ${nativeShell ? 'native-shell' : ''} ${isConversationRoute ? 'conversation-shell' : ''}`}>
       <div className={`main-shell ${nativeShell ? 'native-shell' : ''}`}>
-        {!nativeShell && <Topbar />}
+        {showTopbar ? <Topbar /> : null}
 
         <main
-          className={`page-content ${nativeShell ? 'native-shell' : ''} ${isTransitioning ? 'is-transitioning' : ''}`}
+          className={`page-content ${nativeShell ? 'native-shell' : ''} ${isTransitioning ? 'is-transitioning' : ''} ${isConversationRoute ? 'conversation-mode' : ''}`}
           ref={mainRef}
         >
-          <div className="page-shell-glow" key={location.pathname}>
+          <div className={`page-shell-glow ${isConversationRoute ? 'conversation-mode' : ''}`} key={location.pathname}>
             {children}
           </div>
         </main>
       </div>
 
-      {!nativeShell && <MobileDock />}
+      {showDock ? <MobileDock /> : null}
 
       <style dangerouslySetInnerHTML={{
         __html: `
@@ -83,7 +84,8 @@ export default function MainLayout({ children }) {
             overflow: hidden;
           }
 
-          .app-shell.native-shell {
+          .app-shell.native-shell,
+          .app-shell.conversation-shell {
             flex-direction: column;
           }
 
@@ -110,6 +112,11 @@ export default function MainLayout({ children }) {
             will-change: transform, opacity;
           }
 
+          .page-content.conversation-mode {
+            overflow: hidden;
+            padding-bottom: 0;
+          }
+
           .page-content.is-transitioning {
             opacity: 0.96;
             transform: translate3d(0, 8px, 0);
@@ -125,6 +132,10 @@ export default function MainLayout({ children }) {
             animation: pageFadeIn 260ms cubic-bezier(0.22, 1, 0.36, 1);
             content-visibility: auto;
             contain-intrinsic-size: 900px;
+          }
+
+          .page-shell-glow.conversation-mode {
+            min-height: 100vh;
           }
 
           .page-content::-webkit-scrollbar {
@@ -160,7 +171,7 @@ export default function MainLayout({ children }) {
               flex-direction: column;
             }
 
-            .page-content {
+            .page-content:not(.conversation-mode) {
               padding-bottom: 78px;
             }
           }

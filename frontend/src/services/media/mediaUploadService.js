@@ -296,6 +296,7 @@ async function uploadResumable(file, fingerprint, manifest, onProgress, extraFie
         content_type: file.type || 'application/octet-stream',
         total_size: file.size,
         total_chunks: totalChunks,
+        chunk_size: chunkSize,
         file_hash: fingerprint,
         provider: MEDIA_PROVIDER,
         manifest,

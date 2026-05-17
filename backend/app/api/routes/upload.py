@@ -133,12 +133,14 @@ def init_resumable_upload(payload: dict = Body(...), current_user: User = Depend
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='total_size is required')
     if total_size > MAX_FILE_SIZE_BYTES:
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail='File is too large')
+    declared_chunk_size = int(payload.get('chunk_size') or 0)
     meta = {
         'session_id': session_id,
         'filename': filename,
         'content_type': content_type,
         'total_size': total_size,
         'total_chunks': total_chunks,
+        'chunk_size': declared_chunk_size,
         'uploaded_size': 0,
         'uploaded_chunks': [],
         'status': 'pending',
@@ -224,8 +226,21 @@ async def upload_resumable_chunk(session_id: str, chunk_index: int, request: Req
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Chunk body is empty')
 
     file_path = _session_file_path(session_id, meta['filename'])
+    declared_chunk_size = max(int(meta.get('chunk_size') or 0), 0)
     chunk_size = len(chunk_data)
-    start_offset = max(int(chunk_index), 0) * chunk_size
+
+    header_start = request.headers.get('X-Chunk-Start')
+    header_end = request.headers.get('X-Chunk-End')
+    try:
+        start_offset = int(header_start)
+    except (TypeError, ValueError):
+        start_offset = max(int(chunk_index), 0) * (declared_chunk_size or chunk_size)
+
+    try:
+        end_offset = int(header_end)
+    except (TypeError, ValueError):
+        end_offset = start_offset + chunk_size
+
     with open(file_path, 'r+b' if file_path.exists() else 'wb') as buffer:
         buffer.seek(start_offset)
         buffer.write(chunk_data)
@@ -233,7 +248,7 @@ async def upload_resumable_chunk(session_id: str, chunk_index: int, request: Req
     uploaded_chunks = set(int(item) for item in meta.get('uploaded_chunks') or [])
     uploaded_chunks.add(int(chunk_index))
     meta['uploaded_chunks'] = sorted(uploaded_chunks)
-    meta['uploaded_size'] = min(file_path.stat().st_size, int(meta['total_size']))
+    meta['uploaded_size'] = min(max(int(meta.get('uploaded_size') or 0), end_offset, file_path.stat().st_size), int(meta['total_size']))
     meta['status'] = 'uploading'
     _write_session(session_id, meta)
     return {

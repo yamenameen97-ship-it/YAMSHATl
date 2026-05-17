@@ -1,5 +1,17 @@
+import { BACKEND_ORIGIN } from '../api/config.js';
+
 const trim = (value) => String(value || '').trim();
 const trimSlash = (value) => trim(value).replace(/\/+$/, '');
+const isAbsoluteUrl = (value = '') => /^(blob:|data:|https?:)/i.test(trim(value));
+const toAbsoluteMediaUrl = (value = '') => {
+  const cleaned = trim(value);
+  if (!cleaned) return '';
+  if (isAbsoluteUrl(cleaned)) return cleaned;
+  const normalizedPath = `/${cleaned.replace(/^\/+/, '')}`;
+  if (MEDIA_CDN_BASE) return `${MEDIA_CDN_BASE}${normalizedPath}`;
+  if (BACKEND_ORIGIN) return `${trimSlash(BACKEND_ORIGIN)}${normalizedPath}`;
+  return normalizedPath;
+};
 
 const runtime = typeof window === 'undefined' ? {} : window;
 const readRuntime = (key, fallback = '') => trim(runtime?.[key] || fallback);
@@ -16,7 +28,7 @@ export const MEDIA_CDN_BASE = trimSlash(
   readRuntime('APP_CDN_BASE') ||
   readRuntime('YAMSHAT_CDN_BASE') ||
   readEnv('VITE_CDN_BASE') ||
-  'https://cdn.yamshat.com'
+  ''
 );
 
 export const SIGNED_URL_TTL_SECONDS = Number(
@@ -27,10 +39,10 @@ export const SIGNED_URL_TTL_SECONDS = Number(
 );
 
 export const MEDIA_SECURITY = {
-  signedUrls: (readRuntime('APP_MEDIA_SIGNED_URLS') || readEnv('VITE_MEDIA_SIGNED_URLS') || 'true') !== 'false',
-  expiringLinks: (readRuntime('APP_MEDIA_EXPIRING_LINKS') || readEnv('VITE_MEDIA_EXPIRING_LINKS') || 'true') !== 'false',
-  encryptedUploads: (readRuntime('APP_MEDIA_ENCRYPT_UPLOADS') || readEnv('VITE_MEDIA_ENCRYPT_UPLOADS') || 'true') !== 'false',
-  signatureKeyId: readRuntime('APP_MEDIA_KEY_ID') || readEnv('VITE_MEDIA_KEY_ID') || 'frontend-edge-key',
+  signedUrls: (readRuntime('APP_MEDIA_SIGNED_URLS') || readEnv('VITE_MEDIA_SIGNED_URLS') || 'false') === 'true',
+  expiringLinks: (readRuntime('APP_MEDIA_EXPIRING_LINKS') || readEnv('VITE_MEDIA_EXPIRING_LINKS') || 'false') === 'true',
+  encryptedUploads: (readRuntime('APP_MEDIA_ENCRYPT_UPLOADS') || readEnv('VITE_MEDIA_ENCRYPT_UPLOADS') || 'false') === 'true',
+  signatureKeyId: readRuntime('APP_MEDIA_KEY_ID') || readEnv('VITE_MEDIA_KEY_ID') || '',
 };
 
 export const MEDIA_ENDPOINTS = {
@@ -91,9 +103,7 @@ export const DISAPPEARING_MESSAGE_OPTIONS = [
 export function buildSignedMediaUrl(candidate = '', options = {}) {
   const value = trim(candidate);
   if (!value || /^(blob:|data:)/i.test(value)) return value;
-  const absolute = /^https?:/i.test(value)
-    ? value
-    : `${MEDIA_CDN_BASE}/${value.replace(/^\/+/, '')}`;
+  const absolute = toAbsoluteMediaUrl(value);
 
   if (!MEDIA_SECURITY.signedUrls) return absolute;
 
@@ -108,10 +118,10 @@ export function buildSignedMediaUrl(candidate = '', options = {}) {
 export function resolveMediaUrl(candidate = '', options = {}) {
   const value = trim(candidate);
   if (!value) return '';
-  if (/^(blob:|data:|https?:)/i.test(value)) {
+  if (isAbsoluteUrl(value)) {
     return MEDIA_SECURITY.signedUrls ? buildSignedMediaUrl(value, options) : value;
   }
-  const absolute = MEDIA_CDN_BASE ? `${MEDIA_CDN_BASE}/${value.replace(/^\/+/, '')}` : value;
+  const absolute = toAbsoluteMediaUrl(value);
   return MEDIA_SECURITY.signedUrls ? buildSignedMediaUrl(absolute, options) : absolute;
 }
 

@@ -226,11 +226,10 @@ export default function Live() {
     }
 
     if (!activeRoom.livekit_configured) {
-      pushToast({ type: 'warning', title: 'مفاتيح LiveKit غير مفعلة في الخادم', description: 'تم ربط الغرف بقاعدة البيانات، لكن لازم إعداد المفاتيح في البيئة الحقيقية.' });
+      pushToast({ type: 'warning', title: 'سيتم تجربة الاتصال الحقيقي', description: 'سيتم طلب توكن البث مباشرة من الخادم للتأكد من إعداد LiveKit الفعلي.' });
       if (role === 'host') {
         await ensureCameraPreview();
       }
-      return;
     }
 
     setBusy('connect-livekit');

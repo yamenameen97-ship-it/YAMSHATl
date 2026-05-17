@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import Button from '../ui/Button.jsx';
 import Card from '../ui/Card.jsx';
-import { createPost, uploadPostMedia } from '../../api/posts.js';
+import { createPost } from '../../api/posts.js';
+import mediaUploadService from '../../services/media/mediaUploadService.js';
 import { useToast } from '../admin/ToastProvider.jsx';
 
 const DRAFT_KEY = 'yamshat_post_draft';
@@ -98,11 +99,14 @@ export default function PostComposer() {
     try {
       let mediaUrl = '';
       if (media) {
-        const uploadRes = await uploadPostMedia(media, (event) => {
-          const percent = event.total ? Math.round((event.loaded / event.total) * 100) : 0;
-          setUploadProgress(percent);
+        const uploadRes = await mediaUploadService.uploadFile(media, {
+          purpose: media?.type?.startsWith('video/') ? 'post-video' : 'post-image',
+          onProgress: (payload) => {
+            const percent = typeof payload === 'number' ? Number(payload || 0) : Number(payload?.percent || 0);
+            setUploadProgress(percent);
+          },
         });
-        mediaUrl = uploadRes?.data?.media_url || uploadRes?.data?.url || uploadRes?.data?.file_url || '';
+        mediaUrl = uploadRes?.mediaUrl || uploadRes?.url || uploadRes?.file_url || '';
       }
 
       const { hashtags, mentions } = extractTags(content);

@@ -5,6 +5,7 @@ import path from 'node:path';
 const root = process.cwd();
 const distDir = path.join(root, 'dist');
 const assetsDir = path.join(distDir, 'assets');
+const readEnv = (key, fallback = '') => process.env[key] ?? fallback;
 
 fs.rmSync(distDir, { recursive: true, force: true });
 fs.mkdirSync(distDir, { recursive: true });
@@ -15,20 +16,24 @@ const envObject = {
   MODE: 'production',
   BASE_URL: '/',
   SSR: false,
-  VITE_API_BASE: '',
-  VITE_BACKEND_ORIGIN: '',
-  VITE_SOCKET_URL: '',
-  VITE_CDN_BASE: '',
-  VITE_STUN_URL: 'stun:stun.l.google.com:19302',
-  VITE_STUN_URL_FALLBACK: 'stun:global.stun.twilio.com:3478',
-  VITE_TURN_URL: '',
-  VITE_TURN_USERNAME: '',
-  VITE_TURN_CREDENTIAL: '',
-  VITE_PRIMARY_ADMIN_EMAIL: '',
-  VITE_VAPID_PUBLIC_KEY: '',
-  VITE_ENABLE_DEV_LOGIN: 'false',
-  VITE_SIGNAL_SERVER_SUPPORT: 'false',
-  VITE_LOG_LEVEL: 'info',
+  VITE_API_BASE: readEnv('VITE_API_BASE', ''),
+  VITE_BACKEND_ORIGIN: readEnv('VITE_BACKEND_ORIGIN', ''),
+  VITE_SOCKET_URL: readEnv('VITE_SOCKET_URL', ''),
+  VITE_CDN_BASE: readEnv('VITE_CDN_BASE', ''),
+  VITE_STUN_URL: readEnv('VITE_STUN_URL', 'stun:stun.l.google.com:19302'),
+  VITE_STUN_URL_FALLBACK: readEnv('VITE_STUN_URL_FALLBACK', 'stun:global.stun.twilio.com:3478'),
+  VITE_STUN_URLS: readEnv('VITE_STUN_URLS', ''),
+  VITE_TURN_URL: readEnv('VITE_TURN_URL', ''),
+  VITE_TURN_URL_FALLBACK: readEnv('VITE_TURN_URL_FALLBACK', ''),
+  VITE_TURN_URL_TCP: readEnv('VITE_TURN_URL_TCP', ''),
+  VITE_TURN_URLS: readEnv('VITE_TURN_URLS', ''),
+  VITE_TURN_USERNAME: readEnv('VITE_TURN_USERNAME', ''),
+  VITE_TURN_CREDENTIAL: readEnv('VITE_TURN_CREDENTIAL', ''),
+  VITE_PRIMARY_ADMIN_EMAIL: readEnv('VITE_PRIMARY_ADMIN_EMAIL', ''),
+  VITE_VAPID_PUBLIC_KEY: readEnv('VITE_VAPID_PUBLIC_KEY', ''),
+  VITE_ENABLE_DEV_LOGIN: readEnv('VITE_ENABLE_DEV_LOGIN', 'false'),
+  VITE_SIGNAL_SERVER_SUPPORT: readEnv('VITE_SIGNAL_SERVER_SUPPORT', 'false'),
+  VITE_LOG_LEVEL: readEnv('VITE_LOG_LEVEL', 'info'),
 };
 
 const publicAssetPlugin = {
@@ -111,8 +116,10 @@ if (!jsEntry) throw new Error('Main JS entry was not generated.');
 
 let html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 html = html.replace(/<script type="module" src="\/src\/main\.jsx"><\/script>/, () => {
-  const cssTag = cssEntry ? `    <link rel="stylesheet" href="/${path.relative(distDir, path.resolve(root, cssEntry)).replace(/\\/g, '/')}" />\n` : '';
-  const jsTag = `    <script type="module" src="/${path.relative(distDir, path.resolve(root, jsEntry)).replace(/\\/g, '/')}\"></script>`;
+  const cssPath = cssEntry ? path.relative(distDir, path.resolve(root, cssEntry)).replace(/\\/g, '/') : '';
+  const jsPath = path.relative(distDir, path.resolve(root, jsEntry)).replace(/\\/g, '/');
+  const cssTag = cssEntry ? `    <link rel="stylesheet" href="/${cssPath}" />\n` : '';
+  const jsTag = `    <script type="module" src="/${jsPath}"></script>`;
   return `${cssTag}${jsTag}`;
 });
 

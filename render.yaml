@@ -82,6 +82,24 @@ services:
         sync: false
       - key: VITE_SOCKET_URL
         sync: false
+      - key: VITE_STUN_URL
+        sync: false
+      - key: VITE_STUN_URL_FALLBACK
+        sync: false
+      - key: VITE_STUN_URLS
+        sync: false
+      - key: VITE_TURN_URL
+        sync: false
+      - key: VITE_TURN_URL_FALLBACK
+        sync: false
+      - key: VITE_TURN_URL_TCP
+        sync: false
+      - key: VITE_TURN_URLS
+        sync: false
+      - key: VITE_TURN_USERNAME
+        sync: false
+      - key: VITE_TURN_CREDENTIAL
+        sync: false
       - key: VITE_PRIMARY_ADMIN_EMAIL
         sync: false
     routes:

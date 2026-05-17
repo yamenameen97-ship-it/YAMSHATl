@@ -1,17 +1,35 @@
+const parseEnvUrls = (...values) => values
+  .flatMap((value) => String(value || '').split(','))
+  .map((value) => value.trim())
+  .filter(Boolean);
+
+const stunUrls = parseEnvUrls(
+  import.meta.env.VITE_STUN_URL,
+  import.meta.env.VITE_STUN_URL_FALLBACK,
+  import.meta.env.VITE_STUN_URLS,
+);
+
+const turnUrls = parseEnvUrls(
+  import.meta.env.VITE_TURN_URL,
+  import.meta.env.VITE_TURN_URL_FALLBACK,
+  import.meta.env.VITE_TURN_URL_TCP,
+  import.meta.env.VITE_TURN_URLS,
+);
+
 export const CALL_ICE_SERVERS = [
   {
-    urls: [
-      import.meta.env.VITE_STUN_URL || 'stun:stun.l.google.com:19302',
-      import.meta.env.VITE_STUN_URL_FALLBACK || 'stun:global.stun.twilio.com:3478',
+    urls: stunUrls.length ? stunUrls : [
+      'stun:stun.l.google.com:19302',
+      'stun:global.stun.twilio.com:3478',
     ],
   },
-  import.meta.env.VITE_TURN_URL
-    ? {
-        urls: [import.meta.env.VITE_TURN_URL],
+  ...(turnUrls.length
+    ? [{
+        urls: turnUrls,
         username: import.meta.env.VITE_TURN_USERNAME || '',
         credential: import.meta.env.VITE_TURN_CREDENTIAL || '',
-      }
-    : null,
+      }]
+    : []),
 ].filter(Boolean);
 
 export const CALL_DEFAULT_SETTINGS = {

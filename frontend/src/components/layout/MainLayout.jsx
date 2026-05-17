@@ -5,7 +5,7 @@ import MobileDock from './MobileDock.jsx';
 import { isNativeShell } from '../../utils/runtime.js';
 import { getScrollPosition, prefetchCriticalRoutes, saveScrollPosition } from '../../utils/navigation.js';
 
-export default function MainLayout({ children }) {
+export default function MainLayout({ children, hideNav = false }) {
   const nativeShell = isNativeShell();
   const location = useLocation();
   const mainRef = useRef(null);
@@ -13,8 +13,8 @@ export default function MainLayout({ children }) {
   const [isTransitioning, setIsTransitioning] = useState(false);
 
   const isConversationRoute = /^\/chat\/[^/]+/.test(location.pathname);
-  const showTopbar = !nativeShell && !isConversationRoute;
-  const showDock = !nativeShell && !isConversationRoute;
+  const showTopbar = !hideNav && !nativeShell && !isConversationRoute;
+  const showDock = !hideNav && !nativeShell && !isConversationRoute;
 
   useEffect(() => {
     const container = mainRef.current;

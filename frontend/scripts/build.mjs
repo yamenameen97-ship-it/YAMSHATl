@@ -93,6 +93,7 @@ const result = await build({
 const outputs = Object.keys(result.metafile.outputs);
 const cssFile = outputs.find((file) => file.endsWith('main.css'));
 const mainFile = outputs.find((file) => file.endsWith('main.js'));
+const buildStamp = Date.now().toString();
 
 if (!mainFile) {
   throw new Error('لم يتم إنشاء ملف JavaScript الرئيسي.');
@@ -101,6 +102,7 @@ if (!mainFile) {
 const indexTemplatePath = path.join(projectRoot, 'index.html');
 let indexHtml = await fs.readFile(indexTemplatePath, 'utf8');
 const stylesheetTag = cssFile ? `    <link rel="stylesheet" href="/${path.relative(distRoot, cssFile).replace(/\\/g, '/')}" />\n` : '';
+indexHtml = indexHtml.replace(/\/app-config\.js/g, `/app-config.js?v=${buildStamp}`);
 indexHtml = indexHtml.replace(
   /\s*<script type="module" src="\/src\/main\.jsx"><\/script>\s*/,
   `\n${stylesheetTag}    <script type="module" src="/${path.relative(distRoot, mainFile).replace(/\\/g, '/')}\"></script>\n`
@@ -112,6 +114,7 @@ await fs.writeFile(
   JSON.stringify(
     {
       builtAt: new Date().toISOString(),
+      buildStamp,
       mainFile: path.relative(distRoot, mainFile).replace(/\\/g, '/'),
       cssFile: cssFile ? path.relative(distRoot, cssFile).replace(/\\/g, '/') : null,
     },

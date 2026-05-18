@@ -1,145 +1,412 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import Modal from '../components/ui/Modal.jsx';
 import EmptyState from '../components/feedback/EmptyState.jsx';
-import { createGroup, getGroups } from '../api/groups.js';
+import { useToast } from '../components/admin/ToastProvider.jsx';
+import {
+  createGroup,
+  getGroupAuditLogs,
+  getGroupDetails,
+  getGroups,
+  inviteGroupMember,
+  joinGroup,
+  moderateGroupMember,
+  updateGroupMemberRole,
+} from '../api/groups.js';
+import { getCurrentUsername } from '../utils/auth.js';
 
-const ROLES = [
-  { id: 'admin', label: 'مدير', color: '#ff4444' },
-  { id: 'moderator', label: 'مشرف', color: '#ffaa00' },
-  { id: 'member', label: 'عضو', color: '#44ff44' }
-];
+const ROLE_META = {
+  owner: { label: 'المالك', color: '#f59e0b' },
+  admin: { label: 'مدير', color: '#ef4444' },
+  moderator: { label: 'مشرف', color: '#8b5cf6' },
+  member: { label: 'عضو', color: '#22c55e' },
+};
+
+function roleMeta(role) {
+  return ROLE_META[String(role || 'member').toLowerCase()] || ROLE_META.member;
+}
+
+function formatDate(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString('ar-EG');
+}
 
 export default function Groups() {
+  const { pushToast } = useToast();
+  const currentUsername = getCurrentUsername();
+
   const [groups, setGroups] = useState([]);
+  const [selectedGroupId, setSelectedGroupId] = useState('');
   const [selectedGroup, setSelectedGroup] = useState(null);
+  const [auditLogs, setAuditLogs] = useState([]);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showRoleModal, setShowRoleModal] = useState(false);
+  const [roleDraft, setRoleDraft] = useState({ username: '', role: 'member' });
+  const [inviteUsername, setInviteUsername] = useState('');
   const [createForm, setCreateForm] = useState({ name: '', description: '' });
+  const [loadingGroups, setLoadingGroups] = useState(true);
+  const [loadingDetails, setLoadingDetails] = useState(false);
   const [savingGroup, setSavingGroup] = useState(false);
-  const [activeTab, setActiveTab] = useState('members'); // members, settings, analytics
+  const [busyAction, setBusyAction] = useState('');
+  const [activeTab, setActiveTab] = useState('members');
+
+  const loadGroups = useCallback(async ({ preferredGroupId = '' } = {}) => {
+    setLoadingGroups(true);
+    try {
+      const { data } = await getGroups({ forceRefresh: true });
+      const nextGroups = Array.isArray(data) ? data : [];
+      setGroups(nextGroups);
+
+      const fallbackId = preferredGroupId || selectedGroupId || nextGroups[0]?.id || '';
+      if (fallbackId) {
+        setSelectedGroupId(String(fallbackId));
+      } else {
+        setSelectedGroupId('');
+        setSelectedGroup(null);
+        setAuditLogs([]);
+      }
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر تحميل المجموعات', description: error?.response?.data?.detail || error?.message });
+    } finally {
+      setLoadingGroups(false);
+    }
+  }, [pushToast, selectedGroupId]);
+
+  const loadGroupDetails = useCallback(async (groupId) => {
+    if (!groupId) return;
+    setLoadingDetails(true);
+    try {
+      const [{ data: details }, auditResponse] = await Promise.allSettled([
+        getGroupDetails(groupId, { forceRefresh: true }),
+        getGroupAuditLogs(groupId, { forceRefresh: true }),
+      ]);
+
+      if (details.status !== 'fulfilled') {
+        throw details.reason;
+      }
+
+      const groupPayload = details.value?.data || null;
+      setSelectedGroup(groupPayload);
+      setGroups((prev) => prev.map((item) => String(item.id) === String(groupId) ? { ...item, ...groupPayload } : item));
+
+      if (auditResponse.status === 'fulfilled') {
+        const logs = Array.isArray(auditResponse.value?.data) ? auditResponse.value.data : [];
+        setAuditLogs(logs);
+      } else {
+        setAuditLogs(Array.isArray(groupPayload?.audit_logs_preview) ? groupPayload.audit_logs_preview : []);
+      }
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر تحميل تفاصيل المجموعة', description: error?.response?.data?.detail || error?.message });
+    } finally {
+      setLoadingDetails(false);
+    }
+  }, [pushToast]);
 
   useEffect(() => {
     loadGroups();
-  }, []);
+  }, [loadGroups]);
 
-  const loadGroups = async () => {
-    const { data } = await getGroups();
-    setGroups(data || []);
-    if (data?.length > 0) setSelectedGroup(data[0]);
+  useEffect(() => {
+    if (selectedGroupId) {
+      loadGroupDetails(selectedGroupId);
+    }
+  }, [loadGroupDetails, selectedGroupId]);
+
+  const members = useMemo(() => Array.isArray(selectedGroup?.members) ? selectedGroup.members : [], [selectedGroup]);
+  const myMembership = useMemo(() => members.find((member) => member.username === currentUsername) || null, [currentUsername, members]);
+  const myRole = String(myMembership?.role || '').toLowerCase();
+  const canManageRoles = myRole === 'owner' || myRole === 'admin';
+  const canModerate = canManageRoles || myRole === 'moderator';
+  const isMember = Boolean(myMembership);
+  const inviteLink = selectedGroup ? `${window.location.origin}/groups?group=${selectedGroup.id}` : '';
+
+  const analytics = useMemo(() => {
+    const totalMembers = members.length;
+    const admins = members.filter((member) => ['owner', 'admin'].includes(String(member.role || '').toLowerCase())).length;
+    const moderators = members.filter((member) => String(member.role || '').toLowerCase() === 'moderator').length;
+    const muted = members.filter((member) => Boolean(member.is_muted)).length;
+    return { totalMembers, admins, moderators, muted };
+  }, [members]);
+
+  const handleCreateGroup = async () => {
+    if (!createForm.name.trim()) return;
+    setSavingGroup(true);
+    try {
+      const { data } = await createGroup({
+        name: createForm.name.trim(),
+        description: createForm.description.trim(),
+      });
+      const nextId = String(data?.id || '');
+      pushToast({ type: 'success', title: 'تم إنشاء المجموعة' });
+      setCreateForm({ name: '', description: '' });
+      setShowCreateModal(false);
+      await loadGroups({ preferredGroupId: nextId });
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر إنشاء المجموعة', description: error?.response?.data?.detail || error?.message });
+    } finally {
+      setSavingGroup(false);
+    }
+  };
+
+  const handleJoinGroup = async () => {
+    if (!selectedGroup?.id) return;
+    setBusyAction('join');
+    try {
+      await joinGroup(selectedGroup.id);
+      pushToast({ type: 'success', title: 'تم الانضمام إلى المجموعة' });
+      await loadGroups({ preferredGroupId: selectedGroup.id });
+      await loadGroupDetails(selectedGroup.id);
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر الانضمام', description: error?.response?.data?.detail || error?.message });
+    } finally {
+      setBusyAction('');
+    }
+  };
+
+  const handleInvite = async () => {
+    if (!selectedGroup?.id || !inviteUsername.trim()) return;
+    setBusyAction('invite');
+    try {
+      await inviteGroupMember(selectedGroup.id, inviteUsername.trim());
+      pushToast({ type: 'success', title: 'تم إرسال الدعوة' });
+      setInviteUsername('');
+      setShowInviteModal(false);
+      await loadGroupDetails(selectedGroup.id);
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر إرسال الدعوة', description: error?.response?.data?.detail || error?.message });
+    } finally {
+      setBusyAction('');
+    }
+  };
+
+  const handleUpdateRole = async () => {
+    if (!selectedGroup?.id || !roleDraft.username || !roleDraft.role) return;
+    setBusyAction(`role:${roleDraft.username}`);
+    try {
+      await updateGroupMemberRole(selectedGroup.id, roleDraft.username, roleDraft.role);
+      pushToast({ type: 'success', title: 'تم تحديث الصلاحية' });
+      setShowRoleModal(false);
+      await loadGroupDetails(selectedGroup.id);
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر تحديث الصلاحية', description: error?.response?.data?.detail || error?.message });
+    } finally {
+      setBusyAction('');
+    }
+  };
+
+  const handleModeration = async (username, action) => {
+    if (!selectedGroup?.id || !username) return;
+    setBusyAction(`${action}:${username}`);
+    try {
+      await moderateGroupMember(selectedGroup.id, { username, action });
+      pushToast({ type: 'success', title: action === 'kick' ? 'تم إخراج العضو' : action === 'mute' ? 'تم كتم العضو' : 'تم إلغاء الكتم' });
+      await loadGroupDetails(selectedGroup.id);
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر تنفيذ الإجراء', description: error?.response?.data?.detail || error?.message });
+    } finally {
+      setBusyAction('');
+    }
   };
 
   return (
     <MainLayout>
-      <div style={{ display: 'flex', height: 'calc(100vh - 70px)', maxWidth: 1200, margin: '0 auto' }}>
-        
-        {/* Groups Sidebar */}
-        <div style={{ width: 300, borderLeft: '1px solid var(--line)', padding: 20, overflowY: 'auto' }}>
+      <div style={{ display: 'flex', height: 'calc(100vh - 70px)', maxWidth: 1320, margin: '0 auto' }}>
+        <div style={{ width: 320, borderLeft: '1px solid var(--line)', padding: 20, overflowY: 'auto' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-            <h3 style={{ margin: 0 }}>مجموعاتي</h3>
+            <div>
+              <h3 style={{ margin: 0 }}>المجموعات</h3>
+              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>ربط مباشر بالـ API الحقيقي</div>
+            </div>
             <Button size="small" onClick={() => setShowCreateModal(true)}>➕</Button>
           </div>
+
           <div style={{ display: 'grid', gap: 10 }}>
-            {groups.map(g => (
-              <Card 
-                key={g.id} 
-                onClick={() => setSelectedGroup(g)}
-                style={{ 
-                  padding: 12, 
-                  cursor: 'pointer', 
-                  background: selectedGroup?.id === g.id ? 'rgba(139, 92, 246, 0.1)' : '',
-                  border: selectedGroup?.id === g.id ? '1px solid var(--primary)' : '1px solid transparent'
+            {loadingGroups ? <Card style={{ padding: 16 }}>جارٍ تحميل المجموعات...</Card> : null}
+            {!loadingGroups && !groups.length ? <EmptyState title="لا توجد مجموعات بعد" description="ابدأ بإنشاء أول مجموعة" /> : null}
+            {groups.map((group) => (
+              <Card
+                key={group.id}
+                onClick={() => setSelectedGroupId(String(group.id))}
+                style={{
+                  padding: 14,
+                  cursor: 'pointer',
+                  background: selectedGroupId === String(group.id) ? 'rgba(139, 92, 246, 0.12)' : '',
+                  border: selectedGroupId === String(group.id) ? '1px solid var(--primary)' : '1px solid transparent',
                 }}
               >
-                <div style={{ fontWeight: 'bold' }}>{g.name}</div>
-                <div className="muted" style={{ fontSize: 12 }}>{g.members_count} عضو</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                  <div>
+                    <div style={{ fontWeight: 800 }}>{group.name}</div>
+                    <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{group.members_count || 0} عضو</div>
+                  </div>
+                  {Array.isArray(group.members) && group.members.some((member) => member.username === currentUsername) ? (
+                    <span style={{ fontSize: 11, padding: '4px 8px', borderRadius: 999, background: 'rgba(34,197,94,0.14)', color: '#22c55e', alignSelf: 'start' }}>منضم</span>
+                  ) : null}
+                </div>
+                <div className="muted" style={{ marginTop: 10, fontSize: 13, lineHeight: 1.6 }}>{group.description || 'بدون وصف'}</div>
               </Card>
             ))}
           </div>
         </div>
 
-        {/* Group Content */}
         {selectedGroup ? (
           <div style={{ flex: 1, padding: 30, overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 30 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20, marginBottom: 30, flexWrap: 'wrap' }}>
               <div>
                 <h1 style={{ margin: '0 0 8px 0' }}>{selectedGroup.name}</h1>
-                <p className="muted">{selectedGroup.description}</p>
+                <p className="muted" style={{ margin: 0, maxWidth: 760 }}>{selectedGroup.description || 'وصف المجموعة غير متوفر حالياً.'}</p>
+                <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+                  <span className="muted">المالك: <strong>{selectedGroup.owner_username}</strong></span>
+                  <span className="muted">الإنشاء: <strong>{formatDate(selectedGroup.created_at)}</strong></span>
+                  <span className="muted">الأعضاء: <strong>{analytics.totalMembers}</strong></span>
+                </div>
               </div>
-              <div style={{ display: 'flex', gap: 10 }}>
-                <Button variant="secondary" onClick={() => setShowInviteModal(true)}>➕ دعوة</Button>
-                <Button onClick={() => setShowAnalytics(true)}>📊 التحليلات</Button>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                {!isMember ? <Button onClick={handleJoinGroup} loading={busyAction === 'join'}>انضمام</Button> : null}
+                {isMember ? <Button variant="secondary" onClick={() => setShowInviteModal(true)}>➕ دعوة</Button> : null}
+                <Button variant="secondary" onClick={() => setShowAnalytics(true)}>📊 التحليلات</Button>
               </div>
             </div>
 
-            {/* Tabs */}
-            <div style={{ display: 'flex', gap: 20, borderBottom: '1px solid var(--line)', marginBottom: 24 }}>
-              {['members', 'moderation', 'settings'].map(tab => (
+            <div style={{ display: 'flex', gap: 20, borderBottom: '1px solid var(--line)', marginBottom: 24, overflowX: 'auto' }}>
+              {[
+                { id: 'members', label: 'الأعضاء' },
+                { id: 'moderation', label: 'الرقابة' },
+                { id: 'settings', label: 'الإعدادات' },
+              ].map((tab) => (
                 <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
                   style={{
                     padding: '12px 0',
                     background: 'none',
                     border: 'none',
-                    borderBottom: activeTab === tab ? '2px solid var(--primary)' : '2px solid transparent',
-                    color: activeTab === tab ? 'white' : '#888',
+                    borderBottom: activeTab === tab.id ? '2px solid var(--primary)' : '2px solid transparent',
+                    color: activeTab === tab.id ? 'white' : '#888',
                     cursor: 'pointer',
-                    fontWeight: activeTab === tab ? 'bold' : 'normal'
+                    fontWeight: activeTab === tab.id ? 'bold' : 'normal',
+                    whiteSpace: 'nowrap',
                   }}
                 >
-                  {tab === 'members' ? 'الأعضاء' : tab === 'moderation' ? 'الرقابة' : 'الإعدادات'}
+                  {tab.label}
                 </button>
               ))}
             </div>
 
-            {activeTab === 'members' && (
-              <div style={{ display: 'grid', gap: 12 }}>
-                {[
-                  { id: 1, name: 'أحمد محمد', role: 'admin' },
-                  { id: 2, name: 'سارة خالد', role: 'moderator' },
-                  { id: 3, name: 'ياسين علي', role: 'member' }
-                ].map(member => (
-                  <Card key={member.id} style={{ padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <div style={{ width: 35, height: 35, borderRadius: '50%', background: '#444' }} />
-                      <div style={{ fontWeight: 'bold' }}>{member.name}</div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
-                      <span style={{ 
-                        fontSize: 11, 
-                        padding: '2px 8px', 
-                        borderRadius: 10, 
-                        background: ROLES.find(r => r.id === member.role).color + '33',
-                        color: ROLES.find(r => r.id === member.role).color
-                      }}>
-                        {ROLES.find(r => r.id === member.role).label}
-                      </span>
-                      <button style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer' }}>⚙️</button>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            )}
+            {loadingDetails ? <Card style={{ padding: 16, marginBottom: 20 }}>جارٍ تحميل تفاصيل المجموعة...</Card> : null}
 
-            {activeTab === 'moderation' && (
+            {activeTab === 'members' ? (
+              <div style={{ display: 'grid', gap: 12 }}>
+                {members.map((member) => {
+                  const meta = roleMeta(member.role);
+                  const isCurrentMember = member.username === currentUsername;
+                  const actionBusy = busyAction.endsWith(`:${member.username}`);
+                  return (
+                    <Card key={member.username} style={{ padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div style={{ width: 42, height: 42, borderRadius: '50%', background: 'rgba(255,255,255,0.06)', display: 'grid', placeItems: 'center', fontWeight: 800 }}>
+                          {String(member.username || '?').slice(0, 1).toUpperCase()}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 'bold' }}>{member.username} {isCurrentMember ? <span className="muted">(أنت)</span> : null}</div>
+                          <div className="muted" style={{ fontSize: 12 }}>انضم: {formatDate(member.joined_at)}</div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 11, padding: '5px 10px', borderRadius: 999, background: `${meta.color}22`, color: meta.color, fontWeight: 700 }}>{meta.label}</span>
+                        {member.is_muted ? <span style={{ fontSize: 11, padding: '5px 10px', borderRadius: 999, background: 'rgba(239,68,68,0.16)', color: '#ef4444', fontWeight: 700 }}>مكتوم</span> : null}
+                        {canManageRoles && !isCurrentMember ? (
+                          <Button
+                            variant="secondary"
+                            size="small"
+                            onClick={() => {
+                              setRoleDraft({ username: member.username, role: String(member.role || 'member').toLowerCase() });
+                              setShowRoleModal(true);
+                            }}
+                            loading={busyAction === `role:${member.username}`}
+                          >
+                            تغيير الصلاحية
+                          </Button>
+                        ) : null}
+                        {canModerate && !isCurrentMember ? (
+                          <>
+                            <Button variant="secondary" size="small" onClick={() => handleModeration(member.username, member.is_muted ? 'unmute' : 'mute')} loading={actionBusy}>
+                              {member.is_muted ? 'إلغاء الكتم' : 'كتم'}
+                            </Button>
+                            <Button variant="secondary" size="small" onClick={() => handleModeration(member.username, 'kick')} loading={busyAction === `kick:${member.username}`}>
+                              إخراج
+                            </Button>
+                          </>
+                        ) : null}
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            {activeTab === 'moderation' ? (
               <div style={{ display: 'grid', gap: 20 }}>
                 <Card style={{ padding: 20 }}>
-                  <h4>المنشورات المعلقة (Pending)</h4>
-                  <div className="muted" style={{ textAlign: 'center', padding: '20px 0' }}>لا توجد منشورات بانتظار المراجعة</div>
+                  <h4 style={{ marginTop: 0 }}>سجل التدقيق</h4>
+                  {!auditLogs.length ? <div className="muted">لا توجد أحداث رقابية متاحة لهذا الحساب.</div> : null}
+                  <div style={{ display: 'grid', gap: 12, marginTop: auditLogs.length ? 16 : 0 }}>
+                    {auditLogs.slice().reverse().map((log, index) => (
+                      <div key={`${log.timestamp || index}-${log.action || index}`} style={{ padding: 12, borderRadius: 14, background: 'rgba(255,255,255,0.04)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                          <strong>{log.actor || 'system'} · {log.action || 'event'}</strong>
+                          <span className="muted" style={{ fontSize: 12 }}>{formatDate(log.timestamp)}</span>
+                        </div>
+                        <div className="muted" style={{ marginTop: 6 }}>{log.description || 'لا يوجد وصف'}</div>
+                      </div>
+                    ))}
+                  </div>
                 </Card>
+
                 <Card style={{ padding: 20 }}>
-                  <h4>قواعد المجموعة</h4>
+                  <h4 style={{ marginTop: 0 }}>قواعد المجموعة</h4>
                   <div style={{ display: 'grid', gap: 10, marginTop: 15 }}>
                     <div style={{ padding: 10, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>1. الاحترام المتبادل بين الأعضاء</div>
-                    <div style={{ padding: 10, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>2. يمنع نشر الروابط الخارجية دون إذن</div>
+                    <div style={{ padding: 10, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>2. يمنع نشر المحتوى المسيء أو المزعج</div>
+                    <div style={{ padding: 10, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>3. أدوات الرقابة مربوطة الآن بالـ backend الحقيقي</div>
                   </div>
                 </Card>
               </div>
-            )}
+            ) : null}
+
+            {activeTab === 'settings' ? (
+              <div style={{ display: 'grid', gap: 20 }}>
+                <Card style={{ padding: 20 }}>
+                  <h4 style={{ marginTop: 0 }}>إعدادات الوصول</h4>
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <div className="muted">الخصوصية: <strong>{selectedGroup.settings?.is_private ? 'خاصة' : 'عامة'}</strong></div>
+                    <div className="muted">دعوات الأعضاء: <strong>{selectedGroup.settings?.allow_member_invites ? 'مفعلة' : 'مقفلة'}</strong></div>
+                    <div className="muted">Slow mode: <strong>{selectedGroup.settings?.slow_mode || 0} ثانية</strong></div>
+                  </div>
+                </Card>
+                <Card style={{ padding: 20 }}>
+                  <h4 style={{ marginTop: 0 }}>رابط الانضمام</h4>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    <input readOnly value={inviteLink} style={{ flex: 1, minWidth: 240, background: '#222', border: '1px solid #444', padding: 12, borderRadius: 12, color: 'white' }} />
+                    <Button variant="secondary" onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(inviteLink);
+                        pushToast({ type: 'success', title: 'تم نسخ الرابط' });
+                      } catch (error) {
+                        pushToast({ type: 'error', title: 'تعذر نسخ الرابط', description: error?.message });
+                      }
+                    }}>نسخ</Button>
+                  </div>
+                </Card>
+              </div>
+            ) : null}
           </div>
         ) : (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -148,20 +415,19 @@ export default function Groups() {
         )}
       </div>
 
-      {/* Invite Modal */}
-      <Modal isOpen={showInviteModal} onClose={() => setShowInviteModal(false)} title="دعوة أعضاء للمجموعة">
-        <div style={{ padding: 20 }}>
-          <p>شارك رابط الدعوة مع أصدقائك:</p>
-          <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
-            <input 
-              readOnly 
-              value={`https://yamshat.com/join/${selectedGroup?.id}`} 
-              style={{ flex: 1, background: '#222', border: '1px solid #444', padding: 10, borderRadius: 8, color: 'white' }}
-            />
-            <Button onClick={() => alert('تم النسخ!')}>نسخ</Button>
+      <Modal isOpen={showInviteModal} onClose={() => setShowInviteModal(false)} title="دعوة عضو للمجموعة">
+        <div style={{ padding: 20, display: 'grid', gap: 14 }}>
+          <div className="muted">أدخل اسم المستخدم لإرسال دعوة فعلية عبر الـ API.</div>
+          <input
+            value={inviteUsername}
+            onChange={(event) => setInviteUsername(event.target.value)}
+            placeholder="اسم المستخدم"
+            style={{ width: '100%', background: '#222', border: '1px solid #444', padding: 12, borderRadius: 12, color: 'white' }}
+          />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <Button variant="secondary" onClick={() => setShowInviteModal(false)}>إلغاء</Button>
+            <Button onClick={handleInvite} loading={busyAction === 'invite'} disabled={!inviteUsername.trim()}>إرسال الدعوة</Button>
           </div>
-          <div className="divider"><span>أو ابحث عن صديق</span></div>
-          <input placeholder="ابحث بالاسم أو البريد..." style={{ width: '100%', background: '#222', border: '1px solid #444', padding: 10, borderRadius: 8, color: 'white', marginTop: 15 }} />
         </div>
       </Modal>
 
@@ -188,47 +454,53 @@ export default function Groups() {
           </label>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
             <Button variant="secondary" onClick={() => setShowCreateModal(false)}>إلغاء</Button>
-            <Button
-              onClick={async () => {
-                if (!createForm.name.trim()) return;
-                try {
-                  setSavingGroup(true);
-                  const { data } = await createGroup({ name: createForm.name.trim(), description: createForm.description.trim() });
-                  const createdGroup = data || { id: `local-${Date.now()}`, name: createForm.name.trim(), description: createForm.description.trim(), members_count: 1 };
-                  setGroups((prev) => [createdGroup, ...prev]);
-                  setSelectedGroup(createdGroup);
-                  setCreateForm({ name: '', description: '' });
-                  setShowCreateModal(false);
-                } finally {
-                  setSavingGroup(false);
-                }
-              }}
-              loading={savingGroup}
-              disabled={!createForm.name.trim()}
-            >إنشاء المجموعة</Button>
+            <Button onClick={handleCreateGroup} loading={savingGroup} disabled={!createForm.name.trim()}>إنشاء المجموعة</Button>
           </div>
         </div>
       </Modal>
 
-      {/* Analytics Modal */}
-      <Modal isOpen={showAnalytics} onClose={() => setShowAnalytics(false)} title="تحليلات المجموعة">
-        <div style={{ padding: 20 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 15, marginBottom: 20 }}>
-            <Card style={{ padding: 15, textAlign: 'center' }}>
-              <div style={{ fontSize: 24, fontWeight: 'bold', color: 'var(--primary)' }}>+12%</div>
-              <div className="muted">نمو الأعضاء (هذا الشهر)</div>
-            </Card>
-            <Card style={{ padding: 15, textAlign: 'center' }}>
-              <div style={{ fontSize: 24, fontWeight: 'bold', color: '#44ff44' }}>850</div>
-              <div className="muted">عضو نشط يومياً</div>
-            </Card>
+      <Modal isOpen={showRoleModal} onClose={() => setShowRoleModal(false)} title="تحديث دور العضو">
+        <div style={{ padding: 20, display: 'grid', gap: 14 }}>
+          <div className="muted">المستخدم: <strong>{roleDraft.username || '—'}</strong></div>
+          <select value={roleDraft.role} onChange={(event) => setRoleDraft((prev) => ({ ...prev, role: event.target.value }))} style={{ width: '100%', borderRadius: 12, padding: 12 }}>
+            {Object.entries(ROLE_META).map(([value, meta]) => (
+              <option key={value} value={value}>{meta.label}</option>
+            ))}
+          </select>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <Button variant="secondary" onClick={() => setShowRoleModal(false)}>إلغاء</Button>
+            <Button onClick={handleUpdateRole} loading={busyAction === `role:${roleDraft.username}`}>حفظ التغيير</Button>
           </div>
-          <h4>أكثر الأعضاء تفاعلاً</h4>
-          <div style={{ height: 150, background: 'rgba(255,255,255,0.05)', borderRadius: 12, marginTop: 10, display: 'flex', alignItems: 'flex-end', gap: 10, padding: 15 }}>
-            {[40, 70, 50, 90, 60].map((h, i) => (
-              <div key={i} style={{ flex: 1, height: `${h}%`, background: 'var(--primary)', borderRadius: '4px 4px 0 0' }} />
+        </div>
+      </Modal>
+
+      <Modal isOpen={showAnalytics} onClose={() => setShowAnalytics(false)} title="تحليلات المجموعة">
+        <div style={{ padding: 20, display: 'grid', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 15 }}>
+            {[
+              ['إجمالي الأعضاء', analytics.totalMembers, 'var(--primary)'],
+              ['المديرون', analytics.admins, '#ef4444'],
+              ['المشرفون', analytics.moderators, '#8b5cf6'],
+              ['المكتومون', analytics.muted, '#f59e0b'],
+            ].map(([label, value, color]) => (
+              <Card key={label} style={{ padding: 16, textAlign: 'center' }}>
+                <div style={{ fontSize: 26, fontWeight: 'bold', color }}>{value}</div>
+                <div className="muted">{label}</div>
+              </Card>
             ))}
           </div>
+          <Card style={{ padding: 16 }}>
+            <h4 style={{ marginTop: 0 }}>آخر أحداث المجموعة</h4>
+            <div style={{ display: 'grid', gap: 10 }}>
+              {(auditLogs.length ? auditLogs.slice().reverse() : (selectedGroup?.audit_logs_preview || []).slice().reverse()).slice(0, 6).map((log, index) => (
+                <div key={`${log.timestamp || index}-${index}`} style={{ padding: 12, borderRadius: 12, background: 'rgba(255,255,255,0.04)' }}>
+                  <strong>{log.actor || 'system'} · {log.action || 'event'}</strong>
+                  <div className="muted" style={{ marginTop: 6 }}>{log.description || 'لا يوجد وصف'}</div>
+                </div>
+              ))}
+              {!auditLogs.length && !(selectedGroup?.audit_logs_preview || []).length ? <div className="muted">لا توجد بيانات تحليلية إضافية بعد.</div> : null}
+            </div>
+          </Card>
         </div>
       </Modal>
     </MainLayout>

@@ -18,70 +18,87 @@
   };
   const currentOrigin = trim(window.location.origin);
 
-  const inferBackendFromHints = () => {
+  const readStorage = (key) => {
     try {
-      const links = Array.from(document.querySelectorAll('link[rel="preconnect"][href], link[rel="dns-prefetch"][href]'));
-      for (const link of links) {
-        const origin = safeOrigin(link.getAttribute('href'));
-        if (origin && origin !== currentOrigin) return origin;
-      }
-    } catch (_) {}
+      return trim(localStorage.getItem(key));
+    } catch (_) {
+      return '';
+    }
+  };
 
+  const inferSiblingBackend = () => {
     const host = trim(window.location.hostname).toLowerCase();
-    const renderSibling = host.match(/^(.*)-\d+\.onrender\.com$/i);
-    if (renderSibling?.[1]) {
-      return `${window.location.protocol}//${renderSibling[1]}.onrender.com`;
+    const protocol = window.location.protocol;
+
+    if (/\.onrender\.com$/i.test(host)) {
+      if (host.includes('-web.')) return `${protocol}//${host.replace('-web.', '-api.')}`;
+      if (host.includes('-frontend.')) return `${protocol}//${host.replace('-frontend.', '-api.')}`;
+      const numbered = host.match(/^(.*)-web-(\w+)\.onrender\.com$/i);
+      if (numbered?.[1] && numbered?.[2]) {
+        return `${protocol}//${numbered[1]}-api-${numbered[2]}.onrender.com`;
+      }
     }
 
-    return currentOrigin;
+    return '';
   };
 
   const params = new URLSearchParams(window.location.search);
   const queryApi = toApiBase(params.get('api'));
   const queryBackend = trim(params.get('backend'));
+  const storedApi = toApiBase(readStorage('apiBase'));
+  const storedBackend = trim(readStorage('backendOrigin'));
+  const deployBackend = trim(DEPLOY_BACKEND_ORIGIN);
+  const deployApi = toApiBase(DEPLOY_API_BASE);
+  const siblingBackend = inferSiblingBackend();
+  const siblingApi = toApiBase(siblingBackend);
 
-  let storedApi = '';
-  let storedBackend = '';
-  try {
-    storedApi = toApiBase(localStorage.getItem('apiBase'));
-    storedBackend = trim(localStorage.getItem('backendOrigin'));
-  } catch (_) {}
-
-  const inferredBackendOrigin = inferBackendFromHints();
-  const inferredApi = inferredBackendOrigin ? `${inferredBackendOrigin}/api` : '';
   const isRenderHost = (value) => /\.onrender\.com$/i.test(trim(value));
-  const originLooksCurrent = (value) => {
-    const candidate = trim(value);
-    if (!candidate || !inferredBackendOrigin) return false;
-    return candidate === inferredBackendOrigin || candidate === currentOrigin;
-  };
-  const apiLooksCurrent = (value) => {
-    const candidate = toApiBase(value);
-    if (!candidate) return false;
-    return candidate === toApiBase(inferredApi) || candidate === toApiBase(`${currentOrigin}/api`);
-  };
+  const sameOrigin = (value) => trim(value) === currentOrigin;
+  const sameApiOrigin = (value) => apiToOrigin(value) === currentOrigin;
 
-  const safeStoredBackend = originLooksCurrent(storedBackend) || !isRenderHost(storedBackend) ? storedBackend : '';
-  const safeStoredApi = apiLooksCurrent(storedApi) || !isRenderHost(apiToOrigin(storedApi)) ? storedApi : '';
+  const safeStoredBackend = (() => {
+    if (!storedBackend) return '';
+    if (!isRenderHost(storedBackend)) return storedBackend;
+    if (sameOrigin(storedBackend)) return storedBackend;
+    if (deployBackend && storedBackend === deployBackend) return storedBackend;
+    if (siblingBackend && storedBackend === siblingBackend) return storedBackend;
+    return '';
+  })();
+
+  const safeStoredApi = (() => {
+    if (!storedApi) return '';
+    const storedApiOrigin = apiToOrigin(storedApi);
+    if (!isRenderHost(storedApiOrigin)) return storedApi;
+    if (sameApiOrigin(storedApi)) return storedApi;
+    if (deployApi && storedApi === deployApi) return storedApi;
+    if (siblingApi && storedApi === siblingApi) return storedApi;
+    return '';
+  })();
 
   const backendOrigin =
-    trim(queryBackend) ||
+    queryBackend ||
     apiToOrigin(queryApi) ||
-    trim(DEPLOY_BACKEND_ORIGIN) ||
+    deployBackend ||
+    apiToOrigin(deployApi) ||
     safeStoredBackend ||
     apiToOrigin(safeStoredApi) ||
-    inferredBackendOrigin ||
+    siblingBackend ||
     currentOrigin;
 
   const apiBase =
-    toApiBase(queryApi) ||
-    toApiBase(DEPLOY_API_BASE) ||
+    queryApi ||
+    toApiBase(queryBackend) ||
+    deployApi ||
     safeStoredApi ||
     toApiBase(`${backendOrigin}/api`) ||
-    toApiBase(inferredApi) ||
     toApiBase(`${currentOrigin}/api`);
 
   try {
+    const previousBackendOrigin = trim(localStorage.getItem('backendOrigin'));
+    if (previousBackendOrigin && previousBackendOrigin !== backendOrigin) {
+      localStorage.removeItem('yamshat_csrf_token');
+      sessionStorage.removeItem('yamshat_user_session');
+    }
     localStorage.setItem('backendOrigin', backendOrigin);
     localStorage.setItem('apiBase', apiBase);
   } catch (_) {}

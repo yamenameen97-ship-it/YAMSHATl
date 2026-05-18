@@ -1,0 +1,1 @@
+import{a}from"./chunk-7DXJ3TCH.js";import{b as o}from"./chunk-T3SILTKH.js";import{d as i,k as t}from"./chunk-XSUFE7BX.js";t();var n=i(o(),1);function c({children:r,className:d="",...m}){return(0,n.jsx)(a.div,{initial:{opacity:0,y:10},animate:{opacity:1,y:0},transition:{duration:.25},className:`card ${d}`.trim(),...m,children:r})}export{c as a};

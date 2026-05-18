@@ -8,9 +8,10 @@
     "npm": ">=10"
   },
   "scripts": {
-    "cache-buster": "node scripts/cache-buster.cjs",
+    "cache-buster": "node scripts/cache-buster.js",
     "dev": "node ./node_modules/vite/bin/vite.js --host 0.0.0.0 --port 5173",
-    "build": "npm run cache-buster && node ./node_modules/vite/bin/vite.js build",
+    "build": "npm run cache-buster && node scripts/build.mjs",
+    "build:vite": "node ./node_modules/vite/bin/vite.js build",
     "preview": "node ./node_modules/vite/bin/vite.js preview --host 0.0.0.0 --port 4173",
     "test:e2e": "node ./node_modules/@playwright/test/cli.js test",
     "test:e2e:headed": "node ./node_modules/@playwright/test/cli.js test --headed",

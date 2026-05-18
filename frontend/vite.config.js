@@ -16,7 +16,13 @@ const enablePwa = false; // Fixed to prevent Render serving old cached admin das
  * Render: `Cannot read properties of undefined (reading 'createContext')`.
  * Let Vite/Rollup own the chunk graph for safety and deployment stability.
  */
-const manualChunks = undefined;
+const manualChunks = (id) => {
+  if (!id.includes('node_modules')) return undefined;
+  if (/node_modules\/(react|react-dom|react-router|react-router-dom)\//.test(id)) return 'vendor-react';
+  if (/node_modules\/(socket\.io-client|livekit-client)\//.test(id)) return 'vendor-realtime';
+  if (/node_modules\/(recharts|framer-motion)\//.test(id)) return 'vendor-ui';
+  return 'vendor';
+};
 
 export default defineConfig({
   plugins: [
@@ -89,10 +95,10 @@ export default defineConfig({
     target: 'es2020',
     outDir: 'dist',
     emptyOutDir: true,
-    cssCodeSplit: false,
-    minify: false,
-    cssMinify: false,
-    assetsInlineLimit: 4096,
+    cssCodeSplit: true,
+    minify: 'esbuild',
+    cssMinify: true,
+    assetsInlineLimit: 0,
     modulePreload: {
       polyfill: true,
     },

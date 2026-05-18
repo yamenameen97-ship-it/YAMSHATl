@@ -4,6 +4,7 @@ import { HashRouter } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import App from './App.jsx';
 import './styles/global.css';
+import './styles/responsive.css';
 import { queryClient } from './lib/queryClient.js';
 import { useAppStore } from './store/appStore.js';
 import RealtimeProvider from './realtime/RealtimeProvider.jsx';
@@ -27,11 +28,20 @@ if (typeof window !== 'undefined') {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      window.__YAMSHAT_SW_READY__ = navigator.serviceWorker.register('/sw.js')
-        .then((registration) => {
-          initializePerformanceToolkit({ registration });
+      window.__YAMSHAT_SW_READY__ = navigator.serviceWorker.getRegistrations()
+        .then(async (registrations) => {
+          await Promise.all(registrations.map((registration) => registration.unregister()));
+          if ('caches' in window) {
+            const cacheKeys = await window.caches.keys();
+            await Promise.all(
+              cacheKeys
+                .filter((key) => /yamshat|:shell|:static|:media|:api|:offline/i.test(key))
+                .map((key) => window.caches.delete(key))
+            );
+          }
+          initializePerformanceToolkit({ registration: null });
           notificationService.initialize().catch(() => null);
-          return registration;
+          return null;
         })
         .catch(() => null);
     });

@@ -1,0 +1,383 @@
+/**
+ * أنماط مكون حاوية الحركات
+ */
+
+.gesture-container {
+  position: relative;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  will-change: transform;
+}
+
+.gesture-container.dragging {
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+}
+
+/* تأثيرات اللمس */
+.gesture-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at var(--touch-x, 50%) var(--touch-y, 50%), rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease-out;
+}
+
+.gesture-container.dragging::before {
+  opacity: 1;
+}
+
+/* حركات سلسة */
+@supports (animation: smooth-swipe 0.3s ease-out) {
+  @keyframes smooth-swipe {
+    0% {
+      transform: translateX(0);
+    }
+    100% {
+      transform: translateX(var(--swipe-distance, 0));
+    }
+  }
+
+  .gesture-container.swiping {
+    animation: smooth-swipe 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+}
+
+/* تأثير الارتجاج للضغط الطويل */
+@keyframes haptic-feedback {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.98);
+  }
+}
+
+.gesture-container.long-press {
+  animation: haptic-feedback 0.2s ease-in-out;
+}
+
+/* تأثير النقر المزدوج */
+@keyframes double-tap-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.05);
+    opacity: 0;
+  }
+}
+
+.gesture-container.double-tapped::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 40px;
+  height: 40px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  animation: double-tap-pulse 0.6s ease-out;
+  pointer-events: none;
+}
+
+/* تحسينات الأداء */
+.gesture-container {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  perspective: 1000;
+  -webkit-perspective: 1000;
+}
+
+/* دعم الأجهزة المختلفة */
+@media (hover: hover) {
+  .gesture-container:hover {
+    opacity: 0.95;
+  }
+}
+
+@media (hover: none) {
+  .gesture-container {
+    /* تحسينات للأجهزة التي لا تدعم hover */
+  }
+}
+
+/* دعم الأجهزة ذات الشاشات الصغيرة */
+@media (max-width: 768px) {
+  .gesture-container {
+    touch-action: manipulation;
+  }
+}
+
+/* تحسينات للأداء على الأجهزة الضعيفة */
+@media (prefers-reduced-motion: reduce) {
+  .gesture-container {
+    transition: none !important;
+    animation: none !important;
+  }
+
+  .gesture-container.dragging {
+    box-shadow: none;
+  }
+}
+
+/* تأثيرات الاهتزاز البصري */
+.gesture-container.vibrate {
+  animation: vibrate 0.3s;
+}
+
+@keyframes vibrate {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-2px);
+  }
+  75% {
+    transform: translateX(2px);
+  }
+}
+
+/* تحسينات الأداء للحركات المتكررة */
+.gesture-container.smooth-scroll {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* تأثيرات اللمس المتقدمة */
+.gesture-container.touch-active {
+  position: relative;
+}
+
+.gesture-container.touch-active::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, transparent 100%);
+  pointer-events: none;
+  animation: touch-shimmer 0.6s ease-in-out;
+}
+
+@keyframes touch-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* دعم الحركات على الأجهزة المختلفة */
+@supports (touch-action: manipulation) {
+  .gesture-container {
+    touch-action: manipulation;
+  }
+}
+
+/* تحسينات الأداء للحركات المستمرة */
+.gesture-container.continuous-gesture {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* تأثيرات الاهتزاز للأجهزة المدعومة */
+@supports ((-webkit-touch-callout: none)) {
+  .gesture-container.haptic-enabled {
+    -webkit-user-select: none;
+  }
+}
+
+
+
+/* =========================================
+   YAMSHAT RESPONSIVE DESKTOP + MOBILE UI
+========================================= */
+
+:root{
+  --yam-bg:#050816;
+  --yam-card:#0c1222;
+  --yam-purple:#7c3aed;
+  --yam-pink:#c026d3;
+  --yam-line:rgba(255,255,255,.06);
+}
+
+/* Desktop */
+.desktop-layout{
+  display:grid;
+  grid-template-columns:280px 1fr 320px;
+  gap:20px;
+  align-items:start;
+}
+
+.left-sidebar,
+.right-sidebar{
+  position:sticky;
+  top:90px;
+}
+
+.feed-center{
+  width:100%;
+}
+
+.post-card,
+.feed-card,
+.card{
+  background:rgba(12,18,34,.88)!important;
+  border:1px solid var(--yam-line)!important;
+  border-radius:26px!important;
+  overflow:hidden;
+  backdrop-filter:blur(18px);
+  box-shadow:0 10px 30px rgba(0,0,0,.35);
+}
+
+.story-bar{
+  display:flex;
+  overflow-x:auto;
+  gap:14px;
+  padding:10px 0 18px;
+}
+
+.story-item{
+  min-width:74px;
+  text-align:center;
+}
+
+.story-avatar{
+  width:70px;
+  height:70px;
+  border-radius:50%;
+  padding:3px;
+  background:linear-gradient(135deg,var(--yam-purple),var(--yam-pink));
+}
+
+.story-avatar img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  border-radius:50%;
+  border:3px solid #050816;
+}
+
+.bottom-mobile-nav{
+  display:none;
+}
+
+/* Mobile */
+@media (max-width: 768px){
+
+  body{
+    background:
+      radial-gradient(circle at top right, rgba(124,58,237,.25), transparent 25%),
+      linear-gradient(180deg,#050816,#091120 45%,#050816)!important;
+  }
+
+  .desktop-layout{
+    display:block!important;
+  }
+
+  .left-sidebar,
+  .right-sidebar{
+    display:none!important;
+  }
+
+  .feed-center{
+    width:100%!important;
+    max-width:100%!important;
+    padding:0!important;
+    margin:0!important;
+  }
+
+  .post-card,
+  .feed-card,
+  .card{
+    border-radius:24px!important;
+    margin-bottom:18px!important;
+  }
+
+  .post-card img,
+  .feed-card img{
+    width:100%;
+    max-height:520px;
+    object-fit:cover;
+  }
+
+  .top-navbar,
+  .desktop-navbar{
+    padding:12px 14px!important;
+    border-bottom:1px solid rgba(255,255,255,.05);
+    backdrop-filter:blur(18px);
+    background:rgba(5,8,22,.88)!important;
+  }
+
+  .main-content{
+    padding-bottom:110px!important;
+  }
+
+  .bottom-mobile-nav{
+    position:fixed;
+    bottom:0;
+    left:0;
+    right:0;
+    height:78px;
+    display:flex!important;
+    justify-content:space-around;
+    align-items:center;
+    z-index:9999;
+    background:rgba(5,8,22,.95);
+    backdrop-filter:blur(18px);
+    border-top:1px solid rgba(255,255,255,.06);
+  }
+
+  .bottom-mobile-nav .nav-btn{
+    color:#cbd5e1;
+    text-decoration:none;
+    font-size:12px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:4px;
+  }
+
+  .bottom-mobile-nav .add-btn{
+    width:58px;
+    height:58px;
+    border-radius:50%;
+    background:linear-gradient(135deg,var(--yam-purple),var(--yam-pink));
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    margin-top:-28px;
+    color:white;
+    font-size:28px;
+    box-shadow:0 10px 25px rgba(124,58,237,.45);
+  }
+
+  .story-bar{
+    padding:8px 10px 14px;
+  }
+
+  .feed-center .post-card,
+  .feed-center .feed-card{
+    width:100%!important;
+  }
+
+}
+
+/* Large desktop enhancement */
+@media (min-width: 1400px){
+  .desktop-layout{
+    grid-template-columns:320px 1fr 360px;
+  }
+}

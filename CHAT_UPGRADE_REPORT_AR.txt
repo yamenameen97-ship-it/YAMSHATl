@@ -1,0 +1,35 @@
+تقرير ترقية نظام الدردشة - 2026-05-06
+
+تم تحسين نظام الدردشة في المشروع بالنقاط التالية:
+
+1) Realtime حقيقي عبر Socket.IO/WebSocket
+- تحسين الانضمام التلقائي للمحادثة بعد إعادة الاتصال.
+- مزامنة حالة المحادثة عند reconnect.
+- إضافة chat_message_ack و sync_chat_state على مستوى السوكت.
+
+2) typing indicator
+- إرسال typing start/stop بشكل debounce.
+- إطفاء الحالة تلقائياً لو انقطع الحدث أو تأخر.
+
+3) delivered / seen
+- ترقية الرسائل المعلقة إلى delivered عند دخول الطرف الآخر أو فتح المحادثة.
+- تسجيل delivered_at و seen_at.
+- بث receipts للطرف المرسل مباشرة.
+
+4) retry + message queue
+- إعادة المحاولة اليدوية من نفس الرسالة.
+- تحويل الأخطاء المؤقتة إلى queued تلقائياً.
+- دعم deduplication بالـ client_id لتجنب التكرار عند retries.
+
+5) pagination
+- API الآن ترجع items + paging.
+- الحفاظ على موضع التمرير عند تحميل الرسائل الأقدم.
+
+6) backend schema
+- إضافة client_id و delivered_at و seen_at.
+- إضافة migration جديدة وتحديث bootstrap للتوافق.
+
+7) اختبارات وتحقق
+- إضافة اختبارات backend للدردشة.
+- تم تشغيل pytest بنجاح.
+- تم بناء frontend بنجاح عبر vite build.

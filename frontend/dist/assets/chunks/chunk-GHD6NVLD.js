@@ -1,1 +1,0 @@
-import{M as s}from"./chunk-XJIZY4FJ.js";import{k as t}from"./chunk-XSUFE7BX.js";t();var c=()=>s.get("/users");var n=e=>s.get(`/users/profile/${encodeURIComponent(e)}`,{cache:!1,forceRefresh:!0});var p=e=>s.post("/users/follow",{following:e});var u=e=>s.patch("/users/me",e);export{c as a,n as b,p as c,u as d};

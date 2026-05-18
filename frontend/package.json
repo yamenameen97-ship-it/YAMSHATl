@@ -8,7 +8,7 @@
     "npm": ">=10"
   },
   "scripts": {
-    "cache-buster": "node scripts/cache-buster.js",
+    "cache-buster": "node scripts/cache-buster.cjs",
     "dev": "node ./node_modules/vite/bin/vite.js --host 0.0.0.0 --port 5173",
     "build": "npm run cache-buster && node ./node_modules/vite/bin/vite.js build",
     "preview": "node ./node_modules/vite/bin/vite.js preview --host 0.0.0.0 --port 4173",

@@ -45,6 +45,9 @@ class LiveRoom:
     featured: bool = False
     pinned_comment_id: str | None = None
     last_activity_at: str = field(default_factory=_utcnow)
+    livekit_room: str = ''
+    livekit_url: str = ''
+    stream_status: str = 'ready'
     comments: list[LiveComment] = field(default_factory=list)
     viewers: dict[str, dict] = field(default_factory=dict)
     reactions: dict[str, int] = field(default_factory=lambda: defaultdict(int))
@@ -85,18 +88,33 @@ class LiveStore:
         self._next_gift_id = 1
 
     def create_room(self, host_user_id: int, username: str, title: str, **options) -> LiveRoom:
-        room_id = str(self._next_room_id)
-        self._next_room_id += 1
+        custom_room_id = options.get('room_id')
+        room_id = str(custom_room_id or self._next_room_id)
+        if custom_room_id is None:
+            self._next_room_id += 1
+
         now = _utcnow()
+        created_at = str(options.get('created_at') or now)
+        last_activity_at = str(options.get('last_activity_at') or created_at)
         room = LiveRoom(
             id=room_id,
             host_user_id=host_user_id,
             username=username,
             title=title or f'Live by {username}',
-            created_at=now,
-            last_activity_at=now,
+            created_at=created_at,
+            active=bool(options.get('active', True)),
+            viewer_count=int(options.get('viewer_count') or 0),
+            hearts_count=int(options.get('hearts_count') or 0),
+            peak_viewer_count=int(options.get('peak_viewer_count') or 0),
+            last_activity_at=last_activity_at,
+            livekit_room=str(options.get('livekit_room') or ''),
+            livekit_url=str(options.get('livekit_url') or ''),
+            stream_status=str(options.get('stream_status') or 'ready'),
+            recording_status=str(options.get('recording_status') or 'idle'),
+            recording_url=options.get('recording_url'),
         )
-        room.multi_host_config['current_hosts'].append(username)
+        if username not in room.multi_host_config['current_hosts']:
+            room.multi_host_config['current_hosts'].append(username)
         room.co_hosts = list(room.multi_host_config['current_hosts'])
         self.rooms[room_id] = room
         return room
@@ -240,6 +258,9 @@ class LiveStore:
             'peak_viewer_count': room.peak_viewer_count,
             'hearts_count': room.hearts_count,
             'active': room.active,
+            'livekit_room': room.livekit_room,
+            'livekit_url': room.livekit_url,
+            'stream_status': room.stream_status,
             'recording': {
                 'status': room.recording_status,
                 'url': room.recording_url,

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import {
@@ -54,6 +55,8 @@ function FloatingHearts({ items }) {
 export default function Live() {
   const { pushToast } = useToast();
   const currentUser = getCurrentUsername();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedRoomId = searchParams.get('room') || '';
 
   const [rooms, setRooms] = useState([]);
   const [activeRoom, setActiveRoom] = useState(null);
@@ -92,6 +95,10 @@ export default function Live() {
       setRooms(next);
       setActiveRoom((prev) => {
         if (!next.length) return null;
+        if (requestedRoomId) {
+          const requestedRoom = next.find((room) => room.id === requestedRoomId);
+          if (requestedRoom) return requestedRoom;
+        }
         if (prev?.id) {
           const matchedRoom = next.find((room) => room.id === prev.id);
           if (matchedRoom) return matchedRoom;
@@ -103,7 +110,7 @@ export default function Live() {
     } finally {
       setLoadingRooms(false);
     }
-  }, [pushToast]);
+  }, [pushToast, requestedRoomId]);
 
   const loadRoomDetails = useCallback(async (roomId) => {
     if (!roomId) return;
@@ -300,6 +307,28 @@ export default function Live() {
   }, [comments]);
 
   useEffect(() => {
+    if (!activeRoom?.id) return;
+    if (requestedRoomId === activeRoom.id) return;
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('room', activeRoom.id);
+    setSearchParams(nextParams, { replace: true });
+  }, [activeRoom?.id, requestedRoomId, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    const handleHeartbeat = (event) => {
+      const nextLatency = Number(event?.detail?.latencyMs || 0);
+      if (Number.isFinite(nextLatency) && nextLatency > 0) {
+        setLatencyMs(Math.round(nextLatency));
+      }
+    };
+
+    window.addEventListener('yamshat:socket-heartbeat', handleHeartbeat);
+    return () => {
+      window.removeEventListener('yamshat:socket-heartbeat', handleHeartbeat);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!activeRoom?.id) return undefined;
 
     socketManager.connect();
@@ -319,7 +348,10 @@ export default function Live() {
       if (!payload || payload.room_id !== activeRoom.id) return;
       setActiveRoom((prev) => prev ? { ...prev, viewer_count: payload.viewer_count, hearts_count: payload.hearts_count } : prev);
       setRooms((prev) => prev.map((room) => room.id === payload.room_id ? { ...room, viewer_count: payload.viewer_count, hearts_count: payload.hearts_count } : room));
-      setLatencyMs((prev) => prev > 1950 ? 980 : prev + 75);
+      const nextLatency = Number(payload.latency_ms || payload.latencyMs || 0);
+      if (Number.isFinite(nextLatency) && nextLatency > 0) {
+        setLatencyMs(Math.round(nextLatency));
+      }
     };
 
     const handleHeart = () => {
@@ -539,7 +571,7 @@ export default function Live() {
                   <div className="yam-live-hero-icon">🎥</div>
                   <h1>{activeRoom?.title || 'بث مباشر مميز'}</h1>
                   <p>المضيف: <strong>{hostName}</strong></p>
-                  <div className="yam-live-stage-tech">Database-backed live rooms • LiveKit token endpoint • Camera preview • Real-time socket comments</div>
+                  <div className="yam-live-stage-tech">غرف مرتبطة بقاعدة البيانات • توكن LiveKit فعلي • معاينة كاميرا قبل النشر • تعليقات لحظية عبر Socket</div>
                 </div>
               ) : null}
             </div>
@@ -557,6 +589,7 @@ export default function Live() {
                 {isHost ? <button type="button" className="yam-chip-btn" onClick={toggleMic}>{microphoneEnabled ? 'كتم المايك' : 'فتح المايك'}</button> : null}
                 {isHost ? <button type="button" className="yam-chip-btn primary" onClick={() => connectToLiveKit('host')} disabled={busy === 'connect-livekit'}>{joinedRole === 'host' ? 'إعادة مزامنة البث' : 'بدء البث الحقيقي'}</button> : null}
                 {!isHost ? <button type="button" className="yam-chip-btn primary" onClick={() => connectToLiveKit('viewer')} disabled={busy === 'connect-livekit'}>دخول المشاهدة</button> : null}
+                {!streamReady ? <span className="yam-inline-alert">مطلوب ضبط مفاتيح LiveKit في الخادم قبل النشر العام</span> : null}
                 {joinedRole ? <button type="button" className="yam-chip-btn" onClick={() => disconnectLiveSession({ keepPreview: false })}>فصل الاتصال</button> : null}
                 <button type="button" className="yam-chip-btn" onClick={sendHeart}>إرسال قلب</button>
                 <button type="button" className="yam-chip-btn" onClick={() => setShowGiftTray((prev) => !prev)}>الهدايا</button>
@@ -571,6 +604,7 @@ export default function Live() {
                 <div className="yam-stat-box"><span>القاعدة</span><strong>{activeRoom?.id ? 'مرتبطة' : 'غير مرتبطة'}</strong></div>
                 <div className="yam-stat-box"><span>المفاتيح</span><strong>{streamReady ? 'مفعلة' : 'تحتاج إعداد'}</strong></div>
                 <div className="yam-stat-box"><span>الاتصال</span><strong>{connectionLabel}</strong></div>
+                <div className="yam-stat-box"><span>حالة البث</span><strong>{activeRoom?.stream_status || 'ready'}</strong></div>
                 <div className="yam-stat-box"><span>الأجهزة</span><strong>{mediaStatus}</strong></div>
               </div>
             </div>
@@ -723,7 +757,8 @@ export default function Live() {
           .yam-chip-btn,
           .yam-mini-btn,
           .yam-supporter-pill,
-          .yam-remote-tag {
+          .yam-remote-tag,
+          .yam-inline-alert {
             border-radius: 999px;
             border: 1px solid rgba(255,255,255,0.08);
             background: rgba(15,23,42,0.66);
@@ -831,6 +866,13 @@ export default function Live() {
           .yam-live-stage-tech {
             margin-top: 14px;
             font-size: 13px;
+          }
+          .yam-inline-alert {
+            padding: 10px 14px;
+            font-size: 12px;
+            background: rgba(245, 158, 11, 0.12);
+            color: #fde68a;
+            border-color: rgba(245, 158, 11, 0.2);
           }
           .yam-live-stage-footer {
             margin-top: 18px;

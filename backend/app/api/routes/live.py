@@ -350,6 +350,8 @@ def send_gift(room_id: str, payload: dict = Body(...), db: Session = Depends(get
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Room not found')
     gift_name = str(payload.get('gift_name') or payload.get('name') or '').strip() or 'هدية'
     coins = int(payload.get('coins') or payload.get('price') or 0)
+    if coins <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Gift coins must be greater than zero')
     _hydrate_runtime_room(record)
     result = live_store.send_gift(room_id, current_user.username, gift_name, coins)
     if not result:
@@ -397,6 +399,8 @@ def add_comment(room_id: str, payload: dict = Body(...), db: Session = Depends(g
     if not record or not record.is_active:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Room not found')
     text = str(payload.get('text') or '').strip()
+    if not text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Comment text is required')
     _hydrate_runtime_room(record)
     comment = live_store.add_comment(room_id, current_user.username, text)
     if not comment:

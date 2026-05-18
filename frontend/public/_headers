@@ -1,0 +1,25 @@
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+
+/index.html
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+/404.html
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+/manifest.webmanifest
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+/app-config.js
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+/frontend-public-app-config.js
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+/sw.js
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+/sw-enhanced.js
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0

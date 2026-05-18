@@ -7,13 +7,15 @@ function normalizePost(post = {}) {
     media_url: mediaUrl || '',
     image_url: post.image_url || mediaUrl || '',
     media_urls: Array.isArray(post.media_urls) ? post.media_urls : mediaUrl ? [mediaUrl] : [],
+    avatar: post.avatar || post.user_avatar || post.user_avatar_url || '',
+    user_avatar: post.user_avatar || post.avatar || post.user_avatar_url || '',
+    username: post.username || post.user?.username || post.author_username || post.author || '',
     likes_count: Number(post.likes_count ?? post.like_count ?? post.likes ?? 0),
     comments_count: Number(post.comments_count ?? post.comment_count ?? 0),
     saved_count: Number(post.saved_count ?? post.save_count ?? 0),
     share_count: Number(post.share_count ?? post.shares ?? 0),
     is_liked: Boolean(post.is_liked ?? post.liked_by_me),
     is_saved: Boolean(post.is_saved ?? post.saved_by_me),
-    user_avatar: post.user_avatar || post.avatar || '',
   };
 }
 

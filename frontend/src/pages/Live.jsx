@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import {
+  addLiveComment,
   createLiveRoom,
   endLiveRoom,
   getLiveComments,
@@ -357,17 +358,41 @@ export default function Live() {
   const viewerCount = Number(activeRoom?.viewer_count || 0);
 
   const sendComment = async () => {
-    if (!commentText.trim() || !activeRoom?.id) return;
+    const nextText = commentText.trim();
+    if (!nextText || !activeRoom?.id) return;
+
     const optimistic = {
       id: `local-${Date.now()}`,
       room_id: activeRoom.id,
       user: currentUser,
-      text: commentText.trim(),
+      username: currentUser,
+      text: nextText,
+      content: nextText,
       created_at: new Date().toISOString(),
+      optimistic: true,
     };
+
     setComments((prev) => [...prev, optimistic]);
-    socketManager.emit('send_comment', { room_id: activeRoom.id, text: commentText.trim() });
     setCommentText('');
+
+    try {
+      const { data } = await addLiveComment({ room_id: activeRoom.id, text: nextText });
+      const confirmed = data?.comment || data || {};
+      setComments((prev) => prev.map((item) => item.id === optimistic.id ? {
+        ...confirmed,
+        id: confirmed.id || optimistic.id,
+        room_id: activeRoom.id,
+        user: confirmed.user || confirmed.username || currentUser,
+        username: confirmed.username || confirmed.user || currentUser,
+        text: confirmed.text || confirmed.content || nextText,
+        content: confirmed.content || confirmed.text || nextText,
+        optimistic: false,
+      } : item));
+      socketManager.emit('send_comment', { room_id: activeRoom.id, text: nextText });
+    } catch (error) {
+      setComments((prev) => prev.filter((item) => item.id !== optimistic.id));
+      pushToast({ type: 'error', title: 'تعذر إرسال التعليق', description: error?.response?.data?.detail || error?.message });
+    }
   };
 
   const sendHeart = () => {
@@ -393,7 +418,8 @@ export default function Live() {
 
   const handleShare = async () => {
     try {
-      const url = `${window.location.origin}${window.location.pathname}#/live`;
+      const roomQuery = activeRoom?.id ? `?room=${activeRoom.id}` : '';
+      const url = `${window.location.origin}/live${roomQuery}`;
       await navigator.clipboard.writeText(url);
       pushToast({ type: 'success', title: 'تم نسخ رابط البث' });
     } catch {
@@ -406,7 +432,9 @@ export default function Live() {
       setBusy('create');
       const { data } = await createLiveRoom({ title: `بث مباشر مع ${currentUser}` });
       setActiveRoom(data);
+      setComments([]);
       await loadRooms();
+      if (data?.id) await loadRoomDetails(data.id);
       pushToast({ type: 'success', title: 'تم إنشاء غرفة البث وربطها بقاعدة البيانات' });
     } catch (error) {
       pushToast({ type: 'error', title: 'تعذر إنشاء البث', description: error?.response?.data?.detail || error?.message });
@@ -610,7 +638,7 @@ export default function Live() {
               {comments.map((comment) => (
                 <div key={comment.id} className="yam-live-comment">
                   <strong>{comment.user || comment.username || 'عضو'}</strong>
-                  <p>{comment.text}</p>
+                  <p>{comment.text || comment.content}</p>
                 </div>
               ))}
               <div ref={commentsEndRef} />

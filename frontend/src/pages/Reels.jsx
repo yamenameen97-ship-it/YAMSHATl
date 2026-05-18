@@ -10,6 +10,7 @@ import { addComment, createPost, getComments, getPosts, likePost, savePost, shar
 import { getCurrentUsername } from '../utils/auth.js';
 import { appendVideoQuality, getDeviceProfile } from '../utils/deviceProfile.js';
 import { getOptimizedImageUrl } from '../utils/performance.js';
+import { isVideoMediaUrl } from '../utils/mediaType.js';
 import { fetchSuggestedReels } from '../services/recommendationService.js';
 import { FixedSizeList as List } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
@@ -24,7 +25,7 @@ function computeReelScore(item) {
 }
 
 function isVideoUrl(url = '') {
-  return /\.(mp4|webm|mov|m3u8)(\?.*)?$/i.test(url);
+  return isVideoMediaUrl(url);
 }
 
 function getPosterUrl(reel) {
@@ -358,7 +359,11 @@ export default function ReelsPage() {
 
   const handleSave = async (reel) => {
     const originalReels = [...reels];
-    setReels((prev) => prev.map((item) => item.id === reel.id ? { ...item, is_saved: !item.is_saved } : item));
+    setReels((prev) => prev.map((item) => item.id === reel.id ? {
+      ...item,
+      is_saved: !item.is_saved,
+      saved_count: item.is_saved ? Math.max(0, Number(item.saved_count || 0) - 1) : Number(item.saved_count || 0) + 1,
+    } : item));
     try {
       await savePost(reel.id);
     } catch {
@@ -370,8 +375,9 @@ export default function ReelsPage() {
   const handleShare = async (reel) => {
     try {
       await navigator.clipboard.writeText(`${window.location.origin}/reels/${reel.id}`);
-      pushToast({ type: 'success', title: 'تم نسخ رابط الريل' });
       await sharePost(reel.id, 'copy');
+      setReels((prev) => prev.map((item) => item.id === reel.id ? { ...item, share_count: Number(item.share_count || 0) + 1 } : item));
+      pushToast({ type: 'success', title: 'تم نسخ رابط الريل' });
     } catch {
       pushToast({ type: 'warning', title: 'تعذر نسخ الرابط' });
     }

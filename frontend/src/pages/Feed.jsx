@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import PostComposer from '../components/feed/PostComposer.jsx';
+import PostCard from '../components/feed/PostCard.jsx';
 import { useFeed } from '../hooks/useFeed.js';
 import { likePost } from '../api/posts.js';
 import { getUsers, followUser } from '../api/users.js';
@@ -29,6 +30,7 @@ function mediaListFromPost(post) {
   if (Array.isArray(post?.media_urls) && post.media_urls.length) return post.media_urls;
   if (Array.isArray(post?.images) && post.images.length) return post.images;
   if (post?.image_url) return [post.image_url];
+  if (post?.media_url) return [post.media_url];
   if (post?.media) return [post.media];
   return [];
 }
@@ -188,7 +190,7 @@ export default function Feed() {
             {isLoading ? <div className="yam-empty-block">جارٍ تحميل المنشورات...</div> : null}
             {!isLoading && !posts.length ? <div className="yam-empty-block">لا توجد منشورات حالياً.</div> : null}
             {posts.map((post) => (
-              <FeedPostCard key={post.id} post={post} onLike={(postId) => likeMutation.mutate(postId)} />
+              <PostCard key={post.id} post={post} onLike={() => likeMutation.mutate(post.id)} />
             ))}
           </div>
         </div>

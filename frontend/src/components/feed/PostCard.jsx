@@ -8,6 +8,7 @@ import { addComment, deletePost, getComments, savePost, sharePost, updatePost } 
 import { useToast } from '../admin/ToastProvider.jsx';
 import { getCurrentUsername } from '../../utils/auth.js';
 import socketManager from '../../services/socketManager.js';
+import { isVideoMediaUrl } from '../../utils/mediaType.js';
 
 const ADVANCED_REACTIONS = [
   { emoji: '❤️', label: 'حب' },
@@ -42,6 +43,8 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
   const [isPinned, setIsPinned] = useState(Boolean(post?.is_pinned));
 
   const isOwner = useMemo(() => currentUser && post?.username && currentUser === post.username, [currentUser, post?.username]);
+  const mediaUrl = post?.media_url || post?.image_url || '';
+  const isVideo = isVideoMediaUrl(mediaUrl);
   const interactionCount = useMemo(() => {
     const reactionCounts = Object.values(post?.reactions || {}).reduce((sum, value) => sum + Number(value || 0), 0);
     return reactionCounts + Number(post?.likes_count || 0) + Number(post?.comments_count || 0) + Number(post?.share_count || 0);
@@ -77,15 +80,19 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
 
   const saveMutation = useMutation({
     mutationFn: () => savePost(post.id),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['feed-data']);
-      pushToast({ type: 'success', title: post.is_saved ? 'تم إلغاء الحفظ' : 'تم حفظ المنشور' });
+    onSuccess: (response) => {
+      const saved = Boolean(response?.data?.saved);
+      queryClient.invalidateQueries({ queryKey: ['feed-data'] });
+      pushToast({ type: 'success', title: saved ? 'تم حفظ المنشور' : 'تم إلغاء حفظ المنشور' });
     },
     onError: (error) => pushToast({ type: 'error', title: 'تعذر حفظ المنشور', description: error?.response?.data?.detail || error?.message }),
   });
 
   const shareMutation = useMutation({
     mutationFn: (platform) => sharePost(post.id, platform),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['feed-data'] });
+    },
     onError: (error) => pushToast({ type: 'error', title: 'تعذر مشاركة المنشور', description: error?.response?.data?.detail || error?.message }),
   });
 
@@ -140,7 +147,7 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
           ? { ...confirmedComment, id: data?.id || optimisticId }
           : item
       )));
-      queryClient.invalidateQueries(['feed-data']);
+      queryClient.invalidateQueries({ queryKey: ['feed-data'] });
       socketManager.emit?.('post_comment', { ...confirmedComment, post_id: post.id });
       window.setTimeout(() => {
         setComments((prev) => prev.map((item) => item.id === (data?.id || optimisticId) ? { ...item, justArrived: false } : item));
@@ -154,7 +161,7 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
   const handleDelete = async () => {
     try {
       await deletePost(post.id);
-      queryClient.invalidateQueries(['feed-data']);
+      queryClient.invalidateQueries({ queryKey: ['feed-data'] });
       pushToast({ type: 'success', title: 'تم حذف المنشور' });
     } catch (error) {
       pushToast({ type: 'error', title: 'تعذر حذف المنشور', description: error?.response?.data?.detail || error?.message });
@@ -164,7 +171,7 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
   const handleEdit = async () => {
     try {
       await updatePost(post.id, { content: editContent });
-      queryClient.invalidateQueries(['feed-data']);
+      queryClient.invalidateQueries({ queryKey: ['feed-data'] });
       setShowEditModal(false);
       pushToast({ type: 'success', title: 'تم تعديل المنشور' });
     } catch (error) {
@@ -177,7 +184,7 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
     setIsPinned(nextPinned);
     try {
       await updatePost(post.id, { is_pinned: nextPinned });
-      queryClient.invalidateQueries(['feed-data']);
+      queryClient.invalidateQueries({ queryKey: ['feed-data'] });
       pushToast({ type: 'success', title: nextPinned ? 'تم تثبيت المنشور' : 'تم إلغاء التثبيت' });
     } catch (error) {
       setIsPinned(!nextPinned);
@@ -234,11 +241,11 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
       <div style={{ fontSize: 16, lineHeight: 1.8, marginBottom: 16, whiteSpace: 'pre-wrap' }}>
         <div>{renderRichText(post.content || '')}</div>
         {post.hashtags?.length ? <div style={{ marginTop: 8, fontSize: 13, color: 'var(--primary)' }}>{post.hashtags.map((item) => `#${item}`).join(' · ')}</div> : null}
-        {post.media_url ? (
+        {mediaUrl ? (
           <div onClick={() => setShowMediaModal(true)} style={{ marginTop: 12, borderRadius: 12, overflow: 'hidden', cursor: 'pointer', background: '#000', maxHeight: 420, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {post.media_url.match(/\.(mp4|webm|mov|m3u8)$/i)
-              ? <video src={post.media_url} style={{ width: '100%', maxHeight: 420 }} muted loop autoPlay playsInline />
-              : <img src={post.media_url} alt="Post Media" style={{ width: '100%', height: 'auto', objectFit: 'contain' }} />}
+            {isVideo
+              ? <video src={mediaUrl} style={{ width: '100%', maxHeight: 420 }} muted loop autoPlay playsInline />
+              : <img src={mediaUrl} alt="Post Media" style={{ width: '100%', height: 'auto', objectFit: 'contain' }} />}
           </div>
         ) : null}
       </div>
@@ -281,9 +288,9 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
 
       <Modal open={showMediaModal} onClose={() => setShowMediaModal(false)} title="الوسائط">
         <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
-          {post.media_url?.match(/\.(mp4|webm|mov|m3u8)$/i)
-            ? <video src={post.media_url} controls autoPlay style={{ maxWidth: '100%', maxHeight: '80vh' }} />
-            : <img src={post.media_url} alt="Full Media" style={{ maxWidth: '100%', maxHeight: '80vh', objectFit: 'contain' }} />}
+          {isVideo
+            ? <video src={mediaUrl} controls autoPlay style={{ maxWidth: '100%', maxHeight: '80vh' }} />
+            : <img src={mediaUrl} alt="Full Media" style={{ maxWidth: '100%', maxHeight: '80vh', objectFit: 'contain' }} />}
         </div>
       </Modal>
 

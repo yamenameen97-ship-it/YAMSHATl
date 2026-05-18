@@ -127,7 +127,7 @@ export default function PostComposer() {
         description: isPinned ? 'المنشور متجهز كمنشور مثبت.' : undefined,
       });
       clearComposer();
-      queryClient.invalidateQueries(['feed-data']);
+      queryClient.invalidateQueries({ queryKey: ['feed-data'] });
     } catch (error) {
       pushToast({ type: 'error', title: 'فشل نشر المنشور', description: error?.response?.data?.detail || error?.message || 'حاول مرة تانية.' });
     } finally {

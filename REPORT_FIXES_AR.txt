@@ -1,0 +1,45 @@
+ملخص التعديلات المنفذة على مشروع Yamshat
+=====================================
+
+1) توحيد واجهة الويب والموبايل
+- إضافة صفحة إشعارات مستقلة في الويب وربطها بالتوجيه داخل التطبيق.
+- تحديث Topbar / Sidebar / MobileDock لتوحيد التنقل والمظهر العام.
+- إضافة أدوات مساعدة لتوحيد تحليل بيانات الإشعارات ومسارات التنقل.
+- تحسين الستايل العام داخل global.css ليتوافق مع هوية Yamshat الداكنة البنفسجية.
+
+2) ربط الإشعارات بين الويب والموبايل
+- إضافة مركز إشعارات في الويب مع استقبال فوري عبر Socket.
+- تحسين NotificationHelper في أندرويد لفتح الصفحة الصحيحة عند الضغط على الإشعار.
+- تحديث MainActivity لربط المسارات والتنقل السريع والـ WebView مع الإشعارات.
+- تحسين الباك إند لإرسال payload أغنى يحتوي screen/path/data.
+
+3) ما تم استكماله تلقائيًا
+- إضافة صفحة Notifications.jsx غير الموجودة سابقًا.
+- ربط route /notifications في App.jsx.
+- توحيد عنوان الصفحات والاختصارات السريعة في الهيدر.
+- دعم الانتقال إلى: الإشعارات، المحادثات، البروفايل، البث، الجروبات، المستخدمين.
+
+4) تنبيه مهم بخصوص تفعيل Push Notifications بالكامل
+- تم ضبط مسارات الكود وربط الإشعارات داخل التطبيق والموقع.
+- لكن الإرسال الفعلي من الباك إند عبر Firebase يحتاج الملف الحقيقي:
+  backend/firebase/service-account.json
+- الموجود حاليًا هو ملف placeholder/sample فقط، ولا يمكن إنشاء المفتاح الحقيقي بدون بيانات Firebase Admin من حسابك.
+- ملف google-services.json الخاص بالأندرويد وحده لا يكفي لإرسال Push من السيرفر.
+
+5) ملفات رئيسية تم تعديلها/إضافتها
+- frontend/src/pages/Notifications.jsx
+- frontend/src/components/layout/Topbar.jsx
+- frontend/src/components/layout/Sidebar.jsx
+- frontend/src/components/layout/MobileDock.jsx
+- frontend/src/utils/notificationCenter.js
+- frontend/src/App.jsx
+- frontend/src/styles/global.css
+- mobile/app/src/main/java/com/socialapp/utils/NotificationHelper.kt
+- mobile/app/src/main/java/com/socialapp/activities/MainActivity.kt
+- backend/app/services/notification_service.py
+- backend/app/core/socket_server.py
+
+6) الخطوة المطلوبة منك بعد الاستلام
+- استبدال ملف Firebase Admin الحقيقي في:
+  backend/firebase/service-account.json
+- ثم إعادة نشر الباك إند للتفعيل الكامل للـ Push Notifications.

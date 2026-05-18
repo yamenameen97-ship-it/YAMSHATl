@@ -1,0 +1,23 @@
+إعداد Resend الصحيح للمشروع:
+
+1) إذا كنت تستخدم:
+RESEND_FROM=YAMSHAT <onboarding@resend.dev>
+فهذا وضع تجريبي فقط.
+
+2) في الوضع التجريبي، Resend يسمح بالإرسال إلى بريد حسابك في Resend فقط.
+لو سجلت بحسابات أخرى، غالباً الرسائل لن تصل.
+
+3) لكي يصل كود التفعيل لأي مستخدم حقيقي:
+- اشترِ دومين أو استخدم دومين تملكه
+- أضفه داخل Resend > Domains
+- أكمِل سجلات DNS المطلوبة (SPF + DKIM)
+- بعد التحقق غيّر RESEND_FROM إلى بريد من دومينك مثل:
+  YAMSHAT <no-reply@yourdomain.com>
+
+4) على Render لا ترفع مفاتيحك إلى GitHub.
+ضعها فقط داخل Environment Variables أو Secret Files.
+
+5) إذا ستستخدم SMTP fallback:
+- استخدم SMTP_PORT=587
+- استخدم SMTP_USE_TLS=true
+- أو عدّل الكود ليدعم SSL الصريح على 465

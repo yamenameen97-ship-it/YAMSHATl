@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Yamshat | تسجيل الدخول</title>
+    <link rel="stylesheet" href="assets/style.css">
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+    <link rel="apple-touch-icon" href="assets/favicon.svg">
+</head>
+<body class="auth-page">
+    <div class="container auth-card glass">
+        <div class="brand-block">
+            <div class="brand-logo"><img src="assets/favicon.svg" alt="Yamshat logo"></div>
+            <h1>Yamshat</h1>
+            <p>منصة اجتماعية عصرية للدردشة والمنشورات والريلز والبث المباشر.</p>
+        </div>
+
+        <div id="loginForm">
+            <h2>تسجيل الدخول</h2>
+            <input id="loginEmail" type="text" placeholder="الايميل أو رقم الجوال">
+            <input id="loginPassword" type="password" placeholder="كلمة المرور">
+            <button onclick="login(this)">دخول</button>
+            <div class="switch" onclick="showRegister()">ليس لديك حساب؟ إنشاء حساب</div>
+        </div>
+
+        <div id="registerForm" class="hidden">
+            <h2>إنشاء حساب</h2>
+            <input id="registerName" type="text" placeholder="الاسم">
+            <input id="registerEmail" type="text" placeholder="الايميل أو رقم الجوال">
+            <input id="registerPassword" type="password" placeholder="كلمة المرور">
+            <button onclick="register(this)">تسجيل</button>
+            <div class="switch" onclick="showLogin()">لديك حساب؟ تسجيل الدخول</div>
+        </div>
+    </div>
+
+    <script src="assets/auth.js"></script>
+    <script src="assets/app.js"></script>
+</body>
+</html>

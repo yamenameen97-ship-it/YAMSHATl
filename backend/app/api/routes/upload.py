@@ -100,6 +100,41 @@ def _finalize_upload_payload(file_path: Path, *, original_name: str, content_typ
     }
 
 
+def _apply_remote_storage(file_path: Path, payload: dict) -> dict:
+    if not cloudinary_is_configured():
+        return payload
+
+    try:
+        remote = cloudinary_upload_file(
+            str(file_path),
+            is_video=str(file_path).lower().endswith(('.mp4', '.mov', '.webm', '.mkv')),
+        )
+        remote_url = str(remote.get('url') or '').strip()
+        if remote_url:
+            payload.update({
+                'status': 'completed',
+                'file_url': remote_url,
+                'url': remote_url,
+                'media_url': remote_url,
+                'storage': 'cloudinary',
+                'provider': 'cloudinary',
+                'remote': remote,
+            })
+        return payload
+    except Exception as exc:
+        payload['remote_upload_error'] = str(exc)[:300]
+        return payload
+
+
+async def process_media_background(file_path: str, _user_id: int):
+    await asyncio.sleep(0.2)
+    if cloudinary_is_configured():
+        try:
+            cloudinary_upload_file(file_path, is_video=file_path.endswith(('.mp4', '.mov', '.webm', '.mkv')))
+        except Exception:
+            return
+
+
 def save_upload(file: UploadFile) -> dict:
     original_name, size, kind = _validate_upload(file)
     safe_name = secure_filename(original_name) or f'upload_{uuid.uuid4().hex}'
@@ -107,19 +142,14 @@ def save_upload(file: UploadFile) -> dict:
     file.file.seek(0)
     with open(target_path, 'wb') as buffer:
         shutil.copyfileobj(file.file, buffer)
-    return _finalize_upload_payload(
+    payload = _finalize_upload_payload(
         target_path,
         original_name=original_name,
         content_type=str(file.content_type or 'application/octet-stream'),
         size=size,
         kind=kind,
     )
-
-
-async def process_media_background(file_path: str, _user_id: int):
-    await asyncio.sleep(0.2)
-    if cloudinary_is_configured():
-        cloudinary_upload_file(file_path, is_video=file_path.endswith(('.mp4', '.mov', '.webm', '.mkv')))
+    return _apply_remote_storage(target_path, payload)
 
 
 @router.post('/resumable/init')
@@ -276,27 +306,30 @@ async def complete_resumable_upload(session_id: str, background_tasks: Backgroun
     meta['status'] = 'completed'
     meta['uploaded_size'] = int(final_path.stat().st_size)
     _write_session(session_id, meta)
-    background_tasks.add_task(process_media_background, str(final_path), current_user.id)
+
+    upload_payload = _finalize_upload_payload(
+        final_path,
+        original_name=meta['filename'],
+        content_type=str(meta.get('content_type') or 'application/octet-stream'),
+        size=int(meta.get('uploaded_size') or 0),
+        kind=_kind_from_type(meta.get('content_type'), meta.get('filename')),
+    )
+    upload_payload = _apply_remote_storage(final_path, upload_payload)
+    if upload_payload.get('storage') == 'local' and cloudinary_is_configured():
+        background_tasks.add_task(process_media_background, str(final_path), current_user.id)
 
     return {
         'session_id': session_id,
         'status': 'completed',
-        'upload': _finalize_upload_payload(
-            final_path,
-            original_name=meta['filename'],
-            content_type=str(meta.get('content_type') or 'application/octet-stream'),
-            size=int(meta.get('uploaded_size') or 0),
-            kind=_kind_from_type(meta.get('content_type'), meta.get('filename')),
-        ),
+        'upload': upload_payload,
     }
 
 
 @router.post('/')
 async def upload_file_standard(background_tasks: BackgroundTasks, file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
     upload_result = save_upload(file)
-    if cloudinary_is_configured():
+    if upload_result.get('storage') == 'local' and cloudinary_is_configured():
         background_tasks.add_task(process_media_background, str(UPLOAD_DIR / upload_result['stored_name']), current_user.id)
-        upload_result['storage'] = 'cloudinary_async'
         upload_result['status'] = 'processing'
     return upload_result
 

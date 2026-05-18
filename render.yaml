@@ -67,6 +67,14 @@ services:
         sync: false
       - key: LIVEKIT_API_SECRET
         sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: CLOUDINARY_FOLDER
+        value: yamshat
 
   - type: web
     name: yamshat-web
@@ -101,6 +109,10 @@ services:
       - key: VITE_TURN_CREDENTIAL
         sync: false
       - key: VITE_PRIMARY_ADMIN_EMAIL
+        sync: false
+      - key: VITE_CLOUDINARY_URL
+        sync: false
+      - key: VITE_CLOUDINARY_PRESET
         sync: false
     routes:
       - type: rewrite

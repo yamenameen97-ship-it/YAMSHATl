@@ -1,6 +1,8 @@
 import logger from '../utils/logger.js';
 import { defaultRetryManager } from './retryManager.js';
 
+const viteEnv = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : {};
+
 /**
  * Upload Manager
  * 
@@ -13,9 +15,9 @@ import { defaultRetryManager } from './retryManager.js';
  */
 export class UploadManager {
   constructor(options = {}) {
-    this.cloudinaryUrl = options.cloudinaryUrl || process.env.REACT_APP_CLOUDINARY_URL;
-    this.cloudinaryPreset = options.cloudinaryPreset || process.env.REACT_APP_CLOUDINARY_PRESET;
-    this.apiUrl = options.apiUrl || process.env.REACT_APP_API_URL;
+    this.cloudinaryUrl = options.cloudinaryUrl || viteEnv.VITE_CLOUDINARY_URL || process.env.REACT_APP_CLOUDINARY_URL;
+    this.cloudinaryPreset = options.cloudinaryPreset || viteEnv.VITE_CLOUDINARY_PRESET || process.env.REACT_APP_CLOUDINARY_PRESET;
+    this.apiUrl = options.apiUrl || viteEnv.VITE_API_BASE || viteEnv.VITE_API_URL || process.env.REACT_APP_API_URL;
     this.maxFileSize = options.maxFileSize || 100 * 1024 * 1024; // 100MB
     this.maxImageSize = options.maxImageSize || 10 * 1024 * 1024; // 10MB
     this.maxVideoSize = options.maxVideoSize || 100 * 1024 * 1024; // 100MB
@@ -33,16 +35,8 @@ export class UploadManager {
   validateEnvironment() {
     const missingVars = [];
 
-    if (!this.cloudinaryUrl) {
-      missingVars.push('REACT_APP_CLOUDINARY_URL');
-    }
-
-    if (!this.cloudinaryPreset) {
-      missingVars.push('REACT_APP_CLOUDINARY_PRESET');
-    }
-
     if (!this.apiUrl) {
-      missingVars.push('REACT_APP_API_URL');
+      missingVars.push('VITE_API_BASE');
     }
 
     if (missingVars.length > 0) {
@@ -234,14 +228,27 @@ export class UploadManager {
     });
 
     try {
-      const result = await this.retryManager.execute(
-        () => this.uploadToCloudinary(file, {
+      const uploadExecutor = () => {
+        const uploadOptions = {
           ...options,
           onProgress: (progress) => {
             this.updateUploadProgress(uploadId, progress);
             options.onProgress?.(progress);
           },
-        }),
+        };
+
+        if (this.cloudinaryUrl && this.cloudinaryPreset) {
+          return this.uploadToCloudinary(file, uploadOptions);
+        }
+
+        return this.uploadToServer(file, {
+          endpoint: options.endpoint || '/upload',
+          onProgress: uploadOptions.onProgress,
+        });
+      };
+
+      const result = await this.retryManager.execute(
+        uploadExecutor,
         { uploadId, fileName: file.name }
       );
 
@@ -325,9 +332,9 @@ export class UploadManager {
  * مثيل عام من Upload Manager
  */
 export const defaultUploadManager = new UploadManager({
-  cloudinaryUrl: process.env.REACT_APP_CLOUDINARY_URL,
-  cloudinaryPreset: process.env.REACT_APP_CLOUDINARY_PRESET,
-  apiUrl: process.env.REACT_APP_API_URL,
+  cloudinaryUrl: viteEnv.VITE_CLOUDINARY_URL || process.env.REACT_APP_CLOUDINARY_URL,
+  cloudinaryPreset: viteEnv.VITE_CLOUDINARY_PRESET || process.env.REACT_APP_CLOUDINARY_PRESET,
+  apiUrl: viteEnv.VITE_API_BASE || viteEnv.VITE_API_URL || process.env.REACT_APP_API_URL,
 });
 
 /**

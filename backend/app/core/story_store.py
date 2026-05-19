@@ -1,7 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import json
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
+from pathlib import Path
+
+
+STORY_STORE_PATH = Path(__file__).resolve().parents[2] / 'uploads' / 'story_store.json'
 
 
 def _safe_list(value) -> list[str]:
@@ -52,6 +57,7 @@ class StoryStore:
     def __init__(self) -> None:
         self._stories: dict[str, StoryItem] = {}
         self._next_id = 1
+        self._load()
 
     def add_story(self, user_id: int, username: str, media_url: str, metadata: dict | None = None) -> dict:
         metadata = metadata or {}
@@ -80,6 +86,7 @@ class StoryStore:
         )
         self._next_id += 1
         self._stories[story.id] = story
+        self._save()
         return self.serialize_story(story)
 
     def list_stories(self, viewer_username: str | None = None, viewer_user_id: int | None = None) -> list[dict]:
@@ -92,6 +99,7 @@ class StoryStore:
         story = self._get_story(story_id)
         if viewer_username not in story.seen_by:
             story.seen_by.append(viewer_username)
+            self._save()
         return self.serialize_story(story)
 
     def add_reaction(self, story_id: str, emoji: str, viewer_username: str) -> dict:
@@ -100,6 +108,7 @@ class StoryStore:
             story.seen_by.append(viewer_username)
         safe_emoji = str(emoji or '🔥').strip()[:8] or '🔥'
         story.reactions[safe_emoji] = int(story.reactions.get(safe_emoji, 0)) + 1
+        self._save()
         return self.serialize_story(story)
 
     def add_reply(self, story_id: str, username: str, text: str) -> dict:
@@ -108,6 +117,7 @@ class StoryStore:
         if not clean:
             raise ValueError('reply text is required')
         story.replies.append(StoryReply(username=username, text=clean[:280], created_at=datetime.utcnow().isoformat()))
+        self._save()
         return self.serialize_story(story)
 
     def toggle_highlight(self, story_id: str, owner_id: int) -> dict:
@@ -115,6 +125,7 @@ class StoryStore:
         if story.user_id != owner_id:
             raise PermissionError('Only owner can update highlight')
         story.highlight = not story.highlight
+        self._save()
         return self.serialize_story(story)
 
     def get_highlights(self, owner_id: int) -> list[dict]:
@@ -124,11 +135,13 @@ class StoryStore:
         return [self.serialize_story(item) for item in items]
 
     def get_archive(self, owner_id: int) -> list[dict]:
+        self._purge_expired()
         items = [story for story in self._stories.values() if story.user_id == owner_id]
         items.sort(key=lambda item: item.created_at, reverse=True)
         return [self.serialize_story(item) for item in items]
 
     def analytics_summary(self, owner_id: int) -> dict:
+        self._purge_expired()
         items = [story for story in self._stories.values() if story.user_id == owner_id]
         total_views = sum(len(item.seen_by) for item in items)
         total_replies = sum(len(item.replies) for item in items)
@@ -189,6 +202,70 @@ class StoryStore:
         expired_ids = [story_id for story_id, item in self._stories.items() if datetime.fromisoformat(item.expires_at) <= now]
         for story_id in expired_ids:
             self._stories.pop(story_id, None)
+        if expired_ids:
+            self._save()
+
+    def _serialize_store(self) -> dict:
+        return {
+            'next_id': self._next_id,
+            'stories': [
+                {
+                    **asdict(item),
+                    'replies': [reply.__dict__ for reply in item.replies],
+                }
+                for item in self._stories.values()
+            ],
+        }
+
+    def _load(self) -> None:
+        try:
+            STORY_STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            if not STORY_STORE_PATH.exists():
+                return
+            payload = json.loads(STORY_STORE_PATH.read_text(encoding='utf-8') or '{}')
+            self._next_id = max(int(payload.get('next_id') or 1), 1)
+            restored: dict[str, StoryItem] = {}
+            for raw in payload.get('stories', []):
+                if not isinstance(raw, dict):
+                    continue
+                replies = [StoryReply(**reply) for reply in raw.get('replies', []) if isinstance(reply, dict)]
+                item = StoryItem(
+                    id=str(raw.get('id') or ''),
+                    user_id=int(raw.get('user_id') or 0),
+                    username=str(raw.get('username') or ''),
+                    media_url=str(raw.get('media_url') or ''),
+                    created_at=str(raw.get('created_at') or datetime.utcnow().isoformat()),
+                    expires_at=str(raw.get('expires_at') or (datetime.utcnow() + timedelta(hours=24)).isoformat()),
+                    caption=str(raw.get('caption') or ''),
+                    privacy=str(raw.get('privacy') or 'public'),
+                    music=str(raw.get('music') or ''),
+                    stickers=_safe_list(raw.get('stickers'))[:8],
+                    mentions=_safe_list(raw.get('mentions'))[:8],
+                    poll_question=str(raw.get('poll_question') or ''),
+                    poll_options=_safe_list(raw.get('poll_options'))[:4],
+                    countdown_at=str(raw.get('countdown_at') or ''),
+                    filter_name=str(raw.get('filter_name') or ''),
+                    drawing_data=str(raw.get('drawing_data') or ''),
+                    auto_delete_hours=int(raw.get('auto_delete_hours') or 24),
+                    is_close_friends=bool(raw.get('is_close_friends')),
+                    highlight=bool(raw.get('highlight')),
+                    reactions={str(key): int(value or 0) for key, value in (raw.get('reactions') or {}).items()},
+                    seen_by=_safe_list(raw.get('seen_by')),
+                    replies=replies,
+                )
+                if item.id:
+                    restored[item.id] = item
+            self._stories = restored
+            if self._stories:
+                self._next_id = max(self._next_id, max(int(item_id) for item_id in self._stories.keys()) + 1)
+            self._purge_expired()
+        except Exception:
+            self._stories = {}
+            self._next_id = 1
+
+    def _save(self) -> None:
+        STORY_STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        STORY_STORE_PATH.write_text(json.dumps(self._serialize_store(), ensure_ascii=False, indent=2), encoding='utf-8')
 
 
 story_store = StoryStore()

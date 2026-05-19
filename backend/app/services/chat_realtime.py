@@ -7,19 +7,21 @@ from sqlalchemy.orm import Session
 
 from app.models.message import Message
 from app.models.user import User
+from app.services.encryption_service import decrypt_message
 
 
 def serialize_message(message: Message, db: Session) -> dict:
     sender = db.query(User).filter(User.id == message.sender_id).first()
     receiver = db.query(User).filter(User.id == message.receiver_id).first()
     deleted = bool(message.deleted_at)
+    safe_content = '' if deleted else decrypt_message(message.content or '')
     return {
         'id': message.id,
         'client_id': message.client_id,
         'sender': sender.username if sender else str(message.sender_id),
         'receiver': receiver.username if receiver else str(message.receiver_id),
-        'message': 'تم حذف الرسالة' if deleted else message.content,
-        'content': 'تم حذف الرسالة' if deleted else message.content,
+        'message': 'تم حذف الرسالة' if deleted else safe_content,
+        'content': 'تم حذف الرسالة' if deleted else safe_content,
         'media_url': None if deleted else message.media_url,
         'type': message.message_type or ('image' if message.media_url else 'text'),
         'created_at': message.created_at.isoformat() if message.created_at else None,

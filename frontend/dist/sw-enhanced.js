@@ -8,7 +8,7 @@
  * 4. استراتيجيات كاش ذكية لأنواع ملفات مختلفة
  */
 
-const VERSION = 'yamshat-v20260519-005755-1779152275925';
+const VERSION = 'yamshat-v20260518-143022-1716033622';
 const STATIC_CACHE = `${VERSION}:static`;
 const MEDIA_CACHE = `${VERSION}:media`;
 const API_CACHE = `${VERSION}:api`;

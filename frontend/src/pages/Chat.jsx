@@ -188,9 +188,9 @@ export default function Chat() {
         if (existingIndex >= 0) {
           const next = [...prev];
           next[existingIndex] = { ...next[existingIndex], ...msg };
-          return next;
+          return next.filter((item, index, array) => index === array.findIndex((candidate) => candidate.id === item.id || (candidate.client_id && candidate.client_id === item.client_id)));
         }
-        return [...prev, msg];
+        return [...prev, msg].filter((item, index, array) => index === array.findIndex((candidate) => candidate.id === item.id || (candidate.client_id && candidate.client_id === item.client_id)));
       });
       setThreads((prev) => prev.map((item) => item.username === msg.sender || item.username === msg.receiver
         ? { ...item, last_message: msg.content || msg.message, created_at: msg.created_at }
@@ -251,6 +251,7 @@ export default function Chat() {
     const tempId = `tmp-${Date.now()}`;
     const tempMsg = {
       id: tempId,
+      client_id: tempId,
       sender: currentUser,
       receiver: peer,
       content: text,
@@ -273,7 +274,14 @@ export default function Chat() {
         reply_to_id: replyTo?.id || null,
         client_id: tempId,
       });
-      setMessages((prev) => prev.map((item) => item.id === tempId ? { ...item, ...(data || {}), status: (data || {}).status || 'sent' } : item));
+      setMessages((prev) => {
+        const merged = prev.map((item) => (
+          item.id === tempId || item.client_id === tempId
+            ? { ...item, ...(data || {}), status: (data || {}).status || 'sent' }
+            : item
+        ));
+        return merged.filter((item, index, array) => index === array.findIndex((candidate) => candidate.id === item.id || (candidate.client_id && candidate.client_id === item.client_id)));
+      });
     } catch {
       setMessages((prev) => prev.filter((item) => item.id !== tempId));
       pushToast({ type: 'error', title: 'خطأ', description: 'فشل إرسال الرسالة' });

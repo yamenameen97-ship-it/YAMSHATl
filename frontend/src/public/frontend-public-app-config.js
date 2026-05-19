@@ -1,6 +1,6 @@
 (function () {
-  const DEPLOY_BACKEND_ORIGIN = 'https://yamshatl.onrender.com';
-  const DEPLOY_API_BASE = 'https://yamshatl.onrender.com/api';
+  const DEPLOY_BACKEND_ORIGIN = 'https://yamshat-api.onrender.com';
+  const DEPLOY_API_BASE = 'https://yamshat-api.onrender.com/api';
 
   const trim = (value) => String(value || '').trim().replace(/\/+$/, '');
   const ensureApiPath = (value) => {
@@ -18,15 +18,17 @@
     localStorage.setItem('apiBase', apiBase);
   } catch (_) {}
 
+  const uploadBase = `${apiBase}/upload`;
+
   window.APP_BACKEND_ORIGIN = backendOrigin;
   window.APP_API_BASE = apiBase;
   window.APP_CDN_BASE = window.APP_CDN_BASE || '';
   window.APP_MEDIA_PROVIDER = window.APP_MEDIA_PROVIDER || 'cloudflare-r2';
-  window.APP_MEDIA_UPLOAD_URL = window.APP_MEDIA_UPLOAD_URL || '/upload';
-  window.APP_MEDIA_RESUMABLE_START_URL = window.APP_MEDIA_RESUMABLE_START_URL || '/upload/resumable/start';
-  window.APP_MEDIA_RESUMABLE_STATUS_URL = window.APP_MEDIA_RESUMABLE_STATUS_URL || '/upload/resumable';
-  window.APP_MEDIA_RESUMABLE_CHUNK_URL = window.APP_MEDIA_RESUMABLE_CHUNK_URL || '/upload/resumable';
-  window.APP_MEDIA_RESUMABLE_COMPLETE_URL = window.APP_MEDIA_RESUMABLE_COMPLETE_URL || '/upload/resumable';
+  window.APP_MEDIA_UPLOAD_URL = window.APP_MEDIA_UPLOAD_URL || uploadBase;
+  window.APP_MEDIA_RESUMABLE_START_URL = window.APP_MEDIA_RESUMABLE_START_URL || `${uploadBase}/resumable/start`;
+  window.APP_MEDIA_RESUMABLE_STATUS_URL = window.APP_MEDIA_RESUMABLE_STATUS_URL || `${uploadBase}/resumable`;
+  window.APP_MEDIA_RESUMABLE_CHUNK_URL = window.APP_MEDIA_RESUMABLE_CHUNK_URL || `${uploadBase}/resumable`;
+  window.APP_MEDIA_RESUMABLE_COMPLETE_URL = window.APP_MEDIA_RESUMABLE_COMPLETE_URL || `${uploadBase}/resumable`;
   window.APP_SIGNAL_SERVER_SUPPORT = Boolean(window.APP_SIGNAL_SERVER_SUPPORT || false);
   window.YAMSHAT_API_BASE = apiBase;
   window.YAMSHAT_CDN_BASE = window.APP_CDN_BASE;

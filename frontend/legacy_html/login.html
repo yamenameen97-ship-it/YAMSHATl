@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yamshat | تسجيل الدخول</title>
+    <link rel="stylesheet" href="/chat.css">
+</head>
+<body class="login-body">
+    <div class="login-card card">
+        <div class="brand centered">
+            <div class="brand-icon">🔐</div>
+            <div>
+                <h1>تسجيل الدخول للشات</h1>
+                <p>Session + JWT جاهزين</p>
+            </div>
+        </div>
+
+        <div class="demo-box">
+            <div>حسابات تجريبية:</div>
+            <div><strong>admin</strong> / 1234</div>
+            <div><strong>user1</strong> / 1234</div>
+            <div><strong>user2</strong> / 1234</div>
+            <div><strong>demo</strong> / 1234</div>
+        </div>
+
+        <label class="input-label">اسم المستخدم</label>
+        <input id="username" class="text-input" placeholder="username">
+
+        <label class="input-label">كلمة المرور</label>
+        <input id="password" class="text-input" type="password" placeholder="••••">
+
+        <button id="loginBtn" class="primary-btn wide-btn">دخول</button>
+        <p id="loginStatus" class="subtle"></p>
+    </div>
+
+    <script>
+        const statusEl = document.getElementById('loginStatus');
+        document.getElementById('loginBtn').addEventListener('click', async () => {
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            statusEl.textContent = 'جاري التحقق...';
+            try {
+                const res = await fetch('/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    throw new Error(data.message || 'فشل تسجيل الدخول');
+                }
+                if (data.access_token) {
+                    localStorage.setItem('yamshat_token', data.access_token);
+                }
+                window.location.href = '/chat.html';
+            } catch (error) {
+                statusEl.textContent = error.message || 'تعذر تسجيل الدخول';
+            }
+        });
+    </script>
+</body>
+</html>

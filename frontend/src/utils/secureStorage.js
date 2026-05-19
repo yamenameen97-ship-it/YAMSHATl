@@ -1,42 +1,15 @@
-function getSafeStorage(type = 'localStorage') {
-  if (typeof window === 'undefined') return null;
-  try {
-    return window[type] || null;
-  } catch {
-    return null;
-  }
-}
+export const secureStorage = {
+  set(key, value) {
+    localStorage.setItem(key, btoa(JSON.stringify(value)));
+  },
 
-export function secureGet(key) {
-  const normalizedKey = String(key);
-  const sessionStorageRef = getSafeStorage('sessionStorage');
-  const localStorageRef = getSafeStorage('localStorage');
-  return sessionStorageRef?.getItem(normalizedKey) || localStorageRef?.getItem(normalizedKey) || '';
-}
+  get(key) {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    return JSON.parse(atob(raw));
+  },
 
-export function secureSet(key, value, options = {}) {
-  const normalizedKey = String(key);
-  const persist = Boolean(options?.persist);
-  const sessionStorageRef = getSafeStorage('sessionStorage');
-  const localStorageRef = getSafeStorage('localStorage');
-  const rawValue = String(value ?? '');
-
-  try {
-    sessionStorageRef?.removeItem(normalizedKey);
-    localStorageRef?.removeItem(normalizedKey);
-    if (persist) localStorageRef?.setItem(normalizedKey, rawValue);
-    else sessionStorageRef?.setItem(normalizedKey, rawValue);
-  } catch {
-    // ignore storage failures
-  }
-}
-
-export function secureRemove(key) {
-  const normalizedKey = String(key);
-  try {
-    getSafeStorage('sessionStorage')?.removeItem(normalizedKey);
-    getSafeStorage('localStorage')?.removeItem(normalizedKey);
-  } catch {
-    // ignore storage failures
-  }
-}
+  remove(key) {
+    localStorage.removeItem(key);
+  },
+};

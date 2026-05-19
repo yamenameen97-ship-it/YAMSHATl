@@ -216,12 +216,21 @@ class Settings:
             if service:
                 return rf'^https://{re.escape(service)}(?:-\d+)?\.onrender\.com$'
 
-        return r'^https://[a-z0-9-]+(?:-\d+)?\.onrender\.com$'
+        # Allow all Render subdomains safely
+        return r'^https://.*\.onrender\.com$'
 
     @property
     def cors_origins(self) -> list[str]:
-        if self.CORS_ORIGINS_RAW.strip() == '*':
-            return ['*']
+        # Render + local development fallback
+        # يمنع مشاكل CORS مع خدمات Render المتغيرة
+        if self.CORS_ORIGINS_RAW.strip() in {'*', ''}:
+            return [
+                'http://localhost:3000',
+                'http://localhost:5173',
+                'http://127.0.0.1:5173',
+                'https://yamshatl-1-yg1o.onrender.com',
+                'https://yamshat-api.onrender.com',
+            ]
 
         origins: list[str] = []
         origins.extend(csv_list(self.CORS_ORIGINS_RAW))

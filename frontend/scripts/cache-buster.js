@@ -11,6 +11,10 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+<<<<<<< HEAD
+=======
+// تعويض __dirname في ES Modules
+>>>>>>> c5ebfda9fe23b2f661777778007cacf61dd3e821
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -23,8 +27,13 @@ function generateVersion() {
   const timestamp = now.getTime();
   const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
   const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '');
+<<<<<<< HEAD
 
   // صيغة الإصدار: yamshat-vYYYYMMDD-HHMMSS-timestamp
+=======
+  
+  // صيغة الإصدار
+>>>>>>> c5ebfda9fe23b2f661777778007cacf61dd3e821
   return `yamshat-v${dateStr}-${timeStr}-${timestamp}`;
 }
 

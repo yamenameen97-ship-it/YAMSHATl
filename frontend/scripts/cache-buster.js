@@ -7,8 +7,13 @@
  * الاستخدام: node scripts/cache-buster.js
  */
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// تعويض __dirname في ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // مسار ملف Service Worker
 const swPath = path.join(__dirname, '../public/sw.js');
@@ -20,7 +25,7 @@ function generateVersion() {
   const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
   const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '');
   
-  // صيغة الإصدار: yamshat-vYYYYMMDD-HHMMSS-timestamp
+  // صيغة الإصدار
   return `yamshat-v${dateStr}-${timeStr}-${timestamp}`;
 }
 

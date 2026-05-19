@@ -50,4 +50,10 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       </HashRouter>
     </QueryClientProvider>
   </React.StrictMode>
-);
+  // ✅ أضف هذا بعد root.render()
+window.addEventListener('load', async () => {
+  // تسجيل Service Worker المحسّن
+  await registerServiceWorker();
+});
+
+

@@ -12,6 +12,8 @@ import RealtimeProvider from './realtime/RealtimeProvider.jsx';
 import { initializePerformanceToolkit } from './utils/performance.js';
 import { initializeRuntimeErrorCapture } from './utils/runtimeErrors.js';
 import notificationService from './services/notificationService.js';
+import "./styles/mobile-optimization.css";
+import "./styles/performance.css";
 
 const BUILD_ID = 'yamshat-hotfix-20260519-r1';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
@@ -106,5 +108,3 @@ window.addEventListener('load', async () => {
   await registerServiceWorker();
   
 });
-
-

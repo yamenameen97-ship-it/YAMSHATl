@@ -75,3 +75,16 @@ export const refreshSession = async () => sessionManager.refreshSession({ reason
 export const getMe = () => API.get('/users/me');
 export const logoutUser = () => API.post('/auth/logout');
 export const logoutAllDevices = () => API.post('/auth/logout-all');
+
+
+export const loginWithGoogle = () => {
+  window.location.href = `${import.meta.env.VITE_API_URL}/auth/google/login`;
+};
+
+export const loginWithFacebook = () => {
+  window.location.href = `${import.meta.env.VITE_API_URL}/auth/facebook/login`;
+};
+
+export const loginWithApple = () => {
+  window.location.href = `${import.meta.env.VITE_API_URL}/auth/apple/login`;
+};

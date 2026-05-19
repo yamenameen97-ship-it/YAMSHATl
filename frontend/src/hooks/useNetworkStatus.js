@@ -1,36 +1,21 @@
-import { useEffect } from 'react';
-import { useAppStore } from '../store/appStore.js';
-import socket from '../api/socket.js';
+
+import { useEffect, useState } from "react";
 
 export default function useNetworkStatus() {
-  const setOnlineStatus = useAppStore((state) => state.setOnlineStatus);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   useEffect(() => {
-    const updateStatus = (online) => {
-      setOnlineStatus(Boolean(online));
-      if (online) {
-        if (!socket.connected) socket.connect();
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('yamshat:network-restored'));
-        }
-        return;
-      }
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('yamshat:network-lost'));
-      }
-      if (socket.connected) socket.disconnect();
-    };
+    const online = () => setIsOnline(true);
+    const offline = () => setIsOnline(false);
 
-    updateStatus(typeof navigator === 'undefined' ? true : navigator.onLine);
+    window.addEventListener("online", online);
+    window.addEventListener("offline", offline);
 
-    const handleOnline = () => updateStatus(true);
-    const handleOffline = () => updateStatus(false);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener("online", online);
+      window.removeEventListener("offline", offline);
     };
-  }, [setOnlineStatus]);
+  }, []);
+
+  return isOnline;
 }

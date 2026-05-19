@@ -28,7 +28,7 @@ export const uploadMedia = (formData, onUploadProgress) =>
     headers: { 'Content-Type': 'multipart/form-data' },
     onUploadProgress,
   });
-export const deleteMessageApi = (message_id) => API.post('/delete_message', { message_id });
+export const deleteMessageApi = (message_id, options = {}) => API.post('/delete_message', { message_id, delete_for_everyone: Boolean(options.delete_for_everyone) });
 
 export const startResumableUpload = (payload) => API.post('/upload/resumable/start', payload);
 export const getResumableUploadStatus = (sessionId) => API.get(`/upload/resumable/${sessionId}`);

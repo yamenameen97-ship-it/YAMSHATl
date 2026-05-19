@@ -276,15 +276,23 @@ def unblock_user(payload: dict = Body(...), db: Session = Depends(get_db), curre
 
 
 @router.post('/delete_message')
-def delete_message(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def delete_message(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     message_id = int(payload.get('message_id') or 0)
+    delete_for_everyone = bool(payload.get('delete_for_everyone'))
     message = db.query(Message).filter(Message.id == message_id, Message.sender_id == current_user.id).first()
     if message is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Message not found')
     message.deleted_at = datetime.utcnow()
+    message.deleted_for_everyone = bool(delete_for_everyone)
     db.commit()
     db.refresh(message)
-    return serialize_message(message, db)
+    serialized = serialize_message(message, db)
+    await sio.emit('message_deleted', serialized, room=f'username:{current_user.username}')
+    if delete_for_everyone:
+        receiver = db.query(User).filter(User.id == message.receiver_id).first()
+        if receiver is not None:
+            await sio.emit('message_deleted', serialized, room=f'username:{receiver.username}')
+    return serialized
 
 
 @router.post('/restore_message')

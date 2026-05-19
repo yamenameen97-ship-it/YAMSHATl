@@ -25,6 +25,7 @@ export default function PostComposer() {
   const [scheduledDate, setScheduledDate] = useState('');
   const [isPinned, setIsPinned] = useState(false);
   const [quoteDraft, setQuoteDraft] = useState(null);
+  const [isDragActive, setIsDragActive] = useState(false);
   const fileInputRef = useRef(null);
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
@@ -82,8 +83,7 @@ export default function PostComposer() {
     setContent((prev) => `${prev}${prev && !prev.endsWith(' ') ? ' ' : ''}${value}`);
   };
 
-  const handleMediaSelect = (event) => {
-    const file = event.target.files?.[0];
+  const applySelectedFile = (file) => {
     if (!file) return;
     if (file.size > 200 * 1024 * 1024) {
       pushToast({ type: 'error', title: 'الملف كبير جدًا', description: 'الحد الأقصى 200 ميجا.' });
@@ -91,6 +91,11 @@ export default function PostComposer() {
     }
     setMedia(file);
     setMediaPreview(URL.createObjectURL(file));
+  };
+
+  const handleMediaSelect = (event) => {
+    const file = event.target.files?.[0];
+    applySelectedFile(file);
   };
 
   const handleSubmit = async (status = 'published') => {
@@ -136,7 +141,24 @@ export default function PostComposer() {
   };
 
   return (
-    <Card style={{ marginBottom: 24, padding: 20, border: '1px solid var(--line)' }}>
+    <Card
+      style={{ marginBottom: 24, padding: 20, border: '1px solid var(--line)' }}
+      onDragOver={(event) => {
+        event.preventDefault();
+        setIsDragActive(true);
+      }}
+      onDragLeave={(event) => {
+        event.preventDefault();
+        if (event.currentTarget.contains(event.relatedTarget)) return;
+        setIsDragActive(false);
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        setIsDragActive(false);
+        const file = event.dataTransfer?.files?.[0];
+        applySelectedFile(file);
+      }}
+    >
       <div style={{ display: 'flex', gap: 12 }}>
         <div style={{ width: 42, height: 42, borderRadius: '50%', background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', flexShrink: 0 }} />
         <div style={{ flex: 1 }}>
@@ -162,6 +184,7 @@ export default function PostComposer() {
       </div>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+        <span className={`composer-drop-hint ${isDragActive ? 'active' : ''}`}>اسحب وأسقط صورة/فيديو/GIF هنا</span>
         <button type="button" className="composer-chip" onClick={() => addSnippet('#ترند')}>#هاشتاج</button>
         <button type="button" className="composer-chip" onClick={() => addSnippet('@username')}>@منشن</button>
         <button type="button" className="composer-chip" onClick={() => addSnippet('اقتباس: ')}>اقتباس</button>
@@ -228,6 +251,21 @@ export default function PostComposer() {
           background: rgba(16,185,129,0.12);
           border-color: rgba(16,185,129,0.3);
           color: #059669;
+        }
+        .composer-drop-hint {
+          display: inline-flex;
+          align-items: center;
+          padding: 6px 12px;
+          border-radius: 999px;
+          border: 1px dashed rgba(59,130,246,0.25);
+          color: var(--muted);
+          font-size: 12px;
+          transition: all 0.2s ease;
+        }
+        .composer-drop-hint.active {
+          border-color: rgba(16,185,129,0.45);
+          background: rgba(16,185,129,0.08);
+          color: #10b981;
         }
       `}</style>
     </Card>

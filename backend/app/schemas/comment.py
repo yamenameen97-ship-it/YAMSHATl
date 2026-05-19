@@ -17,6 +17,12 @@ class CommentOut(BaseModel):
     post_id: int
     parent_id: Optional[int] = None
     content: str
+    mentions: list[str] = []
+    likes_count: int = 0
+    is_liked: bool = False
+    is_pinned: bool = False
+    is_hidden: bool = False
     created_at: datetime
+    updated_at: Optional[datetime] = None
     reply_count: int = 0
     replies: list['CommentOut'] = []

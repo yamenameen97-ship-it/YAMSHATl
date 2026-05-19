@@ -4,7 +4,20 @@ import Modal from '../ui/Modal.jsx';
 import Card from '../ui/Card.jsx';
 import NestedComments from './NestedComments.jsx';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { addComment, deletePost, getComments, savePost, sharePost, updatePost } from '../../api/posts.js';
+import {
+  addComment,
+  deleteComment,
+  deletePost,
+  getComments,
+  hideComment,
+  likeComment,
+  pinComment,
+  reportComment,
+  savePost,
+  sharePost,
+  updateComment,
+  updatePost,
+} from '../../api/posts.js';
 import { useToast } from '../admin/ToastProvider.jsx';
 import { getCurrentUsername } from '../../utils/auth.js';
 import socketManager from '../../services/socketManager.js';
@@ -18,6 +31,8 @@ const ADVANCED_REACTIONS = [
   { emoji: '💡', label: 'فكرة' },
 ];
 
+const POST_PREFS_KEY = 'yamshat_post_preferences_v1';
+
 function renderRichText(content = '') {
   return content.split(/(\s+)/).map((part, index) => {
     if (part.startsWith('@')) return <span key={index} style={{ color: 'var(--accent)', cursor: 'pointer', fontWeight: 700 }}>{part}</span>;
@@ -26,10 +41,85 @@ function renderRichText(content = '') {
   });
 }
 
+function loadPostPrefs() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(POST_PREFS_KEY) || '{}');
+    return {
+      hiddenPosts: Array.isArray(parsed.hiddenPosts) ? parsed.hiddenPosts : [],
+      archivedPosts: Array.isArray(parsed.archivedPosts) ? parsed.archivedPosts : [],
+      mutedAuthors: Array.isArray(parsed.mutedAuthors) ? parsed.mutedAuthors : [],
+      reportedPosts: Array.isArray(parsed.reportedPosts) ? parsed.reportedPosts : [],
+    };
+  } catch {
+    return { hiddenPosts: [], archivedPosts: [], mutedAuthors: [], reportedPosts: [] };
+  }
+}
+
+function savePostPrefs(next) {
+  localStorage.setItem(POST_PREFS_KEY, JSON.stringify(next));
+}
+
+function toggleListValue(list = [], value) {
+  const set = new Set(list);
+  if (set.has(value)) set.delete(value);
+  else set.add(value);
+  return Array.from(set);
+}
+
+function mapCommentsTree(items = [], updater) {
+  return items.map((item) => {
+    const next = updater(item);
+    return {
+      ...next,
+      replies: Array.isArray(item.replies) ? mapCommentsTree(item.replies, updater) : [],
+    };
+  });
+}
+
+function replaceCommentInTree(items = [], updatedComment) {
+  return items.map((item) => {
+    if (String(item.id) === String(updatedComment.id)) {
+      return { ...item, ...updatedComment, replies: item.replies || updatedComment.replies || [] };
+    }
+    return {
+      ...item,
+      replies: Array.isArray(item.replies) ? replaceCommentInTree(item.replies, updatedComment) : [],
+    };
+  });
+}
+
+function removeCommentFromTree(items = [], commentId) {
+  return items
+    .filter((item) => String(item.id) !== String(commentId))
+    .map((item) => ({
+      ...item,
+      replies: Array.isArray(item.replies) ? removeCommentFromTree(item.replies, commentId) : [],
+    }));
+}
+
+function insertCommentIntoTree(items = [], comment) {
+  if (!comment?.parent_id) return [comment, ...items];
+  return items.map((item) => {
+    if (String(item.id) === String(comment.parent_id)) {
+      return {
+        ...item,
+        reply_count: Number(item.reply_count || 0) + 1,
+        replies: [comment, ...(item.replies || [])],
+      };
+    }
+    return {
+      ...item,
+      replies: Array.isArray(item.replies) ? insertCommentIntoTree(item.replies, comment) : [],
+    };
+  });
+}
+
 export default function PostCard({ post, onShowAnalytics, onLike }) {
   const { pushToast } = useToast();
   const currentUser = getCurrentUsername();
   const queryClient = useQueryClient();
+  const prefs = useMemo(() => loadPostPrefs(), []);
+
   const [showReactions, setShowReactions] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showMediaModal, setShowMediaModal] = useState(false);
@@ -37,9 +127,18 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
   const [showEditModal, setShowEditModal] = useState(false);
   const [commentDraft, setCommentDraft] = useState('');
   const [comments, setComments] = useState([]);
+  const [commentsPagination, setCommentsPagination] = useState({ page: 1, limit: 20, has_more: false, total_count: 0 });
+  const [commentsSortBy, setCommentsSortBy] = useState('newest');
+  const [commentsLoadingMore, setCommentsLoadingMore] = useState(false);
   const [editContent, setEditContent] = useState(post?.content || '');
   const [myReaction, setMyReaction] = useState(post?.my_reaction || null);
   const [isPinned, setIsPinned] = useState(Boolean(post?.is_pinned));
+  const [postPrefsState, setPostPrefsState] = useState({
+    hidden: prefs.hiddenPosts.includes(post.id),
+    archived: prefs.archivedPosts.includes(post.id),
+    muted: prefs.mutedAuthors.includes(post.username),
+    reported: prefs.reportedPosts.includes(post.id),
+  });
 
   const isOwner = useMemo(() => currentUser && post?.username && currentUser === post.username, [currentUser, post?.username]);
   const interactionCount = useMemo(() => {
@@ -47,12 +146,39 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
     return reactionCounts + Number(post?.likes_count || 0) + Number(post?.comments_count || 0) + Number(post?.share_count || 0);
   }, [post?.comments_count, post?.likes_count, post?.reactions, post?.share_count]);
 
-  const refreshComments = async () => {
+  const persistPostPref = (key, value, targetType = 'post') => {
+    const currentPrefs = loadPostPrefs();
+    let nextPrefs = currentPrefs;
+
+    if (targetType === 'author') {
+      nextPrefs = { ...currentPrefs, mutedAuthors: toggleListValue(currentPrefs.mutedAuthors, value) };
+      setPostPrefsState((prev) => ({ ...prev, muted: nextPrefs.mutedAuthors.includes(value) }));
+    } else if (key === 'hidden') {
+      nextPrefs = { ...currentPrefs, hiddenPosts: toggleListValue(currentPrefs.hiddenPosts, value) };
+      setPostPrefsState((prev) => ({ ...prev, hidden: nextPrefs.hiddenPosts.includes(value) }));
+    } else if (key === 'archived') {
+      nextPrefs = { ...currentPrefs, archivedPosts: toggleListValue(currentPrefs.archivedPosts, value) };
+      setPostPrefsState((prev) => ({ ...prev, archived: nextPrefs.archivedPosts.includes(value) }));
+    } else if (key === 'reported') {
+      nextPrefs = { ...currentPrefs, reportedPosts: toggleListValue(currentPrefs.reportedPosts, value) };
+      setPostPrefsState((prev) => ({ ...prev, reported: nextPrefs.reportedPosts.includes(value) }));
+    }
+
+    savePostPrefs(nextPrefs);
+  };
+
+  const refreshComments = async ({ page = 1, append = false, sortBy = commentsSortBy } = {}) => {
+    if (append) setCommentsLoadingMore(true);
     try {
-      const { data } = await getComments(post.id);
-      setComments(Array.isArray(data) ? data : data?.items || []);
+      const { data } = await getComments(post.id, { page, limit: 20, sort_by: sortBy });
+      const incomingItems = Array.isArray(data) ? data : data?.items || [];
+      const incomingPagination = data?.pagination || { page, limit: 20, has_more: false, total_count: incomingItems.length };
+      setComments((prev) => append ? [...prev, ...incomingItems] : incomingItems);
+      setCommentsPagination(incomingPagination);
     } catch (error) {
       pushToast({ type: 'error', title: 'تعذر تحميل التعليقات', description: error?.response?.data?.detail || error?.message });
+    } finally {
+      setCommentsLoadingMore(false);
     }
   };
 
@@ -62,14 +188,14 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
     const handleIncomingComment = (payload) => {
       if (String(payload?.post_id) !== String(post.id)) return;
       setComments((prev) => {
-        const exists = prev.some((item) => String(item.id) === String(payload.id));
+        const exists = JSON.stringify(prev).includes(`\"id\":${JSON.stringify(payload.id)}`);
         if (exists) return prev;
-        const next = [...prev, { ...payload, justArrived: true }];
-        window.setTimeout(() => {
-          setComments((current) => current.map((item) => String(item.id) === String(payload.id) ? { ...item, justArrived: false } : item));
-        }, 2600);
-        return next;
+        return insertCommentIntoTree(prev, { ...payload, justArrived: true, replies: payload.replies || [] });
       });
+      setCommentsPagination((prev) => ({ ...prev, total_count: Number(prev.total_count || 0) + 1 }));
+      window.setTimeout(() => {
+        setComments((prev) => mapCommentsTree(prev, (item) => String(item.id) === String(payload.id) ? { ...item, justArrived: false } : item));
+      }, 2600);
     };
     socketManager.on('post_comment', handleIncomingComment);
     return () => socketManager.off('post_comment', handleIncomingComment);
@@ -78,7 +204,7 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
   const saveMutation = useMutation({
     mutationFn: () => savePost(post.id),
     onSuccess: () => {
-      queryClient.invalidateQueries(['feed-data']);
+      queryClient.invalidateQueries({ queryKey: ['feed-data'] });
       pushToast({ type: 'success', title: post.is_saved ? 'تم إلغاء الحفظ' : 'تم حفظ المنشور' });
     },
     onError: (error) => pushToast({ type: 'error', title: 'تعذر حفظ المنشور', description: error?.response?.data?.detail || error?.message }),
@@ -103,7 +229,7 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
       }
       shareMutation.mutate(platform);
       setShowShareModal(false);
-      pushToast({ type: 'success', title: 'تمت مشاركة المنشور' });
+      pushToast({ type: 'success', title: platform === 'copy' ? 'تم نسخ الرابط' : 'تمت مشاركة المنشور' });
     } catch (error) {
       pushToast({ type: 'error', title: 'تعذر المشاركة', description: error?.message });
     }
@@ -120,41 +246,115 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
       parent_id: parentId,
       created_at: new Date().toISOString(),
       reactions: {},
+      likes_count: 0,
+      is_liked: false,
       optimistic: true,
       justArrived: true,
+      replies: [],
     };
 
-    setComments((prev) => [...prev, optimisticComment]);
+    setComments((prev) => insertCommentIntoTree(prev, optimisticComment));
     setCommentDraft('');
 
     try {
       const { data } = await addComment(post.id, cleanContent, parentId);
-      const confirmedComment = {
-        ...(data || optimisticComment),
-        optimistic: false,
-        justArrived: true,
-      };
-
-      setComments((prev) => prev.map((item) => (
-        String(item.id) === optimisticId
-          ? { ...confirmedComment, id: data?.id || optimisticId }
-          : item
-      )));
-      queryClient.invalidateQueries(['feed-data']);
+      const confirmedComment = { ...(data || optimisticComment), optimistic: false, justArrived: true, replies: data?.replies || [] };
+      setComments((prev) => {
+        const withoutOptimistic = removeCommentFromTree(prev, optimisticId);
+        return insertCommentIntoTree(withoutOptimistic, confirmedComment);
+      });
+      setCommentsPagination((prev) => ({ ...prev, total_count: Number(prev.total_count || 0) + 1 }));
+      queryClient.invalidateQueries({ queryKey: ['feed-data'] });
       socketManager.emit?.('post_comment', { ...confirmedComment, post_id: post.id });
       window.setTimeout(() => {
-        setComments((prev) => prev.map((item) => item.id === (data?.id || optimisticId) ? { ...item, justArrived: false } : item));
+        setComments((prev) => mapCommentsTree(prev, (item) => String(item.id) === String(confirmedComment.id) ? { ...item, justArrived: false } : item));
       }, 2600);
     } catch (error) {
-      setComments((prev) => prev.filter((item) => String(item.id) !== optimisticId));
+      setComments((prev) => removeCommentFromTree(prev, optimisticId));
       pushToast({ type: 'error', title: 'تعذر إضافة التعليق', description: error?.response?.data?.detail || error?.message });
+    }
+  };
+
+  const handleEditComment = async (commentId, content) => {
+    try {
+      const { data } = await updateComment(commentId, content);
+      setComments((prev) => replaceCommentInTree(prev, data || { id: commentId, content, updated_at: new Date().toISOString() }));
+      pushToast({ type: 'success', title: 'تم تعديل التعليق' });
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر تعديل التعليق', description: error?.response?.data?.detail || error?.message });
+    }
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    try {
+      await deleteComment(commentId);
+      setComments((prev) => removeCommentFromTree(prev, commentId));
+      setCommentsPagination((prev) => ({ ...prev, total_count: Math.max(0, Number(prev.total_count || 0) - 1) }));
+      pushToast({ type: 'success', title: 'تم حذف التعليق' });
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر حذف التعليق', description: error?.response?.data?.detail || error?.message });
+    }
+  };
+
+  const handleLikeComment = async (commentId) => {
+    setComments((prev) => mapCommentsTree(prev, (item) => String(item.id) === String(commentId)
+      ? { ...item, is_liked: !item.is_liked, likes_count: Number(item.likes_count || 0) + (item.is_liked ? -1 : 1) }
+      : item));
+    try {
+      const { data } = await likeComment(commentId);
+      setComments((prev) => mapCommentsTree(prev, (item) => String(item.id) === String(commentId)
+        ? { ...item, is_liked: Boolean(data?.liked), likes_count: Number(data?.likes_count || 0) }
+        : item));
+    } catch (error) {
+      setComments((prev) => mapCommentsTree(prev, (item) => String(item.id) === String(commentId)
+        ? { ...item, is_liked: !item.is_liked, likes_count: Number(item.likes_count || 0) + (item.is_liked ? -1 : 1) }
+        : item));
+      pushToast({ type: 'error', title: 'تعذر تحديث الإعجاب', description: error?.response?.data?.detail || error?.message });
+    }
+  };
+
+  const handlePinComment = async (commentId, pinned) => {
+    try {
+      const { data } = await pinComment(commentId, pinned);
+      setComments((prev) => replaceCommentInTree(prev, data || { id: commentId, is_pinned: pinned }));
+      pushToast({ type: 'success', title: pinned ? 'تم تثبيت التعليق' : 'تم إلغاء تثبيت التعليق' });
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر تحديث التثبيت', description: error?.response?.data?.detail || error?.message });
+    }
+  };
+
+  const handleHideComment = async (commentId, hidden) => {
+    try {
+      const { data } = await hideComment(commentId, hidden);
+      setComments((prev) => replaceCommentInTree(prev, data || { id: commentId, is_hidden: hidden }));
+      pushToast({ type: 'success', title: hidden ? 'تم إخفاء التعليق' : 'تم إظهار التعليق' });
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر تحديث حالة التعليق', description: error?.response?.data?.detail || error?.message });
+    }
+  };
+
+  const handleReportComment = async (commentId) => {
+    try {
+      await reportComment(commentId, 'abuse');
+      pushToast({ type: 'success', title: 'تم إرسال البلاغ للمراجعة' });
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر إرسال البلاغ', description: error?.response?.data?.detail || error?.message });
+    }
+  };
+
+  const handleCopyComment = async (comment) => {
+    try {
+      await navigator.clipboard.writeText(comment?.content || '');
+      pushToast({ type: 'success', title: 'تم نسخ التعليق' });
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر النسخ', description: error?.message });
     }
   };
 
   const handleDelete = async () => {
     try {
       await deletePost(post.id);
-      queryClient.invalidateQueries(['feed-data']);
+      queryClient.invalidateQueries({ queryKey: ['feed-data'] });
       pushToast({ type: 'success', title: 'تم حذف المنشور' });
     } catch (error) {
       pushToast({ type: 'error', title: 'تعذر حذف المنشور', description: error?.response?.data?.detail || error?.message });
@@ -164,7 +364,7 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
   const handleEdit = async () => {
     try {
       await updatePost(post.id, { content: editContent });
-      queryClient.invalidateQueries(['feed-data']);
+      queryClient.invalidateQueries({ queryKey: ['feed-data'] });
       setShowEditModal(false);
       pushToast({ type: 'success', title: 'تم تعديل المنشور' });
     } catch (error) {
@@ -177,7 +377,7 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
     setIsPinned(nextPinned);
     try {
       await updatePost(post.id, { is_pinned: nextPinned });
-      queryClient.invalidateQueries(['feed-data']);
+      queryClient.invalidateQueries({ queryKey: ['feed-data'] });
       pushToast({ type: 'success', title: nextPinned ? 'تم تثبيت المنشور' : 'تم إلغاء التثبيت' });
     } catch (error) {
       setIsPinned(!nextPinned);
@@ -193,12 +393,31 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
   };
 
   const handleCommentReaction = (commentId, emoji) => {
-    setComments((prev) => prev.map((item) => (
+    setComments((prev) => mapCommentsTree(prev, (item) => (
       String(item.id) === String(commentId)
         ? { ...item, reactions: { ...(item.reactions || {}), [emoji]: Number(item.reactions?.[emoji] || 0) + 1 } }
         : item
     )));
   };
+
+  if (postPrefsState.hidden || postPrefsState.archived || postPrefsState.muted) {
+    const label = postPrefsState.hidden ? 'مخفي' : postPrefsState.archived ? 'مؤرشف' : 'مكتوم';
+    return (
+      <Card style={{ padding: 16, border: '1px dashed var(--line)', background: 'rgba(148,163,184,0.04)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div>
+            <strong>تم إخفاء هذا المنشور من العرض</strong>
+            <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>السبب: {label} · @{post.username}</div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {postPrefsState.hidden ? <Button variant="secondary" onClick={() => persistPostPref('hidden', post.id)}>إلغاء الإخفاء</Button> : null}
+            {postPrefsState.archived ? <Button variant="secondary" onClick={() => persistPostPref('archived', post.id)}>إلغاء الأرشفة</Button> : null}
+            {postPrefsState.muted ? <Button variant="secondary" onClick={() => persistPostPref('muted', post.username, 'author')}>إلغاء كتم المحتوى</Button> : null}
+          </div>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card className={`post-card ${isPinned ? 'pinned' : ''}`} style={{ padding: 16, position: 'relative', border: isPinned ? '1px solid var(--accent)' : '1px solid var(--line)', background: isPinned ? 'rgba(59,130,246,0.03)' : 'var(--bg-card)' }}>
@@ -208,7 +427,7 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
         </div>
       ) : null}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 10, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--bg-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '2px solid var(--line)' }}>
             {post.avatar ? <img src={post.avatar} alt={post.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <strong>{post.username?.[0]?.toUpperCase()}</strong>}
@@ -224,6 +443,11 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
         </div>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Button variant="secondary" onClick={() => handleShare('copy')}>نسخ الرابط</Button>
+          <Button variant="secondary" onClick={() => persistPostPref('hidden', post.id)}>{postPrefsState.hidden ? 'إظهار' : 'إخفاء'}</Button>
+          <Button variant="secondary" onClick={() => persistPostPref('archived', post.id)}>{postPrefsState.archived ? 'إلغاء الأرشفة' : 'أرشفة'}</Button>
+          <Button variant="secondary" onClick={() => persistPostPref('muted', post.username, 'author')}>{postPrefsState.muted ? 'إلغاء الكتم' : 'كتم المحتوى'}</Button>
+          <Button variant="secondary" onClick={() => { persistPostPref('reported', post.id); pushToast({ type: 'success', title: 'تم إرسال بلاغ المنشور' }); }}>إبلاغ</Button>
           {typeof onShowAnalytics === 'function' ? <Button variant="secondary" onClick={onShowAnalytics}>📊</Button> : null}
           {isOwner ? <Button variant="secondary" onClick={() => setShowEditModal(true)}>تعديل</Button> : null}
           {isOwner ? <Button variant="secondary" onClick={handleTogglePin}>{isPinned ? 'إلغاء التثبيت' : 'تثبيت'}</Button> : null}
@@ -244,7 +468,9 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
       </div>
 
       <div style={{ display: 'grid', gap: 12 }}>
-        <div className="muted" style={{ fontSize: 13 }}>إجمالي التفاعل: {interactionCount} · حفظ {Number(post.saved_count || 0)} · مشاركة {Number(post.share_count || 0)}</div>
+        <div className="muted" style={{ fontSize: 13 }}>
+          إجمالي التفاعل: {interactionCount} · حفظ {Number(post.saved_count || 0)} · مشاركة {Number(post.share_count || 0)} · مشاهدات {Number(post.views_count || 0)}
+        </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--line)', paddingTop: 12, gap: 10, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ position: 'relative' }}>
@@ -261,14 +487,14 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
               ) : null}
             </div>
 
-            <button type="button" onClick={() => { setShowCommentsModal(true); refreshComments(); }} className="post-inline-btn">
+            <button type="button" onClick={() => { setShowCommentsModal(true); refreshComments({ page: 1, append: false, sortBy: commentsSortBy }); }} className="post-inline-btn">
               <span style={{ fontSize: 18 }}>💬</span>
-              <span>{post.comments_count || comments.length || 0}</span>
+              <span>{post.comments_count || commentsPagination.total_count || 0}</span>
             </button>
 
             <button type="button" onClick={handleQuote} className="post-inline-btn">
               <span style={{ fontSize: 18 }}>❝</span>
-              <span>اقتباس</span>
+              <span>إعادة نشر</span>
             </button>
           </div>
 
@@ -298,9 +524,24 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
       <Modal open={showCommentsModal} onClose={() => setShowCommentsModal(false)} title="التعليقات اللحظية" size="large">
         <NestedComments
           comments={comments}
+          pagination={commentsPagination}
+          sortBy={commentsSortBy}
+          loadingMore={commentsLoadingMore}
+          onSortChange={(nextSort) => {
+            setCommentsSortBy(nextSort);
+            refreshComments({ page: 1, append: false, sortBy: nextSort });
+          }}
+          onLoadMore={() => refreshComments({ page: Number(commentsPagination.page || 1) + 1, append: true, sortBy: commentsSortBy })}
           onAddComment={handleAddComment}
           onReply={(parentId, content) => handleAddComment({ content, parentId })}
           onToggleReaction={handleCommentReaction}
+          onLikeComment={handleLikeComment}
+          onEditComment={handleEditComment}
+          onDeleteComment={handleDeleteComment}
+          onPinComment={handlePinComment}
+          onHideComment={handleHideComment}
+          onReportComment={handleReportComment}
+          onCopyComment={handleCopyComment}
         />
         <div style={{ display: 'grid', gap: 10, marginTop: 16, borderTop: '1px solid var(--line)', paddingTop: 14 }}>
           <textarea value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} rows={3} placeholder="تعليق سريع" style={{ width: '100%', borderRadius: 12, padding: 12 }} />
@@ -319,15 +560,20 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
         .post-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
         .post-card:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(0,0,0,0.1); }
         .post-inline-btn {
-          background: none;
-          border: none;
-          color: var(--text);
-          cursor: pointer;
           display: inline-flex;
           align-items: center;
           gap: 6px;
+          border: none;
+          background: transparent;
+          color: inherit;
+          cursor: pointer;
           font-size: 14px;
-          padding: 0;
+          padding: 8px 10px;
+          border-radius: 12px;
+          transition: background 0.2s ease;
+        }
+        .post-inline-btn:hover {
+          background: rgba(59,130,246,0.08);
         }
       `}</style>
     </Card>

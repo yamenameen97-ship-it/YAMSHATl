@@ -18,6 +18,7 @@ import {
 import socketManager from '../services/socketManager.js';
 import { getCurrentUsername } from '../utils/auth.js';
 import { useChatStore } from '../store/appStore.js';
+import { getChatPreferences, toggleChatPreference } from '../utils/chatPreferences.js';
 import {
   avatarGradient,
   formatLastSeen,
@@ -92,7 +93,8 @@ function MessageBubble({ message, isMe, onReply, onDelete }) {
 
         <div className="bubble-actions">
           <button type="button" onClick={() => onReply(message)}>↩</button>
-          {isMe && !message.deleted ? <button type="button" onClick={() => onDelete(message.id)}>🗑</button> : null}
+          {isMe && !message.deleted ? <button type="button" onClick={() => onDelete(message.id, false)}>🗑</button> : null}
+          {isMe && !message.deleted ? <button type="button" onClick={() => onDelete(message.id, true)}>🧹</button> : null}
         </div>
       </div>
     </div>
@@ -115,7 +117,8 @@ export default function Chat() {
   const [replyTo, setReplyTo] = useState(null);
   const [callMode, setCallMode] = useState(null);
   const [flyingHearts, setFlyingHearts] = useState([]);
-  const [isMutedConversation, setIsMutedConversation] = useState(false);
+  const initialChatPrefs = useMemo(() => getChatPreferences(), []);
+  const [isMutedConversation, setIsMutedConversation] = useState(initialChatPrefs.muted.has(peer));
   const [showDetailsDrawer, setShowDetailsDrawer] = useState(false);
   const messagesEndRef = useRef(null);
   const setActivePeer = useChatStore((state) => state.setActivePeer);
@@ -152,6 +155,8 @@ export default function Chat() {
 
   useEffect(() => {
     if (!peer) return;
+    const prefs = getChatPreferences();
+    setIsMutedConversation(prefs.muted.has(peer));
     loadMessages();
     setShowDetailsDrawer(false);
     setActivePeer(peer);
@@ -233,6 +238,13 @@ export default function Chat() {
     socketManager.on('presence_update', onPresence);
     socketManager.on('typing_update', onTyping);
 
+    const onDeleted = (payload) => {
+      if (!payload?.id) return;
+      setMessages((prev) => prev.map((item) => String(item.id) === String(payload.id) ? { ...item, ...payload, deleted: true } : item));
+    };
+
+    socketManager.on('message_deleted', onDeleted);
+
     return () => {
       if (peer) socketManager.emit('leave_chat', { peer });
       socketManager.off('new_private_message', onMsg);
@@ -240,6 +252,7 @@ export default function Chat() {
       socketManager.off('messages_seen', onSeen);
       socketManager.off('presence_update', onPresence);
       socketManager.off('typing_update', onTyping);
+      socketManager.off('message_deleted', onDeleted);
     };
   }, [currentUser, peer]);
 
@@ -288,10 +301,11 @@ export default function Chat() {
     }
   };
 
-  const handleDelete = async (msgId) => {
+  const handleDelete = async (msgId, deleteForEveryone = false) => {
     try {
-      await deleteMessageApi(msgId);
-      setMessages((prev) => prev.map((item) => item.id === msgId ? { ...item, deleted: true, content: '', message: '' } : item));
+      await deleteMessageApi(msgId, { delete_for_everyone: deleteForEveryone });
+      setMessages((prev) => prev.map((item) => item.id === msgId ? { ...item, deleted: true, deleted_for_everyone: deleteForEveryone, content: '', message: '' } : item));
+      pushToast({ type: 'success', title: deleteForEveryone ? 'تم الحذف للجميع' : 'تم الحذف عندك' });
     } catch {
       pushToast({ type: 'error', title: 'تعذر الحذف' });
     }
@@ -314,16 +328,16 @@ export default function Chat() {
   };
 
   const handleMuteConversation = () => {
-    setIsMutedConversation((prev) => {
-      const next = !prev;
-      pushToast({ type: 'success', title: next ? 'تم كتم المحادثة' : 'تم إلغاء كتم المحادثة' });
-      return next;
-    });
+    const nextSet = toggleChatPreference('muted', peer);
+    const next = nextSet.has(peer);
+    setIsMutedConversation(next);
+    pushToast({ type: 'success', title: next ? 'تم كتم المحادثة' : 'تم إلغاء كتم المحادثة' });
   };
 
   const handleDeleteConversation = () => {
+    const nextSet = toggleChatPreference('archived', peer);
     setMessages([]);
-    pushToast({ type: 'success', title: 'تم تنظيف المحادثة المعروضة', description: 'تم تفريغ الشاشة الحالية بدون حذف السجل من السيرفر.' });
+    pushToast({ type: 'success', title: nextSet.has(peer) ? 'تمت أرشفة المحادثة' : 'تم إلغاء الأرشفة', description: 'تقدر تلاقيها من تبويب المؤرشفة.' });
   };
 
   const spawnHeart = () => {

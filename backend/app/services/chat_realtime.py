@@ -14,6 +14,7 @@ def serialize_message(message: Message, db: Session) -> dict:
     sender = db.query(User).filter(User.id == message.sender_id).first()
     receiver = db.query(User).filter(User.id == message.receiver_id).first()
     deleted = bool(message.deleted_at)
+    deleted_for_everyone = bool(getattr(message, 'deleted_for_everyone', False))
     safe_content = '' if deleted else decrypt_message(message.content or '')
     return {
         'id': message.id,
@@ -29,6 +30,7 @@ def serialize_message(message: Message, db: Session) -> dict:
         'seen_at': message.seen_at.isoformat() if message.seen_at else None,
         'status': 'seen' if message.is_seen else 'delivered' if message.is_delivered else 'sent',
         'deleted': deleted,
+        'deleted_for_everyone': deleted_for_everyone,
         'cursor': message.id,
     }
 

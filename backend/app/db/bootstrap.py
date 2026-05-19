@@ -362,7 +362,12 @@ def _migrate_comments_table(engine: Engine) -> None:
     _add_column_if_missing(engine, 'comments', 'user_id', 'user_id INTEGER')
     _add_column_if_missing(engine, 'comments', 'parent_id', 'parent_id INTEGER NULL')
     _add_column_if_missing(engine, 'comments', 'content', 'content TEXT')
+    _add_column_if_missing(engine, 'comments', 'mentions_json', 'mentions_json TEXT')
+    _add_column_if_missing(engine, 'comments', 'likes_count', 'likes_count INTEGER NOT NULL DEFAULT 0')
+    _add_column_if_missing(engine, 'comments', 'is_pinned', 'is_pinned BOOLEAN NOT NULL DEFAULT FALSE')
+    _add_column_if_missing(engine, 'comments', 'is_hidden', 'is_hidden BOOLEAN NOT NULL DEFAULT FALSE')
     _add_column_if_missing(engine, 'comments', 'created_at', 'created_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'comments', 'updated_at', 'updated_at TIMESTAMP NULL')
 
     columns = _column_names(engine, 'comments')
     select_columns = ['id', *[column for column in ['user_id', 'username', 'comment', 'content', 'created_at'] if column in columns]]
@@ -381,6 +386,11 @@ def _migrate_comments_table(engine: Engine) -> None:
                 updates['content'] = row.get('comment')
             if row.get('created_at') is None:
                 updates['created_at'] = datetime.utcnow()
+            updates.setdefault('likes_count', 0)
+            updates.setdefault('is_pinned', False)
+            updates.setdefault('is_hidden', False)
+            if row.get('created_at') is not None:
+                updates.setdefault('updated_at', row.get('created_at'))
             if updates:
                 assignments = ', '.join(f'{key} = :{key}' for key in updates)
                 updates['id'] = row['id']
@@ -402,6 +412,7 @@ def _migrate_messages_table(engine: Engine) -> None:
     _add_column_if_missing(engine, 'messages', 'is_seen', 'is_seen BOOLEAN DEFAULT FALSE')
     _add_column_if_missing(engine, 'messages', 'seen_at', 'seen_at TIMESTAMP NULL')
     _add_column_if_missing(engine, 'messages', 'deleted_at', 'deleted_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'messages', 'deleted_for_everyone', 'deleted_for_everyone BOOLEAN NOT NULL DEFAULT FALSE')
     _add_column_if_missing(engine, 'messages', 'created_at', 'created_at TIMESTAMP NULL')
 
     columns = _column_names(engine, 'messages')

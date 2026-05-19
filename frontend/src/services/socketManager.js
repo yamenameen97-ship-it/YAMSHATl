@@ -191,6 +191,16 @@ class SocketManager {
     if (this.socket.connected) this.socket.disconnect();
   }
 
+  cleanup() {
+    this.stopHeartbeat();
+    this.activeListeners.forEach((listeners, event) => {
+      listeners.forEach((wrappedHandler) => this.socket.off(event, wrappedHandler));
+    });
+    this.activeListeners.clear();
+    this.eventDeduper.clear();
+    if (this.socket.connected) this.socket.disconnect();
+  }
+
   emit(eventName, payload = {}, options = {}) {
     const signedPayload = options?.skipSignature ? payload : this.decoratePayload(eventName, payload);
     if (this.socket.connected) {

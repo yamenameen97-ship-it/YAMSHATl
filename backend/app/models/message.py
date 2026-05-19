@@ -24,4 +24,5 @@ class Message(Base):
     is_seen = Column(Boolean, default=False, nullable=False)
     seen_at = Column(DateTime, nullable=True)
     deleted_at = Column(DateTime, nullable=True)
+    deleted_for_everyone = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)

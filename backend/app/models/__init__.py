@@ -2,6 +2,8 @@ from app.models.app_setting import AppSetting  # noqa: F401
 from app.models.audit_log import AuditLog  # noqa: F401
 from app.models.close_friend import CloseFriend  # noqa: F401
 from app.models.comment import Comment  # noqa: F401
+from app.models.comment_like import CommentLike  # noqa: F401
+from app.models.comment_like import CommentLike  # noqa: F401
 from app.models.follow import Follow  # noqa: F401
 from app.models.like import Like  # noqa: F401
 from app.models.login_challenge import LoginChallenge  # noqa: F401

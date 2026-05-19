@@ -14,6 +14,7 @@ import usePageAnalytics from './hooks/usePageAnalytics.js';
 import useChatRealtime from './hooks/useChatRealtime.js';
 import { useAppStore } from './store/appStore.js';
 import './styles/theme.css';
+import BottomNav from './components/BottomNav.jsx';
 
 const AdminDashboard = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminDashboard })));
 const AdminUsers = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminUsers })));
@@ -157,6 +158,7 @@ export default function App() {
             <Route path="/admin/groups" element={<ProtectedRoute><AdminGroups /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          <BottomNav />
         </Suspense>
       </AppErrorBoundary>
     </ToastProvider>

@@ -1,47 +1,67 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { getPosts } from '../api/posts.js';
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 
 /**
- * Advanced Feed Hook with Caching, Polling, and Stale Data Handling
+ * Advanced Feed Hook with backend-aware filtering, sorting, and pagination.
  */
 export function useFeed(options = {}) {
-  const { 
-    tab = 'all', 
-    filter = 'latest', 
+  const {
+    tab,
+    filter,
+    filterType,
+    sort,
+    sortBy,
     limit = 10,
-    pollingInterval = 30000 // 30 seconds polling
+    includeDrafts = false,
+    pollingInterval = 30000,
   } = options;
 
+  const effectiveFilter = String(filterType || tab || filter || 'all').trim().toLowerCase();
+  const effectiveSort = String(sortBy || sort || (filter === 'latest' ? 'recent' : 'recent')).trim().toLowerCase();
+  const pageSize = Math.max(Number(limit) || 10, 1);
   const lastFetchRef = useRef(Date.now());
 
   const query = useInfiniteQuery({
-    queryKey: ['feed-data', tab, filter],
+    queryKey: ['feed-data', effectiveFilter, effectiveSort, pageSize, Boolean(includeDrafts)],
     queryFn: async ({ pageParam = 1 }) => {
-      const response = await getPosts({ tab, filter, page: pageParam, limit });
+      const response = await getPosts({
+        page: pageParam,
+        limit: pageSize,
+        filterType: effectiveFilter,
+        sortBy: effectiveSort,
+        include_drafts: includeDrafts,
+      });
       lastFetchRef.current = Date.now();
-      return response.data;
+      return {
+        items: response.data || [],
+        meta: response.meta || {},
+      };
     },
     getNextPageParam: (lastPage, allPages) => {
-      return lastPage?.length === limit ? allPages.length + 1 : undefined;
+      const hasMore = Boolean(
+        lastPage?.meta?.pagination?.has_more
+          ?? lastPage?.meta?.has_more
+          ?? (Array.isArray(lastPage?.items) && lastPage.items.length === pageSize)
+      );
+      return hasMore ? allPages.length + 1 : undefined;
     },
-    // Stale data handling
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    cacheTime: 30 * 60 * 1000, // 30 minutes
+    staleTime: 5 * 60 * 1000,
+    cacheTime: 30 * 60 * 1000,
     refetchOnWindowFocus: true,
-    // Polling fallback for real-time updates
     refetchInterval: (data) => {
-      // Only poll if on the first page and window is focused
-      return (data?.pages?.length === 1 && document.visibilityState === 'visible') ? pollingInterval : false;
-    }
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return false;
+      return data?.pages?.length === 1 ? pollingInterval : false;
+    },
   });
 
-  // Handle pagination optimization
-  const posts = query.data?.pages.flatMap(page => page) || [];
+  const posts = query.data?.pages.flatMap((page) => page.items || []) || [];
+  const meta = query.data?.pages?.[0]?.meta || {};
 
   return {
     posts,
+    meta,
     ...query,
-    lastFetched: lastFetchRef.current
+    lastFetched: lastFetchRef.current,
   };
 }

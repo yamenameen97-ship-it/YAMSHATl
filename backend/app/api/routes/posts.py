@@ -6,6 +6,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user, get_db
+from app.models.follow import Follow
 from app.models.user import User
 from app.services.comment_service import create_comment, get_comments
 from app.services.ai_service import (
@@ -83,21 +84,67 @@ def create(payload: dict = Body(...), db: Session = Depends(get_db), current_use
 def get_all(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=30, ge=1, le=100),
+    page: int | None = Query(default=None, ge=1),
     include_drafts: bool = Query(default=False),
+    filter: str | None = Query(default=None),
+    filter_type: str | None = Query(default=None),
+    sort: str | None = Query(default=None),
+    sort_by: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    posts = get_posts(db, current_user=current_user, skip=skip, limit=limit, include_drafts=include_drafts)
-    
-    # Smart feed ranking
-    ranked_posts = rank_posts(posts, current_user)
-    
-    # Recommendation engine hooks
+    effective_limit = int(limit)
+    effective_skip = (page - 1) * effective_limit if page else skip
+    active_filter = str(filter_type or filter or 'all').strip().lower()
+    active_sort = str(sort_by or sort or 'recent').strip().lower()
+
+    def interaction_score(post: dict) -> int:
+        return int(post.get('likes') or post.get('like_count') or post.get('likes_count') or 0) + (int(post.get('comments_count') or post.get('comment_count') or 0) * 2) + (int(post.get('share_count') or 0) * 3)
+
+    manual_pagination = active_filter in {'following', 'trending', 'mine'} or active_sort in {'trending', 'oldest'}
+    candidate_limit = max(effective_limit * 6, 60) if manual_pagination else effective_limit
+    candidate_skip = 0 if manual_pagination else effective_skip
+
+    posts = get_posts(db, current_user=current_user, skip=candidate_skip, limit=candidate_limit, include_drafts=include_drafts)
+
+    if active_filter == 'following':
+        following_ids = {
+            follow.following_id
+            for follow in db.query(Follow).filter(Follow.follower_id == current_user.id).all()
+        }
+        posts = [
+            post for post in posts
+            if int(post.get('user_id') or 0) == current_user.id or int(post.get('user_id') or 0) in following_ids
+        ]
+    elif active_filter == 'mine':
+        posts = [post for post in posts if int(post.get('user_id') or 0) == current_user.id]
+
+    if active_filter == 'trending' or active_sort == 'trending':
+        posts = sorted(posts, key=lambda post: (interaction_score(post), str(post.get('created_at') or '')), reverse=True)
+    elif active_sort == 'oldest':
+        posts = sorted(posts, key=lambda post: str(post.get('created_at') or ''))
+    else:
+        posts = rank_posts(posts, current_user)
+
+    total_candidates = len(posts)
+    paginated_posts = posts[effective_skip:effective_skip + effective_limit] if manual_pagination else posts
+    has_more = total_candidates > (effective_skip + len(paginated_posts)) if manual_pagination else len(posts) == effective_limit
+
     recommended_posts = get_recommendations(current_user)
-    
+
     return {
-        "posts": ranked_posts,
-        "recommendations": recommended_posts
+        "posts": paginated_posts,
+        "recommendations": recommended_posts,
+        "pagination": {
+            "page": page or ((effective_skip // effective_limit) + 1),
+            "skip": effective_skip,
+            "limit": effective_limit,
+            "has_more": has_more,
+        },
+        "filters": {
+            "filter": active_filter,
+            "sort_by": active_sort,
+        },
     }
 
 

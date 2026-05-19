@@ -17,8 +17,35 @@ function normalizePost(post = {}) {
   };
 }
 
+function normalizeFeedParams(params = {}) {
+  const {
+    page,
+    limit,
+    filterType,
+    sortBy,
+    tab,
+    filter,
+    sort,
+    includeDrafts,
+    ...rest
+  } = params;
+
+  const resolvedLimit = Math.max(Number(limit) || 10, 1);
+  const normalized = {
+    ...rest,
+    limit: resolvedLimit,
+    page: Math.max(Number(page) || 1, 1),
+    filter_type: filterType ?? tab ?? filter ?? 'all',
+    sort_by: sortBy ?? sort ?? 'recent',
+  };
+
+  if (includeDrafts !== undefined) normalized.include_drafts = includeDrafts;
+  return normalized;
+}
+
 export const getPosts = async (params = {}) => {
-  const response = await API.get('/posts', { params });
+  const normalizedParams = normalizeFeedParams(params);
+  const response = await API.get('/posts', { params: normalizedParams });
   const payload = response?.data;
   const rawItems = Array.isArray(payload)
     ? payload
@@ -27,10 +54,19 @@ export const getPosts = async (params = {}) => {
       : Array.isArray(payload?.items)
         ? payload.items
         : [];
+  const pagination = {
+    ...(payload?.pagination || {}),
+    has_more: Boolean(payload?.pagination?.has_more ?? (rawItems.length === normalizedParams.limit)),
+    page: Number(payload?.pagination?.page || normalizedParams.page || 1),
+    limit: Number(payload?.pagination?.limit || normalizedParams.limit),
+  };
   return {
     ...response,
     data: rawItems.map(normalizePost),
-    meta: payload && !Array.isArray(payload) ? payload : {},
+    meta: {
+      ...(payload && !Array.isArray(payload) ? payload : {}),
+      pagination,
+    },
   };
 };
 export const getDraftPosts = () => API.get('/posts/drafts', { cache: false, forceRefresh: true });

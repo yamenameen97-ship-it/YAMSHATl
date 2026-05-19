@@ -3,12 +3,16 @@
 /**
  * Cache Buster Script
  * يقوم بتحديث رقم الإصدار تلقائياً قبل كل بناء لضمان مسح الكاش
- * 
+ *
  * الاستخدام: node scripts/cache-buster.js
  */
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // مسار ملف Service Worker
 const swPath = path.join(__dirname, '../public/sw.js');
@@ -19,9 +23,14 @@ function generateVersion() {
   const timestamp = now.getTime();
   const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
   const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '');
-  
+
   // صيغة الإصدار: yamshat-vYYYYMMDD-HHMMSS-timestamp
   return `yamshat-v${dateStr}-${timeStr}-${timestamp}`;
+}
+
+if (!fs.existsSync(swPath)) {
+  console.warn(`⚠️ Service Worker file not found: ${swPath}`);
+  process.exit(0);
 }
 
 // قراءة محتوى Service Worker الحالي
@@ -36,7 +45,7 @@ const newVersion = generateVersion();
 
 // تحديث الإصدار في الملف
 swContent = swContent.replace(
-  /const VERSION = '[^']+'/,
+  /const VERSION = '[^']+'/, 
   `const VERSION = '${newVersion}'`
 );
 

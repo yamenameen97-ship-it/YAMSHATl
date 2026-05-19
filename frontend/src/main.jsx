@@ -1,3 +1,4 @@
+import { registerServiceWorker } from './service-worker-manager';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
@@ -98,4 +99,12 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       </HashRouter>
     </QueryClientProvider>
   </React.StrictMode>
-);
+  );
+  // ✅ أضف هذا بعد root.render()
+window.addEventListener('load', async () => {
+  // تسجيل Service Worker المحسّن
+  await registerServiceWorker();
+  
+});
+
+

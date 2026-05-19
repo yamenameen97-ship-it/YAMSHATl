@@ -1,5 +1,5 @@
 import { isPrimaryAdminSession } from './access.js';
-import { secureGet, secureRemove, secureSet } from './secureStorage.js';
+import { secureStorage } from './secureStorage.js';
 import { clearCsrfToken, setCsrfToken } from './csrf.js';
 import { useAppStore } from '../store/appStore.js';
 

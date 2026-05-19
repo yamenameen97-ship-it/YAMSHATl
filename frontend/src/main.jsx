@@ -12,7 +12,53 @@ import { initializePerformanceToolkit } from './utils/performance.js';
 import { initializeRuntimeErrorCapture } from './utils/runtimeErrors.js';
 import notificationService from './services/notificationService.js';
 
+const BUILD_ID = 'yamshat-hotfix-20260519-r1';
+const BUILD_STORAGE_KEY = 'yamshat_build_id';
+
+async function hardResetIfBuildChanged() {
+  if (typeof window === 'undefined') return false;
+
+  try {
+    const previousBuild = localStorage.getItem(BUILD_STORAGE_KEY);
+    if (previousBuild === BUILD_ID) return false;
+
+    localStorage.setItem(BUILD_STORAGE_KEY, BUILD_ID);
+    localStorage.removeItem('backendOrigin');
+    localStorage.removeItem('apiBase');
+    localStorage.removeItem('yamshat_post_draft');
+    localStorage.removeItem('yamshat_quote_draft');
+
+    try {
+      sessionStorage.removeItem('yamshat_user_session');
+    } catch {
+      // ignore storage failures
+    }
+
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((registration) => registration.unregister().catch(() => false)));
+    }
+
+    if ('caches' in window) {
+      const cacheKeys = await caches.keys();
+      await Promise.all(cacheKeys.map((key) => caches.delete(key).catch(() => false)));
+    }
+
+    const reloadFlag = `yamshat_build_reload:${BUILD_ID}`;
+    if (!sessionStorage.getItem(reloadFlag)) {
+      sessionStorage.setItem(reloadFlag, '1');
+      window.location.replace(window.location.href);
+      return true;
+    }
+  } catch {
+    // ignore reset failures to avoid blocking startup
+  }
+
+  return false;
+}
+
 if (typeof window !== 'undefined') {
+  window.__YAMSHAT_BUILD__ = BUILD_ID;
   window.__YAMSHAT_SW_READY__ = Promise.resolve(null);
   initializePerformanceToolkit();
   initializeRuntimeErrorCapture();
@@ -27,7 +73,10 @@ if (typeof window !== 'undefined') {
   });
 
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
+    window.addEventListener('load', async () => {
+      const resetTriggeredReload = await hardResetIfBuildChanged();
+      if (resetTriggeredReload) return;
+
       window.__YAMSHAT_SW_READY__ = navigator.serviceWorker.register('/sw.js')
         .then((registration) => {
           initializePerformanceToolkit({ registration });

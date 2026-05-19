@@ -1,6 +1,6 @@
 (function () {
-  const DEPLOY_BACKEND_ORIGIN = '';
-  const DEPLOY_API_BASE = '';
+  const DEPLOY_BACKEND_ORIGIN = 'https://yamshatl.onrender.com';
+  const DEPLOY_API_BASE = 'https://yamshatl.onrender.com/api';
 
   const trim = (value) => String(value || '').trim().replace(/\/+$/, '');
   const toApiBase = (value) => {
@@ -19,12 +19,6 @@
   const currentOrigin = trim(window.location.origin);
 
   const inferBackendFromHints = () => {
-    const host = trim(window.location.hostname).toLowerCase();
-    const renderSibling = host.match(/^(.*)-\d+\.onrender\.com$/i);
-    if (renderSibling?.[1]) {
-      return `${window.location.protocol}//${renderSibling[1]}.onrender.com`;
-    }
-
     try {
       const links = Array.from(document.querySelectorAll('link[rel="preconnect"][href], link[rel="dns-prefetch"][href]'));
       for (const link of links) {
@@ -63,7 +57,6 @@
 
   const safeStoredBackend = originLooksCurrent(storedBackend) || !isRenderHost(storedBackend) ? storedBackend : '';
   const safeStoredApi = apiLooksCurrent(storedApi) || !isRenderHost(apiToOrigin(storedApi)) ? storedApi : '';
-  const queryBackendApi = queryBackend ? toApiBase(queryBackend) : '';
 
   const backendOrigin =
     trim(queryBackend) ||
@@ -73,6 +66,8 @@
     apiToOrigin(safeStoredApi) ||
     inferredBackendOrigin ||
     currentOrigin;
+
+  const queryBackendApi = queryBackend ? toApiBase(queryBackend) : '';
 
   const apiBase =
     toApiBase(queryApi) ||

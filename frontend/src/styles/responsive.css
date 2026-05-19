@@ -1,0 +1,8 @@
+@import './index.css';
+
+/*
+ * Compatibility shim:
+ * main.jsx imports responsive.css, while the project currently keeps
+ * responsive style rules in index.css and component-level styles.
+ * This file preserves the expected import path without changing runtime behavior.
+ */

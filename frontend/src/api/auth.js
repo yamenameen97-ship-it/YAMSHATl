@@ -1,4 +1,5 @@
 import API from './axios.js';
+import { BACKEND_ORIGIN } from './config.js';
 import sessionManager from '../auth/sessionManager.js';
 
 export const loginUser = async (data) => {
@@ -78,13 +79,13 @@ export const logoutAllDevices = () => API.post('/auth/logout-all');
 
 
 export const loginWithGoogle = () => {
-  window.location.href = `${import.meta.env.VITE_API_URL}/auth/google/login`;
+  window.location.href = `${BACKEND_ORIGIN}/auth/google/login`;
 };
 
 export const loginWithFacebook = () => {
-  window.location.href = `${import.meta.env.VITE_API_URL}/auth/facebook/login`;
+  window.location.href = `${BACKEND_ORIGIN}/auth/facebook/login`;
 };
 
 export const loginWithApple = () => {
-  window.location.href = `${import.meta.env.VITE_API_URL}/auth/apple/login`;
+  window.location.href = `${BACKEND_ORIGIN}/auth/apple/login`;
 };

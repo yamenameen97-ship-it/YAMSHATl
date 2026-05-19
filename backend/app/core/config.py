@@ -229,7 +229,8 @@ class Settings:
                 'http://localhost:5173',
                 'http://127.0.0.1:5173',
                 'https://yamshatl-1-yg1o.onrender.com',
-                'https://yamshat-api.onrender.com',
+                'https://yamshatl.onrender.com',
+                'https://yamshatl-11.onrender.com',
             ]
 
         origins: list[str] = []

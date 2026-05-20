@@ -5,7 +5,79 @@
 /* ============================================
    إصلاح كامل لمشكلة خروج المحتوى عن الشاشة
    ============================================ */
+/* ============================================
+   إصلاح قطعي لخروج المحتوى عن الشاشة (لأي عنصر)
+   ============================================ */
 
+/* 1. منع التمرير الأفقي من الجسم */
+html, body {
+  overflow-x: hidden !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* 2. جذر التطبيق */
+#root, #__next, .app-root, main {
+  overflow-x: hidden !important;
+  width: 100% !important;
+  max-width: 100vw !important;
+}
+
+/* 3. قتل أي تجاوز من أي عنصر */
+* {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* 4. إصلاح أي حاوية تحتوي على grid أو flex تسبب مشكلة */
+[class*="feed"], 
+[class*="post"], 
+[class*="main"], 
+[class*="container"],
+[class*="wrapper"],
+[class*="layout"] {
+  overflow-x: hidden !important;
+  max-width: 100% !important;
+}
+
+/* 5. إصلاح جميع الصور والميديا */
+img, video, iframe, canvas, svg {
+  max-width: 100% !important;
+  height: auto !important;
+}
+
+/* 6. إصلاح أي عنصر يستخدم vw */
+[style*="vw"] {
+  max-width: 100% !important;
+}
+
+/* 7. إخفاء أي شريط تمرير أفقي قد يظهر */
+body::-webkit-scrollbar {
+  width: 8px;
+  height: 0px;
+}
+
+/* 8. إصلاح الشاشات الصغيرة جداً */
+@media (max-width: 768px) {
+  body, html, #root {
+    overflow-x: hidden !important;
+    position: relative !important;
+  }
+  
+  [style*="margin-right"],
+  [style*="margin-left"] {
+    margin-right: 0 !important;
+    margin-left: 0 !important;
+  }
+  
+  [style*="padding-right"],
+  [style*="padding-left"] {
+    padding-right: 8px !important;
+    padding-left: 8px !important;
+  }
+}
 /* منع أي تجاوز أفقي في كل الصفحات */
 html, body, #root {
   overflow-x: hidden !important;

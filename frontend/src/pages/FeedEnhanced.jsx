@@ -444,6 +444,53 @@ export default function FeedEnhanced() {
           </section>
         </aside>
       </div>
+      html, body, #root {
+  overflow-x: hidden !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.desktop-feed-shell {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+  padding: 10px !important;
+}
+
+.desktop-feed-left-rail {
+  display: none !important;
+}
+
+.desktop-feed-right-rail {
+  display: none !important;
+}
+
+.desktop-feed-center-column {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+}
+
+.desktop-post-media,
+img, video, iframe {
+  max-width: 100% !important;
+  height: auto !important;
+}
+
+.desktop-post-card,
+.desktop-composer-hero-card,
+.desktop-side-card,
+.desktop-feed-topbar {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+}
+
+* {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
 
       <style>{`
       html, body, #root {

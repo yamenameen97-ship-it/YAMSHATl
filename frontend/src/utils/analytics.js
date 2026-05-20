@@ -2,6 +2,8 @@ import { API_BASE } from '../api/config.js';
 import { getAuthToken } from './auth.js';
 import { getCsrfToken } from './csrf.js';
 
+const ANALYTICS_ENABLED = String(import.meta.env.VITE_ENABLE_ANALYTICS || 'true').toLowerCase() === 'true';
+
 const QUEUE_KEY = 'yamshat-analytics-queue';
 
 function readQueue() {
@@ -53,6 +55,10 @@ function buildHeaders() {
 }
 
 async function sendPayload(payload) {
+  if (!ANALYTICS_ENABLED) return false;
+  const token = getAuthToken();
+  if (!token) return false;
+
   const endpoint = `${API_BASE}/analytics/events`;
   const body = JSON.stringify(payload);
 
@@ -78,6 +84,7 @@ async function sendPayload(payload) {
 }
 
 export async function flushAnalyticsQueue() {
+  if (!ANALYTICS_ENABLED || !getAuthToken()) return;
   const queued = readQueue();
   if (!queued.length) return;
   const pending = [...queued];
@@ -92,6 +99,8 @@ export async function flushAnalyticsQueue() {
 }
 
 export async function trackEvent(eventName, properties = {}, context = {}) {
+  if (!ANALYTICS_ENABLED || !getAuthToken()) return false;
+
   const payload = {
     event_name: eventName,
     category: context.category || 'ui',

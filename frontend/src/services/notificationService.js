@@ -1,4 +1,5 @@
 import API from '../api/axios.js';
+import { getAuthToken } from '../utils/auth.js';
 import { useNotificationStore } from '../store/notificationStore.js';
 
 const DEVICE_ID_KEY = 'yamshat_device_id';
@@ -88,7 +89,9 @@ function urlBase64ToUint8Array(base64String) {
 export const notificationService = {
   async initialize() {
     try {
-      await this.registerDevice();
+      if (getAuthToken()) {
+        await this.registerDevice();
+      }
       if ('Notification' in window && Notification.permission === 'default') {
         await Notification.requestPermission();
       }
@@ -130,11 +133,15 @@ export const notificationService = {
   async requestPermission() {
     if (!('Notification' in window)) return 'unsupported';
     const permission = await Notification.requestPermission();
-    await this.registerDevice();
+    if (getAuthToken()) {
+      await this.registerDevice();
+    }
     return permission;
   },
 
   async registerDevice() {
+    if (!getAuthToken()) return null;
+
     const payload = {
       device_id: getOrCreateDeviceId(),
       platform: getPlatform(),

@@ -1,4 +1,3 @@
-import { registerServiceWorker } from './service-worker-manager';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
@@ -15,7 +14,7 @@ import notificationService from './services/notificationService.js';
 import "./styles/mobile-optimization.css";
 import "./styles/performance.css";
 
-const BUILD_ID = 'yamshat-hotfix-20260519-r1';
+const BUILD_ID = 'yamshat-hotfix-20260520-r2';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {
@@ -30,9 +29,16 @@ async function hardResetIfBuildChanged() {
     localStorage.removeItem('apiBase');
     localStorage.removeItem('yamshat_post_draft');
     localStorage.removeItem('yamshat_quote_draft');
+    localStorage.removeItem('yamshat_user_session');
+    localStorage.removeItem('yamshatAuth');
+    localStorage.removeItem('user');
+    localStorage.removeItem('yamshat_csrf_token');
 
     try {
       sessionStorage.removeItem('yamshat_user_session');
+      sessionStorage.removeItem('yamshatAuth');
+      sessionStorage.removeItem('user');
+      sessionStorage.removeItem('yamshat_csrf_token');
     } catch {
       // ignore storage failures
     }
@@ -101,10 +107,4 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       </HashRouter>
     </QueryClientProvider>
   </React.StrictMode>
-  );
-  // ✅ أضف هذا بعد root.render()
-window.addEventListener('load', async () => {
-  // تسجيل Service Worker المحسّن
-  await registerServiceWorker();
-  
-});
+);

@@ -444,308 +444,629 @@ export default function FeedEnhanced() {
           </section>
         </aside>
       </div>
-html, body, #root {
-  overflow-x: hidden !important;
-  width: 100% !important;
-  max-width: 100% !important;
-}
-
-.desktop-feed-shell {
-  display: block !important;
-  width: 100% !important;
-  max-width: 100% !important;
-  overflow-x: hidden !important;
-  padding: 10px !important;
-}
-
-.desktop-feed-left-rail {
-  display: none !important;
-}
-
-.desktop-feed-right-rail {
-  display: none !important;
-}
-
-.desktop-feed-center-column {
-  width: 100% !important;
-  max-width: 100% !important;
-  overflow-x: hidden !important;
-}
-
-.desktop-post-media,
-img, video, iframe {
-  max-width: 100% !important;
-  height: auto !important;
-}
-
-.desktop-post-card,
-.desktop-composer-hero-card,
-.desktop-side-card,
-.desktop-feed-topbar {
-  width: 100% !important;
-  max-width: 100% !important;
-  overflow-x: hidden !important;
-}
-
-* {
-  max-width: 100% !important;
-  box-sizing: border-box !important;
-}
-
-    <style>{`
-      html, body, #root {
-  overflow-x: hidden !important;
-  width: 100% !important;
-  max-width: 100% !important;
-  margin: 0 !important;
-  padding: 0 !important;
-}
-
-.desktop-feed-shell {
-  overflow-x: hidden !important;
-  max-width: 100% !important;
-  padding: 12px !important;
-  gap: 12px !important;
-}
-
-.desktop-feed-left-rail,
-.desktop-feed-center-column,
-.desktop-feed-right-rail {
-  max-width: 100% !important;
-  overflow-x: hidden !important;
-}
-
-@media (max-width: 1380px) {
-  .desktop-feed-shell {
-    grid-template-columns: 240px minmax(0, 1fr) 280px !important;
-    gap: 12px !important;
-    padding: 12px !important;
+<style>{`
+  html, body, #root {
+    overflow-x: hidden !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
-}
 
-@media (max-width: 1180px) {
   .desktop-feed-shell {
-    grid-template-columns: 240px minmax(0, 1fr) !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr) 340px;
+    gap: 22px;
+    padding: 22px;
+    background: radial-gradient(circle at top left, rgba(139,92,246,0.18), transparent 30%), linear-gradient(180deg, #050816 0%, #070c18 46%, #050915 100%);
+    color: #eff4ff;
   }
-}
 
-@media (max-width: 920px) {
-  .desktop-feed-shell {
-    grid-template-columns: 1fr !important;
-    padding: 8px !important;
-  }
-  
   .desktop-feed-left-rail,
   .desktop-feed-right-rail {
-    display: flex !important;
-    flex-direction: column !important;
-    position: static !important;
+    position: sticky;
+    top: 22px;
+    align-self: start;
+    display: grid;
+    gap: 16px;
   }
-}
 
-.desktop-post-media,
-.desktop-brand-fallback,
-img, video, iframe {
-  max-width: 100% !important;
-  height: auto !important;
-}
+  .desktop-feed-center-column {
+    min-width: 0;
+    display: grid;
+    gap: 18px;
+    align-content: start;
+  }
 
-* {
-  max-width: 100% !important;
-  box-sizing: border-box !important;
-}
-        .desktop-feed-shell {
-          min-height: 100vh;
-          display: grid;
-          grid-template-columns: 280px minmax(0, 1fr) 340px;
-          gap: 22px;
-          padding: 22px;
-          background:
-            radial-gradient(circle at top left, rgba(139,92,246,0.18), transparent 30%),
-            linear-gradient(180deg, #050816 0%, #070c18 46%, #050915 100%);
-          color: #eff4ff;
-        }
+  .desktop-left-brand-card,
+  .desktop-composer-hero-card,
+  .desktop-post-card,
+  .desktop-side-card,
+  .desktop-profile-summary-card,
+  .desktop-feed-topbar {
+    border-radius: 28px;
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(7, 12, 24, 0.88);
+    box-shadow: 0 24px 60px rgba(2, 6, 23, 0.36);
+    backdrop-filter: blur(18px);
+  }
 
-        .desktop-feed-left-rail,
-        .desktop-feed-right-rail {
-          position: sticky;
-          top: 22px;
-          align-self: start;
-          display: grid;
-          gap: 16px;
-        }
+  .desktop-feed-topbar {
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    justify-content: space-between;
+    position: sticky;
+    top: 18px;
+    z-index: 12;
+  }
 
-        .desktop-feed-center-column {
-          min-width: 0;
-          display: grid;
-          gap: 18px;
-          align-content: start;
-        }
+  .desktop-search-box {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px;
+    min-height: 52px;
+    border-radius: 18px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+  }
 
-        .desktop-left-brand-card,
-        .desktop-composer-hero-card,
-        .desktop-post-card,
-        .desktop-side-card,
-        .desktop-profile-summary-card,
-        .desktop-feed-topbar {
-          border-radius: 28px;
-          border: 1px solid rgba(255,255,255,0.06);
-          background: rgba(7, 12, 24, 0.88);
-          box-shadow: 0 24px 60px rgba(2, 6, 23, 0.36);
-          backdrop-filter: blur(18px);
-        }
+  .desktop-search-box input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: #eff4ff;
+    font-size: 14px;
+    font-family: inherit;
+  }
 
-        .desktop-feed-topbar {
-          padding: 14px 16px;
-          display: flex;
-          align-items: center;
-          gap: 14px;
-          justify-content: space-between;
-          position: sticky;
-          top: 18px;
-          z-index: 12;
-        }
+  .desktop-search-box input::placeholder,
+  .desktop-search-icon,
+  .desktop-left-brand-subtitle,
+  .desktop-post-author small,
+  .desktop-suggest-item small,
+  .desktop-trend-item small,
+  .desktop-live-item small,
+  .desktop-profile-head small,
+  .desktop-profile-stats span,
+  .desktop-composer-hero-head span,
+  .desktop-post-stats span {
+    color: #94a3b8;
+  }
 
-        .desktop-search-box {
-          flex: 1;
-          min-width: 0;
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          padding: 0 16px;
-          min-height: 52px;
-          border-radius: 18px;
-          background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.06);
-        }
+  .desktop-top-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
 
-        .desktop-search-box input {
-          flex: 1;
-          min-width: 0;
-          border: none;
-          outline: none;
-          background: transparent;
-          color: #eff4ff;
-          font-size: 14px;
-          font-family: inherit;
-        }
+  .desktop-top-action,
+  .desktop-top-profile-pill,
+  .desktop-ghost-btn,
+  .desktop-new-post-btn,
+  .desktop-action-btn,
+  .desktop-follow-btn,
+  .desktop-publish-glow,
+  .desktop-mini-chip,
+  .desktop-service-tile {
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.04);
+    color: #eff4ff;
+    border-radius: 16px;
+    transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+  }
 
-        .desktop-search-box input::placeholder,
-        .desktop-search-icon,
-        .desktop-left-brand-subtitle,
-        .desktop-post-author small,
-        .desktop-suggest-item small,
-        .desktop-trend-item small,
-        .desktop-live-item small,
-        .desktop-profile-head small,
-        .desktop-profile-stats span,
-        .desktop-composer-hero-head span,
-        .desktop-post-stats span {
-          color: #94a3b8;
-        }
+  .desktop-top-action {
+    width: 48px;
+    height: 48px;
+    display: inline-grid;
+    place-items: center;
+    position: relative;
+    font-size: 18px;
+    text-decoration: none;
+  }
 
-        .desktop-top-actions {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          flex-shrink: 0;
-        }
+  .desktop-top-action.active,
+  .desktop-top-action:hover,
+  .desktop-left-link.active,
+  .desktop-left-link:hover,
+  .desktop-service-tile:hover,
+  .desktop-action-btn:hover,
+  .desktop-follow-btn:hover,
+  .desktop-new-post-btn:hover,
+  .desktop-mini-chip:hover,
+  .desktop-publish-glow:hover {
+    background: linear-gradient(135deg, rgba(124,58,237,0.28), rgba(99,102,241,0.14));
+    border-color: rgba(167,139,250,0.34);
+    box-shadow: 0 16px 28px rgba(124,58,237,0.16);
+    transform: translateY(-1px);
+  }
 
-        .desktop-top-action,
-        .desktop-top-profile-pill,
-        .desktop-ghost-btn,
-        .desktop-new-post-btn,
-        .desktop-action-btn,
-        .desktop-follow-btn,
-        .desktop-publish-glow,
-        .desktop-mini-chip,
-        .desktop-service-tile {
-          border: 1px solid rgba(255,255,255,0.06);
-          background: rgba(255,255,255,0.04);
-          color: #eff4ff;
-          border-radius: 16px;
-          transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
-        }
+  .desktop-top-action small {
+    position: absolute;
+    top: -4px;
+    inset-inline-start: -4px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: #ef4444;
+    color: white;
+    display: grid;
+    place-items: center;
+    font-size: 10px;
+    font-weight: 800;
+  }
 
-        .desktop-top-action {
-          width: 48px;
-          height: 48px;
-          display: inline-grid;
-          place-items: center;
-          position: relative;
-          font-size: 18px;
-          text-decoration: none;
-        }
+  .desktop-top-profile-pill {
+    min-height: 48px;
+    padding: 0 12px 0 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    font-weight: 700;
+  }
 
-        .desktop-top-action.active,
-        .desktop-top-action:hover,
-        .desktop-left-link.active,
-        .desktop-left-link:hover,
-        .desktop-service-tile:hover,
-        .desktop-action-btn:hover,
-        .desktop-follow-btn:hover,
-        .desktop-new-post-btn:hover,
-        .desktop-mini-chip:hover,
-        .desktop-publish-glow:hover {
-          background: linear-gradient(135deg, rgba(124,58,237,0.28), rgba(99,102,241,0.14));
-          border-color: rgba(167,139,250,0.34);
-          box-shadow: 0 16px 28px rgba(124,58,237,0.16);
-          transform: translateY(-1px);
-        }
+  .desktop-left-brand-card {
+    padding: 18px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
 
-        .desktop-top-action small {
-          position: absolute;
-          top: -4px;
-          inset-inline-start: -4px;
-          min-width: 18px;
-          height: 18px;
-          padding: 0 5px;
-          border-radius: 999px;
-          background: #ef4444;
-          color: white;
-          display: grid;
-          place-items: center;
-          font-size: 10px;
-          font-weight: 800;
-        }
+  .desktop-left-brand-mark,
+  .desktop-brand-symbol {
+    width: 58px;
+    height: 58px;
+    border-radius: 20px;
+    display: grid;
+    place-items: center;
+    color: white;
+    font-size: 26px;
+    font-weight: 900;
+    background: linear-gradient(135deg, #7c3aed, #8b5cf6 55%, #a855f7);
+    box-shadow: 0 20px 30px rgba(124,58,237,0.25);
+  }
 
-        .desktop-top-profile-pill {
-          min-height: 48px;
-          padding: 0 12px 0 10px;
-          display: inline-flex;
-          align-items: center;
-          gap: 10px;
-          text-decoration: none;
-          font-weight: 700;
-        }
+  .desktop-left-brand-title {
+    font-size: 22px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+  }
 
-        .desktop-left-brand-card {
-          padding: 18px;
-          display: flex;
-          align-items: center;
-          gap: 14px;
-        }
+  .desktop-left-nav,
+  .desktop-feed-posts-stack,
+  .desktop-suggest-list,
+  .desktop-trend-list,
+  .desktop-live-list {
+    display: grid;
+    gap: 12px;
+  }
 
-        .desktop-left-brand-mark,
-        .desktop-brand-symbol {
-          width: 58px;
-          height: 58px;
-          border-radius: 20px;
-          display: grid;
-          place-items: center;
-          color: white;
-          font-size: 26px;
-          font-weight: 900;
-          background: linear-gradient(135deg, #7c3aed, #8b5cf6 55%, #a855f7);
-          box-shadow: 0 20px 30px rgba(124,58,237,0.25);
-        }
+  .desktop-left-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 56px;
+    padding: 0 16px;
+    text-decoration: none;
+    color: #dbe4ff;
+    border-radius: 18px;
+    border: 1px solid transparent;
+    background: transparent;
+  }
 
-        .desktop-left-brand-title {
-          font-size: 22px;
-          font-weight: 900;
-          letter-spacing: 0.08em;
-        }
+  .desktop-left-icon {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.05);
+    font-size: 17px;
+    flex-shrink: 0;
+  }
 
+  .desktop-left-label {
+    font-weight: 800;
+  }
+
+  .desktop-left-badge {
+    margin-inline-start: auto;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 8px;
+    border-radius: 999px;
+    background: #8b5cf6;
+    display: grid;
+    place-items: center;
+    color: white;
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .desktop-new-post-btn {
+    min-height: 54px;
+    padding: 0 16px;
+    font-size: 15px;
+    font-weight: 900;
+    cursor: pointer;
+    background: linear-gradient(135deg, #7c3aed, #8b5cf6);
+    box-shadow: 0 20px 30px rgba(124,58,237,0.24);
+  }
+
+  .desktop-profile-summary-card {
+    padding: 18px;
+    display: grid;
+    gap: 16px;
+  }
+
+  .desktop-profile-head,
+  .desktop-profile-stats,
+  .desktop-post-head,
+  .desktop-post-author,
+  .desktop-post-author-line,
+  .desktop-post-tools,
+  .desktop-post-meta-row,
+  .desktop-post-actions,
+  .desktop-composer-hero-head,
+  .desktop-side-head,
+  .desktop-suggest-item,
+  .desktop-suggest-meta,
+  .desktop-live-item,
+  .desktop-trend-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .desktop-profile-stats {
+    justify-content: space-between;
+  }
+
+  .desktop-profile-stats div {
+    display: grid;
+    gap: 4px;
+    text-align: center;
+    flex: 1;
+    padding: 12px 8px;
+    border-radius: 18px;
+    background: rgba(255,255,255,0.03);
+  }
+
+  .desktop-profile-stats strong {
+    font-size: 18px;
+  }
+
+  .desktop-composer-hero-card {
+    padding: 18px;
+    display: grid;
+    gap: 14px;
+  }
+
+  .desktop-composer-hero-head {
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .desktop-composer-hero-head strong {
+    display: block;
+    font-size: 22px;
+    margin-bottom: 4px;
+  }
+
+  .desktop-publish-glow {
+    min-height: 46px;
+    padding: 0 18px;
+    cursor: pointer;
+    font-weight: 900;
+    background: linear-gradient(135deg, #7c3aed, #8b5cf6);
+    box-shadow: 0 18px 28px rgba(124,58,237,0.22);
+  }
+
+  .desktop-composer-hero-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .desktop-mini-chip {
+    min-height: 40px;
+    padding: 0 14px;
+    cursor: pointer;
+    font-weight: 700;
+  }
+
+  .desktop-post-card {
+    padding: 18px;
+    display: grid;
+    gap: 16px;
+  }
+
+  .desktop-post-card.featured {
+    background: radial-gradient(circle at top, rgba(124,58,237,0.18), transparent 38%), rgba(7, 12, 24, 0.92);
+  }
+
+  .verify-dot,
+  .desktop-post-badge,
+  .desktop-live-pill {
+    display: inline-grid;
+    place-items: center;
+    border-radius: 999px;
+    font-weight: 900;
+  }
+
+  .verify-dot {
+    width: 18px;
+    height: 18px;
+    background: #3b82f6;
+    color: white;
+    font-size: 11px;
+  }
+
+  .desktop-post-badge {
+    min-height: 30px;
+    padding: 0 12px;
+    background: rgba(139,92,246,0.14);
+    color: #d8b4fe;
+    border: 1px solid rgba(167,139,250,0.22);
+    font-size: 12px;
+  }
+
+  .desktop-ghost-btn {
+    width: 42px;
+    height: 42px;
+    display: inline-grid;
+    place-items: center;
+    cursor: pointer;
+  }
+
+  .desktop-post-head,
+  .desktop-post-meta-row,
+  .desktop-side-head,
+  .desktop-suggest-item,
+  .desktop-live-item,
+  .desktop-trend-item {
+    justify-content: space-between;
+  }
+
+  .desktop-post-copy {
+    font-size: 17px;
+    line-height: 1.95;
+    color: #eef2ff;
+    white-space: pre-wrap;
+  }
+
+  .desktop-post-media,
+  .desktop-brand-fallback {
+    width: 100%;
+    min-height: 320px;
+    max-height: 560px;
+    border-radius: 24px;
+    overflow: hidden;
+    object-fit: cover;
+    display: block;
+    background: linear-gradient(180deg, rgba(22,28,45,0.95), rgba(5,8,22,1));
+  }
+
+  .desktop-brand-fallback {
+    display: grid;
+    place-items: center;
+    gap: 14px;
+    padding: 30px;
+    text-align: center;
+  }
+
+  .desktop-brand-fallback strong {
+    font-size: 28px;
+    letter-spacing: 0.08em;
+  }
+
+  .desktop-post-meta-row {
+    border-top: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    padding: 12px 0;
+    color: #cbd5e1;
+    flex-wrap: wrap;
+  }
+
+  .desktop-post-reactions,
+  .desktop-post-stats {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .desktop-post-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .desktop-action-btn {
+    min-height: 44px;
+    padding: 0 16px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 800;
+  }
+
+  .desktop-action-btn.active {
+    background: rgba(236,72,153,0.16);
+    border-color: rgba(236,72,153,0.28);
+    color: #f9a8d4;
+  }
+
+  .desktop-action-btn.bookmark {
+    margin-inline-start: auto;
+  }
+
+  .desktop-side-card {
+    padding: 18px;
+    display: grid;
+    gap: 14px;
+  }
+
+  .desktop-side-card.compact {
+    gap: 12px;
+  }
+
+  .desktop-side-head h3 {
+    margin: 0;
+    font-size: 19px;
+  }
+
+  .desktop-side-head span {
+    color: #8b5cf6;
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  .desktop-services-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .desktop-service-tile {
+    min-height: 96px;
+    padding: 14px 10px;
+    display: grid;
+    justify-items: center;
+    align-content: center;
+    gap: 10px;
+    cursor: pointer;
+  }
+
+  .desktop-service-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 14px;
+    display: grid;
+    place-items: center;
+    font-size: 21px;
+    background: rgba(124,58,237,0.14);
+    color: #d8b4fe;
+  }
+
+  .desktop-service-tile strong {
+    font-size: 13px;
+    text-align: center;
+  }
+
+  .desktop-suggest-item,
+  .desktop-trend-item,
+  .desktop-live-item {
+    padding: 12px;
+    border-radius: 18px;
+    background: rgba(255,255,255,0.03);
+  }
+
+  .desktop-follow-btn {
+    min-height: 40px;
+    padding: 0 14px;
+    cursor: pointer;
+    font-weight: 900;
+    background: linear-gradient(135deg, #7c3aed, #8b5cf6);
+  }
+
+  .desktop-trend-pulse {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #8b5cf6;
+    box-shadow: 0 0 0 8px rgba(139,92,246,0.14);
+    flex-shrink: 0;
+  }
+
+  .desktop-live-pill {
+    min-height: 30px;
+    padding: 0 10px;
+    background: rgba(239,68,68,0.12);
+    color: #fca5a5;
+    border: 1px solid rgba(239,68,68,0.18);
+    font-size: 12px;
+  }
+
+  @media (max-width: 1380px) {
+    .desktop-feed-shell {
+      grid-template-columns: 250px minmax(0, 1fr) 300px;
+      gap: 18px;
+      padding: 18px;
+    }
+  }
+
+  @media (max-width: 1180px) {
+    .desktop-feed-shell {
+      grid-template-columns: 250px minmax(0, 1fr);
+    }
+    .desktop-feed-right-rail {
+      display: none;
+    }
+  }
+
+  @media (max-width: 920px) {
+    .desktop-feed-shell {
+      grid-template-columns: 1fr;
+      padding: 12px;
+    }
+    .desktop-feed-left-rail,
+    .desktop-feed-right-rail {
+      display: none;
+    }
+    .desktop-feed-topbar {
+      position: static;
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .desktop-top-actions {
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+    .desktop-composer-hero-head {
+      align-items: flex-start;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .desktop-feed-shell {
+      padding: 10px;
+    }
+    .desktop-post-action.bookmark,
+    .desktop-action-btn.bookmark {
+      margin-inline-start: 0;
+    }
+    .desktop-post-card,
+    .desktop-side-card,
+    .desktop-composer-hero-card,
+    .desktop-feed-topbar {
+      border-radius: 22px;
+    }
+    .desktop-top-profile-pill span {
+      display: none;
+    }
+    .desktop-post-media,
+    .desktop-brand-fallback {
+      min-height: 240px;
+    }
+  }
+`}</style>
         .desktop-left-nav,
         .desktop-feed-posts-stack,
         .desktop-suggest-list,

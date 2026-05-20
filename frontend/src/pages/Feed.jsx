@@ -543,6 +543,68 @@ export default function Feed() {
           .yam-trending-thumb { width: 74px; height: 74px; }
         }
       `}</style>
+      <style>{`
+  /* منع خروج المحتوى عن الشاشة - حل المشكلة الأساسية */
+  .yam-feed-page {
+    max-width: 100%;
+    overflow-x: hidden;
+    box-sizing: border-box;
+  }
+  
+  .yam-feed-main-column,
+  .yam-feed-right-column {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+  
+  /* إصلاح الشاشات المتوسطة */
+  @media (max-width: 1100px) {
+    .yam-feed-page {
+      grid-template-columns: minmax(0, 1fr) 280px !important;
+      gap: 12px;
+    }
+  }
+  
+  /* إصلاح الشاشات الصغيرة */
+  @media (max-width: 900px) {
+    .yam-feed-page {
+      grid-template-columns: 1fr !important;
+      padding: 10px !important;
+    }
+    
+    .yam-feed-right-column {
+      display: block !important;
+      order: -1;
+      margin-bottom: 16px;
+    }
+    
+    .yam-side-card {
+      width: 100%;
+      box-sizing: border-box;
+    }
+  }
+  
+  /* إصلاح جميع الصور والميديا */
+  .yam-feed-main-media,
+  .yam-feed-media-grid img,
+  .yam-trending-thumb img,
+  .yam-feed-media-grid video {
+    max-width: 100%;
+    height: auto;
+    object-fit: contain;
+  }
+  
+  /* منع أي تجاوز */
+  * {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  
+  html, body {
+    overflow-x: hidden;
+    width: 100%;
+  }
+`}</style>
     </MainLayout>
   );
 }

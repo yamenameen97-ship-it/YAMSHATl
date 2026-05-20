@@ -188,14 +188,13 @@ export default function ChatPage() {
           </div>
 
           {/* منطقة الرسائل */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '20px', background: 'url("https://i.imgur.com/jkOfWzK.png") repeat', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {messages.map((message) => (
-              <MessageBubble
-                key={message.id}
-                message={message}
-                isMine={message.sender === currentUser}
-                onReply={() => setReplyTo(message)}
-              />
+          <MessageBubble
+  key={message.id}
+  message={message}
+  isMine={message.sender === currentUser}
+  onReply={() => setReplyTo(message)}
+  avatar={selectedContact?.avatar}  // <-- أضف هذا
+/>
             ))}
             <div ref={scrollRef} />
           </div>

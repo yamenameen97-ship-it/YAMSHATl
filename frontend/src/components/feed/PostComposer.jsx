@@ -63,6 +63,10 @@ export default function PostComposer() {
     return () => window.clearTimeout(timer);
   }, [content]);
 
+  useEffect(() => () => {
+    if (mediaPreview) URL.revokeObjectURL(mediaPreview);
+  }, [mediaPreview]);
+
   const tagsPreview = useMemo(() => extractTags(content), [content]);
 
   const clearComposer = () => {
@@ -89,6 +93,7 @@ export default function PostComposer() {
       pushToast({ type: 'error', title: 'الملف كبير جدًا', description: 'الحد الأقصى 200 ميجا.' });
       return;
     }
+    if (mediaPreview) URL.revokeObjectURL(mediaPreview);
     setMedia(file);
     setMediaPreview(URL.createObjectURL(file));
   };
@@ -142,7 +147,14 @@ export default function PostComposer() {
 
   return (
     <Card
-      style={{ marginBottom: 24, padding: 20, border: '1px solid var(--line)' }}
+      style={{
+        marginBottom: 16,
+        padding: 18,
+        border: '1px solid var(--line)',
+        direction: 'rtl',
+        borderRadius: 22,
+        background: 'linear-gradient(180deg, rgba(13,17,29,0.96), rgba(8,12,22,0.94))',
+      }}
       onDragOver={(event) => {
         event.preventDefault();
         setIsDragActive(true);
@@ -159,113 +171,366 @@ export default function PostComposer() {
         applySelectedFile(file);
       }}
     >
-      <div style={{ display: 'flex', gap: 12 }}>
-        <div style={{ width: 42, height: 42, borderRadius: '50%', background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', flexShrink: 0 }} />
-        <div style={{ flex: 1 }}>
-          {quoteDraft ? (
-            <div style={{ borderRadius: 16, padding: 12, background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.12)', marginBottom: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'start' }}>
-                <div>
-                  <div style={{ fontWeight: 700, marginBottom: 4 }}>اقتباس من @{quoteDraft.username}</div>
-                  <div className="muted" style={{ fontSize: 13, lineHeight: 1.6 }}>{quoteDraft.content}</div>
-                </div>
-                <button type="button" onClick={() => { setQuoteDraft(null); localStorage.removeItem(QUOTE_KEY); }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18 }}>✕</button>
-              </div>
-            </div>
-          ) : null}
-
-          <textarea
-            placeholder="اكتب منشورك... استخدم #هاشتاج و @منشن لو حابب"
-            value={content}
-            onChange={(event) => setContent(event.target.value)}
-            style={{ width: '100%', minHeight: 96, background: 'transparent', border: 'none', color: 'var(--text)', fontSize: 16, resize: 'none', outline: 'none', paddingTop: 8, lineHeight: 1.7 }}
-          />
+      <div className="composer-header-row">
+        <div>
+          <div className="composer-title">إنشاء منشور</div>
+          <div className="composer-subtitle">رتّب الخيارات بالأعلى ثم اكتب المنشور أسفلها ليظهر بشكل أوضح في صفحة المنشورات.</div>
+        </div>
+        <div className={`composer-status-badge ${isPinned ? 'pinned' : ''}`}>
+          {isPinned ? 'منشور مثبت' : 'منشور عادي'}
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-        <span className={`composer-drop-hint ${isDragActive ? 'active' : ''}`}>اسحب وأسقط صورة/فيديو/GIF هنا</span>
-        <button type="button" className="composer-chip" onClick={() => addSnippet('#ترند')}>#هاشتاج</button>
-        <button type="button" className="composer-chip" onClick={() => addSnippet('@username')}>@منشن</button>
+      <div className="composer-toolbar" aria-label="أدوات المنشور">
+        <button type="button" className="composer-chip" onClick={() => addSnippet('#ترند')}>ترند#</button>
+        <button type="button" className="composer-chip" onClick={() => addSnippet('#هاشتاج')}>هاشتاج</button>
+        <button type="button" className="composer-chip" onClick={() => addSnippet('@username')}>منشن</button>
         <button type="button" className="composer-chip" onClick={() => addSnippet('اقتباس: ')}>اقتباس</button>
-        <button type="button" className={`composer-chip ${isPinned ? 'active' : ''}`} onClick={() => setIsPinned((prev) => !prev)}>تثبيت المنشور</button>
+        <button type="button" className={`composer-chip ${isPinned ? 'active' : ''}`} onClick={() => setIsPinned((prev) => !prev)}>
+          تثبيت منشور
+        </button>
+      </div>
+
+      <div className="composer-actions-row">
+        <button type="button" className="composer-action-btn" onClick={() => fileInputRef.current?.click()} title="رفع صورة أو فيديو">
+          <span>🖼️</span>
+          <span>رفع الصورة</span>
+        </button>
+
+        <button
+          type="button"
+          className={`composer-action-btn ${showScheduler ? 'active' : ''}`}
+          onClick={() => setShowScheduler((prev) => !prev)}
+          title="جدولة"
+        >
+          <span>📅</span>
+          <span>جدولة</span>
+        </button>
+
+        <Button
+          variant="secondary"
+          size="small"
+          onClick={() => handleSubmit('draft')}
+          disabled={isUploading || (!content.trim() && !quoteDraft)}
+        >
+          حفظ المنشور
+        </Button>
+
+        <Button
+          size="small"
+          onClick={() => handleSubmit(showScheduler ? 'scheduled' : 'published')}
+          loading={isUploading}
+          disabled={isUploading || (!content.trim() && !media && !quoteDraft)}
+        >
+          {showScheduler ? 'تأكيد الجدولة' : 'النشر'}
+        </Button>
+
+        <input type="file" ref={fileInputRef} hidden accept="image/*,video/*" onChange={handleMediaSelect} />
+      </div>
+
+      {showScheduler ? (
+        <div className="composer-scheduler-box">
+          <label className="composer-field-label">تحديد وقت النشر</label>
+          <input
+            type="datetime-local"
+            value={scheduledDate}
+            onChange={(event) => setScheduledDate(event.target.value)}
+            className="composer-datetime-input"
+          />
+        </div>
+      ) : null}
+
+      <div className={`composer-editor-shell ${isDragActive ? 'drag-active' : ''}`}>
+        <div className="composer-editor-topline">
+          <span className="composer-field-label">بماذا تفكر؟</span>
+          <span className="composer-drop-hint">اسحب وأسقط صورة أو فيديو أو GIF هنا</span>
+        </div>
+
+        {quoteDraft ? (
+          <div className="composer-quote-box">
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>اقتباس من @{quoteDraft.username}</div>
+              <div className="muted" style={{ fontSize: 13, lineHeight: 1.7 }}>{quoteDraft.content}</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setQuoteDraft(null);
+                localStorage.removeItem(QUOTE_KEY);
+              }}
+              className="composer-close-btn"
+            >
+              ✕
+            </button>
+          </div>
+        ) : null}
+
+        <textarea
+          placeholder="اكتب منشورك هنا... استخدم #هاشتاج أو @منشن لو حابب"
+          value={content}
+          onChange={(event) => setContent(event.target.value)}
+          className="composer-textarea"
+        />
       </div>
 
       {(tagsPreview.hashtags.length || tagsPreview.mentions.length) ? (
-        <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+        <div className="composer-tags-preview">
           {tagsPreview.hashtags.length ? <div className="muted" style={{ fontSize: 13 }}>هاشتاج: {tagsPreview.hashtags.map((item) => `#${item}`).join(' · ')}</div> : null}
           {tagsPreview.mentions.length ? <div className="muted" style={{ fontSize: 13 }}>منشن: {tagsPreview.mentions.map((item) => `@${item}`).join(' · ')}</div> : null}
         </div>
       ) : null}
 
       {mediaPreview ? (
-        <div style={{ position: 'relative', marginTop: 12, borderRadius: 12, overflow: 'hidden', maxHeight: 320 }}>
-          <button type="button" onClick={() => { setMedia(null); setMediaPreview(null); }} style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: 30, height: 30, cursor: 'pointer', zIndex: 1 }}>✕</button>
+        <div className="composer-media-preview">
+          <button
+            type="button"
+            onClick={() => {
+              setMedia(null);
+              if (mediaPreview) URL.revokeObjectURL(mediaPreview);
+              setMediaPreview(null);
+            }}
+            className="composer-close-btn media-close"
+          >
+            ✕
+          </button>
           {media?.type?.startsWith('video') ? (
             <video src={mediaPreview} style={{ width: '100%', display: 'block' }} controls />
           ) : (
-            <img src={mediaPreview} style={{ width: '100%', objectFit: 'cover' }} alt="Preview" />
+            <img src={mediaPreview} style={{ width: '100%', objectFit: 'cover', display: 'block' }} alt="Preview" />
           )}
           {isUploading ? (
-            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 4, background: 'rgba(255,255,255,0.2)' }}>
-              <div style={{ height: '100%', background: 'var(--accent)', width: `${uploadProgress}%`, transition: 'width 0.2s' }} />
+            <div className="composer-upload-progress-track">
+              <div className="composer-upload-progress-fill" style={{ width: `${uploadProgress}%` }} />
             </div>
           ) : null}
         </div>
       ) : null}
 
-      {showScheduler ? (
-        <div style={{ marginTop: 16, padding: 12, background: 'var(--bg-soft)', borderRadius: 12, border: '1px solid var(--line)' }}>
-          <label style={{ display: 'block', marginBottom: 8, fontSize: 13, fontWeight: 'bold' }}>تحديد وقت النشر</label>
-          <input type="datetime-local" value={scheduledDate} onChange={(event) => setScheduledDate(event.target.value)} style={{ width: '100%', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--line)', padding: 10, borderRadius: 8 }} />
-        </div>
-      ) : null}
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16, alignItems: 'center', borderTop: '1px solid var(--line)', paddingTop: 16, gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button type="button" onClick={() => fileInputRef.current?.click()} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, opacity: 0.8 }} title="رفع صورة أو فيديو">🖼️</button>
-          <button type="button" onClick={() => setShowScheduler((prev) => !prev)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, opacity: showScheduler ? 1 : 0.8, color: showScheduler ? 'var(--accent)' : 'inherit' }} title="جدولة">📅</button>
-          <span className="muted" style={{ fontSize: 13 }}>{isPinned ? 'هيتثبت بعد النشر' : 'منشور عادي'}</span>
-          <input type="file" ref={fileInputRef} hidden accept="image/*,video/*" onChange={handleMediaSelect} />
-        </div>
-
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <Button variant="secondary" onClick={() => handleSubmit('draft')} disabled={isUploading || (!content.trim() && !quoteDraft)}>حفظ مسودة</Button>
-          <Button onClick={() => handleSubmit(showScheduler ? 'scheduled' : 'published')} loading={isUploading} disabled={isUploading || (!content.trim() && !media && !quoteDraft)}>
-            {showScheduler ? 'تأكيد الجدولة' : 'نشر'}
-          </Button>
-        </div>
-      </div>
-
       <style>{`
-        .composer-chip {
-          border: 1px solid rgba(59,130,246,0.15);
-          background: rgba(59,130,246,0.06);
+        .composer-header-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          flex-wrap: wrap;
+          margin-bottom: 12px;
+        }
+        .composer-title {
+          font-size: 18px;
+          font-weight: 800;
           color: var(--text);
-          padding: 6px 12px;
+          margin-bottom: 4px;
+        }
+        .composer-subtitle {
+          color: var(--muted);
+          font-size: 12px;
+          line-height: 1.6;
+        }
+        .composer-status-badge {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 8px 14px;
+          border-radius: 999px;
+          background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.08);
+          color: var(--muted);
+          font-size: 12px;
+          white-space: nowrap;
+        }
+        .composer-status-badge.pinned {
+          background: rgba(16,185,129,0.14);
+          border-color: rgba(16,185,129,0.3);
+          color: #6ee7b7;
+        }
+        .composer-toolbar {
+          display: flex;
+          flex-direction: row-reverse;
+          gap: 8px;
+          flex-wrap: wrap;
+          margin-bottom: 12px;
+          align-items: center;
+        }
+        .composer-chip {
+          border: 1px solid rgba(167, 139, 250, 0.25);
+          background: rgba(139, 92, 246, 0.10);
+          color: var(--text);
+          padding: 8px 14px;
           border-radius: 999px;
           cursor: pointer;
           font-size: 13px;
+          font-weight: 700;
+          transition: all 0.2s ease;
+        }
+        .composer-chip:hover {
+          background: rgba(139, 92, 246, 0.16);
+          border-color: rgba(167, 139, 250, 0.35);
         }
         .composer-chip.active {
-          background: rgba(16,185,129,0.12);
+          background: rgba(16,185,129,0.14);
           border-color: rgba(16,185,129,0.3);
-          color: #059669;
+          color: #6ee7b7;
+        }
+        .composer-actions-row {
+          display: flex;
+          flex-direction: row-reverse;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+          margin-bottom: 12px;
+        }
+        .composer-action-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          border-radius: 12px;
+          border: 1px solid rgba(255,255,255,0.08);
+          background: rgba(255,255,255,0.04);
+          color: var(--text);
+          padding: 10px 14px;
+          cursor: pointer;
+          font-size: 13px;
+          font-weight: 700;
+          transition: all 0.2s ease;
+        }
+        .composer-action-btn:hover,
+        .composer-action-btn.active {
+          background: rgba(139, 92, 246, 0.12);
+          border-color: rgba(167, 139, 250, 0.3);
+        }
+        .composer-scheduler-box {
+          margin-bottom: 12px;
+          padding: 12px;
+          background: rgba(255,255,255,0.035);
+          border-radius: 14px;
+          border: 1px solid rgba(255,255,255,0.06);
+        }
+        .composer-field-label {
+          font-size: 13px;
+          font-weight: 800;
+          color: var(--text);
+        }
+        .composer-datetime-input {
+          width: 100%;
+          margin-top: 8px;
+          background: var(--bg-input);
+          color: var(--text);
+          border: 1px solid var(--line);
+          padding: 10px 12px;
+          border-radius: 10px;
+        }
+        .composer-editor-shell {
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 18px;
+          background: rgba(255,255,255,0.03);
+          padding: 14px;
+          transition: all 0.2s ease;
+        }
+        .composer-editor-shell.drag-active {
+          border-color: rgba(16,185,129,0.45);
+          background: rgba(16,185,129,0.08);
+        }
+        .composer-editor-topline {
+          display: flex;
+          flex-direction: row-reverse;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 10px;
+          flex-wrap: wrap;
         }
         .composer-drop-hint {
           display: inline-flex;
           align-items: center;
           padding: 6px 12px;
           border-radius: 999px;
-          border: 1px dashed rgba(59,130,246,0.25);
+          border: 1px dashed rgba(139, 92, 246, 0.28);
           color: var(--muted);
           font-size: 12px;
-          transition: all 0.2s ease;
+          background: rgba(139, 92, 246, 0.05);
         }
-        .composer-drop-hint.active {
-          border-color: rgba(16,185,129,0.45);
-          background: rgba(16,185,129,0.08);
-          color: #10b981;
+        .composer-quote-box {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          border-radius: 14px;
+          padding: 12px;
+          background: rgba(59,130,246,0.08);
+          border: 1px solid rgba(59,130,246,0.18);
+          margin-bottom: 12px;
+        }
+        .composer-close-btn {
+          background: rgba(0,0,0,0.18);
+          border: none;
+          cursor: pointer;
+          color: white;
+          border-radius: 50%;
+          width: 30px;
+          height: 30px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+        .composer-textarea {
+          width: 100%;
+          min-height: 120px;
+          background: transparent;
+          border: none;
+          color: var(--text);
+          font-size: 15px;
+          resize: vertical;
+          outline: none;
+          line-height: 1.9;
+          direction: rtl;
+        }
+        .composer-tags-preview {
+          display: grid;
+          gap: 8px;
+          margin-top: 12px;
+        }
+        .composer-media-preview {
+          position: relative;
+          margin-top: 12px;
+          border-radius: 14px;
+          overflow: hidden;
+          max-height: 320px;
+          border: 1px solid rgba(255,255,255,0.08);
+        }
+        .composer-close-btn.media-close {
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          z-index: 1;
+          background: rgba(0,0,0,0.5);
+        }
+        .composer-upload-progress-track {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          height: 4px;
+          background: rgba(255,255,255,0.2);
+        }
+        .composer-upload-progress-fill {
+          height: 100%;
+          background: linear-gradient(90deg, #8b5cf6, #ec4899);
+          transition: width 0.2s;
+        }
+        @media (max-width: 768px) {
+          .composer-header-row,
+          .composer-editor-topline {
+            align-items: stretch;
+          }
+          .composer-toolbar,
+          .composer-actions-row {
+            gap: 8px;
+          }
+          .composer-action-btn,
+          .composer-chip {
+            width: 100%;
+            justify-content: center;
+          }
         }
       `}</style>
     </Card>

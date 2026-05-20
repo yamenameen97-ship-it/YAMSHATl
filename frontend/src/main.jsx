@@ -14,7 +14,7 @@ import notificationService from './services/notificationService.js';
 import "./styles/mobile-optimization.css";
 import "./styles/performance.css";
 
-const BUILD_ID = 'yamshat-hotfix-20260520-r3';
+const BUILD_ID = 'yamshat-admin-dashboard-single-page-20260520-r4';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

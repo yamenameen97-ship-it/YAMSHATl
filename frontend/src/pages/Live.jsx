@@ -357,51 +357,34 @@ export default function Live() {
   const viewerCount = Number(activeRoom?.viewer_count || 0);
 
   const sendComment = async () => {
-    if (!commentText.trim() || !activeRoom?.id) {
-      if (!activeRoom?.id) pushToast({ type: 'warning', title: 'اختر غرفة بث أولاً' });
-      return;
-    }
-    try {
-      const optimistic = {
-        id: `local-${Date.now()}`,
-        room_id: activeRoom.id,
-        user: currentUser,
-        text: commentText.trim(),
-        created_at: new Date().toISOString(),
-      };
-      setComments((prev) => [...prev, optimistic]);
-      socketManager.emit('send_comment', { room_id: activeRoom.id, text: commentText.trim() });
-      setCommentText('');
-    } catch (error) {
-      pushToast({ type: 'error', title: 'فشل إرسال التعليق', description: error?.message });
-    }
+    if (!commentText.trim() || !activeRoom?.id) return;
+    const optimistic = {
+      id: `local-${Date.now()}`,
+      room_id: activeRoom.id,
+      user: currentUser,
+      text: commentText.trim(),
+      created_at: new Date().toISOString(),
+    };
+    setComments((prev) => [...prev, optimistic]);
+    socketManager.emit('send_comment', { room_id: activeRoom.id, text: commentText.trim() });
+    setCommentText('');
   };
 
   const sendHeart = () => {
-    if (!activeRoom?.id) {
-      pushToast({ type: 'warning', title: 'اختر غرفة بث أولاً' });
-      return;
-    }
-    try {
-      socketManager.emit('send_heart', { room_id: activeRoom.id });
-      const id = `heart-${Date.now()}`;
-      const next = { id, left: 14 + Math.random() * 72, duration: 1500 + Math.random() * 900 };
-      setFloatingHearts((prev) => [...prev, next]);
-      setTimeout(() => setFloatingHearts((prev) => prev.filter((item) => item.id !== id)), next.duration);
-    } catch (error) {
-      console.error('خطأ في إرسال القلب:', error);
-    }
+    if (!activeRoom?.id) return;
+    socketManager.emit('send_heart', { room_id: activeRoom.id });
+    const id = `heart-${Date.now()}`;
+    const next = { id, left: 14 + Math.random() * 72, duration: 1500 + Math.random() * 900 };
+    setFloatingHearts((prev) => [...prev, next]);
+    setTimeout(() => setFloatingHearts((prev) => prev.filter((item) => item.id !== id)), next.duration);
   };
 
   const giveGift = async (gift) => {
-    if (!activeRoom?.id) {
-      pushToast({ type: 'warning', title: 'اختر غرفة بث أولاً' });
-      return;
-    }
+    if (!activeRoom?.id) return;
     try {
       await sendLiveGift({ room_id: activeRoom.id, gift_name: gift.name, coins: gift.price });
       pushToast({ type: 'success', title: `تم إرسال ${gift.icon} ${gift.name}` });
-      await loadRoomDetails(activeRoom.id);
+      loadRoomDetails(activeRoom.id);
       setShowGiftTray(false);
     } catch (error) {
       pushToast({ type: 'error', title: 'تعذر إرسال الهدية', description: error?.response?.data?.detail || error?.message });
@@ -421,22 +404,10 @@ export default function Live() {
   const handleCreateRoom = async () => {
     try {
       setBusy('create');
-      const roomTitle = `بث مباشر مع ${currentUser} - ${new Date().toLocaleTimeString('ar-SA')}`;
-      const { data } = await createLiveRoom({ 
-        title: roomTitle,
-        host: currentUser,
-        livekit_configured: true
-      });
-      const createdRoom = data || { 
-        id: `room-${Date.now()}`,
-        title: roomTitle,
-        host: currentUser,
-        livekit_configured: true,
-        viewer_count: 0
-      };
-      setActiveRoom(createdRoom);
-      setRooms(prev => [createdRoom, ...prev]);
-      pushToast({ type: 'success', title: 'تم إنشاء غرفة البث بنجاح' });
+      const { data } = await createLiveRoom({ title: `بث مباشر مع ${currentUser}` });
+      setActiveRoom(data);
+      await loadRooms();
+      pushToast({ type: 'success', title: 'تم إنشاء غرفة البث وربطها بقاعدة البيانات' });
     } catch (error) {
       pushToast({ type: 'error', title: 'تعذر إنشاء البث', description: error?.response?.data?.detail || error?.message });
     } finally {
@@ -445,10 +416,7 @@ export default function Live() {
   };
 
   const toggleRecording = async () => {
-    if (!activeRoom?.id) {
-      pushToast({ type: 'warning', title: 'اختر غرفة بث أولاً' });
-      return;
-    }
+    if (!activeRoom?.id) return;
     try {
       setBusy('recording');
       const action = recordingStatus === 'recording' ? 'stop' : 'start';
@@ -463,18 +431,15 @@ export default function Live() {
   };
 
   const stopLive = async () => {
-    if (!activeRoom?.id) {
-      pushToast({ type: 'warning', title: 'لا يوجد بث نشط' });
-      return;
-    }
+    if (!activeRoom?.id) return;
     try {
       setBusy('end');
       await disconnectLiveSession();
       await endLiveRoom(activeRoom.id);
       setActiveRoom(null);
       setComments([]);
-      setRooms(prev => prev.filter(r => r.id !== activeRoom.id));
-      pushToast({ type: 'success', title: 'تم إنهاء البث بنجاح' });
+      await loadRooms();
+      pushToast({ type: 'success', title: 'تم إنهاء البث' });
     } catch (error) {
       pushToast({ type: 'error', title: 'تعذر إنهاء البث', description: error?.response?.data?.detail || error?.message });
     } finally {

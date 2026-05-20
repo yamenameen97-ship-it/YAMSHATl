@@ -20,8 +20,8 @@ const routeMeta = {
   '/admin/users': { title: 'إدارة المستخدمين', breadcrumb: ['الإدارة', 'المستخدمون'] },
   '/admin/rbac': { title: 'الأدوار والصلاحيات', breadcrumb: ['الإدارة', 'الصلاحيات'] },
   '/admin/notifications': { title: 'الإشعارات', breadcrumb: ['الإدارة', 'الإشعارات'] },
-  '/admin/reports': { title: 'مركز البلاغات والإشراف', breadcrumb: ['الإدارة', 'مركز البلاغات'] },
-  '/admin/audit': { title: 'سجل نشاط الأدمن', breadcrumb: ['الإدارة', 'سجل الأدمن'] },
+  '/admin/reports': { title: 'التقارير والإحصائيات', breadcrumb: ['الإدارة', 'التقارير'] },
+  '/admin/audit': { title: 'سجل النشاطات', breadcrumb: ['الإدارة', 'السجل'] },
   '/admin/settings': { title: 'الإعدادات العامة', breadcrumb: ['الإدارة', 'الإعدادات'] },
 };
 
@@ -71,24 +71,17 @@ export default function AdminLayout({ children }) {
     };
   }, [pushToast, token, user?.username]);
 
+  const showBreadcrumbs = location.pathname !== '/admin/dashboard';
+
   return (
     <div className="admin-app-shell admin-reference-shell">
       <AdminSidebar collapsed={collapsed} permissions={user?.permissions || []} role={user?.role || 'user'} />
       <div className="admin-main-shell">
         <AdminTopbar title={meta.title} onToggleSidebar={() => setCollapsed((prev) => !prev)} notifications={notifications} />
         <main className="admin-page-shell admin-reference-page-shell">
-          <Breadcrumbs items={breadcrumbs} />
+          {showBreadcrumbs ? <Breadcrumbs items={breadcrumbs} /> : null}
           {children}
-        
-<div className="bottom-mobile-nav">
-  <a className="nav-btn" href="/">🏠<span>الرئيسية</span></a>
-  <a className="nav-btn" href="/reels">🎬<span>الريلز</span></a>
-  <div className="add-btn">+</div>
-  <a className="nav-btn" href="/messages">💬<span>الدردشة</span></a>
-  <a className="nav-btn" href="/profile">👤<span>حسابي</span></a>
-</div>
-
-</main>
+        </main>
       </div>
     </div>
   );

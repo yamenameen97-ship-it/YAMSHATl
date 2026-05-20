@@ -446,6 +446,67 @@ export default function FeedEnhanced() {
       </div>
 
       <style>{`
+      html, body, #root {
+  overflow-x: hidden !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.desktop-feed-shell {
+  overflow-x: hidden !important;
+  max-width: 100% !important;
+  padding: 12px !important;
+  gap: 12px !important;
+}
+
+.desktop-feed-left-rail,
+.desktop-feed-center-column,
+.desktop-feed-right-rail {
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+}
+
+@media (max-width: 1380px) {
+  .desktop-feed-shell {
+    grid-template-columns: 240px minmax(0, 1fr) 280px !important;
+    gap: 12px !important;
+    padding: 12px !important;
+  }
+}
+
+@media (max-width: 1180px) {
+  .desktop-feed-shell {
+    grid-template-columns: 240px minmax(0, 1fr) !important;
+  }
+}
+
+@media (max-width: 920px) {
+  .desktop-feed-shell {
+    grid-template-columns: 1fr !important;
+    padding: 8px !important;
+  }
+  
+  .desktop-feed-left-rail,
+  .desktop-feed-right-rail {
+    display: flex !important;
+    flex-direction: column !important;
+    position: static !important;
+  }
+}
+
+.desktop-post-media,
+.desktop-brand-fallback,
+img, video, iframe {
+  max-width: 100% !important;
+  height: auto !important;
+}
+
+* {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
         .desktop-feed-shell {
           min-height: 100vh;
           display: grid;

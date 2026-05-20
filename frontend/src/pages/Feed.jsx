@@ -165,7 +165,7 @@ export default function Feed() {
 
   return (
     <MainLayout>
-      <div className="yam-feed-page desktop-post mobile-post">
+      <div className="yam-feed-page desktop-post mobile-post" style={{ overflowX: 'hidden', maxWidth: '100%' }}>
         <div className="yam-feed-main-column">
           <section className="yam-feed-composer-shell">
             <div className="yam-feed-composer-head">

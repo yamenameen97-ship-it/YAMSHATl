@@ -2,13 +2,79 @@
    Yamshat Unified CSS System
    ============================================ */
 /* اختبار - هل هذا الكود يظهر؟ */
-body {
-  border: 10px solid red !important;
-  background-color: black !important;
+/* ============================================
+   إصلاح كامل لمشكلة خروج المحتوى عن الشاشة
+   ============================================ */
+
+/* منع أي تجاوز أفقي في كل الصفحات */
+html, body, #root {
+  overflow-x: hidden !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  position: relative !important;
 }
 
-body * {
-  color: lime !important;
+/* إصلاح صفحة المنشورات تحديداً */
+.yam-feed-page {
+  display: block !important;
+  overflow-x: hidden !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  padding: 18px !important;
+}
+
+/* إعادة تنظيم الأعمدة بشكل آمن */
+@media (min-width: 1024px) {
+  .yam-feed-page {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 320px !important;
+    gap: 18px !important;
+  }
+}
+
+@media (max-width: 1023px) {
+  .yam-feed-page {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  
+  .yam-feed-right-column {
+    order: -1 !important;
+    margin-bottom: 20px !important;
+  }
+}
+
+/* منع أي عنصر من التجاوز */
+.yam-feed-main-column,
+.yam-feed-right-column,
+.yam-side-card,
+.yam-feed-post-card,
+.yam-feed-composer-shell {
+  overflow-x: hidden !important;
+  max-width: 100% !important;
+}
+
+/* إصلاح الصور والميديا */
+img, video, iframe {
+  max-width: 100% !important;
+  height: auto !important;
+}
+
+/* إصلاح القصص على الشاشات الصغيرة */
+@media (max-width: 768px) {
+  .yam-story-row {
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+  }
+  
+  .yam-trending-item {
+    flex-wrap: wrap !important;
+  }
+  
+  .yam-trending-thumb {
+    width: 60px !important;
+    height: 60px !important;
+  }
 }
 /* Import all CSS modules in order */
 @import './global.css';

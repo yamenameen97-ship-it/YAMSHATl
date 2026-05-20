@@ -1,7 +1,15 @@
 /* ============================================
    Yamshat Unified CSS System
    ============================================ */
+/* اختبار - هل هذا الكود يظهر؟ */
+body {
+  border: 10px solid red !important;
+  background-color: black !important;
+}
 
+body * {
+  color: lime !important;
+}
 /* Import all CSS modules in order */
 @import './global.css';
 @import './theme.css';

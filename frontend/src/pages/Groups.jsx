@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import Modal from '../components/ui/Modal.jsx';
 import EmptyState from '../components/feedback/EmptyState.jsx';
 import { createGroup, getGroups } from '../api/groups.js';
+import mediaUploadService from '../services/media/mediaUploadService.js';
 
 const ROLES = [
   { id: 'admin', label: 'مدير', color: '#ff4444' },
@@ -18,18 +19,152 @@ export default function Groups() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [createForm, setCreateForm] = useState({ name: '', description: '' });
+  const [createForm, setCreateForm] = useState({ 
+    name: '', 
+    description: '',
+    image: null,
+    imagePreview: null,
+    coverImage: null,
+    coverImagePreview: null
+  });
   const [savingGroup, setSavingGroup] = useState(false);
   const [activeTab, setActiveTab] = useState('members'); // members, settings, analytics
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const imageInputRef = useRef(null);
+  const coverInputRef = useRef(null);
 
   useEffect(() => {
     loadGroups();
   }, []);
 
   const loadGroups = async () => {
-    const { data } = await getGroups();
-    setGroups(data || []);
-    if (data?.length > 0) setSelectedGroup(data[0]);
+    try {
+      const { data } = await getGroups();
+      setGroups(data || []);
+      if (data?.length > 0) setSelectedGroup(data[0]);
+    } catch (error) {
+      console.error('خطأ في تحميل المجموعات:', error);
+    }
+  };
+
+  const handleImageSelect = async (event, type = 'image') => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 50 * 1024 * 1024) {
+      alert('الملف كبير جداً. الحد الأقصى 50 ميجا.');
+      return;
+    }
+
+    const preview = URL.createObjectURL(file);
+    
+    if (type === 'image') {
+      if (createForm.imagePreview) URL.revokeObjectURL(createForm.imagePreview);
+      setCreateForm(prev => ({ ...prev, image: file, imagePreview: preview }));
+    } else {
+      if (createForm.coverImagePreview) URL.revokeObjectURL(createForm.coverImagePreview);
+      setCreateForm(prev => ({ ...prev, coverImage: file, coverImagePreview: preview }));
+    }
+  };
+
+  const uploadGroupMedia = async (file, purpose) => {
+    if (!file) return null;
+    
+    try {
+      setUploadingMedia(true);
+      const uploadRes = await mediaUploadService.uploadFile(file, {
+        purpose: purpose,
+        onProgress: (payload) => {
+          const percent = typeof payload === 'number' ? Number(payload || 0) : Number(payload?.percent || 0);
+          console.log(`تقدم الرفع: ${percent}%`);
+        },
+      });
+      return uploadRes?.mediaUrl || uploadRes?.url || uploadRes?.file_url || '';
+    } catch (error) {
+      console.error(`خطأ في رفع ${purpose}:`, error);
+      return null;
+    } finally {
+      setUploadingMedia(false);
+    }
+  };
+
+  const handleCreateGroup = async () => {
+    if (!createForm.name.trim()) {
+      alert('يرجى إدخال اسم المجموعة');
+      return;
+    }
+
+    try {
+      setSavingGroup(true);
+      
+      // رفع الصور إذا كانت موجودة
+      let imageUrl = '';
+      let coverImageUrl = '';
+      
+      if (createForm.image) {
+        imageUrl = await uploadGroupMedia(createForm.image, 'group-image');
+      }
+      
+      if (createForm.coverImage) {
+        coverImageUrl = await uploadGroupMedia(createForm.coverImage, 'group-cover');
+      }
+
+      // إنشاء المجموعة مع الصور
+      const groupData = {
+        name: createForm.name.trim(),
+        description: createForm.description.trim(),
+        image_url: imageUrl || undefined,
+        cover_image_url: coverImageUrl || undefined,
+      };
+
+      const { data } = await createGroup(groupData);
+      const createdGroup = data || {
+        id: `local-${Date.now()}`,
+        name: createForm.name.trim(),
+        description: createForm.description.trim(),
+        image_url: imageUrl || '',
+        cover_image_url: coverImageUrl || '',
+        members_count: 1
+      };
+
+      setGroups((prev) => [createdGroup, ...prev]);
+      setSelectedGroup(createdGroup);
+      
+      // تنظيف النموذج
+      if (createForm.imagePreview) URL.revokeObjectURL(createForm.imagePreview);
+      if (createForm.coverImagePreview) URL.revokeObjectURL(createForm.coverImagePreview);
+      
+      setCreateForm({
+        name: '',
+        description: '',
+        image: null,
+        imagePreview: null,
+        coverImage: null,
+        coverImagePreview: null
+      });
+      setShowCreateModal(false);
+      alert('تم إنشاء المجموعة بنجاح!');
+    } catch (error) {
+      console.error('خطأ في إنشاء المجموعة:', error);
+      alert('فشل إنشاء المجموعة. حاول مرة أخرى.');
+    } finally {
+      setSavingGroup(false);
+    }
+  };
+
+  const closeCreateModal = () => {
+    if (createForm.imagePreview) URL.revokeObjectURL(createForm.imagePreview);
+    if (createForm.coverImagePreview) URL.revokeObjectURL(createForm.coverImagePreview);
+    
+    setCreateForm({
+      name: '',
+      description: '',
+      image: null,
+      imagePreview: null,
+      coverImage: null,
+      coverImagePreview: null
+    });
+    setShowCreateModal(false);
   };
 
   return (
@@ -165,17 +300,18 @@ export default function Groups() {
         </div>
       </Modal>
 
-      <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="إنشاء مجموعة جديدة">
-        <div style={{ padding: 20, display: 'grid', gap: 14 }}>
+      <Modal isOpen={showCreateModal} onClose={closeCreateModal} title="إنشاء مجموعة جديدة">
+        <div style={{ padding: 20, display: 'grid', gap: 14, maxHeight: '80vh', overflowY: 'auto' }}>
           <label style={{ display: 'grid', gap: 8 }}>
             <span style={{ fontWeight: 700 }}>اسم المجموعة</span>
             <input
               value={createForm.name}
               onChange={(event) => setCreateForm((prev) => ({ ...prev, name: event.target.value }))}
               placeholder="اكتب اسم المجموعة"
-              style={{ width: '100%', borderRadius: 12, padding: 12 }}
+              style={{ width: '100%', borderRadius: 12, padding: 12, background: '#222', border: '1px solid #444', color: 'white' }}
             />
           </label>
+
           <label style={{ display: 'grid', gap: 8 }}>
             <span style={{ fontWeight: 700 }}>وصف المجموعة</span>
             <textarea
@@ -183,29 +319,131 @@ export default function Groups() {
               onChange={(event) => setCreateForm((prev) => ({ ...prev, description: event.target.value }))}
               placeholder="اكتب وصف واضح للمجموعة"
               rows={4}
-              style={{ width: '100%', borderRadius: 12, padding: 12 }}
+              style={{ width: '100%', borderRadius: 12, padding: 12, background: '#222', border: '1px solid #444', color: 'white' }}
             />
           </label>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-            <Button variant="secondary" onClick={() => setShowCreateModal(false)}>إلغاء</Button>
-            <Button
-              onClick={async () => {
-                if (!createForm.name.trim()) return;
-                try {
-                  setSavingGroup(true);
-                  const { data } = await createGroup({ name: createForm.name.trim(), description: createForm.description.trim() });
-                  const createdGroup = data || { id: `local-${Date.now()}`, name: createForm.name.trim(), description: createForm.description.trim(), members_count: 1 };
-                  setGroups((prev) => [createdGroup, ...prev]);
-                  setSelectedGroup(createdGroup);
-                  setCreateForm({ name: '', description: '' });
-                  setShowCreateModal(false);
-                } finally {
-                  setSavingGroup(false);
-                }
+
+          <label style={{ display: 'grid', gap: 8 }}>
+            <span style={{ fontWeight: 700 }}>صورة المجموعة</span>
+            <button
+              type="button"
+              onClick={() => imageInputRef.current?.click()}
+              style={{
+                padding: 12,
+                borderRadius: 12,
+                background: '#222',
+                border: '2px dashed #444',
+                color: '#888',
+                cursor: 'pointer',
+                fontWeight: 600,
+                transition: 'all 0.2s'
               }}
-              loading={savingGroup}
-              disabled={!createForm.name.trim()}
-            >إنشاء المجموعة</Button>
+              onMouseEnter={(e) => e.target.style.borderColor = '#666'}
+              onMouseLeave={(e) => e.target.style.borderColor = '#444'}
+            >
+              {createForm.imagePreview ? '✓ تم اختيار صورة' : '📷 اختر صورة المجموعة'}
+            </button>
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              onChange={(e) => handleImageSelect(e, 'image')}
+              hidden
+            />
+            {createForm.imagePreview && (
+              <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', height: 150 }}>
+                <img src={createForm.imagePreview} alt="معاينة" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (createForm.imagePreview) URL.revokeObjectURL(createForm.imagePreview);
+                    setCreateForm(prev => ({ ...prev, image: null, imagePreview: null }));
+                  }}
+                  style={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 8,
+                    background: 'rgba(0,0,0,0.7)',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: 32,
+                    height: 32,
+                    cursor: 'pointer',
+                    fontSize: 18
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+          </label>
+
+          <label style={{ display: 'grid', gap: 8 }}>
+            <span style={{ fontWeight: 700 }}>صورة الغلاف</span>
+            <button
+              type="button"
+              onClick={() => coverInputRef.current?.click()}
+              style={{
+                padding: 12,
+                borderRadius: 12,
+                background: '#222',
+                border: '2px dashed #444',
+                color: '#888',
+                cursor: 'pointer',
+                fontWeight: 600,
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => e.target.style.borderColor = '#666'}
+              onMouseLeave={(e) => e.target.style.borderColor = '#444'}
+            >
+              {createForm.coverImagePreview ? '✓ تم اختيار صورة' : '🖼️ اختر صورة الغلاف'}
+            </button>
+            <input
+              ref={coverInputRef}
+              type="file"
+              accept="image/*"
+              onChange={(e) => handleImageSelect(e, 'cover')}
+              hidden
+            />
+            {createForm.coverImagePreview && (
+              <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', height: 150 }}>
+                <img src={createForm.coverImagePreview} alt="معاينة" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (createForm.coverImagePreview) URL.revokeObjectURL(createForm.coverImagePreview);
+                    setCreateForm(prev => ({ ...prev, coverImage: null, coverImagePreview: null }));
+                  }}
+                  style={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 8,
+                    background: 'rgba(0,0,0,0.7)',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: 32,
+                    height: 32,
+                    cursor: 'pointer',
+                    fontSize: 18
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+          </label>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <Button variant="secondary" onClick={closeCreateModal}>إلغاء</Button>
+            <Button
+              onClick={handleCreateGroup}
+              loading={savingGroup || uploadingMedia}
+              disabled={!createForm.name.trim() || savingGroup || uploadingMedia}
+            >
+              {uploadingMedia ? 'جارٍ رفع الصور...' : 'إنشاء المجموعة'}
+            </Button>
           </div>
         </div>
       </Modal>

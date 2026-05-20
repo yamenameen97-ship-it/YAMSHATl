@@ -342,49 +342,73 @@ export default function ReelsPage() {
     }
 
     const originalReels = [...reels];
+    const isCurrentlyLiked = reel.is_liked;
+    
     setReels((prev) => prev.map((item) => item.id === reel.id ? {
       ...item,
-      is_liked: !item.is_liked,
-      likes_count: item.is_liked ? Number(item.likes_count || 0) - 1 : Number(item.likes_count || 0) + 1,
+      is_liked: !isCurrentlyLiked,
+      likes_count: isCurrentlyLiked ? Number(item.likes_count || 0) - 1 : Number(item.likes_count || 0) + 1,
     } : item));
 
     try {
       await likePost(reel.id);
-    } catch {
+      pushToast({ type: 'success', title: isCurrentlyLiked ? 'تم إلغاء الإعجاب' : 'تم إضافة إعجاب' });
+    } catch (error) {
       setReels(originalReels);
-      pushToast({ type: 'error', title: 'تعذر تحديث الإعجاب' });
+      pushToast({ type: 'error', title: 'تعذر تحديث الإعجاب', description: error?.message });
     }
   };
 
   const handleSave = async (reel) => {
     const originalReels = [...reels];
-    setReels((prev) => prev.map((item) => item.id === reel.id ? { ...item, is_saved: !item.is_saved } : item));
+    const isCurrentlySaved = reel.is_saved;
+    
+    setReels((prev) => prev.map((item) => item.id === reel.id ? { ...item, is_saved: !isCurrentlySaved } : item));
     try {
       await savePost(reel.id);
-    } catch {
+      pushToast({ type: 'success', title: isCurrentlySaved ? 'تم إلغاء الحفظ' : 'تم حفظ الريل' });
+    } catch (error) {
       setReels(originalReels);
-      pushToast({ type: 'error', title: 'تعذر حفظ الريل' });
+      pushToast({ type: 'error', title: 'تعذر حفظ الريل', description: error?.message });
     }
   };
 
   const handleShare = async (reel) => {
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}/reels/${reel.id}`);
-      pushToast({ type: 'success', title: 'تم نسخ رابط الريل' });
+      const shareUrl = `${window.location.origin}/reels/${reel.id}`;
+      
+      if (navigator.share) {
+        await navigator.share({
+          title: 'الريلز',
+          text: reel.content || 'ريل مميز',
+          url: shareUrl
+        });
+      } else {
+        await navigator.clipboard.writeText(shareUrl);
+        pushToast({ type: 'success', title: 'تم نسخ رابط الريل' });
+      }
+      
       await sharePost(reel.id, 'copy');
-    } catch {
-      pushToast({ type: 'warning', title: 'تعذر نسخ الرابط' });
+    } catch (error) {
+      pushToast({ type: 'warning', title: 'تعذر مشاركة الريل', description: error?.message });
     }
   };
 
   const openComments = async (reel) => {
+    if (!reel?.id) {
+      pushToast({ type: 'warning', title: 'لم يتم تحميل بيانات الريل' });
+      return;
+    }
+    
     setActiveReel(reel);
     setShowCommentsModal(true);
     try {
       const { data } = await getComments(reel.id);
       setActiveComments(Array.isArray(data) ? data : data?.items || []);
-    } catch {
+    } catch (error) {
+      console.error('خطأ في تحميل التعليقات:', error);
       setActiveComments([]);
+      pushToast({ type: 'error', title: 'تعذر تحميل التعليقات', description: error?.message });
     }
   };
 
@@ -393,22 +417,31 @@ export default function ReelsPage() {
       pushToast({ type: 'warning', title: 'ارفع فيديو أولاً' });
       return;
     }
+    if (uploadState.publishing) return;
+    
     try {
       setUploadState((prev) => ({ ...prev, publishing: true }));
-      await createPost({
+      const postData = {
         content: uploadState.content?.trim() || 'ريل جديد',
         media_url: uploadState.mediaUrl,
         media: uploadState.mediaUrl,
         media_urls: [uploadState.mediaUrl],
-      });
-      setShowUploadModal(false);
-      resetUploadState();
-      navigate('/reels', { replace: true });
-      await loadReels();
-      pushToast({ type: 'success', title: 'تم نشر الريل بنجاح' });
+        status: 'published'
+      };
+      
+      const response = await createPost(postData);
+      
+      if (response?.data || response?.status === 201) {
+        pushToast({ type: 'success', title: 'تم نشر الريل بنجاح' });
+        setShowUploadModal(false);
+        resetUploadState();
+        await loadReels();
+      }
     } catch (error) {
+      console.error('خطأ في نشر الريل:', error);
+      pushToast({ type: 'error', title: 'فشل نشر الريل', description: error?.response?.data?.detail || error?.message || 'حاول مرة أخرى' });
+    } finally {
       setUploadState((prev) => ({ ...prev, publishing: false }));
-      pushToast({ type: 'error', title: 'فشل نشر الريل', description: error?.response?.data?.detail || error?.message });
     }
   };
 

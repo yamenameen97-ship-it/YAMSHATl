@@ -47,58 +47,56 @@ export default function AdminTopbar({ title, onToggleSidebar, notifications = []
   return (
     <header className="admin-topbar admin-reference-topbar">
       <div className="admin-topbar-search-row">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button type="button" className="ghost-btn icon-btn admin-menu-toggle" onClick={onToggleSidebar}>☰</button>
-          <div className="admin-search-box admin-reference-search-box">
-            <span>⌕</span>
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="بحث عن مستخدم، بث، منشور..." />
-            {(results.users.length || results.posts.length) ? (
-              <div className="search-results-panel">
-                {results.users.length ? (
-                  <div>
-                    <strong>المستخدمون</strong>
-                    {results.users.map((item) => (
-                      <button key={item.id} type="button" className="search-result-item" onClick={() => navigate('/admin/users')}>
-                        <span>{item.username}</span>
-                        <small>{item.role}</small>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-                {results.posts.length ? (
-                  <div>
-                    <strong>المنشورات</strong>
-                    {results.posts.map((item) => (
-                      <button key={item.id} type="button" className="search-result-item" onClick={() => navigate('/admin/posts')}>
-                        <span>{item.username}</span>
-                        <small>{item.content?.slice(0, 42)}</small>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
+        <button type="button" className="ghost-btn icon-btn admin-menu-toggle" onClick={onToggleSidebar}>☰</button>
+        <div className="admin-search-box admin-reference-search-box">
+          <span>⌕</span>
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="بحث عن مستخدم، بث، منشور..." />
+          {(results.users.length || results.posts.length) ? (
+            <div className="search-results-panel">
+              {results.users.length ? (
+                <div>
+                  <strong>المستخدمون</strong>
+                  {results.users.map((item) => (
+                    <button key={item.id} type="button" className="search-result-item" onClick={() => navigate('/admin/users')}>
+                      <span>{item.username}</span>
+                      <small>{item.role}</small>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {results.posts.length ? (
+                <div>
+                  <strong>المنشورات</strong>
+                  {results.posts.map((item) => (
+                    <button key={item.id} type="button" className="search-result-item" onClick={() => navigate('/admin/posts')}>
+                      <span>{item.username}</span>
+                      <small>{item.content?.slice(0, 42)}</small>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
 
       <div className="admin-topbar-meta-block">
-        <div style={{ textAlign: 'end' }}>
-          <div className="page-eyebrow">مرحباً بك داخل</div>
-          <h1 className="page-title admin-reference-title" style={{ margin: '4px 0 0' }}>{title}</h1>
+        <div>
+          <div className="page-eyebrow">لوحة التحكم</div>
+          <h1 className="page-title admin-reference-title">{title}</h1>
           <div className="topbar-meta-row">
-            <span className="live-pill"><span className="status-dot live-dot" />واجهة موحّدة</span>
-            <span className="deploy-pill">RTL • Dark • Live</span>
+            <span className="live-pill"><span className="status-dot live-dot" />تحديث لحظي</span>
+            <span className="deploy-pill">واجهة RTL داكنة محسّنة</span>
           </div>
         </div>
       </div>
 
       <div className="topbar-controls admin-reference-controls">
-        <button type="button" className="ghost-btn admin-reference-utility" aria-label="theme switch">☾</button>
         <button type="button" className="ghost-btn notification-button admin-reference-utility" onClick={() => setOpen((prev) => !prev)}>
           🔔
           <span>{unreadCount}</span>
         </button>
+        <Link className="ghost-btn admin-reference-utility" to="/admin/reports">📈</Link>
         <Link className="ghost-btn admin-reference-utility" to="/admin/notifications">✉</Link>
         <div className="profile-pill admin-profile-pill admin-reference-profile">
           <div className="admin-reference-profile-avatar">{(user?.username || 'A').slice(0, 1).toUpperCase()}</div>

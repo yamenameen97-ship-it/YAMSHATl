@@ -4,23 +4,24 @@ const groups = [
   {
     title: 'إدارة المحتوى',
     items: [
-      { to: '/admin/dashboard', label: 'لوحة التحكم', icon: '⌂', permission: 'dashboard.view' },
-      { to: '/admin/live', label: 'إدارة البثوث', icon: '◉', permission: 'live.manage', badge: 'LIVE' },
-      { to: '/admin/posts', label: 'إدارة المنشورات', icon: '✦', permission: 'posts.view' },
-      { to: '/admin/chat', label: 'إدارة الشات', icon: '✉', permission: 'dashboard.view' },
-      { to: '/admin/stories', label: 'إدارة الستوري', icon: '◎', permission: 'dashboard.view' },
-      { to: '/admin/reels', label: 'إدارة الريلز', icon: '▶', permission: 'dashboard.view' },
+      { to: '/admin/dashboard', label: 'لوحة التحكم', icon: '◈', permission: 'dashboard.view' },
+      { to: '/admin/posts', label: 'المنشورات', icon: '✦', permission: 'posts.view' },
+      { to: '/admin/stories', label: 'الستوري', icon: '◎', permission: 'dashboard.view' },
+      { to: '/admin/reels', label: 'الريلز', icon: '▶', permission: 'dashboard.view' },
+      { to: '/admin/live', label: 'البث المباشر', icon: '◉', permission: 'live.manage', badge: 'LIVE' },
+      { to: '/admin/chat', label: 'الشات', icon: '✉', permission: 'dashboard.view' },
+      { to: '/admin/groups', label: 'المجموعات', icon: '◌', permission: 'dashboard.view' },
     ],
   },
   {
-    title: 'إدارة المستخدمين',
+    title: 'الإدارة',
     items: [
       { to: '/admin/users', label: 'المستخدمون', icon: '◍', permission: 'users.view' },
-      { to: '/admin/groups', label: 'المجموعات', icon: '◌', permission: 'dashboard.view' },
-      { to: '/admin/reports', label: 'التقارير والإحصائيات', icon: '▣', permission: 'reports.view', badge: 'HOT' },
+      { to: '/admin/rbac', label: 'الصلاحيات', icon: '⌘', permission: 'rbac.view' },
       { to: '/admin/notifications', label: 'الإشعارات', icon: '◔', permission: 'notifications.manage' },
-      { to: '/admin/audit', label: 'سجل النشاطات', icon: '⧉', permission: 'dashboard.view' },
-      { to: '/admin/settings', label: 'الإعدادات العامة', icon: '⚙', permission: 'settings.manage' },
+      { to: '/admin/reports', label: 'مركز البلاغات', icon: '▣', permission: 'reports.view', badge: 'HOT' },
+      { to: '/admin/audit', label: 'سجل الأدمن', icon: '⧉', permission: 'dashboard.view' },
+      { to: '/admin/settings', label: 'الإعدادات', icon: '⚙', permission: 'settings.manage' },
     ],
   },
 ];
@@ -31,10 +32,10 @@ export default function AdminSidebar({ collapsed, permissions = [], role = 'user
   return (
     <aside className={`admin-sidebar admin-reference-sidebar ${collapsed ? 'collapsed' : ''}`}>
       <div className="admin-brand admin-reference-brand">
-        <div className="brand-logo brand-logo-reference">◉</div>
+        <div className="brand-logo brand-logo-reference">YS</div>
         {!collapsed ? (
           <div>
-            <strong>LiveStream</strong>
+            <strong>Yamshat Admin</strong>
             <span>لوحة إدارة عربية احترافية</span>
           </div>
         ) : null}
@@ -47,7 +48,7 @@ export default function AdminSidebar({ collapsed, permissions = [], role = 'user
             <strong>المدير العام</strong>
             <span>Super Admin</span>
           </div>
-          <div className="admin-sidebar-status">● متصل</div>
+          <div className="admin-sidebar-status">متصل</div>
         </div>
       ) : null}
 
@@ -67,6 +68,13 @@ export default function AdminSidebar({ collapsed, permissions = [], role = 'user
           </div>
         ))}
       </div>
+
+      {!collapsed ? (
+        <div className="sidebar-promo admin-reference-promo">
+          <span className="badge">واجهة محسّنة</span>
+          <p>تم إضافة مركز بلاغات كامل، سجل تدقيق للأدمن، وإحصائيات حية مع تحسينات للجوال والريلز لتقليل استهلاك الذاكرة وتحسين الأداء على الأجهزة الضعيفة.</p>
+        </div>
+      ) : null}
     </aside>
   );
 }

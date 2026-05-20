@@ -444,7 +444,7 @@ export default function FeedEnhanced() {
           </section>
         </aside>
       </div>
-      html, body, #root {
+html, body, #root {
   overflow-x: hidden !important;
   width: 100% !important;
   max-width: 100% !important;
@@ -492,7 +492,7 @@ img, video, iframe {
   box-sizing: border-box !important;
 }
 
-      <style>{`
+    <style>{`
       html, body, #root {
   overflow-x: hidden !important;
   width: 100% !important;

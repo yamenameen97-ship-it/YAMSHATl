@@ -13,7 +13,32 @@
 /* ============================================
    Global Resets and Base Styles
    ============================================ */
+/* حل مشكلة خروج المحتوى من الصفحة الرئيسية */
+.yam-feed-page {
+  overflow-x: hidden !important;
+  width: 100% !important;
+  max-width: 100vw !important;
+}
 
+.yam-feed-right-column {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+@media (max-width: 768px) {
+  .yam-feed-page {
+    padding: 8px !important;
+  }
+  
+  .yam-side-card {
+    padding: 12px !important;
+  }
+  
+  .yam-story-row {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}
 * {
   margin: 0;
   padding: 0;

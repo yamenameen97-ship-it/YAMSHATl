@@ -1,4 +1,4 @@
-import MainLayout from '../components/layout/MainLayout.jsx';
+import MainLayout from '../components/layout/MainLayoutEnhanced.jsx';
 import Button from '../components/ui/Button.jsx';
 import Card from '../components/ui/Card.jsx';
 import { Link } from 'react-router-dom';
@@ -11,7 +11,7 @@ export default function StaticContentPage({
   ctaTo = '/',
 }) {
   return (
-    <MainLayout hideNav>
+    <MainLayoutEnhanced hideNav>
       <div style={{ maxWidth: 920, margin: '0 auto', padding: '24px 12px 96px', direction: 'rtl' }}>
         <Card style={{ padding: 22, marginBottom: 16 }}>
           <div style={{ display: 'grid', gap: 10 }}>
@@ -47,6 +47,6 @@ export default function StaticContentPage({
           </Link>
         </div>
       </div>
-    </MainLayout>
+    </MainLayoutEnhanced>
   );
 }

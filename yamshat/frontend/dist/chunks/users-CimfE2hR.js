@@ -1,1 +1,0 @@
-import{A as s}from"../index-CiRIw-2s.js";const r=()=>s.get("/users"),t=e=>s.get(`/users/profile/${encodeURIComponent(e)}`,{cache:!1,forceRefresh:!0}),f=e=>s.post("/users/follow",{following:e}),l=e=>s.patch("/users/me",e);export{t as a,f,r as g,l as u};

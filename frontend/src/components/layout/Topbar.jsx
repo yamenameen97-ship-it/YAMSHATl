@@ -2,6 +2,7 @@ import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getNotifications } from '../../api/notifications.js';
+import { getLiveRooms } from '../../api/live.js';
 import { BACKEND_ORIGIN } from '../../api/config.js';
 import { clearStoredUser, getAuthToken, getCurrentUsername, getStoredUserSnapshot } from '../../utils/auth.js';
 import { getCsrfToken } from '../../utils/csrf.js';
@@ -12,7 +13,7 @@ import { selectUnreadTotal, useChatStore } from '../../store/appStore.js';
 const PRIMARY_ITEMS = [
   { to: '/', label: 'الرئيسية', match: (path) => path === '/' },
   { to: '/search', label: 'البحث', match: (path) => path.startsWith('/search'), icon: '🔍' },
-  { to: '/live', label: 'البث', match: (path) => path.startsWith('/live') },
+  { to: '/live', label: 'البث', match: (path) => path.startsWith('/live'), badgeType: 'live' },
   { to: '/groups', label: 'المجموعات', match: (path) => path.startsWith('/groups') },
   { to: '/reels', label: 'الريلز', match: (path) => path.startsWith('/reels') },
   { to: '/stories', label: 'الستوري', match: (path) => path.startsWith('/stories') },
@@ -61,10 +62,7 @@ export default function Topbar() {
     queryKey: ['topbar-live-rooms'],
     queryFn: async () => {
       try {
-        const response = await fetch(`${BACKEND_ORIGIN}/api/live/rooms`, {
-          headers: { Authorization: `Bearer ${getAuthToken()}` },
-        });
-        return response.ok ? response.json() : [];
+        return (await getLiveRooms()).data || [];
       } catch {
         return [];
       }
@@ -143,6 +141,7 @@ export default function Topbar() {
             let badge = 0;
             if (item.badgeType === 'notifications') badge = unreadNotificationCount;
             else if (item.badgeType === 'inbox') badge = unreadInboxCount;
+            else if (item.badgeType === 'live') badge = activeLiveCount;
             return (
               <NavLink key={item.to} to={item.to} className={`yam-topbar-pill ${isActive ? 'active' : ''}`} title={item.label}>
                 {item.icon ? <span>{item.icon}</span> : null}

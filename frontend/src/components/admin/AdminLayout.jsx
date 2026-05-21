@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { getAdminNotifications } from '../../api/admin.js';
 import socket from '../../api/socket.js';
 import { getAuthToken, getStoredUser } from '../../utils/auth.js';
@@ -81,11 +81,11 @@ export default function AdminLayout({ children }) {
           {children}
         
 <div className="bottom-mobile-nav">
-  <a className="nav-btn" href="/">🏠<span>الرئيسية</span></a>
-  <a className="nav-btn" href="/reels">🎬<span>الريلز</span></a>
-  <div className="add-btn">+</div>
-  <a className="nav-btn" href="/messages">💬<span>الدردشة</span></a>
-  <a className="nav-btn" href="/profile">👤<span>حسابي</span></a>
+  <Link className="nav-btn" to="/">🏠<span>الرئيسية</span></Link>
+  <Link className="nav-btn" to="/reels">🎬<span>الريلز</span></Link>
+  <Link className="add-btn" to="/reels?upload=1" aria-label="رفع ريل جديد">+</Link>
+  <Link className="nav-btn" to="/inbox">💬<span>الدردشة</span></Link>
+  <Link className="nav-btn" to="/profile">👤<span>حسابي</span></Link>
 </div>
 
 </main>

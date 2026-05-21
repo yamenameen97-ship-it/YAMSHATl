@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect } from 'react';
+import StaticContentPage from './pages/StaticContentPage.jsx';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import { ToastProvider } from './components/admin/ToastProvider.jsx';
@@ -120,6 +121,9 @@ export default function App() {
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/terms" element={<StaticContentPage title="شروط الاستخدام" subtitle="هذه الصفحة تضيف مساراً فعلياً لروابط الشروط داخل الواجهة حتى لا ينكسر التنقل أثناء النشر أو التسجيل." sections={[{ heading: 'الاستخدام المقبول', items: ['يُمنع نشر المحتوى المخالف أو المسيء أو المنتحل للهوية.', 'يجب احترام خصوصية المستخدمين وعدم مشاركة بياناتهم دون إذن.', 'يمكن تعليق الحسابات التي تكرر إساءة الاستخدام أو السبام.'] }, { heading: 'المحتوى والوسائط', items: ['أنت مسؤول عن الصور والفيديوهات والريلز والستوري التي ترفعها.', 'يجب أن تملك حق استخدام المحتوى قبل نشره.', 'قد تتم إزالة المحتويات التي تخالف السياسات أو القوانين المحلية.'] }]} ctaLabel="العودة للتسجيل" ctaTo="/register" />} />
+            <Route path="/privacy" element={<StaticContentPage title="سياسة الخصوصية" subtitle="تمت إضافة هذه الصفحة لربط زر سياسة الخصوصية داخل الواجهة بشكل صحيح وتحسين الجاهزية قبل النشر." sections={[{ heading: 'البيانات التي قد تُستخدم', items: ['بيانات الحساب الأساسية مثل الاسم واسم المستخدم والبريد الإلكتروني.', 'بيانات التفاعل مثل الإعجابات والتعليقات والمشاركات والمشاهدات.', 'بيانات تقنية لتحسين الأمان والأداء مثل نوع الجهاز وسجلات الجلسة.'] }, { heading: 'كيفية الاستخدام', items: ['تحسين تجربة العرض والتوصيات والتنبيهات.', 'تأمين الحسابات ومنع إساءة الاستخدام.', 'تشغيل مزايا التواصل مثل الرسائل والبث والتعليقات.'] }]} ctaLabel="العودة للتسجيل" ctaTo="/register" />} />
+            <Route path="/support" element={<StaticContentPage title="الدعم الفني" subtitle="تم تفعيل مسار الدعم الفني داخل الفرونت إند حتى لا تظهر صفحة فارغة عند الضغط على الرابط." sections={[{ heading: 'طرق المساعدة', items: ['راجع صفحة الإعدادات لتحديث بيانات الحساب والأمان.', 'تأكد من إعداد عنوان الـ API الصحيح في بيئة النشر.', 'إذا تعطل الرفع أو البث فتأكد من أذونات الكاميرا والمايك والاتصال بالخادم.'] }, { heading: 'مشكلات شائعة', items: ['تعذر رفع ملف: افحص حجم الملف وصيغة الوسائط.', 'تعذر إنشاء بث: تأكد من توفر توكنات وخدمة LiveKit في الخادم.', 'تعذر تسجيل الدخول: افحص الجلسة وملفات الكوكيز وCSRF.'] }]} ctaLabel="العودة لتسجيل الدخول" ctaTo="/login" />} />
             <Route path="/admin" element={<Navigate to="/admin/login" replace />} />
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/admin/register" element={<Navigate to="/register" replace />} />
@@ -131,12 +135,14 @@ export default function App() {
             <Route path="/reels" element={<ProtectedRoute><Reels /></ProtectedRoute>} />
             <Route path="/groups" element={<ProtectedRoute><Groups /></ProtectedRoute>} />
             <Route path="/live" element={<ProtectedRoute><Live /></ProtectedRoute>} />
+            <Route path="/messages" element={<Navigate to="/inbox" replace />} />
             <Route path="/inbox" element={<ProtectedRoute><Inbox /></ProtectedRoute>} />
             <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
             <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
             <Route path="/search" element={<ProtectedRoute><Search /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            <Route path="/post/:postId" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
             <Route path="/profile/:username" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
             <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
             <Route path="/chat/:userId" element={<ProtectedRoute><Chat /></ProtectedRoute>} />

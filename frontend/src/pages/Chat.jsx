@@ -26,143 +26,64 @@ import {
   statusColor,
   statusTicks,
 } from '../components/yamshat/YamshatDesign.js';
-import { CHAT_NAV_ITEMS, buildContacts, getContactDetails } from '../features/chat/chatShellFixtures.js';
 
 function Avatar({ name = '', src, size = 44, ring = false }) {
   const style = {
     width: size,
     height: size,
-    borderRadius: size > 56 ? 24 : 18,
+    borderRadius: ring ? 18 : '50%',
     objectFit: 'cover',
     flexShrink: 0,
-    border: ring ? '1px solid rgba(139,92,246,0.35)' : 'none',
-    boxShadow: ring ? '0 0 0 5px rgba(139,92,246,0.14)' : 'none',
+    border: ring ? '1px solid rgba(139,92,246,0.42)' : 'none',
+    boxShadow: ring ? '0 0 0 4px rgba(139,92,246,0.12)' : 'none',
   };
-
-  return src ? (
-    <img src={src} alt={name} style={style} />
-  ) : (
-    <div
-      style={{
-        ...style,
-        display: 'grid',
-        placeItems: 'center',
-        color: 'white',
-        fontWeight: 900,
-        background: avatarGradient(name),
-        fontSize: size * 0.34,
-      }}
-    >
-      {initialsFromName(name).slice(0, 1)}
-    </div>
-  );
+  return src
+    ? <img src={src} alt={name} style={style} />
+    : <div style={{ ...style, display: 'grid', placeItems: 'center', color: 'white', fontWeight: 900, background: avatarGradient(name), fontSize: size * 0.34 }}>{initialsFromName(name).slice(0, 1)}</div>;
 }
 
-function PresenceDot({ isOnline, size = 14, borderColor = '#070b1b' }) {
+function PresenceDot({ isOnline }) {
   return (
-    <span
-      style={{
-        width: size,
-        height: size,
-        borderRadius: '50%',
-        background: isOnline ? '#22c55e' : '#64748b',
-        border: `3px solid ${borderColor}`,
-        boxShadow: isOnline ? '0 0 0 4px rgba(34,197,94,0.18)' : 'none',
-        display: 'inline-block',
-        flexShrink: 0,
-      }}
-    />
+    <span style={{
+      display: 'inline-block',
+      width: 10,
+      height: 10,
+      borderRadius: '50%',
+      background: isOnline ? '#22c55e' : '#64748b',
+      boxShadow: isOnline ? '0 0 0 3px rgba(34,197,94,0.22)' : 'none',
+      flexShrink: 0,
+    }} />
   );
 }
 
-function formatMessageTime(value) {
-  if (!value) return '';
-  try {
-    return new Date(value).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return '';
-  }
-}
-
-function extractFileName(message) {
-  if (message.attachment_name) return message.attachment_name;
-  if (Array.isArray(message.attachments) && message.attachments[0]?.fileName) return message.attachments[0].fileName;
-  const mediaUrl = message.media_url || '';
-  if (!mediaUrl) return 'ملف مرفق';
-  try {
-    const clean = mediaUrl.split('?')[0];
-    return decodeURIComponent(clean.split('/').pop() || 'ملف مرفق');
-  } catch {
-    return 'ملف مرفق';
-  }
-}
-
-function messageMatchesSearch(message, query) {
-  const lowered = query.trim().toLowerCase();
-  if (!lowered) return true;
-  return [
-    message.content,
-    message.message,
-    message.sender,
-    extractFileName(message),
-  ].some((value) => String(value || '').toLowerCase().includes(lowered));
-}
-
-function MessageBubble({ message, isMe, onReply, onDelete, highlightQuery = '' }) {
+function MessageBubble({ message, isMe, onReply, onDelete }) {
   const hasMedia = Boolean(message.media_url);
   const isVoice = message.type === 'voice';
-  const isImage = message.type === 'image' || (hasMedia && /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(message.media_url || ''));
-  const isVideo = message.type === 'video' || (hasMedia && /\.(mp4|webm|mov|m4v)$/i.test(message.media_url || ''));
-  const isFile = message.type === 'file' || (hasMedia && !isVoice && !isImage && !isVideo);
+  const isImage = message.type === 'image' || (hasMedia && /\.(jpg|jpeg|png|gif|webp)/i.test(message.media_url || ''));
+  const isVideo = message.type === 'video' || (hasMedia && /\.(mp4|webm|mov)/i.test(message.media_url || ''));
   const content = message.content || message.message || '';
-  const fileName = extractFileName(message);
-  const shouldGlow = highlightQuery.trim() && messageMatchesSearch(message, highlightQuery);
 
   return (
     <div className={`yam-bubble-wrap ${isMe ? 'me' : 'them'}`}>
-      {!isMe ? (
-        <div className="yam-bubble-avatar-slot">
-          <Avatar name={message.sender} size={36} />
-        </div>
-      ) : null}
-
-      <div className={`yam-bubble ${isMe ? 'bubble-me' : 'bubble-them'} ${shouldGlow ? 'search-hit' : ''}`}>
+      {!isMe && <Avatar name={message.sender} size={34} />}
+      <div className={`yam-bubble ${isMe ? 'bubble-me' : 'bubble-them'}`}>
         {message.reply_to ? (
           <div className="bubble-reply-banner">
-            <strong>↩ الرد على</strong>
-            <span>{message.reply_to?.content || '...'}</span>
+            <strong>↩ الرد على:</strong> {message.reply_to?.content || '...'}
           </div>
         ) : null}
 
-        {isVoice && message.media_url ? (
-          <div className="yam-audio-wrap">
-            <audio src={message.media_url} controls style={{ width: '100%' }} />
-          </div>
-        ) : null}
-
-        {isImage && message.media_url ? (
-          <img src={message.media_url} alt="media" style={{ maxWidth: 320, width: '100%', borderRadius: 18, display: 'block' }} />
-        ) : null}
-
-        {isVideo && message.media_url ? (
-          <video src={message.media_url} controls style={{ maxWidth: 320, width: '100%', borderRadius: 18, display: 'block' }} />
-        ) : null}
-
-        {isFile && message.media_url ? (
-          <a href={message.media_url} target="_blank" rel="noreferrer" className="yam-file-card">
-            <span className="yam-file-icon">📄</span>
-            <span className="yam-file-copy">
-              <strong>{fileName}</strong>
-              <small>{(message.attachments?.[0]?.mediaType || message.type || 'FILE').toUpperCase()}</small>
-            </span>
-          </a>
-        ) : null}
+        {isVoice && message.media_url ? <audio src={message.media_url} controls style={{ width: '100%', maxWidth: 320, display: 'block' }} /> : null}
+        {isImage && message.media_url ? <img src={message.media_url} alt="media" style={{ maxWidth: 320, width: '100%', borderRadius: 16, display: 'block' }} /> : null}
+        {isVideo && message.media_url ? <video src={message.media_url} controls style={{ maxWidth: 320, width: '100%', borderRadius: 16, display: 'block' }} /> : null}
 
         {content && !message.deleted ? <div className="bubble-text">{content}</div> : null}
-        {message.deleted ? <div className="bubble-deleted">تم حذف الرسالة</div> : null}
+        {message.deleted ? <div className="bubble-deleted">🗑 تم حذف الرسالة</div> : null}
 
         <div className="bubble-meta">
-          <span className="bubble-time">{formatMessageTime(message.created_at)}</span>
+          <span className="bubble-time">
+            {new Date(message.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
+          </span>
           {isMe ? (
             <span style={{ color: statusColor(message.status), fontSize: 13, fontWeight: 700 }}>
               {statusTicks(message.status)}
@@ -196,13 +117,10 @@ export default function Chat() {
   const [replyTo, setReplyTo] = useState(null);
   const [callMode, setCallMode] = useState(null);
   const [flyingHearts, setFlyingHearts] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showDetailsDrawer, setShowDetailsDrawer] = useState(false);
   const initialChatPrefs = useMemo(() => getChatPreferences(), []);
   const [isMutedConversation, setIsMutedConversation] = useState(initialChatPrefs.muted.has(peer));
-  const [isPinnedConversation, setIsPinnedConversation] = useState(initialChatPrefs.pinned.has(peer));
+  const [showDetailsDrawer, setShowDetailsDrawer] = useState(false);
   const messagesEndRef = useRef(null);
-  const searchInputRef = useRef(null);
   const setActivePeer = useChatStore((state) => state.setActivePeer);
 
   useEffect(() => {
@@ -225,7 +143,7 @@ export default function Chat() {
     if (!peer) return;
     setMsgLoading(true);
     try {
-      const { data } = await getMessages(peer, 60);
+      const { data } = await getMessages(peer, 50);
       setMessages(data?.items || []);
       await markMessagesSeen(peer);
     } catch {
@@ -239,25 +157,20 @@ export default function Chat() {
     if (!peer) return;
     const prefs = getChatPreferences();
     setIsMutedConversation(prefs.muted.has(peer));
-    setIsPinnedConversation(prefs.pinned.has(peer));
     loadMessages();
     setShowDetailsDrawer(false);
     setActivePeer(peer);
 
-    getPresence(peer)
-      .then(({ data }) => {
-        setPresence((prev) => ({ ...prev, [peer]: { ...(prev[peer] || {}), ...(data || {}) } }));
-      })
-      .catch(() => {});
+    getPresence(peer).then(({ data }) => {
+      setPresence((prev) => ({ ...prev, [peer]: { ...(prev[peer] || {}), ...(data || {}) } }));
+    }).catch(() => {});
 
-    getBlockStatus(peer)
-      .then(({ data }) => {
-        setBlockStatus(data || {});
-      })
-      .catch(() => {});
+    getBlockStatus(peer).then(({ data }) => {
+      setBlockStatus(data || {});
+    }).catch(() => {});
 
     return () => setActivePeer(null);
-  }, [loadMessages, peer, setActivePeer]);
+  }, [peer, loadMessages, setActivePeer]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -357,8 +270,6 @@ export default function Chat() {
       content: text,
       message: text,
       media_url: mediaUrl,
-      attachments: payload?.attachments || [],
-      attachment_name: payload?.attachments?.[0]?.fileName || payload?.attachments?.[0]?.originalName || '',
       type: mediaUrl ? (payload.type || 'media') : 'text',
       created_at: new Date().toISOString(),
       status: 'sending',
@@ -423,16 +334,10 @@ export default function Chat() {
     pushToast({ type: 'success', title: next ? 'تم كتم المحادثة' : 'تم إلغاء كتم المحادثة' });
   };
 
-  const handlePinConversation = () => {
-    const nextSet = toggleChatPreference('pinned', peer);
-    const next = nextSet.has(peer);
-    setIsPinnedConversation(next);
-    pushToast({ type: 'success', title: next ? 'تم تثبيت المحادثة' : 'تم إلغاء التثبيت' });
-  };
-
-  const handleArchiveConversation = () => {
-    toggleChatPreference('archived', peer);
-    pushToast({ type: 'success', title: 'تم أرشفة المحادثة', description: 'يمكنك إظهارها من تبويب المؤرشفة في الصفحة الرئيسية.' });
+  const handleDeleteConversation = () => {
+    const nextSet = toggleChatPreference('archived', peer);
+    setMessages([]);
+    pushToast({ type: 'success', title: nextSet.has(peer) ? 'تمت أرشفة المحادثة' : 'تم إلغاء الأرشفة', description: 'تقدر تلاقيها من تبويب المؤرشفة.' });
   };
 
   const spawnHeart = () => {
@@ -441,25 +346,12 @@ export default function Chat() {
     setTimeout(() => setFlyingHearts((prev) => prev.filter((item) => item !== id)), 1800);
   };
 
-  const contacts = useMemo(() => buildContacts(threads, peer), [peer, threads]);
-  const peerDetails = useMemo(() => getContactDetails(threads, peer), [peer, threads]);
-  const filteredContacts = useMemo(() => {
-    const lowered = searchQuery.trim().toLowerCase();
-    if (!lowered) return contacts;
-    return contacts.filter((contact) => String(contact.username).toLowerCase().includes(lowered) || String(contact.preview).toLowerCase().includes(lowered));
-  }, [contacts, searchQuery]);
-
   const peerPresence = presence[peer] || {};
-  const isOnline = Boolean(peerPresence.is_online ?? peerDetails.isOnline);
-  const isTyping = Boolean(peerPresence.is_typing);
+  const isOnline = peerPresence.is_online;
+  const isTyping = peerPresence.is_typing;
   const lastSeen = peerPresence.last_seen;
+  const peerThread = useMemo(() => threads.find((item) => item.username === peer) || {}, [threads, peer]);
   const mediaMessages = useMemo(() => messages.filter((item) => item.media_url), [messages]);
-  const fileMessages = useMemo(() => messages.filter((item) => item.type === 'file' || item.type === 'voice'), [messages]);
-  const visibleMessages = useMemo(
-    () => messages.filter((item) => messageMatchesSearch(item, searchQuery)),
-    [messages, searchQuery],
-  );
-  const messageResultsCount = searchQuery.trim() ? visibleMessages.length : messages.length;
 
   if (!peer) {
     return <Navigate to="/inbox" replace />;
@@ -467,102 +359,77 @@ export default function Chat() {
 
   return (
     <MainLayout hideNav>
-      <section className="yam-conversation-screen" dir="rtl">
+      <section className="yam-chat-screen" dir="rtl">
         <aside className="yam-chat-sidebar">
-          <div className="yam-sidebar-brand">
-            <div className="yam-brand-mark">Y</div>
-            <div className="yam-brand-name">YAMSHAT</div>
-          </div>
-
-          <nav className="yam-primary-nav">
-            {CHAT_NAV_ITEMS.map((item, index) => (
-              <button key={item.key} type="button" className={`yam-nav-item ${index === 0 ? 'active' : ''}`} onClick={() => navigate(index === 0 ? '/inbox' : '#')}>
-                <span className="yam-nav-icon">{item.icon}</span>
-                <span>{item.label}</span>
-              </button>
-            ))}
-          </nav>
-
-          <div className="yam-sidebar-head">
-            <span>جهات الاتصال</span>
-            <button type="button" className="yam-icon-action">＋</button>
-          </div>
-
-          <div className="yam-contact-list">
-            {filteredContacts.map((contact) => (
-              <button
-                key={contact.username}
-                type="button"
-                className={`yam-contact-row ${contact.username === peer ? 'active' : ''}`}
-                onClick={() => navigate(`/chat/${encodeURIComponent(contact.username)}`)}
-              >
-                <div className="yam-avatar-wrap">
-                  <Avatar name={contact.username} src={contact.avatar} size={54} />
-                  <div className="yam-presence-pin">
-                    <PresenceDot isOnline={contact.username === peer ? isOnline : contact.isOnline} />
+          <div style={{ padding: '24px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+                <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'linear-gradient(135deg, #7c3aed, #c026d3)', display: 'grid', placeItems: 'center', color: 'white', fontWeight: 'bold', fontSize: '20px' }}>Y</div>
+                <span style={{ color: 'white', fontWeight: 'bold', fontSize: '18px', letterSpacing: '2px' }}>YAMSHAT</span>
+             </div>
+             <nav style={{ display: 'grid', gap: '8px' }}>
+                {['الدردشات', 'المجموعات', 'الأصدقاء', 'الإشعارات', 'الإعدادات'].map((item, idx) => (
+                  <div key={item} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', borderRadius: '12px', background: idx === 0 ? 'rgba(124,58,237,0.15)' : 'transparent', color: idx === 0 ? '#a78bfa' : '#94a3b8', cursor: 'pointer' }}>
+                    <span style={{ fontSize: '18px' }}>{['💬', '👥', '👤', '🔔', '⚙️'][idx]}</span>
+                    <span style={{ fontWeight: 'bold' }}>{item}</span>
                   </div>
-                </div>
-                <div className="yam-contact-copy">
-                  <strong>{contact.username}</strong>
-                  <span>{contact.username === peer ? (isTyping ? 'يكتب الآن...' : (peerDetails.preview || contact.preview)) : contact.statusText}</span>
-                </div>
-              </button>
-            ))}
+                ))}
+             </nav>
           </div>
-
-          <div className="yam-self-card">
-            <div className="yam-avatar-wrap">
-              <Avatar name={currentUser || 'يوسف محمد'} size={52} />
-              <div className="yam-presence-pin"><PresenceDot isOnline /></div>
-            </div>
-            <div className="yam-contact-copy">
-              <strong>{currentUser || 'يوسف محمد'}</strong>
-              <span>متصل الآن</span>
-            </div>
-            <button type="button" className="yam-icon-action subtle">⋮</button>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
+             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', color: 'white' }}>
+                <span style={{ fontWeight: 'bold' }}>جهات الاتصال</span>
+                <span style={{ cursor: 'pointer', fontSize: '20px' }}>+</span>
+             </div>
+             <div style={{ display: 'grid', gap: '12px' }}>
+                {threads.map((thread) => (
+                  <div key={thread.username} onClick={() => navigate(`/chat/${thread.username}`)} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', borderRadius: '12px', background: thread.username === peer ? 'rgba(124,58,237,0.1)' : 'transparent', cursor: 'pointer' }}>
+                    <Avatar name={thread.username} src={thread.avatar} size={42} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ color: 'white', fontWeight: 'bold', fontSize: '14px' }}>{thread.username}</div>
+                      <div style={{ color: '#64748b', fontSize: '12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{thread.last_message || 'متصل الآن'}</div>
+                    </div>
+                  </div>
+                ))}
+             </div>
           </div>
         </aside>
 
-        <main className="yam-chat-stage">
-          <div className="yam-stage-top-search">
-            <span>⌕</span>
-            <input
-              ref={searchInputRef}
-              type="search"
-              placeholder="بحث في المحادثات..."
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-            />
-            {searchQuery ? <button type="button" className="yam-clear-search" onClick={() => setSearchQuery('')}>×</button> : null}
-          </div>
-
+        <div className="yam-chat-stage">
           <header className="yam-chat-stage-header">
             <div className="yam-chat-stage-peer">
-              <div className="yam-avatar-wrap">
-                <Avatar name={peer} src={peerDetails.avatar} size={56} ring />
-                <div className="yam-presence-pin"><PresenceDot isOnline={isOnline} size={16} borderColor="#050816" /></div>
-              </div>
+              <Avatar name={peer} src={peerThread.avatar} size={48} ring />
               <div className="yam-chat-stage-peer-copy">
-                <strong>{peer}</strong>
-                <span>{isTyping ? 'يكتب الآن...' : formatLastSeen(lastSeen, isOnline)}</span>
+                <strong style={{ color: 'white' }}>{peer}</strong>
+                <span style={{ color: '#64748b' }}>
+                  {isTyping ? 'يكتب الآن...' : formatLastSeen(lastSeen, isOnline)}
+                </span>
               </div>
             </div>
 
             <div className="yam-chat-stage-actions">
-              <button type="button" className="yam-stage-icon" onClick={() => setCallMode('voice')}>📞</button>
-              <button type="button" className="yam-stage-icon" onClick={() => setCallMode('video')}>🎥</button>
-              <button type="button" className="yam-stage-icon" onClick={() => searchInputRef.current?.focus()}>⌕</button>
-              <button type="button" className="yam-stage-icon" onClick={() => setShowDetailsDrawer((prev) => !prev)}>⋮</button>
+              <button type="button" className="yam-stage-icon" style={{ background: 'transparent', border: 'none', fontSize: '20px' }} onClick={() => setCallMode('voice')}>📞</button>
+              <button type="button" className="yam-stage-icon" style={{ background: 'transparent', border: 'none', fontSize: '20px' }} onClick={() => setCallMode('video')}>📹</button>
+              <button type="button" className="yam-stage-icon" style={{ background: 'transparent', border: 'none', fontSize: '20px' }}>⋮</button>
             </div>
           </header>
 
           {showDetailsDrawer ? (
             <div className="yam-chat-details-drawer">
               <div className="yam-details-grid">
-                <button type="button" className="yam-detail-action" onClick={handleMuteConversation}>{isMutedConversation ? 'إلغاء الكتم' : 'كتم المحادثة'}</button>
-                <button type="button" className="yam-detail-action" onClick={handlePinConversation}>{isPinnedConversation ? 'إلغاء التثبيت' : 'تثبيت المحادثة'}</button>
-                <button type="button" className="yam-detail-action" onClick={spawnHeart}>تفاعل سريع</button>
-                <button type="button" className="yam-detail-action danger" onClick={handleBlock}>{blockStatus.blocked_by_me ? 'رفع الحظر' : 'حظر المستخدم'}</button>
+                <button type="button" className="yam-detail-action" onClick={handleMuteConversation}>{isMutedConversation ? '🔔 إلغاء الكتم' : '🔕 كتم المحادثة'}</button>
+                <button type="button" className="yam-detail-action" onClick={spawnHeart}>💜 تفاعل سريع</button>
+                <button type="button" className={`yam-detail-action ${blockStatus.blocked_by_me ? 'danger' : ''}`} onClick={handleBlock}>{blockStatus.blocked_by_me ? 'رفع الحظر' : 'حظر المستخدم'}</button>
+                <button type="button" className="yam-detail-action danger" onClick={handleDeleteConversation}>تنظيف الشاشة</button>
+              </div>
+
+              <div className="yam-details-section">
+                <div className="yam-details-head">الوسائط المشتركة</div>
+                <div className="yam-media-strip">
+                  {mediaMessages.filter((item) => item.type === 'image').slice(-5).map((item) => (
+                    <img key={item.id} src={item.media_url} alt="media" className="yam-media-thumb" />
+                  ))}
+                  {!mediaMessages.length ? <span className="yam-muted-note">لا توجد وسائط مشتركة بعد</span> : null}
+                </div>
               </div>
             </div>
           ) : null}
@@ -588,43 +455,29 @@ export default function Chat() {
 
           {!blockStatus.can_chat && blockStatus.blocked_by_me ? (
             <div className="yam-block-banner">
-              لقد حظرت هذا المستخدم.
-              <button type="button" onClick={handleBlock}>رفع الحظر</button>
+              لقد حظرت هذا المستخدم. <button type="button" onClick={handleBlock}>رفع الحظر</button>
             </div>
           ) : null}
           {!blockStatus.can_chat && blockStatus.blocked_me ? <div className="yam-block-banner blocked">هذا المستخدم حظرك.</div> : null}
 
-          {searchQuery.trim() ? (
-            <div className="yam-search-summary">نتائج البحث: {messageResultsCount}</div>
-          ) : null}
-
           <div className="yam-messages-area">
-            {threadsLoading && !peerDetails.username ? <div className="yam-empty-state">جارٍ تجهيز بيانات المحادثة...</div> : null}
+            {threadsLoading && !peerThread.username ? <div className="yam-empty-state">جارٍ تجهيز بيانات المحادثة...</div> : null}
             {msgLoading ? <div className="yam-empty-state">جارٍ تحميل الرسائل...</div> : null}
-            {!msgLoading && !messages.length ? (
-              <div className="yam-empty-state rich">
-                <strong>ابدأ المحادثة مع {peer}</strong>
-                <span>المكالمات الصوتية، الفيديو، الرسائل الصوتية، المرفقات، والبحث داخل المحادثة كلها متاحة من هذه الشاشة.</span>
-              </div>
-            ) : null}
-            {!msgLoading && messages.length > 0 && !visibleMessages.length ? (
-              <div className="yam-empty-state">لا توجد رسائل تطابق عبارة البحث.</div>
-            ) : null}
+            {!msgLoading && !messages.length ? <div className="yam-empty-state">لا توجد رسائل بعد. ابدأ المحادثة الآن.</div> : null}
 
-            {visibleMessages.map((msg) => (
+            {messages.map((msg) => (
               <MessageBubble
                 key={msg.id}
                 message={msg}
                 isMe={msg.sender === currentUser}
                 onReply={(message) => setReplyTo(message)}
                 onDelete={handleDelete}
-                highlightQuery={searchQuery}
               />
             ))}
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="yam-chat-input-wrap">
+          <div className="yam-chat-input-wrap" style={{ padding: '16px 24px', background: '#050816' }}>
             <ChatInput
               peer={peer}
               currentUser={currentUser}
@@ -635,589 +488,203 @@ export default function Chat() {
               compact
             />
           </div>
-        </main>
+        </div>
 
-        <aside className="yam-side-profile-panel">
-          <div className="yam-side-profile-top">
-            <div className="yam-avatar-wrap large">
-              <Avatar name={peer} src={peerDetails.avatar} size={120} ring />
-              <div className="yam-presence-pin"><PresenceDot isOnline={isOnline} size={18} borderColor="#090d1d" /></div>
-            </div>
-            <div className="yam-side-profile-copy">
-              <h2>{peer}</h2>
-              <p>{formatLastSeen(lastSeen, isOnline)}</p>
-            </div>
-          </div>
-
-          <div className="yam-quick-actions">
-            {[
-              { key: 'call', label: 'اتصال', icon: '📞', action: () => setCallMode('voice') },
-              { key: 'video', label: 'فيديو', icon: '🎥', action: () => setCallMode('video') },
-              { key: 'search', label: 'بحث', icon: '⌕', action: () => searchInputRef.current?.focus() },
-              { key: 'more', label: 'المزيد', icon: '⋯', action: () => setShowDetailsDrawer((prev) => !prev) },
-            ].map((item) => (
-              <button key={item.key} type="button" className="yam-quick-card" onClick={item.action}>
-                <span>{item.icon}</span>
-                <small>{item.label}</small>
+        <aside style={{ background: '#0b0f1a', borderInlineStart: '1px solid rgba(255,255,255,0.05)', padding: '32px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '24px' }}>
+           <Avatar name={peer} src={peerThread.avatar} size={120} ring />
+           <div style={{ textAlign: 'center' }}>
+              <div style={{ color: 'white', fontWeight: 'bold', fontSize: '20px', marginBottom: '4px' }}>{peer}</div>
+              <div style={{ color: '#64748b', fontSize: '14px' }}>{formatLastSeen(lastSeen, isOnline)}</div>
+           </div>
+           <div style={{ display: 'flex', gap: '16px', width: '100%', justifyContent: 'center' }}>
+              {['📞', '📹', '🔍', '⋮'].map((icon, i) => (
+                <div key={i} style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', display: 'grid', placeItems: 'center', color: 'white', cursor: 'pointer' }}>{icon}</div>
+              ))}
+           </div>
+           <div style={{ width: '100%', marginTop: '24px', display: 'grid', gap: '20px' }}>
+              <div>
+                 <div style={{ color: '#64748b', fontSize: '12px', marginBottom: '8px' }}>اسم المستخدم</div>
+                 <div style={{ color: '#a78bfa', fontWeight: 'bold' }}>@{peer.toLowerCase()}</div>
+              </div>
+              <div>
+                 <div style={{ color: '#64748b', fontSize: '12px', marginBottom: '8px' }}>البريد الإلكتروني</div>
+                 <div style={{ color: 'white' }}>{peer.toLowerCase()}@example.com</div>
+              </div>
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', pt: '20px', display: 'grid', gap: '16px' }}>
+                 {['الوسائط المشتركة', 'الملفات', 'الروابط', 'المحادثات المثبتة'].map((item, i) => (
+                   <div key={item} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'white', cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                         <span>{['🖼️', '📁', '🔗', '📌'][i]}</span>
+                         <span>{item}</span>
+                      </div>
+                      <span style={{ color: '#64748b' }}>›</span>
+                   </div>
+                 ))}
+              </div>
+              <button style={{ marginTop: '20px', padding: '12px', borderRadius: '12px', background: 'rgba(239,68,68,0.1)', color: '#f87171', border: 'none', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                 <span>🚫</span> حظر المستخدم
               </button>
-            ))}
-          </div>
-
-          <div className="yam-info-card">
-            <div className="yam-info-title">معلومات</div>
-            <div className="yam-info-row"><span>اسم المستخدم</span><strong>{peerDetails.handle}</strong></div>
-            <div className="yam-info-row"><span>البريد الإلكتروني</span><strong>{peerDetails.email}</strong></div>
-            <div className="yam-info-row"><span>الهاتف</span><strong>{peerDetails.phone}</strong></div>
-          </div>
-
-          <div className="yam-info-card compact">
-            {[
-              { label: 'الوسائط المشتركة', icon: '🖼️', count: mediaMessages.length },
-              { label: 'الملفات', icon: '📁', count: fileMessages.length },
-              { label: 'الروابط', icon: '🔗', count: messages.filter((item) => /https?:\/\//.test(item.content || item.message || '')).length },
-              { label: 'المحادثات المثبتة', icon: '📌', count: isPinnedConversation ? 1 : 0 },
-            ].map((item) => (
-              <button key={item.label} type="button" className="yam-list-link" onClick={() => setShowDetailsDrawer(true)}>
-                <div>
-                  <span>{item.icon}</span>
-                  <span>{item.label}</span>
-                </div>
-                <strong>{item.count}</strong>
-              </button>
-            ))}
-          </div>
-
-          <div className="yam-media-grid">
-            {(mediaMessages.length ? mediaMessages.slice(-4) : peerDetails.sharedMedia).map((item, index) => {
-              const imageUrl = item?.media_url || '';
-              const tone = item?.tone || ['purple', 'blue', 'pink', 'teal'][index % 4];
-              return imageUrl ? (
-                <img key={item.id || imageUrl} src={imageUrl} alt="media" className="yam-media-thumb" />
-              ) : (
-                <div key={item.id || `${tone}-${index}`} className={`yam-media-thumb placeholder ${tone}`}>{item.label || 'وسائط'}</div>
-              );
-            })}
-          </div>
-
-          <div className="yam-panel-actions">
-            <button type="button" className="yam-secondary-btn" onClick={handleMuteConversation}>{isMutedConversation ? 'إلغاء كتم المحادثة' : 'كتم المحادثة'}</button>
-            <button type="button" className="yam-secondary-btn" onClick={handleArchiveConversation}>أرشفة المحادثة</button>
-            <button type="button" className="yam-reaction-btn" onClick={spawnHeart}>إرسال ❤️ سريع</button>
-            <button type="button" className="yam-danger-btn" onClick={handleBlock}>{blockStatus.blocked_by_me ? 'رفع الحظر' : 'حظر المستخدم'}</button>
-          </div>
+           </div>
         </aside>
 
         <style>{`
-          .yam-conversation-screen {
+          .yam-chat-screen {
             min-height: 100vh;
             height: 100vh;
-            background:
-              radial-gradient(circle at top right, rgba(124,58,237,0.15), transparent 26%),
-              radial-gradient(circle at top left, rgba(59,130,246,0.08), transparent 22%),
-              #040714;
+            padding: 0;
+            background: #050816;
             display: grid;
-            grid-template-columns: 300px minmax(0, 1fr) 320px;
+            grid-template-columns: 320px 1fr 340px;
             overflow: hidden;
-            color: white;
-          }
-
-          .yam-chat-sidebar,
-          .yam-side-profile-panel {
-            background: linear-gradient(180deg, rgba(7, 10, 24, 0.98), rgba(5, 8, 18, 0.98));
-            border-color: rgba(255,255,255,0.05);
-            border-style: solid;
-            min-width: 0;
           }
 
           .yam-chat-sidebar {
-            border-inline-end-width: 1px;
+            background: #0b0f1a;
+            border-inline-end: 1px solid rgba(255,255,255,0.05);
             display: flex;
             flex-direction: column;
-            padding: 22px 16px 18px;
-            gap: 16px;
-          }
-
-          .yam-side-profile-panel {
-            border-inline-start-width: 1px;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            padding: 28px 20px 20px;
-            overflow: auto;
-          }
-
-          .yam-sidebar-brand,
-          .yam-sidebar-head,
-          .yam-self-card,
-          .yam-chat-stage-header,
-          .yam-chat-stage-peer,
-          .yam-chat-stage-actions,
-          .yam-details-grid,
-          .yam-info-card.compact,
-          .yam-panel-actions {
-            display: flex;
-            align-items: center;
-          }
-
-          .yam-sidebar-brand {
-            gap: 14px;
-            padding: 0 6px 12px;
-          }
-
-          .yam-brand-mark {
-            width: 42px;
-            height: 42px;
-            border-radius: 16px;
-            display: grid;
-            place-items: center;
-            font-weight: 900;
-            font-size: 20px;
-            color: white;
-            background: linear-gradient(135deg, #8b5cf6, #4f46e5);
-            box-shadow: 0 18px 30px rgba(91, 33, 182, 0.35);
-          }
-
-          .yam-brand-name {
-            letter-spacing: 0.34em;
-            font-size: 20px;
-            font-weight: 900;
-          }
-
-          .yam-primary-nav {
-            display: grid;
-            gap: 10px;
-          }
-
-          .yam-nav-item {
-            min-height: 56px;
-            padding: 0 16px;
-            border-radius: 18px;
-            border: 1px solid transparent;
-            background: transparent;
-            color: #cbd5e1;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-weight: 800;
-            text-align: right;
-          }
-
-          .yam-nav-item.active {
-            color: #fff;
-            background: linear-gradient(135deg, rgba(124,58,237,0.3), rgba(67,56,202,0.22));
-            border-color: rgba(167,139,250,0.24);
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 10px 24px rgba(76, 29, 149, 0.18);
-          }
-
-          .yam-nav-icon,
-          .yam-icon-action,
-          .yam-stage-icon {
-            display: inline-grid;
-            place-items: center;
-          }
-
-          .yam-nav-icon {
-            width: 34px;
-            height: 34px;
-            border-radius: 12px;
-            background: rgba(255,255,255,0.04);
-            flex-shrink: 0;
-          }
-
-          .yam-sidebar-head {
-            justify-content: space-between;
-            padding: 0 6px;
-            font-weight: 900;
-          }
-
-          .yam-icon-action,
-          .yam-stage-icon,
-          .yam-clear-search {
-            width: 40px;
-            height: 40px;
-            border-radius: 14px;
-            border: 1px solid rgba(255,255,255,0.08);
-            background: rgba(255,255,255,0.04);
-            color: white;
-          }
-
-          .yam-icon-action.subtle {
-            width: 36px;
-            height: 36px;
-          }
-
-          .yam-contact-list {
-            flex: 1;
-            min-height: 0;
-            overflow: auto;
-            display: grid;
-            gap: 10px;
-          }
-
-          .yam-contact-row {
-            padding: 10px 12px;
-            border-radius: 18px;
-            border: 1px solid transparent;
-            background: transparent;
-            color: white;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            text-align: right;
-          }
-
-          .yam-contact-row.active {
-            background: linear-gradient(135deg, rgba(124,58,237,0.24), rgba(124,58,237,0.1));
-            border-color: rgba(167,139,250,0.2);
-          }
-
-          .yam-avatar-wrap {
-            position: relative;
-            flex-shrink: 0;
-          }
-
-          .yam-avatar-wrap.large {
-            margin-inline: auto;
-          }
-
-          .yam-presence-pin {
-            position: absolute;
-            right: -2px;
-            bottom: -2px;
-          }
-
-          .yam-contact-copy,
-          .yam-chat-stage-peer-copy,
-          .yam-side-profile-copy {
-            min-width: 0;
-            display: grid;
-            gap: 4px;
-          }
-
-          .yam-contact-copy strong,
-          .yam-chat-stage-peer-copy strong {
-            white-space: nowrap;
             overflow: hidden;
-            text-overflow: ellipsis;
-          }
-
-          .yam-contact-copy span,
-          .yam-chat-stage-peer-copy span,
-          .yam-side-profile-copy p {
-            color: #94a3b8;
-            font-size: 13px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-          }
-
-          .yam-self-card {
-            margin-top: auto;
-            gap: 12px;
-            padding: 14px 10px 0;
-            border-top: 1px solid rgba(255,255,255,0.05);
           }
 
           .yam-chat-stage {
             position: relative;
             display: flex;
             flex-direction: column;
-            min-width: 0;
-            background: #040714;
-            padding: 18px 22px 0;
-            gap: 14px;
-          }
-
-          .yam-stage-top-search {
-            min-height: 64px;
-            border-radius: 24px;
-            border: 1px solid rgba(255,255,255,0.06);
-            background: rgba(10, 15, 30, 0.92);
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 0 18px;
-            color: #94a3b8;
-            flex-shrink: 0;
-          }
-
-          .yam-stage-top-search input {
-            flex: 1;
-            border: none;
-            background: transparent;
-            color: white;
-            outline: none;
-            font-size: 16px;
-          }
-
-          .yam-clear-search {
-            border: none;
-            background: rgba(124,58,237,0.18);
+            height: 100vh;
+            background: #050816;
           }
 
           .yam-chat-stage-header {
+            display: flex;
+            align-items: center;
             justify-content: space-between;
-            gap: 16px;
-            padding: 0 4px 12px;
+            padding: 16px 24px;
             border-bottom: 1px solid rgba(255,255,255,0.05);
+            background: #050816;
             flex-shrink: 0;
           }
 
           .yam-chat-stage-peer {
-            gap: 12px;
             min-width: 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+          }
+
+          .yam-chat-stage-peer-copy {
+            min-width: 0;
+            display: grid;
+            gap: 4px;
           }
 
           .yam-chat-stage-peer-copy strong {
-            font-size: 20px;
+            font-size: 17px;
             font-weight: 900;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+
+          .yam-chat-stage-peer-copy span {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            color: #94a3b8;
+            font-size: 12px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
           }
 
           .yam-chat-stage-actions {
-            gap: 10px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
           }
 
-          .yam-stage-icon:hover,
-          .yam-stage-icon:focus-visible {
+          .yam-stage-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 14px;
+            border: 1px solid rgba(255,255,255,0.06);
+            background: rgba(15,23,42,0.78);
+            color: white;
+            display: grid;
+            place-items: center;
+            font-size: 17px;
+          }
+
+          .yam-stage-icon.active,
+          .yam-stage-icon:hover {
             background: rgba(124,58,237,0.18);
             border-color: rgba(167,139,250,0.24);
           }
 
           .yam-chat-details-drawer {
-            padding: 2px 4px 12px;
+            padding: 12px 16px 14px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            background: rgba(7,12,24,0.92);
+            display: grid;
+            gap: 12px;
             flex-shrink: 0;
           }
 
           .yam-details-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
             gap: 10px;
-            flex-wrap: wrap;
           }
 
           .yam-detail-action {
             min-height: 44px;
             border-radius: 14px;
             border: 1px solid rgba(255,255,255,0.06);
-            background: rgba(255,255,255,0.04);
+            background: rgba(15,23,42,0.72);
             color: white;
             font-weight: 800;
-            padding: 0 14px;
+            padding: 0 12px;
           }
 
           .yam-detail-action.danger {
-            background: rgba(239,68,68,0.1);
-            color: #fca5a5;
-            border-color: rgba(239,68,68,0.2);
+            color: #fecaca;
+            border-color: rgba(239,68,68,0.18);
+            background: rgba(127,29,29,0.2);
           }
 
-          .yam-search-summary,
-          .yam-block-banner {
-            flex-shrink: 0;
-            text-align: center;
-            border-radius: 16px;
-            padding: 10px 14px;
-            font-size: 13px;
-          }
-
-          .yam-search-summary {
-            background: rgba(124,58,237,0.12);
-            color: #d8b4fe;
-          }
-
-          .yam-block-banner {
-            background: rgba(239,68,68,0.12);
-            color: #fca5a5;
-          }
-
-          .yam-block-banner button {
-            background: none;
-            border: none;
-            color: #fdba74;
-            font-weight: 800;
-            margin-inline-start: 8px;
-          }
-
-          .yam-block-banner.blocked {
-            background: rgba(127,29,29,0.24);
-          }
-
-          .yam-messages-area {
-            flex: 1;
-            min-height: 0;
-            overflow: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 14px;
-            padding: 4px 6px 18px;
-          }
-
-          .yam-empty-state {
-            color: #94a3b8;
-            font-size: 14px;
-            padding: 24px;
-            text-align: center;
-          }
-
-          .yam-empty-state.rich {
-            display: grid;
-            gap: 8px;
-            align-self: center;
-            max-width: 480px;
-            border-radius: 24px;
-            border: 1px solid rgba(255,255,255,0.06);
-            background: rgba(255,255,255,0.03);
-            margin-top: 32px;
-          }
-
-          .yam-bubble-wrap {
-            display: flex;
-            align-items: flex-end;
-            gap: 10px;
-          }
-
-          .yam-bubble-wrap.me {
-            flex-direction: row-reverse;
-          }
-
-          .yam-bubble-avatar-slot {
-            width: 38px;
-            flex-shrink: 0;
-          }
-
-          .yam-bubble {
-            max-width: min(72%, 560px);
-            padding: 14px 16px;
-            border-radius: 24px;
-            position: relative;
-            line-height: 1.75;
-            display: grid;
-            gap: 10px;
-          }
-
-          .yam-bubble.search-hit {
-            box-shadow: 0 0 0 1px rgba(192,132,252,0.3), 0 0 0 10px rgba(124,58,237,0.08);
-          }
-
-          .bubble-me {
-            background: linear-gradient(135deg, #6d28d9, #4f46e5);
-            color: white;
-            border-bottom-right-radius: 6px;
-          }
-
-          .bubble-them {
-            background: rgba(24, 31, 48, 0.98);
-            color: #e2e8f0;
-            border: 1px solid rgba(255,255,255,0.04);
-            border-bottom-left-radius: 6px;
-          }
-
-          .bubble-reply-banner {
-            font-size: 12px;
-            padding: 8px 10px;
-            border-radius: 12px;
-            background: rgba(255,255,255,0.08);
-            display: grid;
-            gap: 4px;
-            border-inline-start: 3px solid rgba(255,255,255,0.4);
-          }
-
-          .yam-audio-wrap {
-            width: min(320px, 100%);
-          }
-
-          .yam-file-card {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 12px 14px;
+          .yam-details-section {
             border-radius: 18px;
-            background: rgba(255,255,255,0.08);
-            color: inherit;
-            text-decoration: none;
+            border: 1px solid rgba(255,255,255,0.05);
+            background: rgba(255,255,255,0.03);
+            padding: 12px;
           }
 
-          .yam-file-icon {
-            width: 44px;
-            height: 44px;
-            border-radius: 14px;
-            display: grid;
-            place-items: center;
-            background: rgba(255,255,255,0.12);
+          .yam-details-head {
+            font-weight: 900;
+            margin-bottom: 10px;
+          }
+
+          .yam-media-strip {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+          }
+
+          .yam-media-thumb {
+            width: 72px;
+            height: 72px;
+            border-radius: 16px;
+            object-fit: cover;
             flex-shrink: 0;
           }
 
-          .yam-file-copy {
-            min-width: 0;
-            display: grid;
-            gap: 3px;
-          }
-
-          .yam-file-copy strong,
-          .yam-file-copy small {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-          }
-
-          .yam-file-copy small {
-            opacity: 0.72;
-          }
-
-          .bubble-text {
-            font-size: 14px;
-            word-break: break-word;
-          }
-
-          .bubble-deleted {
+          .yam-muted-note {
+            color: #94a3b8;
             font-size: 13px;
-            opacity: 0.6;
-            font-style: italic;
-          }
-
-          .bubble-meta {
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            gap: 6px;
-          }
-
-          .bubble-time {
-            font-size: 11px;
-            opacity: 0.7;
-          }
-
-          .bubble-actions {
-            display: none;
-            gap: 6px;
-            position: absolute;
-            top: -32px;
-            inset-inline-end: 0;
-            background: rgba(15,23,42,0.92);
-            border-radius: 12px;
-            padding: 4px 8px;
-            border: 1px solid rgba(255,255,255,0.08);
-          }
-
-          .yam-bubble:hover .bubble-actions {
-            display: flex;
-          }
-
-          .bubble-actions button {
-            background: none;
-            border: none;
-            color: white;
-            cursor: pointer;
-            font-size: 14px;
-            padding: 2px 4px;
-          }
-
-          .yam-chat-input-wrap {
-            flex-shrink: 0;
-            padding: 0 0 18px;
           }
 
           .flying-hearts-layer {
             position: absolute;
-            bottom: 120px;
+            bottom: 96px;
             left: 22px;
             pointer-events: none;
             z-index: 6;
@@ -1246,193 +713,157 @@ export default function Chat() {
             padding: 20px;
           }
 
-          .yam-side-profile-top {
-            display: grid;
-            gap: 18px;
-            justify-items: center;
-          }
-
-          .yam-side-profile-copy {
+          .yam-block-banner {
+            padding: 10px 16px;
+            background: rgba(239,68,68,0.12);
+            border-bottom: 1px solid rgba(239,68,68,0.22);
+            color: #fca5a5;
+            font-size: 13px;
             text-align: center;
+            flex-shrink: 0;
           }
 
-          .yam-side-profile-copy h2 {
-            margin: 0;
-            font-size: 22px;
-            font-weight: 900;
+          .yam-block-banner button {
+            background: none;
+            border: none;
+            color: #f97316;
+            cursor: pointer;
+            font-weight: 700;
+            margin-inline-start: 8px;
           }
 
-          .yam-side-profile-copy p {
-            margin: 6px 0 0;
+          .yam-block-banner.blocked {
+            background: rgba(127,29,29,0.24);
           }
 
-          .yam-quick-actions {
-            display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 10px;
-          }
-
-          .yam-quick-card {
-            min-height: 82px;
-            border-radius: 20px;
-            border: 1px solid rgba(255,255,255,0.06);
-            background: rgba(255,255,255,0.03);
-            color: white;
-            display: grid;
-            place-items: center;
-            gap: 6px;
-          }
-
-          .yam-quick-card small {
-            color: #cbd5e1;
-            font-size: 12px;
-          }
-
-          .yam-info-card {
-            border-radius: 22px;
-            border: 1px solid rgba(255,255,255,0.06);
-            background: rgba(255,255,255,0.03);
-            padding: 18px;
-            display: grid;
+          .yam-messages-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 14px 14px;
+            display: flex;
+            flex-direction: column;
             gap: 14px;
           }
 
-          .yam-info-card.compact {
-            padding: 10px;
+          .yam-messages-area::-webkit-scrollbar { width: 5px; }
+          .yam-messages-area::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.22); border-radius: 999px; }
+
+          .yam-empty-state {
+            color: #64748b;
+            font-size: 14px;
+            padding: 20px;
+            text-align: center;
+          }
+
+          .yam-bubble-wrap {
+            display: flex;
+            align-items: flex-end;
             gap: 8px;
           }
 
-          .yam-info-title {
-            font-size: 18px;
-            font-weight: 900;
+          .yam-bubble-wrap.me { flex-direction: row-reverse; }
+
+          .yam-bubble {
+            max-width: min(74%, 560px);
+            padding: 12px 15px;
+            border-radius: 22px;
+            position: relative;
+            line-height: 1.6;
           }
 
-          .yam-info-row {
-            display: grid;
-            gap: 6px;
-          }
-
-          .yam-info-row span {
-            color: #94a3b8;
-            font-size: 12px;
-          }
-
-          .yam-info-row strong,
-          .yam-list-link strong {
-            color: #a78bfa;
-            word-break: break-word;
-          }
-
-          .yam-list-link {
-            min-height: 48px;
-            padding: 0 10px;
-            border-radius: 16px;
-            border: none;
-            background: transparent;
+          .bubble-me {
+            background: #3b22a1;
             color: white;
+            border-bottom-right-radius: 4px;
+          }
+
+          .bubble-them {
+            background: #1a1f2e;
+            color: #e2e8f0;
+            border: none;
+            border-bottom-left-radius: 4px;
+          }
+
+          .bubble-reply-banner {
+            font-size: 12px;
+            padding: 6px 8px;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.1);
+            margin-bottom: 8px;
+            border-inline-start: 2px solid rgba(255,255,255,0.4);
+          }
+
+          .bubble-text { font-size: 14px; word-break: break-word; }
+          .bubble-deleted { font-size: 13px; opacity: 0.5; font-style: italic; }
+
+          .bubble-meta {
             display: flex;
             align-items: center;
-            justify-content: space-between;
+            justify-content: flex-end;
+            gap: 5px;
+            margin-top: 6px;
           }
 
-          .yam-list-link > div {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-          }
+          .bubble-time { font-size: 11px; opacity: 0.65; }
 
-          .yam-media-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 10px;
-          }
-
-          .yam-media-thumb {
-            width: 100%;
-            aspect-ratio: 1;
-            border-radius: 18px;
-            object-fit: cover;
-            display: grid;
-            place-items: center;
-            font-size: 12px;
-            font-weight: 800;
-            color: white;
-          }
-
-          .yam-media-thumb.placeholder.purple { background: linear-gradient(135deg, rgba(124,58,237,0.55), rgba(91,33,182,0.18)); }
-          .yam-media-thumb.placeholder.blue { background: linear-gradient(135deg, rgba(59,130,246,0.55), rgba(37,99,235,0.18)); }
-          .yam-media-thumb.placeholder.pink { background: linear-gradient(135deg, rgba(236,72,153,0.5), rgba(168,85,247,0.16)); }
-          .yam-media-thumb.placeholder.teal { background: linear-gradient(135deg, rgba(20,184,166,0.5), rgba(6,182,212,0.16)); }
-
-          .yam-panel-actions {
-            display: grid;
-            gap: 10px;
-          }
-
-          .yam-secondary-btn,
-          .yam-danger-btn,
-          .yam-reaction-btn {
-            min-height: 50px;
-            border-radius: 18px;
+          .bubble-actions {
+            display: none;
+            gap: 6px;
+            position: absolute;
+            top: -28px;
+            inset-inline-end: 0;
+            background: rgba(15,23,42,0.92);
+            border-radius: 10px;
+            padding: 4px 8px;
             border: 1px solid rgba(255,255,255,0.08);
-            background: rgba(255,255,255,0.04);
+          }
+
+          .yam-bubble:hover .bubble-actions { display: flex; }
+
+          .bubble-actions button {
+            background: none;
+            border: none;
             color: white;
-            font-weight: 900;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 2px 4px;
           }
 
-          .yam-reaction-btn {
-            background: linear-gradient(135deg, rgba(124,58,237,0.24), rgba(67,56,202,0.18));
-            border-color: rgba(167,139,250,0.18);
+          .yam-chat-input-wrap {
+            flex-shrink: 0;
           }
 
-          .yam-danger-btn {
-            background: rgba(239,68,68,0.1);
-            color: #f87171;
-            border-color: rgba(239,68,68,0.2);
-          }
-
-          @media (max-width: 1240px) {
-            .yam-conversation-screen {
-              grid-template-columns: 280px minmax(0, 1fr);
-            }
-
-            .yam-side-profile-panel {
-              display: none;
+          @media (max-width: 920px) {
+            .yam-details-grid {
+              grid-template-columns: repeat(2, minmax(0, 1fr));
             }
           }
 
-          @media (max-width: 860px) {
-            .yam-conversation-screen {
-              grid-template-columns: 1fr;
-            }
-
-            .yam-chat-sidebar {
-              display: none;
-            }
-
-            .yam-chat-stage {
-              padding: 14px 14px 0;
-            }
-
-            .yam-stage-top-search {
-              min-height: 56px;
-            }
-
+          @media (max-width: 768px) {
             .yam-chat-stage-header {
-              padding: 0 2px 10px;
+              padding: 10px 12px;
             }
 
             .yam-chat-stage-peer-copy strong {
-              font-size: 17px;
+              font-size: 15px;
+            }
+
+            .yam-stage-icon {
+              width: 40px;
+              height: 40px;
+              border-radius: 12px;
+            }
+
+            .yam-messages-area {
+              padding: 16px 10px 10px;
             }
 
             .yam-bubble {
-              max-width: 88%;
+              max-width: 86%;
             }
 
             .yam-details-grid {
-              display: grid;
-              grid-template-columns: repeat(2, minmax(0, 1fr));
+              grid-template-columns: 1fr;
             }
           }
         `}</style>

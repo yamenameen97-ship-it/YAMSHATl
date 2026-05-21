@@ -1,14 +1,22 @@
 /* ============================================
-   Yamshat Unified CSS System
+   Yamshat Unified CSS System v2.0
    ============================================ */
 
-/* Import all CSS modules in order */
+/* Import Design System and Core Styles */
+@import './designSystem.css';
+@import './enhanced-global.css';
+@import './chat.css';
+@import './home.css';
+
+/* Import existing CSS modules */
 @import './global.css';
 @import './theme.css';
 @import './responsive.css';
 @import './enhanced-ui.css';
 @import './livestream-dashboard.css';
 @import './gestureContainer.css';
+@import './mobile-optimization.css';
+@import './performance.css';
 
 /* ============================================
    Global Resets and Base Styles

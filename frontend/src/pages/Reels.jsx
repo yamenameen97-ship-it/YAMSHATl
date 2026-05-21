@@ -400,6 +400,8 @@ export default function ReelsPage() {
         media_url: uploadState.mediaUrl,
         media: uploadState.mediaUrl,
         media_urls: [uploadState.mediaUrl],
+        type: 'video',
+        is_reel: true
       });
       setShowUploadModal(false);
       resetUploadState();

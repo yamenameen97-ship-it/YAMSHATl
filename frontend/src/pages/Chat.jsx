@@ -358,28 +358,58 @@ export default function Chat() {
   }
 
   return (
-    <MainLayout>
+    <MainLayout hideNav>
       <section className="yam-chat-screen" dir="rtl">
+        <aside className="yam-chat-sidebar">
+          <div style={{ padding: '24px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+                <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'linear-gradient(135deg, #7c3aed, #c026d3)', display: 'grid', placeItems: 'center', color: 'white', fontWeight: 'bold', fontSize: '20px' }}>Y</div>
+                <span style={{ color: 'white', fontWeight: 'bold', fontSize: '18px', letterSpacing: '2px' }}>YAMSHAT</span>
+             </div>
+             <nav style={{ display: 'grid', gap: '8px' }}>
+                {['الدردشات', 'المجموعات', 'الأصدقاء', 'الإشعارات', 'الإعدادات'].map((item, idx) => (
+                  <div key={item} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', borderRadius: '12px', background: idx === 0 ? 'rgba(124,58,237,0.15)' : 'transparent', color: idx === 0 ? '#a78bfa' : '#94a3b8', cursor: 'pointer' }}>
+                    <span style={{ fontSize: '18px' }}>{['💬', '👥', '👤', '🔔', '⚙️'][idx]}</span>
+                    <span style={{ fontWeight: 'bold' }}>{item}</span>
+                  </div>
+                ))}
+             </nav>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
+             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', color: 'white' }}>
+                <span style={{ fontWeight: 'bold' }}>جهات الاتصال</span>
+                <span style={{ cursor: 'pointer', fontSize: '20px' }}>+</span>
+             </div>
+             <div style={{ display: 'grid', gap: '12px' }}>
+                {threads.map((thread) => (
+                  <div key={thread.username} onClick={() => navigate(`/chat/${thread.username}`)} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', borderRadius: '12px', background: thread.username === peer ? 'rgba(124,58,237,0.1)' : 'transparent', cursor: 'pointer' }}>
+                    <Avatar name={thread.username} src={thread.avatar} size={42} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ color: 'white', fontWeight: 'bold', fontSize: '14px' }}>{thread.username}</div>
+                      <div style={{ color: '#64748b', fontSize: '12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{thread.last_message || 'متصل الآن'}</div>
+                    </div>
+                  </div>
+                ))}
+             </div>
+          </div>
+        </aside>
+
         <div className="yam-chat-stage">
           <header className="yam-chat-stage-header">
-            <button type="button" className="yam-stage-icon" onClick={() => navigate('/inbox')} title="العودة لقائمة المحادثات">→</button>
-
             <div className="yam-chat-stage-peer">
-              <Avatar name={peer} src={peerThread.avatar} size={52} ring />
+              <Avatar name={peer} src={peerThread.avatar} size={48} ring />
               <div className="yam-chat-stage-peer-copy">
-                <strong>{peer}</strong>
-                <span>
-                  <PresenceDot isOnline={isOnline} />
+                <strong style={{ color: 'white' }}>{peer}</strong>
+                <span style={{ color: '#64748b' }}>
                   {isTyping ? 'يكتب الآن...' : formatLastSeen(lastSeen, isOnline)}
-                  {isMutedConversation ? ' • مكتومة' : ''}
                 </span>
               </div>
             </div>
 
             <div className="yam-chat-stage-actions">
-              <button type="button" className="yam-stage-icon" onClick={() => setCallMode('voice')} title="مكالمة صوتية">📞</button>
-              <button type="button" className="yam-stage-icon" onClick={() => setCallMode('video')} title="مكالمة فيديو">📹</button>
-              <button type="button" className={`yam-stage-icon ${showDetailsDrawer ? 'active' : ''}`} onClick={() => setShowDetailsDrawer((prev) => !prev)} title="إظهار التفاصيل">{showDetailsDrawer ? '⟨' : '⟩'}</button>
+              <button type="button" className="yam-stage-icon" style={{ background: 'transparent', border: 'none', fontSize: '20px' }} onClick={() => setCallMode('voice')}>📞</button>
+              <button type="button" className="yam-stage-icon" style={{ background: 'transparent', border: 'none', fontSize: '20px' }} onClick={() => setCallMode('video')}>📹</button>
+              <button type="button" className="yam-stage-icon" style={{ background: 'transparent', border: 'none', fontSize: '20px' }}>⋮</button>
             </div>
           </header>
 
@@ -447,7 +477,7 @@ export default function Chat() {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="yam-chat-input-wrap">
+          <div className="yam-chat-input-wrap" style={{ padding: '16px 24px', background: '#050816' }}>
             <ChatInput
               peer={peer}
               currentUser={currentUser}
@@ -460,32 +490,77 @@ export default function Chat() {
           </div>
         </div>
 
+        <aside style={{ background: '#0b0f1a', borderInlineStart: '1px solid rgba(255,255,255,0.05)', padding: '32px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '24px' }}>
+           <Avatar name={peer} src={peerThread.avatar} size={120} ring />
+           <div style={{ textAlign: 'center' }}>
+              <div style={{ color: 'white', fontWeight: 'bold', fontSize: '20px', marginBottom: '4px' }}>{peer}</div>
+              <div style={{ color: '#64748b', fontSize: '14px' }}>{formatLastSeen(lastSeen, isOnline)}</div>
+           </div>
+           <div style={{ display: 'flex', gap: '16px', width: '100%', justifyContent: 'center' }}>
+              {['📞', '📹', '🔍', '⋮'].map((icon, i) => (
+                <div key={i} style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', display: 'grid', placeItems: 'center', color: 'white', cursor: 'pointer' }}>{icon}</div>
+              ))}
+           </div>
+           <div style={{ width: '100%', marginTop: '24px', display: 'grid', gap: '20px' }}>
+              <div>
+                 <div style={{ color: '#64748b', fontSize: '12px', marginBottom: '8px' }}>اسم المستخدم</div>
+                 <div style={{ color: '#a78bfa', fontWeight: 'bold' }}>@{peer.toLowerCase()}</div>
+              </div>
+              <div>
+                 <div style={{ color: '#64748b', fontSize: '12px', marginBottom: '8px' }}>البريد الإلكتروني</div>
+                 <div style={{ color: 'white' }}>{peer.toLowerCase()}@example.com</div>
+              </div>
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', pt: '20px', display: 'grid', gap: '16px' }}>
+                 {['الوسائط المشتركة', 'الملفات', 'الروابط', 'المحادثات المثبتة'].map((item, i) => (
+                   <div key={item} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'white', cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                         <span>{['🖼️', '📁', '🔗', '📌'][i]}</span>
+                         <span>{item}</span>
+                      </div>
+                      <span style={{ color: '#64748b' }}>›</span>
+                   </div>
+                 ))}
+              </div>
+              <button style={{ marginTop: '20px', padding: '12px', borderRadius: '12px', background: 'rgba(239,68,68,0.1)', color: '#f87171', border: 'none', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                 <span>🚫</span> حظر المستخدم
+              </button>
+           </div>
+        </aside>
+
         <style>{`
           .yam-chat-screen {
             min-height: 100vh;
             height: 100vh;
             padding: 0;
-            background: radial-gradient(circle at top, rgba(139,92,246,0.1), transparent 28%), #040a14;
+            background: #050816;
+            display: grid;
+            grid-template-columns: 320px 1fr 340px;
+            overflow: hidden;
+          }
+
+          .yam-chat-sidebar {
+            background: #0b0f1a;
+            border-inline-end: 1px solid rgba(255,255,255,0.05);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
           }
 
           .yam-chat-stage {
             position: relative;
             display: flex;
             flex-direction: column;
-            min-height: 100vh;
             height: 100vh;
-            background: linear-gradient(180deg, rgba(6,12,24,0.98), rgba(4,9,18,1));
+            background: #050816;
           }
 
           .yam-chat-stage-header {
-            display: grid;
-            grid-template-columns: auto minmax(0, 1fr) auto;
+            display: flex;
             align-items: center;
-            gap: 12px;
-            padding: 12px 16px;
-            border-bottom: 1px solid rgba(255,255,255,0.06);
-            background: rgba(4,9,18,0.94);
-            backdrop-filter: blur(16px);
+            justify-content: space-between;
+            padding: 16px 24px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            background: #050816;
             flex-shrink: 0;
           }
 
@@ -697,16 +772,16 @@ export default function Chat() {
           }
 
           .bubble-me {
-            background: linear-gradient(135deg, #7c3aed, #6d28d9);
+            background: #3b22a1;
             color: white;
-            border-bottom-right-radius: 8px;
+            border-bottom-right-radius: 4px;
           }
 
           .bubble-them {
-            background: rgba(30,41,59,0.88);
+            background: #1a1f2e;
             color: #e2e8f0;
-            border: 1px solid rgba(255,255,255,0.06);
-            border-bottom-left-radius: 8px;
+            border: none;
+            border-bottom-left-radius: 4px;
           }
 
           .bubble-reply-banner {

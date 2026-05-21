@@ -1,0 +1,4 @@
+package_name("com.socialapp")
+
+firebase_app_id(ENV["FIREBASE_APP_ID_ANDROID"] || "")
+json_key_data(ENV["PLAY_STORE_JSON_KEY"] || "")

@@ -1,0 +1,29 @@
+default_platform(:android)
+
+platform :android do
+  desc "Build release and distribute to Firebase App Distribution"
+  lane :beta do
+    gradle(
+      task: "assemble",
+      build_type: "Release",
+      project_dir: "."
+    )
+
+    firebase_app_distribution(
+      app: ENV["FIREBASE_APP_ID_ANDROID"],
+      testers: ENV["FIREBASE_TESTERS"],
+      release_notes: "Automated beta build from Fastlane",
+      android_artifact_type: "APK",
+      android_artifact_path: "app/build/outputs/apk/release/app-release.apk"
+    )
+  end
+
+  desc "Upload release artifact using Gradle only"
+  lane :internal do
+    gradle(
+      task: "assemble",
+      build_type: "Release",
+      project_dir: "."
+    )
+  end
+end

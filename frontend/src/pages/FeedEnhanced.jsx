@@ -24,7 +24,6 @@ const LEFT_NAV_ITEMS = [
   { to: '/inbox', label: 'الرسائل', icon: '✉', badgeType: 'messages' },
   { to: '/notifications', label: 'الإشعارات', icon: '🔔', badgeType: 'notifications' },
   { to: '/profile', label: 'الملف الشخصي', icon: '◌' },
-  { to: '/profile?tab=saved', label: 'الملفات المحفوظة', icon: '⌑' },
   { to: '/settings', label: 'الإعدادات', icon: '⚙' },
 ];
 
@@ -47,19 +46,7 @@ const SERVICE_SHORTCUTS = [
   { title: 'السوق', icon: '🛍️' },
 ];
 
-const SERVICE_TILE_TONES = [
-  'tone-chat',
-  'tone-calls',
-  'tone-groups',
-  'tone-news',
-  'tone-events',
-  'tone-live',
-  'tone-files',
-  'tone-blog',
-  'tone-market',
-];
-
-const QUICK_COMPOSER_ACTIONS = ['صورة', 'فيديو', 'استطلاع', 'استطلاع/نشاط'];
+const QUICK_COMPOSER_ACTIONS = ['صورة', 'فيديو', 'استطلاع', 'نشاط'];
 
 const FALLBACK_SUGGESTIONS = [
   { username: 'UIUX.design', handle: '@uiux.design', followers_count: 12000, is_verified: true },
@@ -94,18 +81,6 @@ function mediaListFromPost(post) {
 }
 
 function FeedMedia({ post, media }) {
-  if (post.id === 'yamshat-featured-brand-post') {
-    return (
-      <div className="desktop-brand-hero">
-        <div className="desktop-brand-hero-mark-wrap">
-          <img src="/brand/yamshat-logo.jpg" alt="Yamshat" className="desktop-brand-hero-logo" />
-        </div>
-        <div className="desktop-brand-hero-wordmark">YAMSHAT</div>
-        <strong>{post.content || 'هيا لنجرب منصة يام شات'}</strong>
-      </div>
-    );
-  }
-
   if (!media.length) {
     return (
       <div className="desktop-brand-fallback">
@@ -411,7 +386,7 @@ export default function FeedEnhanced() {
                   }
                 };
                 return (
-                  <NavLink key={service.title} to={getServiceRoute(service.title)} className={`desktop-service-tile ${SERVICE_TILE_TONES[SERVICE_SHORTCUTS.indexOf(service)] || ''}`} style={{ textDecoration: 'none' }}>
+                  <NavLink key={service.title} to={getServiceRoute(service.title)} className="desktop-service-tile" style={{ textDecoration: 'none' }}>
                     <span className="desktop-service-icon">{service.icon}</span>
                     <strong>{service.title}</strong>
                   </NavLink>
@@ -484,31 +459,46 @@ export default function FeedEnhanced() {
       <style>{`
         .desktop-feed-shell {
           min-height: 100vh;
-          width: min(1660px, calc(100vw - 28px));
-          max-width: 1660px;
-          margin: 0 auto;
+          width: 100%;
+          max-width: 100%;
           overflow-x: hidden;
           display: grid;
-          grid-template-columns: 238px minmax(0, 1fr) 318px;
-          gap: 18px;
-          padding: 18px 16px 24px;
+          grid-template-columns: 280px minmax(0, 1fr) 340px;
+          gap: 22px;
+          padding: 22px;
           box-sizing: border-box;
           background:
-            radial-gradient(circle at top left, rgba(139,92,246,0.20), transparent 28%),
-            radial-gradient(circle at bottom right, rgba(91,33,182,0.16), transparent 24%),
-            linear-gradient(180deg, #04060c 0%, #070a12 38%, #05070f 100%);
+            radial-gradient(circle at top left, rgba(139,92,246,0.18), transparent 30%),
+            linear-gradient(180deg, #050816 0%, #070c18 46%, #050915 100%);
           color: #eff4ff;
         }
 
+        @media (max-width: 1200px) {
+          .desktop-feed-shell {
+            grid-template-columns: 280px 1fr;
+          }
+          .desktop-feed-right-rail {
+            display: none;
+          }
+        }
 
+        @media (max-width: 900px) {
+          .desktop-feed-shell {
+            grid-template-columns: 1fr;
+            padding: 10px;
+          }
+          .desktop-feed-left-rail {
+            display: none;
+          }
+        }
 
         .desktop-feed-left-rail,
         .desktop-feed-right-rail {
           position: sticky;
-          top: 18px;
+          top: 22px;
           align-self: start;
           display: grid;
-          gap: 14px;
+          gap: 16px;
         }
 
         .desktop-feed-center-column {
@@ -524,35 +514,34 @@ export default function FeedEnhanced() {
         .desktop-side-card,
         .desktop-profile-summary-card,
         .desktop-feed-topbar {
-          border-radius: 24px;
-          border: 1px solid rgba(255,255,255,0.05);
-          background: rgba(7, 10, 18, 0.92);
-          box-shadow: 0 22px 48px rgba(2, 6, 23, 0.42);
+          border-radius: 28px;
+          border: 1px solid rgba(255,255,255,0.06);
+          background: rgba(7, 12, 24, 0.88);
+          box-shadow: 0 24px 60px rgba(2, 6, 23, 0.36);
           backdrop-filter: blur(18px);
         }
 
         .desktop-feed-topbar {
-          padding: 12px 14px;
+          padding: 14px 16px;
           display: flex;
           align-items: center;
           gap: 14px;
           justify-content: space-between;
           position: sticky;
-          top: 14px;
+          top: 18px;
           z-index: 12;
         }
 
         .desktop-search-box {
           flex: 1;
           min-width: 0;
-          max-width: 480px;
           display: flex;
           align-items: center;
           gap: 10px;
           padding: 0 16px;
-          min-height: 48px;
-          border-radius: 16px;
-          background: rgba(255,255,255,0.035);
+          min-height: 52px;
+          border-radius: 18px;
+          background: rgba(255,255,255,0.04);
           border: 1px solid rgba(255,255,255,0.06);
         }
 
@@ -605,25 +594,13 @@ export default function FeedEnhanced() {
         }
 
         .desktop-top-action {
-          width: 46px;
-          height: 46px;
+          width: 48px;
+          height: 48px;
           display: inline-grid;
           place-items: center;
           position: relative;
           font-size: 18px;
           text-decoration: none;
-          overflow: visible;
-        }
-
-        .desktop-top-action.active::after {
-          content: '';
-          position: absolute;
-          inset-inline: 12px;
-          bottom: -12px;
-          height: 3px;
-          border-radius: 999px;
-          background: linear-gradient(90deg, #7c3aed, #a855f7);
-          box-shadow: 0 0 18px rgba(139,92,246,0.5);
         }
 
         .desktop-top-action.active,
@@ -669,24 +646,24 @@ export default function FeedEnhanced() {
         }
 
         .desktop-left-brand-card {
-          padding: 16px;
+          padding: 18px;
           display: flex;
           align-items: center;
-          gap: 12px;
+          gap: 14px;
         }
 
         .desktop-left-brand-mark,
         .desktop-brand-symbol {
-          width: 54px;
-          height: 54px;
-          border-radius: 18px;
+          width: 58px;
+          height: 58px;
+          border-radius: 20px;
           display: grid;
           place-items: center;
           color: white;
-          font-size: 25px;
+          font-size: 26px;
           font-weight: 900;
           background: linear-gradient(135deg, #7c3aed, #8b5cf6 55%, #a855f7);
-          box-shadow: 0 18px 28px rgba(124,58,237,0.26);
+          box-shadow: 0 20px 30px rgba(124,58,237,0.25);
         }
 
         .desktop-left-brand-title {
@@ -701,18 +678,18 @@ export default function FeedEnhanced() {
         .desktop-trend-list,
         .desktop-live-list {
           display: grid;
-          gap: 10px;
+          gap: 12px;
         }
 
         .desktop-left-link {
           display: flex;
           align-items: center;
           gap: 12px;
-          min-height: 52px;
-          padding: 0 14px;
+          min-height: 56px;
+          padding: 0 16px;
           text-decoration: none;
           color: #dbe4ff;
-          border-radius: 16px;
+          border-radius: 18px;
           border: 1px solid transparent;
           background: transparent;
         }
@@ -747,13 +724,13 @@ export default function FeedEnhanced() {
         }
 
         .desktop-new-post-btn {
-          min-height: 50px;
+          min-height: 54px;
           padding: 0 16px;
           font-size: 15px;
           font-weight: 900;
           cursor: pointer;
           background: linear-gradient(135deg, #7c3aed, #8b5cf6);
-          box-shadow: 0 18px 26px rgba(124,58,237,0.24);
+          box-shadow: 0 20px 30px rgba(124,58,237,0.24);
         }
 
         .desktop-profile-summary-card {
@@ -800,70 +777,9 @@ export default function FeedEnhanced() {
         }
 
         .desktop-composer-hero-card {
-          padding: 16px;
+          padding: 18px;
           display: grid;
-          gap: 12px;
-        }
-
-        .desktop-composer-hero-card .card {
-          margin-bottom: 0 !important;
-          padding: 0 !important;
-          border: none !important;
-          border-radius: 20px !important;
-          background: transparent !important;
-          box-shadow: none !important;
-        }
-
-        .desktop-composer-hero-card .composer-header-row,
-        .desktop-composer-hero-card .composer-toolbar {
-          display: none;
-        }
-
-        .desktop-composer-hero-card .composer-actions-row {
-          margin: 0;
-          padding: 0;
-          justify-content: space-between;
-        }
-
-        .desktop-composer-hero-card .composer-action-btn,
-        .desktop-composer-hero-card .btn {
-          min-height: 42px;
-          border-radius: 14px !important;
-        }
-
-        .desktop-composer-hero-card .btn-primary {
-          background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%) !important;
-          box-shadow: 0 10px 24px rgba(124,58,237,0.24) !important;
-        }
-
-        .desktop-composer-hero-card .btn-secondary {
-          background: rgba(255,255,255,0.08) !important;
-          color: #eef2ff !important;
-        }
-
-        .desktop-composer-hero-card .composer-editor-shell {
-          background: rgba(255,255,255,0.025);
-          border-radius: 20px;
-          padding: 16px;
-        }
-
-        .desktop-composer-hero-card .composer-editor-topline {
-          margin-bottom: 8px;
-        }
-
-        .desktop-composer-hero-card .composer-drop-hint {
-          background: rgba(139, 92, 246, 0.08);
-        }
-
-        .desktop-composer-hero-card .composer-textarea {
-          min-height: 94px;
-          font-size: 15px;
-        }
-
-        .desktop-composer-hero-card .composer-tags-preview,
-        .desktop-composer-hero-card .composer-scheduler-box,
-        .desktop-composer-hero-card .composer-media-preview {
-          margin-top: 10px;
+          gap: 14px;
         }
 
         .desktop-composer-hero-head {
@@ -874,7 +790,7 @@ export default function FeedEnhanced() {
 
         .desktop-composer-hero-head strong {
           display: block;
-          font-size: 20px;
+          font-size: 22px;
           margin-bottom: 4px;
         }
 
@@ -902,15 +818,15 @@ export default function FeedEnhanced() {
         }
 
         .desktop-post-card {
-          padding: 16px;
+          padding: 18px;
           display: grid;
-          gap: 14px;
+          gap: 16px;
         }
 
         .desktop-post-card.featured {
           background:
-            radial-gradient(circle at top, rgba(124,58,237,0.18), transparent 42%),
-            rgba(7, 10, 18, 0.94);
+            radial-gradient(circle at top, rgba(124,58,237,0.18), transparent 38%),
+            rgba(7, 12, 24, 0.92);
         }
 
         .verify-dot,
@@ -957,71 +873,22 @@ export default function FeedEnhanced() {
         }
 
         .desktop-post-copy {
-          font-size: 16px;
-          line-height: 1.9;
+          font-size: 17px;
+          line-height: 1.95;
           color: #eef2ff;
           white-space: pre-wrap;
         }
 
         .desktop-post-media,
-        .desktop-brand-fallback,
-        .desktop-brand-hero {
+        .desktop-brand-fallback {
           width: 100%;
-          min-height: 340px;
-          max-height: 620px;
-          border-radius: 22px;
+          min-height: 320px;
+          max-height: 560px;
+          border-radius: 24px;
           overflow: hidden;
           object-fit: cover;
           display: block;
-          background: linear-gradient(180deg, rgba(15,18,31,0.96), rgba(4,7,14,1));
-        }
-
-        .desktop-brand-hero {
-          position: relative;
-          display: grid;
-          place-items: center;
-          align-content: center;
-          gap: 12px;
-          padding: 36px 24px;
-          text-align: center;
-          background:
-            radial-gradient(circle at 50% 28%, rgba(139,92,246,0.26), transparent 24%),
-            linear-gradient(180deg, #090b12 0%, #070912 100%);
-        }
-
-        .desktop-brand-hero::after {
-          content: '';
-          position: absolute;
-          inset: 0;
-          border: 1px solid rgba(167,139,250,0.12);
-          border-radius: inherit;
-          pointer-events: none;
-        }
-
-        .desktop-brand-hero-mark-wrap {
-          width: 100%;
-          display: grid;
-          place-items: center;
-        }
-
-        .desktop-brand-hero-logo {
-          width: min(86%, 500px);
-          max-width: 500px;
-          object-fit: contain;
-          filter: drop-shadow(0 24px 60px rgba(139,92,246,0.34));
-        }
-
-        .desktop-brand-hero-wordmark {
-          font-size: 28px;
-          font-weight: 900;
-          letter-spacing: 0.34em;
-          color: #f5f3ff;
-        }
-
-        .desktop-brand-hero strong {
-          font-size: clamp(26px, 2vw, 38px);
-          line-height: 1.4;
-          color: #ffffff;
+          background: linear-gradient(180deg, rgba(22,28,45,0.95), rgba(5,8,22,1));
         }
 
         .desktop-brand-fallback {
@@ -1079,9 +946,9 @@ export default function FeedEnhanced() {
         }
 
         .desktop-side-card {
-          padding: 16px;
+          padding: 18px;
           display: grid;
-          gap: 12px;
+          gap: 14px;
         }
 
         .desktop-side-card.compact {
@@ -1106,14 +973,13 @@ export default function FeedEnhanced() {
         }
 
         .desktop-service-tile {
-          min-height: 92px;
-          padding: 12px 10px;
+          min-height: 96px;
+          padding: 14px 10px;
           display: grid;
           justify-items: center;
           align-content: center;
-          gap: 8px;
+          gap: 10px;
           cursor: pointer;
-          background: rgba(255,255,255,0.025);
         }
 
         .desktop-service-icon {
@@ -1125,18 +991,7 @@ export default function FeedEnhanced() {
           font-size: 21px;
           background: rgba(124,58,237,0.14);
           color: #d8b4fe;
-          box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);
         }
-
-        .desktop-service-tile.tone-chat .desktop-service-icon { background: rgba(96,165,250,0.16); color: #93c5fd; }
-        .desktop-service-tile.tone-calls .desktop-service-icon { background: rgba(34,197,94,0.16); color: #86efac; }
-        .desktop-service-tile.tone-groups .desktop-service-icon { background: rgba(168,85,247,0.18); color: #d8b4fe; }
-        .desktop-service-tile.tone-news .desktop-service-icon { background: rgba(59,130,246,0.18); color: #bfdbfe; }
-        .desktop-service-tile.tone-events .desktop-service-icon { background: rgba(250,204,21,0.16); color: #fde68a; }
-        .desktop-service-tile.tone-live .desktop-service-icon { background: rgba(248,113,113,0.18); color: #fca5a5; }
-        .desktop-service-tile.tone-files .desktop-service-icon { background: rgba(251,146,60,0.18); color: #fdba74; }
-        .desktop-service-tile.tone-blog .desktop-service-icon { background: rgba(125,211,252,0.18); color: #bae6fd; }
-        .desktop-service-tile.tone-market .desktop-service-icon { background: rgba(244,114,182,0.18); color: #f9a8d4; }
 
         .desktop-service-tile strong {
           font-size: 13px;
@@ -1179,17 +1034,15 @@ export default function FeedEnhanced() {
 
         @media (max-width: 1380px) {
           .desktop-feed-shell {
-            width: min(1520px, calc(100vw - 22px));
-            grid-template-columns: 220px minmax(0, 1fr) 290px;
-            gap: 16px;
-            padding: 16px 12px 22px;
+            grid-template-columns: 250px minmax(0, 1fr) 300px;
+            gap: 18px;
+            padding: 18px;
           }
         }
 
         @media (max-width: 1180px) {
           .desktop-feed-shell {
-            width: min(1120px, calc(100vw - 18px));
-            grid-template-columns: 220px minmax(0, 1fr);
+            grid-template-columns: 250px minmax(0, 1fr);
           }
 
           .desktop-feed-right-rail {
@@ -1199,9 +1052,8 @@ export default function FeedEnhanced() {
 
         @media (max-width: 920px) {
           .desktop-feed-shell {
-            width: min(100%, calc(100vw - 8px));
             grid-template-columns: 1fr;
-            padding: 10px;
+            padding: 12px;
           }
 
           .desktop-feed-left-rail,
@@ -1227,8 +1079,7 @@ export default function FeedEnhanced() {
 
         @media (max-width: 640px) {
           .desktop-feed-shell {
-            width: 100%;
-            padding: 8px;
+            padding: 10px;
           }
 
           .desktop-post-action.bookmark,

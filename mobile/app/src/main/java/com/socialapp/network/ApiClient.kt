@@ -35,7 +35,7 @@ object ApiClient {
     private fun certificatePinner(): CertificatePinner? {
         val knownPins = mapOf(
             "yamshatl.onrender.com" to listOf(PIN_RENDER_LEAF, PIN_RENDER_INTERMEDIATE),
-            "yamshat1-11.onrender.com" to listOf(PIN_RENDER_LEAF, PIN_RENDER_INTERMEDIATE),
+            "yamshat1-1-vg1o.onrender.com" to listOf(PIN_RENDER_LEAF, PIN_RENDER_INTERMEDIATE),
             "yamshat-enqr8c2d.livekit.cloud" to listOf(PIN_LIVEKIT_LEAF, PIN_LIVEKIT_INTERMEDIATE),
         )
 

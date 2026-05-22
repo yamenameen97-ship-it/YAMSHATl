@@ -7,7 +7,7 @@ object UrlConfig {
     private const val CURRENT_BACKEND_HOST = "yamshatl.onrender.com"
     private const val LEGACY_FRONTEND_HOST = "yamshati-1.onrender.com"
     private const val PREVIOUS_FRONTEND_HOST = "yamshat1-1.onrender.com"
-    private const val CURRENT_FRONTEND_HOST = "yamshat1-11.onrender.com"
+    private const val CURRENT_FRONTEND_HOST = "yamshat1-1-vg1o.onrender.com"
 
     private fun sanitize(raw: String): String {
         return raw

@@ -1,7 +1,7 @@
 # Checklist إصلاح الكابتشا و CORS
 
 ## تم إصلاحه داخل المشروع
-- تحديث إعدادات `backend/.env` بحيث تشمل رابط الواجهة الحالي `yamshat1-1-vg10.onrender.com`.
+- تحديث إعدادات `backend/.env` وربط الواجهة بخدمة الـ frontend الحالية `yamshatl-11.onrender.com` والـ backend الصحيح `yamshatl.onrender.com`.
 - إضافة `CORS_ORIGIN_REGEX` مرن يقبل تغيّر suffix الخاص بخدمات Render لنفس عائلة المشروع.
 - تحسين اشتقاق `cors_origin_regex` داخل `backend/app/core/config.py` ليتعامل مع روابط Render المتغيرة مثل:
   - `yamshat1-1-yg1o.onrender.com`
@@ -14,10 +14,10 @@
 1. أعد نشر خدمة **backend** بعد رفع الملفات الجديدة.
 2. إذا كنت تستخدم **gateway** كخدمة أمامية للـ API، أعد نشرها أيضاً.
 3. تأكد أن متغيرات البيئة في Render مطابقة للقيم التالية:
-   - `FRONTEND_ORIGIN=https://yamshat1-1-vg10.onrender.com`
-   - `BACKEND_ORIGIN=https://yamshat1-ahj8.onrender.com`
-   - `RENDER_EXTERNAL_URL=https://yamshat1-ahj8.onrender.com`
-   - `CORS_ORIGIN_REGEX=^https://yamshat1(?:-1)?(?:-[a-z0-9]+)?\.onrender\.com$`
+   - `FRONTEND_ORIGIN=https://yamshatl-11.onrender.com`
+   - `BACKEND_ORIGIN=https://yamshatl.onrender.com`
+   - `RENDER_EXTERNAL_URL=https://yamshatl.onrender.com`
+   - `CORS_ORIGIN_REGEX=^https://(?:yamshatl(?:-\d+)?|yamshat1(?:-1)?)(?:-[a-z0-9]+)?\.onrender\.com$`
 4. بعد نشر الواجهة، افتح الموقع بمتصفح جديد أو اعمل Hard Refresh.
 5. لو استمرت المشكلة، امسح Site Data / Cookies للموقعين على Render ثم جرّب مرة أخرى.
 
@@ -31,4 +31,6 @@
 - جرّب Refresh للجلسة أو تسجيل دخول طبيعي.
 
 ## ملاحظة مهمة
+- السبب الجذري كان أن ملفات الواجهة كانت ما زالت تشير إلى backend قديم ومتوقف `yamshat1-ahj8.onrender.com`؛ تم تحويلها إلى الـ backend الحي `yamshatl.onrender.com`.
+
 لو Render غيّر suffix الواجهة لاحقاً، الكود المعدل الحالي يفترض أن يستوعب ذلك بدون الحاجة لتعديل يدوي كل مرة، طالما الرابط ضمن نفس عائلة المشروع.

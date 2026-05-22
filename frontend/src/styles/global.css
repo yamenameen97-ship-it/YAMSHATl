@@ -3374,6 +3374,18 @@ img {
 .captcha-question {
   font-size: 1.2rem;
   font-weight: 700;
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: left;
+  font-family: "Inter", "Roboto Mono", "Consolas", monospace;
+  font-variant-numeric: lining-nums tabular-nums;
+  letter-spacing: 0.08em;
+  user-select: all;
+}
+
+.captcha-question.is-placeholder {
+  letter-spacing: 0.16em;
+  opacity: 0.72;
 }
 
 .captcha-refresh-btn {

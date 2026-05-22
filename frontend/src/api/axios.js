@@ -26,12 +26,37 @@ const API = axios.create({
   withCredentials: true,
 });
 
+const PUBLIC_AUTH_ENDPOINTS = [
+  '/auth/captcha',
+  '/auth/login',
+  '/auth/register',
+  '/auth/verify-email',
+  '/auth/resend-verification',
+  '/auth/forgot-password',
+  '/auth/verify-reset-code',
+  '/auth/reset-password',
+  '/auth/dev-login',
+];
+
+function isPublicAuthRequest(config = {}) {
+  const explicitPublicFlag = config.public === true || config.skipAuth === true || config.skipCsrf === true;
+  if (explicitPublicFlag) return true;
+
+  const requestUrl = String(config.url || '').trim();
+  if (!requestUrl) return false;
+
+  return PUBLIC_AUTH_ENDPOINTS.some((endpoint) => requestUrl === endpoint || requestUrl.startsWith(`${endpoint}?`));
+}
+
 API.interceptors.request.use(async (config) => {
+  config.headers = config.headers || {};
+
+  const isPublicRequest = isPublicAuthRequest(config);
   const token = getAuthToken();
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (token && !isPublicRequest) config.headers.Authorization = `Bearer ${token}`;
   
   const csrfToken = getCsrfToken();
-  if (csrfToken) config.headers['X-CSRF-Token'] = csrfToken;
+  if (csrfToken && !isPublicRequest) config.headers['X-CSRF-Token'] = csrfToken;
 
   // Smart Cache Check
   const { useCache, forceRefresh, cacheTtlMs, cacheKey } = getCacheOptions(config);
@@ -74,7 +99,10 @@ API.interceptors.response.use(
       try {
         const { data } = await sessionManager.refreshSession();
         const newToken = data.access_token;
-        config.headers.Authorization = `Bearer ${newToken}`;
+        if (!isPublicAuthRequest(config)) {
+          config.headers = config.headers || {};
+          config.headers.Authorization = `Bearer ${newToken}`;
+        }
         return API(config);
       } catch (refreshError) {
         clearStoredUser();

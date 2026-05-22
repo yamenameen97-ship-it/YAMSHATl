@@ -8,15 +8,12 @@ import EmptyState from '../../components/feedback/EmptyState.jsx';
 import ErrorState from '../../components/feedback/ErrorState.jsx';
 import { TableSkeleton } from '../../components/feedback/Skeleton.jsx';
 import useDebouncedValue from '../../hooks/useDebouncedValue.js';
-import { 
-  bulkDeleteAdminPosts, 
-  createAdminPost, 
-  deleteAdminPost, 
-  getAdminPosts, 
+import {
+  bulkDeleteAdminPosts,
+  createAdminPost,
+  deleteAdminPost,
+  getAdminPosts,
   updateAdminPost,
-  moderatePostAI,
-  bulkUpdatePostStatus,
-  toggleShadowBan
 } from '../../api/admin.js';
 import socket from '../../api/socket.js';
 import { useToast } from '../../components/admin/ToastProvider.jsx';
@@ -32,7 +29,7 @@ export default function AdminPosts() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [editingPost, setEditingPost] = useState(null);
-  const [open, setOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -43,15 +40,27 @@ export default function AdminPosts() {
   const { pushToast } = useToast();
   const debouncedSearch = useDebouncedValue(search, 350);
 
+  const resetForm = () => {
+    setForm(initialForm);
+    setEditingPost(null);
+    setFormOpen(false);
+  };
+
   const loadPosts = async (page = pagination.page) => {
     try {
       setLoading(true);
       setLoadError('');
-      const { data } = await getAdminPosts({ page, page_size: pagination.page_size, search: debouncedSearch, sort_by: sortBy, sort_direction: sortDirection });
-      setPosts(data.items || []);
-      setPagination(data.pagination || pagination);
+      const { data } = await getAdminPosts({
+        page,
+        page_size: pagination.page_size,
+        search: debouncedSearch,
+        sort_by: sortBy,
+        sort_direction: sortDirection,
+      });
+      setPosts(Array.isArray(data?.items) ? data.items : []);
+      setPagination(data?.pagination || pagination);
     } catch (error) {
-      const message = error?.response?.data?.detail || 'حدث خطأ.';
+      const message = error?.response?.data?.detail || 'حدث خطأ أثناء تحميل المنشورات.';
       setLoadError(message);
       pushToast({ title: 'تعذر تحميل المحتوى', description: message, type: 'error' });
     } finally {
@@ -81,42 +90,88 @@ export default function AdminPosts() {
     setSelectedIds((prev) => (prev.includes(postId) ? prev.filter((id) => id !== postId) : [...prev, postId]));
   };
 
-  const handleAIModeration = async (postId) => {
+  const toggleAll = (checked) => {
+    setSelectedIds(checked ? posts.map((post) => post.id) : []);
+  };
+
+  const openCreateModal = () => {
+    setEditingPost(null);
+    setForm(initialForm);
+    setFormOpen(true);
+  };
+
+  const openEditModal = (post) => {
+    setEditingPost(post);
+    setForm({
+      content: post?.content || '',
+      image_url: post?.image_url || '',
+      user_id: post?.user_id ? String(post.user_id) : '',
+    });
+    setFormOpen(true);
+  };
+
+  const handleSave = async () => {
+    const content = String(form.content || '').trim();
+    if (!content) {
+      pushToast({ title: 'محتوى المنشور مطلوب', type: 'warning' });
+      return;
+    }
+
     try {
-      setActionBusyKey(`ai-${postId}`);
-      const { data } = await moderatePostAI(postId);
-      pushToast({ 
-        title: 'AI Moderation Complete', 
-        description: `Score: ${data.score}. Status: ${data.flagged ? 'Flagged' : 'Clean'}`, 
-        type: data.flagged ? 'warning' : 'success' 
-      });
-      loadPosts();
+      setSaving(true);
+      const payload = {
+        content,
+        image_url: String(form.image_url || '').trim() || undefined,
+        user_id: form.user_id ? Number(form.user_id) : undefined,
+      };
+
+      if (editingPost?.id) {
+        await updateAdminPost(editingPost.id, payload);
+        pushToast({ title: 'تم تعديل المنشور', type: 'success' });
+      } else {
+        await createAdminPost(payload);
+        pushToast({ title: 'تم إنشاء المنشور', type: 'success' });
+      }
+
+      resetForm();
+      loadPosts(editingPost?.id ? pagination.page : 1);
     } catch (error) {
-      pushToast({ title: 'AI Moderation Failed', description: 'Could not process request', type: 'error' });
+      pushToast({
+        title: editingPost?.id ? 'فشل تعديل المنشور' : 'فشل إنشاء المنشور',
+        description: error?.response?.data?.detail || error?.message,
+        type: 'error',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (post) => {
+    if (!post?.id) return;
+    try {
+      setActionBusyKey(`delete-${post.id}`);
+      await deleteAdminPost(post.id);
+      pushToast({ title: 'تم حذف المنشور', type: 'success' });
+      setDeleteTarget(null);
+      setSelectedIds((prev) => prev.filter((id) => id !== post.id));
+      loadPosts(pagination.page);
+    } catch (error) {
+      pushToast({ title: 'فشل حذف المنشور', description: error?.response?.data?.detail || error?.message, type: 'error' });
     } finally {
       setActionBusyKey('');
     }
   };
 
-  const handleShadowBan = async (userId) => {
-    try {
-      await toggleShadowBan(userId, true);
-      pushToast({ title: 'User Shadow Banned', description: `User ID: ${userId}`, type: 'warning' });
-    } catch (error) {
-      pushToast({ title: 'Action Failed', description: 'Could not shadow ban user', type: 'error' });
-    }
-  };
-
-  const handleBulkAction = async (action) => {
+  const handleBulkDelete = async () => {
     if (!selectedIds.length) return;
     try {
-      setActionBusyKey('bulk-action');
-      await bulkUpdatePostStatus(selectedIds, action);
-      pushToast({ title: 'Bulk Action Success', description: `Applied ${action} to ${selectedIds.length} posts`, type: 'success' });
+      setActionBusyKey('bulk-delete');
+      await bulkDeleteAdminPosts(selectedIds);
+      pushToast({ title: 'تم حذف المنشورات المحددة', description: `عدد العناصر: ${selectedIds.length}`, type: 'success' });
       setSelectedIds([]);
-      loadPosts();
+      loadPosts(pagination.page);
     } catch (error) {
-      pushToast({ title: 'Bulk Action Failed', type: 'error' });
+      pushToast({ title: 'فشل الحذف الجماعي', description: error?.response?.data?.detail || error?.message, type: 'error' });
     } finally {
       setActionBusyKey('');
     }
@@ -132,27 +187,55 @@ export default function AdminPosts() {
       <section className="dashboard-hero-grid small-gap">
         <Card>
           <div className="filters-row wrap">
-            <Input label="Search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث في المحتوى أو اسم المستخدم" />
-            <label className="field select-field"><span className="field-label">Sorting</span><select className="input" value={sortBy} onChange={(event) => setSortBy(event.target.value)}><option value="created_at">الأحدث</option><option value="engagement">التفاعل</option></select></label>
-            <label className="field select-field"><span className="field-label">Direction</span><select className="input" value={sortDirection} onChange={(event) => setSortDirection(event.target.value)}><option value="desc">تنازلي</option><option value="asc">تصاعدي</option></select></label>
+            <Input
+              label="بحث"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="ابحث في المحتوى أو اسم المستخدم"
+            />
+            <label className="field select-field">
+              <span className="field-label">الترتيب</span>
+              <select className="input" value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+                <option value="created_at">الأحدث</option>
+                <option value="engagement">الأعلى تفاعلاً</option>
+              </select>
+            </label>
+            <label className="field select-field">
+              <span className="field-label">الاتجاه</span>
+              <select className="input" value={sortDirection} onChange={(event) => setSortDirection(event.target.value)}>
+                <option value="desc">تنازلي</option>
+                <option value="asc">تصاعدي</option>
+              </select>
+            </label>
           </div>
         </Card>
+
         <Card>
           <div className="action-row wide">
-            <Button onClick={() => setOpen(true)}>منشور جديد</Button>
-            <div className="bulk-actions-group">
-              <Button variant="secondary" disabled={!selectedIds.length} onClick={() => handleBulkAction('approve')}>Approve All</Button>
-              <Button variant="secondary" className="danger" disabled={!selectedIds.length} onClick={() => handleBulkAction('delete')}>Delete All</Button>
-            </div>
-            <Button variant="secondary" onClick={() => loadPosts(pagination.page)} loading={loading}>Refresh</Button>
-            <span className="muted">{selectedIds.length} items selected</span>
+            <Button onClick={openCreateModal}>منشور جديد</Button>
+            <Button
+              variant="secondary"
+              className="danger"
+              disabled={!selectedIds.length}
+              loading={actionBusyKey === 'bulk-delete'}
+              onClick={handleBulkDelete}
+            >
+              حذف المحدد
+            </Button>
+            <Button variant="secondary" onClick={() => loadPosts(pagination.page)} loading={loading}>تحديث</Button>
+            <span className="muted">{selectedIds.length} عنصر محدد</span>
           </div>
         </Card>
       </section>
 
       <Card>
         <div className="card-head split">
-          <h3 className="section-title">Post Moderation & AI Control</h3>
+          <div>
+            <h3 className="section-title">إدارة المنشورات</h3>
+            <p className="muted" style={{ margin: '6px 0 0' }}>
+              تم ربط الصفحة فقط بالعمليات المدعومة فعليًا من الخادم: عرض، إنشاء، تعديل، حذف، وحذف جماعي.
+            </p>
+          </div>
           <div className="pagination-row">
             <Button variant="secondary" disabled={pagination.page <= 1} onClick={() => loadPosts(pagination.page - 1)}>السابق</Button>
             <span>{pagination.page} / {pagination.pages}</span>
@@ -160,68 +243,128 @@ export default function AdminPosts() {
           </div>
         </div>
 
-        {loading ? <TableSkeleton rows={6} /> : (
+        {loadError && !loading ? <ErrorState title="تعذر تحميل المنشورات" description={loadError} onRetry={() => loadPosts(pagination.page)} /> : null}
+
+        {loading ? <TableSkeleton rows={6} /> : null}
+
+        {!loading && !loadError && !posts.length ? (
+          <EmptyState title="لا توجد منشورات" description="ابدأ بإنشاء منشور جديد من لوحة الإدارة." />
+        ) : null}
+
+        {!loading && !loadError && posts.length ? (
           <div className="table-shell">
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th><input type="checkbox" onChange={(e) => setSelectedIds(e.target.checked ? posts.map(p => p.id) : [])} /></th>
+                  <th>
+                    <input
+                      type="checkbox"
+                      checked={posts.length > 0 && selectedIds.length === posts.length}
+                      onChange={(event) => toggleAll(event.target.checked)}
+                    />
+                  </th>
                   <th>ID</th>
-                  <th>Author</th>
-                  <th>Content & Media</th>
-                  <th>AI Flag</th>
-                  <th>Actions</th>
+                  <th>الكاتب</th>
+                  <th>المحتوى</th>
+                  <th>التفاعل</th>
+                  <th>الإجراءات</th>
                 </tr>
               </thead>
               <tbody>
-                {posts.map((post) => (
-                  <tr key={post.id}>
-                    <td><input type="checkbox" checked={selectedIds.includes(post.id)} onChange={() => toggleSelected(post.id)} /></td>
-                    <td>#{post.id}</td>
-                    <td>
-                      <div className="user-cell">
-                        <span>{post.username}</span>
-                        <button className="text-link tiny" onClick={() => handleShadowBan(post.user_id)}>Shadow Ban</button>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="content-preview">
-                        <p>{post.content?.slice(0, 50)}...</p>
-                        {post.image_url && <button className="media-badge" onClick={() => openMediaReview(post)}>Review Media</button>}
-                      </div>
-                    </td>
-                    <td>
-                      <span className={`badge ${post.ai_flagged ? 'danger' : 'success'}`}>
-                        {post.ai_flagged ? 'Auto-Flagged' : 'Clean'}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="action-row">
-                        <button className="mini-action" onClick={() => handleAIModeration(post.id)}>AI Scan</button>
-                        <button className="mini-action danger" onClick={() => setDeleteTarget(post)}>Delete</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {posts.map((post) => {
+                  const likes = Number(post.likes ?? post.like_count ?? 0);
+                  const comments = Number(post.comments ?? post.comment_count ?? 0);
+                  return (
+                    <tr key={post.id}>
+                      <td>
+                        <input type="checkbox" checked={selectedIds.includes(post.id)} onChange={() => toggleSelected(post.id)} />
+                      </td>
+                      <td>#{post.id}</td>
+                      <td>
+                        <div className="user-cell">
+                          <strong>{post.username || 'unknown'}</strong>
+                          <span className="muted">UID: {post.user_id}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="content-preview">
+                          <p>{post.content ? `${post.content.slice(0, 90)}${post.content.length > 90 ? '…' : ''}` : 'بدون نص'}</p>
+                          {post.image_url ? <button className="media-badge" onClick={() => openMediaReview(post)}>معاينة الوسائط</button> : null}
+                        </div>
+                      </td>
+                      <td>
+                        <div className="stacked-metrics">
+                          <span>إعجابات: {likes}</span>
+                          <span>تعليقات: {comments}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="action-row">
+                          <button className="mini-action" onClick={() => openEditModal(post)}>تعديل</button>
+                          <button className="mini-action danger" onClick={() => setDeleteTarget(post)}>حذف</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
-        )}
+        ) : null}
       </Card>
 
-      <Modal open={mediaReviewOpen} title="Media Review" onClose={() => setMediaReviewOpen(false)}>
-        {currentMedia && (
-          <div className="media-review-container">
-            <img src={currentMedia.image_url} alt="Post content" className="review-img" />
+      <Modal open={formOpen} title={editingPost ? 'تعديل منشور' : 'منشور جديد'} onClose={resetForm}>
+        <div className="stacked-form" style={{ display: 'grid', gap: 12 }}>
+          <Input
+            label="محتوى المنشور"
+            value={form.content}
+            onChange={(event) => setForm((prev) => ({ ...prev, content: event.target.value }))}
+            placeholder="اكتب نص المنشور"
+          />
+          <Input
+            label="رابط الصورة"
+            value={form.image_url}
+            onChange={(event) => setForm((prev) => ({ ...prev, image_url: event.target.value }))}
+            placeholder="https://..."
+          />
+          <Input
+            label="رقم المستخدم"
+            value={form.user_id}
+            onChange={(event) => setForm((prev) => ({ ...prev, user_id: event.target.value.replace(/[^0-9]/g, '') }))}
+            placeholder="اختياري"
+          />
+          <div className="modal-actions">
+            <Button variant="secondary" onClick={resetForm}>إلغاء</Button>
+            <Button onClick={handleSave} loading={saving}>{editingPost ? 'حفظ التعديل' : 'إنشاء المنشور'}</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={!!deleteTarget} title="تأكيد حذف المنشور" onClose={() => setDeleteTarget(null)}>
+        <div style={{ display: 'grid', gap: 12 }}>
+          <p style={{ margin: 0 }}>
+            هل تريد حذف المنشور رقم <strong>#{deleteTarget?.id}</strong> نهائيًا؟
+          </p>
+          <div className="modal-actions">
+            <Button variant="secondary" onClick={() => setDeleteTarget(null)}>إلغاء</Button>
+            <Button className="danger" loading={actionBusyKey === `delete-${deleteTarget?.id || ''}`} onClick={() => handleDelete(deleteTarget)}>
+              تأكيد الحذف
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={mediaReviewOpen} title="معاينة الوسائط" onClose={() => setMediaReviewOpen(false)}>
+        {currentMedia ? (
+          <div className="media-review-container" style={{ display: 'grid', gap: 12 }}>
+            <img src={currentMedia.image_url} alt="Post content" className="review-img" style={{ width: '100%', borderRadius: 14 }} />
             <div className="modal-actions">
-              <Button variant="secondary" onClick={() => setMediaReviewOpen(false)}>Close</Button>
-              <Button className="danger" onClick={() => { handleBulkAction('delete'); setMediaReviewOpen(false); }}>Flag & Remove</Button>
+              <Button variant="secondary" onClick={() => setMediaReviewOpen(false)}>إغلاق</Button>
+              <Button className="danger" onClick={() => { setMediaReviewOpen(false); setDeleteTarget(currentMedia); }}>حذف هذا المنشور</Button>
             </div>
           </div>
-        )}
+        ) : null}
       </Modal>
-      
-      {/* Existing Create/Edit and Delete Modals... */}
     </AdminLayout>
   );
 }

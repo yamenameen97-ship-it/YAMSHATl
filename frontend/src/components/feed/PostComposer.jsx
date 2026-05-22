@@ -103,8 +103,14 @@ export default function PostComposer() {
     applySelectedFile(file);
   };
 
+  const canSubmit = Boolean(content.trim() || media || quoteDraft);
+
   const handleSubmit = async (status = 'published') => {
-    if (isUploading || (!content.trim() && !media && !quoteDraft)) return;
+    if (isUploading || !canSubmit) return;
+    if (status === 'scheduled' && !scheduledDate) {
+      pushToast({ type: 'warning', title: 'حدد وقت الجدولة', description: 'لازم تختار تاريخ ووقت قبل تأكيد الجدولة.' });
+      return;
+    }
     setIsUploading(true);
     try {
       let mediaUrl = '';
@@ -137,7 +143,7 @@ export default function PostComposer() {
         description: isPinned ? 'المنشور متجهز كمنشور مثبت.' : undefined,
       });
       clearComposer();
-      queryClient.invalidateQueries(['feed-data']);
+      queryClient.invalidateQueries({ queryKey: ['feed-data'] });
     } catch (error) {
       pushToast({ type: 'error', title: 'فشل نشر المنشور', description: error?.response?.data?.detail || error?.message || 'حاول مرة تانية.' });
     } finally {
@@ -211,7 +217,7 @@ export default function PostComposer() {
           variant="secondary"
           size="small"
           onClick={() => handleSubmit('draft')}
-          disabled={isUploading || (!content.trim() && !quoteDraft)}
+          disabled={isUploading || !canSubmit}
         >
           حفظ المنشور
         </Button>
@@ -220,7 +226,7 @@ export default function PostComposer() {
           size="small"
           onClick={() => handleSubmit(showScheduler ? 'scheduled' : 'published')}
           loading={isUploading}
-          disabled={isUploading || (!content.trim() && !media && !quoteDraft)}
+          disabled={isUploading || !canSubmit}
         >
           {showScheduler ? 'تأكيد الجدولة' : 'النشر'}
         </Button>

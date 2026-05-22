@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.dependencies import get_current_user, get_db
 from app.core.live_store import LiveComment, LiveGift, live_store
+from app.core.socket_server import sio
 from app.models.live_session import LiveRoomSession
 from app.models.user import User
 
@@ -392,7 +393,7 @@ def trigger_recovery(room_id: str, db: Session = Depends(get_db), current_user: 
 
 
 @router.post('/live/{room_id}/comment')
-def add_comment(room_id: str, payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def add_comment(room_id: str, payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     record = _find_room_record(db, room_id)
     if not record or not record.is_active:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Room not found')
@@ -406,4 +407,5 @@ def add_comment(room_id: str, payload: dict = Body(...), db: Session = Depends(g
     db.commit()
     if comment.moderation_score > 0.8:
         return {'status': 'blocked', 'reason': 'AI Moderation flagged this content'}
+    await sio.emit('new_comment', comment.__dict__, room=room_id)
     return {'status': 'success', 'comment': comment.__dict__}

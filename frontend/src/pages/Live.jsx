@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import {
+  addLiveComment,
   createLiveRoom,
   endLiveRoom,
   getLiveComments,
@@ -357,17 +358,24 @@ export default function Live() {
   const viewerCount = Number(activeRoom?.viewer_count || 0);
 
   const sendComment = async () => {
-    if (!commentText.trim() || !activeRoom?.id) return;
-    const optimistic = {
-      id: `local-${Date.now()}`,
-      room_id: activeRoom.id,
-      user: currentUser,
-      text: commentText.trim(),
-      created_at: new Date().toISOString(),
-    };
-    setComments((prev) => [...prev, optimistic]);
-    socketManager.emit('send_comment', { room_id: activeRoom.id, text: commentText.trim() });
-    setCommentText('');
+    const text = commentText.trim();
+    if (!text || !activeRoom?.id) return;
+
+    try {
+      const { data } = await addLiveComment({ room_id: activeRoom.id, text });
+      setCommentText('');
+
+      if (data?.status === 'blocked') {
+        pushToast({ type: 'warning', title: 'تم حظر التعليق', description: data?.reason || 'التعليق خالف سياسات البث.' });
+        return;
+      }
+
+      if (!socketManager.connected && data?.comment) {
+        setComments((prev) => [...prev, data.comment]);
+      }
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر إرسال التعليق', description: error?.response?.data?.detail || error?.message });
+    }
   };
 
   const sendHeart = () => {

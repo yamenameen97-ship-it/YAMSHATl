@@ -46,21 +46,17 @@ fastapi_app = FastAPI(
     lifespan=lifespan,
 )
 
-from fastapi.middleware.cors import CORSMiddleware
-
-origins = [
-    "https://yamshatl-1-yg1o.onrender.com",
-    "http://localhost:5173",
-]
-
-app.add_middleware(
+fastapi_app.middleware('http')(api_rate_guard)
+fastapi_app.middleware('http')(security_headers)
+register_error_handlers(fastapi_app)
+fastapi_app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=settings.cors_origins,
+    allow_origin_regex=settings.cors_origin_regex,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=['*'],
+    allow_headers=['*'],
 )
-
 
 if settings.ENABLE_METRICS:
     configure_metrics(fastapi_app, settings.SERVICE_NAME)

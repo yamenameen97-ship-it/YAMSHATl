@@ -9,8 +9,7 @@ const plainHttp = axios.create({
   baseURL: API_BASE,
   withCredentials: true,
   headers: {
-    'X-Requested-With': 'XMLHttpRequest',
-    'X-Yamshat-Client': 'web',
+    Accept: 'application/json',
   },
 });
 

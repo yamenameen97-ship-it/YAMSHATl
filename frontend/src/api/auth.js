@@ -1,5 +1,5 @@
 import API from './axios.js';
-import { BACKEND_ORIGIN } from './config.js';
+import { API_BASE } from './config.js';
 import sessionManager from '../auth/sessionManager.js';
 
 export const loginUser = async (data) => {
@@ -59,10 +59,6 @@ export const getCaptchaChallenge = async () => {
     public: true,
     skipAuth: true,
     skipCsrf: true,
-    headers: {
-      'Cache-Control': 'no-store, no-cache, max-age=0',
-      Pragma: 'no-cache',
-    },
   });
   return response;
 };
@@ -89,13 +85,13 @@ export const logoutAllDevices = () => API.post('/auth/logout-all');
 
 
 export const loginWithGoogle = () => {
-  window.location.href = `${BACKEND_ORIGIN}/auth/google/login`;
+  window.location.href = `${API_BASE}/auth/oauth/google/login`;
 };
 
 export const loginWithFacebook = () => {
-  window.location.href = `${BACKEND_ORIGIN}/auth/facebook/login`;
+  window.location.href = `${API_BASE}/auth/oauth/facebook/login`;
 };
 
 export const loginWithApple = () => {
-  window.location.href = `${BACKEND_ORIGIN}/auth/apple/login`;
+  window.location.href = `${API_BASE}/auth/oauth/apple/login`;
 };

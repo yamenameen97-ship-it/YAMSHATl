@@ -1,36 +1,37 @@
 # Checklist إصلاح الكابتشا و CORS
 
-## تم إصلاحه داخل المشروع
-- تحديث إعدادات `backend/.env` وربط الواجهة بخدمة الـ frontend الحالية `yamshat1-1-yg1o.onrender.com` والـ backend الصحيح `yamshat1-ahj8.onrender.com`.
-- إضافة `CORS_ORIGIN_REGEX` مرن يقبل تغيّر suffix الخاص بخدمات Render لنفس عائلة المشروع.
-- تحسين اشتقاق `cors_origin_regex` داخل `backend/app/core/config.py` ليتعامل مع روابط Render المتغيرة مثل:
-  - `yamshat1-1-yg1o.onrender.com`
-  - `yamshat1-1-yg1o.onrender.com`
-  - `yamshat1-ahj8.onrender.com`
-- إضافة `CORSMiddleware` إلى `gateway/main.py` حتى لا تفشل طلبات `OPTIONS` / `preflight` عند المرور عبر الـ gateway.
-- رفع رقم الـ build في `frontend/src/main.jsx` لإجبار المتصفح على تنظيف التخزين المحلي والـ service worker والكاش القديم.
+## تم إصلاحه داخل المشروع الآن
+- تحويل الواجهة لاستخدام **same-origin proxy** عبر Nginx بدل النداء المباشر للـ backend الخارجي في بيئة Render، وبالتالي انتهت مشكلة CORS في `captcha` و `refresh` حتى لو Render غيّر الدومينات أو الكوكيز عبر خدمة مختلفة.
+- إضافة proxy للمسارات التالية داخل `frontend/nginx.conf`:
+  - `/api/`
+  - `/socket.io/`
+  - `/uploads/`
+- نقل سياسة CSP من `<meta>` إلى **HTTP response header** داخل Nginx، وهذا يزيل تحذير الكونسول الخاص بـ:
+  - `The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a <meta> element`
+- تعديل `public/app-config.js` و `src/public/app-config.js` حتى تعتمد الواجهة على نفس الدومين الحالي (`window.location.origin`) في Render، بدل ربط ثابت مباشر قد يعيد المشكلة.
+- تعديل `frontend/src/api/auth.js` لتقليل احتمالات preflight غير الضروري عند تحميل الكابتشا، وتصحيح روابط OAuth إلى المسارات الصحيحة تحت `/api/auth/oauth/...`.
+- تخفيف headers غير الضرورية في `frontend/src/auth/sessionManager.js` وتقليل مسببات `OPTIONS` الزائدة.
+- رفع رقم الـ build إلى `yamshat-hotfix-20260522-cors-captcha-r4` لإجبار المتصفح على تنظيف الكاش و Service Worker القديم بعد النشر.
 
-## Checklist النشر على Render
-1. أعد نشر خدمة **backend** بعد رفع الملفات الجديدة.
-2. إذا كنت تستخدم **gateway** كخدمة أمامية للـ API، أعد نشرها أيضاً.
-3. تأكد أن متغيرات البيئة في Render مطابقة للقيم التالية:
-   - `FRONTEND_ORIGIN=https://yamshat1-1-yg1o.onrender.com`
-   - `BACKEND_ORIGIN=https://yamshat1-ahj8.onrender.com`
-   - `RENDER_EXTERNAL_URL=https://yamshat1-ahj8.onrender.com`
-   - `CORS_ORIGIN_REGEX=^https://(?:yamshat1(?:-[a-z0-9]+){0,2}|yamshati-1(?:-[a-z0-9]+)?)\.onrender\.com$`
-4. بعد نشر الواجهة، افتح الموقع بمتصفح جديد أو اعمل Hard Refresh.
-5. لو استمرت المشكلة، امسح Site Data / Cookies للموقعين على Render ثم جرّب مرة أخرى.
+## المطلوب بعد رفع الملفات على Render
+1. أعد نشر **خدمة frontend** أولاً.
+2. إذا كان backend منشور بالفعل على:
+   - `https://yamshat1-ahj8.onrender.com`
+   فلا تحتاج تغيير كود backend لهذه المشكلة تحديداً.
+3. افتح الموقع بعد النشر بمتصفح جديد أو استخدم Hard Refresh.
+4. لو استمر الكاش القديم، امسح Site Data للموقع ثم افتحه من جديد.
 
 ## فحص سريع بعد النشر
 - افتح صفحة تسجيل الدخول.
 - تأكد أن الكابتشا تتحمل بدون الرسالة الحمراء.
-- من Network/Console يجب ألا ترى أخطاء:
+- من Console / Network يجب ألا ترى أخطاء:
   - `blocked by CORS policy`
   - `No 'Access-Control-Allow-Origin' header`
   - `net::ERR_FAILED` على `/api/auth/refresh`
-- جرّب Refresh للجلسة أو تسجيل دخول طبيعي.
+- يجب أن ترى الطلبات تخرج من نفس دومين الواجهة مثل:
+  - `https://<frontend>/api/auth/captcha`
+  - `https://<frontend>/api/auth/refresh`
+  وليس مباشرة إلى دومين backend الخارجي.
 
 ## ملاحظة مهمة
-- السبب الجذري كان أن ملفات الواجهة كانت ما زالت تشير إلى backend قديم ومتوقف `yamshat1-ahj8.onrender.com`؛ تم تحويلها إلى الـ backend الحي `yamshat1-ahj8.onrender.com`.
-
-لو Render غيّر suffix الواجهة لاحقاً، الكود المعدل الحالي يفترض أن يستوعب ذلك بدون الحاجة لتعديل يدوي كل مرة، طالما الرابط ضمن نفس عائلة المشروع.
+- هذا الإصلاح أقوى من الاعتماد على CORS فقط، لأنه يخلي الواجهة تتكلم مع الـ API من نفس الـ origin، وبالتالي الكابتشا والكوكيز والـ refresh يشتغلوا بثبات أعلى على Render.

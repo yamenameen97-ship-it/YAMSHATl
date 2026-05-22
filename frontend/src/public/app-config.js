@@ -9,38 +9,16 @@
     return cleaned.endsWith('/api') ? cleaned : `${cleaned}/api`;
   };
   const apiToOrigin = (value) => trim(toApiBase(value).replace(/\/api$/, ''));
-  const safeOrigin = (value) => {
-    try {
-      return trim(new URL(String(value || '').trim()).origin);
-    } catch (_) {
-      return '';
-    }
-  };
+
   const currentOrigin = trim(window.location.origin);
-
-  const inferBackendFromHints = () => {
-    const host = trim(window.location.hostname).toLowerCase();
-
-    // لا نحاول اشتقاق الـ backend من اسم خدمة Render الأمامية لأن suffix
-    // المتغير قد ينتج دومين قديم/خاطئ في بعض الإصدارات.
-    if (/\.onrender\.com$/i.test(host) && trim(DEPLOY_BACKEND_ORIGIN)) {
-      return trim(DEPLOY_BACKEND_ORIGIN);
-    }
-
-    try {
-      const links = Array.from(document.querySelectorAll('link[rel="preconnect"][href], link[rel="dns-prefetch"][href]'));
-      for (const link of links) {
-        const origin = safeOrigin(link.getAttribute('href'));
-        if (origin && origin !== currentOrigin) return origin;
-      }
-    } catch (_) {}
-
-    return currentOrigin;
-  };
+  const currentHost = trim(window.location.hostname).toLowerCase();
+  const isLocalHost = ['localhost', '127.0.0.1'].includes(currentHost);
 
   const params = new URLSearchParams(window.location.search);
   const queryApi = toApiBase(params.get('api'));
   const queryBackend = trim(params.get('backend'));
+  const forceDirectBackend = params.get('directBackend') === '1';
+  const preferSameOriginProxy = !isLocalHost && !forceDirectBackend;
 
   let storedApi = '';
   let storedBackend = '';
@@ -49,53 +27,36 @@
     storedBackend = trim(localStorage.getItem('backendOrigin'));
   } catch (_) {}
 
-  const inferredBackendOrigin = inferBackendFromHints();
-  const inferredApi = inferredBackendOrigin ? `${inferredBackendOrigin}/api` : '';
-  const isRenderHost = (value) => /\.onrender\.com$/i.test(trim(value));
-  const originLooksCurrent = (value) => {
-    const candidate = trim(value);
-    if (!candidate || !inferredBackendOrigin) return false;
-    return candidate === inferredBackendOrigin || candidate === currentOrigin;
-  };
-  const apiLooksCurrent = (value) => {
-    const candidate = toApiBase(value);
-    if (!candidate) return false;
-    return candidate === toApiBase(inferredApi) || candidate === toApiBase(`${currentOrigin}/api`);
-  };
-
-  const safeStoredBackend = originLooksCurrent(storedBackend) || !isRenderHost(storedBackend) ? storedBackend : '';
-  const safeStoredApi = apiLooksCurrent(storedApi) || !isRenderHost(apiToOrigin(storedApi)) ? storedApi : '';
-  const legacyBackendDetected = isRenderHost(storedBackend) && !originLooksCurrent(storedBackend);
-  const legacyApiDetected = isRenderHost(apiToOrigin(storedApi)) && !apiLooksCurrent(storedApi);
+  const proxyBackendOrigin = preferSameOriginProxy ? currentOrigin : '';
+  const proxyApiBase = preferSameOriginProxy ? `${currentOrigin}/api` : '';
   const queryBackendApi = queryBackend ? toApiBase(queryBackend) : '';
+  const directBackendOrigin = trim(DEPLOY_BACKEND_ORIGIN);
+  const directApiBase = toApiBase(DEPLOY_API_BASE);
 
   const backendOrigin =
     trim(queryBackend) ||
     apiToOrigin(queryApi) ||
-    trim(DEPLOY_BACKEND_ORIGIN) ||
-    safeStoredBackend ||
-    apiToOrigin(safeStoredApi) ||
-    inferredBackendOrigin ||
+    proxyBackendOrigin ||
+    trim(storedBackend) ||
+    directBackendOrigin ||
+    apiToOrigin(storedApi) ||
     currentOrigin;
 
   const apiBase =
     toApiBase(queryApi) ||
     queryBackendApi ||
-    safeStoredApi ||
-    toApiBase(DEPLOY_API_BASE) ||
+    proxyApiBase ||
+    toApiBase(storedApi) ||
+    directApiBase ||
     toApiBase(`${backendOrigin}/api`) ||
-    toApiBase(inferredApi) ||
     toApiBase(`${currentOrigin}/api`);
 
   try {
     const previousBackendOrigin = trim(localStorage.getItem('backendOrigin'));
-    if (previousBackendOrigin && previousBackendOrigin !== backendOrigin) {
+    const previousApiBase = toApiBase(localStorage.getItem('apiBase'));
+    if ((previousBackendOrigin && previousBackendOrigin !== backendOrigin) || (previousApiBase && previousApiBase !== apiBase)) {
       localStorage.removeItem('yamshat_csrf_token');
       sessionStorage.removeItem('yamshat_user_session');
-    }
-    if (legacyBackendDetected || legacyApiDetected) {
-      localStorage.removeItem('backendOrigin');
-      localStorage.removeItem('apiBase');
     }
     localStorage.setItem('backendOrigin', backendOrigin);
     localStorage.setItem('apiBase', apiBase);
@@ -105,15 +66,16 @@
   window.APP_API_BASE = apiBase;
   window.APP_CDN_BASE = '';
   window.APP_MEDIA_PROVIDER = window.APP_MEDIA_PROVIDER || 'cloudflare-r2';
-  window.APP_MEDIA_UPLOAD_URL = window.APP_MEDIA_UPLOAD_URL || '/upload';
-  window.APP_MEDIA_RESUMABLE_START_URL = window.APP_MEDIA_RESUMABLE_START_URL || '/upload/resumable/start';
-  window.APP_MEDIA_RESUMABLE_STATUS_URL = window.APP_MEDIA_RESUMABLE_STATUS_URL || '/upload/resumable';
-  window.APP_MEDIA_RESUMABLE_CHUNK_URL = window.APP_MEDIA_RESUMABLE_CHUNK_URL || '/upload/resumable';
-  window.APP_MEDIA_RESUMABLE_COMPLETE_URL = window.APP_MEDIA_RESUMABLE_COMPLETE_URL || '/upload/resumable';
+  window.APP_MEDIA_UPLOAD_URL = window.APP_MEDIA_UPLOAD_URL || `${apiBase}/upload`;
+  window.APP_MEDIA_RESUMABLE_START_URL = window.APP_MEDIA_RESUMABLE_START_URL || `${apiBase}/upload/resumable/start`;
+  window.APP_MEDIA_RESUMABLE_STATUS_URL = window.APP_MEDIA_RESUMABLE_STATUS_URL || `${apiBase}/upload/resumable`;
+  window.APP_MEDIA_RESUMABLE_CHUNK_URL = window.APP_MEDIA_RESUMABLE_CHUNK_URL || `${apiBase}/upload/resumable`;
+  window.APP_MEDIA_RESUMABLE_COMPLETE_URL = window.APP_MEDIA_RESUMABLE_COMPLETE_URL || `${apiBase}/upload/resumable`;
   window.APP_SIGNAL_SERVER_SUPPORT = Boolean(window.APP_SIGNAL_SERVER_SUPPORT || false);
   window.YAMSHAT_CDN_BASE = window.APP_CDN_BASE;
-  window.YAMSHAT_SOCKET_URL = backendOrigin;
+  window.YAMSHAT_SOCKET_URL = preferSameOriginProxy ? currentOrigin : backendOrigin;
   window.YAMSHAT_BACKEND_ORIGIN = backendOrigin;
+  window.YAMSHAT_REAL_BACKEND_ORIGIN = directBackendOrigin || backendOrigin;
   window.YAMSHAT_FRONTEND_ORIGIN = currentOrigin;
-  window.YAMSHAT_DEPLOY_MODE = backendOrigin === currentOrigin ? 'single-service' : 'split-services';
+  window.YAMSHAT_DEPLOY_MODE = preferSameOriginProxy ? 'same-origin-proxy' : (backendOrigin === currentOrigin ? 'single-service' : 'split-services');
 })();

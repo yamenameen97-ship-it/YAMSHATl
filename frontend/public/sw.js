@@ -1,4 +1,4 @@
-const VERSION = 'yamshat-v20260522-004254-1779410574277';
+const VERSION = 'yamshat-v20260522-071209-1779433929346';
 const STATIC_CACHE = `${VERSION}:static`;
 const MEDIA_CACHE = `${VERSION}:media`;
 

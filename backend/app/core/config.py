@@ -261,9 +261,8 @@ class Settings:
                 'http://localhost:3000',
                 'http://localhost:5173',
                 'http://127.0.0.1:5173',
-                'https://yamshat1-1-vg1o.onrender.com',
-                'https://yamshatl.onrender.com',
-                'https://yamshat1-ahj8.onrender.com',
+                'https://yamshatl-1-vg1o.onrender.com',
+                'https://yamshatl-ahj8.onrender.com',
             ]
 
         origins: list[str] = []

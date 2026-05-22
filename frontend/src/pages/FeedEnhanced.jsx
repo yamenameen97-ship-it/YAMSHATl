@@ -1,9 +1,7 @@
 import { useMemo, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import MainLayoutEnhanced from '../components/layout/MainLayout-Enhanced.jsx';
 import MainLayout from '../components/layout/MainLayout.jsx';
-import CreatePostEnhanced from '../components/feed/CreatePost-Enhanced.jsx';
 import PostComposer from '../components/feed/PostComposer.jsx';
 import FeedSkeleton from '../components/feed/FeedSkeleton.jsx';
 import ErrorState from '../components/feedback/ErrorState.jsx';

@@ -7,7 +7,7 @@
     </base-config>
 
     <domain-config cleartextTrafficPermitted="false">
-        <domain includeSubdomains="false">yamshat1-ahj8.onrender.com</domain>
+        <domain includeSubdomains="false">yamshatl.onrender.com</domain>
         <pin-set expiration="2027-12-31">
             <pin digest="SHA-256">T4eoRdbfIYF3G9IOGamqR3Vgye2bNLHQTSCOY8u3y5w=</pin>
             <pin digest="SHA-256">kIdp6NNEd8wsugYyyIYFsi1ylMCED3hZbSR8ZFsa/A4=</pin>
@@ -15,7 +15,7 @@
     </domain-config>
 
     <domain-config cleartextTrafficPermitted="false">
-        <domain includeSubdomains="false">yamshat1-1-yg1o.onrender.com</domain>
+        <domain includeSubdomains="false">yamshat1-11.onrender.com</domain>
         <pin-set expiration="2027-12-31">
             <pin digest="SHA-256">T4eoRdbfIYF3G9IOGamqR3Vgye2bNLHQTSCOY8u3y5w=</pin>
             <pin digest="SHA-256">kIdp6NNEd8wsugYyyIYFsi1ylMCED3hZbSR8ZFsa/A4=</pin>

@@ -67,6 +67,39 @@ def csv_list(value: str) -> list[str]:
     return [item.strip() for item in (value or '').split(',') if item.strip()]
 
 
+def render_origin_regex_from_candidates(*candidates: str) -> str | None:
+    patterns: list[str] = []
+    seen: set[str] = set()
+
+    for candidate in candidates:
+        parsed = urlparse(candidate)
+        host = (parsed.hostname or '').strip().lower()
+        if not host.endswith('.onrender.com'):
+            continue
+
+        service = host.removesuffix('.onrender.com')
+        parts = [part for part in service.split('-') if part]
+        variants: list[str] = [service]
+
+        if len(parts) >= 2 and parts[-1].isdigit():
+            variants.append('-'.join(parts[:-1]))
+        if len(parts) >= 2 and parts[-1].isalnum() and len(parts[-1]) >= 4:
+            variants.append('-'.join(parts[:-1]))
+        if len(parts) >= 3 and parts[-2].isdigit() and parts[-1].isalnum() and len(parts[-1]) >= 4:
+            variants.append('-'.join(parts[:-2]))
+
+        for variant in variants:
+            normalized = variant.strip('-')
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            patterns.append(rf'https://{re.escape(normalized)}(?:-[a-z0-9]+)?\.onrender\.com')
+
+    if not patterns:
+        return None
+    return rf'^(?:{"|".join(patterns)})$'
+
+
 class Settings:
     PROJECT_NAME: str = os.getenv('PROJECT_NAME', 'YAMSHAT API')
     SERVICE_NAME: str = os.getenv('SERVICE_NAME', 'yamshat-backend')
@@ -206,17 +239,17 @@ class Settings:
         if self.CORS_ORIGIN_REGEX_RAW:
             return self.CORS_ORIGIN_REGEX_RAW
 
-        for candidate in [self.FRONTEND_ORIGIN, self.BACKEND_ORIGIN, self.RENDER_EXTERNAL_URL]:
-            parsed = urlparse(candidate)
-            host = (parsed.hostname or '').strip().lower()
-            if not host.endswith('.onrender.com'):
-                continue
-            base = re.sub(r'-\d+(?=\.onrender\.com$)', '', host)
-            service = base.removesuffix('.onrender.com')
-            if service:
-                return rf'^https://{re.escape(service)}(?:-\d+)?\.onrender\.com$'
+        derived = render_origin_regex_from_candidates(
+            self.FRONTEND_ORIGIN,
+            self.BACKEND_ORIGIN,
+            self.RENDER_EXTERNAL_URL,
+            self.RAILWAY_STATIC_URL,
+            *csv_list(self.CORS_ORIGINS_RAW),
+        )
+        if derived:
+            return derived
 
-        # Allow all Render subdomains safely
+        # Allow all Render subdomains safely when explicit origins are unavailable.
         return r'^https://.*\.onrender\.com$'
 
     @property
@@ -229,6 +262,7 @@ class Settings:
                 'http://localhost:5173',
                 'http://127.0.0.1:5173',
                 'https://yamshat1-1-yg1o.onrender.com',
+                'https://yamshat1-1-vg10.onrender.com',
                 'https://yamshat1-ahj8.onrender.com',
                 'https://yamshat1-11.onrender.com',
             ]

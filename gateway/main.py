@@ -4,6 +4,7 @@ from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 
@@ -48,7 +49,28 @@ REQUEST_LATENCY = Histogram(
     ['method', 'path'],
 )
 
+def _csv_list(value: str) -> list[str]:
+    return [item.strip() for item in (value or '').split(',') if item.strip()]
+
+
+CORS_ORIGINS = _csv_list(
+    os.getenv(
+        'CORS_ORIGINS',
+        'http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173',
+    )
+)
+CORS_ORIGIN_REGEX = (os.getenv('CORS_ORIGIN_REGEX') or r'^https://.*\.onrender\.com$').strip()
+
 app = FastAPI(title='YAMSHAT Gateway', version='2.0.0')
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_origin_regex=CORS_ORIGIN_REGEX or None,
+    allow_credentials=True,
+    allow_methods=['*'],
+    allow_headers=['*'],
+    expose_headers=['X-RateLimit-Limit', 'X-RateLimit-Remaining'],
+)
 http_client = httpx.AsyncClient(timeout=30.0)
 
 

@@ -20,9 +20,11 @@
 
   const inferBackendFromHints = () => {
     const host = trim(window.location.hostname).toLowerCase();
-    const renderSibling = host.match(/^(.*)-\d+\.onrender\.com$/i);
-    if (renderSibling?.[1]) {
-      return `${window.location.protocol}//${renderSibling[1]}.onrender.com`;
+
+    // لا نحاول اشتقاق الـ backend من اسم خدمة Render الأمامية لأن suffix
+    // المتغير قد ينتج دومين قديم/خاطئ في بعض الإصدارات.
+    if (/\.onrender\.com$/i.test(host) && trim(DEPLOY_BACKEND_ORIGIN)) {
+      return trim(DEPLOY_BACKEND_ORIGIN);
     }
 
     try {
@@ -63,6 +65,8 @@
 
   const safeStoredBackend = originLooksCurrent(storedBackend) || !isRenderHost(storedBackend) ? storedBackend : '';
   const safeStoredApi = apiLooksCurrent(storedApi) || !isRenderHost(apiToOrigin(storedApi)) ? storedApi : '';
+  const legacyBackendDetected = isRenderHost(storedBackend) && !originLooksCurrent(storedBackend);
+  const legacyApiDetected = isRenderHost(apiToOrigin(storedApi)) && !apiLooksCurrent(storedApi);
   const queryBackendApi = queryBackend ? toApiBase(queryBackend) : '';
 
   const backendOrigin =
@@ -88,6 +92,10 @@
     if (previousBackendOrigin && previousBackendOrigin !== backendOrigin) {
       localStorage.removeItem('yamshat_csrf_token');
       sessionStorage.removeItem('yamshat_user_session');
+    }
+    if (legacyBackendDetected || legacyApiDetected) {
+      localStorage.removeItem('backendOrigin');
+      localStorage.removeItem('apiBase');
     }
     localStorage.setItem('backendOrigin', backendOrigin);
     localStorage.setItem('apiBase', apiBase);

@@ -43,42 +43,57 @@ REQUEST_COUNT = Counter(
     'Total gateway requests',
     ['method', 'path', 'status_code'],
 )
+
 REQUEST_LATENCY = Histogram(
     'yamshat_gateway_latency_seconds',
     'Gateway latency',
     ['method', 'path'],
 )
 
-def _csv_list(value: str) -> list[str]:
-    return [item.strip() for item in (value or '').split(',') if item.strip()]
+# =========================
+# CORS FIX
+# =========================
 
+CORS_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
 
-CORS_ORIGINS = _csv_list(
-    os.getenv(
-        'CORS_ORIGINS',
-        'http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173',
-    )
-)
-CORS_ORIGIN_REGEX = (os.getenv('CORS_ORIGIN_REGEX') or r'^https://.*\.onrender\.com$').strip()
+    # Render frontend
+    "https://yamshatl-1-yg1o.onrender.com",
+]
 
 app = FastAPI(title='YAMSHAT Gateway', version='2.0.0')
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
-    allow_origin_regex=CORS_ORIGIN_REGEX or None,
     allow_credentials=True,
-    allow_methods=['*'],
-    allow_headers=['*'],
-    expose_headers=['X-RateLimit-Limit', 'X-RateLimit-Remaining'],
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=[
+        "X-RateLimit-Limit",
+        "X-RateLimit-Remaining",
+    ],
 )
+
 http_client = httpx.AsyncClient(timeout=30.0)
 
 
 def resolve_upstream(path: str) -> str:
-    for prefix, url in sorted(ROUTE_TABLE.items(), key=lambda item: len(item[0]), reverse=True):
+    for prefix, url in sorted(
+        ROUTE_TABLE.items(),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    ):
         if path.startswith(prefix):
             return url
-    raise HTTPException(status_code=404, detail='No upstream route configured')
+
+    raise HTTPException(
+        status_code=404,
+        detail='No upstream route configured',
+    )
 
 
 @app.get('/')
@@ -94,23 +109,47 @@ async def root() -> dict[str, Any]:
 
 @app.get('/health')
 async def health() -> dict[str, str]:
-    return {'service': 'gateway', 'status': 'ok'}
+    return {
+        'service': 'gateway',
+        'status': 'ok',
+    }
 
 
 @app.get('/metrics', include_in_schema=False)
 async def metrics() -> Response:
-    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+    return Response(
+        generate_latest(),
+        media_type=CONTENT_TYPE_LATEST,
+    )
 
 
 @app.middleware('http')
 async def rate_limit_middleware(request: Request, call_next):
-    if request.url.path in {'/', '/health', '/metrics', '/docs', '/openapi.json'}:
+
+    if request.url.path in {
+        '/',
+        '/health',
+        '/metrics',
+        '/docs',
+        '/openapi.json',
+    }:
         return await call_next(request)
 
     user_id = request.headers.get('X-User-ID', 'anonymous')
-    client_ip = request.headers.get('X-Forwarded-For', request.client.host if request.client else 'unknown')
+
+    client_ip = request.headers.get(
+        'X-Forwarded-For',
+        request.client.host if request.client else 'unknown',
+    )
+
     identity = f'{user_id}:{client_ip}'
-    allowed, limit_value, remaining = consume(identity, request.url.path, time.time())
+
+    allowed, limit_value, remaining = consume(
+        identity,
+        request.url.path,
+        time.time(),
+    )
+
     if not allowed:
         return JSONResponse(
             status_code=429,
@@ -122,22 +161,33 @@ async def rate_limit_middleware(request: Request, call_next):
         )
 
     response = await call_next(request)
+
     response.headers['X-RateLimit-Limit'] = str(limit_value)
     response.headers['X-RateLimit-Remaining'] = str(remaining)
+
     return response
 
 
-@app.api_route('/{path:path}', methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'])
+@app.api_route(
+    '/{path:path}',
+    methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+)
 async def proxy(path: str, request: Request):
+
     full_path = '/' + path
+
     upstream = resolve_upstream(full_path)
+
     target_url = f'{upstream}{full_path}'
 
     body = await request.body()
+
     headers = dict(request.headers)
+
     headers.pop('host', None)
 
     start = time.perf_counter()
+
     upstream_response = await http_client.request(
         request.method,
         target_url,
@@ -145,20 +195,32 @@ async def proxy(path: str, request: Request):
         content=body,
         headers=headers,
     )
+
     elapsed = time.perf_counter() - start
-    REQUEST_LATENCY.labels(method=request.method, path=full_path).observe(elapsed)
+
+    REQUEST_LATENCY.labels(
+        method=request.method,
+        path=full_path,
+    ).observe(elapsed)
+
     REQUEST_COUNT.labels(
         method=request.method,
         path=full_path,
         status_code=str(upstream_response.status_code),
     ).inc()
 
-    excluded_headers = {'content-encoding', 'transfer-encoding', 'connection'}
+    excluded_headers = {
+        'content-encoding',
+        'transfer-encoding',
+        'connection',
+    }
+
     response_headers = {
         key: value
         for key, value in upstream_response.headers.items()
         if key.lower() not in excluded_headers
     }
+
     return Response(
         content=upstream_response.content,
         status_code=upstream_response.status_code,

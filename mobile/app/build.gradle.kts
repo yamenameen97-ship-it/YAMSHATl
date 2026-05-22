@@ -8,7 +8,7 @@ plugins {
 val appBaseUrl = (project.findProperty("APP_BASE_URL") as String?) ?: "https://yamshatl.onrender.com/api/"
 val socketUrl = (project.findProperty("APP_SOCKET_URL") as String?) ?: "https://yamshatl.onrender.com"
 val agoraAppId = (project.findProperty("AGORA_APP_ID") as String?) ?: ""
-val webAppUrl = (project.findProperty("WEB_APP_URL") as String?) ?: "https://yamshat1-11.onrender.com/"
+val webAppUrl = (project.findProperty("WEB_APP_URL") as String?) ?: "https://yamshat1-1-vg1o.onrender.com/"
 val liveKitUrl = (project.findProperty("LIVEKIT_URL") as String?) ?: "wss://yamshat-enqr8c2d.livekit.cloud"
 val primaryAdminEmail = (project.findProperty("PRIMARY_ADMIN_EMAIL") as String?) ?: "yamenameen97@gmail.com"
 

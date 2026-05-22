@@ -46,6 +46,8 @@ const storedApi = toApiBase(readStored('apiBase'));
 const storedBackend = trim(readStored('backendOrigin'));
 const runtimeApi = toApiBase(window.APP_API_BASE || '');
 const runtimeBackendOrigin = trim(window.YAMSHAT_BACKEND_ORIGIN || window.APP_BACKEND_ORIGIN);
+const deployApi = toApiBase(window.YAMSHAT_DEPLOY_API_BASE || '');
+const deployBackendOrigin = trim(window.YAMSHAT_DEPLOY_BACKEND_ORIGIN || apiToOrigin(deployApi));
 const envApi = toApiBase(import.meta.env.VITE_API_BASE || '');
 const envBackendOrigin = trim(import.meta.env.VITE_BACKEND_ORIGIN || apiToOrigin(envApi));
 const envSocketUrl = trim(import.meta.env.VITE_SOCKET_URL || envBackendOrigin);
@@ -56,35 +58,41 @@ const SESSION_STORAGE_KEY = 'yamshat_user_session';
 const CSRF_STORAGE_KEY = 'yamshat_csrf_token';
 
 const isRenderHost = (value) => /\.onrender\.com$/i.test(trim(value));
+const preferredBackendHint = trim(deployBackendOrigin || runtimeBackendOrigin || envBackendOrigin);
+const renderSplitService = isRenderHost(currentOrigin) && Boolean(preferredBackendHint && preferredBackendHint !== currentOrigin);
 const originLooksCurrent = (value) => {
   const candidate = trim(value);
   if (!candidate || !inferredBackendOrigin) return false;
-  return candidate === inferredBackendOrigin || candidate === currentOrigin;
+  if (renderSplitService && candidate === currentOrigin) return false;
+  return candidate === deployBackendOrigin || candidate === runtimeBackendOrigin || candidate === envBackendOrigin || candidate === inferredBackendOrigin || candidate === currentOrigin;
 };
 
 const apiLooksCurrent = (value) => {
   const candidate = toApiBase(value);
   if (!candidate) return false;
-  return candidate === toApiBase(inferredApi) || candidate === toApiBase(`${currentOrigin}/api`);
+  if (renderSplitService && candidate === toApiBase(`${currentOrigin}/api`)) return false;
+  return candidate === deployApi || candidate === runtimeApi || candidate === envApi || candidate === toApiBase(inferredApi) || candidate === toApiBase(`${currentOrigin}/api`);
 };
 
 const safeStoredBackend = originLooksCurrent(storedBackend) || !isRenderHost(storedBackend) ? storedBackend : '';
 const safeStoredApi = apiLooksCurrent(storedApi) || !isRenderHost(apiToOrigin(storedApi)) ? storedApi : '';
-const runtimeBackendIsFrontendOrigin = Boolean(runtimeBackendOrigin && runtimeBackendOrigin === currentOrigin && inferredBackendOrigin !== currentOrigin);
-const runtimeApiIsFrontendOrigin = Boolean(runtimeApi && runtimeApi === toApiBase(`${currentOrigin}/api`) && inferredBackendOrigin !== currentOrigin);
+const runtimeBackendIsFrontendOrigin = Boolean(runtimeBackendOrigin && runtimeBackendOrigin === currentOrigin && renderSplitService);
+const runtimeApiIsFrontendOrigin = Boolean(runtimeApi && runtimeApi === toApiBase(`${currentOrigin}/api`) && renderSplitService);
 const safeRuntimeBackendOrigin = runtimeBackendIsFrontendOrigin ? '' : runtimeBackendOrigin;
 const runtimeApiMatchesRuntimeBackend = Boolean(!safeRuntimeBackendOrigin || !runtimeApi || apiToOrigin(runtimeApi) === safeRuntimeBackendOrigin);
 const safeRuntimeApi = runtimeApiIsFrontendOrigin || !runtimeApiMatchesRuntimeBackend ? '' : runtimeApi;
 const queryBackendApi = queryBackend ? `${queryBackend}/api` : '';
 const runtimeBackendApi = safeRuntimeBackendOrigin ? `${safeRuntimeBackendOrigin}/api` : '';
+const deployBackendApi = deployBackendOrigin ? `${deployBackendOrigin}/api` : '';
 
 export const BACKEND_ORIGIN = trim(
   queryBackend ||
     apiToOrigin(queryApi) ||
+    deployBackendOrigin ||
     safeRuntimeBackendOrigin ||
     envBackendOrigin ||
     safeStoredBackend ||
-    apiToOrigin(safeRuntimeApi || safeStoredApi) ||
+    apiToOrigin(deployApi || safeRuntimeApi || safeStoredApi) ||
     inferredBackendOrigin ||
     currentOrigin
 );
@@ -92,7 +100,9 @@ export const BACKEND_ORIGIN = trim(
 export const API_BASE = toApiBase(
   queryApi ||
     queryBackendApi ||
+    deployApi ||
     safeRuntimeApi ||
+    deployBackendApi ||
     runtimeBackendApi ||
     envApi ||
     safeStoredApi ||
@@ -104,6 +114,7 @@ export const CDN_BASE = trim(window.YAMSHAT_CDN_BASE || window.APP_CDN_BASE || e
 export const SOCKET_URL = trim(
   queryBackend ||
     apiToOrigin(queryApi) ||
+    deployBackendOrigin ||
     safeRuntimeBackendOrigin ||
     envSocketUrl ||
     window.YAMSHAT_SOCKET_URL ||

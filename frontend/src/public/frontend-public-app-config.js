@@ -1,16 +1,26 @@
 (function () {
+  const DEPLOY_BACKEND_ORIGIN = 'https://yamshat1-ahj8.onrender.com';
+  const DEPLOY_API_BASE = 'https://yamshat1-ahj8.onrender.com/api';
+
   const trim = (value) => String(value || '').trim().replace(/\/+$/, '');
+  const ensureApiPath = (value) => {
+    const cleaned = trim(value);
+    if (!cleaned) return '';
+    return cleaned.endsWith('/api') ? cleaned : `${cleaned}/api`;
+  };
+
+  const backendOrigin = trim(DEPLOY_BACKEND_ORIGIN);
+  const apiBase = ensureApiPath(DEPLOY_API_BASE);
   const currentOrigin = trim(window.location.origin);
-  const apiBase = `${currentOrigin}/api`;
 
   try {
-    localStorage.setItem('backendOrigin', currentOrigin);
+    localStorage.setItem('backendOrigin', backendOrigin);
     localStorage.setItem('apiBase', apiBase);
   } catch (_) {}
 
   const uploadBase = `${apiBase}/upload`;
 
-  window.APP_BACKEND_ORIGIN = currentOrigin;
+  window.APP_BACKEND_ORIGIN = backendOrigin;
   window.APP_API_BASE = apiBase;
   window.APP_CDN_BASE = window.APP_CDN_BASE || '';
   window.APP_MEDIA_PROVIDER = window.APP_MEDIA_PROVIDER || 'cloudflare-r2';
@@ -22,8 +32,8 @@
   window.APP_SIGNAL_SERVER_SUPPORT = Boolean(window.APP_SIGNAL_SERVER_SUPPORT || false);
   window.YAMSHAT_API_BASE = apiBase;
   window.YAMSHAT_CDN_BASE = window.APP_CDN_BASE;
-  window.YAMSHAT_SOCKET_URL = currentOrigin;
-  window.YAMSHAT_BACKEND_ORIGIN = currentOrigin;
+  window.YAMSHAT_SOCKET_URL = backendOrigin;
+  window.YAMSHAT_BACKEND_ORIGIN = backendOrigin;
   window.YAMSHAT_FRONTEND_ORIGIN = currentOrigin;
-  window.YAMSHAT_DEPLOY_MODE = 'same-origin-proxy';
+  window.YAMSHAT_DEPLOY_MODE = backendOrigin === currentOrigin ? 'single-service' : 'split-services';
 })();

@@ -1,6 +1,6 @@
 (function () {
-  const DEPLOY_BACKEND_ORIGIN = 'https://yamshatl.onrender.com';
-  const DEPLOY_API_BASE = 'https://yamshatl.onrender.com/api';
+  const DEPLOY_BACKEND_ORIGIN = 'https://yamshat1-ahj8.onrender.com';
+  const DEPLOY_API_BASE = 'https://yamshat1-ahj8.onrender.com/api';
 
   const trim = (value) => String(value || '').trim().replace(/\/+$/, '');
   const ensureApiPath = (value) => {

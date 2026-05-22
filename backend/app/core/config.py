@@ -217,7 +217,7 @@ class Settings:
                 return rf'^https://{re.escape(service)}(?:-\d+)?\.onrender\.com$'
 
         # Allow all Render subdomains safely
-        return r'^https://.*\.onrender\.com$'
+        return none
 
     @property
     def cors_origins(self) -> list[str]:
@@ -229,8 +229,6 @@ class Settings:
                 'http://localhost:5173',
                 'http://127.0.0.1:5173',
                 'https://yamshatl-1-yg1o.onrender.com',
-                'https://yamshatl.onrender.com',
-                'https://yamshatl-11.onrender.com',
             ]
 
         origins: list[str] = []

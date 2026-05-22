@@ -229,6 +229,11 @@ class Settings:
                 'http://localhost:5173',
                 'http://127.0.0.1:5173',
                 'https://yamshatl-1-yg1o.onrender.com',
+<<<<<<< Updated upstream
+=======
+                'https://yamshatl-ahj8.onrender.com',
+                'https://yamshatl-11.onrender.com',
+>>>>>>> Stashed changes
             ]
 
         origins: list[str] = []

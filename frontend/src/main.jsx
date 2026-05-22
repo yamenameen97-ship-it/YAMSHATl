@@ -14,7 +14,7 @@ import notificationService from './services/notificationService.js';
 import "./styles/mobile-optimization.css";
 import "./styles/performance.css";
 
-const BUILD_ID = 'yamshat-hotfix-20260522-cors-captcha-r3';
+const BUILD_ID = 'yamshat-hotfix-20260522-cors-captcha-r2';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

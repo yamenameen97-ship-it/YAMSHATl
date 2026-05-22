@@ -3,16 +3,13 @@ import Input from '../ui/Input.jsx';
 
 export default function CaptchaBox({ challenge, captcha, value, onChange, onRefresh, loading = false, disabled = false, error = '' }) {
   const currentChallenge = challenge || captcha || null;
-  const hasQuestion = Boolean(currentChallenge?.question);
 
   return (
     <div className="captcha-box">
       <div className="captcha-row">
         <div>
           <div className="field-label">كابتشا الأمان</div>
-          <div className={`captcha-question${hasQuestion ? '' : ' is-placeholder'}`} dir="ltr" lang="en" aria-live="polite">
-            {currentChallenge?.question || '...'}
-          </div>
+          <div className="captcha-question">{currentChallenge?.question || '...'}</div>
         </div>
         <Button type="button" variant="secondary" onClick={onRefresh} loading={loading} disabled={disabled || loading} className="captcha-refresh-btn">
           تحديث
@@ -26,7 +23,6 @@ export default function CaptchaBox({ challenge, captcha, value, onChange, onRefr
         autoComplete="off"
         name="captcha_answer"
         placeholder="اكتب الناتج"
-        pattern="[0-9\-]+"
         value={value ?? ''}
         onChange={onChange}
         disabled={disabled || loading || !currentChallenge?.captcha_id}

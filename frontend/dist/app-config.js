@@ -23,7 +23,7 @@
 
     // لا نحاول اشتقاق الـ backend من اسم خدمة Render الأمامية، لأن Render
     // قد يضيف suffix متغير مثل -vg1o، ومحاولة قصّه قد تُنتج
-    // دومين قديم/خاطئ مثل yamshat1.onrender.com.
+    // دومين قديم/خاطئ مثل yamshat1-ahj8.onrender.com.
     if (/\.onrender\.com$/i.test(host) && trim(DEPLOY_BACKEND_ORIGIN)) {
       return trim(DEPLOY_BACKEND_ORIGIN);
     }

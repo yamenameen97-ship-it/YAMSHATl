@@ -17,17 +17,14 @@
     }
   };
   const currentOrigin = trim(window.location.origin);
-  const deployBackendOrigin = trim(DEPLOY_BACKEND_ORIGIN || apiToOrigin(DEPLOY_API_BASE));
-  const deployApiBase = toApiBase(DEPLOY_API_BASE || deployBackendOrigin);
-  const renderSplitService = /\.onrender\.com$/i.test(currentOrigin) && Boolean(deployBackendOrigin && deployBackendOrigin !== currentOrigin);
 
   const inferBackendFromHints = () => {
     const host = trim(window.location.hostname).toLowerCase();
 
-    // لا نحاول اشتقاق الـ backend من اسم خدمة Render الأمامية، لأن suffix
-    // المتغيّر قد يوجّه الواجهة إلى نفس خدمة الـ frontend وبالتالي يعيد 404 للكابتشا.
-    if (/\.onrender\.com$/i.test(host) && deployBackendOrigin) {
-      return deployBackendOrigin;
+    // لا نحاول اشتقاق الـ backend من اسم خدمة Render الأمامية لأن suffix
+    // المتغير قد ينتج دومين قديم/خاطئ في بعض الإصدارات.
+    if (/\.onrender\.com$/i.test(host) && trim(DEPLOY_BACKEND_ORIGIN)) {
+      return trim(DEPLOY_BACKEND_ORIGIN);
     }
 
     try {
@@ -55,33 +52,27 @@
   const inferredBackendOrigin = inferBackendFromHints();
   const inferredApi = inferredBackendOrigin ? `${inferredBackendOrigin}/api` : '';
   const isRenderHost = (value) => /\.onrender\.com$/i.test(trim(value));
-  const isCurrentRenderOrigin = (value) => trim(value) === currentOrigin && isRenderHost(currentOrigin);
-  const isCurrentRenderApi = (value) => toApiBase(value) === toApiBase(`${currentOrigin}/api`) && isRenderHost(currentOrigin);
   const originLooksCurrent = (value) => {
     const candidate = trim(value);
     if (!candidate || !inferredBackendOrigin) return false;
-    if (renderSplitService && candidate === currentOrigin) return false;
-    return candidate === deployBackendOrigin || candidate === inferredBackendOrigin || candidate === currentOrigin;
+    return candidate === inferredBackendOrigin || candidate === currentOrigin;
   };
   const apiLooksCurrent = (value) => {
     const candidate = toApiBase(value);
     if (!candidate) return false;
-    if (renderSplitService && candidate === toApiBase(`${currentOrigin}/api`)) return false;
-    return candidate === deployApiBase || candidate === toApiBase(inferredApi) || candidate === toApiBase(`${currentOrigin}/api`);
+    return candidate === toApiBase(inferredApi) || candidate === toApiBase(`${currentOrigin}/api`);
   };
 
-  const storedBackendIsLegacyCurrentOrigin = renderSplitService && isCurrentRenderOrigin(storedBackend);
-  const storedApiIsLegacyCurrentOrigin = renderSplitService && isCurrentRenderApi(storedApi);
-  const safeStoredBackend = storedBackendIsLegacyCurrentOrigin ? '' : (originLooksCurrent(storedBackend) || !isRenderHost(storedBackend) ? storedBackend : '');
-  const safeStoredApi = storedApiIsLegacyCurrentOrigin ? '' : (apiLooksCurrent(storedApi) || !isRenderHost(apiToOrigin(storedApi)) ? storedApi : '');
-  const legacyBackendDetected = storedBackendIsLegacyCurrentOrigin || (isRenderHost(storedBackend) && !originLooksCurrent(storedBackend));
-  const legacyApiDetected = storedApiIsLegacyCurrentOrigin || (isRenderHost(apiToOrigin(storedApi)) && !apiLooksCurrent(storedApi));
+  const safeStoredBackend = originLooksCurrent(storedBackend) || !isRenderHost(storedBackend) ? storedBackend : '';
+  const safeStoredApi = apiLooksCurrent(storedApi) || !isRenderHost(apiToOrigin(storedApi)) ? storedApi : '';
+  const legacyBackendDetected = isRenderHost(storedBackend) && !originLooksCurrent(storedBackend);
+  const legacyApiDetected = isRenderHost(apiToOrigin(storedApi)) && !apiLooksCurrent(storedApi);
   const queryBackendApi = queryBackend ? toApiBase(queryBackend) : '';
 
   const backendOrigin =
     trim(queryBackend) ||
     apiToOrigin(queryApi) ||
-    deployBackendOrigin ||
+    trim(DEPLOY_BACKEND_ORIGIN) ||
     safeStoredBackend ||
     apiToOrigin(safeStoredApi) ||
     inferredBackendOrigin ||
@@ -90,8 +81,8 @@
   const apiBase =
     toApiBase(queryApi) ||
     queryBackendApi ||
-    deployApiBase ||
     safeStoredApi ||
+    toApiBase(DEPLOY_API_BASE) ||
     toApiBase(`${backendOrigin}/api`) ||
     toApiBase(inferredApi) ||
     toApiBase(`${currentOrigin}/api`);
@@ -105,30 +96,24 @@
     if (legacyBackendDetected || legacyApiDetected) {
       localStorage.removeItem('backendOrigin');
       localStorage.removeItem('apiBase');
-      localStorage.removeItem('yamshat_csrf_token');
-      sessionStorage.removeItem('yamshat_user_session');
     }
     localStorage.setItem('backendOrigin', backendOrigin);
     localStorage.setItem('apiBase', apiBase);
   } catch (_) {}
 
-  const uploadBase = `${apiBase}/upload`;
-
   window.APP_BACKEND_ORIGIN = backendOrigin;
   window.APP_API_BASE = apiBase;
   window.APP_CDN_BASE = '';
   window.APP_MEDIA_PROVIDER = window.APP_MEDIA_PROVIDER || 'cloudflare-r2';
-  window.APP_MEDIA_UPLOAD_URL = window.APP_MEDIA_UPLOAD_URL || uploadBase;
-  window.APP_MEDIA_RESUMABLE_START_URL = window.APP_MEDIA_RESUMABLE_START_URL || `${uploadBase}/resumable/start`;
-  window.APP_MEDIA_RESUMABLE_STATUS_URL = window.APP_MEDIA_RESUMABLE_STATUS_URL || `${uploadBase}/resumable`;
-  window.APP_MEDIA_RESUMABLE_CHUNK_URL = window.APP_MEDIA_RESUMABLE_CHUNK_URL || `${uploadBase}/resumable`;
-  window.APP_MEDIA_RESUMABLE_COMPLETE_URL = window.APP_MEDIA_RESUMABLE_COMPLETE_URL || `${uploadBase}/resumable`;
+  window.APP_MEDIA_UPLOAD_URL = window.APP_MEDIA_UPLOAD_URL || '/upload';
+  window.APP_MEDIA_RESUMABLE_START_URL = window.APP_MEDIA_RESUMABLE_START_URL || '/upload/resumable/start';
+  window.APP_MEDIA_RESUMABLE_STATUS_URL = window.APP_MEDIA_RESUMABLE_STATUS_URL || '/upload/resumable';
+  window.APP_MEDIA_RESUMABLE_CHUNK_URL = window.APP_MEDIA_RESUMABLE_CHUNK_URL || '/upload/resumable';
+  window.APP_MEDIA_RESUMABLE_COMPLETE_URL = window.APP_MEDIA_RESUMABLE_COMPLETE_URL || '/upload/resumable';
   window.APP_SIGNAL_SERVER_SUPPORT = Boolean(window.APP_SIGNAL_SERVER_SUPPORT || false);
   window.YAMSHAT_CDN_BASE = window.APP_CDN_BASE;
   window.YAMSHAT_SOCKET_URL = backendOrigin;
   window.YAMSHAT_BACKEND_ORIGIN = backendOrigin;
-  window.YAMSHAT_DEPLOY_BACKEND_ORIGIN = deployBackendOrigin;
-  window.YAMSHAT_DEPLOY_API_BASE = deployApiBase;
   window.YAMSHAT_FRONTEND_ORIGIN = currentOrigin;
   window.YAMSHAT_DEPLOY_MODE = backendOrigin === currentOrigin ? 'single-service' : 'split-services';
 })();

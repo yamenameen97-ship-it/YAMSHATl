@@ -92,8 +92,8 @@ export const notificationService = {
       if (getAuthToken()) {
         await this.registerDevice();
       }
-      if ('Notification' in window && Notification.permission === 'default') {
-        await Notification.requestPermission();
+      if ('Notification' in window) {
+        localStorage.setItem('yamshat_notification_permission', Notification.permission || 'default');
       }
       await this.processOfflineQueue();
       window.addEventListener('online', () => this.processOfflineQueue());

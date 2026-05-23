@@ -1,7 +1,6 @@
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getNotifications } from '../../api/notifications.js';
 import { getLiveRooms } from '../../api/live.js';
 import { BACKEND_ORIGIN } from '../../api/config.js';
 import { clearStoredUser, getAuthToken, getCurrentUsername, getStoredUserSnapshot } from '../../utils/auth.js';
@@ -9,6 +8,7 @@ import { getCsrfToken } from '../../utils/csrf.js';
 import { redirectToAppPath } from '../../utils/router.js';
 import { useAppStore } from '../../store/appStore.js';
 import { selectUnreadTotal, useChatStore } from '../../store/appStore.js';
+import { selectUnreadNotificationsCount, useNotificationStore } from '../../store/notificationStore.js';
 
 const PRIMARY_ITEMS = [
   { to: '/', label: 'الرئيسية', match: (path) => path === '/' },
@@ -51,13 +51,6 @@ export default function Topbar() {
   const [loggingOut, setLoggingOut] = useState(false);
   const closeTimerRef = useRef(null);
 
-  const { data: notifications = [] } = useQuery({
-    queryKey: ['topbar-notifications-count'],
-    queryFn: async () => (await getNotifications(20)).data || [],
-    staleTime: 15_000,
-    refetchInterval: 20_000,
-  });
-
   const { data: liveRooms = [] } = useQuery({
     queryKey: ['topbar-live-rooms'],
     queryFn: async () => {
@@ -71,10 +64,7 @@ export default function Topbar() {
     refetchInterval: 30_000,
   });
 
-  const unreadNotificationCount = useMemo(
-    () => (Array.isArray(notifications) ? notifications.filter((item) => !item.is_read).length : 0),
-    [notifications],
-  );
+  const unreadNotificationCount = useNotificationStore(selectUnreadNotificationsCount);
 
   const activeLiveCount = useMemo(
     () => (Array.isArray(liveRooms) ? liveRooms.filter((room) => room.is_active).length : 0),

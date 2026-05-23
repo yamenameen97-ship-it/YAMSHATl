@@ -4,6 +4,7 @@ import { getUsers } from '../../api/users.js';
 import { getLiveRooms } from '../../api/live.js';
 import { useAppStore } from '../../store/appStore.js';
 import { selectUnreadTotal, useChatStore } from '../../store/appStore.js';
+import { selectUnreadNotificationsCount, useNotificationStore } from '../../store/notificationStore.js';
 import { avatarGradient, formatCompactNumber, initialsFromName } from '../yamshat/YamshatDesign.js';
 
 const NAV_ITEMS = [
@@ -42,7 +43,7 @@ function Avatar({ name, src, size = 42 }) {
 }
 
 export default function Sidebar() {
-  const notificationCount = 0;
+  const notificationCount = useNotificationStore(selectUnreadNotificationsCount);
   const unreadInboxCount = useChatStore(selectUnreadTotal);
   const language = useAppStore((state) => state.language);
 

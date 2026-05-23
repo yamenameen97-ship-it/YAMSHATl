@@ -1,12 +1,21 @@
 (function () {
-  const FRONTEND_ORIGIN = 'https://yamshatl-1-yg1o.onrender.com';
-  const BACKEND_ORIGIN = 'https://yamshatl-ahj8.onrender.com';
-  const API_BASE = 'https://yamshatl-ahj8.onrender.com/api';
+  const trim = (value) => String(value || '').trim().replace(/\/+$/, '');
+  const toApiBase = (value) => {
+    const cleaned = trim(value);
+    if (!cleaned) return '';
+    return cleaned.endsWith('/api') ? cleaned : `${cleaned}/api`;
+  };
+
+  const FRONTEND_ORIGIN = trim(window.location.origin);
+  const runtimeBackendOrigin = trim(window.__APP_BACKEND_ORIGIN__ || localStorage.getItem('backendOrigin'));
+  const runtimeApiBase = trim(window.__APP_API_BASE__ || localStorage.getItem('apiBase'));
+  const BACKEND_ORIGIN = runtimeBackendOrigin || trim(runtimeApiBase.replace(/\/api$/i, '')) || FRONTEND_ORIGIN;
+  const API_BASE = toApiBase(runtimeApiBase || BACKEND_ORIGIN || FRONTEND_ORIGIN);
   const uploadBase = `${API_BASE}/upload`;
 
   try {
-    const previousBackendOrigin = String(localStorage.getItem('backendOrigin') || '').trim();
-    if (previousBackendOrigin && previousBackendOrigin !== BACKEND_ORIGIN) {
+    const previousBackendOrigin = trim(localStorage.getItem('backendOrigin'));
+    if (previousBackendOrigin && BACKEND_ORIGIN && previousBackendOrigin !== BACKEND_ORIGIN) {
       localStorage.removeItem('yamshat_csrf_token');
       localStorage.removeItem('yamshat_user_session');
       localStorage.removeItem('yamshatAuth');
@@ -17,8 +26,8 @@
       sessionStorage.removeItem('user');
     }
 
-    localStorage.setItem('backendOrigin', BACKEND_ORIGIN);
-    localStorage.setItem('apiBase', API_BASE);
+    if (BACKEND_ORIGIN) localStorage.setItem('backendOrigin', BACKEND_ORIGIN);
+    if (API_BASE) localStorage.setItem('apiBase', API_BASE);
   } catch (_) {}
 
   window.APP_BACKEND_ORIGIN = BACKEND_ORIGIN;
@@ -36,5 +45,5 @@
   window.YAMSHAT_SOCKET_URL = BACKEND_ORIGIN;
   window.YAMSHAT_BACKEND_ORIGIN = BACKEND_ORIGIN;
   window.YAMSHAT_FRONTEND_ORIGIN = FRONTEND_ORIGIN;
-  window.YAMSHAT_DEPLOY_MODE = 'split-services';
+  window.YAMSHAT_DEPLOY_MODE = BACKEND_ORIGIN && FRONTEND_ORIGIN && BACKEND_ORIGIN !== FRONTEND_ORIGIN ? 'split-services' : 'same-origin';
 })();

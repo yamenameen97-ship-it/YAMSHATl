@@ -15,6 +15,7 @@ import usePageAnalytics from './hooks/usePageAnalytics.js';
 import useChatRealtimeEnhanced from './hooks/useChatRealtimeEnhanced.js';
 import { useAppStore } from './store/appStore.js';
 import './styles/theme.css';
+import { NotificationRuntimeBridge } from './features/notifications/index.js';
 
 const AdminDashboard = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminDashboard })));
 const AdminUsers = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminUsers })));
@@ -100,6 +101,7 @@ function AppGuards() {
       <AppStatusBanner />
       <InstallPrompt />
       <OfflineExperience />
+      <NotificationRuntimeBridge />
       {activeRequests > 0 ? <div className="global-progress-bar" /> : null}
     </>
   );

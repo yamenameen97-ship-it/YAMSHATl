@@ -100,6 +100,42 @@ def render_origin_regex_from_candidates(*candidates: str) -> str | None:
     return rf'^(?:{"|".join(patterns)})$'
 
 
+def combine_origin_regex(*patterns: str) -> str | None:
+    cleaned: list[str] = []
+    seen: set[str] = set()
+
+    for pattern in patterns:
+        value = (pattern or '').strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        cleaned.append(f'(?:{value})')
+
+    if not cleaned:
+        return None
+    return rf'^(?:{"|".join(cleaned)})$'
+
+
+def should_enable_render_wildcard(*candidates: str) -> bool:
+    for candidate in candidates:
+        parsed = urlparse((candidate or '').strip())
+        host = (parsed.hostname or '').strip().lower()
+        if host.endswith('.onrender.com'):
+            return True
+    return False
+
+
+def normalize_regex_pattern(pattern: str | None) -> str:
+    value = (pattern or '').strip()
+    if not value:
+        return ''
+    if value.startswith('^'):
+        value = value[1:]
+    if value.endswith('$'):
+        value = value[:-1]
+    return value
+
+
 class Settings:
     PROJECT_NAME: str = os.getenv('PROJECT_NAME', 'YAMSHAT API')
     SERVICE_NAME: str = os.getenv('SERVICE_NAME', 'yamshat-backend')
@@ -236,18 +272,25 @@ class Settings:
 
     @property
     def cors_origin_regex(self) -> str | None:
-        if self.CORS_ORIGIN_REGEX_RAW:
-            return self.CORS_ORIGIN_REGEX_RAW
-
-        derived = render_origin_regex_from_candidates(
+        candidates = [
             self.FRONTEND_ORIGIN,
             self.BACKEND_ORIGIN,
             self.RENDER_EXTERNAL_URL,
             self.RAILWAY_STATIC_URL,
             *csv_list(self.CORS_ORIGINS_RAW),
-        )
-        if derived:
-            return derived
+        ]
+        raw_pattern = normalize_regex_pattern(self.CORS_ORIGIN_REGEX_RAW)
+        derived_pattern = normalize_regex_pattern(render_origin_regex_from_candidates(*candidates))
+
+        render_wildcard = ''
+        if should_enable_render_wildcard(*candidates):
+            # Render often changes service suffixes (مثل -vg1o / -yg1o).
+            # هذا الـ fallback يمنع توقف تسجيل الدخول بسبب تغيير suffix فقط.
+            render_wildcard = r'https://[a-z0-9-]+\.onrender\.com'
+
+        combined = combine_origin_regex(raw_pattern, derived_pattern, render_wildcard)
+        if combined:
+            return combined
 
         # Allow all Render subdomains safely when explicit origins are unavailable.
         return r'^https://.*\.onrender\.com$'

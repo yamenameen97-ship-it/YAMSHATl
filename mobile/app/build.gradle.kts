@@ -133,6 +133,9 @@ dependencies {
     implementation("com.github.bumptech.glide:glide:4.16.0")
     implementation("io.livekit:livekit-android:2.25.0")
     implementation("org.whispersystems:signal-protocol-android:2.8.1")
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-ui:1.4.1")
+    implementation("androidx.media3:media3-datasource:1.4.1")
     implementation("io.socket:socket.io-client:2.1.1") {
         exclude(group = "org.json", module = "json")
     }

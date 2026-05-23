@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import useInfiniteScroll from '../hooks/feed/useInfiniteScroll.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import PostComposer from '../components/feed/PostComposer.jsx';
@@ -7,6 +8,8 @@ import { likePost } from '../api/posts.js';
 import { getUsers, followUser } from '../api/users.js';
 import { getLiveRooms } from '../api/live.js';
 import { avatarGradient, formatCompactNumber, formatTimeAgo, initialsFromName } from '../components/yamshat/YamshatDesign.js';
+import { buildTrendingPosts, rankSuggestedUsers } from '../services/recommendationService.js';
+import { recordFeedInteraction } from '../features/feed/personalization.js';
 import { getCurrentUsername } from '../utils/auth.js';
 
 function Avatar({ name, src, size = 46, ring = false }) {
@@ -107,7 +110,12 @@ function FeedPostCard({ post, onLike }) {
 export default function Feed() {
   const queryClient = useQueryClient();
   const currentUsername = getCurrentUsername();
-  const { posts = [], isLoading, refetch } = useFeed({ limit: 10, pollingInterval: 25_000 });
+  const { posts = [], isLoading, isFetchingNextPage, hasNextPage, fetchNextPage, refetch } = useFeed({ limit: 10, pollingInterval: 25_000 });
+  const loadMoreRef = useInfiniteScroll({
+    hasMore: hasNextPage,
+    isLoading: isLoading || isFetchingNextPage,
+    onLoadMore: fetchNextPage,
+  });
 
   const { data: users = [] } = useQuery({
     queryKey: ['feed-users-sidebar'],
@@ -149,7 +157,7 @@ export default function Feed() {
   }, [liveRooms, users]);
 
   const trendingPosts = useMemo(
-    () => [...posts].sort((a, b) => Number((b.likes_count ?? b.like_count ?? b.likes ?? 0)) - Number((a.likes_count ?? a.like_count ?? a.likes ?? 0))).slice(0, 3),
+    () => buildTrendingPosts(posts, { limit: 3 }),
     [posts],
   );
 
@@ -159,7 +167,7 @@ export default function Feed() {
   );
 
   const suggestedUsers = useMemo(
-    () => users.filter((user) => user.username !== currentUsername).slice(0, 3),
+    () => rankSuggestedUsers(users, currentUsername).slice(0, 3),
     [users, currentUsername],
   );
 
@@ -188,8 +196,17 @@ export default function Feed() {
             {isLoading ? <div className="yam-empty-block">جارٍ تحميل المنشورات...</div> : null}
             {!isLoading && !posts.length ? <div className="yam-empty-block">لا توجد منشورات حالياً.</div> : null}
             {posts.map((post) => (
-              <FeedPostCard key={post.id} post={post} onLike={(postId) => likeMutation.mutate(postId)} />
+              <FeedPostCard
+                key={post.id}
+                post={post}
+                onLike={(postId) => {
+                  recordFeedInteraction({ type: 'like', post });
+                  likeMutation.mutate(postId);
+                }}
+              />
             ))}
+            <div ref={loadMoreRef} style={{ height: 4 }} />
+            {isFetchingNextPage ? <div className="yam-empty-block">جارٍ تحميل المزيد...</div> : null}
           </div>
         </div>
 

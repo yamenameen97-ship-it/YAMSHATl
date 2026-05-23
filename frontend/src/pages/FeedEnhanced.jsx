@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import useInfiniteScroll from '../hooks/feed/useInfiniteScroll.js';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import MainLayout from '../components/layout/MainLayout.jsx';
@@ -17,6 +18,7 @@ import { getCurrentUsername } from '../utils/auth.js';
 import { selectUnreadTotal, useChatStore } from '../store/appStore.js';
 import logger from '../utils/logger.js';
 import { useToast } from '../components/admin/ToastProvider.jsx';
+import { recordFeedInteraction } from '../features/feed/personalization.js';
 
 const LEFT_NAV_ITEMS = [
   { to: '/', label: 'الرئيسية', icon: '⌂' },
@@ -190,7 +192,22 @@ export default function FeedEnhanced() {
   const [localBrandPost, setLocalBrandPost] = useState({ likes: 532, liked: false });
   const [savedPostMap, setSavedPostMap] = useState({});
 
-  const { posts = [], isLoading, isError, refetch } = useFeed({ limit: 10, pollingInterval: 25_000 });
+  const {
+    posts = [],
+    trendingTopics: rankedTrendingTopics = [],
+    isLoading,
+    isError,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useFeed({ limit: 10, pollingInterval: 25_000 });
+
+  const loadMoreRef = useInfiniteScroll({
+    hasMore: hasNextPage,
+    isLoading: isLoading || isFetchingNextPage,
+    onLoadMore: fetchNextPage,
+  });
 
   const { data: users = [] } = useQuery({
     queryKey: ['feed-desktop-users'],
@@ -223,6 +240,7 @@ export default function FeedEnhanced() {
   }, [users, currentUsername]);
 
   const trendingTopics = useMemo(() => {
+    if (rankedTrendingTopics.length) return rankedTrendingTopics.slice(0, 3);
     const localTopics = buildTrendingHashtags(posts).slice(0, 3);
     if (localTopics.length) return localTopics;
     return [
@@ -230,7 +248,7 @@ export default function FeedEnhanced() {
       { tag: '#تقنية', count: 8700 },
       { tag: '#تصميم', count: 6200 },
     ];
-  }, [posts]);
+  }, [posts, rankedTrendingTopics]);
 
   const stats = useMemo(() => ({
     posts: Number(posts.length || 128),
@@ -364,6 +382,7 @@ export default function FeedEnhanced() {
     if (!post?.id) return;
     const nextSavedState = !(savedPostMap[post.id] ?? Boolean(post.is_saved));
     try {
+      recordFeedInteraction({ type: nextSavedState ? 'save' : 'view', post });
       await saveMutation.mutateAsync(post.id);
       setSavedPostMap((prev) => ({ ...prev, [post.id]: nextSavedState }));
       pushToast({ type: 'success', title: nextSavedState ? 'تم حفظ المنشور' : 'تمت إزالة المنشور من المحفوظات' });
@@ -377,6 +396,7 @@ export default function FeedEnhanced() {
     const postUrl = `${window.location.origin}/post/${encodeURIComponent(post.id)}`;
     try {
       if (navigator.share) {
+        recordFeedInteraction({ type: 'share', post });
         await navigator.share({ title: post.username || 'Yamshat', text: post.content || 'شاهد هذا المنشور على يام شات', url: postUrl });
       } else if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(postUrl);
@@ -498,7 +518,10 @@ export default function FeedEnhanced() {
               <DesktopPostCard
                 key={post.id}
                 post={post}
-                onLike={(postId) => likeMutation.mutate(postId)}
+                onLike={(postId) => {
+                  recordFeedInteraction({ type: 'like', post });
+                  likeMutation.mutate(postId);
+                }}
                 onDelete={(postId) => deleteMutation.mutate(postId)}
                 onComment={handleCommentOpen}
                 onShare={handleSharePost}
@@ -508,6 +531,8 @@ export default function FeedEnhanced() {
                 onToggleLocalLike={handleToggleLocalLike}
               />
             ))}
+            <div ref={loadMoreRef} style={{ height: 4 }} />
+            {isFetchingNextPage ? <FeedSkeleton count={1} /> : null}
           </div>
         </section>
 

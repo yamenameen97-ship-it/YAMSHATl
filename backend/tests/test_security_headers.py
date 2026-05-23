@@ -33,7 +33,7 @@ class SecurityHeadersTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_allows_render_origin_regex_post(self):
-        response = self.client.post('/api/echo', headers={'Origin': 'https://yamshatl-1-yg1o.onrender.com'})
+        response = self.client.post('/api/echo', headers={'Origin': 'https://yamshat1-1-vg1o.onrender.com'})
         self.assertEqual(response.status_code, 200)
 
     def test_allows_xhr_post_without_origin(self):

@@ -33,11 +33,7 @@ export function levenshteinDistance(a = '', b = '') {
   for (let i = 1; i <= left.length; i += 1) {
     for (let j = 1; j <= right.length; j += 1) {
       const cost = left[i - 1] === right[j - 1] ? 0 : 1;
-      matrix[i][j] = Math.min(
-        matrix[i - 1][j] + 1,
-        matrix[i][j - 1] + 1,
-        matrix[i - 1][j - 1] + cost,
-      );
+      matrix[i][j] = Math.min(matrix[i - 1][j] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j - 1] + cost);
     }
   }
 
@@ -49,12 +45,13 @@ export function fuzzyScore(query = '', candidate = '') {
   const text = normalizeSearchText(candidate);
   if (!q || !text) return 0;
   if (q === text) return 1;
-  if (text.startsWith(q)) return 0.96;
-  if (text.includes(q)) return 0.9;
+  if (text.startsWith(q)) return 0.97;
+  if (text.includes(q)) return 0.92;
 
   const qTokens = tokenize(q);
   const cTokens = tokenize(text);
   const tokenHits = qTokens.reduce((score, token) => {
+    if (cTokens.some((item) => item === token)) return score + 0.28;
     if (cTokens.some((item) => item.startsWith(token))) return score + 0.22;
     if (cTokens.some((item) => item.includes(token))) return score + 0.16;
     return score;
@@ -62,25 +59,44 @@ export function fuzzyScore(query = '', candidate = '') {
 
   const distance = levenshteinDistance(q, text.slice(0, Math.max(q.length, Math.min(text.length, q.length + 8))));
   const distanceScore = Math.max(0, 1 - (distance / Math.max(q.length, text.length, 1)));
-  return Math.min(0.89, Math.max(tokenHits, distanceScore * 0.78));
+  return Math.min(0.91, Math.max(tokenHits, distanceScore * 0.8));
 }
 
 export function extractHashtags(text = '') {
   return Array.from(new Set((String(text || '').match(/#[\p{L}\p{N}_-]+/gu) || []).map((item) => item.toLowerCase())));
 }
 
+export function detectSearchIntent(query = '') {
+  const raw = String(query || '').trim();
+  const normalized = normalizeSearchText(raw);
+  const rawTokens = raw.split(/\s+/).filter(Boolean);
+  const tokens = tokenize(raw);
+  const hashtags = extractHashtags(raw);
+  const startsWithHashtag = raw.startsWith('#');
+  return {
+    raw,
+    normalized,
+    rawTokens,
+    tokens,
+    hashtags,
+    startsWithHashtag,
+    isLive: Boolean(raw),
+  };
+}
+
+function routeForType(type, item = {}) {
+  if (type === 'users') return `/profile/${encodeURIComponent(item.username || item.handle || item.name || '')}`;
+  if (type === 'posts') return item.id ? `/post/${encodeURIComponent(item.id)}` : '/';
+  if (type === 'reels') return '/reels';
+  if (type === 'groups') return item.id ? `/groups?group=${encodeURIComponent(item.id)}` : '/groups';
+  return '/search';
+}
+
 function toSearchEntry(type, item = {}) {
   const username = item.username || item.handle || item.name || '';
-  const title = item.title || item.name || item.content || username || 'Untitled';
+  const title = item.title || item.name || item.content || item.caption || username || 'Untitled';
   const description = item.description || item.bio || item.content || item.caption || '';
   const hashtags = item.hashtags || extractHashtags(`${item.content || ''} ${item.caption || ''} ${item.description || ''}`);
-  const route = type === 'users'
-    ? `/profile/${encodeURIComponent(username)}`
-    : type === 'reels'
-      ? '/reels'
-      : type === 'posts'
-        ? '/'
-        : '/search';
 
   return {
     id: item.id || `${type}-${username || title}`,
@@ -90,23 +106,27 @@ function toSearchEntry(type, item = {}) {
     description,
     content: item.content || item.caption || item.description || '',
     hashtags,
-    avatar: item.avatar || item.avatar_url || '',
-    media: item.media_url || item.video_url || item.image_url || '',
+    avatar: item.avatar || item.avatar_url || item.cover_url || '',
+    media: item.media_url || item.video_url || item.image_url || item.cover_image || '',
     metrics: {
       likes: Number(item.likes_count || 0),
       followers: Number(item.followers_count || 0),
       comments: Number(item.comments_count || 0),
       views: Number(item.views_count || item.view_count || 0),
       shares: Number(item.share_count || 0),
+      posts: Number(item.posts_count || 0),
+      members: Number(item.members_count || item.member_count || 0),
     },
-    route,
+    route: routeForType(type, item),
     raw: item,
   };
 }
 
 export function searchInCollections(query = '', collections = {}, options = {}) {
-  const normalizedQuery = normalizeSearchText(query);
+  const intent = detectSearchIntent(query);
   const filter = options.filter || 'all';
+  const activeHashtag = normalizeSearchText(options.activeHashtag || '').replace(/^#/, '');
+  const limit = Number(options.limit || 0);
   const buckets = [];
 
   if (filter === 'all' || filter === 'users' || filter === 'people') {
@@ -118,50 +138,60 @@ export function searchInCollections(query = '', collections = {}, options = {}) 
   if (filter === 'all' || filter === 'reels') {
     (collections.reels || []).forEach((item) => buckets.push(toSearchEntry('reels', item)));
   }
+  if (filter === 'all' || filter === 'groups') {
+    (collections.groups || []).forEach((item) => buckets.push(toSearchEntry('groups', item)));
+  }
   if (filter === 'all' || filter === 'hashtags') {
-    const hashtagSource = collections.hashtags || [];
-    hashtagSource.forEach((item) => {
+    (collections.hashtags || []).forEach((item) => {
       const tag = typeof item === 'string' ? item : item.tag || item.name || '';
+      const title = tag.startsWith('#') ? tag : `#${tag}`;
       buckets.push({
-        id: `hashtag-${tag}`,
+        id: `hashtag-${title}`,
         type: 'hashtags',
-        title: tag.startsWith('#') ? tag : `#${tag}`,
-        name: tag,
-        description: typeof item === 'string' ? 'هاشتاج شائع' : item.description || `${item.count || 0} منشور`,
+        title,
+        name: title.replace(/^#/, ''),
+        description: typeof item === 'string' ? 'هاشتاج شائع' : item.description || `${item.count || item.posts_count || 0} منشور`,
+        content: '',
+        hashtags: [title.toLowerCase()],
+        avatar: '',
+        media: '',
         metrics: { posts: Number(item.count || item.posts_count || 0) },
-        route: `/search?q=${encodeURIComponent(tag.replace(/^#/, ''))}`,
-        hashtags: [tag.startsWith('#') ? tag : `#${tag}`],
+        route: `/search?q=${encodeURIComponent(title.replace(/^#/, ''))}&type=hashtags`,
         raw: item,
       });
     });
   }
 
-  return buckets
+  const scored = buckets
     .map((entry) => {
-      const searchable = [
-        entry.title,
-        entry.name,
-        entry.description,
-        entry.content,
-        ...(entry.hashtags || []),
-      ].join(' • ');
-      const score = normalizedQuery
-        ? fuzzyScore(normalizedQuery, searchable)
-        : 0;
+      const searchable = [entry.title, entry.name, entry.description, entry.content, ...(entry.hashtags || [])].join(' • ');
+      const baseScore = intent.normalized ? fuzzyScore(intent.normalized, searchable) : 0;
+      const hashtagHit = activeHashtag
+        ? (entry.hashtags || []).some((tag) => normalizeSearchText(tag).replace(/^#/, '') === activeHashtag)
+        : true;
+      const intentHashtagBoost = intent.hashtags.length && (entry.hashtags || []).some((tag) => intent.hashtags.includes(String(tag).toLowerCase())) ? 0.18 : 0;
+      const exactTypeBoost = intent.startsWithHashtag && entry.type === 'hashtags' ? 0.12 : 0;
       const popularity = (
         Number(entry.metrics?.likes || 0) * 2 +
         Number(entry.metrics?.followers || 0) * 3 +
+        Number(entry.metrics?.members || 0) * 2.8 +
         Number(entry.metrics?.views || 0) * 0.02 +
         Number(entry.metrics?.comments || 0) * 2 +
+        Number(entry.metrics?.posts || 0) * 1.8 +
         Number(entry.metrics?.shares || 0) * 2
       );
+
       return {
         ...entry,
-        score: Number((score + Math.min(popularity / 10000, 0.28)).toFixed(4)),
+        hashtagHit,
+        score: Number((baseScore + intentHashtagBoost + exactTypeBoost + Math.min(popularity / 10000, 0.28)).toFixed(4)),
       };
     })
-    .filter((entry) => !normalizedQuery || entry.score >= 0.24)
+    .filter((entry) => entry.hashtagHit)
+    .filter((entry) => !intent.normalized || entry.score >= 0.22)
     .sort((a, b) => b.score - a.score);
+
+  return limit > 0 ? scored.slice(0, limit) : scored;
 }
 
 export function groupSearchResults(entries = []) {

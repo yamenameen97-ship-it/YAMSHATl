@@ -10,17 +10,22 @@ import { ListSkeleton } from '../components/feedback/Skeleton.jsx';
 import useDebounce from '../hooks/useDebounce';
 import { getPosts } from '../api/posts.js';
 import { getUsers } from '../api/users.js';
-import { buildTrendingHashtags, explainRecommendation } from '../services/recommendationService.js';
-import { groupSearchResults, searchInCollections } from '../utils/fuzzySearch.js';
-import { FixedSizeList as List } from 'react-window';
-import AutoSizer from 'react-virtualized-auto-sizer';
+import { getGroups } from '../api/groups.js';
+import { buildTrendingHashtags } from '../services/recommendationService.js';
+import {
+  detectSearchIntent,
+  extractHashtags,
+  groupSearchResults,
+  searchInCollections,
+} from '../utils/fuzzySearch.js';
 
 const SEARCH_FILTERS = [
-  { key: 'all', label: 'الكل' },
-  { key: 'users', label: 'الأشخاص' },
-  { key: 'posts', label: 'المنشورات' },
-  { key: 'reels', label: 'الريلز' },
-  { key: 'hashtags', label: 'الهاشتاجات' },
+  { key: 'all', label: 'الكل', icon: '✨' },
+  { key: 'users', label: 'المستخدمين', icon: '👤' },
+  { key: 'posts', label: 'المنشورات', icon: '📝' },
+  { key: 'groups', label: 'المجموعات', icon: '👥' },
+  { key: 'reels', label: 'الفيديوهات', icon: '🎬' },
+  { key: 'hashtags', label: 'الهاشتاجات', icon: '#' },
 ];
 
 const SEARCH_HISTORY_KEY = 'yamshat.search.history';
@@ -33,55 +38,83 @@ function isVideoUrl(url = '') {
 function resolveIncomingSearch(search = '') {
   const params = new URLSearchParams(search);
   const queryFromUrl = params.get('q') || '';
-  if (queryFromUrl) return queryFromUrl;
-  if (typeof window === 'undefined') return '';
-  return window.sessionStorage.getItem(TOPBAR_SEARCH_KEY) || '';
+  const filterFromUrl = params.get('type') || 'all';
+  const hashtagFromUrl = params.get('tag') || '';
+  if (typeof window === 'undefined') {
+    return { query: queryFromUrl, filterKey: filterFromUrl, hashtag: hashtagFromUrl };
+  }
+  return {
+    query: queryFromUrl || window.sessionStorage.getItem(TOPBAR_SEARCH_KEY) || '',
+    filterKey: filterFromUrl,
+    hashtag: hashtagFromUrl,
+  };
 }
 
-const SearchResultRow = ({ index, style, data }) => {
-  const { results, openResult, setQuery, explainRecommendation } = data;
-  const item = results[index];
-  if (!item) return null;
+function prettyType(type = '') {
+  if (type === 'users') return 'مستخدم';
+  if (type === 'posts') return 'منشور';
+  if (type === 'groups') return 'مجموعة';
+  if (type === 'reels') return 'فيديو';
+  if (type === 'hashtags') return 'هاشتاج';
+  return 'نتيجة';
+}
+
+function SearchCard({ item, onOpen, onSimilar, onHashtagClick }) {
+  const hashtags = (item.hashtags || []).slice(0, 3);
 
   return (
-    <div style={{ ...style, padding: '8px 0' }}>
-      <Card style={{ padding: 18, height: '100%', overflow: 'hidden' }}>
+    <Card style={{ padding: 18, height: '100%', overflow: 'hidden', border: '1px solid rgba(148,163,184,0.14)' }}>
+      <div style={{ display: 'grid', gap: 12 }}>
         <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-          <div style={{ width: 54, height: 54, borderRadius: 16, background: 'rgba(59,130,246,0.12)', display: 'grid', placeItems: 'center', fontSize: 20, overflow: 'hidden', flexShrink: 0 }}>
-            {item.avatar ? <img src={item.avatar} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : item.type === 'hashtags' ? '#' : item.type === 'reels' ? '🎬' : item.type === 'posts' ? '📝' : '👤'}
+          <div style={{ width: 56, height: 56, borderRadius: 18, background: 'rgba(59,130,246,0.12)', display: 'grid', placeItems: 'center', fontSize: 22, overflow: 'hidden', flexShrink: 0 }}>
+            {item.avatar ? (
+              <img src={item.avatar} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" decoding="async" />
+            ) : item.type === 'hashtags' ? '#' : item.type === 'reels' ? '🎬' : item.type === 'posts' ? '📝' : item.type === 'groups' ? '👥' : '👤'}
           </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
               <div>
                 <h3 style={{ margin: '0 0 6px', fontSize: 16 }}>{item.title}</h3>
-                <div className="muted" style={{ fontSize: 12 }}>{item.type === 'users' ? 'شخص' : item.type === 'posts' ? 'منشور' : item.type === 'reels' ? 'ريل' : 'هاشتاج'}</div>
+                <div className="muted" style={{ fontSize: 12 }}>{prettyType(item.type)}</div>
               </div>
-              <span className="score-pill">match {Math.round(item.score * 100)}%</span>
+              <span className="score-pill">{Math.round(item.score * 100)}%</span>
             </div>
-            <p style={{ margin: '10px 0', opacity: 0.86, fontSize: 13, lineClamp: 2, display: '-webkit-box', WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+            <p style={{ margin: '10px 0 0', opacity: 0.88, fontSize: 13, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
               {item.description || item.content || 'بدون وصف إضافي'}
             </p>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <Button size="small" onClick={() => openResult(item)}>{item.type === 'hashtags' ? 'تصفية بالهاشتاج' : 'فتح'}</Button>
-              {item.type !== 'hashtags' ? <Button variant="secondary" size="small" onClick={() => setQuery(item.name || item.title)}>بحث مشابه</Button> : null}
-            </div>
           </div>
         </div>
-      </Card>
-    </div>
+
+        {hashtags.length ? (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {hashtags.map((tag) => (
+              <button key={tag} type="button" className="tag-chip" onClick={() => onHashtagClick(tag)}>{tag}</button>
+            ))}
+          </div>
+        ) : null}
+
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <Button size="small" onClick={() => onOpen(item)}>{item.type === 'hashtags' ? 'تصفية' : 'فتح'}</Button>
+          {item.type !== 'hashtags' ? <Button variant="secondary" size="small" onClick={() => onSimilar(item)}>بحث مشابه</Button> : null}
+        </div>
+      </div>
+    </Card>
   );
-};
+}
 
 export default function Search() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [query, setQuery] = useState(() => resolveIncomingSearch(location.search));
-  const debouncedQuery = useDebounce(query, 250);
-  const [filterKey, setFilterKey] = useState('all');
+  const incoming = useMemo(() => resolveIncomingSearch(location.search), [location.search]);
+  const [query, setQuery] = useState(incoming.query);
+  const [filterKey, setFilterKey] = useState(incoming.filterKey || 'all');
+  const [activeHashtag, setActiveHashtag] = useState(incoming.hashtag || '');
+  const debouncedQuery = useDebounce(query, 300);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState('');
-  const [collections, setCollections] = useState({ users: [], posts: [], reels: [], hashtags: [] });
+  const [collections, setCollections] = useState({ users: [], posts: [], groups: [], reels: [], hashtags: [] });
   const [history, setHistory] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY) || '[]');
@@ -91,11 +124,10 @@ export default function Search() {
   });
 
   useEffect(() => {
-    const incomingQuery = resolveIncomingSearch(location.search);
-    if (incomingQuery && incomingQuery !== query) {
-      setQuery(incomingQuery);
-    }
-  }, [location.search]);
+    setQuery(incoming.query || '');
+    setFilterKey(incoming.filterKey || 'all');
+    setActiveHashtag(incoming.hashtag || '');
+  }, [incoming.filterKey, incoming.hashtag, incoming.query]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -107,14 +139,43 @@ export default function Search() {
     try {
       setLoading(true);
       setError('');
-      const [{ data: usersData }, { data: postsData }] = await Promise.all([getUsers(), getPosts({ limit: 80, page: 1 })]);
+      const [usersResponse, postsResponse, groupsResponse] = await Promise.allSettled([
+        getUsers(),
+        getPosts({ limit: 120, page: 1 }),
+        getGroups(),
+      ]);
+
+      const usersData = usersResponse.status === 'fulfilled' ? usersResponse.value?.data : [];
+      const postsData = postsResponse.status === 'fulfilled' ? postsResponse.value?.data : [];
+      const groupsData = groupsResponse.status === 'fulfilled' ? groupsResponse.value?.data : [];
+
       const users = Array.isArray(usersData) ? usersData : usersData?.items || [];
       const posts = Array.isArray(postsData) ? postsData : postsData?.items || [];
+      const groups = Array.isArray(groupsData) ? groupsData : groupsData?.items || [];
       const reels = posts.filter((item) => isVideoUrl(item.media_url || item.video_url || ''));
-      const hashtags = buildTrendingHashtags(posts);
-      setCollections({ users, posts, reels, hashtags });
+      const tagUniverse = [
+        ...buildTrendingHashtags(posts),
+        ...Array.from(new Set(posts.flatMap((item) => extractHashtags(`${item.content || ''} ${item.caption || ''}`)).map((tag) => tag.toLowerCase()))).map((tag) => ({ tag, count: 1 })),
+      ];
+
+      const hashtagMap = new Map();
+      tagUniverse.forEach((item) => {
+        const key = String(item.tag || item.name || item).toLowerCase();
+        if (!key) return;
+        const current = hashtagMap.get(key) || { tag: key.startsWith('#') ? key : `#${key}`, count: 0 };
+        current.count += Number(item.count || item.posts_count || 1);
+        hashtagMap.set(key, current);
+      });
+
+      setCollections({
+        users,
+        posts,
+        groups,
+        reels,
+        hashtags: Array.from(hashtagMap.values()).sort((a, b) => b.count - a.count),
+      });
     } catch (err) {
-      setError(err?.response?.data?.detail || err?.message || 'تعذر تحميل بيانات البحث الذكي.');
+      setError(err?.response?.data?.detail || err?.message || 'تعذر تحميل بيانات البحث.');
     } finally {
       setLoading(false);
     }
@@ -125,21 +186,55 @@ export default function Search() {
   }, [hydrateCollections]);
 
   useEffect(() => {
-    if (!debouncedQuery.trim()) return;
-    setSearching(true);
-    const timer = window.setTimeout(() => {
+    if (!query.trim()) {
       setSearching(false);
-      if (!history.includes(debouncedQuery.trim())) {
-        const next = [debouncedQuery.trim(), ...history].slice(0, 12);
-        setHistory(next);
-        localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(next));
-      }
-    }, 140);
+      return undefined;
+    }
+    setSearching(true);
+    const timer = window.setTimeout(() => setSearching(false), 180);
     return () => window.clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
+    const trimmed = debouncedQuery.trim();
+    if (!trimmed) return;
+    if (history.includes(trimmed)) return;
+    const next = [trimmed, ...history].slice(0, 12);
+    setHistory(next);
+    localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(next));
   }, [debouncedQuery, history]);
 
-  const results = useMemo(() => searchInCollections(debouncedQuery, collections, { filter: filterKey }), [debouncedQuery, collections, filterKey]);
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (debouncedQuery.trim()) params.set('q', debouncedQuery.trim());
+    if (filterKey !== 'all') params.set('type', filterKey);
+    if (activeHashtag) params.set('tag', activeHashtag.replace(/^#/, ''));
+    navigate(`${location.pathname}${params.toString() ? `?${params.toString()}` : ''}`, { replace: true });
+  }, [activeHashtag, debouncedQuery, filterKey, location.pathname, navigate]);
+
+  const intent = useMemo(() => detectSearchIntent(debouncedQuery), [debouncedQuery]);
+  const effectiveFilter = useMemo(() => {
+    if (intent.startsWithHashtag && filterKey === 'all') return 'hashtags';
+    return filterKey;
+  }, [filterKey, intent.startsWithHashtag]);
+
+  const results = useMemo(
+    () => searchInCollections(debouncedQuery, collections, { filter: effectiveFilter, activeHashtag, limit: 90 }),
+    [activeHashtag, collections, debouncedQuery, effectiveFilter],
+  );
   const grouped = useMemo(() => groupSearchResults(results), [results]);
+
+  const quickHashtags = useMemo(() => {
+    const pool = new Map();
+    [...collections.hashtags.slice(0, 12), ...results.flatMap((item) => item.hashtags || [])].forEach((item) => {
+      const tag = typeof item === 'string' ? item : item.tag || item.name || '';
+      if (!tag) return;
+      const normalized = tag.startsWith('#') ? tag : `#${tag}`;
+      if (!pool.has(normalized)) pool.set(normalized, normalized);
+    });
+    return Array.from(pool.values()).slice(0, 10);
+  }, [collections.hashtags, results]);
+
   const suggestions = useMemo(() => {
     if (!query.trim()) return history.slice(0, 6);
     return history.filter((item) => item.toLowerCase().includes(query.toLowerCase())).slice(0, 6);
@@ -147,138 +242,185 @@ export default function Search() {
 
   const openResult = useCallback((item) => {
     if (item.type === 'hashtags') {
-      setQuery(item.title.replace(/^#/, ''));
+      setActiveHashtag(item.title);
       setFilterKey('hashtags');
+      setQuery(item.title);
+      return;
+    }
+    if (item.type === 'groups') {
+      navigate('/groups');
       return;
     }
     navigate(item.route || '/search');
   }, [navigate]);
 
-  const listData = useMemo(() => ({
-    results,
-    openResult,
-    setQuery,
-    explainRecommendation
-  }), [results, openResult]);
+  const handleSimilarSearch = useCallback((item) => {
+    setQuery(item.name || item.title || '');
+    if (item.type === 'groups') setFilterKey('groups');
+  }, []);
+
+  const summaryCards = [
+    { label: 'مستخدمين', count: grouped.users?.length || 0 },
+    { label: 'منشورات', count: grouped.posts?.length || 0 },
+    { label: 'مجموعات', count: grouped.groups?.length || 0 },
+    { label: 'هاشتاجات', count: grouped.hashtags?.length || 0 },
+  ];
 
   return (
     <MainLayout>
-      <div style={{ maxWidth: 980, margin: '0 auto', padding: 20, height: 'calc(100vh - 70px)', display: 'flex', flexDirection: 'column' }}>
-        <Card style={{ padding: 20, marginBottom: 18 }}>
+      <div style={{ maxWidth: 1180, margin: '0 auto', padding: 20, minHeight: 'calc(100vh - 70px)', display: 'grid', gap: 18 }}>
+        <Card style={{ padding: 22 }}>
           <div style={{ display: 'grid', gap: 14 }}>
-            <div>
-              <h2 style={{ margin: '0 0 8px' }}>البحث الذكي</h2>
-              <p className="muted" style={{ margin: 0 }}>Fuzzy search للناس والمنشورات والريلز والهاشتاجات.</p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+              <div>
+                <h2 style={{ margin: '0 0 8px' }}>نظام البحث الاحترافي</h2>
+                <p className="muted" style={{ margin: 0 }}>بحث مباشر مع debounce وفلاتر وهاشتاجات ونتائج للمستخدمين والمنشورات والمجموعات.</p>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <span className={`live-pill ${searching ? 'active' : ''}`}>{searching ? 'Live searching…' : 'Live ready'}</span>
+                <span className="live-pill">debounce 300ms</span>
+              </div>
             </div>
-            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحث باسم شخص أو هاشتاج أو محتوى..." />
+
+            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحث باسم شخص أو هاشتاج أو محتوى أو مجموعة..." />
+
+            {suggestions.length ? (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {suggestions.map((item) => (
+                  <button key={item} type="button" className="soft-chip" onClick={() => setQuery(item)}>{item}</button>
+                ))}
+              </div>
+            ) : null}
+
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               {SEARCH_FILTERS.map((filter) => (
-                <Button key={filter.key} variant={filterKey === filter.key ? 'primary' : 'secondary'} size="small" onClick={() => setFilterKey(filter.key)}>
-                  {filter.label}
+                <Button key={filter.key} variant={effectiveFilter === filter.key ? 'primary' : 'secondary'} size="small" onClick={() => setFilterKey(filter.key)}>
+                  {filter.icon} {filter.label}
                 </Button>
               ))}
             </div>
+
+            {quickHashtags.length ? (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {quickHashtags.map((tag) => (
+                  <button key={tag} type="button" className={`tag-chip ${activeHashtag === tag ? 'active' : ''}`} onClick={() => setActiveHashtag((prev) => prev === tag ? '' : tag)}>
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
         </Card>
 
-        <div style={{ flex: 1 }}>
-          {loading ? <ListSkeleton count={6} /> : null}
-          {!loading && error ? <ErrorState title="تعذر فتح البحث الذكي" description={error} onRetry={hydrateCollections} /> : null}
+        {loading ? <ListSkeleton count={5} /> : null}
+        {!loading && error ? <ErrorState title="تعذر تحميل البحث" description={error} onRetry={hydrateCollections} /> : null}
 
-          {!loading && !error && !debouncedQuery ? (
-            <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 0.9fr', gap: 16 }}>
-              <Card style={{ padding: 18 }}>
-                <h3 style={{ marginTop: 0 }}>جاهز تدور على إيه؟</h3>
-                <div style={{ display: 'grid', gap: 12, marginTop: 14 }}>
-                  {['مصممين UI', '#yamshat', 'ريلز طبخ', 'منشورات الذكاء الاصطناعي'].map((item) => (
-                    <button key={item} type="button" className="discovery-row" onClick={() => setQuery(item)}>
-                      <span>{item}</span>
-                      <span>↖</span>
-                    </button>
-                  ))}
-                </div>
-              </Card>
-              <Card style={{ padding: 18 }}>
-                <h3 style={{ marginTop: 0 }}>الترند الآن</h3>
-                <div style={{ display: 'grid', gap: 12 }}>
-                  {collections.hashtags.slice(0, 8).map((item) => (
-                    <button key={item.tag} type="button" className="trending-row" onClick={() => setQuery(item.tag.replace(/^#/, ''))}>
-                      <div>
-                        <strong>{item.tag}</strong>
-                        <div className="muted">{item.count} منشور</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </Card>
-            </div>
-          ) : null}
-
-          {!loading && !error && debouncedQuery ? (
-            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <Card style={{ padding: 16 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-                  <strong>النتائج ({results.length})</strong>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    {Object.entries(grouped).map(([key, items]) => (
-                      <span key={key} className="score-pill">{key} {items.length}</span>
-                    ))}
-                  </div>
-                </div>
-              </Card>
-
-              <div style={{ flex: 1 }}>
-                {!results.length ? (
-                  <EmptyState icon="🔎" title="مفيش نتائج مناسبة" />
-                ) : (
-                  <AutoSizer>
-                    {({ height, width }) => (
-                      <List
-                        height={height}
-                        width={width}
-                        itemCount={results.length}
-                        itemSize={180}
-                        itemData={listData}
-                        className="no-scrollbar"
-                      >
-                        {SearchResultRow}
-                      </List>
-                    )}
-                  </AutoSizer>
-                )}
+        {!loading && !error && !debouncedQuery ? (
+          <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 0.95fr', gap: 18 }}>
+            <Card style={{ padding: 18 }}>
+              <h3 style={{ marginTop: 0 }}>ابدأ بسرعة</h3>
+              <div style={{ display: 'grid', gap: 12, marginTop: 14 }}>
+                {['#yamshat', 'مصممين UI', 'جروبات السفر', 'منشورات الذكاء الاصطناعي', 'مجموعات البرمجة'].map((item) => (
+                  <button key={item} type="button" className="discovery-row" onClick={() => setQuery(item)}>
+                    <span>{item}</span>
+                    <span>↖</span>
+                  </button>
+                ))}
               </div>
+            </Card>
+
+            <Card style={{ padding: 18 }}>
+              <h3 style={{ marginTop: 0 }}>الترند الآن</h3>
+              <div style={{ display: 'grid', gap: 12 }}>
+                {collections.hashtags.slice(0, 8).map((item) => (
+                  <button key={item.tag} type="button" className="trending-row" onClick={() => { setQuery(item.tag); setActiveHashtag(item.tag); setFilterKey('hashtags'); }}>
+                    <div>
+                      <strong>{item.tag}</strong>
+                      <div className="muted">{item.count} منشور</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </Card>
+          </div>
+        ) : null}
+
+        {!loading && !error && debouncedQuery ? (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
+              {summaryCards.map((item) => (
+                <Card key={item.label} style={{ padding: 16 }}>
+                  <div className="muted" style={{ fontSize: 12 }}>{item.label}</div>
+                  <strong style={{ fontSize: 24 }}>{item.count}</strong>
+                </Card>
+              ))}
             </div>
-          ) : null}
-        </div>
+
+            <Card style={{ padding: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <strong>النتائج ({results.length})</strong>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <span className="score-pill">Live</span>
+                  {activeHashtag ? <span className="score-pill">Tag {activeHashtag}</span> : null}
+                  {Object.entries(grouped).map(([key, items]) => <span key={key} className="score-pill">{prettyType(key)} {items.length}</span>)}
+                </div>
+              </div>
+            </Card>
+
+            {!results.length ? (
+              <EmptyState icon="🔎" title="مفيش نتائج مناسبة" description="جرّب كلمة أقصر أو غيّر الفلتر أو اختار هاشتاج مختلف." />
+            ) : (
+              <div style={{ display: 'grid', gap: 14 }}>
+                {results.map((item) => (
+                  <SearchCard
+                    key={`${item.type}-${item.id}`}
+                    item={item}
+                    onOpen={openResult}
+                    onSimilar={handleSimilarSearch}
+                    onHashtagClick={(tag) => setActiveHashtag(tag)}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        ) : null}
       </div>
 
       <style>{`
-        .discovery-row, .trending-row {
-          width: 100%;
+        .discovery-row, .trending-row, .soft-chip, .tag-chip {
           border: 1px solid rgba(148,163,184,0.14);
           background: rgba(15,23,42,0.45);
           color: white;
-          border-radius: 16px;
-          padding: 14px 16px;
+          transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+        }
+        .discovery-row:hover, .trending-row:hover, .soft-chip:hover, .tag-chip:hover { transform: translateY(-1px); border-color: rgba(139,92,246,0.38); }
+        .discovery-row, .trending-row {
+          width: 100%;
+          border-radius: 18px;
+          padding: 16px;
           display: flex;
           align-items: center;
           justify-content: space-between;
-          text-align: inherit;
           cursor: pointer;
         }
-        .score-pill {
+        .soft-chip, .tag-chip {
+          border-radius: 999px;
+          padding: 9px 14px;
+          cursor: pointer;
+        }
+        .tag-chip.active { background: rgba(139,92,246,0.24); border-color: rgba(139,92,246,0.52); }
+        .live-pill, .score-pill {
           display: inline-flex;
           align-items: center;
-          justify-content: center;
-          padding: 4px 12px;
+          gap: 6px;
+          padding: 8px 12px;
           border-radius: 999px;
-          background: rgba(59,130,246,0.14);
-          color: #93c5fd;
-          border: 1px solid rgba(147,197,253,0.3);
-          font-size: 11px;
+          background: rgba(59,130,246,0.12);
+          color: #bfdbfe;
+          font-size: 12px;
+          font-weight: 700;
         }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .live-pill.active { background: rgba(34,197,94,0.16); color: #bbf7d0; }
       `}</style>
     </MainLayout>
   );

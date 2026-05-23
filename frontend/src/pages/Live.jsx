@@ -6,10 +6,15 @@ import {
   createLiveRoom,
   endLiveRoom,
   getLiveComments,
+  getLiveHealth,
   getLiveRoom,
   getLiveRooms,
   getLiveToken,
+  moderateLiveRoom,
   sendLiveGift,
+  syncLiveViewer,
+  triggerLiveRecovery,
+  updateLiveHealth,
   updateLiveRecording,
 } from '../api/live.js';
 import socketManager from '../services/socketManager.js';
@@ -74,6 +79,7 @@ export default function Live() {
   const [connectionLabel, setConnectionLabel] = useState('غير متصل');
   const [remoteParticipantName, setRemoteParticipantName] = useState('');
   const [hasPreview, setHasPreview] = useState(false);
+  const [healthSnapshot, setHealthSnapshot] = useState(null);
 
   const commentsEndRef = useRef(null);
   const previewVideoRef = useRef(null);
@@ -117,6 +123,7 @@ export default function Live() {
       setComments(Array.isArray(liveComments) ? liveComments : []);
       setCoHosts(room?.multi_host?.current_hosts || room?.co_hosts || []);
       setStreamReady(Boolean(room?.livekit_configured));
+      setHealthSnapshot(room?.health || null);
     } catch (error) {
       pushToast({ type: 'error', title: 'تعذر تحميل تفاصيل البث', description: error?.response?.data?.detail || error?.message });
     } finally {
@@ -345,6 +352,15 @@ export default function Live() {
     disconnectLiveSession();
   }, [disconnectLiveSession]);
 
+  useEffect(() => {
+    if (!activeRoom?.id || !joinedRole) return undefined;
+    syncViewerState('joined_session');
+    const timer = window.setInterval(() => {
+      syncViewerState('heartbeat');
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, [activeRoom?.id, joinedRole, syncViewerState]);
+
   const hostName = activeRoom?.host || activeRoom?.username || 'Streamer';
   const isHost = hostName === currentUser;
   const currentPot = Number(activeRoom?.economy?.pot || activeRoom?.economy?.current_pot || 0);
@@ -352,10 +368,54 @@ export default function Live() {
   const goalPercent = Math.min(100, Math.round((currentPot / goalTarget) * 100));
   const topGifters = Array.isArray(activeRoom?.economy?.top_gifters) ? activeRoom.economy.top_gifters : [];
   const recordingStatus = activeRoom?.recording?.status || 'idle';
-  const healthScore = Number(activeRoom?.analytics?.health_score || 92);
-  const bitrate = Number(activeRoom?.analytics?.avg_bitrate || 4200);
+  const healthScore = Number(activeRoom?.health?.health_score || healthSnapshot?.health_score || activeRoom?.analytics?.health_score || 92);
+  const bitrate = Number(activeRoom?.health?.bitrate_kbps || healthSnapshot?.bitrate_kbps || activeRoom?.analytics?.avg_bitrate || 4200);
+  const targetBitrate = Number(activeRoom?.health?.target_bitrate_kbps || healthSnapshot?.target_bitrate_kbps || activeRoom?.analytics?.target_bitrate || 4500);
+  const packetLoss = Number(activeRoom?.health?.packet_loss || healthSnapshot?.packet_loss || 0.4);
+  const syncSessions = Number(activeRoom?.viewer_sync?.sessions || 0);
+  const reconnectAttempts = Number(activeRoom?.recovery?.reconnect_attempts || 0);
   const heartsCount = Number(activeRoom?.hearts_count || 0);
   const viewerCount = Number(activeRoom?.viewer_count || 0);
+
+  const syncViewerState = useCallback(async (reason = 'manual_sync') => {
+    if (!activeRoom?.id) return;
+    try {
+      const payload = {
+        sid: `${currentUser}-${joinedRole || 'viewer'}`,
+        state: joinedRole ? 'connected' : 'idle',
+        latency_ms: latencyMs,
+        bitrate_kbps: bitrate,
+        reason,
+      };
+      await syncLiveViewer(activeRoom.id, payload);
+      if (joinedRole === 'host') {
+        await updateLiveHealth(activeRoom.id, {
+          latency_ms: latencyMs,
+          bitrate_kbps: bitrate,
+          target_bitrate_kbps: Math.max(4500, bitrate),
+          packet_loss: healthSnapshot?.packet_loss || 0.6,
+          fps: 30,
+          resolution: '1280x720',
+        });
+      }
+      const { data } = await getLiveHealth(activeRoom.id);
+      setHealthSnapshot(data?.health || null);
+      await loadRoomDetails(activeRoom.id);
+    } catch (error) {
+      pushToast({ type: 'warning', title: 'تعذر مزامنة المشاهدين', description: error?.response?.data?.detail || error?.message });
+    }
+  }, [activeRoom?.id, bitrate, currentUser, getLiveHealth, healthSnapshot?.packet_loss, joinedRole, latencyMs, loadRoomDetails, pushToast]);
+
+  const handleLiveModeration = async (action, payload = {}) => {
+    if (!activeRoom?.id) return;
+    try {
+      await moderateLiveRoom(activeRoom.id, { action, ...payload });
+      await loadRoomDetails(activeRoom.id);
+      pushToast({ type: 'success', title: 'تم تنفيذ الإجراء' });
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر تنفيذ المودريشن', description: error?.response?.data?.detail || error?.message });
+    }
+  };
 
   const sendComment = async () => {
     const text = commentText.trim();
@@ -438,6 +498,17 @@ export default function Live() {
     }
   };
 
+  const handleRecovery = async () => {
+    if (!activeRoom?.id) return;
+    try {
+      await triggerLiveRecovery(activeRoom.id, { reason: 'manual_host_recovery' });
+      await syncViewerState('post_recovery_sync');
+      pushToast({ type: 'success', title: 'تم تشغيل وضع الاستعادة' });
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر تشغيل الاستعادة', description: error?.response?.data?.detail || error?.message });
+    }
+  };
+
   const stopLive = async () => {
     if (!activeRoom?.id) return;
     try {
@@ -505,7 +576,9 @@ export default function Live() {
               <div className="yam-live-stage-actions">
                 <button type="button" className="yam-live-action-btn" onClick={loadRooms}>تحديث</button>
                 <button type="button" className="yam-live-action-btn" onClick={handleShare}>مشاركة</button>
+                <button type="button" className="yam-live-action-btn" onClick={() => syncViewerState('manual_button_sync')}>Viewer Sync</button>
                 {isHost ? <button type="button" className="yam-live-action-btn" onClick={toggleRecording}>{recordingStatus === 'recording' ? 'إيقاف التسجيل' : 'بدء التسجيل'}</button> : null}
+                {isHost ? <button type="button" className="yam-live-action-btn" onClick={handleRecovery}>Recovery</button> : null}
                 {isHost ? <button type="button" className="yam-live-action-btn danger" onClick={stopLive}>إنهاء البث</button> : null}
               </div>
             </div>
@@ -552,6 +625,8 @@ export default function Live() {
                 <div className="yam-stat-box"><span>المفاتيح</span><strong>{streamReady ? 'مفعلة' : 'تحتاج إعداد'}</strong></div>
                 <div className="yam-stat-box"><span>الاتصال</span><strong>{connectionLabel}</strong></div>
                 <div className="yam-stat-box"><span>الأجهزة</span><strong>{mediaStatus}</strong></div>
+                <div className="yam-stat-box"><span>جلسات المزامنة</span><strong>{syncSessions}</strong></div>
+                <div className="yam-stat-box"><span>إعادات الاتصال</span><strong>{reconnectAttempts}</strong></div>
               </div>
             </div>
 
@@ -559,7 +634,9 @@ export default function Live() {
               <div className="yam-card-head"><strong>جودة البث</strong><span>{healthScore}%</span></div>
               <div className="yam-info-grid">
                 <div className="yam-stat-box"><span>المشاهدون</span><strong>{viewerCount}</strong></div>
-                <div className="yam-stat-box"><span>البت ريت</span><strong>{bitrate} kbps</strong></div>
+                <div className="yam-stat-box"><span>البت ريت الحالي</span><strong>{bitrate} kbps</strong></div>
+                <div className="yam-stat-box"><span>البت ريت المستهدف</span><strong>{targetBitrate} kbps</strong></div>
+                <div className="yam-stat-box"><span>فقد الباكت</span><strong>{packetLoss}%</strong></div>
                 <div className="yam-stat-box"><span>التسجيل</span><strong>{recordingStatus}</strong></div>
                 <div className="yam-stat-box"><span>آخر نشاط</span><strong>{activeRoom?.last_activity_at ? formatTimeAgo(activeRoom.last_activity_at) : 'الآن'}</strong></div>
               </div>
@@ -617,8 +694,20 @@ export default function Live() {
             <div className="yam-comment-stream">
               {comments.map((comment) => (
                 <div key={comment.id} className="yam-live-comment">
-                  <strong>{comment.user || comment.username || 'عضو'}</strong>
-                  <p>{comment.text}</p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+                    <div>
+                      <strong>{comment.user || comment.username || 'عضو'}</strong>
+                      {comment.pinned ? <span style={{ marginInlineStart: 8, color: '#fbbf24', fontSize: 12 }}>📌 مثبت</span> : null}
+                      <p>{comment.text}</p>
+                    </div>
+                    {isHost ? (
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        <button type="button" className="yam-mini-btn" onClick={() => handleLiveModeration(comment.pinned ? 'unpin_comment' : 'pin_comment', { comment_id: comment.id })}>{comment.pinned ? 'إلغاء التثبيت' : 'تثبيت'}</button>
+                        <button type="button" className="yam-mini-btn" onClick={() => handleLiveModeration('delete_comment', { comment_id: comment.id })}>حذف</button>
+                        <button type="button" className="yam-mini-btn" onClick={() => handleLiveModeration('mute_user', { username: comment.user || comment.username })}>كتم</button>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               ))}
               <div ref={commentsEndRef} />

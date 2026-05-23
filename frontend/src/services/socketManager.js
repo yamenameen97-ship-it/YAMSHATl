@@ -292,25 +292,71 @@ class SocketManager {
   emit(eventName, payload = {}, options = {}) {
     const signedPayload = options?.skipSignature ? payload : this.decoratePayload(eventName, payload);
     if (this.socket.connected) {
+      if (typeof options?.ack === 'function') {
+        this.socket.emit(eventName, signedPayload, options.ack);
+        return;
+      }
       this.socket.emit(eventName, signedPayload);
-    } else {
-      this.offlineQueue.push({ eventName, payload: signedPayload, ts: Date.now() });
-      if (this.offlineQueue.length > OFFLINE_QUEUE_LIMIT) this.offlineQueue.shift();
-      this.persistOfflineQueue();
+      return;
     }
+
+    this.offlineQueue.push({
+      id: `${eventName}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+      eventName,
+      payload: signedPayload,
+      ts: Date.now(),
+      requiresAck: Boolean(options?.requiresAck),
+      attempts: Number(options?.attempts || 0),
+    });
+    if (this.offlineQueue.length > OFFLINE_QUEUE_LIMIT) this.offlineQueue.shift();
+    this.persistOfflineQueue();
+    this.emitBrowserEvent('yamshat:socket-offline-queued', { eventName, size: this.offlineQueue.length });
+  }
+
+  emitWithAck(eventName, payload = {}, options = {}) {
+    return new Promise((resolve, reject) => {
+      const timeoutMs = Number(options?.timeoutMs || 10000);
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error(`${eventName} ack timeout`));
+      }, timeoutMs);
+
+      this.emit(eventName, payload, {
+        ...options,
+        ack: (response) => {
+          if (settled) return;
+          clearTimeout(timer);
+          settled = true;
+          resolve(response);
+        },
+      });
+    });
   }
 
   processOfflineQueue() {
-    if (this.offlineQueue.length === 0) return;
+    if (this.offlineQueue.length === 0 || !this.socket.connected) return;
     logger.info?.(`Processing ${this.offlineQueue.length} offline messages`);
     const drained = this.offlineQueue.slice();
     this.offlineQueue = [];
     drained.forEach((item) => {
       try {
-        this.socket.emit(item.eventName, item.payload || {});
+        if (item?.requiresAck) {
+          this.socket.emit(item.eventName, item.payload || {}, (response) => {
+            const success = response?.success !== false;
+            if (!success) {
+              logger.warn?.('Offline ack event flush failed', { eventName: item.eventName });
+              this.offlineQueue.push({ ...item, attempts: Number(item?.attempts || 0) + 1 });
+              this.persistOfflineQueue();
+            }
+          });
+        } else {
+          this.socket.emit(item.eventName, item.payload || {});
+        }
       } catch (err) {
         logger.warn?.('Offline event flush failed', err);
-        this.offlineQueue.push(item);
+        this.offlineQueue.push({ ...item, attempts: Number(item?.attempts || 0) + 1 });
       }
     });
     if (typeof window !== 'undefined') {
@@ -324,6 +370,7 @@ class SocketManager {
         // ignore storage failures
       }
     }
+    this.emitBrowserEvent('yamshat:socket-offline-flushed', { remaining: this.offlineQueue.length });
   }
 
   // Enhanced event subscription with deduplication.

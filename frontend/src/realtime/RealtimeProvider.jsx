@@ -23,6 +23,7 @@ function redirectToLogin() {
 
 export function RealtimeProvider({ children }) {
   const session = useAppStore((state) => state.session);
+  const queuedActions = useAppStore((state) => state.queuedActions);
   const [connected, setConnected] = useState(socket.connected);
   const [socketId, setSocketId] = useState(socket.id || '');
   const [reconnecting, setReconnecting] = useState(false);
@@ -67,6 +68,17 @@ export function RealtimeProvider({ children }) {
       if (typeof detail.connected === 'boolean') setConnected(detail.connected);
       if (typeof detail.reconnecting === 'boolean') setReconnecting(detail.reconnecting);
       if (typeof detail.error === 'string' && detail.error) setLastError(detail.error);
+      if (typeof detail.id === 'string') setSocketId(detail.id);
+    };
+
+    const handleChatResyncRequested = (event) => {
+      const detail = event?.detail || {};
+      if (!(session?.access_token || session?.token)) return;
+      socket.syncAuth();
+      socket.connect();
+      if (detail?.peer) {
+        socket.emit('sync_chat_state', { peer: detail.peer });
+      }
     };
 
     const disposeConnect = socket.on('connect', handleConnect);
@@ -76,6 +88,7 @@ export function RealtimeProvider({ children }) {
     if (typeof window !== 'undefined') {
       window.addEventListener('yamshat:socket-state', handleSocketState);
       window.addEventListener('yamshat:auth-expired', handleAuthExpired);
+      window.addEventListener('yamshat:chat-resync-requested', handleChatResyncRequested);
     }
 
     return () => {
@@ -85,9 +98,10 @@ export function RealtimeProvider({ children }) {
       if (typeof window !== 'undefined') {
         window.removeEventListener('yamshat:socket-state', handleSocketState);
         window.removeEventListener('yamshat:auth-expired', handleAuthExpired);
+        window.removeEventListener('yamshat:chat-resync-requested', handleChatResyncRequested);
       }
     };
-  }, []);
+  }, [session?.access_token, session?.token]);
 
   useEffect(() => {
     if (session?.access_token || session?.token) {
@@ -100,8 +114,8 @@ export function RealtimeProvider({ children }) {
   }, [session?.access_token, session?.token, session?.username, session?.role]);
 
   const value = useMemo(
-    () => ({ socket, connected, socketId, reconnecting, lastError }),
-    [connected, socketId, reconnecting, lastError],
+    () => ({ socket, connected, socketId, reconnecting, lastError, queuedCount: queuedActions.length }),
+    [connected, socketId, reconnecting, lastError, queuedActions.length],
   );
 
   return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>;

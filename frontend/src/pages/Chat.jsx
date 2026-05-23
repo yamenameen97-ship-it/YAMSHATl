@@ -18,7 +18,17 @@ import {
 } from '../api/chat.js';
 import socketManager from '../services/socketManager.js';
 import { getCurrentUsername } from '../utils/auth.js';
-import { useChatStore } from '../store/appStore.js';
+import { useAppStore, useChatStore } from '../store/appStore.js';
+import {
+  buildQueuedChatAction,
+  loadConversationSnapshot,
+  markPendingAck,
+  mergeMessages,
+  mergePaging,
+  persistConversationSnapshot,
+  replaceConversationSnapshot,
+  resolvePendingAck,
+} from '../features/chat/chatReliability.js';
 import { getChatPreferences, toggleChatPreference } from '../utils/chatPreferences.js';
 import {
   avatarGradient,
@@ -287,7 +297,10 @@ export default function Chat() {
   const [isPinnedConversation, setIsPinnedConversation] = useState(initialChatPrefs.pinned.has(peer));
   const messagesEndRef = useRef(null);
   const searchInputRef = useRef(null);
+  const pagingRef = useRef({ has_more: true, next_before_id: null, limit: 80 });
   const setActivePeer = useChatStore((state) => state.setActivePeer);
+  const queueAction = useAppStore((state) => state.queueAction);
+  const appIsOnline = useAppStore((state) => state.isOnline);
 
   useEffect(() => {
     setReactionMap(readReactions(peer));
@@ -296,6 +309,23 @@ export default function Chat() {
   useEffect(() => {
     persistReactions(peer, reactionMap);
   }, [peer, reactionMap]);
+
+  useEffect(() => {
+    if (!currentUser || !peer) return;
+    const cached = loadConversationSnapshot(currentUser, peer);
+    pagingRef.current = mergePaging(pagingRef.current, cached?.paging || {});
+    if (Array.isArray(cached?.messages) && cached.messages.length) {
+      setMessages(cached.messages);
+    }
+  }, [currentUser, peer]);
+
+  useEffect(() => {
+    if (!currentUser || !peer) return;
+    persistConversationSnapshot(currentUser, peer, {
+      messages,
+      paging: pagingRef.current,
+    });
+  }, [currentUser, messages, peer]);
 
   useEffect(() => {
     let active = true;
@@ -325,18 +355,29 @@ export default function Chat() {
   }, [peer]);
 
   const loadMessages = useCallback(async () => {
-    if (!peer) return;
+    if (!peer || !currentUser) return;
     setMsgLoading(true);
     try {
       const { data } = await getMessages(peer, 80);
-      setMessages(data?.items || []);
+      const mergedItems = mergeMessages(loadConversationSnapshot(currentUser, peer)?.messages || [], data?.items || []);
+      pagingRef.current = mergePaging(pagingRef.current, data?.paging || {});
+      replaceConversationSnapshot(currentUser, peer, {
+        messages: mergedItems,
+        paging: pagingRef.current,
+      });
+      setMessages(mergedItems);
       await syncChatState();
     } catch {
-      pushToast({ type: 'error', title: 'خطأ', description: 'تعذر تحميل الرسائل' });
+      const cached = loadConversationSnapshot(currentUser, peer);
+      if (cached?.messages?.length) {
+        setMessages(cached.messages);
+      } else {
+        pushToast({ type: 'error', title: 'خطأ', description: 'تعذر تحميل الرسائل' });
+      }
     } finally {
       setMsgLoading(false);
     }
-  }, [peer, pushToast, syncChatState]);
+  }, [currentUser, peer, pushToast, syncChatState]);
 
   useEffect(() => {
     if (!peer) return undefined;
@@ -374,29 +415,30 @@ export default function Chat() {
     const onMsg = (msg) => {
       const participants = [msg?.sender, msg?.receiver];
       if (!participants.includes(currentUser)) return;
-      setMessages((prev) => {
-        const existingIndex = prev.findIndex((item) => item.id === msg.id || (item.client_id && item.client_id === msg.client_id));
-        if (existingIndex >= 0) {
-          const next = [...prev];
-          next[existingIndex] = { ...next[existingIndex], ...msg };
-          return next.filter((item, index, array) => index === array.findIndex((candidate) => candidate.id === item.id || (candidate.client_id && candidate.client_id === item.client_id)));
-        }
-        return [...prev, msg].filter((item, index, array) => index === array.findIndex((candidate) => candidate.id === item.id || (candidate.client_id && candidate.client_id === item.client_id)));
-      });
+      const normalized = {
+        ...msg,
+        status: msg?.status || (msg?.sender === currentUser ? (msg?.is_seen ? 'seen' : msg?.is_delivered ? 'delivered' : 'sent') : 'delivered'),
+      };
+      setMessages((prev) => mergeMessages(prev, [normalized]));
       setThreads((prev) => prev.map((item) => item.username === msg.sender || item.username === msg.receiver
         ? { ...item, last_message: msg.content || msg.message, created_at: msg.created_at }
         : item));
+      if (msg?.client_id && msg?.sender === currentUser) {
+        resolvePendingAck(currentUser, msg.client_id);
+      }
       if (msg.sender === peer) syncChatState();
     };
 
     const onDelivered = (payload) => {
       if (payload?.sender !== currentUser) return;
       setMessages((prev) => prev.map((item) => payload.message_ids?.includes(item.id) ? { ...item, status: 'delivered' } : item));
+      (payload?.client_ids || []).forEach((clientId) => resolvePendingAck(currentUser, clientId));
     };
 
     const onSeen = (payload) => {
       if (payload?.sender !== currentUser) return;
       setMessages((prev) => prev.map((item) => payload.message_ids?.includes(item.id) ? { ...item, status: 'seen' } : item));
+      (payload?.client_ids || []).forEach((clientId) => resolvePendingAck(currentUser, clientId));
     };
 
     const onPresence = (payload) => {
@@ -437,6 +479,28 @@ export default function Chat() {
       setMessages((prev) => prev.map((item) => String(item.id) === String(payload.id) ? { ...item, ...payload, deleted: true } : item));
     };
 
+    const onQueuedSent = (event) => {
+      const detail = event?.detail || {};
+      const response = detail?.response || {};
+      const clientId = detail?.client_id;
+      if (!clientId) return;
+      resolvePendingAck(currentUser, clientId);
+      setMessages((prev) => mergeMessages(prev, [{
+        ...response,
+        client_id: response?.client_id || clientId,
+        status: response?.status || 'sent',
+      }]));
+    };
+
+    const onQueuedFailed = (event) => {
+      const detail = event?.detail || {};
+      const clientId = detail?.client_id;
+      if (!clientId) return;
+      setMessages((prev) => prev.map((item) => item.client_id === clientId || item.id === clientId
+        ? { ...item, status: 'failed', error: detail?.error || 'فشل الإرسال' }
+        : item));
+    };
+
     socketManager.on('new_private_message', onMsg);
     socketManager.on('messages_delivered', onDelivered);
     socketManager.on('messages_seen', onSeen);
@@ -453,11 +517,15 @@ export default function Chat() {
 
     window.addEventListener('focus', onWindowFocus);
     document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('yamshat:queued-message-sent', onQueuedSent);
+    window.addEventListener('yamshat:queued-message-failed', onQueuedFailed);
 
     return () => {
       window.clearInterval(interval);
       window.removeEventListener('focus', onWindowFocus);
       document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('yamshat:queued-message-sent', onQueuedSent);
+      window.removeEventListener('yamshat:queued-message-failed', onQueuedFailed);
       if (peer) socketManager.emit('leave_chat', { peer });
       socketManager.off('new_private_message', onMsg);
       socketManager.off('messages_delivered', onDelivered);
@@ -475,9 +543,22 @@ export default function Chat() {
     if (!text && !mediaUrl) return;
 
     const tempId = `tmp-${Date.now()}`;
+    const outgoingPayload = {
+      receiver: peer,
+      message: text,
+      media_url: mediaUrl,
+      type: mediaUrl ? (payload?.type || 'media') : 'text',
+      reply_to_id: replyTo?.id || null,
+      client_id: tempId,
+      attachments: payload?.attachments || [],
+      media_urls: payload?.media_urls || [],
+      securityPayload: payload?.securityPayload || null,
+      disappearing_in_seconds: Number(payload?.disappearing_in_seconds || 0),
+    };
     const tempMsg = {
       id: tempId,
       client_id: tempId,
+      local_id: tempId,
       sender: currentUser,
       receiver: peer,
       content: text,
@@ -485,35 +566,45 @@ export default function Chat() {
       media_url: mediaUrl,
       attachments: payload?.attachments || [],
       attachment_name: payload?.attachments?.[0]?.fileName || payload?.attachments?.[0]?.originalName || '',
-      type: mediaUrl ? (payload.type || 'media') : 'text',
+      type: outgoingPayload.type,
       created_at: new Date().toISOString(),
-      status: 'sending',
+      status: appIsOnline ? 'sending' : 'queued',
+      pending_sync: !appIsOnline,
       reply_to: replyTo ? { id: replyTo.id, content: replyTo.content || replyTo.message } : null,
     };
-    setMessages((prev) => [...prev, tempMsg]);
+
+    markPendingAck(currentUser, peer, tempMsg);
+    setMessages((prev) => mergeMessages(prev, [tempMsg]));
     setReplyTo(null);
 
+    if (!appIsOnline) {
+      queueAction(buildQueuedChatAction(outgoingPayload));
+      pushToast({ type: 'info', title: 'تم حفظ الرسالة', description: 'هتتبعث تلقائياً أول ما الإنترنت يرجع.' });
+      return;
+    }
+
     try {
-      const { data } = await sendMessageApi({
-        receiver: peer,
-        message: text,
-        media_url: mediaUrl,
-        type: tempMsg.type,
-        reply_to_id: replyTo?.id || null,
-        client_id: tempId,
-      });
-      setMessages((prev) => {
-        const merged = prev.map((item) => (
-          item.id === tempId || item.client_id === tempId
-            ? { ...item, ...(data || {}), status: (data || {}).status || 'sent' }
-            : item
-        ));
-        return merged.filter((item, index, array) => index === array.findIndex((candidate) => candidate.id === item.id || (candidate.client_id && candidate.client_id === item.client_id)));
-      });
+      const { data } = await sendMessageApi(outgoingPayload);
+      resolvePendingAck(currentUser, tempId);
+      setMessages((prev) => mergeMessages(prev, [{ ...tempMsg, ...(data || {}), status: (data || {}).status || 'sent', pending_sync: false }]));
       syncChatState();
-    } catch {
-      setMessages((prev) => prev.filter((item) => item.id !== tempId));
-      pushToast({ type: 'error', title: 'خطأ', description: 'فشل إرسال الرسالة' });
+    } catch (error) {
+      const status = error?.response?.status;
+      const shouldQueue = !status || status >= 500 || status === 429;
+      if (shouldQueue) {
+        queueAction(buildQueuedChatAction(outgoingPayload));
+        setMessages((prev) => prev.map((item) => item.id === tempId || item.client_id === tempId
+          ? { ...item, status: 'queued', pending_sync: true }
+          : item));
+        pushToast({ type: 'info', title: 'تم حفظ الرسالة محلياً', description: 'سيتم إعادة المحاولة تلقائياً.' });
+        return;
+      }
+
+      resolvePendingAck(currentUser, tempId, { remove: false, status: 'failed' });
+      setMessages((prev) => prev.map((item) => item.id === tempId || item.client_id === tempId
+        ? { ...item, status: 'failed', pending_sync: false }
+        : item));
+      pushToast({ type: 'error', title: 'خطأ', description: error?.response?.data?.detail || 'فشل إرسال الرسالة' });
     }
   };
 

@@ -23,6 +23,7 @@ def _serialize(notification: Notification) -> dict:
         'created_at': notification.created_at.isoformat() if notification.created_at else None,
     }
 
+@router.get('', include_in_schema=False)
 @router.get('/')
 def get_notifications(
     limit: int = Query(default=20, ge=1, le=100),

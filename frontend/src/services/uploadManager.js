@@ -17,7 +17,7 @@ export class UploadManager {
   constructor(options = {}) {
     this.cloudinaryUrl = options.cloudinaryUrl || viteEnv.VITE_CLOUDINARY_URL || process.env.REACT_APP_CLOUDINARY_URL;
     this.cloudinaryPreset = options.cloudinaryPreset || viteEnv.VITE_CLOUDINARY_PRESET || process.env.REACT_APP_CLOUDINARY_PRESET;
-    this.apiUrl = options.apiUrl || viteEnv.VITE_API_BASE || viteEnv.VITE_API_URL || process.env.REACT_APP_API_URL;
+    this.apiUrl = options.apiUrl || viteEnv.VITE_API_BASE || 'https://yamshatl-ahj8.onrender.com/api';
     this.maxFileSize = options.maxFileSize || 100 * 1024 * 1024; // 100MB
     this.maxImageSize = options.maxImageSize || 10 * 1024 * 1024; // 10MB
     this.maxVideoSize = options.maxVideoSize || 100 * 1024 * 1024; // 100MB
@@ -334,7 +334,7 @@ export class UploadManager {
 export const defaultUploadManager = new UploadManager({
   cloudinaryUrl: viteEnv.VITE_CLOUDINARY_URL || process.env.REACT_APP_CLOUDINARY_URL,
   cloudinaryPreset: viteEnv.VITE_CLOUDINARY_PRESET || process.env.REACT_APP_CLOUDINARY_PRESET,
-  apiUrl: viteEnv.VITE_API_BASE || viteEnv.VITE_API_URL || process.env.REACT_APP_API_URL,
+  apiUrl: viteEnv.VITE_API_BASE || 'https://yamshatl-ahj8.onrender.com/api',
 });
 
 /**

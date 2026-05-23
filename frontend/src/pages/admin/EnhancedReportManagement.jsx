@@ -11,7 +11,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const API_BASE_URL = 'https://yamshatl-ahj8.onrender.com/api';
 
 /**
  * مكون صف البلاغ

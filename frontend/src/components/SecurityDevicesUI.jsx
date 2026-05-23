@@ -11,7 +11,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { securitySessionManager } from '../services/securitySessionManager';
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const API_BASE_URL = 'https://yamshatl-ahj8.onrender.com/api';
 
 export const SecurityDevicesUI = () => {
   const [trustedDevices, setTrustedDevices] = useState([]);

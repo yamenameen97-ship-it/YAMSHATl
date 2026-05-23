@@ -103,6 +103,8 @@ class SocketManager {
 
   setupRobustListeners() {
     this.socket.on('connect', () => {
+      this.lastHeartbeatAt = Date.now();
+      this.lastPongAt = Date.now();
       logger.info?.('Socket connected', { id: this.socket.id });
       this.emitBrowserEvent('yamshat:socket-state', {
         connected: true,
@@ -114,11 +116,18 @@ class SocketManager {
     });
 
     this.socket.on('connect_error', (err) => {
-      logger.warn?.('Socket connect_error', { message: err?.message });
+      const message = String(err?.message || 'connect_error');
+      logger.warn?.('Socket connect_error', { message });
       this.emitBrowserEvent('yamshat:socket-state', {
         connected: false,
-        error: err?.message || 'connect_error',
+        error: message,
       });
+
+      const normalized = message.toLowerCase();
+      if (normalized.includes('auth') || normalized.includes('jwt') || normalized.includes('unauthorized') || normalized.includes('401')) {
+        this.emitBrowserEvent('yamshat:auth-expired', { detail: message });
+      }
+
       // Refresh auth in case the token rotated since module load.
       this.syncAuth();
     });
@@ -261,7 +270,8 @@ class SocketManager {
   connect() {
     if (!getAuthToken()) return;
     this.syncAuth();
-    if (!this.socket.connected) this.socket.connect();
+    if (this.socket.connected) return;
+    this.socket.connect();
   }
 
   disconnect() {

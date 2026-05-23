@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import socket from '../api/socket.js';
+import sessionManager from '../auth/sessionManager.js';
 import { clearStoredUser } from '../utils/auth.js';
 import { useAppStore } from '../store/appStore.js';
 import logger from '../utils/logger.js';
@@ -26,6 +27,7 @@ export function RealtimeProvider({ children }) {
   const [socketId, setSocketId] = useState(socket.id || '');
   const [reconnecting, setReconnecting] = useState(false);
   const [lastError, setLastError] = useState('');
+  const recoveringAuthRef = useRef(false);
 
   useEffect(() => {
     const handleConnect = () => {
@@ -34,14 +36,30 @@ export function RealtimeProvider({ children }) {
       setReconnecting(false);
       setLastError('');
     };
+
     const handleDisconnect = () => {
       setConnected(false);
       setSocketId('');
     };
-    const handleAuthExpired = () => {
-      logger.warn?.('realtime auth expired, clearing session');
-      clearStoredUser();
-      redirectToLogin();
+
+    const handleAuthExpired = async () => {
+      if (recoveringAuthRef.current) return;
+      recoveringAuthRef.current = true;
+
+      try {
+        logger.warn?.('realtime auth expired, attempting recovery');
+        await sessionManager.refreshSession({ reason: 'socket_auth_expired', force: true });
+        socket.syncAuth();
+        socket.connect();
+      } catch (error) {
+        logger.warn?.('realtime auth recovery failed, clearing session', {
+          detail: error?.message || 'socket_auth_expired',
+        });
+        clearStoredUser();
+        redirectToLogin();
+      } finally {
+        recoveringAuthRef.current = false;
+      }
     };
 
     const handleSocketState = (event) => {

@@ -11,7 +11,7 @@ import { useGesture, useTouchFeedback } from '../hooks/useGesture';
 import GestureContainer from './GestureContainer';
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const API_BASE_URL = 'https://yamshatl-ahj8.onrender.com/api';
 const REACTION_TYPES = ['❤️', '😂', '😮', '😢', '😠', '👍', '💕'];
 
 export const EnhancedStoryViewer = ({ stories = [] }) => {

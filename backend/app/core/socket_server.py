@@ -42,9 +42,11 @@ if settings.REDIS_URL:
         mgr = None
 
 sio = socketio.AsyncServer(
-    async_mode='asgi', 
-    cors_allowed_origins='*',
-    client_manager=mgr
+    async_mode='asgi',
+    cors_allowed_origins=settings.cors_origins,
+    client_manager=mgr,
+    ping_interval=25,
+    ping_timeout=70,
 )
 sio_app = socketio.ASGIApp(sio)
 
@@ -86,9 +88,7 @@ def _origin_matches_regex(origin: str) -> bool:
 def _socket_origin_allowed(origin: str | None) -> bool:
     normalized = _normalize_origin(origin)
     if not normalized:
-        return True
-    if '*' in settings.cors_origins:
-        return True
+        return False
 
     allowed_origins = {
         _normalize_origin(candidate)

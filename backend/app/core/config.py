@@ -161,10 +161,10 @@ class Settings:
     JAEGER_AGENT_PORT: int = int(os.getenv('JAEGER_AGENT_PORT', '6831'))
     CORS_ORIGINS_RAW: str = os.getenv(
         'CORS_ORIGINS',
-        'http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173',
+        'https://yamshatl-1-yg1o.onrender.com',
     )
-    FRONTEND_ORIGIN: str = os.getenv('FRONTEND_ORIGIN', '').strip()
-    BACKEND_ORIGIN: str = os.getenv('BACKEND_ORIGIN', '').strip()
+    FRONTEND_ORIGIN: str = os.getenv('FRONTEND_ORIGIN', 'https://yamshatl-1-yg1o.onrender.com').strip()
+    BACKEND_ORIGIN: str = os.getenv('BACKEND_ORIGIN', 'https://yamshatl-ahj8.onrender.com').strip()
     RENDER_EXTERNAL_URL: str = os.getenv('RENDER_EXTERNAL_URL', '').strip()
     RAILWAY_STATIC_URL: str = os.getenv('RAILWAY_STATIC_URL', '').strip()
     CDN_BASE_URL: str = (os.getenv('CDN_BASE_URL') or os.getenv('IMAGEKIT_URL_ENDPOINT') or os.getenv('BUNNY_CDN_URL') or os.getenv('CLOUDFLARE_CDN_URL') or '').strip().rstrip('/')
@@ -272,62 +272,24 @@ class Settings:
 
     @property
     def cors_origin_regex(self) -> str | None:
-        candidates = [
-            self.FRONTEND_ORIGIN,
-            self.BACKEND_ORIGIN,
-            self.RENDER_EXTERNAL_URL,
-            self.RAILWAY_STATIC_URL,
-            *csv_list(self.CORS_ORIGINS_RAW),
-        ]
-        raw_pattern = normalize_regex_pattern(self.CORS_ORIGIN_REGEX_RAW)
-        derived_pattern = normalize_regex_pattern(render_origin_regex_from_candidates(*candidates))
-
-        render_wildcard = ''
-        if should_enable_render_wildcard(*candidates):
-            # Render often changes service suffixes (مثل -vg1o / -yg1o).
-            # هذا الـ fallback يمنع توقف تسجيل الدخول بسبب تغيير suffix فقط.
-            render_wildcard = r'https://[a-z0-9-]+\.onrender\.com'
-
-        combined = combine_origin_regex(raw_pattern, derived_pattern, render_wildcard)
-        if combined:
-            return combined
-
-        # Allow all Render subdomains safely when explicit origins are unavailable.
-        return r'^https://.*\.onrender\.com$'
+        return None
 
     @property
     def cors_origins(self) -> list[str]:
-        # Render + local development fallback
-        # يمنع مشاكل CORS مع خدمات Render المتغيرة
-        if self.CORS_ORIGINS_RAW.strip() in {'*', ''}:
-            return [
-                'http://localhost:3000',
-                'http://localhost:5173',
-                'http://127.0.0.1:5173',
-                'https://yamshatl-1-yg1o.onrender.com',
-                'https://yamshatl-ahj8.onrender.com',
-            ]
-
-        origins: list[str] = []
-        origins.extend(csv_list(self.CORS_ORIGINS_RAW))
-        origins.extend(
-            origin
-            for origin in [
-                self.FRONTEND_ORIGIN,
-                self.BACKEND_ORIGIN,
-                self.RENDER_EXTERNAL_URL,
-                self.RAILWAY_STATIC_URL,
-            ]
-            if origin
-        )
+        origins = [self.FRONTEND_ORIGIN]
+        if self.CORS_ORIGINS_RAW.strip() and self.CORS_ORIGINS_RAW.strip() != '*':
+            origins = csv_list(self.CORS_ORIGINS_RAW)
 
         unique_origins: list[str] = []
         seen: set[str] = set()
         for origin in origins:
-            if origin not in seen:
-                unique_origins.append(origin)
-                seen.add(origin)
-        return unique_origins
+            cleaned = origin.strip()
+            if not cleaned or cleaned in seen:
+                continue
+            unique_origins.append(cleaned)
+            seen.add(cleaned)
+
+        return unique_origins or [self.FRONTEND_ORIGIN]
 
     @property
     def allowed_upload_extensions(self) -> set[str]:

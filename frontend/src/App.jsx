@@ -12,7 +12,7 @@ import useNetworkStatus from './hooks/useNetworkStatus.js';
 import useOfflineQueue from './hooks/useOfflineQueue.js';
 import useSessionGuard from './hooks/useSessionGuard.js';
 import usePageAnalytics from './hooks/usePageAnalytics.js';
-import useChatRealtimeEnhanced from './hooks/useChatRealtimeEnhanced.js';
+import useChatRealtime from './hooks/useChatRealtime.js';
 import { useAppStore } from './store/appStore.js';
 import './styles/theme.css';
 
@@ -55,7 +55,7 @@ function AppGuards() {
   useSessionGuard();
   useOfflineQueue();
   usePageAnalytics();
-  useChatRealtimeEnhanced();
+  useChatRealtime();
   const theme = useAppStore((state) => state.theme);
   const language = useAppStore((state) => state.language);
   const activeRequests = useAppStore((state) => state.activeRequests);

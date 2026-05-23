@@ -47,14 +47,23 @@ fastapi_app = FastAPI(
 print("CORS Origins:", settings.cors_origins)
 
 # CORS لازم يكون أول Middleware عشان يشتغل حتى مع الأخطاء 400/500
+from fastapi.middleware.cors import CORSMiddleware
+
+# لازم CORS يكون أول Middleware
 fastapi_app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_origin_regex=settings.cors_origin_regex,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://yamshatl-1-yg1o.onrender.com",
+    ],
+    allow_origin_regex=r"^https://[a-z0-9-]+\.onrender\.com$",
     allow_credentials=True,
-    allow_methods=['*'],
-    allow_headers=['*'],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
+
 
 # بعد CORS تجي باقي الـ Middleware
 fastapi_app.middleware('http')(api_rate_guard)

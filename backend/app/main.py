@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-import app.models  # noqa: F401
+import app.models # noqa: F401
 from app.api.routes import admin, analytics, auth, chat, comments, follow, groups, inbox, live, notifications, posts, search, stories, upload, users, ws
 from app.core.api_guard import api_rate_guard
 from app.core.config import settings
@@ -19,12 +19,10 @@ from app.core.socket_server import sio
 from app.db.bootstrap import initialize_database
 from app.db.session import engine
 
-
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     initialize_database(engine)
     yield
-
 
 def _database_status() -> dict:
     try:
@@ -37,7 +35,6 @@ def _database_status() -> dict:
             'database_error': str(exc)[:300],
         }
 
-
 configure_logging()
 
 fastapi_app = FastAPI(
@@ -46,9 +43,10 @@ fastapi_app = FastAPI(
     lifespan=lifespan,
 )
 
-fastapi_app.middleware('http')(api_rate_guard)
-fastapi_app.middleware('http')(security_headers)
-register_error_handlers(fastapi_app)
+# طباعة للتأكد من قيمة CORS - احذفها بعد ما تتأكد
+print("CORS Origins:", settings.cors_origins)
+
+# CORS لازم يكون أول Middleware عشان يشتغل حتى مع الأخطاء 400/500
 fastapi_app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -57,6 +55,11 @@ fastapi_app.add_middleware(
     allow_methods=['*'],
     allow_headers=['*'],
 )
+
+# بعد CORS تجي باقي الـ Middleware
+fastapi_app.middleware('http')(api_rate_guard)
+fastapi_app.middleware('http')(security_headers)
+register_error_handlers(fastapi_app)
 
 if settings.ENABLE_METRICS:
     configure_metrics(fastapi_app, settings.SERVICE_NAME)
@@ -84,7 +87,6 @@ fastapi_app.include_router(stories.router, prefix=settings.API_PREFIX, tags=['st
 fastapi_app.include_router(groups.router, prefix=settings.API_PREFIX, tags=['groups'])
 fastapi_app.include_router(ws.router, tags=['ws'])
 
-
 @fastapi_app.api_route('/', methods=['GET', 'HEAD'])
 def root() -> dict:
     return {
@@ -97,7 +99,6 @@ def root() -> dict:
         'uploads': '/uploads',
         'analytics': f'{settings.API_PREFIX}/analytics/events',
     }
-
 
 @fastapi_app.api_route('/health', methods=['GET', 'HEAD'])
 def health() -> dict:
@@ -114,6 +115,5 @@ def health() -> dict:
         'analytics_enabled': bool(settings.ANALYTICS_ENABLED),
         'push_provider': settings.PUSH_PROVIDER,
     }
-
 
 app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app, socketio_path='socket.io')

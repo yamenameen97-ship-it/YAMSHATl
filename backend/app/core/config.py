@@ -269,22 +269,16 @@ class Settings:
     @property
     def cors_origins(self) -> list[str]:
         # Render + local development fallback
-        # يمنع مشاكل CORS مع خدمات Render المتغيرة
-        if self.CORS_ORIGINS_RAW.strip() in {'*', ''}:
-            return [
-                'http://localhost:3000',
-                'http://localhost:5173',
-                'http://127.0.0.1:5173',
-                'https://yamshatl-11.onrender.com',
-                'https://yamshatl.onrender.com',
-                'https://yamshat1-1-yg1o.onrender.com',
-                'https://yamshat1-1-vg10.onrender.com',
-                'https://yamshat1-ahj8.onrender.com',
-                'https://yamshat1-11.onrender.com',
-            ]
+        # يمنع مشاكل CORS مع خدمات Render المتغيرة بدون الاعتماد على روابط قديمة داخل الكود
+        origins: list[str] = [
+            'http://localhost:3000',
+            'http://127.0.0.1:3000',
+            'http://localhost:5173',
+            'http://127.0.0.1:5173',
+        ]
 
-        origins: list[str] = []
-        origins.extend(csv_list(self.CORS_ORIGINS_RAW))
+        if self.CORS_ORIGINS_RAW.strip() not in {'*', ''}:
+            origins.extend(csv_list(self.CORS_ORIGINS_RAW))
         origins.extend(
             origin
             for origin in [

@@ -1,4 +1,12 @@
 (function () {
+  const readMeta = (name) => {
+    try {
+      return document.querySelector(`meta[name="${name}"]`)?.getAttribute('content') || '';
+    } catch (_) {
+      return '';
+    }
+  };
+
   const trim = (value) => {
     const normalized = String(value || '').trim();
     if (/^%VITE_[A-Z0-9_]+%$/i.test(normalized)) return '';
@@ -13,8 +21,8 @@
   const FRONTEND_ORIGIN = trim(window.location.origin);
   const host = String(window.location.hostname || '').trim().toLowerCase();
   const isLocalFrontend = host === 'localhost' || host === '127.0.0.1';
-  const defaultBackendOrigin = trim(window.__YAMSHAT_DEFAULT_BACKEND_ORIGIN__ || '');
-  const defaultApiBase = trim(window.__YAMSHAT_DEFAULT_API_BASE__ || '');
+  const defaultBackendOrigin = trim(readMeta('yamshat-backend-origin') || window.__YAMSHAT_DEFAULT_BACKEND_ORIGIN__ || '');
+  const defaultApiBase = trim(readMeta('yamshat-api-base') || window.__YAMSHAT_DEFAULT_API_BASE__ || '');
   const injectedBackendOrigin = trim(window.__APP_BACKEND_ORIGIN__ || defaultBackendOrigin || '');
   const injectedApiBase = trim(window.__APP_API_BASE__ || defaultApiBase || '');
   const storedBackendOrigin = trim(localStorage.getItem('backendOrigin'));

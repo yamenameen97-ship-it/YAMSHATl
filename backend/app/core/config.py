@@ -236,7 +236,19 @@ class Settings:
 
     @property
     def cors_origin_regex(self) -> str | None:
+        broad_render_regex = r'^https://.*\.onrender\.com$'
+        has_render_origin = any('.onrender.com' in value for value in [
+            self.FRONTEND_ORIGIN,
+            self.BACKEND_ORIGIN,
+            self.RENDER_EXTERNAL_URL,
+            self.RAILWAY_STATIC_URL,
+            self.CORS_ORIGINS_RAW,
+            self.CORS_ORIGIN_REGEX_RAW,
+        ])
+
         if self.CORS_ORIGIN_REGEX_RAW:
+            if has_render_origin and self.CORS_ORIGIN_REGEX_RAW != broad_render_regex:
+                return rf'^(?:{self.CORS_ORIGIN_REGEX_RAW.strip("^").strip("$")}|https://.*\.onrender\.com)$'
             return self.CORS_ORIGIN_REGEX_RAW
 
         derived = render_origin_regex_from_candidates(
@@ -247,10 +259,12 @@ class Settings:
             *csv_list(self.CORS_ORIGINS_RAW),
         )
         if derived:
+            if has_render_origin and derived != broad_render_regex:
+                return rf'^(?:{derived.strip("^").strip("$")}|https://.*\.onrender\.com)$'
             return derived
 
         # Allow all Render subdomains safely when explicit origins are unavailable.
-        return r'^https://.*\.onrender\.com$'
+        return broad_render_regex
 
     @property
     def cors_origins(self) -> list[str]:
@@ -261,8 +275,12 @@ class Settings:
                 'http://localhost:3000',
                 'http://localhost:5173',
                 'http://127.0.0.1:5173',
+                'https://yamshatl-11.onrender.com',
+                'https://yamshatl.onrender.com',
                 'https://yamshat1-1-yg1o.onrender.com',
+                'https://yamshat1-1-vg10.onrender.com',
                 'https://yamshat1-ahj8.onrender.com',
+                'https://yamshat1-11.onrender.com',
             ]
 
         origins: list[str] = []

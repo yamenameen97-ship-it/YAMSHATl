@@ -13,8 +13,8 @@
   const injectedApiBase = trim(window.__APP_API_BASE__ || window.__YAMSHAT_DEFAULT_API_BASE__ || '');
   const storedBackendOrigin = trim(localStorage.getItem('backendOrigin'));
   const storedApiBase = trim(localStorage.getItem('apiBase'));
-  const runtimeBackendOrigin = injectedBackendOrigin || storedBackendOrigin;
-  const runtimeApiBase = injectedApiBase || storedApiBase;
+  const runtimeBackendOrigin = injectedBackendOrigin || (isLocalFrontend ? storedBackendOrigin : '');
+  const runtimeApiBase = injectedApiBase || (isLocalFrontend ? storedApiBase : '');
   const fallbackOrigin = isLocalFrontend ? FRONTEND_ORIGIN : '';
   const BACKEND_ORIGIN = runtimeBackendOrigin || trim(runtimeApiBase.replace(/\/api$/i, '')) || fallbackOrigin;
   const API_BASE = toApiBase(runtimeApiBase || BACKEND_ORIGIN || fallbackOrigin);

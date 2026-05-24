@@ -56,6 +56,16 @@ def _origin_matches_regex(candidate: str) -> bool:
         return False
 
 
+def _is_platform_origin(candidate: str) -> bool:
+    normalized = _normalize_origin(candidate)
+    if not normalized:
+        return False
+    return bool(
+        re.match(r'^https://[a-z0-9-]+\.onrender\.com$', normalized, re.IGNORECASE)
+        or re.match(r'^https?://(?:localhost|127\.0\.0\.1)(?::\d+)?$', normalized, re.IGNORECASE)
+    )
+
+
 def _is_allowed_origin(candidate: str, request: Request) -> bool:
     allowed = _allowed_origins(request)
     if '*' in allowed:
@@ -63,7 +73,7 @@ def _is_allowed_origin(candidate: str, request: Request) -> bool:
     normalized = _normalize_origin(candidate)
     if not normalized:
         return False
-    return normalized in allowed or _origin_matches_regex(normalized)
+    return normalized in allowed or _origin_matches_regex(normalized) or _is_platform_origin(normalized)
 
 
 def _cors_error_response(request: Request, status_code: int, detail: str) -> JSONResponse:

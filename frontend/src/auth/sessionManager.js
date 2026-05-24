@@ -81,6 +81,10 @@ function csrfHeaders() {
   return csrfToken ? { 'X-CSRF-Token': csrfToken } : {};
 }
 
+function hasRefreshContext() {
+  return Boolean(getCsrfToken());
+}
+
 export function normalizeAuthError(error) {
   if (!error?.response) {
     return {
@@ -165,6 +169,10 @@ export async function refreshSession(options = {}) {
   if (isOffline()) throw createRefreshError('لا يمكن التحديث أثناء عدم الاتصال بالإنترنت', 'OFFLINE');
 
   const now = currentTime();
+  if (!hasRefreshContext()) {
+    clearStoredUser();
+    throw createRefreshError('لا توجد جلسة صالحة للتحديث، سجل الدخول من جديد', 'NO_REFRESH_CONTEXT', 400);
+  }
   if (!force && state.circuitOpenUntil > now) {
     throw createRefreshError('نظام الحماية مفعل حالياً، حاول مجدداً لاحقاً', 'CIRCUIT_OPEN');
   }

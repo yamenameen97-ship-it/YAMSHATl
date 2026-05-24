@@ -3,6 +3,7 @@ import { getNotifications } from '../../api/notifications.js';
 import notificationService from '../../services/notificationService.js';
 import socketManager from '../../services/socketManager.js';
 import { useNotificationStore } from '../../store/notificationStore.js';
+import { useAppStore } from '../../store/appStore.js';
 import { maybeShowBrowserNotification, normalizeNotification } from '../../utils/notificationCenter.js';
 import {
   buildBatchSummary,
@@ -37,6 +38,8 @@ async function readPushSubscriptionStatus() {
 }
 
 export function useNotificationsRuntime(pushToast) {
+  const session = useAppStore((state) => state.session);
+  const authToken = session?.access_token || session?.token || '';
   const hydrateNotifications = useNotificationStore((state) => state.hydrateNotifications);
   const upsertNotifications = useNotificationStore((state) => state.upsertNotifications);
   const restoreFromStorage = useNotificationStore((state) => state.restoreFromStorage);
@@ -123,6 +126,17 @@ export function useNotificationsRuntime(pushToast) {
   }, [flushBatch, preferences.batchWindowMs, preferences.batchingEnabled, setStatus]);
 
   const syncNotifications = useCallback(async (source = 'manual') => {
+    if (!authToken) {
+      restoreFromStorage();
+      setStatus({
+        isSyncing: false,
+        lastSource: source,
+        syncError: '',
+        socketConnected: false,
+      });
+      return null;
+    }
+
     if (syncInFlightRef.current) return null;
     syncInFlightRef.current = true;
     setStatus({ isSyncing: true, lastSource: source });
@@ -151,13 +165,29 @@ export function useNotificationsRuntime(pushToast) {
     } finally {
       syncInFlightRef.current = false;
     }
-  }, [hydrateNotifications, restoreFromStorage, setStatus]);
+  }, [authToken, hydrateNotifications, restoreFromStorage, setStatus]);
 
   const runtimeState = useMemo(() => ({ preferences, status }), [preferences, status]);
 
   useEffect(() => {
     let disposed = false;
     restoreFromStorage();
+
+    if (!authToken) {
+      setStatus({
+        isSyncing: false,
+        socketConnected: false,
+        syncError: '',
+        pendingBatchSize: 0,
+      });
+      return () => {
+        disposed = true;
+        if (batchTimerRef.current) {
+          window.clearTimeout(batchTimerRef.current);
+          batchTimerRef.current = null;
+        }
+      };
+    }
 
     if (!runtimeInitialized) {
       runtimeInitialized = true;
@@ -257,7 +287,7 @@ export function useNotificationsRuntime(pushToast) {
         batchTimerRef.current = null;
       }
     };
-  }, [preferences.backgroundSyncEnabled, preferences.deepLinking, preferences.realtimeEnabled, preferences.syncIntervalMs, preferences.unreadSyncEnabled, queueIncomingNotification, restoreFromStorage, setPreferences, setStatus, syncNotifications]);
+  }, [authToken, preferences.backgroundSyncEnabled, preferences.deepLinking, preferences.realtimeEnabled, preferences.syncIntervalMs, preferences.unreadSyncEnabled, queueIncomingNotification, restoreFromStorage, setPreferences, setStatus, syncNotifications]);
 
   return runtimeState;
 }

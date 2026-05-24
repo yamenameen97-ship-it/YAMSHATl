@@ -1,5 +1,6 @@
 import logger from '../utils/logger.js';
 import { defaultRetryManager } from './retryManager.js';
+import { API_BASE, buildApiUrl } from '../api/config.js';
 
 const viteEnv = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : {};
 
@@ -17,7 +18,7 @@ export class UploadManager {
   constructor(options = {}) {
     this.cloudinaryUrl = options.cloudinaryUrl || viteEnv.VITE_CLOUDINARY_URL || process.env.REACT_APP_CLOUDINARY_URL;
     this.cloudinaryPreset = options.cloudinaryPreset || viteEnv.VITE_CLOUDINARY_PRESET || process.env.REACT_APP_CLOUDINARY_PRESET;
-    this.apiUrl = options.apiUrl || viteEnv.VITE_API_BASE || 'https://yamshatl-ahj8.onrender.com/api';
+    this.apiUrl = options.apiUrl || API_BASE || viteEnv.VITE_API_BASE || 'https://yamshatl-ahj8.onrender.com/api';
     this.maxFileSize = options.maxFileSize || 100 * 1024 * 1024; // 100MB
     this.maxImageSize = options.maxImageSize || 10 * 1024 * 1024; // 10MB
     this.maxVideoSize = options.maxVideoSize || 100 * 1024 * 1024; // 100MB
@@ -160,7 +161,7 @@ export class UploadManager {
    */
   async uploadToServer(file, options = {}) {
     const {
-      endpoint = '/api/upload',
+      endpoint = '/upload',
       onProgress = () => {},
     } = options;
 
@@ -203,7 +204,8 @@ export class UploadManager {
           reject(new Error('Upload aborted'));
         });
 
-        xhr.open('POST', `${this.apiUrl}${endpoint}`);
+        const targetUrl = buildApiUrl(endpoint);
+        xhr.open('POST', targetUrl);
         xhr.setRequestHeader('Authorization', `Bearer ${this.getAuthToken()}`);
         xhr.send(formData);
       });
@@ -334,7 +336,7 @@ export class UploadManager {
 export const defaultUploadManager = new UploadManager({
   cloudinaryUrl: viteEnv.VITE_CLOUDINARY_URL || process.env.REACT_APP_CLOUDINARY_URL,
   cloudinaryPreset: viteEnv.VITE_CLOUDINARY_PRESET || process.env.REACT_APP_CLOUDINARY_PRESET,
-  apiUrl: viteEnv.VITE_API_BASE || 'https://yamshatl-ahj8.onrender.com/api',
+  apiUrl: API_BASE || viteEnv.VITE_API_BASE || 'https://yamshatl-ahj8.onrender.com/api',
 });
 
 /**

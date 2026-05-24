@@ -1,3 +1,5 @@
+import { buildApiUrl } from '../api/config.js';
+
 /**
  * مدير الأمان والجلسات
  * توفر:
@@ -105,7 +107,7 @@ export class SecuritySessionManager {
     }
 
     try {
-      const response = await fetch('/api/auth/refresh', {
+      const response = await fetch(buildApiUrl('/auth/refresh'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -185,7 +187,7 @@ export class SecuritySessionManager {
    */
   async trustDevice(deviceInfo) {
     try {
-      const response = await fetch('/api/security/trust-device', {
+      const response = await fetch(buildApiUrl('/security/trust-device'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -212,7 +214,7 @@ export class SecuritySessionManager {
    */
   async getTrustedDevices() {
     try {
-      const response = await fetch('/api/security/trusted-devices', {
+      const response = await fetch(buildApiUrl('/security/trusted-devices'), {
         headers: {
           'Authorization': `Bearer ${this.currentSession.accessToken}`
         }
@@ -235,7 +237,7 @@ export class SecuritySessionManager {
    */
   async untrustDevice(deviceId) {
     try {
-      const response = await fetch(`/api/security/trusted-devices/${deviceId}`, {
+      const response = await fetch(buildApiUrl(`/security/trusted-devices/${deviceId}`), {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${this.currentSession.accessToken}`
@@ -259,7 +261,7 @@ export class SecuritySessionManager {
    */
   async getActiveSessions() {
     try {
-      const response = await fetch('/api/security/active-sessions', {
+      const response = await fetch(buildApiUrl('/security/active-sessions'), {
         headers: {
           'Authorization': `Bearer ${this.currentSession.accessToken}`
         }
@@ -282,7 +284,7 @@ export class SecuritySessionManager {
    */
   async terminateSession(sessionId) {
     try {
-      const response = await fetch(`/api/security/sessions/${sessionId}`, {
+      const response = await fetch(buildApiUrl(`/security/sessions/${sessionId}`), {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${this.currentSession.accessToken}`
@@ -308,7 +310,7 @@ export class SecuritySessionManager {
     if (!this.config.enableSuspiciousLoginDetection) return;
 
     try {
-      const response = await fetch('/api/security/suspicious-logins', {
+      const response = await fetch(buildApiUrl('/security/suspicious-logins'), {
         headers: {
           'Authorization': `Bearer ${this.currentSession.accessToken}`
         }
@@ -330,7 +332,7 @@ export class SecuritySessionManager {
    */
   async confirmLogin(loginId) {
     try {
-      const response = await fetch(`/api/security/suspicious-logins/${loginId}/confirm`, {
+      const response = await fetch(buildApiUrl(`/security/suspicious-logins/${loginId}/confirm`), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.currentSession.accessToken}`
@@ -354,7 +356,7 @@ export class SecuritySessionManager {
    */
   async denyLogin(loginId) {
     try {
-      const response = await fetch(`/api/security/suspicious-logins/${loginId}/deny`, {
+      const response = await fetch(buildApiUrl(`/security/suspicious-logins/${loginId}/deny`), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.currentSession.accessToken}`
@@ -426,7 +428,7 @@ export class SecuritySessionManager {
   async logout() {
     try {
       if (this.currentSession) {
-        await fetch('/api/auth/logout', {
+        await fetch(buildApiUrl('/auth/logout'), {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${this.currentSession.accessToken}`

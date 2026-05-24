@@ -1,3 +1,5 @@
+import { buildApiUrl } from '../api/config.js';
+
 /**
  * Content Security Policy Configuration
  * 
@@ -138,7 +140,7 @@ export function setupCSPViolationHandler() {
     });
 
     // Log to backend
-    fetch('/api/security/csp-violations', {
+    fetch(buildApiUrl('/security/csp-violations'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

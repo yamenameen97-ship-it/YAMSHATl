@@ -9,6 +9,18 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <title>YAMSHAT</title>
+    <script>
+      (function () {
+        const normalize = (value) => {
+          const raw = String(value || '').trim();
+          return /^%[A-Z0-9_]+%$/.test(raw) ? '' : raw.replace(/\/+$/, '');
+        };
+        const backendOrigin = normalize('%VITE_BACKEND_ORIGIN%');
+        const apiBase = normalize('%VITE_API_BASE%');
+        if (backendOrigin) window.__APP_BACKEND_ORIGIN__ = backendOrigin;
+        if (apiBase) window.__APP_API_BASE__ = apiBase;
+      })();
+    </script>
     <script src="/app-config.js"></script>
   </head>
   <body>

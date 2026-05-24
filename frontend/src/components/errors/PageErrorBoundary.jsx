@@ -1,6 +1,7 @@
 import React from 'react';
 import Card from '../ui/Card.jsx';
 import Button from '../ui/Button.jsx';
+import { buildApiUrl } from '../../api/config.js';
 
 /**
  * PageErrorBoundary Component
@@ -48,7 +49,7 @@ class PageErrorBoundary extends React.Component {
       timestamp: new Date().toISOString(),
     };
 
-    fetch('/api/errors/log', {
+    fetch(buildApiUrl('/errors/log'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(errorData),

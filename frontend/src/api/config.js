@@ -17,17 +17,8 @@ const storedApiBase = typeof window !== 'undefined' ? trim(localStorage.getItem(
 const storedBackendOrigin = typeof window !== 'undefined' ? trim(localStorage.getItem('backendOrigin')) : '';
 const runtimeApiBase = injectedApiBase || (isLocalOrigin ? storedApiBase : '');
 const runtimeBackendOrigin = injectedBackendOrigin || (isLocalOrigin ? storedBackendOrigin : '');
-const sameOriginApiBase = currentOrigin ? `${currentOrigin}/api` : '';
-const sameOriginHostedFallback = isHostedFrontend && !runtimeApiBase && !runtimeBackendOrigin;
-const envOriginCandidate = trim(envApiBase.replace(/\/api$/i, '')) || envBackendOrigin;
-const envLooksCrossOrigin = Boolean(isHostedFrontend && envOriginCandidate && envOriginCandidate !== currentOrigin);
-const shouldIgnoreHostedBuildOrigins = sameOriginHostedFallback && envLooksCrossOrigin && /\.onrender\.com$/i.test(currentHost);
-const resolvedBackendOrigin = shouldIgnoreHostedBuildOrigins
-  ? currentOrigin
-  : (runtimeBackendOrigin || envBackendOrigin || trim(runtimeApiBase.replace(/\/api$/i, '')) || trim(envApiBase.replace(/\/api$/i, '')) || currentOrigin);
-const resolvedApiBase = shouldIgnoreHostedBuildOrigins
-  ? sameOriginApiBase
-  : (runtimeApiBase || envApiBase || toApiBase(resolvedBackendOrigin || currentOrigin));
+const resolvedBackendOrigin = runtimeBackendOrigin || envBackendOrigin || trim(runtimeApiBase.replace(/\/api$/i, '')) || trim(envApiBase.replace(/\/api$/i, '')) || currentOrigin;
+const resolvedApiBase = runtimeApiBase || envApiBase || toApiBase(resolvedBackendOrigin || currentOrigin);
 
 export const FRONTEND_ORIGIN = currentOrigin || trim(import.meta.env.VITE_FRONTEND_ORIGIN || '');
 export const BACKEND_ORIGIN = resolvedBackendOrigin || FRONTEND_ORIGIN;

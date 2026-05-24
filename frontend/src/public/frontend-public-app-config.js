@@ -1,5 +1,9 @@
 (function () {
-  const trim = (value) => String(value || '').trim().replace(/\/+$/, '');
+  const trim = (value) => {
+    const normalized = String(value || '').trim();
+    if (/^%VITE_[A-Z0-9_]+%$/i.test(normalized)) return '';
+    return normalized.replace(/\/+$/, '');
+  };
   const toApiBase = (value) => {
     const cleaned = trim(value);
     if (!cleaned) return '';
@@ -9,13 +13,15 @@
   const FRONTEND_ORIGIN = trim(window.location.origin);
   const host = String(window.location.hostname || '').trim().toLowerCase();
   const isLocalFrontend = host === 'localhost' || host === '127.0.0.1';
-  const injectedBackendOrigin = trim(window.__APP_BACKEND_ORIGIN__ || window.__YAMSHAT_DEFAULT_BACKEND_ORIGIN__ || '');
-  const injectedApiBase = trim(window.__APP_API_BASE__ || window.__YAMSHAT_DEFAULT_API_BASE__ || '');
+  const defaultBackendOrigin = trim(window.__YAMSHAT_DEFAULT_BACKEND_ORIGIN__ || '');
+  const defaultApiBase = trim(window.__YAMSHAT_DEFAULT_API_BASE__ || '');
+  const injectedBackendOrigin = trim(window.__APP_BACKEND_ORIGIN__ || defaultBackendOrigin || '');
+  const injectedApiBase = trim(window.__APP_API_BASE__ || defaultApiBase || '');
   const storedBackendOrigin = trim(localStorage.getItem('backendOrigin'));
   const storedApiBase = trim(localStorage.getItem('apiBase'));
-  const runtimeBackendOrigin = injectedBackendOrigin || storedBackendOrigin;
-  const runtimeApiBase = injectedApiBase || storedApiBase;
-  const fallbackOrigin = isLocalFrontend ? FRONTEND_ORIGIN : '';
+  const runtimeBackendOrigin = injectedBackendOrigin || storedBackendOrigin || defaultBackendOrigin;
+  const runtimeApiBase = injectedApiBase || storedApiBase || defaultApiBase;
+  const fallbackOrigin = isLocalFrontend ? FRONTEND_ORIGIN : defaultBackendOrigin;
   const BACKEND_ORIGIN = runtimeBackendOrigin || trim(runtimeApiBase.replace(/\/api$/i, '')) || fallbackOrigin;
   const API_BASE = toApiBase(runtimeApiBase || BACKEND_ORIGIN || fallbackOrigin);
   const uploadBase = API_BASE ? `${API_BASE}/upload` : '';

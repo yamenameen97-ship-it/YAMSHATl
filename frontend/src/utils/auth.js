@@ -4,31 +4,7 @@ import { clearCsrfToken, setCsrfToken } from './csrf.js';
 import { useAppStore } from '../store/appStore.js';
 
 const STORAGE_KEY = 'yamshat_user_session';
-const AUTH_EVENT_KEY = 'yamshat_auth_event';
 const EXPIRY_LEEWAY_SECONDS = 30;
-
-function emitAuthState(type, payload = {}) {
-  if (typeof window === 'undefined') return;
-
-  const detail = {
-    type,
-    at: new Date().toISOString(),
-    ...payload,
-  };
-
-  try {
-    window.dispatchEvent(new CustomEvent('yamshat:auth-state', { detail }));
-  } catch {
-    // ignore CustomEvent failures
-  }
-
-  try {
-    localStorage.setItem(AUTH_EVENT_KEY, JSON.stringify(detail));
-    localStorage.removeItem(AUTH_EVENT_KEY);
-  } catch {
-    // ignore storage failures
-  }
-}
 
 function normalizeUserShape(user) {
   if (!user || typeof user !== 'object') return null;
@@ -124,20 +100,14 @@ export function setStoredUser(user) {
     secureRemove(STORAGE_KEY);
     clearCsrfToken();
     syncStore(null);
-    emitAuthState('session-cleared');
     return;
   }
-
   const raw = JSON.stringify(normalized);
   secureSet(STORAGE_KEY, raw, { persist: Boolean(normalized.remember_me) });
   secureSet('yamshatAuth', raw, { persist: Boolean(normalized.remember_me) });
   secureSet('user', raw, { persist: Boolean(normalized.remember_me) });
   setCsrfToken(normalized.csrf_token || '');
   syncStore(normalized);
-  emitAuthState('session-updated', {
-    username: normalized.username || normalized.user || '',
-    session_id: normalized.session_id || '',
-  });
 }
 
 export function mergeStoredUser(nextValues) {
@@ -161,7 +131,6 @@ export function clearStoredUser() {
   secureRemove('user');
   clearCsrfToken();
   syncStore(null);
-  emitAuthState('session-cleared');
 }
 
 export function getAuthToken() {

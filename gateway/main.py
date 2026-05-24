@@ -56,7 +56,7 @@ def _csv_list(value: str) -> list[str]:
 CORS_ORIGINS = _csv_list(
     os.getenv(
         'CORS_ORIGINS',
-        'http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,https://yamshatl-1-yg1o.onrender.com,https://yamshatl-ahj8.onrender.com',
+        'http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173',
     )
 )
 CORS_ORIGIN_REGEX = (os.getenv('CORS_ORIGIN_REGEX') or r'^https://.*\.onrender\.com$').strip()

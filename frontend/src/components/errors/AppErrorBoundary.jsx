@@ -1,7 +1,6 @@
 import React from 'react';
 import Card from '../ui/Card.jsx';
 import Button from '../ui/Button.jsx';
-import { buildApiUrl } from '../../api/config.js';
 
 /**
  * AppErrorBoundary Component
@@ -56,7 +55,7 @@ class AppErrorBoundary extends React.Component {
     };
 
     // Send to backend
-    fetch(buildApiUrl('/errors/log'), {
+    fetch('/api/errors/log', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(errorData),

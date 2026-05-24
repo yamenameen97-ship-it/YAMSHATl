@@ -3,53 +3,45 @@ import socketManager from '../socketManager';
 import logger from '../../utils/logger';
 
 class ModerationService {
-  async sendAction(roomId, action, payload = {}) {
+  async muteParticipant(roomId, participantId) {
     try {
-      const response = await axios.post(`/api/live/${roomId}/moderate`, { action, ...payload });
-      socketManager.emit('moderation_action', { roomId, action, ...payload });
-      logger.info(`Live moderation action: ${action}`, { roomId, payload });
-      return response.data;
+      await axios.post(`/api/live/${roomId}/mute`, { participantId });
+      socketManager.emit('moderation_action', { type: 'mute', roomId, participantId });
+      logger.info(`Muted participant ${participantId} in room ${roomId}`);
     } catch (error) {
-      logger.error('Failed live moderation action', { roomId, action, error: error?.message || error });
+      logger.error('Failed to mute participant', error);
       throw error;
     }
   }
 
-  muteParticipant(roomId, participantId) {
-    return this.sendAction(roomId, 'mute_user', { username: participantId });
-  }
-
-  unmuteParticipant(roomId, participantId) {
-    return this.sendAction(roomId, 'unmute_user', { username: participantId });
-  }
-
-  kickParticipant(roomId, participantId) {
-    return this.sendAction(roomId, 'ban_user', { username: participantId });
-  }
-
-  banStream(roomId, userId) {
-    return this.sendAction(roomId, 'ban_user', { username: userId });
-  }
-
-  deleteComment(roomId, commentId) {
-    return this.sendAction(roomId, 'delete_comment', { comment_id: commentId });
-  }
-
-  pinComment(roomId, commentId) {
-    return this.sendAction(roomId, 'pin_comment', { comment_id: commentId });
-  }
-
-  unpinComment(roomId, commentId) {
-    return this.sendAction(roomId, 'unpin_comment', { comment_id: commentId });
+  async kickParticipant(roomId, participantId) {
+    try {
+      await axios.post(`/api/live/${roomId}/kick`, { participantId });
+      socketManager.emit('moderation_action', { type: 'kick', roomId, participantId });
+      logger.info(`Kicked participant ${participantId} from room ${roomId}`);
+    } catch (error) {
+      logger.error('Failed to kick participant', error);
+      throw error;
+    }
   }
 
   async reportStream(roomId, reason) {
     try {
-      const response = await axios.post(`/api/live/${roomId}/report`, { reason });
-      logger.info('Live stream reported', { roomId, reason });
-      return response.data;
+      await axios.post(`/api/live/${roomId}/report`, { reason });
+      logger.info(`Reported room ${roomId} for ${reason}`);
     } catch (error) {
-      logger.error('Failed to report live stream', { roomId, error: error?.message || error });
+      logger.error('Failed to report stream', error);
+      throw error;
+    }
+  }
+
+  async banStream(roomId, userId) {
+    try {
+      await axios.post(`/api/live/ban`, { roomId, userId });
+      socketManager.emit('moderation_action', { type: 'ban', roomId, userId });
+      logger.info(`Banned user ${userId} from streaming`);
+    } catch (error) {
+      logger.error('Failed to ban stream', error);
       throw error;
     }
   }

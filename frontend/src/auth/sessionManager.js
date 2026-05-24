@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { API_BASE } from '../api/config.js';
 import { getCsrfToken } from '../utils/csrf.js';
-import { clearStoredUser, getSessionTtlMs, hasStoredSession, mergeStoredUser } from '../utils/auth.js';
+import { clearStoredUser, getSessionTtlMs, mergeStoredUser, getStoredUser } from '../utils/auth.js';
 import logger from '../utils/logger.js';
 import { getBackoffDelayMs, sleep } from '../utils/retry.js';
 
@@ -23,11 +23,6 @@ const state = {
   circuitOpenUntil: 0,
   lastFailureReason: '',
 };
-
-let multiTabSyncInitialized = false;
-let lastLifecycleRefreshAt = 0;
-const LIFECYCLE_REFRESH_WINDOW_MS = 120_000;
-const LIFECYCLE_REFRESH_THROTTLE_MS = 20_000;
 
 function notify() {
   const snapshot = getRefreshState();
@@ -81,32 +76,29 @@ function csrfHeaders() {
   return csrfToken ? { 'X-CSRF-Token': csrfToken } : {};
 }
 
-function hasRefreshContext() {
-  return Boolean(getCsrfToken());
-}
-
+/**
+ * Centralized Error Normalization
+ */
 export function normalizeAuthError(error) {
-  if (!error?.response) {
+  if (!error.response) {
     return {
       message: 'تعذر الاتصال بالخادم، يرجى التحقق من اتصال الإنترنت.',
       type: 'NETWORK_ERROR',
-      status: 0,
-      original: error,
+      status: 0
     };
   }
-
-  const status = Number(error.response.status || 0);
+  const status = error.response.status;
   const detail = error.response.data?.detail;
   let message = 'حدث خطأ غير متوقع في المصادقة.';
-
-  if (typeof detail === 'string' && detail.trim()) message = detail.trim();
-  else if (detail?.message) message = String(detail.message);
-
+  
+  if (typeof detail === 'string') message = detail;
+  else if (detail?.message) message = detail.message;
+  
   return {
     message,
     status,
     type: status >= 500 ? 'SERVER_ERROR' : 'CLIENT_ERROR',
-    original: error,
+    original: error
   };
 }
 
@@ -132,36 +124,26 @@ export function shouldRefreshSoon(windowMs = 60_000) {
   return ttl !== null && ttl <= windowMs;
 }
 
-function maybeLifecycleRefresh(reason, { force = false } = {}) {
-  if (!hasStoredSession()) return;
-  const now = currentTime();
-  if (!force && now - lastLifecycleRefreshAt < LIFECYCLE_REFRESH_THROTTLE_MS) return;
-  if (!force && !shouldRefreshSoon(LIFECYCLE_REFRESH_WINDOW_MS)) return;
-
-  lastLifecycleRefreshAt = now;
-  refreshSession({ reason, force }).catch((error) => {
-    logger.warn('lifecycle session refresh skipped', {
-      reason,
-      detail: error?.message || 'refresh_failed',
-    });
-  });
-}
-
+/**
+ * Multi-tab Session Sync
+ */
 export function initMultiTabSync() {
-  if (typeof window === 'undefined' || multiTabSyncInitialized) return;
-  multiTabSyncInitialized = true;
-
-  window.addEventListener('online', () => {
-    maybeLifecycleRefresh('online', { force: true });
-  });
-
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      maybeLifecycleRefresh('visibility');
+  if (typeof window === 'undefined') return;
+  window.addEventListener('storage', (event) => {
+    if (event.key === 'yamshat_auth_user' || event.key === 'yamshat_session_active') {
+      logger.info('Auth storage changed in another tab, syncing state...');
+      // Usually the store or app-level hook will react to this
+      // We can also force a refresh if needed
+      if (!event.newValue) {
+        window.location.reload(); // Session cleared elsewhere
+      }
     }
   });
 }
 
+/**
+ * Enhanced Refresh with Retry Logic
+ */
 export async function refreshSession(options = {}) {
   const { reason = 'manual', force = false, retryCount = 0 } = options;
 
@@ -169,10 +151,6 @@ export async function refreshSession(options = {}) {
   if (isOffline()) throw createRefreshError('لا يمكن التحديث أثناء عدم الاتصال بالإنترنت', 'OFFLINE');
 
   const now = currentTime();
-  if (!hasRefreshContext()) {
-    clearStoredUser();
-    throw createRefreshError('لا توجد جلسة صالحة للتحديث، سجل الدخول من جديد', 'NO_REFRESH_CONTEXT', 400);
-  }
   if (!force && state.circuitOpenUntil > now) {
     throw createRefreshError('نظام الحماية مفعل حالياً، حاول مجدداً لاحقاً', 'CIRCUIT_OPEN');
   }
@@ -181,7 +159,7 @@ export async function refreshSession(options = {}) {
   }
 
   logger.info('refresh session requested', { reason, retryCount });
-
+  
   state.refreshPromise = (async () => {
     try {
       const response = await plainHttp.post('/auth/refresh', {}, { headers: csrfHeaders() });
@@ -191,7 +169,8 @@ export async function refreshSession(options = {}) {
       return response;
     } catch (error) {
       const normalized = normalizeAuthError(error);
-
+      
+      // Retry logic for transient errors
       if (retryCount < 2 && (normalized.type === 'NETWORK_ERROR' || normalized.status >= 500)) {
         const delay = getBackoffDelayMs(retryCount);
         await sleep(delay);
@@ -221,7 +200,7 @@ const sessionManager = {
   subscribeToRefreshState,
   getRefreshState,
   normalizeAuthError,
-  initMultiTabSync,
+  initMultiTabSync
 };
 
 export default sessionManager;

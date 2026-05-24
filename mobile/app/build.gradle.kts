@@ -8,7 +8,7 @@ plugins {
 val appBaseUrl = (project.findProperty("APP_BASE_URL") as String?) ?: "https://yamshatl.onrender.com/api/"
 val socketUrl = (project.findProperty("APP_SOCKET_URL") as String?) ?: "https://yamshatl.onrender.com"
 val agoraAppId = (project.findProperty("AGORA_APP_ID") as String?) ?: ""
-val webAppUrl = (project.findProperty("WEB_APP_URL") as String?) ?: "https://yamshat1-1-vg1o.onrender.com/"
+val webAppUrl = (project.findProperty("WEB_APP_URL") as String?) ?: "https://yamshat1-11.onrender.com/"
 val liveKitUrl = (project.findProperty("LIVEKIT_URL") as String?) ?: "wss://yamshat-enqr8c2d.livekit.cloud"
 val primaryAdminEmail = (project.findProperty("PRIMARY_ADMIN_EMAIL") as String?) ?: "yamenameen97@gmail.com"
 
@@ -133,9 +133,6 @@ dependencies {
     implementation("com.github.bumptech.glide:glide:4.16.0")
     implementation("io.livekit:livekit-android:2.25.0")
     implementation("org.whispersystems:signal-protocol-android:2.8.1")
-    implementation("androidx.media3:media3-exoplayer:1.4.1")
-    implementation("androidx.media3:media3-ui:1.4.1")
-    implementation("androidx.media3:media3-datasource:1.4.1")
     implementation("io.socket:socket.io-client:2.1.1") {
         exclude(group = "org.json", module = "json")
     }

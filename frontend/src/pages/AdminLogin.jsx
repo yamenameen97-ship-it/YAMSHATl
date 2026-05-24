@@ -10,7 +10,6 @@ import { sanitizeInputText } from '../utils/sanitize.js';
 import { clearStoredUser, getStoredUser, setStoredUser } from '../utils/auth.js';
 import { PRIMARY_ADMIN_EMAIL, isPrimaryAdminSession } from '../utils/access.js';
 import { isValidEmail, localizeAuthMessage, looksLikeEmail, parseApiDetail } from '../utils/authValidation.js';
-import { CAPTCHA_ENABLED } from '../utils/securityFlags.js';
 
 const canAccessAdminPanel = (session) => isPrimaryAdminSession(session);
 const canShowDevTools = () => {
@@ -37,12 +36,6 @@ export default function AdminLogin() {
   const showDevTools = useMemo(() => canShowDevTools(), []);
 
   const loadCaptcha = async () => {
-    if (!CAPTCHA_ENABLED) {
-      setCaptcha(null);
-      setCaptchaError('');
-      setCaptchaLoading(false);
-      return;
-    }
     try {
       setCaptchaLoading(true);
       setCaptchaError('');
@@ -62,7 +55,7 @@ export default function AdminLogin() {
       navigate('/admin/dashboard', { replace: true });
       return;
     }
-    if (CAPTCHA_ENABLED) loadCaptcha();
+    loadCaptcha();
   }, [navigate]);
 
   const handleChange = (key) => (event) => {
@@ -136,12 +129,12 @@ export default function AdminLogin() {
       setError('اكتب كلمة المرور.');
       return;
     }
-    if (CAPTCHA_ENABLED && !captcha?.captcha_id) {
+    if (!captcha?.captcha_id) {
       setError('حدّث الكابتشا أولاً.');
       await loadCaptcha();
       return;
     }
-    if (CAPTCHA_ENABLED && !form.captchaAnswer.trim()) {
+    if (!form.captchaAnswer.trim()) {
       setError('اكتب إجابة الكابتشا أولاً.');
       return;
     }
@@ -157,10 +150,8 @@ export default function AdminLogin() {
         username: identifier,
         password: form.password,
         remember_me: form.rememberMe,
-        ...(CAPTCHA_ENABLED ? {
-          captcha_id: captcha?.captcha_id,
-          captcha_answer: form.captchaAnswer,
-        } : {}),
+        captcha_id: captcha.captcha_id,
+        captcha_answer: form.captchaAnswer,
       });
 
       if (data?.requires_2fa && data?.challenge_id) {
@@ -251,17 +242,15 @@ export default function AdminLogin() {
           <span>تذكّر جلسة الإدارة على هذا الجهاز</span>
         </label>
 
-        {CAPTCHA_ENABLED ? (
-          <CaptchaBox
-            challenge={captcha}
-            value={form.captchaAnswer}
-            onChange={(event) => setForm((prev) => ({ ...prev, captchaAnswer: event.target.value }))}
-            onRefresh={loadCaptcha}
-            loading={captchaLoading}
-            disabled={loading || devLoading}
-            error={captchaError}
-          />
-        ) : null}
+        <CaptchaBox
+          challenge={captcha}
+          value={form.captchaAnswer}
+          onChange={(event) => setForm((prev) => ({ ...prev, captchaAnswer: event.target.value }))}
+          onRefresh={loadCaptcha}
+          loading={captchaLoading}
+          disabled={loading || devLoading}
+          error={captchaError}
+        />
 
         {showDevTools ? (
           <div className="dev-login-card">

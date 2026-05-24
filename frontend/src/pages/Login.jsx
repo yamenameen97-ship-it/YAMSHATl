@@ -10,7 +10,6 @@ import { sanitizeInputText } from '../utils/sanitize.js';
 import { setStoredUser } from '../utils/auth.js';
 import { getDefaultPostLoginPath } from '../utils/access.js';
 import { isValidEmail, localizeAuthMessage, looksLikeEmail, parseApiDetail } from '../utils/authValidation.js';
-import { CAPTCHA_ENABLED } from '../utils/securityFlags.js';
 import useSingleFlight from '../hooks/useSingleFlight.js';
 
 export default function LoginEnhanced() {
@@ -43,13 +42,6 @@ export default function LoginEnhanced() {
   }, [captchaCooldown]);
 
   const loadCaptcha = async () => {
-    if (!CAPTCHA_ENABLED) {
-      setCaptcha(null);
-      setCaptchaError('');
-      setCaptchaLoading(false);
-      setCaptchaCooldown(0);
-      return;
-    }
     if (captchaCooldown > 0) return;
     try {
       setCaptchaLoading(true);
@@ -66,7 +58,7 @@ export default function LoginEnhanced() {
   };
 
   useEffect(() => {
-    if (CAPTCHA_ENABLED) loadCaptcha();
+    loadCaptcha();
   }, []);
 
   const handleChange = (key) => (event) => {
@@ -128,12 +120,12 @@ export default function LoginEnhanced() {
       setError('كلمة المرور مطلوبة.');
       return;
     }
-    if (CAPTCHA_ENABLED && !captcha?.captcha_id) {
+    if (!captcha?.captcha_id) {
       setError('يرجى حل الكابتشا للمتابعة.');
       loadCaptcha();
       return;
     }
-    if (CAPTCHA_ENABLED && !form.captchaAnswer) {
+    if (!form.captchaAnswer) {
       setError('يرجى إدخال رمز الكابتشا.');
       return;
     }
@@ -147,10 +139,8 @@ export default function LoginEnhanced() {
           identifier,
           password: form.password,
           remember_me: form.rememberMe,
-          ...(CAPTCHA_ENABLED ? {
-            captcha_id: captcha?.captcha_id,
-            captcha_answer: form.captchaAnswer,
-          } : {}),
+          captcha_id: captcha.captcha_id,
+          captcha_answer: form.captchaAnswer,
         });
       });
 
@@ -226,18 +216,16 @@ export default function LoginEnhanced() {
           </Link>
         </div>
 
-        {CAPTCHA_ENABLED ? (
-          <CaptchaBox
-            challenge={captcha}
-            value={form.captchaAnswer}
-            onChange={handleChange('captchaAnswer')}
-            onRefresh={loadCaptcha}
-            loading={captchaLoading}
-            error={captchaError}
-            disabled={loading || captchaCooldown > 0}
-            refreshCooldown={captchaCooldown}
-          />
-        ) : null}
+        <CaptchaBox
+          challenge={captcha}
+          value={form.captchaAnswer}
+          onChange={handleChange('captchaAnswer')}
+          onRefresh={loadCaptcha}
+          loading={captchaLoading}
+          error={captchaError}
+          disabled={loading || captchaCooldown > 0}
+          refreshCooldown={captchaCooldown}
+        />
 
         <div style={{ margin: '16px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
@@ -271,7 +259,7 @@ export default function LoginEnhanced() {
         <Button
           type="submit"
           loading={loading}
-          disabled={loading || !form.identifier || !form.password || (CAPTCHA_ENABLED && !form.captchaAnswer)}
+          disabled={loading || !form.identifier || !form.password || !form.captchaAnswer}
           style={{ height: 50, fontSize: 16, fontWeight: 'bold' }}
         >
           {loading ? 'جاري التحقق...' : 'تسجيل الدخول'}

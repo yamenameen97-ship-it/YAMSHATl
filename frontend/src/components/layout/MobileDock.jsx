@@ -1,7 +1,6 @@
 import { Link, NavLink } from 'react-router-dom';
 import { useAppStore } from '../../store/appStore.js';
 import { selectUnreadTotal, useChatStore } from '../../store/appStore.js';
-import { selectUnreadNotificationsCount, useNotificationStore } from '../../store/notificationStore.js';
 import { getUiText } from '../../utils/i18n.js';
 import { getPrefetchHandlers } from '../../utils/navigation.js';
 
@@ -10,7 +9,6 @@ export default function MobileDock() {
   const isOnline = useAppStore((state) => state.isOnline);
   const ui = getUiText(language);
   const unreadInboxCount = useChatStore(selectUnreadTotal);
-  const unreadNotificationCount = useNotificationStore(selectUnreadNotificationsCount);
 
   const dockLinks = [
     { to: '/', label: ui.nav.home || 'الرئيسية', icon: '⌂', badge: 0 },
@@ -20,7 +18,7 @@ export default function MobileDock() {
     { to: '/groups', label: 'مجموعات', icon: '👥', badge: 0 },
     { to: '/live', label: ui.nav.live || 'بث', icon: '◉', badge: isOnline ? 'live' : 0 },
     { to: '/inbox', label: ui.nav.inbox || 'دردشة', icon: '✉', badge: unreadInboxCount },
-    { to: '/notifications', label: 'إشعارات', icon: '🔔', badge: unreadNotificationCount },
+    { to: '/notifications', label: 'إشعارات', icon: '🔔', badge: 0 },
     { to: '/users', label: 'أشخاص', icon: '👤', badge: 0 },
     { to: '/profile', label: 'ملفي', icon: '⚙', badge: 0 },
   ];

@@ -161,7 +161,7 @@ class Settings:
     VERIFY_RATE_LIMIT_PER_MINUTE: int = int(os.getenv('VERIFY_RATE_LIMIT_PER_MINUTE', '12'))
     RESEND_RATE_LIMIT_PER_MINUTE: int = int(os.getenv('RESEND_RATE_LIMIT_PER_MINUTE', '6'))
     CAPTCHA_RATE_LIMIT_PER_MINUTE: int = int(os.getenv('CAPTCHA_RATE_LIMIT_PER_MINUTE', '20'))
-    CAPTCHA_ENABLED: bool = env_bool('CAPTCHA_ENABLED', False)
+    CAPTCHA_ENABLED: bool = env_bool('CAPTCHA_ENABLED', True)
     CAPTCHA_EXPIRE_MINUTES: int = int(os.getenv('CAPTCHA_EXPIRE_MINUTES', '5'))
     DEV_LOGIN_ENABLED: bool = env_bool('DEV_LOGIN_ENABLED', False)
     LIVEKIT_URL: str = os.getenv('LIVEKIT_URL', '')
@@ -236,19 +236,7 @@ class Settings:
 
     @property
     def cors_origin_regex(self) -> str | None:
-        broad_render_regex = r'^https://.*\.onrender\.com$'
-        has_render_origin = any('.onrender.com' in value for value in [
-            self.FRONTEND_ORIGIN,
-            self.BACKEND_ORIGIN,
-            self.RENDER_EXTERNAL_URL,
-            self.RAILWAY_STATIC_URL,
-            self.CORS_ORIGINS_RAW,
-            self.CORS_ORIGIN_REGEX_RAW,
-        ])
-
         if self.CORS_ORIGIN_REGEX_RAW:
-            if has_render_origin and self.CORS_ORIGIN_REGEX_RAW != broad_render_regex:
-                return rf'^(?:{self.CORS_ORIGIN_REGEX_RAW.strip("^").strip("$")}|https://.*\.onrender\.com)$'
             return self.CORS_ORIGIN_REGEX_RAW
 
         derived = render_origin_regex_from_candidates(
@@ -259,26 +247,30 @@ class Settings:
             *csv_list(self.CORS_ORIGINS_RAW),
         )
         if derived:
-            if has_render_origin and derived != broad_render_regex:
-                return rf'^(?:{derived.strip("^").strip("$")}|https://.*\.onrender\.com)$'
             return derived
 
         # Allow all Render subdomains safely when explicit origins are unavailable.
-        return broad_render_regex
+        return r'^https://.*\.onrender\.com$'
 
     @property
     def cors_origins(self) -> list[str]:
         # Render + local development fallback
-        # يمنع مشاكل CORS مع خدمات Render المتغيرة بدون الاعتماد على روابط قديمة داخل الكود
-        origins: list[str] = [
-            'http://localhost:3000',
-            'http://127.0.0.1:3000',
-            'http://localhost:5173',
-            'http://127.0.0.1:5173',
-        ]
+        # يمنع مشاكل CORS مع خدمات Render المتغيرة
+        if self.CORS_ORIGINS_RAW.strip() in {'*', ''}:
+            return [
+                'http://localhost:3000',
+                'http://localhost:5173',
+                'http://127.0.0.1:5173',
+                'https://yamshatl-11.onrender.com',
+                'https://yamshatl.onrender.com',
+                'https://yamshat1-1-yg1o.onrender.com',
+                'https://yamshat1-1-vg10.onrender.com',
+                'https://yamshat1-ahj8.onrender.com',
+                'https://yamshat1-11.onrender.com',
+            ]
 
-        if self.CORS_ORIGINS_RAW.strip() not in {'*', ''}:
-            origins.extend(csv_list(self.CORS_ORIGINS_RAW))
+        origins: list[str] = []
+        origins.extend(csv_list(self.CORS_ORIGINS_RAW))
         origins.extend(
             origin
             for origin in [

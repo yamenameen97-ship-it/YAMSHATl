@@ -56,16 +56,6 @@ def _origin_matches_regex(candidate: str) -> bool:
         return False
 
 
-def _is_platform_origin(candidate: str) -> bool:
-    normalized = _normalize_origin(candidate)
-    if not normalized:
-        return False
-    return bool(
-        re.match(r'^https://[a-z0-9-]+\.onrender\.com$', normalized, re.IGNORECASE)
-        or re.match(r'^https?://(?:localhost|127\.0\.0\.1)(?::\d+)?$', normalized, re.IGNORECASE)
-    )
-
-
 def _is_allowed_origin(candidate: str, request: Request) -> bool:
     allowed = _allowed_origins(request)
     if '*' in allowed:
@@ -73,17 +63,7 @@ def _is_allowed_origin(candidate: str, request: Request) -> bool:
     normalized = _normalize_origin(candidate)
     if not normalized:
         return False
-    return normalized in allowed or _origin_matches_regex(normalized) or _is_platform_origin(normalized)
-
-
-def _cors_error_response(request: Request, status_code: int, detail: str) -> JSONResponse:
-    response = JSONResponse(status_code=status_code, content={'detail': detail})
-    origin = _normalize_origin(request.headers.get('origin', ''))
-    if origin and _is_allowed_origin(origin, request):
-        response.headers['Access-Control-Allow-Origin'] = origin
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
-        response.headers['Vary'] = 'Origin'
-    return response
+    return normalized in allowed or _origin_matches_regex(normalized)
 
 
 def _content_security_policy(request: Request) -> str:
@@ -137,13 +117,13 @@ async def security_headers(request: Request, call_next):
         is_trusted_native = client_name in TRUSTED_NATIVE_CLIENTS
 
         if origin and not _is_allowed_origin(origin, request):
-            return _cors_error_response(request, 403, 'Origin not allowed')
+            return JSONResponse(status_code=403, content={'detail': 'Origin not allowed'})
         if not origin and referer and not _is_allowed_origin(referer, request):
-            return _cors_error_response(request, 403, 'Referer not allowed')
+            return JSONResponse(status_code=403, content={'detail': 'Referer not allowed'})
         if not is_public_auth and not is_trusted_native and not _csrf_cookie_matches_header(request):
-            return _cors_error_response(request, 403, 'CSRF token mismatch')
+            return JSONResponse(status_code=403, content={'detail': 'CSRF token mismatch'})
         if not origin and not referer and not authorization and requested_with != 'XMLHttpRequest' and not is_trusted_native:
-            return _cors_error_response(request, 403, 'CSRF protection blocked the request')
+            return JSONResponse(status_code=403, content={'detail': 'CSRF protection blocked the request'})
 
     response = await call_next(request)
     response.headers['Vary'] = 'Origin'

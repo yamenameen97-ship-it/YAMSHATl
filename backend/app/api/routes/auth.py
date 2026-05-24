@@ -56,21 +56,6 @@ class _CaptchaError(HTTPException):
     pass
 
 
-_CAPTCHA_NUMERIC_TRANSLATION = str.maketrans({
-    '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4', '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9',
-    '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4', '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9',
-    '−': '-', '﹣': '-', '－': '-',
-})
-
-
-def _normalize_captcha_answer(value: str | int | None) -> str:
-    raw = str(value or '').strip().translate(_CAPTCHA_NUMERIC_TRANSLATION)
-    raw = ''.join(raw.split())
-    if raw.startswith('+'):
-        raw = raw[1:]
-    return raw
-
-
 def utcnow_naive() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -347,14 +332,9 @@ def _issue_captcha() -> dict:
             'answer_hash': str(answer),
             'expires_at': utcnow_naive() + timedelta(minutes=settings.CAPTCHA_EXPIRE_MINUTES),
         }
-    question = f'{left} {operator} {right}'
     return {
         'captcha_id': captcha_id,
-        'question': question,
-        'display_question': question,
-        'left': left,
-        'operator': operator,
-        'right': right,
+        'question': f'{left} {operator} {right}',
         'expires_in_seconds': settings.CAPTCHA_EXPIRE_MINUTES * 60,
     }
 
@@ -363,7 +343,7 @@ def _require_captcha(payload: dict, *, context: str) -> None:
     if not settings.CAPTCHA_ENABLED:
         return
     captcha_id = str(payload.get('captcha_id') or '').strip()
-    captcha_answer = _normalize_captcha_answer(payload.get('captcha_answer'))
+    captcha_answer = str(payload.get('captcha_answer') or '').strip()
     if not captcha_id or captcha_answer == '':
         raise _CaptchaError(status_code=status.HTTP_400_BAD_REQUEST, detail='Captcha is required')
 
@@ -375,7 +355,7 @@ def _require_captcha(payload: dict, *, context: str) -> None:
         if entry['expires_at'] <= utcnow_naive():
             _CAPTCHA_STORE.pop(captcha_id, None)
             raise _CaptchaError(status_code=status.HTTP_400_BAD_REQUEST, detail='Captcha expired or missing')
-        if captcha_answer != _normalize_captcha_answer(entry['answer_hash']):
+        if str(captcha_answer).strip() != str(entry['answer_hash']):
             raise _CaptchaError(status_code=status.HTTP_400_BAD_REQUEST, detail='Captcha answer is incorrect')
         _CAPTCHA_STORE.pop(captcha_id, None)
 
@@ -422,13 +402,6 @@ def _resolve_dev_user(db: Session, payload: dict) -> User:
 
 @router.get('/captcha')
 async def get_captcha(request: Request):
-    if not settings.CAPTCHA_ENABLED:
-        return {
-            'enabled': False,
-            'captcha_required': False,
-            'message': 'Captcha is disabled',
-        }
-
     binding = request_binding_context(request)
     rate_key = f"captcha:{binding['ip_address']}"
     if not await enforce_rate_limit(rate_key, settings.CAPTCHA_RATE_LIMIT_PER_MINUTE, 60):

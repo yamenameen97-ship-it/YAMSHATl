@@ -1,182 +1,201 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import PropTypes from 'prop-types';
 
-const DEFAULT_GIFTS = [
-  { id: 1, name: 'وردة', emoji: '🌹', coins: 10 },
-  { id: 2, name: 'قهوة', emoji: '☕', coins: 50 },
-  { id: 3, name: 'قلب', emoji: '❤️', coins: 100 },
-  { id: 4, name: 'تاج', emoji: '👑', coins: 500 },
-];
-
-function ControlButton({ title, active, color, onClick, children }) {
-  return (
-    <motion.button
-      whileHover={{ scale: 1.06 }}
-      whileTap={{ scale: 0.96 }}
-      onClick={onClick}
-      title={title}
-      style={{
-        width: 50,
-        height: 50,
-        borderRadius: '50%',
-        border: 'none',
-        background: active ? color : 'rgba(255,255,255,0.12)',
-        color: active ? '#101828' : 'white',
-        fontSize: 20,
-        cursor: 'pointer',
-        display: 'grid',
-        placeItems: 'center',
-      }}
-    >
-      {children}
-    </motion.button>
-  );
-}
-
-ControlButton.propTypes = {
-  title: PropTypes.string.isRequired,
-  active: PropTypes.bool,
-  color: PropTypes.string,
-  onClick: PropTypes.func,
-  children: PropTypes.node,
-};
-
-ControlButton.defaultProps = {
-  active: false,
-  color: '#22c55e',
-  onClick: undefined,
-  children: null,
-};
-
-export default function LiveControls({
-  isHost,
-  isMuted,
-  isCameraOff,
-  connectionLabel,
-  recordingStatus,
-  onMuteToggle,
-  onCameraToggle,
-  onCoHostAdd,
-  onModerate,
-  onSendGift,
-  onRecordingToggle,
-  onRecovery,
-  onSync,
-  onShare,
-  onDisconnect,
-  gifts,
-}) {
+export default function LiveControls({ onMuteToggle, onCoHostAdd, onModerate, onSendGift }) {
+  const [isMuted, setIsMuted] = useState(false);
+  const [isCameraOff, setIsCameraOff] = useState(false);
   const [showModerationPanel, setShowModerationPanel] = useState(false);
   const [showGiftPanel, setShowGiftPanel] = useState(false);
 
-  const giftList = useMemo(() => Array.isArray(gifts) && gifts.length ? gifts : DEFAULT_GIFTS, [gifts]);
+  const GIFTS = [
+    { id: 1, name: 'وردة', emoji: '🌹', coins: 10 },
+    { id: 2, name: 'قهوة', emoji: '☕', coins: 50 },
+    { id: 3, name: 'قلب', emoji: '❤️', coins: 100 },
+    { id: 4, name: 'تاج', emoji: '👑', coins: 500 },
+  ];
+
+  const handleMuteToggle = () => {
+    setIsMuted(!isMuted);
+    onMuteToggle?.(!isMuted);
+  };
+
+  const handleCameraToggle = () => {
+    setIsCameraOff(!isCameraOff);
+  };
 
   return (
-    <div style={{ position: 'relative', display: 'flex', gap: 12, padding: 16, background: 'rgba(0,0,0,0.45)', borderRadius: 18, flexWrap: 'wrap', alignItems: 'center' }}>
-      {isHost ? <ControlButton title={isMuted ? 'فتح المايك' : 'كتم المايك'} active color="#60a5fa" onClick={onMuteToggle}>{isMuted ? '🔇' : '🎤'}</ControlButton> : null}
-      {isHost ? <ControlButton title={isCameraOff ? 'فتح الكاميرا' : 'إغلاق الكاميرا'} active color="#f59e0b" onClick={onCameraToggle}>{isCameraOff ? '📷' : '📹'}</ControlButton> : null}
-      {isHost ? <ControlButton title="التسجيل" active={recordingStatus === 'recording'} color="#ef4444" onClick={onRecordingToggle}>{recordingStatus === 'recording' ? '⏺️' : '⏹️'}</ControlButton> : null}
-      <ControlButton title="الهدايا" active={showGiftPanel} color="#facc15" onClick={() => setShowGiftPanel((prev) => !prev)}>🎁</ControlButton>
-      {isHost ? <ControlButton title="الإشراف" active={showModerationPanel} color="#34d399" onClick={() => setShowModerationPanel((prev) => !prev)}>🛡️</ControlButton> : null}
-      {isHost ? <ControlButton title="إضافة مضيف" active color="#c084fc" onClick={onCoHostAdd}>👥</ControlButton> : null}
-      {isHost ? <ControlButton title="الاستعادة" active color="#fb7185" onClick={onRecovery}>♻️</ControlButton> : null}
-      <ControlButton title="مزامنة" active color="#38bdf8" onClick={onSync}>🔄</ControlButton>
-      <ControlButton title="مشاركة" active color="#a3e635" onClick={onShare}>📤</ControlButton>
-      <ControlButton title="فصل" active color="#fda4af" onClick={onDisconnect}>⛔</ControlButton>
+    <div style={{ display: 'flex', gap: 15, padding: 20, background: 'rgba(0,0,0,0.5)', borderRadius: 12 }}>
+      {/* Mute Control */}
+      <motion.button
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.95 }}
+        onClick={handleMuteToggle}
+        style={{
+          width: 50,
+          height: 50,
+          borderRadius: '50%',
+          border: 'none',
+          background: isMuted ? '#ff4444' : 'var(--primary)',
+          color: 'white',
+          fontSize: 20,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+        title={isMuted ? 'إلغاء الكتم' : 'كتم الصوت'}
+      >
+        {isMuted ? '🔇' : '🎤'}
+      </motion.button>
 
-      <div style={{ marginInlineStart: 'auto', display: 'flex', flexDirection: 'column', gap: 4, minWidth: 180 }}>
-        <strong style={{ fontSize: 13 }}>حالة الاتصال</strong>
-        <span style={{ fontSize: 12, color: '#cbd5e1' }}>{connectionLabel || 'غير متصل'} • التسجيل: {recordingStatus || 'idle'}</span>
-      </div>
+      {/* Camera Control */}
+      <motion.button
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.95 }}
+        onClick={handleCameraToggle}
+        style={{
+          width: 50,
+          height: 50,
+          borderRadius: '50%',
+          border: 'none',
+          background: isCameraOff ? '#ff4444' : 'var(--primary)',
+          color: 'white',
+          fontSize: 20,
+          cursor: 'pointer'
+        }}
+        title={isCameraOff ? 'تشغيل الكاميرا' : 'إيقاف الكاميرا'}
+      >
+        {isCameraOff ? '📹' : '📷'}
+      </motion.button>
 
-      {showModerationPanel ? (
+      {/* Co-Host Control */}
+      <motion.button
+        whileHover={{ scale: 1.1 }}
+        onClick={() => onCoHostAdd?.()}
+        style={{
+          width: 50,
+          height: 50,
+          borderRadius: '50%',
+          border: 'none',
+          background: 'var(--primary)',
+          color: 'white',
+          fontSize: 20,
+          cursor: 'pointer'
+        }}
+        title="إضافة مضيف مشارك"
+      >
+        👥
+      </motion.button>
+
+      {/* Moderation Tools */}
+      <motion.button
+        whileHover={{ scale: 1.1 }}
+        onClick={() => setShowModerationPanel(!showModerationPanel)}
+        style={{
+          width: 50,
+          height: 50,
+          borderRadius: '50%',
+          border: 'none',
+          background: 'var(--primary)',
+          color: 'white',
+          fontSize: 20,
+          cursor: 'pointer'
+        }}
+        title="أدوات الإشراف"
+      >
+        🛡️
+      </motion.button>
+
+      {/* Gifts System */}
+      <motion.button
+        whileHover={{ scale: 1.1 }}
+        onClick={() => setShowGiftPanel(!showGiftPanel)}
+        style={{
+          width: 50,
+          height: 50,
+          borderRadius: '50%',
+          border: 'none',
+          background: 'gold',
+          color: 'black',
+          fontSize: 20,
+          cursor: 'pointer',
+          fontWeight: 'bold'
+        }}
+        title="إرسال هدية"
+      >
+        🎁
+      </motion.button>
+
+      {/* Moderation Panel */}
+      {showModerationPanel && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          style={{ position: 'absolute', top: 78, insetInlineStart: 12, background: '#111827', borderRadius: 14, padding: 14, minWidth: 220, zIndex: 100, boxShadow: '0 16px 40px rgba(0,0,0,0.35)' }}
+          style={{
+            position: 'absolute',
+            top: 80,
+            left: 20,
+            background: '#222',
+            borderRadius: 12,
+            padding: 15,
+            minWidth: 200,
+            zIndex: 100
+          }}
         >
-          <div style={{ marginBottom: 10, fontWeight: 'bold' }}>أدوات الإشراف السريع</div>
-          <button onClick={() => onModerate?.('mute_all')} style={panelButtonStyle}>كتم مشاغبين</button>
-          <button onClick={() => onModerate?.('delete_last_flagged')} style={panelButtonStyle}>حذف آخر تعليق مخالف</button>
-          <button onClick={() => onModerate?.('pin_highlight')} style={panelButtonStyle}>تثبيت تعليق مميز</button>
+          <div style={{ marginBottom: 10, fontWeight: 'bold' }}>أدوات الإشراف</div>
+          <button onClick={() => onModerate?.('mute')} style={{ display: 'block', width: '100%', padding: 8, marginBottom: 5, background: '#333', border: 'none', borderRadius: 4, color: 'white' }}>كتم المشاركين</button>
+          <button onClick={() => onModerate?.('kick')} style={{ display: 'block', width: '100%', padding: 8, marginBottom: 5, background: '#333', border: 'none', borderRadius: 4, color: 'white' }}>إزالة مشارك</button>
+          <button onClick={() => onModerate?.('block')} style={{ display: 'block', width: '100%', padding: 8, background: '#333', border: 'none', borderRadius: 4, color: 'white' }}>حظر المستخدم</button>
         </motion.div>
-      ) : null}
+      )}
 
-      {showGiftPanel ? (
+      {/* Gifts Panel */}
+      {showGiftPanel && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          style={{ position: 'absolute', top: 78, insetInlineEnd: 12, background: '#111827', borderRadius: 14, padding: 14, minWidth: 260, zIndex: 100, boxShadow: '0 16px 40px rgba(0,0,0,0.35)' }}
+          style={{
+            position: 'absolute',
+            top: 80,
+            right: 20,
+            background: '#222',
+            borderRadius: 12,
+            padding: 15,
+            minWidth: 250,
+            zIndex: 100
+          }}
         >
-          <div style={{ marginBottom: 10, fontWeight: 'bold' }}>إرسال هدية</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
-            {giftList.map((gift) => (
-              <button key={gift.id} onClick={() => onSendGift?.(gift)} style={{ ...panelButtonStyle, marginBottom: 0, minHeight: 82 }}>
+          <div style={{ marginBottom: 10, fontWeight: 'bold' }}>اختر هدية</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+            {GIFTS.map(gift => (
+              <motion.button
+                key={gift.id}
+                whileHover={{ scale: 1.05 }}
+                onClick={() => onSendGift?.(gift)}
+                style={{
+                  padding: 10,
+                  background: '#333',
+                  border: 'none',
+                  borderRadius: 8,
+                  color: 'white',
+                  cursor: 'pointer',
+                  textAlign: 'center'
+                }}
+              >
                 <div style={{ fontSize: 24 }}>{gift.emoji}</div>
-                <div style={{ fontSize: 13 }}>{gift.name}</div>
-                <div style={{ fontSize: 11, color: '#fbbf24' }}>{gift.coins} عملة</div>
-              </button>
+                <div style={{ fontSize: 12, marginTop: 5 }}>{gift.name}</div>
+                <div style={{ fontSize: 11, color: 'gold' }}>{gift.coins} عملة</div>
+              </motion.button>
             ))}
           </div>
         </motion.div>
-      ) : null}
+      )}
+
+      {/* Viewer Controls */}
+      <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center' }}>
+        <button style={{ background: 'none', border: 'none', color: 'white', fontSize: 18, cursor: 'pointer' }} title="مشاركة">📤</button>
+        <button style={{ background: 'none', border: 'none', color: 'white', fontSize: 18, cursor: 'pointer' }} title="الإبلاغ">🚩</button>
+      </div>
     </div>
   );
 }
-
-const panelButtonStyle = {
-  display: 'block',
-  width: '100%',
-  padding: '10px 12px',
-  marginBottom: 8,
-  background: 'rgba(255,255,255,0.08)',
-  border: '1px solid rgba(255,255,255,0.08)',
-  borderRadius: 10,
-  color: 'white',
-  cursor: 'pointer',
-  textAlign: 'center',
-};
-
-LiveControls.propTypes = {
-  isHost: PropTypes.bool,
-  isMuted: PropTypes.bool,
-  isCameraOff: PropTypes.bool,
-  connectionLabel: PropTypes.string,
-  recordingStatus: PropTypes.string,
-  onMuteToggle: PropTypes.func,
-  onCameraToggle: PropTypes.func,
-  onCoHostAdd: PropTypes.func,
-  onModerate: PropTypes.func,
-  onSendGift: PropTypes.func,
-  onRecordingToggle: PropTypes.func,
-  onRecovery: PropTypes.func,
-  onSync: PropTypes.func,
-  onShare: PropTypes.func,
-  onDisconnect: PropTypes.func,
-  gifts: PropTypes.arrayOf(PropTypes.shape({
-    id: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
-    name: PropTypes.string,
-    emoji: PropTypes.string,
-    coins: PropTypes.number,
-  })),
-};
-
-LiveControls.defaultProps = {
-  isHost: false,
-  isMuted: false,
-  isCameraOff: false,
-  connectionLabel: '',
-  recordingStatus: 'idle',
-  onMuteToggle: undefined,
-  onCameraToggle: undefined,
-  onCoHostAdd: undefined,
-  onModerate: undefined,
-  onSendGift: undefined,
-  onRecordingToggle: undefined,
-  onRecovery: undefined,
-  onSync: undefined,
-  onShare: undefined,
-  onDisconnect: undefined,
-  gifts: undefined,
-};

@@ -1,5 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
-import useInfiniteScroll from '../hooks/feed/useInfiniteScroll.js';
+import { useMemo, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import MainLayout from '../components/layout/MainLayout.jsx';
@@ -8,7 +7,7 @@ import FeedSkeleton from '../components/feed/FeedSkeleton.jsx';
 import ErrorState from '../components/feedback/ErrorState.jsx';
 import EmptyState from '../components/feedback/EmptyState.jsx';
 import { useFeed } from '../hooks/useFeed.js';
-import { likePost, deletePost, savePost, sharePost } from '../api/posts.js';
+import { likePost, deletePost } from '../api/posts.js';
 import { getUsers, followUser } from '../api/users.js';
 import { getLiveRooms } from '../api/live.js';
 import { getNotifications } from '../api/notifications.js';
@@ -17,8 +16,6 @@ import { avatarGradient, formatCompactNumber, formatTimeAgo, initialsFromName } 
 import { getCurrentUsername } from '../utils/auth.js';
 import { selectUnreadTotal, useChatStore } from '../store/appStore.js';
 import logger from '../utils/logger.js';
-import { useToast } from '../components/admin/ToastProvider.jsx';
-import { recordFeedInteraction } from '../features/feed/personalization.js';
 
 const LEFT_NAV_ITEMS = [
   { to: '/', label: 'الرئيسية', icon: '⌂' },
@@ -39,38 +36,30 @@ const TOP_ACTIONS = [
 ];
 
 const SERVICE_SHORTCUTS = [
-  { title: 'المكالمات', icon: '📞' },
   { title: 'الدردشة', icon: '💬' },
+  { title: 'المكالمات', icon: '📞' },
   { title: 'المجموعات', icon: '👥' },
+  { title: 'الأخبار', icon: '📰' },
+  { title: 'الفعاليات', icon: '🏟️' },
   { title: 'البث المباشر', icon: '📺' },
-  { title: 'الريلز', icon: '🎬' },
-  { title: 'الملف الشخصي', icon: '👤' },
+  { title: 'الملفات', icon: '📁' },
+  { title: 'المدونة', icon: '✍️' },
+  { title: 'السوق', icon: '🛍️' },
 ];
 
 const SERVICE_TILE_TONES = [
-  'tone-calls',
   'tone-chat',
+  'tone-calls',
   'tone-groups',
+  'tone-news',
+  'tone-events',
   'tone-live',
-  'tone-reels',
-  'tone-profile',
+  'tone-files',
+  'tone-blog',
+  'tone-market',
 ];
 
-const SERVICE_ROUTE_MAP = {
-  'المكالمات': '/inbox',
-  'الدردشة': '/inbox',
-  'المجموعات': '/groups',
-  'البث المباشر': '/live',
-  'الريلز': '/reels',
-  'الملف الشخصي': '/profile',
-};
-
 const QUICK_COMPOSER_ACTIONS = ['صورة', 'فيديو', 'استطلاع', 'استطلاع/نشاط'];
-
-const QUICK_COMPOSER_SNIPPETS = {
-  'استطلاع': 'استطلاع سريع:\n1) نعم\n2) لا',
-  'استطلاع/نشاط': 'نشاط اليوم: شاركونا رأيكم وتجربتكم 👇',
-};
 
 const FALLBACK_SUGGESTIONS = [
   { username: 'UIUX.design', handle: '@uiux.design', followers_count: 12000, is_verified: true },
@@ -129,7 +118,7 @@ function FeedMedia({ post, media }) {
   return <img src={media[0]} alt={post.content || post.username || 'Yamshat post'} className="desktop-post-media" />;
 }
 
-function DesktopPostCard({ post, onLike, onDelete, onComment, onShare, onSave, localLikeState, onToggleLocalLike, isSaved = false }) {
+function DesktopPostCard({ post, onLike, onDelete, localLikeState, onToggleLocalLike }) {
   const media = mediaListFromPost(post);
   const isLocalBrandPost = post.id === 'yamshat-featured-brand-post';
   const likes = isLocalBrandPost ? localLikeState.likes : Number(post.likes_count ?? post.like_count ?? post.likes ?? 0);
@@ -173,9 +162,9 @@ function DesktopPostCard({ post, onLike, onDelete, onComment, onShare, onSave, l
         <button type="button" className={`desktop-action-btn ${isLocalBrandPost && localLikeState.liked ? 'active' : ''}`} onClick={() => (isLocalBrandPost ? onToggleLocalLike() : onLike(post.id))}>
           ❤ <span>{formatCompactNumber(likes)}</span>
         </button>
-        <button type="button" className="desktop-action-btn" onClick={() => onComment(post)} title="فتح المنشور">💬 <span>{formatCompactNumber(comments)}</span></button>
-        <button type="button" className="desktop-action-btn" onClick={() => onShare(post)} title="مشاركة المنشور">⤴ <span>{formatCompactNumber(shares)}</span></button>
-        <button type="button" className={`desktop-action-btn bookmark ${isSaved ? 'active' : ''}`} onClick={() => onSave(post)} title={isSaved ? 'إلغاء حفظ المنشور' : 'حفظ المنشور'}>{isSaved ? '🔖' : '⌑'}</button>
+        <button type="button" className="desktop-action-btn">💬 <span>{formatCompactNumber(comments)}</span></button>
+        <button type="button" className="desktop-action-btn">⤴ <span>{formatCompactNumber(shares)}</span></button>
+        <button type="button" className="desktop-action-btn bookmark">⌑</button>
       </div>
     </article>
   );
@@ -186,28 +175,10 @@ export default function FeedEnhanced() {
   const queryClient = useQueryClient();
   const currentUsername = getCurrentUsername();
   const unreadInboxCount = useChatStore(selectUnreadTotal);
-  const composerCardRef = useRef(null);
-  const { pushToast } = useToast();
   const [searchText, setSearchText] = useState('');
   const [localBrandPost, setLocalBrandPost] = useState({ likes: 532, liked: false });
-  const [savedPostMap, setSavedPostMap] = useState({});
 
-  const {
-    posts = [],
-    trendingTopics: rankedTrendingTopics = [],
-    isLoading,
-    isError,
-    refetch,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-  } = useFeed({ limit: 10, pollingInterval: 25_000 });
-
-  const loadMoreRef = useInfiniteScroll({
-    hasMore: hasNextPage,
-    isLoading: isLoading || isFetchingNextPage,
-    onLoadMore: fetchNextPage,
-  });
+  const { posts = [], isLoading, isError, refetch } = useFeed({ limit: 10, pollingInterval: 25_000 });
 
   const { data: users = [] } = useQuery({
     queryKey: ['feed-desktop-users'],
@@ -240,7 +211,6 @@ export default function FeedEnhanced() {
   }, [users, currentUsername]);
 
   const trendingTopics = useMemo(() => {
-    if (rankedTrendingTopics.length) return rankedTrendingTopics.slice(0, 3);
     const localTopics = buildTrendingHashtags(posts).slice(0, 3);
     if (localTopics.length) return localTopics;
     return [
@@ -248,7 +218,7 @@ export default function FeedEnhanced() {
       { tag: '#تقنية', count: 8700 },
       { tag: '#تصميم', count: 6200 },
     ];
-  }, [posts, rankedTrendingTopics]);
+  }, [posts]);
 
   const stats = useMemo(() => ({
     posts: Number(posts.length || 128),
@@ -302,15 +272,6 @@ export default function FeedEnhanced() {
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['feed-desktop-users'] }),
   });
 
-  const saveMutation = useMutation({
-    mutationFn: savePost,
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ['feed-data'] }),
-  });
-
-  const shareMutation = useMutation({
-    mutationFn: ({ postId, platform = 'copy' }) => sharePost(postId, platform),
-  });
-
   const handleSearchSubmit = (event) => {
     event.preventDefault();
     const trimmed = searchText.trim();
@@ -324,112 +285,17 @@ export default function FeedEnhanced() {
     }));
   };
 
-  const focusComposer = () => {
-    const composerContainer = composerCardRef.current;
-    composerContainer?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    window.setTimeout(() => {
-      const textarea = composerContainer?.querySelector('.composer-textarea');
-      textarea?.focus?.({ preventScroll: true });
-    }, 260);
-  };
-
-  const updateComposerText = (nextValue) => {
-    const textarea = composerCardRef.current?.querySelector('.composer-textarea');
-    if (!textarea) return false;
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
-    setter?.call(textarea, nextValue);
-    textarea.dispatchEvent(new Event('input', { bubbles: true }));
-    textarea.focus({ preventScroll: true });
-    return true;
-  };
-
-  const appendComposerSnippet = (snippet) => {
-    focusComposer();
-    window.setTimeout(() => {
-      const textarea = composerCardRef.current?.querySelector('.composer-textarea');
-      const currentValue = textarea?.value || '';
-      const prefix = currentValue.trim() ? `${currentValue.trim()}\n\n` : '';
-      updateComposerText(`${prefix}${snippet}`);
-    }, 260);
-  };
-
-  const openComposerMediaPicker = () => {
-    focusComposer();
-    window.setTimeout(() => {
-      composerCardRef.current?.querySelector('input[type="file"]')?.click();
-    }, 220);
-  };
-
-  const handleQuickComposerAction = (action) => {
-    if (action === 'صورة' || action === 'فيديو') {
-      openComposerMediaPicker();
-      return;
-    }
-    appendComposerSnippet(QUICK_COMPOSER_SNIPPETS[action] || action);
-  };
-
-  const handleOpenProfile = (username) => {
-    if (!username) return;
-    navigate(`/profile/${encodeURIComponent(username)}`);
-  };
-
-  const handleCommentOpen = (post) => {
-    if (!post?.id) return;
-    navigate(`/post/${encodeURIComponent(post.id)}`);
-  };
-
-  const handleSavePost = async (post) => {
-    if (!post?.id) return;
-    const nextSavedState = !(savedPostMap[post.id] ?? Boolean(post.is_saved));
-    try {
-      recordFeedInteraction({ type: nextSavedState ? 'save' : 'view', post });
-      await saveMutation.mutateAsync(post.id);
-      setSavedPostMap((prev) => ({ ...prev, [post.id]: nextSavedState }));
-      pushToast({ type: 'success', title: nextSavedState ? 'تم حفظ المنشور' : 'تمت إزالة المنشور من المحفوظات' });
-    } catch (error) {
-      pushToast({ type: 'error', title: 'تعذر تحديث الحفظ', description: error?.response?.data?.detail || error?.message || 'حاول مرة تانية.' });
-    }
-  };
-
-  const handleSharePost = async (post) => {
-    if (!post?.id) return;
-    const postUrl = `${window.location.origin}/post/${encodeURIComponent(post.id)}`;
-    try {
-      if (navigator.share) {
-        recordFeedInteraction({ type: 'share', post });
-        await navigator.share({ title: post.username || 'Yamshat', text: post.content || 'شاهد هذا المنشور على يام شات', url: postUrl });
-      } else if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(postUrl);
-      }
-      await shareMutation.mutateAsync({ postId: post.id, platform: 'copy' });
-      pushToast({ type: 'success', title: 'تم نسخ رابط المنشور' });
-    } catch (error) {
-      if (error?.name === 'AbortError') return;
-      pushToast({ type: 'error', title: 'تعذر مشاركة المنشور', description: error?.response?.data?.detail || error?.message || 'حاول مرة تانية.' });
-    }
-  };
-
-  const handleOpenTrend = (tag) => {
-    if (!tag) return;
-    navigate(`/search?q=${encodeURIComponent(tag)}`);
-  };
-
-  const handleOpenLiveRoom = (room) => {
-    const route = room?.id ? `/live?room=${encodeURIComponent(room.id)}` : '/live';
-    navigate(route);
-  };
-
   return (
     <MainLayout hideNav>
       <div className="desktop-feed-shell" dir="rtl">
         <aside className="desktop-feed-left-rail">
-          <button type="button" className="desktop-left-brand-card desktop-card-button" onClick={() => navigate('/')}>
+          <div className="desktop-left-brand-card">
             <div className="desktop-left-brand-mark">Y</div>
             <div>
               <div className="desktop-left-brand-title">YAMSHAT</div>
               <div className="desktop-left-brand-subtitle">منصة اجتماعية بطابع عصري</div>
             </div>
-          </button>
+          </div>
 
           <nav className="desktop-left-nav">
             {LEFT_NAV_ITEMS.map((item) => {
@@ -444,11 +310,11 @@ export default function FeedEnhanced() {
             })}
           </nav>
 
-          <button type="button" className="desktop-new-post-btn" onClick={focusComposer}>
+          <button type="button" className="desktop-new-post-btn" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
             ＋ منشور جديد
           </button>
 
-          <button type="button" className="desktop-profile-summary-card desktop-card-button" onClick={() => navigate('/profile')}>
+          <div className="desktop-profile-summary-card">
             <div className="desktop-profile-head">
               <Avatar name={currentUsername || 'Yamshat'} src="/icons/icon-192.png" size={48} ring />
               <div>
@@ -461,7 +327,7 @@ export default function FeedEnhanced() {
               <div><strong>{formatCompactNumber(stats.followers)}</strong><span>المتابعون</span></div>
               <div><strong>{formatCompactNumber(stats.following)}</strong><span>المتابَعون</span></div>
             </div>
-          </button>
+          </div>
         </aside>
 
         <section className="desktop-feed-center-column">
@@ -493,18 +359,18 @@ export default function FeedEnhanced() {
             </div>
           </header>
 
-          <div className="desktop-composer-hero-card" ref={composerCardRef}>
+          <div className="desktop-composer-hero-card">
             <div className="desktop-composer-hero-head">
               <Avatar name={currentUsername || 'You'} size={54} ring />
               <div>
                 <strong>ماذا يحدث يا مبدع؟</strong>
                 <span>صمّم منشورك ليظهر بشكل أنيق على نسخة الويب للكمبيوتر.</span>
               </div>
-              <button type="button" className="desktop-publish-glow" onClick={focusComposer}>نشر</button>
+              <button type="button" className="desktop-publish-glow" onClick={() => window.scrollTo({ top: 280, behavior: 'smooth' })}>نشر</button>
             </div>
             <div className="desktop-composer-hero-actions">
               {QUICK_COMPOSER_ACTIONS.map((item) => (
-                <button key={item} type="button" className="desktop-mini-chip" onClick={() => handleQuickComposerAction(item)}>{item}</button>
+                <button key={item} type="button" className="desktop-mini-chip">{item}</button>
               ))}
             </div>
             <PostComposer />
@@ -518,21 +384,12 @@ export default function FeedEnhanced() {
               <DesktopPostCard
                 key={post.id}
                 post={post}
-                onLike={(postId) => {
-                  recordFeedInteraction({ type: 'like', post });
-                  likeMutation.mutate(postId);
-                }}
+                onLike={(postId) => likeMutation.mutate(postId)}
                 onDelete={(postId) => deleteMutation.mutate(postId)}
-                onComment={handleCommentOpen}
-                onShare={handleSharePost}
-                onSave={handleSavePost}
-                isSaved={savedPostMap[post.id] ?? Boolean(post.is_saved)}
                 localLikeState={localBrandPost}
                 onToggleLocalLike={handleToggleLocalLike}
               />
             ))}
-            <div ref={loadMoreRef} style={{ height: 4 }} />
-            {isFetchingNextPage ? <FeedSkeleton count={1} /> : null}
           </div>
         </section>
 
@@ -543,30 +400,41 @@ export default function FeedEnhanced() {
               <NavLink to="/search" style={{ fontSize: '12px', color: '#8b5cf6', textDecoration: 'none' }}>عرض الكل</NavLink>
             </div>
             <div className="desktop-services-grid">
-              {SERVICE_SHORTCUTS.map((service) => (
-                <NavLink key={service.title} to={SERVICE_ROUTE_MAP[service.title] || '/search'} className={`desktop-service-tile ${SERVICE_TILE_TONES[SERVICE_SHORTCUTS.indexOf(service)] || ''}`} style={{ textDecoration: 'none' }}>
-                  <span className="desktop-service-icon">{service.icon}</span>
-                  <strong>{service.title}</strong>
-                </NavLink>
-              ))}
+              {SERVICE_SHORTCUTS.map((service) => {
+                const getServiceRoute = (title) => {
+                  switch(title) {
+                    case 'الدردشة': return '/inbox';
+                    case 'المكالمات': return '/inbox';
+                    case 'المجموعات': return '/groups';
+                    case 'البث المباشر': return '/live';
+                    default: return '/search';
+                  }
+                };
+                return (
+                  <NavLink key={service.title} to={getServiceRoute(service.title)} className={`desktop-service-tile ${SERVICE_TILE_TONES[SERVICE_SHORTCUTS.indexOf(service)] || ''}`} style={{ textDecoration: 'none' }}>
+                    <span className="desktop-service-icon">{service.icon}</span>
+                    <strong>{service.title}</strong>
+                  </NavLink>
+                );
+              })}
             </div>
           </section>
 
           <section className="desktop-side-card">
             <div className="desktop-side-head">
               <h3>اقتراحات المتابعة</h3>
-              <NavLink to="/users" style={{ fontSize: '13px', color: '#8b5cf6', textDecoration: 'none', fontWeight: 800 }}>عرض الكل</NavLink>
+              <span>عرض الكل</span>
             </div>
             <div className="desktop-suggest-list">
               {suggestedUsers.map((user) => (
                 <div key={user.username} className="desktop-suggest-item">
-                  <button type="button" className="desktop-suggest-meta desktop-inline-button" onClick={() => handleOpenProfile(user.username)}>
+                  <div className="desktop-suggest-meta">
                     <Avatar name={user.username} src={user.avatar} size={44} />
                     <div>
                       <strong>{user.username}</strong>
                       <small>{user.handle || user.email || user.recommendation_reason || '@yamshat.creator'}</small>
                     </div>
-                  </button>
+                  </div>
                   <button type="button" className="desktop-follow-btn" onClick={() => followMutation.mutate(user.username)}>
                     تابع
                   </button>
@@ -578,17 +446,17 @@ export default function FeedEnhanced() {
           <section className="desktop-side-card">
             <div className="desktop-side-head">
               <h3>المواضيع الرائجة</h3>
-              <NavLink to="/search" style={{ fontSize: '13px', color: '#8b5cf6', textDecoration: 'none', fontWeight: 800 }}>عرض الكل</NavLink>
+              <span>عرض الكل</span>
             </div>
             <div className="desktop-trend-list">
               {trendingTopics.map((topic) => (
-                <button key={topic.tag} type="button" className="desktop-trend-item desktop-inline-button" onClick={() => handleOpenTrend(topic.tag)}>
+                <div key={topic.tag} className="desktop-trend-item">
                   <div>
                     <strong>{topic.tag}</strong>
                     <small>{formatCompactNumber(topic.count || 0)} منشور</small>
                   </div>
                   <span className="desktop-trend-pulse" />
-                </button>
+                </div>
               ))}
             </div>
           </section>
@@ -600,13 +468,13 @@ export default function FeedEnhanced() {
             </div>
             <div className="desktop-live-list">
               {liveHighlights.map((room) => (
-                <button key={room.id} type="button" className="desktop-live-item desktop-inline-button" onClick={() => handleOpenLiveRoom(room)}>
+                <div key={room.id} className="desktop-live-item">
                   <div>
                     <strong>{room.title || room.host || room.username || 'Yamshat Live'}</strong>
                     <small>{room.host || room.username || 'Yamshat'}</small>
                   </div>
                   <span className="desktop-live-pill">{formatCompactNumber(room.viewer_count || 0)} LIVE</span>
-                </button>
+                </div>
               ))}
             </div>
           </section>
@@ -616,15 +484,14 @@ export default function FeedEnhanced() {
       <style>{`
         .desktop-feed-shell {
           min-height: 100vh;
-          width: min(100%, 1660px);
+          width: min(1660px, calc(100vw - 28px));
           max-width: 1660px;
           margin: 0 auto;
           overflow-x: hidden;
           display: grid;
-          grid-template-columns: minmax(220px, 23%) minmax(0, 1fr) minmax(290px, 31%);
+          grid-template-columns: 238px minmax(0, 1fr) 318px;
           gap: 18px;
-          align-items: start;
-          padding: calc(18px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
+          padding: 18px 16px 24px;
           box-sizing: border-box;
           background:
             radial-gradient(circle at top left, rgba(139,92,246,0.20), transparent 28%),
@@ -638,25 +505,10 @@ export default function FeedEnhanced() {
         .desktop-feed-left-rail,
         .desktop-feed-right-rail {
           position: sticky;
-          top: calc(18px + env(safe-area-inset-top));
+          top: 18px;
           align-self: start;
           display: grid;
           gap: 14px;
-          max-height: calc(100dvh - 36px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
-          overflow-y: auto;
-          padding-bottom: max(8px, env(safe-area-inset-bottom));
-          scrollbar-width: thin;
-        }
-
-        .desktop-feed-left-rail::-webkit-scrollbar,
-        .desktop-feed-right-rail::-webkit-scrollbar {
-          width: 6px;
-        }
-
-        .desktop-feed-left-rail::-webkit-scrollbar-thumb,
-        .desktop-feed-right-rail::-webkit-scrollbar-thumb {
-          background: rgba(148,163,184,0.25);
-          border-radius: 999px;
         }
 
         .desktop-feed-center-column {
@@ -744,9 +596,7 @@ export default function FeedEnhanced() {
         .desktop-follow-btn,
         .desktop-publish-glow,
         .desktop-mini-chip,
-        .desktop-service-tile,
-        .desktop-card-button,
-        .desktop-inline-button {
+        .desktop-service-tile {
           border: 1px solid rgba(255,255,255,0.06);
           background: rgba(255,255,255,0.04);
           color: #eff4ff;
@@ -823,12 +673,6 @@ export default function FeedEnhanced() {
           display: flex;
           align-items: center;
           gap: 12px;
-        }
-
-        .desktop-card-button {
-          width: 100%;
-          text-align: inherit;
-          cursor: pointer;
         }
 
         .desktop-left-brand-mark,
@@ -1257,7 +1101,7 @@ export default function FeedEnhanced() {
 
         .desktop-services-grid {
           display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
+          grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 10px;
         }
 
@@ -1287,9 +1131,12 @@ export default function FeedEnhanced() {
         .desktop-service-tile.tone-chat .desktop-service-icon { background: rgba(96,165,250,0.16); color: #93c5fd; }
         .desktop-service-tile.tone-calls .desktop-service-icon { background: rgba(34,197,94,0.16); color: #86efac; }
         .desktop-service-tile.tone-groups .desktop-service-icon { background: rgba(168,85,247,0.18); color: #d8b4fe; }
+        .desktop-service-tile.tone-news .desktop-service-icon { background: rgba(59,130,246,0.18); color: #bfdbfe; }
+        .desktop-service-tile.tone-events .desktop-service-icon { background: rgba(250,204,21,0.16); color: #fde68a; }
         .desktop-service-tile.tone-live .desktop-service-icon { background: rgba(248,113,113,0.18); color: #fca5a5; }
-        .desktop-service-tile.tone-reels .desktop-service-icon { background: rgba(244,114,182,0.18); color: #f9a8d4; }
-        .desktop-service-tile.tone-profile .desktop-service-icon { background: rgba(251,146,60,0.18); color: #fdba74; }
+        .desktop-service-tile.tone-files .desktop-service-icon { background: rgba(251,146,60,0.18); color: #fdba74; }
+        .desktop-service-tile.tone-blog .desktop-service-icon { background: rgba(125,211,252,0.18); color: #bae6fd; }
+        .desktop-service-tile.tone-market .desktop-service-icon { background: rgba(244,114,182,0.18); color: #f9a8d4; }
 
         .desktop-service-tile strong {
           font-size: 13px;
@@ -1302,17 +1149,6 @@ export default function FeedEnhanced() {
           padding: 12px;
           border-radius: 18px;
           background: rgba(255,255,255,0.03);
-        }
-
-        .desktop-inline-button {
-          border: none;
-          width: 100%;
-          padding: 0;
-          text-align: inherit;
-          cursor: pointer;
-          color: inherit;
-          background: transparent;
-          font: inherit;
         }
 
         .desktop-follow-btn {
@@ -1343,17 +1179,17 @@ export default function FeedEnhanced() {
 
         @media (max-width: 1380px) {
           .desktop-feed-shell {
-            width: min(100%, 1520px);
-            grid-template-columns: minmax(210px, 24%) minmax(0, 1fr) minmax(280px, 30%);
+            width: min(1520px, calc(100vw - 22px));
+            grid-template-columns: 220px minmax(0, 1fr) 290px;
             gap: 16px;
-            padding: calc(16px + env(safe-area-inset-top)) 12px calc(22px + env(safe-area-inset-bottom));
+            padding: 16px 12px 22px;
           }
         }
 
         @media (max-width: 1180px) {
           .desktop-feed-shell {
-            width: min(100%, 1120px);
-            grid-template-columns: minmax(210px, 25%) minmax(0, 1fr);
+            width: min(1120px, calc(100vw - 18px));
+            grid-template-columns: 220px minmax(0, 1fr);
           }
 
           .desktop-feed-right-rail {
@@ -1363,9 +1199,9 @@ export default function FeedEnhanced() {
 
         @media (max-width: 920px) {
           .desktop-feed-shell {
-            width: 100%;
+            width: min(100%, calc(100vw - 8px));
             grid-template-columns: 1fr;
-            padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom));
+            padding: 10px;
           }
 
           .desktop-feed-left-rail,
@@ -1392,7 +1228,7 @@ export default function FeedEnhanced() {
         @media (max-width: 640px) {
           .desktop-feed-shell {
             width: 100%;
-            padding: calc(8px + env(safe-area-inset-top)) 8px calc(8px + env(safe-area-inset-bottom));
+            padding: 8px;
           }
 
           .desktop-post-action.bookmark,

@@ -46,7 +46,6 @@ def _parse_datetime(value):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid datetime value') from exc
 
 
-@router.post('', status_code=status.HTTP_201_CREATED, include_in_schema=False)
 @router.post('/', status_code=status.HTTP_201_CREATED)
 def create(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     content = str(payload.get('content') or '').strip()
@@ -81,7 +80,6 @@ def create(payload: dict = Body(...), db: Session = Depends(get_db), current_use
     return post
 
 
-@router.get('', include_in_schema=False)
 @router.get('/')
 def get_all(
     skip: int = Query(default=0, ge=0),

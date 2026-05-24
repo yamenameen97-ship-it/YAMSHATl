@@ -10,9 +10,8 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useGesture, useTouchFeedback } from '../hooks/useGesture';
 import GestureContainer from './GestureContainer';
 import axios from 'axios';
-import { API_BASE } from '../api/config.js';
 
-const API_BASE_URL = API_BASE;
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const REACTION_TYPES = ['❤️', '😂', '😮', '😢', '😠', '👍', '💕'];
 
 export const EnhancedStoryViewer = ({ stories = [] }) => {

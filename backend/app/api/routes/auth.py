@@ -422,6 +422,13 @@ def _resolve_dev_user(db: Session, payload: dict) -> User:
 
 @router.get('/captcha')
 async def get_captcha(request: Request):
+    if not settings.CAPTCHA_ENABLED:
+        return {
+            'enabled': False,
+            'captcha_required': False,
+            'message': 'Captcha is disabled',
+        }
+
     binding = request_binding_context(request)
     rate_key = f"captcha:{binding['ip_address']}"
     if not await enforce_rate_limit(rate_key, settings.CAPTCHA_RATE_LIMIT_PER_MINUTE, 60):

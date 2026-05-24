@@ -7,6 +7,7 @@ import CaptchaBox from '../components/auth/CaptchaBox.jsx';
 import { getCaptchaChallenge, registerUser } from '../api/auth.js';
 import { sanitizeInputText } from '../utils/sanitize.js';
 import { isValidEmail, localizeAuthMessage } from '../utils/authValidation.js';
+import { CAPTCHA_ENABLED } from '../utils/securityFlags.js';
 import useSingleFlight from '../hooks/useSingleFlight.js';
 
 const TEMP_EMAIL_DOMAINS = ['tempmail.com', '10minutemail.com', 'guerrillamail.com', 'mailinator.com'];
@@ -192,6 +193,13 @@ export default function RegisterEnhanced() {
   const checkTimeoutRef = useRef(null);
 
   const loadCaptcha = async () => {
+    if (!CAPTCHA_ENABLED) {
+      setCaptcha(null);
+      setCaptchaError('');
+      setCaptchaLoading(false);
+      setCaptchaAnswer('');
+      return;
+    }
     try {
       setCaptchaLoading(true);
       setCaptchaError('');
@@ -206,7 +214,7 @@ export default function RegisterEnhanced() {
   };
 
   useEffect(() => {
-    loadCaptcha();
+    if (CAPTCHA_ENABLED) loadCaptcha();
   }, []);
 
   const checkUsernameAvailability = useCallback(async (username) => {
@@ -288,7 +296,7 @@ export default function RegisterEnhanced() {
       setError('يجب الموافقة على شروط الاستخدام.');
       return false;
     }
-    if (!captchaAnswer) {
+    if (CAPTCHA_ENABLED && !captchaAnswer) {
       setError('يرجى إدخال رمز الكابتشا.');
       return false;
     }
@@ -311,8 +319,10 @@ export default function RegisterEnhanced() {
       formData.append('username', form.name.toLowerCase());
       formData.append('email', form.email.toLowerCase());
       formData.append('password', form.password);
-      formData.append('captcha_id', captcha.captcha_id);
-      formData.append('captcha_answer', captchaAnswer);
+      if (CAPTCHA_ENABLED) {
+        formData.append('captcha_id', captcha?.captcha_id || '');
+        formData.append('captcha_answer', captchaAnswer);
+      }
       if (form.displayName) formData.append('display_name', form.displayName);
       if (form.bio) formData.append('bio', form.bio);
       if (form.profileImage) formData.append('avatar', form.profileImage);
@@ -390,15 +400,17 @@ export default function RegisterEnhanced() {
               required
             />
 
-            <CaptchaBox
-              challenge={captcha}
-              value={captchaAnswer}
-              onChange={(e) => setCaptchaAnswer(e.target.value)}
-              onRefresh={loadCaptcha}
-              loading={captchaLoading}
-              error={captchaError}
-              disabled={loading}
-            />
+            {CAPTCHA_ENABLED ? (
+              <CaptchaBox
+                challenge={captcha}
+                value={captchaAnswer}
+                onChange={(e) => setCaptchaAnswer(e.target.value)}
+                onRefresh={loadCaptcha}
+                loading={captchaLoading}
+                error={captchaError}
+                disabled={loading}
+              />
+            ) : null}
 
             <div style={{ margin: '16px 0' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
@@ -436,7 +448,7 @@ export default function RegisterEnhanced() {
           <Button 
             type="submit" 
             loading={loading} 
-            disabled={loading || (step === 1 && (!form.name || !form.email || !form.password || !captchaAnswer))}
+            disabled={loading || (step === 1 && (!form.name || !form.email || !form.password || (CAPTCHA_ENABLED && !captchaAnswer)))}
             style={{ flex: 2 }}
           >
             {step === 1 ? 'المتابعة' : 'إكمال التسجيل'}

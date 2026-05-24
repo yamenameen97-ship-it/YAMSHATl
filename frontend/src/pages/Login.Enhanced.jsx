@@ -9,6 +9,7 @@ import { sanitizeInputText } from '../utils/sanitize.js';
 import { setStoredUser } from '../utils/auth.js';
 import { getDefaultPostLoginPath } from '../utils/access.js';
 import { isValidEmail, localizeAuthMessage, looksLikeEmail, parseApiDetail } from '../utils/authValidation.js';
+import { CAPTCHA_ENABLED } from '../utils/securityFlags.js';
 import useSingleFlight from '../hooks/useSingleFlight.js';
 
 /**
@@ -145,6 +146,13 @@ export default function LoginEnhanced() {
   }, [captchaCooldown]);
 
   const loadCaptcha = async () => {
+    if (!CAPTCHA_ENABLED) {
+      setCaptcha(null);
+      setCaptchaError('');
+      setCaptchaLoading(false);
+      setCaptchaCooldown(0);
+      return;
+    }
     if (captchaCooldown > 0) return;
     try {
       setCaptchaLoading(true);
@@ -161,7 +169,7 @@ export default function LoginEnhanced() {
   };
 
   useEffect(() => {
-    loadCaptcha();
+    if (CAPTCHA_ENABLED) loadCaptcha();
   }, []);
 
   const handleChange = (key) => (event) => {
@@ -191,9 +199,9 @@ export default function LoginEnhanced() {
       errors.password = 'كلمة المرور يجب أن تكون 6 أحرف على الأقل.';
     }
 
-    if (!captcha?.captcha_id) {
+    if (CAPTCHA_ENABLED && !captcha?.captcha_id) {
       errors.captcha = 'يرجى حل الكابتشا للمتابعة.';
-    } else if (!form.captchaAnswer) {
+    } else if (CAPTCHA_ENABLED && !form.captchaAnswer) {
       errors.captcha = 'يرجى إدخال رمز الكابتشا.';
     }
 
@@ -226,8 +234,10 @@ export default function LoginEnhanced() {
         identifier,
         password: form.password,
         remember_me: form.rememberMe,
-        captcha_id: captcha.captcha_id,
-        captcha_answer: form.captchaAnswer,
+        ...(CAPTCHA_ENABLED ? {
+          captcha_id: captcha?.captcha_id,
+          captcha_answer: form.captchaAnswer,
+        } : {}),
       }));
 
       const { data } = result;
@@ -334,16 +344,18 @@ export default function LoginEnhanced() {
 
         {/* Captcha Box */}
         <div>
-          <CaptchaBox
-            challenge={captcha}
-            value={form.captchaAnswer}
-            onChange={handleChange('captchaAnswer')}
-            onRefresh={loadCaptcha}
-            loading={captchaLoading}
-            error={captchaError}
-            disabled={loading || captchaCooldown > 0}
-            refreshCooldown={captchaCooldown}
-          />
+          {CAPTCHA_ENABLED ? (
+            <CaptchaBox
+              challenge={captcha}
+              value={form.captchaAnswer}
+              onChange={handleChange('captchaAnswer')}
+              onRefresh={loadCaptcha}
+              loading={captchaLoading}
+              error={captchaError}
+              disabled={loading || captchaCooldown > 0}
+              refreshCooldown={captchaCooldown}
+            />
+          ) : null}
           {fieldErrors.captcha && (
             <div className="field-error" style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>
               {fieldErrors.captcha}
@@ -388,7 +400,7 @@ export default function LoginEnhanced() {
         <Button
           type="submit"
           loading={loading}
-          disabled={loading || !form.identifier || !form.password || !form.captchaAnswer}
+          disabled={loading || !form.identifier || !form.password || (CAPTCHA_ENABLED && !form.captchaAnswer)}
           style={{ height: 50, fontSize: 16, fontWeight: 'bold' }}
           fullWidth
         >

@@ -161,7 +161,7 @@ class Settings:
     VERIFY_RATE_LIMIT_PER_MINUTE: int = int(os.getenv('VERIFY_RATE_LIMIT_PER_MINUTE', '12'))
     RESEND_RATE_LIMIT_PER_MINUTE: int = int(os.getenv('RESEND_RATE_LIMIT_PER_MINUTE', '6'))
     CAPTCHA_RATE_LIMIT_PER_MINUTE: int = int(os.getenv('CAPTCHA_RATE_LIMIT_PER_MINUTE', '20'))
-    CAPTCHA_ENABLED: bool = env_bool('CAPTCHA_ENABLED', True)
+    CAPTCHA_ENABLED: bool = env_bool('CAPTCHA_ENABLED', False)
     CAPTCHA_EXPIRE_MINUTES: int = int(os.getenv('CAPTCHA_EXPIRE_MINUTES', '5'))
     DEV_LOGIN_ENABLED: bool = env_bool('DEV_LOGIN_ENABLED', False)
     LIVEKIT_URL: str = os.getenv('LIVEKIT_URL', '')

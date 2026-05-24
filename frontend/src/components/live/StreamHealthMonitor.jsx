@@ -1,98 +1,93 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import PropTypes from 'prop-types';
 import { tokens } from '../../styles/designTokens';
 
-/**
- * StreamHealthMonitor Component
- * Monitors and displays the health status of a live stream
- */
-const StreamHealthMonitor = ({ stats }) => {
-  const [health, setHealth] = useState('excellent'); // excellent, good, poor, critical
+const HEALTH_COLORS = {
+  excellent: tokens.colors.success,
+  good: tokens.colors.warning,
+  poor: '#f97316',
+  critical: tokens.colors.error,
+};
 
-  useEffect(() => {
-    if (!stats) return;
+function getHealthStatus(stats = {}) {
+  const packetLoss = Number(stats.packetLoss || 0);
+  const latency = Number(stats.latency || 0);
+  const bitrate = Number(stats.bitrate || 0);
+  const score = Number(stats.healthScore || 0);
 
-    // Logic to determine health based on bitrate, packet loss, and latency
-    const { bitrate, packetLoss, latency } = stats;
-    
-    if (packetLoss > 10 || latency > 500) {
-      setHealth('critical');
-    } else if (packetLoss > 5 || latency > 300 || bitrate < 500) {
-      setHealth('poor');
-    } else if (packetLoss > 1 || latency > 150 || bitrate < 1000) {
-      setHealth('good');
-    } else {
-      setHealth('excellent');
-    }
-  }, [stats]);
+  if (score <= 45 || packetLoss > 8 || latency > 2200 || bitrate < 700) return 'critical';
+  if (score <= 65 || packetLoss > 4 || latency > 1500 || bitrate < 1400) return 'poor';
+  if (score <= 82 || packetLoss > 1.5 || latency > 900 || bitrate < 2400) return 'good';
+  return 'excellent';
+}
 
-  const getHealthColor = () => {
-    switch (health) {
-      case 'excellent': return tokens.colors.success;
-      case 'good': return tokens.colors.warning;
-      case 'poor': return '#f97316'; // orange
-      case 'critical': return tokens.colors.error;
-      default: return tokens.colors.secondary[500];
-    }
-  };
+function getArabicLabel(status) {
+  switch (status) {
+    case 'excellent': return 'ممتاز';
+    case 'good': return 'جيد';
+    case 'poor': return 'ضعيف';
+    case 'critical': return 'حرج';
+    default: return 'غير معروف';
+  }
+}
 
-  const getHealthLabel = () => {
-    switch (health) {
-      case 'excellent': return 'ممتاز';
-      case 'good': return 'جيد';
-      case 'poor': return 'ضعيف';
-      case 'critical': return 'سيء جداً';
-      default: return 'غير معروف';
-    }
-  };
+export default function StreamHealthMonitor({ stats }) {
+  const health = useMemo(() => getHealthStatus(stats), [stats]);
+  const healthColor = HEALTH_COLORS[health] || tokens.colors.secondary[500];
+  const qualityLabel = stats?.qualityProfile === 'low' ? 'منخفض' : stats?.qualityProfile === 'medium' ? 'متوسط' : stats?.qualityProfile === 'high' ? 'عالي' : 'تلقائي';
 
   return (
     <div style={{
-      padding: tokens.spacing.sm,
-      backgroundColor: 'rgba(0, 0, 0, 0.6)',
-      borderRadius: tokens.borderRadius.md,
+      padding: tokens.spacing.md,
+      backgroundColor: 'rgba(0, 0, 0, 0.56)',
+      borderRadius: tokens.borderRadius.lg,
       color: 'white',
       fontSize: tokens.typography.sizes.xs,
       display: 'flex',
       flexDirection: 'column',
-      gap: '4px',
-      minWidth: '120px',
-      backdropFilter: 'blur(4px)',
+      gap: 8,
+      minWidth: 190,
+      backdropFilter: 'blur(8px)',
+      border: `1px solid ${healthColor}30`,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span>حالة البث:</span>
-        <span style={{ color: getHealthColor(), fontWeight: 'bold' }}>{getHealthLabel()}</span>
+        <span style={{ color: '#cbd5e1' }}>صحة البث</span>
+        <span style={{ color: healthColor, fontWeight: 'bold' }}>{getArabicLabel(health)}</span>
       </div>
-      
-      {stats && (
-        <>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>Bitrate:</span>
-            <span>{stats.bitrate} kbps</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>Latency:</span>
-            <span>{stats.latency} ms</span>
-          </div>
-          <div style={{ 
-            height: '4px', 
-            width: '100%', 
-            backgroundColor: 'rgba(255,255,255,0.2)', 
-            borderRadius: '2px',
-            marginTop: '4px',
-            overflow: 'hidden'
-          }}>
-            <div style={{ 
-              height: '100%', 
-              width: health === 'excellent' ? '100%' : health === 'good' ? '70%' : health === 'poor' ? '40%' : '15%',
-              backgroundColor: getHealthColor(),
-              transition: 'width 0.5s ease'
-            }} />
-          </div>
-        </>
-      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+        <Metric label="Bitrate" value={`${Number(stats?.bitrate || 0)} kbps`} />
+        <Metric label="Latency" value={`${Number(stats?.latency || 0)} ms`} />
+        <Metric label="Packet loss" value={`${Number(stats?.packetLoss || 0).toFixed(1)}%`} />
+        <Metric label="Profile" value={qualityLabel} />
+        <Metric label="Sync" value={String(stats?.syncSessions ?? 0)} />
+        <Metric label="Recovery" value={String(stats?.reconnectAttempts ?? 0)} />
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8' }}>
+        <span>المشاهدين {Number(stats?.viewerCount || 0)}</span>
+        <span>التسجيل {stats?.recordingStatus || 'idle'}</span>
+      </div>
+
+      <div style={{ height: 6, width: '100%', backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 999, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${Math.max(8, Math.min(100, Number(stats?.healthScore || 0)))}%`, backgroundColor: healthColor, transition: 'width 0.35s ease' }} />
+      </div>
     </div>
   );
+}
+
+function Metric({ label, value }) {
+  return (
+    <div style={{ padding: '8px 10px', borderRadius: 10, background: 'rgba(255,255,255,0.05)' }}>
+      <div style={{ color: '#94a3b8', marginBottom: 2 }}>{label}</div>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+Metric.propTypes = {
+  label: PropTypes.string.isRequired,
+  value: PropTypes.string.isRequired,
 };
 
 StreamHealthMonitor.propTypes = {
@@ -100,7 +95,15 @@ StreamHealthMonitor.propTypes = {
     bitrate: PropTypes.number,
     packetLoss: PropTypes.number,
     latency: PropTypes.number,
+    reconnectAttempts: PropTypes.number,
+    syncSessions: PropTypes.number,
+    recordingStatus: PropTypes.string,
+    qualityProfile: PropTypes.string,
+    viewerCount: PropTypes.number,
+    healthScore: PropTypes.number,
   }),
 };
 
-export default StreamHealthMonitor;
+StreamHealthMonitor.defaultProps = {
+  stats: null,
+};

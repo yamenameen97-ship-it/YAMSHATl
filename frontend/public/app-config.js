@@ -1,112 +1,29 @@
 (function () {
-  const DEPLOY_BACKEND_ORIGIN = 'https://yamshatl.onrender.com';
-  const DEPLOY_API_BASE = 'https://yamshatl.onrender.com/api';
-
-  const trim = (value) => String(value || '').trim().replace(/\/+$/, '');
-  const toApiBase = (value) => {
-    const cleaned = trim(value);
-    if (!cleaned) return '';
-    return cleaned.endsWith('/api') ? cleaned : `${cleaned}/api`;
-  };
-  const apiToOrigin = (value) => trim(toApiBase(value).replace(/\/api$/, ''));
-  const safeOrigin = (value) => {
-    try {
-      return trim(new URL(String(value || '').trim()).origin);
-    } catch (_) {
-      return '';
-    }
-  };
-  const currentOrigin = trim(window.location.origin);
-
-  const inferBackendFromHints = () => {
-    const host = trim(window.location.hostname).toLowerCase();
-
-    // لا نحاول اشتقاق الـ backend من اسم خدمة Render الأمامية، لأن Render
-    // قد يضيف suffix متغير مثل -vg10 أو -yg1o، ومحاولة قصّه قد تُنتج
-    // دومين قديم/خاطئ مثل yamshat1.onrender.com.
-    if (/\.onrender\.com$/i.test(host) && trim(DEPLOY_BACKEND_ORIGIN)) {
-      return trim(DEPLOY_BACKEND_ORIGIN);
-    }
-
-    try {
-      const links = Array.from(document.querySelectorAll('link[rel="preconnect"][href], link[rel="dns-prefetch"][href]'));
-      for (const link of links) {
-        const origin = safeOrigin(link.getAttribute('href'));
-        if (origin && origin !== currentOrigin) return origin;
-      }
-    } catch (_) {}
-
-    return currentOrigin;
-  };
-
-  const params = new URLSearchParams(window.location.search);
-  const queryApi = toApiBase(params.get('api'));
-  const queryBackend = trim(params.get('backend'));
-
-  let storedApi = '';
-  let storedBackend = '';
-  try {
-    storedApi = toApiBase(localStorage.getItem('apiBase'));
-    storedBackend = trim(localStorage.getItem('backendOrigin'));
-  } catch (_) {}
-
-  const inferredBackendOrigin = inferBackendFromHints();
-  const inferredApi = inferredBackendOrigin ? `${inferredBackendOrigin}/api` : '';
-  const isRenderHost = (value) => /\.onrender\.com$/i.test(trim(value));
-  const originLooksCurrent = (value) => {
-    const candidate = trim(value);
-    if (!candidate || !inferredBackendOrigin) return false;
-    return candidate === inferredBackendOrigin || candidate === currentOrigin;
-  };
-  const apiLooksCurrent = (value) => {
-    const candidate = toApiBase(value);
-    if (!candidate) return false;
-    return candidate === toApiBase(inferredApi) || candidate === toApiBase(`${currentOrigin}/api`);
-  };
-
-  const safeStoredBackend = originLooksCurrent(storedBackend) || !isRenderHost(storedBackend) ? storedBackend : '';
-  const safeStoredApi = apiLooksCurrent(storedApi) || !isRenderHost(apiToOrigin(storedApi)) ? storedApi : '';
-  const legacyBackendDetected = isRenderHost(storedBackend) && !originLooksCurrent(storedBackend);
-  const legacyApiDetected = isRenderHost(apiToOrigin(storedApi)) && !apiLooksCurrent(storedApi);
-  const queryBackendApi = queryBackend ? toApiBase(queryBackend) : '';
-
-  const backendOrigin =
-    trim(queryBackend) ||
-    apiToOrigin(queryApi) ||
-    trim(DEPLOY_BACKEND_ORIGIN) ||
-    safeStoredBackend ||
-    apiToOrigin(safeStoredApi) ||
-    inferredBackendOrigin ||
-    currentOrigin;
-
-  const apiBase =
-    toApiBase(queryApi) ||
-    queryBackendApi ||
-    safeStoredApi ||
-    toApiBase(DEPLOY_API_BASE) ||
-    toApiBase(`${backendOrigin}/api`) ||
-    toApiBase(inferredApi) ||
-    toApiBase(`${currentOrigin}/api`);
+  const FRONTEND_ORIGIN = 'https://yamshatl-1-yg1o.onrender.com';
+  const BACKEND_ORIGIN = 'https://yamshatl-ahj8.onrender.com';
+  const API_BASE = 'https://yamshatl-ahj8.onrender.com/api';
+  const uploadBase = `${API_BASE}/upload`;
 
   try {
-    const previousBackendOrigin = trim(localStorage.getItem('backendOrigin'));
-    if (previousBackendOrigin && previousBackendOrigin !== backendOrigin) {
+    const previousBackendOrigin = String(localStorage.getItem('backendOrigin') || '').trim();
+    if (previousBackendOrigin && previousBackendOrigin !== BACKEND_ORIGIN) {
       localStorage.removeItem('yamshat_csrf_token');
+      localStorage.removeItem('yamshat_user_session');
+      localStorage.removeItem('yamshatAuth');
+      localStorage.removeItem('user');
+      sessionStorage.removeItem('yamshat_csrf_token');
       sessionStorage.removeItem('yamshat_user_session');
+      sessionStorage.removeItem('yamshatAuth');
+      sessionStorage.removeItem('user');
     }
-    if (legacyBackendDetected || legacyApiDetected) {
-      localStorage.removeItem('backendOrigin');
-      localStorage.removeItem('apiBase');
-    }
-    localStorage.setItem('backendOrigin', backendOrigin);
-    localStorage.setItem('apiBase', apiBase);
+
+    localStorage.setItem('backendOrigin', BACKEND_ORIGIN);
+    localStorage.setItem('apiBase', API_BASE);
   } catch (_) {}
 
-  const uploadBase = `${apiBase}/upload`;
-
-  window.APP_BACKEND_ORIGIN = backendOrigin;
-  window.APP_API_BASE = apiBase;
-  window.APP_CDN_BASE = '';
+  window.APP_BACKEND_ORIGIN = BACKEND_ORIGIN;
+  window.APP_API_BASE = API_BASE;
+  window.APP_CDN_BASE = window.APP_CDN_BASE || '';
   window.APP_MEDIA_PROVIDER = window.APP_MEDIA_PROVIDER || 'cloudflare-r2';
   window.APP_MEDIA_UPLOAD_URL = window.APP_MEDIA_UPLOAD_URL || uploadBase;
   window.APP_MEDIA_RESUMABLE_START_URL = window.APP_MEDIA_RESUMABLE_START_URL || `${uploadBase}/resumable/start`;
@@ -114,9 +31,10 @@
   window.APP_MEDIA_RESUMABLE_CHUNK_URL = window.APP_MEDIA_RESUMABLE_CHUNK_URL || `${uploadBase}/resumable`;
   window.APP_MEDIA_RESUMABLE_COMPLETE_URL = window.APP_MEDIA_RESUMABLE_COMPLETE_URL || `${uploadBase}/resumable`;
   window.APP_SIGNAL_SERVER_SUPPORT = Boolean(window.APP_SIGNAL_SERVER_SUPPORT || false);
+  window.YAMSHAT_API_BASE = API_BASE;
   window.YAMSHAT_CDN_BASE = window.APP_CDN_BASE;
-  window.YAMSHAT_SOCKET_URL = backendOrigin;
-  window.YAMSHAT_BACKEND_ORIGIN = backendOrigin;
-  window.YAMSHAT_FRONTEND_ORIGIN = currentOrigin;
-  window.YAMSHAT_DEPLOY_MODE = backendOrigin === currentOrigin ? 'single-service' : 'split-services';
+  window.YAMSHAT_SOCKET_URL = BACKEND_ORIGIN;
+  window.YAMSHAT_BACKEND_ORIGIN = BACKEND_ORIGIN;
+  window.YAMSHAT_FRONTEND_ORIGIN = FRONTEND_ORIGIN;
+  window.YAMSHAT_DEPLOY_MODE = 'split-services';
 })();

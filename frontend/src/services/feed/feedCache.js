@@ -1,9 +1,7 @@
-const cache = new Map();
-
-export function saveFeedCache(key, data) {
-  cache.set(key, data);
-}
-
-export function getFeedCache(key) {
-  return cache.get(key);
-}
+export {
+  getFeedCache,
+  setFeedCache,
+  getOrSetFeedCache,
+  invalidateFeedCache,
+  getFeedCacheStats,
+} from '../../features/feed/cache.js';

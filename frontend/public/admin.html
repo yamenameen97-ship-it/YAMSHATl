@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+window.__YAMSHAT_DEFAULT_BACKEND_ORIGIN__ = '%VITE_BACKEND_ORIGIN%';
+window.__YAMSHAT_DEFAULT_API_BASE__ = '%VITE_API_BASE%';
+</script>
+<script src="/app-config.js"></script>
+<style>
+body{margin:0;background:#07111f;color:#fff;font-family:Arial}
+.layout{display:flex}
+.sidebar{width:260px;background:#0b1324;min-height:100vh;padding:20px;position:fixed;right:0;top:0}
+.content{margin-right:260px;padding:20px;width:100%}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:15px}
+.card{background:#101b31;padding:20px;border-radius:20px}
+table{width:100%;border-collapse:collapse;background:#101b31;border-radius:20px;overflow:hidden}
+td,th{padding:12px;border-bottom:1px solid #1f2a44;text-align:right}
+.panel{background:#101b31;padding:20px;border-radius:20px;margin-top:20px}
+.menu a{display:block;color:white;text-decoration:none;padding:12px;background:#111d36;margin-bottom:10px;border-radius:12px}
+h1,h2,h3{margin-top:0}
+canvas{background:#101b31;border-radius:20px;padding:10px}
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+<div class="sidebar">
+<h1>YamShat</h1>
+
+<div class="menu">
+<a href="#">لوحة التحكم</a>
+<a href="#">المستخدمين</a>
+<a href="#">البثوث</a>
+<a href="#">الإحصائيات</a>
+</div>
+
+</div>
+
+<div class="content">
+
+<h2>لوحة التحكم المباشرة</h2>
+
+<div class="card-grid">
+<div class="card">
+<h3>إجمالي المستخدمين</h3>
+<h1 id="usersCount">0</h1>
+</div>
+
+<div class="card">
+<h3>البثوث المباشرة</h3>
+<h1 id="streamsCount">0</h1>
+</div>
+
+<div class="card">
+<h3>المنشورات</h3>
+<h1 id="postsCount">0</h1>
+</div>
+
+<div class="card">
+<h3>التقارير</h3>
+<h1 id="reportsCount">0</h1>
+</div>
+</div>
+
+<div class="panel">
+<h3>الإحصائيات</h3>
+<canvas id="statsChart" height="120"></canvas>
+</div>
+
+<div class="panel">
+<h3>آخر المستخدمين</h3>
+
+<table>
+<thead>
+<tr>
+<th>المعرف</th>
+<th>الاسم</th>
+<th>الدور</th>
+</tr>
+</thead>
+
+<tbody id="usersTable"></tbody>
+</table>
+
+</div>
+
+</div>
+
+</div>
+
+<script>
+const API_BASE = window.APP_API_BASE || window.YAMSHAT_API_BASE || window.__YAMSHAT_DEFAULT_API_BASE__ || localStorage.getItem('apiBase') || (window.__YAMSHAT_DEFAULT_BACKEND_ORIGIN__ ? `${window.__YAMSHAT_DEFAULT_BACKEND_ORIGIN__.replace(/\/+$/, '')}/api` : `${window.location.origin.replace(/\/+$/, '')}/api`);
+
+async function loadDashboard(){
+try{
+const token = localStorage.getItem("token");
+
+const headers = {
+"Content-Type":"application/json"
+};
+
+if(token){
+headers["Authorization"] = `Bearer ${token}`;
+}
+
+const dashboardRes = await fetch(`${API_BASE}/admin/dashboard`,{headers, credentials:'include'});
+const dashboard = await dashboardRes.json();
+
+const usersRes = await fetch(`${API_BASE}/admin/users`,{headers, credentials:'include'});
+const usersData = await usersRes.json();
+
+document.getElementById("usersCount").innerText = dashboard.total_users || usersData.total || 0;
+document.getElementById("streamsCount").innerText = dashboard.active_streams || 0;
+document.getElementById("postsCount").innerText = dashboard.total_posts || 0;
+document.getElementById("reportsCount").innerText = dashboard.reports || 0;
+
+const tbody = document.getElementById("usersTable");
+tbody.innerHTML = "";
+
+(usersData.users || []).slice(0,10).forEach(user=>{
+tbody.innerHTML += `
+<tr>
+<td>${user.id || "-"}</td>
+<td>${user.username || user.name || "-"}</td>
+<td>${user.role || "user"}</td>
+</tr>
+`;
+});
+
+const ctx = document.getElementById('statsChart');
+
+new Chart(ctx,{
+type:'line',
+data:{
+labels:['Users','Streams','Posts','Reports'],
+datasets:[{
+label:'Statistics',
+data:[
+dashboard.total_users || 0,
+dashboard.active_streams || 0,
+dashboard.total_posts || 0,
+dashboard.reports || 0
+]
+}]
+}
+});
+
+}catch(err){
+console.error(err);
+}
+}
+
+loadDashboard();
+</script>
+
+</body>
+</html>

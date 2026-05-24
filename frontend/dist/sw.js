@@ -1,4 +1,4 @@
-const VERSION = 'yamshat-v20260524-013605-1779586565712';
+const VERSION = 'yamshat-v20260524-024513-1779590713886';
 const STATIC_CACHE = `${VERSION}:static`;
 const MEDIA_CACHE = `${VERSION}:media`;
 const OFFLINE_FALLBACK_RESPONSE = new Response('Offline', { status: 503, statusText: 'Offline' });

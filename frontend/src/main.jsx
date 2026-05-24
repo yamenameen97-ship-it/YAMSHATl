@@ -15,7 +15,7 @@ import sessionManager from './auth/sessionManager.js';
 import "./styles/mobile-optimization.css";
 import "./styles/performance.css";
 
-const BUILD_ID = 'yamshat-hotfix-20260524-captcha-cors-runtime-v3';
+const BUILD_ID = 'yamshat-hotfix-20260524-captcha-cors-runtime-v4';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

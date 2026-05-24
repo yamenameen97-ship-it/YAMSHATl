@@ -90,7 +90,7 @@ canvas{background:#101b31;border-radius:20px;padding:10px}
 </div>
 
 <script>
-const API_BASE = window.APP_API_BASE || window.YAMSHAT_API_BASE || localStorage.getItem('apiBase') || 'https://yamshatl-ahj8.onrender.com/api';
+const API_BASE = window.APP_API_BASE || window.YAMSHAT_API_BASE || localStorage.getItem('apiBase') || `${window.location.origin.replace(/\/+$/, '')}/api`;
 
 async function loadDashboard(){
 try{

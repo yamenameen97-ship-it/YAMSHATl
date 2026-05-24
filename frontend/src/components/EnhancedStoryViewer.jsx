@@ -10,8 +10,9 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useGesture, useTouchFeedback } from '../hooks/useGesture';
 import GestureContainer from './GestureContainer';
 import axios from 'axios';
+import { API_BASE } from '../api/config.js';
 
-const API_BASE_URL = 'https://yamshatl-ahj8.onrender.com/api';
+const API_BASE_URL = API_BASE;
 const REACTION_TYPES = ['❤️', '😂', '😮', '😢', '😠', '👍', '💕'];
 
 export const EnhancedStoryViewer = ({ stories = [] }) => {

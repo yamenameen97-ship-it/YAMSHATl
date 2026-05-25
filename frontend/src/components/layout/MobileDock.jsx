@@ -1,43 +1,34 @@
-import { Link, NavLink } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
+import { useMemo } from 'react';
 import { useAppStore } from '../../store/appStore.js';
 import { selectUnreadTotal, useChatStore } from '../../store/appStore.js';
-import { getUiText } from '../../utils/i18n.js';
-import { getPrefetchHandlers } from '../../utils/navigation.js';
 
 export default function MobileDock() {
-  const language = useAppStore((state) => state.language);
   const isOnline = useAppStore((state) => state.isOnline);
-  const ui = getUiText(language);
   const unreadInboxCount = useChatStore(selectUnreadTotal);
 
-  const dockLinks = [
-    { to: '/', label: ui.nav.home || 'الرئيسية', icon: '⌂', badge: 0 },
-    { to: '/search', label: 'بحث', icon: '🔍', badge: 0 },
-    { to: '/stories', label: 'قصص', icon: '📖', badge: 0 },
-    { to: '/reels', label: ui.nav.reels || 'ريلز', icon: '▣', badge: 0 },
-    { to: '/groups', label: 'مجموعات', icon: '👥', badge: 0 },
-    { to: '/live', label: ui.nav.live || 'بث', icon: '◉', badge: isOnline ? 'live' : 0 },
-    { to: '/inbox', label: ui.nav.inbox || 'دردشة', icon: '✉', badge: unreadInboxCount },
-    { to: '/notifications', label: 'إشعارات', icon: '🔔', badge: 0 },
-    { to: '/users', label: 'أشخاص', icon: '👤', badge: 0 },
-    { to: '/profile', label: 'ملفي', icon: '⚙', badge: 0 },
-  ];
+  const dockLinks = useMemo(() => ([
+    { to: '/', label: 'الرئيسية', icon: '⌂' },
+    { to: '/search', label: 'بحث', icon: '⌕' },
+    { to: '/live', label: 'بث', icon: '◉', badge: isOnline ? 'live' : 0 },
+    { to: '/inbox', label: 'الدردشة', icon: '✉', badge: unreadInboxCount },
+    { to: '/profile', label: 'حسابي', icon: '◌' },
+  ]), [isOnline, unreadInboxCount]);
 
   return (
-    <nav className="mobile-dock mobile-dock-professional" aria-label={language === 'en' ? 'Quick navigation' : 'التنقل السريع'}>
-      <div className="mobile-dock-inner mobile-dock-scrollable">
+    <nav className="mobile-dock mobile-dock-professional" aria-label="التنقل السريع">
+      <div className="mobile-dock-inner">
         {dockLinks.map((link) => (
           <NavLink
             key={link.to}
             to={link.to}
             className={({ isActive }) => `mobile-dock-link ${isActive ? 'active' : ''}`}
-            {...getPrefetchHandlers(link.to)}
             title={link.label}
           >
-            <span className="mobile-dock-icon">{link.icon}</span>
+            <span className="mobile-dock-icon" aria-hidden="true">{link.icon}</span>
             <span className="mobile-dock-label">{link.label}</span>
             {link.badge === 'live' ? <span className="mobile-live-dot" aria-hidden="true" /> : null}
-            {typeof link.badge === 'number' && link.badge > 0 ? <strong className="topbar-badge">{link.badge}</strong> : null}
+            {typeof link.badge === 'number' && link.badge > 0 ? <strong className="mobile-dock-badge">{link.badge}</strong> : null}
           </NavLink>
         ))}
       </div>
@@ -45,113 +36,107 @@ export default function MobileDock() {
       <style>{`
         .mobile-dock {
           position: fixed;
+          inset-inline: 0;
           bottom: 0;
-          left: 0;
-          right: 0;
-          z-index: 40;
-          background: rgba(4, 8, 18, 0.94);
-          border-top: 1px solid rgba(255, 255, 255, 0.08);
-          backdrop-filter: blur(20px);
-          padding: 8px 0;
+          z-index: 60;
+          display: none;
+          padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+          background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 72%, transparent), var(--panel-strong));
+          border-top: 1px solid var(--line);
+          backdrop-filter: blur(24px);
         }
 
         .mobile-dock-inner {
-          display: flex;
-          gap: 4px;
-          overflow-x: auto;
-          overflow-y: hidden;
-          padding: 0 8px;
-          scrollbar-width: none;
-          -ms-overflow-style: none;
-        }
-
-        .mobile-dock-inner::-webkit-scrollbar {
-          display: none;
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 8px;
+          width: min(100%, 560px);
+          margin: 0 auto;
         }
 
         .mobile-dock-link {
+          position: relative;
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          gap: 4px;
-          min-width: 60px;
-          height: 60px;
-          padding: 6px 8px;
-          border-radius: 12px;
+          gap: 6px;
+          min-height: 62px;
+          padding: 10px 6px;
+          border-radius: 18px;
+          border: 1px solid transparent;
           background: transparent;
-          color: #94a3b8;
-          text-decoration: none;
-          font-size: 12px;
-          font-weight: 600;
-          transition: all 0.2s ease;
-          position: relative;
-          flex-shrink: 0;
+          color: var(--muted);
+          transition: transform var(--motion-fast), background var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast), box-shadow var(--motion-fast);
         }
 
         .mobile-dock-link:hover {
-          background: rgba(124, 58, 237, 0.12);
-          color: #dbe4ff;
+          color: var(--text);
+          background: color-mix(in srgb, var(--panel) 88%, transparent);
+          border-color: color-mix(in srgb, var(--line) 75%, transparent);
         }
 
         .mobile-dock-link.active {
-          background: linear-gradient(135deg, rgba(124, 58, 237, 0.24), rgba(99, 102, 241, 0.14));
-          color: #fff;
-          border: 1px solid rgba(167, 139, 250, 0.24);
+          color: var(--text-on-accent);
+          background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+          border-color: color-mix(in srgb, var(--primary) 55%, white 8%);
+          box-shadow: 0 16px 32px rgba(124, 58, 237, 0.24);
+          transform: translateY(-2px);
         }
 
         .mobile-dock-icon {
           font-size: 20px;
-          display: block;
           line-height: 1;
         }
 
         .mobile-dock-label {
-          display: block;
-          font-size: 11px;
-          white-space: nowrap;
+          max-width: 100%;
           overflow: hidden;
           text-overflow: ellipsis;
-          max-width: 100%;
+          white-space: nowrap;
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.01em;
+        }
+
+        .mobile-live-dot,
+        .mobile-dock-badge {
+          position: absolute;
+          top: 8px;
+          inset-inline-end: 10px;
         }
 
         .mobile-live-dot {
           width: 8px;
           height: 8px;
-          border-radius: 50%;
-          background: #22c55e;
-          box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.18);
-          animation: mobile-live-pulse 1.6s infinite;
-          position: absolute;
-          top: 2px;
-          right: 2px;
+          border-radius: 999px;
+          background: var(--success);
+          box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.16);
         }
 
-        .topbar-badge {
+        .mobile-dock-badge {
           min-width: 18px;
           height: 18px;
           padding: 0 4px;
-          border-radius: 999px;
-          display: inline-grid;
+          display: grid;
           place-items: center;
-          background: #ef4444;
+          border-radius: 999px;
+          background: var(--danger);
           color: #fff;
           font-size: 10px;
+          font-weight: 800;
           line-height: 1;
-          position: absolute;
-          top: 0;
-          right: 0;
         }
 
-        @keyframes mobile-live-pulse {
-          0% { transform: scale(0.9); opacity: 0.75; }
-          70% { transform: scale(1.15); opacity: 1; }
-          100% { transform: scale(0.9); opacity: 0.75; }
-        }
-
-        @media (min-width: 1024px) {
+        @media (max-width: 1023px) {
           .mobile-dock {
-            display: none;
+            display: block;
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .mobile-dock-link {
+            transition: none;
           }
         }
       `}</style>

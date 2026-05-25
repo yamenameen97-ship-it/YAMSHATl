@@ -1,8 +1,29 @@
-@import './index.css';
+/* Yamshat responsive helpers */
 
-/*
- * Compatibility shim:
- * main.jsx imports responsive.css, while the project currently keeps
- * responsive style rules in index.css and component-level styles.
- * This file preserves the expected import path without changing runtime behavior.
- */
+:root {
+  --mobile-breakpoint: 768px;
+  --tablet-breakpoint: 1024px;
+  --desktop-breakpoint: 1280px;
+}
+
+@media (max-width: 1024px) {
+  .hide-on-tablet {
+    display: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .hide-on-mobile {
+    display: none !important;
+  }
+
+  .show-on-mobile {
+    display: initial !important;
+  }
+}
+
+@media (min-width: 769px) {
+  .show-on-mobile {
+    display: none !important;
+  }
+}

@@ -25,7 +25,7 @@ export default function MainLayout({ children, hideNav = false }) {
       container.scrollTo({ top: cachedPosition, behavior: 'auto' });
       setIsTransitioning(true);
       window.clearTimeout(container.__yamshatTransitionTimer__);
-      container.__yamshatTransitionTimer__ = window.setTimeout(() => setIsTransitioning(false), 260);
+      container.__yamshatTransitionTimer__ = window.setTimeout(() => setIsTransitioning(false), 180);
     };
 
     const rafId = window.requestAnimationFrame(restore);
@@ -78,9 +78,7 @@ export default function MainLayout({ children, hideNav = false }) {
             display: flex;
             min-height: 100vh;
             height: 100vh;
-            background:
-              radial-gradient(circle at top, rgba(59,130,246,0.08), transparent 34%),
-              linear-gradient(180deg, #07111f 0%, #0f172a 34%, #08101d 100%);
+            background: var(--app-background);
             overflow: hidden;
           }
 
@@ -108,7 +106,7 @@ export default function MainLayout({ children, hideNav = false }) {
             scroll-behavior: smooth;
             overscroll-behavior: contain;
             -webkit-overflow-scrolling: touch;
-            transition: opacity 220ms ease, transform 260ms cubic-bezier(0.22, 1, 0.36, 1), filter 260ms ease;
+            transition: opacity var(--motion-fast), transform var(--motion-fast), filter var(--motion-fast);
             will-change: transform, opacity;
           }
 
@@ -118,9 +116,9 @@ export default function MainLayout({ children, hideNav = false }) {
           }
 
           .page-content.is-transitioning {
-            opacity: 0.96;
-            transform: translate3d(0, 8px, 0);
-            filter: saturate(0.95);
+            opacity: 0.985;
+            transform: translate3d(0, 4px, 0);
+            filter: saturate(0.98);
           }
 
           .page-content.native-shell {
@@ -129,7 +127,7 @@ export default function MainLayout({ children, hideNav = false }) {
 
           .page-shell-glow {
             min-height: 100%;
-            animation: pageFadeIn 260ms cubic-bezier(0.22, 1, 0.36, 1);
+            animation: pageFadeIn var(--motion-base) var(--ease-standard);
             content-visibility: auto;
             contain-intrinsic-size: 900px;
           }
@@ -147,32 +145,28 @@ export default function MainLayout({ children, hideNav = false }) {
           }
 
           .page-content::-webkit-scrollbar-thumb {
-            background: rgba(148, 163, 184, 0.35);
+            background: color-mix(in srgb, var(--muted) 45%, transparent);
             border-radius: 999px;
           }
 
           .page-content::-webkit-scrollbar-thumb:hover {
-            background: rgba(148, 163, 184, 0.55);
+            background: color-mix(in srgb, var(--muted) 70%, transparent);
           }
 
           @keyframes pageFadeIn {
             from {
               opacity: 0;
-              transform: translate3d(0, 12px, 0) scale(0.995);
+              transform: translate3d(0, 10px, 0);
             }
             to {
               opacity: 1;
-              transform: translate3d(0, 0, 0) scale(1);
+              transform: translate3d(0, 0, 0);
             }
           }
 
-          @media (max-width: 768px) {
-            .app-shell {
-              flex-direction: column;
-            }
-
+          @media (max-width: 1023px) {
             .page-content:not(.conversation-mode) {
-              padding-bottom: 78px;
+              padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px));
             }
           }
 

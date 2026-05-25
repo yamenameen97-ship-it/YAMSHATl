@@ -3,14 +3,18 @@ package com.socialapp.utils
 import com.socialapp.BuildConfig
 
 object UrlConfig {
-    private const val CURRENT_BACKEND_HOST = "yamshatl-ahj8.onrender.com"
-    private const val CURRENT_FRONTEND_HOST = "yamshatl-1-yg1o.onrender.com"
+    private const val LEGACY_BACKEND_HOST = "yamshati.onrender.com"
+    private const val CURRENT_BACKEND_HOST = "yamshatl.onrender.com"
+    private const val LEGACY_FRONTEND_HOST = "yamshati-1.onrender.com"
+    private const val PREVIOUS_FRONTEND_HOST = "yamshat1-1.onrender.com"
+    private const val CURRENT_FRONTEND_HOST = "yamshat1-11.onrender.com"
 
     private fun sanitize(raw: String): String {
         return raw
             .trim()
-            .replace(CURRENT_BACKEND_HOST, CURRENT_BACKEND_HOST, ignoreCase = true)
-            .replace(CURRENT_FRONTEND_HOST, CURRENT_FRONTEND_HOST, ignoreCase = true)
+            .replace(LEGACY_BACKEND_HOST, CURRENT_BACKEND_HOST, ignoreCase = true)
+            .replace(LEGACY_FRONTEND_HOST, CURRENT_FRONTEND_HOST, ignoreCase = true)
+            .replace(PREVIOUS_FRONTEND_HOST, CURRENT_FRONTEND_HOST, ignoreCase = true)
     }
 
     fun apiBaseUrl(): String {

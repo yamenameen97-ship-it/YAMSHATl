@@ -10,7 +10,6 @@ import {
   persistOutbox,
   removeQueuedEnvelope,
 } from '../features/chat/reliability.js';
-import { pushDeadLetter, prioritizeQueuedActions } from '../features/chat/offlineQueueRuntime.js';
 
 function decodeJwtPayload(token) {
   if (!token || typeof token !== 'string') return null;
@@ -70,7 +69,6 @@ class SocketManager {
     this.queueOwner = getCurrentUsername() || '';
     this.offlineQueue = loadOutbox(this.queueOwner);
     this.heartbeatInterval = null;
-    this.queueReplayTimer = null;
     this.lastHeartbeatAt = 0;
     this.lastPongAt = 0;
     this.lastLatencyMs = null;
@@ -112,19 +110,6 @@ class SocketManager {
       owner: this.queueOwner,
       size: this.offlineQueue.length,
     });
-  }
-
-  scheduleQueueReplay(delayMs = 0) {
-    if (this.queueReplayTimer) {
-      clearTimeout(this.queueReplayTimer);
-      this.queueReplayTimer = null;
-    }
-    if (!this.offlineQueue.length) return;
-    const safeDelay = Math.max(0, Number(delayMs || 0));
-    this.queueReplayTimer = setTimeout(() => {
-      this.queueReplayTimer = null;
-      this.processOfflineQueue();
-    }, safeDelay);
   }
 
   emitBrowserEvent(name, detail = {}) {
@@ -306,10 +291,8 @@ class SocketManager {
       maxAttempts: options?.maxAttempts || 5,
       volatile: false,
     });
-    envelope.priority = options?.priority || payload?.priority || 'normal';
     this.offlineQueue = mergeQueuedEnvelopes(this.offlineQueue, envelope);
     this.persistOfflineQueue();
-    this.scheduleQueueReplay(150);
     return envelope.id;
   }
 
@@ -330,24 +313,16 @@ class SocketManager {
   processOfflineQueue() {
     if (!this.socket.connected || !this.offlineQueue.length) return;
     const now = Date.now();
-    const queueSnapshot = prioritizeQueuedActions(this.offlineQueue);
-    let nextReplayAt = 0;
+    const queueSnapshot = [...this.offlineQueue];
 
     queueSnapshot.forEach((item) => {
       if (!item?.id) return;
-      if (item.nextRetryAt && item.nextRetryAt > now) {
-        nextReplayAt = nextReplayAt ? Math.min(nextReplayAt, item.nextRetryAt) : item.nextRetryAt;
-        return;
-      }
+      if (item.nextRetryAt && item.nextRetryAt > now) return;
 
       const succeeded = this.dispatchEnvelope(item);
       if (succeeded) {
         this.offlineQueue = removeQueuedEnvelope(this.offlineQueue, item.id);
         this.persistOfflineQueue();
-        this.emitBrowserEvent('yamshat:socket-queue-drained', {
-          id: item.id,
-          eventName: item.eventName,
-        });
         return;
       }
 
@@ -355,15 +330,6 @@ class SocketManager {
       if (nextAttempts >= Number(item.maxAttempts || 5)) {
         this.offlineQueue = removeQueuedEnvelope(this.offlineQueue, item.id);
         this.persistOfflineQueue();
-        const deadLetter = pushDeadLetter(this.queueOwner, {
-          id: item.id,
-          payload: item.payload,
-          error: 'Socket queue exceeded max retry attempts',
-          attempts: nextAttempts,
-          type: item.eventName,
-          priority: item.priority || 'normal',
-        });
-        this.emitBrowserEvent('yamshat:socket-dead-letter', deadLetter);
         return;
       }
 
@@ -371,21 +337,15 @@ class SocketManager {
         baseDelayMs: 1000,
         maxDelayMs: 30000,
       });
-      const retryAt = now + delay;
-      nextReplayAt = nextReplayAt ? Math.min(nextReplayAt, retryAt) : retryAt;
 
       this.offlineQueue = mergeQueuedEnvelopes(this.offlineQueue, {
         ...item,
         attempts: nextAttempts,
         lastAttemptAt: now,
-        nextRetryAt: retryAt,
+        nextRetryAt: now + delay,
       });
       this.persistOfflineQueue();
     });
-
-    if (nextReplayAt > now) {
-      this.scheduleQueueReplay(nextReplayAt - now + 50);
-    }
   }
 
   connect() {
@@ -401,10 +361,6 @@ class SocketManager {
 
   cleanup() {
     this.stopHeartbeat();
-    if (this.queueReplayTimer) {
-      clearTimeout(this.queueReplayTimer);
-      this.queueReplayTimer = null;
-    }
     this.activeListeners.forEach((listeners, event) => {
       listeners.forEach((wrappedHandler) => this.socket.off(event, wrappedHandler));
     });

@@ -10,9 +10,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import { API_BASE } from '../../api/config.js';
 
-const API_BASE_URL = API_BASE;
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 /**
  * مكون العداد الحي

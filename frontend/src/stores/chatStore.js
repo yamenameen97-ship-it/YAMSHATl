@@ -29,22 +29,6 @@ function getPeerFromMessage(message = {}, currentUser = '') {
   return message?.sender === currentUser ? message?.receiver : message?.sender;
 }
 
-function resolveMessageIdentity(message = {}) {
-  return String(message?.id ?? message?.message_id ?? message?.client_id ?? '').trim();
-}
-
-function matchesMessageIdentity(message = {}, ids = new Set()) {
-  if (!ids?.size) return false;
-  const candidates = [
-    message?.id,
-    message?.message_id,
-    message?.client_id,
-  ]
-    .map((value) => String(value ?? '').trim())
-    .filter(Boolean);
-  return candidates.some((value) => ids.has(value));
-}
-
 function withPersistedState(partialState = {}) {
   const currentUser = getCurrentUsername();
   if (!currentUser) return partialState;
@@ -99,28 +83,6 @@ export const useChatStore = create((set, get) => ({
     }),
 
   setThreads: (threads = []) => get().hydrateThreads(threads, { replace: true }),
-
-  upsertThread: (thread = {}) =>
-    set((state) => {
-      const normalized = normalizeThread(thread);
-      if (!normalized?.username) return state;
-      return withPersistedState({
-        ...state,
-        threadsByUsername: {
-          ...state.threadsByUsername,
-          [normalized.username]: {
-            ...(state.threadsByUsername[normalized.username] || {}),
-            ...normalized,
-            presence: {
-              ...(state.threadsByUsername[normalized.username]?.presence || {}),
-              ...(normalized.presence || {}),
-            },
-          },
-        },
-        initialized: true,
-        lastSyncAt: new Date().toISOString(),
-      });
-    }),
 
   replaceConversationMessages: (peer, messages = [], meta = {}) =>
     set((state) => {
@@ -236,44 +198,6 @@ export const useChatStore = create((set, get) => ({
       });
     }),
 
-  applyMessagePatch: (peer, messageIds = [], patch = {}) =>
-    set((state) => {
-      if (!peer || !state.conversationsByPeer[peer]) return state;
-      const ids = new Set((Array.isArray(messageIds) ? messageIds : []).map((value) => String(value)).filter(Boolean));
-      if (!ids.size) return state;
-
-      const conversation = state.conversationsByPeer[peer];
-      const nextMessages = (conversation.messages || []).map((message) => (
-        matchesMessageIdentity(message, ids)
-          ? { ...message, ...(patch || {}) }
-          : message
-      ));
-      const latestMessage = nextMessages[nextMessages.length - 1] || null;
-      const previousThread = state.threadsByUsername[peer] || normalizeThread({ username: peer }) || { username: peer };
-
-      return withPersistedState({
-        ...state,
-        conversationsByPeer: {
-          ...state.conversationsByPeer,
-          [peer]: {
-            ...conversation,
-            messages: nextMessages,
-            lastUpdate: Date.now(),
-          },
-        },
-        threadsByUsername: {
-          ...state.threadsByUsername,
-          [peer]: {
-            ...previousThread,
-            username: peer,
-            last_message: latestMessage?.body || latestMessage?.content || latestMessage?.message || previousThread.last_message,
-            last_message_type: latestMessage?.type || previousThread.last_message_type || 'text',
-            last_message_at: toIsoDate(latestMessage?.created_at) || previousThread.last_message_at || new Date().toISOString(),
-          },
-        },
-      });
-    }),
-
   reconcileOptimisticMessage: (peer, clientId, serverMessage = {}) =>
     set((state) => {
       if (!peer || !clientId || !state.conversationsByPeer[peer]) return state;
@@ -287,8 +211,6 @@ export const useChatStore = create((set, get) => ({
         [serverMessage],
         { limit: 250 },
       );
-      const latestMessage = mergedMessages[mergedMessages.length - 1] || null;
-      const previousThread = state.threadsByUsername[peer] || normalizeThread({ username: peer }) || { username: peer };
 
       return withPersistedState({
         ...state,
@@ -298,16 +220,6 @@ export const useChatStore = create((set, get) => ({
             ...conversation,
             messages: mergedMessages,
             lastUpdate: Date.now(),
-          },
-        },
-        threadsByUsername: {
-          ...state.threadsByUsername,
-          [peer]: {
-            ...previousThread,
-            username: peer,
-            last_message: latestMessage?.body || latestMessage?.content || latestMessage?.message || previousThread.last_message,
-            last_message_type: latestMessage?.type || previousThread.last_message_type || 'text',
-            last_message_at: toIsoDate(latestMessage?.created_at) || previousThread.last_message_at || new Date().toISOString(),
           },
         },
       });

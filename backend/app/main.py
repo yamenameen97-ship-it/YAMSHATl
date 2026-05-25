@@ -51,8 +51,12 @@ fastapi_app.middleware('http')(security_headers)
 register_error_handlers(fastapi_app)
 fastapi_app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_origin_regex=settings.cors_origin_regex,
+    allow_origins=[
+        'http://localhost: 3000',
+        'http://localhost: 5173',
+        ' http://127.0.0.1:5173',
+        ' https://yamshatl-1-yg1o.onrender.com'
+        ' https://yamshatl-ahj8.onrender.com'
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*'],

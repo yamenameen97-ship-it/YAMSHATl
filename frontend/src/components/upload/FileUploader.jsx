@@ -1,208 +1,187 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Button from '../ui/Button.jsx';
 import './FileUploader.css';
+import mediaUploadService from '../../services/media/mediaUploadService.js';
+import {
+  buildFilePreview,
+  compressVideoFile,
+  createManagedUploadTask,
+  formatBytes,
+  formatEta,
+  formatSpeed,
+  revokeObjectUrl,
+} from '../../services/upload/uploadHelpers.js';
 
-const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
 const MAX_RETRIES = 3;
-const COMPRESSION_QUALITY = 0.8;
-const CDN_URL = 'https://cdn.yamshat.com/uploads/'; // Mock CDN
+
+function createId() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function iconFor(file) {
+  if (String(file?.type || '').startsWith('image/')) return '🖼️';
+  if (String(file?.type || '').startsWith('video/')) return '🎬';
+  if (String(file?.type || '').startsWith('audio/')) return '🎙️';
+  return '📄';
+}
+
+function stageLabel(stage = '') {
+  if (stage === 'compressing-video') return 'ضغط الفيديو';
+  if (stage === 'validating') return 'فحص الملف';
+  if (stage === 'optimizing') return 'تحسين الملف';
+  if (stage === 'hashing') return 'بصمة الاستئناف';
+  if (stage === 'preparing') return 'تجهيز المعاينة';
+  if (stage === 'uploading') return 'رفع الشرائح';
+  if (stage === 'retrying') return 'إعادة المحاولة';
+  if (stage === 'finalizing') return 'إتمام الرفع';
+  if (stage === 'done') return 'تم الرفع';
+  return 'في الانتظار';
+}
 
 export default function FileUploader({ onUploadComplete, onError, maxFileSize = 100 * 1024 * 1024 }) {
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [backgroundMode, setBackgroundMode] = useState(false);
   const fileInputRef = useRef(null);
-  const [backgroundUploads, setBackgroundUploads] = useState([]);
+  const tasksRef = useRef(new Map());
 
-  // Handle drag and drop
+  useEffect(() => {
+    return () => {
+      tasksRef.current.forEach((task) => task?.abort?.());
+      files.forEach((item) => revokeObjectUrl(item.preview?.objectUrl));
+    };
+  }, []);
+
+  const patchFile = (fileId, recipe) => {
+    setFiles((prev) => prev.map((item) => (item.id === fileId ? { ...item, ...(typeof recipe === 'function' ? recipe(item) : recipe) } : item)));
+  };
+
   const handleDrag = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setDragActive(true);
-    } else if (e.type === 'dragleave') {
-      setDragActive(false);
-    }
+    if (e.type === 'dragenter' || e.type === 'dragover') setDragActive(true);
+    if (e.type === 'dragleave') setDragActive(false);
   };
 
-  const handleDrop = (e) => {
+  const processFiles = async (newFiles) => {
+    const accepted = [];
+    for (const file of newFiles) {
+      if (file.size > maxFileSize) {
+        onError?.(`الملف ${file.name} أكبر من الحد الأقصى`);
+        continue;
+      }
+      const preview = await buildFilePreview(file);
+      accepted.push({
+        id: createId(),
+        file,
+        preparedFile: file,
+        preview,
+        progress: 0,
+        status: 'pending',
+        stage: 'idle',
+        error: '',
+        retryAttempt: 0,
+        uploadedUrl: '',
+        speedBps: 0,
+        etaSeconds: 0,
+        background: false,
+      });
+    }
+    setFiles((prev) => [...prev, ...accepted]);
+  };
+
+  const handleDrop = async (e) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-
-    const droppedFiles = Array.from(e.dataTransfer.files);
-    processFiles(droppedFiles);
+    await processFiles(Array.from(e.dataTransfer.files || []));
   };
 
-  const handleFileSelect = (e) => {
-    const selectedFiles = Array.from(e.target.files);
-    processFiles(selectedFiles);
+  const handleFileSelect = async (e) => {
+    await processFiles(Array.from(e.target.files || []));
   };
 
-  const processFiles = (newFiles) => {
-    const validFiles = newFiles.filter((file) => {
-      if (file.size > maxFileSize) {
-        onError?.(`الملف ${file.name} كبير جداً`);
-        return false;
-      }
-      return true;
-    });
+  const uploadSingle = async (fileObj) => {
+    patchFile(fileObj.id, { status: 'uploading', error: '', progress: 0, retryAttempt: 0 });
 
-    const fileObjects = validFiles.map((file) => ({
-      id: Math.random().toString(36).substr(2, 9),
-      file,
-      progress: 0,
-      status: 'pending',
-      error: null,
-      chunks: Math.ceil(file.size / CHUNK_SIZE),
-      uploadedChunks: 0,
-      retries: 0,
-      cdnUrl: null
-    }));
-
-    setFiles((prev) => [...prev, ...fileObjects]);
-  };
-
-  const compressImage = async (file) => {
-    if (!file.type.startsWith('image/')) return file;
-
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        const img = new Image();
-        img.src = event.target.result;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          canvas.width = img.width;
-          canvas.height = img.height;
-          ctx.drawImage(img, 0, 0);
-          canvas.toBlob(
-            (blob) => {
-              resolve(new File([blob], file.name, { type: file.type }));
-            },
-            file.type,
-            COMPRESSION_QUALITY
-          );
-        };
-      };
-    });
-  };
-
-  const uploadChunk = async (fileId, chunkIndex, chunk, retryCount = 0) => {
     try {
-      const formData = new FormData();
-      formData.append('chunk', chunk);
-      formData.append('chunkIndex', chunkIndex);
-      const fileObj = files.find((f) => f.id === fileId);
-      formData.append('totalChunks', fileObj.chunks);
-      formData.append('fileId', fileId);
+      const preparedFile = String(fileObj.file.type || '').startsWith('video/')
+        ? await compressVideoFile(fileObj.file, {
+          enabled: true,
+          preset: 'balanced',
+          onProgress: (payload) => patchFile(fileObj.id, {
+            stage: payload?.stage || 'compressing-video',
+            progress: Math.min(99, Number(payload?.percent || 0)),
+          }),
+        })
+        : fileObj.file;
 
-      // Advanced Retry Logic with Exponential Backoff
-      await new Promise((resolve, reject) => {
-        const delay = retryCount > 0 ? Math.pow(2, retryCount) * 1000 : 0;
-        setTimeout(async () => {
-          try {
-            // Mock API call
-            if (Math.random() < 0.05) throw new Error('Network Error');
-            resolve();
-          } catch (e) {
-            reject(e);
-          }
-        }, delay);
+      patchFile(fileObj.id, { preparedFile });
+
+      const task = createManagedUploadTask(preparedFile, ({ signal, onProgress }) => mediaUploadService.uploadFile(preparedFile, {
+        signal,
+        onProgress,
+        purpose: 'generic-upload',
+        retries: MAX_RETRIES,
+        chunkRetries: MAX_RETRIES,
+      }), {
+        onProgress: (payload) => patchFile(fileObj.id, {
+          status: 'uploading',
+          stage: payload?.stage || 'uploading',
+          progress: Math.min(100, Number(payload?.percent || 0)),
+          speedBps: Number(payload?.speedBps || 0),
+          etaSeconds: Number(payload?.etaSeconds || 0),
+          retryAttempt: Number(payload?.retryAttempt || 0),
+        }),
       });
+      tasksRef.current.set(fileObj.id, task);
 
-      updateFileProgress(fileId, chunkIndex + 1);
-      return true;
+      const result = await task.promise;
+      patchFile(fileObj.id, {
+        status: 'completed',
+        stage: 'done',
+        progress: 100,
+        uploadedUrl: result.mediaUrl || result.url || '',
+        result,
+      });
+      onUploadComplete?.(fileObj.id, result.mediaUrl || result.url || '', result);
     } catch (error) {
-      if (retryCount < MAX_RETRIES) {
-        return uploadChunk(fileId, chunkIndex, chunk, retryCount + 1);
-      }
-      throw error;
-    }
-  };
-
-  const updateFileProgress = (fileId, uploadedChunks) => {
-    setFiles((prev) =>
-      prev.map((f) => {
-        if (f.id === fileId) {
-          const progress = Math.round((uploadedChunks / f.chunks) * 100);
-          return { ...f, uploadedChunks, progress, status: progress === 100 ? 'completed' : 'uploading' };
-        }
-        return f;
-      })
-    );
-  };
-
-  const uploadFile = async (fileObj) => {
-    try {
-      setFiles((prev) =>
-        prev.map((f) => (f.id === fileObj.id ? { ...f, status: 'uploading', error: null } : f))
-      );
-
-      let fileToUpload = fileObj.file;
-
-      // Image Optimization before upload
-      if (fileToUpload.type.startsWith('image/')) {
-        fileToUpload = await compressImage(fileToUpload);
-      }
-
-      // Chunked Upload Loop
-      const totalChunks = Math.ceil(fileToUpload.size / CHUNK_SIZE);
-      for (let i = 0; i < totalChunks; i++) {
-        const start = i * CHUNK_SIZE;
-        const end = Math.min(start + CHUNK_SIZE, fileToUpload.size);
-        const chunk = fileToUpload.slice(start, end);
-
-        await uploadChunk(fileObj.id, i, chunk);
-      }
-
-      // CDN Optimization (Simulated URL generation)
-      const cdnPath = `${CDN_URL}${fileObj.id}_${fileToUpload.name}`;
-      
-      setFiles((prev) =>
-        prev.map((f) =>
-          f.id === fileObj.id
-            ? { ...f, status: 'completed', progress: 100, cdnUrl: cdnPath }
-            : f
-        )
-      );
-
-      onUploadComplete?.(fileObj.id, cdnPath);
-    } catch (error) {
-      setFiles((prev) =>
-        prev.map((f) =>
-          f.id === fileObj.id
-            ? { ...f, status: 'error', error: 'فشل الرفع بعد محاولات متعددة' }
-            : f
-        )
-      );
-      onError?.(error.message);
+      const message = error?.name === 'AbortError' ? 'تم إلغاء الرفع' : error?.message || 'فشل الرفع';
+      patchFile(fileObj.id, {
+        status: error?.name === 'AbortError' ? 'cancelled' : 'error',
+        error: message,
+      });
+      onError?.(message);
+    } finally {
+      tasksRef.current.delete(fileObj.id);
     }
   };
 
   const startUpload = async () => {
     setUploading(true);
-    const pendingFiles = files.filter((f) => f.status === 'pending' || f.status === 'error');
-
-    // Parallel upload limited by browser/server capacity
-    await Promise.all(pendingFiles.map(f => uploadFile(f)));
-
-    setUploading(false);
-  };
-
-  const moveToBackground = (fileId) => {
-    const fileObj = files.find((f) => f.id === fileId);
-    if (fileObj && fileObj.status === 'uploading') {
-      setBackgroundUploads((prev) => [...prev, fileObj]);
-      setFiles((prev) => prev.filter((f) => f.id !== fileId));
-      // The upload process continues because it's already running in the background (async)
+    const pending = files.filter((item) => item.status === 'pending' || item.status === 'error' || item.status === 'cancelled');
+    try {
+      await Promise.all(pending.map((item) => uploadSingle(item)));
+    } finally {
+      setUploading(false);
     }
   };
 
+  const cancelUpload = (fileId) => {
+    tasksRef.current.get(fileId)?.abort?.();
+  };
+
+  const moveToBackground = (fileId) => {
+    setBackgroundMode(true);
+    patchFile(fileId, { background: true });
+  };
+
   const removeFile = (fileId) => {
-    setFiles((prev) => prev.filter((f) => f.id !== fileId));
+    const current = files.find((item) => item.id === fileId);
+    if (current?.status === 'uploading') return;
+    revokeObjectUrl(current?.preview?.objectUrl);
+    setFiles((prev) => prev.filter((item) => item.id !== fileId));
   };
 
   return (
@@ -213,11 +192,12 @@ export default function FileUploader({ onUploadComplete, onError, maxFileSize = 
         onDragLeave={handleDrag}
         onDragOver={handleDrag}
         onDrop={handleDrop}
+        onClick={() => fileInputRef.current?.click()}
       >
         <div className="upload-content">
           <div className="upload-icon">📁</div>
-          <h3>اسحب الملفات هنا أو انقر للاختيار</h3>
-          <p className="muted">نظام الرفع المتقدم: Chunked Uploads | CDN | Background</p>
+          <h3>اسحب الملفات هنا أو اضغط للاختيار</h3>
+          <p className="muted">Resumable + Chunk + Retry + Cancel + Preview + Background mode</p>
           <p className="muted">الحد الأقصى: {(maxFileSize / (1024 * 1024)).toFixed(0)}MB</p>
         </div>
         <input
@@ -226,105 +206,79 @@ export default function FileUploader({ onUploadComplete, onError, maxFileSize = 
           multiple
           onChange={handleFileSelect}
           style={{ display: 'none' }}
-          accept="image/*,video/*,.pdf,.doc,.docx"
+          accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.zip"
         />
       </div>
 
       <div className="upload-main-actions">
-        <Button
-          onClick={() => fileInputRef.current?.click()}
-          variant="secondary"
-          style={{ marginTop: '10px' }}
-        >
-          اختر الملفات
-        </Button>
-        
-        {files.some(f => f.status === 'pending' || f.status === 'error') && (
-          <Button
-            onClick={startUpload}
-            loading={uploading}
-            style={{ marginTop: '10px', marginRight: '10px' }}
-          >
-            بدء الرفع
-          </Button>
-        )}
+        <Button onClick={() => fileInputRef.current?.click()} variant="secondary">اختر الملفات</Button>
+        {files.some((item) => ['pending', 'error', 'cancelled'].includes(item.status)) ? (
+          <Button onClick={startUpload} loading={uploading}>ابدأ الرفع</Button>
+        ) : null}
       </div>
 
-      {files.length > 0 && (
+      {files.length > 0 ? (
         <div className="upload-list">
           <div className="upload-items">
             {files.map((fileObj) => (
               <div key={fileObj.id} className={`upload-item ${fileObj.status}`}>
-                <div className="upload-item-icon">
-                  {fileObj.file.type.startsWith('image/') ? '🖼️' : '📄'}
-                </div>
+                <div className="upload-item-icon">{iconFor(fileObj.file)}</div>
 
                 <div className="upload-item-content">
-                  <div className="flex-between">
+                  <div className="flex-between gap-12 wrap">
                     <strong>{fileObj.file.name}</strong>
-                    <span className="file-size">{(fileObj.file.size / 1024).toFixed(2)} KB</span>
+                    <span className="file-size">{formatBytes(fileObj.file.size)}</span>
                   </div>
 
-                  {(fileObj.status === 'uploading' || fileObj.status === 'completed') && (
-                    <div className="progress-container">
-                      <div className="progress-bar">
-                        <div className={`progress-fill ${fileObj.status}`} style={{ width: `${fileObj.progress}%` }} />
-                      </div>
-                      <span className="progress-text">{fileObj.progress}%</span>
+                  <div className="meta-row wrap">
+                    <span className="status-chip">{stageLabel(fileObj.stage)}</span>
+                    {fileObj.preview?.kind === 'video' && fileObj.preview?.thumbnailUrl ? <img src={fileObj.preview.thumbnailUrl} alt="thumb" className="mini-thumb" /> : null}
+                    {fileObj.preview?.kind === 'image' ? <img src={fileObj.preview.dataUrl} alt="preview" className="mini-thumb" /> : null}
+                    {fileObj.uploadedUrl ? <span className="cdn-pill">CDN</span> : null}
+                  </div>
+
+                  <div className="progress-container">
+                    <div className="progress-bar">
+                      <div className={`progress-fill ${fileObj.status}`} style={{ width: `${fileObj.progress}%` }} />
                     </div>
-                  )}
+                    <span className="progress-text-inline">{fileObj.progress}%</span>
+                  </div>
 
-                  {fileObj.status === 'completed' && (
-                    <p className="status-text success">✓ تم الرفع بنجاح (CDN Optimized)</p>
-                  )}
+                  <div className="stats-row wrap">
+                    <span>السرعة: {formatSpeed(fileObj.speedBps)}</span>
+                    <span>المتبقي: {formatEta(fileObj.etaSeconds)}</span>
+                    <span>Retry: {fileObj.retryAttempt || 0}</span>
+                    {fileObj.background ? <span>في الخلفية</span> : null}
+                  </div>
 
-                  {fileObj.status === 'error' && (
-                    <p className="status-text error">✕ {fileObj.error}</p>
-                  )}
+                  {fileObj.status === 'completed' ? <p className="status-text success">✓ تم الرفع بنجاح</p> : null}
+                  {fileObj.status === 'error' ? <p className="status-text error">✕ {fileObj.error}</p> : null}
+                  {fileObj.status === 'cancelled' ? <p className="status-text pending">تم إلغاء الرفع</p> : null}
                 </div>
 
                 <div className="upload-item-actions">
-                  {fileObj.status === 'uploading' && (
-                    <Button variant="secondary" size="small" onClick={() => moveToBackground(fileObj.id)}>
-                      في الخلفية
-                    </Button>
-                  )}
-                  {fileObj.status === 'error' && (
-                    <Button variant="secondary" size="small" onClick={() => uploadFile(fileObj)}>
-                      إعادة المحاولة
-                    </Button>
-                  )}
-                  {fileObj.status !== 'uploading' && (
-                    <Button variant="secondary" size="small" onClick={() => removeFile(fileObj.id)}>
-                      حذف
-                    </Button>
-                  )}
+                  {fileObj.status === 'uploading' ? (
+                    <>
+                      <Button variant="secondary" size="small" onClick={() => moveToBackground(fileObj.id)}>في الخلفية</Button>
+                      <Button variant="ghost" size="small" onClick={() => cancelUpload(fileObj.id)}>إلغاء</Button>
+                    </>
+                  ) : null}
+                  {fileObj.status === 'error' || fileObj.status === 'cancelled' ? (
+                    <Button variant="secondary" size="small" onClick={() => uploadSingle(fileObj)}>إعادة المحاولة</Button>
+                  ) : null}
+                  {fileObj.status !== 'uploading' ? (
+                    <Button variant="ghost" size="small" onClick={() => removeFile(fileObj.id)}>حذف</Button>
+                  ) : null}
                 </div>
               </div>
             ))}
           </div>
         </div>
-      )}
+      ) : null}
 
-      {backgroundUploads.length > 0 && (
-        <div className="background-uploads-indicator animate-pulse">
-          <p>🚀 جاري رفع {backgroundUploads.length} ملف في الخلفية...</p>
-        </div>
-      )}
-      
-      <style dangerouslySetInnerHTML={{ __html: `
-        .flex-between { display: flex; justify-content: space-between; align-items: center; }
-        .progress-container { display: flex; align-items: center; gap: 10px; margin-top: 5px; }
-        .progress-bar { flex: 1; height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; }
-        .progress-fill { height: 100%; background: #3b82f6; transition: width 0.3s; }
-        .progress-fill.completed { background: #10b981; }
-        .background-uploads-indicator { 
-          position: fixed; bottom: 20px; right: 20px; background: #1f2937; color: white; 
-          padding: 12px 24px; border-radius: 50px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); z-index: 9999;
-        }
-        .animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .7; } }
-      `}} />
+      {backgroundMode && files.some((item) => item.background && item.status === 'uploading') ? (
+        <div className="background-uploads-indicator">🚀 فيه ملفات بتترفع في الخلفية</div>
+      ) : null}
     </div>
   );
 }

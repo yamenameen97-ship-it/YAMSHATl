@@ -1,3 +1,4 @@
+import React from 'react';
 import logger from '../utils/logger.js';
 import { defaultRetryManager } from './retryManager.js';
 

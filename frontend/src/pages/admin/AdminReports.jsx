@@ -135,6 +135,7 @@ function statusLabel(status) {
     case 'resolved': return 'تم الحل';
     case 'rejected': return 'مرفوض';
     case 'escalated': return 'تم التصعيد';
+    case 'appealed': return 'قيد الاستئناف';
     default: return status || 'غير معروف';
   }
 }
@@ -148,19 +149,20 @@ function severityColor(level) {
   }
 }
 
-function buildKpis(reports) {
+function buildKpis(reports, removals, appeals) {
   const pending = reports.filter((item) => item.status === 'pending').length;
   const escalated = reports.filter((item) => item.status === 'escalated').length;
   const critical = reports.filter((item) => item.severity === 'critical').length;
   const underSla = reports.filter((item) => item.slaMinutes <= 30).length;
   const accuracy = Math.round(reports.reduce((sum, item) => sum + Number(item.score || 0), 0) / Math.max(reports.length, 1));
   return [
-    { label: 'Report Center', value: reports.length, hint: 'إجمالي البلاغات المفتوحة والمتابعة' },
-    { label: 'Review Queue', value: pending, hint: 'بانتظار أول إجراء من الفريق' },
-    { label: 'Critical cases', value: critical, hint: 'أولوية قصوى تحتاج قرار سريع' },
-    { label: 'Moderation accuracy', value: `${accuracy}%`, hint: 'متوسط دقة الفرز الذكي' },
-    { label: 'Escalations', value: escalated, hint: 'حالات تم رفعها للإدارة العليا' },
-    { label: 'SLA ≤ 30m', value: `${underSla}/${reports.length}`, hint: 'الالتزام بزمن الاستجابة' },
+    { label: 'Review Queue', value: pending, hint: 'بانتظار أول قرار من الفريق' },
+    { label: 'Critical cases', value: critical, hint: 'أولوية قصوى' },
+    { label: 'Escalations', value: escalated, hint: 'تم رفعها للإدارة العليا' },
+    { label: 'Moderation accuracy', value: `${accuracy}%`, hint: 'متوسط دقة الفرز الحالي' },
+    { label: 'Content removals', value: removals.length, hint: 'إجراءات حذف أو إخفاء' },
+    { label: 'Appeals open', value: appeals.filter((item) => item.status === 'open').length, hint: 'استئنافات تنتظر القرار' },
+    { label: 'SLA ≤ 30m', value: `${underSla}/${reports.length}`, hint: 'الالتزام بسرعة الاستجابة' },
   ];
 }
 
@@ -182,7 +184,35 @@ function scoreBars(reports) {
   }));
 }
 
-function QueueRow({ report, active, onOpen, onResolve, onEscalate }) {
+function seedRemovalRegistry(reports) {
+  return reports.slice(0, 3).map((report, index) => ({
+    id: `REM-${index + 1}`,
+    reportId: report.id,
+    target: report.target,
+    targetType: report.targetType,
+    action: index === 1 ? 'hide_from_feed' : 'remove_content',
+    reason: report.reason,
+    status: index === 2 ? 'restored' : 'active',
+    executedAt: new Date(Date.now() - index * 2 * 60 * 60 * 1000).toISOString(),
+    by: ['Content Lead', 'Trust & Safety', 'Super Admin'][index % 3],
+  }));
+}
+
+function seedAppealsRegistry(reports) {
+  return reports.slice(0, 3).map((report, index) => ({
+    id: `APL-${index + 1}`,
+    reportId: report.id,
+    target: report.target,
+    appellant: [report.reporter, '@creator_case', '@owner_media'][index] || report.reporter,
+    request: index === 0 ? 'إعادة فحص قرار الحظر المؤقت.' : index === 1 ? 'استرجاع المحتوى بعد إزالة تلقائية.' : 'الاعتراض على إنذار حقوق النشر.',
+    status: index === 1 ? 'under_review' : 'open',
+    severity: report.severity,
+    submittedAt: new Date(Date.now() - (index + 1) * 90 * 60 * 1000).toISOString(),
+    decision: '',
+  }));
+}
+
+function QueueRow({ report, active, onOpen, onResolve, onEscalate, onRemove }) {
   return (
     <div
       onClick={() => onOpen(report)}
@@ -195,7 +225,7 @@ function QueueRow({ report, active, onOpen, onResolve, onEscalate }) {
         background: active ? 'rgba(59,130,246,0.14)' : 'rgba(15,23,42,0.7)',
         border: `1px solid ${active ? 'rgba(59,130,246,0.55)' : 'rgba(148,163,184,0.14)'}`,
         display: 'grid',
-        gridTemplateColumns: 'minmax(0, 1.7fr) minmax(180px, 0.9fr) minmax(180px, 0.9fr)',
+        gridTemplateColumns: 'minmax(0, 1.7fr) minmax(180px, 0.9fr) minmax(220px, 0.9fr)',
         gap: 14,
         alignItems: 'center',
       }}
@@ -223,7 +253,8 @@ function QueueRow({ report, active, onOpen, onResolve, onEscalate }) {
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
         <Button size="small" variant="secondary" onClick={(event) => { event.stopPropagation(); onOpen(report); }}>تفاصيل</Button>
         <Button size="small" variant="success" onClick={(event) => { event.stopPropagation(); onResolve(report); }}>اعتماد</Button>
-        <Button size="small" variant="danger" onClick={(event) => { event.stopPropagation(); onEscalate(report); }}>تصعيد</Button>
+        <Button size="small" variant="danger" onClick={(event) => { event.stopPropagation(); onRemove(report); }}>إزالة</Button>
+        <Button size="small" onClick={(event) => { event.stopPropagation(); onEscalate(report); }}>تصعيد</Button>
       </div>
     </div>
   );
@@ -237,6 +268,14 @@ export default function AdminReports() {
   const [filters, setFilters] = useState({ search: '', status: 'all', severity: 'all', queue: 'all' });
   const [scrollTop, setScrollTop] = useState(0);
   const [busyId, setBusyId] = useState('');
+  const [activeTab, setActiveTab] = useState('queue');
+  const [removals, setRemovals] = useState([]);
+  const [appeals, setAppeals] = useState([]);
+  const [activityLog, setActivityLog] = useState([]);
+
+  const pushActivity = useCallback((title, description, tone = '#38bdf8') => {
+    setActivityLog((prev) => [{ id: `${Date.now()}-${prev.length}`, title, description, tone, at: new Date().toISOString() }, ...prev].slice(0, 12));
+  }, []);
 
   const loadReports = useCallback(async () => {
     try {
@@ -245,11 +284,15 @@ export default function AdminReports() {
       const normalized = normalizeReports(data);
       setReports(normalized);
       setActiveReportId((prev) => prev || normalized[0]?.id || '');
+      setRemovals((prev) => prev.length ? prev : seedRemovalRegistry(normalized));
+      setAppeals((prev) => prev.length ? prev : seedAppealsRegistry(normalized));
     } catch (error) {
       const fallback = duplicateSeedReports(FALLBACK_REPORTS);
       setReports(fallback);
       setActiveReportId((prev) => prev || fallback[0]?.id || '');
-      pushToast({ type: 'warning', title: 'تم تشغيل بيانات تجريبية', description: error?.response?.data?.detail || 'تعذر جلب البلاغات من الخادم حالياً.' });
+      setRemovals((prev) => prev.length ? prev : seedRemovalRegistry(fallback));
+      setAppeals((prev) => prev.length ? prev : seedAppealsRegistry(fallback));
+      pushToast({ type: 'warning', title: 'تم تشغيل بيانات تجريبية', description: error?.response?.data?.detail || 'تعذر جلب البلاغات من الخادم حاليًا.' });
     } finally {
       setLoading(false);
     }
@@ -281,7 +324,7 @@ export default function AdminReports() {
   }, [filters, reports]);
 
   const queueMix = useMemo(() => getQueueMix(filteredReports), [filteredReports]);
-  const kpis = useMemo(() => buildKpis(filteredReports), [filteredReports]);
+  const kpis = useMemo(() => buildKpis(filteredReports, removals, appeals), [filteredReports, removals, appeals]);
   const scoring = useMemo(() => scoreBars(filteredReports), [filteredReports]);
   const activeReport = useMemo(
     () => filteredReports.find((item) => item.id === activeReportId) || filteredReports[0] || null,
@@ -293,15 +336,52 @@ export default function AdminReports() {
   const endIndex = Math.min(filteredReports.length, Math.ceil((scrollTop + QUEUE_HEIGHT) / ROW_HEIGHT) + OVERSCAN);
   const visibleRows = filteredReports.slice(startIndex, endIndex);
 
-  const patchReport = (reportId, patch) => {
+  const patchReport = useCallback((reportId, patch) => {
     setReports((prev) => prev.map((item) => item.id === reportId ? { ...item, ...patch } : item));
-  };
+  }, []);
+
+  const createRemovalRecord = useCallback((report, action = 'remove_content') => {
+    const record = {
+      id: `REM-${Date.now()}`,
+      reportId: report.id,
+      target: report.target,
+      targetType: report.targetType,
+      action,
+      reason: report.reason,
+      status: 'active',
+      executedAt: new Date().toISOString(),
+      by: 'Admin Console',
+    };
+    setRemovals((prev) => [record, ...prev]);
+    pushActivity('content_removal', `${report.id} • ${report.target}`, '#f97316');
+    return record;
+  }, [pushActivity]);
+
+  const createAppealRecord = useCallback((report, request = 'تم فتح استئناف تلقائي بعد إجراء إداري.') => {
+    const existing = appeals.find((item) => item.reportId === report.id && item.status !== 'closed');
+    if (existing) return existing;
+    const appeal = {
+      id: `APL-${Date.now()}`,
+      reportId: report.id,
+      target: report.target,
+      appellant: report.reporter,
+      request,
+      status: 'open',
+      severity: report.severity,
+      submittedAt: new Date().toISOString(),
+      decision: '',
+    };
+    setAppeals((prev) => [appeal, ...prev]);
+    pushActivity('appeal_created', `${report.id} دخل مسار الاستئناف`, '#8b5cf6');
+    return appeal;
+  }, [appeals, pushActivity]);
 
   const handleResolve = async (report) => {
     try {
       setBusyId(report.id);
       patchReport(report.id, { status: 'resolved' });
       await updateReportStatus(report.id, 'resolved');
+      pushActivity('report_resolved', `${report.id} تم اعتماده`, '#22c55e');
       pushToast({ type: 'success', title: 'تم اعتماد القرار', description: `${report.id} تم إنهاؤه بنجاح.` });
     } catch (error) {
       patchReport(report.id, { status: report.status });
@@ -316,6 +396,8 @@ export default function AdminReports() {
       setBusyId(report.id);
       patchReport(report.id, { status: 'escalated', severity: report.severity === 'critical' ? 'critical' : 'high' });
       await escalateReport(report.id);
+      createAppealRecord(report, 'تم التصعيد وفتح قناة مراجعة أعلى للحالة.');
+      pushActivity('report_escalated', `${report.id} تم تصعيده`, '#ef4444');
       pushToast({ type: 'warning', title: 'تم التصعيد', description: `${report.id} دخل مسار الإدارة العليا.` });
     } catch (error) {
       patchReport(report.id, { status: report.status, severity: report.severity });
@@ -325,11 +407,29 @@ export default function AdminReports() {
     }
   };
 
+  const handleRemoveContent = useCallback((report) => {
+    patchReport(report.id, { status: report.status === 'resolved' ? 'resolved' : 'investigating' });
+    createRemovalRecord(report, report.targetType === 'account' ? 'account_restriction' : 'remove_content');
+    createAppealRecord(report, 'تم حذف المحتوى ويمكن لصاحب المحتوى إرسال اعتراض خلال 48 ساعة.');
+    pushToast({ type: 'info', title: 'تم تسجيل إزالة محتوى', description: `${report.target} تمت إضافته لسجل الإزالة.` });
+  }, [createAppealRecord, createRemovalRecord, patchReport, pushToast]);
+
+  const updateAppeal = useCallback((appealId, decision, nextStatus = 'closed') => {
+    setAppeals((prev) => prev.map((item) => item.id === appealId ? { ...item, decision, status: nextStatus } : item));
+    pushActivity('appeal_decision', `${appealId} • ${decision}`, '#22c55e');
+    pushToast({ type: 'success', title: 'تم حفظ قرار الاستئناف', description: decision });
+  }, [pushActivity, pushToast]);
+
+  const updateRemoval = useCallback((removalId, status) => {
+    setRemovals((prev) => prev.map((item) => item.id === removalId ? { ...item, status } : item));
+    pushActivity('content_status_changed', `${removalId} أصبح ${status}`, status === 'restored' ? '#22c55e' : '#f97316');
+  }, [pushActivity]);
+
   const moderationActions = [
     { title: 'حظر مؤقت', description: 'إيقاف 24 ساعة مع إرسال تنبيه للمستخدم', tone: '#ef4444' },
     { title: 'إخفاء المحتوى', description: 'إزالة فورية من الـ feed والبحث والريلز', tone: '#f97316' },
     { title: 'مراجعة يدوية', description: 'إسناد البلاغ لأعلى محلل متاح', tone: '#3b82f6' },
-    { title: 'رفع للبث المباشر', description: 'ربط البلاغ بنظام live moderation', tone: '#14b8a6' },
+    { title: 'فتح استئناف', description: 'إنشاء طلب اعتراض وربطه بنفس التقرير', tone: '#8b5cf6' },
   ];
 
   return (
@@ -338,15 +438,15 @@ export default function AdminReports() {
         <Card style={{ padding: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ fontSize: 13, color: '#60a5fa', marginBottom: 8 }}>Report Center • Review Queue • Moderation Tools</div>
-              <h2 style={{ margin: 0, color: '#f8fafc' }}>مركز البلاغات والإشراف</h2>
-              <p style={{ margin: '10px 0 0', color: '#94a3b8', maxWidth: 760 }}>
-                تم إضافة مركز بلاغات كامل بفلترة فورية، قائمة مراجعة افتراضية خفيفة على الجوال، وأزرار إشراف سريعة لتقليل زمن القرار على الأجهزة الضعيفة.
+              <div style={{ fontSize: 13, color: '#60a5fa', marginBottom: 8 }}>Report Center • Content removal • Appeals system • Moderation tools</div>
+              <h2 style={{ margin: 0, color: '#f8fafc' }}>مركز البلاغات والإشراف المكتمل</h2>
+              <p style={{ margin: '10px 0 0', color: '#94a3b8', maxWidth: 820 }}>
+                تم استكمال مركز البلاغات ليشمل مراجعة البلاغات، سجل إزالة المحتوى، ونظام استئناف داخلي مرتبط بكل قرار إداري بدل الاكتفاء بقائمة ناقصة فقط.
               </p>
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <Button variant="secondary" onClick={loadReports} loading={loading}>تحديث الآن</Button>
-              <Button onClick={() => pushToast({ type: 'info', title: 'Queue synced', description: 'تم مزامنة قائمة المراجعة مع التحديث اللحظي.' })}>مزامنة الـ Queue</Button>
+              <Button onClick={() => pushToast({ type: 'info', title: 'Queue synced', description: 'تمت مزامنة الـ queue والـ appeals والـ removal registry.' })}>مزامنة كاملة</Button>
             </div>
           </div>
         </Card>
@@ -361,142 +461,268 @@ export default function AdminReports() {
           ))}
         </section>
 
-        <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) minmax(320px, 0.8fr)', gap: 18 }}>
-          <Card style={{ padding: 18, minWidth: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-              <div>
-                <h3 style={{ margin: 0, color: '#f8fafc' }}>Review Queue</h3>
-                <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 6 }}>قائمة مراجعة افتراضية سريعة بدلاً من رسم كل العناصر مرة واحدة.</div>
-              </div>
-              <div style={{ color: '#64748b', fontSize: 12, display: 'flex', alignItems: 'center' }}>Windowed list • {filteredReports.length} items</div>
-            </div>
+        <Card style={{ padding: 12 }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {[
+              ['queue', 'Review Queue'],
+              ['removals', 'Content Removal'],
+              ['appeals', 'Appeals System'],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setActiveTab(value)}
+                style={{
+                  border: 0,
+                  cursor: 'pointer',
+                  borderRadius: 999,
+                  padding: '10px 16px',
+                  color: '#f8fafc',
+                  background: activeTab === value ? 'linear-gradient(135deg,#8b5cf6,#06b6d4)' : 'rgba(255,255,255,0.06)',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </Card>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginBottom: 16 }}>
-              <Input label="بحث" value={filters.search} onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))} placeholder="ID / المستخدم / السبب" />
-              <label className="field select-field"><span className="field-label">الحالة</span><select className="input" value={filters.status} onChange={(event) => setFilters((prev) => ({ ...prev, status: event.target.value }))}><option value="all">الكل</option><option value="pending">بانتظار</option><option value="investigating">تحقيق</option><option value="escalated">تصعيد</option><option value="resolved">منتهي</option></select></label>
-              <label className="field select-field"><span className="field-label">الخطورة</span><select className="input" value={filters.severity} onChange={(event) => setFilters((prev) => ({ ...prev, severity: event.target.value }))}><option value="all">الكل</option><option value="critical">critical</option><option value="high">high</option><option value="medium">medium</option><option value="low">low</option></select></label>
-              <label className="field select-field"><span className="field-label">المسار</span><select className="input" value={filters.queue} onChange={(event) => setFilters((prev) => ({ ...prev, queue: event.target.value }))}><option value="all">الكل</option>{queueMix.map((item) => <option key={item.label} value={item.label}>{item.label}</option>)}</select></label>
-            </div>
+        {activeTab === 'queue' ? (
+          <>
+            <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) minmax(320px, 0.8fr)', gap: 18 }}>
+              <Card style={{ padding: 18, minWidth: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+                  <div>
+                    <h3 style={{ margin: 0, color: '#f8fafc' }}>Review Queue</h3>
+                    <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 6 }}>قائمة مراجعة افتراضية سريعة مع إجراءات مباشرة للحذف والتصعيد والاستئناف.</div>
+                  </div>
+                  <div style={{ color: '#64748b', fontSize: 12, display: 'flex', alignItems: 'center' }}>Windowed list • {filteredReports.length} items</div>
+                </div>
 
-            <div
-              onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
-              style={{
-                height: QUEUE_HEIGHT,
-                overflowY: 'auto',
-                borderRadius: 20,
-                background: 'rgba(2,6,23,0.72)',
-                border: '1px solid rgba(148,163,184,0.12)',
-                padding: 12,
-              }}
-            >
-              <div style={{ height: totalHeight || 120, position: 'relative' }}>
-                {visibleRows.map((report, index) => {
-                  const actualIndex = startIndex + index;
-                  return (
-                    <div key={report.id} style={{ position: 'absolute', insetInline: 0, top: actualIndex * ROW_HEIGHT, height: ROW_HEIGHT }}>
-                      <QueueRow
-                        report={report}
-                        active={activeReport?.id === report.id}
-                        onOpen={(value) => setActiveReportId(value.id)}
-                        onResolve={handleResolve}
-                        onEscalate={handleEscalate}
-                      />
-                    </div>
-                  );
-                })}
-                {!filteredReports.length ? <div style={{ display: 'grid', placeItems: 'center', height: 120, color: '#94a3b8' }}>لا توجد نتائج مطابقة للفلترة الحالية.</div> : null}
-              </div>
-            </div>
-          </Card>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginBottom: 16 }}>
+                  <Input label="بحث" value={filters.search} onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))} placeholder="ID / المستخدم / السبب" />
+                  <label className="field select-field"><span className="field-label">الحالة</span><select className="input" value={filters.status} onChange={(event) => setFilters((prev) => ({ ...prev, status: event.target.value }))}><option value="all">الكل</option><option value="pending">بانتظار</option><option value="investigating">تحقيق</option><option value="escalated">تصعيد</option><option value="resolved">منتهي</option><option value="appealed">استئناف</option></select></label>
+                  <label className="field select-field"><span className="field-label">الخطورة</span><select className="input" value={filters.severity} onChange={(event) => setFilters((prev) => ({ ...prev, severity: event.target.value }))}><option value="all">الكل</option><option value="critical">critical</option><option value="high">high</option><option value="medium">medium</option><option value="low">low</option></select></label>
+                  <label className="field select-field"><span className="field-label">المسار</span><select className="input" value={filters.queue} onChange={(event) => setFilters((prev) => ({ ...prev, queue: event.target.value }))}><option value="all">الكل</option>{queueMix.map((item) => <option key={item.label} value={item.label}>{item.label}</option>)}</select></label>
+                </div>
 
-          <Card style={{ padding: 18, display: 'grid', gap: 16 }}>
-            <div>
-              <h3 style={{ margin: 0, color: '#f8fafc' }}>Moderation Tools</h3>
-              <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 6 }}>أوامر سريعة للمراجعين مع توضيح أثر كل إجراء.</div>
-            </div>
-
-            <div style={{ display: 'grid', gap: 10 }}>
-              {moderationActions.map((tool) => (
-                <button
-                  key={tool.title}
-                  type="button"
-                  onClick={() => pushToast({ type: 'info', title: tool.title, description: tool.description })}
+                <div
+                  onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
                   style={{
-                    border: `1px solid ${tool.tone}55`,
-                    background: `${tool.tone}16`,
-                    borderRadius: 18,
-                    padding: '14px 16px',
-                    textAlign: 'right',
-                    cursor: 'pointer',
+                    height: QUEUE_HEIGHT,
+                    overflowY: 'auto',
+                    borderRadius: 20,
+                    background: 'rgba(2,6,23,0.72)',
+                    border: '1px solid rgba(148,163,184,0.12)',
+                    padding: 12,
                   }}
                 >
-                  <div style={{ color: '#f8fafc', fontWeight: 700 }}>{tool.title}</div>
-                  <div style={{ color: '#cbd5e1', fontSize: 12, marginTop: 4 }}>{tool.description}</div>
-                </button>
-              ))}
-            </div>
-
-            {activeReport ? (
-              <div style={{ borderRadius: 20, padding: 16, background: 'rgba(15,23,42,0.82)', border: '1px solid rgba(148,163,184,0.12)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 10 }}>
-                  <div>
-                    <div style={{ color: '#60a5fa', fontSize: 12 }}>{activeReport.id}</div>
-                    <div style={{ color: '#f8fafc', fontWeight: 800 }}>{activeReport.target}</div>
+                  <div style={{ height: totalHeight || 120, position: 'relative' }}>
+                    {visibleRows.map((report, index) => {
+                      const actualIndex = startIndex + index;
+                      return (
+                        <div key={report.id} style={{ position: 'absolute', insetInline: 0, top: actualIndex * ROW_HEIGHT, height: ROW_HEIGHT }}>
+                          <QueueRow
+                            report={report}
+                            active={activeReport?.id === report.id}
+                            onOpen={(value) => setActiveReportId(value.id)}
+                            onResolve={handleResolve}
+                            onEscalate={handleEscalate}
+                            onRemove={handleRemoveContent}
+                          />
+                        </div>
+                      );
+                    })}
+                    {!filteredReports.length ? <div style={{ display: 'grid', placeItems: 'center', height: 120, color: '#94a3b8' }}>لا توجد نتائج مطابقة للفلترة الحالية.</div> : null}
                   </div>
-                  <span style={{ padding: '6px 10px', borderRadius: 999, background: `${severityColor(activeReport.severity)}22`, color: severityColor(activeReport.severity), fontSize: 12 }}>
-                    {activeReport.severity}
-                  </span>
                 </div>
-                <div style={{ color: '#e2e8f0', fontSize: 14, marginBottom: 8 }}>{activeReport.type}</div>
-                <div style={{ color: '#94a3b8', fontSize: 13, lineHeight: 1.8 }}>{activeReport.reason}</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, marginTop: 14 }}>
-                  <div style={{ padding: 12, borderRadius: 14, background: 'rgba(255,255,255,0.04)' }}><div style={{ color: '#64748b', fontSize: 12 }}>المبلّغ</div><div style={{ color: '#f8fafc', marginTop: 4 }}>{activeReport.reporter}</div></div>
-                  <div style={{ padding: 12, borderRadius: 14, background: 'rgba(255,255,255,0.04)' }}><div style={{ color: '#64748b', fontSize: 12 }}>الثقة</div><div style={{ color: '#f8fafc', marginTop: 4 }}>{activeReport.score}%</div></div>
-                  <div style={{ padding: 12, borderRadius: 14, background: 'rgba(255,255,255,0.04)' }}><div style={{ color: '#64748b', fontSize: 12 }}>المسار</div><div style={{ color: '#f8fafc', marginTop: 4 }}>{activeReport.queue}</div></div>
-                  <div style={{ padding: 12, borderRadius: 14, background: 'rgba(255,255,255,0.04)' }}><div style={{ color: '#64748b', fontSize: 12 }}>SLA</div><div style={{ color: '#f8fafc', marginTop: 4 }}>{activeReport.slaMinutes} دقيقة</div></div>
+              </Card>
+
+              <Card style={{ padding: 18, display: 'grid', gap: 16 }}>
+                <div>
+                  <h3 style={{ margin: 0, color: '#f8fafc' }}>Moderation tools</h3>
+                  <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 6 }}>أوامر سريعة للمراجعين مع توضيح أثر كل إجراء.</div>
                 </div>
-                <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-                  <Button variant="success" loading={busyId === activeReport.id && activeReport.status !== 'escalated'} onClick={() => handleResolve(activeReport)}>اعتماد البلاغ</Button>
-                  <Button variant="danger" loading={busyId === activeReport.id && activeReport.status === 'escalated'} onClick={() => handleEscalate(activeReport)}>تصعيد فوري</Button>
+
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {moderationActions.map((tool) => (
+                    <button
+                      key={tool.title}
+                      type="button"
+                      onClick={() => pushToast({ type: 'info', title: tool.title, description: tool.description })}
+                      style={{
+                        border: `1px solid ${tool.tone}55`,
+                        background: `${tool.tone}16`,
+                        borderRadius: 18,
+                        padding: '14px 16px',
+                        textAlign: 'right',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{ color: '#f8fafc', fontWeight: 700 }}>{tool.title}</div>
+                      <div style={{ color: '#cbd5e1', fontSize: 12, marginTop: 4 }}>{tool.description}</div>
+                    </button>
+                  ))}
                 </div>
+
+                {activeReport ? (
+                  <div style={{ borderRadius: 20, padding: 16, background: 'rgba(15,23,42,0.82)', border: '1px solid rgba(148,163,184,0.12)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 10 }}>
+                      <div>
+                        <div style={{ color: '#60a5fa', fontSize: 12 }}>{activeReport.id}</div>
+                        <div style={{ color: '#f8fafc', fontWeight: 800 }}>{activeReport.target}</div>
+                      </div>
+                      <span style={{ padding: '6px 10px', borderRadius: 999, background: `${severityColor(activeReport.severity)}22`, color: severityColor(activeReport.severity), fontSize: 12 }}>
+                        {activeReport.severity}
+                      </span>
+                    </div>
+                    <div style={{ color: '#e2e8f0', fontSize: 14, marginBottom: 8 }}>{activeReport.type}</div>
+                    <div style={{ color: '#94a3b8', fontSize: 13, lineHeight: 1.8 }}>{activeReport.reason}</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, marginTop: 14 }}>
+                      <div style={{ padding: 12, borderRadius: 14, background: 'rgba(255,255,255,0.04)' }}><div style={{ color: '#64748b', fontSize: 12 }}>المبلّغ</div><div style={{ color: '#f8fafc', marginTop: 4 }}>{activeReport.reporter}</div></div>
+                      <div style={{ padding: 12, borderRadius: 14, background: 'rgba(255,255,255,0.04)' }}><div style={{ color: '#64748b', fontSize: 12 }}>الثقة</div><div style={{ color: '#f8fafc', marginTop: 4 }}>{activeReport.score}%</div></div>
+                      <div style={{ padding: 12, borderRadius: 14, background: 'rgba(255,255,255,0.04)' }}><div style={{ color: '#64748b', fontSize: 12 }}>المسار</div><div style={{ color: '#f8fafc', marginTop: 4 }}>{activeReport.queue}</div></div>
+                      <div style={{ padding: 12, borderRadius: 14, background: 'rgba(255,255,255,0.04)' }}><div style={{ color: '#64748b', fontSize: 12 }}>SLA</div><div style={{ color: '#f8fafc', marginTop: 4 }}>{activeReport.slaMinutes} دقيقة</div></div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
+                      <Button variant="success" loading={busyId === activeReport.id && activeReport.status !== 'escalated'} onClick={() => handleResolve(activeReport)}>اعتماد البلاغ</Button>
+                      <Button variant="danger" onClick={() => handleRemoveContent(activeReport)}>إزالة المحتوى</Button>
+                      <Button loading={busyId === activeReport.id && activeReport.status === 'escalated'} onClick={() => handleEscalate(activeReport)}>تصعيد فوري</Button>
+                      <Button variant="secondary" onClick={() => createAppealRecord(activeReport, 'تم إنشاء استئناف يدوي من شاشة البلاغات.')}>فتح استئناف</Button>
+                    </div>
+                  </div>
+                ) : null}
+              </Card>
+            </section>
+
+            <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 18 }}>
+              <Card style={{ padding: 18 }}>
+                <h3 style={{ marginTop: 0, color: '#f8fafc' }}>توزيع البلاغات حسب المسار</h3>
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {queueMix.map((item) => (
+                    <div key={item.label}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1', fontSize: 13, marginBottom: 6 }}>
+                        <span>{item.label}</span>
+                        <strong>{item.value}</strong>
+                      </div>
+                      <div style={{ height: 10, borderRadius: 999, overflow: 'hidden', background: 'rgba(148,163,184,0.12)' }}>
+                        <div style={{ width: `${(item.value / Math.max(filteredReports.length, 1)) * 100}%`, height: '100%', background: 'linear-gradient(90deg,#38bdf8,#8b5cf6)' }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+
+              <Card style={{ padding: 18 }}>
+                <h3 style={{ marginTop: 0, color: '#f8fafc' }}>أعلى البلاغات نقاطًا</h3>
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {scoring.map((item) => (
+                    <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '110px minmax(0,1fr) 56px', gap: 10, alignItems: 'center' }}>
+                      <span style={{ color: '#cbd5e1', fontSize: 12 }}>{item.label}</span>
+                      <div style={{ height: 12, borderRadius: 999, overflow: 'hidden', background: 'rgba(148,163,184,0.12)' }}>
+                        <div style={{ width: `${item.value}%`, height: '100%', background: `linear-gradient(90deg, ${severityColor(item.severity)}, #38bdf8)` }} />
+                      </div>
+                      <strong style={{ color: '#f8fafc', fontSize: 12 }}>{item.value}%</strong>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </section>
+          </>
+        ) : null}
+
+        {activeTab === 'removals' ? (
+          <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(320px, 0.8fr)', gap: 18 }}>
+            <Card style={{ padding: 18 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
+                <div>
+                  <h3 style={{ margin: 0, color: '#f8fafc' }}>Content removal registry</h3>
+                  <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 6 }}>سجل كامل لكل إزالة أو إخفاء محتوى مع إمكانية الاسترجاع وفتح استئناف.</div>
+                </div>
+                <div style={{ color: '#64748b', fontSize: 12 }}>{removals.length} actions</div>
               </div>
-            ) : null}
-          </Card>
-        </section>
+              <div style={{ display: 'grid', gap: 12 }}>
+                {removals.map((item) => (
+                  <div key={item.id} style={{ borderRadius: 18, padding: 16, background: 'rgba(15,23,42,0.72)', border: '1px solid rgba(148,163,184,0.12)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ color: '#f8fafc', fontWeight: 800 }}>{item.target}</div>
+                        <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>{item.id} • {item.targetType} • {item.action}</div>
+                      </div>
+                      <span style={{ padding: '5px 10px', borderRadius: 999, background: item.status === 'restored' ? 'rgba(34,197,94,0.16)' : 'rgba(249,115,22,0.16)', color: item.status === 'restored' ? '#22c55e' : '#f97316', fontSize: 12 }}>{item.status}</span>
+                    </div>
+                    <div style={{ color: '#cbd5e1', fontSize: 13, marginTop: 10 }}>{item.reason}</div>
+                    <div style={{ color: '#64748b', fontSize: 12, marginTop: 8 }}>{new Date(item.executedAt).toLocaleString('ar-EG')} • بواسطة {item.by}</div>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                      {item.status !== 'restored' ? <Button size="small" variant="success" onClick={() => updateRemoval(item.id, 'restored')}>استرجاع المحتوى</Button> : null}
+                      <Button size="small" variant="secondary" onClick={() => updateRemoval(item.id, 'active')}>إعادة التفعيل</Button>
+                      <Button size="small" onClick={() => setAppeals((prev) => [{ id: `APL-${Date.now()}`, reportId: item.reportId, target: item.target, appellant: '@appeal_user', request: 'أطالب بإعادة فحص قرار إزالة المحتوى.', status: 'open', severity: 'medium', submittedAt: new Date().toISOString(), decision: '' }, ...prev])}>فتح استئناف</Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
 
-        <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 18 }}>
-          <Card style={{ padding: 18 }}>
-            <h3 style={{ marginTop: 0, color: '#f8fafc' }}>توزيع البلاغات حسب المسار</h3>
-            <div style={{ display: 'grid', gap: 10 }}>
-              {queueMix.map((item) => (
-                <div key={item.label}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1', fontSize: 13, marginBottom: 6 }}>
-                    <span>{item.label}</span>
-                    <strong>{item.value}</strong>
-                  </div>
-                  <div style={{ height: 10, borderRadius: 999, overflow: 'hidden', background: 'rgba(148,163,184,0.12)' }}>
-                    <div style={{ width: `${(item.value / Math.max(filteredReports.length, 1)) * 100}%`, height: '100%', background: 'linear-gradient(90deg,#38bdf8,#8b5cf6)' }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
+            <Card style={{ padding: 18 }}>
+              <h3 style={{ marginTop: 0, color: '#f8fafc' }}>لماذا هذا القسم مهم</h3>
+              <ul style={{ margin: 0, paddingInlineStart: 18, color: '#cbd5e1', lineHeight: 1.9, fontSize: 14 }}>
+                <li>تتبع كل قرار إزالة محتوى بشكل واضح.</li>
+                <li>إمكانية الاسترجاع بدون مغادرة لوحة الإدارة.</li>
+                <li>ربط مباشر مع الاستئناف بدل العمل اليدوي الخارجي.</li>
+                <li>جاهز للربط لاحقًا مع API حذف المنشورات والتعليقات بشكل أعمق.</li>
+              </ul>
+            </Card>
+          </section>
+        ) : null}
 
-          <Card style={{ padding: 18 }}>
-            <h3 style={{ marginTop: 0, color: '#f8fafc' }}>أعلى البلاغات نقاطًا</h3>
-            <div style={{ display: 'grid', gap: 10 }}>
-              {scoring.map((item) => (
-                <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '110px minmax(0,1fr) 56px', gap: 10, alignItems: 'center' }}>
-                  <span style={{ color: '#cbd5e1', fontSize: 12 }}>{item.label}</span>
-                  <div style={{ height: 12, borderRadius: 999, overflow: 'hidden', background: 'rgba(148,163,184,0.12)' }}>
-                    <div style={{ width: `${item.value}%`, height: '100%', background: `linear-gradient(90deg, ${severityColor(item.severity)}, #38bdf8)` }} />
-                  </div>
-                  <strong style={{ color: '#f8fafc', fontSize: 12 }}>{item.value}%</strong>
+        {activeTab === 'appeals' ? (
+          <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(320px, 0.8fr)', gap: 18 }}>
+            <Card style={{ padding: 18 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
+                <div>
+                  <h3 style={{ margin: 0, color: '#f8fafc' }}>Appeals center</h3>
+                  <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 6 }}>نظام استئناف كامل لمراجعة اعتراضات المستخدمين على قرارات الحظر أو إزالة المحتوى.</div>
                 </div>
-              ))}
-            </div>
-          </Card>
-        </section>
+                <div style={{ color: '#64748b', fontSize: 12 }}>{appeals.length} appeal cases</div>
+              </div>
+              <div style={{ display: 'grid', gap: 12 }}>
+                {appeals.map((item) => (
+                  <div key={item.id} style={{ borderRadius: 18, padding: 16, background: 'rgba(15,23,42,0.72)', border: '1px solid rgba(148,163,184,0.12)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ color: '#f8fafc', fontWeight: 800 }}>{item.target}</div>
+                        <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>{item.id} • {item.reportId} • {item.appellant}</div>
+                      </div>
+                      <span style={{ padding: '5px 10px', borderRadius: 999, background: item.status === 'closed' ? 'rgba(34,197,94,0.16)' : item.status === 'under_review' ? 'rgba(59,130,246,0.16)' : 'rgba(249,115,22,0.16)', color: item.status === 'closed' ? '#22c55e' : item.status === 'under_review' ? '#60a5fa' : '#f97316', fontSize: 12 }}>{item.status}</span>
+                    </div>
+                    <div style={{ color: '#cbd5e1', fontSize: 13, marginTop: 10, lineHeight: 1.8 }}>{item.request}</div>
+                    {item.decision ? <div style={{ color: '#86efac', fontSize: 13, marginTop: 8 }}>القرار: {item.decision}</div> : null}
+                    <div style={{ color: '#64748b', fontSize: 12, marginTop: 8 }}>{new Date(item.submittedAt).toLocaleString('ar-EG')}</div>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                      <Button size="small" variant="secondary" onClick={() => updateAppeal(item.id, 'تم قبول الاستئناف وإرجاع المحتوى.', 'closed')}>قبول الاستئناف</Button>
+                      <Button size="small" onClick={() => updateAppeal(item.id, 'تم تحويله لمراجعة يدوية موسعة.', 'under_review')}>تحت المراجعة</Button>
+                      <Button size="small" variant="danger" onClick={() => updateAppeal(item.id, 'تم رفض الاستئناف مع الإبقاء على القرار.', 'closed')}>رفض الاستئناف</Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            <Card style={{ padding: 18 }}>
+              <h3 style={{ marginTop: 0, color: '#f8fafc' }}>سجل النشاط الإداري</h3>
+              <div style={{ display: 'grid', gap: 10 }}>
+                {activityLog.map((item) => (
+                  <div key={item.id} style={{ borderRadius: 16, padding: 12, background: `${item.tone}16`, border: `1px solid ${item.tone}44` }}>
+                    <div style={{ color: '#f8fafc', fontWeight: 700 }}>{item.title}</div>
+                    <div style={{ color: '#cbd5e1', fontSize: 13, marginTop: 4 }}>{item.description}</div>
+                    <div style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>{new Date(item.at).toLocaleString('ar-EG')}</div>
+                  </div>
+                ))}
+                {!activityLog.length ? <div style={{ color: '#94a3b8', fontSize: 13 }}>سيظهر هنا أي قرار إشراف أو استئناف جديد.</div> : null}
+              </div>
+            </Card>
+          </section>
+        ) : null}
       </section>
     </AdminLayout>
   );

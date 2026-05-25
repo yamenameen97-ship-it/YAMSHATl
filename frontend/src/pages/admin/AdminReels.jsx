@@ -4,9 +4,33 @@ import Button from '../../components/ui/Button.jsx';
 import Modal from '../../components/ui/Modal.jsx';
 import { getPosts } from '../../api/posts.js';
 import { formatCompactNumber, formatDateTime, sampleActivity, toArray } from '../../components/admin/adminShared.js';
+import { getModerationReports, getReelsAnalyticsDashboard, getWatchHistory, getReelInsightsById } from '../../services/reelsEngine.js';
 
-const reelUrl = (item) => item?.media_urls?.[0] || item?.media || item?.image_url || '';
-const isVideo = (value) => /\.(mp4|mov|webm|mkv)$/i.test(String(value || ''));
+const reelUrl = (item) => item?.media_urls?.[0] || item?.media || item?.image_url || item?.media_url || '';
+const isVideo = (value) => /\.(mp4|mov|webm|mkv|m3u8)/i.test(String(value || ''));
+
+function useClientInsights() {
+  const [snapshot, setSnapshot] = useState({ analytics: getReelsAnalyticsDashboard(), moderation: getModerationReports(), history: getWatchHistory() });
+
+  useEffect(() => {
+    const refresh = () => {
+      setSnapshot({
+        analytics: getReelsAnalyticsDashboard(),
+        moderation: getModerationReports(),
+        history: getWatchHistory(),
+      });
+    };
+    refresh();
+    window.addEventListener('storage', refresh);
+    const timer = window.setInterval(refresh, 2500);
+    return () => {
+      window.removeEventListener('storage', refresh);
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  return snapshot;
+}
 
 export default function AdminReels() {
   const [reels, setReels] = useState([]);
@@ -17,6 +41,7 @@ export default function AdminReels() {
   const [modalPlaying, setModalPlaying] = useState(false);
   const videoRefs = useRef({});
   const modalVideoRef = useRef(null);
+  const { analytics, moderation, history } = useClientInsights();
 
   const load = async () => {
     try {
@@ -114,37 +139,37 @@ export default function AdminReels() {
     }
   };
 
-  const engagementTotal = reels.reduce((sum, item) => sum + Number(item.likes || item.like_count || 0) + Number(item.comments_count || 0) + Number(item.share_count || 0), 0);
+  const engagementTotal = reels.reduce((sum, item) => sum + Number(item.likes || item.like_count || item.likes_count || 0) + Number(item.comments_count || 0) + Number(item.share_count || 0), 0);
   const stats = [
     { label: 'إجمالي الريلز', value: formatCompactNumber(reels.length || 0), icon: '🎬', tone: 'violet', note: 'مقاطع فيديو قصيرة مربوطة ببيانات المنشورات.' },
     { label: 'التفاعل', value: formatCompactNumber(engagementTotal || 0), icon: '🔥', tone: 'green', note: 'إجمالي اللايكات والتعليقات والمشاركات.' },
-    { label: 'أفضل منشئ', value: reels[0]?.username || '—', icon: '🏆', tone: 'amber', note: 'أعلى ظهور حالي داخل البيانات المحملة.' },
-    { label: 'جاهز للمعاينة', value: formatCompactNumber(reels.length), icon: '🛡️', tone: 'blue', note: 'يمكن تشغيل الريل وفتحه داخل Modal مباشرة.' },
+    { label: 'Qualified Views', value: formatCompactNumber(analytics.summary.qualifiedViews || 0), icon: '👁️', tone: 'blue', note: 'مشاهدات محققة من طبقة Analytics داخل الريلز.' },
+    { label: 'بلاغات معلقة', value: formatCompactNumber(moderation.filter((item) => item.status === 'pending').length), icon: '🛡️', tone: 'amber', note: 'بلاغات تم تسجيلها من واجهة المستخدم وتحتاج مراجعة.' },
   ];
 
   const spotlight = [
-    { label: 'أعلى تفاعل', value: formatCompactNumber(Math.max(...reels.map((item) => Number(item.likes || item.like_count || 0) + Number(item.comments_count || 0)), 0)) },
-    { label: 'أحدث ريل', value: reels[0]?.created_at ? formatDateTime(reels[0].created_at) : '—' },
-    { label: 'حالة الربط', value: reels.length ? 'API متصل' : 'لا توجد فيديوهات' },
+    { label: 'إجمالي وقت المشاهدة', value: `${Math.round(Number(analytics.summary.totalWatchMs || 0) / 60000)} د` },
+    { label: 'Buffer events', value: formatCompactNumber(analytics.summary.bufferEvents || 0) },
+    { label: 'آخر تحديث', value: analytics.updatedAt ? formatDateTime(analytics.updatedAt) : '—' },
   ];
 
   const asideItems = [
     {
-      label: 'الريل المتصدر',
-      value: reels[0]?.username || '—',
-      description: reels[0]?.content || 'سيظهر هنا وصف الريل الأعلى عند توفر البيانات.',
+      label: 'سجل المشاهدة',
+      value: formatCompactNumber(history.length),
+      description: history[0] ? `آخر مشاهدة: @${history[0].username || 'creator'}` : 'لا يوجد سجل مشاهدة حتى الآن.',
       tone: 'success',
     },
     {
-      label: 'معاينة مباشرة',
-      value: inlinePlayingId ? 'نشطة' : 'جاهزة',
-      description: 'تمت إضافة تشغيل/إيقاف مباشر داخل الجدول مع Modal للعرض الكامل.',
+      label: 'الجودة التلقائية',
+      value: formatCompactNumber(analytics.summary.autoQualityDowngrades || 0),
+      description: 'عدد مرات خفض الجودة تلقائيًا بسبب الشبكة أو التخزين المؤقت.',
       tone: 'violet',
     },
     {
-      label: 'مصدر البيانات',
-      value: 'Posts API',
-      description: 'الصفحة تسحب الفيديوهات تلقائياً من نفس مصدر المنشورات وتفلتر الريلز فقط.',
+      label: 'المراجعة',
+      value: moderation[0]?.reason || 'جاهزة',
+      description: moderation[0] ? `أحدث بلاغ على @${moderation[0].username || 'creator'}` : 'لا توجد بلاغات جديدة حالياً.',
       tone: 'amber',
     },
   ];
@@ -157,12 +182,18 @@ export default function AdminReels() {
     level: 'featured',
   })) : sampleActivity();
 
-  const rows = reels.map((item) => ({
-    ...item,
-    adminStatus: Number(item.comments_count || 0) > 0 ? 'active' : 'review',
-    engagement: Number(item.likes || item.like_count || 0) + Number(item.comments_count || 0) + Number(item.share_count || 0),
-    reelSrc: reelUrl(item),
-  }));
+  const rows = reels.map((item) => {
+    const insight = getReelInsightsById(item.id);
+    const reports = moderation.filter((report) => String(report.reelId) === String(item.id)).length;
+    return {
+      ...item,
+      adminStatus: reports > 0 ? 'review' : Number(item.comments_count || 0) > 0 ? 'active' : 'draft',
+      engagement: Number(item.likes || item.like_count || item.likes_count || 0) + Number(item.comments_count || 0) + Number(item.share_count || 0),
+      reelSrc: reelUrl(item),
+      insight,
+      reports,
+    };
+  });
 
   const columns = [
     {
@@ -201,8 +232,9 @@ export default function AdminReels() {
       ),
     },
     { key: 'engagement', label: 'التفاعل', render: (row) => <strong>{formatCompactNumber(row.engagement)}</strong> },
-    { key: 'comments_count', label: 'التعليقات', render: (row) => <strong>{row.comments_count || 0}</strong> },
-    { key: 'share_count', label: 'المشاركات', render: (row) => <strong>{row.share_count || 0}</strong> },
+    { key: 'qualifiedViews', label: 'المشاهدات', render: (row) => <strong>{formatCompactNumber(row.insight?.qualifiedViews || 0)}</strong> },
+    { key: 'avgWatchMs', label: 'متوسط المشاهدة', render: (row) => <strong>{Math.round(Number(row.insight?.avgWatchMs || 0) / 1000)}ث</strong> },
+    { key: 'reports', label: 'بلاغات', render: (row) => <strong>{row.reports}</strong> },
     { key: 'adminStatus', label: 'الحالة', render: (row) => renderStatus(row.adminStatus) },
     { key: 'created_at', label: 'التاريخ', render: (row) => formatDateTime(row.created_at) },
     {
@@ -226,13 +258,13 @@ export default function AdminReels() {
         error={error}
         onRetry={load}
         title="إدارة الريلز"
-        subtitle="تم ربط صفحة إدارة الريلز بمصدر البيانات الحقيقي مع معاينة فيديو مباشرة، أزرار تشغيل/إيقاف، وModal لعرض الريل بالكامل وتحليل محتواه بسرعة."
+        subtitle="تمت إضافة لوحات Analytics محلية للريلز، سجل مشاهدة، Queue للبلاغات، ومؤشرات جودة/Buffer فوق المعاينة والإدارة." 
         badge="Reels Studio"
         accent="إدارة الفيديو القصير"
         stats={stats}
         spotlight={spotlight}
         tableTitle="أحدث الريلز"
-        tableDescription="الجدول يسحب الريلز من Posts API، يفلتر الفيديوهات فقط، ويعرض معاينة فعلية مع إجراءات تشغيل وفتح Modal." 
+        tableDescription="الجدول يعرض مصدر الفيديو، التفاعل، المشاهدات المؤهلة، متوسط وقت المشاهدة، والبلاغات المسجلة من تجربة الريلز." 
         columns={columns}
         rows={rows}
         emptyIcon="🎬"
@@ -245,6 +277,27 @@ export default function AdminReels() {
         primaryAction={{ to: '/admin/dashboard', label: 'العودة للرئيسية' }}
         secondaryAction={{ to: '/reels', label: 'فتح الريلز' }}
       />
+
+      <div style={{ display: 'grid', gap: 16, marginTop: 20 }}>
+        <section style={{ borderRadius: 20, padding: 18, background: 'rgba(15,23,42,0.9)', border: '1px solid rgba(148,163,184,0.18)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+            <div>
+              <h3 style={{ margin: 0 }}>Queue البلاغات</h3>
+              <p style={{ margin: '6px 0 0', color: '#94a3b8' }}>أحدث البلاغات الملتقطة من شاشة الريلز نفسها.</p>
+            </div>
+            <Button variant="secondary" onClick={load}>تحديث</Button>
+          </div>
+          <div style={{ display: 'grid', gap: 10 }}>
+            {moderation.length ? moderation.slice(0, 8).map((item) => (
+              <div key={item.id} style={{ borderRadius: 16, padding: 14, background: 'rgba(255,255,255,0.04)', display: 'grid', gap: 6 }}>
+                <strong>@{item.username || 'creator'} — {item.reason}</strong>
+                <span style={{ color: '#cbd5e1' }}>{item.note || 'بدون ملاحظات إضافية'}</span>
+                <small style={{ color: '#94a3b8' }}>{formatDateTime(item.createdAt)}</small>
+              </div>
+            )) : <div style={{ color: '#94a3b8' }}>لا توجد بلاغات مسجلة حالياً.</div>}
+          </div>
+        </section>
+      </div>
 
       <Modal open={Boolean(activeReel)} title={activeReel ? `ريل @${activeReel.username || 'creator'}` : 'Reel Viewer'} onClose={closeReelModal}>
         {activeReel ? (
@@ -272,13 +325,13 @@ export default function AdminReels() {
               </div>
               <div className="queue-card compact admin-tone-success">
                 <span className="queue-label">التفاعل</span>
-                <strong>{formatCompactNumber(Number(activeReel.likes || activeReel.like_count || 0) + Number(activeReel.comments_count || 0) + Number(activeReel.share_count || 0))}</strong>
+                <strong>{formatCompactNumber(Number(activeReel.likes || activeReel.like_count || activeReel.likes_count || 0) + Number(activeReel.comments_count || 0) + Number(activeReel.share_count || 0))}</strong>
                 <p>لايكات + تعليقات + مشاركات.</p>
               </div>
               <div className="queue-card compact admin-tone-amber">
-                <span className="queue-label">تاريخ النشر</span>
-                <strong>{formatDateTime(activeReel.created_at)}</strong>
-                <p>تم ربط الـ Modal بنفس بيانات الـ API المحمّلة للصفحة.</p>
+                <span className="queue-label">Analytics</span>
+                <strong>{formatCompactNumber(getReelInsightsById(activeReel.id)?.qualifiedViews || 0)} views</strong>
+                <p>متوسط المشاهدة {Math.round(Number(getReelInsightsById(activeReel.id)?.avgWatchMs || 0) / 1000)} ثانية.</p>
               </div>
             </div>
           </div>

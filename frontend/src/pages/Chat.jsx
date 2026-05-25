@@ -15,7 +15,6 @@ import {
   sendMessageApi,
   unblockUserApi,
 } from '../api/chat.js';
-import socketManager from '../services/socketManager.js';
 import { getCurrentUsername } from '../utils/auth.js';
 import { useAppStore, useChatStore } from '../store/appStore.js';
 import { MESSAGE_LIFECYCLE, normalizeMessageStatus, withLifecycle } from '../features/chat/messageLifecycle.js';
@@ -28,6 +27,8 @@ import {
   statusTicks,
 } from '../components/yamshat/YamshatDesign.js';
 import { CHAT_NAV_ITEMS, buildContacts, getContactDetails } from '../features/chat/chatShellFixtures.js';
+
+const EMPTY_MESSAGES = [];
 
 function Avatar({ name = '', src, size = 44, ring = false }) {
   const style = {
@@ -117,15 +118,26 @@ function normalizeChatMessage(message = {}) {
   }, message?.status || message?.lifecycle?.status || MESSAGE_LIFECYCLE.SENT);
 }
 
-function dedupeMessages(messages = []) {
+function normalizeMessages(messages = []) {
   const merged = new Map();
   (Array.isArray(messages) ? messages : []).forEach((entry) => {
     const message = normalizeChatMessage(entry);
     const key = String(message?.id || message?.client_id || `${message?.sender}:${message?.receiver}:${message?.created_at}`);
     const previous = merged.get(key);
-    merged.set(key, previous ? normalizeChatMessage({ ...previous, ...message, status: normalizeMessageStatus(message?.status || previous?.status) }) : message);
+    merged.set(
+      key,
+      previous
+        ? normalizeChatMessage({
+            ...previous,
+            ...message,
+            status: normalizeMessageStatus(message?.status || previous?.status),
+          })
+        : message,
+    );
   });
-  return Array.from(merged.values()).sort((left, right) => new Date(left?.created_at || 0).getTime() - new Date(right?.created_at || 0).getTime());
+  return Array.from(merged.values()).sort(
+    (left, right) => new Date(left?.created_at || 0).getTime() - new Date(right?.created_at || 0).getTime(),
+  );
 }
 
 function MessageBubble({ message, isMe, onReply, onDelete, highlightQuery = '' }) {
@@ -207,11 +219,20 @@ export default function Chat() {
   const currentUser = getCurrentUsername();
   const { pushToast } = useToast();
 
-  const [threads, setThreads] = useState([]);
+  const threadsMap = useChatStore((state) => state.threadsByUsername);
+  const conversationState = useChatStore((state) => (peer ? state.conversationsByPeer[peer] : null));
+  const setActivePeer = useChatStore((state) => state.setActivePeer);
+  const hydrateThreads = useChatStore((state) => state.hydrateThreads);
+  const replaceConversationMessages = useChatStore((state) => state.replaceConversationMessages);
+  const applyIncomingMessage = useChatStore((state) => state.applyIncomingMessage);
+  const reconcileOptimisticMessage = useChatStore((state) => state.reconcileOptimisticMessage);
+  const applyMessagePatch = useChatStore((state) => state.applyMessagePatch);
+  const setPresenceStore = useChatStore((state) => state.setPresence);
+  const markThreadRead = useChatStore((state) => state.markThreadRead);
+  const queueAction = useAppStore((state) => state.queueAction);
+
   const [threadsLoading, setThreadsLoading] = useState(true);
-  const [messages, setMessages] = useState([]);
   const [msgLoading, setMsgLoading] = useState(false);
-  const [presence, setPresence] = useState({});
   const [blockStatus, setBlockStatus] = useState({ can_chat: true, blocked_by_me: false, blocked_me: false });
   const [replyTo, setReplyTo] = useState(null);
   const [callMode, setCallMode] = useState(null);
@@ -223,15 +244,19 @@ export default function Chat() {
   const [isPinnedConversation, setIsPinnedConversation] = useState(initialChatPrefs.pinned.has(peer));
   const messagesEndRef = useRef(null);
   const searchInputRef = useRef(null);
-  const setActivePeer = useChatStore((state) => state.setActivePeer);
-  const queueAction = useAppStore((state) => state.queueAction);
+
+  const threadList = useMemo(() => Object.values(threadsMap || {}), [threadsMap]);
+  const messages = useMemo(() => normalizeMessages(conversationState?.messages || EMPTY_MESSAGES), [conversationState?.messages]);
+  const peerPresence = threadsMap?.[peer]?.presence || {};
 
   useEffect(() => {
     let active = true;
     setThreadsLoading(true);
     getChatThreads()
       .then(({ data }) => {
-        if (active) setThreads(Array.isArray(data) ? data : []);
+        if (!active) return;
+        const threads = Array.isArray(data) ? data : [];
+        hydrateThreads(threads, { replace: true });
       })
       .catch(() => {})
       .finally(() => {
@@ -240,34 +265,39 @@ export default function Chat() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [hydrateThreads]);
 
   const loadMessages = useCallback(async () => {
     if (!peer) return;
     setMsgLoading(true);
     try {
       const { data } = await getMessages(peer, 60);
-      setMessages(dedupeMessages(data?.items || []));
+      replaceConversationMessages(peer, data?.items || [], {
+        hasMore: Boolean(data?.paging?.has_more),
+        oldestMessageId: data?.paging?.next_before_id,
+        limit: 250,
+      });
       await markMessagesSeen(peer);
+      markThreadRead(peer);
     } catch {
       pushToast({ type: 'error', title: 'خطأ', description: 'تعذر تحميل الرسائل' });
     } finally {
       setMsgLoading(false);
     }
-  }, [peer, pushToast]);
+  }, [markThreadRead, peer, pushToast, replaceConversationMessages]);
 
   useEffect(() => {
-    if (!peer) return;
+    if (!peer) return undefined;
     const prefs = getChatPreferences();
     setIsMutedConversation(prefs.muted.has(peer));
     setIsPinnedConversation(prefs.pinned.has(peer));
-    loadMessages();
     setShowDetailsDrawer(false);
     setActivePeer(peer);
+    loadMessages();
 
     getPresence(peer)
       .then(({ data }) => {
-        setPresence((prev) => ({ ...prev, [peer]: { ...(prev[peer] || {}), ...(data || {}) } }));
+        setPresenceStore(peer, data || {});
       })
       .catch(() => {});
 
@@ -278,110 +308,27 @@ export default function Chat() {
       .catch(() => {});
 
     return () => setActivePeer(null);
-  }, [loadMessages, peer, setActivePeer]);
+  }, [loadMessages, peer, setActivePeer, setPresenceStore]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   useEffect(() => {
-    if (!currentUser) return;
-    socketManager.connect();
-    socketManager.emit('register_user', { user: currentUser }, { skipSignature: true });
-    if (peer) {
-      socketManager.emit('join_chat', { peer });
-      socketManager.emit('sync_chat_state', { peer });
-    }
-
-    const onMsg = (msg) => {
-      const participants = [msg?.sender, msg?.receiver];
-      if (!participants.includes(currentUser)) return;
-      setMessages((prev) => {
-        const existingIndex = prev.findIndex((item) => item.id === msg.id || (item.client_id && item.client_id === msg.client_id));
-        if (existingIndex >= 0) {
-          const next = [...prev];
-          next[existingIndex] = normalizeChatMessage({ ...next[existingIndex], ...msg });
-          return dedupeMessages(next);
-        }
-        return dedupeMessages([...prev, normalizeChatMessage(msg)]);
-      });
-      setThreads((prev) => prev.map((item) => item.username === msg.sender || item.username === msg.receiver
-        ? { ...item, last_message: msg.content || msg.message, created_at: msg.created_at }
-        : item));
-      if (msg.sender === peer) markMessagesSeen(peer).catch(() => {});
-    };
-
-    const onDelivered = (payload) => {
-      if (payload?.sender !== currentUser) return;
-      setMessages((prev) => prev.map((item) => payload.message_ids?.includes(item.id) ? withLifecycle(item, MESSAGE_LIFECYCLE.DELIVERED) : item));
-    };
-
-    const onSeen = (payload) => {
-      if (payload?.sender !== currentUser) return;
-      setMessages((prev) => prev.map((item) => payload.message_ids?.includes(item.id) ? withLifecycle(item, MESSAGE_LIFECYCLE.SEEN) : item));
-    };
-
-    const onPresence = (payload) => {
-      if (!payload?.user) return;
-      setPresence((prev) => ({ ...prev, [payload.user]: { ...(prev[payload.user] || {}), ...payload } }));
-    };
-
-    const onTyping = (payload) => {
-      if (!payload?.sender) return;
-      setPresence((prev) => ({
-        ...prev,
-        [payload.sender]: { ...(prev[payload.sender] || {}), is_typing: payload.is_typing },
-      }));
-      if (payload.is_typing) {
-        setTimeout(() => setPresence((prev) => ({
-          ...prev,
-          [payload.sender]: { ...(prev[payload.sender] || {}), is_typing: false },
-        })), 3200);
-      }
-    };
-
-    socketManager.on('new_private_message', onMsg);
-    socketManager.on('messages_delivered', onDelivered);
-    socketManager.on('messages_seen', onSeen);
-    socketManager.on('presence_update', onPresence);
-    socketManager.on('typing_update', onTyping);
-
-    const onDeleted = (payload) => {
-      if (!payload?.id) return;
-      setMessages((prev) => prev.map((item) => String(item.id) === String(payload.id) ? withLifecycle({ ...item, ...payload, deleted: true }, MESSAGE_LIFECYCLE.DELETED) : item));
-    };
-
-    socketManager.on('message_deleted', onDeleted);
-
-    return () => {
-      if (peer) socketManager.emit('leave_chat', { peer });
-      socketManager.off('new_private_message', onMsg);
-      socketManager.off('messages_delivered', onDelivered);
-      socketManager.off('messages_seen', onSeen);
-      socketManager.off('presence_update', onPresence);
-      socketManager.off('typing_update', onTyping);
-      socketManager.off('message_deleted', onDeleted);
-    };
-  }, [currentUser, peer]);
-
-  useEffect(() => {
     const handleQueuedSent = (event) => {
       const detail = event?.detail || {};
       const serverMessage = detail?.response || {};
-      setMessages((prev) => dedupeMessages(prev.map((item) => (
-        String(item.client_id || item.id) === String(detail.client_id || detail.queuedId)
-          ? normalizeChatMessage({ ...item, ...serverMessage, status: serverMessage?.status || MESSAGE_LIFECYCLE.SENT })
-          : item
-      ))));
+      if (!peer) return;
+      const peerName = serverMessage?.sender === currentUser ? serverMessage?.receiver : serverMessage?.sender;
+      if (peerName && peerName !== peer) return;
+      reconcileOptimisticMessage(peer, detail.client_id || detail.queuedId, serverMessage);
     };
 
     const handleQueuedFailed = (event) => {
       const detail = event?.detail || {};
-      setMessages((prev) => prev.map((item) => (
-        String(item.client_id || item.id) === String(detail.client_id || detail.queuedId)
-          ? withLifecycle({ ...item, queue_error: detail.error || 'فشل دائم في مزامنة الرسالة' }, detail.permanent ? MESSAGE_LIFECYCLE.FAILED_PERMANENT : MESSAGE_LIFECYCLE.FAILED)
-          : item
-      )));
+      applyMessagePatch(peer, [detail.client_id || detail.queuedId], withLifecycle({
+        queue_error: detail.error || 'فشل دائم في مزامنة الرسالة',
+      }, detail.permanent ? MESSAGE_LIFECYCLE.FAILED_PERMANENT : MESSAGE_LIFECYCLE.FAILED));
     };
 
     window.addEventListener('yamshat:queued-message-sent', handleQueuedSent);
@@ -390,7 +337,7 @@ export default function Chat() {
       window.removeEventListener('yamshat:queued-message-sent', handleQueuedSent);
       window.removeEventListener('yamshat:queued-message-failed', handleQueuedFailed);
     };
-  }, []);
+  }, [applyMessagePatch, peer, reconcileOptimisticMessage, currentUser]);
 
   const handleSend = async (payload) => {
     const text = payload?.text?.trim() || '';
@@ -431,7 +378,15 @@ export default function Chat() {
       reply_to: replyTo ? { id: replyTo.id, content: replyTo.content || replyTo.message } : null,
     });
 
-    setMessages((prev) => dedupeMessages([...prev, tempMsg]));
+    applyIncomingMessage(tempMsg, currentUser, { peer, skipUnreadIncrement: true, limit: 250 });
+    hydrateThreads([
+      {
+        username: peer,
+        last_message: text || '📎 مرفق',
+        last_message_type: requestPayload.type,
+        last_message_at: tempMsg.created_at,
+      },
+    ]);
     setReplyTo(null);
 
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
@@ -447,11 +402,7 @@ export default function Chat() {
 
     try {
       const { data } = await sendMessageApi(requestPayload);
-      setMessages((prev) => dedupeMessages(prev.map((item) => (
-        item.id === tempId || item.client_id === tempId
-          ? normalizeChatMessage({ ...item, ...(data || {}), status: (data || {}).status || MESSAGE_LIFECYCLE.SENT })
-          : item
-      ))));
+      reconcileOptimisticMessage(peer, tempId, data || {});
     } catch (error) {
       const statusCode = Number(error?.response?.status || 0);
       const shouldQueue = !statusCode || statusCode >= 500 || statusCode === 429;
@@ -463,29 +414,40 @@ export default function Chat() {
           client_id: tempId,
           attempts: 0,
         });
-        setMessages((prev) => prev.map((item) => (
-          item.id === tempId || item.client_id === tempId
-            ? withLifecycle(item, MESSAGE_LIFECYCLE.RETRYING, { queuedAt: new Date().toISOString() })
-            : item
-        )));
+        applyMessagePatch(
+          peer,
+          [tempId],
+          withLifecycle({}, MESSAGE_LIFECYCLE.RETRYING, { queuedAt: new Date().toISOString() }),
+        );
         pushToast({ type: 'warning', title: 'تعذر الإرسال الآن', description: 'تم نقل الرسالة إلى طابور المزامنة.' });
         return;
       }
 
-      setMessages((prev) => prev.map((item) => (
-        item.id === tempId || item.client_id === tempId
-          ? withLifecycle(item, MESSAGE_LIFECYCLE.FAILED_PERMANENT, { error: error?.response?.data?.detail || 'فشل إرسال الرسالة' })
-          : item
-      )));
+      applyMessagePatch(
+        peer,
+        [tempId],
+        withLifecycle({}, MESSAGE_LIFECYCLE.FAILED_PERMANENT, { error: error?.response?.data?.detail || 'فشل إرسال الرسالة' }),
+      );
       pushToast({ type: 'error', title: 'خطأ', description: error?.response?.data?.detail || 'فشل إرسال الرسالة' });
     }
   };
 
   const handleDelete = async (msgId, deleteForEveryone = false) => {
-
     try {
       await deleteMessageApi(msgId, { delete_for_everyone: deleteForEveryone });
-      setMessages((prev) => prev.map((item) => item.id === msgId ? withLifecycle({ ...item, deleted: true, deleted_for_everyone: deleteForEveryone, content: '', message: '' }, MESSAGE_LIFECYCLE.DELETED) : item));
+      applyMessagePatch(
+        peer,
+        [msgId],
+        withLifecycle(
+          {
+            deleted: true,
+            deleted_for_everyone: deleteForEveryone,
+            content: '',
+            message: '',
+          },
+          MESSAGE_LIFECYCLE.DELETED,
+        ),
+      );
       pushToast({ type: 'success', title: deleteForEveryone ? 'تم الحذف للجميع' : 'تم الحذف عندك' });
     } catch {
       pushToast({ type: 'error', title: 'تعذر الحذف' });
@@ -533,15 +495,14 @@ export default function Chat() {
     setTimeout(() => setFlyingHearts((prev) => prev.filter((item) => item !== id)), 1800);
   };
 
-  const contacts = useMemo(() => buildContacts(threads, peer), [peer, threads]);
-  const peerDetails = useMemo(() => getContactDetails(threads, peer), [peer, threads]);
+  const contacts = useMemo(() => buildContacts(threadList, peer), [peer, threadList]);
+  const peerDetails = useMemo(() => getContactDetails(threadList, peer), [peer, threadList]);
   const filteredContacts = useMemo(() => {
     const lowered = searchQuery.trim().toLowerCase();
     if (!lowered) return contacts;
     return contacts.filter((contact) => String(contact.username).toLowerCase().includes(lowered) || String(contact.preview).toLowerCase().includes(lowered));
   }, [contacts, searchQuery]);
 
-  const peerPresence = presence[peer] || {};
   const isOnline = Boolean(peerPresence.is_online ?? peerDetails.isOnline);
   const isTyping = Boolean(peerPresence.is_typing);
   const lastSeen = peerPresence.last_seen;
@@ -654,6 +615,7 @@ export default function Chat() {
                 <button type="button" className="yam-detail-action" onClick={handleMuteConversation}>{isMutedConversation ? 'إلغاء الكتم' : 'كتم المحادثة'}</button>
                 <button type="button" className="yam-detail-action" onClick={handlePinConversation}>{isPinnedConversation ? 'إلغاء التثبيت' : 'تثبيت المحادثة'}</button>
                 <button type="button" className="yam-detail-action" onClick={spawnHeart}>تفاعل سريع</button>
+                <button type="button" className="yam-detail-action" onClick={handleArchiveConversation}>أرشفة المحادثة</button>
                 <button type="button" className="yam-detail-action danger" onClick={handleBlock}>{blockStatus.blocked_by_me ? 'رفع الحظر' : 'حظر المستخدم'}</button>
               </div>
             </div>
@@ -758,786 +720,12 @@ export default function Chat() {
           <div className="yam-info-card">
             <div className="yam-info-title">معلومات</div>
             <div className="yam-info-row"><span>اسم المستخدم</span><strong>{peerDetails.handle}</strong></div>
-            <div className="yam-info-row"><span>البريد الإلكتروني</span><strong>{peerDetails.email}</strong></div>
+            <div className="yam-info-row"><span>البريد</span><strong>{peerDetails.email}</strong></div>
             <div className="yam-info-row"><span>الهاتف</span><strong>{peerDetails.phone}</strong></div>
-          </div>
-
-          <div className="yam-info-card compact">
-            {[
-              { label: 'الوسائط المشتركة', icon: '🖼️', count: mediaMessages.length },
-              { label: 'الملفات', icon: '📁', count: fileMessages.length },
-              { label: 'الروابط', icon: '🔗', count: messages.filter((item) => /https?:\/\//.test(item.content || item.message || '')).length },
-              { label: 'المحادثات المثبتة', icon: '📌', count: isPinnedConversation ? 1 : 0 },
-            ].map((item) => (
-              <button key={item.label} type="button" className="yam-list-link" onClick={() => setShowDetailsDrawer(true)}>
-                <div>
-                  <span>{item.icon}</span>
-                  <span>{item.label}</span>
-                </div>
-                <strong>{item.count}</strong>
-              </button>
-            ))}
-          </div>
-
-          <div className="yam-media-grid">
-            {(mediaMessages.length ? mediaMessages.slice(-4) : peerDetails.sharedMedia).map((item, index) => {
-              const imageUrl = item?.media_url || '';
-              const tone = item?.tone || ['purple', 'blue', 'pink', 'teal'][index % 4];
-              return imageUrl ? (
-                <img key={item.id || imageUrl} src={imageUrl} alt="media" className="yam-media-thumb" />
-              ) : (
-                <div key={item.id || `${tone}-${index}`} className={`yam-media-thumb placeholder ${tone}`}>{item.label || 'وسائط'}</div>
-              );
-            })}
-          </div>
-
-          <div className="yam-panel-actions">
-            <button type="button" className="yam-secondary-btn" onClick={handleMuteConversation}>{isMutedConversation ? 'إلغاء كتم المحادثة' : 'كتم المحادثة'}</button>
-            <button type="button" className="yam-secondary-btn" onClick={handleArchiveConversation}>أرشفة المحادثة</button>
-            <button type="button" className="yam-reaction-btn" onClick={spawnHeart}>إرسال ❤️ سريع</button>
-            <button type="button" className="yam-danger-btn" onClick={handleBlock}>{blockStatus.blocked_by_me ? 'رفع الحظر' : 'حظر المستخدم'}</button>
+            <div className="yam-info-row"><span>الوسائط</span><strong>{mediaMessages.length}</strong></div>
+            <div className="yam-info-row"><span>الملفات والصوتيات</span><strong>{fileMessages.length}</strong></div>
           </div>
         </aside>
-
-        <style>{`
-          .yam-conversation-screen {
-            min-height: 100vh;
-            height: 100vh;
-            background:
-              radial-gradient(circle at top right, rgba(124,58,237,0.15), transparent 26%),
-              radial-gradient(circle at top left, rgba(59,130,246,0.08), transparent 22%),
-              #040714;
-            display: grid;
-            grid-template-columns: 300px minmax(0, 1fr) 320px;
-            overflow: hidden;
-            color: white;
-          }
-
-          .yam-chat-sidebar,
-          .yam-side-profile-panel {
-            background: linear-gradient(180deg, rgba(7, 10, 24, 0.98), rgba(5, 8, 18, 0.98));
-            border-color: rgba(255,255,255,0.05);
-            border-style: solid;
-            min-width: 0;
-          }
-
-          .yam-chat-sidebar {
-            border-inline-end-width: 1px;
-            display: flex;
-            flex-direction: column;
-            padding: 22px 16px 18px;
-            gap: 16px;
-            overflow: auto;
-          }
-
-          .yam-side-profile-panel {
-            border-inline-start-width: 1px;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            padding: 28px 20px 20px;
-            overflow: auto;
-          }
-
-          .yam-sidebar-brand,
-          .yam-sidebar-head,
-          .yam-self-card,
-          .yam-chat-stage-header,
-          .yam-chat-stage-peer,
-          .yam-chat-stage-actions,
-          .yam-details-grid,
-          .yam-info-card.compact,
-          .yam-panel-actions {
-            display: flex;
-            align-items: center;
-          }
-
-          .yam-sidebar-brand {
-            gap: 14px;
-            padding: 0 6px 12px;
-          }
-
-          .yam-brand-mark {
-            width: 42px;
-            height: 42px;
-            border-radius: 16px;
-            display: grid;
-            place-items: center;
-            font-weight: 900;
-            font-size: 20px;
-            color: white;
-            background: linear-gradient(135deg, #8b5cf6, #4f46e5);
-            box-shadow: 0 18px 30px rgba(91, 33, 182, 0.35);
-          }
-
-          .yam-brand-name {
-            letter-spacing: 0.34em;
-            font-size: 20px;
-            font-weight: 900;
-          }
-
-          .yam-primary-nav {
-            display: grid;
-            gap: 10px;
-          }
-
-          .yam-nav-item {
-            min-height: 56px;
-            padding: 0 16px;
-            border-radius: 18px;
-            border: 1px solid transparent;
-            background: transparent;
-            color: #cbd5e1;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-weight: 800;
-            text-align: right;
-          }
-
-          .yam-nav-item.active {
-            color: #fff;
-            background: linear-gradient(135deg, rgba(124,58,237,0.3), rgba(67,56,202,0.22));
-            border-color: rgba(167,139,250,0.24);
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 10px 24px rgba(76, 29, 149, 0.18);
-          }
-
-          .yam-nav-icon,
-          .yam-icon-action,
-          .yam-stage-icon {
-            display: inline-grid;
-            place-items: center;
-          }
-
-          .yam-nav-icon {
-            width: 34px;
-            height: 34px;
-            border-radius: 12px;
-            background: rgba(255,255,255,0.04);
-            flex-shrink: 0;
-          }
-
-          .yam-sidebar-head {
-            justify-content: space-between;
-            padding: 0 6px;
-            font-weight: 900;
-          }
-
-          .yam-icon-action,
-          .yam-stage-icon,
-          .yam-clear-search {
-            width: 40px;
-            height: 40px;
-            border-radius: 14px;
-            border: 1px solid rgba(255,255,255,0.08);
-            background: rgba(255,255,255,0.04);
-            color: white;
-          }
-
-          .yam-icon-action.subtle {
-            width: 36px;
-            height: 36px;
-          }
-
-          .yam-contact-list {
-            flex: 1;
-            min-height: 0;
-            overflow: auto;
-            display: grid;
-            gap: 10px;
-          }
-
-          .yam-contact-row {
-            padding: 10px 12px;
-            border-radius: 18px;
-            border: 1px solid transparent;
-            background: transparent;
-            color: white;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            text-align: right;
-          }
-
-          .yam-contact-row.active {
-            background: linear-gradient(135deg, rgba(124,58,237,0.24), rgba(124,58,237,0.1));
-            border-color: rgba(167,139,250,0.2);
-          }
-
-          .yam-avatar-wrap {
-            position: relative;
-            flex-shrink: 0;
-          }
-
-          .yam-avatar-wrap.large {
-            margin-inline: auto;
-          }
-
-          .yam-presence-pin {
-            position: absolute;
-            right: -2px;
-            bottom: -2px;
-          }
-
-          .yam-contact-copy,
-          .yam-chat-stage-peer-copy,
-          .yam-side-profile-copy {
-            min-width: 0;
-            display: grid;
-            gap: 4px;
-          }
-
-          .yam-contact-copy strong,
-          .yam-chat-stage-peer-copy strong {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-          }
-
-          .yam-contact-copy span,
-          .yam-chat-stage-peer-copy span,
-          .yam-side-profile-copy p {
-            color: #94a3b8;
-            font-size: 13px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-          }
-
-          .yam-self-card {
-            margin-top: auto;
-            gap: 12px;
-            padding: 14px 10px 0;
-            border-top: 1px solid rgba(255,255,255,0.05);
-          }
-
-          .yam-chat-stage {
-            position: relative;
-            display: flex;
-            flex-direction: column;
-            min-width: 0;
-            min-height: 0;
-            background: #040714;
-            padding: 18px 22px 0;
-            gap: 14px;
-            overflow: hidden;
-          }
-
-          .yam-stage-top-search {
-            min-height: 64px;
-            border-radius: 24px;
-            border: 1px solid rgba(255,255,255,0.06);
-            background: rgba(10, 15, 30, 0.92);
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 0 18px;
-            color: #94a3b8;
-            flex-shrink: 0;
-            position: sticky;
-            top: 0;
-            z-index: 6;
-          }
-
-          .yam-stage-top-search input {
-            flex: 1;
-            border: none;
-            background: transparent;
-            color: white;
-            outline: none;
-            font-size: 16px;
-          }
-
-          .yam-clear-search {
-            border: none;
-            background: rgba(124,58,237,0.18);
-          }
-
-          .yam-chat-stage-header {
-            justify-content: space-between;
-            gap: 16px;
-            padding: 0 4px 12px;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
-            flex-shrink: 0;
-            position: sticky;
-            top: 78px;
-            z-index: 5;
-            background: #040714;
-          }
-
-          .yam-chat-stage-peer {
-            gap: 12px;
-            min-width: 0;
-          }
-
-          .yam-chat-stage-peer-copy strong {
-            font-size: 20px;
-            font-weight: 900;
-          }
-
-          .yam-chat-stage-actions {
-            gap: 10px;
-          }
-
-          .yam-stage-icon:hover,
-          .yam-stage-icon:focus-visible {
-            background: rgba(124,58,237,0.18);
-            border-color: rgba(167,139,250,0.24);
-          }
-
-          .yam-chat-details-drawer {
-            padding: 2px 4px 12px;
-            flex-shrink: 0;
-          }
-
-          .yam-details-grid {
-            gap: 10px;
-            flex-wrap: wrap;
-          }
-
-          .yam-detail-action {
-            min-height: 44px;
-            border-radius: 14px;
-            border: 1px solid rgba(255,255,255,0.06);
-            background: rgba(255,255,255,0.04);
-            color: white;
-            font-weight: 800;
-            padding: 0 14px;
-          }
-
-          .yam-detail-action.danger {
-            background: rgba(239,68,68,0.1);
-            color: #fca5a5;
-            border-color: rgba(239,68,68,0.2);
-          }
-
-          .yam-search-summary,
-          .yam-block-banner {
-            flex-shrink: 0;
-            text-align: center;
-            border-radius: 16px;
-            padding: 10px 14px;
-            font-size: 13px;
-          }
-
-          .yam-search-summary {
-            background: rgba(124,58,237,0.12);
-            color: #d8b4fe;
-          }
-
-          .yam-block-banner {
-            background: rgba(239,68,68,0.12);
-            color: #fca5a5;
-          }
-
-          .yam-block-banner button {
-            background: none;
-            border: none;
-            color: #fdba74;
-            font-weight: 800;
-            margin-inline-start: 8px;
-          }
-
-          .yam-block-banner.blocked {
-            background: rgba(127,29,29,0.24);
-          }
-
-          .yam-messages-area {
-            flex: 1;
-            min-height: 0;
-            overflow: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 14px;
-            padding: 4px 6px 18px;
-          }
-
-          .yam-empty-state {
-            color: #94a3b8;
-            font-size: 14px;
-            padding: 24px;
-            text-align: center;
-          }
-
-          .yam-empty-state.rich {
-            display: grid;
-            gap: 8px;
-            align-self: center;
-            max-width: 480px;
-            border-radius: 24px;
-            border: 1px solid rgba(255,255,255,0.06);
-            background: rgba(255,255,255,0.03);
-            margin-top: 32px;
-          }
-
-          .yam-bubble-wrap {
-            display: flex;
-            align-items: flex-end;
-            gap: 10px;
-          }
-
-          .yam-bubble-wrap.me {
-            flex-direction: row-reverse;
-          }
-
-          .yam-bubble-avatar-slot {
-            width: 38px;
-            flex-shrink: 0;
-          }
-
-          .yam-bubble {
-            max-width: min(72%, 560px);
-            padding: 14px 16px;
-            border-radius: 24px;
-            position: relative;
-            line-height: 1.75;
-            display: grid;
-            gap: 10px;
-          }
-
-          .yam-bubble.search-hit {
-            box-shadow: 0 0 0 1px rgba(192,132,252,0.3), 0 0 0 10px rgba(124,58,237,0.08);
-          }
-
-          .bubble-me {
-            background: linear-gradient(135deg, #6d28d9, #4f46e5);
-            color: white;
-            border-bottom-right-radius: 6px;
-          }
-
-          .bubble-them {
-            background: rgba(24, 31, 48, 0.98);
-            color: #e2e8f0;
-            border: 1px solid rgba(255,255,255,0.04);
-            border-bottom-left-radius: 6px;
-          }
-
-          .bubble-reply-banner {
-            font-size: 12px;
-            padding: 8px 10px;
-            border-radius: 12px;
-            background: rgba(255,255,255,0.08);
-            display: grid;
-            gap: 4px;
-            border-inline-start: 3px solid rgba(255,255,255,0.4);
-          }
-
-          .yam-audio-wrap {
-            width: min(320px, 100%);
-          }
-
-          .yam-file-card {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 12px 14px;
-            border-radius: 18px;
-            background: rgba(255,255,255,0.08);
-            color: inherit;
-            text-decoration: none;
-          }
-
-          .yam-file-icon {
-            width: 44px;
-            height: 44px;
-            border-radius: 14px;
-            display: grid;
-            place-items: center;
-            background: rgba(255,255,255,0.12);
-            flex-shrink: 0;
-          }
-
-          .yam-file-copy {
-            min-width: 0;
-            display: grid;
-            gap: 3px;
-          }
-
-          .yam-file-copy strong,
-          .yam-file-copy small {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-          }
-
-          .yam-file-copy small {
-            opacity: 0.72;
-          }
-
-          .bubble-text {
-            font-size: 14px;
-            word-break: break-word;
-          }
-
-          .bubble-deleted {
-            font-size: 13px;
-            opacity: 0.6;
-            font-style: italic;
-          }
-
-          .bubble-meta {
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            gap: 6px;
-          }
-
-          .bubble-time {
-            font-size: 11px;
-            opacity: 0.7;
-          }
-
-          .bubble-actions {
-            display: none;
-            gap: 6px;
-            position: absolute;
-            top: -32px;
-            inset-inline-end: 0;
-            background: rgba(15,23,42,0.92);
-            border-radius: 12px;
-            padding: 4px 8px;
-            border: 1px solid rgba(255,255,255,0.08);
-          }
-
-          .yam-bubble:hover .bubble-actions {
-            display: flex;
-          }
-
-          .bubble-actions button {
-            background: none;
-            border: none;
-            color: white;
-            cursor: pointer;
-            font-size: 14px;
-            padding: 2px 4px;
-          }
-
-          .yam-chat-input-wrap {
-            flex-shrink: 0;
-            padding: 0 0 18px;
-          }
-
-          .flying-hearts-layer {
-            position: absolute;
-            bottom: 120px;
-            left: 22px;
-            pointer-events: none;
-            z-index: 6;
-          }
-
-          .flying-heart {
-            position: absolute;
-            font-size: 28px;
-            animation: fly-up 1.8s ease-out forwards;
-            left: 0;
-          }
-
-          @keyframes fly-up {
-            0% { transform: translateY(0) scale(1); opacity: 1; }
-            60% { transform: translateY(-120px) scale(1.4); opacity: 0.9; }
-            100% { transform: translateY(-240px) scale(0.5); opacity: 0; }
-          }
-
-          .yam-call-overlay {
-            position: absolute;
-            inset: 0;
-            background: rgba(4,8,18,0.92);
-            backdrop-filter: blur(8px);
-            z-index: 20;
-            overflow-y: auto;
-            padding: 20px;
-          }
-
-          .yam-side-profile-top {
-            display: grid;
-            gap: 18px;
-            justify-items: center;
-          }
-
-          .yam-side-profile-copy {
-            text-align: center;
-          }
-
-          .yam-side-profile-copy h2 {
-            margin: 0;
-            font-size: 22px;
-            font-weight: 900;
-          }
-
-          .yam-side-profile-copy p {
-            margin: 6px 0 0;
-          }
-
-          .yam-quick-actions {
-            display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 10px;
-          }
-
-          .yam-quick-card {
-            min-height: 82px;
-            border-radius: 20px;
-            border: 1px solid rgba(255,255,255,0.06);
-            background: rgba(255,255,255,0.03);
-            color: white;
-            display: grid;
-            place-items: center;
-            gap: 6px;
-          }
-
-          .yam-quick-card small {
-            color: #cbd5e1;
-            font-size: 12px;
-          }
-
-          .yam-info-card {
-            border-radius: 22px;
-            border: 1px solid rgba(255,255,255,0.06);
-            background: rgba(255,255,255,0.03);
-            padding: 18px;
-            display: grid;
-            gap: 14px;
-          }
-
-          .yam-info-card.compact {
-            padding: 10px;
-            gap: 8px;
-          }
-
-          .yam-info-title {
-            font-size: 18px;
-            font-weight: 900;
-          }
-
-          .yam-info-row {
-            display: grid;
-            gap: 6px;
-          }
-
-          .yam-info-row span {
-            color: #94a3b8;
-            font-size: 12px;
-          }
-
-          .yam-info-row strong,
-          .yam-list-link strong {
-            color: #a78bfa;
-            word-break: break-word;
-          }
-
-          .yam-list-link {
-            min-height: 48px;
-            padding: 0 10px;
-            border-radius: 16px;
-            border: none;
-            background: transparent;
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-          }
-
-          .yam-list-link > div {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-          }
-
-          .yam-media-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 10px;
-          }
-
-          .yam-media-thumb {
-            width: 100%;
-            aspect-ratio: 1;
-            border-radius: 18px;
-            object-fit: cover;
-            display: grid;
-            place-items: center;
-            font-size: 12px;
-            font-weight: 800;
-            color: white;
-          }
-
-          .yam-media-thumb.placeholder.purple { background: linear-gradient(135deg, rgba(124,58,237,0.55), rgba(91,33,182,0.18)); }
-          .yam-media-thumb.placeholder.blue { background: linear-gradient(135deg, rgba(59,130,246,0.55), rgba(37,99,235,0.18)); }
-          .yam-media-thumb.placeholder.pink { background: linear-gradient(135deg, rgba(236,72,153,0.5), rgba(168,85,247,0.16)); }
-          .yam-media-thumb.placeholder.teal { background: linear-gradient(135deg, rgba(20,184,166,0.5), rgba(6,182,212,0.16)); }
-
-          .yam-panel-actions {
-            display: grid;
-            gap: 10px;
-          }
-
-          .yam-secondary-btn,
-          .yam-danger-btn,
-          .yam-reaction-btn {
-            min-height: 50px;
-            border-radius: 18px;
-            border: 1px solid rgba(255,255,255,0.08);
-            background: rgba(255,255,255,0.04);
-            color: white;
-            font-weight: 900;
-          }
-
-          .yam-reaction-btn {
-            background: linear-gradient(135deg, rgba(124,58,237,0.24), rgba(67,56,202,0.18));
-            border-color: rgba(167,139,250,0.18);
-          }
-
-          .yam-danger-btn {
-            background: rgba(239,68,68,0.1);
-            color: #f87171;
-            border-color: rgba(239,68,68,0.2);
-          }
-
-          @media (max-width: 1240px) {
-            .yam-conversation-screen {
-              grid-template-columns: 280px minmax(0, 1fr);
-            }
-
-            .yam-side-profile-panel {
-              display: none;
-            }
-          }
-
-          @media (max-width: 860px) {
-            .yam-conversation-screen {
-              grid-template-columns: 1fr;
-            }
-
-            .yam-chat-sidebar {
-              display: none;
-            }
-
-            .yam-chat-stage {
-              padding: 14px 14px 0;
-            }
-
-            .yam-stage-top-search {
-              min-height: 56px;
-            }
-
-            .yam-chat-stage-header {
-              padding: 0 2px 10px;
-            }
-
-            .yam-chat-stage-peer-copy strong {
-              font-size: 17px;
-            }
-
-            .yam-bubble {
-              max-width: 88%;
-            }
-
-            .yam-details-grid {
-              display: grid;
-              grid-template-columns: repeat(2, minmax(0, 1fr));
-            }
-          }
-        `}</style>
       </section>
     </MainLayout>
   );

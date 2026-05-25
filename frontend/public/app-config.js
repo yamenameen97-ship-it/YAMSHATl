@@ -1,6 +1,6 @@
 (function () {
-  const DEPLOY_BACKEND_ORIGIN = 'https://yamshatl.onrender.com';
-  const DEPLOY_API_BASE = 'https://yamshatl.onrender.com/api';
+  const DEPLOY_BACKEND_ORIGIN = 'https://yamshatl-ahj8.onrender.com';
+  const DEPLOY_API_BASE = 'https://yamshatl-ahj8.onrender.com/api';
 
   const trim = (value) => String(value || '').trim().replace(/\/+$/, '');
   const toApiBase = (value) => {
@@ -22,8 +22,8 @@
     const host = trim(window.location.hostname).toLowerCase();
 
     // لا نحاول اشتقاق الـ backend من اسم خدمة Render الأمامية، لأن Render
-    // قد يضيف suffix متغير مثل -vg10 أو -yg1o، ومحاولة قصّه قد تُنتج
-    // دومين قديم/خاطئ مثل yamshat1.onrender.com.
+    // قد يضيف Render suffix متغير للخدمة، لذلك لا نعتمد على قصّ اسم الدومين
+    // الأمامي لاشتقاق عنوان backend حتى لا ينتج دومين غير صحيح.
     if (/\.onrender\.com$/i.test(host) && trim(DEPLOY_BACKEND_ORIGIN)) {
       return trim(DEPLOY_BACKEND_ORIGIN);
     }

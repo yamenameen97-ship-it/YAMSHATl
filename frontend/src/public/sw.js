@@ -1,4 +1,4 @@
-const VERSION = 'yamshat-v10';
+const VERSION = 'yamshat-v20260525-r4-domain-fix';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -16,10 +16,14 @@ const APP_SHELL = [
   '/icons/icon-512.png',
 ];
 
+function isRuntimeConfigPath(url) {
+  return /^\/(?:app-config\.js|background-sync\.js|sw(?:-enhanced)?\.js)$/i.test(url.pathname);
+}
+
 async function staleWhileRevalidate(request, cacheName) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(request);
-  const network = fetch(request).then(async (response) => {
+  const network = fetch(request, { cache: 'no-store' }).then(async (response) => {
     if (response?.status === 200) await cache.put(request, response.clone());
     return response;
   }).catch(() => null);
@@ -29,7 +33,7 @@ async function staleWhileRevalidate(request, cacheName) {
 async function networkFirst(request, cacheName) {
   const cache = await caches.open(cacheName);
   try {
-    const response = await fetch(request);
+    const response = await fetch(request, { cache: 'no-store' });
     if (response?.status === 200) await cache.put(request, response.clone());
     return response;
   } catch {
@@ -76,9 +80,15 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
+
+  if (isRuntimeConfigPath(url)) {
+    event.respondWith(fetch(request, { cache: 'no-store' }).catch(() => caches.match(request)));
+    return;
+  }
+
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request)
+      fetch(request, { cache: 'no-store' })
         .then(async (response) => {
           const cache = await caches.open(CACHE_NAMES.SHELL);
           cache.put(request, response.clone()).catch(() => null);

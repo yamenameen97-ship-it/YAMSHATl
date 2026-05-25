@@ -1,6 +1,8 @@
 (function () {
-  const DEPLOY_BACKEND_ORIGIN = 'https://yamshatl.onrender.com';
-  const DEPLOY_API_BASE = 'https://yamshatl.onrender.com/api';
+  const CONFIG_BUILD = 'yamshat-config-20260525-r4-domain-fix';
+  const CONFIG_BUILD_KEY = 'yamshat_config_build';
+  const DEPLOY_BACKEND_ORIGIN = 'https://yamshatl-ahj8.onrender.com';
+  const DEPLOY_API_BASE = 'https://yamshatl-ahj8.onrender.com/api';
 
   const trim = (value) => String(value || '').trim().replace(/\/+$/, '');
   const toApiBase = (value) => {
@@ -16,16 +18,16 @@
       return '';
     }
   };
+  const isRenderHost = (value) => /\.onrender\.com$/i.test(trim(value));
   const currentOrigin = trim(window.location.origin);
+  const expectedBackendOrigin = trim(DEPLOY_BACKEND_ORIGIN) || apiToOrigin(DEPLOY_API_BASE);
+  const expectedApiBase = toApiBase(DEPLOY_API_BASE) || (expectedBackendOrigin ? `${expectedBackendOrigin}/api` : '');
 
   const inferBackendFromHints = () => {
     const host = trim(window.location.hostname).toLowerCase();
 
-    // لا نحاول اشتقاق الـ backend من اسم خدمة Render الأمامية، لأن Render
-    // قد يضيف suffix متغير مثل -vg10 أو -yg1o، ومحاولة قصّه قد تُنتج
-    // دومين قديم/خاطئ مثل yamshat1.onrender.com.
-    if (/\.onrender\.com$/i.test(host) && trim(DEPLOY_BACKEND_ORIGIN)) {
-      return trim(DEPLOY_BACKEND_ORIGIN);
+    if (/\.onrender\.com$/i.test(host) && expectedBackendOrigin) {
+      return expectedBackendOrigin;
     }
 
     try {
@@ -39,41 +41,45 @@
     return currentOrigin;
   };
 
+  const renderOriginMismatch = (candidate, expected) => {
+    const normalizedCandidate = trim(candidate);
+    const normalizedExpected = trim(expected);
+    if (!normalizedCandidate || !normalizedExpected) return false;
+    if (!isRenderHost(normalizedCandidate) || !isRenderHost(normalizedExpected)) return false;
+    return normalizedCandidate !== normalizedExpected;
+  };
+
+  const renderApiMismatch = (candidate, expected) => {
+    const candidateOrigin = apiToOrigin(candidate);
+    const expectedOrigin = apiToOrigin(expected);
+    return renderOriginMismatch(candidateOrigin, expectedOrigin);
+  };
+
   const params = new URLSearchParams(window.location.search);
   const queryApi = toApiBase(params.get('api'));
   const queryBackend = trim(params.get('backend'));
 
   let storedApi = '';
   let storedBackend = '';
+  let buildChanged = false;
   try {
     storedApi = toApiBase(localStorage.getItem('apiBase'));
     storedBackend = trim(localStorage.getItem('backendOrigin'));
+    const previousBuild = trim(localStorage.getItem(CONFIG_BUILD_KEY));
+    buildChanged = Boolean(previousBuild && previousBuild !== CONFIG_BUILD);
   } catch (_) {}
 
   const inferredBackendOrigin = inferBackendFromHints();
-  const inferredApi = inferredBackendOrigin ? `${inferredBackendOrigin}/api` : '';
-  const isRenderHost = (value) => /\.onrender\.com$/i.test(trim(value));
-  const originLooksCurrent = (value) => {
-    const candidate = trim(value);
-    if (!candidate || !inferredBackendOrigin) return false;
-    return candidate === inferredBackendOrigin || candidate === currentOrigin;
-  };
-  const apiLooksCurrent = (value) => {
-    const candidate = toApiBase(value);
-    if (!candidate) return false;
-    return candidate === toApiBase(inferredApi) || candidate === toApiBase(`${currentOrigin}/api`);
-  };
-
-  const safeStoredBackend = originLooksCurrent(storedBackend) || !isRenderHost(storedBackend) ? storedBackend : '';
-  const safeStoredApi = apiLooksCurrent(storedApi) || !isRenderHost(apiToOrigin(storedApi)) ? storedApi : '';
-  const legacyBackendDetected = isRenderHost(storedBackend) && !originLooksCurrent(storedBackend);
-  const legacyApiDetected = isRenderHost(apiToOrigin(storedApi)) && !apiLooksCurrent(storedApi);
+  const legacyBackendDetected = renderOriginMismatch(storedBackend, expectedBackendOrigin);
+  const legacyApiDetected = renderApiMismatch(storedApi, expectedApiBase);
+  const safeStoredBackend = legacyBackendDetected ? '' : storedBackend;
+  const safeStoredApi = legacyApiDetected ? '' : storedApi;
   const queryBackendApi = queryBackend ? toApiBase(queryBackend) : '';
 
   const backendOrigin =
     trim(queryBackend) ||
     apiToOrigin(queryApi) ||
-    trim(DEPLOY_BACKEND_ORIGIN) ||
+    expectedBackendOrigin ||
     safeStoredBackend ||
     apiToOrigin(safeStoredApi) ||
     inferredBackendOrigin ||
@@ -82,22 +88,31 @@
   const apiBase =
     toApiBase(queryApi) ||
     queryBackendApi ||
+    expectedApiBase ||
     safeStoredApi ||
-    toApiBase(DEPLOY_API_BASE) ||
     toApiBase(`${backendOrigin}/api`) ||
-    toApiBase(inferredApi) ||
     toApiBase(`${currentOrigin}/api`);
 
   try {
     const previousBackendOrigin = trim(localStorage.getItem('backendOrigin'));
-    if (previousBackendOrigin && previousBackendOrigin !== backendOrigin) {
-      localStorage.removeItem('yamshat_csrf_token');
-      sessionStorage.removeItem('yamshat_user_session');
-    }
-    if (legacyBackendDetected || legacyApiDetected) {
+    const backendChanged = Boolean(previousBackendOrigin && previousBackendOrigin !== backendOrigin);
+
+    if (buildChanged || backendChanged || legacyBackendDetected || legacyApiDetected) {
       localStorage.removeItem('backendOrigin');
       localStorage.removeItem('apiBase');
+      localStorage.removeItem('yamshat_csrf_token');
+      localStorage.removeItem('yamshatAuth');
+      localStorage.removeItem('user');
+      localStorage.removeItem('yamshat_user_session');
+      try {
+        sessionStorage.removeItem('yamshat_csrf_token');
+        sessionStorage.removeItem('yamshatAuth');
+        sessionStorage.removeItem('user');
+        sessionStorage.removeItem('yamshat_user_session');
+      } catch (_) {}
     }
+
+    localStorage.setItem(CONFIG_BUILD_KEY, CONFIG_BUILD);
     localStorage.setItem('backendOrigin', backendOrigin);
     localStorage.setItem('apiBase', apiBase);
   } catch (_) {}
@@ -119,4 +134,5 @@
   window.YAMSHAT_BACKEND_ORIGIN = backendOrigin;
   window.YAMSHAT_FRONTEND_ORIGIN = currentOrigin;
   window.YAMSHAT_DEPLOY_MODE = backendOrigin === currentOrigin ? 'single-service' : 'split-services';
+  window.__YAMSHAT_CONFIG_BUILD__ = CONFIG_BUILD;
 })();

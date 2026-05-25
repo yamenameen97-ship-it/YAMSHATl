@@ -1,6 +1,7 @@
 (function () {
-  const DEPLOY_BACKEND_ORIGIN = 'https://yamshatl.onrender.com';
-  const DEPLOY_API_BASE = 'https://yamshatl.onrender.com/api';
+  const CONFIG_BUILD = 'yamshat-config-20260525-r4-domain-fix';
+  const DEPLOY_BACKEND_ORIGIN = 'https://yamshatl-ahj8.onrender.com';
+  const DEPLOY_API_BASE = 'https://yamshatl-ahj8.onrender.com/api';
 
   const trim = (value) => String(value || '').trim().replace(/\/+$/, '');
   const ensureApiPath = (value) => {
@@ -14,6 +15,7 @@
   const currentOrigin = trim(window.location.origin);
 
   try {
+    localStorage.setItem('yamshat_config_build', CONFIG_BUILD);
     localStorage.setItem('backendOrigin', backendOrigin);
     localStorage.setItem('apiBase', apiBase);
   } catch (_) {}

@@ -8,6 +8,7 @@ const toApiBase = (value) => {
 
 const apiToOrigin = (value) => trim(toApiBase(value).replace(/\/api$/, ''));
 const currentOrigin = trim(window.location.origin);
+const isRenderHost = (value) => /\.onrender\.com$/i.test(trim(value));
 
 const safeOrigin = (value) => {
   try {
@@ -39,6 +40,16 @@ const readStored = (key) => {
   }
 };
 
+const renderOriginMismatch = (candidate, expected) => {
+  const normalizedCandidate = trim(candidate);
+  const normalizedExpected = trim(expected);
+  if (!normalizedCandidate || !normalizedExpected) return false;
+  if (!isRenderHost(normalizedCandidate) || !isRenderHost(normalizedExpected)) return false;
+  return normalizedCandidate !== normalizedExpected;
+};
+
+const renderApiMismatch = (candidate, expected) => renderOriginMismatch(apiToOrigin(candidate), apiToOrigin(expected));
+
 const params = new URLSearchParams(window.location.search);
 const queryApi = toApiBase(params.get('api'));
 const queryBackend = trim(params.get('backend'));
@@ -55,7 +66,6 @@ const inferredApi = inferredBackendOrigin ? `${inferredBackendOrigin}/api` : '';
 const SESSION_STORAGE_KEY = 'yamshat_user_session';
 const CSRF_STORAGE_KEY = 'yamshat_csrf_token';
 
-const isRenderHost = (value) => /\.onrender\.com$/i.test(trim(value));
 const originLooksCurrent = (value) => {
   const candidate = trim(value);
   if (!candidate || !inferredBackendOrigin) return false;
@@ -68,21 +78,25 @@ const apiLooksCurrent = (value) => {
   return candidate === toApiBase(inferredApi) || candidate === toApiBase(`${currentOrigin}/api`);
 };
 
-const safeStoredBackend = originLooksCurrent(storedBackend) || !isRenderHost(storedBackend) ? storedBackend : '';
-const safeStoredApi = apiLooksCurrent(storedApi) || !isRenderHost(apiToOrigin(storedApi)) ? storedApi : '';
+const storedBackendConflictsWithEnv = renderOriginMismatch(storedBackend, envBackendOrigin);
+const storedApiConflictsWithEnv = renderApiMismatch(storedApi, envApi);
+const safeStoredBackend = (originLooksCurrent(storedBackend) || !isRenderHost(storedBackend)) && !storedBackendConflictsWithEnv ? storedBackend : '';
+const safeStoredApi = (apiLooksCurrent(storedApi) || !isRenderHost(apiToOrigin(storedApi))) && !storedApiConflictsWithEnv ? storedApi : '';
 const runtimeBackendIsFrontendOrigin = Boolean(runtimeBackendOrigin && runtimeBackendOrigin === currentOrigin && inferredBackendOrigin !== currentOrigin);
 const runtimeApiIsFrontendOrigin = Boolean(runtimeApi && runtimeApi === toApiBase(`${currentOrigin}/api`) && inferredBackendOrigin !== currentOrigin);
-const safeRuntimeBackendOrigin = runtimeBackendIsFrontendOrigin ? '' : runtimeBackendOrigin;
+const runtimeBackendConflictsWithEnv = renderOriginMismatch(runtimeBackendOrigin, envBackendOrigin);
+const runtimeApiConflictsWithEnv = renderApiMismatch(runtimeApi, envApi);
+const safeRuntimeBackendOrigin = runtimeBackendIsFrontendOrigin || runtimeBackendConflictsWithEnv ? '' : runtimeBackendOrigin;
 const runtimeApiMatchesRuntimeBackend = Boolean(!safeRuntimeBackendOrigin || !runtimeApi || apiToOrigin(runtimeApi) === safeRuntimeBackendOrigin);
-const safeRuntimeApi = runtimeApiIsFrontendOrigin || !runtimeApiMatchesRuntimeBackend ? '' : runtimeApi;
+const safeRuntimeApi = runtimeApiIsFrontendOrigin || !runtimeApiMatchesRuntimeBackend || runtimeApiConflictsWithEnv ? '' : runtimeApi;
 const queryBackendApi = queryBackend ? `${queryBackend}/api` : '';
 const runtimeBackendApi = safeRuntimeBackendOrigin ? `${safeRuntimeBackendOrigin}/api` : '';
 
 export const BACKEND_ORIGIN = trim(
   queryBackend ||
     apiToOrigin(queryApi) ||
-    safeRuntimeBackendOrigin ||
     envBackendOrigin ||
+    safeRuntimeBackendOrigin ||
     safeStoredBackend ||
     apiToOrigin(safeRuntimeApi || safeStoredApi) ||
     inferredBackendOrigin ||
@@ -92,9 +106,9 @@ export const BACKEND_ORIGIN = trim(
 export const API_BASE = toApiBase(
   queryApi ||
     queryBackendApi ||
+    envApi ||
     safeRuntimeApi ||
     runtimeBackendApi ||
-    envApi ||
     safeStoredApi ||
     (BACKEND_ORIGIN ? `${BACKEND_ORIGIN}/api` : `${currentOrigin}/api`)
 );
@@ -104,8 +118,8 @@ export const CDN_BASE = trim(window.YAMSHAT_CDN_BASE || window.APP_CDN_BASE || e
 export const SOCKET_URL = trim(
   queryBackend ||
     apiToOrigin(queryApi) ||
-    safeRuntimeBackendOrigin ||
     envSocketUrl ||
+    safeRuntimeBackendOrigin ||
     window.YAMSHAT_SOCKET_URL ||
     safeStoredBackend ||
     BACKEND_ORIGIN ||

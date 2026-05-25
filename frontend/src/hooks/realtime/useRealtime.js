@@ -1,104 +1,39 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
-import socket from '../../api/socket.js';
+import { useCallback, useEffect } from 'react';
+import socketManager from '../../services/socketManager.js';
+import { useRealtime as useRealtimeContext } from '../../realtime/RealtimeProvider.jsx';
 
 /**
- * Advanced Realtime Hook for Yamshat
- * Features: Distributed scaling, Advanced retry queues, Presence optimization
+ * Compatibility hook يعتمد على المزود المركزي RealtimeProvider
+ * بدل إنشاء listeners / queues إضافية داخل كل شاشة.
  */
 export const useRealtime = (event, callback) => {
-  const [isConnected, setIsConnected] = useState(socket.connected);
-  const [isOffline, setIsOffline] = useState(!navigator.onLine);
-  const [presence, setPresence] = useState([]);
-  const offlineQueue = useRef([]);
-  const presenceUpdateTimer = useRef(null);
-
-  // Advanced Retry Queue with Exponential Backoff logic simulation
-  const processQueue = useCallback(() => {
-    if (offlineQueue.current.length > 0 && socket.connected) {
-      console.log(`Syncing ${offlineQueue.current.length} queued events...`);
-      offlineQueue.current.forEach((item, index) => {
-        // Distributed Scaling: Add jitter to prevent thundering herd
-        setTimeout(() => {
-          socket.emit(item.event, item.payload);
-        }, index * 50);
-      });
-      offlineQueue.current = [];
-    }
-  }, []);
-
-  // Presence Optimization: Batch updates to reduce network traffic
-  const updatePresence = useCallback((status) => {
-    if (presenceUpdateTimer.current) clearTimeout(presenceUpdateTimer.current);
-    
-    presenceUpdateTimer.current = setTimeout(() => {
-      if (socket.connected) {
-        socket.emit('presence_update', { status, ts: Date.now() });
-      }
-    }, 2000); // 2s debounce for presence
-  }, []);
+  const realtime = useRealtimeContext();
 
   useEffect(() => {
-    const handleConnect = () => {
-      setIsConnected(true);
-      processQueue();
-      updatePresence('online');
-    };
-    
-    const handleDisconnect = () => {
-      setIsConnected(false);
-      updatePresence('offline');
-    };
+    if (!event || !callback) return undefined;
+    const unsubscribe = socketManager.on(event, callback);
+    return () => unsubscribe?.();
+  }, [event, callback]);
 
-    const handleOnline = () => {
-      setIsOffline(false);
-      socket.connect();
-    };
-    
-    const handleOffline = () => setIsOffline(true);
-    
-    const handlePresenceSync = (data) => {
-      // Distributed Presence: Merge data from multiple backend nodes
-      setPresence(data);
-    };
+  const emitWithRetry = useCallback((eventName, payload = {}, options = {}) => (
+    socketManager.emit(eventName, payload, { queue: true, ...(options || {}) })
+  ), []);
 
-    socket.on('connect', handleConnect);
-    socket.on('disconnect', handleDisconnect);
-    socket.on('presence_sync', handlePresenceSync);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    // Heartbeat system (Monitoring Health)
-    const heartbeat = setInterval(() => {
-      if (socket.connected) socket.emit('heartbeat', { ts: Date.now() });
-    }, 30000);
-
-    if (event && callback) {
-      socket.on(event, callback);
-    }
-
-    return () => {
-      socket.off('connect', handleConnect);
-      socket.off('disconnect', handleDisconnect);
-      socket.off('presence_sync', handlePresenceSync);
-      if (event) socket.off(event, callback);
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-      clearInterval(heartbeat);
-      if (presenceUpdateTimer.current) clearTimeout(presenceUpdateTimer.current);
-    };
-  }, [event, callback, processQueue, updatePresence]);
-
-  const emitWithRetry = useCallback((eventName, payload) => {
-    if (socket.connected) {
-      socket.emit(eventName, payload);
-    } else {
-      console.warn('Socket disconnected. Adding to advanced retry queue.');
-      // Queue management: limit size for memory optimization
-      if (offlineQueue.current.length < 100) {
-        offlineQueue.current.push({ event: eventName, payload, ts: Date.now() });
-      }
-    }
+  const updatePresence = useCallback((status, extra = {}) => {
+    socketManager.emit('presence_update', { status, ...(extra || {}) }, { queue: false });
   }, []);
 
-  return { isConnected, isOffline, presence, emitWithRetry, updatePresence };
+  return {
+    isConnected: Boolean(realtime.connected),
+    isOffline: typeof navigator === 'undefined' ? false : !navigator.onLine,
+    presence: [],
+    reconnecting: Boolean(realtime.reconnecting),
+    latencyMs: realtime.latencyMs ?? null,
+    outboxSize: Number(realtime.outboxSize || 0),
+    socket: realtime.socket,
+    emitWithRetry,
+    updatePresence,
+  };
 };
+
+export default useRealtime;

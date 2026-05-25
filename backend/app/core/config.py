@@ -100,6 +100,30 @@ def render_origin_regex_from_candidates(*candidates: str) -> str | None:
     return rf'^(?:{"|".join(patterns)})$'
 
 
+def _strip_regex_anchors(pattern: str) -> str:
+    value = (pattern or '').strip()
+    if value.startswith('^'):
+        value = value[1:]
+    if value.endswith('$'):
+        value = value[:-1]
+    return value
+
+
+def combine_origin_regex_patterns(*patterns: str) -> str | None:
+    cleaned = [_strip_regex_anchors(pattern) for pattern in patterns if (pattern or '').strip()]
+    cleaned = [pattern for pattern in cleaned if pattern]
+    if not cleaned:
+        return None
+    unique_patterns: list[str] = []
+    seen: set[str] = set()
+    for pattern in cleaned:
+        if pattern in seen:
+            continue
+        seen.add(pattern)
+        unique_patterns.append(pattern)
+    return rf'^(?:{"|".join(unique_patterns)})$'
+
+
 class Settings:
     PROJECT_NAME: str = os.getenv('PROJECT_NAME', 'YAMSHAT API')
     SERVICE_NAME: str = os.getenv('SERVICE_NAME', 'yamshat-backend')
@@ -236,9 +260,6 @@ class Settings:
 
     @property
     def cors_origin_regex(self) -> str | None:
-        if self.CORS_ORIGIN_REGEX_RAW:
-            return self.CORS_ORIGIN_REGEX_RAW
-
         derived = render_origin_regex_from_candidates(
             self.FRONTEND_ORIGIN,
             self.BACKEND_ORIGIN,
@@ -246,10 +267,13 @@ class Settings:
             self.RAILWAY_STATIC_URL,
             *csv_list(self.CORS_ORIGINS_RAW),
         )
-        if derived:
-            return derived
+        combined = combine_origin_regex_patterns(
+            self.CORS_ORIGIN_REGEX_RAW,
+            derived,
+        )
+        if combined:
+            return combined
 
-        # Allow all Render subdomains safely when explicit origins are unavailable.
         return r'^https://.*\.onrender\.com$'
 
     @property
@@ -261,12 +285,8 @@ class Settings:
                 'http://localhost:3000',
                 'http://localhost:5173',
                 'http://127.0.0.1:5173',
-                'https://yamshatl-11.onrender.com',
-                'https://yamshatl.onrender.com',
-                'https://yamshat1-1-yg1o.onrender.com',
-                'https://yamshat1-1-vg10.onrender.com',
-                'https://yamshat1-ahj8.onrender.com',
-                'https://yamshat1-11.onrender.com',
+                'https://yamshatl-1-yg1o.onrender.com',
+                'https://yamshatl-ahj8.onrender.com',
             ]
 
         origins: list[str] = []

@@ -1,0 +1,7 @@
+YAMSHAT fix applied on 2026-05-25
+- Fixed stale app-config.js caching with versioned script URL
+- Forced no-cache for app-config.js and service-worker files in nginx
+- Updated service workers to never serve stale app-config.js from cache
+- Hardened frontend config priority to prefer current env/build backend over stale runtime/localStorage values
+- Bumped frontend build id to trigger local cache reset after deploy
+- Hardened backend CORS regex composition so stale explicit regex no longer breaks new Render domains

@@ -60,7 +60,7 @@ fastapi_app.add_middleware(
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*'],
-)
+]
 
 if settings.ENABLE_METRICS:
     configure_metrics(fastapi_app, settings.SERVICE_NAME)

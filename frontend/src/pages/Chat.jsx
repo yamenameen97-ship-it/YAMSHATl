@@ -17,7 +17,8 @@ import {
 } from '../api/chat.js';
 import socketManager from '../services/socketManager.js';
 import { getCurrentUsername } from '../utils/auth.js';
-import { useChatStore } from '../store/appStore.js';
+import { useAppStore, useChatStore } from '../store/appStore.js';
+import { MESSAGE_LIFECYCLE, normalizeMessageStatus, withLifecycle } from '../features/chat/messageLifecycle.js';
 import { getChatPreferences, toggleChatPreference } from '../utils/chatPreferences.js';
 import {
   avatarGradient,
@@ -106,6 +107,25 @@ function messageMatchesSearch(message, query) {
     message.sender,
     extractFileName(message),
   ].some((value) => String(value || '').toLowerCase().includes(lowered));
+}
+
+function normalizeChatMessage(message = {}) {
+  return withLifecycle({
+    ...message,
+    id: message?.id ?? message?.message_id ?? message?.client_id,
+    client_id: message?.client_id ?? message?.id ?? message?.message_id,
+  }, message?.status || message?.lifecycle?.status || MESSAGE_LIFECYCLE.SENT);
+}
+
+function dedupeMessages(messages = []) {
+  const merged = new Map();
+  (Array.isArray(messages) ? messages : []).forEach((entry) => {
+    const message = normalizeChatMessage(entry);
+    const key = String(message?.id || message?.client_id || `${message?.sender}:${message?.receiver}:${message?.created_at}`);
+    const previous = merged.get(key);
+    merged.set(key, previous ? normalizeChatMessage({ ...previous, ...message, status: normalizeMessageStatus(message?.status || previous?.status) }) : message);
+  });
+  return Array.from(merged.values()).sort((left, right) => new Date(left?.created_at || 0).getTime() - new Date(right?.created_at || 0).getTime());
 }
 
 function MessageBubble({ message, isMe, onReply, onDelete, highlightQuery = '' }) {
@@ -204,6 +224,7 @@ export default function Chat() {
   const messagesEndRef = useRef(null);
   const searchInputRef = useRef(null);
   const setActivePeer = useChatStore((state) => state.setActivePeer);
+  const queueAction = useAppStore((state) => state.queueAction);
 
   useEffect(() => {
     let active = true;
@@ -226,7 +247,7 @@ export default function Chat() {
     setMsgLoading(true);
     try {
       const { data } = await getMessages(peer, 60);
-      setMessages(data?.items || []);
+      setMessages(dedupeMessages(data?.items || []));
       await markMessagesSeen(peer);
     } catch {
       pushToast({ type: 'error', title: 'خطأ', description: 'تعذر تحميل الرسائل' });
@@ -279,10 +300,10 @@ export default function Chat() {
         const existingIndex = prev.findIndex((item) => item.id === msg.id || (item.client_id && item.client_id === msg.client_id));
         if (existingIndex >= 0) {
           const next = [...prev];
-          next[existingIndex] = { ...next[existingIndex], ...msg };
-          return next.filter((item, index, array) => index === array.findIndex((candidate) => candidate.id === item.id || (candidate.client_id && candidate.client_id === item.client_id)));
+          next[existingIndex] = normalizeChatMessage({ ...next[existingIndex], ...msg });
+          return dedupeMessages(next);
         }
-        return [...prev, msg].filter((item, index, array) => index === array.findIndex((candidate) => candidate.id === item.id || (candidate.client_id && candidate.client_id === item.client_id)));
+        return dedupeMessages([...prev, normalizeChatMessage(msg)]);
       });
       setThreads((prev) => prev.map((item) => item.username === msg.sender || item.username === msg.receiver
         ? { ...item, last_message: msg.content || msg.message, created_at: msg.created_at }
@@ -292,12 +313,12 @@ export default function Chat() {
 
     const onDelivered = (payload) => {
       if (payload?.sender !== currentUser) return;
-      setMessages((prev) => prev.map((item) => payload.message_ids?.includes(item.id) ? { ...item, status: 'delivered' } : item));
+      setMessages((prev) => prev.map((item) => payload.message_ids?.includes(item.id) ? withLifecycle(item, MESSAGE_LIFECYCLE.DELIVERED) : item));
     };
 
     const onSeen = (payload) => {
       if (payload?.sender !== currentUser) return;
-      setMessages((prev) => prev.map((item) => payload.message_ids?.includes(item.id) ? { ...item, status: 'seen' } : item));
+      setMessages((prev) => prev.map((item) => payload.message_ids?.includes(item.id) ? withLifecycle(item, MESSAGE_LIFECYCLE.SEEN) : item));
     };
 
     const onPresence = (payload) => {
@@ -327,7 +348,7 @@ export default function Chat() {
 
     const onDeleted = (payload) => {
       if (!payload?.id) return;
-      setMessages((prev) => prev.map((item) => String(item.id) === String(payload.id) ? { ...item, ...payload, deleted: true } : item));
+      setMessages((prev) => prev.map((item) => String(item.id) === String(payload.id) ? withLifecycle({ ...item, ...payload, deleted: true }, MESSAGE_LIFECYCLE.DELETED) : item));
     };
 
     socketManager.on('message_deleted', onDeleted);
@@ -343,13 +364,58 @@ export default function Chat() {
     };
   }, [currentUser, peer]);
 
+  useEffect(() => {
+    const handleQueuedSent = (event) => {
+      const detail = event?.detail || {};
+      const serverMessage = detail?.response || {};
+      setMessages((prev) => dedupeMessages(prev.map((item) => (
+        String(item.client_id || item.id) === String(detail.client_id || detail.queuedId)
+          ? normalizeChatMessage({ ...item, ...serverMessage, status: serverMessage?.status || MESSAGE_LIFECYCLE.SENT })
+          : item
+      ))));
+    };
+
+    const handleQueuedFailed = (event) => {
+      const detail = event?.detail || {};
+      setMessages((prev) => prev.map((item) => (
+        String(item.client_id || item.id) === String(detail.client_id || detail.queuedId)
+          ? withLifecycle({ ...item, queue_error: detail.error || 'فشل دائم في مزامنة الرسالة' }, detail.permanent ? MESSAGE_LIFECYCLE.FAILED_PERMANENT : MESSAGE_LIFECYCLE.FAILED)
+          : item
+      )));
+    };
+
+    window.addEventListener('yamshat:queued-message-sent', handleQueuedSent);
+    window.addEventListener('yamshat:queued-message-failed', handleQueuedFailed);
+    return () => {
+      window.removeEventListener('yamshat:queued-message-sent', handleQueuedSent);
+      window.removeEventListener('yamshat:queued-message-failed', handleQueuedFailed);
+    };
+  }, []);
+
   const handleSend = async (payload) => {
     const text = payload?.text?.trim() || '';
     const mediaUrl = payload?.media_url || '';
     if (!text && !mediaUrl) return;
 
     const tempId = `tmp-${Date.now()}`;
-    const tempMsg = {
+    const requestPayload = {
+      receiver: peer,
+      message: text,
+      media_url: mediaUrl,
+      media_urls: payload?.media_urls || [],
+      type: mediaUrl ? (payload.type || 'media') : 'text',
+      reply_to_id: replyTo?.id || null,
+      client_id: tempId,
+      security_payload: payload?.securityPayload || null,
+      disappearing_in_seconds: Number(payload?.disappearing_in_seconds || 0),
+      attachments: payload?.attachments || [],
+    };
+
+    const initialStatus = typeof navigator !== 'undefined' && navigator.onLine === false
+      ? MESSAGE_LIFECYCLE.QUEUED
+      : MESSAGE_LIFECYCLE.SYNCING;
+
+    const tempMsg = normalizeChatMessage({
       id: tempId,
       client_id: tempId,
       sender: currentUser,
@@ -359,41 +425,67 @@ export default function Chat() {
       media_url: mediaUrl,
       attachments: payload?.attachments || [],
       attachment_name: payload?.attachments?.[0]?.fileName || payload?.attachments?.[0]?.originalName || '',
-      type: mediaUrl ? (payload.type || 'media') : 'text',
+      type: requestPayload.type,
       created_at: new Date().toISOString(),
-      status: 'sending',
+      status: initialStatus,
       reply_to: replyTo ? { id: replyTo.id, content: replyTo.content || replyTo.message } : null,
-    };
-    setMessages((prev) => [...prev, tempMsg]);
+    });
+
+    setMessages((prev) => dedupeMessages([...prev, tempMsg]));
     setReplyTo(null);
 
-    try {
-      const { data } = await sendMessageApi({
-        receiver: peer,
-        message: text,
-        media_url: mediaUrl,
-        type: tempMsg.type,
-        reply_to_id: replyTo?.id || null,
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      queueAction({
+        type: 'chat:send_message',
+        priority: 'high',
+        payload: requestPayload,
         client_id: tempId,
       });
-      setMessages((prev) => {
-        const merged = prev.map((item) => (
+      pushToast({ type: 'info', title: 'تمت جدولة الرسالة', description: 'الرسالة محفوظة وسيتم إرسالها عند عودة الاتصال.' });
+      return;
+    }
+
+    try {
+      const { data } = await sendMessageApi(requestPayload);
+      setMessages((prev) => dedupeMessages(prev.map((item) => (
+        item.id === tempId || item.client_id === tempId
+          ? normalizeChatMessage({ ...item, ...(data || {}), status: (data || {}).status || MESSAGE_LIFECYCLE.SENT })
+          : item
+      ))));
+    } catch (error) {
+      const statusCode = Number(error?.response?.status || 0);
+      const shouldQueue = !statusCode || statusCode >= 500 || statusCode === 429;
+      if (shouldQueue) {
+        queueAction({
+          type: 'chat:send_message',
+          priority: 'high',
+          payload: requestPayload,
+          client_id: tempId,
+          attempts: 0,
+        });
+        setMessages((prev) => prev.map((item) => (
           item.id === tempId || item.client_id === tempId
-            ? { ...item, ...(data || {}), status: (data || {}).status || 'sent' }
+            ? withLifecycle(item, MESSAGE_LIFECYCLE.RETRYING, { queuedAt: new Date().toISOString() })
             : item
-        ));
-        return merged.filter((item, index, array) => index === array.findIndex((candidate) => candidate.id === item.id || (candidate.client_id && candidate.client_id === item.client_id)));
-      });
-    } catch {
-      setMessages((prev) => prev.filter((item) => item.id !== tempId));
-      pushToast({ type: 'error', title: 'خطأ', description: 'فشل إرسال الرسالة' });
+        )));
+        pushToast({ type: 'warning', title: 'تعذر الإرسال الآن', description: 'تم نقل الرسالة إلى طابور المزامنة.' });
+        return;
+      }
+
+      setMessages((prev) => prev.map((item) => (
+        item.id === tempId || item.client_id === tempId
+          ? withLifecycle(item, MESSAGE_LIFECYCLE.FAILED_PERMANENT, { error: error?.response?.data?.detail || 'فشل إرسال الرسالة' })
+          : item
+      )));
+      pushToast({ type: 'error', title: 'خطأ', description: error?.response?.data?.detail || 'فشل إرسال الرسالة' });
     }
   };
 
   const handleDelete = async (msgId, deleteForEveryone = false) => {
+
     try {
       await deleteMessageApi(msgId, { delete_for_everyone: deleteForEveryone });
-      setMessages((prev) => prev.map((item) => item.id === msgId ? { ...item, deleted: true, deleted_for_everyone: deleteForEveryone, content: '', message: '' } : item));
+      setMessages((prev) => prev.map((item) => item.id === msgId ? withLifecycle({ ...item, deleted: true, deleted_for_everyone: deleteForEveryone, content: '', message: '' }, MESSAGE_LIFECYCLE.DELETED) : item));
       pushToast({ type: 'success', title: deleteForEveryone ? 'تم الحذف للجميع' : 'تم الحذف عندك' });
     } catch {
       pushToast({ type: 'error', title: 'تعذر الحذف' });

@@ -5,6 +5,8 @@ import socketManager from '../../services/socketManager.js';
 import mediaUploadService from '../../services/media/mediaUploadService.js';
 import signalProtocolService from '../../services/chat/signalProtocol.js';
 import { DISAPPEARING_MESSAGE_OPTIONS } from '../../config/mediaConfig.js';
+import { clearChatDraft, loadChatDraft, persistChatDraft } from '../../features/chat/chatDrafts.js';
+import { MESSAGE_LIFECYCLE } from '../../features/chat/messageLifecycle.js';
 
 function emitToast(detail) {
   if (typeof window === 'undefined') return;
@@ -26,9 +28,9 @@ function createAttachmentEntry(file) {
     file,
     kind,
     previewUrl,
-    status: 'queued',
+    status: MESSAGE_LIFECYCLE.QUEUED,
     progress: 0,
-    stage: 'queued',
+    stage: MESSAGE_LIFECYCLE.QUEUED,
     error: '',
     uploadResult: null,
   };
@@ -61,13 +63,21 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
     attachmentsRef.current = attachments;
   }, [attachments]);
 
+  useEffect(() => {
+    if (!peer) {
+      setText('');
+      return;
+    }
+    setText(loadChatDraft(currentUser, peer));
+  }, [currentUser, peer]);
+
   useEffect(() => () => {
     revokeAttachments(attachmentsRef.current);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
   }, []);
 
   const pendingAttachmentCount = useMemo(
-    () => attachments.filter((item) => item.status === 'queued' || item.status === 'uploading').length,
+    () => attachments.filter((item) => item.status === MESSAGE_LIFECYCLE.QUEUED || item.status === MESSAGE_LIFECYCLE.UPLOADING || item.status === MESSAGE_LIFECYCLE.PENDING_UPLOAD).length,
     [attachments],
   );
 
@@ -93,6 +103,7 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
   const handleTyping = (nextValue) => {
     if (composerDisabled) return;
     setText(nextValue);
+    persistChatDraft(currentUser, peer, nextValue);
     if (!peer) return;
     if (!isTypingRef.current && nextValue.trim()) {
       isTypingRef.current = true;
@@ -109,6 +120,7 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
   const resetComposer = () => {
     revokeAttachments(attachments);
     setText('');
+    clearChatDraft(currentUser, peer);
     setAttachments([]);
     setSending(false);
     setShowVoiceRecorder(false);
@@ -159,21 +171,21 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
   };
 
   const uploadAttachment = async (entry) => {
-    updateAttachment(entry.id, { status: 'uploading', progress: 0, stage: 'preparing', error: '' });
+    updateAttachment(entry.id, { status: MESSAGE_LIFECYCLE.PENDING_UPLOAD, progress: 0, stage: 'preparing', error: '' });
     try {
       const uploadResult = await mediaUploadService.uploadFile(entry.file, {
         onProgress: (payload) => {
           updateAttachment(entry.id, {
-            status: payload?.percent >= 100 ? 'uploaded' : 'uploading',
+            status: payload?.percent >= 100 ? MESSAGE_LIFECYCLE.SYNCING : MESSAGE_LIFECYCLE.UPLOADING,
             progress: Number(payload?.percent || 0),
             stage: payload?.stage || 'uploading',
           });
         },
       });
-      updateAttachment(entry.id, { status: 'uploaded', progress: 100, stage: 'done', uploadResult });
+      updateAttachment(entry.id, { status: MESSAGE_LIFECYCLE.SYNCING, progress: 100, stage: 'done', uploadResult });
       return uploadResult;
     } catch (error) {
-      updateAttachment(entry.id, { status: 'failed', error: error?.message || 'فشل الرفع', stage: 'failed' });
+      updateAttachment(entry.id, { status: MESSAGE_LIFECYCLE.FAILED, error: error?.message || 'فشل الرفع', stage: 'failed' });
       throw error;
     }
   };

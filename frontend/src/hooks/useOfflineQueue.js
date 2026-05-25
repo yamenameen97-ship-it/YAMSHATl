@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { sendMessageApi } from '../api/chat.js';
+import { pushDeadLetter, prioritizeQueuedActions } from '../features/chat/offlineQueueRuntime.js';
+import { getCurrentUsername } from '../utils/auth.js';
 import { useAppStore } from '../store/appStore.js';
 import logger from '../utils/logger.js';
 import featureFlags from '../utils/featureFlags.js';
@@ -27,9 +29,10 @@ export default function useOfflineQueue() {
 
     const flushQueue = async () => {
       logger.info('offline queue flush started', { size: queuedActions.length });
-      for (const action of queuedActions) {
+      for (const action of prioritizeQueuedActions(queuedActions)) {
         if (cancelled) break;
         if (action?.type !== 'chat:send_message' || !action?.payload) {
+          pushDeadLetter(getCurrentUsername(), { id: action?.id, payload: action?.payload, error: 'Unknown queue action type', type: action?.type, priority: action?.priority, attempts: action?.attempts });
           dequeueAction(action?.id);
           continue;
         }
@@ -55,12 +58,14 @@ export default function useOfflineQueue() {
           const attempts = Number(action?.attempts || 0) + 1;
           logger.warn('offline queue item failed', { actionId: action.id, status, attempts });
           if (status && status < 500 && status !== 429) {
+            pushDeadLetter(getCurrentUsername(), { id: action.id, payload: action.payload, error: error?.response?.data?.detail || error?.message || 'Queue item failed', type: action?.type, priority: action?.priority, attempts });
             dequeueAction(action.id);
             fireQueueEvent('yamshat:queued-message-failed', {
               queuedId: action.id,
               client_id: action.payload.client_id,
               payload: action.payload,
               error: error?.response?.data?.detail || error?.message || 'Queue item failed',
+              permanent: true,
             });
             continue;
           }

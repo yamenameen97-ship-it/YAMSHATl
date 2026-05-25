@@ -23,6 +23,9 @@ export default function PostComposer() {
   const [isUploading, setIsUploading] = useState(false);
   const [showScheduler, setShowScheduler] = useState(false);
   const [scheduledDate, setScheduledDate] = useState('');
+  const [showPollBuilder, setShowPollBuilder] = useState(false);
+  const [pollQuestion, setPollQuestion] = useState('');
+  const [pollOptions, setPollOptions] = useState(['', '']);
   const [isPinned, setIsPinned] = useState(false);
   const [quoteDraft, setQuoteDraft] = useState(null);
   const [isDragActive, setIsDragActive] = useState(false);
@@ -76,6 +79,9 @@ export default function PostComposer() {
     setUploadProgress(0);
     setScheduledDate('');
     setShowScheduler(false);
+    setShowPollBuilder(false);
+    setPollQuestion('');
+    setPollOptions(['', '']);
     setIsPinned(false);
     setQuoteDraft(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -103,12 +109,17 @@ export default function PostComposer() {
     applySelectedFile(file);
   };
 
-  const canSubmit = Boolean(content.trim() || media || quoteDraft);
+  const normalizedPollOptions = pollOptions.map((item) => item.trim()).filter(Boolean);
+  const canSubmit = Boolean(content.trim() || media || quoteDraft || (showPollBuilder && pollQuestion.trim() && normalizedPollOptions.length >= 2));
 
   const handleSubmit = async (status = 'published') => {
     if (isUploading || !canSubmit) return;
     if (status === 'scheduled' && !scheduledDate) {
       pushToast({ type: 'warning', title: 'حدد وقت الجدولة', description: 'لازم تختار تاريخ ووقت قبل تأكيد الجدولة.' });
+      return;
+    }
+    if (showPollBuilder && (!pollQuestion.trim() || normalizedPollOptions.length < 2)) {
+      pushToast({ type: 'warning', title: 'الاستطلاع غير مكتمل', description: 'اكتب سؤال الاستطلاع وأضف خيارين على الأقل.' });
       return;
     }
     setIsUploading(true);
@@ -126,14 +137,19 @@ export default function PostComposer() {
       }
 
       const { hashtags, mentions } = extractTags(content);
+      const poll = showPollBuilder
+        ? normalizedPollOptions.map((label) => ({ label }))
+        : undefined;
+
       await createPost({
-        content,
+        content: pollQuestion.trim() ? `${pollQuestion.trim()}\n${content}`.trim() : content,
         media_url: mediaUrl,
         status,
         scheduled_at: status === 'scheduled' ? scheduledDate : null,
         is_pinned: isPinned,
         hashtags,
         mentions,
+        poll,
         quote_source_id: quoteDraft?.id || null,
       });
 
@@ -213,6 +229,16 @@ export default function PostComposer() {
           <span>جدولة</span>
         </button>
 
+        <button
+          type="button"
+          className={`composer-action-btn ${showPollBuilder ? 'active' : ''}`}
+          onClick={() => setShowPollBuilder((prev) => !prev)}
+          title="استطلاع"
+        >
+          <span>🗳️</span>
+          <span>استطلاع</span>
+        </button>
+
         <Button
           variant="secondary"
           size="small"
@@ -243,6 +269,38 @@ export default function PostComposer() {
             onChange={(event) => setScheduledDate(event.target.value)}
             className="composer-datetime-input"
           />
+        </div>
+      ) : null}
+
+      {showPollBuilder ? (
+        <div className="composer-scheduler-box" style={{ display: 'grid', gap: 10 }}>
+          <label className="composer-field-label">سؤال الاستطلاع</label>
+          <input
+            type="text"
+            value={pollQuestion}
+            onChange={(event) => setPollQuestion(event.target.value)}
+            className="composer-datetime-input"
+            placeholder="مثال: أي تحسين تحبه أكثر في صفحة المنشورات؟"
+          />
+          <div style={{ display: 'grid', gap: 8 }}>
+            {pollOptions.map((option, index) => (
+              <div key={`poll-option-${index}`} style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="text"
+                  value={option}
+                  onChange={(event) => setPollOptions((prev) => prev.map((item, idx) => idx === index ? event.target.value : item))}
+                  className="composer-datetime-input"
+                  placeholder={`الخيار ${index + 1}`}
+                />
+                {pollOptions.length > 2 ? (
+                  <button type="button" className="composer-chip" onClick={() => setPollOptions((prev) => prev.filter((_, idx) => idx !== index))}>حذف</button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+          {pollOptions.length < 4 ? (
+            <button type="button" className="composer-chip" onClick={() => setPollOptions((prev) => [...prev, ''])}>إضافة خيار</button>
+          ) : null}
         </div>
       ) : null}
 

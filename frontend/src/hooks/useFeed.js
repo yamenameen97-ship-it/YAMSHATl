@@ -15,6 +15,7 @@ export function useFeed(options = {}) {
     limit = 10,
     includeDrafts = false,
     pollingInterval = 30000,
+    initialData,
   } = options;
 
   const effectiveFilter = String(filterType || tab || filter || 'all').trim().toLowerCase();
@@ -49,6 +50,7 @@ export function useFeed(options = {}) {
     staleTime: 5 * 60 * 1000,
     cacheTime: 30 * 60 * 1000,
     refetchOnWindowFocus: true,
+    initialData,
     refetchInterval: (data) => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return false;
       return data?.pages?.length === 1 ? pollingInterval : false;

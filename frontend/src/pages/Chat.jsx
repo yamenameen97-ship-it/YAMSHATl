@@ -558,7 +558,7 @@ export default function Chat() {
   }
 
   return (
-    <MainLayout hideNav>
+    <MainLayout hideNav lockScroll>
       <section className="yam-conversation-screen" dir="rtl">
         <aside className="yam-chat-sidebar">
           <div className="yam-sidebar-brand">
@@ -827,6 +827,7 @@ export default function Chat() {
             flex-direction: column;
             padding: 22px 16px 18px;
             gap: 16px;
+            overflow: auto;
           }
 
           .yam-side-profile-panel {
@@ -1015,9 +1016,11 @@ export default function Chat() {
             display: flex;
             flex-direction: column;
             min-width: 0;
+            min-height: 0;
             background: #040714;
             padding: 18px 22px 0;
             gap: 14px;
+            overflow: hidden;
           }
 
           .yam-stage-top-search {
@@ -1031,6 +1034,9 @@ export default function Chat() {
             padding: 0 18px;
             color: #94a3b8;
             flex-shrink: 0;
+            position: sticky;
+            top: 0;
+            z-index: 6;
           }
 
           .yam-stage-top-search input {
@@ -1053,6 +1059,10 @@ export default function Chat() {
             padding: 0 4px 12px;
             border-bottom: 1px solid rgba(255,255,255,0.05);
             flex-shrink: 0;
+            position: sticky;
+            top: 78px;
+            z-index: 5;
+            background: #040714;
           }
 
           .yam-chat-stage-peer {

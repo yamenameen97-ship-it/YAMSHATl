@@ -115,7 +115,7 @@ export default function Inbox() {
   };
 
   return (
-    <MainLayout hideNav>
+    <MainLayout hideNav lockScroll>
       <section className="yam-shell-page" dir="rtl">
         <div className="yam-chat-shell yam-chat-shell--inbox">
           <aside className="yam-left-rail">
@@ -309,6 +309,8 @@ export default function Inbox() {
         <style>{`
           .yam-shell-page {
             min-height: 100vh;
+            height: 100vh;
+            overflow: hidden;
             background:
               radial-gradient(circle at top right, rgba(124, 58, 237, 0.14), transparent 26%),
               radial-gradient(circle at top left, rgba(59, 130, 246, 0.08), transparent 22%),
@@ -317,10 +319,12 @@ export default function Inbox() {
 
           .yam-chat-shell {
             min-height: 100vh;
+            height: 100vh;
             display: grid;
             grid-template-columns: 300px minmax(0, 1fr) 320px;
             background: rgba(4, 7, 20, 0.98);
             color: #fff;
+            overflow: hidden;
           }
 
           .yam-left-rail,
@@ -337,12 +341,14 @@ export default function Inbox() {
             border-inline-end-width: 1px;
             padding: 22px 16px 18px;
             gap: 18px;
+            overflow: auto;
           }
 
           .yam-profile-panel {
             border-inline-start-width: 1px;
             padding: 28px 20px 20px;
             gap: 18px;
+            overflow: auto;
           }
 
           .yam-brand-block {
@@ -529,8 +535,10 @@ export default function Inbox() {
             display: flex;
             flex-direction: column;
             min-width: 0;
+            min-height: 0;
             padding: 20px 22px 18px;
             gap: 16px;
+            overflow: hidden;
           }
 
           .yam-top-search-bar {
@@ -595,6 +603,7 @@ export default function Inbox() {
           .yam-thread-list {
             overflow: auto;
             min-height: 0;
+            padding-bottom: 18px;
           }
 
           .yam-thread-row {

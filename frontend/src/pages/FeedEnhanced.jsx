@@ -1,10 +1,15 @@
 import { useMemo, useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import YamshatIcon from '../components/yamshat/YamshatIcon.jsx';
 import useSmartFeed from '../hooks/useSmartFeed.js';
 import { formatCompactNumber } from '../components/yamshat/YamshatDesign.js';
-import { getCurrentUsername, getStoredUserSnapshot } from '../utils/auth.js';
+import { useToast } from '../components/admin/ToastProvider.jsx';
+import { useAppStore } from '../store/appStore.js';
+import { BACKEND_ORIGIN } from '../api/config.js';
+import { getCsrfToken } from '../utils/csrf.js';
+import { clearStoredUser, getAuthToken, getCurrentUsername, getStoredUserSnapshot } from '../utils/auth.js';
+import { redirectToAppPath } from '../utils/router.js';
 
 const FEED_TABS = [
   { id: 'favorites', label: 'المفضلة' },
@@ -144,7 +149,55 @@ function MediaTile({ item, index }) {
 }
 
 function PostCard({ post }) {
+  const { pushToast } = useToast();
   const mediaItems = Array.isArray(post.media) ? post.media.slice(0, 3) : [];
+  const [liked, setLiked] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [likesCount, setLikesCount] = useState(Number(post.likes || 0));
+  const [commentsCount, setCommentsCount] = useState(Number(post.comments || 0));
+  const [sharesCount, setSharesCount] = useState(Number(post.shares || 0));
+  const [showComments, setShowComments] = useState(false);
+  const [commentDraft, setCommentDraft] = useState('');
+  const [localComments, setLocalComments] = useState([]);
+
+  const handleLike = () => {
+    setLiked((prev) => {
+      const next = !prev;
+      setLikesCount((count) => Math.max(0, count + (next ? 1 : -1)));
+      return next;
+    });
+  };
+
+  const handleShare = async () => {
+    const postUrl = `${window.location.origin}/#/post/${post.id}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: post.authorName, text: post.text, url: postUrl });
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(postUrl);
+      }
+      setSharesCount((count) => count + 1);
+      pushToast({ type: 'success', title: 'تمت مشاركة المنشور أو نسخ رابطه' });
+    } catch {
+      pushToast({ type: 'info', title: 'تعذر فتح نافذة المشاركة', description: 'تم تجاهل العملية بدون خطأ مؤثر.' });
+    }
+  };
+
+  const handleSave = () => {
+    setSaved((prev) => !prev);
+    pushToast({ type: 'success', title: saved ? 'تمت إزالة المنشور من المحفوظات' : 'تم حفظ المنشور' });
+  };
+
+  const handleAddComment = () => {
+    const content = commentDraft.trim();
+    if (!content) return;
+    setLocalComments((prev) => [{ id: `${post.id}-${Date.now()}`, author: 'أنت', content }, ...prev]);
+    setCommentsCount((count) => count + 1);
+    setCommentDraft('');
+    if (!showComments) setShowComments(true);
+    pushToast({ type: 'success', title: 'تمت إضافة التعليق' });
+  };
+
   return (
     <article className="yam-post-card-v2">
       <div className="yam-post-head-v2">
@@ -179,27 +232,56 @@ function PostCard({ post }) {
           <span className="reaction-bubble like">❤</span>
           <span className="reaction-bubble support">👍</span>
           <span className="reaction-bubble wow">💙</span>
-          <strong>{formatCompactNumber(post.likes || 0)}</strong>
+          <strong>{formatCompactNumber(likesCount)}</strong>
         </div>
         <div className="yam-post-numbers-v2">
-          <span>{formatCompactNumber(post.comments || 0)} تعليق</span>
-          <span>{formatCompactNumber(post.shares || 0)} مشاركة</span>
+          <span>{formatCompactNumber(commentsCount)} تعليق</span>
+          <span>{formatCompactNumber(sharesCount)} مشاركة</span>
           <span>{formatCompactNumber(post.views || 0)} مشاهدة</span>
         </div>
       </div>
 
       <div className="yam-post-actions-v2">
-        <button type="button"><YamshatIcon name="heart" size={17} />أعجبني</button>
-        <button type="button"><YamshatIcon name="comment" size={17} />تعليق</button>
-        <button type="button"><YamshatIcon name="repeat" size={17} />مشاركة</button>
-        <button type="button"><YamshatIcon name="bookmark" size={17} />حفظ</button>
+        <button type="button" className={liked ? 'active' : ''} onClick={handleLike}><YamshatIcon name="heart" size={17} />{liked ? 'تم الإعجاب' : 'أعجبني'}</button>
+        <button type="button" className={showComments ? 'active' : ''} onClick={() => setShowComments((prev) => !prev)}><YamshatIcon name="comment" size={17} />تعليق</button>
+        <button type="button" onClick={handleShare}><YamshatIcon name="repeat" size={17} />مشاركة</button>
+        <button type="button" className={saved ? 'active' : ''} onClick={handleSave}><YamshatIcon name="bookmark" size={17} />{saved ? 'محفوظ' : 'حفظ'}</button>
       </div>
+
+      {showComments ? (
+        <div className="yam-post-comments-panel">
+          <div className="yam-post-comment-composer">
+            <textarea
+              value={commentDraft}
+              onChange={(event) => setCommentDraft(event.target.value)}
+              placeholder="اكتب تعليقك هنا..."
+              rows={3}
+            />
+            <button type="button" className="yam-post-comment-send" onClick={handleAddComment}>إرسال التعليق</button>
+          </div>
+
+          <div className="yam-post-comment-list">
+            {localComments.length ? localComments.map((comment) => (
+              <div key={comment.id} className="yam-post-comment-item">
+                <strong>{comment.author}</strong>
+                <p>{comment.content}</p>
+              </div>
+            )) : <div className="yam-post-comment-empty">لا توجد تعليقات بعد، كن أول من يعلّق.</div>}
+          </div>
+        </div>
+      ) : null}
     </article>
   );
 }
 
 export default function FeedEnhanced() {
+  const navigate = useNavigate();
+  const { pushToast } = useToast();
+  const toggleTheme = useAppStore((state) => state.toggleTheme);
+  const theme = useAppStore((state) => state.theme);
   const [activeTab, setActiveTab] = useState('all');
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const profile = getStoredUserSnapshot();
   const username = getCurrentUsername() || profile?.username || 'ahmed.mohammed';
   const displayName = profile?.profile?.full_name || profile?.name || profile?.full_name || 'أحمد محمد';
@@ -214,8 +296,37 @@ export default function FeedEnhanced() {
   const feedPosts = useMemo(() => buildFeedPosts(posts), [posts]);
   const totalPosts = feedPosts.length ? Math.max(128, feedPosts.length) : 128;
 
+  const handleThemeToggle = () => {
+    toggleTheme();
+    pushToast({ type: 'success', title: theme === 'dark' ? 'تم تفعيل الوضع النهاري' : 'تم تفعيل الوضع الليلي' });
+  };
+
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      const token = getAuthToken();
+      const csrfToken = getCsrfToken();
+      await fetch(`${BACKEND_ORIGIN}/api/auth/logout`, {
+        method: 'POST',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+        },
+        credentials: 'include',
+      });
+    } catch {
+      // ignore transport errors and clear the session anyway
+    } finally {
+      clearStoredUser();
+      setIsSettingsOpen(false);
+      setLoggingOut(false);
+      redirectToAppPath('/login');
+    }
+  };
+
   return (
-    <MainLayout hideNav>
+    <MainLayout hideNav lockScroll>
       <div className="yam-laptop-page" dir="rtl">
         <div className="yam-page-noise" />
         <div className="yam-laptop-shell">
@@ -241,17 +352,17 @@ export default function FeedEnhanced() {
             </nav>
 
             <div className="yam-rail-footer">
-              <div className="yam-dark-toggle-row">
+              <button type="button" className="yam-dark-toggle-row yam-action-surface" onClick={handleThemeToggle} aria-label="تبديل الوضع الليلي">
                 <div className="yam-dark-toggle-copy">
                   <YamshatIcon name="moon" size={18} />
                   <span>الوضع الليلي</span>
                 </div>
-                <span className="yam-dark-toggle-switch active"><span /></span>
-              </div>
+                <span className={`yam-dark-toggle-switch ${theme === 'dark' ? 'active' : ''}`}><span /></span>
+              </button>
 
-              <button type="button" className="yam-logout-btn-desktop">
+              <button type="button" className="yam-logout-btn-desktop" onClick={handleLogout} disabled={loggingOut}>
                 <YamshatIcon name="message" size={16} />
-                <span>تسجيل خروج</span>
+                <span>{loggingOut ? 'جارٍ تسجيل الخروج...' : 'تسجيل خروج'}</span>
               </button>
             </div>
           </aside>
@@ -333,8 +444,22 @@ export default function FeedEnhanced() {
                 </p>
 
                 <div className="yam-profile-actions-v2">
-                  <button type="button" className="yam-primary-action-btn">تعديل الملف الشخصي</button>
-                  <button type="button" className="yam-settings-icon-btn"><YamshatIcon name="menu" size={18} /></button>
+                  <button type="button" className="yam-primary-action-btn" onClick={() => navigate('/profile')}>تعديل الملف الشخصي</button>
+                  <div className="yam-settings-menu-wrap">
+                    <button type="button" className="yam-settings-icon-btn" onClick={() => setIsSettingsOpen((prev) => !prev)} aria-expanded={isSettingsOpen} aria-label="فتح إعدادات سريعة"><YamshatIcon name="menu" size={18} /></button>
+                    {isSettingsOpen ? (
+                      <div className="yam-settings-popover">
+                        <button type="button" className="yam-settings-popover-item" onClick={handleThemeToggle}>
+                          <span>الوضع الليلي</span>
+                          <span className={`yam-dark-toggle-switch small ${theme === 'dark' ? 'active' : ''}`}><span /></span>
+                        </button>
+                        <button type="button" className="yam-settings-popover-item danger" onClick={handleLogout} disabled={loggingOut}>
+                          <span>{loggingOut ? 'جارٍ تسجيل الخروج...' : 'تسجيل خروج'}</span>
+                          <YamshatIcon name="message" size={16} />
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="yam-highlights-row-v2">
@@ -390,12 +515,14 @@ export default function FeedEnhanced() {
           .yam-laptop-shell {
             position: relative;
             width: min(1800px, calc(100% - 28px));
+            height: 100vh;
             margin: 0 auto;
             padding: 20px 0;
             display: grid;
             grid-template-columns: 250px minmax(0, 1fr) 360px;
             gap: 18px;
             align-items: start;
+            overflow: hidden;
           }
 
           .yam-left-rail,
@@ -427,6 +554,9 @@ export default function FeedEnhanced() {
           .yam-left-rail {
             display: grid;
             gap: 16px;
+            max-height: calc(100vh - 40px);
+            overflow: auto;
+            align-self: start;
           }
 
           .yam-logo-card {
@@ -528,6 +658,12 @@ export default function FeedEnhanced() {
             padding: 0 14px;
             background: rgba(255,255,255,0.03);
             color: #e5e7f8;
+            border: 1px solid rgba(255,255,255,0.05);
+          }
+
+          .yam-action-surface {
+            width: 100%;
+            cursor: pointer;
           }
 
           .yam-dark-toggle-copy,
@@ -572,9 +708,18 @@ export default function FeedEnhanced() {
             cursor: pointer;
           }
 
+          .yam-logout-btn-desktop:disabled {
+            opacity: 0.7;
+            cursor: wait;
+          }
+
           .yam-center-stage {
-            display: grid;
+            display: flex;
+            flex-direction: column;
             gap: 18px;
+            min-height: 0;
+            max-height: calc(100vh - 40px);
+            overflow: hidden;
           }
 
           .yam-feed-header-card {
@@ -688,8 +833,13 @@ export default function FeedEnhanced() {
           }
 
           .yam-post-stack-v2 {
+            flex: 1;
+            min-height: 0;
+            overflow: auto;
             display: grid;
             gap: 18px;
+            padding-inline-end: 4px;
+            padding-bottom: 28px;
           }
 
           .yam-post-card-v2 {
@@ -772,6 +922,54 @@ export default function FeedEnhanced() {
             color: #e8ebff;
             display: grid;
             place-items: center;
+          }
+
+          .yam-settings-menu-wrap {
+            position: relative;
+          }
+
+          .yam-settings-popover {
+            position: absolute;
+            top: calc(100% + 10px);
+            inset-inline-end: 0;
+            width: min(260px, 72vw);
+            padding: 10px;
+            border-radius: 18px;
+            border: 1px solid rgba(255,255,255,0.08);
+            background: rgba(8, 12, 26, 0.96);
+            box-shadow: 0 24px 50px rgba(0, 0, 0, 0.34);
+            display: grid;
+            gap: 8px;
+            z-index: 20;
+            backdrop-filter: blur(20px);
+          }
+
+          .yam-settings-popover-item {
+            min-height: 48px;
+            border-radius: 14px;
+            border: 1px solid rgba(255,255,255,0.05);
+            background: rgba(255,255,255,0.03);
+            color: #f3f4ff;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 0 14px;
+            font-weight: 800;
+          }
+
+          .yam-settings-popover-item.danger {
+            color: #fda4af;
+          }
+
+          .yam-dark-toggle-switch.small {
+            width: 42px;
+            height: 24px;
+          }
+
+          .yam-dark-toggle-switch.small span {
+            width: 18px;
+            height: 18px;
           }
 
           .yam-post-copy-v2 {
@@ -908,11 +1106,78 @@ export default function FeedEnhanced() {
             gap: 8px;
             padding: 8px 10px;
             border-radius: 12px;
+            cursor: pointer;
+          }
+
+          .yam-post-actions-v2 button:hover,
+          .yam-post-actions-v2 button.active {
+            background: rgba(124,58,237,0.14);
+            color: #fff;
+          }
+
+          .yam-post-comments-panel {
+            display: grid;
+            gap: 12px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(255,255,255,0.06);
+          }
+
+          .yam-post-comment-composer {
+            display: grid;
+            gap: 10px;
+          }
+
+          .yam-post-comment-composer textarea {
+            width: 100%;
+            border: 1px solid rgba(255,255,255,0.08);
+            background: rgba(255,255,255,0.03);
+            color: #eef2ff;
+            border-radius: 16px;
+            padding: 14px;
+            resize: vertical;
+            min-height: 96px;
+          }
+
+          .yam-post-comment-send {
+            justify-self: flex-start;
+            min-height: 42px;
+            border-radius: 14px;
+            border: 1px solid rgba(167,139,250,0.24);
+            background: linear-gradient(135deg, rgba(124,58,237,0.92), rgba(99,102,241,0.92));
+            color: white;
+            padding: 0 16px;
+            font-weight: 800;
+          }
+
+          .yam-post-comment-list {
+            display: grid;
+            gap: 10px;
+          }
+
+          .yam-post-comment-item,
+          .yam-post-comment-empty {
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.05);
+            background: rgba(255,255,255,0.03);
+            padding: 12px 14px;
+          }
+
+          .yam-post-comment-item p {
+            margin: 6px 0 0;
+            color: #cbd5f5;
+            line-height: 1.8;
+          }
+
+          .yam-post-comment-empty {
+            color: #94a3b8;
           }
 
           .yam-right-rail {
             display: grid;
             gap: 18px;
+            max-height: calc(100vh - 40px);
+            overflow: auto;
+            align-self: start;
           }
 
           .yam-profile-card-v2 {

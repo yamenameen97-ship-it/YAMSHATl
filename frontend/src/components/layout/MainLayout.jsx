@@ -5,7 +5,7 @@ import MobileDock from './MobileDock.jsx';
 import { isNativeShell } from '../../utils/runtime.js';
 import { getScrollPosition, prefetchCriticalRoutes, saveScrollPosition } from '../../utils/navigation.js';
 
-export default function MainLayout({ children, hideNav = false }) {
+export default function MainLayout({ children, hideNav = false, lockScroll = false }) {
   const nativeShell = isNativeShell();
   const location = useLocation();
   const mainRef = useRef(null);
@@ -61,7 +61,7 @@ export default function MainLayout({ children, hideNav = false }) {
         {showTopbar ? <Topbar /> : null}
 
         <main
-          className={`page-content ${nativeShell ? 'native-shell' : ''} ${isTransitioning ? 'is-transitioning' : ''} ${isConversationRoute ? 'conversation-mode' : ''}`}
+          className={`page-content ${nativeShell ? 'native-shell' : ''} ${isTransitioning ? 'is-transitioning' : ''} ${isConversationRoute ? 'conversation-mode' : ''} ${lockScroll ? 'lock-scroll' : ''}`}
           ref={mainRef}
         >
           <div className={`page-shell-glow ${isConversationRoute ? 'conversation-mode' : ''}`} key={location.pathname}>
@@ -113,6 +113,10 @@ export default function MainLayout({ children, hideNav = false }) {
           .page-content.conversation-mode {
             overflow: hidden;
             padding-bottom: 0;
+          }
+
+          .page-content.lock-scroll {
+            overflow: hidden;
           }
 
           .page-content.is-transitioning {

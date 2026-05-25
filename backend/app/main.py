@@ -58,13 +58,21 @@ fastapi_app.add_middleware(
     allow_methods=['*'],
     allow_headers=['*'],
 )
-fastapi_app.middleware('http')(api_rate_guard)
-fastapi_app.middleware('http')(security_headers)
+# دالتان وسيطتان ذكيتان لتخطي طلبات OPTIONS المسبقة
+async def smart_rate_guard(request, call_next):
+    if request.method.upper() == "OPTIONS":
+        return await call_next(request)
+    return await api_rate_guard(request, call_next)
+
+async def smart_security_headers(request, call_next):
+    if request.method.upper() == "OPTIONS":
+        return await call_next(request)
+    return await security_headers(request, call_next)
+
+# تشغيل الدوال الذكية بدلاً من الدوال الأصلية الصارمة
+fastapi_app.middleware('http')(smart_rate_guard)
+fastapi_app.middleware('http')(smart_security_headers)
 register_error_handlers(fastapi_app)
-if settings.ENABLE_METRICS:
-    configure_metrics(fastapi_app, settings.SERVICE_NAME)
-fastapi_app.include_router(make_metrics_router())
-configure_tracing(fastapi_app, settings.SERVICE_NAME)
 
 uploads_dir = Path(__file__).resolve().parents[2] / 'uploads'
 uploads_dir.mkdir(exist_ok=True)

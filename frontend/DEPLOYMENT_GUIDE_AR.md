@@ -62,8 +62,8 @@
 أضف المتغيرات المطلوبة من قسم `VITE_` في ملف `.env.example`:
 
 ```
-VITE_API_URL=https://your-api-url.com
-VITE_SOCKET_URL=https://your-api-url.com
+VITE_API_URL=https://yamshatl-ahj8.onrender.com
+VITE_SOCKET_URL=https://yamshatl-ahj8.onrender.com
 ```
 
 ### الخطوة 4: النشر

@@ -14,7 +14,7 @@ import './styles/mobile-optimization.css';
 import './styles/performance.css';
 import './styles/unified-overrides.css';
 
-const BUILD_ID = 'yamshat-uiux-unified-20260525-r1';
+const BUILD_ID = 'yamshat-uiux-laptop-feed-20260525-r2';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import Button from '../ui/Button.jsx';
 import VoiceRecorder from './VoiceRecorder.jsx';
 import socketManager from '../../services/socketManager.js';
 import mediaUploadService from '../../services/media/mediaUploadService.js';
@@ -7,6 +6,8 @@ import signalProtocolService from '../../services/chat/signalProtocol.js';
 import { DISAPPEARING_MESSAGE_OPTIONS } from '../../config/mediaConfig.js';
 import { clearChatDraft, loadChatDraft, persistChatDraft } from '../../features/chat/chatDrafts.js';
 import { MESSAGE_LIFECYCLE } from '../../features/chat/messageLifecycle.js';
+
+const EMOJI_SET = ['😀', '😂', '😍', '🥹', '👍', '👏', '🔥', '❤️', '💜', '😮', '🤝', '🎉'];
 
 function emitToast(detail) {
   if (typeof window === 'undefined') return;
@@ -47,6 +48,20 @@ function timerLabel(value) {
   return option?.label || 'بدون';
 }
 
+function getAttachmentAccent(kind) {
+  if (kind === 'image') return 'linear-gradient(135deg, rgba(34,197,94,0.26), rgba(16,185,129,0.12))';
+  if (kind === 'video') return 'linear-gradient(135deg, rgba(59,130,246,0.24), rgba(14,165,233,0.12))';
+  if (kind === 'audio') return 'linear-gradient(135deg, rgba(236,72,153,0.24), rgba(168,85,247,0.14))';
+  return 'linear-gradient(135deg, rgba(148,163,184,0.2), rgba(71,85,105,0.1))';
+}
+
+function formatAttachmentMeta(entry) {
+  const sizeMb = (Number(entry?.file?.size || 0) / (1024 * 1024)).toFixed(1);
+  const sizeLabel = Number.isFinite(Number(sizeMb)) ? `${sizeMb} م.ب` : '';
+  const stageLabel = entry?.error ? 'فشل' : entry?.stage || 'جاهز';
+  return [stageLabel, sizeLabel].filter(Boolean).join(' • ');
+}
+
 export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend, peer, securitySnapshot, disabled = false, compact = false }) {
   const [text, setText] = useState('');
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
@@ -54,10 +69,14 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
   const [sending, setSending] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [messageTimer, setMessageTimer] = useState(0);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [inputExpanded, setInputExpanded] = useState(false);
   const typingTimeoutRef = useRef(null);
   const isTypingRef = useRef(false);
   const fileInputRef = useRef(null);
   const attachmentsRef = useRef([]);
+  const textareaRef = useRef(null);
+  const emojiPickerRef = useRef(null);
 
   useEffect(() => {
     attachmentsRef.current = attachments;
@@ -75,6 +94,25 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
     revokeAttachments(attachmentsRef.current);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
   }, []);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = '0px';
+    const nextHeight = Math.min(textarea.scrollHeight, compact ? 180 : 220);
+    textarea.style.height = `${Math.max(compact ? 52 : 56, nextHeight)}px`;
+    setInputExpanded(nextHeight > (compact ? 72 : 86));
+  }, [compact, text]);
+
+  useEffect(() => {
+    if (!showEmojiPicker) return undefined;
+    const handlePointerDown = (event) => {
+      if (emojiPickerRef.current?.contains(event.target)) return;
+      setShowEmojiPicker(false);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [showEmojiPicker]);
 
   const pendingAttachmentCount = useMemo(
     () => attachments.filter((item) => item.status === MESSAGE_LIFECYCLE.QUEUED || item.status === MESSAGE_LIFECYCLE.UPLOADING || item.status === MESSAGE_LIFECYCLE.PENDING_UPLOAD).length,
@@ -125,6 +163,7 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
     setSending(false);
     setShowVoiceRecorder(false);
     setIsRecording(false);
+    setShowEmojiPicker(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (onCancelReply) onCancelReply();
     stopTyping();
@@ -273,67 +312,370 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
     }
   };
 
+  const appendEmoji = (emoji) => {
+    const nextValue = `${text}${emoji}`;
+    handleTyping(nextValue);
+    setShowEmojiPicker(false);
+    textareaRef.current?.focus();
+  };
+
   const signalSummary = securitySnapshot?.enabled
     ? `${securitySnapshot.protocol || 'Signal'} • ${securitySnapshot.status || 'ready'}`
     : 'Signal bootstrap pending';
 
   return (
-    <div
-      style={{
-        padding: compact ? 10 : 12,
-        background: compact ? 'rgba(8,15,29,0.96)' : '#111827',
-        borderTop: '1px solid rgba(255,255,255,0.08)',
-        display: 'grid',
-        gap: 10,
-      }}
-    >
+    <div className={`yam-composer-shell ${compact ? 'compact' : ''} ${inputExpanded ? 'expanded' : ''}`}>
+      <style>{`
+        .yam-composer-shell {
+          position: relative;
+          display: grid;
+          gap: 12px;
+          padding: 14px;
+          border-radius: 28px;
+          border: 1px solid rgba(255,255,255,0.08);
+          background: linear-gradient(180deg, rgba(6,10,23,0.96), rgba(10,15,31,0.98));
+          box-shadow: 0 24px 50px rgba(0,0,0,0.26), inset 0 1px 0 rgba(255,255,255,0.05);
+          transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+        }
+        .yam-composer-shell.compact {
+          border-radius: 26px;
+          padding: 12px;
+        }
+        .yam-composer-shell.expanded {
+          border-color: rgba(167,139,250,0.28);
+          box-shadow: 0 24px 60px rgba(79,70,229,0.18), inset 0 1px 0 rgba(255,255,255,0.06);
+        }
+        .yam-composer-top,
+        .yam-composer-footer,
+        .yam-reply-banner,
+        .yam-attachments-grid,
+        .yam-composer-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .yam-composer-top,
+        .yam-composer-footer {
+          justify-content: space-between;
+          flex-wrap: wrap;
+        }
+        .yam-composer-chip,
+        .yam-timer-select,
+        .yam-emoji-btn,
+        .yam-action-btn,
+        .yam-send-btn,
+        .yam-ghost-btn {
+          transition: all 180ms ease;
+        }
+        .yam-composer-chip {
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.08);
+          background: rgba(255,255,255,0.05);
+          color: #dbe4ff;
+          padding: 8px 12px;
+          font-size: 12px;
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .yam-timer-select {
+          min-height: 38px;
+          border-radius: 999px;
+          padding: 0 12px;
+          border: 1px solid rgba(255,255,255,0.08);
+          background: rgba(15,23,42,0.94);
+          color: #fff;
+          outline: none;
+        }
+        .yam-reply-banner {
+          justify-content: space-between;
+          align-items: flex-start;
+          padding: 12px 14px;
+          border-radius: 20px;
+          border: 1px solid rgba(167,139,250,0.18);
+          background: linear-gradient(135deg, rgba(124,58,237,0.18), rgba(59,130,246,0.08));
+        }
+        .yam-reply-copy {
+          min-width: 0;
+          display: grid;
+          gap: 4px;
+          border-right: 3px solid rgba(196,181,253,0.9);
+          padding-right: 10px;
+        }
+        .yam-reply-copy strong,
+        .yam-reply-copy span,
+        .yam-attachment-copy strong,
+        .yam-attachment-copy span {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .yam-reply-copy span {
+          color: #dbe4ff;
+          opacity: 0.78;
+          font-size: 13px;
+        }
+        .yam-attachments-grid {
+          flex-wrap: wrap;
+          align-items: stretch;
+        }
+        .yam-attachment-card {
+          position: relative;
+          min-width: 0;
+          flex: 1 1 220px;
+          display: grid;
+          gap: 10px;
+          padding: 12px;
+          border-radius: 22px;
+          border: 1px solid rgba(255,255,255,0.08);
+          background: rgba(255,255,255,0.035);
+          overflow: hidden;
+        }
+        .yam-attachment-card::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          opacity: 0.9;
+          pointer-events: none;
+        }
+        .yam-attachment-preview {
+          width: 100%;
+          height: 110px;
+          border-radius: 16px;
+          object-fit: cover;
+          background: rgba(255,255,255,0.04);
+        }
+        .yam-attachment-head,
+        .yam-attachment-meta {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+        }
+        .yam-attachment-head {
+          align-items: flex-start;
+        }
+        .yam-attachment-copy {
+          min-width: 0;
+          display: grid;
+          gap: 4px;
+        }
+        .yam-attachment-copy span {
+          color: #94a3b8;
+          font-size: 12px;
+        }
+        .yam-progress-track {
+          height: 6px;
+          width: 100%;
+          border-radius: 999px;
+          overflow: hidden;
+          background: rgba(255,255,255,0.08);
+        }
+        .yam-progress-fill {
+          height: 100%;
+          border-radius: inherit;
+          background: linear-gradient(90deg, #8b5cf6, #4f46e5);
+        }
+        .yam-composer-row {
+          align-items: flex-end;
+        }
+        .yam-composer-actions {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          position: relative;
+        }
+        .yam-action-btn,
+        .yam-emoji-btn,
+        .yam-ghost-btn {
+          border: 1px solid rgba(255,255,255,0.1);
+          background: rgba(255,255,255,0.05);
+          color: #fff;
+          width: 46px;
+          height: 46px;
+          border-radius: 16px;
+          display: inline-grid;
+          place-items: center;
+          font-size: 18px;
+        }
+        .yam-action-btn:hover,
+        .yam-emoji-btn:hover,
+        .yam-ghost-btn:hover,
+        .yam-send-btn:hover {
+          transform: translateY(-1px);
+          border-color: rgba(167,139,250,0.28);
+          background: rgba(124,58,237,0.14);
+        }
+        .yam-action-btn.active,
+        .yam-emoji-btn.active {
+          background: linear-gradient(135deg, rgba(124,58,237,0.28), rgba(79,70,229,0.22));
+          border-color: rgba(167,139,250,0.34);
+        }
+        .yam-input-frame {
+          flex: 1;
+          min-width: 0;
+          display: flex;
+          align-items: flex-end;
+          gap: 10px;
+          border-radius: 24px;
+          border: 1px solid rgba(255,255,255,0.08);
+          background: rgba(15,23,42,0.92);
+          padding: 8px 10px 8px 14px;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+        }
+        .yam-input-frame textarea {
+          flex: 1;
+          min-width: 0;
+          resize: none;
+          border: none;
+          outline: none;
+          background: transparent;
+          color: #fff;
+          line-height: 1.55;
+          font-size: 15px;
+          font-family: inherit;
+          overflow-y: auto;
+        }
+        .yam-input-frame textarea::placeholder {
+          color: #94a3b8;
+        }
+        .yam-send-btn {
+          border: none;
+          min-width: 54px;
+          height: 54px;
+          border-radius: 20px;
+          background: linear-gradient(135deg, #8b5cf6, #4f46e5);
+          color: #fff;
+          font-weight: 800;
+          padding: 0 16px;
+          box-shadow: 0 14px 28px rgba(79,70,229,0.28);
+        }
+        .yam-send-btn:disabled,
+        .yam-action-btn:disabled,
+        .yam-emoji-btn:disabled,
+        .yam-ghost-btn:disabled,
+        .yam-timer-select:disabled {
+          opacity: 0.55;
+          cursor: not-allowed;
+          transform: none;
+          box-shadow: none;
+        }
+        .yam-emoji-popover {
+          position: absolute;
+          bottom: calc(100% + 10px);
+          right: 0;
+          width: min(320px, calc(100vw - 32px));
+          border-radius: 22px;
+          padding: 14px;
+          border: 1px solid rgba(255,255,255,0.08);
+          background: rgba(8,13,27,0.98);
+          box-shadow: 0 24px 60px rgba(0,0,0,0.32);
+          z-index: 30;
+          display: grid;
+          gap: 10px;
+        }
+        .yam-emoji-grid {
+          display: grid;
+          grid-template-columns: repeat(6, minmax(0, 1fr));
+          gap: 8px;
+        }
+        .yam-emoji-tile {
+          border: 1px solid rgba(255,255,255,0.08);
+          background: rgba(255,255,255,0.04);
+          border-radius: 14px;
+          height: 42px;
+          font-size: 20px;
+        }
+        .yam-composer-footer {
+          color: #94a3b8;
+          font-size: 11px;
+        }
+        @media (max-width: 720px) {
+          .yam-composer-shell {
+            border-radius: 22px;
+            padding: 10px;
+          }
+          .yam-composer-row {
+            gap: 8px;
+          }
+          .yam-action-btn,
+          .yam-emoji-btn,
+          .yam-ghost-btn {
+            width: 42px;
+            height: 42px;
+            border-radius: 14px;
+          }
+          .yam-send-btn {
+            min-width: 48px;
+            height: 48px;
+            border-radius: 16px;
+            padding: 0 14px;
+          }
+          .yam-emoji-grid {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+          }
+        }
+      `}</style>
+
       {!compact ? (
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-            🔐 {signalSummary}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <label style={{ fontSize: 12, color: 'var(--muted)' }}>الرسائل المختفية</label>
-            <select value={messageTimer} disabled={composerDisabled} onChange={(event) => setMessageTimer(Number(event.target.value || 0))} style={{ background: '#0f172a', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '8px 10px' }}>
+        <div className="yam-composer-top">
+          <div className="yam-composer-chip">🔐 {signalSummary}</div>
+          <div className="yam-composer-top" style={{ gap: 8 }}>
+            <label className="yam-composer-chip" style={{ paddingInline: 10 }}>الرسائل المختفية</label>
+            <select
+              value={messageTimer}
+              disabled={composerDisabled}
+              onChange={(event) => setMessageTimer(Number(event.target.value || 0))}
+              className="yam-timer-select"
+            >
               {DISAPPEARING_MESSAGE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
-            <span style={{ fontSize: 12, color: 'var(--muted)' }}>⏱ {timerLabel(messageTimer)}</span>
+            <div className="yam-composer-chip">⏱ {timerLabel(messageTimer)}</div>
           </div>
         </div>
       ) : null}
 
       {replyTo ? (
-        <div style={{ display: 'flex', justifyContent: 'space-between', padding: compact ? '8px 10px' : '8px 12px', background: 'rgba(255,255,255,0.05)', borderRadius: 14, gap: 10 }}>
-          <div style={{ fontSize: 12, borderRight: '2px solid var(--primary)', paddingRight: 8 }}>
-            <div style={{ fontWeight: 'bold' }}>الرد على {replyTo.sender}</div>
-            <div style={{ opacity: 0.75 }}>{replyTo.content || replyTo.message}</div>
+        <div className="yam-reply-banner">
+          <div className="yam-reply-copy">
+            <strong>رد على {replyTo.sender || peer}</strong>
+            <span>{replyTo.content || replyTo.message || 'رسالة بدون نص'}</span>
           </div>
-          <button type="button" onClick={onCancelReply} disabled={composerDisabled} style={{ background: 'none', border: 'none', color: 'white' }}>×</button>
+          <button type="button" className="yam-ghost-btn" onClick={onCancelReply} disabled={composerDisabled} aria-label="إلغاء الرد">×</button>
         </div>
       ) : null}
 
       {attachments.length > 0 ? (
-        <div style={{ display: 'grid', gap: 8 }}>
+        <div className="yam-attachments-grid">
           {attachments.map((entry) => (
-            <div key={entry.id} style={{ display: 'grid', gap: 8, padding: 10, borderRadius: 14, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                  {entry.previewUrl && entry.kind === 'image' ? <img src={entry.previewUrl} alt={entry.file.name} style={{ width: 56, height: 56, borderRadius: 12, objectFit: 'cover' }} /> : null}
-                  {entry.previewUrl && entry.kind === 'video' ? <video src={entry.previewUrl} style={{ width: 56, height: 56, borderRadius: 12, objectFit: 'cover' }} /> : null}
-                  {entry.kind === 'audio' && entry.previewUrl ? <audio src={entry.previewUrl} controls style={{ maxWidth: 220 }} /> : null}
-                  {!entry.previewUrl ? <div style={{ width: 56, height: 56, borderRadius: 12, display: 'grid', placeItems: 'center', background: 'rgba(139,92,246,0.15)' }}>📄</div> : null}
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{entry.file.name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--muted)' }}>{entry.stage} • {entry.progress}%</div>
-                    {entry.error ? <div style={{ fontSize: 12, color: '#fca5a5' }}>{entry.error}</div> : null}
-                  </div>
+            <div key={entry.id} className="yam-attachment-card" style={{ background: getAttachmentAccent(entry.kind) }}>
+              <div className="yam-attachment-head">
+                <div className="yam-attachment-copy">
+                  <strong>{entry.file.name}</strong>
+                  <span>{formatAttachmentMeta(entry)}</span>
                 </div>
-                <button type="button" onClick={() => removeAttachment(entry.id)} disabled={composerDisabled} style={{ background: 'none', border: 'none', color: '#fca5a5' }}>حذف</button>
+                <button type="button" className="yam-ghost-btn" onClick={() => removeAttachment(entry.id)} disabled={composerDisabled} aria-label="حذف المرفق">×</button>
               </div>
-              <div style={{ height: 6, borderRadius: 999, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
-                <div style={{ width: `${entry.progress}%`, height: '100%', background: entry.status === 'failed' ? '#ef4444' : '#8b5cf6', transition: 'width 0.2s ease' }} />
+
+              {entry.previewUrl && entry.kind === 'image' ? <img src={entry.previewUrl} alt={entry.file.name} className="yam-attachment-preview" /> : null}
+              {entry.previewUrl && entry.kind === 'video' ? <video src={entry.previewUrl} className="yam-attachment-preview" muted /> : null}
+              {entry.kind === 'audio' && entry.previewUrl ? <audio src={entry.previewUrl} controls style={{ width: '100%' }} /> : null}
+              {!entry.previewUrl ? <div className="yam-attachment-preview" style={{ display: 'grid', placeItems: 'center', fontSize: 30 }}>📄</div> : null}
+
+              <div className="yam-attachment-meta">
+                <span style={{ fontSize: 12, color: '#dbe4ff' }}>{entry.progress}%</span>
+                {entry.error ? <span style={{ fontSize: 12, color: '#fecaca' }}>{entry.error}</span> : null}
+              </div>
+              <div className="yam-progress-track">
+                <div
+                  className="yam-progress-fill"
+                  style={{
+                    width: `${entry.progress}%`,
+                    background: entry.status === MESSAGE_LIFECYCLE.FAILED ? '#ef4444' : 'linear-gradient(90deg, #8b5cf6, #4f46e5)',
+                  }}
+                />
               </div>
             </div>
           ))}
@@ -351,65 +693,85 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
         />
       ) : null}
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, direction: 'rtl' }}>
-        <button type="button" disabled={composerDisabled} style={{ background: 'none', border: 'none', fontSize: 20 }} onClick={() => emitToast({ type: 'info', title: 'الإيموجي', description: 'استخدم لوحة الإيموجي في جهازك أو لوحة المفاتيح.' })}>😊</button>
-        <label style={{ cursor: composerDisabled ? 'not-allowed' : 'pointer', opacity: composerDisabled ? 0.55 : 1 }}>
-          <input ref={fileInputRef} type="file" hidden multiple disabled={composerDisabled} onChange={(event) => handleFilesAdded(event.target.files)} />
-          <span style={{ fontSize: 20 }}>📎</span>
-        </label>
-        <button
-          type="button"
-          disabled={composerDisabled}
-          onClick={() => setShowVoiceRecorder((prev) => !prev)}
-          style={{
-            background: showVoiceRecorder || isRecording ? '#8b5cf6' : 'transparent',
-            border: '1px solid rgba(255,255,255,0.12)',
-            width: compact ? 46 : 40,
-            height: compact ? 46 : 40,
-            borderRadius: compact ? 16 : '50%',
-            color: 'white',
-            flexShrink: 0,
-          }}
-        >
-          🎤
-        </button>
+      <div className="yam-composer-row">
+        <div className="yam-composer-actions" ref={emojiPickerRef}>
+          <button
+            type="button"
+            className={`yam-emoji-btn ${showEmojiPicker ? 'active' : ''}`}
+            disabled={composerDisabled}
+            onClick={() => setShowEmojiPicker((prev) => !prev)}
+            aria-label="إيموجي"
+          >
+            😊
+          </button>
 
-        <input
-          type="text"
-          disabled={composerDisabled}
-          placeholder={disabled ? 'المحادثة معطلة حالياً' : peer ? `اكتب رسالة إلى ${peer}...` : 'اكتب رسالة...'}
-          value={text}
-          onChange={(event) => handleTyping(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
-              event.preventDefault();
-              handleSend();
-            }
-          }}
-          style={{
-            flex: 1,
-            minWidth: 0,
-            background: '#1f2937',
-            border: '1px solid rgba(255,255,255,0.08)',
-            padding: compact ? '15px 18px' : '12px 14px',
-            borderRadius: compact ? 20 : 18,
-            color: 'white',
-            outline: 'none',
-            minHeight: compact ? 54 : 48,
-          }}
-        />
+          {showEmojiPicker ? (
+            <div className="yam-emoji-popover">
+              <strong style={{ fontSize: 13 }}>ردود سريعة</strong>
+              <div className="yam-emoji-grid">
+                {EMOJI_SET.map((emoji) => (
+                  <button key={emoji} type="button" className="yam-emoji-tile" onClick={() => appendEmoji(emoji)}>{emoji}</button>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
-        <Button onClick={handleSend} loading={sending} disabled={composerDisabled || sending || (!text.trim() && attachments.length === 0)}>
-          إرسال
-        </Button>
+          <label className="yam-action-btn" style={{ cursor: composerDisabled ? 'not-allowed' : 'pointer' }} aria-label="إرفاق ملف">
+            <input ref={fileInputRef} type="file" hidden multiple disabled={composerDisabled} onChange={(event) => handleFilesAdded(event.target.files)} />
+            📎
+          </label>
+
+          <button
+            type="button"
+            className={`yam-action-btn ${showVoiceRecorder || isRecording ? 'active' : ''}`}
+            disabled={composerDisabled}
+            onClick={() => {
+              setShowVoiceRecorder((prev) => !prev);
+              setShowEmojiPicker(false);
+            }}
+            aria-label="رسالة صوتية"
+          >
+            🎤
+          </button>
+        </div>
+
+        <div className="yam-input-frame">
+          <textarea
+            ref={textareaRef}
+            disabled={composerDisabled}
+            placeholder={disabled ? 'المحادثة معطلة حالياً' : peer ? `اكتب رسالة إلى ${peer}...` : 'اكتب رسالة...'}
+            value={text}
+            rows={1}
+            onChange={(event) => handleTyping(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                handleSend();
+              }
+            }}
+          />
+
+          <button
+            type="button"
+            className="yam-send-btn"
+            onClick={handleSend}
+            disabled={composerDisabled || sending || (!text.trim() && attachments.length === 0)}
+          >
+            {sending ? '...' : compact ? '➤' : 'إرسال'}
+          </button>
+        </div>
       </div>
 
-      {compact ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, color: '#94a3b8', fontSize: 11 }}>
-          <span>{pendingAttachmentCount > 0 ? `مرفقات قيد الإرسال: ${pendingAttachmentCount}` : 'مساحة كتابة واسعة بدون هيدر جانبي'}</span>
-          <span>{messageTimer ? `الاختفاء: ${timerLabel(messageTimer)}` : 'الرسائل العادية مفعلة'}</span>
-        </div>
-      ) : null}
+      <div className="yam-composer-footer">
+        <span>
+          {pendingAttachmentCount > 0
+            ? `مرفقات قيد الإرسال: ${pendingAttachmentCount}`
+            : inputExpanded
+              ? 'مساحة كتابة ممتدة مع Shift + Enter لسطر جديد'
+              : 'إدخال قابل للتمدد + معاينة مرفقات + تسجيل صوتي + إيموجي'}
+        </span>
+        <span>{messageTimer ? `الاختفاء: ${timerLabel(messageTimer)}` : 'وضع الرسائل العادية'}</span>
+      </div>
     </div>
   );
 }

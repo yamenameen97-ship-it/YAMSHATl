@@ -1,0 +1,620 @@
+/* ============================================================
+   Yamshat Mobile-First UX System
+   ============================================================
+   ترتيب التحميل: يجب أن يُحمَّل بعد global.css و theme.css
+   الفلسفة:
+     - mobile-first: الأنماط الافتراضية للموبايل
+     - desktop overrides داخل @media (min-width: 1024px)
+     - safe-area-inset لدعم الأجهزة الحديثة (notch / home indicator)
+     - svh / dvh لمعالجة لوحة المفاتيح والـ URL bar الديناميكي
+     - touch targets ≥ 44×44 (WCAG / Apple HIG)
+   ============================================================ */
+
+:root {
+  /* مسافات الـ safe area */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+
+  /* أحجام أشرطة التطبيق */
+  --yam-topbar-h: 56px;
+  --yam-bottomnav-h: 64px;
+  --yam-tap-min: 44px;
+
+  /* ارتفاع الـ viewport (يحترم لوحة المفاتيح على الموبايل عبر JS متغير --yam-vh) */
+  --yam-vh: 100vh;
+}
+
+/* استخدم svh عند توفره — مثالي للموبايل */
+@supports (height: 100svh) {
+  :root {
+    --yam-vh: 100svh;
+  }
+}
+
+/* ===== Base mobile-first reset ===== */
+html, body {
+  /* امنع التحريك الأفقي ولكن اسمح بالعمودي */
+  overflow-x: hidden;
+  /* تجنب bounce overscroll عند الـ root */
+  overscroll-behavior-y: contain;
+  /* لا تكبّر النص تلقائياً في landscape على iOS */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  /* امنع double-tap zoom في iOS Safari */
+  touch-action: manipulation;
+}
+
+#root {
+  min-height: var(--yam-vh);
+  /* احترم الـ safe area على المستوى الأعلى */
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+
+/* ===== Touch targets — تكبير جميع العناصر التفاعلية ===== */
+button,
+a.btn,
+.btn,
+.icon-btn,
+.mini-action,
+.ghost-btn,
+.reaction-btn,
+.nav-link,
+.ui-bottom-nav-item,
+.ui-topbar-link,
+.yam-account-link,
+.mobile-dock-link,
+.mobile-dock-plus,
+input[type='button'],
+input[type='submit'],
+input[type='reset'] {
+  min-height: var(--yam-tap-min);
+  min-width: var(--yam-tap-min);
+  /* امنع تحديد النص عند الضغط المطوّل */
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+/* استثناء روابط النص داخل الفقرات */
+p a,
+.muted a,
+small a {
+  min-height: 0;
+  min-width: 0;
+}
+
+/* حقول الإدخال يجب ألا تقلّ عن 44px ولا 16px في الخط (لتجنّب zoom على iOS) */
+input,
+textarea,
+select {
+  min-height: var(--yam-tap-min);
+  font-size: max(16px, 1rem);
+}
+
+/* ===== Layouts: Mobile vs Desktop ===== */
+
+/* المحاولة الافتراضية: mobile layout */
+.mobile-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: var(--yam-vh);
+}
+
+.mobile-content {
+  flex: 1;
+  min-height: 0;
+  /* اترك مساحة للـ bottom nav + safe area */
+  padding-bottom: calc(var(--yam-bottomnav-h) + var(--safe-bottom) + 8px);
+  /* اسمح بالتمرير الداخلي */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
+.desktop-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) 320px;
+  gap: 0;
+  min-height: var(--yam-vh);
+}
+
+@media (max-width: 1023.98px) {
+  .desktop-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .desktop-layout > aside,
+  .desktop-layout > .sidebar,
+  .desktop-layout > .right-panel {
+    display: none;
+  }
+}
+
+/* ===== Top bar — sticky مع safe-area-inset-top ===== */
+.ui-topbar,
+.yam-topbar-shell,
+.topbar.yamshat-topbar,
+.admin-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  padding-top: calc(12px + var(--safe-top));
+  padding-inline: max(12px, var(--safe-left));
+  background: rgba(9, 7, 15, 0.92);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+/* الـ topbar على الموبايل: أبسط، أكثر إحكاماً */
+@media (max-width: 1023.98px) {
+  .ui-topbar-track {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .ui-topbar-track::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ui-topbar-nav {
+    display: none; /* الـ nav يظهر في BottomNav بدلاً منه */
+  }
+
+  .ui-topbar-actions,
+  .ui-topbar-account {
+    flex-shrink: 0;
+  }
+
+  .ui-topbar-brand-copy {
+    font-size: 1.05rem;
+  }
+}
+
+/* ===== Bottom Navigation — fixed + safe-area ===== */
+.ui-bottom-nav,
+.bottom-nav {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 50;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  padding: 8px max(8px, var(--safe-left)) calc(8px + var(--safe-bottom)) max(8px, var(--safe-right));
+  background: rgba(10, 8, 18, 0.96);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-top: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  min-height: calc(var(--yam-bottomnav-h) + var(--safe-bottom));
+}
+
+.ui-bottom-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 4px;
+  border-radius: 14px;
+  color: var(--muted, #94a3b8);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.15s ease, color 0.15s ease;
+  position: relative;
+}
+
+.ui-bottom-nav-item.is-active {
+  color: var(--text, #fff);
+  background: linear-gradient(180deg, rgba(142, 61, 255, 0.22), rgba(110, 34, 245, 0.08));
+}
+
+.ui-bottom-nav-icon {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.ui-bottom-nav-label {
+  font-size: 0.7rem;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.ui-bottom-nav-badge {
+  position: absolute;
+  top: 4px;
+  inset-inline-end: 14px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: linear-gradient(90deg, #a24bff, #6e22f5);
+  color: #fff;
+  font-size: 0.66rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* أخفِ الـ bottom nav على الديسكتوب */
+@media (min-width: 1024px) {
+  .ui-bottom-nav,
+  .bottom-nav,
+  .mobile-dock {
+    display: none !important;
+  }
+
+  .mobile-content {
+    padding-bottom: 0;
+  }
+}
+
+/* ===== Chat overflow + keyboard handling ===== */
+.chat-window-container,
+.chat-panel,
+.chat-shell {
+  /* استخدم svh ليتجاوب مع لوحة المفاتيح على الموبايل */
+  height: 100svh;
+  max-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+@supports not (height: 100svh) {
+  .chat-window-container,
+  .chat-panel,
+  .chat-shell {
+    height: var(--yam-vh);
+    max-height: var(--yam-vh);
+  }
+}
+
+.chat-window-container .messages-scroll-area,
+.chat-panel .messages-shell,
+.messages-shell {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  /* مسافة آمنة فوق الـ composer */
+  padding-bottom: calc(12px + var(--safe-bottom));
+  scroll-behavior: smooth;
+}
+
+/* الـ composer ثابت في الأسفل ويحترم safe area + لوحة المفاتيح */
+.chat-input,
+.chat-composer,
+.composer-card {
+  position: sticky;
+  bottom: 0;
+  background: rgba(9, 7, 15, 0.96);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  padding: 10px max(10px, var(--safe-left)) calc(10px + var(--safe-bottom)) max(10px, var(--safe-right));
+  border-top: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  z-index: 10;
+}
+
+/* داخل صفحة الـ chat — لا نريد الـ bottom nav يخفي composer */
+.chat-page .mobile-content,
+body.is-chat-open .mobile-content {
+  padding-bottom: 0;
+}
+
+body.is-chat-open .ui-bottom-nav,
+body.is-chat-open .bottom-nav {
+  display: none !important;
+}
+
+/* فقاعات الرسائل: امنع overflow أفقياً مع كسر الكلمات الطويلة */
+.message-bubble,
+.message-bubble p,
+.message-text {
+  max-width: 100%;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.message-bubble img,
+.message-bubble video,
+.message-image,
+.preview-image,
+.smart-media-preview img,
+.smart-media-preview video {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+.message-row {
+  max-width: 100%;
+  padding-inline: 4px;
+}
+
+@media (max-width: 480px) {
+  .message-bubble {
+    max-width: 88%;
+    padding: 10px 12px;
+    border-radius: 18px;
+  }
+}
+
+/* ===== Modals & sheets: تكبير منطقة اللمس + safe area ===== */
+.modal-card,
+.sheet-card {
+  padding-bottom: calc(20px + var(--safe-bottom));
+}
+
+@media (max-width: 640px) {
+  .modal-backdrop {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .modal-card {
+    width: 100% !important;
+    max-width: 100%;
+    border-radius: 24px 24px 0 0 !important;
+    max-height: 92svh;
+  }
+}
+
+/* ===== Page content على الموبايل ===== */
+@media (max-width: 1023.98px) {
+  .page-content,
+  .admin-page-shell {
+    padding: 14px max(14px, var(--safe-left)) calc(14px + var(--safe-bottom)) max(14px, var(--safe-right));
+  }
+
+  /* أخفِ الـ admin sidebar على الموبايل */
+  .admin-sidebar,
+  .sidebar.yamshat-sidebar {
+    display: none;
+  }
+
+  /* الصفحات الأساسية يجب ألا تختفي خلف الـ bottom nav */
+  main:not(.chat-window-container):not(.chat-panel) {
+    padding-bottom: calc(var(--yam-bottomnav-h) + var(--safe-bottom) + 12px);
+  }
+}
+
+/* ===== Sidebar = drawer على الموبايل ===== */
+@media (max-width: 1023.98px) {
+  .sidebar.is-mobile-drawer {
+    position: fixed;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: min(86vw, 320px);
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    z-index: 70;
+    padding-top: calc(20px + var(--safe-top));
+    padding-bottom: calc(20px + var(--safe-bottom));
+  }
+
+  [dir='rtl'] .sidebar.is-mobile-drawer {
+    transform: translateX(100%);
+  }
+
+  .sidebar.is-mobile-drawer.open {
+    transform: translateX(0) !important;
+  }
+}
+
+/* ===== Focus visibility — أكثر وضوحاً على الأجهزة اللمسية ===== */
+:focus-visible {
+  outline: 2px solid #a24bff;
+  outline-offset: 2px;
+}
+
+/* ===== Image / video safety ===== */
+img, video, canvas, svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ===== Tables → scrollable على الموبايل ===== */
+@media (max-width: 768px) {
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* ===== Utility: hide-on-mobile / desktop ===== */
+@media (max-width: 1023.98px) {
+  .desktop-only { display: none !important; }
+}
+
+@media (min-width: 1024px) {
+  .mobile-only { display: none !important; }
+}
+
+/* ===== reduce motion ===== */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================================
+   ChatWindow polish — pinned bar, context menu, thread overlay
+   ============================================================ */
+.pinned-messages-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: rgba(139, 92, 246, 0.1);
+  border-bottom: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  z-index: 5;
+  flex-shrink: 0;
+}
+
+.pinned-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pinned-text {
+  font-size: 0.85rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pinned-close {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  min-width: var(--yam-tap-min);
+  min-height: var(--yam-tap-min);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pinned-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.messages-scroll-area {
+  padding: 16px 12px;
+}
+
+@media (max-width: 480px) {
+  .messages-scroll-area {
+    padding: 12px 8px;
+  }
+}
+
+.reply-thread-preview {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 8px 10px;
+  border-radius: 10px;
+  margin-bottom: 8px;
+  font-size: 0.78rem;
+  border-inline-start: 3px solid var(--primary, #8b5cf6);
+}
+
+.reply-thread-preview .reply-sender {
+  font-weight: 700;
+  color: var(--primary, #c4b5fd);
+  margin-bottom: 2px;
+}
+
+.smart-media-preview {
+  border-radius: 14px;
+  overflow: hidden;
+  margin-bottom: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.smart-media-preview img,
+.smart-media-preview video {
+  width: 100%;
+  max-height: 320px;
+  object-fit: cover;
+  cursor: pointer;
+}
+
+.message-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+  font-size: 0.7rem;
+  gap: 8px;
+}
+
+.context-menu {
+  background: #1a1a2e;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 6px 0;
+  z-index: 1000;
+  min-width: 180px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.context-menu button {
+  width: 100%;
+  padding: 12px 16px;
+  text-align: start;
+  background: none;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.92rem;
+  min-height: var(--yam-tap-min);
+  display: block;
+}
+
+.context-menu button:hover,
+.context-menu button:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.context-menu button.danger {
+  color: #ff7a8c;
+}
+
+.thread-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--bg, #09070f);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+}
+
+.thread-header {
+  padding: 14px max(14px, var(--safe-left)) 14px max(14px, var(--safe-right));
+  padding-top: calc(14px + var(--safe-top));
+  border-bottom: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.thread-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+/* عند وجود لوحة مفاتيح مفتوحة، أخفِ bottom-nav */
+html[data-keyboard='open'] .ui-bottom-nav,
+html[data-keyboard='open'] .bottom-nav,
+html[data-keyboard='open'] .mobile-dock {
+  display: none !important;
+}
+
+html[data-keyboard='open'] .mobile-content {
+  padding-bottom: 0 !important;
+}

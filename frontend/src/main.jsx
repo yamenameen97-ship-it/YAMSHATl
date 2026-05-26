@@ -14,9 +14,10 @@ import './styles/mobile-optimization.css';
 import './styles/performance.css';
 import './styles/unified-overrides.css';
 import './styles/mobile-first.css';
+import './styles/design-system.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 
-const BUILD_ID = 'yamshat-ui-system-20260526-r3-ui-fixes';
+const BUILD_ID = 'yamshat-ui-system-20260526-r4-stage2-design-system';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

@@ -25,7 +25,9 @@ function BottomNav({ items = [], className = '' }) {
           >
             <span className="ui-bottom-nav-icon" aria-hidden="true">{item.icon}</span>
             <span className="ui-bottom-nav-label">{item.label}</span>
-            {item.badge ? (
+            {item.badge === 'live' ? (
+              <span className="mobile-live-dot" aria-hidden="true" />
+            ) : item.badge ? (
               <strong className="ui-bottom-nav-badge" aria-label={`${item.badge} غير مقروء`}>
                 {item.badge}
               </strong>

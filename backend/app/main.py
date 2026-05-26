@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-import app.models  # noqa: F401
+import app.models # noqa: F401
 from app.api.routes import admin, analytics, auth, chat, comments, follow, groups, inbox, live, notifications, posts, search, stories, upload, users, ws
 from app.core.api_guard import api_rate_guard
 from app.core.config import settings
@@ -46,17 +46,20 @@ fastapi_app = FastAPI(
     lifespan=lifespan,
 )
 
-fastapi_app.middleware('http')(api_rate_guard)
-fastapi_app.middleware('http')(security_headers)
-register_error_handlers(fastapi_app)
+# مهم: CORS لازم يكون أول middleware عشان يعالج OPTIONS preflight قبل أي شيء ثاني
 fastapi_app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=[], # نخليه فاضي ونعتمد على الـ regex
     allow_origin_regex=settings.cors_origin_regex,
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*'],
 )
+
+# بعد CORS نضيف باقي الـ middlewares
+fastapi_app.middleware('http')(api_rate_guard)
+fastapi_app.middleware('http')(security_headers)
+register_error_handlers(fastapi_app)
 
 if settings.ENABLE_METRICS:
     configure_metrics(fastapi_app, settings.SERVICE_NAME)

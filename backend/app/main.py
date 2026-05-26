@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import socketio
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
@@ -39,6 +39,7 @@ fastapi_app = FastAPI(
     lifespan=lifespan,
 )
 
+# 1. إعداد الـ CORS بدقة
 fastapi_app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -53,19 +54,20 @@ fastapi_app.add_middleware(
     allow_headers=['*'],
 )
 
-# دوال وسيطة ذكية لتخطي القيود للمسارات الأساسية
-async def smart_rate_guard(request, call_next):
+# 2. الدوال الوسيطة الذكية (تخطي القيود للمسارات الحساسة)
+async def smart_rate_guard(request: Request, call_next):
     safe_paths = ["captcha", "refresh", "login", "verify", "auth"]
     if request.method.upper() == "OPTIONS" or any(path in request.url.path for path in safe_paths):
         return await call_next(request)
     return await api_rate_guard(request, call_next)
 
-async def smart_security_headers(request, call_next):
+async def smart_security_headers(request: Request, call_next):
     safe_paths = ["captcha", "refresh", "login", "verify", "auth"]
     if request.method.upper() == "OPTIONS" or any(path in request.url.path for path in safe_paths):
         return await call_next(request)
     return await security_headers(request, call_next)
 
+# تطبيق الدوال الوسيطة
 fastapi_app.middleware('http')(smart_rate_guard)
 fastapi_app.middleware('http')(smart_security_headers)
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { memo, useState } from 'react';
 import { motion } from 'framer-motion';
 
 const REACTIONS = ['❤️', '🔥', '😂', '👏', '👍', '😮'];
@@ -10,7 +10,7 @@ const REACTIONS = ['❤️', '🔥', '😂', '👏', '👍', '😮'];
  * - Message Reactions & Actions
  * - Reply Support
  */
-export default function MessageBubble({ message, isMine, onReply, onRetry }) {
+function MessageBubble({ message, isMine, onReply, onRetry }) {
   const [showActions, setShowActions] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
 
@@ -194,3 +194,5 @@ export default function MessageBubble({ message, isMine, onReply, onRetry }) {
     </div>
   );
 }
+
+export default memo(MessageBubble);

@@ -13,6 +13,8 @@ import notificationService from './services/notificationService.js';
 import './styles/mobile-optimization.css';
 import './styles/performance.css';
 import './styles/unified-overrides.css';
+import './styles/mobile-first.css';
+import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 
 const BUILD_ID = 'yamshat-ui-system-20260526-r2-component-library-login-fix';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
@@ -71,6 +73,7 @@ if (typeof window !== 'undefined') {
   window.__YAMSHAT_SW_READY__ = Promise.resolve(null);
   initializePerformanceToolkit();
   initializeRuntimeErrorCapture();
+  initializeViewportTracker();
 
   window.addEventListener('beforeinstallprompt', (event) => {
     event.preventDefault();

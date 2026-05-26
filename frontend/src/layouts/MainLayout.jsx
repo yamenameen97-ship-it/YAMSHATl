@@ -1,27 +1,19 @@
-import { useEffect, useState } from "react";
-import MobileLayout from "./MobileLayout";
-import DesktopLayout from "./DesktopLayout";
+import { memo } from 'react';
+import MobileLayout from './MobileLayout';
+import DesktopLayout from './DesktopLayout';
+import useIsMobile from '../hooks/useIsMobile.js';
 
-export default function MainLayout({ children }) {
-
-  const [mobile, setMobile] = useState(
-    window.innerWidth < 1024
-  );
-
-  useEffect(() => {
-
-    const handleResize = () => {
-      setMobile(window.innerWidth < 1024);
-    };
-
-    window.addEventListener("resize", handleResize);
-
-    return () =>
-      window.removeEventListener("resize", handleResize);
-
-  }, []);
-
+/**
+ * MainLayout
+ * ----------
+ * يستخدم useIsMobile (matchMedia) بدل resize listener
+ * لتقليل rerenders. memo يمنع الإعادة عندما لا تتغير children.
+ */
+function MainLayout({ children }) {
+  const mobile = useIsMobile();
   return mobile
     ? <MobileLayout>{children}</MobileLayout>
     : <DesktopLayout>{children}</DesktopLayout>;
 }
+
+export default memo(MainLayout);

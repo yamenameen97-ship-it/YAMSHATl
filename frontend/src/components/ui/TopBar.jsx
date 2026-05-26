@@ -1,7 +1,8 @@
+import { memo } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import Avatar from './Avatar.jsx';
 
-export default function TopBar({
+function TopBar({
   brand = { to: '/', label: 'YAMSHAT', icon: '👑' },
   navItems = [],
   trailingActions = null,
@@ -22,7 +23,11 @@ export default function TopBar({
           {navItems.map((item) => {
             const matched = typeof item.match === 'function' ? item.match(location.pathname) : false;
             return (
-              <NavLink key={item.to} to={item.to} className={({ isActive }) => `ui-topbar-link ${(isActive || matched) ? 'is-active' : ''}`.trim()}>
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) => `ui-topbar-link ${(isActive || matched) ? 'is-active' : ''}`.trim()}
+              >
                 <span className="ui-topbar-link-icon" aria-hidden="true">{item.icon}</span>
                 <span>{item.label}</span>
                 {item.badge ? <strong className="ui-topbar-link-badge">{item.badge}</strong> : null}
@@ -54,3 +59,5 @@ export function TopBarAccount({ name = 'Y', subtitle = '', avatarSrc = '', menu 
     </div>
   );
 }
+
+export default memo(TopBar);

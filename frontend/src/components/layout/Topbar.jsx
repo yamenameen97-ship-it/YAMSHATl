@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getNotifications } from '../../api/notifications.js';
 import { getLiveRooms } from '../../api/live.js';
@@ -11,16 +11,17 @@ import { useAppStore } from '../../store/appStore.js';
 import { selectUnreadTotal, useChatStore } from '../../store/appStore.js';
 import TopBarUI, { TopBarAccount } from '../ui/TopBar.jsx';
 
-const PRIMARY_ITEMS = [
+// مرجع مستقر (frozen) — لا يُعاد إنشاؤه مع كل render
+const PRIMARY_ITEMS = Object.freeze([
   { to: '/', label: 'الرئيسية', icon: '⌂', match: (path) => path === '/' },
   { to: '/search', label: 'البحث', icon: '⌕', match: (path) => path.startsWith('/search') },
   { to: '/live', label: 'البث', icon: '◉', match: (path) => path.startsWith('/live') },
   { to: '/inbox', label: 'الدردشة', icon: '✉', match: (path) => path.startsWith('/inbox') || path.startsWith('/chat') },
   { to: '/notifications', label: 'الإشعارات', icon: '🔔', match: (path) => path.startsWith('/notifications') },
   { to: '/settings', label: 'الإعدادات', icon: '⚙', match: (path) => path.startsWith('/settings') },
-];
+]);
 
-const ACCOUNT_MENU_ITEMS = [
+const ACCOUNT_MENU_ITEMS = Object.freeze([
   { to: '/profile', label: 'الملف الشخصي', icon: '👤' },
   { to: '/users', label: 'اكتشاف أشخاص', icon: '👥' },
   { to: '/groups', label: 'المجموعات', icon: '👫' },
@@ -29,9 +30,9 @@ const ACCOUNT_MENU_ITEMS = [
   { to: '/dashboard', label: 'التحليلات', icon: '📊' },
   { to: '/livestream-dashboard', label: 'لوحة البث', icon: '🎥' },
   { to: '/settings', label: 'الإعدادات', icon: '⚙️' },
-];
+]);
 
-export default function Topbar() {
+function Topbar() {
   const unreadInboxCount = useChatStore(selectUnreadTotal);
   const toggleTheme = useAppStore((state) => state.toggleTheme);
   const theme = useAppStore((state) => state.theme);
@@ -88,15 +89,19 @@ export default function Topbar() {
   const username = currentUsername || session?.username || 'Yamshat';
 
   useEffect(() => {
+    if (!menuOpen) return undefined;
     const handleClickOutside = (event) => {
       if (!menuRef.current?.contains(event.target)) setMenuOpen(false);
     };
-
+    // listener نشط فقط حين تكون القائمة مفتوحة → أقل overhead
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [menuOpen]);
 
-  const handleLogout = async () => {
+  const toggleMenu = useCallback(() => setMenuOpen((prev) => !prev), []);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+
+  const handleLogout = useCallback(async () => {
     if (loggingOut) return;
     setLoggingOut(true);
     try {
@@ -118,7 +123,7 @@ export default function Topbar() {
       setLoggingOut(false);
       redirectToAppPath('/login');
     }
-  };
+  }, [loggingOut]);
 
   const trailingActions = (
     <button type="button" className="btn btn-secondary btn-small" onClick={toggleTheme} aria-label="تبديل المظهر">
@@ -132,7 +137,7 @@ export default function Topbar() {
       <TopBarAccount
         name={username}
         subtitle="الحساب"
-        onClick={() => setMenuOpen((prev) => !prev)}
+        onClick={toggleMenu}
         menu={
           <div className={`yam-account-dropdown ${menuOpen ? 'open' : ''}`} role="menu">
             <div className="yam-account-dropdown-head">
@@ -143,7 +148,7 @@ export default function Topbar() {
             </div>
             <div className="yam-account-dropdown-list">
               {ACCOUNT_MENU_ITEMS.map((item) => (
-                <Link key={item.to} to={item.to} className="yam-account-link" role="menuitem" onClick={() => setMenuOpen(false)}>
+                <Link key={item.to} to={item.to} className="yam-account-link" role="menuitem" onClick={closeMenu}>
                   <span>{item.icon}</span>
                   <span>{item.label}</span>
                 </Link>
@@ -161,7 +166,7 @@ export default function Topbar() {
 
   return (
     <TopBarUI
-      brand={{ to: '/', label: 'YAMSHAT', icon: '👑' }}
+      brand={BRAND}
       navItems={navItems}
       trailingActions={trailingActions}
       account={account}
@@ -169,3 +174,7 @@ export default function Topbar() {
     />
   );
 }
+
+const BRAND = Object.freeze({ to: '/', label: 'YAMSHAT', icon: '👑' });
+
+export default memo(Topbar);

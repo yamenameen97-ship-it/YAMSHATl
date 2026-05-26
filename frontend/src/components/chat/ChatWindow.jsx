@@ -1,10 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import EmptyState from '../feedback/EmptyState.jsx';
-import VirtualMessageList from './VirtualMessageList.jsx';
-import AudioWaveform from './AudioWaveform.jsx';
-import Card from '../ui/Card.jsx';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 
-export default function ChatWindow({
+/**
+ * ChatWindow
+ * ----------
+ * - يستخدم svh/dvh عبر classes من mobile-first.css (لا inline height: 100%)
+ * - overflow بأمان: messages-scroll-area تحتوي flex:1 + min-height:0
+ * - context menu يُغلق على scroll / resize / Escape (تجربة لمس أفضل)
+ * - handlers مستقرّون عبر useCallback لتقليل rerenders
+ */
+function ChatWindow({
   messages,
   loading,
   loadingMore,
@@ -27,122 +31,168 @@ export default function ChatWindow({
   const [pinnedMessages, setPinnedMessages] = useState([]);
   const [activeThread, setActiveThread] = useState(null);
 
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
   useEffect(() => {
-    const closeMenu = () => setContextMenu(null);
-    window.addEventListener('click', closeMenu);
-    return () => window.removeEventListener('click', closeMenu);
+    if (!contextMenu) return undefined;
+    const closeOnEsc = (event) => {
+      if (event.key === 'Escape') closeContextMenu();
+    };
+    window.addEventListener('click', closeContextMenu);
+    window.addEventListener('scroll', closeContextMenu, true);
+    window.addEventListener('resize', closeContextMenu);
+    window.addEventListener('keydown', closeOnEsc);
+    return () => {
+      window.removeEventListener('click', closeContextMenu);
+      window.removeEventListener('scroll', closeContextMenu, true);
+      window.removeEventListener('resize', closeContextMenu);
+      window.removeEventListener('keydown', closeOnEsc);
+    };
+  }, [contextMenu, closeContextMenu]);
+
+  // إشعار body لإخفاء bottom-nav أثناء الدردشة (CSS handles the rest)
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    document.body.classList.add('is-chat-open');
+    return () => document.body.classList.remove('is-chat-open');
   }, []);
 
-  const handlePinMessage = (message) => {
-    if (!pinnedMessages.find(m => m.id === message.id)) {
-      setPinnedMessages([...pinnedMessages, message]);
-    }
+  const handlePinMessage = useCallback((message) => {
+    setPinnedMessages((prev) => (
+      prev.find((m) => m.id === message.id) ? prev : [...prev, message]
+    ));
     setContextMenu(null);
-  };
+  }, []);
 
-  const renderMessage = (message) => {
+  const handleClearPinned = useCallback(() => setPinnedMessages([]), []);
+
+  const handleCloseThread = useCallback(() => setActiveThread(null), []);
+
+  const handleContextMenu = useCallback((event, message) => {
+    event.preventDefault();
+    // على iOS clientX/clientY قد لا تكون متاحة من touch — استخدم البديل
+    const x = event.clientX ?? event.touches?.[0]?.clientX ?? 0;
+    const y = event.clientY ?? event.touches?.[0]?.clientY ?? 0;
+    setContextMenu({ x, y, message });
+  }, []);
+
+  const handleReplyClick = useCallback(() => {
+    if (contextMenu?.message) onReply?.(contextMenu.message);
+    setContextMenu(null);
+  }, [contextMenu, onReply]);
+
+  const handleForwardClick = useCallback(() => {
+    if (contextMenu?.message) onForward?.(contextMenu.message);
+    setContextMenu(null);
+  }, [contextMenu, onForward]);
+
+  const handlePinClick = useCallback(() => {
+    if (contextMenu?.message) handlePinMessage(contextMenu.message);
+  }, [contextMenu, handlePinMessage]);
+
+  const handleDeleteClick = useCallback(() => {
+    if (contextMenu?.message) onDeleteForEveryone?.(contextMenu.message);
+    setContextMenu(null);
+  }, [contextMenu, onDeleteForEveryone]);
+
+  const lastPinned = pinnedMessages[pinnedMessages.length - 1];
+
+  const renderMessage = useCallback((message) => {
     const isMine = message.sender === currentUser;
-    
+
     return (
-      <div 
-        key={message.id} 
+      <div
+        key={message.id}
         className={`message-row ${isMine ? 'mine' : 'other'}`}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          setContextMenu({ x: e.clientX, y: e.clientY, message });
-        }}
+        onContextMenu={(event) => handleContextMenu(event, message)}
       >
-        <div className="message-bubble">
-          {/* Reply Thread UI */}
+        <div className={`message-bubble ${isMine ? 'mine' : ''}`}>
           {message.replyTo && (
-            <div className="reply-thread-preview" style={{ background: 'rgba(255,255,255,0.1)', padding: 8, borderRadius: 8, marginBottom: 8, fontSize: 12, borderLeft: '3px solid var(--primary)' }}>
-              <div style={{ fontWeight: 'bold' }}>{message.replyTo.sender}</div>
+            <div className="reply-thread-preview">
+              <div className="reply-sender">{message.replyTo.sender}</div>
               <div className="muted">{message.replyTo.text?.slice(0, 50)}...</div>
             </div>
           )}
 
-          {/* Smart Media Previews */}
-          {message.type === 'image' && (
-            <div className="smart-media-preview" style={{ borderRadius: 12, overflow: 'hidden', marginBottom: 8 }}>
-              <img 
-                src={message.media_url} 
-                alt="preview" 
-                style={{ width: '100%', maxHeight: 300, objectFit: 'cover', cursor: 'pointer' }}
-                onClick={() => onOpenMediaViewer(message)}
+          {message.type === 'image' && message.media_url && (
+            <div className="smart-media-preview">
+              <img
+                src={message.media_url}
+                alt="preview"
+                loading="lazy"
+                decoding="async"
+                onClick={() => onOpenMediaViewer?.(message)}
               />
             </div>
           )}
 
           <div className="message-text">{message.text}</div>
-          
-          <div className="message-meta" style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 10 }}>
+
+          <div className="message-meta">
             <span className="muted">{message.time}</span>
             {isMine && <span className="status">✓✓</span>}
           </div>
         </div>
       </div>
     );
-  };
+  }, [currentUser, handleContextMenu, onOpenMediaViewer]);
 
   return (
-    <div className="chat-window-container" style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
-      
-      {/* Pinned Messages UI */}
+    <div className="chat-window-container">
       {pinnedMessages.length > 0 && (
-        <div className="pinned-messages-bar" style={{ background: 'rgba(139, 92, 246, 0.1)', padding: '8px 16px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span>📌</span>
-            <div style={{ fontSize: 13 }}>
-              <strong>رسالة مثبتة:</strong> {pinnedMessages[pinnedMessages.length - 1].text?.slice(0, 40)}...
+        <div className="pinned-messages-bar">
+          <div className="pinned-row">
+            <span aria-hidden="true">📌</span>
+            <div className="pinned-text">
+              <strong>رسالة مثبتة:</strong> {lastPinned?.text?.slice(0, 40)}...
             </div>
           </div>
-          <button onClick={() => setPinnedMessages([])} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}>✕</button>
+          <button
+            type="button"
+            className="pinned-close"
+            onClick={handleClearPinned}
+            aria-label="إلغاء التثبيت"
+          >
+            ✕
+          </button>
         </div>
       )}
 
-      <div className="messages-scroll-area" ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+      <div className="messages-scroll-area" ref={scrollRef}>
         <div ref={topSentinelRef} />
         {messages.map(renderMessage)}
         {typing && typingNode}
         <div ref={bottomRef} />
       </div>
 
-      {/* Context Menu */}
       {contextMenu && (
-        <div 
-          className="context-menu" 
-          style={{ 
-            position: 'fixed', 
-            top: contextMenu.y, 
-            left: contextMenu.x, 
-            background: '#1a1a1a', 
-            border: '1px solid #333', 
-            borderRadius: 8, 
-            padding: '8px 0', 
-            zIndex: 1000,
-            minWidth: 150,
-            boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
+        <div
+          className="context-menu"
+          style={{
+            position: 'fixed',
+            top: contextMenu.y,
+            left: contextMenu.x,
           }}
+          role="menu"
         >
-          <button onClick={() => onReply(contextMenu.message)} style={{ width: '100%', padding: '8px 16px', textAlign: 'right', background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}>رد</button>
-          <button onClick={() => onForward(contextMenu.message)} style={{ width: '100%', padding: '8px 16px', textAlign: 'right', background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}>تحويل</button>
-          <button onClick={() => handlePinMessage(contextMenu.message)} style={{ width: '100%', padding: '8px 16px', textAlign: 'right', background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}>تثبيت 📌</button>
-          <button onClick={() => onDeleteForEveryone(contextMenu.message)} style={{ width: '100%', padding: '8px 16px', textAlign: 'right', background: 'none', border: 'none', color: '#ff4444', cursor: 'pointer' }}>حذف للجميع</button>
+          <button type="button" onClick={handleReplyClick} role="menuitem">رد</button>
+          <button type="button" onClick={handleForwardClick} role="menuitem">تحويل</button>
+          <button type="button" onClick={handlePinClick} role="menuitem">تثبيت 📌</button>
+          <button type="button" onClick={handleDeleteClick} role="menuitem" className="danger">حذف للجميع</button>
         </div>
       )}
 
-      {/* Reply Thread UI (Overlay) */}
       {activeThread && (
-        <div className="thread-overlay" style={{ position: 'absolute', top: 0, right: 0, width: '100%', height: '100%', background: 'var(--bg)', zIndex: 20, display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: 16, borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between' }}>
+        <div className="thread-overlay">
+          <div className="thread-header">
             <h3>سلسلة الردود</h3>
-            <button onClick={() => setActiveThread(null)}>إغلاق</button>
+            <button type="button" onClick={handleCloseThread}>إغلاق</button>
           </div>
-          <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
-            {/* Thread messages would go here */}
-          </div>
+          <div className="thread-body" />
         </div>
       )}
     </div>
   );
 }
+
+export default memo(ChatWindow);

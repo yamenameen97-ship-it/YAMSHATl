@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 
 const OVERSCAN_PX = 600;
 const DEFAULT_HEIGHT = 84;
@@ -31,7 +31,7 @@ function findStartIndex(items, scrollTop) {
   return candidate;
 }
 
-export default function VirtualMessageList({
+function VirtualMessageList({
   items,
   scrollRef,
   renderItem,
@@ -111,3 +111,5 @@ export default function VirtualMessageList({
     </div>
   );
 }
+
+export default memo(VirtualMessageList);

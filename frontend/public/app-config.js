@@ -1,5 +1,5 @@
 (function () {
-  const CONFIG_BUILD = 'yamshat-config-20260526-r6-env-sync';
+  const CONFIG_BUILD = 'yamshat-config-20260526-r7-render-sync-hotfix';
   const CONFIG_BUILD_KEY = 'yamshat_config_build';
 
   const trim = (value) => String(value || '').trim().replace(/\/+$/, '');
@@ -93,6 +93,19 @@
   const inferredBackendOrigin = inferBackendFromHints();
   const legacyBackendDetected = Boolean(expectedBackendOrigin) && renderOriginMismatch(storedBackend, expectedBackendOrigin);
   const legacyApiDetected = Boolean(expectedApiBase) && renderApiMismatch(storedApi, expectedApiBase);
+  const shouldPurgeRuntimeState = Boolean(buildChanged || legacyBackendDetected || legacyApiDetected);
+  const purgeRuntimeCaches = () => {
+    try {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          registrations.forEach((registration) => registration.unregister().catch(() => null));
+        }).catch(() => null);
+      }
+      if ('caches' in window) {
+        caches.keys().then((keys) => Promise.all(keys.map((key) => caches.delete(key)))).catch(() => null);
+      }
+    } catch (_) {}
+  };
   const safeStoredBackend = legacyBackendDetected ? '' : storedBackend;
   const safeStoredApi = legacyApiDetected ? '' : storedApi;
   const queryBackendApi = queryBackend ? toApiBase(queryBackend) : '';
@@ -141,6 +154,7 @@
         sessionStorage.removeItem('user');
         sessionStorage.removeItem('yamshat_user_session');
       } catch (_) {}
+      purgeRuntimeCaches();
     }
 
     localStorage.setItem(CONFIG_BUILD_KEY, CONFIG_BUILD);

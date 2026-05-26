@@ -1,4 +1,4 @@
-const VERSION = 'yamshat-v20260525-r4-domain-fix-enhanced';
+const VERSION = 'yamshat-v20260526-r7-render-sync-hotfix-enhanced';
 const STATIC_CACHE = `${VERSION}:static`;
 const MEDIA_CACHE = `${VERSION}:media`;
 const API_CACHE = `${VERSION}:api`;

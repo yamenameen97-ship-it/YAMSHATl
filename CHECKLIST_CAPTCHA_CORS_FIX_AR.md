@@ -1,12 +1,12 @@
 # Checklist إصلاح الكابتشا و CORS
 
 ## تم إصلاحه داخل المشروع
-- تحديث إعدادات `backend/.env` وربط الواجهة بخدمة الـ frontend الحالية `yamshat1-1-yg1o.onrender.com` والـ backend الصحيح `yamshat1-ahj8.onrender.com`.
+- تحديث إعدادات `backend/.env` وربط الواجهة بخدمة الـ frontend الحالية `yamshati-1-yg1o.onrender.com` والـ backend الصحيح `yamshati-ahj8.onrender.com`.
 - إضافة `CORS_ORIGIN_REGEX` مرن يقبل تغيّر suffix الخاص بخدمات Render لنفس عائلة المشروع.
 - تحسين اشتقاق `cors_origin_regex` داخل `backend/app/core/config.py` ليتعامل مع روابط Render المتغيرة مثل:
-  - `yamshat1-1-yg1o.onrender.com`
-  - `yamshat1-1-yg1o.onrender.com`
-  - `yamshat1-ahj8.onrender.com`
+  - `yamshati-1-yg1o.onrender.com`
+  - `yamshati-1-yg1o.onrender.com`
+  - `yamshati-ahj8.onrender.com`
 - إضافة `CORSMiddleware` إلى `gateway/main.py` حتى لا تفشل طلبات `OPTIONS` / `preflight` عند المرور عبر الـ gateway.
 - رفع رقم الـ build في `frontend/src/main.jsx` لإجبار المتصفح على تنظيف التخزين المحلي والـ service worker والكاش القديم.
 
@@ -14,10 +14,10 @@
 1. أعد نشر خدمة **backend** بعد رفع الملفات الجديدة.
 2. إذا كنت تستخدم **gateway** كخدمة أمامية للـ API، أعد نشرها أيضاً.
 3. تأكد أن متغيرات البيئة في Render مطابقة للقيم التالية:
-   - `FRONTEND_ORIGIN=https://yamshat1-1-yg1o.onrender.com`
-   - `BACKEND_ORIGIN=https://yamshat1-ahj8.onrender.com`
-   - `RENDER_EXTERNAL_URL=https://yamshat1-ahj8.onrender.com`
-   - `CORS_ORIGIN_REGEX=^https://yamshat1(?:-1)?(?:-[a-z0-9]+)?\.onrender\.com$`
+   - `FRONTEND_ORIGIN=https://yamshati-1-vg1o.onrender.com`
+   - `BACKEND_ORIGIN=https://yamshati-ahj8.onrender.com`
+   - `RENDER_EXTERNAL_URL=https://yamshati-ahj8.onrender.com`
+   - `CORS_ORIGIN_REGEX=^https://yamshati(?:-1)?(?:-[a-z0-9]+)?\.onrender\.com$`
 4. بعد نشر الواجهة، افتح الموقع بمتصفح جديد أو اعمل Hard Refresh.
 5. لو استمرت المشكلة، امسح Site Data / Cookies للموقعين على Render ثم جرّب مرة أخرى.
 
@@ -31,6 +31,6 @@
 - جرّب Refresh للجلسة أو تسجيل دخول طبيعي.
 
 ## ملاحظة مهمة
-- السبب الجذري كان أن ملفات الواجهة كانت ما زالت تشير إلى backend قديم ومتوقف `yamshat1-ahj8.onrender.com`؛ تم تحويلها إلى الـ backend الحي `yamshat1-ahj8.onrender.com`.
+- السبب الجذري كان أن ملفات الواجهة كانت ما زالت تشير إلى backend قديم ومتوقف `yamshati-ahj8.onrender.com`؛ تم تحويلها إلى الـ backend الحي `yamshati-ahj8.onrender.com`.
 
 لو Render غيّر suffix الواجهة لاحقاً، الكود المعدل الحالي يفترض أن يستوعب ذلك بدون الحاجة لتعديل يدوي كل مرة، طالما الرابط ضمن نفس عائلة المشروع.

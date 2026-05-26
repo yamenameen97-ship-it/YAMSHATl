@@ -247,7 +247,7 @@ class Settings:
     APPLE_OAUTH_REDIRECT_URI: str = env_str("APPLE_OAUTH_REDIRECT_URI", "")
 
     # SMS Configuration
-    SMS_PROVIDER: str = env_str("SMS_PROVIDER", "twilio")  # twilio, aws_sns, custom
+    SMS_PROVIDER: str = env_str("SMS_PROVIDER", "twilio") # twilio, aws_sns, custom
     TWILIO_ACCOUNT_SID: str = env_str("TWILIO_ACCOUNT_SID", "")
     TWILIO_AUTH_TOKEN: str = env_str("TWILIO_AUTH_TOKEN", "")
     TWILIO_PHONE_NUMBER: str = env_str("TWILIO_PHONE_NUMBER", "")
@@ -260,9 +260,9 @@ class Settings:
 
     @property
     def cors_origin_regex(self) -> str | None:
+        # حذفت BACKEND_ORIGIN من هنا
         derived = render_origin_regex_from_candidates(
             self.FRONTEND_ORIGIN,
-            self.BACKEND_ORIGIN,
             self.RENDER_EXTERNAL_URL,
             self.RAILWAY_STATIC_URL,
             *csv_list(self.CORS_ORIGINS_RAW),
@@ -274,6 +274,7 @@ class Settings:
         if combined:
             return combined
 
+        # هذا الـ fallback يغطي yamshatl-1-yg1o.onrender.com و yamshatl-ahj8.onrender.com
         return r'^https://.*\.onrender\.com$'
 
     @property
@@ -285,19 +286,22 @@ class Settings:
             'http://127.0.0.1:5173',
         ]
 
+        if self.is_production:
+            local_origins = []
+
         origins: list[str] = []
         if self.CORS_ORIGINS_RAW.strip() not in {'*', ''}:
             origins.extend(csv_list(self.CORS_ORIGINS_RAW))
         origins.extend(local_origins)
+        # حذفت BACKEND_ORIGIN من هنا
         origins.extend(
             origin
             for origin in [
                 self.FRONTEND_ORIGIN,
-                self.BACKEND_ORIGIN,
                 self.RENDER_EXTERNAL_URL,
                 self.RAILWAY_STATIC_URL,
             ]
-            if origin
+            if origin and origin.strip()
         )
 
         unique_origins: list[str] = []

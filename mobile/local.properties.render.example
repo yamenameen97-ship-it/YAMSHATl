@@ -2,6 +2,6 @@
 sdk.dir=/path/to/Android/Sdk
 APP_BASE_URL=https://yamshat1-ahj8.onrender.com/api/
 APP_SOCKET_URL=https://yamshat1-ahj8.onrender.com
-WEB_APP_URL=https://yamshat1-1-yq1o.onrender.com/
+WEB_APP_URL=https://yamshat1-1-yg1o.onrender.com/
 LIVEKIT_URL=wss://yamshat-enqr8c2d.livekit.cloud
 PRIMARY_ADMIN_EMAIL=yamenameen97@gmail.com

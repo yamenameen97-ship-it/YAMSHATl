@@ -1,8 +1,6 @@
 (function () {
-  const CONFIG_BUILD = 'yamshat-config-20260526-r5-captcha-cors-fix';
+  const CONFIG_BUILD = 'yamshat-config-20260526-r6-env-sync';
   const CONFIG_BUILD_KEY = 'yamshat_config_build';
-  const DEPLOY_BACKEND_ORIGIN = 'https://yamshat1-ahj8.onrender.com';
-  const DEPLOY_API_BASE = 'https://yamshat1-ahj8.onrender.com/api';
 
   const trim = (value) => String(value || '').trim().replace(/\/+$/, '');
   const toApiBase = (value) => {
@@ -20,16 +18,39 @@
   };
   const isRenderHost = (value) => /\.onrender\.com$/i.test(trim(value));
   const currentOrigin = trim(window.location.origin);
-  const expectedBackendOrigin = trim(DEPLOY_BACKEND_ORIGIN) || apiToOrigin(DEPLOY_API_BASE);
-  const expectedApiBase = toApiBase(DEPLOY_API_BASE) || (expectedBackendOrigin ? `${expectedBackendOrigin}/api` : '');
+
+  const runtimeConfig = window.__YAMSHAT_RUNTIME_CONFIG__ || window.__APP_CONFIG__ || {};
+  const scriptEl = document.currentScript || Array.from(document.scripts || []).find((script) => /app-config\.js/i.test(script?.src || ''));
+  const scriptBackendOrigin = trim(scriptEl?.dataset?.backendOrigin || scriptEl?.getAttribute('data-backend-origin') || '');
+  const scriptApiBase = toApiBase(scriptEl?.dataset?.apiBase || scriptEl?.getAttribute('data-api-base') || '');
+  const scriptSocketUrl = trim(scriptEl?.dataset?.socketUrl || scriptEl?.getAttribute('data-socket-url') || '');
+
+  const expectedBackendOrigin = trim(
+    runtimeConfig.backendOrigin ||
+      runtimeConfig.backend_origin ||
+      scriptBackendOrigin ||
+      apiToOrigin(scriptApiBase) ||
+      window.APP_BACKEND_ORIGIN ||
+      window.YAMSHAT_BACKEND_ORIGIN ||
+      ''
+  );
+  const expectedApiBase = toApiBase(
+    runtimeConfig.apiBase ||
+      runtimeConfig.api_base ||
+      scriptApiBase ||
+      window.APP_API_BASE ||
+      window.YAMSHAT_API_BASE ||
+      (expectedBackendOrigin ? `${expectedBackendOrigin}/api` : '')
+  );
+  const expectedSocketUrl = trim(
+    runtimeConfig.socketUrl ||
+      runtimeConfig.socket_url ||
+      scriptSocketUrl ||
+      window.YAMSHAT_SOCKET_URL ||
+      expectedBackendOrigin
+  );
 
   const inferBackendFromHints = () => {
-    const host = trim(window.location.hostname).toLowerCase();
-
-    if (/\.onrender\.com$/i.test(host) && expectedBackendOrigin) {
-      return expectedBackendOrigin;
-    }
-
     try {
       const links = Array.from(document.querySelectorAll('link[rel="preconnect"][href], link[rel="dns-prefetch"][href]'));
       for (const link of links) {
@@ -70,28 +91,38 @@
   } catch (_) {}
 
   const inferredBackendOrigin = inferBackendFromHints();
-  const legacyBackendDetected = renderOriginMismatch(storedBackend, expectedBackendOrigin);
-  const legacyApiDetected = renderApiMismatch(storedApi, expectedApiBase);
+  const legacyBackendDetected = Boolean(expectedBackendOrigin) && renderOriginMismatch(storedBackend, expectedBackendOrigin);
+  const legacyApiDetected = Boolean(expectedApiBase) && renderApiMismatch(storedApi, expectedApiBase);
   const safeStoredBackend = legacyBackendDetected ? '' : storedBackend;
   const safeStoredApi = legacyApiDetected ? '' : storedApi;
   const queryBackendApi = queryBackend ? toApiBase(queryBackend) : '';
 
-  const backendOrigin =
-    trim(queryBackend) ||
-    apiToOrigin(queryApi) ||
-    expectedBackendOrigin ||
-    safeStoredBackend ||
-    apiToOrigin(safeStoredApi) ||
-    inferredBackendOrigin ||
-    currentOrigin;
+  const backendOrigin = trim(
+    queryBackend ||
+      apiToOrigin(queryApi) ||
+      expectedBackendOrigin ||
+      safeStoredBackend ||
+      apiToOrigin(expectedApiBase || safeStoredApi) ||
+      inferredBackendOrigin ||
+      currentOrigin
+  );
 
-  const apiBase =
-    toApiBase(queryApi) ||
-    queryBackendApi ||
-    expectedApiBase ||
-    safeStoredApi ||
-    toApiBase(`${backendOrigin}/api`) ||
-    toApiBase(`${currentOrigin}/api`);
+  const apiBase = toApiBase(
+    queryApi ||
+      queryBackendApi ||
+      expectedApiBase ||
+      safeStoredApi ||
+      (backendOrigin ? `${backendOrigin}/api` : '') ||
+      `${currentOrigin}/api`
+  );
+
+  const socketUrl = trim(
+    queryBackend ||
+      apiToOrigin(queryApi) ||
+      expectedSocketUrl ||
+      backendOrigin ||
+      currentOrigin
+  );
 
   try {
     const previousBackendOrigin = trim(localStorage.getItem('backendOrigin'));
@@ -121,7 +152,7 @@
 
   window.APP_BACKEND_ORIGIN = backendOrigin;
   window.APP_API_BASE = apiBase;
-  window.APP_CDN_BASE = '';
+  window.APP_CDN_BASE = window.APP_CDN_BASE || '';
   window.APP_MEDIA_PROVIDER = window.APP_MEDIA_PROVIDER || 'cloudflare-r2';
   window.APP_MEDIA_UPLOAD_URL = window.APP_MEDIA_UPLOAD_URL || uploadBase;
   window.APP_MEDIA_RESUMABLE_START_URL = window.APP_MEDIA_RESUMABLE_START_URL || `${uploadBase}/resumable/start`;
@@ -129,10 +160,12 @@
   window.APP_MEDIA_RESUMABLE_CHUNK_URL = window.APP_MEDIA_RESUMABLE_CHUNK_URL || `${uploadBase}/resumable`;
   window.APP_MEDIA_RESUMABLE_COMPLETE_URL = window.APP_MEDIA_RESUMABLE_COMPLETE_URL || `${uploadBase}/resumable`;
   window.APP_SIGNAL_SERVER_SUPPORT = Boolean(window.APP_SIGNAL_SERVER_SUPPORT || false);
+  window.YAMSHAT_API_BASE = apiBase;
   window.YAMSHAT_CDN_BASE = window.APP_CDN_BASE;
-  window.YAMSHAT_SOCKET_URL = backendOrigin;
+  window.YAMSHAT_SOCKET_URL = socketUrl;
   window.YAMSHAT_BACKEND_ORIGIN = backendOrigin;
   window.YAMSHAT_FRONTEND_ORIGIN = currentOrigin;
   window.YAMSHAT_DEPLOY_MODE = backendOrigin === currentOrigin ? 'single-service' : 'split-services';
   window.__YAMSHAT_CONFIG_BUILD__ = CONFIG_BUILD;
 })();
+

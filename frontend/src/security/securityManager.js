@@ -57,7 +57,7 @@ export const injectStrictCSP = () => {
   const existingMeta = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
   if (existingMeta) return;
 
-  const meta = document.createElement('meta');
+  const meta = existingMeta || document.createElement('meta');
   meta.httpEquiv = "Content-Security-Policy";
   meta.content = `
     default-src 'self';
@@ -72,7 +72,7 @@ export const injectStrictCSP = () => {
     base-uri 'self';
     upgrade-insecure-requests;
   `.replace(/\s+/g, ' ').trim();
-  document.head.appendChild(meta);
+  if (!meta.parentNode) document.head.appendChild(meta);
 };
 
 // --- Device Fingerprinting ---

@@ -42,9 +42,6 @@ export const cspHeaders = {
     // Forms
     "form-action 'self'",
 
-    // Frames ancestors
-    "frame-ancestors 'none'",
-
     // Base URI
     "base-uri 'self'",
 
@@ -77,10 +74,10 @@ export const cspHeaders = {
  */
 export function applyCSPHeaders() {
   // Add meta tag for CSP
-  const meta = document.createElement('meta');
+  const meta = document.querySelector('meta[http-equiv="Content-Security-Policy"]') || document.createElement('meta');
   meta.httpEquiv = 'Content-Security-Policy';
   meta.content = cspHeaders['Content-Security-Policy'];
-  document.head.appendChild(meta);
+  if (!meta.parentNode) document.head.appendChild(meta);
 
   // Add other security headers as meta tags
   const xContentType = document.createElement('meta');

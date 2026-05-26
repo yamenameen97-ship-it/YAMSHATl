@@ -4,7 +4,7 @@ import com.socialapp.BuildConfig
 
 object UrlConfig {
     private const val CURRENT_BACKEND_HOST = "yamshat1-ahj8.onrender.com"
-    private const val CURRENT_FRONTEND_HOST = "yamshat1-1-yq1o.onrender.com"
+    private const val CURRENT_FRONTEND_HOST = "yamshat1-1-yg1o.onrender.com"
 
     private fun sanitize(raw: String): String {
         return raw

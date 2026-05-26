@@ -49,10 +49,10 @@ DATABASE_URL is missing or still contains placeholders; using sqlite fallback un
 
 6) متغيرات مرتبطة مهمة لكن ليست رابط قاعدة البيانات
 ----------------------------------------------------
-FRONTEND_ORIGIN=https://yamshat1-1-yq1o.onrender.com
+FRONTEND_ORIGIN=https://yamshat1-1-yg1o.onrender.com
 BACKEND_ORIGIN=https://yamshat1-ahj8.onrender.com
 RENDER_EXTERNAL_URL=https://yamshat1-ahj8.onrender.com
-CORS_ORIGINS=https://yamshat1-1-yq1o.onrender.com,https://yamshat1-ahj8.onrender.com
+CORS_ORIGINS=https://yamshat1-1-yg1o.onrender.com,https://yamshat1-ahj8.onrender.com
 CORS_ORIGIN_REGEX=^https://[a-z0-9-]+(?:-\d+)?\.onrender\.com$
 
 7) خطوات سريعة

@@ -4,12 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0b0f1a" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; media-src 'self' data: blob: https:; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data: https:; object-src 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; media-src 'self' data: blob: https:; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data: https:; object-src 'none'" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <title>YAMSHAT</title>
-    <script src="/app-config.js?v=20260525-r4-domain-fix"></script>
+    <script src="/app-config.js?v=20260526-r6-env-sync" data-backend-origin="%VITE_BACKEND_ORIGIN%" data-api-base="%VITE_API_BASE%" data-socket-url="%VITE_SOCKET_URL%"></script>
   </head>
   <body>
     <div id="root"></div>

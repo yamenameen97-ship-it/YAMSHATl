@@ -278,19 +278,17 @@ class Settings:
 
     @property
     def cors_origins(self) -> list[str]:
-        # Render + local development fallback
-        # يمنع مشاكل CORS مع خدمات Render المتغيرة
-        if self.CORS_ORIGINS_RAW.strip() in {'*', ''}:
-            return [
-                'http://localhost:3000',
-                'http://localhost:5173',
-                'http://127.0.0.1:5173',
-                'https://yamshat1-1-yq1o.onrender.com',
-                'https://yamshat1-ahj8.onrender.com',
-            ]
+        local_origins = [
+            'http://localhost:3000',
+            'http://127.0.0.1:3000',
+            'http://localhost:5173',
+            'http://127.0.0.1:5173',
+        ]
 
         origins: list[str] = []
-        origins.extend(csv_list(self.CORS_ORIGINS_RAW))
+        if self.CORS_ORIGINS_RAW.strip() not in {'*', ''}:
+            origins.extend(csv_list(self.CORS_ORIGINS_RAW))
+        origins.extend(local_origins)
         origins.extend(
             origin
             for origin in [
@@ -305,9 +303,11 @@ class Settings:
         unique_origins: list[str] = []
         seen: set[str] = set()
         for origin in origins:
-            if origin not in seen:
-                unique_origins.append(origin)
-                seen.add(origin)
+            normalized = origin.strip()
+            if not normalized or normalized in seen:
+                continue
+            unique_origins.append(normalized)
+            seen.add(normalized)
         return unique_origins
 
     @property

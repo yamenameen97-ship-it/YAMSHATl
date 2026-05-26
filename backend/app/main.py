@@ -2,14 +2,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import socketio
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 import app.models  # noqa: F401
 from app.api.routes import admin, analytics, auth, chat, comments, follow, groups, inbox, live, notifications, posts, search, stories, upload, users, ws
-from app.core.api_guard import api_rate_guard
 from app.core.config import settings
 from app.core.error_handlers import register_error_handlers
 from app.core.logging_setup import configure_logging
@@ -54,22 +53,8 @@ fastapi_app.add_middleware(
     allow_headers=['*'],
 )
 
-# 2. الدوال الوسيطة الذكية (تخطي القيود للمسارات الحساسة)
-async def smart_rate_guard(request: Request, call_next):
-    safe_paths = ["captcha", "refresh", "login", "verify", "auth"]
-    if request.method.upper() == "OPTIONS" or any(path in request.url.path for path in safe_paths):
-        return await call_next(request)
-    return await api_rate_guard(request, call_next)
-
-async def smart_security_headers(request: Request, call_next):
-    safe_paths = ["captcha", "refresh", "login", "verify", "auth"]
-    if request.method.upper() == "OPTIONS" or any(path in request.url.path for path in safe_paths):
-        return await call_next(request)
-    return await security_headers(request, call_next)
-
-# تطبيق الدوال الوسيطة
-fastapi_app.middleware('http')(smart_rate_guard)
-fastapi_app.middleware('http')(smart_security_headers)
+# 2. تطبيق الـ Middleware الأصلي مباشرة (بدون دالات وسيطة إضافية)
+fastapi_app.middleware('http')(security_headers)
 
 register_error_handlers(fastapi_app)
 uploads_dir = Path(__file__).resolve().parents[2] / 'uploads'

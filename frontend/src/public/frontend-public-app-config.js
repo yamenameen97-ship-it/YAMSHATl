@@ -1,7 +1,7 @@
 (function () {
-  const CONFIG_BUILD = 'yamshat-config-20260525-r4-domain-fix';
-  const DEPLOY_BACKEND_ORIGIN = 'https://yamshatl-ahj8.onrender.com';
-  const DEPLOY_API_BASE = 'https://yamshatl-ahj8.onrender.com/api';
+  const CONFIG_BUILD = 'yamshat-config-20260526-r5-captcha-cors-fix';
+  const DEPLOY_BACKEND_ORIGIN = 'https://yamshat1-ahj8.onrender.com';
+  const DEPLOY_API_BASE = 'https://yamshat1-ahj8.onrender.com/api';
 
   const trim = (value) => String(value || '').trim().replace(/\/+$/, '');
   const ensureApiPath = (value) => {

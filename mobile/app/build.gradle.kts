@@ -5,10 +5,10 @@ plugins {
     id("com.google.firebase.crashlytics")
 }
 
-val appBaseUrl = (project.findProperty("APP_BASE_URL") as String?) ?: "https://yamshatl-ahj8.onrender.com/api/"
-val socketUrl = (project.findProperty("APP_SOCKET_URL") as String?) ?: "https://yamshatl-ahj8.onrender.com"
+val appBaseUrl = (project.findProperty("APP_BASE_URL") as String?) ?: "https://yamshat1-ahj8.onrender.com/api/"
+val socketUrl = (project.findProperty("APP_SOCKET_URL") as String?) ?: "https://yamshat1-ahj8.onrender.com"
 val agoraAppId = (project.findProperty("AGORA_APP_ID") as String?) ?: ""
-val webAppUrl = (project.findProperty("WEB_APP_URL") as String?) ?: "https://yamshatl-1-yg1o.onrender.com/"
+val webAppUrl = (project.findProperty("WEB_APP_URL") as String?) ?: "https://yamshat1-1-yq1o.onrender.com/"
 val liveKitUrl = (project.findProperty("LIVEKIT_URL") as String?) ?: "wss://yamshat-enqr8c2d.livekit.cloud"
 val primaryAdminEmail = (project.findProperty("PRIMARY_ADMIN_EMAIL") as String?) ?: "yamenameen97@gmail.com"
 

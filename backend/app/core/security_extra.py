@@ -104,13 +104,6 @@ def _csrf_cookie_matches_header(request: Request) -> bool:
 
 async def security_headers(request: Request, call_next):
     path = request.url.path
-    
-    # --- تعديل: استثناء المسارات الحساسة فوراً لمنع حظر الطلبات الضرورية ---
-    safe_paths_keywords = ["captcha", "refresh", "login", "verify", "auth"]
-    if any(p in path for p in safe_paths_keywords):
-        return await call_next(request)
-    # ------------------------------------------------------------------
-
     method = request.method.upper()
 
     if path.startswith(settings.API_PREFIX) and method not in SAFE_METHODS:
@@ -133,8 +126,6 @@ async def security_headers(request: Request, call_next):
             return JSONResponse(status_code=403, content={'detail': 'CSRF protection blocked the request'})
 
     response = await call_next(request)
-    
-    # إعدادات الرؤوس الأمنية (Security Headers)
     response.headers['Vary'] = 'Origin'
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['X-Content-Type-Options'] = 'nosniff'
@@ -146,8 +137,6 @@ async def security_headers(request: Request, call_next):
     response.headers['Origin-Agent-Cluster'] = '?1'
     response.headers['X-Permitted-Cross-Domain-Policies'] = 'none'
     response.headers['Content-Security-Policy'] = _content_security_policy(request)
-    
     if request.url.scheme == 'https' or settings.REFRESH_COOKIE_SECURE:
         response.headers['Strict-Transport-Security'] = f"max-age={int(settings.HSTS_MAX_AGE_SECONDS or 31536000)}; includeSubDomains; preload"
-    
     return response

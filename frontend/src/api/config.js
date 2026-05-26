@@ -9,6 +9,23 @@ const toApiBase = (value) => {
 const apiToOrigin = (value) => trim(toApiBase(value).replace(/\/api$/, ''));
 const currentOrigin = trim(window.location.origin);
 const isRenderHost = (value) => /\.onrender\.com$/i.test(trim(value));
+const isLocalNetworkHost = (value) => {
+  try {
+    const hostname = new URL(String(value || '').trim()).hostname.toLowerCase();
+    return ['0.0.0.0', '127.0.0.1', 'localhost', '::1'].includes(hostname);
+  } catch {
+    return false;
+  }
+};
+const rejectInvalidRemoteHost = (value) => isLocalNetworkHost(value) && !isLocalNetworkHost(currentOrigin);
+const sanitizeOriginCandidate = (value) => {
+  const normalized = safeOrigin(value) || trim(value);
+  return rejectInvalidRemoteHost(normalized) ? '' : trim(normalized);
+};
+const sanitizeApiCandidate = (value) => {
+  const normalized = toApiBase(value);
+  return rejectInvalidRemoteHost(apiToOrigin(normalized)) ? '' : normalized;
+};
 
 const safeOrigin = (value) => {
   try {
@@ -51,17 +68,17 @@ const renderOriginMismatch = (candidate, expected) => {
 const renderApiMismatch = (candidate, expected) => renderOriginMismatch(apiToOrigin(candidate), apiToOrigin(expected));
 
 const params = new URLSearchParams(window.location.search);
-const queryApi = toApiBase(params.get('api'));
-const queryBackend = trim(params.get('backend'));
-const storedApi = toApiBase(readStored('apiBase'));
-const storedBackend = trim(readStored('backendOrigin'));
-const runtimeApi = toApiBase(window.APP_API_BASE || '');
-const runtimeBackendOrigin = trim(window.YAMSHAT_BACKEND_ORIGIN || window.APP_BACKEND_ORIGIN);
-const envApi = toApiBase(import.meta.env.VITE_API_BASE || '');
-const envBackendOrigin = trim(import.meta.env.VITE_BACKEND_ORIGIN || apiToOrigin(envApi));
+const queryApi = sanitizeApiCandidate(params.get('api'));
+const queryBackend = sanitizeOriginCandidate(params.get('backend'));
+const storedApi = sanitizeApiCandidate(readStored('apiBase'));
+const storedBackend = sanitizeOriginCandidate(readStored('backendOrigin'));
+const runtimeApi = sanitizeApiCandidate(window.APP_API_BASE || '');
+const runtimeBackendOrigin = sanitizeOriginCandidate(window.YAMSHAT_BACKEND_ORIGIN || window.APP_BACKEND_ORIGIN);
+const envApi = sanitizeApiCandidate(import.meta.env.VITE_API_BASE || '');
+const envBackendOrigin = sanitizeOriginCandidate(import.meta.env.VITE_BACKEND_ORIGIN || apiToOrigin(envApi));
 const frontendOrigin = currentOrigin;
 
-const envSocketUrl = trim(import.meta.env.VITE_SOCKET_URL || envBackendOrigin);
+const envSocketUrl = sanitizeOriginCandidate(import.meta.env.VITE_SOCKET_URL || envBackendOrigin);
 const envCdnBase = trim(import.meta.env.VITE_CDN_BASE || '');
 const inferredBackendOrigin = inferBackendOrigin();
 const inferredApi = inferredBackendOrigin ? `${inferredBackendOrigin}/api` : '';
@@ -123,7 +140,7 @@ export const SOCKET_URL = trim(
     apiToOrigin(queryApi) ||
     envSocketUrl ||
     safeRuntimeBackendOrigin ||
-    window.YAMSHAT_SOCKET_URL ||
+    sanitizeOriginCandidate(window.YAMSHAT_SOCKET_URL || '') ||
     safeStoredBackend ||
     BACKEND_ORIGIN ||
     currentOrigin

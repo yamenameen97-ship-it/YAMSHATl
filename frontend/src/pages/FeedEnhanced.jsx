@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
+import PostComposer from '../components/feed/PostComposer.jsx';
 import YamshatIcon from '../components/yamshat/YamshatIcon.jsx';
 import useSmartFeed from '../hooks/useSmartFeed.js';
 import { formatCompactNumber } from '../components/yamshat/YamshatDesign.js';
@@ -383,11 +384,10 @@ export default function FeedEnhanced() {
                     </button>
                   ))}
                 </div>
+              </div>
 
-                <div className="yam-composer-input-surface">
-                  <Avatar name={displayName} size={42} image />
-                  <span>ماذا تريد أن تشارك اليوم؟</span>
-                </div>
+              <div className="yam-home-composer-slot">
+                <PostComposer />
               </div>
 
               <div className="yam-feed-tabs">
@@ -754,6 +754,14 @@ export default function FeedEnhanced() {
             gap: 12px;
             align-items: center;
             margin-bottom: 14px;
+          }
+
+          .yam-home-composer-slot {
+            margin-bottom: 14px;
+          }
+
+          .yam-home-composer-slot > * {
+            margin-bottom: 0 !important;
           }
 
           .yam-composer-actions-inline {

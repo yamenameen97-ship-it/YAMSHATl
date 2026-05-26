@@ -45,7 +45,7 @@ function normalizeFeedParams(params = {}) {
 
 export const getPosts = async (params = {}) => {
   const normalizedParams = normalizeFeedParams(params);
-  const response = await API.get('/posts', { params: normalizedParams });
+  const response = await API.get('/posts/', { params: normalizedParams });
   const payload = response?.data;
   const rawItems = Array.isArray(payload)
     ? payload
@@ -81,7 +81,7 @@ export const createPost = (data = {}) => {
     is_draft: data.is_draft ?? status === 'draft',
   };
   delete payload.media_url;
-  return API.post('/posts', payload);
+  return API.post('/posts/', payload);
 };
 export const updatePost = (postId, data) => API.patch(`/posts/${postId}`, data);
 export const getPostHistory = (postId) => API.get(`/posts/${postId}/history`, { cache: false, forceRefresh: true });
@@ -89,7 +89,7 @@ export const getPostHistory = (postId) => API.get(`/posts/${postId}/history`, { 
 export const uploadPostMedia = (file, onUploadProgress) => {
   const formData = new FormData();
   formData.append('file', file);
-  return API.post('/upload', formData, {
+  return API.post('/upload/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
     onUploadProgress,
   });

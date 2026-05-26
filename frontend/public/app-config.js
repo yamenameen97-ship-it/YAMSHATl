@@ -1,5 +1,5 @@
 (function () {
-  const CONFIG_BUILD = 'yamshat-config-20260526-r8-component-library-login-fix';
+  const CONFIG_BUILD = 'yamshat-config-20260526-r9-ui-fixes';
   const CONFIG_BUILD_KEY = 'yamshat_config_build';
 
   const trim = (value) => String(value || '').trim().replace(/\/+$/, '');
@@ -18,6 +18,23 @@
   };
   const isRenderHost = (value) => /\.onrender\.com$/i.test(trim(value));
   const currentOrigin = trim(window.location.origin);
+  const isLocalNetworkHost = (value) => {
+    try {
+      const hostname = new URL(String(value || '').trim()).hostname.toLowerCase();
+      return ['0.0.0.0', '127.0.0.1', 'localhost', '::1'].includes(hostname);
+    } catch (_) {
+      return false;
+    }
+  };
+  const rejectInvalidRemoteHost = (value) => isLocalNetworkHost(value) && !isLocalNetworkHost(currentOrigin);
+  const sanitizeOriginCandidate = (value) => {
+    const normalized = safeOrigin(value) || trim(value);
+    return rejectInvalidRemoteHost(normalized) ? '' : trim(normalized);
+  };
+  const sanitizeApiCandidate = (value) => {
+    const normalized = toApiBase(value);
+    return rejectInvalidRemoteHost(apiToOrigin(normalized)) ? '' : normalized;
+  };
 
   const runtimeConfig = window.__YAMSHAT_RUNTIME_CONFIG__ || window.__APP_CONFIG__ || {};
   const scriptEl = document.currentScript || Array.from(document.scripts || []).find((script) => /app-config\.js/i.test(script?.src || ''));
@@ -25,7 +42,7 @@
   const scriptApiBase = toApiBase(scriptEl?.dataset?.apiBase || scriptEl?.getAttribute('data-api-base') || '');
   const scriptSocketUrl = trim(scriptEl?.dataset?.socketUrl || scriptEl?.getAttribute('data-socket-url') || '');
 
-  const expectedBackendOrigin = trim(
+  const expectedBackendOrigin = sanitizeOriginCandidate(
     runtimeConfig.backendOrigin ||
       runtimeConfig.backend_origin ||
       scriptBackendOrigin ||
@@ -34,7 +51,7 @@
       window.YAMSHAT_BACKEND_ORIGIN ||
       ''
   );
-  const expectedApiBase = toApiBase(
+  const expectedApiBase = sanitizeApiCandidate(
     runtimeConfig.apiBase ||
       runtimeConfig.api_base ||
       scriptApiBase ||
@@ -42,7 +59,7 @@
       window.YAMSHAT_API_BASE ||
       (expectedBackendOrigin ? `${expectedBackendOrigin}/api` : '')
   );
-  const expectedSocketUrl = trim(
+  const expectedSocketUrl = sanitizeOriginCandidate(
     runtimeConfig.socketUrl ||
       runtimeConfig.socket_url ||
       scriptSocketUrl ||
@@ -77,15 +94,15 @@
   };
 
   const params = new URLSearchParams(window.location.search);
-  const queryApi = toApiBase(params.get('api'));
-  const queryBackend = trim(params.get('backend'));
+  const queryApi = sanitizeApiCandidate(params.get('api'));
+  const queryBackend = sanitizeOriginCandidate(params.get('backend'));
 
   let storedApi = '';
   let storedBackend = '';
   let buildChanged = false;
   try {
-    storedApi = toApiBase(localStorage.getItem('apiBase'));
-    storedBackend = trim(localStorage.getItem('backendOrigin'));
+    storedApi = sanitizeApiCandidate(localStorage.getItem('apiBase'));
+    storedBackend = sanitizeOriginCandidate(localStorage.getItem('backendOrigin'));
     const previousBuild = trim(localStorage.getItem(CONFIG_BUILD_KEY));
     buildChanged = Boolean(previousBuild && previousBuild !== CONFIG_BUILD);
   } catch (_) {}

@@ -2,7 +2,7 @@ const SCROLL_CACHE_KEY = 'yamshat-scroll-cache-v1';
 const prefetchedRoutes = new Set();
 
 const routePrefetchers = {
-  '/': () => import('../pages/Feed.jsx'),
+  '/': () => import('../pages/FeedEnhanced.jsx'),
   '/dashboard': () => import('../pages/Dashboard.jsx'),
   '/stories': () => import('../pages/Stories.jsx'),
   '/reels': () => import('../pages/Reels.jsx'),

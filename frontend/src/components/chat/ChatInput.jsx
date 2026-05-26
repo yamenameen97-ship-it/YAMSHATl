@@ -418,6 +418,17 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
         .yam-attachments-grid {
           flex-wrap: wrap;
           align-items: stretch;
+          max-height: 220px;
+          overflow-y: auto;
+          overflow-x: hidden;
+          padding-inline-end: 4px;
+        }
+        .yam-attachments-grid::-webkit-scrollbar {
+          width: 6px;
+        }
+        .yam-attachments-grid::-webkit-scrollbar-thumb {
+          background: rgba(148,163,184,0.35);
+          border-radius: 999px;
         }
         .yam-attachment-card {
           position: relative;
@@ -478,12 +489,15 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
         }
         .yam-composer-row {
           align-items: flex-end;
+          flex-wrap: nowrap;
+          min-width: 0;
         }
         .yam-composer-actions {
           display: inline-flex;
           align-items: center;
           gap: 8px;
           position: relative;
+          flex-shrink: 0;
         }
         .yam-action-btn,
         .yam-emoji-btn,
@@ -549,6 +563,7 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
           font-weight: 800;
           padding: 0 16px;
           box-shadow: 0 14px 28px rgba(79,70,229,0.28);
+          flex: 0 0 auto;
         }
         .yam-send-btn:disabled,
         .yam-action-btn:disabled,
@@ -595,8 +610,23 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
             border-radius: 22px;
             padding: 10px;
           }
+          .yam-attachments-grid {
+            max-height: 156px;
+          }
           .yam-composer-row {
             gap: 8px;
+            flex-wrap: nowrap;
+            align-items: flex-end;
+          }
+          .yam-composer-actions {
+            width: auto;
+            justify-content: flex-end;
+            flex-shrink: 0;
+          }
+          .yam-input-frame {
+            width: auto;
+            flex: 1 1 auto;
+            min-width: 0;
           }
           .yam-action-btn,
           .yam-emoji-btn,

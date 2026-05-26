@@ -684,7 +684,7 @@ export default function Chat() {
         <style>{`
           .yam-conversation-screen {
             min-height: 100vh;
-            height: 100vh;
+            height: 100dvh;
             display: grid;
             grid-template-columns: 310px minmax(0, 1fr) 320px;
             background:
@@ -1219,6 +1219,11 @@ export default function Chat() {
           }
           .yam-chat-input-wrap {
             padding: 10px;
+            position: sticky;
+            bottom: 0;
+            z-index: 6;
+            background: linear-gradient(180deg, rgba(4,7,18,0.82), rgba(4,7,18,0.96));
+            backdrop-filter: blur(10px);
           }
           .yam-call-overlay {
             position: absolute;

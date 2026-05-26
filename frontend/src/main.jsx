@@ -16,7 +16,7 @@ import './styles/unified-overrides.css';
 import './styles/mobile-first.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 
-const BUILD_ID = 'yamshat-ui-system-20260526-r2-component-library-login-fix';
+const BUILD_ID = 'yamshat-ui-system-20260526-r3-ui-fixes';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

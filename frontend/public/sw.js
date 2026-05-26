@@ -1,4 +1,4 @@
-const VERSION = 'yamshat-v20260526-135000-1779803400279';
+const VERSION = 'yamshat-v20260526-232449-1779837889540';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,

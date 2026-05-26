@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.main import fastapi_app
 
-ORIGIN = 'https://yamshati-1-ygl0.onrender.com'
+ORIGIN = 'https://yamshat8.onrender.com'
 
 
 def main():

@@ -13,4 +13,4 @@ data:
   ENABLE_TRACING: 'true'
   JAEGER_AGENT_HOST: jaeger-agent.monitoring.svc.cluster.local
   JAEGER_AGENT_PORT: '6831'
-  CORS_ORIGINS: https://yamshat1-1-yg1o.onrender.com,https://yamshat1-ahj8.onrender.com
+  CORS_ORIGINS: https://yamshat8.onrender.com,https://yamshat-1ya4.onrender.com

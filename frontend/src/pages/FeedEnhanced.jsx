@@ -614,7 +614,7 @@ export default function FeedEnhanced() {
           .yam-nav-link-desktop.active {
             color: #fff;
             background: linear-gradient(90deg, rgba(114, 60, 240, 0.24), rgba(85, 73, 243, 0.08));
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+            box-shadow: var(--shadow-inset-soft);
           }
 
           .yam-nav-link-icon {

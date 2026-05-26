@@ -1,4 +1,4 @@
-const VERSION = 'yamshat-v20260526-r7-render-sync-hotfix';
+const VERSION = 'yamshat-v20260526-032607-1779765967698';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,

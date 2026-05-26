@@ -551,7 +551,7 @@ export default function Inbox() {
             gap: 12px;
             padding: 0 20px;
             color: #94a3b8;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+            box-shadow: var(--shadow-inset-soft);
           }
 
           .yam-top-search-bar input {

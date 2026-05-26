@@ -1,14 +1,23 @@
 import { motion, useReducedMotion } from 'framer-motion';
 
-export default function Card({ children, className = '', animated = false, ...props }) {
+export default function Card({
+  children,
+  className = '',
+  animated = false,
+  padding = 'md',
+  elevation = 'sm',
+  tone = 'default',
+  as: Tag = 'div',
+  ...props
+}) {
   const prefersReducedMotion = useReducedMotion();
-  const classes = `card ${className}`.trim();
+  const classes = `card card-padding-${padding} card-elevation-${elevation} card-tone-${tone} ${className}`.trim();
 
   if (!animated || prefersReducedMotion) {
     return (
-      <div className={classes} {...props}>
+      <Tag className={classes} {...props}>
         {children}
-      </div>
+      </Tag>
     );
   }
 

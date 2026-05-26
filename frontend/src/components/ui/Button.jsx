@@ -14,6 +14,22 @@ function triggerHapticFeedback(type = 'light') {
   navigator.vibrate(durations[type] || durations.light);
 }
 
+const VARIANT_MAP = {
+  primary: 'primary',
+  secondary: 'secondary',
+  ghost: 'secondary',
+  success: 'success',
+  danger: 'danger',
+  destructive: 'danger',
+  warning: 'warning',
+};
+
+const SIZE_MAP = {
+  sm: 'small',
+  md: 'medium',
+  lg: 'large',
+};
+
 export default function Button({
   children,
   type = 'button',
@@ -26,6 +42,7 @@ export default function Button({
   cooldownMs = 400,
   hapticFeedback = true,
   icon = null,
+  trailingIcon = null,
   fullWidth = false,
   onClick,
   ...props
@@ -33,6 +50,8 @@ export default function Button({
   const [internalBusy, setInternalBusy] = useState(false);
   const mountedRef = useRef(true);
 
+  const resolvedVariant = VARIANT_MAP[variant] || variant;
+  const resolvedSize = SIZE_MAP[size] || size;
   const busy = loading || internalBusy;
   const locked = disabled || busy;
 
@@ -72,8 +91,8 @@ export default function Button({
 
   const buttonClasses = [
     'btn',
-    `btn-${variant}`,
-    `btn-${size}`,
+    `btn-${resolvedVariant}`,
+    `btn-${resolvedSize}`,
     busy ? 'is-busy' : '',
     locked ? 'is-disabled' : '',
     fullWidth ? 'is-full-width' : '',
@@ -96,6 +115,7 @@ export default function Button({
       {busy ? <span className="btn-spinner" aria-hidden="true" /> : null}
       {icon ? <span className="btn-icon" aria-hidden="true">{icon}</span> : null}
       <span className="btn-label">{children}</span>
+      {trailingIcon ? <span className="btn-icon btn-icon-trailing" aria-hidden="true">{trailingIcon}</span> : null}
     </button>
   );
 }

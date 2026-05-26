@@ -1,5 +1,5 @@
 (function () {
-  const CONFIG_BUILD = 'yamshat-config-20260526-r7-render-sync-hotfix';
+  const CONFIG_BUILD = 'yamshat-config-20260526-r8-component-library-login-fix';
   const CONFIG_BUILD_KEY = 'yamshat_config_build';
 
   const trim = (value) => String(value || '').trim().replace(/\/+$/, '');

@@ -59,10 +59,13 @@ const runtimeApi = toApiBase(window.APP_API_BASE || '');
 const runtimeBackendOrigin = trim(window.YAMSHAT_BACKEND_ORIGIN || window.APP_BACKEND_ORIGIN);
 const envApi = toApiBase(import.meta.env.VITE_API_BASE || '');
 const envBackendOrigin = trim(import.meta.env.VITE_BACKEND_ORIGIN || apiToOrigin(envApi));
+const frontendOrigin = currentOrigin;
+
 const envSocketUrl = trim(import.meta.env.VITE_SOCKET_URL || envBackendOrigin);
 const envCdnBase = trim(import.meta.env.VITE_CDN_BASE || '');
 const inferredBackendOrigin = inferBackendOrigin();
 const inferredApi = inferredBackendOrigin ? `${inferredBackendOrigin}/api` : '';
+const sameOriginApi = `${frontendOrigin}/api`;
 const SESSION_STORAGE_KEY = 'yamshat_user_session';
 const CSRF_STORAGE_KEY = 'yamshat_csrf_token';
 
@@ -110,7 +113,7 @@ export const API_BASE = toApiBase(
     safeRuntimeApi ||
     runtimeBackendApi ||
     safeStoredApi ||
-    (BACKEND_ORIGIN ? `${BACKEND_ORIGIN}/api` : `${currentOrigin}/api`)
+    (BACKEND_ORIGIN ? `${BACKEND_ORIGIN}/api` : sameOriginApi)
 );
 
 export const CDN_BASE = trim(window.YAMSHAT_CDN_BASE || window.APP_CDN_BASE || envCdnBase || '');

@@ -445,7 +445,7 @@
   border-radius:26px!important;
   overflow:hidden;
   backdrop-filter:blur(18px);
-  box-shadow:0 10px 30px rgba(0,0,0,.35);
+  box-shadow:var(--shadow-overlay);
 }
 
 .story-bar{
@@ -567,7 +567,7 @@
     margin-top:-28px;
     color:white;
     font-size:28px;
-    box-shadow:0 10px 25px rgba(124,58,237,.45);
+    box-shadow:var(--shadow-brand-strong);
   }
 
   .story-bar{

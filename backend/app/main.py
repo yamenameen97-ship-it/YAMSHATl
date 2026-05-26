@@ -52,28 +52,27 @@ fastapi_app.add_middleware(
         'http://localhost: 3000',
         'http://localhost: 5173',
         'http://127.0.0.1:5173',
-        'https://yamshatl-1-yg1o.onrender.com'
+        'https://yamshatl-1-yg1o.onrender.com',
         'https://yamshatl-ahj8.onrender.com'],
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*'],
 )
-# دالتان وسيطتان ذكيتان لتخطي طلبات OPTIONS المسبقة
+# دالتان وسيطتان ذكيتان لتخطي فحص الأمان لروابط الكابتشا والـ Refresh والـ OPTIONS
 async def smart_rate_guard(request, call_next):
-    if request.method.upper() == "OPTIONS":
+    if request.method.upper() == "OPTIONS" or "captcha" in request.url.path or "refresh" in request.url.path:
         return await call_next(request)
     return await api_rate_guard(request, call_next)
 
 async def smart_security_headers(request, call_next):
-    if request.method.upper() == "OPTIONS":
+    if request.method.upper() == "OPTIONS" or "captcha" in request.url.path or "refresh" in request.url.path:
         return await call_next(request)
     return await security_headers(request, call_next)
 
-# تشغيل الدوال الذكية بدلاً من الدوال الأصلية الصارمة
+# تشغيل الدوال الذكية المطورة (تأكد أن هذه الأسطر الثلاثة تحت الدوال مباشرة)
 fastapi_app.middleware('http')(smart_rate_guard)
 fastapi_app.middleware('http')(smart_security_headers)
 register_error_handlers(fastapi_app)
-
 uploads_dir = Path(__file__).resolve().parents[2] / 'uploads'
 uploads_dir.mkdir(exist_ok=True)
 fastapi_app.mount('/uploads', StaticFiles(directory=str(uploads_dir)), name='uploads')

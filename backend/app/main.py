@@ -13,18 +13,15 @@ from app.core.api_guard import api_rate_guard
 from app.core.config import settings
 from app.core.error_handlers import register_error_handlers
 from app.core.logging_setup import configure_logging
-from app.core.observability import configure_metrics, configure_tracing, make_metrics_router
 from app.core.security_extra import security_headers
 from app.core.socket_server import sio
 from app.db.bootstrap import initialize_database
 from app.db.session import engine
 
-
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     initialize_database(engine)
     yield
-
 
 def _database_status() -> dict:
     try:
@@ -32,11 +29,7 @@ def _database_status() -> dict:
             connection.execute(text('SELECT 1'))
         return {'database': 'ok'}
     except Exception as exc:
-        return {
-            'database': 'error',
-            'database_error': str(exc)[:300],
-        }
-
+        return {'database': 'error', 'database_error': str(exc)[:300]}
 
 configure_logging()
 
@@ -49,34 +42,39 @@ fastapi_app = FastAPI(
 fastapi_app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        'http://localhost: 3000',
-        'http://localhost: 5173',
+        'http://localhost:3000',
+        'http://localhost:5173',
         'http://127.0.0.1:5173',
         'https://yamshatl-1-yg1o.onrender.com',
-        'https://yamshatl-ahj8.onrender.com'],
+        'https://yamshatl-ahj8.onrender.com',
+    ],
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*'],
 )
-# دالتان وسيطتان ذكيتان لتخطي فحص الأمان لروابط الكابتشا والـ Refresh والـ OPTIONS
+
+# دوال وسيطة ذكية لتخطي القيود للمسارات الأساسية
 async def smart_rate_guard(request, call_next):
-    if request.method.upper() == "OPTIONS" or "captcha" in request.url.path or "refresh" in request.url.path:
+    safe_paths = ["captcha", "refresh", "login", "verify", "auth"]
+    if request.method.upper() == "OPTIONS" or any(path in request.url.path for path in safe_paths):
         return await call_next(request)
     return await api_rate_guard(request, call_next)
 
 async def smart_security_headers(request, call_next):
-    if request.method.upper() == "OPTIONS" or "captcha" in request.url.path or "refresh" in request.url.path:
+    safe_paths = ["captcha", "refresh", "login", "verify", "auth"]
+    if request.method.upper() == "OPTIONS" or any(path in request.url.path for path in safe_paths):
         return await call_next(request)
     return await security_headers(request, call_next)
 
-# تشغيل الدوال الذكية المطورة (تأكد أن هذه الأسطر الثلاثة تحت الدوال مباشرة)
 fastapi_app.middleware('http')(smart_rate_guard)
 fastapi_app.middleware('http')(smart_security_headers)
+
 register_error_handlers(fastapi_app)
 uploads_dir = Path(__file__).resolve().parents[2] / 'uploads'
 uploads_dir.mkdir(exist_ok=True)
 fastapi_app.mount('/uploads', StaticFiles(directory=str(uploads_dir)), name='uploads')
 
+# تضمين الراوترات
 fastapi_app.include_router(auth.router, prefix=f'{settings.API_PREFIX}/auth', tags=['auth'])
 fastapi_app.include_router(users.router, prefix=f'{settings.API_PREFIX}/users', tags=['users'])
 fastapi_app.include_router(posts.router, prefix=f'{settings.API_PREFIX}/posts', tags=['posts'])
@@ -94,36 +92,8 @@ fastapi_app.include_router(stories.router, prefix=settings.API_PREFIX, tags=['st
 fastapi_app.include_router(groups.router, prefix=settings.API_PREFIX, tags=['groups'])
 fastapi_app.include_router(ws.router, tags=['ws'])
 
-
 @fastapi_app.api_route('/', methods=['GET', 'HEAD'])
 def root() -> dict:
-    return {
-        'message': 'YAMSHAT FastAPI backend is running',
-        'docs': '/docs',
-        'health': '/health',
-        'metrics': '/metrics',
-        'service': settings.SERVICE_NAME,
-        'socketio': '/socket.io',
-        'uploads': '/uploads',
-        'analytics': f'{settings.API_PREFIX}/analytics/events',
-    }
-
-
-@fastapi_app.api_route('/health', methods=['GET', 'HEAD'])
-def health() -> dict:
-    database_status = _database_status()
-    status = 'ok' if database_status.get('database') == 'ok' else 'degraded'
-    return {
-        'status': status,
-        **database_status,
-        'docs': '/docs',
-        'metrics': '/metrics',
-        'service': settings.SERVICE_NAME,
-        'livekit_configured': bool(settings.LIVEKIT_URL and settings.LIVEKIT_API_KEY and settings.LIVEKIT_API_SECRET),
-        'cloudinary_configured': bool(settings.cloudinary_configured),
-        'analytics_enabled': bool(settings.ANALYTICS_ENABLED),
-        'push_provider': settings.PUSH_PROVIDER,
-    }
-
+    return {'message': 'YAMSHAT FastAPI backend is running'}
 
 app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app, socketio_path='socket.io')

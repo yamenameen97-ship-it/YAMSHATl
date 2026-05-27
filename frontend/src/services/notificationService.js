@@ -152,10 +152,16 @@ export const notificationService = {
     };
 
     try {
-      await retryWithBackoff(() => API.post('/notifications/register-device', payload));
-    } catch {
-      localStorage.setItem('yamshat_device_registration', JSON.stringify({ ...payload, fallback: true, registered_at: new Date().toISOString() }));
+      await API.post('/notifications/register-device', payload);
+    } catch (error) {
+      if (error?.response?.status !== 404) {
+        localStorage.setItem(
+          'yamshat_device_registration',
+          JSON.stringify({ ...payload, fallback: true, registered_at: new Date().toISOString() })
+        );
+      }
     }
+
     return payload.device_id;
   },
 

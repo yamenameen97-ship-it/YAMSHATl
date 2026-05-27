@@ -1,5 +1,4 @@
 import { Suspense, lazy, useEffect } from 'react';
-import { shallow } from 'zustand/shallow';
 import StaticContentPage from './pages/StaticContentPage.jsx';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
@@ -57,11 +56,9 @@ function AppGuards() {
   useOfflineQueue();
   usePageAnalytics();
   useChatRealtime();
-  const { theme, language, activeRequests } = useAppStore((state) => ({
-    theme: state.theme,
-    language: state.language,
-    activeRequests: state.activeRequests,
-  }), shallow);
+  const theme = useAppStore((state) => state.theme);
+  const language = useAppStore((state) => state.language);
+  const activeRequests = useAppStore((state) => state.activeRequests);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;

@@ -15,9 +15,10 @@ import './styles/performance.css';
 import './styles/unified-overrides.css';
 import './styles/mobile-first.css';
 import './styles/design-system.css';
+import './styles/native-feeling-stage5.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 
-const BUILD_ID = 'yamshat-ui-system-20260527-r5-stage4-reels-media-tactile';
+const BUILD_ID = 'yamshat-ui-system-20260527-r6-stage6-native-motion-home';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

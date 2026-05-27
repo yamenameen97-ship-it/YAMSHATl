@@ -11,6 +11,7 @@ import { BACKEND_ORIGIN } from '../api/config.js';
 import { getCsrfToken } from '../utils/csrf.js';
 import { clearStoredUser, getAuthToken, getCurrentUsername, getStoredUserSnapshot } from '../utils/auth.js';
 import { redirectToAppPath } from '../utils/router.js';
+import { useDoubleTap } from '../hooks/useDoubleTap.js';
 
 const FEED_TABS = [
   { id: 'favorites', label: 'المفضلة' },
@@ -36,6 +37,21 @@ const QUICK_ACTIONS = [
   { label: 'صورة', color: 'green' },
   { label: 'فيديو', color: 'violet' },
   { label: 'رأيك', color: 'rose' },
+];
+
+const FEED_HERO_STATS = [
+  { value: '24', label: 'ستوري نشطة' },
+  { value: '8.2K', label: 'تفاعل اليوم' },
+  { value: '99%', label: 'سلاسة الواجهة' },
+];
+
+const HOME_STORIES = [
+  { id: 'mine', label: 'أنت', caption: 'أضف الآن' },
+  { id: 'live', label: 'مباشر', caption: 'LIVE', live: true },
+  { id: 'travel', label: 'سفر', caption: 'مشاهد' },
+  { id: 'design', label: 'تصميم', caption: 'أفكار' },
+  { id: 'team', label: 'الفريق', caption: 'تحديث' },
+  { id: 'moments', label: 'لحظات', caption: 'جديد' },
 ];
 
 const PROFILE_HIGHLIGHTS = [
@@ -160,11 +176,34 @@ function PostCard({ post }) {
   const [showComments, setShowComments] = useState(false);
   const [commentDraft, setCommentDraft] = useState('');
   const [localComments, setLocalComments] = useState([]);
+  const [showLikeBurst, setShowLikeBurst] = useState(false);
+
+  const triggerLikeBurst = () => {
+    setShowLikeBurst(false);
+    window.requestAnimationFrame(() => setShowLikeBurst(true));
+    window.setTimeout(() => setShowLikeBurst(false), 720);
+  };
+
+  const forceLike = () => {
+    setLiked((prev) => {
+      if (prev) return prev;
+      setLikesCount((count) => count + 1);
+      pushToast({ type: 'success', title: 'تم الإعجاب بالمنشور' });
+      return true;
+    });
+    triggerLikeBurst();
+    if (navigator.vibrate) navigator.vibrate(12);
+  };
+
+  const handleMediaDoubleTap = useDoubleTap(() => {
+    forceLike();
+  }, 260);
 
   const handleLike = () => {
     setLiked((prev) => {
       const next = !prev;
       setLikesCount((count) => Math.max(0, count + (next ? 1 : -1)));
+      if (next) triggerLikeBurst();
       return next;
     });
   };
@@ -222,10 +261,24 @@ function PostCard({ post }) {
 
       <p className="yam-post-copy-v2">{post.text}</p>
 
-      <div className={`yam-post-media-grid-v2 media-count-${mediaItems.length || 1}`}>
+      <div
+        className={`yam-post-media-grid-v2 media-count-${mediaItems.length || 1}`}
+        onClick={handleMediaDoubleTap}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            forceLike();
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label="دبل تاب للإعجاب"
+      >
         {mediaItems.map((item, index) => (
           <MediaTile key={`${post.id}-media-${index}`} item={item} index={index} />
         ))}
+        <div className={`yam-like-burst ${showLikeBurst ? 'visible' : ''}`} aria-hidden="true">❤</div>
+        <div className="yam-post-doubletap-badge">دبل تاب للإعجاب</div>
       </div>
 
       <div className="yam-post-stats-v2">
@@ -375,6 +428,26 @@ export default function FeedEnhanced() {
                 <div className="yam-mobile-brand">YAMSHAT</div>
               </div>
 
+              <div className="yam-feed-hero-shell">
+                <div className="yam-feed-hero-copy">
+                  <strong>واجهة أخف، أوضح، وأقرب لتجربة التطبيق الأصلي</strong>
+                  <p>رتّبنا الأولويات بصرياً: العنوان أولاً، أدوات الإنشاء بعدها، ثم الستوري كمسار سريع للاكتشاف، وأخيراً البطاقات بمسافات أهدأ وعمق أوضح.</p>
+                  <div className="yam-feed-hero-tags">
+                    <span className="yam-feed-hero-tag">motion immersive</span>
+                    <span className="yam-feed-hero-tag">native micro-interactions</span>
+                    <span className="yam-feed-hero-tag">touch-first hierarchy</span>
+                  </div>
+                </div>
+                <div className="yam-feed-hero-stats">
+                  {FEED_HERO_STATS.map((item) => (
+                    <div key={item.label} className="yam-feed-stat-card">
+                      <strong>{item.value}</strong>
+                      <span>{item.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <div className="yam-composer-prompt-bar">
                 <div className="yam-composer-actions-inline">
                   {QUICK_ACTIONS.map((item) => (
@@ -390,6 +463,25 @@ export default function FeedEnhanced() {
                 <PostComposer />
               </div>
 
+              <div className="yam-home-story-strip-card">
+                <div className="yam-home-story-strip-head">
+                  <h3>شريط الستوري</h3>
+                  <span>gradients + rings + live depth</span>
+                </div>
+                <div className="yam-home-story-strip">
+                  {HOME_STORIES.map((story) => (
+                    <button key={story.id} type="button" className="story-strip-item" onClick={() => navigate('/stories')}>
+                      <span className={`story-strip-ring ${story.live ? 'live' : ''}`}>
+                        <span>{story.label.slice(0, 1)}</span>
+                        {story.live ? <span className="story-live-indicator">LIVE</span> : null}
+                      </span>
+                      <span>{story.label}</span>
+                      <small>{story.caption}</small>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="yam-feed-tabs">
                 {FEED_TABS.map((tab) => (
                   <button
@@ -403,6 +495,11 @@ export default function FeedEnhanced() {
                 ))}
               </div>
             </section>
+
+            <div className="yam-section-title-row">
+              <h3>نبض اليوم</h3>
+              <span className="yam-feed-section-meta">{feedPosts.length} بطاقات مصقولة</span>
+            </div>
 
             <div className="yam-post-stack-v2">
               {feedPosts.map((post) => (
@@ -838,6 +935,12 @@ export default function FeedEnhanced() {
             height: 3px;
             border-radius: 999px;
             background: linear-gradient(90deg, #8b5cf6, #d946ef);
+          }
+
+          .yam-feed-section-meta {
+            color: #bfc8e8;
+            font-size: 13px;
+            font-weight: 700;
           }
 
           .yam-post-stack-v2 {

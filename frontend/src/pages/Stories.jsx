@@ -4,6 +4,8 @@ import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import Modal from '../components/ui/Modal.jsx';
 import { useToast } from '../components/admin/ToastProvider.jsx';
+import GestureContainer from '../components/GestureContainer.jsx';
+import OptimizedVideo from '../components/ui/OptimizedVideo.jsx';
 import { getStories, getStoryArchive, reactToStory, replyToStory, uploadStory, viewStory } from '../api/stories.js';
 
 const MUSIC_OPTIONS = [
@@ -59,6 +61,51 @@ function storyAudienceLabel(story) {
   return story?.is_close_friends ? 'الأصدقاء المقربون' : 'عام';
 }
 
+function StoryMedia({ story, cover = false, autoPlay = false, muted = true, loop = false, controls = false, loadingLabel = 'جارٍ تجهيز الوسائط...' }) {
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    setIsLoaded(false);
+  }, [story?.id, story?.media_url]);
+
+  return (
+    <div className="story-media-shell">
+      {isVideoStory(story) ? (
+        <OptimizedVideo
+          src={story.media_url}
+          alt={story?.caption || 'story video'}
+          controls={controls}
+          autoplay={autoPlay}
+          muted={muted}
+          loop={loop}
+          lazy={false}
+          aspectRatio="9/16"
+          style={{ borderRadius: 0, background: '#070b14' }}
+          onLoad={() => setIsLoaded(true)}
+        />
+      ) : (
+        <img
+          src={story.media_url}
+          alt={story?.caption || 'story'}
+          loading="lazy"
+          decoding="async"
+          onLoad={() => setIsLoaded(true)}
+          style={{ width: '100%', height: '100%', objectFit: cover ? 'cover' : 'contain' }}
+        />
+      )}
+
+      {!isLoaded ? (
+        <div className="story-media-loader">
+          <div>
+            <div className="pulse">{isVideoStory(story) ? '▶' : '◌'}</div>
+            <span>{loadingLabel}</span>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function Stories() {
   const { pushToast } = useToast();
   const fileInputRef = useRef(null);
@@ -83,6 +130,8 @@ export default function Stories() {
   const [replyText, setReplyText] = useState('');
   const [progress, setProgress] = useState(0);
   const [paused, setPaused] = useState(false);
+  const [viewerDragOffset, setViewerDragOffset] = useState({ x: 0, y: 0 });
+  const [showHeartBurst, setShowHeartBurst] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -272,14 +321,44 @@ export default function Stories() {
     }
   };
 
+  const triggerHeartBurst = () => {
+    setShowHeartBurst(false);
+    window.requestAnimationFrame(() => setShowHeartBurst(true));
+    window.setTimeout(() => setShowHeartBurst(false), 720);
+  };
+
+  const goToPreviousStory = () => {
+    if (activeStoryIndex > 0) setActiveStoryIndex((prev) => prev - 1);
+    else if (activeGroupIndex > 0) {
+      const previousGroupIndex = activeGroupIndex - 1;
+      const previousGroupLength = viewerGroups[previousGroupIndex]?.stories?.length || 1;
+      setActiveGroupIndex(previousGroupIndex);
+      setActiveStoryIndex(previousGroupLength - 1);
+    }
+  };
+
+  const goToNextStory = () => {
+    if (activeStoryIndex < (activeGroup?.stories?.length || 0) - 1) setActiveStoryIndex((prev) => prev + 1);
+    else if (activeGroupIndex < viewerGroups.length - 1) {
+      setActiveGroupIndex((prev) => prev + 1);
+      setActiveStoryIndex(0);
+    }
+  };
+
+  const handleViewerDoubleTap = () => {
+    reactToCurrentStory('❤️');
+    triggerHeartBurst();
+    if (navigator.vibrate) navigator.vibrate(10);
+  };
+
   const archiveCount = archive.length;
   const totalViewers = stories.reduce((sum, item) => sum + Number(item.views_count || 0), 0);
   const totalReactions = stories.reduce((sum, item) => sum + Object.values(item.reactions || {}).reduce((acc, value) => acc + Number(value || 0), 0), 0);
 
   return (
     <MainLayout>
-      <div style={{ maxWidth: 980, margin: '0 auto', padding: '20px 10px', display: 'grid', gap: 18 }}>
-        <Card style={{ padding: 18 }}>
+      <div className="story-dashboard-shell" style={{ maxWidth: 980, margin: '0 auto', padding: '20px 10px' }}>
+        <Card className="story-hero-card story-shell-surface" style={{ padding: 18 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
             <div>
               <h2 style={{ margin: 0 }}>الستوري</h2>
@@ -311,6 +390,7 @@ export default function Stories() {
                 <button key={group.username} type="button" onClick={() => openViewer('feed', groupIndex, 0)} className="story-user-card">
                   <div className="story-user-ring">
                     <img src={`https://ui-avatars.com/api/?name=${group.username}`} alt={group.username} className="story-user-avatar" />
+                    {groupIndex === 0 ? <span className="story-live-indicator">LIVE</span> : null}
                   </div>
                   <div style={{ marginTop: 8, fontSize: 12 }}>{group.username}</div>
                   <small className="muted">{group.stories.length} قصة</small>
@@ -320,12 +400,10 @@ export default function Stories() {
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
               {stories.map((story) => (
-                <Card key={story.id} style={{ overflow: 'hidden', padding: 0 }}>
-                  <div style={{ aspectRatio: '9 / 16', position: 'relative', background: '#111' }}>
-                    {isVideoStory(story)
-                      ? <video src={story.media_url} muted loop autoPlay playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      : <img src={story.media_url} alt="story" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
-                    <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <Card key={story.id} className="story-grid-card story-shell-surface" style={{ overflow: 'hidden', padding: 0 }}>
+                  <div style={{ position: 'relative' }}>
+                    <StoryMedia story={story} cover autoPlay muted loop loadingLabel="جارٍ تحميل معاينة الستوري..." />
+                    <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 6, flexWrap: 'wrap', zIndex: 2 }}>
                       {story.music ? <span className="story-chip">🎵 {story.music}</span> : null}
                       {story.sticker_items?.length ? <span className="story-chip">{story.sticker_items.join(' ')}</span> : null}
                     </div>
@@ -369,13 +447,11 @@ export default function Stories() {
                   const groupIndex = archiveGroups.findIndex((group) => group.username === story.username);
                   const nestedIndex = archiveGroups[groupIndex]?.stories?.findIndex((item) => String(item.id) === String(story.id)) || 0;
                   return (
-                    <Card key={story.id} style={{ overflow: 'hidden', padding: 0, cursor: 'pointer' }} onClick={() => openViewer('archive', groupIndex, nestedIndex)}>
-                      <div style={{ aspectRatio: '9 / 16', background: '#111', position: 'relative' }}>
-                        {isVideoStory(story)
-                          ? <video src={story.media_url} muted preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.78 }} />
-                          : <img src={story.media_url} alt="archived" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.78 }} />}
-                        <div style={{ position: 'absolute', top: 10, left: 10 }}><span className="story-chip">🗄️ مؤرشف</span></div>
-                        <div style={{ position: 'absolute', insetInline: 0, bottom: 0, padding: 10, background: 'linear-gradient(transparent, rgba(0,0,0,0.84))', color: 'white' }}>
+                    <Card key={story.id} className="story-archive-card story-shell-surface" style={{ overflow: 'hidden', padding: 0, cursor: 'pointer' }} onClick={() => openViewer('archive', groupIndex, nestedIndex)}>
+                      <div style={{ position: 'relative' }}>
+                        <StoryMedia story={story} cover muted loadingLabel="جارٍ تحميل الأرشيف..." />
+                        <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 2 }}><span className="story-chip">🗄️ مؤرشف</span></div>
+                        <div style={{ position: 'absolute', insetInline: 0, bottom: 0, padding: 10, background: 'linear-gradient(transparent, rgba(0,0,0,0.84))', color: 'white', zIndex: 2 }}>
                           <strong>@{story.username}</strong>
                           <div style={{ fontSize: 11, opacity: 0.84 }}>{story.music || 'بدون موسيقى'}</div>
                         </div>
@@ -463,44 +539,50 @@ export default function Stories() {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.05fr) minmax(300px, 0.95fr)', gap: 16 }}>
-              <div
-                style={{ position: 'relative', aspectRatio: '9 / 16', background: '#000', borderRadius: 20, overflow: 'hidden' }}
-                onMouseDown={() => setPaused(true)}
-                onMouseUp={() => setPaused(false)}
-                onTouchStart={() => setPaused(true)}
-                onTouchEnd={() => setPaused(false)}
+              <GestureContainer
+                onSwipe={(data) => {
+                  setPaused(false);
+                  setViewerDragOffset({ x: data.direction === 'left' ? -72 : 72, y: 0 });
+                  window.setTimeout(() => setViewerDragOffset({ x: 0, y: 0 }), 220);
+                  if (data.direction === 'right') goToPreviousStory();
+                  else if (data.direction === 'left') goToNextStory();
+                }}
+                onSwipeVertical={(data) => {
+                  setPaused(false);
+                  setViewerDragOffset({ x: 0, y: data.direction === 'down' ? 88 : -44 });
+                  window.setTimeout(() => setViewerDragOffset({ x: 0, y: 0 }), 220);
+                  if (data.direction === 'down') setViewerOpen(false);
+                }}
+                onDoubleTap={handleViewerDoubleTap}
+                className="story-viewer-stage swiping"
+                style={{
+                  transform: `translate3d(${viewerDragOffset.x}px, ${viewerDragOffset.y}px, 0)`,
+                }}
               >
-                {isVideoStory(activeStory)
-                  ? <video key={activeStory.id} src={activeStory.media_url} controls autoPlay playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                  : <img src={activeStory.media_url} alt="story" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
+                <div
+                  onMouseDown={() => setPaused(true)}
+                  onMouseUp={() => setPaused(false)}
+                  onTouchStart={() => setPaused(true)}
+                  onTouchEnd={() => setPaused(false)}
+                >
+                  <StoryMedia story={activeStory} autoPlay muted={false} controls loadingLabel="جارٍ تحميل الفيديو..." />
 
-                <div style={{ position: 'absolute', top: 18, left: 18, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {activeStory.music ? <span className="story-chip">🎵 {activeStory.music}</span> : null}
-                  {activeStory.sticker_items?.map((sticker) => <span key={sticker} className="story-chip">{sticker}</span>)}
+                  <div style={{ position: 'absolute', top: 18, left: 18, display: 'flex', gap: 8, flexWrap: 'wrap', zIndex: 2 }}>
+                    {activeStory.music ? <span className="story-chip">🎵 {activeStory.music}</span> : null}
+                    {activeStory.sticker_items?.map((sticker) => <span key={sticker} className="story-chip">{sticker}</span>)}
+                  </div>
+
+                  <button type="button" className="story-nav-hit story-nav-prev" onClick={goToPreviousStory}>‹</button>
+                  <button type="button" className="story-nav-hit story-nav-next" onClick={goToNextStory}>›</button>
+
+                  <div className={`story-reaction-float ${showHeartBurst ? 'visible' : ''}`} aria-hidden="true">❤️</div>
+
+                  <div style={{ position: 'absolute', insetInline: 0, bottom: 0, padding: 16, background: 'linear-gradient(transparent, rgba(0,0,0,0.84))', color: 'white', zIndex: 2 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 6 }}>{activeStory.caption || 'بدون كابشن'}</div>
+                    <div style={{ fontSize: 12, opacity: 0.82 }}>🎵 {activeStory.music || 'بدون موسيقى'} · {storyAudienceLabel(activeStory)} · اسحب للتنقل</div>
+                  </div>
                 </div>
-
-                <button type="button" className="story-nav-hit story-nav-prev" onClick={() => {
-                  if (activeStoryIndex > 0) setActiveStoryIndex((prev) => prev - 1);
-                  else if (activeGroupIndex > 0) {
-                    const previousGroupIndex = activeGroupIndex - 1;
-                    const previousGroupLength = viewerGroups[previousGroupIndex]?.stories?.length || 1;
-                    setActiveGroupIndex(previousGroupIndex);
-                    setActiveStoryIndex(previousGroupLength - 1);
-                  }
-                }}>‹</button>
-                <button type="button" className="story-nav-hit story-nav-next" onClick={() => {
-                  if (activeStoryIndex < (activeGroup?.stories?.length || 0) - 1) setActiveStoryIndex((prev) => prev + 1);
-                  else if (activeGroupIndex < viewerGroups.length - 1) {
-                    setActiveGroupIndex((prev) => prev + 1);
-                    setActiveStoryIndex(0);
-                  }
-                }}>›</button>
-
-                <div style={{ position: 'absolute', insetInline: 0, bottom: 0, padding: 16, background: 'linear-gradient(transparent, rgba(0,0,0,0.84))', color: 'white' }}>
-                  <div style={{ fontWeight: 700, marginBottom: 6 }}>{activeStory.caption || 'بدون كابشن'}</div>
-                  <div style={{ fontSize: 12, opacity: 0.82 }}>🎵 {activeStory.music || 'بدون موسيقى'} · {storyAudienceLabel(activeStory)}</div>
-                </div>
-              </div>
+              </GestureContainer>
 
               <div style={{ display: 'grid', gap: 12 }}>
                 <Card style={{ padding: 14 }}>

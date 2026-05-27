@@ -89,9 +89,9 @@ export default defineConfig({
     target: 'es2020',
     outDir: 'dist',
     emptyOutDir: true,
-    cssCodeSplit: true,
-    minify: "esbuild",
-    cssMinify: true,
+    cssCodeSplit: false,
+    minify: false,
+    cssMinify: false,
     assetsInlineLimit: 4096,
     modulePreload: {
       polyfill: true,

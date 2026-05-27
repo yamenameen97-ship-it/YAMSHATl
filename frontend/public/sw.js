@@ -1,4 +1,4 @@
-const VERSION = 'yamshat-v20260527-040239-1779854559270';
+const VERSION = 'yamshat-v20260527-012447-1779845087291';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -17,7 +17,7 @@ const APP_SHELL = [
 ];
 
 function isRuntimeConfigPath(url) {
-  return /^\/(?:app-config\.js|background-sync\.js|sw\.js)$/i.test(url.pathname);
+  return /^\/(?:app-config\.js|background-sync\.js|sw(?:-enhanced)?\.js)$/i.test(url.pathname);
 }
 
 async function staleWhileRevalidate(request, cacheName) {

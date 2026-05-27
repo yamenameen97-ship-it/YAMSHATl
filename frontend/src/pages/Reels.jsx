@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Button from '../components/ui/Button.jsx';
@@ -28,7 +27,6 @@ import {
 } from '../services/reelsEngine.js';
 import { FixedSizeList as List } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
-import { getHoverLift, getOverlayMotion, getPressMotion, getReelCardMotion, triggerNativeFeedback } from '../utils/nativeFeedback.js';
 
 function computeReelScore(item) {
   const likes = Number(item.likes_count || 0);
@@ -82,7 +80,6 @@ function ReelItem({ index, style, data }) {
   const {
     reels,
     activeIndex,
-    dismissGestureHint,
     setVideoRef,
     handleLike,
     openComments,
@@ -107,7 +104,6 @@ function ReelItem({ index, style, data }) {
     navDirection,
   } = data;
 
-  const reduceMotion = useReducedMotion();
   const reel = reels[index];
   const isActive = index === activeIndex;
   const videoRef = useRef(null);
@@ -124,7 +120,7 @@ function ReelItem({ index, style, data }) {
 
   return (
     <div style={style} className={`reel-container ${isActive ? 'active' : ''}`}>
-      <motion.div className={`reel-card-shell reel-card relative bg-black overflow-hidden h-full w-full ${isActive ? 'active' : ''}`} data-direction={navDirection > 0 ? 'forward' : 'backward'} data-buffering={isActive && isBuffering ? 'true' : 'false'} {...getReelCardMotion({ reduceMotion, isActive, navDirection })}>
+      <div className={`reel-card-shell reel-card relative bg-black overflow-hidden h-full w-full ${isActive ? 'active' : ''}`} data-direction={navDirection > 0 ? 'forward' : 'backward'}>
         <video
           ref={videoRef}
           className={`w-full h-full object-cover reel-video ${isActive ? 'active' : ''}`}
@@ -133,7 +129,6 @@ function ReelItem({ index, style, data }) {
           muted={!isActive}
           poster={reel.poster_url}
           onClick={() => {
-            dismissGestureHint?.();
             if (!videoRef.current) return;
             if (videoRef.current.paused) videoRef.current.play().catch(() => {});
             else videoRef.current.pause();
@@ -149,10 +144,7 @@ function ReelItem({ index, style, data }) {
           onLoadedMetadata={() => onVideoLoadedMetadata(index)}
           onEnded={() => onVideoEnded(index)}
           onError={() => onVideoError(index)}
-          onDoubleClick={() => {
-            dismissGestureHint?.();
-            handleLike(reel, { burst: true });
-          }}
+          onDoubleClick={() => handleLike(reel, { burst: true })}
         />
 
         <div className="reel-top-overlay absolute inset-x-0 top-0 z-20 px-4 pt-4 pb-10 text-white pointer-events-none">
@@ -168,14 +160,12 @@ function ReelItem({ index, style, data }) {
             <span className="reel-chip ghost">الوضع: {QUALITY_OPTIONS.find((item) => item.value === selectedQuality)?.label || selectedQuality}</span>
             {watchEntry ? <span className="reel-chip ghost">آخر مشاهدة {formatWatchPercentage(watchEntry.progress || 0)}</span> : null}
           </div>
-          <AnimatePresence initial={false}>
-            {isActive && isBuffering ? (
-              <motion.div className="reel-buffer-banner pointer-events-auto" {...getOverlayMotion(reduceMotion)}>
-                <span>جارٍ التحميل الذكي…</span>
-                <span>{bufferPercent}%</span>
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
+          {isActive && isBuffering ? (
+            <div className="reel-buffer-banner pointer-events-auto">
+              <span>جارٍ التحميل الذكي…</span>
+              <span>{bufferPercent}%</span>
+            </div>
+          ) : null}
         </div>
 
         <div className="reel-bottom-overlay absolute bottom-0 left-0 right-0 p-4 text-white pointer-events-none">
@@ -198,40 +188,40 @@ function ReelItem({ index, style, data }) {
 
         <div className="reel-actions-stack absolute right-4 bottom-24 flex flex-col gap-4 items-center z-20">
           <div className="flex flex-col items-center gap-1">
-            <motion.button onClick={() => { dismissGestureHint?.(); handleLike(reel); }} className={`reel-action-btn ${reel.is_liked ? 'liked' : ''}`} whileHover={getHoverLift(reduceMotion, 3)} whileTap={getPressMotion(reduceMotion)}>❤️</motion.button>
+            <button onClick={() => handleLike(reel)} className={`reel-action-btn ${reel.is_liked ? 'liked' : ''}`}>❤️</button>
             <span className="reel-action-label">{reel.likes_count || 0}</span>
           </div>
 
           <div className="flex flex-col items-center gap-1">
-            <motion.button onClick={() => { dismissGestureHint?.(); triggerNativeFeedback('light'); openComments(reel); }} className="reel-action-btn" whileHover={getHoverLift(reduceMotion, 3)} whileTap={getPressMotion(reduceMotion)}>💬</motion.button>
+            <button onClick={() => openComments(reel)} className="reel-action-btn">💬</button>
             <span className="reel-action-label">{reel.comments_count || 0}</span>
           </div>
 
           <div className="flex flex-col items-center gap-1">
-            <motion.button onClick={() => { dismissGestureHint?.(); handleSave(reel); }} className={`reel-action-btn ${reel.is_saved ? 'saved' : ''}`} whileHover={getHoverLift(reduceMotion, 3)} whileTap={getPressMotion(reduceMotion)}>🔖</motion.button>
+            <button onClick={() => handleSave(reel)} className={`reel-action-btn ${reel.is_saved ? 'saved' : ''}`}>🔖</button>
             <span className="reel-action-label">حفظ</span>
           </div>
 
           <div className="flex flex-col items-center gap-1">
-            <motion.button onClick={() => { dismissGestureHint?.(); handleShare(reel); }} className="reel-action-btn" whileHover={getHoverLift(reduceMotion, 3)} whileTap={getPressMotion(reduceMotion)}>↗</motion.button>
+            <button onClick={() => handleShare(reel)} className="reel-action-btn">↗</button>
             <span className="reel-action-label">مشاركة</span>
           </div>
 
           <div className="flex flex-col items-center gap-1">
-            <motion.button onClick={() => { dismissGestureHint?.(); triggerNativeFeedback('warning'); handleReport(reel); }} className="reel-action-btn warn" whileHover={getHoverLift(reduceMotion, 3)} whileTap={getPressMotion(reduceMotion)}>⚑</motion.button>
+            <button onClick={() => handleReport(reel)} className="reel-action-btn warn">⚑</button>
             <span className="reel-action-label">بلاغ</span>
           </div>
         </div>
 
-        <div className="reel-progress-rail"><motion.div className="reel-progress-fill" animate={{ width: `${Math.max(playbackProgress, 0)}%` }} transition={reduceMotion ? { duration: 0.12 } : { type: 'spring', stiffness: 140, damping: 22, mass: 0.56 }} /></div>
+        <div className="reel-progress-rail"><div className="reel-progress-fill" style={{ width: `${Math.max(playbackProgress, 0)}%` }} /></div>
 
         {isDesktop ? (
           <>
-            <motion.button type="button" className="reel-arrow reel-arrow-up" onClick={() => { dismissGestureHint?.(); scrollToIndex(index - 1); }} disabled={index === 0} whileTap={getPressMotion(reduceMotion, 'soft')}>↑</motion.button>
-            <motion.button type="button" className="reel-arrow reel-arrow-down" onClick={() => { dismissGestureHint?.(); scrollToIndex(index + 1); }} disabled={index >= reels.length - 1} whileTap={getPressMotion(reduceMotion, 'soft')}>↓</motion.button>
+            <button type="button" className="reel-arrow reel-arrow-up" onClick={() => scrollToIndex(index - 1)} disabled={index === 0}>↑</button>
+            <button type="button" className="reel-arrow reel-arrow-down" onClick={() => scrollToIndex(index + 1)} disabled={index >= reels.length - 1}>↓</button>
           </>
         ) : null}
-      </motion.div>
+      </div>
     </div>
   );
 }
@@ -268,7 +258,6 @@ export default function ReelsPage() {
   const [navDirection, setNavDirection] = useState(1);
   const [bufferState, setBufferState] = useState({ index: -1, percent: 0, active: false });
   const [reportState, setReportState] = useState({ open: false, reel: null, reason: 'spam', note: '' });
-  const [showGestureHint, setShowGestureHint] = useState(true);
   const [watchHistoryMap, setWatchHistoryMap] = useState(() => {
     const items = getWatchHistory();
     return items.reduce((acc, item) => {
@@ -283,8 +272,6 @@ export default function ReelsPage() {
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches);
   const activeReelItem = reels[activeIndex] || null;
   const activeInsights = activeReelItem ? getReelInsightsById(activeReelItem.id) : null;
-
-  const dismissGestureHint = useCallback(() => setShowGestureHint(false), []);
 
   const resetUploadState = useCallback(() => {
     setUploadState({ mediaUrl: '', previewUrl: '', uploading: false, publishing: false, content: '', fileName: '' });
@@ -382,7 +369,6 @@ export default function ReelsPage() {
   }, [activeIndex, activeQuality, finalizeWatchSession, reels]);
 
   const queueNavigation = useCallback((direction, origin = 'gesture') => {
-    dismissGestureHint();
     if (gestureLockRef.current) return;
     gestureLockRef.current = true;
     if (gestureRafRef.current) cancelAnimationFrame(gestureRafRef.current);
@@ -419,12 +405,6 @@ export default function ReelsPage() {
     hydrateFromCache();
     loadReels();
   }, [hydrateFromCache, loadReels]);
-
-  useEffect(() => {
-    if (!showGestureHint) return undefined;
-    const timer = window.setTimeout(() => setShowGestureHint(false), 3200);
-    return () => window.clearTimeout(timer);
-  }, [showGestureHint]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -553,7 +533,6 @@ export default function ReelsPage() {
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (!isDesktop || showUploadModal || showCommentsModal || reportState.open) return;
-      dismissGestureHint();
       if (event.key === 'ArrowDown') {
         event.preventDefault();
         queueNavigation(1, 'keyboard');
@@ -699,8 +678,6 @@ export default function ReelsPage() {
   }, [activeQuality, reels]);
 
   const handleLike = async (reel, { burst = false } = {}) => {
-    dismissGestureHint();
-    triggerNativeFeedback(burst ? 'success' : 'selection');
     if (burst) {
       setHeartBurstId(String(reel.id));
       setTimeout(() => setHeartBurstId(''), 650);
@@ -722,7 +699,6 @@ export default function ReelsPage() {
   };
 
   const handleSave = async (reel) => {
-    triggerNativeFeedback('selection');
     const originalReels = [...reels];
     setReels((prev) => prev.map((item) => item.id === reel.id ? { ...item, is_saved: !item.is_saved } : item));
     try {
@@ -734,7 +710,6 @@ export default function ReelsPage() {
   };
 
   const handleShare = async (reel) => {
-    triggerNativeFeedback('selection');
     try {
       await navigator.clipboard.writeText(`${window.location.origin}/reels/${reel.id}`);
       pushToast({ type: 'success', title: 'تم نسخ رابط الريل' });
@@ -824,7 +799,6 @@ export default function ReelsPage() {
     onVideoEnded: handleVideoEnded,
     onVideoError: handleVideoError,
     onVideoPlay: handleVideoPlay,
-    dismissGestureHint,
   }), [
     activeIndex,
     activeQuality,
@@ -849,7 +823,6 @@ export default function ReelsPage() {
     selectedQuality,
     setVideoRef,
     watchHistoryMap,
-    dismissGestureHint,
   ]);
 
   const closeUploadModal = () => {
@@ -924,18 +897,7 @@ export default function ReelsPage() {
           )}
         </div>
 
-        <AnimatePresence initial={false}>
-          {showGestureHint ? (
-            <motion.div className="reel-gesture-hint" {...getOverlayMotion(false)}>
-              <strong>Native feeling</strong>
-              <span>دبل تاب للإعجاب • سحب للتنقل • الحركة متكيفة مع الشبكة</span>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
-
-        <AnimatePresence initial={false}>
-          {heartBurstId ? <motion.div className="reel-heart-burst" {...getOverlayMotion(false)}>❤️</motion.div> : null}
-        </AnimatePresence>
+        {heartBurstId ? <div className="reel-heart-burst">❤️</div> : null}
 
         <Modal isOpen={showUploadModal} onClose={closeUploadModal} title="إضافة ريل جديد">
           <div className="upload-modal-layout">
@@ -1144,9 +1106,6 @@ export default function ReelsPage() {
             transform: scale(1);
             box-shadow: 0 34px 86px rgba(0,0,0,0.4);
           }
-          .reel-card-shell[data-buffering='true'] {
-            box-shadow: 0 34px 96px rgba(59,130,246,0.22), 0 0 0 1px rgba(147,197,253,0.14);
-          }
           .reel-video {
             opacity: 0.94;
             transform: scale(1.02);
@@ -1293,31 +1252,6 @@ export default function ReelsPage() {
           }
           .reel-arrow-up { top: 50%; transform: translateY(-68px); }
           .reel-arrow-down { top: 50%; transform: translateY(16px); }
-          .reel-gesture-hint {
-            position: absolute;
-            left: 50%;
-            bottom: calc(96px + var(--safe-bottom, 0px));
-            transform: translateX(-50%);
-            z-index: 34;
-            display: grid;
-            gap: 4px;
-            min-width: min(320px, calc(100% - 28px));
-            padding: 12px 16px;
-            border-radius: 20px;
-            background: rgba(2,6,23,0.7);
-            border: 1px solid rgba(255,255,255,0.12);
-            backdrop-filter: blur(18px);
-            text-align: center;
-            box-shadow: 0 18px 38px rgba(0,0,0,0.26);
-          }
-          .reel-gesture-hint strong {
-            font-size: 13px;
-            font-weight: 900;
-          }
-          .reel-gesture-hint span {
-            color: rgba(255,255,255,0.78);
-            font-size: 12px;
-          }
           .reel-heart-burst {
             position: absolute;
             inset: 0;

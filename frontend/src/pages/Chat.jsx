@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import ChatInput from '../components/chat/ChatInput.jsx';
@@ -25,7 +24,6 @@ import { MESSAGE_LIFECYCLE, normalizeMessageStatus, withLifecycle } from '../fea
 import { getChatPreferences, toggleChatPreference } from '../utils/chatPreferences.js';
 import { formatLastSeen } from '../components/yamshat/YamshatDesign.js';
 import { CHAT_NAV_ITEMS, buildContacts, getContactDetails } from '../features/chat/chatShellFixtures.js';
-import { getOverlayMotion, getPressMotion, triggerNativeFeedback } from '../utils/nativeFeedback.js';
 
 const EMPTY_MESSAGES = [];
 const REACTION_STORAGE_KEY = 'yamshat-message-reactions-v2';
@@ -190,7 +188,6 @@ export default function Chat() {
   const scrollMetricsRef = useRef({ height: 0, lastMessageId: '' });
 
   useViewportHeight();
-  const reduceMotion = useReducedMotion();
 
   const threadList = useMemo(() => Object.values(threadsMap || {}), [threadsMap]);
   const messages = useMemo(() => normalizeMessages(conversationState?.messages || EMPTY_MESSAGES), [conversationState?.messages]);
@@ -476,7 +473,6 @@ export default function Chat() {
   };
 
   const handleMuteConversation = () => {
-    triggerNativeFeedback('selection');
     const nextSet = toggleChatPreference('muted', peer);
     const next = nextSet.has(peer);
     setIsMutedConversation(next);
@@ -484,7 +480,6 @@ export default function Chat() {
   };
 
   const handlePinConversation = () => {
-    triggerNativeFeedback('selection');
     const nextSet = toggleChatPreference('pinned', peer);
     const next = nextSet.has(peer);
     setIsPinnedConversation(next);
@@ -492,13 +487,11 @@ export default function Chat() {
   };
 
   const handleArchiveConversation = () => {
-    triggerNativeFeedback('soft');
     toggleChatPreference('archived', peer);
     pushToast({ type: 'success', title: 'تم أرشفة المحادثة', description: 'يمكنك إظهارها من تبويب المؤرشفة في الصفحة الرئيسية.' });
   };
 
   const spawnHeart = () => {
-    triggerNativeFeedback('success');
     const id = Date.now();
     setFlyingHearts((prev) => [...prev, id]);
     setTimeout(() => setFlyingHearts((prev) => prev.filter((item) => item !== id)), 1800);
@@ -567,11 +560,6 @@ export default function Chat() {
     setMediaViewerState({ open: true, index: nextIndex });
   }, [mediaGallery]);
   const messageResultsCount = searchQuery.trim() ? visibleMessages.length : messages.length;
-  const peerStatusChips = useMemo(() => ([
-    { key: 'premium', label: 'Premium chat' },
-    { key: 'presence', label: isTyping ? 'يكتب الآن' : (isOnline ? 'متصل مباشر' : 'آخر ظهور ذكي') },
-    { key: 'mode', label: isMutedConversation ? 'مكتومة' : (isPinnedConversation ? 'مثبتة' : 'سلاسة ولمسات خفيفة') },
-  ]), [isMutedConversation, isOnline, isPinnedConversation, isTyping]);
   const renderableItems = useMemo(() => {
     let lastDayKey = '';
     return visibleMessages.flatMap((message, index) => {
@@ -833,30 +821,6 @@ export default function Chat() {
             color: #94a3b8;
             font-size: 13px;
           }
-          .yam-peer-status-strip {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-          }
-          .yam-premium-chip {
-            min-height: 28px;
-            padding: 0 12px;
-            border-radius: 999px;
-            display: inline-flex;
-            align-items: center;
-            border: 1px solid rgba(255,255,255,0.08);
-            background: rgba(255,255,255,0.05);
-            color: #dbe4ff;
-            font-size: 11px;
-            font-weight: 800;
-            backdrop-filter: blur(12px);
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
-          }
-          .yam-premium-chip.accent {
-            background: linear-gradient(135deg, rgba(139,92,246,0.24), rgba(56,189,248,0.18));
-            border-color: rgba(196,181,253,0.28);
-            color: #fff;
-          }
           .yam-chat-stage-actions {
             display: flex;
             align-items: center;
@@ -900,34 +864,6 @@ export default function Chat() {
             border: none;
             background: rgba(255,255,255,0.08);
             color: #fff;
-          }
-          .yam-search-summary {
-            gap: 12px;
-          }
-          .yam-search-summary-copy {
-            display: grid;
-            gap: 2px;
-          }
-          .yam-search-summary strong {
-            font-size: 13px;
-            font-weight: 900;
-          }
-          .yam-search-summary small {
-            color: #94a3b8;
-            font-size: 12px;
-          }
-          .yam-search-summary-meta {
-            min-height: 30px;
-            padding: 0 12px;
-            border-radius: 999px;
-            display: inline-flex;
-            align-items: center;
-            background: rgba(124,58,237,0.14);
-            color: #e9d5ff;
-            border: 1px solid rgba(196,181,253,0.18);
-            font-size: 11px;
-            font-weight: 900;
-            white-space: nowrap;
           }
           .yam-messages-area {
             min-height: 0;
@@ -1354,13 +1290,13 @@ export default function Chat() {
             margin-inline-start: auto;
             margin-top: auto;
             align-self: flex-end;
-            min-height: 42px;
-            padding: 0 16px;
+            min-height: 38px;
+            padding: 0 14px;
             border-radius: 999px;
             border: 1px solid rgba(167,139,250,0.24);
-            background: linear-gradient(135deg, rgba(15,23,42,0.92), rgba(30,41,59,0.86));
+            background: rgba(15,23,42,0.9);
             color: #fff;
-            box-shadow: 0 16px 32px rgba(0,0,0,0.22), 0 0 0 1px rgba(196,181,253,0.06) inset;
+            box-shadow: 0 16px 32px rgba(0,0,0,0.22);
             z-index: 5;
           }
           .yam-scroll-jump:hover {
@@ -1601,11 +1537,6 @@ export default function Chat() {
               <div className="yam-chat-stage-peer-copy">
                 <strong>{peer}</strong>
                 <span>{isTyping ? 'يكتب الآن...' : formatLastSeen(lastSeen, isOnline)}</span>
-                <div className="yam-peer-status-strip">
-                  {peerStatusChips.map((chip) => (
-                    <span key={chip.key} className={`yam-premium-chip ${chip.key === 'premium' ? 'accent' : ''}`}>{chip.label}</span>
-                  ))}
-                </div>
               </div>
             </div>
 
@@ -1617,19 +1548,17 @@ export default function Chat() {
             </div>
           </header>
 
-          <AnimatePresence initial={false}>
-            {showDetailsDrawer ? (
-              <motion.div className="yam-chat-details-drawer" {...getOverlayMotion(reduceMotion)}>
-                <div className="yam-details-grid">
-                  <button type="button" className="yam-detail-action" onClick={handleMuteConversation}>{isMutedConversation ? 'إلغاء الكتم' : 'كتم المحادثة'}</button>
-                  <button type="button" className="yam-detail-action" onClick={handlePinConversation}>{isPinnedConversation ? 'إلغاء التثبيت' : 'تثبيت المحادثة'}</button>
-                  <button type="button" className="yam-detail-action" onClick={spawnHeart}>تفاعل سريع</button>
-                  <button type="button" className="yam-detail-action" onClick={handleArchiveConversation}>أرشفة المحادثة</button>
-                  <button type="button" className="yam-detail-action danger" onClick={handleBlock}>{blockStatus.blocked_by_me ? 'رفع الحظر' : 'حظر المستخدم'}</button>
-                </div>
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
+          {showDetailsDrawer ? (
+            <div className="yam-chat-details-drawer">
+              <div className="yam-details-grid">
+                <button type="button" className="yam-detail-action" onClick={handleMuteConversation}>{isMutedConversation ? 'إلغاء الكتم' : 'كتم المحادثة'}</button>
+                <button type="button" className="yam-detail-action" onClick={handlePinConversation}>{isPinnedConversation ? 'إلغاء التثبيت' : 'تثبيت المحادثة'}</button>
+                <button type="button" className="yam-detail-action" onClick={spawnHeart}>تفاعل سريع</button>
+                <button type="button" className="yam-detail-action" onClick={handleArchiveConversation}>أرشفة المحادثة</button>
+                <button type="button" className="yam-detail-action danger" onClick={handleBlock}>{blockStatus.blocked_by_me ? 'رفع الحظر' : 'حظر المستخدم'}</button>
+              </div>
+            </div>
+          ) : null}
 
           <div className="flying-hearts-layer" aria-hidden>
             {flyingHearts.map((id) => (
@@ -1658,17 +1587,9 @@ export default function Chat() {
           ) : null}
           {!blockStatus.can_chat && blockStatus.blocked_me ? <div className="yam-block-banner blocked">هذا المستخدم حظرك.</div> : null}
 
-          <AnimatePresence initial={false}>
-            {searchQuery.trim() ? (
-              <motion.div className="yam-search-summary" {...getOverlayMotion(reduceMotion)}>
-                <div className="yam-search-summary-copy">
-                  <strong>{messageResultsCount} نتيجة مطابقة</strong>
-                  <small>النتائج بتتفلتر لحظيًا جوّه الرسائل والمرفقات.</small>
-                </div>
-                <span className="yam-search-summary-meta">بحث ذكي • Fluid</span>
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
+          {searchQuery.trim() ? (
+            <div className="yam-search-summary">نتائج البحث: {messageResultsCount}</div>
+          ) : null}
 
           <div className="yam-messages-area" ref={messagesAreaRef} onScroll={handleMessagesScroll}>
             {threadsLoading && !peerDetails.username ? <div className="yam-empty-state">جارٍ تجهيز بيانات المحادثة...</div> : null}
@@ -1719,24 +1640,19 @@ export default function Chat() {
                 <small>{peer} بيكتب دلوقتي…</small>
               </div>
             ) : null}
-            <AnimatePresence initial={false}>
-              {showJumpToBottom ? (
-                <motion.button
-                  type="button"
-                  className="yam-scroll-jump"
-                  onClick={() => {
-                    triggerNativeFeedback('selection');
-                    shouldAutoScrollRef.current = true;
-                    setShowJumpToBottom(false);
-                    scrollToBottom('smooth');
-                  }}
-                  whileTap={getPressMotion(reduceMotion, 'soft')}
-                  {...getOverlayMotion(reduceMotion)}
-                >
-                  أحدث الرسائل ↓
-                </motion.button>
-              ) : null}
-            </AnimatePresence>
+            {showJumpToBottom ? (
+              <button
+                type="button"
+                className="yam-scroll-jump"
+                onClick={() => {
+                  shouldAutoScrollRef.current = true;
+                  setShowJumpToBottom(false);
+                  scrollToBottom('smooth');
+                }}
+              >
+                أحدث الرسائل ↓
+              </button>
+            ) : null}
             <div ref={messagesEndRef} />
           </div>
 

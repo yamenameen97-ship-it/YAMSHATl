@@ -3,7 +3,6 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import Avatar from '../ui/Avatar.jsx';
 import { statusColor, statusTicks } from '../yamshat/YamshatDesign.js';
 import VoiceMessagePlayer from '../ui/VoiceMessagePlayer.jsx';
-import { getHoverLift, getMessageEntrance, getPopMotion, getPressMotion, triggerNativeFeedback } from '../../utils/nativeFeedback.js';
 
 const QUICK_REACTIONS = ['❤️', '🔥', '😂', '👏', '👍', '😮'];
 
@@ -85,15 +84,27 @@ function MessageBubble({
       .slice(0, 3)
   ), [reactionState]);
 
-  const rowMotion = getMessageEntrance(isMe, reduceMotion);
+  const rowMotion = reduceMotion
+    ? { initial: false, animate: { opacity: 1 } }
+    : {
+        initial: { opacity: 0, x: isMe ? 20 : -20, y: 14, scale: 0.985 },
+        animate: { opacity: 1, x: 0, y: 0, scale: 1 },
+        transition: { duration: 0.24, ease: [0.22, 1, 0.36, 1] },
+      };
 
-  const popMotion = getPopMotion(reduceMotion);
+  const popMotion = reduceMotion
+    ? { initial: false, animate: { opacity: 1, scale: 1 } }
+    : {
+        initial: { opacity: 0, scale: 0.9, y: 8 },
+        animate: { opacity: 1, scale: 1, y: 0 },
+        exit: { opacity: 0, scale: 0.92, y: 6 },
+        transition: { duration: 0.18, ease: [0.22, 1, 0.36, 1] },
+      };
 
   const messageId = message?.id || message?.client_id;
 
   const openCurrentMedia = () => {
     if (!message?.media_url) return;
-    triggerNativeFeedback('selection');
     onOpenMedia?.(message);
   };
 
@@ -124,42 +135,34 @@ function MessageBubble({
           className={`yam-bubble ${isMe ? 'bubble-me' : 'bubble-them'} ${shouldGlow ? 'search-hit' : ''} ${showToolbar ? 'toolbar-open' : ''}`}
           layout={!reduceMotion}
         >
-          <motion.button
+          <button
             type="button"
             className="yam-bubble-more"
             aria-label="خيارات الرسالة"
-            onClick={() => {
-              triggerNativeFeedback('light');
-              setShowToolbar((current) => !current);
-            }}
-            whileHover={getHoverLift(reduceMotion, 2)}
-            whileTap={getPressMotion(reduceMotion, 'soft')}
+            onClick={() => setShowToolbar((current) => !current)}
           >
             ⋯
-          </motion.button>
+          </button>
 
           <AnimatePresence initial={false}>
             {showToolbar ? (
               <motion.div className="yam-bubble-toolbar" {...popMotion}>
                 {QUICK_REACTIONS.map((emoji) => (
-                  <motion.button
+                  <button
                     key={emoji}
                     type="button"
                     onClick={() => {
-                      triggerNativeFeedback('selection');
                       onReact?.(message, emoji);
                       setShowToolbar(false);
                     }}
                     title={`إضافة ${emoji}`}
-                    whileHover={getHoverLift(reduceMotion, 1)}
-                    whileTap={getPressMotion(reduceMotion, 'soft')}
                   >
                     {emoji}
-                  </motion.button>
+                  </button>
                 ))}
-                <motion.button type="button" onClick={() => { triggerNativeFeedback('light'); onReply?.(message); setShowToolbar(false); }} whileTap={getPressMotion(reduceMotion, 'soft')}>↩</motion.button>
-                {isMe && !message?.deleted ? <motion.button type="button" onClick={() => { triggerNativeFeedback('warning'); onDelete?.(messageId, false); setShowToolbar(false); }} whileTap={getPressMotion(reduceMotion, 'soft')}>🗑</motion.button> : null}
-                {isMe && !message?.deleted ? <motion.button type="button" onClick={() => { triggerNativeFeedback('warning'); onDelete?.(messageId, true); setShowToolbar(false); }} whileTap={getPressMotion(reduceMotion, 'soft')}>🧹</motion.button> : null}
+                <button type="button" onClick={() => { onReply?.(message); setShowToolbar(false); }}>↩</button>
+                {isMe && !message?.deleted ? <button type="button" onClick={() => { onDelete?.(messageId, false); setShowToolbar(false); }}>🗑</button> : null}
+                {isMe && !message?.deleted ? <button type="button" onClick={() => { onDelete?.(messageId, true); setShowToolbar(false); }}>🧹</button> : null}
               </motion.div>
             ) : null}
           </AnimatePresence>
@@ -169,12 +172,8 @@ function MessageBubble({
               <motion.button
                 type="button"
                 className="yam-reply-preview"
-                onClick={() => {
-                  triggerNativeFeedback('selection');
-                  onJumpToReply?.(replyTarget?.id);
-                }}
+                onClick={() => onJumpToReply?.(replyTarget?.id)}
                 layout={!reduceMotion}
-                whileTap={getPressMotion(reduceMotion, 'soft')}
                 {...popMotion}
               >
                 <strong>↩ الرد على</strong>
@@ -184,17 +183,17 @@ function MessageBubble({
           </AnimatePresence>
 
           {isImage && message?.media_url ? (
-            <motion.button type="button" className="yam-media-button" onClick={openCurrentMedia} whileHover={getHoverLift(reduceMotion, 2)} whileTap={getPressMotion(reduceMotion)}>
+            <button type="button" className="yam-media-button" onClick={openCurrentMedia}>
               <img src={message.media_url} alt={fileName} className="yam-bubble-media" loading="lazy" decoding="async" />
               <span className="yam-bubble-media-overlay">تكبير</span>
-            </motion.button>
+            </button>
           ) : null}
 
           {isVideo && message?.media_url ? (
-            <motion.button type="button" className="yam-media-button yam-video-preview-shell" onClick={openCurrentMedia} whileHover={getHoverLift(reduceMotion, 2)} whileTap={getPressMotion(reduceMotion)}>
+            <button type="button" className="yam-media-button yam-video-preview-shell" onClick={openCurrentMedia}>
               <video src={message.media_url} muted playsInline className="yam-bubble-media" preload="metadata" />
               <span className="yam-bubble-media-overlay">تشغيل كامل</span>
-            </motion.button>
+            </button>
           ) : null}
 
           {isVoice && message?.media_url ? (
@@ -233,12 +232,8 @@ function MessageBubble({
                   type="button"
                   layout={!reduceMotion}
                   className={`yam-reaction-chip ${reactionState?.myReaction === emoji ? 'active' : ''}`}
-                  onClick={() => {
-                    triggerNativeFeedback('selection');
-                    onReact?.(message, emoji);
-                  }}
-                  whileHover={getHoverLift(reduceMotion, 1)}
-                  whileTap={getPressMotion(reduceMotion, 'soft')}
+                  onClick={() => onReact?.(message, emoji)}
+                  whileTap={reduceMotion ? undefined : { scale: 0.94 }}
                 >
                   <span>{emoji}</span>
                   <span>{count}</span>

@@ -228,7 +228,7 @@ export default function AdminLogin() {
         </>
       }
     >
-      <form className="auth-form" onSubmit={handleSubmit}>
+      <form className="auth-form auth-form-enhanced" onSubmit={handleSubmit}>
         <div className="auth-form-head">
           <h2>لوحة تحكم الإدارة</h2>
           <p className="muted">دخول لوحة الإدارة مقصور على البريد المخصص للإدارة فقط: {PRIMARY_ADMIN_EMAIL}</p>

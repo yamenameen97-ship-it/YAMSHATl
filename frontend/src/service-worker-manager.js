@@ -17,8 +17,8 @@ export async function registerServiceWorker() {
   }
 
   try {
-    // استخدام Service Worker القياسي
-    const swPath = '/sw.js';
+    // استخدام Service Worker المحسّن
+    const swPath = '/sw-enhanced.js';
     
     swRegistration = await navigator.serviceWorker.register(swPath, {
       scope: '/',

@@ -136,7 +136,7 @@ export default function PasswordRecoveryFlow({ initialStep = 'request' }) {
         </>
       }
     >
-      <form className="auth-form" onSubmit={step === 'reset' ? savePassword : sendCode}>
+      <form className="auth-form auth-form-enhanced" onSubmit={step === 'reset' ? savePassword : sendCode}>
         <div className="auth-form-head">
           <h2>تغيير كلمة المرور</h2>
           <p className="muted">

@@ -3,11 +3,10 @@
    ============================================ */
 
 /* Import all CSS modules in order */
-@import './design-system.css';
 @import './global.css';
 @import './theme.css';
 @import './responsive.css';
-@import './design-system-utilities.css';
+@import './enhanced-ui.css';
 @import './livestream-dashboard.css';
 @import './gestureContainer.css';
 

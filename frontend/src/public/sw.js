@@ -17,7 +17,7 @@ const APP_SHELL = [
 ];
 
 function isRuntimeConfigPath(url) {
-  return /^\/(?:app-config\.js|background-sync\.js|sw\.js)$/i.test(url.pathname);
+  return /^\/(?:app-config\.js|background-sync\.js|sw(?:-enhanced)?\.js)$/i.test(url.pathname);
 }
 
 async function staleWhileRevalidate(request, cacheName) {

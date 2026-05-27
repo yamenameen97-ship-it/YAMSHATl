@@ -9,9 +9,9 @@ const featureItems = [
 
 export default function AuthShell({ badge, title, description, footer, alternateAction, children }) {
   return (
-    <div className="auth-shell">
-      <motion.div className="auth-card" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
-        <div className="auth-copy">
+    <div className="auth-shell auth-shell-enhanced">
+      <motion.div className="auth-card auth-card-enhanced" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
+        <div className="auth-copy auth-copy-enhanced">
           <span className="badge">{badge}</span>
           <h1>{title}</h1>
           <p>{description}</p>

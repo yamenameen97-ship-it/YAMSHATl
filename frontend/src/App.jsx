@@ -37,7 +37,7 @@ const ForgotPassword = lazy(() => import('./pages/ForgotPassword.jsx'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword.jsx'));
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
 const LiveStreamDashboard = lazy(() => import('./pages/LiveStreamDashboard.jsx'));
-const Feed = lazy(() => import('./pages/FeedEnhanced.jsx'));
+const Feed = lazy(() => import('./pages/FeedPage.jsx'));
 const Stories = lazy(() => import('./pages/Stories.jsx'));
 const Reels = lazy(() => import('./pages/Reels.jsx'));
 const Groups = lazy(() => import('./pages/Groups.jsx'));

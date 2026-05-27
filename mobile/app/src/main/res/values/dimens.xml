@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="space_xs">4dp</dimen>
+    <dimen name="space_sm">8dp</dimen>
+    <dimen name="space_md">12dp</dimen>
+    <dimen name="space_lg">16dp</dimen>
+    <dimen name="space_xl">24dp</dimen>
+    <dimen name="radius_sm">12dp</dimen>
+    <dimen name="radius_md">18dp</dimen>
+    <dimen name="radius_lg">20dp</dimen>
+    <dimen name="radius_xl">28dp</dimen>
+    <dimen name="control_height_sm">44dp</dimen>
+    <dimen name="control_height_md">52dp</dimen>
+    <dimen name="control_height_lg">56dp</dimen>
+    <dimen name="stroke_hairline">1dp</dimen>
+    <dimen name="icon_button_padding">10dp</dimen>
+    <dimen name="input_padding_horizontal">18dp</dimen>
+    <dimen name="input_padding_vertical">15dp</dimen>
+    <dimen name="dialog_padding">24dp</dimen>
+    <dimen name="empty_state_icon">72dp</dimen>
+</resources>

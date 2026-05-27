@@ -24,4 +24,26 @@
     <color name="text">@color/text_primary</color>
     <color name="muted_text">@color/text_secondary</color>
     <color name="glass">#331B1630</color>
+    <color name="input_surface">#191527</color>
+    <color name="input_border">#342B4E</color>
+    <color name="card_gradient_start">#1B1728</color>
+    <color name="card_gradient_end">#14111F</color>
+    <color name="card_stroke">#3A3155</color>
+    <color name="scrim_strong">#CC000000</color>
+    <color name="scrim_medium">#66000000</color>
+    <color name="scrim_clear">#00000000</color>
+    <color name="splash_gradient_start">#06040B</color>
+    <color name="splash_gradient_center">#0B0914</color>
+    <color name="splash_gradient_end">#120F1D</color>
+    <color name="splash_accent_primary">#22103BFF</color>
+    <color name="splash_accent_secondary">#1800B7FF</color>
+    <color name="glass_gradient_start">#40AA7CFF</color>
+    <color name="glass_gradient_end">#108E3DFF</color>
+    <color name="glass_stroke">#66C6ABFF</color>
+    <color name="primary_gradient_start">#A24BFF</color>
+    <color name="primary_gradient_center">#8E3DFF</color>
+    <color name="primary_gradient_end">#6E22F5</color>
+    <color name="text_primary_soft">#E6FFFFFF</color>
+    <color name="text_splash_subtitle">#E5E7EB</color>
+    <color name="danger_button">#D32F2F</color>
 </resources>

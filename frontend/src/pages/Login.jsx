@@ -180,7 +180,7 @@ export default function LoginEnhanced() {
       title="تسجيل الدخول"
       description="مرحباً بك مجدداً في يمشات. سجل دخولك للمتابعة."
     >
-      <form className="auth-form auth-form-enhanced" onSubmit={handleSubmit} noValidate>
+      <form className="auth-form" onSubmit={handleSubmit} noValidate>
         <div className="auth-form-head">
           <h2>تسجيل الدخول</h2>
           <p className="muted">أدخل بيانات حسابك للوصول إلى لوحة التحكم.</p>
@@ -288,7 +288,7 @@ export default function LoginEnhanced() {
           25% { transform: translateX(-5px); }
           75% { transform: translateX(5px); }
         }
-        .auth-form-enhanced {
+        .auth-form {
           display: flex;
           flex-direction: column;
           gap: 16px;

@@ -4,20 +4,20 @@
         <shape android:shape="rectangle">
             <gradient
                 android:angle="270"
-                android:startColor="#06040B"
-                android:centerColor="#0B0914"
-                android:endColor="#120F1D" />
+                android:startColor="@color/splash_gradient_start"
+                android:centerColor="@color/splash_gradient_center"
+                android:endColor="@color/splash_gradient_end" />
         </shape>
     </item>
     <item android:top="-220dp" android:right="-120dp">
         <shape android:shape="oval">
-            <solid android:color="#22103BFF" />
+            <solid android:color="@color/splash_accent_primary" />
             <size android:width="420dp" android:height="420dp" />
         </shape>
     </item>
     <item android:top="380dp" android:left="-140dp">
         <shape android:shape="oval">
-            <solid android:color="#1800B7FF" />
+            <solid android:color="@color/splash_accent_secondary" />
             <size android:width="360dp" android:height="360dp" />
         </shape>
     </item>

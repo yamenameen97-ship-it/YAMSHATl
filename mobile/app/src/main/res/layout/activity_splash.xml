@@ -6,7 +6,7 @@
     android:background="@drawable/splash_bg"
     android:gravity="center"
     android:orientation="vertical"
-    android:padding="24dp">
+    android:padding="@dimen/space_xl">
 
     <ImageView
         android:id="@+id/splashLogo"
@@ -19,7 +19,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="18dp"
+        android:layout_marginTop="@dimen/radius_md"
         android:text="Yamshat"
         android:textColor="@color/text_primary"
         android:textSize="30sp"
@@ -28,16 +28,16 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="@dimen/space_sm"
         android:gravity="center"
         android:text="إقلاع أسرع • جلسة آمنة • تجربة اجتماعية عصرية"
-        android:textColor="#E5E7EB"
+        android:textColor="@color/text_splash_subtitle"
         android:textSize="14sp" />
 
     <com.google.android.material.progressindicator.LinearProgressIndicator
         android:layout_width="220dp"
         android:layout_height="wrap_content"
-        android:layout_marginTop="20dp"
+        android:layout_marginTop="@dimen/radius_lg"
         android:indeterminate="true"
         app:indicatorColor="@color/primary"
         app:trackColor="@color/card_alt" />
@@ -45,7 +45,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
+        android:layout_marginTop="@dimen/icon_button_padding"
         android:text="جاري تجهيز الجلسة والتحقق من الاتصال"
         android:textColor="@color/text_secondary"
         android:textSize="12sp" />

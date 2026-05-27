@@ -148,7 +148,7 @@ export default function VerifyEmail() {
         </>
       }
     >
-      <form className="auth-form auth-form-enhanced" onSubmit={(event) => { event.preventDefault(); handleSubmit(); }}>
+      <form className="auth-form" onSubmit={(event) => { event.preventDefault(); handleSubmit(); }}>
         <div className="auth-form-head">
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
             <div className="icon-circle" style={{ width: 64, height: 64, background: 'rgba(var(--accent-rgb), 0.1)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)' }}>

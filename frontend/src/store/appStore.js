@@ -44,20 +44,6 @@ const persistQueuedActions = (actions) => {
   }
 };
 
-const sessionFingerprint = (session) => {
-  if (!session || typeof session !== 'object') return '';
-  return [
-    session.id,
-    session.user_id,
-    session.username,
-    session.email,
-    session.token,
-    session.access_token,
-    session.updated_at,
-    session.expires_at,
-  ].filter(Boolean).join('|');
-};
-
 export const useAppStore = create((set, get) => ({
   session: null,
   authHydrated: false,
@@ -105,7 +91,7 @@ export const useAppStore = create((set, get) => ({
   },
 
   syncFromStorage: (userData) => {
-    if (sessionFingerprint(userData) !== sessionFingerprint(get().session)) {
+    if (JSON.stringify(userData) !== JSON.stringify(get().session)) {
       set({ session: userData, authHydrated: true });
     }
   },

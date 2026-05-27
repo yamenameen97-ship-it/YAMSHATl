@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MainLayout from '../components/layout/MainLayout.jsx';
-import LiveControls from '../components/live/LiveControls.jsx';
-import StreamHealthMonitor from '../components/live/StreamHealthMonitor.jsx';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import {
   addLiveComment,
@@ -72,7 +70,6 @@ export default function Live() {
   const [microphoneEnabled, setMicrophoneEnabled] = useState(true);
   const [joinedRole, setJoinedRole] = useState('');
   const [streamReady, setStreamReady] = useState(false);
-  const [streamMode, setStreamMode] = useState('auto');
   const [mediaStatus, setMediaStatus] = useState('جاهز');
   const [connectionLabel, setConnectionLabel] = useState('غير متصل');
   const [remoteParticipantName, setRemoteParticipantName] = useState('');
@@ -360,38 +357,6 @@ export default function Live() {
   const heartsCount = Number(activeRoom?.hearts_count || 0);
   const viewerCount = Number(activeRoom?.viewer_count || 0);
 
-  const liveStats = useMemo(() => ({
-    bitrate,
-    latency: latencyMs,
-    packetLoss: streamMode === 'audioOnly' ? 0.3 : Math.max(0.2, Math.min(4.8, (100 - healthScore) / 18)),
-    fps: streamMode === 'audioOnly' ? 0 : streamMode === 'low' ? 24 : 30,
-    droppedFrames: streamMode === 'low' ? 4 : 1,
-    reconnectAttempts: busy === 'connect-livekit' ? 1 : 0,
-    viewerSyncMs: latencyMs,
-    recordingState: recordingStatus,
-    activeViewers: viewerCount,
-    healthScore,
-  }), [bitrate, busy, healthScore, latencyMs, recordingStatus, streamMode, viewerCount]);
-
-  const reconnectLive = useCallback(() => {
-    if (!joinedRole) return;
-    connectToLiveKit(joinedRole);
-  }, [connectToLiveKit, joinedRole]);
-
-  const handleQualityChange = useCallback((quality) => {
-    setStreamMode(quality || 'auto');
-    setMediaStatus(quality === 'audioOnly' ? 'تم تفعيل وضع الصوت فقط' : `تم ضبط الجودة على ${quality}`);
-    setLatencyMs((prev) => (quality === 'low' || quality === 'audioOnly' ? Math.max(520, prev - 120) : prev));
-  }, []);
-
-  const handleManageGuests = useCallback(() => {
-    pushToast({ type: 'info', title: 'إدارة الضيوف', description: 'راجع قائمة المضيفين المشاركين واختر من تريد ترقيته أو كتمه.' });
-  }, [pushToast]);
-
-  const handleModeration = useCallback((action) => {
-    pushToast({ type: action === 'ban' ? 'warning' : 'info', title: 'إجراء إشراف', description: `تم تجهيز أمر ${action} للتنفيذ على المشاركين.` });
-  }, [pushToast]);
-
   const sendComment = async () => {
     const text = commentText.trim();
     if (!text || !activeRoom?.id) return;
@@ -577,34 +542,6 @@ export default function Live() {
                 <button type="button" className="yam-chip-btn" onClick={() => setShowGiftTray((prev) => !prev)}>الهدايا</button>
               </div>
             </div>
-
-            <div className="yam-live-controls-shell">
-              <LiveControls
-                isMuted={!microphoneEnabled}
-                isCameraOff={!cameraEnabled}
-                isRecording={recordingStatus === 'recording'}
-                recordingState={recordingStatus}
-                reconnecting={busy === 'connect-livekit'}
-                streamMode={streamMode}
-                viewerLatencyMs={latencyMs}
-                coHostCount={coHosts.length}
-                pendingGuestsCount={Math.max(0, (viewerCount > 0 ? 1 : 0) - coHosts.length)}
-                moderationQueueCount={Math.max(0, comments.length > 20 ? Math.round(comments.length / 10) : 0)}
-                healthScore={healthScore}
-                disabled={!activeRoom?.id}
-                onMuteToggle={() => toggleMic()}
-                onCameraToggle={() => toggleCamera()}
-                onCoHostAdd={handleManageGuests}
-                onModerate={handleModeration}
-                onSendGift={giveGift}
-                onReconnect={reconnectLive}
-                onRecordingToggle={toggleRecording}
-                onChangeQuality={handleQualityChange}
-                onOpenAnalytics={() => pushToast({ type: 'info', title: 'تحليلات البث', description: 'مؤشرات الجودة محدثة أسفل المشغل بشكل مباشر.' })}
-                onManageGuests={handleManageGuests}
-                onStartRecovery={reconnectLive}
-              />
-            </div>
           </div>
 
           <div className="yam-live-grid-aux">
@@ -620,7 +557,6 @@ export default function Live() {
 
             <div className="yam-live-info-card">
               <div className="yam-card-head"><strong>جودة البث</strong><span>{healthScore}%</span></div>
-              <StreamHealthMonitor stats={liveStats} />
               <div className="yam-info-grid">
                 <div className="yam-stat-box"><span>المشاهدون</span><strong>{viewerCount}</strong></div>
                 <div className="yam-stat-box"><span>البت ريت</span><strong>{bitrate} kbps</strong></div>
@@ -710,10 +646,9 @@ export default function Live() {
             display: grid;
             grid-template-columns: minmax(0, 1fr) 340px;
             gap: 18px;
-            padding: calc(18px + var(--safe-top, 0px)) max(18px, var(--safe-right, 0px)) calc(18px + var(--safe-bottom, 0px)) max(18px, var(--safe-left, 0px));
+            padding: 18px;
             direction: rtl;
             color: #fff;
-            min-width: 0;
           }
           .yam-live-main {
             display: grid;
@@ -880,11 +815,6 @@ export default function Live() {
           .yam-live-stage-footer {
             margin-top: 18px;
           }
-          .yam-live-controls-shell {
-            position: relative;
-            z-index: 1;
-            margin-top: 16px;
-          }
           .yam-live-host-box {
             display: flex;
             align-items: center;
@@ -1002,14 +932,8 @@ export default function Live() {
             padding-inline-end: 4px;
           }
           .yam-comment-composer {
-            position: sticky;
-            bottom: 0;
             display: flex;
             gap: 10px;
-            padding-top: 6px;
-            padding-bottom: calc(6px + var(--safe-bottom, 0px));
-            background: linear-gradient(180deg, rgba(7,12,24,0), rgba(7,12,24,0.92) 34%);
-            z-index: 2;
           }
           .yam-comment-composer input {
             flex: 1;

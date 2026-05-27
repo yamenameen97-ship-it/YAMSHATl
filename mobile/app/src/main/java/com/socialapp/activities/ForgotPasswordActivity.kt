@@ -15,7 +15,6 @@ import com.socialapp.utils.AuthUi
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-import com.socialapp.utils.UiKit
 
 class ForgotPasswordActivity : AppCompatActivity() {
     private lateinit var binding: ActivityForgotPasswordBinding
@@ -39,7 +38,6 @@ class ForgotPasswordActivity : AppCompatActivity() {
         ActivitySecurity.enableSecureWindow(this)
         binding = ActivityForgotPasswordBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        UiKit.prepareScreen(this, binding.root)
 
         binding.emailInput.setText(intent.getStringExtra(EXTRA_EMAIL).orEmpty())
         binding.statusText.text = intent.getStringExtra(EXTRA_MESSAGE).orEmpty().ifBlank {
@@ -278,7 +276,7 @@ class ForgotPasswordActivity : AppCompatActivity() {
         requestInFlight = isLoading
         binding.sendCodeBtn.isEnabled = !isLoading
         binding.emailInput.isEnabled = !isLoading && !verifyInFlight && !saveInFlight
-        UiKit.setButtonLoading(binding.sendCodeBtn, isLoading, "إرسال رمز التحقق", "جاري إرسال الرمز...")
+        binding.sendCodeBtn.text = if (isLoading) "جاري إرسال الرمز..." else "إرسال رمز التحقق"
     }
 
     private fun setVerifyLoading(isLoading: Boolean) {
@@ -286,7 +284,7 @@ class ForgotPasswordActivity : AppCompatActivity() {
         binding.verifyCodeBtn.isEnabled = !isLoading
         binding.readClipboardBtn.isEnabled = !isLoading
         codeInputs.forEach { it.isEnabled = !isLoading }
-        UiKit.setButtonLoading(binding.verifyCodeBtn, isLoading, "تأكيد الرمز", "جاري التحقق...")
+        binding.verifyCodeBtn.text = if (isLoading) "جاري التحقق..." else "تأكيد الرمز"
     }
 
     private fun setSaveLoading(isLoading: Boolean) {
@@ -294,7 +292,7 @@ class ForgotPasswordActivity : AppCompatActivity() {
         binding.savePasswordBtn.isEnabled = !isLoading
         binding.newPasswordInput.isEnabled = !isLoading
         binding.confirmPasswordInput.isEnabled = !isLoading
-        UiKit.setButtonLoading(binding.savePasswordBtn, isLoading, "حفظ كلمة المرور الجديدة", "جاري حفظ كلمة المرور...")
+        binding.savePasswordBtn.text = if (isLoading) "جاري حفظ كلمة المرور..." else "حفظ كلمة المرور الجديدة"
     }
 
     private fun openLogin(presetEmail: String = binding.emailInput.text?.toString().orEmpty()) {

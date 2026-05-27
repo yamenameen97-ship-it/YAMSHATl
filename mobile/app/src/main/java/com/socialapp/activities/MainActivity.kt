@@ -39,7 +39,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.Locale
-import com.socialapp.utils.UiKit
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -91,7 +90,6 @@ class MainActivity : AppCompatActivity() {
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        UiKit.prepareScreen(this, binding.root)
 
         consumeForcedLogoutIfAny() ?: run {
             observeConnectivity()

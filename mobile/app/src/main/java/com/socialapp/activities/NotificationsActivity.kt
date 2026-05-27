@@ -13,7 +13,6 @@ import com.socialapp.utils.AppAnalytics
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-import com.socialapp.utils.UiKit
 
 class NotificationsActivity : AppCompatActivity() {
 
@@ -23,7 +22,6 @@ class NotificationsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityNotificationsBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        UiKit.prepareScreen(this, binding.root)
 
         binding.recyclerNotif.layoutManager = LinearLayoutManager(this)
         binding.recyclerNotif.setHasFixedSize(true)

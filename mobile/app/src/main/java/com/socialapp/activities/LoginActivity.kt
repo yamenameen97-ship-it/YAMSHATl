@@ -20,7 +20,6 @@ import org.json.JSONObject
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-import com.socialapp.utils.UiKit
 
 class LoginActivity : AppCompatActivity() {
     private lateinit var binding: ActivityLoginBinding
@@ -37,7 +36,6 @@ class LoginActivity : AppCompatActivity() {
 
         binding = ActivityLoginBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        UiKit.prepareScreen(this, binding.root)
         binding.emailInput.setText(intent.getStringExtra(EXTRA_EMAIL).orEmpty())
 
         binding.loginBtn.setOnClickListener {
@@ -193,8 +191,8 @@ class LoginActivity : AppCompatActivity() {
         binding.loginBtn.isEnabled = !isLoading
         binding.registerBtn.isEnabled = !isLoading
         binding.forgotPasswordBtn.isEnabled = !isLoading
-        UiKit.setButtonLoading(binding.loginBtn, isLoading, "تسجيل الدخول", "جاري الدخول...")
-        binding.registerBtn.text = "إنشاء حساب جديد"
+        binding.loginBtn.text = if (isLoading) "جاري الدخول..." else "تسجيل الدخول"
+        binding.registerBtn.text = "الانتقال إلى إنشاء حساب"
     }
 
     private fun toast(message: String) {

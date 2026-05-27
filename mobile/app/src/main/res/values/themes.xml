@@ -17,12 +17,8 @@
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
         <item name="buttonStyle">@style/Widget.App.Button</item>
-        <item name="editTextStyle">@style/Widget.App.InputField</item>
-        <item name="imageButtonStyle">@style/Widget.App.IconButton</item>
-        <item name="cardViewStyle">@style/Widget.App.Card.LegacySurface</item>
+        <item name="editTextStyle">@style/Widget.App.EditText</item>
         <item name="bottomNavigationStyle">@style/Widget.App.BottomNavigation</item>
-        <item name="materialAlertDialogTheme">@style/ThemeOverlay.App.Dialog</item>
-        <item name="alertDialogTheme">@style/ThemeOverlay.App.Dialog</item>
     </style>
 
     <style name="Widget.App.Button" parent="Widget.MaterialComponents.Button">

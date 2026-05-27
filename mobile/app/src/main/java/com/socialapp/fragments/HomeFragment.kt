@@ -29,7 +29,6 @@ import retrofit2.Callback
 import retrofit2.Response
 import java.io.File
 import java.io.FileOutputStream
-import com.socialapp.utils.UiKit
 
 class HomeFragment : Fragment() {
 
@@ -53,7 +52,6 @@ class HomeFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         _binding = FragmentHomeBinding.inflate(inflater, container, false)
-        UiKit.prepareScreen(requireActivity(), binding.root)
         return binding.root
     }
 

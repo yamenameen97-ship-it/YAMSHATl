@@ -3,6 +3,7 @@ package com.socialapp.activities
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.socialapp.adapters.GroupsListAdapter
@@ -13,8 +14,6 @@ import com.socialapp.utils.AppAnalytics
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-import com.socialapp.utils.UiKit
-import com.socialapp.utils.AppDialogs
 
 class GroupsListActivity : AppCompatActivity() {
 
@@ -26,7 +25,6 @@ class GroupsListActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityGroupsListBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        UiKit.prepareScreen(this, binding.root)
 
         setupRecyclerView()
         setupButtons()
@@ -53,38 +51,38 @@ class GroupsListActivity : AppCompatActivity() {
     }
 
     private fun loadGroups() {
-        UiKit.setVisible(binding.progressBar, true)
+        binding.progressBar.visibility = android.view.View.VISIBLE
         ApiClient.api.getGroups().enqueue(object : Callback<List<GroupInfo>> {
             override fun onResponse(call: Call<List<GroupInfo>>, response: Response<List<GroupInfo>>) {
-                UiKit.setVisible(binding.progressBar, false)
+                binding.progressBar.visibility = android.view.View.GONE
                 val newGroups = response.body().orEmpty()
                 groups.clear()
                 groups.addAll(newGroups)
                 groupsAdapter.notifyDataSetChanged()
                 
                 if (groups.isEmpty()) {
-                    UiKit.setVisible(binding.emptyState, true)
-                    UiKit.setVisible(binding.groupsRecycler, false)
+                    binding.emptyState.visibility = android.view.View.VISIBLE
+                    binding.groupsRecycler.visibility = android.view.View.GONE
                 } else {
-                    UiKit.setVisible(binding.emptyState, false)
-                    UiKit.setVisible(binding.groupsRecycler, true)
+                    binding.emptyState.visibility = android.view.View.GONE
+                    binding.groupsRecycler.visibility = android.view.View.VISIBLE
                 }
             }
 
             override fun onFailure(call: Call<List<GroupInfo>>, t: Throwable) {
-                UiKit.setVisible(binding.progressBar, false)
+                binding.progressBar.visibility = android.view.View.GONE
                 toast(t.message ?: "فشل تحميل المجموعات")
             }
         })
     }
 
     private fun showCreateGroupDialog() {
-        val input = AppDialogs.input(this).apply {
+        val input = android.widget.EditText(this).apply {
             hint = "اسم المجموعة"
             setPadding(16, 16, 16, 16)
         }
 
-        AppDialogs.builder(this)
+        AlertDialog.Builder(this)
             .setTitle("إنشاء مجموعة جديدة")
             .setView(input)
             .setPositiveButton("إنشاء") { _, _ ->
@@ -100,16 +98,16 @@ class GroupsListActivity : AppCompatActivity() {
     }
 
     private fun createGroup(name: String) {
-        UiKit.setVisible(binding.progressBar, true)
+        binding.progressBar.visibility = android.view.View.VISIBLE
         ApiClient.api.createGroup(mapOf("name" to name)).enqueue(object : Callback<com.socialapp.models.ApiMessage> {
             override fun onResponse(call: Call<com.socialapp.models.ApiMessage>, response: Response<com.socialapp.models.ApiMessage>) {
-                UiKit.setVisible(binding.progressBar, false)
+                binding.progressBar.visibility = android.view.View.GONE
                 toast("تم إنشاء المجموعة")
                 loadGroups()
             }
 
             override fun onFailure(call: Call<com.socialapp.models.ApiMessage>, t: Throwable) {
-                UiKit.setVisible(binding.progressBar, false)
+                binding.progressBar.visibility = android.view.View.GONE
                 toast(t.message ?: "فشل إنشاء المجموعة")
             }
         })
@@ -126,7 +124,7 @@ class GroupsListActivity : AppCompatActivity() {
     }
 
     private fun showJoinGroupDialog(group: GroupInfo) {
-        AppDialogs.builder(this)
+        AlertDialog.Builder(this)
             .setTitle("الانضمام للمجموعة")
             .setMessage("هل تريد الانضمام إلى مجموعة '${group.name}'؟")
             .setPositiveButton("انضم") { _, _ ->
@@ -137,10 +135,10 @@ class GroupsListActivity : AppCompatActivity() {
     }
 
     private fun joinGroup(group: GroupInfo) {
-        UiKit.setVisible(binding.progressBar, true)
+        binding.progressBar.visibility = android.view.View.VISIBLE
         ApiClient.api.joinGroup(group.id).enqueue(object : Callback<com.socialapp.models.ApiMessage> {
             override fun onResponse(call: Call<com.socialapp.models.ApiMessage>, response: Response<com.socialapp.models.ApiMessage>) {
-                UiKit.setVisible(binding.progressBar, false)
+                binding.progressBar.visibility = android.view.View.GONE
                 toast("تم الانضمام للمجموعة")
                 startActivity(Intent(this@GroupsListActivity, GroupChatActivity::class.java).apply {
                     putExtra("group_id", group.id)
@@ -148,7 +146,7 @@ class GroupsListActivity : AppCompatActivity() {
             }
 
             override fun onFailure(call: Call<com.socialapp.models.ApiMessage>, t: Throwable) {
-                UiKit.setVisible(binding.progressBar, false)
+                binding.progressBar.visibility = android.view.View.GONE
                 toast(t.message ?: "فشل الانضمام للمجموعة")
             }
         })

@@ -11,6 +11,7 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -45,8 +46,6 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import com.socialapp.utils.UiKit
-import com.socialapp.utils.AppDialogs
 
 class GroupChatActivity : AppCompatActivity() {
     private lateinit var binding: ActivityGroupChatBinding
@@ -87,7 +86,6 @@ class GroupChatActivity : AppCompatActivity() {
         ActivitySecurity.enableSecureWindow(this)
         binding = ActivityGroupChatBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        UiKit.prepareScreen(this, binding.root)
 
         if (groupId == 0) {
             toast("معرف المجموعة غير صحيح")
@@ -430,7 +428,7 @@ class GroupChatActivity : AppCompatActivity() {
 
     private fun confirmDelete(message: GroupMessage) {
         if (message.id <= 0) return
-        AppDialogs.builder(this)
+        AlertDialog.Builder(this)
             .setTitle("حذف الرسالة")
             .setMessage("هل تريد حذف الرسالة للجميع؟")
             .setPositiveButton("حذف") { _, _ ->
@@ -463,7 +461,7 @@ class GroupChatActivity : AppCompatActivity() {
 
     private fun showReactionsMenu() {
         val emojis = arrayOf("👍", "❤️", "🔥", "😂", "👏", "🎉")
-        AppDialogs.builder(this)
+        AlertDialog.Builder(this)
             .setTitle("إرسال تفاعل سريع")
             .setItems(emojis) { _, which ->
                 val selected = emojis[which]
@@ -478,7 +476,7 @@ class GroupChatActivity : AppCompatActivity() {
             "$state ${member.displayName.ifBlank { member.username }} • ${member.role}"
         }.ifEmpty { listOf("لا يوجد أعضاء متاحين حالياً") }
 
-        AppDialogs.builder(this)
+        AlertDialog.Builder(this)
             .setTitle("أعضاء المجموعة")
             .setItems(items.toTypedArray(), null)
             .setPositiveButton("إغلاق", null)
@@ -487,7 +485,7 @@ class GroupChatActivity : AppCompatActivity() {
 
     private fun showGroupSettings() {
         val options = arrayOf("تحديث الرسائل", "إعادة تحميل الأعضاء")
-        AppDialogs.builder(this)
+        AlertDialog.Builder(this)
             .setTitle("إعدادات المجموعة")
             .setItems(options) { _, which ->
                 when (which) {

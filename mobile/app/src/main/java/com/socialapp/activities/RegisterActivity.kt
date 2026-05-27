@@ -19,7 +19,6 @@ import com.socialapp.utils.FirebaseBridge
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-import com.socialapp.utils.UiKit
 
 class RegisterActivity : AppCompatActivity() {
     private lateinit var binding: ActivityRegisterBinding
@@ -30,7 +29,6 @@ class RegisterActivity : AppCompatActivity() {
         ActivitySecurity.enableSecureWindow(this)
         binding = ActivityRegisterBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        UiKit.prepareScreen(this, binding.root)
 
         binding.registerBtn.setOnClickListener {
             if (authRequestInFlight) return@setOnClickListener
@@ -154,8 +152,8 @@ class RegisterActivity : AppCompatActivity() {
         authRequestInFlight = isLoading
         binding.registerBtn.isEnabled = !isLoading
         binding.loginBtn.isEnabled = !isLoading
-        UiKit.setButtonLoading(binding.registerBtn, isLoading, "إنشاء الحساب", "جاري إنشاء الحساب...")
-        binding.loginBtn.text = "العودة لتسجيل الدخول"
+        binding.registerBtn.text = if (isLoading) "جاري إنشاء الحساب..." else "إنشاء الحساب"
+        binding.loginBtn.text = "العودة إلى تسجيل الدخول"
     }
 
     private fun toast(message: String) {

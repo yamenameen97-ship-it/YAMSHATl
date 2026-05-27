@@ -3,6 +3,9 @@ package com.socialapp.adapters
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.Animation
+import android.view.animation.AnimationUtils
+import android.view.animation.ScaleAnimation
 import android.widget.ImageButton
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
@@ -11,7 +14,6 @@ import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.socialapp.databinding.ItemPostBinding
 import com.socialapp.models.Post
-import com.socialapp.utils.UiKit
 
 class PostAdapter(
     private val onLike: (Post) -> Unit
@@ -41,7 +43,8 @@ class PostAdapter(
             holder.binding.mediaPreview.visibility = View.GONE
         }
 
-        UiKit.animateListItem(holder.itemView)
+        val anim = AnimationUtils.loadAnimation(holder.itemView.context, android.R.anim.fade_in)
+        holder.itemView.startAnimation(anim)
 
         holder.binding.likeButton.setOnClickListener {
             animateLike(it as ImageButton)
@@ -50,18 +53,13 @@ class PostAdapter(
     }
 
     private fun animateLike(view: ImageButton) {
-        view.animate()
-            .scaleX(1.12f)
-            .scaleY(1.12f)
-            .setDuration(110)
-            .withEndAction {
-                view.animate()
-                    .scaleX(1f)
-                    .scaleY(1f)
-                    .setDuration(110)
-                    .start()
-            }
-            .start()
+        val scale = ScaleAnimation(
+            0.95f, 1f, 0.95f, 1f,
+            Animation.RELATIVE_TO_SELF, 0.5f,
+            Animation.RELATIVE_TO_SELF, 0.5f
+        )
+        scale.duration = 150
+        view.startAnimation(scale)
     }
 }
 

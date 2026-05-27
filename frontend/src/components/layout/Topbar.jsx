@@ -28,7 +28,6 @@ const ACCOUNT_MENU_ITEMS = Object.freeze([
   { to: '/reels', label: 'الريلز', icon: '🎬' },
   { to: '/stories', label: 'القصص', icon: '📖' },
   { to: '/dashboard', label: 'التحليلات', icon: '📊' },
-  { to: '/livestream-dashboard', label: 'لوحة البث', icon: '🎥' },
   { to: '/settings', label: 'الإعدادات', icon: '⚙️' },
 ]);
 

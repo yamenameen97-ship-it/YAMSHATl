@@ -25,7 +25,6 @@ const DISCOVERY_SECTIONS = [
     title: 'التفاعل',
     items: [
       { to: '/live', label: 'البث المباشر', icon: '📡', description: 'بثوث مباشرة' },
-      { to: '/livestream-dashboard', label: 'لوحة البث', icon: '🎥', description: 'إدارة بثوثك' },
       { to: '/inbox', label: 'الدردشة', icon: '💬', description: 'رسائلك' },
     ],
   },

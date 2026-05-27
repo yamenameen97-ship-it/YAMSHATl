@@ -1,4 +1,11 @@
-export { default as AdminDashboard } from '../../pages/admin/AdminDashboard.jsx';
+// === Yamshat Admin Feature Index ===
+// AdminDashboard now points to the upgraded "LiveStream" style dashboard
+// (AdminLiveDashboard.jsx) which is the official admin home.
+// The previous classic dashboard is preserved as AdminDashboardLegacy so
+// it can be reached if ever needed without breaking the build.
+
+export { default as AdminDashboard } from '../../pages/admin/AdminLiveDashboard.jsx';
+export { default as AdminDashboardLegacy } from '../../pages/admin/AdminDashboard.jsx';
 export { default as AdminUsers } from '../../pages/admin/AdminUsers.jsx';
 export { default as AdminPosts } from '../../pages/admin/AdminPosts.jsx';
 export { default as AdminNotifications } from '../../pages/admin/AdminNotifications.jsx';

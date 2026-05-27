@@ -506,3 +506,4 @@ export function VideoReels({
   );
 }
 
+export default OptimizedVideo;

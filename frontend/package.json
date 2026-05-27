@@ -10,7 +10,7 @@
   "scripts": {
     "cache-buster": "node scripts/cache-buster.js",
     "dev": "node ./node_modules/vite/bin/vite.js --host 0.0.0.0 --port 5173",
-    "build": "npm run cache-buster && node ./node_modules/vite/bin/vite.js build",
+    "build": "npm run guard:ui-library && npm run cache-buster && node ./node_modules/vite/bin/vite.js build",
     "preview": "node ./node_modules/vite/bin/vite.js preview --host 0.0.0.0 --port 4173",
     "test:e2e": "node ./node_modules/@playwright/test/cli.js test",
     "test:e2e:headed": "node ./node_modules/@playwright/test/cli.js test --headed",
@@ -31,7 +31,8 @@
     "pro:gifts": "echo 'Managing virtual gifts system... (e.g., database operations, payment integration)'",
     "pro:monetization": "echo 'Managing monetization features... (e.g., subscriptions, ad placements)'",
     "pro:analytics-dashboards": "echo 'Generating advanced analytics dashboards... (e.g., data processing, visualization)'",
-    "pro:stream-recovery": "echo 'Managing advanced stream recovery mechanisms... (e.g., failover, reconnection logic)'"
+    "pro:stream-recovery": "echo 'Managing advanced stream recovery mechanisms... (e.g., failover, reconnection logic)'",
+    "guard:ui-library": "node scripts/enforce-ui-library.mjs"
   },
   "dependencies": {
     "@signalapp/libsignal-client": "^0.94.0",

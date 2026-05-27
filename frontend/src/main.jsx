@@ -17,7 +17,7 @@ import './styles/mobile-first.css';
 import './styles/design-system.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 
-const BUILD_ID = 'yamshat-ui-system-20260526-r4-stage2-design-system';
+const BUILD_ID = 'yamshat-ui-system-20260527-r5-stage4-reels-media-tactile';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

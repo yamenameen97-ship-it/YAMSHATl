@@ -581,6 +581,16 @@ textarea.input {
   object-fit: cover;
 }
 
+.ui-avatar.has-ring {
+  border: 1px solid color-mix(in srgb, var(--primary) 48%, white 8%);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 16%, transparent), var(--shadow-small);
+}
+
+.ui-avatar.has-ring.ring-success {
+  border-color: color-mix(in srgb, var(--success) 60%, white 10%);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 18%, transparent), var(--shadow-small);
+}
+
 .ui-avatar-fallback {
   font-weight: var(--font-weight-bold);
   font-size: calc(var(--avatar-size) * 0.38);

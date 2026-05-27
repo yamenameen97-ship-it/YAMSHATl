@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import AudioWaveform from './AudioWaveform.jsx';
+import VoiceMessagePlayer from '../ui/VoiceMessagePlayer.jsx';
 
 const CODEC_PRIORITY = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/webm'];
 
@@ -24,7 +25,6 @@ export default function VoiceRecorder({ onSend, onCancel, onStateChange }) {
   const [waveSeed, setWaveSeed] = useState(`voice-${Date.now()}`);
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewBlob, setPreviewBlob] = useState(null);
-  const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const mediaRecorderRef = useRef(null);
   const mediaStreamRef = useRef(null);
   const audioChunksRef = useRef([]);
@@ -48,7 +48,6 @@ export default function VoiceRecorder({ onSend, onCancel, onStateChange }) {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl('');
     setPreviewBlob(null);
-    setPlaybackSpeed(1);
   };
 
   const startTimer = () => {
@@ -209,36 +208,14 @@ export default function VoiceRecorder({ onSend, onCancel, onStateChange }) {
 
       {recordingState === 'preview' && previewUrl ? (
         <div style={{ display: 'grid', gap: 10 }}>
-          <AudioWaveform seed={waveSeed} />
-          <audio ref={audioRef} src={previewUrl} controls preload="metadata" style={{ width: '100%' }} onLoadedMetadata={() => {
+          <audio ref={audioRef} src={previewUrl} preload="metadata" style={{ display: 'none' }} onLoadedMetadata={() => {
             const mediaDuration = clamp(audioRef.current?.duration || durationRef.current || 0, 0, 3600);
             if (mediaDuration) {
               durationRef.current = Math.round(mediaDuration);
               setDuration(Math.round(mediaDuration));
             }
           }} />
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <label style={{ fontSize: 12, color: 'var(--muted)' }}>السرعة</label>
-            {[1, 1.5, 2].map((speed) => (
-              <button
-                key={speed}
-                type="button"
-                onClick={() => {
-                  setPlaybackSpeed(speed);
-                  if (audioRef.current) audioRef.current.playbackRate = speed;
-                }}
-                style={{
-                  padding: '6px 10px',
-                  borderRadius: 999,
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  background: playbackSpeed === speed ? 'rgba(139,92,246,0.2)' : 'transparent',
-                  color: '#fff',
-                }}
-              >
-                ×{speed}
-              </button>
-            ))}
-          </div>
+          <VoiceMessagePlayer src={previewUrl} seed={waveSeed} title="معاينة الرسالة الصوتية" />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" onClick={handleSend} style={{ padding: '10px 16px', borderRadius: 999, border: 'none', background: '#22c55e', color: '#06110a', fontWeight: 700 }}>إرسال</button>
             <button type="button" onClick={startRecording} style={{ padding: '10px 16px', borderRadius: 999, border: 'none', background: '#2e3350', color: '#fff' }}>إعادة تسجيل</button>

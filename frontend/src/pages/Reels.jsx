@@ -101,11 +101,13 @@ function ReelItem({ index, style, data }) {
     onVideoEnded,
     onVideoError,
     onVideoPlay,
+    navDirection,
   } = data;
 
   const reel = reels[index];
   const isActive = index === activeIndex;
   const videoRef = useRef(null);
+  const [playbackProgress, setPlaybackProgress] = useState(0);
   const insights = useMemo(() => (reel ? getReelInsightsById(reel.id) : null), [reel?.id]);
   const watchEntry = reel ? watchHistoryMap[String(reel.id)] : null;
 
@@ -117,11 +119,11 @@ function ReelItem({ index, style, data }) {
   if (!reel) return null;
 
   return (
-    <div style={style} className="reel-container">
-      <div className="reel-card relative bg-black overflow-hidden h-full w-full">
+    <div style={style} className={`reel-container ${isActive ? 'active' : ''}`}>
+      <div className={`reel-card-shell reel-card relative bg-black overflow-hidden h-full w-full ${isActive ? 'active' : ''}`} data-direction={navDirection > 0 ? 'forward' : 'backward'}>
         <video
           ref={videoRef}
-          className="w-full h-full object-cover"
+          className={`w-full h-full object-cover reel-video ${isActive ? 'active' : ''}`}
           loop
           playsInline
           muted={!isActive}
@@ -135,13 +137,17 @@ function ReelItem({ index, style, data }) {
           onWaiting={() => onVideoWaiting(index)}
           onCanPlay={() => onVideoCanPlay(index)}
           onProgress={() => onVideoProgress(index)}
+          onTimeUpdate={() => {
+            if (!videoRef.current || !Number.isFinite(videoRef.current.duration) || videoRef.current.duration <= 0) return;
+            setPlaybackProgress((videoRef.current.currentTime / videoRef.current.duration) * 100);
+          }}
           onLoadedMetadata={() => onVideoLoadedMetadata(index)}
           onEnded={() => onVideoEnded(index)}
           onError={() => onVideoError(index)}
           onDoubleClick={() => handleLike(reel, { burst: true })}
         />
 
-        <div className="absolute inset-x-0 top-0 z-20 bg-gradient-to-b from-black/70 to-transparent px-4 pt-4 pb-10 text-white pointer-events-none">
+        <div className="reel-top-overlay absolute inset-x-0 top-0 z-20 px-4 pt-4 pb-10 text-white pointer-events-none">
           <div className="flex items-center justify-between gap-3 pointer-events-auto">
             <div>
               <div className="reel-chip">الريلز</div>
@@ -162,7 +168,7 @@ function ReelItem({ index, style, data }) {
           ) : null}
         </div>
 
-        <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/85 via-black/35 to-transparent text-white pointer-events-none">
+        <div className="reel-bottom-overlay absolute bottom-0 left-0 right-0 p-4 text-white pointer-events-none">
           <div className="flex items-center gap-3 mb-2 pointer-events-auto">
             <div className="w-10 h-10 rounded-full bg-gray-600 overflow-hidden border border-white/20">
               <img src={getOptimizedImageUrl(reel.user_avatar, 80)} alt="" className="w-full h-full object-cover" />
@@ -180,7 +186,7 @@ function ReelItem({ index, style, data }) {
           </div>
         </div>
 
-        <div className="absolute right-4 bottom-24 flex flex-col gap-5 items-center z-20">
+        <div className="reel-actions-stack absolute right-4 bottom-24 flex flex-col gap-4 items-center z-20">
           <div className="flex flex-col items-center gap-1">
             <button onClick={() => handleLike(reel)} className={`reel-action-btn ${reel.is_liked ? 'liked' : ''}`}>❤️</button>
             <span className="reel-action-label">{reel.likes_count || 0}</span>
@@ -206,6 +212,8 @@ function ReelItem({ index, style, data }) {
             <span className="reel-action-label">بلاغ</span>
           </div>
         </div>
+
+        <div className="reel-progress-rail"><div className="reel-progress-fill" style={{ width: `${Math.max(playbackProgress, 0)}%` }} /></div>
 
         {isDesktop ? (
           <>
@@ -247,6 +255,7 @@ export default function ReelsPage() {
   const [activeComments, setActiveComments] = useState([]);
   const [selectedQuality, setSelectedQuality] = useState('auto');
   const [activeQuality, setActiveQuality] = useState('high');
+  const [navDirection, setNavDirection] = useState(1);
   const [bufferState, setBufferState] = useState({ index: -1, percent: 0, active: false });
   const [reportState, setReportState] = useState({ open: false, reel: null, reason: 'spam', note: '' });
   const [watchHistoryMap, setWatchHistoryMap] = useState(() => {
@@ -347,8 +356,15 @@ export default function ReelsPage() {
       quality: activeQuality,
       origin,
     });
+    setNavDirection(bounded > activeIndex ? 1 : -1);
     setActiveIndex(bounded);
-    listRef.current?.scrollToItem?.(bounded, 'start');
+    const outer = listRef.current?._outerRef;
+    const viewportHeight = outer?.clientHeight || 0;
+    if (outer && viewportHeight) {
+      outer.scrollTo({ top: viewportHeight * bounded, behavior: 'smooth' });
+    } else {
+      listRef.current?.scrollToItem?.(bounded, 'start');
+    }
     lastInteractionRef.current = Date.now();
   }, [activeIndex, activeQuality, finalizeWatchSession, reels]);
 
@@ -398,7 +414,9 @@ export default function ReelsPage() {
   }, [location.search]);
 
   useEffect(() => {
-    const nextItems = reels.slice(activeIndex + 1, activeIndex + 1 + preloadRange);
+    const start = Math.max(0, activeIndex - (navDirection < 0 ? preloadRange : 1));
+    const end = Math.min(reels.length, activeIndex + 1 + preloadRange + (navDirection > 0 ? 1 : 0));
+    const nextItems = reels.slice(start, end).filter((_, index) => start + index !== activeIndex);
     preloadNodesRef.current.forEach((node) => node?.remove?.());
     preloadNodesRef.current = nextItems
       .map((reel) => {
@@ -417,7 +435,7 @@ export default function ReelsPage() {
     return () => {
       preloadNodesRef.current.forEach((node) => node?.remove?.());
     };
-  }, [activeIndex, deviceProfile, preloadRange, reels, selectedQuality]);
+  }, [activeIndex, deviceProfile, navDirection, preloadRange, reels, selectedQuality]);
 
   useEffect(() => {
     const current = reels[activeIndex];
@@ -449,7 +467,8 @@ export default function ReelsPage() {
         video.setAttribute('src', src);
         video.load();
       }
-      video.preload = index === activeIndex ? 'auto' : 'metadata';
+      const distance = Math.abs(index - activeIndex);
+      video.preload = distance === 0 ? 'auto' : distance === 1 ? 'auto' : 'metadata';
       video.muted = index !== activeIndex;
       if (index === activeIndex) video.play().catch(() => {});
       else video.pause();
@@ -490,7 +509,7 @@ export default function ReelsPage() {
         return () => clearTimeout(timer);
       }
     }
-  }, [activeIndex, deviceProfile, preloadRange, reels, selectedQuality]);
+  }, [activeIndex, deviceProfile, navDirection, preloadRange, reels, selectedQuality]);
 
   useEffect(() => {
     const handleBeforeUnload = () => finalizeWatchSession('unload');
@@ -537,8 +556,9 @@ export default function ReelsPage() {
 
   const handleWheelNavigation = useCallback((event) => {
     if (showUploadModal || showCommentsModal || reportState.open) return;
+    event.preventDefault();
     wheelAccumulatorRef.current += event.deltaY;
-    if (Math.abs(wheelAccumulatorRef.current) < 70) return;
+    if (Math.abs(wheelAccumulatorRef.current) < 56) return;
     const direction = wheelAccumulatorRef.current > 0 ? 1 : -1;
     wheelAccumulatorRef.current = 0;
     queueNavigation(direction, 'wheel');
@@ -757,6 +777,7 @@ export default function ReelsPage() {
     currentUser,
     scrollToIndex,
     isDesktop,
+    navDirection,
     isBuffering: bufferState.active && bufferState.index === activeIndex,
     bufferPercent: bufferState.percent,
     selectedQuality,
@@ -787,6 +808,7 @@ export default function ReelsPage() {
     handleVideoProgress,
     handleVideoWaiting,
     isDesktop,
+    navDirection,
     reels,
     scrollToIndex,
     selectedQuality,
@@ -849,7 +871,7 @@ export default function ReelsPage() {
                     overscanCount={deviceProfile.maxVisibleReels || 2}
                     onItemsRendered={({ visibleStartIndex }) => handleScroll({ startIndex: visibleStartIndex })}
                     itemData={listData}
-                    className="no-scrollbar"
+                    className="no-scrollbar reel-viewport"
                   >
                     {ReelItem}
                   </List>
@@ -1059,17 +1081,71 @@ export default function ReelsPage() {
           }
           .no-scrollbar::-webkit-scrollbar { display: none; }
           .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-          .reel-container { scroll-snap-align: start; }
+          .reel-viewport {
+            scroll-snap-type: y mandatory;
+            overscroll-behavior-y: contain;
+            scroll-behavior: smooth;
+          }
+          .reel-container { scroll-snap-align: start; scroll-snap-stop: always; }
+          .reel-card-shell {
+            border-radius: 34px;
+            box-shadow: 0 28px 70px rgba(0,0,0,0.34);
+            transform: scale(0.986);
+            transition: transform 220ms ease, box-shadow 220ms ease, filter 220ms ease;
+          }
+          .reel-card-shell.active {
+            transform: scale(1);
+            box-shadow: 0 34px 86px rgba(0,0,0,0.4);
+          }
+          .reel-video {
+            opacity: 0.94;
+            transform: scale(1.02);
+            transition: transform 260ms ease, opacity 260ms ease, filter 260ms ease;
+            filter: saturate(0.94);
+          }
+          .reel-video.active {
+            opacity: 1;
+            transform: scale(1);
+            filter: saturate(1);
+          }
+          .reel-top-overlay {
+            background: linear-gradient(180deg, rgba(0,0,0,0.72), rgba(0,0,0,0.18), transparent);
+          }
+          .reel-bottom-overlay {
+            background: linear-gradient(180deg, transparent, rgba(0,0,0,0.18), rgba(0,0,0,0.86));
+          }
+          .reel-actions-stack {
+            right: 18px;
+            bottom: 28px;
+          }
+          .reel-progress-rail {
+            position: absolute;
+            left: 16px;
+            right: 16px;
+            bottom: 10px;
+            height: 4px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.16);
+            overflow: hidden;
+            z-index: 24;
+          }
+          .reel-progress-fill {
+            height: 100%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, #8b5cf6, #38bdf8);
+            transition: width 120ms linear;
+          }
           .reel-chip {
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            padding: 6px 10px;
+            padding: 7px 12px;
             border-radius: 999px;
-            background: rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.14);
             color: #fff;
             font-size: 12px;
             font-weight: 800;
+            box-shadow: 0 12px 26px rgba(0,0,0,0.18);
           }
           .reel-chip.ghost {
             background: rgba(15,23,42,0.58);
@@ -1109,21 +1185,25 @@ export default function ReelsPage() {
             font-weight: 800;
           }
           .reel-action-btn {
-            width: 54px;
-            height: 54px;
-            border-radius: 50%;
+            width: 52px;
+            height: 52px;
+            border-radius: 18px;
             border: 1px solid rgba(255,255,255,0.12);
-            background: rgba(255,255,255,0.12);
+            background: rgba(9,14,28,0.54);
             color: #fff;
-            font-size: 24px;
+            font-size: 22px;
             display: grid;
             place-items: center;
             cursor: pointer;
-            transition: transform 120ms ease, background 120ms ease;
+            transition: transform 140ms ease, background 140ms ease, box-shadow 140ms ease, opacity 140ms ease;
+            box-shadow: 0 16px 34px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.06);
+            backdrop-filter: blur(16px);
+            opacity: 0.96;
           }
           .reel-action-btn:hover {
-            transform: translateY(-2px);
-            background: rgba(255,255,255,0.18);
+            transform: translateY(-2px) scale(1.02);
+            background: rgba(15,23,42,0.72);
+            box-shadow: 0 20px 44px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08);
           }
           .reel-action-btn.liked {
             background: rgba(239,68,68,0.22);
@@ -1144,16 +1224,18 @@ export default function ReelsPage() {
           }
           .reel-arrow {
             position: absolute;
-            left: 24px;
-            width: 52px;
-            height: 52px;
-            border-radius: 50%;
+            left: 18px;
+            width: 48px;
+            height: 48px;
+            border-radius: 16px;
             border: 1px solid rgba(255,255,255,0.12);
-            background: rgba(0,0,0,0.34);
+            background: rgba(9,14,28,0.54);
             color: white;
-            font-size: 24px;
+            font-size: 22px;
             cursor: pointer;
             z-index: 20;
+            box-shadow: 0 18px 40px rgba(0,0,0,0.22);
+            backdrop-filter: blur(16px);
           }
           .reel-arrow:disabled {
             opacity: 0.35;

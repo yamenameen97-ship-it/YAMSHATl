@@ -18,9 +18,11 @@ function syncViewportVar() {
   const vv = window.visualViewport;
   const height = vv?.height ? vv.height : window.innerHeight;
   const offset = vv?.offsetTop ? vv.offsetTop : 0;
+  const keyboardOffset = vv ? Math.max(0, window.innerHeight - vv.height - offset) : 0;
 
   document.documentElement.style.setProperty('--yam-vh', `${height}px`);
   document.documentElement.style.setProperty('--yam-vv-offset', `${offset}px`);
+  document.documentElement.style.setProperty('--yam-keyboard-offset', `${keyboardOffset}px`);
 
   // علامة تشير لوجود لوحة مفاتيح مفتوحة (تفيد في تعطيل bottom nav مثلاً)
   if (vv && window.innerHeight - vv.height > 150) {

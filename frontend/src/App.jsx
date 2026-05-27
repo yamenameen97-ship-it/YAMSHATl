@@ -71,26 +71,68 @@ function AppGuards() {
   }, [language]);
 
   useEffect(() => {
-    const timers = new WeakMap();
-    const clickableSelector = 'button, a.btn, .mini-action, .ghost-btn, .reaction-btn, .table-link, .story-user-card';
+    const autoBusyTimers = new WeakMap();
+    const holdTimers = new WeakMap();
+    const clickableSelector = 'button, a.btn, .mini-action, .ghost-btn, .reaction-btn, .table-link, .story-user-card, .reel-action-btn, .yam-reaction-chip, .yam-bubble-toolbar button';
+
+    const resolveTarget = (event) => (event.target instanceof Element ? event.target.closest(clickableSelector) : null);
+
+    const clearHoldTimer = (target) => {
+      const timer = holdTimers.get(target);
+      if (timer) {
+        window.clearTimeout(timer);
+        holdTimers.delete(target);
+      }
+    };
+
+    const releaseTarget = (target) => {
+      if (!target) return;
+      clearHoldTimer(target);
+      target.classList.remove('is-pressing');
+      target.classList.remove('is-holding');
+    };
+
+    const handlePointerDown = (event) => {
+      const target = resolveTarget(event);
+      if (!target) return;
+      const isDisabled = target.matches?.(':disabled') || target.getAttribute('aria-disabled') === 'true';
+      if (isDisabled || target.getAttribute('aria-busy') === 'true' || target.dataset.busy === 'true') return;
+      target.classList.add('is-pressing');
+      clearHoldTimer(target);
+      holdTimers.set(target, window.setTimeout(() => {
+        target.classList.add('is-holding');
+      }, 170));
+    };
+
+    const handlePointerRelease = (event) => {
+      releaseTarget(resolveTarget(event));
+    };
 
     const handlePointerFeedback = (event) => {
-      const target = event.target instanceof Element ? event.target.closest(clickableSelector) : null;
+      const target = resolveTarget(event);
       if (!target) return;
       const isDisabled = target.matches?.(':disabled') || target.getAttribute('aria-disabled') === 'true';
       if (isDisabled || target.getAttribute('aria-busy') === 'true' || target.dataset.busy === 'true') return;
 
       target.dataset.autoBusy = 'true';
-      const activeTimer = timers.get(target);
+      const activeTimer = autoBusyTimers.get(target);
       if (activeTimer) window.clearTimeout(activeTimer);
       const nextTimer = window.setTimeout(() => {
         delete target.dataset.autoBusy;
       }, 650);
-      timers.set(target, nextTimer);
+      autoBusyTimers.set(target, nextTimer);
     };
 
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('pointerup', handlePointerRelease, true);
+    document.addEventListener('pointercancel', handlePointerRelease, true);
+    document.addEventListener('pointerleave', handlePointerRelease, true);
     document.addEventListener('click', handlePointerFeedback, true);
     return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('pointerup', handlePointerRelease, true);
+      document.removeEventListener('pointercancel', handlePointerRelease, true);
+      document.removeEventListener('pointerleave', handlePointerRelease, true);
       document.removeEventListener('click', handlePointerFeedback, true);
     };
   }, []);

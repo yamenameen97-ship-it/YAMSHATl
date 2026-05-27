@@ -16,6 +16,8 @@ export default function Avatar({
   rounded = 'full',
   icon = null,
   showStatus = false,
+  ring = false,
+  ringTone = 'primary',
   ...props
 }) {
   const resolvedSize = typeof size === 'number' ? size : (sizeMap[size] || sizeMap.md);
@@ -23,7 +25,7 @@ export default function Avatar({
 
   return (
     <span
-      className={`ui-avatar is-${rounded} ${className}`.trim()}
+      className={`ui-avatar is-${rounded} ${ring ? `has-ring ring-${ringTone}` : ''} ${className}`.trim()}
       style={{ '--avatar-size': `${resolvedSize}px` }}
       aria-label={alt || name || 'avatar'}
       {...props}

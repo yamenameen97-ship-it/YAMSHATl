@@ -618,3 +618,105 @@ html[data-keyboard='open'] .mobile-dock {
 html[data-keyboard='open'] .mobile-content {
   padding-bottom: 0 !important;
 }
+
+
+/* ===== Stage 7 + 8 native-feel refinements ===== */
+@media (max-width: 1023.98px) {
+  .app-shell,
+  .main-shell,
+  .page-content,
+  .page-shell-glow,
+  .yam-live-page,
+  .yam-live-main,
+  .yam-live-sidebar,
+  .yam-live-grid-aux,
+  .yam-info-grid,
+  .reels-page-shell,
+  .reels-stage-shell,
+  .reel-container,
+  .reel-card-shell,
+  .yam-post-card-v2,
+  .yam-post-media-grid-v2,
+  .yam-post-actions-v2,
+  .yam-post-head-v2,
+  .ui-topbar-track,
+  .ui-bottom-nav {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .yam-live-page *,
+  .yam-post-card-v2 *,
+  .reel-card-shell *,
+  .ui-topbar *,
+  .ui-bottom-nav * {
+    min-width: 0;
+  }
+
+  .yam-live-comment p,
+  .yam-room-card strong,
+  .yam-room-card p,
+  .yam-post-copy-v2,
+  .reel-bottom-overlay p,
+  .ui-bottom-nav-label,
+  .ui-topbar-link,
+  .ui-topbar-brand-copy {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .page-content,
+  .mobile-content {
+    padding-left: max(12px, var(--safe-left));
+    padding-right: max(12px, var(--safe-right));
+  }
+
+  .ui-topbar {
+    top: 0;
+    padding-top: calc(10px + var(--safe-top));
+  }
+
+  .ui-topbar-track {
+    min-height: 56px;
+    gap: 10px;
+  }
+
+  .ui-bottom-nav,
+  .bottom-nav {
+    padding-top: 8px;
+    padding-bottom: calc(10px + var(--safe-bottom));
+    box-shadow: 0 -18px 42px rgba(2, 6, 23, 0.24);
+  }
+
+  .ui-bottom-nav-item {
+    min-height: 52px;
+    border-radius: 18px;
+  }
+
+  .ui-bottom-nav-icon {
+    font-size: 1.32rem;
+  }
+
+  .ui-topbar-link,
+  .ui-topbar-account-button,
+  .yam-live-action-btn,
+  .yam-chip-btn,
+  .yam-mini-btn,
+  .reel-action-btn {
+    min-height: 46px;
+  }
+
+  .yam-comment-composer,
+  .chat-input,
+  .chat-composer,
+  .composer-card {
+    bottom: max(0px, var(--yam-keyboard-offset, 0px));
+  }
+}
+
+html[data-keyboard='open'] .ui-bottom-nav,
+html[data-keyboard='open'] .bottom-nav {
+  transform: translateY(calc(100% + var(--safe-bottom, 0px)));
+  opacity: 0;
+  pointer-events: none;
+}

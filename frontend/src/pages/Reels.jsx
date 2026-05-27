@@ -269,7 +269,7 @@ export default function ReelsPage() {
 
   const deviceProfile = useMemo(() => getDeviceProfile(), []);
   const preloadRange = deviceProfile.videoPreloadRange || (deviceProfile.isLowEndDevice ? 1 : 2);
-  const isDesktop = useMemo(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches, []);
+  const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches);
   const activeReelItem = reels[activeIndex] || null;
   const activeInsights = activeReelItem ? getReelInsightsById(activeReelItem.id) : null;
 
@@ -412,6 +412,15 @@ export default function ReelsPage() {
       setShowUploadModal(true);
     }
   }, [location.search]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const media = window.matchMedia('(min-width: 1024px)');
+    const updateDesktop = () => setIsDesktop(media.matches);
+    updateDesktop();
+    media.addEventListener?.('change', updateDesktop);
+    return () => media.removeEventListener?.('change', updateDesktop);
+  }, []);
 
   useEffect(() => {
     const start = Math.max(0, activeIndex - (navDirection < 0 ? preloadRange : 1));
@@ -978,8 +987,8 @@ export default function ReelsPage() {
         <style>{`
           .reels-page-shell {
             position: relative;
-            min-height: 100vh;
-            height: 100vh;
+            min-height: var(--yam-vh, 100vh);
+            height: var(--yam-vh, 100vh);
             background: #000;
             color: #fff;
             display: flex;
@@ -991,7 +1000,7 @@ export default function ReelsPage() {
             inset-inline: 0;
             top: 0;
             z-index: 30;
-            padding: 18px 18px 14px;
+            padding: calc(18px + var(--safe-top, 0px)) max(18px, var(--safe-right, 0px)) 14px max(18px, var(--safe-left, 0px));
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -1115,14 +1124,14 @@ export default function ReelsPage() {
             background: linear-gradient(180deg, transparent, rgba(0,0,0,0.18), rgba(0,0,0,0.86));
           }
           .reel-actions-stack {
-            right: 18px;
-            bottom: 28px;
+            right: max(18px, var(--safe-right, 0px));
+            bottom: calc(28px + var(--safe-bottom, 0px));
           }
           .reel-progress-rail {
             position: absolute;
-            left: 16px;
-            right: 16px;
-            bottom: 10px;
+            left: max(16px, var(--safe-left, 0px));
+            right: max(16px, var(--safe-right, 0px));
+            bottom: calc(10px + var(--safe-bottom, 0px));
             height: 4px;
             border-radius: 999px;
             background: rgba(255,255,255,0.16);
@@ -1321,7 +1330,7 @@ export default function ReelsPage() {
           }
           @media (max-width: 1023px) {
             .reels-header-bar {
-              padding: 14px 14px 12px;
+              padding: calc(14px + var(--safe-top, 0px)) max(14px, var(--safe-right, 0px)) 12px max(14px, var(--safe-left, 0px));
               align-items: flex-start;
               flex-direction: column;
             }

@@ -1192,3 +1192,62 @@ small,
     transition: none;
   }
 }
+
+
+/* ===== Feed / media performance refinements ===== */
+.yam-post-card-transition,
+.yam-post-card-v2,
+.post-card,
+.desktop-post-card,
+.yam-live-info-card,
+.yam-live-side-card,
+.reel-card-shell {
+  content-visibility: auto;
+}
+
+.yam-post-card-transition,
+.yam-post-card-v2,
+.post-card,
+.desktop-post-card {
+  contain-intrinsic-size: 520px;
+  animation: yamPostEntrance var(--motion-base) var(--ease-standard) both;
+  transition: transform var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard), background var(--motion-fast) var(--ease-standard);
+  will-change: transform;
+}
+
+.yam-post-card-transition:hover,
+.yam-post-card-v2:hover,
+.post-card:hover,
+.desktop-post-card:hover {
+  transform: translate3d(0, -2px, 0);
+  box-shadow: var(--shadow-md);
+}
+
+.yam-post-media-grid-v2,
+.yam-post-media-tile,
+.yam-post-media-image,
+.yam-optimized-image-shell {
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+@keyframes yamPostEntrance {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yam-post-card-transition,
+  .yam-post-card-v2,
+  .post-card,
+  .desktop-post-card {
+    animation: none;
+    transition: none;
+  }
+}

@@ -12,6 +12,7 @@ import { getCsrfToken } from '../utils/csrf.js';
 import { clearStoredUser, getAuthToken, getCurrentUsername, getStoredUserSnapshot } from '../utils/auth.js';
 import { redirectToAppPath } from '../utils/router.js';
 import { useDoubleTap } from '../hooks/useDoubleTap.js';
+import OptimizedImage from '../components/media/OptimizedImage.jsx';
 
 const FEED_TABS = [
   { id: 'favorites', label: 'المفضلة' },
@@ -144,7 +145,7 @@ function MediaTile({ item, index }) {
   if (item?.url) {
     return (
       <div className={`yam-post-media-tile tile-${index}`}>
-        <img src={item.url} alt="post media" className="yam-post-media-image" />
+        <OptimizedImage src={item.url} alt="post media" className="yam-post-media-image" sizes="(max-width: 768px) 92vw, 640px" />
         {index === 0 ? (
           <div className="yam-post-play-overlay">
             <YamshatIcon name="play" size={24} filled />
@@ -239,7 +240,7 @@ function PostCard({ post }) {
   };
 
   return (
-    <article className="yam-post-card-v2">
+    <article className="yam-post-card-v2 yam-post-card-transition">
       <div className="yam-post-head-v2">
         <div className="yam-post-author-v2">
           <Avatar name={post.authorName} size={48} accent={Boolean(post.brandRing)} image />

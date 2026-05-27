@@ -12,6 +12,7 @@ import com.socialapp.utils.AppAnalytics
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
+import com.socialapp.utils.UiKit
 
 class ReelsActivity : AppCompatActivity() {
 
@@ -22,6 +23,7 @@ class ReelsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityReelsBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        UiKit.prepareScreen(this, binding.root)
         binding.viewPager.offscreenPageLimit = 1
         loadReels()
     }

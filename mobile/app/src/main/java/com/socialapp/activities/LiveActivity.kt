@@ -25,6 +25,7 @@ import com.socialapp.utils.AppAnalytics
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
+import com.socialapp.utils.UiKit
 
 class LiveActivity : AppCompatActivity() {
 
@@ -39,6 +40,7 @@ class LiveActivity : AppCompatActivity() {
         ActivitySecurity.enableSecureWindow(this)
         binding = ActivityLiveBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        UiKit.prepareScreen(this, binding.root)
         requestMediaPermissionsIfNeeded()
         setupWebView()
 

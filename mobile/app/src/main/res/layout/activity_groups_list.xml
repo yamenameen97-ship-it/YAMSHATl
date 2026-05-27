@@ -1,108 +1,36 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@color/background"
-    android:orientation="vertical">
+<?xml version='1.0' encoding='utf-8'?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/background" android:orientation="vertical">
 
-    <!-- Header -->
-    <androidx.cardview.widget.CardView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_margin="8dp"
-        app:cardCornerRadius="12dp"
-        app:cardElevation="4dp">
+    
+    <androidx.cardview.widget.CardView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_margin="8dp" app:cardCornerRadius="12dp" app:cardElevation="4dp">
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/glass_bg"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:padding="12dp">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@drawable/glass_bg" android:gravity="center_vertical" android:orientation="horizontal" android:padding="12dp">
 
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="المجموعات"
-                android:textColor="@color/text_primary"
-                android:textSize="20sp"
-                android:textStyle="bold" />
+            <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="المجموعات" android:textColor="@color/text_primary" android:textSize="20sp" android:textStyle="bold" />
 
-            <ImageButton
-                android:id="@+id/refreshBtn"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_marginEnd="8dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="تحديث"
-                android:scaleType="centerInside"
-                android:src="@android:drawable/ic_popup_sync" />
+            <ImageButton android:id="@+id/refreshBtn" android:layout_width="40dp" android:layout_height="40dp" android:layout_marginEnd="8dp" android:background="@drawable/bg_icon_button" android:contentDescription="تحديث" android:scaleType="centerInside" android:src="@drawable/ic_ui_refresh" style="@style/Widget.App.IconButton" android:tint="@color/text_primary" />
 
-            <Button
-                android:id="@+id/createGroupBtn"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="+ جديد" />
+            <Button android:id="@+id/createGroupBtn" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="+ جديد" style="@style/Widget.App.Button" />
 
         </LinearLayout>
 
     </androidx.cardview.widget.CardView>
 
-    <!-- Progress Bar -->
-    <ProgressBar
-        android:id="@+id/progressBar"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:layout_margin="16dp"
-        android:visibility="gone" />
+    
+    <ProgressBar android:id="@+id/progressBar" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="center" android:layout_margin="16dp" android:visibility="gone" style="@style/Widget.App.Progress.Circular" />
 
-    <!-- Empty State -->
-    <LinearLayout
-        android:id="@+id/emptyState"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:gravity="center"
-        android:orientation="vertical"
-        android:visibility="gone">
+    
+    <LinearLayout android:id="@+id/emptyState" android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center" android:orientation="vertical" android:visibility="gone" style="@style/Widget.App.EmptyState">
 
-        <ImageView
-            android:layout_width="80dp"
-            android:layout_height="80dp"
-            android:layout_marginBottom="16dp"
-            android:contentDescription="فارغ"
-            android:scaleType="centerInside"
-            android:src="@android:drawable/ic_menu_info_details"
-            android:tint="@color/text_secondary" />
+        <ImageView android:layout_width="80dp" android:layout_height="80dp" android:layout_marginBottom="16dp" android:contentDescription="فارغ" android:scaleType="centerInside" android:src="@drawable/ic_ui_info" android:tint="@color/text_secondary" />
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="لا توجد مجموعات حالياً"
-            android:textColor="@color/text_primary"
-            android:textSize="16sp"
-            android:textStyle="bold" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="لا توجد مجموعات حالياً" android:textColor="@color/text_primary" android:textSize="16sp" android:textStyle="bold" />
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="انقر على 'جديد' لإنشاء مجموعة جديدة"
-            android:textColor="@color/text_secondary"
-            android:textSize="14sp" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="انقر على 'جديد' لإنشاء مجموعة جديدة" android:textColor="@color/text_secondary" android:textSize="14sp" />
 
     </LinearLayout>
 
-    <!-- Groups RecyclerView -->
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/groupsRecycler"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:clipToPadding="false"
-        android:paddingHorizontal="8dp"
-        android:paddingVertical="8dp" />
+    
+    <androidx.recyclerview.widget.RecyclerView android:id="@+id/groupsRecycler" android:layout_width="match_parent" android:layout_height="match_parent" android:clipToPadding="false" android:paddingHorizontal="8dp" android:paddingVertical="8dp" />
 
 </LinearLayout>

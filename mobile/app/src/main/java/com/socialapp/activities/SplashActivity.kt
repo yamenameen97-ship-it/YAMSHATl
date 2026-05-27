@@ -15,6 +15,7 @@ import com.socialapp.utils.CrashReporter
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
+import com.socialapp.utils.UiKit
 
 class SplashActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySplashBinding
@@ -24,6 +25,7 @@ class SplashActivity : AppCompatActivity() {
         ActivitySecurity.enableSecureWindow(this)
         binding = ActivitySplashBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        UiKit.prepareScreen(this, binding.root)
 
         val forcedLogoutReason = SessionManager.consumeForcedLogoutReason()
         if (!forcedLogoutReason.isNullOrBlank()) {

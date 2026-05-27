@@ -17,6 +17,7 @@ import com.socialapp.utils.FirebaseBridge
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
+import com.socialapp.utils.UiKit
 
 class VerifyEmailActivity : AppCompatActivity() {
     private lateinit var binding: ActivityVerifyEmailBinding
@@ -27,6 +28,7 @@ class VerifyEmailActivity : AppCompatActivity() {
         ActivitySecurity.enableSecureWindow(this)
         binding = ActivityVerifyEmailBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        UiKit.prepareScreen(this, binding.root)
 
         val presetEmail = intent.getStringExtra(EXTRA_EMAIL).orEmpty()
         val presetMessage = intent.getStringExtra(EXTRA_MESSAGE).orEmpty()
@@ -169,7 +171,7 @@ class VerifyEmailActivity : AppCompatActivity() {
         binding.verifyBtn.isEnabled = !isLoading
         binding.resendBtn.isEnabled = !isLoading
         binding.backToLoginBtn.isEnabled = !isLoading
-        binding.verifyBtn.text = if (isLoading) loadingText else "تأكيد البريد"
+        UiKit.setButtonLoading(binding.verifyBtn, isLoading, "تأكيد البريد", loadingText)
     }
 
     private fun toast(message: String) {

@@ -13,6 +13,7 @@ import androidx.viewpager2.widget.ViewPager2
 import com.socialapp.R
 import com.socialapp.network.SessionManager
 import com.socialapp.utils.ActivitySecurity
+import com.socialapp.utils.UiKit
 
 class OnboardingActivity : AppCompatActivity() {
     private lateinit var pager: ViewPager2
@@ -31,6 +32,7 @@ class OnboardingActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         ActivitySecurity.enableSecureWindow(this)
         setContentView(R.layout.activity_onboarding)
+        UiKit.prepareScreen(this, findViewById(android.R.id.content))
 
         pager = findViewById(R.id.onboardingPager)
         stepText = findViewById(R.id.stepText)

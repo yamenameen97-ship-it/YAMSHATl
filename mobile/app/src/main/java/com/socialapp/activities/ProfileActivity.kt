@@ -7,6 +7,7 @@ import com.socialapp.databinding.ActivityProfileBinding
 import com.socialapp.network.ApiClient
 import com.socialapp.network.SessionManager
 import com.socialapp.utils.ActivitySecurity
+import com.socialapp.utils.UiKit
 
 class ProfileActivity : AppCompatActivity() {
     private lateinit var binding: ActivityProfileBinding
@@ -16,6 +17,7 @@ class ProfileActivity : AppCompatActivity() {
         ActivitySecurity.enableSecureWindow(this)
         binding = ActivityProfileBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        UiKit.prepareScreen(this, binding.root)
 
         binding.username.text = SessionManager.getUsername().ifBlank { "Guest" }
         binding.logoutBtn.setOnClickListener {

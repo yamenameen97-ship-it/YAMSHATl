@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
 import com.socialapp.databinding.FragmentNotificationsBinding
+import com.socialapp.utils.UiKit
 
 class NotificationsFragment : Fragment() {
 

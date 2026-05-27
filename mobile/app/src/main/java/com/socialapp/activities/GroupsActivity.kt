@@ -9,6 +9,7 @@ import com.socialapp.utils.AppAnalytics
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
+import com.socialapp.utils.UiKit
 
 class GroupsActivity : AppCompatActivity() {
 
@@ -18,6 +19,7 @@ class GroupsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityGroupsBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        UiKit.prepareScreen(this, binding.root)
 
         binding.createGroupBtn.setOnClickListener {
             ApiClient.api.createGroup(

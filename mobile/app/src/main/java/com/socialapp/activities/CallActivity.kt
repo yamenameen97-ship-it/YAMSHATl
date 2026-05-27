@@ -20,6 +20,7 @@ import io.livekit.android.room.track.VideoTrack
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import com.socialapp.utils.UiKit
 
 class CallActivity : AppCompatActivity() {
 
@@ -59,6 +60,7 @@ class CallActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityCallBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        UiKit.prepareScreen(this, binding.root)
 
         if (peerUsername.isBlank() || liveKitUrl.isBlank() || accessToken.isBlank()) {
             toast("بيانات المكالمة ناقصة")

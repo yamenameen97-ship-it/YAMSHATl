@@ -14,7 +14,6 @@ import android.text.TextWatcher
 import android.webkit.MimeTypeMap
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -46,6 +45,8 @@ import com.socialapp.utils.SecureMediaManager
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.socialapp.utils.UiKit
+import com.socialapp.utils.AppDialogs
 
 class ChatActivity : AppCompatActivity() {
     private lateinit var binding: ActivityChatBinding
@@ -107,6 +108,7 @@ class ChatActivity : AppCompatActivity() {
         ActivitySecurity.enableSecureWindow(this)
         binding = ActivityChatBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        UiKit.prepareScreen(this, binding.root)
 
         binding.chatTitle.text = receiver
         chatAdapter = ChatAdapter(mutableListOf(), sender) { message -> confirmMessageAction(message) }
@@ -332,7 +334,7 @@ class ChatActivity : AppCompatActivity() {
     private fun confirmMessageAction(message: MessageItem) {
         val id = message.id ?: return
         val options = arrayOf("تعديل الرسالة", "حذف الرسالة")
-        AlertDialog.Builder(this)
+        AppDialogs.builder(this)
             .setTitle("إدارة الرسالة")
             .setItems(options) { _, which ->
                 when (which) {
@@ -345,12 +347,12 @@ class ChatActivity : AppCompatActivity() {
     }
 
     private fun promptEditMessage(messageId: Int, currentText: String) {
-        val input = android.widget.EditText(this).apply {
+        val input = AppDialogs.input(this).apply {
             setText(currentText)
             setSelection(text.length)
             hint = "تعديل الرسالة"
         }
-        AlertDialog.Builder(this)
+        AppDialogs.builder(this)
             .setTitle("تعديل الرسالة")
             .setView(input)
             .setPositiveButton("حفظ") { _, _ ->
@@ -375,7 +377,7 @@ class ChatActivity : AppCompatActivity() {
     }
 
     private fun confirmDelete(messageId: Int) {
-        AlertDialog.Builder(this)
+        AppDialogs.builder(this)
             .setTitle("حذف الرسالة")
             .setMessage("هل تريد حذف الرسالة للجميع؟")
             .setPositiveButton("حذف") { _, _ ->
@@ -442,7 +444,7 @@ class ChatActivity : AppCompatActivity() {
         callDialogVisible = true
         val title = if (callType == "video") "مكالمة فيديو واردة" else "مكالمة صوتية واردة"
         val message = "$caller بيتصل بيك دلوقتي"
-        AlertDialog.Builder(this)
+        AppDialogs.builder(this)
             .setTitle(title)
             .setMessage(message)
             .setCancelable(false)

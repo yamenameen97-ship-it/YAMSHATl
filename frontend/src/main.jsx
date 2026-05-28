@@ -112,3 +112,16 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     </QueryClientProvider>
   </React.StrictMode>
 );
+
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(() => console.log('SW Registered'))
+      .catch((err) => console.log('SW Failed', err));
+  });
+}
+
+window.addEventListener('offline', () => {
+  console.log('Offline mode enabled');
+});

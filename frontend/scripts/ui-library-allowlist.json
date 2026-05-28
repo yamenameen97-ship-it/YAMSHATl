@@ -89,6 +89,8 @@
     "src/components/profile/ProfileHeader.jsx",
     "src/components/reels/ReelPlayer.jsx",
     "src/components/settings/SessionCard.jsx",
+    "src/components/social/FollowControls.jsx",
+    "src/components/social/ReactionBar.jsx",
     "src/components/states/EmptyStates.jsx",
     "src/components/stories/StoryEditor.jsx",
     "src/components/stories/StoryViewer.jsx",

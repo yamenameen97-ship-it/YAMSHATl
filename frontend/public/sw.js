@@ -20,24 +20,36 @@ function isRuntimeConfigPath(url) {
   return /^\/(?:app-config\.js|background-sync\.js|sw(?:-enhanced)?\.js)$/i.test(url.pathname);
 }
 
+// دالة fallback ترجع Response صالح دائماً عشان نمنع TypeError: Failed to convert value to 'Response'
+function emptyResponse(status = 503, statusText = 'Service Unavailable') {
+  return new Response(JSON.stringify({ error: 'offline', detail: 'الشبكة غير متاحة' }), {
+    status,
+    statusText,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
 async function staleWhileRevalidate(request, cacheName) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(request);
   const network = fetch(request, { cache: 'no-store' }).then(async (response) => {
-    if (response?.status === 200) await cache.put(request, response.clone());
+    if (response?.status === 200) await cache.put(request, response.clone()).catch(() => null);
     return response;
   }).catch(() => null);
-  return cached || network;
+  // الأولوية للـ cached، فإن فشل نرجع network، وإن فشلت الاثنتان نرجع fallback
+  const result = cached || (await network);
+  return result || emptyResponse();
 }
 
 async function networkFirst(request, cacheName) {
   const cache = await caches.open(cacheName);
   try {
     const response = await fetch(request, { cache: 'no-store' });
-    if (response?.status === 200) await cache.put(request, response.clone());
+    if (response?.status === 200) await cache.put(request, response.clone()).catch(() => null);
     return response;
   } catch {
-    return cache.match(request);
+    const cached = await cache.match(request);
+    return cached || emptyResponse();
   }
 }
 
@@ -47,10 +59,10 @@ async function cacheFirst(request, cacheName) {
   if (cached) return cached;
   try {
     const response = await fetch(request);
-    if (response?.status === 200) await cache.put(request, response.clone());
+    if (response?.status === 200) await cache.put(request, response.clone()).catch(() => null);
     return response;
   } catch {
-    return null;
+    return emptyResponse();
   }
 }
 
@@ -96,9 +108,16 @@ self.addEventListener('fetch', (event) => {
         })
         .catch(async () => {
           const cache = await caches.open(CACHE_NAMES.SHELL);
-          return cache.match(request) || cache.match('/offline.html') || cache.match('/index.html');
+          const fallback = (await cache.match(request)) || (await cache.match('/offline.html')) || (await cache.match('/index.html'));
+          return fallback || emptyResponse(503, 'Offline');
         })
     );
+    return;
+  }
+
+  // تجاوز cross-origin API requests تماماً لتجنب مشاكل CORS
+  // المتصفح سيتولى الطلب مباشرة
+  if (url.origin !== self.location.origin) {
     return;
   }
 

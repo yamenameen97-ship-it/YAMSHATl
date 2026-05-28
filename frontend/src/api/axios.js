@@ -24,6 +24,13 @@ const API = axios.create({
   baseURL: API_BASE,
   timeout: DEFAULT_TIMEOUT_MS,
   withCredentials: true,
+  headers: {
+    // مهم: تعريف الطلب كـ XMLHttpRequest عشان يعدي CSRF protection
+    'X-Requested-With': 'XMLHttpRequest',
+    // تعريف نوع العميل للـ backend
+    'X-Yamshat-Client': 'web',
+    'Accept': 'application/json',
+  },
 });
 
 API.interceptors.request.use(async (config) => {

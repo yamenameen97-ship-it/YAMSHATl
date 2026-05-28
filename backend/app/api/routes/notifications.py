@@ -23,6 +23,7 @@ def _serialize(notification: Notification) -> dict:
         'created_at': notification.created_at.isoformat() if notification.created_at else None,
     }
 
+@router.get('')
 @router.get('/')
 def get_notifications(
     limit: int = Query(default=20, ge=1, le=100),
@@ -53,6 +54,7 @@ def mark_notification_read(
     return _serialize(notification)
 
 @router.put('/read')
+@router.put('/read/')
 def mark_all_notifications_read(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

@@ -260,7 +260,9 @@ class Settings:
 
     @property
     def cors_origin_regex(self) -> str | None:
-        # حذفت BACKEND_ORIGIN من هنا
+        # fallback شامل يغطي كل الـ subdomains على onrender.com
+        # (مثل yamshat8, yamshat-1ya4, yamshatl-1-yg1o، إلخ)
+        # وأيضاً localhost للتطوير
         derived = render_origin_regex_from_candidates(
             self.FRONTEND_ORIGIN,
             self.RENDER_EXTERNAL_URL,
@@ -271,11 +273,12 @@ class Settings:
             self.CORS_ORIGIN_REGEX_RAW,
             derived,
         )
+        # دائماً نضمن fallback عام لجميع نطاقات onrender.com و localhost
+        universal_fallback = r'https://(?:[a-zA-Z0-9-]+\.)?onrender\.com|https?://(?:localhost|127\.0\.0\.1)(?::\d+)?'
         if combined:
-            return combined
-
-        # هذا الـ fallback يغطي yamshatl-1-yg1o.onrender.com و yamshatl-ahj8.onrender.com
-        return r'^https://.*\.onrender\.com$'
+            merged = combine_origin_regex_patterns(combined, universal_fallback)
+            return merged or rf'^(?:{universal_fallback})$'
+        return rf'^(?:{universal_fallback})$'
 
     @property
     def cors_origins(self) -> list[str]:

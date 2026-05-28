@@ -34,6 +34,9 @@ def client_ip(request: Request) -> str:
 
 async def api_rate_guard(request: Request, call_next):
     path = request.url.path
+    # CRITICAL: تجاوز OPTIONS preflight requests - CORS يتولى معالجتها
+    if request.method.upper() == 'OPTIONS':
+        return await call_next(request)
     assessment = None
     if path.startswith(settings.API_PREFIX):
         short_path = path[len(settings.API_PREFIX):] or '/'

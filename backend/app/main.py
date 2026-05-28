@@ -44,22 +44,37 @@ fastapi_app = FastAPI(
     title=settings.PROJECT_NAME,
     debug=settings.DEBUG,
     lifespan=lifespan,
+    # تعطيل redirect التلقائي على trailing slash
+    # لأنه يحذف CORS headers ويسبب فشل الطلبات مع credentials
+    redirect_slashes=False,
 )
 
-# مهم: CORS لازم يكون أول middleware عشان يعالج OPTIONS preflight قبل أي شيء ثاني
+# ===========================================================================
+# ترتيب الـ Middleware في FastAPI/Starlette:
+# الـ middleware ينفذ بترتيب عكسي للإضافة (LIFO - last added, first executed).
+# لذا يجب إضافة باقي الـ middlewares أولاً، ثم CORSMiddleware أخيراً
+# عشان يكون CORS هو أول واحد يستقبل الطلب وآخر واحد يلمس الاستجابة.
+# هذا يضمن أن أي خطأ (403, 429, 500) من باقي الـ middleware يرجع مع CORS headers.
+# ===========================================================================
+
+# 1. سجل error handlers أولاً
+register_error_handlers(fastapi_app)
+
+# 2. أضف باقي الـ middlewares (security_headers و api_rate_guard)
+fastapi_app.middleware('http')(security_headers)
+fastapi_app.middleware('http')(api_rate_guard)
+
+# 3. أضف CORSMiddleware في الآخر (عشان يكون أول واحد ينفذ ويلف كل شيء)
 fastapi_app.add_middleware(
     CORSMiddleware,
-    allow_origins=[], # نخليه فاضي ونعتمد على الـ regex
+    allow_origins=['*'] if not settings.cors_origin_regex else [],
     allow_origin_regex=settings.cors_origin_regex,
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*'],
+    expose_headers=['*'],
+    max_age=600,
 )
-
-# بعد CORS نضيف باقي الـ middlewares
-fastapi_app.middleware('http')(api_rate_guard)
-fastapi_app.middleware('http')(security_headers)
-register_error_handlers(fastapi_app)
 
 if settings.ENABLE_METRICS:
     configure_metrics(fastapi_app, settings.SERVICE_NAME)

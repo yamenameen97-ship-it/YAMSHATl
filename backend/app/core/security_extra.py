@@ -106,6 +106,11 @@ async def security_headers(request: Request, call_next):
     path = request.url.path
     method = request.method.upper()
 
+    # CRITICAL: لا تتدخل في طلبات OPTIONS (preflight). CORSMiddleware يعالجها.
+    # كذلك تجنب تطبيق CSRF/Origin check على هذه الطلبات.
+    if method == 'OPTIONS':
+        return await call_next(request)
+
     if path.startswith(settings.API_PREFIX) and method not in SAFE_METHODS:
         short_path = path[len(settings.API_PREFIX):] or '/'
         origin = request.headers.get('origin', '')
@@ -115,12 +120,16 @@ async def security_headers(request: Request, call_next):
         client_name = str(request.headers.get('x-yamshat-client') or '').strip().lower()
         is_public_auth = short_path in PUBLIC_AUTH_PATHS
         is_trusted_native = client_name in TRUSTED_NATIVE_CLIENTS
+        # إذا الطلب يحمل Bearer token صالح، نعتبره API client موثوق
+        # ونتخطى CSRF check (لأن CSRF لا تطبق على token-based auth)
+        has_bearer_token = authorization.lower().startswith('bearer ')
 
         if origin and not _is_allowed_origin(origin, request):
             return JSONResponse(status_code=403, content={'detail': 'Origin not allowed'})
         if not origin and referer and not _is_allowed_origin(referer, request):
             return JSONResponse(status_code=403, content={'detail': 'Referer not allowed'})
-        if not is_public_auth and not is_trusted_native and not _csrf_cookie_matches_header(request):
+        # تخطي CSRF check إذا كان عند المستخدم Bearer token (token-based auth لا يحتاج CSRF)
+        if not is_public_auth and not is_trusted_native and not has_bearer_token and not _csrf_cookie_matches_header(request):
             return JSONResponse(status_code=403, content={'detail': 'CSRF token mismatch'})
         if not origin and not referer and not authorization and requested_with != 'XMLHttpRequest' and not is_trusted_native:
             return JSONResponse(status_code=403, content={'detail': 'CSRF protection blocked the request'})
@@ -133,7 +142,9 @@ async def security_headers(request: Request, call_next):
     response.headers['Referrer-Policy'] = 'same-origin'
     response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=(), interest-cohort=()'
     response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
-    response.headers['Cross-Origin-Resource-Policy'] = 'same-origin'
+    # غيرنا cross-origin-resource-policy من same-origin إلى cross-origin
+    # عشان نسمح بتحميل الموارد (صور/فيديو) من الـ backend في الـ frontend
+    response.headers['Cross-Origin-Resource-Policy'] = 'cross-origin'
     response.headers['Origin-Agent-Cluster'] = '?1'
     response.headers['X-Permitted-Cross-Domain-Policies'] = 'none'
     response.headers['Content-Security-Policy'] = _content_security_policy(request)

@@ -21,9 +21,3 @@ def apply_retention_policy(db: Session, chat_id: int, policy: str, user_id: int)
     # Placeholder for retention policies logic
     # This would involve setting expiration dates for messages in a chat
     return {"chat_id": chat_id, "policy": policy, "status": "applied"}
-
-
-MESSAGE_STATUS_FLOW = ["pending", "sent", "delivered", "read", "failed"]
-
-def validate_message_status(status: str) -> bool:
-    return status in MESSAGE_STATUS_FLOW

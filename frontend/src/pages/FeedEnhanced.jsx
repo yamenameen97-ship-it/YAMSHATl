@@ -11,6 +11,8 @@ import { BACKEND_ORIGIN } from '../api/config.js';
 import { getCsrfToken } from '../utils/csrf.js';
 import { clearStoredUser, getAuthToken, getCurrentUsername, getStoredUserSnapshot } from '../utils/auth.js';
 import { redirectToAppPath } from '../utils/router.js';
+import ReactionBar from '../components/social/ReactionBar.jsx';
+import FollowControls from '../components/social/FollowControls.jsx';
 
 const FEED_TABS = [
   { id: 'favorites', label: 'المفضلة' },
@@ -84,6 +86,16 @@ const MOCK_POSTS = [
     brandRing: true,
   },
 ];
+
+
+function SocialEnhancements({ post }) {
+  return (
+    <div className="mt-4 space-y-3">
+      <FollowControls userId={post.handle} username={post.handle.replace('@', '')} />
+      <ReactionBar postId={post.id} />
+    </div>
+  );
+}
 
 function normalizeHandle(value = '') {
   const cleaned = String(value || '').trim().replace(/^@+/, '');
@@ -271,7 +283,8 @@ function PostCard({ post }) {
           </div>
         </div>
       ) : null}
-    </article>
+    <SocialEnhancements post={post} />
+                </article>
   );
 }
 

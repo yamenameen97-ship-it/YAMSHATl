@@ -64,12 +64,14 @@ REQUIRED_SCHEMA_COLUMNS: dict[str, set[str]] = {
     'posts': {'user_id', 'media_json', 'is_draft'},
     'comments': {'user_id', 'content'},
     'messages': {'sender_id', 'receiver_id', 'content'},
+    'notifications': {'user_id', 'type', 'title', 'body', 'data', 'is_read', 'created_at'},
 }
 REQUIRED_TABLES = {
     'users',
     'user_sessions',
     'audit_logs',
     'login_challenges',
+    'notifications',
 }
 
 
@@ -467,6 +469,50 @@ def _migrate_messages_table(engine: Engine) -> None:
                 connection.execute(text(f'UPDATE messages SET {assignments} WHERE id = :id'), updates)
 
 
+def _migrate_notifications_table(engine: Engine) -> None:
+    if not _table_exists(engine, 'notifications'):
+        return
+
+    _add_column_if_missing(engine, 'notifications', 'user_id', 'user_id INTEGER')
+    _add_column_if_missing(engine, 'notifications', 'type', "type VARCHAR(50) DEFAULT 'system'")
+    _add_column_if_missing(engine, 'notifications', 'title', "title VARCHAR(255) NOT NULL DEFAULT 'إشعار جديد'")
+    _add_column_if_missing(engine, 'notifications', 'body', "body VARCHAR(500) NOT NULL DEFAULT ''")
+    _add_column_if_missing(engine, 'notifications', 'data', 'data JSON')
+    _add_column_if_missing(engine, 'notifications', 'is_read', 'is_read BOOLEAN NOT NULL DEFAULT FALSE')
+    _add_column_if_missing(engine, 'notifications', 'created_at', 'created_at TIMESTAMP NULL')
+
+    columns = _column_names(engine, 'notifications')
+    select_columns = [
+        'id',
+        *[
+            column
+            for column in ['user_id', 'type', 'title', 'body', 'message', 'data', 'is_read', 'created_at']
+            if column in columns
+        ],
+    ]
+
+    with engine.begin() as connection:
+        rows = connection.execute(text(f"SELECT {', '.join(select_columns)} FROM notifications ORDER BY id ASC")).mappings().all()
+        for row in rows:
+            updates: dict[str, object] = {}
+            if row.get('type') in (None, ''):
+                updates['type'] = 'system'
+            if row.get('title') in (None, ''):
+                updates['title'] = 'إشعار جديد'
+            if row.get('body') in (None, ''):
+                updates['body'] = row.get('message') or ''
+            if row.get('data') is None:
+                updates['data'] = '{}'
+            if row.get('is_read') is None:
+                updates['is_read'] = False
+            if row.get('created_at') is None:
+                updates['created_at'] = datetime.utcnow()
+            if updates:
+                assignments = ', '.join(f'{key} = :{key}' for key in updates)
+                updates['id'] = row['id']
+                connection.execute(text(f'UPDATE notifications SET {assignments} WHERE id = :id'), updates)
+
+
 def _migrate_audit_logs_table(engine: Engine) -> None:
     if not _table_exists(engine, 'audit_logs'):
         return
@@ -657,22 +703,75 @@ def _ensure_seed_accounts(engine: Engine) -> None:
 
 
 def initialize_database(engine: Engine, force: bool = False) -> None:
-    existing_tables = inspect(engine).get_table_names()
-    should_bootstrap = force or settings.DB_BOOTSTRAP_ON_START or _schema_needs_normalization(engine, existing_tables)
-    if not should_bootstrap:
-        _ensure_seed_accounts(engine)
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+
+    try:
+        existing_tables = inspect(engine).get_table_names()
+    except Exception as exc:
+        _log.exception('Could not inspect database tables: %s', exc)
         return
 
-    _adopt_legacy_users_table(engine)
-    Base.metadata.create_all(bind=engine)
-    _migrate_users_table(engine)
-    Base.metadata.create_all(bind=engine)
-    _migrate_posts_table(engine)
-    _migrate_comments_table(engine)
-    _migrate_messages_table(engine)
-    _migrate_audit_logs_table(engine)
-    _migrate_user_sessions_table(engine)
-    _migrate_login_challenges_table(engine)
-    Base.metadata.create_all(bind=engine)
-    _ensure_seed_accounts(engine)
-    _set_alembic_revision(engine)
+    should_bootstrap = (
+        force
+        or settings.DB_BOOTSTRAP_ON_START
+        or _schema_needs_normalization(engine, existing_tables)
+    )
+
+    # Even when we think the schema is OK, we still always ensure the
+    # `notifications.user_id` column is present, because the live PostgreSQL
+    # was observed to lack it and that single missing column was triggering
+    # 500/CORS errors on the frontend. This is a cheap idempotent check.
+    try:
+        if 'notifications' in existing_tables:
+            cols = _column_names(engine, 'notifications')
+            if 'user_id' not in cols:
+                _log.warning("notifications.user_id missing in live DB, fixing now.")
+                should_bootstrap = True
+    except Exception as exc:
+        _log.warning('Could not check notifications schema: %s', exc)
+
+    if not should_bootstrap:
+        try:
+            _ensure_seed_accounts(engine)
+        except Exception as exc:
+            _log.warning('Could not ensure seed accounts: %s', exc)
+        return
+
+    # Each migration step is wrapped so that a single failure does not
+    # abort the whole bootstrap process.
+    def _safe(step, name: str) -> None:
+        try:
+            step(engine)
+        except Exception as exc:
+            _log.warning('Bootstrap step %s failed: %s', name, exc)
+
+    _safe(_adopt_legacy_users_table, 'adopt_legacy_users_table')
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as exc:
+        _log.warning('Base.metadata.create_all initial pass failed: %s', exc)
+    _safe(_migrate_users_table, 'migrate_users_table')
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as exc:
+        _log.warning('Base.metadata.create_all second pass failed: %s', exc)
+    _safe(_migrate_posts_table, 'migrate_posts_table')
+    _safe(_migrate_comments_table, 'migrate_comments_table')
+    _safe(_migrate_messages_table, 'migrate_messages_table')
+    _safe(_migrate_notifications_table, 'migrate_notifications_table')
+    _safe(_migrate_audit_logs_table, 'migrate_audit_logs_table')
+    _safe(_migrate_user_sessions_table, 'migrate_user_sessions_table')
+    _safe(_migrate_login_challenges_table, 'migrate_login_challenges_table')
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as exc:
+        _log.warning('Base.metadata.create_all final pass failed: %s', exc)
+    try:
+        _ensure_seed_accounts(engine)
+    except Exception as exc:
+        _log.warning('Could not ensure seed accounts: %s', exc)
+    try:
+        _set_alembic_revision(engine)
+    except Exception as exc:
+        _log.warning('Could not set alembic revision: %s', exc)

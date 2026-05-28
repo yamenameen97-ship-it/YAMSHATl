@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { API_BASE } from '../api/config.js';
 import { getCsrfToken } from '../utils/csrf.js';
-import { clearStoredUser, getSessionTtlMs, mergeStoredUser, getStoredUser } from '../utils/auth.js';
+import { clearStoredUser, getSessionTtlMs, hasStoredSession, mergeStoredUser } from '../utils/auth.js';
 import logger from '../utils/logger.js';
 import { getBackoffDelayMs, sleep } from '../utils/retry.js';
 
@@ -156,6 +156,10 @@ export async function refreshSession(options = {}) {
   }
   if (!force && state.cooldownUntil > now) {
     throw createRefreshError('يرجى الانتظار قليلاً قبل المحاولة مجدداً', 'COOLDOWN_ACTIVE');
+  }
+
+  if (!hasStoredSession()) {
+    throw createRefreshError('لا توجد جلسة محفوظة لتحديثها', 'NO_SESSION');
   }
 
   logger.info('refresh session requested', { reason, retryCount });

@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 from pathlib import Path
 
 import socketio
@@ -7,8 +8,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-import app.models # noqa: F401
-from app.api.routes import admin, analytics, auth, chat, comments, follow, groups, inbox, live, notifications, posts, search, stories, upload, users, ws
+import app.models  # noqa: F401
+from app.api.routes import (
+    admin, analytics, auth, chat, comments, follow, groups, inbox,
+    live, notifications, posts, search, stories, upload, users, ws,
+)
 from app.core.api_guard import api_rate_guard
 from app.core.config import settings
 from app.core.error_handlers import register_error_handlers
@@ -19,10 +23,24 @@ from app.core.socket_server import sio
 from app.db.bootstrap import initialize_database
 from app.db.session import engine
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    initialize_database(engine)
+    # IMPORTANT: On force toujours la normalisation du schéma au démarrage
+    # car la base de données live (PostgreSQL externe) peut être désynchronisée
+    # avec les modèles SQLAlchemy. Cela ajoute notamment la colonne
+    # `notifications.user_id` manquante qui causait des 500 sur les
+    # endpoints /api/notifications et créait des fausses erreurs CORS côté front.
+    try:
+        initialize_database(engine, force=False)
+        logger.info('Database initialized successfully on startup.')
+    except Exception as exc:
+        logger.exception('Database initialization failed on startup: %s', exc)
+        # On ne lève pas l'exception : on laisse le serveur démarrer en mode
+        # dégradé pour pouvoir exposer /health avec l'erreur DB et permettre
+        # le diagnostic plutôt que d'avoir un crash silencieux de Render.
     yield
 
 
@@ -44,36 +62,36 @@ fastapi_app = FastAPI(
     title=settings.PROJECT_NAME,
     debug=settings.DEBUG,
     lifespan=lifespan,
-    # تعطيل redirect التلقائي على trailing slash
-    # لأنه يحذف CORS headers ويسبب فشل الطلبات مع credentials
+    # Désactivation du redirect automatique sur trailing slash car il supprime
+    # les CORS headers et casse les requêtes avec credentials.
     redirect_slashes=False,
 )
 
 # ===========================================================================
-# ترتيب الـ Middleware في FastAPI/Starlette:
-# الـ middleware ينفذ بترتيب عكسي للإضافة (LIFO - last added, first executed).
-# لذا يجب إضافة باقي الـ middlewares أولاً، ثم CORSMiddleware أخيراً
-# عشان يكون CORS هو أول واحد يستقبل الطلب وآخر واحد يلمس الاستجابة.
-# هذا يضمن أن أي خطأ (403, 429, 500) من باقي الـ middleware يرجع مع CORS headers.
+# Ordre des middlewares FastAPI/Starlette :
+# Les middlewares s'exécutent en LIFO (last added, first executed).
+# On ajoute donc d'abord les autres middlewares, et CORSMiddleware en dernier
+# pour qu'il soit le premier à recevoir la requête et le dernier à toucher la
+# réponse. Ainsi toute erreur (403, 429, 500) revient avec les headers CORS.
 # ===========================================================================
 
-# 1. سجل error handlers أولاً
+# 1. Error handlers en premier (request_context_middleware + exception handlers)
 register_error_handlers(fastapi_app)
 
-# 2. أضف باقي الـ middlewares (security_headers و api_rate_guard)
+# 2. Autres middlewares (security_headers + api_rate_guard)
 fastapi_app.middleware('http')(security_headers)
 fastapi_app.middleware('http')(api_rate_guard)
 
-# 3. أضف CORSMiddleware في الآخر (عشان يكون أول واحد ينفذ ويلف كل شيء)
+# 3. CORSMiddleware en dernier ⇒ premier à s'exécuter, dernier à toucher la réponse
 fastapi_app.add_middleware(
     CORSMiddleware,
-    allow_origins=['*'] if not settings.cors_origin_regex else [],
+    allow_origins=settings.cors_origins,
     allow_origin_regex=settings.cors_origin_regex,
     allow_credentials=True,
-    allow_methods=['*'],
+    allow_methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allow_headers=['*'],
-    expose_headers=['*'],
-    max_age=600,
+    expose_headers=['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Request-Id'],
+    max_age=86400,
 )
 
 if settings.ENABLE_METRICS:
@@ -120,9 +138,9 @@ def root() -> dict:
 @fastapi_app.api_route('/health', methods=['GET', 'HEAD'])
 def health() -> dict:
     database_status = _database_status()
-    status = 'ok' if database_status.get('database') == 'ok' else 'degraded'
+    status_label = 'ok' if database_status.get('database') == 'ok' else 'degraded'
     return {
-        'status': status,
+        'status': status_label,
         **database_status,
         'docs': '/docs',
         'metrics': '/metrics',

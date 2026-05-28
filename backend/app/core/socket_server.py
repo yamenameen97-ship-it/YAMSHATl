@@ -10,6 +10,11 @@ import bleach
 import socketio
 from sqlalchemy import func
 
+try:
+    import redis
+except Exception:  # pragma: no cover - optional dependency safety
+    redis = None
+
 from app.core.admin_access import effective_role, is_primary_admin_user
 from app.core.config import settings
 from app.core.content_sanitizer import sanitize_text
@@ -35,8 +40,15 @@ from app.services.chat_realtime import mark_messages_delivered, serialize_messag
 
 # Distributed WebSocket Scaling with Redis Pub/Sub
 mgr = None
-if settings.REDIS_URL:
+if settings.REDIS_URL and redis is not None:
     try:
+        probe = redis.Redis.from_url(
+            settings.REDIS_URL,
+            socket_connect_timeout=1,
+            socket_timeout=1,
+            health_check_interval=15,
+        )
+        probe.ping()
         mgr = socketio.AsyncRedisManager(settings.REDIS_URL)
     except Exception:
         mgr = None

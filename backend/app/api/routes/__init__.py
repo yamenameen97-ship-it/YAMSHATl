@@ -1,1 +1,18 @@
-from app.api.routes import analytics, auth, chat, comments, follow, inbox, live, notifications, posts, upload, users, ws  # noqa: F401
+from app.api.routes import (  # noqa: F401
+    admin,
+    analytics,
+    auth,
+    chat,
+    comments,
+    follow,
+    groups,
+    inbox,
+    live,
+    notifications,
+    posts,
+    search,
+    stories,
+    upload,
+    users,
+    ws,
+)

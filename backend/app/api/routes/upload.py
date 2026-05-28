@@ -325,8 +325,15 @@ async def complete_resumable_upload(session_id: str, background_tasks: Backgroun
     }
 
 
+@router.post('')
 @router.post('/')
 async def upload_file_standard(background_tasks: BackgroundTasks, file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
+    """
+    Accepte les deux variantes :
+      - POST /api/upload   (sans trailing slash, envoyée par le frontend web)
+      - POST /api/upload/  (avec trailing slash, ancienne version)
+    Indispensable car redirect_slashes=False sur l'app FastAPI.
+    """
     upload_result = save_upload(file)
     if upload_result.get('storage') == 'local' and cloudinary_is_configured():
         background_tasks.add_task(process_media_background, str(UPLOAD_DIR / upload_result['stored_name']), current_user.id)

@@ -1,7 +1,7 @@
 import re
 from urllib.parse import urlparse
 
-from fastapi import Request
+from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 
 from app.core.config import settings
@@ -66,6 +66,25 @@ def _is_allowed_origin(candidate: str, request: Request) -> bool:
     return normalized in allowed or _origin_matches_regex(normalized)
 
 
+def _cors_allow_headers(request: Request) -> str:
+    requested = str(request.headers.get('access-control-request-headers') or '').strip()
+    if requested:
+        return requested
+    return 'Authorization, Content-Type, X-CSRF-Token, X-Requested-With, X-Yamshat-Client'
+
+
+def _apply_cors_headers(request: Request, response: Response) -> Response:
+    origin = _normalize_origin(request.headers.get('origin', ''))
+    if origin and _is_allowed_origin(origin, request):
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = _cors_allow_headers(request)
+        response.headers['Access-Control-Expose-Headers'] = 'Content-Type, Authorization, X-CSRF-Token'
+        response.headers['Vary'] = 'Origin'
+    return response
+
+
 def _content_security_policy(request: Request) -> str:
     connect_sources = ["'self'"]
     for origin in sorted(_allowed_origins(request)):
@@ -109,7 +128,10 @@ async def security_headers(request: Request, call_next):
     # CRITICAL: لا تتدخل في طلبات OPTIONS (preflight). CORSMiddleware يعالجها.
     # كذلك تجنب تطبيق CSRF/Origin check على هذه الطلبات.
     if method == 'OPTIONS':
-        return await call_next(request)
+        origin = request.headers.get('origin', '')
+        if origin and not _is_allowed_origin(origin, request):
+            return _apply_cors_headers(request, JSONResponse(status_code=403, content={'detail': 'Origin not allowed'}))
+        return _apply_cors_headers(request, Response(status_code=204))
 
     if path.startswith(settings.API_PREFIX) and method not in SAFE_METHODS:
         short_path = path[len(settings.API_PREFIX):] or '/'
@@ -125,16 +147,17 @@ async def security_headers(request: Request, call_next):
         has_bearer_token = authorization.lower().startswith('bearer ')
 
         if origin and not _is_allowed_origin(origin, request):
-            return JSONResponse(status_code=403, content={'detail': 'Origin not allowed'})
+            return _apply_cors_headers(request, JSONResponse(status_code=403, content={'detail': 'Origin not allowed'}))
         if not origin and referer and not _is_allowed_origin(referer, request):
-            return JSONResponse(status_code=403, content={'detail': 'Referer not allowed'})
+            return _apply_cors_headers(request, JSONResponse(status_code=403, content={'detail': 'Referer not allowed'}))
         # تخطي CSRF check إذا كان عند المستخدم Bearer token (token-based auth لا يحتاج CSRF)
         if not is_public_auth and not is_trusted_native and not has_bearer_token and not _csrf_cookie_matches_header(request):
-            return JSONResponse(status_code=403, content={'detail': 'CSRF token mismatch'})
+            return _apply_cors_headers(request, JSONResponse(status_code=403, content={'detail': 'CSRF token mismatch'}))
         if not origin and not referer and not authorization and requested_with != 'XMLHttpRequest' and not is_trusted_native:
-            return JSONResponse(status_code=403, content={'detail': 'CSRF protection blocked the request'})
+            return _apply_cors_headers(request, JSONResponse(status_code=403, content={'detail': 'CSRF protection blocked the request'}))
 
     response = await call_next(request)
+    response = _apply_cors_headers(request, response)
     response.headers['Vary'] = 'Origin'
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['X-Content-Type-Options'] = 'nosniff'

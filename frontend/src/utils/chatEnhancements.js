@@ -192,3 +192,38 @@ export function searchIndexedMessages(index = [], query = '') {
     .filter((entry) => terms.every((term) => entry.searchable.includes(term) || entry.tokens.includes(term)))
     .map((entry) => entry.message);
 }
+
+
+export function enableDisappearingMessages(messages = [], ttl = 60000) {
+  return messages.map((message) => ({
+    ...message,
+    expiresAt: Date.now() + ttl,
+  }));
+}
+
+export function filterSpamMessages(messages = []) {
+  const spamKeywords = ['spam', 'scam', 'fake'];
+  return messages.filter(
+    (msg) =>
+      !spamKeywords.some((word) =>
+        String(msg?.text || '').toLowerCase().includes(word)
+      )
+  );
+}
+
+export function buildUnreadBadges(chats = []) {
+  return chats.reduce((acc, chat) => {
+    acc[chat.id] = chat.unreadCount || 0;
+    return acc;
+  }, {});
+}
+
+export function buildPresenceState(users = []) {
+  return users.reduce((acc, user) => {
+    acc[user.id] = {
+      online: Boolean(user.online),
+      lastSeen: user.lastSeen || null,
+    };
+    return acc;
+  }, {});
+}

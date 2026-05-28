@@ -13,6 +13,7 @@ import useOfflineQueue from './hooks/useOfflineQueue.js';
 import useSessionGuard from './hooks/useSessionGuard.js';
 import usePageAnalytics from './hooks/usePageAnalytics.js';
 import useChatRealtime from './hooks/useChatRealtime.js';
+import useTactileFeedback from './hooks/useTactileFeedback.js';
 import { useAppStore } from './store/appStore.js';
 import './styles/theme.css';
 
@@ -55,6 +56,7 @@ function AppGuards() {
   useOfflineQueue();
   usePageAnalytics();
   useChatRealtime();
+  useTactileFeedback();
   const theme = useAppStore((state) => state.theme);
   const language = useAppStore((state) => state.language);
   const activeRequests = useAppStore((state) => state.activeRequests);

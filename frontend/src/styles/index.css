@@ -10,6 +10,11 @@
 @import './livestream-dashboard.css';
 @import './gestureContainer.css';
 
+/* ====== Stage 5 — Premium Polish Layers (must be last) ====== */
+@import './chat-premium.css';
+@import './reels-premium.css';
+@import './design-system-enforce.css';
+
 /* ============================================
    Global Resets and Base Styles
    ============================================ */

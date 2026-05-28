@@ -216,7 +216,11 @@ function MessageBubble({
           <div className="bubble-meta">
             <span className="bubble-time">{formatMessageTime(message?.created_at)}</span>
             {isMe ? (
-              <span style={{ color: statusColor(message?.status), fontSize: 13, fontWeight: 700 }}>
+              <span
+                className="bubble-status"
+                data-status={message?.status || 'sent'}
+                data-ds-status-color={statusColor(message?.status)}
+              >
                 {statusTicks(message?.status)}
               </span>
             ) : null}

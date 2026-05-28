@@ -15,9 +15,12 @@ import './styles/performance.css';
 import './styles/unified-overrides.css';
 import './styles/mobile-first.css';
 import './styles/design-system.css';
+import './styles/chat-premium.css';
+import './styles/reels-premium.css';
+import './styles/design-system-enforce.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 
-const BUILD_ID = 'yamshat-ui-system-20260527-r5-stage4-reels-media-tactile';
+const BUILD_ID = 'yamshat-ui-system-20260527-r5-stage5-premium-polish';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

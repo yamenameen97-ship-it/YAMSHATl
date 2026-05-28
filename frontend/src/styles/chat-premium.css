@@ -1,0 +1,685 @@
+/* ==========================================================================
+   Yamshat — Premium Chat Polish (Stage 5)
+   --------------------------------------------------------------------------
+   صقل نهائي لفقاعات الشات، الـ grouping، الـ reactions، الـ transitions،
+   keyboard behavior، tactile feedback، scrolling physics، media viewer،
+   voice UX. كل القيم مأخوذة من design tokens.
+   ========================================================================== */
+
+:root {
+  --chat-bubble-bg-them: var(--ds-surface-1, rgba(11, 18, 32, 0.94));
+  --chat-bubble-bg-me:   linear-gradient(135deg, #7c3aed 0%, #06b6d4 100%);
+  --chat-bubble-text-them: var(--text, #e5eefc);
+  --chat-bubble-text-me:   #ffffff;
+  --chat-bubble-border:    var(--ds-border-subtle, rgba(148, 163, 184, 0.18));
+  --chat-bubble-radius-base: var(--ds-radius-lg, 18px);
+  --chat-bubble-radius-tail: var(--ds-radius-xs, 6px);
+  --chat-bubble-pad-y: 10px;
+  --chat-bubble-pad-x: 14px;
+  --chat-bubble-gap: 4px;          /* داخل المجموعة */
+  --chat-group-gap: 14px;          /* بين مجموعات مختلفة */
+  --chat-shadow-them: 0 4px 14px rgba(2, 6, 23, 0.18);
+  --chat-shadow-me:   0 8px 24px rgba(124, 58, 237, 0.28);
+}
+
+/* ---------- 0) Container & Scroll Physics ---------- */
+.chat-window-container,
+.messages-scroll-area,
+.yam-chat-stream {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ds-border-strong) transparent;
+}
+.messages-scroll-area::-webkit-scrollbar,
+.yam-chat-stream::-webkit-scrollbar {
+  width: 6px;
+}
+.messages-scroll-area::-webkit-scrollbar-thumb,
+.yam-chat-stream::-webkit-scrollbar-thumb {
+  background: var(--ds-border-strong);
+  border-radius: var(--ds-radius-pill);
+}
+.messages-scroll-area {
+  padding: var(--ds-space-3) var(--ds-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--chat-bubble-gap);
+}
+
+/* ---------- 1) Message Row Layout ---------- */
+.yam-message-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--ds-space-2);
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  position: relative;
+}
+.yam-message-row.me { flex-direction: row-reverse; }
+.yam-message-row.them { flex-direction: row; }
+
+/* spacing logic بين المجموعات */
+.yam-message-row + .yam-message-row { margin-top: var(--chat-bubble-gap); }
+.yam-message-row:not(.grouped-prev) { margin-top: var(--chat-group-gap); }
+
+/* في RTL — يلتزم النظام تلقائياً مع dir="rtl" */
+[dir='rtl'] .yam-message-row.me { flex-direction: row; }
+[dir='rtl'] .yam-message-row.them { flex-direction: row-reverse; }
+
+/* ---------- 2) Avatar ---------- */
+.yam-message-avatar {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity var(--ds-dur-base) var(--ds-ease-out);
+}
+.yam-message-avatar.visible { opacity: 1; }
+.yam-message-row.me .yam-message-avatar { display: none; }
+
+/* ---------- 3) Stack (bubble + reactions) ---------- */
+.yam-message-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  max-width: min(72%, 560px);
+}
+.yam-message-row.me .yam-message-stack { align-items: flex-end; }
+
+/* ---------- 4) Bubble Core ---------- */
+.yam-bubble {
+  position: relative;
+  padding: var(--chat-bubble-pad-y) var(--chat-bubble-pad-x);
+  border-radius: var(--chat-bubble-radius-base);
+  font-size: var(--text-md, 1rem);
+  line-height: var(--line-height-snug, 1.4);
+  word-wrap: break-word;
+  word-break: break-word;
+  hyphens: auto;
+  transition: transform var(--ds-dur-fast) var(--ds-ease-out),
+              box-shadow var(--ds-dur-base) var(--ds-ease-out);
+  will-change: transform;
+  isolation: isolate;
+  max-width: 100%;
+}
+.yam-bubble.bubble-them {
+  background: var(--chat-bubble-bg-them);
+  color: var(--chat-bubble-text-them);
+  border: 1px solid var(--chat-bubble-border);
+  box-shadow: var(--chat-shadow-them);
+}
+.yam-bubble.bubble-me {
+  background: var(--chat-bubble-bg-me);
+  color: var(--chat-bubble-text-me);
+  border: 1px solid transparent;
+  box-shadow: var(--chat-shadow-me);
+}
+
+/* ---------- 5) Radius Logic (Whatsapp-style tails) ---------- */
+/* فقاعة منفردة (no group): زوايا كاملة، مع "tail" خفيف ناحية المرسل */
+.yam-message-row.them:not(.grouped-prev):not(.grouped-next) .yam-bubble {
+  border-bottom-left-radius: var(--chat-bubble-radius-tail);
+}
+.yam-message-row.me:not(.grouped-prev):not(.grouped-next) .yam-bubble {
+  border-bottom-right-radius: var(--chat-bubble-radius-tail);
+}
+
+/* أول رسالة في المجموعة */
+.yam-message-row.them.grouped-next:not(.grouped-prev) .yam-bubble {
+  border-bottom-left-radius: var(--chat-bubble-radius-tail);
+}
+.yam-message-row.me.grouped-next:not(.grouped-prev) .yam-bubble {
+  border-bottom-right-radius: var(--chat-bubble-radius-tail);
+}
+
+/* وسط المجموعة */
+.yam-message-row.them.grouped-prev.grouped-next .yam-bubble {
+  border-top-left-radius: var(--chat-bubble-radius-tail);
+  border-bottom-left-radius: var(--chat-bubble-radius-tail);
+}
+.yam-message-row.me.grouped-prev.grouped-next .yam-bubble {
+  border-top-right-radius: var(--chat-bubble-radius-tail);
+  border-bottom-right-radius: var(--chat-bubble-radius-tail);
+}
+
+/* آخر رسالة في المجموعة */
+.yam-message-row.them.grouped-prev:not(.grouped-next) .yam-bubble {
+  border-top-left-radius: var(--chat-bubble-radius-tail);
+}
+.yam-message-row.me.grouped-prev:not(.grouped-next) .yam-bubble {
+  border-top-right-radius: var(--chat-bubble-radius-tail);
+}
+
+/* ---------- 6) Bubble Inner Elements ---------- */
+.yam-bubble .bubble-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.yam-bubble .bubble-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: var(--ds-fw-medium);
+  opacity: 0.78;
+  justify-content: flex-end;
+}
+.yam-bubble.bubble-them .bubble-meta { color: var(--text-muted, #8fa2bd); }
+.yam-bubble.bubble-me   .bubble-meta { color: rgba(255, 255, 255, 0.85); }
+
+.yam-bubble .bubble-deleted {
+  font-style: italic;
+  opacity: 0.7;
+  font-size: var(--text-sm, 0.875rem);
+}
+
+/* ---------- 7) Search Highlight ---------- */
+.yam-bubble.search-hit {
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.45), var(--chat-shadow-me);
+  animation: chatHitPulse 1.4s var(--ds-ease-out) 1;
+}
+@keyframes chatHitPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+  50%  { box-shadow: 0 0 0 8px rgba(245, 158, 11, 0); }
+  100% { box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.45); }
+}
+
+/* ---------- 8) Bubble More Button (الزر العلوي) ---------- */
+.yam-bubble-more {
+  position: absolute;
+  top: 4px;
+  inset-inline-end: 6px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  border-radius: var(--ds-radius-pill);
+  font-size: 13px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--ds-dur-fast) var(--ds-ease-out),
+              transform var(--ds-dur-fast) var(--ds-ease-out);
+}
+.yam-bubble:hover .yam-bubble-more,
+.yam-bubble.toolbar-open .yam-bubble-more,
+@media (hover: none) {
+  .yam-bubble-more { opacity: 0.7; }
+}
+.yam-bubble:hover .yam-bubble-more { opacity: 0.9; }
+.yam-bubble-more:hover { transform: scale(1.08); background: rgba(255,255,255,0.16); }
+
+/* ---------- 9) Bubble Toolbar (Reactions Quick Bar) ---------- */
+.yam-bubble-toolbar {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  inset-inline-end: 0;
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-pill);
+  box-shadow: var(--ds-shadow-lg);
+  z-index: 5;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.yam-bubble-toolbar button {
+  background: transparent;
+  border: 0;
+  padding: 4px 6px;
+  border-radius: var(--ds-radius-md);
+  font-size: 18px;
+  cursor: pointer;
+  transition: transform var(--ds-dur-fast) var(--ds-ease-spring),
+              background var(--ds-dur-fast) var(--ds-ease-out);
+}
+.yam-bubble-toolbar button:hover {
+  background: var(--ds-surface-soft);
+  transform: scale(1.18) translateY(-2px);
+}
+.yam-bubble-toolbar button:active {
+  transform: scale(0.92);
+}
+
+/* ---------- 10) Reply Preview Inside Bubble ---------- */
+.yam-reply-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border-inline-start: 3px solid currentColor;
+  border-radius: var(--ds-radius-sm);
+  margin-bottom: 8px;
+  text-align: start;
+  width: 100%;
+  cursor: pointer;
+  border-top: 0;
+  border-inline-end: 0;
+  border-bottom: 0;
+  transition: background var(--ds-dur-fast) var(--ds-ease-out),
+              transform var(--ds-dur-fast) var(--ds-ease-out);
+}
+.yam-reply-preview:hover {
+  background: rgba(255, 255, 255, 0.14);
+  transform: translateX(2px);
+}
+[dir='rtl'] .yam-reply-preview:hover { transform: translateX(-2px); }
+.yam-reply-preview strong { font-size: 12px; opacity: 0.9; }
+.yam-reply-preview span {
+  font-size: 13px;
+  opacity: 0.75;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* ---------- 11) Reactions Summary Chips ---------- */
+.yam-reaction-summary {
+  display: inline-flex;
+  gap: 4px;
+  margin-top: -8px;          /* trick: تتداخل خفيف مع البابل */
+  padding-inline-start: 8px;
+  flex-wrap: wrap;
+}
+.yam-reaction-summary.me { justify-content: flex-end; }
+.yam-reaction-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-pill);
+  padding: 3px 8px;
+  font-size: 12px;
+  font-weight: var(--ds-fw-semibold);
+  cursor: pointer;
+  transition: transform var(--ds-dur-fast) var(--ds-ease-spring),
+              background var(--ds-dur-fast) var(--ds-ease-out),
+              box-shadow var(--ds-dur-fast) var(--ds-ease-out);
+  box-shadow: var(--ds-shadow-sm);
+}
+.yam-reaction-chip:hover { transform: translateY(-2px) scale(1.04); }
+.yam-reaction-chip.active {
+  background: linear-gradient(135deg, rgba(139,92,246,0.32), rgba(6,182,212,0.22));
+  border-color: rgba(139, 92, 246, 0.55);
+}
+.yam-reaction-chip span:first-child { font-size: 14px; }
+
+/* ---------- 12) Media inside bubbles ---------- */
+.yam-media-button {
+  position: relative;
+  border: 0;
+  padding: 0;
+  margin: -6px -6px 8px;
+  border-radius: var(--ds-radius-md);
+  overflow: hidden;
+  cursor: zoom-in;
+  background: #000;
+  display: block;
+  width: calc(100% + 12px);
+  transition: transform var(--ds-dur-base) var(--ds-ease-out);
+}
+.yam-media-button:active { transform: scale(0.985); }
+.yam-bubble-media {
+  width: 100%;
+  max-height: 320px;
+  object-fit: cover;
+  display: block;
+}
+.yam-bubble-media-overlay {
+  position: absolute;
+  inset-inline-end: 8px;
+  bottom: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  padding: 4px 8px;
+  font-size: 11px;
+  border-radius: var(--ds-radius-pill);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  opacity: 0;
+  transition: opacity var(--ds-dur-base) var(--ds-ease-out);
+  pointer-events: none;
+}
+.yam-media-button:hover .yam-bubble-media-overlay { opacity: 1; }
+
+.yam-video-preview-shell::after {
+  content: '▶';
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+  pointer-events: none;
+}
+
+/* ---------- 13) File Card ---------- */
+.yam-file-card {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-3);
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-md);
+  color: inherit;
+  text-decoration: none;
+  transition: background var(--ds-dur-fast) var(--ds-ease-out),
+              transform var(--ds-dur-fast) var(--ds-ease-out);
+}
+.yam-file-card:hover {
+  background: rgba(255,255,255,0.14);
+  transform: translateY(-1px);
+}
+.yam-file-icon { font-size: 22px; }
+.yam-file-copy { display: flex; flex-direction: column; min-width: 0; }
+.yam-file-copy strong {
+  font-size: 13px; font-weight: var(--ds-fw-semibold);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 220px;
+}
+.yam-file-copy small { font-size: 11px; opacity: 0.65; }
+
+/* ---------- 14) Send / Receive Animations ---------- */
+@keyframes chatBubbleEnterMe {
+  from { opacity: 0; transform: translateX(20px) translateY(8px) scale(0.96); }
+  to   { opacity: 1; transform: translateX(0)    translateY(0)   scale(1); }
+}
+@keyframes chatBubbleEnterThem {
+  from { opacity: 0; transform: translateX(-20px) translateY(8px) scale(0.96); }
+  to   { opacity: 1; transform: translateX(0)     translateY(0)   scale(1); }
+}
+.yam-message-row.me   { animation: chatBubbleEnterMe   320ms var(--ds-ease-spring) both; }
+.yam-message-row.them { animation: chatBubbleEnterThem 320ms var(--ds-ease-spring) both; }
+
+/* status pending pulse */
+.yam-bubble[data-status='pending']::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.12));
+  animation: pendingShimmer 1.6s linear infinite;
+  pointer-events: none;
+  opacity: 0.7;
+}
+@keyframes pendingShimmer {
+  0% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+  100% { opacity: 0.4; }
+}
+
+/* ---------- 15) Tactile Feedback (Hold / Press) ---------- */
+.yam-bubble {
+  -webkit-tap-highlight-color: transparent;
+}
+.yam-bubble.is-pressing,
+.yam-reaction-chip.is-pressing,
+.yam-bubble-toolbar button.is-pressing {
+  transform: scale(0.96);
+  transition: transform 80ms ease;
+}
+.yam-bubble.is-holding {
+  transform: scale(0.985);
+  box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.28), var(--chat-shadow-me);
+}
+
+/* Long-press ripple */
+@keyframes longPressRipple {
+  from { transform: scale(0); opacity: 0.45; }
+  to   { transform: scale(1.8); opacity: 0; }
+}
+.yam-bubble.is-holding::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(circle, rgba(139,92,246,0.35), transparent 60%);
+  animation: longPressRipple 600ms var(--ds-ease-out) forwards;
+  pointer-events: none;
+}
+
+/* ---------- 16) Pinned bar & context menu ---------- */
+.pinned-messages-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-3);
+  padding: 10px 14px;
+  background: linear-gradient(90deg, rgba(139,92,246,0.18), rgba(6,182,212,0.10));
+  border-bottom: 1px solid var(--ds-border-subtle);
+  font-size: 13px;
+}
+.pinned-close {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--ds-radius-sm);
+}
+.pinned-close:hover { background: var(--ds-surface-soft); }
+
+.context-menu {
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-md);
+  box-shadow: var(--ds-shadow-xl);
+  padding: 6px;
+  min-width: 180px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: contextMenuIn 180ms var(--ds-ease-spring);
+}
+@keyframes contextMenuIn {
+  from { opacity: 0; transform: scale(0.92) translateY(-6px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.context-menu button {
+  text-align: start;
+  padding: 9px 12px;
+  background: transparent;
+  border: 0;
+  border-radius: var(--ds-radius-sm);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background var(--ds-dur-fast) var(--ds-ease-out);
+}
+.context-menu button:hover { background: var(--ds-surface-soft); }
+.context-menu button.danger { color: var(--danger-500, #ef4444); }
+.context-menu button.danger:hover { background: rgba(239, 68, 68, 0.12); }
+
+/* ---------- 17) Mobile Keyboard Behavior ---------- */
+@supports (height: 100dvh) {
+  .chat-window-container { min-height: 100dvh; }
+}
+.chat-window-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100svh;
+}
+.messages-scroll-area {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* عند فتح الكيبورد، نتجنب القفز عبر transform safe area */
+@media (max-width: 768px) {
+  .chat-window-container {
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+}
+
+/* ---------- 18) Voice Message UX ---------- */
+.yam-voice-player,
+.voice-message-player {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-3);
+  padding: 10px 12px;
+  border-radius: var(--ds-radius-md);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--ds-border-subtle);
+  min-width: 220px;
+  transition: background var(--ds-dur-fast) var(--ds-ease-out);
+}
+.yam-voice-player:hover { background: rgba(255,255,255,0.10); }
+.yam-voice-player .play-btn,
+.voice-message-player .play-btn {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--gradient-primary, linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%));
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  box-shadow: var(--ds-shadow-sm);
+  transition: transform var(--ds-dur-fast) var(--ds-ease-spring);
+}
+.yam-voice-player .play-btn:active { transform: scale(0.92); }
+.yam-voice-player .waveform {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 30px;
+}
+.yam-voice-player .waveform .bar {
+  flex: 1;
+  background: currentColor;
+  border-radius: var(--ds-radius-pill);
+  opacity: 0.55;
+  transition: opacity var(--ds-dur-fast) ease, background var(--ds-dur-fast) ease;
+}
+.yam-voice-player .waveform .bar.played { opacity: 1; }
+
+/* ---------- 19) Media Viewer Modal Transitions ---------- */
+.yam-media-viewer-overlay,
+[data-ds='media-viewer'] {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: mediaOverlayIn 240ms var(--ds-ease-out) both;
+}
+@keyframes mediaOverlayIn {
+  from { opacity: 0; backdrop-filter: blur(0); }
+  to   { opacity: 1; backdrop-filter: blur(8px); }
+}
+.yam-media-viewer-content {
+  max-width: 92vw;
+  max-height: 88vh;
+  border-radius: var(--ds-radius-lg);
+  overflow: hidden;
+  box-shadow: var(--ds-shadow-xl);
+  animation: mediaContentIn 320ms var(--ds-ease-spring) both;
+}
+@keyframes mediaContentIn {
+  from { opacity: 0; transform: scale(0.85) translateY(20px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+
+/* ---------- 20) Typing Indicator ---------- */
+.yam-typing-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 14px;
+  background: var(--chat-bubble-bg-them);
+  border: 1px solid var(--chat-bubble-border);
+  border-radius: var(--chat-bubble-radius-base);
+  border-bottom-left-radius: var(--chat-bubble-radius-tail);
+  width: fit-content;
+  margin-top: var(--ds-space-2);
+}
+.yam-typing-indicator .dot {
+  width: 6px; height: 6px;
+  background: currentColor;
+  border-radius: 50%;
+  opacity: 0.5;
+  animation: typingBounce 1.2s var(--ds-ease-out) infinite;
+}
+.yam-typing-indicator .dot:nth-child(2) { animation-delay: 0.15s; }
+.yam-typing-indicator .dot:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typingBounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.5; }
+  40% { transform: translateY(-4px); opacity: 1; }
+}
+
+/* ---------- 21) Reply Compose Strip (above input) ---------- */
+.yam-reply-compose {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-3);
+  padding: 8px 12px;
+  background: var(--ds-surface-soft);
+  border-top: 1px solid var(--ds-border-subtle);
+  animation: replyComposeIn 240ms var(--ds-ease-spring) both;
+}
+@keyframes replyComposeIn {
+  from { opacity: 0; transform: translateY(10px); height: 0; }
+  to   { opacity: 1; transform: translateY(0);    height: auto; }
+}
+
+/* ---------- 22) Sent → Delivered → Read transitions ---------- */
+.bubble-meta .status,
+.bubble-meta [data-status] {
+  display: inline-flex;
+  transition: color var(--ds-dur-base) var(--ds-ease-out),
+              transform var(--ds-dur-base) var(--ds-ease-spring);
+}
+.bubble-meta [data-status='read'] {
+  color: #06b6d4;
+  transform: scale(1.05);
+}
+
+/* ---------- 23) Bubble Status Ticks (no inline) ---------- */
+.bubble-status {
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  transition: color var(--ds-dur-base) var(--ds-ease-out),
+              transform var(--ds-dur-base) var(--ds-ease-spring);
+}
+.bubble-status[data-status='sent']      { color: rgba(255,255,255,0.65); }
+.bubble-status[data-status='delivered'] { color: rgba(255,255,255,0.85); }
+.bubble-status[data-status='read']      { color: #06b6d4; transform: scale(1.05); }
+.bubble-status[data-status='failed']    { color: #ef4444; }
+.bubble-status[data-status='pending']   { color: rgba(255,255,255,0.5); animation: statusPulse 1.4s ease-in-out infinite; }
+@keyframes statusPulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}

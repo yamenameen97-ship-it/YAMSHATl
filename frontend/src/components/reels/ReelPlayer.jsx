@@ -1,119 +1,271 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useDoubleTap } from '../../hooks/useDoubleTap'; // سنقوم بإنشائه
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
-export default function ReelPlayer({ reel, isActive }) {
+/**
+ * ReelPlayer — Stage 5 Premium Polish
+ * ------------------------------------
+ * - No inline styles (محكوم بالكامل بـ reels-premium.css)
+ * - Physics realism: smooth play/pause, double-tap heart, tap-to-toggle controls
+ * - Preload intelligence: content-visibility + preload="metadata" + auto-pause when not active
+ * - Momentum scrolling handled by container (.reels-container) snap rules
+ * - Gestures: double-tap like, single-tap pause/play, scrubbing on progress
+ * - Immersive feeling: overlays fade on prolonged inactivity
+ * - Accessible: aria labels, reduced-motion respected
+ *
+ * Expected props:
+ *   reel        : { id, videoUrl, caption, author, avatar, likes, comments, shares, isLiked }
+ *   isActive    : boolean — هل الفيديو هو المعروض حاليًا
+ *   onLike?     : (reel) => void
+ *   onComment?  : (reel) => void
+ *   onShare?    : (reel) => void
+ *   preloadNext?: boolean — تلميح للمتصفح
+ */
+export default function ReelPlayer({
+  reel,
+  isActive,
+  onLike,
+  onComment,
+  onShare,
+  preloadNext = false,
+}) {
   const videoRef = useRef(null);
-  const [isBuffering, setIsBuffering] = useState(false);
-  const [showHeart, setShowHeart] = useState(false);
-  const [quality, setQuality] = useState('720p');
-  const [previewTime, setPreviewTime] = useState(null);
-  const [progress, setProgress] = useState(0);
+  const tapTimerRef = useRef(null);
+  const lastTapAtRef = useRef(0);
+  const lastImmersionRef = useRef(Date.now());
 
+  const [progress, setProgress] = useState(0);
+  const [buffering, setBuffering] = useState(false);
+  const [showHeart, setShowHeart] = useState(false);
+  const [showPauseIcon, setShowPauseIcon] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [muted, setMuted] = useState(true);
+  const [immersive, setImmersive] = useState(false);
+
+  /* ---------- 1) Play/Pause when active changes ---------- */
   useEffect(() => {
-    if (isActive && videoRef.current) {
-      videoRef.current.play().catch(() => {});
-    } else if (videoRef.current) {
-      videoRef.current.pause();
+    const v = videoRef.current;
+    if (!v) return undefined;
+
+    if (isActive) {
+      v.currentTime = 0;
+      const promise = v.play();
+      if (promise?.catch) promise.catch(() => { /* autoplay blocked silently */ });
+      setPaused(false);
+    } else {
+      v.pause();
     }
+    return undefined;
   }, [isActive]);
 
-  const handleDoubleTap = () => {
+  /* ---------- 2) Time / Buffering tracking ---------- */
+  const handleTimeUpdate = useCallback(() => {
+    const v = videoRef.current;
+    if (!v || !v.duration) return;
+    setProgress((v.currentTime / v.duration) * 100);
+  }, []);
+
+  /* ---------- 3) Tap handling (single = pause/play, double = like) ---------- */
+  const triggerHeart = useCallback(() => {
     setShowHeart(true);
-    setTimeout(() => setShowHeart(false), 1000);
-    // منطق الإعجاب هنا
-  };
+    onLike?.(reel);
+    window.setTimeout(() => setShowHeart(false), 900);
+  }, [onLike, reel]);
 
-  const bindDoubleTap = {
-    onDoubleClick: handleDoubleTap,
-    onTouchStart: (e) => {
-      if (e.touches.length === 1) {
-        const now = Date.now();
-        if (now - (videoRef.current.lastTap || 0) < 300) {
-          handleDoubleTap();
-        }
-        videoRef.current.lastTap = now;
+  const togglePlayback = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) {
+      v.play().catch(() => {});
+      setPaused(false);
+    } else {
+      v.pause();
+      setPaused(true);
+    }
+    setShowPauseIcon(true);
+    window.setTimeout(() => setShowPauseIcon(false), 700);
+  }, []);
+
+  const onSurfaceTap = useCallback(() => {
+    const now = Date.now();
+    const delta = now - lastTapAtRef.current;
+    lastTapAtRef.current = now;
+
+    if (delta < 300) {
+      // double tap → heart
+      if (tapTimerRef.current) {
+        clearTimeout(tapTimerRef.current);
+        tapTimerRef.current = null;
       }
+      triggerHeart();
+      return;
     }
-  };
+    // single tap → wait a bit to confirm
+    if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+    tapTimerRef.current = window.setTimeout(() => {
+      togglePlayback();
+      tapTimerRef.current = null;
+    }, 240);
+  }, [togglePlayback, triggerHeart]);
 
-  const handleSeek = (e) => {
-    const rect = e.target.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const pct = x / rect.width;
-    const time = pct * videoRef.current.duration;
-    setPreviewTime(time);
-  };
+  /* ---------- 4) Progress bar scrubbing ---------- */
+  const onProgressTap = useCallback((event) => {
+    event.stopPropagation();
+    const v = videoRef.current;
+    if (!v || !v.duration) return;
+    const bar = event.currentTarget;
+    const rect = bar.getBoundingClientRect();
+    const pageX = event.clientX ?? event.touches?.[0]?.clientX ?? 0;
+    const ratio = Math.max(0, Math.min(1, (pageX - rect.left) / rect.width));
+    v.currentTime = ratio * v.duration;
+    setProgress(ratio * 100);
+  }, []);
 
-  const handleTimeUpdate = () => {
-    if (videoRef.current) {
-      setProgress((videoRef.current.currentTime / videoRef.current.duration) * 100);
-    }
-  };
+  /* ---------- 5) Immersion (hide overlays on idle) ---------- */
+  useEffect(() => {
+    if (!isActive) return undefined;
+    lastImmersionRef.current = Date.now();
+    setImmersive(false);
 
+    const id = window.setInterval(() => {
+      if (Date.now() - lastImmersionRef.current > 3500) setImmersive(true);
+    }, 800);
+    return () => window.clearInterval(id);
+  }, [isActive]);
+
+  const wakeImmersion = useCallback(() => {
+    lastImmersionRef.current = Date.now();
+    setImmersive(false);
+  }, []);
+
+  /* ---------- 6) Memoized counters ---------- */
+  const counters = useMemo(() => ({
+    likes:    reel?.likes    ?? 0,
+    comments: reel?.comments ?? 0,
+    shares:   reel?.shares   ?? 0,
+  }), [reel]);
+
+  /* ---------- 7) Render ---------- */
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', background: '#000' }} {...bindDoubleTap}>
+    <article
+      className={`reel-slot ${isActive ? 'is-active' : ''}`}
+      data-ds="reel-slot"
+      onClick={(e) => { wakeImmersion(); /* surface click goes through */ if (e.target === e.currentTarget) onSurfaceTap(); }}
+      role="group"
+      aria-label={`ريل من ${reel?.author || 'مستخدم'}`}
+    >
       <video
         ref={videoRef}
-        src={reel.videoUrl}
-        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        data-ds="reel-video"
+        className="reel-video"
+        src={reel?.videoUrl}
         loop
         playsInline
-        onWaiting={() => setIsBuffering(true)}
-        onPlaying={() => setIsBuffering(false)}
+        muted={muted}
+        preload={isActive ? 'auto' : (preloadNext ? 'metadata' : 'none')}
+        onClick={onSurfaceTap}
+        onWaiting={() => setBuffering(true)}
+        onPlaying={() => setBuffering(false)}
         onTimeUpdate={handleTimeUpdate}
+        aria-hidden={!isActive}
       />
 
-      {/* Buffering UI */}
-      {isBuffering && (
-        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
-          <div className="reel-spinner"></div>
+      {/* Skeleton until metadata is ready */}
+      {buffering && (
+        <div className="reel-loading" aria-hidden="true">
+          <div className="reel-spinner" />
         </div>
       )}
 
-      {/* Double Tap Heart Animation */}
-      {showHeart && (
-        <div className="heart-animation" style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontSize: 80 }}>
-          ❤️
-        </div>
-      )}
+      {/* Top + bottom depth overlays */}
+      <div className="reel-overlay-top" aria-hidden="true" />
+      <div className="reel-overlay-bottom" aria-hidden="true" />
 
-      {/* Quality Selector */}
-      <div style={{ position: 'absolute', top: 20, right: 20, zIndex: 20 }}>
-        <select 
-          value={quality} 
-          onChange={(e) => setQuality(e.target.value)}
-          style={{ background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: 4, padding: '2px 8px' }}
-        >
-          <option value="1080p">1080p</option>
-          <option value="720p">720p</option>
-          <option value="480p">480p</option>
-        </select>
-      </div>
-
-      {/* Seek Preview & Progress Bar */}
-      <div 
-        style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 4, background: 'rgba(255,255,255,0.2)', cursor: 'pointer' }}
-        onMouseMove={handleSeek}
-        onMouseLeave={() => setPreviewTime(null)}
+      {/* Mute toggle */}
+      <button
+        type="button"
+        className="reel-mute-indicator"
+        onClick={(e) => { e.stopPropagation(); setMuted((m) => !m); wakeImmersion(); }}
+        aria-label={muted ? 'تشغيل الصوت' : 'كتم الصوت'}
       >
-        <div style={{ width: `${progress}%`, height: '100%', background: 'var(--primary)' }} />
-        {previewTime !== null && (
-          <div style={{ position: 'absolute', bottom: 10, left: `${(previewTime / videoRef.current.duration) * 100}%`, transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.8)', color: 'white', padding: '2px 6px', borderRadius: 4, fontSize: 12 }}>
-            {Math.floor(previewTime)}s
+        <span aria-hidden="true">{muted ? '🔇' : '🔊'}</span>
+        <span>{muted ? 'صامت' : 'مفعّل'}</span>
+      </button>
+
+      {/* Caption + author */}
+      <div className="reel-caption">
+        {reel?.author && (
+          <div className="reel-author">
+            <span aria-hidden="true">@</span>
+            <span>{reel.author}</span>
           </div>
         )}
+        {reel?.caption && <p>{reel.caption}</p>}
       </div>
 
-      <style>{`
-        .reel-spinner { width: 40px; height: 40px; border: 4px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .heart-animation { animation: heartPop 0.8s ease-out forwards; pointer-events: none; opacity: 0; }
-        @keyframes heartPop { 
-          0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
-          50% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
-          100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
-        }
-      `}</style>
-    </div>
+      {/* Right actions stack */}
+      <div className="reel-actions" onClick={(e) => e.stopPropagation()}>
+        <div>
+          <button
+            type="button"
+            className={`reel-action-btn ${reel?.isLiked ? 'is-liked' : ''}`}
+            onClick={() => { onLike?.(reel); wakeImmersion(); }}
+            aria-label="إعجاب"
+            aria-pressed={reel?.isLiked || false}
+          >
+            ❤
+          </button>
+          <div className="reel-action-label">{counters.likes}</div>
+        </div>
+        <div>
+          <button
+            type="button"
+            className="reel-action-btn"
+            onClick={() => { onComment?.(reel); wakeImmersion(); }}
+            aria-label="تعليق"
+          >
+            💬
+          </button>
+          <div className="reel-action-label">{counters.comments}</div>
+        </div>
+        <div>
+          <button
+            type="button"
+            className="reel-action-btn"
+            onClick={() => { onShare?.(reel); wakeImmersion(); }}
+            aria-label="مشاركة"
+          >
+            ↪
+          </button>
+          <div className="reel-action-label">{counters.shares}</div>
+        </div>
+      </div>
+
+      {/* Double-tap heart */}
+      {showHeart && <div className="reel-heart-pop" aria-hidden="true">❤</div>}
+
+      {/* Single-tap pause/play feedback */}
+      {showPauseIcon && (
+        <div className="reel-pause-icon visible" aria-hidden="true">
+          {paused ? '▶' : '⏸'}
+        </div>
+      )}
+
+      {/* Progress bar */}
+      <div
+        className="reel-progress"
+        onClick={onProgressTap}
+        role="slider"
+        aria-label="مؤشر التقدم"
+        aria-valuenow={Math.round(progress)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
+        <div className="reel-progress-fill" style={{ width: `${progress}%` }} />
+      </div>
+
+      {/* Immersion hint when overlays hide */}
+      {immersive && (
+        <div className="reel-hint" aria-hidden="true">اضغط للتفاعل ↑</div>
+      )}
+    </article>
   );
 }

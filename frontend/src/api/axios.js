@@ -5,19 +5,43 @@ import { getCsrfToken } from '../utils/csrf.js';
 import sessionManager from '../auth/sessionManager.js';
 import { redirectToAppPath } from '../utils/router.js';
 
-const DEFAULT_TIMEOUT_MS = 20_000;
-const RETRYABLE_STATUSES = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
+const DEFAULT_TIMEOUT_MS = 20000;
 
-// Smart Cache Layer
+const RETRYABLE_STATUSES = new Set([
+  408,
+  409,
+  425,
+  429,
+  500,
+  502,
+  503,
+  504,
+]);
+
 const cache = new Map();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+const CACHE_TTL = 5 * 60 * 1000;
 
 function getCacheOptions(config = {}) {
   const useCache = Boolean(config.useCache ?? config.cache);
+
   const forceRefresh = Boolean(config.forceRefresh);
-  const cacheTtlMs = Number(config.cacheTtlMs) > 0 ? Number(config.cacheTtlMs) : CACHE_TTL;
-  const cacheKey = `${config.baseURL || ''}${config.url}${JSON.stringify(config.params || {})}`;
-  return { useCache, forceRefresh, cacheTtlMs, cacheKey };
+
+  const cacheTtlMs =
+    Number(config.cacheTtlMs) > 0
+      ? Number(config.cacheTtlMs)
+      : CACHE_TTL;
+
+  const cacheKey =
+    `${config.baseURL || ''}${config.url}` +
+    JSON.stringify(config.params || {});
+
+  return {
+    useCache,
+    forceRefresh,
+    cacheTtlMs,
+    cacheKey,
+  };
 }
 
 const API = axios.create({
@@ -28,26 +52,52 @@ const API = axios.create({
 
 API.interceptors.request.use(async (config) => {
   const token = getAuthToken();
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  
+
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+
   const csrfToken = getCsrfToken();
-  if (csrfToken) config.headers['X-CSRF-Token'] = csrfToken;
 
-  // Smart Cache Check
-  const { useCache, forceRefresh, cacheTtlMs, cacheKey } = getCacheOptions(config);
-  config.metadata = { ...(config.metadata || {}), cacheKey, cacheTtlMs, useCache };
+  if (csrfToken) {
+    config.headers['X-CSRF-Token'] = csrfToken;
+  }
 
-  if (config.method === 'get' && useCache && !forceRefresh) {
+  const {
+    useCache,
+    forceRefresh,
+    cacheTtlMs,
+    cacheKey,
+  } = getCacheOptions(config);
+
+  config.metadata = {
+    ...(config.metadata || {}),
+    cacheKey,
+    cacheTtlMs,
+    useCache,
+  };
+
+  if (
+    config.method === 'get' &&
+    useCache &&
+    !forceRefresh
+  ) {
     const cachedResponse = cache.get(cacheKey);
-    if (cachedResponse && (Date.now() - cachedResponse.timestamp < cacheTtlMs)) {
-      config.adapter = () => Promise.resolve({
-        data: cachedResponse.data,
-        status: 200,
-        statusText: 'OK',
-        headers: {},
-        config,
-        request: {}
-      });
+
+    if (
+      cachedResponse &&
+      Date.now() - cachedResponse.timestamp <
+        cacheTtlMs
+    ) {
+      config.adapter = () =>
+        Promise.resolve({
+          data: cachedResponse.data,
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+          config,
+          request: {},
+        });
     }
   }
 
@@ -56,39 +106,78 @@ API.interceptors.request.use(async (config) => {
 
 API.interceptors.response.use(
   (response) => {
-    const { cacheKey, useCache } = response.config.metadata || {};
+    const {
+      cacheKey,
+      useCache,
+    } = response.config.metadata || {};
 
-    // Smart Cache Storage
-    if (response.config.method === 'get' && useCache && cacheKey) {
-      cache.set(cacheKey, { data: response.data, timestamp: Date.now() });
+    if (
+      response.config.method === 'get' &&
+      useCache &&
+      cacheKey
+    ) {
+      cache.set(cacheKey, {
+        data: response.data,
+        timestamp: Date.now(),
+      });
     }
 
     return response;
   },
+
   async (error) => {
     const { config, response } = error;
 
-    // Token Refresh Logic
-    if (response?.status === 401 && config && !config._retry) {
+    /* Token Refresh */
+
+    if (
+      response?.status === 401 &&
+      config &&
+      !config._retry
+    ) {
       config._retry = true;
+
       try {
-        const { data } = await sessionManager.refreshSession();
+        const { data } =
+          await sessionManager.refreshSession();
+
         const newToken = data.access_token;
-        config.headers.Authorization = `Bearer ${newToken}`;
+
+        config.headers.Authorization =
+          `Bearer ${newToken}`;
+
         return API(config);
       } catch (refreshError) {
         clearStoredUser();
+
+        localStorage.clear();
+        sessionStorage.clear();
+
         redirectToAppPath('/login');
+
         return Promise.reject(refreshError);
       }
     }
 
-    // Advanced Retry Strategy (Exponential Backoff)
+    /* Retry Logic */
+
     const retryCount = config?._retryCount || 0;
-    if (config && RETRYABLE_STATUSES.has(response?.status) && retryCount < 3) {
+
+    if (
+      config &&
+      RETRYABLE_STATUSES.has(response?.status) &&
+      retryCount < 3
+    ) {
       config._retryCount = retryCount + 1;
-      const delay = Math.pow(2, retryCount) * 1000 + Math.random() * 1000;
-      await new Promise(resolve => setTimeout(resolve, delay));
+
+      const delay =
+        Math.pow(2, retryCount) * 1000 +
+        Math.random() * 1000;
+
+      await new Promise((resolve) =>
+        setTimeout(resolve, delay)
+      );
+
       return API(config);
     }
 

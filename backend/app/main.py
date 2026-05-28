@@ -11,7 +11,7 @@ from sqlalchemy import text
 import app.models  # noqa: F401
 from app.api.routes import (
     admin, analytics, auth, chat, comments, follow, groups, inbox,
-    live, notifications, posts, search, stories, upload, users, ws,
+    live, notifications, posts, reels, search, stories, upload, users, ws,
 )
 from app.core.api_guard import api_rate_guard
 from app.core.config import settings
@@ -106,6 +106,7 @@ fastapi_app.mount('/uploads', StaticFiles(directory=str(uploads_dir)), name='upl
 fastapi_app.include_router(auth.router, prefix=f'{settings.API_PREFIX}/auth', tags=['auth'])
 fastapi_app.include_router(users.router, prefix=f'{settings.API_PREFIX}/users', tags=['users'])
 fastapi_app.include_router(posts.router, prefix=f'{settings.API_PREFIX}/posts', tags=['posts'])
+fastapi_app.include_router(reels.router, prefix=settings.API_PREFIX, tags=['reels'])
 fastapi_app.include_router(comments.router, prefix=f'{settings.API_PREFIX}/comments', tags=['comments'])
 fastapi_app.include_router(inbox.router, prefix=f'{settings.API_PREFIX}/inbox', tags=['inbox'])
 fastapi_app.include_router(follow.router, prefix=f'{settings.API_PREFIX}/follows', tags=['follows'])

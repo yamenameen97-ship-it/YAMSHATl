@@ -52,3 +52,11 @@ class User(Base):
     phone_verification_expires_at = Column(DateTime, nullable=True)
     phone_verification_attempts = Column(Integer, default=0, nullable=False)
     phone_verification_locked_until = Column(DateTime, nullable=True)
+
+    @property
+    def full_name(self) -> str:
+        return self.username
+
+    @property
+    def avatar_url(self) -> str:
+        return self.avatar or ''

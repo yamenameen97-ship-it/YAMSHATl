@@ -61,10 +61,12 @@ REQUIRED_SCHEMA_COLUMNS: dict[str, set[str]] = {
     'audit_logs': {'action', 'entity_type', 'description', 'meta', 'created_at'},
     'user_sessions': {'user_id', 'session_key', 'refresh_token_hash', 'expires_at', 'revoked_at', 'last_seen_at'},
     'login_challenges': {'user_id', 'challenge_id', 'code_hash', 'challenge_type', 'expires_at', 'consumed_at'},
-    'posts': {'user_id', 'media_json', 'is_draft'},
-    'comments': {'user_id', 'content'},
-    'messages': {'sender_id', 'receiver_id', 'content'},
+    'posts': {'user_id', 'username', 'media', 'image_url', 'media_json', 'is_draft'},
+    'comments': {'user_id', 'username', 'comment', 'content'},
+    'messages': {'sender_id', 'receiver_id', 'sender', 'receiver', 'message', 'content'},
     'notifications': {'user_id', 'type', 'title', 'body', 'data', 'is_read', 'created_at'},
+    'live_room_sessions': {'host_user_id', 'host_username', 'title', 'stream_status', 'is_active', 'extra_json', 'last_activity_at'},
+    'reels': {'user_id', 'video_url', 'thumbnail_url', 'category', 'views_count', 'is_deleted', 'updated_at'},
 }
 REQUIRED_TABLES = {
     'users',
@@ -72,6 +74,8 @@ REQUIRED_TABLES = {
     'audit_logs',
     'login_challenges',
     'notifications',
+    'live_room_sessions',
+    'reels',
 }
 
 
@@ -94,6 +98,50 @@ def _add_column_if_missing(engine: Engine, table_name: str, column_name: str, co
         return
     with engine.begin() as connection:
         connection.execute(text(f'ALTER TABLE {table_name} ADD COLUMN {column_definition}'))
+
+
+def _drop_not_null_if_possible(engine: Engine, table_name: str, column_name: str) -> None:
+    if not _table_exists(engine, table_name):
+        return
+    if engine.dialect.name != 'postgresql':
+        return
+    inspector = inspect(engine)
+    nullable = None
+    for column in inspector.get_columns(table_name):
+        if column.get('name') == column_name:
+            nullable = column.get('nullable')
+            break
+    if nullable is not False:
+        return
+    with engine.begin() as connection:
+        connection.execute(text(f'ALTER TABLE {table_name} ALTER COLUMN {column_name} DROP NOT NULL'))
+
+
+def _column_nullable(engine: Engine, table_name: str, column_name: str) -> bool | None:
+    if not _table_exists(engine, table_name):
+        return None
+    inspector = inspect(engine)
+    for column in inspector.get_columns(table_name):
+        if column.get('name') == column_name:
+            return column.get('nullable')
+    return None
+
+
+def _legacy_compatibility_needs_bootstrap(engine: Engine) -> bool:
+    compatibility_targets = [
+        ('posts', 'username'),
+        ('posts', 'media'),
+        ('comments', 'username'),
+        ('comments', 'comment'),
+        ('messages', 'sender'),
+        ('messages', 'receiver'),
+        ('messages', 'message'),
+    ]
+    for table_name, column_name in compatibility_targets:
+        nullable = _column_nullable(engine, table_name, column_name)
+        if nullable is False:
+            return True
+    return False
 
 
 def _looks_like_hash(value: str | None) -> bool:
@@ -320,9 +368,14 @@ def _load_user_lookup(connection) -> dict[str, int]:
         email = str(row.get('email') or '').strip()
         if username:
             lookup[username] = user_id
+            lookup[username.lower()] = user_id
+            lookup[username.lstrip('@')] = user_id
+            lookup[username.lower().lstrip('@')] = user_id
         if email:
             lookup[email] = user_id
+            lookup[email.lower()] = user_id
             lookup[email.split('@')[0]] = user_id
+            lookup[email.lower().split('@')[0]] = user_id
     return lookup
 
 
@@ -331,6 +384,8 @@ def _migrate_posts_table(engine: Engine) -> None:
         return
 
     _add_column_if_missing(engine, 'posts', 'user_id', 'user_id INTEGER')
+    _add_column_if_missing(engine, 'posts', 'username', 'username TEXT')
+    _add_column_if_missing(engine, 'posts', 'media', 'media TEXT')
     _add_column_if_missing(engine, 'posts', 'image_url', 'image_url TEXT')
     _add_column_if_missing(engine, 'posts', 'content_html', 'content_html TEXT')
     _add_column_if_missing(engine, 'posts', 'media_json', 'media_json TEXT')
@@ -350,6 +405,9 @@ def _migrate_posts_table(engine: Engine) -> None:
     _add_column_if_missing(engine, 'posts', 'save_count', 'save_count INTEGER NOT NULL DEFAULT 0')
     _add_column_if_missing(engine, 'posts', 'created_at', 'created_at TIMESTAMP NULL')
 
+    _drop_not_null_if_possible(engine, 'posts', 'username')
+    _drop_not_null_if_possible(engine, 'posts', 'media')
+
     columns = _column_names(engine, 'posts')
     select_columns = ['id', *[column for column in ['user_id', 'username', 'media', 'image_url', 'media_json', 'created_at', 'updated_at', 'published_at'] if column in columns]]
 
@@ -360,13 +418,14 @@ def _migrate_posts_table(engine: Engine) -> None:
             updates: dict[str, object] = {}
             if row.get('user_id') is None:
                 legacy_username = str(row.get('username') or '').strip()
-                mapped_user_id = user_lookup.get(legacy_username)
+                mapped_user_id = user_lookup.get(legacy_username) or user_lookup.get(legacy_username.lower())
                 if mapped_user_id is not None:
                     updates['user_id'] = mapped_user_id
+            effective_image_url = row.get('image_url') or row.get('media')
             if row.get('image_url') in (None, '') and row.get('media') not in (None, ''):
                 updates['image_url'] = row.get('media')
-            if row.get('media_json') in (None, '') and row.get('image_url') not in (None, ''):
-                updates['media_json'] = f'["{row.get("image_url")}"]'
+            if row.get('media_json') in (None, '') and effective_image_url not in (None, ''):
+                updates['media_json'] = f'["{effective_image_url}"]'
             if row.get('created_at') is None:
                 updates['created_at'] = datetime.utcnow()
             if row.get('updated_at') is None:
@@ -384,6 +443,8 @@ def _migrate_comments_table(engine: Engine) -> None:
         return
 
     _add_column_if_missing(engine, 'comments', 'user_id', 'user_id INTEGER')
+    _add_column_if_missing(engine, 'comments', 'username', 'username TEXT')
+    _add_column_if_missing(engine, 'comments', 'comment', 'comment TEXT')
     _add_column_if_missing(engine, 'comments', 'parent_id', 'parent_id INTEGER NULL')
     _add_column_if_missing(engine, 'comments', 'content', 'content TEXT')
     _add_column_if_missing(engine, 'comments', 'mentions_json', 'mentions_json TEXT')
@@ -392,6 +453,9 @@ def _migrate_comments_table(engine: Engine) -> None:
     _add_column_if_missing(engine, 'comments', 'is_hidden', 'is_hidden BOOLEAN NOT NULL DEFAULT FALSE')
     _add_column_if_missing(engine, 'comments', 'created_at', 'created_at TIMESTAMP NULL')
     _add_column_if_missing(engine, 'comments', 'updated_at', 'updated_at TIMESTAMP NULL')
+
+    _drop_not_null_if_possible(engine, 'comments', 'username')
+    _drop_not_null_if_possible(engine, 'comments', 'comment')
 
     columns = _column_names(engine, 'comments')
     select_columns = ['id', *[column for column in ['user_id', 'username', 'comment', 'content', 'created_at'] if column in columns]]
@@ -403,7 +467,7 @@ def _migrate_comments_table(engine: Engine) -> None:
             updates: dict[str, object] = {}
             if row.get('user_id') is None:
                 legacy_username = str(row.get('username') or '').strip()
-                mapped_user_id = user_lookup.get(legacy_username)
+                mapped_user_id = user_lookup.get(legacy_username) or user_lookup.get(legacy_username.lower())
                 if mapped_user_id is not None:
                     updates['user_id'] = mapped_user_id
             if row.get('content') in (None, '') and row.get('comment') not in (None, ''):
@@ -427,6 +491,9 @@ def _migrate_messages_table(engine: Engine) -> None:
 
     _add_column_if_missing(engine, 'messages', 'sender_id', 'sender_id INTEGER')
     _add_column_if_missing(engine, 'messages', 'receiver_id', 'receiver_id INTEGER')
+    _add_column_if_missing(engine, 'messages', 'sender', 'sender VARCHAR(80)')
+    _add_column_if_missing(engine, 'messages', 'receiver', 'receiver VARCHAR(80)')
+    _add_column_if_missing(engine, 'messages', 'message', 'message TEXT')
     _add_column_if_missing(engine, 'messages', 'content', 'content TEXT')
     _add_column_if_missing(engine, 'messages', 'media_url', 'media_url TEXT')
     _add_column_if_missing(engine, 'messages', 'message_type', "message_type VARCHAR(20) DEFAULT 'text'")
@@ -439,6 +506,10 @@ def _migrate_messages_table(engine: Engine) -> None:
     _add_column_if_missing(engine, 'messages', 'deleted_for_everyone', 'deleted_for_everyone BOOLEAN NOT NULL DEFAULT FALSE')
     _add_column_if_missing(engine, 'messages', 'created_at', 'created_at TIMESTAMP NULL')
 
+    _drop_not_null_if_possible(engine, 'messages', 'sender')
+    _drop_not_null_if_possible(engine, 'messages', 'receiver')
+    _drop_not_null_if_possible(engine, 'messages', 'message')
+
     columns = _column_names(engine, 'messages')
     select_columns = ['id', *[column for column in ['sender_id', 'receiver_id', 'sender', 'receiver', 'message', 'content', 'message_type', 'created_at'] if column in columns]]
 
@@ -449,12 +520,12 @@ def _migrate_messages_table(engine: Engine) -> None:
             updates: dict[str, object] = {}
             if row.get('sender_id') is None:
                 sender_name = str(row.get('sender') or '').strip()
-                mapped_sender_id = user_lookup.get(sender_name)
+                mapped_sender_id = user_lookup.get(sender_name) or user_lookup.get(sender_name.lower())
                 if mapped_sender_id is not None:
                     updates['sender_id'] = mapped_sender_id
             if row.get('receiver_id') is None:
                 receiver_name = str(row.get('receiver') or '').strip()
-                mapped_receiver_id = user_lookup.get(receiver_name)
+                mapped_receiver_id = user_lookup.get(receiver_name) or user_lookup.get(receiver_name.lower())
                 if mapped_receiver_id is not None:
                     updates['receiver_id'] = mapped_receiver_id
             if row.get('content') in (None, '') and row.get('message') not in (None, ''):
@@ -467,6 +538,59 @@ def _migrate_messages_table(engine: Engine) -> None:
                 assignments = ', '.join(f'{key} = :{key}' for key in updates)
                 updates['id'] = row['id']
                 connection.execute(text(f'UPDATE messages SET {assignments} WHERE id = :id'), updates)
+
+
+def _migrate_live_room_sessions_table(engine: Engine) -> None:
+    if not _table_exists(engine, 'live_room_sessions'):
+        return
+
+    _add_column_if_missing(engine, 'live_room_sessions', 'host_user_id', 'host_user_id INTEGER')
+    _add_column_if_missing(engine, 'live_room_sessions', 'host_username', 'host_username VARCHAR(50)')
+    _add_column_if_missing(engine, 'live_room_sessions', 'title', "title VARCHAR(255) NOT NULL DEFAULT 'Live Room'")
+    _add_column_if_missing(engine, 'live_room_sessions', 'livekit_room', 'livekit_room VARCHAR(255)')
+    _add_column_if_missing(engine, 'live_room_sessions', 'livekit_url', 'livekit_url VARCHAR(500)')
+    _add_column_if_missing(engine, 'live_room_sessions', 'stream_status', "stream_status VARCHAR(50) NOT NULL DEFAULT 'setup_required'")
+    _add_column_if_missing(engine, 'live_room_sessions', 'is_active', 'is_active BOOLEAN NOT NULL DEFAULT TRUE')
+    _add_column_if_missing(engine, 'live_room_sessions', 'viewer_count', 'viewer_count INTEGER NOT NULL DEFAULT 0')
+    _add_column_if_missing(engine, 'live_room_sessions', 'peak_viewer_count', 'peak_viewer_count INTEGER NOT NULL DEFAULT 0')
+    _add_column_if_missing(engine, 'live_room_sessions', 'hearts_count', 'hearts_count INTEGER NOT NULL DEFAULT 0')
+    _add_column_if_missing(engine, 'live_room_sessions', 'recording_status', "recording_status VARCHAR(50) NOT NULL DEFAULT 'idle'")
+    _add_column_if_missing(engine, 'live_room_sessions', 'recording_url', 'recording_url VARCHAR(1000)')
+    _add_column_if_missing(engine, 'live_room_sessions', 'extra_json', 'extra_json TEXT')
+    _add_column_if_missing(engine, 'live_room_sessions', 'created_at', 'created_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'live_room_sessions', 'last_activity_at', 'last_activity_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'live_room_sessions', 'ended_at', 'ended_at TIMESTAMP NULL')
+
+    columns = _column_names(engine, 'live_room_sessions')
+    select_columns = ['id', *[column for column in ['host_username', 'title', 'stream_status', 'is_active', 'viewer_count', 'peak_viewer_count', 'hearts_count', 'recording_status', 'created_at', 'last_activity_at'] if column in columns]]
+
+    with engine.begin() as connection:
+        rows = connection.execute(text(f"SELECT {', '.join(select_columns)} FROM live_room_sessions ORDER BY id ASC")).mappings().all()
+        for row in rows:
+            updates: dict[str, object] = {}
+            if row.get('title') in (None, ''):
+                updates['title'] = f"بث مباشر مع {str(row.get('host_username') or 'host').strip() or 'host'}"
+            if row.get('stream_status') in (None, ''):
+                updates['stream_status'] = 'setup_required'
+            if row.get('is_active') is None:
+                updates['is_active'] = True
+            if row.get('viewer_count') is None:
+                updates['viewer_count'] = 0
+            if row.get('peak_viewer_count') is None:
+                updates['peak_viewer_count'] = 0
+            if row.get('hearts_count') is None:
+                updates['hearts_count'] = 0
+            if row.get('recording_status') in (None, ''):
+                updates['recording_status'] = 'idle'
+            if row.get('created_at') is None:
+                updates['created_at'] = datetime.utcnow()
+            if row.get('last_activity_at') is None:
+                updates['last_activity_at'] = row.get('created_at') or datetime.utcnow()
+            if updates:
+                assignments = ', '.join(f'{key} = :{key}' for key in updates)
+                updates['id'] = row['id']
+                connection.execute(text(f'UPDATE live_room_sessions SET {assignments} WHERE id = :id'), updates)
+
 
 
 def _migrate_notifications_table(engine: Engine) -> None:
@@ -728,6 +852,9 @@ def initialize_database(engine: Engine, force: bool = False) -> None:
             if 'user_id' not in cols:
                 _log.warning("notifications.user_id missing in live DB, fixing now.")
                 should_bootstrap = True
+        if not should_bootstrap and _legacy_compatibility_needs_bootstrap(engine):
+            _log.warning('Legacy compatibility drift detected in posts/comments/messages, fixing now.')
+            should_bootstrap = True
     except Exception as exc:
         _log.warning('Could not check notifications schema: %s', exc)
 
@@ -759,6 +886,7 @@ def initialize_database(engine: Engine, force: bool = False) -> None:
     _safe(_migrate_posts_table, 'migrate_posts_table')
     _safe(_migrate_comments_table, 'migrate_comments_table')
     _safe(_migrate_messages_table, 'migrate_messages_table')
+    _safe(_migrate_live_room_sessions_table, 'migrate_live_room_sessions_table')
     _safe(_migrate_notifications_table, 'migrate_notifications_table')
     _safe(_migrate_audit_logs_table, 'migrate_audit_logs_table')
     _safe(_migrate_user_sessions_table, 'migrate_user_sessions_table')

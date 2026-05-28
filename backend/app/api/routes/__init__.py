@@ -10,6 +10,7 @@ from app.api.routes import (  # noqa: F401
     live,
     notifications,
     posts,
+    reels,
     search,
     stories,
     upload,

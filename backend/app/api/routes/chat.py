@@ -168,11 +168,15 @@ async def send_message(payload: dict, db: Session = Depends(get_db), current_use
 
     delivered_now = is_user_online(username=receiver.username, user_id=receiver.id)
     delivered_at = datetime.utcnow() if delivered_now else None
+    clean_message = bleach.clean(raw_message)
     message = Message(
         sender_id=current_user.id,
         receiver_id=receiver.id,
+        sender=current_user.username,
+        receiver=receiver.username,
         client_id=client_id,
-        content=encrypt_message(bleach.clean(raw_message)),
+        message=clean_message,
+        content=encrypt_message(clean_message),
         media_url=media_url or None,
         message_type=message_type,
         is_delivered=delivered_now,

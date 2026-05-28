@@ -10,6 +10,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.content_sanitizer import sanitize_text
+from app.core.media_urls import normalize_media_list, normalize_media_url
 from app.models.comment import Comment
 from app.models.like import Like
 from app.models.post import Post
@@ -70,9 +71,9 @@ def _normalize_media(payload) -> list[str]:
         items = []
     clean = []
     for item in items:
-        value = str(item or '').strip()
-        if value and value not in clean:
-            clean.append(value[:1500])
+        normalized = normalize_media_url(item)
+        if normalized and normalized not in clean:
+            clean.append(str(normalized)[:1500])
     return clean[:8]
 
 
@@ -107,9 +108,11 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
     user = db.query(User).filter(User.id == post.user_id).first()
     like_count = db.query(func.count(Like.id)).filter(Like.post_id == post.id).scalar() or 0
     comment_count = db.query(func.count(Comment.id)).filter(Comment.post_id == post.id).scalar() or 0
-    media_list = _loads_list(post.media_json)
+    media_list = normalize_media_list(_loads_list(post.media_json))
     if not media_list and post.image_url:
-        media_list = [post.image_url]
+        media_list = normalize_media_list([post.image_url])
+    if not media_list and getattr(post, 'media', None):
+        media_list = normalize_media_list([post.media])
     poll_options = _loads_list(post.poll_options_json)
     poll_votes_rows = db.query(PostPollVote).filter(PostPollVote.post_id == post.id).all()
     poll_votes = {}
@@ -131,7 +134,7 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
     return {
         'id': post.id,
         'user_id': post.user_id,
-        'username': user.username if user else 'unknown',
+        'username': user.username if user else (getattr(post, 'username', None) or 'unknown'),
         'avatar': user.avatar if user else None,
         'content': post.content,
         'content_html': post.content_html or '',
@@ -173,6 +176,7 @@ def _prepare_post_fields(content: str, content_html: str | None, media_urls, pol
         'content': clean_content,
         'content_html': clean_html,
         'image_url': clean_media[0] if clean_media else None,
+        'media': clean_media[0] if clean_media else None,
         'media_json': _dumps(clean_media),
         'hashtags_json': _dumps(detected_hashtags),
         'mentions_json': _dumps(detected_mentions),
@@ -199,8 +203,10 @@ def create_post(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='content, media, or poll is required')
     now = utcnow_naive()
     publish_at = None if is_draft else (scheduled_at if scheduled_at and scheduled_at > now else now)
+    current_user = db.query(User).filter(User.id == user_id).first()
     post = Post(
         user_id=user_id,
+        username=current_user.username if current_user else None,
         scheduled_at=scheduled_at,
         published_at=publish_at,
         is_draft=bool(is_draft),
@@ -208,12 +214,12 @@ def create_post(
         pinned_at=now if is_pinned else None,
         allow_comments=bool(allow_comments),
         updated_at=now,
+        media=prepared.get('media'),
         **prepared,
     )
     db.add(post)
     db.commit()
     db.refresh(post)
-    current_user = db.query(User).filter(User.id == user_id).first()
     return _serialize_post(db, post, current_user=current_user)
 
 
@@ -251,9 +257,10 @@ def get_user_drafts(db: Session, user: User) -> list[dict]:
 
 def get_posts_by_username(db: Session, username: str, current_user: User | None = None) -> list[dict]:
     user = db.query(User).filter(User.username == username, User.is_active.is_(True)).first()
-    if user is None:
-        return []
-    posts = db.query(Post).filter(Post.user_id == user.id).order_by(Post.is_pinned.desc(), Post.created_at.desc()).all()
+    if user is not None:
+        posts = db.query(Post).filter(Post.user_id == user.id).order_by(Post.is_pinned.desc(), Post.created_at.desc()).all()
+        return [_serialize_post(db, post, current_user=current_user) for post in posts if _can_view_post(post, current_user)]
+    posts = db.query(Post).filter(Post.username == username).order_by(Post.is_pinned.desc(), Post.created_at.desc()).all()
     return [_serialize_post(db, post, current_user=current_user) for post in posts if _can_view_post(post, current_user)]
 
 
@@ -296,6 +303,7 @@ def update_post(
     post.content = prepared['content']
     post.content_html = prepared['content_html']
     post.image_url = prepared['image_url']
+    post.media = prepared['media']
     post.media_json = prepared['media_json']
     post.hashtags_json = prepared['hashtags_json']
     post.mentions_json = prepared['mentions_json']

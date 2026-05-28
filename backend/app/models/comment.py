@@ -12,6 +12,8 @@ class Comment(Base):
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
     post_id = Column(Integer, ForeignKey('posts.id', ondelete='CASCADE'), nullable=False, index=True)
     parent_id = Column(Integer, ForeignKey('comments.id', ondelete='CASCADE'), nullable=True, index=True)
+    username = Column(Text, nullable=True)
+    comment = Column(Text, nullable=True)
     content = Column(Text, nullable=False)
     mentions_json = Column(Text, nullable=True)
     likes_count = Column(Integer, default=0, nullable=False)

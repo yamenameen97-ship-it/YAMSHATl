@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.models.message import Message
 from app.models.user import User
+from app.core.media_urls import normalize_media_url
 from app.services.encryption_service import decrypt_message
 
 
@@ -15,15 +16,19 @@ def serialize_message(message: Message, db: Session) -> dict:
     receiver = db.query(User).filter(User.id == message.receiver_id).first()
     deleted = bool(message.deleted_at)
     deleted_for_everyone = bool(getattr(message, 'deleted_for_everyone', False))
-    safe_content = '' if deleted else decrypt_message(message.content or '')
+    if deleted:
+        safe_content = ''
+    else:
+        raw_content = message.content or ''
+        safe_content = decrypt_message(raw_content) if raw_content else str(getattr(message, 'message', '') or '')
     return {
         'id': message.id,
         'client_id': message.client_id,
-        'sender': sender.username if sender else str(message.sender_id),
-        'receiver': receiver.username if receiver else str(message.receiver_id),
+        'sender': sender.username if sender else (getattr(message, 'sender', None) or str(message.sender_id)),
+        'receiver': receiver.username if receiver else (getattr(message, 'receiver', None) or str(message.receiver_id)),
         'message': 'تم حذف الرسالة' if deleted else safe_content,
         'content': 'تم حذف الرسالة' if deleted else safe_content,
-        'media_url': None if deleted else message.media_url,
+        'media_url': None if deleted else normalize_media_url(message.media_url),
         'type': message.message_type or ('image' if message.media_url else 'text'),
         'created_at': message.created_at.isoformat() if message.created_at else None,
         'delivered_at': message.delivered_at.isoformat() if message.delivered_at else None,

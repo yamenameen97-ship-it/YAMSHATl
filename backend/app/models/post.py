@@ -10,8 +10,10 @@ class Post(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    username = Column(Text, nullable=True)
     content = Column(Text, nullable=False, default='')
     content_html = Column(Text, nullable=True)
+    media = Column(Text, nullable=True)
     image_url = Column(Text, nullable=True)
     media_json = Column(Text, nullable=True)
     hashtags_json = Column(Text, nullable=True)

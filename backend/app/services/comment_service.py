@@ -70,7 +70,7 @@ def _serialize_comment(db: Session, comment: Comment, current_user: User | None 
     return {
         'id': comment.id,
         'user_id': comment.user_id,
-        'username': user.username if user else 'unknown',
+        'username': user.username if user else (getattr(comment, 'username', None) or 'unknown'),
         'avatar': user.avatar if user else None,
         'post_id': comment.post_id,
         'parent_id': comment.parent_id,
@@ -141,10 +141,13 @@ def create_comment(db: Session, user_id: int, post_id: int, content: str, parent
     if not clean_content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Comment content is required')
 
+    current_user = db.query(User).filter(User.id == user_id).first()
     comment = Comment(
         user_id=user_id,
         post_id=post_id,
         parent_id=parent_comment.id if parent_comment else None,
+        username=current_user.username if current_user else None,
+        comment=clean_content,
         content=clean_content,
         mentions_json=_dumps(_extract_mentions(clean_content)),
         created_at=datetime.utcnow(),
@@ -153,7 +156,6 @@ def create_comment(db: Session, user_id: int, post_id: int, content: str, parent
     db.add(comment)
     db.commit()
     db.refresh(comment)
-    current_user = db.query(User).filter(User.id == user_id).first()
     return _serialize_comment(db, comment, current_user=current_user)
 
 
@@ -211,6 +213,7 @@ def update_comment(db: Session, comment_id: int, user_id: int, content: str) -> 
     if not clean_content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Comment content is required')
 
+    comment.comment = clean_content
     comment.content = clean_content
     comment.mentions_json = _dumps(_extract_mentions(clean_content))
     comment.updated_at = datetime.utcnow()

@@ -4,7 +4,7 @@ import { normalizeNotification } from '../utils/notificationCenter.js';
 const STORAGE_KEY = 'yamshat_notifications';
 const BATCH_DELAY_MS = 300;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-const MAX_STORED_NOTIFICATIONS = 1000;
+const MAX_STORED_NOTIFICATIONS = 500;
 
 /**
  * Sorts notifications by creation date (newest first)
@@ -50,19 +50,6 @@ function saveToStorage(items) {
   } catch (error) {
     console.warn('Failed to save notifications to storage:', error);
   }
-}
-
-
-
-function buildMeta(items = []) {
-  const unread = items.filter((item) => !item?.seen && !item?.archived).length;
-  const grouped = items.reduce((acc, item) => {
-    const type = item?.type || 'general';
-    acc[type] = (acc[type] || 0) + 1;
-    return acc;
-  }, {});
-
-  return { unread, grouped };
 }
 
 /**
@@ -133,8 +120,6 @@ export const useNotificationStore = create((set, get) => {
     error: '',
     items: [],
     cacheTimestamp: null,
-    filters: { type: 'all', unreadOnly: false, archived: false },
-    meta: { unread: 0, grouped: {} },
 
     /**
      * Sets loading state
@@ -172,7 +157,6 @@ export const useNotificationStore = create((set, get) => {
         initialized: true,
         error: '',
         cacheTimestamp: Date.now(),
-        meta: buildMeta(sorted),
       };
     }),
 
@@ -202,7 +186,7 @@ export const useNotificationStore = create((set, get) => {
           : item
       ));
       saveToStorage(updated);
-      return { items: updated, meta: buildMeta(updated) };
+      return { items: updated };
     }),
 
     /**
@@ -213,7 +197,7 @@ export const useNotificationStore = create((set, get) => {
         normalizeNotification({ ...item, seen: true, is_read: true })
       );
       saveToStorage(updated);
-      return { items: updated, meta: buildMeta(updated) };
+      return { items: updated };
     }),
 
     /**
@@ -222,7 +206,7 @@ export const useNotificationStore = create((set, get) => {
     removeNotification: (notificationId) => set((state) => {
       const updated = state.items.filter((item) => String(item.id) !== String(notificationId));
       saveToStorage(updated);
-      return { items: updated, meta: buildMeta(updated) };
+      return { items: updated };
     }),
 
     /**
@@ -230,7 +214,7 @@ export const useNotificationStore = create((set, get) => {
      */
     clearAll: () => set(() => {
       localStorage.removeItem(STORAGE_KEY);
-      return { items: [], initialized: true, meta: buildMeta([]) };
+      return { items: [], initialized: true };
     }),
 
     /**
@@ -242,7 +226,6 @@ export const useNotificationStore = create((set, get) => {
         items: stored || [],
         initialized: true,
         cacheTimestamp: Date.now(),
-        meta: buildMeta(sorted),
       };
     }),
 
@@ -259,37 +242,6 @@ export const useNotificationStore = create((set, get) => {
      * Invalidates cache
      */
     invalidateCache: () => set({ cacheTimestamp: null }),
-
-    archiveNotification: (notificationId) => set((state) => {
-      const updated = state.items.map((item) => String(item.id) === String(notificationId)
-        ? { ...item, archived: true }
-        : item);
-      saveToStorage(updated);
-      return { items: updated, meta: buildMeta(updated) };
-    }),
-
-    restoreNotification: (notificationId) => set((state) => {
-      const updated = state.items.map((item) => String(item.id) === String(notificationId)
-        ? { ...item, archived: false }
-        : item);
-      saveToStorage(updated);
-      return { items: updated, meta: buildMeta(updated) };
-    }),
-
-    setFilters: (filters = {}) => set((state) => ({
-      filters: { ...state.filters, ...filters },
-    })),
-
-    getFilteredNotifications: () => {
-      const state = get();
-      return state.items.filter((item) => {
-        if (state.filters.unreadOnly && item?.seen) return false;
-        if (state.filters.archived !== Boolean(item?.archived)) return false;
-        if (state.filters.type !== 'all' && item?.type !== state.filters.type) return false;
-        return true;
-      });
-    },
-
   };
 });
 

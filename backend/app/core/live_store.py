@@ -85,18 +85,32 @@ class LiveStore:
         self._next_gift_id = 1
 
     def create_room(self, host_user_id: int, username: str, title: str, **options) -> LiveRoom:
-        room_id = str(self._next_room_id)
-        self._next_room_id += 1
+        provided_room_id = options.get('room_id')
+        if provided_room_id is None:
+            room_id = str(self._next_room_id)
+            self._next_room_id += 1
+        else:
+            room_id = str(provided_room_id)
+
         now = _utcnow()
         room = LiveRoom(
             id=room_id,
             host_user_id=host_user_id,
             username=username,
             title=title or f'Live by {username}',
-            created_at=now,
-            last_activity_at=now,
+            created_at=str(options.get('created_at') or now),
+            last_activity_at=str(options.get('last_activity_at') or now),
+            active=bool(options.get('active', True)),
+            viewer_count=int(options.get('viewer_count') or 0),
+            peak_viewer_count=int(options.get('peak_viewer_count') or 0),
+            hearts_count=int(options.get('hearts_count') or 0),
+            recording_status=str(options.get('recording_status') or 'idle'),
+            recording_url=options.get('recording_url'),
         )
-        room.multi_host_config['current_hosts'].append(username)
+        room.livekit_room = str(options.get('livekit_room') or '')
+        room.livekit_url = str(options.get('livekit_url') or '')
+        room.stream_status = str(options.get('stream_status') or 'setup_required')
+        room.multi_host_config['current_hosts'] = [username]
         room.co_hosts = list(room.multi_host_config['current_hosts'])
         self.rooms[room_id] = room
         return room

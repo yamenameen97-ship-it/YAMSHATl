@@ -1,0 +1,25 @@
+BACKEND INTEGRATION AUDIT
+
+Integrated:
+- Central API client
+- Feed API binding
+- Follow/unfollow API
+- Reactions API
+- Save/bookmark API
+- Chat API bindings
+- Typing/read receipts hooks
+- Live streaming API bindings
+- Backend status hook
+- Shared backend route map
+- Frontend environment configuration
+
+Important:
+- Existing structure preserved
+- No file names changed
+- No imports removed
+- Render-safe additions only
+
+Next backend requirement:
+- Backend endpoints must exist under /api/*
+- WebSocket endpoints should exist for realtime features
+- Auth cookies/JWT should match frontend credentials mode

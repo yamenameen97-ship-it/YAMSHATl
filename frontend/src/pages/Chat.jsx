@@ -1696,9 +1696,9 @@ export default function Chat() {
 
           <div className="yam-info-card">
             <div className="yam-info-title">نظرة سريعة</div>
-            <div className="yam-info-row"><span>اسم المستخدم</span><strong>{peerDetails.handle}</strong></div>
-            <div className="yam-info-row"><span>البريد</span><strong>{peerDetails.email}</strong></div>
-            <div className="yam-info-row"><span>الهاتف</span><strong>{peerDetails.phone}</strong></div>
+            <div className="yam-info-row"><span>اسم المستخدم</span><strong>{peerDetails.handle || 'غير متوفر'}</strong></div>
+            <div className="yam-info-row"><span>البريد</span><strong>{peerDetails.email || 'غير متوفر'}</strong></div>
+            <div className="yam-info-row"><span>الهاتف</span><strong>{peerDetails.phone || 'غير متوفر'}</strong></div>
             <div className="yam-info-row"><span>الوسائط</span><strong>{mediaMessages.length}</strong></div>
             <div className="yam-info-row"><span>الملفات والصوتيات</span><strong>{fileMessages.length}</strong></div>
           </div>

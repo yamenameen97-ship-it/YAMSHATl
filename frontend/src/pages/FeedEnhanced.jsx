@@ -736,6 +736,10 @@ export default function FeedEnhanced() {
           }
 
           .yam-feed-header-card {
+            position: sticky;
+            top: 0;
+            z-index: 4;
+            flex-shrink: 0;
             padding: 18px 20px 14px;
           }
 
@@ -857,10 +861,33 @@ export default function FeedEnhanced() {
             flex: 1;
             min-height: 0;
             overflow: auto;
+            overscroll-behavior-y: contain;
+            scrollbar-gutter: stable both-edges;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(139, 92, 246, 0.72) transparent;
             display: grid;
             gap: 18px;
             padding-inline-end: 4px;
             padding-bottom: 28px;
+          }
+
+          .yam-post-stack-v2::-webkit-scrollbar {
+            width: 10px;
+          }
+
+          .yam-post-stack-v2::-webkit-scrollbar-track {
+            background: transparent;
+          }
+
+          .yam-post-stack-v2::-webkit-scrollbar-thumb {
+            border-radius: 999px;
+            background: linear-gradient(180deg, rgba(139, 92, 246, 0.92), rgba(99, 102, 241, 0.88));
+            border: 2px solid transparent;
+            background-clip: padding-box;
+          }
+
+          .yam-post-stack-v2::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(180deg, rgba(167, 139, 250, 1), rgba(129, 140, 248, 1));
           }
 
           .yam-post-card-v2 {

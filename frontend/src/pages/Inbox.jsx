@@ -84,7 +84,7 @@ export default function Inbox() {
   const [filterKey, setFilterKey] = useState('all');
   const [pinnedChats, setPinnedChats] = useState(initialPrefs.pinned);
   const [mutedChats, setMutedChats] = useState(initialPrefs.muted);
-  const [selectedUsername, setSelectedUsername] = useState('فاطمة خالد');
+  const [selectedUsername, setSelectedUsername] = useState('');
 
   const { data: threads = [] } = useQuery({
     queryKey: ['chat-threads', currentUser],
@@ -127,6 +127,7 @@ export default function Inbox() {
     () => getContactDetails(filteredContacts.length ? filteredContacts : contacts, selectedUsername),
     [contacts, filteredContacts, selectedUsername],
   );
+  const hasSelectedContact = Boolean(selectedContact?.username);
 
   const favoriteContacts = useMemo(() => sortContacts(contacts, pinnedChats, mutedChats, metaMap).slice(0, 5), [contacts, metaMap, mutedChats, pinnedChats]);
   const inboxStats = useMemo(() => ({
@@ -311,8 +312,8 @@ export default function Inbox() {
 
                 {!filteredContacts.length ? (
                   <div className="yam-empty-block">
-                    <strong>لا توجد نتائج</strong>
-                    <span>جرّب تعديل البحث أو تغيير الفلتر لعرض محادثات أخرى.</span>
+                    <strong>{contacts.length ? 'لا توجد نتائج' : 'لا توجد محادثات مخزنة بعد'}</strong>
+                    <span>{contacts.length ? 'جرّب تعديل البحث أو تغيير الفلتر لعرض محادثات أخرى.' : 'سيتم عرض المحادثات الحقيقية هنا بمجرد توفرها من الخادم أو من البيانات المخزنة محلياً.'}</span>
                   </div>
                 ) : null}
               </div>
@@ -333,10 +334,10 @@ export default function Inbox() {
 
             <div className="yam-quick-actions">
               {[
-                { key: 'call', label: 'اتصال', icon: '📞', onClick: () => navigate(`/chat/${encodeURIComponent(selectedContact.username)}`) },
-                { key: 'video', label: 'فيديو', icon: '🎥', onClick: () => navigate(`/chat/${encodeURIComponent(selectedContact.username)}`) },
-                { key: 'search', label: 'بحث', icon: '⌕', onClick: () => setSearchQuery(selectedContact.username) },
-                { key: 'open', label: 'فتح', icon: '↗', onClick: () => navigate(`/chat/${encodeURIComponent(selectedContact.username)}`) },
+                { key: 'call', label: 'اتصال', icon: '📞', onClick: () => { if (hasSelectedContact) navigate(`/chat/${encodeURIComponent(selectedContact.username)}`); } },
+                { key: 'video', label: 'فيديو', icon: '🎥', onClick: () => { if (hasSelectedContact) navigate(`/chat/${encodeURIComponent(selectedContact.username)}`); } },
+                { key: 'search', label: 'بحث', icon: '⌕', onClick: () => { if (hasSelectedContact) setSearchQuery(selectedContact.username); } },
+                { key: 'open', label: 'فتح', icon: '↗', onClick: () => { if (hasSelectedContact) navigate(`/chat/${encodeURIComponent(selectedContact.username)}`); } },
               ].map((action) => (
                 <button key={action.key} type="button" className="yam-quick-card" onClick={action.onClick}>
                   <span>{action.icon}</span>
@@ -347,9 +348,9 @@ export default function Inbox() {
 
             <div className="yam-info-card">
               <div className="yam-info-title">معلومات الحساب</div>
-              <div className="yam-info-row"><span>اسم المستخدم</span><strong>{selectedContact.handle}</strong></div>
-              <div className="yam-info-row"><span>البريد الإلكتروني</span><strong>{selectedContact.email}</strong></div>
-              <div className="yam-info-row"><span>الهاتف</span><strong>{selectedContact.phone}</strong></div>
+              <div className="yam-info-row"><span>اسم المستخدم</span><strong>{selectedContact.handle || 'غير متوفر'}</strong></div>
+              <div className="yam-info-row"><span>البريد الإلكتروني</span><strong>{selectedContact.email || 'غير متوفر'}</strong></div>
+              <div className="yam-info-row"><span>الهاتف</span><strong>{selectedContact.phone || 'غير متوفر'}</strong></div>
             </div>
 
             <div className="yam-info-card compact">
@@ -359,7 +360,7 @@ export default function Inbox() {
                 { label: 'الروابط', icon: '🔗' },
                 { label: 'الرسائل المثبتة', icon: '📌' },
               ].map((item) => (
-                <button key={item.label} type="button" className="yam-list-link" onClick={() => navigate(`/chat/${encodeURIComponent(selectedContact.username)}`)}>
+                <button key={item.label} type="button" className="yam-list-link" onClick={() => { if (hasSelectedContact) navigate(`/chat/${encodeURIComponent(selectedContact.username)}`); }} disabled={!hasSelectedContact}>
                   <div>
                     <span>{item.icon}</span>
                     <span>{item.label}</span>
@@ -369,8 +370,8 @@ export default function Inbox() {
               ))}
             </div>
 
-            <button type="button" className="yam-danger-btn">حظر المستخدم</button>
-            <button type="button" className="yam-open-chat-btn" onClick={() => navigate(`/chat/${encodeURIComponent(selectedContact.username)}`)}>فتح الدردشة</button>
+            <button type="button" className="yam-danger-btn" disabled={!hasSelectedContact}>حظر المستخدم</button>
+            <button type="button" className="yam-open-chat-btn" onClick={() => { if (hasSelectedContact) navigate(`/chat/${encodeURIComponent(selectedContact.username)}`); }} disabled={!hasSelectedContact}>فتح الدردشة</button>
           </aside>
         </div>
 

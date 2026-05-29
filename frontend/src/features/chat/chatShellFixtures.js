@@ -8,148 +8,17 @@ export const CHAT_NAV_ITEMS = [
   { key: 'settings', label: 'الإعدادات', icon: '⚙️' },
 ];
 
-export const CHAT_FIXTURE_CONTACTS = [
-  {
-    username: 'سارة أحمد',
-    preview: 'هل وصلت للملف الذي أرسلته لك؟',
-    unreadCount: 2,
-    statusText: 'متصل الآن',
-    timeLabel: '10:45',
-    lastSeenLabel: 'متصل الآن',
-    handle: '@sara_ahmed',
-    email: 'sara.a@example.com',
-    phone: '+966 50 456 1100',
-  },
-  {
-    username: 'محمد علي',
-    preview: 'تم إرسال التقرير، يرجى مراجعته.',
-    unreadCount: 1,
-    statusText: 'متصل الآن',
-    timeLabel: '09:30',
-    lastSeenLabel: 'متصل الآن',
-    handle: '@mohamed_ali',
-    email: 'm.ali@example.com',
-    phone: '+966 50 456 1101',
-  },
-  {
-    username: 'فاطمة خالد',
-    preview: 'يمكنني مراجعة الملف حالاً.',
-    unreadCount: 0,
-    statusText: 'آخر ظهور منذ دقيقة',
-    timeLabel: '10:34',
-    lastSeenLabel: 'آخر ظهور منذ دقيقة',
-    handle: '@fatima_khaled',
-    email: 'fatima.k@example.com',
-    phone: '+966 50 123 4567',
-  },
-  {
-    username: 'أحمد وليد',
-    preview: 'شكراً على المتابعة 🙏',
-    unreadCount: 0,
-    statusText: 'آخر ظهور منذ 10 دقائق',
-    timeLabel: 'أمس',
-    lastSeenLabel: 'آخر ظهور منذ 10 دقائق',
-    handle: '@ahmed_waleed',
-    email: 'ahmed.w@example.com',
-    phone: '+966 50 456 1102',
-  },
-  {
-    username: 'نور ياسر',
-    preview: 'تمام، سأواصل مع الفريق وأخبرك',
-    unreadCount: 0,
-    statusText: 'آخر ظهور منذ ساعة',
-    timeLabel: 'أمس',
-    lastSeenLabel: 'آخر ظهور منذ ساعة',
-    handle: '@nour_yasser',
-    email: 'nour.y@example.com',
-    phone: '+966 50 456 1103',
-  },
-  {
-    username: 'علي حسن',
-    preview: 'متى موعد الاجتماع القادم؟',
-    unreadCount: 0,
-    statusText: 'آخر ظهور منذ ساعتين',
-    timeLabel: 'أمس',
-    lastSeenLabel: 'آخر ظهور منذ ساعتين',
-    handle: '@ali_hassan',
-    email: 'ali.h@example.com',
-    phone: '+966 50 456 1104',
-  },
-  {
-    username: 'مريم عبد الله',
-    preview: 'تم استلام الطلب، شكراً لك!',
-    unreadCount: 0,
-    statusText: 'آخر ظهور السبت',
-    timeLabel: 'السبت',
-    lastSeenLabel: 'آخر ظهور السبت',
-    handle: '@maryam_abdullah',
-    email: 'maryam.a@example.com',
-    phone: '+966 50 456 1105',
-  },
-  {
-    username: 'خالد السعيد',
-    preview: 'يمكنك مشاركة الملفات هنا.',
-    unreadCount: 0,
-    statusText: 'آخر ظهور السبت',
-    timeLabel: 'السبت',
-    lastSeenLabel: 'آخر ظهور السبت',
-    handle: '@khaled_saeed',
-    email: 'khaled.s@example.com',
-    phone: '+966 50 456 1106',
-  },
-  {
-    username: 'منال فهد',
-    preview: 'أتمنى لك يوماً سعيداً 🙂',
-    unreadCount: 0,
-    statusText: 'آخر ظهور الجمعة',
-    timeLabel: 'الجمعة',
-    lastSeenLabel: 'آخر ظهور الجمعة',
-    handle: '@manal_fahad',
-    email: 'manal.f@example.com',
-    phone: '+966 50 456 1107',
-  },
-  {
-    username: 'فهد أحمد',
-    preview: 'سأرسل لك التفاصيل قريباً.',
-    unreadCount: 0,
-    statusText: 'آخر ظهور الخميس',
-    timeLabel: 'الخميس',
-    lastSeenLabel: 'آخر ظهور الخميس',
-    handle: '@fahad_ahmed',
-    email: 'fahad.a@example.com',
-    phone: '+966 50 456 1108',
-  },
-  {
-    username: 'إيمان صالح',
-    preview: 'تم التحديث بنجاح.',
-    unreadCount: 0,
-    statusText: 'آخر ظهور الخميس',
-    timeLabel: 'الخميس',
-    lastSeenLabel: 'آخر ظهور الخميس',
-    handle: '@eman_saleh',
-    email: 'eman.s@example.com',
-    phone: '+966 50 456 1109',
-  },
-];
-
-const gradientMedia = ['purple', 'blue', 'pink', 'teal', 'amber'];
+// تم إفراغ الـ fixtures التجريبية حتى تظهر فقط المحادثات الحقيقية القادمة من
+// الخادم أو المخزنة محلياً عبر حالة التطبيق/التخزين المحلي.
+export const CHAT_FIXTURE_CONTACTS = [];
 
 function fallbackHandle(name = '') {
-  return `@${String(name || 'user')
+  const value = String(name || '')
     .trim()
     .replace(/\s+/g, '_')
-    .toLowerCase()}`;
-}
-
-function fallbackEmail(name = '') {
-  return `${String(name || 'user')
-    .trim()
-    .replace(/\s+/g, '.')
-    .toLowerCase()}@example.com`;
-}
-
-function fallbackPhone(index = 0) {
-  return `+966 50 ${String(120 + index).padStart(3, '0')} ${String(4000 + index).padStart(4, '0')}`;
+    .replace(/^@+/, '')
+    .toLowerCase();
+  return value ? `@${value}` : '';
 }
 
 function formatThreadTime(value) {
@@ -172,9 +41,9 @@ function formatThreadTime(value) {
   return date.toLocaleDateString('ar-EG', { weekday: 'long' });
 }
 
-function getPreviewByType(source = {}, fallbackPreview = '') {
+function getPreviewByType(source = {}) {
   const messageType = String(source?.last_message_type || source?.type || '').toLowerCase();
-  const content = source?.last_message || source?.preview || source?.message || fallbackPreview || 'ابدأ المحادثة الآن';
+  const content = source?.last_message || source?.preview || source?.message || '';
 
   if (content && String(content).trim()) {
     if (messageType === 'voice') return `🎤 ${content}`;
@@ -191,32 +60,42 @@ function getPreviewByType(source = {}, fallbackPreview = '') {
   return 'ابدأ المحادثة الآن';
 }
 
-function buildPresenceLabels(source = {}, fixture = {}) {
+function buildPresenceLabels(source = {}) {
   const presence = source?.presence || {};
-  const isOnline = Boolean(source?.is_online ?? source?.isOnline ?? presence?.is_online ?? /متصل الآن/.test(fixture.statusText || ''));
+  const isOnline = Boolean(source?.is_online ?? source?.isOnline ?? presence?.is_online ?? false);
   const lastSeenValue = source?.last_seen || presence?.last_seen || source?.updated_at || source?.created_at || null;
   const lastSeenLabel = isOnline
     ? 'متصل الآن'
-    : (lastSeenValue ? `آخر ظهور ${formatThreadTime(lastSeenValue)}` : fixture.lastSeenLabel || 'آخر ظهور مؤخراً');
+    : (lastSeenValue ? `آخر ظهور ${formatThreadTime(lastSeenValue)}` : 'آخر ظهور مؤخراً');
 
   return {
     isOnline,
-    statusText: source?.statusText || fixture.statusText || lastSeenLabel,
+    statusText: source?.statusText || lastSeenLabel,
     lastSeenLabel: source?.lastSeenLabel || lastSeenLabel,
   };
 }
 
+function normalizeUsername(source = {}, index = 0) {
+  return String(
+    source?.username
+      || source?.user
+      || source?.peer_username
+      || source?.participant_username
+      || source?.name
+      || `محادثة ${index + 1}`,
+  ).trim();
+}
+
 export function normalizeContact(source, index = 0) {
-  const fixture = CHAT_FIXTURE_CONTACTS.find((item) => item.username === source?.username) || {};
-  const username = source?.username || fixture.username || `مستخدم ${index + 1}`;
-  const preview = getPreviewByType(source, fixture.preview);
-  const unreadCount = Number(source?.unread_count ?? source?.unreadCount ?? fixture.unreadCount ?? 0);
-  const avatar = source?.avatar || fixture.avatar || '';
-  const timeLabel = formatThreadTime(source?.last_message_at || source?.updated_at || source?.created_at) || source?.timeLabel || fixture.timeLabel || '';
-  const presenceLabels = buildPresenceLabels(source, fixture);
+  const username = normalizeUsername(source, index);
+  const preview = getPreviewByType(source);
+  const unreadCount = Number(source?.unread_count ?? source?.unreadCount ?? 0);
+  const avatar = source?.avatar || source?.avatar_url || source?.image || '';
+  const timeLabel = formatThreadTime(source?.last_message_at || source?.updated_at || source?.created_at) || source?.timeLabel || '';
+  const presenceLabels = buildPresenceLabels(source);
 
   return {
-    id: username,
+    id: String(source?.id || username || `contact-${index + 1}`),
     username,
     avatar,
     preview,
@@ -225,40 +104,53 @@ export function normalizeContact(source, index = 0) {
     isOnline: presenceLabels.isOnline,
     statusText: presenceLabels.statusText,
     lastSeenLabel: presenceLabels.lastSeenLabel,
-    handle: source?.handle || fixture.handle || fallbackHandle(username),
-    email: source?.email || fixture.email || fallbackEmail(username),
-    phone: source?.phone || fixture.phone || fallbackPhone(index),
-    sharedMedia: Array.from({ length: 4 }).map((_, mediaIndex) => ({
-      id: `${username}-media-${mediaIndex}`,
-      tone: gradientMedia[(index + mediaIndex) % gradientMedia.length],
-      label: mediaIndex % 2 === 0 ? 'صورة' : 'ملف',
-    })),
+    handle: source?.handle || fallbackHandle(username),
+    email: source?.email || '',
+    phone: source?.phone || '',
+    sharedMedia: Array.isArray(source?.sharedMedia) ? source.sharedMedia : [],
     avatarGradient: avatarGradient(username),
+    raw: source || {},
   };
+}
+
+function dedupeContacts(items = []) {
+  const seen = new Set();
+  return items.filter((item) => {
+    const key = String(item?.username || '').trim();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export function buildContacts(threads = [], activeUsername = '') {
   const normalizedThreads = Array.isArray(threads)
-    ? threads.map((thread, index) => normalizeContact(thread, index))
+    ? dedupeContacts(threads.map((thread, index) => normalizeContact(thread, index)))
     : [];
 
-  const seen = new Set(normalizedThreads.map((item) => item.username));
-  const merged = [...normalizedThreads];
-
-  CHAT_FIXTURE_CONTACTS.forEach((item, index) => {
-    if (!seen.has(item.username)) {
-      merged.push(normalizeContact(item, normalizedThreads.length + index));
-    }
-  });
-
-  if (activeUsername && !merged.find((item) => item.username === activeUsername)) {
-    merged.unshift(normalizeContact({ username: activeUsername }, merged.length));
+  if (activeUsername && !normalizedThreads.find((item) => item.username === activeUsername)) {
+    normalizedThreads.unshift(normalizeContact({ username: activeUsername }, normalizedThreads.length));
   }
 
-  return merged
-    .sort((left, right) => Number(right.unreadCount || 0) - Number(left.unreadCount || 0) || String(right.timeLabel || '').localeCompare(String(left.timeLabel || '')));
+  return normalizedThreads.sort(
+    (left, right) => Number(right.unreadCount || 0) - Number(left.unreadCount || 0)
+      || String(right.timeLabel || '').localeCompare(String(left.timeLabel || '')),
+  );
 }
 
 export function getContactDetails(threads = [], username = '') {
-  return buildContacts(threads, username).find((item) => item.username === username) || normalizeContact({ username }, 0);
+  if (!username) {
+    return normalizeContact({
+      username: '',
+      preview: '',
+      handle: '',
+      email: '',
+      phone: '',
+      statusText: 'لا توجد محادثة محددة',
+      lastSeenLabel: 'لا توجد بيانات',
+    }, 0);
+  }
+
+  const contacts = buildContacts(threads, username);
+  return contacts.find((item) => item.username === username) || normalizeContact({ username }, 0);
 }

@@ -10,6 +10,7 @@ import {
   getLiveRooms,
   getLiveToken,
   sendLiveGift,
+  triggerLiveRecovery,
   updateLiveRecording,
 } from '../api/live.js';
 import socketManager from '../services/socketManager.js';
@@ -280,11 +281,13 @@ export default function Live() {
       pushToast({ type: 'success', title: role === 'host' ? 'تم تشغيل البث الحقيقي' : 'تم الدخول إلى البث' });
     } catch (error) {
       await disconnectLiveSession({ keepPreview: true });
-      pushToast({ type: 'error', title: 'تعذر الاتصال بالبث الحقيقي', description: error?.response?.data?.detail || error?.message });
+      await triggerLiveRecovery(activeRoom.id).catch(() => null);
+      await loadRoomDetails(activeRoom.id).catch(() => null);
+      pushToast({ type: 'error', title: 'تعذر الاتصال بالبث الحقيقي', description: error?.response?.data?.detail || error?.message || 'تم تفعيل محاولة استعادة الاتصال وتحميل حالة البث من جديد.' });
     } finally {
       setBusy('');
     }
-  }, [activeRoom?.id, activeRoom?.livekit_configured, attachRemoteTrack, cameraEnabled, disconnectLiveSession, ensureCameraPreview, microphoneEnabled, pushToast]);
+  }, [activeRoom?.id, activeRoom?.livekit_configured, attachRemoteTrack, cameraEnabled, disconnectLiveSession, ensureCameraPreview, loadRoomDetails, microphoneEnabled, pushToast]);
 
   useEffect(() => {
     loadRooms();

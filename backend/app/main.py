@@ -140,16 +140,47 @@ def root() -> dict:
 def health() -> dict:
     database_status = _database_status()
     status_label = 'ok' if database_status.get('database') == 'ok' else 'degraded'
+    livekit_ready = bool(settings.LIVEKIT_URL and settings.LIVEKIT_API_KEY and settings.LIVEKIT_API_SECRET)
+    cloudinary_ready = bool(settings.cloudinary_configured)
+    imagekit_ready = bool(settings.imagekit_configured)
+    analytics_ready = bool(settings.ANALYTICS_ENABLED)
+    push_provider = settings.PUSH_PROVIDER
     return {
         'status': status_label,
         **database_status,
         'docs': '/docs',
         'metrics': '/metrics',
         'service': settings.SERVICE_NAME,
-        'livekit_configured': bool(settings.LIVEKIT_URL and settings.LIVEKIT_API_KEY and settings.LIVEKIT_API_SECRET),
-        'cloudinary_configured': bool(settings.cloudinary_configured),
-        'analytics_enabled': bool(settings.ANALYTICS_ENABLED),
-        'push_provider': settings.PUSH_PROVIDER,
+        'livekit_configured': livekit_ready,
+        'cloudinary_configured': cloudinary_ready,
+        'analytics_enabled': analytics_ready,
+        'push_provider': push_provider,
+        'services': {
+            'livekit': {
+                'configured': livekit_ready,
+                'url_present': bool(settings.LIVEKIT_URL),
+            },
+            'cloudinary': {
+                'configured': cloudinary_ready,
+            },
+            'imagekit': {
+                'configured': imagekit_ready,
+            },
+            'analytics': {
+                'enabled': analytics_ready,
+                'provider': settings.ANALYTICS_PROVIDER,
+            },
+            'push': {
+                'provider': push_provider,
+                'configured': bool(push_provider),
+            },
+            'database': {
+                'configured': bool(settings.database_url_configured),
+            },
+            'redis': {
+                'configured': bool(settings.redis_url_configured),
+            },
+        },
     }
 
 

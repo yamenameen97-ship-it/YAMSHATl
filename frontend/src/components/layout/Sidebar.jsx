@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getUsers } from '../../api/users.js';
 import { getLiveRooms } from '../../api/live.js';
@@ -42,6 +42,7 @@ function Avatar({ name, src, size = 42 }) {
 }
 
 export default function Sidebar() {
+  const navigate = useNavigate();
   const notificationCount = 0;
   const unreadInboxCount = useChatStore(selectUnreadTotal);
   const language = useAppStore((state) => state.language);
@@ -76,7 +77,7 @@ export default function Sidebar() {
           <p className="yam-brand-copy">
             {language === 'en' ? 'Upgrade for an ad-free gaming social experience.' : 'ترقية لحسابك لتجربة يامشات الخاصة بك بمميزات حصرية وإشعارات خاصة والمزيد.'}
           </p>
-          <button type="button" className="yam-primary-btn">ترقية الآن</button>
+          <button type="button" className="yam-primary-btn" onClick={() => navigate('/settings')}>ترقية الآن</button>
         </div>
       </div>
 
@@ -139,7 +140,7 @@ export default function Sidebar() {
                 <strong>{user.username}</strong>
                 <small>{user.profile?.activity_tagline || user.email || 'Gaming Creator'}</small>
               </div>
-              <button type="button" className="yam-follow-btn">متابعة</button>
+              <button type="button" className="yam-follow-btn" onClick={() => navigate(user?.username ? `/profile/${encodeURIComponent(user.username)}` : '/users')}>متابعة</button>
             </div>
           ))}
         </div>
@@ -158,7 +159,7 @@ export default function Sidebar() {
                 <strong>{group.name}</strong>
                 <small>{group.members}</small>
               </div>
-              <button type="button" className="yam-join-btn">انضمام</button>
+              <button type="button" className="yam-join-btn" onClick={() => navigate('/groups')}>انضمام</button>
             </div>
           ))}
         </div>

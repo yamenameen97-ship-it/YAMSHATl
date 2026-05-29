@@ -1466,7 +1466,7 @@ export default function Chat() {
 
           <nav className="yam-primary-nav">
             {CHAT_NAV_ITEMS.map((item, index) => (
-              <button key={item.key} type="button" className={`yam-nav-item ${index === 0 ? 'active' : ''}`} onClick={() => navigate(index === 0 ? '/inbox' : '#')}>
+              <button key={item.key} type="button" className={`yam-nav-item ${index === 0 ? 'active' : ''}`} onClick={() => navigate(item.to || '/inbox')}>
                 <span className="yam-nav-icon">{item.icon}</span>
                 <span>{item.label}</span>
               </button>
@@ -1475,7 +1475,7 @@ export default function Chat() {
 
           <div className="yam-sidebar-head">
             <span>جهات الاتصال</span>
-            <button type="button" className="yam-icon-action">＋</button>
+            <button type="button" className="yam-icon-action" onClick={() => navigate('/users')}>＋</button>
           </div>
 
           <div className="yam-contact-list">
@@ -1512,7 +1512,7 @@ export default function Chat() {
               <strong>{currentUser || 'يوسف محمد'}</strong>
               <span>متصل الآن</span>
             </div>
-            <button type="button" className="yam-icon-action subtle">⋮</button>
+            <button type="button" className="yam-icon-action subtle" onClick={() => navigate('/settings')}>⋮</button>
           </div>
         </aside>
 

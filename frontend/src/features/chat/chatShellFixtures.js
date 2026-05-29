@@ -1,11 +1,11 @@
 import { avatarGradient } from '../../components/yamshat/YamshatDesign.js';
 
 export const CHAT_NAV_ITEMS = [
-  { key: 'chats', label: 'الدردشات', icon: '💬' },
-  { key: 'groups', label: 'المجموعات', icon: '👥' },
-  { key: 'friends', label: 'الأصدقاء', icon: '👤' },
-  { key: 'notifications', label: 'الإشعارات', icon: '🔔' },
-  { key: 'settings', label: 'الإعدادات', icon: '⚙️' },
+  { key: 'chats', label: 'الدردشات', icon: '💬', to: '/inbox' },
+  { key: 'groups', label: 'المجموعات', icon: '👥', to: '/groups' },
+  { key: 'friends', label: 'الأصدقاء', icon: '👤', to: '/users' },
+  { key: 'notifications', label: 'الإشعارات', icon: '🔔', to: '/notifications' },
+  { key: 'settings', label: 'الإعدادات', icon: '⚙️', to: '/settings' },
 ];
 
 // تم إفراغ الـ fixtures التجريبية حتى تظهر فقط المحادثات الحقيقية القادمة من

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import PostComposer from '../components/feed/PostComposer.jsx';
@@ -162,6 +162,7 @@ function MediaTile({ item, index }) {
 }
 
 function PostCard({ post }) {
+  const navigate = useNavigate();
   const { pushToast } = useToast();
   const mediaItems = Array.isArray(post.media) ? post.media.slice(0, 3) : [];
   const [liked, setLiked] = useState(false);
@@ -226,7 +227,7 @@ function PostCard({ post }) {
         </div>
         <div className="yam-post-meta-v2">
           <span>{post.time}</span>
-          <button type="button" className="yam-ghost-icon-btn" aria-label="خيارات المنشور">
+          <button type="button" className="yam-ghost-icon-btn" aria-label="خيارات المنشور" onClick={() => navigate(`/profile/${encodeURIComponent(post.handle.replace(/^@/, ''))}`)}>
             <YamshatIcon name="more" size={18} />
           </button>
         </div>
@@ -295,6 +296,7 @@ export default function FeedEnhanced() {
   const theme = useAppStore((state) => state.theme);
   const [activeTab, setActiveTab] = useState('all');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const composerRef = useRef(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const profile = getStoredUserSnapshot();
   const username = getCurrentUsername() || profile?.username || 'ahmed.mohammed';
@@ -313,6 +315,19 @@ export default function FeedEnhanced() {
   const handleThemeToggle = () => {
     toggleTheme();
     pushToast({ type: 'success', title: theme === 'dark' ? 'تم تفعيل الوضع النهاري' : 'تم تفعيل الوضع الليلي' });
+  };
+
+  const handleQuickAction = (label) => {
+    if (label === 'فيديو') {
+      navigate('/reels');
+      return;
+    }
+    if (label === 'رأيك') {
+      navigate('/groups');
+      return;
+    }
+    composerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    pushToast({ type: 'info', title: `جاهز لإضافة ${label}` });
   };
 
   const handleLogout = async () => {
@@ -391,7 +406,7 @@ export default function FeedEnhanced() {
               <div className="yam-composer-prompt-bar">
                 <div className="yam-composer-actions-inline">
                   {QUICK_ACTIONS.map((item) => (
-                    <button key={item.label} type="button" className={`yam-mini-action ${item.color}`}>
+                    <button key={item.label} type="button" className={`yam-mini-action ${item.color}`} onClick={() => handleQuickAction(item.label)}>
                       <span className="dot" />
                       {item.label}
                     </button>
@@ -399,7 +414,7 @@ export default function FeedEnhanced() {
                 </div>
               </div>
 
-              <div className="yam-home-composer-slot">
+              <div className="yam-home-composer-slot" ref={composerRef}>
                 <PostComposer />
               </div>
 
@@ -433,7 +448,7 @@ export default function FeedEnhanced() {
               <div className="yam-profile-body-v2">
                 <div className="yam-profile-avatar-wrap">
                   <Avatar name={displayName} size={96} accent image />
-                  <button type="button" className="yam-avatar-camera-btn" aria-label="تغيير الصورة">
+                  <button type="button" className="yam-avatar-camera-btn" aria-label="تغيير الصورة" onClick={() => navigate('/profile')}>
                     <YamshatIcon name="profile" size={16} />
                   </button>
                 </div>

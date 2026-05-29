@@ -124,6 +124,7 @@ export default function AdminLiveDashboard() {
 
   const [overview, setOverview] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Pull live overview from backend with graceful fallback.
   useEffect(() => {
@@ -143,6 +144,7 @@ export default function AdminLiveDashboard() {
   }, []);
 
   const metrics = overview?.metrics || {};
+  const normalizedSearch = searchTerm.trim().toLowerCase();
 
   // Stats cards — wire to real metrics when present, otherwise show showcase values.
   const stats = useMemo(() => ([
@@ -214,6 +216,12 @@ export default function AdminLiveDashboard() {
     return STATIC_VIEWS_HISTORY;
   }, [metrics]);
 
+  const filteredStats = useMemo(() => (
+    normalizedSearch
+      ? stats.filter((stat) => `${stat.label} ${stat.value}`.toLowerCase().includes(normalizedSearch))
+      : stats
+  ), [normalizedSearch, stats]);
+
   const pieData = useMemo(() => {
     if (Array.isArray(metrics.audienceMix) && metrics.audienceMix.length > 0) {
       return metrics.audienceMix.map((row) => ({ name: row.label, value: Number(row.value || 0) }));
@@ -227,6 +235,30 @@ export default function AdminLiveDashboard() {
     }
     return STATIC_BAR_DATA;
   }, [metrics]);
+
+  const filteredActivities = useMemo(() => (
+    normalizedSearch
+      ? STATIC_ACTIVITIES.filter((item) => `${item.user} ${item.action}`.toLowerCase().includes(normalizedSearch))
+      : STATIC_ACTIVITIES
+  ), [normalizedSearch]);
+
+  const filteredLiveRows = useMemo(() => (
+    normalizedSearch
+      ? STATIC_LIVE_ROWS.filter((row) => `${row.user} ${row.title} ${row.views}`.toLowerCase().includes(normalizedSearch))
+      : STATIC_LIVE_ROWS
+  ), [normalizedSearch]);
+
+  const filteredPostRows = useMemo(() => (
+    normalizedSearch
+      ? STATIC_POST_ROWS.filter((row) => `${row.user} ${row.text} ${row.reactions}`.toLowerCase().includes(normalizedSearch))
+      : STATIC_POST_ROWS
+  ), [normalizedSearch]);
+
+  const filteredChatRows = useMemo(() => (
+    normalizedSearch
+      ? STATIC_CHAT_ROWS.filter((row) => `${row.user} ${row.message}`.toLowerCase().includes(normalizedSearch))
+      : STATIC_CHAT_ROWS
+  ), [normalizedSearch]);
 
   const handleLogout = useCallback(() => {
     try {
@@ -290,7 +322,7 @@ export default function AdminLiveDashboard() {
         <header className="top-bar">
           <div className="search-bar">
             <span className="search-icon">🔍</span>
-            <input type="text" placeholder="بحث عن مستخدم، بث، منشور..." aria-label="بحث" />
+            <input type="text" placeholder="بحث عن مستخدم، بث، منشور..." aria-label="بحث" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} />
           </div>
           <div className="top-actions">
             <Link to="/admin/settings" className="icon-btn" title="الإعدادات">⚙️</Link>
@@ -315,7 +347,7 @@ export default function AdminLiveDashboard() {
 
           {/* Stats Grid */}
           <section className="stats-grid">
-            {stats.map((stat) => (
+            {filteredStats.map((stat) => (
               <Link key={stat.key} to={stat.to} className="stat-card stat-card-link">
                 <div className={`stat-icon ${stat.iconClass}`}>{stat.icon}</div>
                 <span className="stat-label">{stat.label}</span>
@@ -377,7 +409,7 @@ export default function AdminLiveDashboard() {
             <div className="chart-card">
               <h3>🔔 النشاطات الأخيرة</h3>
               <div className="activities-list">
-                {STATIC_ACTIVITIES.map((item, i) => (
+                {filteredActivities.map((item, i) => (
                   <div key={i} className="activity-item">
                     <div className="activity-avatar"></div>
                     <div className="activity-details">
@@ -406,7 +438,7 @@ export default function AdminLiveDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {STATIC_LIVE_ROWS.map((row, i) => (
+                  {filteredLiveRows.map((row, i) => (
                     <tr key={i}>
                       <td>{row.user}</td>
                       <td>{row.title}</td>
@@ -431,7 +463,7 @@ export default function AdminLiveDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {STATIC_POST_ROWS.map((row, i) => (
+                  {filteredPostRows.map((row, i) => (
                     <tr key={i}>
                       <td>{row.user}</td>
                       <td>{row.text}</td>
@@ -456,7 +488,7 @@ export default function AdminLiveDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {STATIC_CHAT_ROWS.map((row, i) => (
+                    {filteredChatRows.map((row, i) => (
                       <tr key={i}>
                         <td>{row.user}</td>
                         <td>{row.message}</td>

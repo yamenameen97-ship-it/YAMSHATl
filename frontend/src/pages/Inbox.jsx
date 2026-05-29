@@ -164,7 +164,7 @@ export default function Inbox() {
 
             <nav className="yam-primary-nav">
               {CHAT_NAV_ITEMS.map((item, index) => (
-                <button key={item.key} type="button" className={`yam-nav-item ${index === 0 ? 'active' : ''}`}>
+                <button key={item.key} type="button" className={`yam-nav-item ${index === 0 ? 'active' : ''}`} onClick={() => navigate(item.to || '/inbox')}>
                   <span className="yam-nav-icon">{item.icon}</span>
                   <span>{item.label}</span>
                 </button>
@@ -173,7 +173,7 @@ export default function Inbox() {
 
             <div className="yam-section-head">
               <span>أهم جهات الاتصال</span>
-              <button type="button" className="yam-icon-button">＋</button>
+              <button type="button" className="yam-icon-button" onClick={() => navigate('/users')}>＋</button>
             </div>
 
             <div className="yam-favorite-list">
@@ -206,7 +206,7 @@ export default function Inbox() {
                 <strong>{currentUser || 'يوسف محمد'}</strong>
                 <span>جاهز للمراسلة</span>
               </div>
-              <button type="button" className="yam-icon-button subtle">⋮</button>
+              <button type="button" className="yam-icon-button subtle" onClick={() => navigate('/settings')}>⋮</button>
             </div>
           </aside>
 

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import PostComposer from '../components/feed/PostComposer.jsx';
@@ -162,7 +162,6 @@ function MediaTile({ item, index }) {
 }
 
 function PostCard({ post }) {
-  const navigate = useNavigate();
   const { pushToast } = useToast();
   const mediaItems = Array.isArray(post.media) ? post.media.slice(0, 3) : [];
   const [liked, setLiked] = useState(false);
@@ -227,7 +226,7 @@ function PostCard({ post }) {
         </div>
         <div className="yam-post-meta-v2">
           <span>{post.time}</span>
-          <button type="button" className="yam-ghost-icon-btn" aria-label="خيارات المنشور" onClick={() => navigate(`/profile/${encodeURIComponent(post.handle.replace(/^@/, ''))}`)}>
+          <button type="button" className="yam-ghost-icon-btn" aria-label="خيارات المنشور">
             <YamshatIcon name="more" size={18} />
           </button>
         </div>
@@ -296,7 +295,6 @@ export default function FeedEnhanced() {
   const theme = useAppStore((state) => state.theme);
   const [activeTab, setActiveTab] = useState('all');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const composerRef = useRef(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const profile = getStoredUserSnapshot();
   const username = getCurrentUsername() || profile?.username || 'ahmed.mohammed';
@@ -315,19 +313,6 @@ export default function FeedEnhanced() {
   const handleThemeToggle = () => {
     toggleTheme();
     pushToast({ type: 'success', title: theme === 'dark' ? 'تم تفعيل الوضع النهاري' : 'تم تفعيل الوضع الليلي' });
-  };
-
-  const handleQuickAction = (label) => {
-    if (label === 'فيديو') {
-      navigate('/reels');
-      return;
-    }
-    if (label === 'رأيك') {
-      navigate('/groups');
-      return;
-    }
-    composerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    pushToast({ type: 'info', title: `جاهز لإضافة ${label}` });
   };
 
   const handleLogout = async () => {
@@ -355,7 +340,7 @@ export default function FeedEnhanced() {
   };
 
   return (
-    <MainLayout hideNav lockScroll>
+    <MainLayout>
       <div className="yam-laptop-page" dir="rtl">
         <div className="yam-page-noise" />
         <div className="yam-laptop-shell">
@@ -406,7 +391,7 @@ export default function FeedEnhanced() {
               <div className="yam-composer-prompt-bar">
                 <div className="yam-composer-actions-inline">
                   {QUICK_ACTIONS.map((item) => (
-                    <button key={item.label} type="button" className={`yam-mini-action ${item.color}`} onClick={() => handleQuickAction(item.label)}>
+                    <button key={item.label} type="button" className={`yam-mini-action ${item.color}`}>
                       <span className="dot" />
                       {item.label}
                     </button>
@@ -414,7 +399,7 @@ export default function FeedEnhanced() {
                 </div>
               </div>
 
-              <div className="yam-home-composer-slot" ref={composerRef}>
+              <div className="yam-home-composer-slot">
                 <PostComposer />
               </div>
 
@@ -448,7 +433,7 @@ export default function FeedEnhanced() {
               <div className="yam-profile-body-v2">
                 <div className="yam-profile-avatar-wrap">
                   <Avatar name={displayName} size={96} accent image />
-                  <button type="button" className="yam-avatar-camera-btn" aria-label="تغيير الصورة" onClick={() => navigate('/profile')}>
+                  <button type="button" className="yam-avatar-camera-btn" aria-label="تغيير الصورة">
                     <YamshatIcon name="profile" size={16} />
                   </button>
                 </div>
@@ -522,13 +507,15 @@ export default function FeedEnhanced() {
         <style>{`
           .yam-laptop-page {
             position: relative;
-            min-height: 100vh;
+            min-height: 100%;
             background:
               radial-gradient(circle at top right, rgba(121, 40, 202, 0.22), transparent 18%),
               radial-gradient(circle at top left, rgba(96, 165, 250, 0.10), transparent 16%),
               linear-gradient(180deg, #040815 0%, #070d1d 48%, #060913 100%);
             color: #f5f7ff;
-            overflow: hidden;
+            /* السماح بالتمرير العمودي الكامل على كل الأجهزة */
+            overflow-x: hidden;
+            overflow-y: visible;
           }
 
           .yam-page-noise {
@@ -543,14 +530,13 @@ export default function FeedEnhanced() {
           .yam-laptop-shell {
             position: relative;
             width: min(1800px, calc(100% - 28px));
-            height: 100vh;
+            min-height: 100%;
             margin: 0 auto;
-            padding: 20px 0;
+            padding: 20px 0 32px;
             display: grid;
             grid-template-columns: 250px minmax(0, 1fr) 360px;
             gap: 18px;
             align-items: start;
-            overflow: hidden;
           }
 
           .yam-left-rail,
@@ -585,6 +571,14 @@ export default function FeedEnhanced() {
             max-height: calc(100vh - 40px);
             overflow: auto;
             align-self: start;
+          }
+
+          /* على الجوال والتابلت، شيل القيود المتعلقة بالـ rail اليساري */
+          @media (max-width: 1140px) {
+            .yam-left-rail {
+              max-height: none;
+              overflow: visible;
+            }
           }
 
           .yam-logo-card {
@@ -1478,10 +1472,18 @@ export default function FeedEnhanced() {
           }
 
           @media (max-width: 768px) {
+            .yam-laptop-page {
+              min-height: auto;
+              overflow-x: hidden;
+              overflow-y: visible;
+            }
+
             .yam-laptop-shell {
-              width: min(100%, calc(100% - 16px));
-              padding: 10px 0 24px;
+              width: 100%;
+              padding: 8px 10px calc(96px + env(safe-area-inset-bottom, 0px));
               gap: 14px;
+              min-height: auto;
+              grid-template-columns: 1fr;
             }
 
             .yam-left-rail,

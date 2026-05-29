@@ -140,23 +140,7 @@ export default function Search() {
     if (typeof window === 'undefined') return;
     if (query.trim()) window.sessionStorage.setItem(TOPBAR_SEARCH_KEY, query.trim());
     else window.sessionStorage.removeItem(TOPBAR_SEARCH_KEY);
-
-    const params = new URLSearchParams(location.search);
-    const normalizedQuery = query.trim();
-    if (normalizedQuery) params.set('q', normalizedQuery);
-    else params.delete('q');
-    const nextSearch = params.toString();
-    if (`?${nextSearch}` !== (location.search || '')) {
-      navigate({ pathname: '/search', search: nextSearch ? `?${nextSearch}` : '' }, { replace: true });
-    }
-  }, [location.search, navigate, query]);
-
-  useEffect(() => {
-    const trimmed = query.trim();
-    if (!trimmed) return;
-    if (trimmed.startsWith('#') && filterKey === 'all') setFilterKey('hashtags');
-    if (trimmed.startsWith('@') && filterKey === 'all') setFilterKey('users');
-  }, [filterKey, query]);
+  }, [query]);
 
   const hydrateCollections = useCallback(async () => {
     try {
@@ -258,10 +242,7 @@ export default function Search() {
               <p className="muted" style={{ margin: 0 }}>Indexed search + caching + filters + hashtags + mentions + user discovery.</p>
             </div>
 
-            <div className="search-input-shell">
-              <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحث باسم شخص أو هاشتاج أو @mention أو محتوى..." />
-              {query ? <button type="button" className="search-clear-btn" onClick={() => { setQuery(''); setRequiredHashtag(''); setRequiredMention(''); setFilterKey('all'); }}>مسح</button> : null}
-            </div>
+            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحث باسم شخص أو هاشتاج أو @mention أو محتوى..." />
 
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               {SEARCH_FILTERS.map((filter) => (
@@ -414,8 +395,6 @@ export default function Search() {
 
       <style>{`
         .search-dashboard-grid { display: grid; grid-template-columns: 1.1fr 0.9fr 1fr; gap: 16px; }
-        .search-input-shell { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
-        .search-clear-btn { border-radius: 14px; padding: 0 16px; border: 1px solid rgba(148,163,184,0.18); background: rgba(15,23,42,0.68); color: white; cursor: pointer; }
         .advanced-search-grid { display: grid; grid-template-columns: 180px repeat(2, auto) 1fr 1fr; gap: 10px; align-items: center; }
         .search-select-field { display: grid; gap: 6px; color: #cbd5e1; font-size: 13px; }
         .search-select-field select {

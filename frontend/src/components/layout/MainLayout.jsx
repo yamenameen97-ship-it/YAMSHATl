@@ -77,7 +77,9 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
           .app-shell {
             display: flex;
             min-height: 100vh;
+            min-height: 100dvh;
             height: 100vh;
+            height: 100dvh;
             background: var(--app-background);
             overflow: hidden;
           }
@@ -171,6 +173,14 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
           @media (max-width: 1023px) {
             .page-content:not(.conversation-mode) {
               padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+              padding-top: calc(env(safe-area-inset-top, 0px));
+              -webkit-overflow-scrolling: touch;
+              overscroll-behavior-y: contain;
+            }
+
+            /* على الموبايل، الـ page-shell لا يأخذ مساحة أكبر من اللازم */
+            .page-shell-glow {
+              min-height: auto;
             }
           }
 

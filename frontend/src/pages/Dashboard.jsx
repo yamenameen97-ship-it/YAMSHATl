@@ -1,13 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import { DashboardSkeleton } from '../components/feedback/Skeleton.jsx';
 import { useAppStore } from '../store/appStore.js';
-import { clearStoredUser, getStoredUser } from '../utils/auth.js';
-import { redirectToAppPath } from '../utils/router.js';
-import { useToast } from '../components/admin/ToastProvider.jsx';
+import { getStoredUser } from '../utils/auth.js';
 
 // Mock Chart Component for Realtime visualization
 const RealtimeChart = ({ data, color = '#3b82f6', label }) => {
@@ -34,8 +32,6 @@ const RealtimeChart = ({ data, color = '#3b82f6', label }) => {
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
-  const { pushToast } = useToast();
   const [metrics, setMetrics] = useState({
     onlineUsers: Array(20).fill(0).map(() => Math.floor(Math.random() * 100 + 500)),
     postActivity: Array(20).fill(0).map(() => Math.floor(Math.random() * 50 + 100)),
@@ -56,40 +52,6 @@ export default function Dashboard() {
     userGrowth: '+15% هذا الأسبوع',
     avgSession: '12m 45s',
   }), []);
-
-  const handleExportReport = useCallback(() => {
-    const report = [
-      'Yamshat Dashboard Report',
-      `User: ${user?.username || 'unknown'}`,
-      `Online status: ${isOnline ? 'online' : 'offline'}`,
-      `Current online users: ${metrics.onlineUsers[metrics.onlineUsers.length - 1]}`,
-      `Current post activity: ${metrics.postActivity[metrics.postActivity.length - 1]}`,
-      `System load: ${Math.round(metrics.systemLoad)}%`,
-      `Storage used: ${metrics.storageUsed}%`,
-      `User growth: ${analytics.userGrowth}`,
-      `Average session: ${analytics.avgSession}`,
-      '',
-      'Top posts:',
-      ...analytics.topPosts.map((post) => `- ${post.title} | engagement ${post.engagement} | reach ${post.reach}`),
-    ].join('\n');
-
-    const blob = new Blob([report], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'yamshat-dashboard-report.txt';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-    pushToast({ type: 'success', title: 'تم تصدير التقرير' });
-  }, [analytics, isOnline, metrics, pushToast, user?.username]);
-
-  const handleLogout = useCallback(() => {
-    clearStoredUser();
-    pushToast({ type: 'info', title: 'تم تسجيل الخروج بنجاح' });
-    redirectToAppPath('/login');
-  }, [pushToast]);
 
   // Realtime Update Simulation
   useEffect(() => {
@@ -175,7 +137,7 @@ export default function Dashboard() {
           <Card className="analytics-details">
             <div className="card-header">
               <h3>تحليلات عميقة (Deep Analytics)</h3>
-              <Button size="small" variant="secondary" onClick={handleExportReport}>تصدير التقرير</Button>
+              <Button size="small" variant="secondary">تصدير التقرير</Button>
             </div>
             <div className="analytics-stats-grid">
               <div className="stat-box">
@@ -221,8 +183,7 @@ export default function Dashboard() {
               <Link to="/profile" className="action-item">👤 تعديل الملف الشخصي</Link>
               <Link to="/settings" className="action-item">⚙️ إعدادات الأمان</Link>
               <Link to="/notifications" className="action-item">🔔 إدارة التنبيهات</Link>
-              <button className="action-item" onClick={() => navigate('/search')}>🔎 الذهاب للبحث</button>
-              <button className="action-item danger" onClick={handleLogout}>🚪 تسجيل الخروج</button>
+              <button className="action-item danger">🚪 تسجيل الخروج</button>
             </div>
           </Card>
         </div>
@@ -253,14 +214,7 @@ export default function Dashboard() {
         .action-item { padding: 12px; background: #f9fafb; border-radius: 8px; text-decoration: none; color: #374151; transition: all 0.2s; }
         .action-item:hover { background: #f3f4f6; transform: translateX(-5px); }
         .action-item.danger { color: #ef4444; border: none; text-align: right; cursor: pointer; }
-        @media (max-width: 768px) {
-          .dashboard-grid { padding: 14px; gap: 14px; }
-          .monitoring-row { grid-template-columns: 1fr; gap: 14px; }
-          .analytics-main-row { grid-template-columns: 1fr; }
-          .analytics-stats-grid { grid-template-columns: 1fr; }
-          .welcome-flex, .status-badges { display: grid; gap: 10px; }
-          .current-val { font-size: 20px; }
-        }
+        @media (max-width: 768px) { .analytics-main-row { grid-template-columns: 1fr; } }
       `}} />
     </MainLayout>
   );

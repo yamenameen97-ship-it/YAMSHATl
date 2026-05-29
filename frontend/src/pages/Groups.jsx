@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
@@ -18,16 +18,9 @@ export default function Groups() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [groupSearch, setGroupSearch] = useState('');
   const [createForm, setCreateForm] = useState({ name: '', description: '' });
   const [savingGroup, setSavingGroup] = useState(false);
   const [activeTab, setActiveTab] = useState('members'); // members, settings, analytics
-
-  const visibleGroups = useMemo(() => {
-    const needle = groupSearch.trim().toLowerCase();
-    if (!needle) return groups;
-    return groups.filter((group) => `${group.name || ''} ${group.description || ''}`.toLowerCase().includes(needle));
-  }, [groupSearch, groups]);
 
   useEffect(() => {
     loadGroups();
@@ -41,7 +34,7 @@ export default function Groups() {
 
   return (
     <MainLayout>
-      <div className="yam-groups-responsive" style={{ display: 'flex', height: 'calc(100vh - 70px)', maxWidth: 1200, margin: '0 auto' }}>
+      <div style={{ display: 'flex', height: 'calc(100vh - 70px)', maxWidth: 1200, margin: '0 auto' }}>
         
         {/* Groups Sidebar */}
         <div style={{ width: 300, borderLeft: '1px solid var(--line)', padding: 20, overflowY: 'auto' }}>
@@ -49,14 +42,8 @@ export default function Groups() {
             <h3 style={{ margin: 0 }}>مجموعاتي</h3>
             <Button size="small" onClick={() => setShowCreateModal(true)}>➕</Button>
           </div>
-          <input
-            value={groupSearch}
-            onChange={(event) => setGroupSearch(event.target.value)}
-            placeholder="ابحث داخل مجموعاتك"
-            style={{ width: '100%', marginBottom: 12, borderRadius: 12, padding: 12 }}
-          />
           <div style={{ display: 'grid', gap: 10 }}>
-            {visibleGroups.length ? visibleGroups.map(g => (
+            {groups.map(g => (
               <Card 
                 key={g.id} 
                 onClick={() => setSelectedGroup(g)}
@@ -70,9 +57,7 @@ export default function Groups() {
                 <div style={{ fontWeight: 'bold' }}>{g.name}</div>
                 <div className="muted" style={{ fontSize: 12 }}>{g.members_count} عضو</div>
               </Card>
-            )) : (
-              <EmptyState title="لا توجد مجموعات مطابقة" description="جرّب كلمة بحث مختلفة أو أنشئ مجموعة جديدة." />
-            )}
+            ))}
           </div>
         </div>
 
@@ -133,7 +118,7 @@ export default function Groups() {
                       }}>
                         {ROLES.find(r => r.id === member.role).label}
                       </span>
-                      <button type="button" style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer' }} onClick={() => setActiveTab('settings')}>⚙️</button>
+                      <button style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer' }}>⚙️</button>
                     </div>
                   </Card>
                 ))}
@@ -151,29 +136,6 @@ export default function Groups() {
                   <div style={{ display: 'grid', gap: 10, marginTop: 15 }}>
                     <div style={{ padding: 10, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>1. الاحترام المتبادل بين الأعضاء</div>
                     <div style={{ padding: 10, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>2. يمنع نشر الروابط الخارجية دون إذن</div>
-                  </div>
-                </Card>
-              </div>
-            )}
-
-            {activeTab === 'settings' && (
-              <div style={{ display: 'grid', gap: 16 }}>
-                <Card style={{ padding: 20, display: 'grid', gap: 12 }}>
-                  <h4 style={{ margin: 0 }}>إعدادات المجموعة</h4>
-                  <label style={{ display: 'grid', gap: 8 }}>
-                    <span className="muted">اسم المجموعة</span>
-                    <input value={selectedGroup.name || ''} readOnly style={{ width: '100%', borderRadius: 12, padding: 12 }} />
-                  </label>
-                  <label style={{ display: 'grid', gap: 8 }}>
-                    <span className="muted">الوصف</span>
-                    <textarea value={selectedGroup.description || ''} readOnly rows={4} style={{ width: '100%', borderRadius: 12, padding: 12 }} />
-                  </label>
-                </Card>
-                <Card style={{ padding: 20, display: 'grid', gap: 12 }}>
-                  <h4 style={{ margin: 0 }}>صلاحيات سريعة</h4>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                    <Button variant="secondary" onClick={() => setShowInviteModal(true)}>إدارة الدعوات</Button>
-                    <Button onClick={() => setShowAnalytics(true)}>عرض التحليلات</Button>
                   </div>
                 </Card>
               </div>
@@ -196,10 +158,7 @@ export default function Groups() {
               value={`https://yamshat.com/join/${selectedGroup?.id}`} 
               style={{ flex: 1, background: '#222', border: '1px solid #444', padding: 10, borderRadius: 8, color: 'white' }}
             />
-            <Button onClick={async () => {
-              const inviteUrl = `https://yamshat.com/join/${selectedGroup?.id}`;
-              if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(inviteUrl);
-            }}>نسخ</Button>
+            <Button onClick={() => alert('تم النسخ!')}>نسخ</Button>
           </div>
           <div className="divider"><span>أو ابحث عن صديق</span></div>
           <input placeholder="ابحث بالاسم أو البريد..." style={{ width: '100%', background: '#222', border: '1px solid #444', padding: 10, borderRadius: 8, color: 'white', marginTop: 15 }} />
@@ -272,15 +231,6 @@ export default function Groups() {
           </div>
         </div>
       </Modal>
-
-      <style>{`
-        @media (max-width: 900px) {
-          .yam-groups-responsive {
-            flex-direction: column;
-            height: auto !important;
-          }
-        }
-      `}</style>
     </MainLayout>
   );
 }

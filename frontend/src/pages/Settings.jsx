@@ -7,6 +7,7 @@ import deviceTrustService from '../services/deviceTrustService.js';
 import notificationService from '../services/notificationService.js';
 import { MEDIA_SECURITY, SIGNED_URL_TTL_SECONDS, currentMediaProviderLabel } from '../config/mediaConfig.js';
 import { getCDNConfig, getMediaDeliveryProfile } from '../utils/performance.js';
+import SoundSettingsPanel from '../components/audio/SoundSettingsPanel.jsx';
 
 const TABS = [
   { key: 'security', label: 'الأمان' },
@@ -14,6 +15,7 @@ const TABS = [
   { key: 'media', label: 'حماية الوسائط' },
   { key: 'notifications', label: 'Push Notifications' },
   { key: 'sync', label: 'Multi Device' },
+  { key: 'sounds', label: 'الأصوات' },
 ];
 
 export default function Settings() {
@@ -254,6 +256,12 @@ export default function Settings() {
                   </div>
                 </Card>
               </>
+            ) : null}
+
+            {activeTab === 'sounds' ? (
+              <Card style={{ padding: 18 }}>
+                <SoundSettingsPanel />
+              </Card>
             ) : null}
 
             {activeTab === 'sync' ? (

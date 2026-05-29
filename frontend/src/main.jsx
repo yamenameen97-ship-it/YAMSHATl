@@ -10,6 +10,11 @@ import RealtimeProvider from './realtime/RealtimeProvider.jsx';
 import { initializePerformanceToolkit } from './utils/performance.js';
 import { initializeRuntimeErrorCapture } from './utils/runtimeErrors.js';
 import notificationService from './services/notificationService.js';
+import audioService from './services/audio/audioService.js';
+import { activateMediaEventBridge } from './services/audio/mediaEventBridge.js';
+import socketManager from './services/socketManager.js';
+import { useNotificationStore } from './store/notificationStore.js';
+import * as chatBus from './features/chat/chatEventBus.js';
 import './styles/mobile-optimization.css';
 import './styles/performance.css';
 import './styles/unified-overrides.css';
@@ -80,6 +85,20 @@ if (typeof window !== 'undefined') {
   initializePerformanceToolkit();
   initializeRuntimeErrorCapture();
   initializeViewportTracker();
+
+  // تفعيل نظام الوسائط المركزي: ربط الأصوات بأحداث التطبيق
+  try {
+    activateMediaEventBridge({
+      notificationStore: useNotificationStore,
+      socketManager,
+      chatBus,
+    });
+    // إعلام المحرك أن يبدأ بالتحميل المسبق (سينتظر تفاعل المستخدم الأول)
+    audioService.preload();
+  } catch (err) {
+    // لا نريد أن تفشل التطبيق بسبب مشاكل في الصوت
+    if (typeof console !== 'undefined') console.warn('[audio] bridge init failed', err);
+  }
 
   window.addEventListener('beforeinstallprompt', (event) => {
     event.preventDefault();

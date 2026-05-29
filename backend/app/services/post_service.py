@@ -214,7 +214,6 @@ def create_post(
         pinned_at=now if is_pinned else None,
         allow_comments=bool(allow_comments),
         updated_at=now,
-        media=prepared.get('media'),
         **prepared,
     )
     db.add(post)

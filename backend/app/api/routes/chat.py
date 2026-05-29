@@ -1,4 +1,5 @@
 from datetime import datetime
+import inspect
 
 import bleach
 import httpx
@@ -23,6 +24,12 @@ from app.services.connection_manager import manager
 router = APIRouter()
 
 TRANSLATE_TIMEOUT_SECONDS = 12
+
+
+async def _resolve_rate_limit_result(result) -> bool:
+    if inspect.isawaitable(result):
+        return bool(await result)
+    return bool(result)
 
 
 def _authenticate_websocket_user(websocket: WebSocket, user_id: int, db: Session) -> User:
@@ -149,7 +156,7 @@ async def send_message(payload: dict, db: Session = Depends(get_db), current_use
     client_id = str(payload.get('client_id') or '').strip() or None
     if not receiver_username or (not raw_message and not media_url):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='receiver and message or media_url are required')
-    if not await allow_socket_message(f'chat:{current_user.id}'):
+    if not await _resolve_rate_limit_result(allow_socket_message(f'chat:{current_user.id}')):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='You are sending messages too quickly')
 
     receiver = _find_active_user_by_username(db, receiver_username)
@@ -402,6 +409,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int, db: Session = D
 
 
 @router.post('/translate')
+@router.post('/translate_message')
 async def translate(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     text = str(payload.get('text') or '').strip()
     source_lang = str(payload.get('source_lang') or '').strip() or 'auto'
@@ -409,3 +417,12 @@ async def translate(payload: dict = Body(...), db: Session = Depends(get_db), cu
     if not text:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Text is required')
     return await _translate_with_mymemory(text, source_lang, target_lang)
+
+
+@router.post('/update_online')
+def update_online_status(payload: dict = Body(default={}), current_user: User = Depends(get_current_user)):
+    return {
+        'ok': True,
+        'username': current_user.username,
+        'online': bool(payload.get('online', True)),
+    }

@@ -1,8 +1,12 @@
+import base64
 from datetime import datetime, timedelta, timezone
+import json
 import secrets
 from threading import Lock
+from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.api.routes.admin import ROLE_PERMISSIONS
@@ -44,6 +48,7 @@ from app.services.auth_feature_service import (
     verify_login_challenge,
 )
 from app.services.email import delivery_provider, send_password_reset_email, send_verification_email, smtp_configured
+from app.services.apple_oauth_service import AppleOAuthService
 
 router = APIRouter()
 CSRF_COOKIE_NAME = 'yamshat_csrf_token'
@@ -252,6 +257,73 @@ def _issue_session(
         remember_me=remember_me,
         refresh_token=expose_refresh_token,
     )
+
+
+def _resolve_oauth_frontend_origin(state: str | None, request: Request) -> str:
+    candidate = (state or '').strip()
+    if candidate.startswith('http://') or candidate.startswith('https://'):
+        return candidate.rstrip('/')
+    configured = (settings.FRONTEND_ORIGIN or '').strip().rstrip('/')
+    if configured:
+        return configured
+    origin = str(request.headers.get('origin') or '').strip().rstrip('/')
+    if origin:
+        return origin
+    referer = str(request.headers.get('referer') or '').strip()
+    if referer:
+        try:
+            return referer.split('://', 1)[0] + '://' + referer.split('://', 1)[1].split('/', 1)[0]
+        except Exception:
+            pass
+    return f'{request.url.scheme}://{request.url.netloc}'.rstrip('/')
+
+
+def _encode_oauth_payload(payload: dict) -> str:
+    raw = json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+    return base64.urlsafe_b64encode(raw).decode('utf-8').rstrip('=')
+
+
+def _oauth_popup_response(payload: dict | None, *, frontend_origin: str, request: Request, error: str = '') -> HTMLResponse:
+    safe_frontend_origin = (frontend_origin or _resolve_oauth_frontend_origin('', request)).rstrip('/')
+    encoded_payload = _encode_oauth_payload(payload or {}) if payload else ''
+    encoded_error = quote(error or '', safe='')
+    script = f"""
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <title>YAMSHAT OAuth</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  </head>
+  <body style="font-family: system-ui, sans-serif; display:grid; place-items:center; min-height:100vh; background:#0f172a; color:#fff;">
+    <div style="text-align:center; max-width:420px; padding:24px;">
+      <h2 style="margin:0 0 12px;">{('تم تسجيل الدخول بنجاح' if not error else 'تعذّر إكمال تسجيل الدخول')}</h2>
+      <p style="opacity:.82; margin:0;">{('يتم الآن إرجاعك إلى التطبيق...' if not error else error)}</p>
+    </div>
+    <script>
+      (function () {{
+        var targetOrigin = {json.dumps(safe_frontend_origin)};
+        var payload = {json.dumps(payload or {})};
+        var message = {json.dumps('yamshat-oauth-error' if error else 'yamshat-oauth-success')};
+        try {{
+          if (window.opener && !window.opener.closed) {{
+            window.opener.postMessage({{ type: message, payload: payload, error: {json.dumps(error or '')} }}, targetOrigin || '*');
+            window.close();
+            return;
+          }}
+        }} catch (err) {{}}
+        var nextUrl = targetOrigin + '/login' + ({json.dumps('?oauth_error=' + (error or ''))} ? '' : '');
+        if ({json.dumps(bool(error))}) {{
+          window.location.replace(targetOrigin + '/login?oauth_error=' + {json.dumps(error or '')});
+          return;
+        }}
+        window.location.replace(targetOrigin + '/login#oauth_payload=' + {json.dumps(encoded_payload)});
+      }})();
+    </script>
+  </body>
+</html>
+"""
+    return HTMLResponse(content=script)
 
 
 def _normalize_rate_key_part(value: str | None, fallback: str) -> str:
@@ -954,11 +1026,24 @@ async def google_oauth_login(request: Request):
     if not settings.GOOGLE_OAUTH_CLIENT_ID:
         raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail='Google OAuth not configured')
     redirect_uri = settings.GOOGLE_OAUTH_REDIRECT_URI
-    return {'url': f'https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id={settings.GOOGLE_OAUTH_CLIENT_ID}&redirect_uri={redirect_uri}&scope=openid%20email%20profile'}
+    frontend_origin = _resolve_oauth_frontend_origin(str(request.headers.get('origin') or ''), request)
+    query = urlencode({
+        'response_type': 'code',
+        'client_id': settings.GOOGLE_OAUTH_CLIENT_ID,
+        'redirect_uri': redirect_uri,
+        'scope': 'openid email profile',
+        'prompt': 'select_account',
+        'state': frontend_origin,
+    })
+    return {
+        'provider': 'google',
+        'configured': True,
+        'url': f'https://accounts.google.com/o/oauth2/v2/auth?{query}',
+    }
 
 
 @router.get('/oauth/google/callback')
-async def google_oauth_callback(request: Request, response: Response, db: Session = Depends(get_db), code: str = None):
+async def google_oauth_callback(request: Request, response: Response, db: Session = Depends(get_db), code: str = None, state: str = ''):
     if not settings.GOOGLE_OAUTH_CLIENT_ID:
         raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail='Google OAuth not configured')
     if not code:
@@ -973,26 +1058,27 @@ async def google_oauth_callback(request: Request, response: Response, db: Sessio
         'grant_type': 'authorization_code',
     }
     try:
-        token_response = requests.post(token_url, data=data)
+        token_response = requests.post(token_url, data=data, timeout=10)
         token_response.raise_for_status()
         access_token = token_response.json()['access_token']
     except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f'Failed to get Google access token: {e}')
+        return _oauth_popup_response(None, frontend_origin=_resolve_oauth_frontend_origin(state, request), request=request, error=f'Google OAuth failed: {e}')
 
     user_info = get_google_oauth_user_info(access_token)
     user = social_authenticate_or_register_user(
-        db, 
-        provider='google', 
-        email=user_info['email'], 
-        username_hint=user_info.get('username_hint'), 
+        db,
+        provider='google',
+        email=user_info['email'],
+        username_hint=user_info.get('username_hint'),
         avatar=user_info.get('avatar'),
         social_subject=user_info.get('social_subject')
     )
-    
+
     binding = request_binding_context(request)
     mark_successful_login(db, user, binding)
     record_audit_log(db, user.id, 'login', 'user', user.id, 'User logged in successfully via Google OAuth')
-    return _issue_session(db, user, response, request, remember_me=False, login_method='google')
+    session_payload = _issue_session(db, user, response, request, remember_me=False, login_method='google')
+    return _oauth_popup_response(session_payload, frontend_origin=_resolve_oauth_frontend_origin(state, request), request=request)
 
 
 @router.get('/oauth/facebook/login')
@@ -1000,11 +1086,23 @@ async def facebook_oauth_login(request: Request):
     if not settings.FACEBOOK_OAUTH_CLIENT_ID:
         raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail='Facebook OAuth not configured')
     redirect_uri = settings.FACEBOOK_OAUTH_REDIRECT_URI
-    return {'url': f'https://www.facebook.com/v18.0/dialog/oauth?client_id={settings.FACEBOOK_OAUTH_CLIENT_ID}&redirect_uri={redirect_uri}&scope=email,public_profile'}
+    frontend_origin = _resolve_oauth_frontend_origin(str(request.headers.get('origin') or ''), request)
+    query = urlencode({
+        'client_id': settings.FACEBOOK_OAUTH_CLIENT_ID,
+        'redirect_uri': redirect_uri,
+        'scope': 'email,public_profile',
+        'response_type': 'code',
+        'state': frontend_origin,
+    })
+    return {
+        'provider': 'facebook',
+        'configured': True,
+        'url': f'https://www.facebook.com/v18.0/dialog/oauth?{query}',
+    }
 
 
 @router.get('/oauth/facebook/callback')
-async def facebook_oauth_callback(request: Request, response: Response, db: Session = Depends(get_db), code: str = None):
+async def facebook_oauth_callback(request: Request, response: Response, db: Session = Depends(get_db), code: str = None, state: str = ''):
     if not settings.FACEBOOK_OAUTH_CLIENT_ID:
         raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail='Facebook OAuth not configured')
     if not code:
@@ -1018,18 +1116,18 @@ async def facebook_oauth_callback(request: Request, response: Response, db: Sess
         'redirect_uri': settings.FACEBOOK_OAUTH_REDIRECT_URI,
     }
     try:
-        token_response = requests.post(token_url, data=data)
+        token_response = requests.post(token_url, data=data, timeout=10)
         token_response.raise_for_status()
         access_token = token_response.json()['access_token']
     except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f'Failed to get Facebook access token: {e}')
+        return _oauth_popup_response(None, frontend_origin=_resolve_oauth_frontend_origin(state, request), request=request, error=f'Facebook OAuth failed: {e}')
 
     user_info = get_facebook_oauth_user_info(access_token)
     user = social_authenticate_or_register_user(
-        db, 
-        provider='facebook', 
-        email=user_info['email'], 
-        username_hint=user_info.get('username_hint'), 
+        db,
+        provider='facebook',
+        email=user_info['email'],
+        username_hint=user_info.get('username_hint'),
         avatar=user_info.get('avatar'),
         social_subject=user_info.get('social_subject')
     )
@@ -1037,4 +1135,59 @@ async def facebook_oauth_callback(request: Request, response: Response, db: Sess
     binding = request_binding_context(request)
     mark_successful_login(db, user, binding)
     record_audit_log(db, user.id, 'login', 'user', user.id, 'User logged in successfully via Facebook OAuth')
-    return _issue_session(db, user, response, request, remember_me=False, login_method='facebook')
+    session_payload = _issue_session(db, user, response, request, remember_me=False, login_method='facebook')
+    return _oauth_popup_response(session_payload, frontend_origin=_resolve_oauth_frontend_origin(state, request), request=request)
+
+
+@router.get('/oauth/apple/login')
+async def apple_oauth_login(request: Request):
+    if not settings.APPLE_CLIENT_ID:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail='Apple OAuth not configured')
+    frontend_origin = _resolve_oauth_frontend_origin(str(request.headers.get('origin') or ''), request)
+    redirect_uri = settings.APPLE_OAUTH_REDIRECT_URI
+    authorization_url = AppleOAuthService.get_authorization_url(redirect_uri=redirect_uri, state=frontend_origin)
+    return {
+        'provider': 'apple',
+        'configured': True,
+        'url': authorization_url,
+    }
+
+
+@router.api_route('/oauth/apple/callback', methods=['GET', 'POST'])
+async def apple_oauth_callback(request: Request, response: Response, db: Session = Depends(get_db)):
+    frontend_origin = _resolve_oauth_frontend_origin(str(request.query_params.get('state') or ''), request)
+    code = str(request.query_params.get('code') or '').strip()
+    id_token = str(request.query_params.get('id_token') or '').strip()
+    user_data: dict = {}
+
+    if request.method == 'POST':
+        form = await request.form()
+        code = str(form.get('code') or code).strip()
+        id_token = str(form.get('id_token') or id_token).strip()
+        frontend_origin = _resolve_oauth_frontend_origin(str(form.get('state') or frontend_origin), request)
+        user_raw = form.get('user')
+        if user_raw:
+            try:
+                user_data = json.loads(str(user_raw))
+            except Exception:
+                user_data = {}
+
+    try:
+        if not settings.APPLE_CLIENT_ID:
+            raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail='Apple OAuth not configured')
+        if not id_token and code:
+            token_payload = AppleOAuthService.exchange_code_for_tokens(code, settings.APPLE_OAUTH_REDIRECT_URI)
+            id_token = str(token_payload.get('id_token') or '').strip()
+        if not id_token:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Apple authorization payload is incomplete')
+
+        user = AppleOAuthService.authenticate_or_register(db, id_token=id_token, user_data=user_data)
+        binding = request_binding_context(request)
+        mark_successful_login(db, user, binding)
+        record_audit_log(db, user.id, 'login', 'user', user.id, 'User logged in successfully via Apple OAuth')
+        session_payload = _issue_session(db, user, response, request, remember_me=False, login_method='apple')
+        return _oauth_popup_response(session_payload, frontend_origin=frontend_origin, request=request)
+    except HTTPException as exc:
+        return _oauth_popup_response(None, frontend_origin=frontend_origin, request=request, error=str(exc.detail))
+    except Exception as exc:
+        return _oauth_popup_response(None, frontend_origin=frontend_origin, request=request, error=f'Apple OAuth failed: {exc}')

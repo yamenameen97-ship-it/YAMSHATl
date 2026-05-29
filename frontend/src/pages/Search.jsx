@@ -10,6 +10,7 @@ import { ListSkeleton } from '../components/feedback/Skeleton.jsx';
 import useDebounce from '../hooks/useDebounce';
 import { getPosts } from '../api/posts.js';
 import { getUsers } from '../api/users.js';
+import { getSearchSuggestions, getTrendingSearches, liveSearch } from '../api/search.js';
 import { groupSearchResults } from '../utils/fuzzySearch.js';
 import {
   buildSearchCollections,
@@ -129,6 +130,9 @@ export default function Search() {
       return [];
     }
   });
+  const [remoteResults, setRemoteResults] = useState([]);
+  const [remoteSuggestions, setRemoteSuggestions] = useState([]);
+  const [remoteTrending, setRemoteTrending] = useState([]);
   const searchCacheRef = useRef(new Map());
 
   useEffect(() => {
@@ -166,6 +170,47 @@ export default function Search() {
   }, [hydrateCollections]);
 
   useEffect(() => {
+    let cancelled = false;
+    getTrendingSearches(8)
+      .then((data) => {
+        if (cancelled) return;
+        setRemoteTrending(Array.isArray(data?.trending) ? data.trending : []);
+      })
+      .catch(() => {
+        if (!cancelled) setRemoteTrending([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const trimmedQuery = debouncedQuery.trim();
+    if (trimmedQuery.length < 2) {
+      setRemoteResults([]);
+      setRemoteSuggestions([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    Promise.allSettled([
+      liveSearch({ q: trimmedQuery, type: filterKey, limit: 12 }),
+      getSearchSuggestions(trimmedQuery, 8),
+    ]).then((responses) => {
+      if (cancelled) return;
+      const [resultsResponse, suggestionsResponse] = responses;
+      setRemoteResults(resultsResponse.status === 'fulfilled' ? resultsResponse.value?.results || [] : []);
+      setRemoteSuggestions(suggestionsResponse.status === 'fulfilled' ? suggestionsResponse.value?.suggestions || [] : []);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedQuery, filterKey]);
+
+  useEffect(() => {
     if (!debouncedQuery.trim()) return;
     setSearching(true);
     const timer = window.setTimeout(() => {
@@ -191,11 +236,12 @@ export default function Search() {
       requiredHashtag,
       requiredMention,
       signature: searchIndexMemo.signature,
+      remote: remoteResults.length,
     });
 
     if (searchCacheRef.current.has(cacheKey)) return searchCacheRef.current.get(cacheKey);
 
-    const nextResults = searchIndex(searchIndexMemo, debouncedQuery, {
+    const localResults = searchIndex(searchIndexMemo, debouncedQuery, {
       type: filterKey,
       sortBy,
       onlyVerified,
@@ -204,19 +250,35 @@ export default function Search() {
       requiredMention,
       intent: filterKey === 'users' ? 'discover-users' : 'general-search',
     });
+
+    const merged = [];
+    const seen = new Set();
+    [...remoteResults, ...localResults].forEach((item) => {
+      const key = `${item.type}:${item.id}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      merged.push(item);
+    });
+
+    const nextResults = sortBy === 'trending'
+      ? merged.sort((left, right) => (right.metrics?.likes || right.metrics?.followers || right.score || 0) - (left.metrics?.likes || left.metrics?.followers || left.score || 0))
+      : merged.sort((left, right) => (right.score || 0) - (left.score || 0));
+
     searchCacheRef.current.set(cacheKey, nextResults);
     if (searchCacheRef.current.size > 30) {
       const oldestKey = searchCacheRef.current.keys().next().value;
       searchCacheRef.current.delete(oldestKey);
     }
     return nextResults;
-  }, [debouncedQuery, filterKey, sortBy, onlyVerified, onlyMedia, requiredHashtag, requiredMention, searchIndexMemo]);
+  }, [debouncedQuery, filterKey, sortBy, onlyVerified, onlyMedia, requiredHashtag, requiredMention, searchIndexMemo, remoteResults]);
 
   const grouped = useMemo(() => groupSearchResults(results), [results]);
   const suggestions = useMemo(() => {
     if (!query.trim()) return history.slice(0, 6);
-    return history.filter((item) => item.toLowerCase().includes(query.toLowerCase())).slice(0, 6);
-  }, [history, query]);
+    const localSuggestions = history.filter((item) => item.toLowerCase().includes(query.toLowerCase()));
+    const remoteSuggestionTexts = remoteSuggestions.map((item) => item.text).filter(Boolean);
+    return Array.from(new Set([...remoteSuggestionTexts, ...localSuggestions])).slice(0, 6);
+  }, [history, query, remoteSuggestions]);
   const insights = useMemo(() => getSearchInsights(searchIndexMemo, debouncedQuery || query), [searchIndexMemo, debouncedQuery, query]);
   const userDiscovery = useMemo(() => buildUserDiscovery(searchIndexMemo, debouncedQuery || query, 8), [searchIndexMemo, debouncedQuery, query]);
 
@@ -297,11 +359,11 @@ export default function Search() {
               <Card style={{ padding: 18 }}>
                 <h3 style={{ marginTop: 0 }}>الترند الآن</h3>
                 <div style={{ display: 'grid', gap: 12 }}>
-                  {(collections.hashtags || []).slice(0, 8).map((item) => (
-                    <button key={item.tag} type="button" className="trending-row" onClick={() => { setQuery(item.tag.replace(/^#/, '')); setRequiredHashtag(item.tag); }}>
+                  {(remoteTrending.length ? remoteTrending : (collections.hashtags || []).slice(0, 8)).map((item) => (
+                    <button key={item.tag} type="button" className="trending-row" onClick={() => { setQuery(String(item.tag || '').replace(/^#/, '')); setRequiredHashtag(item.tag); }}>
                       <div>
                         <strong>{item.tag}</strong>
-                        <div className="muted">{item.count} منشور</div>
+                        <div className="muted">{item.count || item.score || 0} نتيجة</div>
                       </div>
                     </button>
                   ))}

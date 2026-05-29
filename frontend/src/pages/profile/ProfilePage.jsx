@@ -83,7 +83,7 @@ export default function ProfilePage() {
    */
   const handleFollowClick = useCallback(async () => {
     try {
-      await followUser(profile.user.id);
+      await followUser(profile?.user?.username || '');
       setProfile((prev) => ({
         ...prev,
         is_following: !prev.is_following,
@@ -94,7 +94,7 @@ export default function ProfilePage() {
     } catch (error) {
       console.error('Failed to follow user:', error);
     }
-  }, [profile?.user?.id]);
+  }, [profile?.user?.username]);
 
   /**
    * Gets content based on active tab

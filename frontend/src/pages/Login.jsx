@@ -6,11 +6,27 @@ import AuthShell from '../components/auth/AuthShell.jsx';
 import CaptchaBox from '../components/auth/CaptchaBox.jsx';
 import TwoFactorChallengeModal from '../components/auth/TwoFactorChallengeModal.jsx';
 import { getCaptchaChallenge, loginUser, verifyTwoFactorLogin } from '../api/auth.js';
+import SocialLoginButtons from '../components/auth/SocialLoginButtons.jsx';
 import { sanitizeInputText } from '../utils/sanitize.js';
 import { setStoredUser } from '../utils/auth.js';
 import { getDefaultPostLoginPath } from '../utils/access.js';
 import { isValidEmail, localizeAuthMessage, looksLikeEmail, parseApiDetail } from '../utils/authValidation.js';
 import useSingleFlight from '../hooks/useSingleFlight.js';
+
+function decodeOAuthPayload(hashValue = '') {
+  const rawHash = String(hashValue || '').replace(/^#/, '');
+  const params = new URLSearchParams(rawHash);
+  const encodedPayload = params.get('oauth_payload') || '';
+  if (!encodedPayload) return null;
+  try {
+    const normalized = encodedPayload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    const decoded = window.atob(padded);
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+}
 
 export default function LoginEnhanced() {
   const [form, setForm] = useState({
@@ -68,10 +84,27 @@ export default function LoginEnhanced() {
   };
 
   const completeLogin = (data) => {
-    setStoredUser(data, { persist: form.rememberMe });
+    setStoredUser({
+      ...data,
+      remember_me: data?.remember_me ?? form.rememberMe,
+    });
     const fallbackPath = getDefaultPostLoginPath(data);
     navigate(location.state?.from?.pathname || fallbackPath, { replace: true });
   };
+
+  useEffect(() => {
+    const oauthError = new URLSearchParams(location.search).get('oauth_error');
+    if (oauthError) {
+      setError(oauthError);
+      window.history.replaceState({}, document.title, '/login');
+      return;
+    }
+
+    const payload = decodeOAuthPayload(window.location.hash);
+    if (!payload?.token) return;
+    window.history.replaceState({}, document.title, '/login');
+    completeLogin(payload);
+  }, [location.search]);
 
   const closeTwoFactorModal = () => {
     setShow2FAModal(false);
@@ -265,6 +298,11 @@ export default function LoginEnhanced() {
           {loading ? 'جاري التحقق...' : 'تسجيل الدخول'}
         </Button>
 
+        <SocialLoginButtons
+          disabled={loading || captchaLoading}
+          onSuccess={(payload) => completeLogin(payload)}
+        />
+
         <div className="auth-form-footer">
           <span>ليس لديك حساب؟</span>
           <Link to="/register" className="link-btn">إنشاء حساب جديد</Link>
@@ -292,6 +330,22 @@ export default function LoginEnhanced() {
           display: flex;
           flex-direction: column;
           gap: 16px;
+        }
+        .social-login-divider {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          color: var(--muted);
+          font-size: 12px;
+        }
+        .social-login-divider span {
+          flex: 1;
+          height: 1px;
+          background: rgba(148, 163, 184, 0.18);
+        }
+        .social-login-grid {
+          display: grid;
+          gap: 10px;
         }
       `}</style>
     </AuthShell>

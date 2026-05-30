@@ -86,6 +86,8 @@ function ReelItem({ index, style, data }) {
     handleSave,
     handleShare,
     handleReport,
+    handleFollow,
+    followingUsers,
     currentUser,
     scrollToIndex,
     isDesktop,
@@ -175,7 +177,9 @@ function ReelItem({ index, style, data }) {
             </div>
             <span className="font-bold text-sm">@{reel.username || 'user'}</span>
             {reel.username !== currentUser ? (
-              <button className="text-xs bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full transition-colors">متابعة</button>
+              <button type="button" className="text-xs bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full transition-colors" onClick={() => handleFollow(reel.username)}>
+                {followingUsers.has(String(reel.username || '')) ? 'تمت المتابعة' : 'متابعة'}
+              </button>
             ) : null}
           </div>
           <p className="text-sm leading-6 line-clamp-3 mb-2 pointer-events-auto">{reel.content || 'ريل جديد'}</p>
@@ -258,6 +262,7 @@ export default function ReelsPage() {
   const [navDirection, setNavDirection] = useState(1);
   const [bufferState, setBufferState] = useState({ index: -1, percent: 0, active: false });
   const [reportState, setReportState] = useState({ open: false, reel: null, reason: 'spam', note: '' });
+  const [followingUsers, setFollowingUsers] = useState(() => new Set());
   const [watchHistoryMap, setWatchHistoryMap] = useState(() => {
     const items = getWatchHistory();
     return items.reduce((acc, item) => {
@@ -411,7 +416,17 @@ export default function ReelsPage() {
     if (params.get('upload') === '1') {
       setShowUploadModal(true);
     }
-  }, [location.search]);
+    const reelId = params.get('reel');
+    if (reelId) {
+      const reelIndex = reels.findIndex((item) => String(item.id) === String(reelId));
+      if (reelIndex >= 0) {
+        setActiveIndex(reelIndex);
+        requestAnimationFrame(() => {
+          listRef.current?.scrollToItem?.(reelIndex, 'start');
+        });
+      }
+    }
+  }, [location.search, reels]);
 
   useEffect(() => {
     const start = Math.max(0, activeIndex - (navDirection < 0 ? preloadRange : 1));
@@ -702,13 +717,30 @@ export default function ReelsPage() {
 
   const handleShare = async (reel) => {
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}/reels/${reel.id}`);
+      await navigator.clipboard.writeText(`${window.location.origin}/reels?reel=${encodeURIComponent(reel.id)}`);
       pushToast({ type: 'success', title: 'تم نسخ رابط الريل' });
       await sharePost(reel.id, 'copy');
     } catch {
       pushToast({ type: 'warning', title: 'تعذر نسخ الرابط' });
     }
   };
+
+  const handleFollow = useCallback((username) => {
+    if (!username) return;
+    setFollowingUsers((prev) => {
+      const next = new Set(prev);
+      const key = String(username);
+      const isFollowing = next.has(key);
+      if (isFollowing) next.delete(key);
+      else next.add(key);
+      pushToast({
+        type: 'success',
+        title: isFollowing ? 'تم إلغاء المتابعة' : 'تمت المتابعة',
+        description: `@${key}`,
+      });
+      return next;
+    });
+  }, [pushToast]);
 
   const handleReport = useCallback((reel) => {
     setReportState({ open: true, reel, reason: 'spam', note: '' });
@@ -774,6 +806,8 @@ export default function ReelsPage() {
     handleSave,
     handleShare,
     handleReport,
+    handleFollow,
+    followingUsers,
     currentUser,
     scrollToIndex,
     isDesktop,
@@ -797,6 +831,8 @@ export default function ReelsPage() {
     bufferState.index,
     bufferState.percent,
     currentUser,
+    followingUsers,
+    handleFollow,
     handleReport,
     handleSave,
     handleShare,

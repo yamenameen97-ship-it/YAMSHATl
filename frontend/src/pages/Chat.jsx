@@ -187,6 +187,21 @@ export default function Chat() {
   const shouldAutoScrollRef = useRef(true);
   const scrollMetricsRef = useRef({ height: 0, lastMessageId: '' });
 
+  const handleSidebarNavigation = useCallback((key) => {
+    const routeMap = {
+      chats: '/inbox',
+      groups: '/groups',
+      friends: '/users',
+      notifications: '/notifications',
+      settings: '/settings',
+    };
+    const target = routeMap[key] || '/inbox';
+    navigate(target);
+    if (target !== '/inbox') {
+      pushToast({ type: 'info', title: 'تم فتح القسم', description: 'تم تحويلك إلى القسم المطلوب من شريط المحادثة.' });
+    }
+  }, [navigate, pushToast]);
+
   useViewportHeight();
 
   const threadList = useMemo(() => Object.values(threadsMap || {}), [threadsMap]);
@@ -1466,7 +1481,7 @@ export default function Chat() {
 
           <nav className="yam-primary-nav">
             {CHAT_NAV_ITEMS.map((item, index) => (
-              <button key={item.key} type="button" className={`yam-nav-item ${index === 0 ? 'active' : ''}`} onClick={() => navigate(index === 0 ? '/inbox' : '#')}>
+              <button key={item.key} type="button" className={`yam-nav-item ${item.key === 'chats' ? 'active' : ''}`} onClick={() => handleSidebarNavigation(item.key)}>
                 <span className="yam-nav-icon">{item.icon}</span>
                 <span>{item.label}</span>
               </button>
@@ -1475,7 +1490,7 @@ export default function Chat() {
 
           <div className="yam-sidebar-head">
             <span>جهات الاتصال</span>
-            <button type="button" className="yam-icon-action">＋</button>
+            <button type="button" className="yam-icon-action" onClick={() => navigate('/users')}>＋</button>
           </div>
 
           <div className="yam-contact-list">
@@ -1512,7 +1527,7 @@ export default function Chat() {
               <strong>{currentUser || 'يوسف محمد'}</strong>
               <span>متصل الآن</span>
             </div>
-            <button type="button" className="yam-icon-action subtle">⋮</button>
+            <button type="button" className="yam-icon-action subtle" onClick={() => navigate('/settings')}>⋮</button>
           </div>
         </aside>
 

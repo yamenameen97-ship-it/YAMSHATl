@@ -4,8 +4,9 @@ import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import { DashboardSkeleton } from '../components/feedback/Skeleton.jsx';
+import { useToast } from '../components/admin/ToastProvider.jsx';
 import { useAppStore } from '../store/appStore.js';
-import { getStoredUser } from '../utils/auth.js';
+import { clearStoredUser, getStoredUser } from '../utils/auth.js';
 
 // Mock Chart Component for Realtime visualization
 const RealtimeChart = ({ data, color = '#3b82f6', label }) => {
@@ -31,6 +32,8 @@ const RealtimeChart = ({ data, color = '#3b82f6', label }) => {
 };
 
 export default function Dashboard() {
+  const navigate = useNavigate();
+  const { pushToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState({
     onlineUsers: Array(20).fill(0).map(() => Math.floor(Math.random() * 100 + 500)),
@@ -42,6 +45,37 @@ export default function Dashboard() {
   const user = getStoredUser();
   const language = useAppStore((state) => state.language);
   const isOnline = useAppStore((state) => state.isOnline);
+
+  const handleExportAnalytics = () => {
+    const report = {
+      exportedAt: new Date().toISOString(),
+      username: user?.username || 'yamshat-user',
+      metrics: {
+        onlineUsersNow: metrics.onlineUsers[metrics.onlineUsers.length - 1],
+        postActivityNow: metrics.postActivity[metrics.postActivity.length - 1],
+        systemLoad: Math.round(metrics.systemLoad),
+        storageUsed: metrics.storageUsed,
+      },
+      analytics,
+    };
+
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `yamshat-dashboard-${Date.now()}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    pushToast({ type: 'success', title: 'تم تصدير التقرير', description: 'تم تنزيل تقرير لوحة التحكم بصيغة JSON.' });
+  };
+
+  const handleLogout = () => {
+    clearStoredUser();
+    pushToast({ type: 'info', title: 'تم تسجيل الخروج', description: 'نراك قريبًا داخل يمشات.' });
+    navigate('/login', { replace: true });
+  };
 
   // Deep Analytics State
   const analytics = useMemo(() => ({
@@ -137,7 +171,7 @@ export default function Dashboard() {
           <Card className="analytics-details">
             <div className="card-header">
               <h3>تحليلات عميقة (Deep Analytics)</h3>
-              <Button size="small" variant="secondary">تصدير التقرير</Button>
+              <Button size="small" variant="secondary" onClick={handleExportAnalytics}>تصدير التقرير</Button>
             </div>
             <div className="analytics-stats-grid">
               <div className="stat-box">
@@ -183,7 +217,7 @@ export default function Dashboard() {
               <Link to="/profile" className="action-item">👤 تعديل الملف الشخصي</Link>
               <Link to="/settings" className="action-item">⚙️ إعدادات الأمان</Link>
               <Link to="/notifications" className="action-item">🔔 إدارة التنبيهات</Link>
-              <button className="action-item danger">🚪 تسجيل الخروج</button>
+              <button type="button" className="action-item danger" onClick={handleLogout}>🚪 تسجيل الخروج</button>
             </div>
           </Card>
         </div>

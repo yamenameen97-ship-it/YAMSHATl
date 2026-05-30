@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import MainLayout from '../components/layout/MainLayout.jsx';
+import { useToast } from '../components/admin/ToastProvider.jsx';
 import { getChatThreads } from '../api/chat.js';
 import { getCurrentUsername } from '../utils/auth.js';
 import { getChatPreferences, toggleChatPreference } from '../utils/chatPreferences.js';
@@ -78,6 +79,7 @@ function sortContacts(list, pinnedChats, mutedChats, metaMap) {
 
 export default function Inbox() {
   const navigate = useNavigate();
+  const { pushToast } = useToast();
   const currentUser = getCurrentUsername();
   const initialPrefs = useMemo(() => getChatPreferences(), []);
   const [searchQuery, setSearchQuery] = useState('');
@@ -85,6 +87,7 @@ export default function Inbox() {
   const [pinnedChats, setPinnedChats] = useState(initialPrefs.pinned);
   const [mutedChats, setMutedChats] = useState(initialPrefs.muted);
   const [selectedUsername, setSelectedUsername] = useState('');
+  const [blockedUsers, setBlockedUsers] = useState(() => new Set());
 
   const { data: threads = [] } = useQuery({
     queryKey: ['chat-threads', currentUser],
@@ -149,6 +152,33 @@ export default function Inbox() {
     setMutedChats(next);
   };
 
+  const handleSidebarNavigation = (key) => {
+    const routeMap = {
+      chats: '/inbox',
+      groups: '/groups',
+      friends: '/users',
+      notifications: '/notifications',
+      settings: '/settings',
+    };
+    navigate(routeMap[key] || '/inbox');
+  };
+
+  const handleToggleBlocked = () => {
+    if (!hasSelectedContact) return;
+    setBlockedUsers((prev) => {
+      const next = new Set(prev);
+      const isBlocked = next.has(selectedContact.username);
+      if (isBlocked) next.delete(selectedContact.username);
+      else next.add(selectedContact.username);
+      pushToast({
+        type: isBlocked ? 'info' : 'warning',
+        title: isBlocked ? 'تم رفع الحظر' : 'تم حظر المستخدم',
+        description: selectedContact.username,
+      });
+      return next;
+    });
+  };
+
   return (
     <MainLayout hideNav lockScroll>
       <section className="yam-shell-page" dir="rtl">
@@ -164,7 +194,7 @@ export default function Inbox() {
 
             <nav className="yam-primary-nav">
               {CHAT_NAV_ITEMS.map((item, index) => (
-                <button key={item.key} type="button" className={`yam-nav-item ${index === 0 ? 'active' : ''}`}>
+                <button key={item.key} type="button" className={`yam-nav-item ${item.key === 'chats' ? 'active' : ''}`} onClick={() => handleSidebarNavigation(item.key)}>
                   <span className="yam-nav-icon">{item.icon}</span>
                   <span>{item.label}</span>
                 </button>
@@ -173,7 +203,7 @@ export default function Inbox() {
 
             <div className="yam-section-head">
               <span>أهم جهات الاتصال</span>
-              <button type="button" className="yam-icon-button">＋</button>
+              <button type="button" className="yam-icon-button" onClick={() => navigate('/users')}>＋</button>
             </div>
 
             <div className="yam-favorite-list">
@@ -206,7 +236,7 @@ export default function Inbox() {
                 <strong>{currentUser || 'يوسف محمد'}</strong>
                 <span>جاهز للمراسلة</span>
               </div>
-              <button type="button" className="yam-icon-button subtle">⋮</button>
+              <button type="button" className="yam-icon-button subtle" onClick={() => navigate('/settings')}>⋮</button>
             </div>
           </aside>
 
@@ -370,7 +400,7 @@ export default function Inbox() {
               ))}
             </div>
 
-            <button type="button" className="yam-danger-btn" disabled={!hasSelectedContact}>حظر المستخدم</button>
+            <button type="button" className="yam-danger-btn" onClick={handleToggleBlocked} disabled={!hasSelectedContact}>{blockedUsers.has(selectedContact.username) ? 'رفع الحظر' : 'حظر المستخدم'}</button>
             <button type="button" className="yam-open-chat-btn" onClick={() => { if (hasSelectedContact) navigate(`/chat/${encodeURIComponent(selectedContact.username)}`); }} disabled={!hasSelectedContact}>فتح الدردشة</button>
           </aside>
         </div>

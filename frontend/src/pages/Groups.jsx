@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import Modal from '../components/ui/Modal.jsx';
 import EmptyState from '../components/feedback/EmptyState.jsx';
+import { useToast } from '../components/admin/ToastProvider.jsx';
 import { createGroup, getGroups } from '../api/groups.js';
 
 const ROLES = [
@@ -13,6 +14,7 @@ const ROLES = [
 ];
 
 export default function Groups() {
+  const { pushToast } = useToast();
   const [groups, setGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -21,15 +23,38 @@ export default function Groups() {
   const [createForm, setCreateForm] = useState({ name: '', description: '' });
   const [savingGroup, setSavingGroup] = useState(false);
   const [activeTab, setActiveTab] = useState('members'); // members, settings, analytics
+  const [groupSettings, setGroupSettings] = useState({ privateGroup: true, inviteOnly: false, notifications: true });
 
   useEffect(() => {
     loadGroups();
   }, []);
 
   const loadGroups = async () => {
-    const { data } = await getGroups();
-    setGroups(data || []);
-    if (data?.length > 0) setSelectedGroup(data[0]);
+    try {
+      const { data } = await getGroups();
+      setGroups(data || []);
+      if (data?.length > 0) setSelectedGroup(data[0]);
+    } catch (error) {
+      pushToast({ type: 'warning', title: 'تعذر تحميل المجموعات', description: error?.message || 'تم فتح الواجهة بدون بيانات خادم.' });
+      setGroups([]);
+    }
+  };
+
+  const inviteLink = useMemo(() => `https://yamshat.com/join/${selectedGroup?.id || ''}`, [selectedGroup?.id]);
+
+  const handleCopyInviteLink = async () => {
+    if (!inviteLink) return;
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      pushToast({ type: 'success', title: 'تم نسخ رابط الدعوة', description: 'يمكنك الآن إرساله للأعضاء.' });
+    } catch {
+      pushToast({ type: 'error', title: 'تعذر نسخ الرابط' });
+    }
+  };
+
+  const handleMemberSettings = (memberName) => {
+    setActiveTab('settings');
+    pushToast({ type: 'info', title: 'تم فتح إعدادات المجموعة', description: `راجع صلاحيات ${memberName} من تبويب الإعدادات.` });
   };
 
   return (
@@ -118,7 +143,7 @@ export default function Groups() {
                       }}>
                         {ROLES.find(r => r.id === member.role).label}
                       </span>
-                      <button style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer' }}>⚙️</button>
+                      <button type="button" style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer' }} onClick={() => handleMemberSettings(member.name)}>⚙️</button>
                     </div>
                   </Card>
                 ))}
@@ -140,6 +165,30 @@ export default function Groups() {
                 </Card>
               </div>
             )}
+
+            {activeTab === 'settings' && (
+              <div style={{ display: 'grid', gap: 16 }}>
+                {[
+                  { key: 'privateGroup', label: 'مجموعة خاصة', hint: 'إخفاء المجموعة من الاكتشاف العام' },
+                  { key: 'inviteOnly', label: 'الدخول بالدعوة فقط', hint: 'منع الانضمام المباشر بدون رابط دعوة' },
+                  { key: 'notifications', label: 'تنبيهات الإدارة', hint: 'إشعارات عند الطلبات والمراجعات الجديدة' },
+                ].map((item) => (
+                  <Card key={item.key} style={{ padding: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
+                    <div>
+                      <div style={{ fontWeight: 700 }}>{item.label}</div>
+                      <div className="muted" style={{ fontSize: 13 }}>{item.hint}</div>
+                    </div>
+                    <Button
+                      variant={groupSettings[item.key] ? 'primary' : 'secondary'}
+                      onClick={() => {
+                        setGroupSettings((prev) => ({ ...prev, [item.key]: !prev[item.key] }));
+                        pushToast({ type: 'success', title: 'تم تحديث إعدادات المجموعة', description: item.label });
+                      }}
+                    >{groupSettings[item.key] ? 'مفعّل' : 'غير مفعّل'}</Button>
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -155,10 +204,10 @@ export default function Groups() {
           <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
             <input 
               readOnly 
-              value={`https://yamshat.com/join/${selectedGroup?.id}`} 
+              value={inviteLink} 
               style={{ flex: 1, background: '#222', border: '1px solid #444', padding: 10, borderRadius: 8, color: 'white' }}
             />
-            <Button onClick={() => alert('تم النسخ!')}>نسخ</Button>
+            <Button onClick={handleCopyInviteLink}>نسخ</Button>
           </div>
           <div className="divider"><span>أو ابحث عن صديق</span></div>
           <input placeholder="ابحث بالاسم أو البريد..." style={{ width: '100%', background: '#222', border: '1px solid #444', padding: 10, borderRadius: 8, color: 'white', marginTop: 15 }} />
@@ -199,6 +248,9 @@ export default function Groups() {
                   setSelectedGroup(createdGroup);
                   setCreateForm({ name: '', description: '' });
                   setShowCreateModal(false);
+                  pushToast({ type: 'success', title: 'تم إنشاء المجموعة', description: createdGroup.name });
+                } catch (error) {
+                  pushToast({ type: 'error', title: 'تعذر إنشاء المجموعة', description: error?.message || 'حاول مرة أخرى.' });
                 } finally {
                   setSavingGroup(false);
                 }

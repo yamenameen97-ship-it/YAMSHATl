@@ -1,7 +1,6 @@
 import API from '../api/axios.js';
 import { getAuthToken } from '../utils/auth.js';
 import { useNotificationStore } from '../store/notificationStore.js';
-import { maybeShowBrowserNotification, normalizeNotification } from '../utils/notificationCenter.js';
 
 const DEVICE_ID_KEY = 'yamshat_device_id';
 const OFFLINE_QUEUE_KEY = 'yamshat_offline_queue';
@@ -9,26 +8,6 @@ const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 1000;
 const OFFLINE_QUEUE_MAX_SIZE = 100;
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || '';
-const DEVICE_REGISTRATION_COOLDOWN_MS = 30_000;
-const NOTIFICATION_SYNC_COOLDOWN_MS = 5_000;
-const REALTIME_EVENT_NAMES = [
-  'notification',
-  'new_notification',
-  'notification:new',
-  'notification_created',
-  'push_notification',
-  'chat_notification',
-  'chat_message',
-  'message_received',
-  'message:received',
-  'inbox:new_message',
-];
-
-let lifecycleBound = false;
-let realtimeBound = false;
-let realtimeDisposers = [];
-let lastDeviceRegistrationAt = 0;
-let lastNotificationSyncAt = 0;
 
 function safeJsonParse(raw, fallback) {
   try {
@@ -107,108 +86,14 @@ function urlBase64ToUint8Array(base64String) {
   return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
 }
 
-function normalizeRealtimeNotification(payload = {}, eventName = '') {
-  const raw = payload?.notification || payload?.data?.notification || payload?.data || payload || {};
-  const typeHint = String(raw?.type || raw?.screen || eventName || '').toLowerCase();
-  const username = raw?.username || raw?.sender_username || raw?.from_username || raw?.peer || raw?.chat_with || raw?.target_username || '';
-  const isChatLike = typeHint.includes('chat') || typeHint.includes('message') || Boolean(raw?.message || raw?.text || raw?.body) && Boolean(username);
-
-  const title = raw?.title
-    || raw?.sender_name
-    || raw?.display_name
-    || (isChatLike ? `رسالة جديدة${username ? ` من ${username}` : ''}` : 'إشعار جديد');
-
-  const body = raw?.body
-    || raw?.message
-    || raw?.text
-    || raw?.content
-    || (isChatLike ? 'وصلكت رسالة جديدة داخل يمشات.' : 'وصلك تحديث جديد داخل يمشات.');
-
-  const path = raw?.path
-    || raw?.url
-    || (isChatLike && username ? `/chat/${encodeURIComponent(username)}` : raw?.screen === 'live' ? '/live' : '/notifications');
-
-  return normalizeNotification({
-    ...raw,
-    id: raw?.id || raw?.notification_id || raw?.message_id || `${eventName || 'notification'}-${Date.now()}`,
-    type: raw?.type || (isChatLike ? 'message' : 'system'),
-    title,
-    body,
-    message: body,
-    text: body,
-    created_at: raw?.created_at || raw?.timestamp || new Date().toISOString(),
-    data: {
-      ...(raw?.data || {}),
-      path,
-      screen: raw?.screen || (isChatLike ? 'chat' : 'notifications'),
-      username,
-    },
-    path,
-  });
-}
-
 export const notificationService = {
-  bindLifecycleListeners() {
-    if (lifecycleBound || typeof window === 'undefined') return;
-    lifecycleBound = true;
-
-    window.addEventListener('online', () => {
-      this.processOfflineQueue();
-      this.syncRemoteNotifications({ force: true, limit: 30 }).catch(() => null);
-    });
-
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && getAuthToken()) {
-        this.syncRemoteNotifications({ force: true, limit: 20 }).catch(() => null);
-      }
-    });
-  },
-
-  bindRealtime(socketManager) {
-    if (realtimeBound || !socketManager?.on) return false;
-    realtimeBound = true;
-
-    const bind = (eventName, handler) => {
-      const dispose = socketManager.on(eventName, handler);
-      if (typeof dispose === 'function') realtimeDisposers.push(dispose);
-    };
-
-    bind('connect', async () => {
-      if (!getAuthToken()) return;
-      await this.registerDevice({ force: true }).catch(() => null);
-      await this.subscribeGrantedPushIfPossible().catch(() => null);
-      await this.syncRemoteNotifications({ force: true, limit: 20 }).catch(() => null);
-    });
-
-    REALTIME_EVENT_NAMES.forEach((eventName) => {
-      bind(eventName, async (payload) => {
-        const normalized = normalizeRealtimeNotification(payload, eventName);
-        useNotificationStore.getState().upsertNotification(normalized);
-        await maybeShowBrowserNotification(normalized).catch(() => null);
-      });
-    });
-
-    return true;
-  },
-
-  unbindRealtime() {
-    realtimeDisposers.forEach((dispose) => dispose?.());
-    realtimeDisposers = [];
-    realtimeBound = false;
-  },
-
-  async initialize({ socketManager } = {}) {
+  async initialize() {
     try {
-      this.bindLifecycleListeners();
-      if (socketManager) this.bindRealtime(socketManager);
-
       if (getAuthToken()) {
-        await this.registerDevice().catch(() => null);
-        await this.subscribeGrantedPushIfPossible().catch(() => null);
-        await this.syncRemoteNotifications({ force: true, limit: 20 }).catch(() => null);
+        await this.registerDevice();
       }
-
       await this.processOfflineQueue();
+      window.addEventListener('online', () => this.processOfflineQueue());
       return true;
     } catch (error) {
       console.error('Failed to initialize notification service:', error);
@@ -245,34 +130,15 @@ export const notificationService = {
   async requestPermission() {
     if (!('Notification' in window)) return 'unsupported';
     const permission = await Notification.requestPermission();
-    if (permission === 'granted') {
-      if (getAuthToken()) {
-        await this.registerDevice({ force: true }).catch(() => null);
-      }
-      await this.subscribeGrantedPushIfPossible().catch(() => null);
+    if (getAuthToken()) {
+      await this.registerDevice();
     }
     return permission;
   },
 
-  async subscribeGrantedPushIfPossible() {
-    if (typeof window === 'undefined' || !('Notification' in window)) return null;
-    if (Notification.permission !== 'granted') return null;
-    try {
-      return await this.subscribeToPushNotifications();
-    } catch {
-      return null;
-    }
-  },
-
-  async registerDevice(options = {}) {
+  async registerDevice() {
     if (!getAuthToken()) return null;
 
-    const now = Date.now();
-    if (!options.force && now - lastDeviceRegistrationAt < DEVICE_REGISTRATION_COOLDOWN_MS) {
-      return getOrCreateDeviceId();
-    }
-
-    const storedSubscription = safeJsonParse(localStorage.getItem('yamshat_push_subscription'), null);
     const payload = {
       device_id: getOrCreateDeviceId(),
       platform: getPlatform(),
@@ -280,12 +146,10 @@ export const notificationService = {
       notification_enabled: 'Notification' in window && Notification.permission === 'granted',
       pwa_installed: window.matchMedia?.('(display-mode: standalone)')?.matches || false,
       service_worker_ready: 'serviceWorker' in navigator,
-      push_subscription_endpoint: storedSubscription?.endpoint || '',
     };
 
     try {
       await retryWithBackoff(() => API.post('/notifications/register-device', payload));
-      lastDeviceRegistrationAt = now;
     } catch {
       localStorage.setItem('yamshat_device_registration', JSON.stringify({ ...payload, fallback: true, registered_at: new Date().toISOString() }));
     }
@@ -329,7 +193,6 @@ export const notificationService = {
       // keep local subscription for graceful fallback
     }
 
-    await this.registerDevice({ force: true }).catch(() => null);
     return subscription;
   },
 
@@ -348,20 +211,6 @@ export const notificationService = {
     return true;
   },
 
-  async syncRemoteNotifications({ force = false, limit = 30 } = {}) {
-    if (!getAuthToken()) return [];
-    const now = Date.now();
-    if (!force && now - lastNotificationSyncAt < NOTIFICATION_SYNC_COOLDOWN_MS) {
-      return useNotificationStore.getState().items || [];
-    }
-    lastNotificationSyncAt = now;
-    try {
-      return await this.fetchNotifications(limit);
-    } catch {
-      return useNotificationStore.getState().items || [];
-    }
-  },
-
   async fetchNotifications(limit = 50) {
     const store = useNotificationStore.getState();
     store.setLoading(true);
@@ -369,7 +218,6 @@ export const notificationService = {
       const response = await retryWithBackoff(() => API.get('/notifications', { params: { limit }, cache: true, cacheTtlMs: 20_000 }));
       store.hydrateNotifications(response.data || []);
       store.setError('');
-      lastNotificationSyncAt = Date.now();
       return response.data;
     } catch (error) {
       store.setError('Failed to load notifications');
@@ -421,9 +269,7 @@ export const notificationService = {
         await this.processOfflineQueueItem(item);
         removeFromOfflineQueue(item.id);
       } catch {
-        const next = loadOfflineQueue()
-          .map((queued) => queued.id === item.id ? { ...queued, retries: Number(queued.retries || 0) + 1 } : queued)
-          .filter((queued) => Number(queued.retries || 0) < MAX_RETRY_ATTEMPTS);
+        const next = loadOfflineQueue().map((queued) => queued.id === item.id ? { ...queued, retries: Number(queued.retries || 0) + 1 } : queued).filter((queued) => Number(queued.retries || 0) < MAX_RETRY_ATTEMPTS);
         saveOfflineQueue(next);
       }
     }

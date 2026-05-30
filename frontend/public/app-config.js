@@ -1,5 +1,5 @@
 (function () {
-  const CONFIG_BUILD = 'yamshat-config-20260530-r10-realtime-auth';
+  const CONFIG_BUILD = 'yamshat-config-20260526-r9-ui-fixes';
   const CONFIG_BUILD_KEY = 'yamshat_config_build';
 
   const trim = (value) => String(value || '').trim().replace(/\/+$/, '');

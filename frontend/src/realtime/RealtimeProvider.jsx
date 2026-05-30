@@ -109,6 +109,14 @@ export function RealtimeProvider({ children }) {
     return undefined;
   }, [session?.access_token, session?.token, session?.username, session?.role, isOnline]);
 
+  useEffect(() => {
+    const token = session?.access_token || session?.token;
+    const username = session?.username || session?.user || session?.profile?.username || '';
+    if (!connected || !token) return undefined;
+    socket.emit('register_user', { token, user: username }, { skipSignature: true, queue: false });
+    return undefined;
+  }, [connected, session?.access_token, session?.token, session?.username, session?.user, session?.profile?.username]);
+
   const value = useMemo(() => ({
     socket,
     connected,

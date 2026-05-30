@@ -76,12 +76,12 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
         __html: `
           .app-shell {
             display: flex;
-            min-height: 100dvh;
+            min-height: 100vh;
             min-height: 100dvh;
             height: 100vh;
             height: 100dvh;
             background: var(--app-background);
-            overflow: hidden;
+            overflow-y: auto;
           }
 
           .app-shell.native-shell,
@@ -93,7 +93,7 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
             display: flex;
             flex-direction: column;
             flex: 1;
-            overflow: hidden;
+            overflow-y: auto;
             min-width: 0;
           }
 
@@ -113,12 +113,12 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
           }
 
           .page-content.conversation-mode {
-            overflow: hidden;
+            overflow-y: auto;
             padding-bottom: 0;
           }
 
           .page-content.lock-scroll {
-            overflow: hidden;
+            overflow-y: auto;
           }
 
           .page-content.is-transitioning {
@@ -139,7 +139,7 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
           }
 
           .page-shell-glow.conversation-mode {
-            min-height: 100dvh;
+            min-height: 100vh;
           }
 
           .page-content::-webkit-scrollbar {

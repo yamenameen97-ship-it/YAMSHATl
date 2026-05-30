@@ -1,0 +1,4 @@
+Phase 3 mobile patch:
+- Replaced common 100vh occurrences with 100dvh in target files.
+- Adjusted MainLayout overflow handling.
+- Marked MobileDock for phase3 mobile styling.

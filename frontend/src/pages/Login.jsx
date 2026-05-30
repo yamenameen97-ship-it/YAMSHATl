@@ -270,7 +270,7 @@ export default function LoginEnhanced() {
           onRefresh={loadCaptcha}
           loading={captchaLoading}
           error={captchaError}
-          disabled={loading || captchaCooldown > 0}
+          disabled={loading}
           refreshCooldown={captchaCooldown}
         />
 

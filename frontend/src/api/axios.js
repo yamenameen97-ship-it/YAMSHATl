@@ -7,6 +7,26 @@ import { redirectToAppPath } from '../utils/router.js';
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 const RETRYABLE_STATUSES = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
+const IDEMPOTENT_METHODS = new Set(['get', 'head', 'options']);
+const NON_RETRYABLE_PATH_PATTERNS = [
+  /\/auth\/(login|register|captcha|verify-email|verify-2fa-login|forgot-password|verify-reset-code|reset-password|resend-verification|social-login|dev-login)(\/|$)/i,
+];
+
+function shouldRetryRequest(config = {}, responseStatus) {
+  if (!RETRYABLE_STATUSES.has(responseStatus)) return false;
+  if (config.retry === false) return false;
+
+  const method = String(config.method || 'get').toLowerCase();
+  if (config.retryable === true) return true;
+  if (!IDEMPOTENT_METHODS.has(method)) return false;
+
+  const url = String(config.url || '');
+  if (NON_RETRYABLE_PATH_PATTERNS.some((pattern) => pattern.test(url))) {
+    return false;
+  }
+
+  return true;
+}
 
 // Smart Cache Layer
 const cache = new Map();
@@ -92,10 +112,10 @@ API.interceptors.response.use(
 
     // Advanced Retry Strategy (Exponential Backoff)
     const retryCount = config?._retryCount || 0;
-    if (config && RETRYABLE_STATUSES.has(response?.status) && retryCount < 3) {
+    if (config && shouldRetryRequest(config, response?.status) && retryCount < 3) {
       config._retryCount = retryCount + 1;
       const delay = Math.pow(2, retryCount) * 1000 + Math.random() * 1000;
-      await new Promise(resolve => setTimeout(resolve, delay));
+      await new Promise((resolve) => setTimeout(resolve, delay));
       return API(config);
     }
 

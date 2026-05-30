@@ -329,13 +329,13 @@
     grid-template-columns: 1fr !important;
     gap: 8px;
     border-radius: 16px;
-    overflow: hidden;
+    overflow-y:auto;
   }
 
   .yam-post-media-tile {
     min-height: 200px;
     border-radius: 14px;
-    overflow: hidden;
+    overflow-y:auto;
   }
 }
 
@@ -350,7 +350,7 @@
   .conversation-shell {
     height: 100dvh;
     max-height: 100dvh;
-    overflow: hidden;
+    overflow-y:auto;
   }
 }
 

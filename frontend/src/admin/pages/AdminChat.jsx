@@ -331,7 +331,7 @@ export default function AdminChat() {
         .admin-table th { background: #f8fafc; color: #64748b; font-size: 12px; }
         
         .row-flagged { background: #fff1f2; }
-        .msg-cell { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+        .msg-cell { max-width: 200px; overflow-y:auto; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
         .ai-cell { font-size: 12px; color: #64748b; font-style: italic; }
         .risk-badge { padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; }
         

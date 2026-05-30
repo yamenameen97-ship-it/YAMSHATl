@@ -120,7 +120,7 @@ export default function AdminDashboard() {
         .big-val { font-size: 24px; font-weight: bold; color: #1e293b; }
         .danger-text { color: #ef4444; }
         .region-bar { margin-bottom: 15px; }
-        .bar-bg { height: 8px; background: #e2e8f0; border-radius: 4px; margin-top: 5px; overflow: hidden; }
+        .bar-bg { height: 8px; background: #e2e8f0; border-radius: 4px; margin-top: 5px; overflow-y:auto; }
         .bar-fill { height: 100%; background: #3b82f6; border-radius: 4px; }
         .logs-container { background: #1e293b; color: #94a3b8; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 12px; height: 300px; overflow-y: auto; margin-top: 15px; }
         .log-entry { margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #334155; }

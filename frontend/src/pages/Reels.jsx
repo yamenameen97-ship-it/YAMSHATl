@@ -978,13 +978,13 @@ export default function ReelsPage() {
         <style>{`
           .reels-page-shell {
             position: relative;
-            min-height: 100dvh;
-            height: 100dvh;
+            min-height: 100vh;
+            height: 100vh;
             background: #000;
             color: #fff;
             display: flex;
             flex-direction: column;
-            overflow: hidden;
+            overflow-y:auto;
           }
           .reels-header-bar {
             position: absolute;
@@ -1126,7 +1126,7 @@ export default function ReelsPage() {
             height: 4px;
             border-radius: 999px;
             background: rgba(255,255,255,0.16);
-            overflow: hidden;
+            overflow-y:auto;
             z-index: 24;
           }
           .reel-progress-fill {

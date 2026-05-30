@@ -471,7 +471,7 @@ export default function Search() {
         }
         .discovery-user-card { justify-content: flex-start; }
         .discovery-avatar {
-          width: 48px; height: 48px; border-radius: 16px; overflow: hidden; display: grid; place-items: center;
+          width: 48px; height: 48px; border-radius: 16px; overflow-y:auto; display: grid; place-items: center;
           background: rgba(59,130,246,0.14); flex-shrink: 0;
         }
         .discovery-avatar img { width: 100%; height: 100%; object-fit: cover; }

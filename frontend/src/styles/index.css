@@ -209,11 +209,11 @@ button:disabled {
 .hidden { display: none; }
 .invisible { visibility: hidden; }
 
-.overflow-hidden { overflow: hidden; }
+.overflow-hidden { overflow-y:auto; }
 .overflow-auto { overflow: auto; }
 
 .truncate {
-  overflow: hidden;
+  overflow-y:auto;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -222,21 +222,21 @@ button:disabled {
   display: -webkit-box;
   -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
-  overflow: hidden;
+  overflow-y:auto;
 }
 
 .line-clamp-2 {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
-  overflow: hidden;
+  overflow-y:auto;
 }
 
 .line-clamp-3 {
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
-  overflow: hidden;
+  overflow-y:auto;
 }
 
 /* ============================================

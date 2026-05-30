@@ -288,7 +288,7 @@ export default function MediaViewerModal({ item, items = [], initialIndex = 0, o
           min-height: 0;
           display: grid;
           place-items: center;
-          overflow: hidden;
+          overflow-y:auto;
           padding: 20px 72px;
         }
         .yam-media-frame {

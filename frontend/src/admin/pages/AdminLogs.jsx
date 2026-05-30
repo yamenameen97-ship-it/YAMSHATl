@@ -230,7 +230,7 @@ export default function AdminLogs() {
         .log-row.level-critical { background: #fff1f2; }
         
         .level-badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; }
-        .msg-cell { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+        .msg-cell { max-width: 300px; overflow-y:auto; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
         .time-cell { font-size: 12px; color: #64748b; font-family: monospace; }
         .type-icon { margin-left: 4px; }
         

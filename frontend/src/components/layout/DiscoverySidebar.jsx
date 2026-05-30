@@ -203,7 +203,7 @@ export default function DiscoverySidebar() {
           font-size: 11px;
           color: #94a3b8;
           white-space: nowrap;
-          overflow: hidden;
+          overflow-y:auto;
           text-overflow: ellipsis;
         }
 

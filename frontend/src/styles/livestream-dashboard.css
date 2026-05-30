@@ -398,7 +398,7 @@ body {
   border: 1px solid var(--border-subtle);
   border-radius: 20px;
   padding: 0;
-  overflow: hidden;
+  overflow-y:auto;
 }
 
 .table-header {
@@ -516,7 +516,7 @@ body {
   background:rgba(12,18,34,.88)!important;
   border:1px solid var(--yam-line)!important;
   border-radius:26px!important;
-  overflow:hidden;
+  overflow-y:auto;
   backdrop-filter:blur(18px);
   box-shadow:var(--shadow-overlay);
 }

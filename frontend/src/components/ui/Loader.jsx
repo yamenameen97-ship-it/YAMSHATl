@@ -350,7 +350,7 @@ export function BarLoader({ width = '100%', height = '4px' }) {
           .bar-loader {
             background: #e5e7eb;
             border-radius: 2px;
-            overflow: hidden;
+            overflow-y:auto;
           }
 
           .bar-loader-bar {

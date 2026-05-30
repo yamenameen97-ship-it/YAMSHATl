@@ -265,14 +265,14 @@ export default function VideoUploader({ onUploadComplete, onError, label = 'رف
           background: linear-gradient(135deg, rgba(124,58,237,0.28), rgba(59,130,246,0.16)); font-size: 28px;
         }
         .upload-title { font-weight: 800; color: #fff; margin: 0; }
-        .video-preview-card { border-radius: 18px; overflow: hidden; background: #020617; border: 1px solid rgba(255,255,255,0.08); }
+        .video-preview-card { border-radius: 18px; overflow-y:auto; background: #020617; border: 1px solid rgba(255,255,255,0.08); }
         .video-preview-player { width: 100%; max-height: 320px; display: block; background: #000; }
         .upload-state-pill { padding: 8px 12px; border-radius: 999px; font-size: 12px; font-weight: 800; background: rgba(34,197,94,0.16); color: #86efac; }
         .upload-state-pill.busy { background: rgba(59,130,246,0.16); color: #93c5fd; }
         .upload-state-pill.error { background: rgba(239,68,68,0.16); color: #fca5a5; }
         .muted { margin: 0; color: #94a3b8; font-size: 13px; }
         .upload-progress { display: grid; gap: 8px; }
-        .progress-bar { height: 10px; border-radius: 999px; background: rgba(148,163,184,0.18); overflow: hidden; }
+        .progress-bar { height: 10px; border-radius: 999px; background: rgba(148,163,184,0.18); overflow-y:auto; }
         .progress-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, #8b5cf6, #3b82f6); transition: width 160ms ease; }
         .progress-stats-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; font-size: 12px; color: #cbd5e1; }
         .thumbnail-row { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 16px; background: rgba(255,255,255,0.04); }

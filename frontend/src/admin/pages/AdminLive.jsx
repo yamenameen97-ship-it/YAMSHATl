@@ -592,7 +592,7 @@ export default function AdminLive() {
         
         .stream-health { padding: 12px; background: #f8fafc; border-radius: 6px; margin: 12px 0; }
         .health-label { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 12px; }
-        .health-bar { width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
+        .health-bar { width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; overflow-y:auto; }
         .health-fill { height: 100%; transition: all 0.3s ease; }
         
         .violations-section { padding: 12px; background: #fef2f2; border-radius: 6px; margin: 12px 0; border-left: 3px solid #ef4444; }

@@ -568,7 +568,7 @@ export default function ProFeedPostCard({ post, onRefresh }) {
         }
         .feed-poll-option {
           position: relative;
-          overflow: hidden;
+          overflow-y:auto;
           width: 100%;
           border-radius: 16px;
           border: 1px solid rgba(148,163,184,0.14);

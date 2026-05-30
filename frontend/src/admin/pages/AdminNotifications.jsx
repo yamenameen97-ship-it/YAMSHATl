@@ -572,7 +572,7 @@ export default function AdminNotifications() {
         .analytics-bars { display: flex; flex-direction: column; gap: 12px; }
         .bar-item { display: flex; align-items: center; gap: 12px; }
         .bar-label { font-size: 12px; color: #64748b; min-width: 80px; }
-        .bar { flex: 1; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
+        .bar { flex: 1; height: 8px; background: #e2e8f0; border-radius: 4px; overflow-y:auto; }
         .bar-fill { height: 100%; transition: all 0.3s ease; }
         
         .notification-actions { display: flex; gap: 8px; flex-wrap: wrap; }

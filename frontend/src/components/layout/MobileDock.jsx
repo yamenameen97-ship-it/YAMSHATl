@@ -24,7 +24,7 @@ function MobileDock() {
     [isOnline, unreadInboxCount],
   );
 
-  return <NavigationBar placement="bottom" items={items} className="mobile-dock mobile-dock-professional phase3-mobile" />;
+  return <NavigationBar placement="bottom" items={items} className="mobile-dock mobile-dock-professional" />;
 }
 
 export default memo(MobileDock);

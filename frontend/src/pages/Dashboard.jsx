@@ -199,7 +199,7 @@ export default function Dashboard() {
         .current-val { font-size: 24px; font-weight: bold; }
         .trend.up { color: #10b981; font-size: 14px; }
         .health-grid { display: flex; flex-direction: column; gap: 15px; margin-top: 15px; }
-        .progress-bar { height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden; margin: 5px 0; }
+        .progress-bar { height: 8px; background: #e5e7eb; border-radius: 4px; overflow-y:auto; margin: 5px 0; }
         .progress-fill { height: 100%; transition: width 0.5s ease; }
         .analytics-main-row { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
         .analytics-stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin: 20px 0; }

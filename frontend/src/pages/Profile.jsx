@@ -255,7 +255,7 @@ export default function Profile() {
           width: clamp(112px, 16vw, 156px);
           aspect-ratio: 1;
           border-radius: 50%;
-          overflow: hidden;
+          overflow-y:auto;
           display: grid;
           place-items: center;
           font-size: clamp(40px, 6vw, 64px);
@@ -355,7 +355,7 @@ export default function Profile() {
         .profile-gallery-card {
           position: relative;
           aspect-ratio: 1;
-          overflow: hidden;
+          overflow-y:auto;
           border-radius: 24px;
           border: 1px solid var(--line);
           background: color-mix(in srgb, var(--panel) 88%, transparent);

@@ -665,7 +665,7 @@ export default function Live() {
             background: rgba(7, 12, 24, 0.92);
             border: 1px solid rgba(255,255,255,0.06);
             box-shadow: 0 28px 60px rgba(2,6,23,0.35);
-            overflow: hidden;
+            overflow-y:auto;
           }
           .yam-live-stage-card {
             padding: 20px;
@@ -753,7 +753,7 @@ export default function Live() {
             min-height: 360px;
             border-radius: 24px;
             background: linear-gradient(180deg, rgba(15,23,42,0.85), rgba(2,6,23,0.96));
-            overflow: hidden;
+            overflow-y:auto;
             border: 1px solid rgba(255,255,255,0.06);
             display: grid;
             place-items: center;
@@ -878,7 +878,7 @@ export default function Live() {
             height: 12px;
             border-radius: 999px;
             background: rgba(148,163,184,0.14);
-            overflow: hidden;
+            overflow-y:auto;
           }
           .yam-goal-bar span {
             display: block;
@@ -971,7 +971,7 @@ export default function Live() {
             position: absolute;
             inset: 0;
             pointer-events: none;
-            overflow: hidden;
+            overflow-y:auto;
             z-index: 3;
           }
           .yam-live-heart {

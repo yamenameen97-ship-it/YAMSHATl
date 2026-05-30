@@ -468,7 +468,7 @@ textarea.input {
 .ui-sheet {
   width: min(100%, 720px);
   max-height: min(90vh, 820px);
-  overflow: hidden;
+  overflow-y:auto;
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
   background: var(--surface-elevated);
@@ -559,7 +559,7 @@ textarea.input {
   height: var(--avatar-size);
   min-width: var(--avatar-size);
   border-radius: var(--radius-pill);
-  overflow: hidden;
+  overflow-y:auto;
   background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 26%, transparent), color-mix(in srgb, var(--secondary) 18%, transparent)), var(--surface-card-strong);
   color: var(--text);
   border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--line));

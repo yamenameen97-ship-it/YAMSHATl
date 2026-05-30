@@ -1,6 +1,9 @@
 import base64
+import hashlib
+import hmac
 from datetime import datetime, timedelta, timezone
 import json
+import logging
 import secrets
 from threading import Lock
 from urllib.parse import quote, urlencode
@@ -53,12 +56,80 @@ from app.services.apple_oauth_service import AppleOAuthService
 router = APIRouter()
 CSRF_COOKIE_NAME = 'yamshat_csrf_token'
 
-_CAPTCHA_STORE: dict[str, dict] = {}
+logger = logging.getLogger(__name__)
+
+# ============================================================================
+# Stateless captcha (HMAC-signed token) — حل مشكلة multi-worker و server sleep
+# على Render. الـ captcha_id نفسه توكن موقّع يحتوي الإجابة + تاريخ الانتهاء + nonce،
+# وبيتم التحقق منه بدون أي تخزين على السيرفر.
+# ============================================================================
+_CAPTCHA_STORE: dict[str, dict] = {}  # legacy fallback
 _CAPTCHA_LOCK = Lock()
+_CAPTCHA_USED_NONCES: dict[str, float] = {}  # nonce -> expiry ts (single-use)
+_CAPTCHA_NONCE_LOCK = Lock()
 
 
 class _CaptchaError(HTTPException):
     pass
+
+
+def _captcha_secret() -> bytes:
+    base = (settings.SECRET_KEY or 'yamshat-default-secret').encode('utf-8')
+    return hashlib.sha256(b'yamshat-captcha-v1:' + base).digest()
+
+
+def _b64url_encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b'=').decode('ascii')
+
+
+def _b64url_decode(data: str) -> bytes:
+    padding = '=' * (-len(data) % 4)
+    return base64.urlsafe_b64decode(data + padding)
+
+
+def _sign_captcha_token(payload: dict) -> str:
+    body = json.dumps(payload, separators=(',', ':'), sort_keys=True).encode('utf-8')
+    body_b64 = _b64url_encode(body)
+    sig = hmac.new(_captcha_secret(), body_b64.encode('ascii'), hashlib.sha256).digest()
+    return f"{body_b64}.{_b64url_encode(sig)}"
+
+
+def _verify_captcha_token(token: str) -> dict | None:
+    try:
+        body_b64, sig_b64 = token.split('.', 1)
+    except (ValueError, AttributeError):
+        return None
+    try:
+        expected_sig = hmac.new(_captcha_secret(), body_b64.encode('ascii'), hashlib.sha256).digest()
+        provided_sig = _b64url_decode(sig_b64)
+    except Exception:
+        return None
+    if not hmac.compare_digest(expected_sig, provided_sig):
+        return None
+    try:
+        payload = json.loads(_b64url_decode(body_b64).decode('utf-8'))
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return payload
+
+
+def _prune_used_nonces() -> None:
+    now_ts = utcnow_naive().timestamp()
+    with _CAPTCHA_NONCE_LOCK:
+        expired = [n for n, exp in _CAPTCHA_USED_NONCES.items() if exp <= now_ts]
+        for n in expired:
+            _CAPTCHA_USED_NONCES.pop(n, None)
+
+
+def _consume_nonce(nonce: str, expires_ts: float) -> bool:
+    _prune_used_nonces()
+    with _CAPTCHA_NONCE_LOCK:
+        if nonce in _CAPTCHA_USED_NONCES:
+            return False
+        _CAPTCHA_USED_NONCES[nonce] = expires_ts
+        return True
 
 
 def utcnow_naive() -> datetime:
@@ -383,6 +454,7 @@ def _enforce_admin_ip_policy(request: Request, user: User) -> None:
 
 
 def _prune_captchas() -> None:
+    """تنظيف الـ legacy in-memory store (للتوافق فقط)."""
     now = utcnow_naive()
     with _CAPTCHA_LOCK:
         expired = [key for key, item in _CAPTCHA_STORE.items() if item['expires_at'] <= now]
@@ -391,23 +463,30 @@ def _prune_captchas() -> None:
 
 
 def _issue_captcha() -> dict:
-    _prune_captchas()
+    """يصدر تحدي كابتشا stateless (موقّع HMAC). بيشتغل صح مع multi-worker
+    و حتى لو الـ Render service ريستارت بين إصدار وتحقق الكابتشا."""
     left = secrets.randbelow(8) + 1
     right = secrets.randbelow(8) + 1
     operator = secrets.choice(['+', '-'])
     if operator == '-' and right > left:
         left, right = right, left
     answer = left + right if operator == '+' else left - right
-    captcha_id = secrets.token_urlsafe(18)
-    with _CAPTCHA_LOCK:
-        _CAPTCHA_STORE[captcha_id] = {
-            'answer_hash': str(answer),
-            'expires_at': utcnow_naive() + timedelta(minutes=settings.CAPTCHA_EXPIRE_MINUTES),
-        }
+
+    expire_minutes = max(int(getattr(settings, 'CAPTCHA_EXPIRE_MINUTES', 5) or 5), 1)
+    expires_at = utcnow_naive() + timedelta(minutes=expire_minutes)
+
+    token_payload = {
+        'a': str(answer),
+        'e': int(expires_at.timestamp()),
+        'n': secrets.token_urlsafe(12),
+        'v': 1,
+    }
+    captcha_id = _sign_captcha_token(token_payload)
+
     return {
         'captcha_id': captcha_id,
         'question': f'{left} {operator} {right}',
-        'expires_in_seconds': settings.CAPTCHA_EXPIRE_MINUTES * 60,
+        'expires_in_seconds': expire_minutes * 60,
     }
 
 
@@ -416,19 +495,62 @@ def _require_captcha(payload: dict, *, context: str) -> None:
         return
     captcha_id = str(payload.get('captcha_id') or '').strip()
     captcha_answer = str(payload.get('captcha_answer') or '').strip()
-    if not captcha_id or captcha_answer == '':
-        raise _CaptchaError(status_code=status.HTTP_400_BAD_REQUEST, detail='Captcha is required')
 
+    if not captcha_id or captcha_answer == '':
+        raise _CaptchaError(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='Captcha is required',
+        )
+
+    # المسار الجديد stateless (token فيه '.')
+    if '.' in captcha_id and len(captcha_id) > 40:
+        token_payload = _verify_captcha_token(captcha_id)
+        if not token_payload:
+            raise _CaptchaError(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='Captcha expired or missing',
+            )
+        expires_ts = float(token_payload.get('e') or 0)
+        if expires_ts <= utcnow_naive().timestamp():
+            raise _CaptchaError(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='Captcha expired or missing',
+            )
+        if str(captcha_answer).strip() != str(token_payload.get('a') or ''):
+            raise _CaptchaError(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='Captcha answer is incorrect',
+            )
+        nonce = str(token_payload.get('n') or '')
+        if nonce and not _consume_nonce(nonce, expires_ts):
+            # إعادة استخدام نفس الكابتشا غير مسموحة
+            raise _CaptchaError(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='Captcha expired or missing',
+            )
+        _ = context
+        return
+
+    # Fallback للنظام القديم (in-memory) — للتوافق فقط
     _prune_captchas()
     with _CAPTCHA_LOCK:
         entry = _CAPTCHA_STORE.get(captcha_id)
         if entry is None:
-            raise _CaptchaError(status_code=status.HTTP_400_BAD_REQUEST, detail='Captcha expired or missing')
+            raise _CaptchaError(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='Captcha expired or missing',
+            )
         if entry['expires_at'] <= utcnow_naive():
             _CAPTCHA_STORE.pop(captcha_id, None)
-            raise _CaptchaError(status_code=status.HTTP_400_BAD_REQUEST, detail='Captcha expired or missing')
+            raise _CaptchaError(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='Captcha expired or missing',
+            )
         if str(captcha_answer).strip() != str(entry['answer_hash']):
-            raise _CaptchaError(status_code=status.HTTP_400_BAD_REQUEST, detail='Captcha answer is incorrect')
+            raise _CaptchaError(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='Captcha answer is incorrect',
+            )
         _CAPTCHA_STORE.pop(captcha_id, None)
 
     _ = context

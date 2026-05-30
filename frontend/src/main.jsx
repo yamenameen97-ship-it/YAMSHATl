@@ -25,6 +25,7 @@ import './styles/reels-premium.css';
 import './styles/design-system-enforce.css';
 /* ⚠️ يجب أن يكون آخر استيراد CSS حتى يفوز في cascade ويصلح مشاكل الموبايل */
 import './styles/mobile-fixes.css';
+import './styles/brand-chat-notifications-refresh.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 
 const BUILD_ID = 'yamshat-mobile-fixed-20260529-r1';

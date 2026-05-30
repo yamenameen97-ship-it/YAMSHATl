@@ -1,4 +1,4 @@
-import { redirectToAppPath } from './router.js';
+import { buildAppUrl, redirectToAppPath } from './router.js';
 
 const shownNotificationIds = new Set();
 
@@ -7,15 +7,18 @@ export function resolveNotificationPath(notification) {
   if (typeof payload?.path === 'string' && payload.path.trim()) return payload.path.trim();
   if (typeof notification?.path === 'string' && notification.path.trim()) return notification.path.trim();
 
-  const screen = String(payload?.screen || notification?.screen || '').toLowerCase();
-  if (screen === 'chat') return '/inbox';
+  const peer = payload?.username || payload?.target_username || payload?.peer || payload?.chat_with || notification?.username;
+  const screen = String(payload?.screen || notification?.screen || notification?.category || notification?.type || '').toLowerCase();
+
+  if (screen === 'chat' || screen === 'message' || screen === 'messages' || screen === 'dm') {
+    return peer ? `/chat/${encodeURIComponent(peer)}` : '/inbox';
+  }
   if (screen === 'notifications') return '/notifications';
   if (screen === 'live') return '/live';
   if (screen === 'groups') return '/groups';
   if (screen === 'users') return '/users';
   if (screen === 'profile') {
-    const username = payload?.username || payload?.target_username || notification?.username;
-    return username ? `/profile/${encodeURIComponent(username)}` : '/profile';
+    return peer ? `/profile/${encodeURIComponent(peer)}` : '/profile';
   }
   return '/notifications';
 }
@@ -38,6 +41,8 @@ export function normalizeNotification(item) {
   const body = item?.body || item?.message || item?.text || payload?.body || 'وصلك تحديث جديد داخل يمشات.';
   const seen = Boolean(item?.seen ?? item?.is_read ?? item?.read);
 
+  const path = resolveNotificationPath({ ...item, payload });
+
   return {
     ...item,
     id: item?.id || `${title}-${body}-${item?.created_at || Date.now()}`,
@@ -45,7 +50,8 @@ export function normalizeNotification(item) {
     body,
     seen,
     payload,
-    path: resolveNotificationPath({ ...item, payload }),
+    path,
+    url: buildAppUrl(path),
   };
 }
 
@@ -58,11 +64,14 @@ async function serviceWorkerNotification(notification) {
   const registration = await navigator.serviceWorker.ready;
   await registration.showNotification(notification.title, {
     body: notification.body,
-    icon: '/icons/icon-192.png',
-    badge: '/icons/icon-192.png',
+    icon: '/icons/icon-512.png',
+    badge: '/icons/badge-96.png',
     tag: `yamshat:${notification.id}`,
+    renotify: !notification.seen,
+    timestamp: notification.created_at ? new Date(notification.created_at).getTime() : Date.now(),
     data: {
       path: notification.path,
+      url: notification.url,
       notification,
     },
   });
@@ -84,9 +93,9 @@ export async function maybeShowBrowserNotification(item) {
   } catch {
     const native = new window.Notification(notification.title, {
       body: notification.body,
-      icon: '/icons/icon-192.png',
+      icon: '/icons/icon-512.png',
       tag: `yamshat:${notification.id}`,
-      data: { path: notification.path },
+      data: { path: notification.path, url: notification.url },
     });
     native.onclick = () => {
       window.focus();

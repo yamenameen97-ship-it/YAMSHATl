@@ -78,6 +78,8 @@
     "src/components/layout/Topbar.jsx",
     "src/components/live/LiveControls.jsx",
     "src/components/live/StreamHealthMonitor.jsx",
+    "src/components/audio/SoundSettingsPanel.jsx",
+    "src/components/audio/SoundToggle.jsx",
     "src/components/media/AdvancedImageOptimizer.jsx",
     "src/components/media/ImageViewer.jsx",
     "src/components/media/LazyMedia.jsx",
@@ -86,6 +88,7 @@
     "src/components/media/VideoPlayer.jsx",
     "src/components/mobile/BottomNav.jsx",
     "src/components/notifications/NotificationList.jsx",
+    "src/components/notifications/NotificationPermissionPrompt.jsx",
     "src/components/profile/ProfileHeader.jsx",
     "src/components/reels/ReelPlayer.jsx",
     "src/components/settings/SessionCard.jsx",
@@ -97,13 +100,11 @@
     "src/components/stories/StoryViewerEnhanced.jsx",
     "src/components/system/AppErrorBoundary.jsx",
     "src/components/system/AppStatusBanner.jsx",
+    "src/components/video/ReelsPlayer.jsx",
+    "src/components/video/UniversalPlayer.jsx",
     "src/components/upload/FileUploader.jsx",
     "src/components/upload/ImageUploader.jsx",
     "src/components/upload/VideoUploader.jsx",
-    "src/components/yamshat/YamshatIcon.jsx",
-    "src/components/audio/SoundSettingsPanel.jsx",
-    "src/components/audio/SoundToggle.jsx",
-    "src/components/video/ReelsPlayer.jsx",
-    "src/components/video/UniversalPlayer.jsx"
+    "src/components/yamshat/YamshatIcon.jsx"
   ]
 }

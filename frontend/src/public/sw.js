@@ -1,4 +1,4 @@
-const VERSION = 'yamshat-v20260525-r4-domain-fix';
+const VERSION = 'yamshat-v20260530-brand-chat-notifications';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -14,30 +14,54 @@ const APP_SHELL = [
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
+  '/icons/icon-maskable-512.png',
+  '/icons/badge-96.png',
+  '/icons/apple-touch-icon.png',
+  '/brand/yamshat-logo.png',
 ];
 
 function isRuntimeConfigPath(url) {
   return /^\/(?:app-config\.js|background-sync\.js|sw(?:-enhanced)?\.js)$/i.test(url.pathname);
 }
 
+function emptyResponse(status = 503, statusText = 'Service Unavailable') {
+  return new Response(JSON.stringify({ error: 'offline', detail: 'الشبكة غير متاحة' }), {
+    status,
+    statusText,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function normalizeAppTarget(target = '/') {
+  const raw = String(target || '/').trim();
+  if (!raw) return '/#/';
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (raw.startsWith('/#/')) return raw;
+  if (raw.startsWith('#/')) return `/${raw}`;
+  const normalized = raw.startsWith('/') ? raw : `/${raw}`;
+  return `/#${normalized}`;
+}
+
 async function staleWhileRevalidate(request, cacheName) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(request);
   const network = fetch(request, { cache: 'no-store' }).then(async (response) => {
-    if (response?.status === 200) await cache.put(request, response.clone());
+    if (response?.status === 200) await cache.put(request, response.clone()).catch(() => null);
     return response;
   }).catch(() => null);
-  return cached || network;
+  const result = cached || (await network);
+  return result || emptyResponse();
 }
 
 async function networkFirst(request, cacheName) {
   const cache = await caches.open(cacheName);
   try {
     const response = await fetch(request, { cache: 'no-store' });
-    if (response?.status === 200) await cache.put(request, response.clone());
+    if (response?.status === 200) await cache.put(request, response.clone()).catch(() => null);
     return response;
   } catch {
-    return cache.match(request);
+    const cached = await cache.match(request);
+    return cached || emptyResponse();
   }
 }
 
@@ -47,10 +71,10 @@ async function cacheFirst(request, cacheName) {
   if (cached) return cached;
   try {
     const response = await fetch(request);
-    if (response?.status === 200) await cache.put(request, response.clone());
+    if (response?.status === 200) await cache.put(request, response.clone()).catch(() => null);
     return response;
   } catch {
-    return null;
+    return emptyResponse();
   }
 }
 
@@ -96,9 +120,14 @@ self.addEventListener('fetch', (event) => {
         })
         .catch(async () => {
           const cache = await caches.open(CACHE_NAMES.SHELL);
-          return cache.match(request) || cache.match('/offline.html') || cache.match('/index.html');
+          const fallback = (await cache.match(request)) || (await cache.match('/offline.html')) || (await cache.match('/index.html'));
+          return fallback || emptyResponse(503, 'Offline');
         })
     );
+    return;
+  }
+
+  if (url.origin !== self.location.origin) {
     return;
   }
 
@@ -138,17 +167,19 @@ self.addEventListener('sync', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  const data = event.data ? event.data.json() : { title: 'Yamshat', body: 'لديك تحديث جديد', url: '/' };
+  const data = event.data ? event.data.json() : { title: 'Yamshat', body: 'لديك تحديث جديد', path: '/' };
+  const targetPath = data.path || data.url || '/';
   const options = {
     body: data.body,
-    icon: data.icon || '/icons/icon-192.png',
-    badge: data.badge || '/icons/icon-192.png',
+    icon: data.icon || '/icons/icon-512.png',
+    badge: data.badge || '/icons/badge-96.png',
     image: data.image,
     tag: data.tag || 'yamshat-push',
     renotify: Boolean(data.renotify),
     vibrate: [120, 60, 120],
     data: {
-      url: data.url || '/',
+      path: targetPath,
+      url: normalizeAppTarget(targetPath),
       channel: data.channel || 'default',
     },
     actions: [
@@ -162,7 +193,7 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   if (event.action === 'mute') return;
-  const targetUrl = event.notification.data?.url || '/';
+  const targetUrl = normalizeAppTarget(event.notification.data?.url || event.notification.data?.path || '/');
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       const existing = clientList.find((client) => 'focus' in client);

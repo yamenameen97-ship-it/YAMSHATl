@@ -30,6 +30,7 @@ export default function PostComposer() {
   const [quoteDraft, setQuoteDraft] = useState(null);
   const [isDragActive, setIsDragActive] = useState(false);
   const fileInputRef = useRef(null);
+  const textareaRef = useRef(null);
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
 
@@ -45,6 +46,11 @@ export default function PostComposer() {
       }
     }
 
+    const focusComposer = () => {
+      textareaRef.current?.focus();
+      textareaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+
     const handleQuotedPost = () => {
       try {
         const nextValue = JSON.parse(localStorage.getItem(QUOTE_KEY) || 'null');
@@ -52,10 +58,40 @@ export default function PostComposer() {
       } catch {
         setQuoteDraft(null);
       }
+      window.setTimeout(focusComposer, 30);
+    };
+
+    const handleComposerAction = (event) => {
+      const action = event?.detail?.action;
+      if (action === 'image') {
+        if (fileInputRef.current) {
+          fileInputRef.current.accept = 'image/*';
+          fileInputRef.current.click();
+        }
+        return;
+      }
+
+      if (action === 'video') {
+        if (fileInputRef.current) {
+          fileInputRef.current.accept = 'video/*';
+          fileInputRef.current.click();
+        }
+        return;
+      }
+
+      if (fileInputRef.current) fileInputRef.current.accept = 'image/*,video/*';
+      if (action === 'thought') {
+        setContent((prev) => prev || 'شاركنا رأيك... ');
+      }
+      window.setTimeout(focusComposer, 30);
     };
 
     window.addEventListener('yamshat:quote-post', handleQuotedPost);
-    return () => window.removeEventListener('yamshat:quote-post', handleQuotedPost);
+    window.addEventListener('yamshat:composer-action', handleComposerAction);
+    return () => {
+      window.removeEventListener('yamshat:quote-post', handleQuotedPost);
+      window.removeEventListener('yamshat:composer-action', handleComposerAction);
+    };
   }, []);
 
   useEffect(() => {
@@ -330,6 +366,7 @@ export default function PostComposer() {
         ) : null}
 
         <textarea
+          ref={textareaRef}
           placeholder="اكتب منشورك هنا... استخدم #هاشتاج أو @منشن لو حابب"
           value={content}
           onChange={(event) => setContent(event.target.value)}

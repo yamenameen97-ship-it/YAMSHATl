@@ -4,6 +4,7 @@ import Topbar from './Topbar.jsx';
 import MobileDock from './MobileDock.jsx';
 import { isNativeShell } from '../../utils/runtime.js';
 import { getScrollPosition, prefetchCriticalRoutes, saveScrollPosition } from '../../utils/navigation.js';
+import NotificationPermissionPrompt from '../notifications/NotificationPermissionPrompt.jsx';
 
 export default function MainLayout({ children, hideNav = false, lockScroll = false }) {
   const nativeShell = isNativeShell();
@@ -15,6 +16,7 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
   const isConversationRoute = /^\/chat\/[^/]+/.test(location.pathname);
   const showTopbar = !hideNav && !nativeShell && !isConversationRoute;
   const showDock = !hideNav && !nativeShell && !isConversationRoute;
+  const showNotificationPrompt = !isConversationRoute;
 
   useEffect(() => {
     const container = mainRef.current;
@@ -71,6 +73,7 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
       </div>
 
       {showDock ? <MobileDock /> : null}
+      {showNotificationPrompt ? <NotificationPermissionPrompt /> : null}
 
       <style dangerouslySetInnerHTML={{
         __html: `

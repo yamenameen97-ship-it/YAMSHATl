@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import PostComposer from '../components/feed/PostComposer.jsx';
@@ -35,9 +35,9 @@ const NAV_ITEMS = [
 ];
 
 const QUICK_ACTIONS = [
-  { label: 'صورة', color: 'green' },
-  { label: 'فيديو', color: 'violet' },
-  { label: 'رأيك', color: 'rose' },
+  { label: 'صورة', color: 'green', action: 'image' },
+  { label: 'فيديو', color: 'violet', action: 'video' },
+  { label: 'رأيك', color: 'rose', action: 'thought' },
 ];
 
 const PROFILE_HIGHLIGHTS = [
@@ -104,11 +104,11 @@ function normalizeHandle(value = '') {
 
 function buildFeedPosts(posts = []) {
   if (Array.isArray(posts) && posts.length) {
-    return posts.slice(0, 8).map((post, index) => ({
+    return posts.map((post, index) => ({
       id: post.id || `post-${index}`,
       authorName: post.author_name || post.username || post.user || 'مستخدم يامشات',
       handle: normalizeHandle(post.username || post.user || `user.${index + 1}`),
-      time: 'الآن',
+      time: post.created_at || post.published_at ? 'منشور سابق' : 'الآن',
       text: post.content || 'منشور جديد على يامشات.',
       likes: Number(post.likes_count || post.like_count || post.likes || 0),
       comments: Number(post.comments_count || post.comment_count || 0),
@@ -163,6 +163,7 @@ function MediaTile({ item, index }) {
 
 function PostCard({ post }) {
   const { pushToast } = useToast();
+  const postUrl = `${window.location.origin}/#/post/${post.id}`;
   const mediaItems = Array.isArray(post.media) ? post.media.slice(0, 3) : [];
   const [liked, setLiked] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -182,7 +183,6 @@ function PostCard({ post }) {
   };
 
   const handleShare = async () => {
-    const postUrl = `${window.location.origin}/#/post/${post.id}`;
     try {
       if (navigator.share) {
         await navigator.share({ title: post.authorName, text: post.text, url: postUrl });
@@ -199,6 +199,21 @@ function PostCard({ post }) {
   const handleSave = () => {
     setSaved((prev) => !prev);
     pushToast({ type: 'success', title: saved ? 'تمت إزالة المنشور من المحفوظات' : 'تم حفظ المنشور' });
+  };
+
+  const handleMoreOptions = async () => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(postUrl);
+        pushToast({ type: 'success', title: 'تم نسخ رابط المنشور' });
+        return;
+      }
+    } catch {
+      // fallback below
+    }
+
+    setShowComments(true);
+    pushToast({ type: 'info', title: 'تم فتح التعليقات', description: 'تم ربط زر الخيارات بإجراء مفيد بدل بقائه بدون وظيفة.' });
   };
 
   const handleAddComment = () => {
@@ -226,7 +241,7 @@ function PostCard({ post }) {
         </div>
         <div className="yam-post-meta-v2">
           <span>{post.time}</span>
-          <button type="button" className="yam-ghost-icon-btn" aria-label="خيارات المنشور">
+          <button type="button" className="yam-ghost-icon-btn" aria-label="خيارات المنشور" onClick={handleMoreOptions} title="نسخ رابط المنشور">
             <YamshatIcon name="more" size={18} />
           </button>
         </div>
@@ -290,6 +305,7 @@ function PostCard({ post }) {
 
 export default function FeedEnhanced() {
   const navigate = useNavigate();
+  const postStackRef = useRef(null);
   const { pushToast } = useToast();
   const toggleTheme = useAppStore((state) => state.toggleTheme);
   const theme = useAppStore((state) => state.theme);
@@ -300,15 +316,73 @@ export default function FeedEnhanced() {
   const username = getCurrentUsername() || profile?.username || 'ahmed.mohammed';
   const displayName = profile?.profile?.full_name || profile?.name || profile?.full_name || 'أحمد محمد';
 
-  const { posts = [] } = useSmartFeed({
+  const {
+    posts = [],
+    fetchNextPage,
+    hasNextPage,
+    isFetching,
+    isFetchingNextPage,
+  } = useSmartFeed({
     filterType: activeTab === 'all' ? 'all' : 'following',
     sortBy: 'recent',
-    limit: 8,
+    limit: 12,
     pollingInterval: 25_000,
   });
 
   const feedPosts = useMemo(() => buildFeedPosts(posts), [posts]);
   const totalPosts = feedPosts.length ? Math.max(128, feedPosts.length) : 128;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const pageContent = document.querySelector('.page-content');
+    if (!pageContent) return undefined;
+
+    const mediaQuery = window.matchMedia('(min-width: 1141px)');
+    const syncScrollMode = () => {
+      pageContent.classList.toggle('yam-feed-page-locked', mediaQuery.matches);
+    };
+
+    syncScrollMode();
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', syncScrollMode);
+      return () => {
+        pageContent.classList.remove('yam-feed-page-locked');
+        mediaQuery.removeEventListener('change', syncScrollMode);
+      };
+    }
+
+    mediaQuery.addListener(syncScrollMode);
+    return () => {
+      pageContent.classList.remove('yam-feed-page-locked');
+      mediaQuery.removeListener(syncScrollMode);
+    };
+  }, []);
+
+  useEffect(() => {
+    const stack = postStackRef.current;
+    if (!stack) return undefined;
+
+    const handleScroll = () => {
+      if (!hasNextPage || isFetchingNextPage) return;
+      const remainingDistance = stack.scrollHeight - stack.scrollTop - stack.clientHeight;
+      if (remainingDistance <= 280) fetchNextPage();
+    };
+
+    stack.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
+    return () => stack.removeEventListener('scroll', handleScroll);
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
+
+  useEffect(() => {
+    const stack = postStackRef.current;
+    if (!stack) return;
+    stack.scrollTo({ top: 0, behavior: 'auto' });
+  }, [activeTab]);
+
+  const handleQuickAction = (action) => {
+    document.querySelector('.yam-home-composer-slot')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    window.dispatchEvent(new CustomEvent('yamshat:composer-action', { detail: { action } }));
+  };
 
   const handleThemeToggle = () => {
     toggleTheme();
@@ -391,7 +465,7 @@ export default function FeedEnhanced() {
               <div className="yam-composer-prompt-bar">
                 <div className="yam-composer-actions-inline">
                   {QUICK_ACTIONS.map((item) => (
-                    <button key={item.label} type="button" className={`yam-mini-action ${item.color}`}>
+                    <button key={item.label} type="button" className={`yam-mini-action ${item.color}`} onClick={() => handleQuickAction(item.action)}>
                       <span className="dot" />
                       {item.label}
                     </button>
@@ -417,10 +491,19 @@ export default function FeedEnhanced() {
               </div>
             </section>
 
-            <div className="yam-post-stack-v2">
+            <div className="yam-post-stack-v2" ref={postStackRef}>
               {feedPosts.map((post) => (
                 <PostCard key={post.id} post={post} />
               ))}
+              <div className="yam-feed-status-row">
+                {isFetchingNextPage
+                  ? 'جارٍ تحميل المنشورات الأقدم...'
+                  : hasNextPage
+                    ? 'اسحب شريط التمرير لأسفل لإظهار منشورات أكثر.'
+                    : isFetching && !feedPosts.length
+                      ? 'جارٍ تحميل المنشورات...'
+                      : 'تم عرض كل المنشورات الحالية.'}
+              </div>
             </div>
           </main>
 
@@ -433,7 +516,7 @@ export default function FeedEnhanced() {
               <div className="yam-profile-body-v2">
                 <div className="yam-profile-avatar-wrap">
                   <Avatar name={displayName} size={96} accent image />
-                  <button type="button" className="yam-avatar-camera-btn" aria-label="تغيير الصورة">
+                  <button type="button" className="yam-avatar-camera-btn" aria-label="تغيير الصورة" onClick={() => navigate('/profile')} title="الانتقال إلى الملف الشخصي">
                     <YamshatIcon name="profile" size={16} />
                   </button>
                 </div>
@@ -735,7 +818,12 @@ export default function FeedEnhanced() {
             cursor: wait;
           }
 
+          .page-content.yam-feed-page-locked {
+            overflow-y: hidden;
+          }
+
           .yam-center-stage {
+            position: relative;
             display: flex;
             flex-direction: column;
             gap: 18px;
@@ -807,6 +895,12 @@ export default function FeedEnhanced() {
             align-items: center;
             gap: 8px;
             font-weight: 700;
+            cursor: pointer;
+          }
+
+          .yam-mini-action:hover {
+            background: rgba(139, 92, 246, 0.12);
+            border-color: rgba(167, 139, 250, 0.24);
           }
 
           .yam-mini-action .dot {
@@ -897,6 +991,20 @@ export default function FeedEnhanced() {
 
           .yam-post-stack-v2::-webkit-scrollbar-thumb:hover {
             background: linear-gradient(180deg, rgba(167, 139, 250, 1), rgba(129, 140, 248, 1));
+          }
+
+          .yam-feed-status-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 54px;
+            padding: 0 16px;
+            border-radius: 18px;
+            border: 1px dashed rgba(167, 139, 250, 0.22);
+            background: rgba(139, 92, 246, 0.06);
+            color: #c4b5fd;
+            font-size: 13px;
+            font-weight: 700;
           }
 
           .yam-post-card-v2 {
@@ -1472,6 +1580,10 @@ export default function FeedEnhanced() {
           }
 
           @media (max-width: 768px) {
+            .page-content.yam-feed-page-locked {
+              overflow-y: auto;
+            }
+
             .yam-laptop-page {
               min-height: auto;
               overflow-x: hidden;
@@ -1543,6 +1655,12 @@ export default function FeedEnhanced() {
               width: 100%;
               justify-content: center;
               background: rgba(255,255,255,0.03);
+            }
+
+            .yam-center-stage,
+            .yam-post-stack-v2 {
+              max-height: none;
+              overflow: visible;
             }
           }
         `}</style>

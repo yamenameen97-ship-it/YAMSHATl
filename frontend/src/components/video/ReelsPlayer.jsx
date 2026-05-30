@@ -3,22 +3,25 @@ import UniversalPlayer from './UniversalPlayer.jsx';
 import videoService from '../../services/video/videoService.js';
 
 /**
- * ReelsPlayer — vertical scroll reels container.
+ * ReelsPlayer — حاوية الريلز بـ vertical scroll-snap (نسخة مُحسّنة).
+ *
+ * تحسينات:
+ *  ✓ Intersection Observer بثريشولدز أدق + debounce على activeIndex
+ *  ✓ Preload للريلز الجاي + اللي قبله (rewind سريع)
+ *  ✓ Pause تلقائي للـ video tag ساعة الـ tab مش visible (PageVisibility)
+ *  ✓ keyboard navigation (↑/↓/Space)
+ *  ✓ wheel & touch gesture-based snap (ميمسكش الـ scroll لو الريل آخر/أول)
+ *  ✓ يبعت onIndexChange و onVisible للأبّ
+ *  ✓ يلغي تحميل الـ <video> اللي مش في الـ window عشان يوفر باندويث
  *
  * Props:
  *   reels           : [{ id, videoUrl, poster, ...meta }]
- *   onLike          : (reel) => void
- *   onComment       : (reel) => void
- *   onShare         : (reel) => void
- *   onVisible       : (reel, index) => void (e.g. for view counting)
- *   renderOverlay   : (reel, index) => ReactNode (avatar/caption/actions)
+ *   onLike, onComment, onShare : (reel) => void
+ *   onVisible       : (reel, index) => void  (view-count tracking)
+ *   onIndexChange   : (index) => void
+ *   renderOverlay   : (reel, index, helpers) => ReactNode
  *   className       : string
- *
- * Behaviors:
- *   - vertical scroll-snap
- *   - preload next reel video metadata
- *   - only the visible reel plays (via UniversalPlayer smartPause)
- *   - infinite-scroll friendly (parent controls reels array)
+ *   keepWindow      : كام ريل نسيبه mounted حوالين النشط (default 2)
  */
 export default function ReelsPlayer({
   reels = [],
@@ -26,17 +29,33 @@ export default function ReelsPlayer({
   onComment,
   onShare,
   onVisible,
+  onIndexChange,
   renderOverlay,
   className = '',
+  keepWindow = 2,
 }) {
   const containerRef = useRef(null);
   const itemRefs = useRef(new Map());
+  const visibilityTimeoutRef = useRef(null);
+  const lastReportedRef = useRef(-1);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [pageVisible, setPageVisible] = useState(
+    typeof document !== 'undefined' ? !document.hidden : true
+  );
 
-  // Track which reel is on-screen
+  /* ---------- Page Visibility (pause لو الـ tab boring) ---------- */
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const onVis = () => setPageVisible(!document.hidden);
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
+
+  /* ---------- IntersectionObserver لرصد الريل النشط ---------- */
   useEffect(() => {
     const node = containerRef.current;
     if (!node || typeof IntersectionObserver === 'undefined') return undefined;
+
     const obs = new IntersectionObserver(
       (entries) => {
         let bestIdx = activeIndex;
@@ -48,24 +67,62 @@ export default function ReelsPlayer({
             if (!Number.isNaN(idx)) bestIdx = idx;
           }
         }
-        if (bestRatio >= 0.6 && bestIdx !== activeIndex) {
-          setActiveIndex(bestIdx);
-          if (typeof onVisible === 'function' && reels[bestIdx]) {
-            onVisible(reels[bestIdx], bestIdx);
-          }
+        if (bestRatio >= 0.65 && bestIdx !== activeIndex) {
+          // debounce بسيط عشان متعدّش الـ index في النص الانتقال
+          if (visibilityTimeoutRef.current) clearTimeout(visibilityTimeoutRef.current);
+          visibilityTimeoutRef.current = setTimeout(() => {
+            setActiveIndex(bestIdx);
+          }, 80);
         }
       },
-      { root: node, threshold: [0, 0.6, 1] }
+      { root: node, threshold: [0, 0.25, 0.5, 0.65, 0.85, 1] }
     );
     itemRefs.current.forEach((el) => el && obs.observe(el));
-    return () => obs.disconnect();
-  }, [reels, activeIndex, onVisible]);
+    return () => {
+      if (visibilityTimeoutRef.current) clearTimeout(visibilityTimeoutRef.current);
+      obs.disconnect();
+    };
+  }, [reels, activeIndex]);
 
-  // Preload next reel
+  /* ---------- إخطار الأب بتغيير الفهرس + tracking ---------- */
+  useEffect(() => {
+    if (typeof onIndexChange === 'function') onIndexChange(activeIndex);
+    if (
+      typeof onVisible === 'function'
+      && reels[activeIndex]
+      && lastReportedRef.current !== activeIndex
+    ) {
+      lastReportedRef.current = activeIndex;
+      onVisible(reels[activeIndex], activeIndex);
+    }
+  }, [activeIndex, reels, onIndexChange, onVisible]);
+
+  /* ---------- Preload الجاي + اللي قبله ---------- */
   useEffect(() => {
     const next = reels[activeIndex + 1];
-    if (next?.videoUrl) videoService.preload(next.videoUrl);
+    const prev = reels[activeIndex - 1];
+    if (next?.videoUrl) videoService?.preload?.(next.videoUrl);
+    if (prev?.videoUrl) videoService?.preload?.(prev.videoUrl);
   }, [activeIndex, reels]);
+
+  /* ---------- Keyboard navigation ---------- */
+  useEffect(() => {
+    const onKey = (e) => {
+      const node = containerRef.current;
+      if (!node) return;
+      if (e.key === 'ArrowDown' || e.key === 'PageDown') {
+        e.preventDefault();
+        const target = itemRefs.current.get(Math.min(activeIndex + 1, reels.length - 1));
+        target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+        e.preventDefault();
+        const target = itemRefs.current.get(Math.max(activeIndex - 1, 0));
+        target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [activeIndex, reels.length]);
 
   const setItemRef = useCallback((idx) => (node) => {
     if (node) itemRefs.current.set(idx, node);
@@ -82,10 +139,16 @@ export default function ReelsPlayer({
     flex: '0 0 auto',
   }), []);
 
+  const isInRenderWindow = useCallback(
+    (idx) => Math.abs(idx - activeIndex) <= keepWindow,
+    [activeIndex, keepWindow]
+  );
+
   return (
     <div
       ref={containerRef}
       className={`yamshat-reels-container ${className}`}
+      tabIndex={0}
       style={{
         height: '100dvh',
         minHeight: '100vh',
@@ -98,35 +161,58 @@ export default function ReelsPlayer({
         WebkitOverflowScrolling: 'touch',
         overscrollBehaviorY: 'contain',
         background: '#000',
+        outline: 'none',
       }}
     >
-      {reels.map((reel, idx) => (
-        <div
-          key={reel.id || idx}
-          ref={setItemRef(idx)}
-          data-idx={idx}
-          style={itemStyle}
-        >
-          <UniversalPlayer
-            variant="reel"
-            src={reel.videoUrl || reel.url}
-            poster={reel.poster}
-            isActive={idx === activeIndex}
-            onDoubleTapLike={() => typeof onLike === 'function' && onLike(reel)}
-          />
-          {/* Overlay (avatar, caption, actions) */}
-          {typeof renderOverlay === 'function' && (
-            <div style={{
-              position: 'absolute', inset: 0, pointerEvents: 'none',
-              display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
-            }}>
-              <div style={{ pointerEvents: 'auto' }}>
-                {renderOverlay(reel, idx, { onLike, onComment, onShare })}
+      {reels.map((reel, idx) => {
+        const inWindow = isInRenderWindow(idx);
+        const isActive = idx === activeIndex && pageVisible;
+        return (
+          <div
+            key={reel.id || idx}
+            ref={setItemRef(idx)}
+            data-idx={idx}
+            style={itemStyle}
+          >
+            {inWindow ? (
+              <UniversalPlayer
+                variant="reel"
+                src={reel.videoUrl || reel.url}
+                poster={reel.poster}
+                isActive={isActive}
+                onDoubleTapLike={() => typeof onLike === 'function' && onLike(reel)}
+              />
+            ) : (
+              // placeholder خفيف (الريل بعيد) — يحفظ الـ memory والباندويث
+              reel.poster ? (
+                <img
+                  src={reel.poster}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    background: '#000',
+                  }}
+                />
+              ) : <div style={{ width: '100%', height: '100%', background: '#000' }} />
+            )}
+
+            {typeof renderOverlay === 'function' && inWindow && (
+              <div style={{
+                position: 'absolute', inset: 0, pointerEvents: 'none',
+                display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+              }}>
+                <div style={{ pointerEvents: 'auto' }}>
+                  {renderOverlay(reel, idx, { onLike, onComment, onShare, isActive })}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
-      ))}
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

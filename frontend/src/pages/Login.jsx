@@ -57,8 +57,8 @@ export default function LoginEnhanced() {
     return () => clearInterval(timer);
   }, [captchaCooldown]);
 
-  const loadCaptcha = async () => {
-    if (captchaCooldown > 0) return;
+  const loadCaptcha = async (force = false) => {
+    if (!force && captchaCooldown > 0) return;
     try {
       setCaptchaLoading(true);
       setCaptchaError('');
@@ -74,8 +74,17 @@ export default function LoginEnhanced() {
   };
 
   useEffect(() => {
-    loadCaptcha();
+    loadCaptcha(true);
   }, []);
+
+  // إعادة تحميل الكابتشا تلقائياً قبل انتهاء صلاحيتها (مع هامش أمان 30s)
+  useEffect(() => {
+    if (!captcha?.expires_in_seconds) return undefined;
+    const ms = Math.max((Number(captcha.expires_in_seconds) - 30) * 1000, 30 * 1000);
+    const timer = setTimeout(() => loadCaptcha(true), ms);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [captcha?.captcha_id]);
 
   const handleChange = (key) => (event) => {
     const value = key === 'rememberMe' ? event.target.checked : event.target.value;
@@ -199,8 +208,13 @@ export default function LoginEnhanced() {
       const message = localizeAuthMessage(apiError?.message || err?.message, 'فشل تسجيل الدخول. يرجى التأكد من البيانات والمحاولة مرة أخرى.');
       setError(message);
 
-      if (apiError?.field === 'captcha' || message.includes('كابتشا')) {
-        loadCaptcha();
+      // لو الخطأ متعلق بالكابتشا، اعمل ريفريش فوري وامسح الإجابة القديمة
+      const captchaRelated = apiError?.field === 'captcha'
+        || message.includes('كابتشا')
+        || message.toLowerCase?.().includes('captcha');
+      if (captchaRelated) {
+        setForm((prev) => ({ ...prev, captchaAnswer: '' }));
+        loadCaptcha(true);
       }
     } finally {
       setLoading(false);

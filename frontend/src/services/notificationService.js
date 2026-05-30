@@ -92,9 +92,6 @@ export const notificationService = {
       if (getAuthToken()) {
         await this.registerDevice();
       }
-      if ('Notification' in window && Notification.permission === 'default') {
-        await Notification.requestPermission();
-      }
       await this.processOfflineQueue();
       window.addEventListener('online', () => this.processOfflineQueue());
       return true;
@@ -297,16 +294,16 @@ export const notificationService = {
       if ('serviceWorker' in navigator) {
         const registration = await navigator.serviceWorker.ready;
         return registration.showNotification(title, {
-          icon: '/icons/icon-192.png',
-          badge: '/icons/icon-192.png',
+          icon: '/icons/icon-512.png',
+          badge: '/icons/badge-96.png',
           tag: options.tag || 'yamshat-local-push',
           data: { url: options.url || '/' },
           ...options,
         });
       }
       return new Notification(title, {
-        icon: '/icons/icon-192.png',
-        badge: '/icons/icon-192.png',
+        icon: '/icons/icon-512.png',
+        badge: '/icons/badge-96.png',
         ...options,
       });
     }

@@ -76,7 +76,7 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
         __html: `
           .app-shell {
             display: flex;
-            min-height: 100vh;
+            min-height: 100dvh;
             min-height: 100dvh;
             height: 100vh;
             height: 100dvh;
@@ -139,7 +139,7 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
           }
 
           .page-shell-glow.conversation-mode {
-            min-height: 100vh;
+            min-height: 100dvh;
           }
 
           .page-content::-webkit-scrollbar {

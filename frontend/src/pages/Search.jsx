@@ -296,15 +296,15 @@ export default function Search() {
 
   return (
     <MainLayout>
-      <div style={{ maxWidth: 1120, margin: '0 auto', padding: 20, height: 'calc(100vh - 70px)', display: 'flex', flexDirection: 'column' }}>
+      <div className="yam-search-page-shell" style={{ maxWidth: 1120, margin: '0 auto', padding: 20, minHeight: 'calc(var(--yam-vh, 100vh) - 70px)', display: 'flex', flexDirection: 'column', gap: 16 }}>
         <Card style={{ padding: 20, marginBottom: 18 }}>
           <div style={{ display: 'grid', gap: 14 }}>
             <div>
               <h2 style={{ margin: '0 0 8px' }}>البحث الذكي</h2>
-              <p className="muted" style={{ margin: 0 }}>Indexed search + caching + filters + hashtags + mentions + user discovery.</p>
+              <p className="muted yam-search-subtitle" style={{ margin: 0 }}>بحث مفهرس مع تخزين مؤقت وفلاتر وهاشتاجات ومنشنات واكتشاف مستخدمين.</p>
             </div>
 
-            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحث باسم شخص أو هاشتاج أو @mention أو محتوى..." />
+            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحث باسم شخص أو #هاشتاج أو @منشن" inputClassName="yam-search-input" dir="rtl" />
 
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               {SEARCH_FILTERS.map((filter) => (
@@ -389,7 +389,7 @@ export default function Search() {
           ) : null}
 
           {!loading && !error && debouncedQuery ? (
-            <div style={{ height: '100%', display: 'grid', gridTemplateColumns: '1.4fr 0.78fr', gap: 16 }}>
+            <div className="yam-search-results-layout" style={{ height: '100%', display: 'grid', gridTemplateColumns: '1.4fr 0.78fr', gap: 16 }}>
               <div style={{ minHeight: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <Card style={{ padding: 16 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -456,6 +456,19 @@ export default function Search() {
       </div>
 
       <style>{`
+        .yam-search-page-shell {
+          box-sizing: border-box;
+        }
+        .yam-search-input {
+          direction: rtl;
+          text-align: right;
+        }
+        .yam-search-subtitle {
+          line-height: 1.7;
+        }
+        .yam-search-results-layout {
+          height: 100%;
+        }
         .search-dashboard-grid { display: grid; grid-template-columns: 1.1fr 0.9fr 1fr; gap: 16px; }
         .advanced-search-grid { display: grid; grid-template-columns: 180px repeat(2, auto) 1fr 1fr; gap: 10px; align-items: center; }
         .search-select-field { display: grid; gap: 6px; color: #cbd5e1; font-size: 13px; }
@@ -484,7 +497,23 @@ export default function Search() {
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         @media (max-width: 980px) {
-          .search-dashboard-grid, .advanced-search-grid { grid-template-columns: 1fr; }
+          .yam-search-page-shell {
+            padding: 14px !important;
+            min-height: auto !important;
+          }
+          .search-dashboard-grid,
+          .advanced-search-grid,
+          .yam-search-results-layout {
+            grid-template-columns: 1fr;
+          }
+        }
+        @media (max-width: 640px) {
+          .yam-search-page-shell {
+            padding: 12px 12px 96px !important;
+          }
+          .yam-search-subtitle {
+            font-size: 13px;
+          }
         }
       `}</style>
     </MainLayout>

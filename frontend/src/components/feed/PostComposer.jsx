@@ -623,14 +623,50 @@ export default function PostComposer() {
           .composer-editor-topline {
             align-items: stretch;
           }
-          .composer-toolbar,
+          .composer-toolbar {
+            gap: 8px;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            padding-bottom: 4px;
+            scrollbar-width: none;
+            -webkit-overflow-scrolling: touch;
+          }
+          .composer-toolbar::-webkit-scrollbar {
+            display: none;
+          }
+          .composer-chip {
+            width: auto;
+            min-width: max-content;
+            justify-content: center;
+            padding: 8px 12px;
+            flex: 0 0 auto;
+          }
           .composer-actions-row {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 8px;
           }
           .composer-action-btn,
-          .composer-chip {
+          .composer-actions-row > button {
+            width: 100%;
+            min-width: 0;
+            justify-content: center;
+            padding-inline: 12px;
+          }
+          .composer-status-badge {
+            align-self: flex-start;
+          }
+          .composer-drop-hint {
             width: 100%;
             justify-content: center;
+            text-align: center;
+          }
+          .composer-quote-box {
+            flex-direction: column;
+          }
+          .composer-textarea {
+            min-height: 96px;
+            line-height: 1.75;
           }
         }
       `}</style>

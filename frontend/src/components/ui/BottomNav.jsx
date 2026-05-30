@@ -23,11 +23,12 @@ function BottomNav({ items = [], className = '' }) {
             className={`ui-bottom-nav-item ${isActive ? 'is-active' : ''}`.trim()}
             aria-current={isActive ? 'page' : undefined}
           >
-            <span className="ui-bottom-nav-icon" aria-hidden="true">{item.icon}</span>
+            <span className="ui-bottom-nav-icon" aria-hidden="true">
+              {item.icon}
+              {item.badge === 'live' ? <span className="mobile-live-dot" aria-hidden="true" /> : null}
+            </span>
             <span className="ui-bottom-nav-label">{item.label}</span>
-            {item.badge === 'live' ? (
-              <span className="mobile-live-dot" aria-hidden="true" />
-            ) : item.badge ? (
+            {item.badge !== 'live' && item.badge ? (
               <strong className="ui-bottom-nav-badge" aria-label={`${item.badge} غير مقروء`}>
                 {item.badge}
               </strong>

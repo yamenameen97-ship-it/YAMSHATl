@@ -522,7 +522,7 @@ export default function Live() {
                   <div className="yam-live-hero-icon">🎥</div>
                   <h1>{activeRoom?.title || 'بث مباشر مميز'}</h1>
                   <p>المضيف: <strong>{hostName}</strong></p>
-                  <div className="yam-live-stage-tech">Database-backed live rooms • LiveKit token endpoint • Camera preview • Real-time socket comments</div>
+                  <div className="yam-live-stage-tech">غرف بث مرتبطة بقاعدة البيانات • تكامل LiveKit • معاينة الكاميرا • تعليقات لحظية مباشرة</div>
                 </div>
               ) : null}
             </div>
@@ -997,20 +997,67 @@ export default function Live() {
           }
           @media (max-width: 720px) {
             .yam-live-page {
-              padding: 12px;
+              padding: 12px 12px 96px;
+              gap: 14px;
+            }
+            .yam-live-stage-card,
+            .yam-live-info-card,
+            .yam-live-side-card {
+              border-radius: 22px;
             }
             .yam-live-stage-card {
               min-height: auto;
               padding: 14px;
             }
+            .yam-live-stage-head,
+            .yam-live-stage-footer {
+              align-items: stretch;
+            }
+            .yam-live-badges,
+            .yam-live-stage-actions,
+            .yam-live-stage-tools {
+              display: grid;
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+              width: 100%;
+              gap: 8px;
+            }
+            .yam-live-action-btn,
+            .yam-chip-btn {
+              width: 100%;
+              justify-content: center;
+              text-align: center;
+            }
             .yam-live-video-shell {
-              min-height: 240px;
+              min-height: 220px;
+              margin-top: 14px;
+            }
+            .yam-live-video-placeholder {
+              padding: 24px 18px;
+            }
+            .yam-live-video-placeholder h1 {
+              font-size: 24px;
+            }
+            .yam-live-stage-tech {
+              font-size: 12px;
+              line-height: 1.7;
             }
             .yam-info-grid {
               grid-template-columns: 1fr 1fr;
             }
+            .yam-stat-box {
+              padding: 12px;
+            }
+            .yam-live-chat-box {
+              min-height: 320px;
+            }
+            .yam-comment-stream {
+              max-height: 220px;
+            }
             .yam-comment-composer {
               flex-direction: column;
+            }
+            .yam-comment-composer button {
+              width: 100%;
             }
             .yam-gift-tray {
               grid-template-columns: 1fr 1fr;

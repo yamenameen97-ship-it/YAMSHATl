@@ -28,7 +28,7 @@ import './styles/mobile-fixes.css';
 import './styles/brand-chat-notifications-refresh.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 
-const BUILD_ID = 'yamshat-mobile-fixed-20260529-r1';
+const BUILD_ID = 'yamshat-mobile-fixed-20260530-r2';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

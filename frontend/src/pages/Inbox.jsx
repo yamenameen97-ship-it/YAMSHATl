@@ -924,32 +924,82 @@ export default function Inbox() {
             }
           }
           @media (max-width: 980px) {
+            .yam-shell-page,
+            .yam-chat-shell {
+              min-height: auto;
+              height: auto;
+              overflow: visible;
+            }
             .yam-chat-shell {
               grid-template-columns: minmax(0, 1fr);
             }
-            .yam-left-rail {
+            .yam-left-rail,
+            .yam-profile-panel {
               display: none;
             }
             .yam-center-stage {
-              padding: 16px;
+              padding: 16px 14px 96px;
+              overflow: visible;
             }
             .yam-stats-grid {
               grid-template-columns: repeat(2, minmax(0, 1fr));
             }
+            .yam-stage-card {
+              overflow: visible;
+            }
             .yam-stage-header-row {
               flex-direction: column;
+              padding: 18px 16px 14px;
             }
             .yam-filter-pills {
               justify-content: flex-start;
             }
           }
           @media (max-width: 720px) {
+            .yam-top-search-bar {
+              min-height: 56px;
+              padding-inline: 14px;
+            }
+            .yam-thread-list {
+              padding-bottom: 0;
+            }
             .yam-thread-row {
-              grid-template-columns: 64px minmax(0, 1fr);
+              grid-template-columns: 56px minmax(0, 1fr);
+              align-items: flex-start;
+              padding: 14px 14px 12px;
+              gap: 12px;
+            }
+            .yam-thread-avatar-slot {
+              width: 56px;
+            }
+            .yam-thread-content {
+              gap: 6px;
+            }
+            .yam-thread-header-line,
+            .yam-thread-footer-line {
+              flex-direction: column;
+              align-items: flex-start;
+              gap: 6px;
+            }
+            .yam-thread-title-wrap,
+            .yam-thread-badges {
+              flex-wrap: wrap;
+            }
+            .yam-thread-preview-line p {
+              white-space: normal;
+              display: -webkit-box;
+              -webkit-line-clamp: 2;
+              -webkit-box-orient: vertical;
+              overflow: hidden;
+              line-height: 1.65;
+            }
+            .yam-status-copy {
+              white-space: normal;
             }
             .yam-thread-actions {
               grid-column: 2;
-              justify-content: flex-end;
+              justify-content: flex-start;
+              flex-wrap: wrap;
             }
           }
         `}</style>

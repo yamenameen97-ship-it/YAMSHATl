@@ -901,13 +901,13 @@ textarea.input {
 
 .ui-bottom-nav-icon,
 .mobile-dock-icon {
+  position: relative;
   font-size: 1.125rem;
   line-height: 1;
 }
 
 .ui-bottom-nav-badge,
-.mobile-dock-badge,
-.mobile-live-dot {
+.mobile-dock-badge {
   position: absolute;
   inset-inline-end: 10px;
   top: 8px;
@@ -929,11 +929,14 @@ textarea.input {
 }
 
 .mobile-live-dot {
+  position: absolute;
+  top: -2px;
+  inset-inline-end: -8px;
   width: 8px;
   height: 8px;
   border-radius: 999px;
   background: var(--success);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 18%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--surface-2) 92%, transparent);
 }
 
 .ui-chat-bubble-row {

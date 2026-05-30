@@ -126,6 +126,17 @@ def is_user_online(*, username: str | None = None, user_id: int | None = None) -
     return False
 
 
+def emit_user_event_background(user_id: int, event: str, payload: dict) -> None:
+    try:
+        sio.start_background_task(sio.emit, event, payload, room=f'user:{int(user_id)}')
+    except Exception:
+        pass
+
+
+async def emit_user_event(user_id: int, event: str, payload: dict) -> None:
+    await sio.emit(event, payload, room=f'user:{int(user_id)}')
+
+
 async def _get_session_user(sid: str) -> dict | None:
     session = await sio.get_session(sid)
     if session and session.get('user_id') and session.get('username'):

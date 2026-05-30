@@ -3,6 +3,7 @@ from urllib.parse import quote
 from sqlalchemy.orm import Session
 
 from app.core.socket_manager import manager
+from app.core.socket_server import emit_user_event, is_user_online
 from app.models.notification import Notification
 from app.models.user import User
 from app.services.push_service import send_push_notification
@@ -59,25 +60,32 @@ async def create_and_send_notification(
     db.commit()
     db.refresh(notification)
 
+    live_item = {
+        'id': notification.id,
+        'notification_type': notification.type,
+        'type': notification.type,
+        'title': notification.title,
+        'message': notification.body,
+        'text': notification.body,
+        'body': notification.body,
+        'is_read': notification.is_read,
+        'seen': notification.is_read,
+        'created_at': notification.created_at.isoformat(),
+        'payload': notification.data,
+        'data': notification.data,
+        'screen': screen,
+        'path': path,
+    }
     realtime_payload = {
         'type': 'notification',
-        'data': {
-            'id': notification.id,
-            'notification_type': notification.type,
-            'title': notification.title,
-            'body': notification.body,
-            'is_read': notification.is_read,
-            'created_at': notification.created_at.isoformat(),
-            'payload': notification.data,
-            'screen': screen,
-            'path': path,
-        },
+        'data': live_item,
     }
     await manager.send_to_user(user_id, realtime_payload)
+    await emit_user_event(user_id, 'new_notification', live_item)
     await increment_unread_counter(user_id)
 
     user = db.query(User).filter(User.id == user_id).first()
-    if user and user.fcm_token and not manager.is_online(user_id):
+    if user and user.fcm_token and not (manager.is_online(user_id) or is_user_online(user_id=user_id)):
         send_push_notification(
             token=user.fcm_token,
             title=title,

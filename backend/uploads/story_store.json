@@ -1,29 +1,4 @@
 {
   "next_id": 2,
-  "stories": [
-    {
-      "id": "1",
-      "user_id": 1,
-      "username": "alice",
-      "media_url": "/uploads/3b0ce460575a4b7d8b70b8202c21a5c8_x.jpg",
-      "created_at": "2026-05-29T00:14:44.722686",
-      "expires_at": "2026-05-30T00:14:44.722686",
-      "caption": "story cap",
-      "privacy": "public",
-      "music": "",
-      "stickers": [],
-      "mentions": [],
-      "poll_question": "",
-      "poll_options": [],
-      "countdown_at": "",
-      "filter_name": "",
-      "drawing_data": "",
-      "auto_delete_hours": 24,
-      "is_close_friends": false,
-      "highlight": false,
-      "reactions": {},
-      "seen_by": [],
-      "replies": []
-    }
-  ]
+  "stories": []
 }

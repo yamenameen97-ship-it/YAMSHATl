@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import Boolean, Column, DateTime, Integer, String
+from sqlalchemy.orm import relationship
 
 from app.db.base import Base
 
@@ -52,6 +53,8 @@ class User(Base):
     phone_verification_expires_at = Column(DateTime, nullable=True)
     phone_verification_attempts = Column(Integer, default=0, nullable=False)
     phone_verification_locked_until = Column(DateTime, nullable=True)
+
+    search_history = relationship('SearchHistory', back_populates='user', cascade='all, delete-orphan')
 
     @property
     def full_name(self) -> str:

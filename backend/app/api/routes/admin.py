@@ -23,7 +23,7 @@ from app.core.dependencies import get_current_user, get_db
 from app.core.live_store import live_store
 from app.core.threat_monitor import get_threat_monitor_snapshot
 from app.core.security import hash_password, verify_password
-from app.core.socket_server import sio
+from app.core.socket_server import emit_user_event_background, sio
 from app.models.app_setting import AppSetting
 from app.models.audit_log import AuditLog
 from app.models.comment import Comment
@@ -1340,19 +1340,42 @@ def broadcast_notification(
         users_query = users_query.filter(User.role == payload.target_role.lower())
     recipients = users_query.all()
     created = 0
+    realtime_notifications: list[tuple[int, dict[str, Any]]] = []
     for user in recipients:
-        db.add(
-            Notification(
-                user_id=user.id,
-                type=payload.type.upper(),
-                title=payload.title,
-                body=payload.body,
-                data={'broadcast': True, 'target_role': payload.target_role},
-            )
+        notification = Notification(
+            user_id=user.id,
+            type=payload.type.upper(),
+            title=payload.title,
+            body=payload.body,
+            data={'broadcast': True, 'target_role': payload.target_role, 'screen': 'notifications', 'path': '/notifications'},
         )
+        db.add(notification)
+        db.flush()
+        realtime_notifications.append((
+            user.id,
+            {
+                'id': notification.id,
+                'type': notification.type,
+                'notification_type': notification.type,
+                'title': notification.title,
+                'message': notification.body,
+                'text': notification.body,
+                'body': notification.body,
+                'created_at': notification.created_at.isoformat() if notification.created_at else datetime.utcnow().isoformat(),
+                'seen': False,
+                'is_read': False,
+                'screen': 'notifications',
+                'path': '/notifications',
+                'data': notification.data if isinstance(notification.data, dict) else {},
+                'payload': notification.data if isinstance(notification.data, dict) else {},
+            },
+        ))
         created += 1
     db.commit()
     _add_audit_log(db, current_user, 'notification_broadcast', 'notification', 'broadcast', f'تم إرسال إشعار جماعي إلى {created} مستخدم.', {'target_role': payload.target_role})
+    for target_user_id, realtime_payload in realtime_notifications:
+        emit_user_event_background(target_user_id, 'new_notification', realtime_payload)
+
     _emit_admin_event(
         'admin:notification',
         {

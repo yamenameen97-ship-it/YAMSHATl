@@ -34,7 +34,7 @@ class SearchHistory(Base):
     __tablename__ = "search_history"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("user.id"), index=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete='CASCADE'), index=True, nullable=False)
     query = Column(String(255), nullable=False, index=True)
     category = Column(Enum(SearchCategoryEnum), default=SearchCategoryEnum.TOP)
     results_count = Column(Integer, default=0)

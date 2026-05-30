@@ -984,7 +984,7 @@ export default function ReelsPage() {
             color: #fff;
             display: flex;
             flex-direction: column;
-            overflow-y:auto;
+            overflow: hidden;
           }
           .reels-header-bar {
             position: absolute;
@@ -1126,7 +1126,7 @@ export default function ReelsPage() {
             height: 4px;
             border-radius: 999px;
             background: rgba(255,255,255,0.16);
-            overflow-y:auto;
+            overflow: hidden;
             z-index: 24;
           }
           .reel-progress-fill {

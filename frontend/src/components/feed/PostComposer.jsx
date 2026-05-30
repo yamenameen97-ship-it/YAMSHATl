@@ -557,7 +557,7 @@ export default function PostComposer() {
           position: relative;
           margin-top: 12px;
           border-radius: 14px;
-          overflow-y:auto;
+          overflow: hidden;
           max-height: 320px;
           border: 1px solid rgba(255,255,255,0.08);
         }

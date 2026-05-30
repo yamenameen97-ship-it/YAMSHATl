@@ -752,7 +752,7 @@ small,
   height: var(--avatar-size, 44px);
   min-width: var(--avatar-size, 44px);
   border-radius: 999px;
-  overflow-y:auto;
+  overflow: hidden;
   display: inline-grid;
   place-items: center;
   background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 70%, white 4%), color-mix(in srgb, var(--secondary) 68%, white 6%));

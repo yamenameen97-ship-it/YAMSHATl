@@ -285,14 +285,14 @@ export default function Sidebar() {
         .yam-entity-copy { min-width: 0; display: grid; gap: 2px; }
         .yam-entity-copy strong {
           white-space: nowrap;
-          overflow-y:auto;
+          overflow: hidden;
           text-overflow: ellipsis;
           font-size: 15px;
         }
         .yam-entity-copy small {
           color: #94a3b8;
           white-space: nowrap;
-          overflow-y:auto;
+          overflow: hidden;
           text-overflow: ellipsis;
         }
         .yam-live-metric {

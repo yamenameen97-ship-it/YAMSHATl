@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import useVideo from '../../hooks/media/useVideo.js';
 
 /**
@@ -67,6 +67,28 @@ export default function UniversalPlayer({
   const [currentSrc, setCurrentSrc] = useState(src);
   const [fullscreen, setFullscreen] = useState(false);
 
+  const fullscreenApi = useMemo(() => ({
+    request: (node) => (
+      node?.requestFullscreen
+      || node?.webkitRequestFullscreen
+      || node?.mozRequestFullScreen
+      || node?.msRequestFullscreen
+    ),
+    exit: (
+      document.exitFullscreen
+      || document.webkitExitFullscreen
+      || document.mozCancelFullScreen
+      || document.msExitFullscreen
+    ),
+    element: () => (
+      document.fullscreenElement
+      || document.webkitFullscreenElement
+      || document.mozFullScreenElement
+      || document.msFullscreenElement
+      || null
+    ),
+  }), []);
+
   // For reels: drive play based on isActive prop
   useEffect(() => {
     if (variant !== 'reel') return;
@@ -101,16 +123,46 @@ export default function UniversalPlayer({
     }, 300);
   }, [variant, toggle, onDoubleTapLike, lastTapRef]);
 
+  useEffect(() => {
+    const syncFullscreenState = () => setFullscreen(Boolean(fullscreenApi.element()));
+
+    document.addEventListener('fullscreenchange', syncFullscreenState);
+    document.addEventListener('webkitfullscreenchange', syncFullscreenState);
+    document.addEventListener('mozfullscreenchange', syncFullscreenState);
+    document.addEventListener('MSFullscreenChange', syncFullscreenState);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', syncFullscreenState);
+      document.removeEventListener('webkitfullscreenchange', syncFullscreenState);
+      document.removeEventListener('mozfullscreenchange', syncFullscreenState);
+      document.removeEventListener('MSFullscreenChange', syncFullscreenState);
+    };
+  }, [fullscreenApi]);
+
   // fullscreen
-  const handleFullscreen = useCallback(() => {
+  const handleFullscreen = useCallback(async () => {
     const node = containerRef.current;
     if (!node) return;
-    if (!document.fullscreenElement) {
-      try { node.requestFullscreen?.(); setFullscreen(true); } catch { /* ignore */ }
-    } else {
-      try { document.exitFullscreen?.(); setFullscreen(false); } catch { /* ignore */ }
+
+    try {
+      if (!fullscreenApi.element()) {
+        const requestFullscreen = fullscreenApi.request(node);
+        if (requestFullscreen) {
+          await requestFullscreen.call(node);
+          setFullscreen(true);
+        }
+        return;
+      }
+
+      const exitFullscreen = fullscreenApi.exit;
+      if (exitFullscreen) {
+        await exitFullscreen.call(document);
+        setFullscreen(false);
+      }
+    } catch {
+      /* ignore */
     }
-  }, [containerRef]);
+  }, [containerRef, fullscreenApi]);
 
   // PiP
   const handlePiP = useCallback(async () => {

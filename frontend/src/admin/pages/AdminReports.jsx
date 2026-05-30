@@ -515,7 +515,7 @@ export default function AdminReports() {
         .detail-item label { font-size: 12px; color: #64748b; margin-bottom: 4px; font-weight: bold; }
         .detail-item span { font-size: 14px; color: #1e293b; }
         
-        .ai-score-bar { width: 100%; height: 6px; background: #e2e8f0; border-radius: 3px; overflow-y:auto; margin: 4px 0; }
+        .ai-score-bar { width: 100%; height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; margin: 4px 0; }
         .ai-score-fill { height: 100%; background: linear-gradient(90deg, #3b82f6, #10b981); }
         
         .target-info { padding: 12px; background: #f1f5f9; border-radius: 6px; }

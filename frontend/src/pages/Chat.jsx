@@ -592,7 +592,7 @@ export default function Chat() {
               radial-gradient(circle at top left, rgba(59,130,246,0.08), transparent 20%),
               #040714;
             color: #fff;
-            overflow-y:auto;
+            overflow: hidden;
           }
           .yam-chat-sidebar,
           .yam-side-profile-panel {
@@ -735,7 +735,7 @@ export default function Chat() {
           .yam-side-profile-copy h2,
           .yam-side-profile-copy p {
             white-space: nowrap;
-            overflow-y:auto;
+            overflow: hidden;
             text-overflow: ellipsis;
           }
           .yam-contact-copy span,
@@ -814,7 +814,7 @@ export default function Chat() {
             font-size: 20px;
             font-weight: 900;
             white-space: nowrap;
-            overflow-y:auto;
+            overflow: hidden;
             text-overflow: ellipsis;
           }
           .yam-chat-stage-peer-copy span {
@@ -1054,7 +1054,7 @@ export default function Chat() {
             padding: 0;
             margin-bottom: 10px;
             border-radius: 20px;
-            overflow-y:auto;
+            overflow: hidden;
             background: rgba(255,255,255,0.04);
             position: relative;
             cursor: zoom-in;
@@ -1184,7 +1184,7 @@ export default function Chat() {
           }
           .yam-file-copy strong {
             white-space: nowrap;
-            overflow-y:auto;
+            overflow: hidden;
             text-overflow: ellipsis;
           }
           .bubble-text {
@@ -1326,7 +1326,7 @@ export default function Chat() {
             pointer-events: none;
             position: absolute;
             inset: 0;
-            overflow-y:auto;
+            overflow: hidden;
           }
           .flying-heart {
             position: absolute;

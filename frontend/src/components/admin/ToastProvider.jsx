@@ -97,7 +97,7 @@ export function ToastProvider({ children }) {
           font-weight: 700;
         }
         .toast {
-          overflow-y:auto;
+          overflow: hidden;
           position: relative;
         }
         .toast-progress {

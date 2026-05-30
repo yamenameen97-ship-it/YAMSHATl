@@ -78,10 +78,12 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
             display: flex;
             min-height: 100vh;
             min-height: 100dvh;
-            height: 100vh;
-            height: 100dvh;
+            height: auto;
             background: var(--app-background);
-            overflow-y:auto;
+            overflow-x: hidden;
+            overflow-y: visible;
+            --yam-mobile-dock-height: calc(64px + env(safe-area-inset-bottom, 0px));
+            --yam-mobile-dock-offset: calc(var(--yam-mobile-dock-height) + 16px);
           }
 
           .app-shell.native-shell,
@@ -93,8 +95,9 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
             display: flex;
             flex-direction: column;
             flex: 1;
-            overflow-y:auto;
+            overflow: hidden;
             min-width: 0;
+            min-height: 0;
           }
 
           .main-shell.native-shell {
@@ -103,6 +106,7 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
 
           .page-content {
             flex: 1;
+            min-height: 0;
             overflow-y: auto;
             overflow-x: hidden;
             scroll-behavior: smooth;
@@ -113,12 +117,12 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
           }
 
           .page-content.conversation-mode {
-            overflow-y:auto;
+            overflow: hidden;
             padding-bottom: 0;
           }
 
           .page-content.lock-scroll {
-            overflow-y:auto;
+            overflow: hidden;
           }
 
           .page-content.is-transitioning {
@@ -128,7 +132,7 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
           }
 
           .page-content.native-shell {
-            padding-bottom: 68px;
+            padding-bottom: max(68px, var(--yam-mobile-dock-offset));
           }
 
           .page-shell-glow {
@@ -171,8 +175,13 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
           }
 
           @media (max-width: 1023px) {
+            .app-shell {
+              min-height: 100svh;
+              min-height: 100dvh;
+            }
+
             .page-content:not(.conversation-mode) {
-              padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+              padding-bottom: var(--yam-mobile-dock-offset);
               padding-top: calc(env(safe-area-inset-top, 0px));
               -webkit-overflow-scrolling: touch;
               overscroll-behavior-y: contain;

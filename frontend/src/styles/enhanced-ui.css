@@ -173,7 +173,7 @@
   background: var(--yam-gradient);
   color: white;
   font-weight: 800;
-  overflow-y:auto;
+  overflow: hidden;
   flex-shrink: 0;
 }
 
@@ -214,7 +214,7 @@
 
 .yam-media-frame {
   width: 100%;
-  overflow-y:auto;
+  overflow: hidden;
   border-radius: 24px;
   background: linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(30, 41, 59, 0.86));
   border: 1px solid rgba(148, 163, 184, 0.14);
@@ -242,7 +242,7 @@
 .yam-live-card,
 .yam-reel-card {
   position: relative;
-  overflow-y:auto;
+  overflow: hidden;
   border-radius: 28px;
   background: var(--yam-panel-strong);
   border: 1px solid rgba(148, 163, 184, 0.12);
@@ -443,7 +443,7 @@
   background:rgba(12,18,34,.88)!important;
   border:1px solid var(--yam-line)!important;
   border-radius:26px!important;
-  overflow-y:auto;
+  overflow:hidden;
   backdrop-filter:blur(18px);
   box-shadow:var(--shadow-overlay);
 }

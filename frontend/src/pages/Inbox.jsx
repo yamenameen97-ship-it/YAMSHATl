@@ -379,7 +379,7 @@ export default function Inbox() {
           .yam-shell-page {
             min-height: 100vh;
             height: 100vh;
-            overflow-y:auto;
+            overflow: hidden;
             background:
               radial-gradient(circle at top right, rgba(124, 58, 237, 0.14), transparent 26%),
               radial-gradient(circle at top left, rgba(59, 130, 246, 0.08), transparent 22%),
@@ -392,7 +392,7 @@ export default function Inbox() {
             grid-template-columns: 300px minmax(0, 1fr) 340px;
             background: rgba(4, 7, 20, 0.98);
             color: #fff;
-            overflow-y:auto;
+            overflow: hidden;
           }
           .yam-left-rail,
           .yam-profile-panel {
@@ -555,7 +555,7 @@ export default function Inbox() {
           .yam-thread-header-line strong,
           .yam-thread-preview-line p {
             white-space: nowrap;
-            overflow-y:auto;
+            overflow: hidden;
             text-overflow: ellipsis;
           }
           .yam-favorite-copy span,
@@ -587,7 +587,7 @@ export default function Inbox() {
             min-height: 0;
             padding: 20px 22px 18px;
             gap: 16px;
-            overflow-y:auto;
+            overflow: hidden;
           }
           .yam-toolbar-card {
             display: grid;
@@ -644,7 +644,7 @@ export default function Inbox() {
             border-radius: 28px;
             border: 1px solid rgba(255,255,255,0.06);
             background: linear-gradient(180deg, rgba(7, 10, 24, 0.95), rgba(4, 7, 18, 0.98));
-            overflow-y:auto;
+            overflow: hidden;
             display: flex;
             flex-direction: column;
           }

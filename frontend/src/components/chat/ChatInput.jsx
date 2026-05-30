@@ -406,7 +406,7 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
         .yam-reply-copy span,
         .yam-attachment-copy strong,
         .yam-attachment-copy span {
-          overflow-y:auto;
+          overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
         }
@@ -440,7 +440,7 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
           border-radius: 22px;
           border: 1px solid rgba(255,255,255,0.08);
           background: rgba(255,255,255,0.035);
-          overflow-y:auto;
+          overflow: hidden;
         }
         .yam-attachment-card::before {
           content: '';
@@ -479,7 +479,7 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
           height: 6px;
           width: 100%;
           border-radius: 999px;
-          overflow-y:auto;
+          overflow: hidden;
           background: rgba(255,255,255,0.08);
         }
         .yam-progress-fill {

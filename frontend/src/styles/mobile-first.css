@@ -266,7 +266,7 @@ select {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow-y:auto;
+  overflow: hidden;
 }
 
 @supports not (height: 100svh) {
@@ -477,7 +477,7 @@ img, video, canvas, svg {
 .pinned-text {
   font-size: 0.85rem;
   min-width: 0;
-  overflow-y:auto;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -527,7 +527,7 @@ img, video, canvas, svg {
 
 .smart-media-preview {
   border-radius: 14px;
-  overflow-y:auto;
+  overflow: hidden;
   margin-bottom: 8px;
   background: rgba(0, 0, 0, 0.2);
 }
@@ -557,7 +557,7 @@ img, video, canvas, svg {
   z-index: 1000;
   min-width: 180px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
-  overflow-y:auto;
+  overflow: hidden;
 }
 
 .context-menu button {

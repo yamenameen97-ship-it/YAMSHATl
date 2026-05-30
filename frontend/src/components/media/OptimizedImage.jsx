@@ -202,7 +202,7 @@ export default function OptimizedImage({
       <style>{`
         picture {
           display: block;
-          overflow-y:auto;
+          overflow: hidden;
         }
 
         .optimized-image {

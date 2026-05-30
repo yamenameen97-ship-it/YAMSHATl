@@ -75,10 +75,11 @@ export default function ReelsPlayer({
   const itemStyle = useMemo(() => ({
     position: 'relative',
     width: '100%',
-    height: '100%',
+    height: '100dvh',
+    minHeight: '100vh',
     scrollSnapAlign: 'start',
     scrollSnapStop: 'always',
-    flex: '0 0 100%',
+    flex: '0 0 auto',
   }), []);
 
   return (
@@ -86,12 +87,16 @@ export default function ReelsPlayer({
       ref={containerRef}
       className={`yamshat-reels-container ${className}`}
       style={{
-        height: '100%',
+        height: '100dvh',
+        minHeight: '100vh',
+        maxHeight: '100dvh',
         width: '100%',
         overflowY: 'auto',
+        overflowX: 'hidden',
         scrollSnapType: 'y mandatory',
         scrollBehavior: 'smooth',
         WebkitOverflowScrolling: 'touch',
+        overscrollBehaviorY: 'contain',
         background: '#000',
       }}
     >

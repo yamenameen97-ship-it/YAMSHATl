@@ -285,7 +285,7 @@
   font-size: 13px;
   opacity: 0.75;
   white-space: nowrap;
-  overflow-y:auto;
+  overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
 }
@@ -329,7 +329,7 @@
   padding: 0;
   margin: -6px -6px 8px;
   border-radius: var(--ds-radius-md);
-  overflow-y:auto;
+  overflow: hidden;
   cursor: zoom-in;
   background: #000;
   display: block;
@@ -396,7 +396,7 @@
 .yam-file-copy { display: flex; flex-direction: column; min-width: 0; }
 .yam-file-copy strong {
   font-size: 13px; font-weight: var(--ds-fw-semibold);
-  white-space: nowrap; overflow-y:auto; text-overflow: ellipsis;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   max-width: 220px;
 }
 .yam-file-copy small { font-size: 11px; opacity: 0.65; }
@@ -600,7 +600,7 @@
   max-width: 92vw;
   max-height: 88vh;
   border-radius: var(--ds-radius-lg);
-  overflow-y:auto;
+  overflow: hidden;
   box-shadow: var(--ds-shadow-xl);
   animation: mediaContentIn 320ms var(--ds-ease-spring) both;
 }

@@ -237,7 +237,7 @@
   background:rgba(12,18,34,.88)!important;
   border:1px solid var(--yam-line)!important;
   border-radius:26px!important;
-  overflow-y:auto;
+  overflow:hidden;
   backdrop-filter:blur(18px);
   box-shadow:var(--shadow-overlay);
 }

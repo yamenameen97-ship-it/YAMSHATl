@@ -230,7 +230,7 @@ export default function ImageUploader({ onUploadComplete, onError, label = 'رف
           border: 1px solid rgba(255,255,255,0.08); background: rgba(15,23,42,0.66);
         }
         .image-upload-area { justify-items: center; text-align: center; }
-        .image-preview-media { border-radius: 18px; overflow-y:auto; background: #020617; }
+        .image-preview-media { border-radius: 18px; overflow: hidden; background: #020617; }
         .image-preview-media img { display: block; width: 100%; max-height: 340px; object-fit: contain; background: #020617; }
         .image-meta-row, .preview-actions, .aspect-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
         .crop-controls-grid { display: grid; gap: 10px; }
@@ -243,7 +243,7 @@ export default function ImageUploader({ onUploadComplete, onError, label = 'رف
         .chip-btn.active { background: rgba(59,130,246,0.2); border-color: rgba(147,197,253,0.4); }
         .stage-pill { padding: 8px 12px; border-radius: 999px; background: rgba(59,130,246,0.14); color: #93c5fd; font-size: 12px; font-weight: 700; }
         .muted { margin: 0; color: #94a3b8; font-size: 13px; }
-        .progress-bar { height: 10px; border-radius: 999px; background: rgba(148,163,184,0.18); overflow-y:auto; }
+        .progress-bar { height: 10px; border-radius: 999px; background: rgba(148,163,184,0.18); overflow: hidden; }
         .progress-fill { height: 100%; background: linear-gradient(90deg, #8b5cf6, #3b82f6); transition: width 160ms ease; }
         .progress-stats-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; font-size: 12px; color: #cbd5e1; }
         .upload-icon {

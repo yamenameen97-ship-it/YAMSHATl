@@ -741,7 +741,7 @@ export default function FeedEnhanced() {
             gap: 18px;
             min-height: 0;
             max-height: calc(100vh - 40px);
-            overflow-y:auto;
+            overflow: hidden;
           }
 
           .yam-feed-header-card {
@@ -1055,7 +1055,7 @@ export default function FeedEnhanced() {
 
           .yam-post-media-tile {
             position: relative;
-            overflow-y:auto;
+            overflow: hidden;
             border-radius: 22px;
             min-height: 318px;
             background: linear-gradient(180deg, rgba(99,102,241,0.18), rgba(15,23,42,0.9));
@@ -1238,7 +1238,7 @@ export default function FeedEnhanced() {
           }
 
           .yam-profile-card-v2 {
-            overflow-y:auto;
+            overflow: hidden;
           }
 
           .yam-profile-cover-v2 {
@@ -1435,7 +1435,7 @@ export default function FeedEnhanced() {
               linear-gradient(140deg, #1b2340 10%, #6241a8 60%, #0f1428 100%);
             border: 1px solid rgba(255,255,255,0.08);
             box-shadow: 0 14px 24px rgba(0,0,0,0.24);
-            overflow-y:auto;
+            overflow: hidden;
           }
 
           .yam-laptop-avatar.image span {

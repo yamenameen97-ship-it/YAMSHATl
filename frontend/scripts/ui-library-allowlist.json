@@ -100,10 +100,6 @@
     "src/components/upload/FileUploader.jsx",
     "src/components/upload/ImageUploader.jsx",
     "src/components/upload/VideoUploader.jsx",
-    "src/components/yamshat/YamshatIcon.jsx",
-    "src/components/audio/SoundSettingsPanel.jsx",
-    "src/components/audio/SoundToggle.jsx",
-    "src/components/video/ReelsPlayer.jsx",
-    "src/components/video/UniversalPlayer.jsx"
+    "src/components/yamshat/YamshatIcon.jsx"
   ]
 }

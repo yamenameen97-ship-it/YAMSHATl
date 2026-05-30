@@ -31,7 +31,7 @@
   height: 100dvh;
   scroll-snap-align: start;
   scroll-snap-stop: always;
-  overflow-y:auto;
+  overflow: hidden;
   background: #000;
   isolation: isolate;
 }
@@ -134,7 +134,7 @@
   font-size: 14px;
   line-height: 1.45;
   max-height: 88px;
-  overflow-y:auto;
+  overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;

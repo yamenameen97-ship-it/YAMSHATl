@@ -1411,7 +1411,7 @@ input::placeholder {
 .live-stage-card,
 .chat-panel,
 .profile-card {
-  overflow-y:auto;
+  overflow: hidden;
 }
 
 .composer-textarea {
@@ -2170,7 +2170,7 @@ button[type='submit']:hover,
 
 .live-video-grid {
   position: relative;
-  overflow-y:auto;
+  overflow: hidden;
   box-shadow: inset 0 -40px 80px rgba(0, 0, 0, 0.24);
 }
 
@@ -2392,7 +2392,7 @@ img {
 
 .upload-progress-shell {
   position: relative;
-  overflow-y:auto;
+  overflow: hidden;
   height: 28px;
   border-radius: 999px;
   border: 1px solid var(--line);
@@ -2440,7 +2440,7 @@ img {
   position: relative;
   min-height: calc(100vh - 180px);
   border-radius: 28px;
-  overflow-y:auto;
+  overflow: hidden;
   background: #000;
 }
 
@@ -2748,7 +2748,7 @@ img {
 .brand-mark-image,
 .topbar-brand-mark {
   padding: 0;
-  overflow-y:auto;
+  overflow: hidden;
   background: rgba(255, 255, 255, 0.04);
 }
 
@@ -3133,7 +3133,7 @@ img {
 }
 
 .chat-panel-pro {
-  overflow-y:auto;
+  overflow: hidden;
 }
 
 .chat-header-pro {
@@ -3242,7 +3242,7 @@ img {
   border: 1px solid rgba(255, 255, 255, 0.08);
   display: grid;
   place-items: center;
-  overflow-y:auto;
+  overflow: hidden;
 }
 
 .call-session-media video,
@@ -3473,7 +3473,7 @@ img {
 
 .compact-upload-progress {
   position: relative;
-  overflow-y:auto;
+  overflow: hidden;
 }
 
 .compact-upload-progress > span,
@@ -3545,7 +3545,7 @@ img {
 .profile-cover-card,
 .reels-side-rail,
 .chat-panel-pro {
-  overflow-y:auto;
+  overflow: hidden;
 }
 
 .live-form-grid,
@@ -3590,7 +3590,7 @@ img {
   position: relative;
   min-height: 220px;
   border-radius: 20px;
-  overflow-y:auto;
+  overflow: hidden;
   background: linear-gradient(180deg, rgba(19, 22, 44, 0.96), rgba(8, 10, 24, 0.92));
   border: 1px solid rgba(255,255,255,0.08);
 }
@@ -3677,7 +3677,7 @@ img {
 /* ===== Yamshat Stories + Chat Pro patch ===== */
 .stories-page-pro-grid { align-items: start; }
 .stories-hero-pro-card,
-.story-viewer-pro-card { overflow-y:auto; }
+.story-viewer-pro-card { overflow: hidden; }
 .story-segments-bar {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(18px, 1fr));
@@ -3788,7 +3788,7 @@ img {
   padding: 10px 12px;
   border-radius: 18px;
   background: rgba(255,255,255,0.05);
-  overflow-y:auto;
+  overflow: hidden;
 }
 .audio-waveform.compact { min-height: 40px; }
 .audio-waveform span {
@@ -3870,7 +3870,7 @@ img {
 .live-upgrade-hero,
 .live-room-stage,
 .profile-editor-card {
-  overflow-y:auto;
+  overflow: hidden;
 }
 
 .profile-cover {
@@ -4043,7 +4043,7 @@ img {
 
 .live-video-tile {
   position: relative;
-  overflow-y:auto;
+  overflow: hidden;
   border-radius: 20px;
   min-height: 180px;
   background: rgba(15, 23, 42, 0.86);
@@ -4115,7 +4115,7 @@ img {
 .feed-hero-card,
 .chat-hero-card,
 .live-overview-card {
-  overflow-y:auto;
+  overflow: hidden;
 }
 
 .feed-hero-copy {
@@ -4386,7 +4386,7 @@ img {
   align-items: center;
   gap: 14px;
   border-radius: 22px;
-  overflow-y:auto;
+  overflow: hidden;
   position: relative;
 }
 
@@ -4542,7 +4542,7 @@ img {
 .admin-module-copy strong,
 .admin-rich-user-cell strong {
   white-space: nowrap;
-  overflow-y:auto;
+  overflow: hidden;
   text-overflow: ellipsis;
 }
 
@@ -4550,7 +4550,7 @@ img {
 .admin-rich-user-cell small {
   color: var(--muted);
   white-space: nowrap;
-  overflow-y:auto;
+  overflow: hidden;
   text-overflow: ellipsis;
 }
 
@@ -4900,7 +4900,7 @@ img {
   background:rgba(12,18,34,.88)!important;
   border:1px solid var(--yam-line)!important;
   border-radius:26px!important;
-  overflow-y:auto;
+  overflow:hidden;
   backdrop-filter:blur(18px);
   box-shadow:var(--shadow-overlay);
 }

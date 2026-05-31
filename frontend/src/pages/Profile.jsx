@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import Modal from '../components/ui/Modal.jsx';
-import { getProfileBundle, updateMyProfile } from '../api/users.js';
+import { useToast } from '../components/admin/ToastProvider.jsx';
+import { getProfileBundle, updateMyProfile, uploadAvatar } from '../api/users.js';
 import { getCurrentUsername } from '../utils/auth.js';
 
 const TAB_LABELS = {
@@ -21,8 +22,34 @@ const PROFILE_THEMES = [
   { key: 'aurora', label: 'Aurora', color: '#4c1d95' },
 ];
 
+// قراءة الملف وتحويله إلى base64 (احتياطي في حال فشل رفع الملف على الـ /upload)
+function readFileAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => resolve(event.target?.result || '');
+    reader.onerror = () => reject(new Error('فشل قراءة الملف'));
+    reader.readAsDataURL(file);
+  });
+}
+
+// رفع صورة وإرجاع رابطها - يحاول استخدام endpoint /upload أولاً، وإذا فشل يرجع base64
+async function uploadImageOrFallback(file) {
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await uploadAvatar(formData);
+    const url = data?.file_url || data?.url || data?.path || '';
+    if (url) return url;
+    return await readFileAsDataURL(file);
+  } catch (error) {
+    console.warn('Falling back to base64 image:', error?.message);
+    return await readFileAsDataURL(file);
+  }
+}
+
 export default function Profile() {
   const { username: routeUsername } = useParams();
+  const { pushToast } = useToast();
   const currentUser = getCurrentUsername();
   const username = routeUsername || currentUser;
   const isOwnProfile = username === currentUser;
@@ -31,10 +58,27 @@ export default function Profile() {
   const [activeTab, setActiveTab] = useState('posts');
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showCustomization, setShowCustomization] = useState(false);
+  const [showEditProfile, setShowEditProfile] = useState(false);
   const [theme, setTheme] = useState('midnight');
+
+  // حالات تعديل الملف الشخصي
+  const [editForm, setEditForm] = useState({
+    username: '',
+    activity_tagline: '',
+    bio: '',
+    avatar: '',
+    cover_photo: '',
+  });
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [uploadingCover, setUploadingCover] = useState(false);
+
+  const avatarFileRef = useRef(null);
+  const coverFileRef = useRef(null);
 
   useEffect(() => {
     loadProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [username]);
 
   const loadProfile = async () => {
@@ -54,9 +98,96 @@ export default function Profile() {
     }
   };
 
+  const openEditModal = () => {
+    setEditForm({
+      username: profile?.user?.username || '',
+      activity_tagline: profile?.user?.profile?.activity_tagline || '',
+      bio: profile?.user?.profile?.bio || '',
+      avatar: profile?.user?.avatar || '',
+      cover_photo: profile?.user?.profile?.cover_photo || '',
+    });
+    setShowEditProfile(true);
+  };
+
   const handleThemeChange = async (newTheme) => {
     setTheme(newTheme);
-    await updateMyProfile({ profile_theme: newTheme });
+    try {
+      await updateMyProfile({ profile_theme: newTheme });
+      pushToast({ type: 'success', title: 'تم تحديث المظهر' });
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر تحديث المظهر', description: error?.response?.data?.detail || error?.message });
+    }
+  };
+
+  const handleAvatarFile = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      pushToast({ type: 'error', title: 'يجب اختيار صورة فقط' });
+      return;
+    }
+    setUploadingAvatar(true);
+    try {
+      const url = await uploadImageOrFallback(file);
+      setEditForm((prev) => ({ ...prev, avatar: url }));
+      pushToast({ type: 'success', title: 'تم تحميل الصورة الشخصية' });
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر رفع الصورة', description: error?.message });
+    } finally {
+      setUploadingAvatar(false);
+      if (avatarFileRef.current) avatarFileRef.current.value = '';
+    }
+  };
+
+  const handleCoverFile = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      pushToast({ type: 'error', title: 'يجب اختيار صورة فقط' });
+      return;
+    }
+    setUploadingCover(true);
+    try {
+      const url = await uploadImageOrFallback(file);
+      setEditForm((prev) => ({ ...prev, cover_photo: url }));
+      pushToast({ type: 'success', title: 'تم تحميل صورة الغلاف' });
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر رفع الغلاف', description: error?.message });
+    } finally {
+      setUploadingCover(false);
+      if (coverFileRef.current) coverFileRef.current.value = '';
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    const cleanedUsername = String(editForm.username || '').trim().replace(/\s+/g, '_');
+    if (!cleanedUsername) {
+      pushToast({ type: 'error', title: 'اسم المستخدم مطلوب' });
+      return;
+    }
+    setSavingProfile(true);
+    try {
+      const payload = {
+        username: cleanedUsername,
+        avatar: editForm.avatar || '',
+        bio: editForm.bio || '',
+        cover_photo: editForm.cover_photo || '',
+        activity_tagline: editForm.activity_tagline || '',
+      };
+      await updateMyProfile(payload);
+      pushToast({ type: 'success', title: 'تم حفظ التعديلات' });
+      setShowEditProfile(false);
+      // إعادة تحميل البيانات بعد الحفظ
+      await loadProfile();
+    } catch (error) {
+      pushToast({
+        type: 'error',
+        title: 'تعذر حفظ التعديلات',
+        description: error?.response?.data?.detail || error?.message,
+      });
+    } finally {
+      setSavingProfile(false);
+    }
   };
 
   if (!profile) {
@@ -76,6 +207,8 @@ export default function Profile() {
       : profile.saved_posts || [];
 
   const bio = profile.user.profile?.bio || 'لا يوجد نبذة شخصية';
+  const tagline = profile.user.profile?.activity_tagline || '';
+  const coverPhoto = profile.user.profile?.cover_photo || '';
   const stats = [
     { label: 'منشور', value: profile.counts?.posts ?? profile.posts_count ?? 0 },
     { label: 'متابع', value: profile.counts?.followers ?? profile.followers_count ?? 0 },
@@ -86,6 +219,12 @@ export default function Profile() {
     <MainLayout>
       <section className="profile-page desktop-post mobile-post">
         <Card className="profile-hero-card">
+          {coverPhoto ? (
+            <div className="profile-cover-banner" style={{ backgroundImage: `url(${coverPhoto})` }} />
+          ) : (
+            <div className="profile-cover-banner profile-cover-empty" />
+          )}
+
           <div className="profile-hero-grid">
             <div className="profile-avatar-shell">
               {profile.user.avatar ? (
@@ -100,11 +239,13 @@ export default function Profile() {
                 <div>
                   <p className="page-eyebrow no-margin">Profile</p>
                   <h2 className="page-title">{profile.user.username}</h2>
+                  {tagline ? <p className="profile-tagline">{tagline}</p> : null}
                 </div>
 
                 <div className="profile-actions-row">
                   {isOwnProfile ? (
                     <>
+                      <Button size="small" onClick={openEditModal}>✏️ تعديل الملف الشخصي</Button>
                       <Button variant="secondary" size="small" onClick={() => setShowCustomization(true)}>تخصيص المظهر</Button>
                       <Button variant="secondary" size="small" onClick={() => setShowAnalytics(true)}>التحليلات</Button>
                     </>
@@ -156,6 +297,135 @@ export default function Profile() {
           )}
         </div>
       </section>
+
+      {/* مودال تعديل الملف الشخصي */}
+      <Modal isOpen={showEditProfile} onClose={() => setShowEditProfile(false)} title="تعديل الملف الشخصي">
+        <div className="profile-edit-stack">
+          {/* قسم الغلاف */}
+          <div className="profile-edit-section">
+            <label className="profile-edit-label">صورة الغلاف</label>
+            <div
+              className={`profile-edit-cover ${editForm.cover_photo ? '' : 'empty'}`}
+              style={editForm.cover_photo ? { backgroundImage: `url(${editForm.cover_photo})` } : {}}
+            >
+              {!editForm.cover_photo ? <span>لا يوجد غلاف</span> : null}
+              <button
+                type="button"
+                className="profile-edit-cover-btn"
+                onClick={() => coverFileRef.current?.click()}
+                disabled={uploadingCover}
+              >
+                {uploadingCover ? 'جارٍ الرفع...' : '📷 تغيير الغلاف'}
+              </button>
+              {editForm.cover_photo ? (
+                <button
+                  type="button"
+                  className="profile-edit-cover-btn profile-edit-cover-remove"
+                  onClick={() => setEditForm((prev) => ({ ...prev, cover_photo: '' }))}
+                >
+                  ✕ إزالة
+                </button>
+              ) : null}
+              <input
+                ref={coverFileRef}
+                type="file"
+                accept="image/*"
+                onChange={handleCoverFile}
+                style={{ display: 'none' }}
+              />
+            </div>
+          </div>
+
+          {/* قسم الصورة الشخصية */}
+          <div className="profile-edit-section">
+            <label className="profile-edit-label">الصورة الشخصية</label>
+            <div className="profile-edit-avatar-row">
+              <div className="profile-edit-avatar-shell">
+                {editForm.avatar ? (
+                  <img src={editForm.avatar} alt="avatar preview" className="profile-edit-avatar-image" />
+                ) : (
+                  <span>{(editForm.username || 'Y')[0]?.toUpperCase()}</span>
+                )}
+              </div>
+              <div className="profile-edit-avatar-actions">
+                <Button
+                  size="small"
+                  onClick={() => avatarFileRef.current?.click()}
+                  disabled={uploadingAvatar}
+                >
+                  {uploadingAvatar ? 'جارٍ الرفع...' : '📷 اختيار صورة'}
+                </Button>
+                {editForm.avatar ? (
+                  <Button
+                    size="small"
+                    variant="secondary"
+                    onClick={() => setEditForm((prev) => ({ ...prev, avatar: '' }))}
+                  >
+                    إزالة الصورة
+                  </Button>
+                ) : null}
+              </div>
+              <input
+                ref={avatarFileRef}
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarFile}
+                style={{ display: 'none' }}
+              />
+            </div>
+          </div>
+
+          {/* قسم الاسم */}
+          <div className="profile-edit-section">
+            <label className="profile-edit-label" htmlFor="profile-edit-username">اسم المستخدم</label>
+            <input
+              id="profile-edit-username"
+              type="text"
+              className="profile-edit-input"
+              value={editForm.username}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, username: e.target.value }))}
+              placeholder="اسم المستخدم"
+              maxLength={50}
+            />
+            <small className="profile-edit-hint">يتم استخدامه في الرابط واسم الظهور (بدون مسافات)</small>
+          </div>
+
+          {/* قسم اللقب / Tagline */}
+          <div className="profile-edit-section">
+            <label className="profile-edit-label" htmlFor="profile-edit-tagline">اللقب</label>
+            <input
+              id="profile-edit-tagline"
+              type="text"
+              className="profile-edit-input"
+              value={editForm.activity_tagline}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, activity_tagline: e.target.value }))}
+              placeholder="مثال: مصمم UI/UX · صانع محتوى"
+              maxLength={120}
+            />
+            <small className="profile-edit-hint">يظهر تحت اسمك مباشرة كعنوان فرعي</small>
+          </div>
+
+          {/* قسم النبذة */}
+          <div className="profile-edit-section">
+            <label className="profile-edit-label" htmlFor="profile-edit-bio">النبذة الشخصية</label>
+            <textarea
+              id="profile-edit-bio"
+              className="profile-edit-textarea"
+              value={editForm.bio}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, bio: e.target.value }))}
+              placeholder="اكتب نبذة قصيرة عن نفسك"
+              rows={4}
+              maxLength={800}
+            />
+            <small className="profile-edit-hint">{editForm.bio.length} / 800</small>
+          </div>
+
+          <div className="profile-edit-actions">
+            <Button variant="secondary" onClick={() => setShowEditProfile(false)} disabled={savingProfile}>إلغاء</Button>
+            <Button onClick={handleSaveProfile} loading={savingProfile}>حفظ التغييرات</Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal isOpen={showAnalytics} onClose={() => setShowAnalytics(false)} title="تحليلات الحساب الشخصي">
         <div className="profile-modal-stack">
@@ -241,14 +511,30 @@ export default function Profile() {
         }
 
         .profile-hero-card {
-          padding: clamp(20px, 3vw, 28px);
+          padding: 0;
+          overflow: hidden;
+        }
+
+        .profile-cover-banner {
+          width: 100%;
+          height: clamp(140px, 22vw, 220px);
+          background-size: cover;
+          background-position: center;
+          background-color: color-mix(in srgb, var(--panel) 80%, transparent);
+        }
+
+        .profile-cover-banner.profile-cover-empty {
+          background: linear-gradient(135deg, var(--primary), var(--secondary));
+          opacity: 0.55;
         }
 
         .profile-hero-grid {
           display: grid;
           grid-template-columns: auto 1fr;
           gap: 28px;
-          align-items: center;
+          align-items: start;
+          padding: clamp(20px, 3vw, 28px);
+          margin-top: clamp(-60px, -8vw, -80px);
         }
 
         .profile-avatar-shell {
@@ -263,6 +549,7 @@ export default function Profile() {
           color: var(--text-on-accent);
           background: linear-gradient(135deg, var(--primary), var(--secondary));
           box-shadow: 0 24px 44px rgba(124, 58, 237, 0.24);
+          border: 4px solid var(--panel);
         }
 
         .profile-avatar-image {
@@ -274,6 +561,7 @@ export default function Profile() {
         .profile-summary-block {
           display: grid;
           gap: 18px;
+          padding-top: 12px;
         }
 
         .profile-header-row {
@@ -281,6 +569,14 @@ export default function Profile() {
           align-items: flex-start;
           justify-content: space-between;
           gap: 16px;
+          flex-wrap: wrap;
+        }
+
+        .profile-tagline {
+          margin: 6px 0 0;
+          color: var(--text-soft);
+          font-size: 14px;
+          font-weight: 600;
         }
 
         .profile-actions-row {
@@ -389,6 +685,142 @@ export default function Profile() {
           font-weight: 800;
         }
 
+        /* ============ مودال تعديل الملف الشخصي ============ */
+        .profile-edit-stack {
+          display: grid;
+          gap: 18px;
+          padding: 8px 0 4px;
+        }
+
+        .profile-edit-section {
+          display: grid;
+          gap: 8px;
+        }
+
+        .profile-edit-label {
+          font-weight: 800;
+          font-size: 14px;
+          color: var(--text);
+        }
+
+        .profile-edit-hint {
+          color: var(--muted);
+          font-size: 12px;
+        }
+
+        .profile-edit-input,
+        .profile-edit-textarea {
+          width: 100%;
+          padding: 12px 14px;
+          border-radius: 14px;
+          border: 1px solid var(--line);
+          background: color-mix(in srgb, var(--panel) 92%, transparent);
+          color: var(--text);
+          font: inherit;
+          box-sizing: border-box;
+        }
+
+        .profile-edit-textarea {
+          resize: vertical;
+          min-height: 96px;
+        }
+
+        .profile-edit-input:focus,
+        .profile-edit-textarea:focus {
+          outline: none;
+          border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+          box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent);
+        }
+
+        .profile-edit-cover {
+          position: relative;
+          width: 100%;
+          height: 160px;
+          border-radius: 18px;
+          background-color: color-mix(in srgb, var(--panel) 92%, transparent);
+          background-size: cover;
+          background-position: center;
+          border: 1px dashed var(--line);
+          display: grid;
+          place-items: center;
+          overflow: hidden;
+        }
+
+        .profile-edit-cover.empty {
+          background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 22%, transparent), color-mix(in srgb, var(--secondary) 22%, transparent));
+          color: var(--muted);
+          font-weight: 700;
+        }
+
+        .profile-edit-cover-btn {
+          position: absolute;
+          inset-block-end: 12px;
+          inset-inline-end: 12px;
+          padding: 8px 14px;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.18);
+          background: rgba(15, 23, 42, 0.72);
+          color: #fff;
+          font-weight: 700;
+          font-size: 13px;
+          cursor: pointer;
+          backdrop-filter: blur(6px);
+        }
+
+        .profile-edit-cover-btn:disabled {
+          opacity: 0.6;
+          cursor: wait;
+        }
+
+        .profile-edit-cover-remove {
+          inset-inline-end: auto;
+          inset-inline-start: 12px;
+          background: rgba(239, 68, 68, 0.78);
+        }
+
+        .profile-edit-avatar-row {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          flex-wrap: wrap;
+        }
+
+        .profile-edit-avatar-shell {
+          width: 96px;
+          height: 96px;
+          border-radius: 50%;
+          overflow: hidden;
+          display: grid;
+          place-items: center;
+          font-size: 36px;
+          font-weight: 900;
+          color: var(--text-on-accent);
+          background: linear-gradient(135deg, var(--primary), var(--secondary));
+          flex-shrink: 0;
+        }
+
+        .profile-edit-avatar-image {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .profile-edit-avatar-actions {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .profile-edit-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+          flex-wrap: wrap;
+          padding-top: 8px;
+          border-top: 1px solid var(--line);
+        }
+
+        /* ============ المودالات الأخرى ============ */
         .profile-modal-stack {
           display: grid;
           gap: 20px;

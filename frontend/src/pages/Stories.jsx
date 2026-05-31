@@ -213,19 +213,43 @@ export default function Stories() {
     if (!selectedFile) return;
     setUploading(true);
     try {
-      await uploadStory(selectedFile, {
+      const response = await uploadStory(selectedFile, {
         caption,
         is_close_friends: isCloseFriends,
         filter_name: 'Yamshat Stories',
         stickers: selectedStickers,
         music: selectedMusic.label,
       });
-      pushToast({ type: 'success', title: 'تم نشر الستوري' });
+
+      // إضافة الستوري الجديد فوراً للقائمة (optimistic) قبل إعادة التحميل،
+      // لتجنّب اختفاء الستوري بين فترة الرفع وفترة جلب البيانات الجديدة.
+      const createdStory = response?.data;
+      if (createdStory && createdStory.id) {
+        const normalized = normalizeStories([createdStory])[0];
+        setStories((prev) => {
+          // تجنب التكرار إذا كان موجود بالفعل
+          if (prev.some((item) => String(item.id) === String(normalized.id))) return prev;
+          return [normalized, ...prev];
+        });
+        setArchive((prev) => {
+          if (prev.some((item) => String(item.id) === String(normalized.id))) return prev;
+          return [normalized, ...prev];
+        });
+      }
+
+      pushToast({ type: 'success', title: 'تم نشر الستوري', description: 'سيظهر الستوري الآن في قائمة القصص.' });
       resetComposer();
       setActiveTab('feed');
-      await loadData();
+
+      // إعادة تحميل من الـ backend للتأكد من المزامنة الكاملة (viewers, reactions, ...)
+      // مع تأخير صغير للتأكد من اكتمال الكتابة في الـ storage على السيرفر.
+      window.setTimeout(() => {
+        loadData().catch(() => null);
+      }, 400);
     } catch (error) {
-      pushToast({ type: 'error', title: 'تعذر رفع الستوري', description: error?.response?.data?.detail || error?.message });
+      const detail = error?.response?.data?.detail || error?.message || 'حدث خطأ غير متوقع';
+      console.error('Story upload failed:', error);
+      pushToast({ type: 'error', title: 'تعذر رفع الستوري', description: detail });
     } finally {
       setUploading(false);
     }

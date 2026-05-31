@@ -107,6 +107,6 @@
     "src/components/upload/VideoUploader.jsx",
     "src/components/yamshat/YamshatIcon.jsx"
     "src/components/chat/IncomingCallOverlay.jsx",
-    "src/components/notifications/GlobalNotificationListener.jsx"
+    "src/components/notifications/GlobalNotificationListener.jsx",
   ]
 }

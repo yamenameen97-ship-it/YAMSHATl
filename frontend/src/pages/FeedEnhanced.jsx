@@ -643,6 +643,8 @@ export default function FeedEnhanced() {
             grid-template-columns: 250px minmax(0, 1fr) 360px;
             gap: 18px;
             align-items: start;
+            /* على الديسكتوب: نجعل الـ shell بالكامل يملأ الشاشة لتعمل آلية sticky بشكل صحيح */
+            min-height: calc(100vh - 24px);
           }
 
           .yam-left-rail,
@@ -655,6 +657,23 @@ export default function FeedEnhanced() {
           .yam-right-rail {
             position: sticky;
             top: 18px;
+            align-self: start;
+            /* الأشرطة الجانبية ثابتة عند التمرير ولها تمريرها الداخلي الخاص إذا طال محتواها */
+            max-height: calc(100vh - 36px);
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(139, 92, 246, 0.5) transparent;
+          }
+
+          .yam-left-rail::-webkit-scrollbar,
+          .yam-right-rail::-webkit-scrollbar {
+            width: 6px;
+          }
+
+          .yam-left-rail::-webkit-scrollbar-thumb,
+          .yam-right-rail::-webkit-scrollbar-thumb {
+            background: rgba(139, 92, 246, 0.5);
+            border-radius: 999px;
           }
 
           .yam-logo-card,
@@ -674,9 +693,6 @@ export default function FeedEnhanced() {
           .yam-left-rail {
             display: grid;
             gap: 16px;
-            max-height: calc(100vh - 40px);
-            overflow: auto;
-            align-self: start;
           }
 
           /* على الجوال والتابلت، شيل القيود المتعلقة بالـ rail اليساري */
@@ -845,14 +861,19 @@ export default function FeedEnhanced() {
             overflow-y: hidden;
           }
 
+          /* منطقة المنشورات المركزية: تأخذ ارتفاع كامل للشاشة وتسمح بالتمرير الداخلي للـ post-stack
+             فقط، دون أن تؤثر على ثبات الأشرطة الجانبية */
           .yam-center-stage {
-            position: relative;
+            position: sticky;
+            top: 18px;
             display: flex;
             flex-direction: column;
             gap: 18px;
             min-height: 0;
-            max-height: calc(100vh - 40px);
+            height: calc(100vh - 36px);
+            max-height: calc(100vh - 36px);
             overflow: hidden;
+            align-self: start;
           }
 
           .yam-feed-header-card {

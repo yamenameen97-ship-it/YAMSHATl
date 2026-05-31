@@ -618,7 +618,7 @@ export default function PostComposer() {
           background: linear-gradient(90deg, #8b5cf6, #ec4899);
           transition: width 0.2s;
         }
-        @media (max-width: 768px) {
+        @media (max-width: 1024px) {
           .composer-header-row,
           .composer-editor-topline {
             align-items: stretch;

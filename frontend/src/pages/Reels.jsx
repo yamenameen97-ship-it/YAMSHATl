@@ -6,7 +6,9 @@ import Modal from '../components/ui/Modal.jsx';
 import VideoUploader from '../components/upload/VideoUploader.jsx';
 import NestedComments from '../components/feed/NestedComments.jsx';
 import { useToast } from '../components/admin/ToastProvider.jsx';
-import { addComment, createPost, getComments, getPosts, likePost, savePost, sharePost } from '../api/posts.js';
+import { addComment, getComments, likePost, savePost, sharePost } from '../api/posts.js';
+import API from '../api/axios.js';
+import { resolveMediaUrl } from '../config/mediaConfig.js';
 import { getCurrentUsername } from '../utils/auth.js';
 import { getDeviceProfile } from '../utils/deviceProfile.js';
 import { getOptimizedImageUrl } from '../utils/performance.js';
@@ -37,8 +39,10 @@ function computeReelScore(item) {
   return likes * 2 + comments * 3 + shares * 4 + saves * 4 + 96 / freshnessHours;
 }
 
-function isVideoUrl(url = '') {
-  return /\.(mp4|webm|mov|m3u8)(\?.*)?$/i.test(url);
+function isVideoUrl(url = '', hints = {}) {
+  const candidate = String(url || '');
+  if (hints.forceVideo) return true;
+  return /\.(mp4|webm|mov|m4v|m3u8)(\?.*)?$/i.test(candidate) || /\b(video|reel|stream)\b/i.test(candidate);
 }
 
 function getPosterUrl(reel) {
@@ -49,14 +53,14 @@ function getPosterUrl(reel) {
 function normalizeReel(item = {}) {
   return {
     ...item,
-    media_url: item.media_url || item.video_url || item.videoUrl || '',
+    media_url: resolveMediaUrl(item.media_url || item.video_url || item.videoUrl || ''),
     recommendation_score: item.recommendation_score || computeReelScore(item),
     views_count: Number(item.views_count || item.view_count || 0),
     likes_count: Number(item.likes_count || 0),
     comments_count: Number(item.comments_count || 0),
     share_count: Number(item.share_count || 0),
     saved_count: Number(item.saved_count || 0),
-    poster_url: item.poster_url || getPosterUrl(item),
+    poster_url: resolveMediaUrl(item.poster_url || getPosterUrl(item)),
     duration_label: item.duration_label || item.duration || '',
   };
 }
@@ -128,7 +132,9 @@ function ReelItem({ index, style, data }) {
           className={`w-full h-full object-cover reel-video ${isActive ? 'active' : ''}`}
           loop
           playsInline
-          muted={!isActive}
+          muted
+          autoPlay={isActive}
+          preload="metadata"
           poster={reel.poster_url}
           onClick={() => {
             if (!videoRef.current) return;
@@ -389,10 +395,10 @@ export default function ReelsPage() {
   const loadReels = useCallback(async () => {
     setIsLoading(true);
     try {
-      const { data } = await getPosts({ limit: 40, page: 1 });
-      const source = Array.isArray(data) ? data : data?.items || [];
+      const { data } = await API.get('/reels/feed', { params: { limit: 40, offset: 0 } });
+      const source = Array.isArray(data) ? data : data?.items || data?.reels || [];
       const onlyVideos = source
-        .filter((post) => isVideoUrl(post?.media_url || post?.video_url || ''))
+        .filter((post) => isVideoUrl(post?.media_url || post?.video_url || '', { forceVideo: true }))
         .map(normalizeReel);
       const rankedReels = await fetchSuggestedReels(onlyVideos);
       const normalized = (Array.isArray(rankedReels) ? rankedReels : onlyVideos).map(normalizeReel);
@@ -484,7 +490,9 @@ export default function ReelsPage() {
       }
       const distance = Math.abs(index - activeIndex);
       video.preload = distance === 0 ? 'auto' : distance === 1 ? 'auto' : 'metadata';
-      video.muted = index !== activeIndex;
+      video.muted = true;
+      video.playsInline = true;
+      video.autoplay = index === activeIndex;
       if (index === activeIndex) video.play().catch(() => {});
       else video.pause();
     });
@@ -778,13 +786,9 @@ export default function ReelsPage() {
     }
     try {
       setUploadState((prev) => ({ ...prev, publishing: true }));
-      await createPost({
-        content: uploadState.content?.trim() || 'ريل جديد',
+      await API.post('/reels', {
+        caption: uploadState.content?.trim() || 'ريل جديد',
         media_url: uploadState.mediaUrl,
-        media: uploadState.mediaUrl,
-        media_urls: [uploadState.mediaUrl],
-        type: 'video',
-        is_reel: true,
       });
       setShowUploadModal(false);
       resetUploadState();
@@ -966,7 +970,7 @@ export default function ReelsPage() {
                   <strong>معاينة الريل</strong>
                   <span>{uploadState.fileName || 'video.mp4'}</span>
                 </div>
-                <video src={uploadState.mediaUrl} controls playsInline className="uploaded-preview-video" />
+                <video src={resolveMediaUrl(uploadState.mediaUrl)} controls playsInline className="uploaded-preview-video" />
               </div>
             ) : null}
 

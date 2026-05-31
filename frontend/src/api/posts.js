@@ -1,19 +1,40 @@
 import API from './axios.js';
+import { resolveMediaUrl } from '../config/mediaConfig.js';
+
+function looksLikeVideo(post = {}, mediaUrls = []) {
+  const typeHint = String(post.media_type || post.type || post.mime_type || post.content_type || '').toLowerCase();
+  const candidates = [post.media_url, post.media, post.image_url, post.video_url, ...mediaUrls]
+    .map((value) => String(value || '').toLowerCase())
+    .filter(Boolean);
+
+  return Boolean(
+    post.is_reel ||
+    typeHint === 'video' ||
+    typeHint.startsWith('video/') ||
+    candidates.some((value) => /\.(mp4|webm|mov|m4v|m3u8)(\?.*)?$/i.test(value) || /\b(video|reel|stream)\b/i.test(value)),
+  );
+}
 
 function normalizePost(post = {}) {
-  const mediaUrl = post.media_url || post.media || post.image_url || (Array.isArray(post.media_urls) ? post.media_urls[0] : '');
+  const rawMediaUrls = Array.isArray(post.media_urls)
+    ? post.media_urls
+    : [post.media_url || post.media || post.image_url].filter(Boolean);
+  const normalizedMediaUrls = rawMediaUrls.map((url) => resolveMediaUrl(url)).filter(Boolean);
+  const mediaUrl = resolveMediaUrl(post.media_url || post.media || post.image_url || normalizedMediaUrls[0] || '');
   return {
     ...post,
+    media: mediaUrl || '',
     media_url: mediaUrl || '',
-    image_url: post.image_url || mediaUrl || '',
-    media_urls: Array.isArray(post.media_urls) ? post.media_urls : mediaUrl ? [mediaUrl] : [],
+    image_url: resolveMediaUrl(post.image_url || mediaUrl || ''),
+    media_urls: normalizedMediaUrls.length ? normalizedMediaUrls : mediaUrl ? [mediaUrl] : [],
     likes_count: Number(post.likes_count ?? post.like_count ?? post.likes ?? 0),
     comments_count: Number(post.comments_count ?? post.comment_count ?? 0),
     saved_count: Number(post.saved_count ?? post.save_count ?? 0),
     share_count: Number(post.share_count ?? post.shares ?? 0),
     is_liked: Boolean(post.is_liked ?? post.liked_by_me),
     is_saved: Boolean(post.is_saved ?? post.saved_by_me),
-    user_avatar: post.user_avatar || post.avatar || '',
+    user_avatar: resolveMediaUrl(post.user_avatar || post.avatar || ''),
+    has_video: looksLikeVideo(post, rawMediaUrls),
   };
 }
 

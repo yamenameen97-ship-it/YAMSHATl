@@ -13,6 +13,7 @@ import { clearStoredUser, getAuthToken, getCurrentUsername, getStoredUserSnapsho
 import { redirectToAppPath } from '../utils/router.js';
 import ReactionBar from '../components/social/ReactionBar.jsx';
 import FollowControls from '../components/social/FollowControls.jsx';
+import { resolveMediaUrl } from '../config/mediaConfig.js';
 
 const FEED_TABS = [
   { id: 'favorites', label: 'المفضلة' },
@@ -102,22 +103,51 @@ function normalizeHandle(value = '') {
   return cleaned ? `@${cleaned}` : '@ahmed.mohammed';
 }
 
+function isVideoMediaUrl(value = '', options = {}) {
+  const candidate = String(value || '');
+  if (options.forceVideo) return true;
+  return /\.(mp4|webm|mov|m4v|m3u8)(\?.*)?$/i.test(candidate) || /\b(video|reel|stream)\b/i.test(candidate);
+}
+
 function buildFeedPosts(posts = []) {
   if (Array.isArray(posts) && posts.length) {
-    return posts.map((post, index) => ({
-      id: post.id || `post-${index}`,
-      authorName: post.author_name || post.username || post.user || 'مستخدم يامشات',
-      handle: normalizeHandle(post.username || post.user || `user.${index + 1}`),
-      time: post.created_at || post.published_at ? 'منشور سابق' : 'الآن',
-      text: post.content || 'منشور جديد على يامشات.',
-      likes: Number(post.likes_count || post.like_count || post.likes || 0),
-      comments: Number(post.comments_count || post.comment_count || 0),
-      shares: Number(post.share_count || post.shares || 0),
-      views: Number(post.views_count || post.view_count || 0),
-      media: Array.isArray(post.media_urls) && post.media_urls.length
-        ? post.media_urls.slice(0, 3).map((url, mediaIndex) => ({ type: mediaIndex === 0 ? 'image-primary' : 'image-secondary', url }))
-        : [{ type: index % 2 === 0 ? 'scenic-lake' : 'portrait-purple' }],
-    }));
+    return posts.map((post, index) => {
+      const rawMedia = Array.isArray(post.media_urls) && post.media_urls.length
+        ? post.media_urls
+        : [post.media_url || post.image_url].filter(Boolean);
+
+      const normalizedMedia = rawMedia.slice(0, 3).map((url, mediaIndex) => {
+        const resolvedUrl = resolveMediaUrl(url);
+        const isVideo = isVideoMediaUrl(resolvedUrl || url, {
+          forceVideo: Boolean(post.has_video || post.is_reel || post.type === 'video' || post.media_type === 'video'),
+        });
+
+        return {
+          type: isVideo
+            ? 'video'
+            : mediaIndex === 0
+              ? 'image-primary'
+              : 'image-secondary',
+          kind: isVideo ? 'video' : 'image',
+          url: resolvedUrl,
+        };
+      });
+
+      return {
+        id: post.id || `post-${index}`,
+        authorName: post.author_name || post.username || post.user || 'مستخدم يامشات',
+        handle: normalizeHandle(post.username || post.user || `user.${index + 1}`),
+        time: post.created_at || post.published_at ? 'منشور سابق' : 'الآن',
+        text: post.content || 'منشور جديد على يامشات.',
+        likes: Number(post.likes_count || post.like_count || post.likes || 0),
+        comments: Number(post.comments_count || post.comment_count || 0),
+        shares: Number(post.share_count || post.shares || 0),
+        views: Number(post.views_count || post.view_count || 0),
+        media: normalizedMedia.length
+          ? normalizedMedia
+          : [{ type: index % 2 === 0 ? 'scenic-lake' : 'portrait-purple' }],
+      };
+    });
   }
 
   return MOCK_POSTS;
@@ -137,11 +167,30 @@ function Avatar({ name, size = 46, accent = false, image = false }) {
 }
 
 function MediaTile({ item, index }) {
+  const [renderAsVideo, setRenderAsVideo] = useState(item?.kind === 'video');
+
+  useEffect(() => {
+    setRenderAsVideo(item?.kind === 'video');
+  }, [item?.kind, item?.url]);
+
   if (item?.url) {
     return (
       <div className={`yam-post-media-tile tile-${index}`}>
-        <img src={item.url} alt="post media" className="yam-post-media-image" />
-        {index === 0 ? (
+        {renderAsVideo ? (
+          <video
+            src={item.url}
+            className="yam-post-media-video"
+            muted
+            loop
+            autoPlay
+            playsInline
+            preload="metadata"
+            controls
+          />
+        ) : (
+          <img src={item.url} alt="post media" className="yam-post-media-image" onError={() => setRenderAsVideo(true)} />
+        )}
+        {index === 0 && renderAsVideo ? (
           <div className="yam-post-play-overlay">
             <YamshatIcon name="play" size={24} filled />
           </div>
@@ -591,6 +640,8 @@ export default function FeedEnhanced() {
           .yam-laptop-page {
             position: relative;
             min-height: 100%;
+            width: 100%;
+            max-width: 100%;
             background:
               radial-gradient(circle at top right, rgba(121, 40, 202, 0.22), transparent 18%),
               radial-gradient(circle at top left, rgba(96, 165, 250, 0.10), transparent 16%),
@@ -612,10 +663,12 @@ export default function FeedEnhanced() {
 
           .yam-laptop-shell {
             position: relative;
-            width: min(1800px, calc(100% - 28px));
+            width: min(1800px, 100%);
+            max-width: 100%;
             min-height: 100%;
             margin: 0 auto;
-            padding: 20px 0 32px;
+            padding: 20px 14px 32px;
+            box-sizing: border-box;
             display: grid;
             grid-template-columns: 250px minmax(0, 1fr) 360px;
             gap: 18px;
@@ -1173,11 +1226,16 @@ export default function FeedEnhanced() {
             min-height: 318px;
           }
 
-          .yam-post-media-image {
+          .yam-post-media-image,
+          .yam-post-media-video {
             width: 100%;
             height: 100%;
             object-fit: cover;
             display: block;
+          }
+
+          .yam-post-media-video {
+            background: #000;
           }
 
           .yam-post-play-overlay {
@@ -1579,7 +1637,7 @@ export default function FeedEnhanced() {
             }
           }
 
-          @media (max-width: 768px) {
+          @media (max-width: 1024px) {
             .page-content.yam-feed-page-locked {
               overflow-y: auto;
             }
@@ -1640,8 +1698,30 @@ export default function FeedEnhanced() {
               min-height: 220px;
             }
 
-            .yam-post-stats-v2,
-            .yam-post-actions-v2 {
+            .yam-feed-header-card,
+            .yam-post-card-v2,
+            .yam-home-composer-slot,
+            .yam-post-comments-panel {
+              width: 100%;
+              max-width: 100%;
+              overflow: hidden;
+            }
+
+            .yam-post-head-v2,
+            .yam-post-author-v2,
+            .yam-post-meta-v2 {
+              min-width: 0;
+              flex-wrap: wrap;
+            }
+
+            .yam-post-author-copy,
+            .yam-post-copy-v2,
+            .yam-post-handle {
+              min-width: 0;
+              overflow-wrap: anywhere;
+            }
+
+            .yam-post-stats-v2 {
               gap: 10px;
               flex-direction: column;
               align-items: flex-start;
@@ -1651,10 +1731,30 @@ export default function FeedEnhanced() {
               justify-content: flex-start;
             }
 
+            .yam-post-actions-v2 {
+              display: grid;
+              grid-template-columns: repeat(4, minmax(0, 1fr));
+              align-items: stretch;
+              width: 100%;
+              gap: 8px;
+            }
+
             .yam-post-actions-v2 button {
               width: 100%;
+              min-width: 0;
               justify-content: center;
+              flex-direction: row;
+              gap: 6px;
+              padding: 10px 6px;
               background: rgba(255,255,255,0.03);
+              font-size: 11px;
+              text-align: center;
+              white-space: nowrap;
+            }
+
+            .yam-post-actions-v2 button svg {
+              width: 18px !important;
+              height: 18px !important;
             }
 
             .yam-center-stage,

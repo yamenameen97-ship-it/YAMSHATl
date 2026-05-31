@@ -64,6 +64,7 @@ export default function Live() {
   const [loadingRoom, setLoadingRoom] = useState(false);
   const [busy, setBusy] = useState('');
   const [showGiftTray, setShowGiftTray] = useState(false);
+  const [showMobileCommentComposer, setShowMobileCommentComposer] = useState(false);
   const [floatingHearts, setFloatingHearts] = useState([]);
   const [latencyMs, setLatencyMs] = useState(1250);
   const [coHosts, setCoHosts] = useState([]);
@@ -367,6 +368,7 @@ export default function Live() {
     try {
       const { data } = await addLiveComment({ room_id: activeRoom.id, text });
       setCommentText('');
+      setShowMobileCommentComposer(false);
 
       if (data?.status === 'blocked') {
         pushToast({ type: 'warning', title: 'تم حظر التعليق', description: data?.reason || 'التعليق خالف سياسات البث.' });
@@ -541,9 +543,70 @@ export default function Live() {
                 {isHost ? <button type="button" className="yam-chip-btn primary" onClick={() => connectToLiveKit('host')} disabled={busy === 'connect-livekit'}>{joinedRole === 'host' ? 'إعادة مزامنة البث' : 'بدء البث الحقيقي'}</button> : null}
                 {!isHost ? <button type="button" className="yam-chip-btn primary" onClick={() => connectToLiveKit('viewer')} disabled={busy === 'connect-livekit'}>دخول المشاهدة</button> : null}
                 {joinedRole ? <button type="button" className="yam-chip-btn" onClick={() => disconnectLiveSession({ keepPreview: false })}>فصل الاتصال</button> : null}
-                <button type="button" className="yam-chip-btn" onClick={sendHeart}>إرسال قلب</button>
-                <button type="button" className="yam-chip-btn" onClick={() => setShowGiftTray((prev) => !prev)}>الهدايا</button>
+                <button type="button" className="yam-chip-btn yam-mobile-hidden-interaction" onClick={sendHeart}>إرسال قلب</button>
+                <button
+                  type="button"
+                  className="yam-chip-btn yam-mobile-hidden-interaction"
+                  onClick={() => {
+                    setShowGiftTray((prev) => !prev);
+                    setShowMobileCommentComposer(false);
+                  }}
+                >
+                  الهدايا
+                </button>
               </div>
+            </div>
+
+            <div className="yam-live-mobile-dock">
+              <div className="yam-live-mobile-actions">
+                <button
+                  type="button"
+                  className={`yam-live-mobile-btn ${showMobileCommentComposer ? 'active' : ''}`}
+                  onClick={() => {
+                    setShowMobileCommentComposer((prev) => !prev);
+                    setShowGiftTray(false);
+                  }}
+                >
+                  💬 تعليق
+                </button>
+                <button type="button" className="yam-live-mobile-btn" onClick={sendHeart}>💜 قلب</button>
+                <button
+                  type="button"
+                  className={`yam-live-mobile-btn ${showGiftTray ? 'active' : ''}`}
+                  onClick={() => {
+                    setShowGiftTray((prev) => !prev);
+                    setShowMobileCommentComposer(false);
+                  }}
+                >
+                  🎁 هدية
+                </button>
+              </div>
+
+              {showMobileCommentComposer ? (
+                <div className="yam-live-mobile-comment-box">
+                  <input
+                    value={commentText}
+                    onChange={(event) => setCommentText(event.target.value)}
+                    placeholder="اكتب تعليقك"
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') sendComment();
+                    }}
+                  />
+                  <button type="button" onClick={sendComment}>إرسال</button>
+                </div>
+              ) : null}
+
+              {showGiftTray ? (
+                <div className="yam-gift-tray yam-live-mobile-gift-tray">
+                  {GIFTS.map((gift) => (
+                    <button key={`mobile-${gift.id}`} type="button" className="yam-gift-card" onClick={() => giveGift(gift)}>
+                      <span>{gift.icon}</span>
+                      <strong>{gift.name}</strong>
+                      <small>{gift.price}</small>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -627,7 +690,7 @@ export default function Live() {
               <div ref={commentsEndRef} />
             </div>
             {showGiftTray ? (
-              <div className="yam-gift-tray">
+              <div className="yam-gift-tray yam-live-desktop-panel">
                 {GIFTS.map((gift) => (
                   <button key={gift.id} type="button" className="yam-gift-card" onClick={() => giveGift(gift)}>
                     <span>{gift.icon}</span>
@@ -637,7 +700,7 @@ export default function Live() {
                 ))}
               </div>
             ) : null}
-            <div className="yam-comment-composer">
+            <div className="yam-comment-composer yam-live-desktop-panel">
               <input value={commentText} onChange={(event) => setCommentText(event.target.value)} placeholder="اكتب تعليقك" />
               <button type="button" onClick={sendComment}>إرسال</button>
             </div>
@@ -938,13 +1001,51 @@ export default function Live() {
             display: flex;
             gap: 10px;
           }
-          .yam-comment-composer input {
+          .yam-comment-composer input,
+          .yam-live-mobile-comment-box input {
             flex: 1;
             border-radius: 16px;
             border: 1px solid rgba(255,255,255,0.08);
             background: rgba(15,23,42,0.7);
             color: #fff;
             padding: 12px 14px;
+            min-width: 0;
+          }
+          .yam-live-mobile-dock {
+            display: none;
+          }
+          .yam-live-mobile-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+          .yam-live-mobile-btn {
+            flex: 1;
+            min-height: 42px;
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 16px;
+            background: rgba(15,23,42,0.82);
+            color: #fff;
+            font-weight: 800;
+            cursor: pointer;
+          }
+          .yam-live-mobile-btn.active {
+            background: linear-gradient(135deg, rgba(139,92,246,0.92), rgba(59,130,246,0.92));
+          }
+          .yam-live-mobile-comment-box {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+          }
+          .yam-live-mobile-comment-box button {
+            border: none;
+            min-height: 44px;
+            padding: 0 16px;
+            border-radius: 16px;
+            background: linear-gradient(135deg, #8b5cf6, #3b82f6);
+            color: #fff;
+            font-weight: 800;
+            cursor: pointer;
           }
           .yam-gift-tray {
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -995,7 +1096,7 @@ export default function Live() {
               grid-template-columns: 1fr;
             }
           }
-          @media (max-width: 720px) {
+          @media (max-width: 1024px) {
             .yam-live-page {
               padding: 12px 12px 96px;
               gap: 14px;
@@ -1027,6 +1128,10 @@ export default function Live() {
               justify-content: center;
               text-align: center;
             }
+            .yam-mobile-hidden-interaction,
+            .yam-live-desktop-panel {
+              display: none !important;
+            }
             .yam-live-video-shell {
               min-height: 220px;
               margin-top: 14px;
@@ -1053,14 +1158,50 @@ export default function Live() {
             .yam-comment-stream {
               max-height: 220px;
             }
-            .yam-comment-composer {
-              flex-direction: column;
+            .yam-live-mobile-dock {
+              display: grid;
+              gap: 10px;
+              margin-top: 14px;
+              padding: 10px;
+              border-radius: 18px;
+              border: 1px solid rgba(255,255,255,0.06);
+              background: rgba(6,10,20,0.9);
+              position: fixed;
+              left: 12px;
+              right: 12px;
+              bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+              z-index: 20;
+              backdrop-filter: blur(16px);
+              box-shadow: 0 18px 40px rgba(2,6,23,0.42);
             }
-            .yam-comment-composer button {
-              width: 100%;
+            .yam-live-mobile-actions {
+              display: grid;
+              grid-template-columns: repeat(3, minmax(0, 1fr));
+              gap: 8px;
             }
+            .yam-live-mobile-comment-box {
+              flex-direction: row;
+              padding: 2px 0 0;
+            }
+            .yam-live-mobile-comment-box button {
+              width: auto;
+              flex-shrink: 0;
+            }
+            .yam-live-mobile-gift-tray,
             .yam-gift-tray {
-              grid-template-columns: 1fr 1fr;
+              grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+            .yam-gift-card {
+              padding: 10px 8px;
+              border-radius: 14px;
+              justify-items: center;
+              text-align: center;
+            }
+            .yam-live-stage-card {
+              padding-bottom: 118px;
+            }
+            .yam-live-sidebar .yam-live-chat-box {
+              padding-bottom: 118px;
             }
           }
         `}</style>

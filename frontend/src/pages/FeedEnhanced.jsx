@@ -30,7 +30,7 @@ const NAV_ITEMS = [
   { to: '/groups', label: 'المجموعات', icon: 'groups' },
   { to: '/stories', label: 'الستوري', icon: 'bookmark' },
   { to: '/inbox', label: 'الدردشة', icon: 'message' },
-  { to: '/notifications', label: 'الإشعارات', icon: 'bell', badge: '12' },
+  { to: '/notifications', label: 'الإشعارات', icon: 'bell' },
   { to: '/search', label: 'البحث الذكي', icon: 'search' },
   { to: '/settings', label: 'الإعدادات', icon: 'menu' },
 ];
@@ -41,19 +41,8 @@ const QUICK_ACTIONS = [
   { label: 'رأيك', color: 'rose', action: 'thought' },
 ];
 
-const PROFILE_HIGHLIGHTS = [
+const DEFAULT_PROFILE_HIGHLIGHTS = [
   { label: 'جديد', kind: 'add' },
-  { label: 'السفر', kind: 'travel' },
-  { label: 'تصميم', kind: 'design' },
-  { label: 'لحظات', kind: 'moments' },
-  { label: 'مشاريع', kind: 'projects' },
-];
-
-const SUMMARY_ITEMS = [
-  { icon: 'profile', text: 'مصمم UI/UX' },
-  { icon: 'groups', text: 'يعمل في Yamshat' },
-  { icon: 'discover', text: 'من دمشق، سوريا' },
-  { icon: 'bookmark', text: 'انضم في يناير 2023' },
 ];
 
 const MOCK_POSTS = [];
@@ -70,7 +59,7 @@ function SocialEnhancements({ post }) {
 
 function normalizeHandle(value = '') {
   const cleaned = String(value || '').trim().replace(/^@+/, '');
-  return cleaned ? `@${cleaned}` : '@ahmed.mohammed';
+  return cleaned ? `@${cleaned}` : '@yamshat';
 }
 
 function isVideoMediaUrl(value = '', options = {}) {
@@ -106,6 +95,7 @@ function buildFeedPosts(posts = []) {
       return {
         id: post.id || `post-${index}`,
         authorName: post.author_name || post.username || post.user || 'مستخدم يامشات',
+        authorAvatar: resolveMediaUrl(post.user_avatar || post.avatar || post.author_avatar || ''),
         handle: normalizeHandle(post.username || post.user || `user.${index + 1}`),
         time: post.created_at || post.published_at ? 'منشور سابق' : 'الآن',
         text: post.content || 'منشور جديد على يامشات.',
@@ -123,7 +113,7 @@ function buildFeedPosts(posts = []) {
   return [];
 }
 
-function Avatar({ name, size = 46, accent = false, image = false }) {
+function Avatar({ name, size = 46, accent = false, image = false, src = '' }) {
   const firstLetter = String(name || 'Y').trim().charAt(0) || 'Y';
   return (
     <div
@@ -131,7 +121,7 @@ function Avatar({ name, size = 46, accent = false, image = false }) {
       style={{ width: size, height: size, minWidth: size, minHeight: size }}
       aria-hidden="true"
     >
-      <span>{firstLetter}</span>
+      {src ? <img src={src} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span>{firstLetter}</span>}
     </div>
   );
 }
@@ -249,7 +239,7 @@ function PostCard({ post }) {
     <article className="yam-post-card-v2">
       <div className="yam-post-head-v2">
         <div className="yam-post-author-v2">
-          <Avatar name={post.authorName} size={48} accent={Boolean(post.brandRing)} image />
+          <Avatar name={post.authorName} size={48} accent={Boolean(post.brandRing)} image src={post.authorAvatar} />
           <div className="yam-post-author-copy">
             <div className="yam-post-author-line">
               <strong>{post.authorName}</strong>
@@ -332,8 +322,39 @@ export default function FeedEnhanced() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const profile = getStoredUserSnapshot();
-  const username = getCurrentUsername() || profile?.username || 'ahmed.mohammed';
-  const displayName = profile?.profile?.full_name || profile?.name || profile?.full_name || 'أحمد محمد';
+  const profileDetails = profile?.profile || {};
+  const username = getCurrentUsername() || profile?.username || profile?.user || '';
+  const displayName = profileDetails.full_name || profile?.name || profile?.full_name || username || 'مستخدم يامشات';
+  const profileAvatar = resolveMediaUrl(profileDetails.avatar || profile?.avatar || profileDetails.avatar_url || profile?.avatar_url || '');
+  const isVerified = Boolean(profile?.is_verified || profile?.verified || profileDetails.is_verified || profileDetails.verified);
+  const followersCount = Number(profile?.followers_count || profileDetails.followers_count || profile?.followers || 0);
+  const followingCount = Number(profile?.following_count || profileDetails.following_count || profile?.following || 0);
+  const profileBio = [profileDetails.activity_tagline, profileDetails.bio, profileDetails.location || profile?.location]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join('\n') || 'حدّث ملفك الشخصي ليظهر وصفك الحقيقي هنا.';
+  const joinedAt = profile?.created_at || profileDetails.created_at || profileDetails.joined_at || '';
+  const joinedLabel = joinedAt
+    ? new Date(joinedAt).toLocaleDateString('ar-EG', { month: 'long', year: 'numeric' })
+    : '';
+  const dynamicHighlightValues = Array.isArray(profileDetails.highlights)
+    ? profileDetails.highlights
+    : Array.isArray(profileDetails.interests)
+      ? profileDetails.interests
+      : [];
+  const profileHighlights = [
+    ...DEFAULT_PROFILE_HIGHLIGHTS,
+    ...dynamicHighlightValues.filter(Boolean).slice(0, 4).map((item, index) => ({
+      label: String(item).slice(0, 18),
+      kind: ['travel', 'design', 'moments', 'projects'][index % 4],
+    })),
+  ];
+  const summaryItems = [
+    profileDetails.profession ? { icon: 'profile', text: profileDetails.profession } : null,
+    profileDetails.company ? { icon: 'groups', text: profileDetails.company } : null,
+    (profileDetails.location || profile?.location) ? { icon: 'discover', text: profileDetails.location || profile?.location } : null,
+    joinedLabel ? { icon: 'bookmark', text: `انضم في ${joinedLabel}` } : null,
+  ].filter(Boolean);
 
   const {
     posts = [],
@@ -350,6 +371,7 @@ export default function FeedEnhanced() {
 
   const feedPosts = useMemo(() => buildFeedPosts(posts), [posts]);
   const totalPosts = feedPosts.length;
+  const profilePostsCount = Number(profile?.posts_count || profileDetails.posts_count || profileDetails.posts || profile?.posts || totalPosts || 0);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -534,7 +556,7 @@ export default function FeedEnhanced() {
 
               <div className="yam-profile-body-v2">
                 <div className="yam-profile-avatar-wrap">
-                  <Avatar name={displayName} size={96} accent image />
+                  <Avatar name={displayName} size={96} accent image src={profileAvatar} />
                   <button type="button" className="yam-avatar-camera-btn" aria-label="تغيير الصورة" onClick={() => navigate('/profile')} title="الانتقال إلى الملف الشخصي">
                     <YamshatIcon name="profile" size={16} />
                   </button>
@@ -542,21 +564,17 @@ export default function FeedEnhanced() {
 
                 <div className="yam-profile-name-v2">
                   <strong>{displayName}</strong>
-                  <span className="yam-verified-badge">✓</span>
+                  {isVerified ? <span className="yam-verified-badge">✓</span> : null}
                 </div>
-                <div className="yam-profile-handle-v2">{normalizeHandle(username)}</div>
+                <div className="yam-profile-handle-v2">{normalizeHandle(username || displayName)}</div>
 
                 <div className="yam-profile-stats-v2">
-                  <div><strong>{totalPosts}</strong><span>المنشورات</span></div>
-                  <div><strong>2.4K</strong><span>المتابعين</span></div>
-                  <div><strong>320</strong><span>يتابع</span></div>
+                  <div><strong>{formatCompactNumber(profilePostsCount)}</strong><span>المنشورات</span></div>
+                  <div><strong>{formatCompactNumber(followersCount)}</strong><span>المتابعين</span></div>
+                  <div><strong>{formatCompactNumber(followingCount)}</strong><span>يتابع</span></div>
                 </div>
 
-                <p className="yam-profile-bio-v2">
-                  مصمم ومطور واجهات مستخدم<br />
-                  أحب التصميم والتقنية والسفر ✈️<br />
-                  دمشق - سوريا
-                </p>
+                <p className="yam-profile-bio-v2">{profileBio}</p>
 
                 <div className="yam-profile-actions-v2">
                   <button type="button" className="yam-primary-action-btn" onClick={() => navigate('/profile')}>تعديل الملف الشخصي</button>
@@ -578,7 +596,7 @@ export default function FeedEnhanced() {
                 </div>
 
                 <div className="yam-highlights-row-v2">
-                  {PROFILE_HIGHLIGHTS.map((item) => (
+                  {profileHighlights.map((item) => (
                     <div key={item.label} className="yam-highlight-item-v2">
                       <div className={`yam-highlight-ring ${item.kind}`}>
                         {item.kind === 'add' ? <YamshatIcon name="plus" size={18} /> : null}
@@ -590,19 +608,21 @@ export default function FeedEnhanced() {
               </div>
             </section>
 
-            <section className="yam-summary-card-v2">
-              <div className="yam-section-title-row">
-                <h3>معلومات مختصرة</h3>
-              </div>
-              <div className="yam-summary-list-v2">
-                {SUMMARY_ITEMS.map((item) => (
-                  <div key={item.text} className="yam-summary-row-v2">
-                    <span className="yam-summary-icon"><YamshatIcon name={item.icon} size={16} /></span>
-                    <span>{item.text}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
+            {summaryItems.length ? (
+              <section className="yam-summary-card-v2">
+                <div className="yam-section-title-row">
+                  <h3>معلومات مختصرة</h3>
+                </div>
+                <div className="yam-summary-list-v2">
+                  {summaryItems.map((item) => (
+                    <div key={item.text} className="yam-summary-row-v2">
+                      <span className="yam-summary-icon"><YamshatIcon name={item.icon} size={16} /></span>
+                      <span>{item.text}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
           </aside>
         </div>
 
@@ -1007,23 +1027,35 @@ export default function FeedEnhanced() {
           .yam-post-stack-v2 {
             flex: 1;
             min-height: 0;
-            overflow: auto;
+            position: relative;
+            overflow-x: hidden;
+            overflow-y: scroll;
             overscroll-behavior-y: contain;
             scrollbar-gutter: stable both-edges;
-            scrollbar-width: thin;
-            scrollbar-color: rgba(139, 92, 246, 0.72) transparent;
+            scrollbar-width: auto;
+            scrollbar-color: rgba(139, 92, 246, 0.92) rgba(255,255,255,0.04);
             display: grid;
             gap: 18px;
-            padding-inline-end: 4px;
+            direction: ltr;
+            padding-inline-start: 6px;
+            padding-inline-end: 12px;
             padding-bottom: 28px;
+            border-inline-end: 1px solid rgba(139, 92, 246, 0.14);
+          }
+
+          .yam-post-stack-v2 > * {
+            direction: rtl;
           }
 
           .yam-post-stack-v2::-webkit-scrollbar {
-            width: 10px;
+            width: 14px;
+            -webkit-appearance: none;
           }
 
           .yam-post-stack-v2::-webkit-scrollbar-track {
-            background: transparent;
+            background: rgba(255,255,255,0.06);
+            border-radius: 999px;
+            box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.18);
           }
 
           .yam-post-stack-v2::-webkit-scrollbar-thumb {

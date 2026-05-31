@@ -25,6 +25,13 @@ const GIFTS = [
   { id: 5, name: 'تاج', icon: '👑', price: 1000 },
 ];
 
+const ROOM_FILTERS = [
+  { key: 'all', label: 'الكل' },
+  { key: 'active', label: 'النشطة' },
+  { key: 'mine', label: 'الخاصة بي' },
+  { key: 'ready', label: 'جاهزة للبث' },
+];
+
 function Avatar({ name = '', src, size = 42, ring = false }) {
   const style = {
     width: size,
@@ -63,6 +70,9 @@ export default function Live() {
   const [loadingRooms, setLoadingRooms] = useState(true);
   const [loadingRoom, setLoadingRoom] = useState(false);
   const [busy, setBusy] = useState('');
+  const [roomQuery, setRoomQuery] = useState('');
+  const [roomFilter, setRoomFilter] = useState('all');
+  const [roomSort, setRoomSort] = useState('viewers');
   const [showGiftTray, setShowGiftTray] = useState(false);
   const [showMobileCommentComposer, setShowMobileCommentComposer] = useState(false);
   const [floatingHearts, setFloatingHearts] = useState([]);
@@ -361,6 +371,36 @@ export default function Live() {
   const heartsCount = Number(activeRoom?.hearts_count || 0);
   const viewerCount = Number(activeRoom?.viewer_count || 0);
 
+  const filteredRooms = useMemo(() => {
+    const queryText = roomQuery.trim().toLowerCase();
+    const nextRooms = [...rooms].filter((room) => {
+      const hostNameValue = String(room.host || room.username || room.host_username || '').toLowerCase();
+      const roomTitle = String(room.title || room.room_name || '').toLowerCase();
+      const matchesQuery = !queryText || roomTitle.includes(queryText) || hostNameValue.includes(queryText);
+      const matchesFilter = roomFilter === 'all'
+        || (roomFilter === 'active' && Boolean(room.is_active || room.status === 'live'))
+        || (roomFilter === 'mine' && hostNameValue === String(currentUser || '').toLowerCase())
+        || (roomFilter === 'ready' && Boolean(room.livekit_configured));
+      return matchesQuery && matchesFilter;
+    });
+
+    nextRooms.sort((left, right) => {
+      if (roomSort === 'newest') {
+        return new Date(right.started_at || right.created_at || 0).getTime() - new Date(left.started_at || left.created_at || 0).getTime();
+      }
+      return Number(right.viewer_count || 0) - Number(left.viewer_count || 0);
+    });
+
+    return nextRooms;
+  }, [currentUser, roomFilter, roomQuery, roomSort, rooms]);
+
+  useEffect(() => {
+    if (!filteredRooms.length) return;
+    if (!activeRoom?.id || !filteredRooms.some((room) => room.id === activeRoom.id)) {
+      setActiveRoom(filteredRooms[0]);
+    }
+  }, [activeRoom?.id, filteredRooms]);
+
   const sendComment = async () => {
     const text = commentText.trim();
     if (!text || !activeRoom?.id) return;
@@ -650,8 +690,32 @@ export default function Live() {
               <strong>غرف البث</strong>
               <button type="button" className="yam-mini-btn" onClick={handleCreateRoom} disabled={busy === 'create'}>+ إنشاء</button>
             </div>
+            <div className="yam-live-room-filters">
+              <input
+                className="yam-live-room-search"
+                value={roomQuery}
+                onChange={(event) => setRoomQuery(event.target.value)}
+                placeholder="ابحث عن بث أو مضيف"
+              />
+              <div className="yam-live-room-filter-chips">
+                {ROOM_FILTERS.map((filter) => (
+                  <button
+                    key={filter.key}
+                    type="button"
+                    className={`yam-live-filter-chip ${roomFilter === filter.key ? 'active' : ''}`}
+                    onClick={() => setRoomFilter(filter.key)}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
+              <select className="yam-live-room-sort" value={roomSort} onChange={(event) => setRoomSort(event.target.value)}>
+                <option value="viewers">الأكثر مشاهدة</option>
+                <option value="newest">الأحدث</option>
+              </select>
+            </div>
             <div className="yam-room-list">
-              {loadingRooms ? <p className="yam-subtle-copy">جارٍ تحميل الغرف...</p> : rooms.length ? rooms.map((room) => (
+              {loadingRooms ? <p className="yam-subtle-copy">جارٍ تحميل الغرف...</p> : filteredRooms.length ? filteredRooms.map((room) => (
                 <button key={room.id} type="button" className={`yam-room-card ${activeRoom?.id === room.id ? 'active' : ''}`} onClick={() => setActiveRoom(room)}>
                   <div>
                     <strong>{room.title}</strong>
@@ -659,7 +723,7 @@ export default function Live() {
                   </div>
                   <span>{room.viewer_count || 0} 👁</span>
                 </button>
-              )) : <p className="yam-subtle-copy">مفيش غرف حالياً. أنشئ بث جديد.</p>}
+              )) : <p className="yam-subtle-copy">لا توجد غرف مطابقة للفلاتر الحالية.</p>}
             </div>
           </div>
 
@@ -952,6 +1016,39 @@ export default function Live() {
             display: grid;
             gap: 18px;
             align-content: start;
+          }
+          .yam-live-room-filters {
+            display: grid;
+            gap: 10px;
+          }
+          .yam-live-room-search,
+          .yam-live-room-sort {
+            width: 100%;
+            min-height: 44px;
+            border-radius: 14px;
+            border: 1px solid rgba(255,255,255,0.08);
+            background: rgba(15,23,42,0.58);
+            color: #fff;
+            padding: 0 14px;
+          }
+          .yam-live-room-filter-chips {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+          }
+          .yam-live-filter-chip {
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 999px;
+            background: rgba(15,23,42,0.52);
+            color: #dbe4ff;
+            min-height: 38px;
+            padding: 0 14px;
+            cursor: pointer;
+            font-weight: 700;
+          }
+          .yam-live-filter-chip.active {
+            background: linear-gradient(135deg, rgba(139,92,246,0.94), rgba(59,130,246,0.94));
+            color: #fff;
           }
           .yam-room-list,
           .yam-cohost-list,

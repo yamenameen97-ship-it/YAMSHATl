@@ -1,5 +1,7 @@
 import API from './axios.js';
 
+const SUPPORTED_REMOTE_SEARCH_TYPES = new Set(['all', 'users', 'posts', 'reels', 'hashtags']);
+
 function normalizeRemoteResult(item = {}) {
   const type = item.type || 'posts';
   const title = item.title || item.name || item.description || 'نتيجة';
@@ -24,7 +26,22 @@ function normalizeRemoteResult(item = {}) {
 }
 
 export async function liveSearch(params = {}) {
-  const { data } = await API.get('/search', { params, cache: false, forceRefresh: true });
+  const rawType = String(params?.type || 'all').trim().toLowerCase();
+  const sanitizedParams = {
+    q: String(params?.q || '').trim(),
+    type: SUPPORTED_REMOTE_SEARCH_TYPES.has(rawType) ? rawType : 'all',
+    limit: Math.min(Math.max(Number(params?.limit) || 12, 1), 50),
+  };
+
+  if (!sanitizedParams.q) {
+    return { query: '', results: [], total: 0 };
+  }
+
+  const { data } = await API.get('/search', {
+    params: sanitizedParams,
+    cache: false,
+    forceRefresh: true,
+  });
   return {
     ...data,
     results: Array.isArray(data?.results) ? data.results.map(normalizeRemoteResult) : [],

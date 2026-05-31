@@ -66,7 +66,26 @@ function normalizeFeedParams(params = {}) {
 
 export const getPosts = async (params = {}) => {
   const normalizedParams = normalizeFeedParams(params);
-  const response = await API.get('/posts/', { params: normalizedParams });
+  let response;
+
+  try {
+    response = await API.get('/posts/', { params: normalizedParams });
+  } catch (error) {
+    const status = Number(error?.response?.status || 0);
+    if (![400, 422].includes(status)) throw error;
+
+    const fallbackParams = {
+      page: normalizedParams.page,
+      limit: normalizedParams.limit,
+    };
+
+    if (normalizedParams.include_drafts !== undefined) {
+      fallbackParams.include_drafts = normalizedParams.include_drafts;
+    }
+
+    response = await API.get('/posts/', { params: fallbackParams });
+  }
+
   const payload = response?.data;
   const rawItems = Array.isArray(payload)
     ? payload

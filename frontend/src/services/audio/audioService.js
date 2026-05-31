@@ -106,6 +106,11 @@ class AudioEngine {
     this.settings = safeReadSettings();
     this.listeners = new Set();
     this.preloadStarted = false;
+    this._unlockHandler = () => {
+      this._tryUnlock().then((ok) => {
+        if (ok) this._flushQueue();
+      });
+    };
     this._bindUnlock();
   }
 
@@ -155,8 +160,7 @@ class AudioEngine {
   // ---------- Unlock (autoplay bypass) ----------
   _bindUnlock() {
     if (typeof window === 'undefined') return;
-    const unlock = () => this._tryUnlock();
-    UNLOCK_EVENTS.forEach((ev) => window.addEventListener(ev, unlock, { once: true, passive: true }));
+    UNLOCK_EVENTS.forEach((ev) => window.addEventListener(ev, this._unlockHandler, { passive: true }));
   }
 
   async _tryUnlock() {
@@ -172,6 +176,7 @@ class AudioEngine {
       a.muted = true;
       a.play().catch(() => {});
       this.unlocked = true;
+      UNLOCK_EVENTS.forEach((ev) => window.removeEventListener(ev, this._unlockHandler));
       this.preload(); // safe to preload now
       this._notify();
       return true;
@@ -269,6 +274,9 @@ class AudioEngine {
       // queue gently — most browsers will allow once unlocked
       this.queue.push({ key, opts });
       if (this.queue.length > 16) this.queue.shift();
+      this._tryUnlock().then((ok) => {
+        if (ok) this._flushQueue();
+      });
       return false;
     }
     const baseVol = typeof opts.volume === 'number' ? opts.volume : 1;
@@ -414,15 +422,5 @@ class AudioEngine {
 }
 
 const audioService = new AudioEngine();
-
-// flush queue after unlock
-if (typeof window !== 'undefined') {
-  const handler = () => {
-    audioService._tryUnlock().then((ok) => {
-      if (ok) audioService._flushQueue();
-    });
-  };
-  UNLOCK_EVENTS.forEach((ev) => window.addEventListener(ev, handler, { once: true, passive: true }));
-}
 
 export default audioService;

@@ -70,7 +70,9 @@ function buildEntry(type, item = {}) {
       ? `/search?q=${encodeURIComponent(String(title).replace(/^#/, ''))}`
       : type === 'reels'
         ? '/reels'
-        : '/';
+        : type === 'live'
+          ? '/live'
+          : '/';
   const searchText = [
     title,
     username,
@@ -107,14 +109,17 @@ function createCollectionSignature(collections = {}) {
   const posts = collections.posts || [];
   const reels = collections.reels || [];
   const hashtags = collections.hashtags || [];
+  const live = collections.live || [];
   const stamp = [
     users.length,
     posts.length,
     reels.length,
     hashtags.length,
+    live.length,
     users[0]?.id || users[0]?.username || '',
     posts[0]?.id || posts[0]?.created_at || '',
     reels[0]?.id || reels[0]?.created_at || '',
+    live[0]?.id || live[0]?.room_name || live[0]?.title || '',
   ].join(':');
   return stamp;
 }
@@ -127,6 +132,18 @@ export function buildSearchIndex(collections = {}) {
   (collections.users || []).forEach((item) => entries.push(buildEntry('users', item)));
   (collections.posts || []).forEach((item) => entries.push(buildEntry('posts', item)));
   (collections.reels || []).forEach((item) => entries.push(buildEntry('reels', item)));
+  (collections.live || []).forEach((item) => entries.push(buildEntry('live', {
+    ...item,
+    title: item.title || item.room_name || item.host_name || item.username || 'بث مباشر',
+    description: item.description || item.topic || item.host_name || 'غرفة بث مباشر',
+    content: [item.description, item.topic, item.host_name, item.username].filter(Boolean).join(' • '),
+    username: item.host_username || item.username || item.host_name || '',
+    avatar: item.host_avatar || item.avatar || item.user_avatar || '',
+    media_url: item.thumbnail || item.cover_image || item.preview_image || '',
+    views_count: item.viewer_count || item.viewers || 0,
+    likes_count: item.likes_count || item.engagement || 0,
+    created_at: item.started_at || item.created_at || '',
+  })));
   (collections.hashtags || []).forEach((item) => {
     const tag = typeof item === 'string' ? item : item.tag || item.name || '';
     entries.push(buildEntry('hashtags', {
@@ -275,10 +292,10 @@ export function getSearchInsights(index, query = '') {
   };
 }
 
-export function buildSearchCollections(users = [], posts = []) {
+export function buildSearchCollections(users = [], posts = [], live = []) {
   const reels = posts.filter((item) => /\.(mp4|webm|mov|m3u8)(\?.*)?$/i.test(String(item.media_url || item.video_url || '')));
   const hashtags = buildTrendingHashtags(posts);
-  return { users, posts, reels, hashtags };
+  return { users, posts, reels, hashtags, live };
 }
 
 export function buildUserDiscovery(index, query = '', limit = 8) {

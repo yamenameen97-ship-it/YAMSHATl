@@ -1,6 +1,29 @@
 import API from './axios.js';
 
-export const getUsers = () => API.get('/users');
+export const getUsers = async (params = {}) => {
+  const normalizedParams = {
+    limit: Math.max(Number(params?.limit) || 60, 1),
+    page: Math.max(Number(params?.page) || 1, 1),
+    ...params,
+  };
+
+  try {
+    return await API.get('/users', {
+      params: normalizedParams,
+      cache: false,
+      forceRefresh: true,
+    });
+  } catch (error) {
+    if (error?.response?.status !== 500) throw error;
+
+    const meResponse = await API.get('/users/me', { cache: false, forceRefresh: true }).catch(() => null);
+    const me = meResponse?.data;
+    return {
+      data: me ? [me] : [],
+      fallback: true,
+    };
+  }
+};
 export const getMe = () => API.get('/users/me');
 export const getProfileBundle = (username) => API.get(`/users/profile/${encodeURIComponent(username)}`, { cache: false, forceRefresh: true });
 export const getUserSessions = () => API.get('/users/sessions', { cache: false, forceRefresh: true });

@@ -10,6 +10,7 @@ import { ListSkeleton } from '../components/feedback/Skeleton.jsx';
 import useDebounce from '../hooks/useDebounce';
 import { getPosts } from '../api/posts.js';
 import { getUsers } from '../api/users.js';
+import { getLiveRooms } from '../api/live.js';
 import { getSearchSuggestions, getTrendingSearches, liveSearch } from '../api/search.js';
 import { groupSearchResults } from '../utils/fuzzySearch.js';
 import {
@@ -21,12 +22,14 @@ import {
 } from '../services/search/searchEngine.js';
 import { FixedSizeList as List } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
+import { getCurrentUsername, getStoredUserSnapshot } from '../utils/auth.js';
 
 const SEARCH_FILTERS = [
   { key: 'all', label: 'الكل' },
   { key: 'users', label: 'الأشخاص' },
   { key: 'posts', label: 'المنشورات' },
   { key: 'reels', label: 'الريلز' },
+  { key: 'live', label: 'البث المباشر' },
   { key: 'hashtags', label: 'الهاشتاجات' },
 ];
 
@@ -65,12 +68,31 @@ function persistCollectionsCache(collections) {
   }
 }
 
+function buildSessionUserFallback() {
+  const session = getStoredUserSnapshot();
+  const profile = session?.profile || {};
+  const username = getCurrentUsername() || session?.username || session?.user || '';
+  const displayName = profile.full_name || session?.name || session?.full_name || username;
+
+  if (!username && !displayName) return [];
+
+  return [{
+    id: session?.id || username || 'me',
+    username,
+    name: displayName || username || 'أنت',
+    avatar: profile.avatar || session?.avatar || profile.avatar_url || session?.avatar_url || '',
+    bio: profile.bio || profile.activity_tagline || '',
+    followers_count: Number(profile.followers_count || session?.followers_count || session?.followers || 0),
+    is_verified: Boolean(session?.verified || session?.is_verified || profile.verified || profile.is_verified),
+  }];
+}
+
 function SearchResultRow({ index, style, data }) {
   const { results, openResult, setQuery } = data;
   const item = results[index];
   if (!item) return null;
 
-  const accent = item.type === 'users' ? '👤' : item.type === 'posts' ? '📝' : item.type === 'reels' ? '🎬' : '#';
+  const accent = item.type === 'users' ? '👤' : item.type === 'posts' ? '📝' : item.type === 'reels' ? '🎬' : item.type === 'live' ? '🔴' : '#';
 
   return (
     <div style={{ ...style, padding: '8px 0' }}>
@@ -83,7 +105,7 @@ function SearchResultRow({ index, style, data }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
               <div>
                 <h3 style={{ margin: '0 0 6px', fontSize: 16 }}>{item.title}</h3>
-                <div className="muted" style={{ fontSize: 12 }}>{item.type === 'users' ? 'شخص' : item.type === 'posts' ? 'منشور' : item.type === 'reels' ? 'ريل' : 'هاشتاج'}</div>
+                <div className="muted" style={{ fontSize: 12 }}>{item.type === 'users' ? 'شخص' : item.type === 'posts' ? 'منشور' : item.type === 'reels' ? 'ريل' : item.type === 'live' ? 'بث مباشر' : 'هاشتاج'}</div>
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 {item.isVerified ? <span className="score-pill">موثّق</span> : null}
@@ -122,7 +144,7 @@ export default function Search() {
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState('');
-  const [collections, setCollections] = useState(() => restoreCollectionsCache() || { users: [], posts: [], reels: [], hashtags: [] });
+  const [collections, setCollections] = useState(() => restoreCollectionsCache() || { users: buildSessionUserFallback(), posts: [], reels: [], live: [], hashtags: [] });
   const [history, setHistory] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY) || '[]');
@@ -148,22 +170,41 @@ export default function Search() {
 
   const hydrateCollections = useCallback(async () => {
     try {
-      setLoading((prev) => prev && !(collections.users?.length || collections.posts?.length));
+      setLoading((prev) => prev && !(collections.users?.length || collections.posts?.length || collections.live?.length));
       setError('');
-      const [{ data: usersData }, { data: postsData }] = await Promise.all([getUsers(), getPosts({ limit: 120, page: 1 })]);
+      const [usersResponse, postsResponse, liveResponse] = await Promise.allSettled([
+        getUsers({ limit: 80, page: 1 }),
+        getPosts({ limit: 120, page: 1 }),
+        getLiveRooms(),
+      ]);
+
+      const usersData = usersResponse.status === 'fulfilled' ? usersResponse.value?.data : [];
+      const postsData = postsResponse.status === 'fulfilled' ? postsResponse.value?.data : [];
+      const liveData = liveResponse.status === 'fulfilled' ? liveResponse.value?.data : [];
+
       const users = Array.isArray(usersData) ? usersData : usersData?.items || [];
       const posts = Array.isArray(postsData) ? postsData : postsData?.items || [];
-      const nextCollections = buildSearchCollections(users, posts);
+      const liveRooms = Array.isArray(liveData) ? liveData : liveData?.items || [];
+      const mergedUsers = users.length ? users : buildSessionUserFallback();
+      const nextCollections = buildSearchCollections(mergedUsers, posts, liveRooms);
       setCollections(nextCollections);
       persistCollectionsCache(nextCollections);
+
+      const nothingLoaded = !users.length && !posts.length && !liveRooms.length;
+      if (nothingLoaded && !(collections.users?.length || collections.posts?.length || collections.live?.length || collections.hashtags?.length)) {
+        const firstError = [usersResponse, postsResponse, liveResponse].find((response) => response.status === 'rejected');
+        if (firstError?.reason) {
+          throw firstError.reason;
+        }
+      }
     } catch (err) {
-      if (!(collections.users?.length || collections.posts?.length)) {
+      if (!(collections.users?.length || collections.posts?.length || collections.live?.length || collections.hashtags?.length)) {
         setError(err?.response?.data?.detail || err?.message || 'تعذر تحميل بيانات البحث الذكي.');
       }
     } finally {
       setLoading(false);
     }
-  }, [collections.posts?.length, collections.users?.length]);
+  }, [collections.live?.length, collections.posts?.length, collections.users?.length]);
 
   useEffect(() => {
     hydrateCollections();
@@ -195,8 +236,10 @@ export default function Search() {
       };
     }
 
+    const remoteType = ['all', 'users', 'posts', 'reels', 'hashtags'].includes(filterKey) ? filterKey : 'all';
+
     Promise.allSettled([
-      liveSearch({ q: trimmedQuery, type: filterKey, limit: 12 }),
+      filterKey === 'live' ? Promise.resolve({ results: [] }) : liveSearch({ q: trimmedQuery, type: remoteType, limit: 12 }),
       getSearchSuggestions(trimmedQuery, 8),
     ]).then((responses) => {
       if (cancelled) return;
@@ -287,6 +330,10 @@ export default function Search() {
       setQuery(item.title.replace(/^#/, ''));
       setRequiredHashtag(item.title);
       setFilterKey('hashtags');
+      return;
+    }
+    if (item.type === 'live') {
+      navigate('/live');
       return;
     }
     navigate(item.route || '/search');

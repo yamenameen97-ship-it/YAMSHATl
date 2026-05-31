@@ -1,37 +1,52 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import audioService from '../../services/audio/audioService.js';
 
-/**
- * useAudio() — React hook for the centralized audio engine.
- * Returns reactive settings and convenience play helpers.
- */
 export default function useAudio() {
-  const [settings, setSettings] = useState(audioService.getSettings());
+  const [settings, setSettings] = useState(() => audioService.getSettings());
 
   useEffect(() => {
-    const unsub = audioService.subscribe((s) => setSettings(s));
-    return unsub;
+    setSettings(audioService.getSettings());
+    audioService.preload();
+    const unsubscribe = audioService.subscribe((nextSettings) => {
+      setSettings(nextSettings);
+    });
+    return () => unsubscribe();
   }, []);
 
-  const play = useCallback((key, opts) => audioService.play(key, opts), []);
+  const update = useCallback((patch = {}) => {
+    audioService.updateSettings(patch);
+  }, []);
+
+  const setVolume = useCallback((value) => {
+    audioService.setVolume(value);
+  }, []);
+
+  const setEnabled = useCallback((flag) => {
+    audioService.setEnabled(flag);
+  }, []);
+
+  const setCategory = useCallback((category, enabled) => {
+    audioService.setCategory(category, enabled);
+  }, []);
+
+  const play = useCallback((key, options = {}) => audioService.play(key, options), []);
   const stop = useCallback((key) => audioService.stop(key), []);
 
   return {
     settings,
-    update: (patch) => audioService.updateSettings(patch),
-    setVolume: (v) => audioService.setVolume(v),
-    setEnabled: (b) => audioService.setEnabled(b),
-    setCategory: (cat, b) => audioService.setCategory(cat, b),
+    update,
+    setVolume,
+    setEnabled,
+    setCategory,
     play,
     stop,
-    // shortcuts
     onMessageReceived: () => audioService.onMessageReceived(),
     onMessageSent: () => audioService.onMessageSent(),
     onMessageSeen: () => audioService.onMessageSeen(),
     onMessageFailed: () => audioService.onMessageFailed(),
     onTyping: () => audioService.onTyping(),
-    onNotification: (t) => audioService.onNotification(t),
-    startIncomingCall: (v) => audioService.startIncomingCall(v),
+    onNotification: (type) => audioService.onNotification(type),
+    startIncomingCall: (video = false) => audioService.startIncomingCall(video),
     stopIncomingCall: () => audioService.stopIncomingCall(),
     endCall: () => audioService.endCall(),
     liveStarted: () => audioService.liveStarted(),

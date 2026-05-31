@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getNotifications } from '../../api/notifications.js';
 import { getLiveRooms } from '../../api/live.js';
 import { BACKEND_ORIGIN } from '../../api/config.js';
+import { resolveMediaUrl } from '../../config/mediaConfig.js';
 import { clearStoredUser, getAuthToken, getCurrentUsername, getStoredUserSnapshot } from '../../utils/auth.js';
 import { getCsrfToken } from '../../utils/csrf.js';
 import { redirectToAppPath } from '../../utils/router.js';
@@ -86,6 +87,8 @@ function Topbar() {
   );
 
   const username = currentUsername || session?.username || 'Yamshat';
+  const displayName = session?.profile?.full_name || session?.name || session?.full_name || username;
+  const avatarSrc = resolveMediaUrl(session?.profile?.avatar || session?.avatar || session?.profile?.avatar_url || session?.avatar_url || '');
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -134,15 +137,16 @@ function Topbar() {
   const account = (
     <div ref={menuRef} className="yam-topbar-account-wrap">
       <TopBarAccount
-        name={username}
-        subtitle="الحساب"
+        name={displayName}
+        subtitle={username ? `@${username}` : 'الحساب'}
+        avatarSrc={avatarSrc}
         onClick={toggleMenu}
         menu={
           <div className={`yam-account-dropdown ${menuOpen ? 'open' : ''}`} role="menu">
             <div className="yam-account-dropdown-head">
               <div>
-                <strong>{username}</strong>
-                <p>القائمة السريعة</p>
+                <strong>{displayName}</strong>
+                <p>{username ? `@${username}` : 'القائمة السريعة'}</p>
               </div>
             </div>
             <div className="yam-account-dropdown-list">

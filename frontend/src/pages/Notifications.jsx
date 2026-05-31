@@ -11,6 +11,7 @@ import socketManager from '../services/socketManager.js';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import { FixedSizeList as List } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
+import audioService from '../services/audio/audioService.js';
 
 const FILTERS = [
   { id: 'all', label: 'الكل' },
@@ -117,6 +118,7 @@ export default function Notifications() {
     const handleIncoming = async (incoming) => {
       const nextItem = normalizeNotification(incoming);
       upsertNotification(nextItem);
+      audioService.onNotification(nextItem.type || nextItem.category || 'generic');
       pushToast({ type: 'info', title: nextItem.title, description: nextItem.body, duration: 4200 });
       if (settings.pushEnabled) await maybeShowBrowserNotification(nextItem).catch(() => null);
     };

@@ -21,6 +21,19 @@ export function activateMediaEventBridge({
   activated = true;
 
   const cleanups = [];
+  const bindSocketEvent = (eventName, handler) => {
+    if (typeof socketManager?.on === 'function') {
+      const unsubscribe = socketManager.on(eventName, handler);
+      if (typeof unsubscribe === 'function') cleanups.push(unsubscribe);
+      return true;
+    }
+    if (socketManager?.socket?.on) {
+      socketManager.socket.on(eventName, handler);
+      cleanups.push(() => socketManager.socket.off(eventName, handler));
+      return true;
+    }
+    return false;
+  };
 
   // 1) Chat bus integration
   if (chatBus?.onChatBus) {
@@ -38,26 +51,24 @@ export function activateMediaEventBridge({
   }
 
   // 2) Socket-driven notifications (best-effort, optional)
-  if (socketManager?.socket?.on) {
-    const sock = socketManager.socket;
-    const wrap = (ev, handler) => { sock.on(ev, handler); cleanups.push(() => sock.off(ev, handler)); };
-
-    wrap('notification', (payload) => {
-      audioService.onNotification(payload?.type || 'generic');
-    });
-    wrap('notification:like', () => audioService.onNotification('like'));
-    wrap('notification:comment', () => audioService.onNotification('comment'));
-    wrap('notification:follow', () => audioService.onNotification('follow'));
-    wrap('notification:mention', () => audioService.onNotification('mention'));
-    wrap('notification:friend_request', () => audioService.onNotification('friend_request'));
-    wrap('live:started', () => audioService.liveStarted());
-    wrap('live:ended', () => audioService.liveEnded());
-    wrap('live:viewer_joined', () => audioService.onNotification('viewer_join'));
-    wrap('live:gift', () => audioService.onNotification('gift'));
-    wrap('call:incoming', (p) => audioService.startIncomingCall(!!p?.video));
-    wrap('call:answered', () => audioService.stopIncomingCall());
-    wrap('call:ended', () => audioService.endCall());
-  }
+  bindSocketEvent('notification', (payload) => {
+    audioService.onNotification(payload?.type || 'generic');
+  });
+  bindSocketEvent('new_notification', (payload) => {
+    audioService.onNotification(payload?.type || payload?.category || 'generic');
+  });
+  bindSocketEvent('notification:like', () => audioService.onNotification('like'));
+  bindSocketEvent('notification:comment', () => audioService.onNotification('comment'));
+  bindSocketEvent('notification:follow', () => audioService.onNotification('follow'));
+  bindSocketEvent('notification:mention', () => audioService.onNotification('mention'));
+  bindSocketEvent('notification:friend_request', () => audioService.onNotification('friend_request'));
+  bindSocketEvent('live:started', () => audioService.liveStarted());
+  bindSocketEvent('live:ended', () => audioService.liveEnded());
+  bindSocketEvent('live:viewer_joined', () => audioService.onNotification('viewer_join'));
+  bindSocketEvent('live:gift', () => audioService.onNotification('gift'));
+  bindSocketEvent('call:incoming', (p) => audioService.startIncomingCall(!!p?.video));
+  bindSocketEvent('call:answered', () => audioService.stopIncomingCall());
+  bindSocketEvent('call:ended', () => audioService.endCall());
 
   // 3) Notification store subscription (zustand)
   if (notificationStore?.subscribe) {

@@ -28,7 +28,7 @@ import './styles/mobile-fixes.css';
 import './styles/brand-chat-notifications-refresh.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 
-const BUILD_ID = 'yamshat-mobile-fixed-20260531-r3';
+const BUILD_ID = 'yamshat-pwa-polish-20260531-r4';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {
@@ -43,29 +43,6 @@ async function hardResetIfBuildChanged() {
     localStorage.removeItem('apiBase');
     localStorage.removeItem('yamshat_post_draft');
     localStorage.removeItem('yamshat_quote_draft');
-    localStorage.removeItem('yamshat_user_session');
-    localStorage.removeItem('yamshatAuth');
-    localStorage.removeItem('user');
-    localStorage.removeItem('yamshat_csrf_token');
-
-    try {
-      sessionStorage.removeItem('yamshat_user_session');
-      sessionStorage.removeItem('yamshatAuth');
-      sessionStorage.removeItem('user');
-      sessionStorage.removeItem('yamshat_csrf_token');
-    } catch {
-      // ignore storage failures
-    }
-
-    if ('serviceWorker' in navigator) {
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      await Promise.all(registrations.map((registration) => registration.unregister().catch(() => false)));
-    }
-
-    if ('caches' in window) {
-      const cacheKeys = await caches.keys();
-      await Promise.all(cacheKeys.map((key) => caches.delete(key).catch(() => false)));
-    }
 
     const reloadFlag = `yamshat_build_reload:${BUILD_ID}`;
     if (!sessionStorage.getItem(reloadFlag)) {
@@ -80,24 +57,65 @@ async function hardResetIfBuildChanged() {
   return false;
 }
 
+function normalizeStandaloneDeepLink() {
+  if (typeof window === 'undefined') return;
+  const { pathname, search, hash } = window.location;
+  if (hash && hash.startsWith('#/')) return;
+  if (pathname === '/' || pathname === '/index.html') return;
+  const normalizedPath = pathname.startsWith('/') ? pathname : `/${pathname}`;
+  window.location.replace(`/#${normalizedPath}${search}${hash || ''}`);
+}
+
+function announceUpdateReady(registration) {
+  window.dispatchEvent(new CustomEvent('yamshat:update-ready', {
+    detail: { registration },
+  }));
+}
+
+function watchServiceWorkerUpdates(registration) {
+  if (!registration) return registration;
+
+  if (registration.waiting) {
+    announceUpdateReady(registration);
+  }
+
+  registration.addEventListener('updatefound', () => {
+    const installingWorker = registration.installing;
+    if (!installingWorker) return;
+
+    installingWorker.addEventListener('statechange', () => {
+      if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+        announceUpdateReady(registration);
+      }
+    });
+  });
+
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
+
+  return registration;
+}
+
 if (typeof window !== 'undefined') {
+  normalizeStandaloneDeepLink();
   window.__YAMSHAT_BUILD__ = BUILD_ID;
   window.__YAMSHAT_SW_READY__ = Promise.resolve(null);
   initializePerformanceToolkit();
   initializeRuntimeErrorCapture();
   initializeViewportTracker();
 
-  // تفعيل نظام الوسائط المركزي: ربط الأصوات بأحداث التطبيق
   try {
     activateMediaEventBridge({
       notificationStore: useNotificationStore,
       socketManager,
       chatBus,
     });
-    // إعلام المحرك أن يبدأ بالتحميل المسبق (سينتظر تفاعل المستخدم الأول)
     audioService.preload();
   } catch (err) {
-    // لا نريد أن تفشل التطبيق بسبب مشاكل في الصوت
     if (typeof console !== 'undefined') console.warn('[audio] bridge init failed', err);
   }
 
@@ -115,11 +133,15 @@ if (typeof window !== 'undefined') {
       const resetTriggeredReload = await hardResetIfBuildChanged();
       if (resetTriggeredReload) return;
 
-      window.__YAMSHAT_SW_READY__ = navigator.serviceWorker.register('/sw.js')
+      window.__YAMSHAT_SW_READY__ = navigator.serviceWorker.register('/sw.js', {
+        scope: '/',
+        updateViaCache: 'none',
+      })
         .then((registration) => {
-          initializePerformanceToolkit({ registration });
+          const watchedRegistration = watchServiceWorkerUpdates(registration);
+          initializePerformanceToolkit({ registration: watchedRegistration });
           notificationService.initialize().catch(() => null);
-          return registration;
+          return watchedRegistration;
         })
         .catch(() => null);
     });

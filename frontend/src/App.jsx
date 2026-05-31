@@ -7,6 +7,7 @@ import AppStatusBanner from './components/system/AppStatusBanner.jsx';
 import AppErrorBoundary from './components/system/AppErrorBoundary.jsx';
 import InstallPrompt from './components/feedback/InstallPrompt.jsx';
 import OfflineExperience from './components/feedback/OfflineExperience.jsx';
+import AppUpdatePrompt from './components/feedback/AppUpdatePrompt.jsx';
 import IncomingCallOverlay from './components/chat/IncomingCallOverlay.jsx';
 import GlobalNotificationListener from './components/notifications/GlobalNotificationListener.jsx';
 import { RoutePageSkeleton } from './components/feedback/Skeleton.jsx';
@@ -51,6 +52,7 @@ const Chat = lazy(() => import('./features/chat/index.js').then((mod) => ({ defa
 const Notifications = lazy(() => import('./features/notifications/index.js').then((mod) => ({ default: mod.Notifications })));
 const Search = lazy(() => import('./pages/Search.jsx'));
 const Settings = lazy(() => import('./pages/Settings.jsx'));
+const ShareTargetLanding = lazy(() => import('./pages/ShareTargetLanding.jsx'));
 
 function AppGuards() {
   useNetworkStatus();
@@ -145,6 +147,7 @@ function AppGuards() {
       <AppStatusBanner />
       <InstallPrompt />
       <OfflineExperience />
+      <AppUpdatePrompt />
       <GlobalNotificationListener />
       <IncomingCallOverlay />
       {activeRequests > 0 ? <div className="global-progress-bar" /> : null}
@@ -190,6 +193,7 @@ export default function App() {
             <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
             <Route path="/search" element={<ProtectedRoute><Search /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            <Route path="/share-target" element={<ShareTargetLanding />} />
             <Route path="/post/:postId" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
             <Route path="/profile/:username" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
             <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />

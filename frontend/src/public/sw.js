@@ -1,4 +1,4 @@
-const VERSION = 'yamshat-v20260530-brand-chat-notifications';
+const VERSION = 'yamshat-v20260531-030537-1780196737386';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -7,12 +7,23 @@ const CACHE_NAMES = {
   OFFLINE: `${VERSION}:offline`,
 };
 
+const SHARE_DB_NAME = 'yamshat-pwa-db';
+const SHARE_STORE_NAME = 'shared-content';
+const SHARE_KEY = 'latest';
+
 const APP_SHELL = [
   '/',
   '/index.html',
   '/offline.html',
   '/manifest.webmanifest',
+  '/icons/icon-72.png',
+  '/icons/icon-96.png',
+  '/icons/icon-128.png',
+  '/icons/icon-144.png',
+  '/icons/icon-152.png',
   '/icons/icon-192.png',
+  '/icons/icon-maskable-192.png',
+  '/icons/icon-384.png',
   '/icons/icon-512.png',
   '/icons/icon-maskable-512.png',
   '/icons/badge-96.png',
@@ -24,12 +35,8 @@ function isRuntimeConfigPath(url) {
   return /^\/(?:app-config\.js|background-sync\.js|sw(?:-enhanced)?\.js)$/i.test(url.pathname);
 }
 
-function emptyResponse(status = 503, statusText = 'Service Unavailable') {
-  return new Response(JSON.stringify({ error: 'offline', detail: 'الشبكة غير متاحة' }), {
-    status,
-    statusText,
-    headers: { 'Content-Type': 'application/json' },
-  });
+function isSignedMedia(url) {
+  return /([?&])(sig|signature|token|expires)=/i.test(url.search);
 }
 
 function normalizeAppTarget(target = '/') {
@@ -42,15 +49,77 @@ function normalizeAppTarget(target = '/') {
   return `/#${normalized}`;
 }
 
+function emptyResponse(status = 503, statusText = 'Service Unavailable') {
+  return new Response(JSON.stringify({ error: 'offline', detail: 'الشبكة غير متاحة' }), {
+    status,
+    statusText,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function openShareDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(SHARE_DB_NAME, 1);
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(SHARE_STORE_NAME)) {
+        db.createObjectStore(SHARE_STORE_NAME);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function saveSharedPayload(payload) {
+  const db = await openShareDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(SHARE_STORE_NAME, 'readwrite');
+    tx.objectStore(SHARE_STORE_NAME).put(payload, SHARE_KEY);
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => reject(tx.error || new Error('share tx failed'));
+  });
+}
+
+async function handleShareTarget(request) {
+  try {
+    const formData = await request.formData();
+    const files = formData.getAll('files').filter(Boolean);
+    const normalizedFiles = await Promise.all(
+      files.map(async (file, index) => ({
+        id: `${Date.now()}-${index}`,
+        name: file.name || `shared-${index + 1}`,
+        type: file.type || 'application/octet-stream',
+        size: Number(file.size || 0),
+        blob: file,
+      }))
+    );
+
+    await saveSharedPayload({
+      id: Date.now(),
+      receivedAt: new Date().toISOString(),
+      title: formData.get('title') || '',
+      text: formData.get('text') || '',
+      url: formData.get('url') || '',
+      files: normalizedFiles,
+    });
+
+    return Response.redirect('/#/share-target?shared=1', 303);
+  } catch (error) {
+    return Response.redirect('/#/share-target?shared=0', 303);
+  }
+}
+
 async function staleWhileRevalidate(request, cacheName) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(request);
-  const network = fetch(request, { cache: 'no-store' }).then(async (response) => {
-    if (response?.status === 200) await cache.put(request, response.clone()).catch(() => null);
-    return response;
-  }).catch(() => null);
-  const result = cached || (await network);
-  return result || emptyResponse();
+  const network = fetch(request, { cache: 'no-store' })
+    .then(async (response) => {
+      if (response?.status === 200) await cache.put(request, response.clone()).catch(() => null);
+      return response;
+    })
+    .catch(() => null);
+  return cached || (await network) || emptyResponse();
 }
 
 async function networkFirst(request, cacheName) {
@@ -84,26 +153,28 @@ async function broadcastMessage(message) {
 }
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAMES.SHELL).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting())
-  );
+  event.waitUntil(caches.open(CACHE_NAMES.SHELL).then((cache) => cache.addAll(APP_SHELL)));
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((key) => !Object.values(CACHE_NAMES).includes(key)).map((key) => caches.delete(key)))).then(() => self.clients.claim())
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((key) => !Object.values(CACHE_NAMES).includes(key)).map((key) => caches.delete(key))))
+      .then(() => self.clients.claim())
+      .then(() => broadcastMessage({ type: 'yamshat:sw-activated', version: VERSION }))
   );
 });
 
-function isSignedMedia(url) {
-  return /([?&])(sig|signature|token|expires)=/i.test(url.search);
-}
-
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-  if (request.method !== 'GET') return;
-
   const url = new URL(request.url);
+
+  if (request.method === 'POST' && url.origin === self.location.origin && url.pathname === '/share-target') {
+    event.respondWith(handleShareTarget(request));
+    return;
+  }
+
+  if (request.method !== 'GET') return;
 
   if (isRuntimeConfigPath(url)) {
     event.respondWith(fetch(request, { cache: 'no-store' }).catch(() => caches.match(request)));
@@ -127,9 +198,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (url.origin !== self.location.origin) {
-    return;
-  }
+  if (url.origin !== self.location.origin) return;
 
   if (/\.(?:js|css|woff2?|ttf|otf)$/i.test(url.pathname)) {
     event.respondWith(staleWhileRevalidate(request, CACHE_NAMES.STATIC));
@@ -155,13 +224,18 @@ self.addEventListener('fetch', (event) => {
 });
 
 self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+    return;
+  }
+
   if (event.data?.type === 'yamshat:queue-sync') {
     event.waitUntil(broadcastMessage({ type: 'yamshat:sync-now' }));
   }
 });
 
 self.addEventListener('sync', (event) => {
-  if (event.tag === 'sync-posts' || event.tag === 'sync-messages' || event.tag === 'sync-notifications') {
+  if (event.tag === 'sync-posts' || event.tag === 'sync-messages' || event.tag === 'sync-notifications' || event.tag === 'offline-sync') {
     event.waitUntil(broadcastMessage({ type: 'yamshat:sync-now' }));
   }
 });

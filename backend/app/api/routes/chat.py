@@ -13,6 +13,7 @@ from app.core.security import ACCESS_TOKEN_TYPE, TokenError, decode_token
 from app.core.socket_server import is_user_online, sio
 from app.db.session import SessionLocal
 from app.models.message import Message
+from app.models.notification import Notification
 from app.models.user import User
 from app.models.user_block import UserBlock
 from app.services.chat_realtime import mark_messages_delivered, mark_messages_seen_for_sender, serialize_message
@@ -197,6 +198,75 @@ async def send_message(payload: dict, db: Session = Depends(get_db), current_use
 
     await sio.emit('new_private_message', serialized, room=f'username:{receiver.username}')
     await sio.emit('new_private_message', serialized, room=f'username:{current_user.username}')
+
+    # Create a Notification record + emit `new_notification` for the receiver so the
+    # bell icon and browser/push notifications fire end-to-end (fixes: chat
+    # messages weren't producing notifications on the other side).
+    try:
+        preview = (clean_message or '').strip()
+        if not preview and media_url:
+            preview = '📎 وسائط جديدة'
+        if len(preview) > 140:
+            preview = preview[:137] + '...'
+        notification = Notification(
+            user_id=receiver.id,
+            type='CHAT',
+            title=f'رسالة جديدة من {current_user.username}',
+            body=preview or 'رسالة جديدة',
+            data={
+                'from_user_id': current_user.id,
+                'username': current_user.username,
+                'message_id': message.id,
+                'screen': 'chat',
+                'path': f'/chat/{current_user.username}',
+            },
+        )
+        db.add(notification)
+        db.commit()
+        db.refresh(notification)
+        await sio.emit(
+            'new_notification',
+            {
+                'id': notification.id,
+                'type': 'CHAT',
+                'title': notification.title,
+                'message': notification.body,
+                'text': notification.body,
+                'body': notification.body,
+                'created_at': notification.created_at.isoformat(),
+                'seen': False,
+                'screen': 'chat',
+                'path': f'/chat/{current_user.username}',
+                'data': {
+                    'username': current_user.username,
+                    'screen': 'chat',
+                    'path': f'/chat/{current_user.username}',
+                    'message_id': message.id,
+                },
+            },
+            room=f'user:{receiver.id}',
+        )
+        # Also emit to the username room as a safety net (some clients join by username)
+        await sio.emit(
+            'new_notification',
+            {
+                'id': notification.id,
+                'type': 'CHAT',
+                'title': notification.title,
+                'message': notification.body,
+                'body': notification.body,
+                'created_at': notification.created_at.isoformat(),
+                'seen': False,
+                'screen': 'chat',
+                'path': f'/chat/{current_user.username}',
+                'data': {'username': current_user.username, 'screen': 'chat'},
+            },
+            room=f'username:{receiver.username}',
+        )
+    except Exception:
+        # Never let a notification failure block the actual message delivery.
+        pass
+
     if message.is_delivered:
         await sio.emit(
             'messages_delivered',

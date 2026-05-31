@@ -7,6 +7,8 @@ import AppStatusBanner from './components/system/AppStatusBanner.jsx';
 import AppErrorBoundary from './components/system/AppErrorBoundary.jsx';
 import InstallPrompt from './components/feedback/InstallPrompt.jsx';
 import OfflineExperience from './components/feedback/OfflineExperience.jsx';
+import IncomingCallOverlay from './components/chat/IncomingCallOverlay.jsx';
+import GlobalNotificationListener from './components/notifications/GlobalNotificationListener.jsx';
 import { RoutePageSkeleton } from './components/feedback/Skeleton.jsx';
 import useNetworkStatus from './hooks/useNetworkStatus.js';
 import useOfflineQueue from './hooks/useOfflineQueue.js';
@@ -143,6 +145,8 @@ function AppGuards() {
       <AppStatusBanner />
       <InstallPrompt />
       <OfflineExperience />
+      <GlobalNotificationListener />
+      <IncomingCallOverlay />
       {activeRequests > 0 ? <div className="global-progress-bar" /> : null}
     </>
   );

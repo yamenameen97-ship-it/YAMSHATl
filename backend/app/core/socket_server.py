@@ -584,6 +584,59 @@ async def chat_message_event(sid, data):
     await sio.emit('new_private_message', serialized, room=f'username:{receiver_username}')
     await sio.emit('new_private_message', serialized, room=f'username:{user.username}')
     await sio.emit('chat_message_ack', {'client_id': client_id, 'message': serialized}, room=sid)
+
+    # Generate a persistent Notification for the receiver so the bell shows the
+    # new message and so push/browser notifications can fire end-to-end.
+    try:
+        db_n = SessionLocal()
+        try:
+            receiver_row = db_n.query(User).filter(User.id == receiver.id).first()
+            preview = (raw_message or '').strip()
+            if not preview and media_url:
+                preview = '📎 وسائط جديدة'
+            if len(preview) > 140:
+                preview = preview[:137] + '...'
+            notification = Notification(
+                user_id=receiver_row.id,
+                type='CHAT',
+                title=f'رسالة جديدة من {user.username}',
+                body=preview or 'رسالة جديدة',
+                data={
+                    'from_user_id': user.id,
+                    'username': user.username,
+                    'message_id': serialized.get('id'),
+                    'screen': 'chat',
+                    'path': f'/chat/{user.username}',
+                },
+            )
+            db_n.add(notification)
+            db_n.commit()
+            db_n.refresh(notification)
+            notif_payload = {
+                'id': notification.id,
+                'type': 'CHAT',
+                'title': notification.title,
+                'message': notification.body,
+                'text': notification.body,
+                'body': notification.body,
+                'created_at': notification.created_at.isoformat(),
+                'seen': False,
+                'screen': 'chat',
+                'path': f'/chat/{user.username}',
+                'data': {
+                    'username': user.username,
+                    'screen': 'chat',
+                    'path': f'/chat/{user.username}',
+                    'message_id': serialized.get('id'),
+                },
+            }
+        finally:
+            db_n.close()
+        await sio.emit('new_notification', notif_payload, room=f'user:{receiver.id}')
+        await sio.emit('new_notification', notif_payload, room=f'username:{receiver_username}')
+    except Exception:
+        pass
+
     if delivered_now:
         await sio.emit(
             'messages_delivered',
@@ -719,6 +772,175 @@ async def follow_user_event(sid, data):
     finally:
         db.close()
     await sio.emit('user_follow_update', payload)
+
+
+# =============================================================================
+# WebRTC Call Signaling Events (voice & video calls)
+# =============================================================================
+# These events are intentionally lightweight: the backend acts as a signaling
+# relay so two clients can negotiate a WebRTC peer connection. We DO NOT verify
+# the cryptographic _sig/_nonce envelope here because calls must work even when
+# the lightweight FNV signature on the client drifts due to clock skew -- the
+# events are still gated by an authenticated socket session (token in auth).
+
+@sio.on('call_invite')
+async def call_invite_event(sid, data):
+    """Caller → Callee: 'I want to start a call with you'."""
+    token = (data or {}).get('token')
+    session, user = await _resolve_authenticated_user(sid, token, client_ip=get_client_ip(sio.get_environ(sid) or {}))
+    if user is None:
+        return
+    callee = str((data or {}).get('callee') or (data or {}).get('to') or '').strip()
+    if not callee:
+        return
+    mode = str((data or {}).get('mode') or 'voice').strip().lower()
+    if mode not in ('voice', 'video'):
+        mode = 'voice'
+    call_id = str((data or {}).get('call_id') or f'call_{user.id}_{int(time.time() * 1000)}')
+    payload = {
+        'call_id': call_id,
+        'mode': mode,
+        'caller': user.username,
+        'caller_id': user.id,
+        'callee': callee,
+        'started_at': int(time.time() * 1000),
+        'offer': (data or {}).get('offer'),  # optional SDP offer if pre-generated
+    }
+    # Notify callee on both rooms (username + user:id) so it works regardless of
+    # which room the receiving client is currently joined to.
+    await sio.emit('incoming_call', payload, room=f'username:{callee}')
+    db = SessionLocal()
+    try:
+        callee_user = db.query(User).filter(User.username == callee, User.is_active.is_(True)).first()
+        callee_user_id = callee_user.id if callee_user else None
+    finally:
+        db.close()
+    if callee_user_id:
+        await sio.emit('incoming_call', payload, room=f'user:{callee_user_id}')
+        # Persist a notification so the bell shows the missed/incoming call too.
+        try:
+            db_n = SessionLocal()
+            try:
+                notif = Notification(
+                    user_id=callee_user_id,
+                    type='CALL',
+                    title=f'مكالمة {"فيديو" if mode == "video" else "صوتية"} من {user.username}',
+                    body='اضغط للرد على المكالمة',
+                    data={
+                        'call_id': call_id,
+                        'mode': mode,
+                        'from_user_id': user.id,
+                        'username': user.username,
+                        'screen': 'chat',
+                        'path': f'/chat/{user.username}',
+                    },
+                )
+                db_n.add(notif)
+                db_n.commit()
+                db_n.refresh(notif)
+                notif_payload = {
+                    'id': notif.id,
+                    'type': 'CALL',
+                    'title': notif.title,
+                    'message': notif.body,
+                    'body': notif.body,
+                    'created_at': notif.created_at.isoformat(),
+                    'seen': False,
+                    'screen': 'chat',
+                    'path': f'/chat/{user.username}',
+                    'data': {'username': user.username, 'screen': 'chat', 'call_id': call_id, 'mode': mode},
+                }
+            finally:
+                db_n.close()
+            await sio.emit('new_notification', notif_payload, room=f'user:{callee_user_id}')
+            await sio.emit('new_notification', notif_payload, room=f'username:{callee}')
+        except Exception:
+            pass
+    # Acknowledge back to the caller so the UI can show "ringing..."
+    await sio.emit('call_ringing', payload, room=sid)
+
+
+@sio.on('call_answer')
+async def call_answer_event(sid, data):
+    """Callee accepts the call → notify the caller."""
+    token = (data or {}).get('token')
+    session, user = await _resolve_authenticated_user(sid, token, client_ip=get_client_ip(sio.get_environ(sid) or {}))
+    if user is None:
+        return
+    caller = str((data or {}).get('caller') or (data or {}).get('to') or '').strip()
+    if not caller:
+        return
+    payload = {
+        'call_id': (data or {}).get('call_id'),
+        'mode': (data or {}).get('mode') or 'voice',
+        'caller': caller,
+        'callee': user.username,
+        'callee_id': user.id,
+        'answer': (data or {}).get('answer'),  # optional SDP answer
+        'accepted_at': int(time.time() * 1000),
+    }
+    await sio.emit('call_accepted', payload, room=f'username:{caller}')
+
+
+@sio.on('call_reject')
+async def call_reject_event(sid, data):
+    """Callee rejects → notify caller."""
+    token = (data or {}).get('token')
+    session, user = await _resolve_authenticated_user(sid, token, client_ip=get_client_ip(sio.get_environ(sid) or {}))
+    if user is None:
+        return
+    caller = str((data or {}).get('caller') or (data or {}).get('to') or '').strip()
+    if not caller:
+        return
+    payload = {
+        'call_id': (data or {}).get('call_id'),
+        'caller': caller,
+        'callee': user.username,
+        'reason': str((data or {}).get('reason') or 'rejected')[:80],
+        'rejected_at': int(time.time() * 1000),
+    }
+    await sio.emit('call_rejected', payload, room=f'username:{caller}')
+
+
+@sio.on('call_end')
+async def call_end_event(sid, data):
+    """Either side hangs up → notify the other."""
+    token = (data or {}).get('token')
+    session, user = await _resolve_authenticated_user(sid, token, client_ip=get_client_ip(sio.get_environ(sid) or {}))
+    if user is None:
+        return
+    peer = str((data or {}).get('peer') or (data or {}).get('to') or '').strip()
+    if not peer:
+        return
+    payload = {
+        'call_id': (data or {}).get('call_id'),
+        'from': user.username,
+        'to': peer,
+        'reason': str((data or {}).get('reason') or 'hangup')[:80],
+        'ended_at': int(time.time() * 1000),
+    }
+    await sio.emit('call_ended', payload, room=f'username:{peer}')
+    await sio.emit('call_ended', payload, room=f'username:{user.username}')
+
+
+@sio.on('call_signal')
+async def call_signal_event(sid, data):
+    """Relay WebRTC SDP/ICE between caller & callee."""
+    token = (data or {}).get('token')
+    session, user = await _resolve_authenticated_user(sid, token, client_ip=get_client_ip(sio.get_environ(sid) or {}))
+    if user is None:
+        return
+    peer = str((data or {}).get('to') or (data or {}).get('peer') or '').strip()
+    if not peer:
+        return
+    payload = {
+        'call_id': (data or {}).get('call_id'),
+        'from': user.username,
+        'to': peer,
+        'signal': (data or {}).get('signal'),  # { sdp } or { candidate }
+        'kind': (data or {}).get('kind') or 'ice',
+    }
+    await sio.emit('call_signal', payload, room=f'username:{peer}')
 
 
 @sio.on('ping')

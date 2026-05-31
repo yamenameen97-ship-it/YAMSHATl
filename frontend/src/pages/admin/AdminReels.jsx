@@ -180,7 +180,7 @@ export default function AdminReels() {
     description: item.content || 'تم نشر ريل جديد.',
     created_at: item.created_at,
     level: 'featured',
-  })) : sampleActivity();
+  })) : [];
 
   const rows = reels.map((item) => {
     const insight = getReelInsightsById(item.id);

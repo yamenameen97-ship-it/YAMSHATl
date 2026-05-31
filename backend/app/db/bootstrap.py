@@ -66,7 +66,10 @@ REQUIRED_SCHEMA_COLUMNS: dict[str, set[str]] = {
     'messages': {'sender_id', 'receiver_id', 'sender', 'receiver', 'message', 'content'},
     'notifications': {'user_id', 'type', 'title', 'body', 'data', 'is_read', 'created_at'},
     'live_room_sessions': {'host_user_id', 'host_username', 'title', 'stream_status', 'is_active', 'extra_json', 'last_activity_at'},
-    'reels': {'user_id', 'video_url', 'thumbnail_url', 'category', 'views_count', 'is_deleted', 'updated_at'},
+    'reels': {'user_id', 'video_url', 'thumbnail_url', 'caption', 'category', 'duration', 'likes_count', 'comments_count', 'shares_count', 'views_count', 'is_deleted', 'created_at', 'updated_at'},
+    'reel_likes': {'reel_id', 'user_id', 'created_at'},
+    'reel_views': {'reel_id', 'user_id', 'viewed_at'},
+    'saved_reels': {'reel_id', 'user_id', 'saved_at'},
 }
 REQUIRED_TABLES = {
     'users',
@@ -76,6 +79,9 @@ REQUIRED_TABLES = {
     'notifications',
     'live_room_sessions',
     'reels',
+    'reel_likes',
+    'reel_views',
+    'saved_reels',
 }
 
 
@@ -593,6 +599,34 @@ def _migrate_live_room_sessions_table(engine: Engine) -> None:
 
 
 
+def _migrate_reels_table(engine: Engine) -> None:
+    if not _table_exists(engine, 'reels'):
+        return
+
+    _add_column_if_missing(engine, 'reels', 'thumbnail_url', 'thumbnail_url VARCHAR(1000)')
+    _add_column_if_missing(engine, 'reels', 'caption', 'caption TEXT')
+    _add_column_if_missing(engine, 'reels', 'category', "category VARCHAR(100) NOT NULL DEFAULT 'general'")
+    _add_column_if_missing(engine, 'reels', 'duration', 'duration INTEGER NOT NULL DEFAULT 0')
+    _add_column_if_missing(engine, 'reels', 'likes_count', 'likes_count INTEGER NOT NULL DEFAULT 0')
+    _add_column_if_missing(engine, 'reels', 'comments_count', 'comments_count INTEGER NOT NULL DEFAULT 0')
+    _add_column_if_missing(engine, 'reels', 'shares_count', 'shares_count INTEGER NOT NULL DEFAULT 0')
+    _add_column_if_missing(engine, 'reels', 'views_count', 'views_count INTEGER NOT NULL DEFAULT 0')
+    _add_column_if_missing(engine, 'reels', 'is_deleted', 'is_deleted BOOLEAN NOT NULL DEFAULT FALSE')
+    _add_column_if_missing(engine, 'reels', 'created_at', 'created_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'reels', 'updated_at', 'updated_at TIMESTAMP NULL')
+
+    with engine.begin() as connection:
+        connection.execute(text("UPDATE reels SET category = COALESCE(NULLIF(category, ''), 'general')"))
+        connection.execute(text('UPDATE reels SET duration = COALESCE(duration, 0)'))
+        connection.execute(text('UPDATE reels SET likes_count = COALESCE(likes_count, 0)'))
+        connection.execute(text('UPDATE reels SET comments_count = COALESCE(comments_count, 0)'))
+        connection.execute(text('UPDATE reels SET shares_count = COALESCE(shares_count, 0)'))
+        connection.execute(text('UPDATE reels SET views_count = COALESCE(views_count, 0)'))
+        connection.execute(text('UPDATE reels SET is_deleted = COALESCE(is_deleted, FALSE)'))
+        connection.execute(text('UPDATE reels SET created_at = COALESCE(created_at, NOW())'))
+        connection.execute(text('UPDATE reels SET updated_at = COALESCE(updated_at, created_at, NOW())'))
+
+
 def _migrate_notifications_table(engine: Engine) -> None:
     if not _table_exists(engine, 'notifications'):
         return
@@ -887,6 +921,7 @@ def initialize_database(engine: Engine, force: bool = False) -> None:
     _safe(_migrate_comments_table, 'migrate_comments_table')
     _safe(_migrate_messages_table, 'migrate_messages_table')
     _safe(_migrate_live_room_sessions_table, 'migrate_live_room_sessions_table')
+    _safe(_migrate_reels_table, 'migrate_reels_table')
     _safe(_migrate_notifications_table, 'migrate_notifications_table')
     _safe(_migrate_audit_logs_table, 'migrate_audit_logs_table')
     _safe(_migrate_user_sessions_table, 'migrate_user_sessions_table')

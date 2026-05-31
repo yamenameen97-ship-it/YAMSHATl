@@ -395,7 +395,12 @@ export default function ReelsPage() {
   const loadReels = useCallback(async () => {
     setIsLoading(true);
     try {
-      const { data } = await API.get('/reels/feed', { params: { limit: 40, offset: 0 } });
+      let data;
+      try {
+        ({ data } = await API.get('/reels/feed', { params: { limit: 40, offset: 0 } }));
+      } catch {
+        ({ data } = await API.get('/reels', { params: { limit: 40, offset: 0 } }));
+      }
       const source = Array.isArray(data) ? data : data?.items || data?.reels || [];
       const onlyVideos = source
         .filter((post) => isVideoUrl(post?.media_url || post?.video_url || '', { forceVideo: true }))
@@ -789,6 +794,7 @@ export default function ReelsPage() {
       await API.post('/reels', {
         caption: uploadState.content?.trim() || 'ريل جديد',
         media_url: uploadState.mediaUrl,
+        video_url: uploadState.mediaUrl,
       });
       setShowUploadModal(false);
       resetUploadState();

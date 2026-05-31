@@ -13,59 +13,17 @@ function createFallbackSnapshot() {
   const now = Date.now();
   return {
     sources: {
-      overview: { status: 'fallback', updatedAt: new Date(now).toISOString() },
-      analytics: { status: 'fallback', updatedAt: new Date(now).toISOString() },
-      reports: { status: 'fallback', updatedAt: new Date(now).toISOString() },
-      audit: { status: 'fallback', updatedAt: new Date(now).toISOString() },
-      system: { status: 'fallback', updatedAt: new Date(now).toISOString() },
+      overview: { status: 'unavailable', updatedAt: new Date(now).toISOString() },
+      analytics: { status: 'unavailable', updatedAt: new Date(now).toISOString() },
+      reports: { status: 'unavailable', updatedAt: new Date(now).toISOString() },
+      audit: { status: 'unavailable', updatedAt: new Date(now).toISOString() },
+      system: { status: 'unavailable', updatedAt: new Date(now).toISOString() },
     },
     metrics: {
-      activeUsers: 4860,
-      trafficPerMinute: 1284,
-      growthRate: 12.4,
-      liveMetricsScore: 91,
-      moderationQueue: 34,
-      reportsOpen: 18,
-      cpuUsage: 42,
-      memoryUsage: 51,
-      diskUsage: 39,
-      apiResponseTime: 182,
-      retentionRate: 71,
-      removalRate: 9,
-      appealsOpen: 6,
-      revenueEstimate: 1845,
-      trafficHistory: Array.from({ length: 8 }, (_, index) => ({ label: `${index + 9}:00`, value: 1200 + index * 190 + ((index % 2) * 140) })),
-      growthHistory: Array.from({ length: 7 }, (_, index) => ({ label: `D${index + 1}`, value: 4 + index * 1.6 + ((index % 3) * 0.8) })),
-      audienceMix: [
-        { label: 'Android', value: 58 },
-        { label: 'iOS', value: 23 },
-        { label: 'Web', value: 19 },
-      ],
-      moderationMix: [
-        { label: 'بلاغات المستخدمين', value: 11 },
-        { label: 'إزالة محتوى', value: 9 },
-        { label: 'استئنافات', value: 6 },
-        { label: 'حظر وظلي', value: 4 },
-      ],
-      liveMix: [
-        { label: 'Live rooms', value: 16 },
-        { label: 'Reels now', value: 41 },
-        { label: 'Stories active', value: 22 },
-      ],
+      activeUsers: 0, trafficPerMinute: 0, growthRate: 0, liveMetricsScore: 0, moderationQueue: 0, reportsOpen: 0, cpuUsage: 0, memoryUsage: 0, diskUsage: 0, apiResponseTime: 0, retentionRate: 0, removalRate: 0, appealsOpen: 0, revenueEstimate: 0, trafficHistory: [], growthHistory: [], audienceMix: [], moderationMix: [], liveMix: [],
     },
-    auditLogs: Array.from({ length: 7 }, (_, index) => ({
-      id: `AUD-${index + 1}`,
-      type: index === 0 ? 'critical' : index % 2 ? 'warning' : 'info',
-      message: index === 0 ? 'تم تسجيل خروج إجباري لعدة جلسات غير موثقة.' : `إجراء إداري رقم ${index + 1} تم بنجاح.`,
-      admin_name: ['Super Admin', 'Content Lead', 'Security Admin'][index % 3],
-      timestamp: new Date(now - index * 12 * 60 * 1000).toISOString(),
-    })),
-    activityStream: Array.from({ length: 6 }, (_, index) => ({
-      id: `ACT-${index + 1}`,
-      action: ['New report', 'Post approved', 'Live room flagged', 'User restored'][index % 4],
-      description: 'تحديث حي على لوحة الإدارة مرتبط بالـ socket أو polling.',
-      timestamp: new Date(now - index * 7 * 60 * 1000).toISOString(),
-    })),
+    auditLogs: [],
+    activityStream: [],
   };
 }
 
@@ -119,7 +77,7 @@ function levelTone(level = 'info') {
 }
 
 function sourceLabel(status) {
-  return status === 'live' ? 'API حي' : 'Fallback';
+  return status === 'live' ? 'API حي' : 'غير متاح';
 }
 
 export default function AdminDashboard() {
@@ -200,11 +158,11 @@ export default function AdminDashboard() {
       });
       setPerformanceSnapshot(getPerformanceSnapshot());
       if ([overviewResponse, analyticsResponse, reportsResponse, auditResponse, systemResponse].every((item) => item.status !== 'fulfilled')) {
-        pushToast({ type: 'warning', title: 'تم تشغيل بيانات احتياطية', description: 'تعذر الوصول إلى خدمات التحليلات الحية بالكامل.' });
+        pushToast({ type: 'warning', title: 'تعذر تحميل بيانات اللوحة', description: 'كل خدمات التحليلات غير متاحة حالياً.' });
       }
     } catch (error) {
       setDashboard(fallback);
-      pushToast({ type: 'warning', title: 'Fallback analytics active', description: error?.response?.data?.detail || 'تعذر تحميل بعض المقاييس الحية.' });
+      pushToast({ type: 'warning', title: 'تعذر تحميل المقاييس', description: error?.response?.data?.detail || 'لا توجد بيانات حية متاحة حالياً.' });
     } finally {
       setLoading(false);
     }
@@ -326,7 +284,7 @@ export default function AdminDashboard() {
               <div style={{ color: '#60a5fa', fontSize: 13, marginBottom: 8 }}>Live dashboards • Real API fusion • Reports + audit + system health</div>
               <h2 style={{ margin: 0, color: '#f8fafc' }}>لوحة الإدارة الحية والتحليلات</h2>
               <p style={{ margin: '10px 0 0', color: '#94a3b8', maxWidth: 820 }}>
-                تم تقوية الداشبورد لتجميع بيانات اللوحة العامة، التقارير، سجل التدقيق، وصحة النظام في شاشة واحدة، مع تمييز واضح بين البيانات الحية وبيانات الـ fallback.
+                تم تقوية الداشبورد لتجميع بيانات اللوحة العامة، التقارير، سجل التدقيق، وصحة النظام في شاشة واحدة، مع عرض البيانات الحية فقط وإظهار حالات الفراغ عند غياب استجابة الخادم.
               </p>
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>

@@ -1,107 +1,32 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
-import {
-  LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis,
-  CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, AreaChart, Area,
-} from 'recharts';
+import { PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, AreaChart, Area } from 'recharts';
 import { getAdminOverview } from '../../api/admin.js';
 import { getStoredUser, clearStoredUser } from '../../utils/auth.js';
 import { useToast } from '../../components/admin/ToastProvider.jsx';
 import '../../styles/livestream-dashboard.css';
 
-// Professional Theme Colors
 const COLORS = ['#7C3AED', '#3B82F6', '#10B981', '#F97316', '#EC4899', '#EF4444'];
-
-// Sidebar navigation map — each item now navigates to a real admin route.
 const SIDEBAR_GROUPS = [
-  {
-    title: 'الرئيسية',
-    items: [
-      { to: '/admin/dashboard', label: 'لوحة التحكم', icon: '📊', exact: true },
-    ],
-  },
-  {
-    title: 'إدارة المحتوى',
-    items: [
-      { to: '/admin/live', label: 'إدارة البثوث', icon: '📡', badge: 'LIVE' },
-      { to: '/admin/posts', label: 'إدارة المنشورات', icon: '📝' },
-      { to: '/admin/chat', label: 'إدارة الشات', icon: '💬' },
-      { to: '/admin/stories', label: 'إدارة الستوري', icon: '📱' },
-      { to: '/admin/reels', label: 'إدارة الريلز', icon: '🎬' },
-      { to: '/admin/groups', label: 'إدارة المجموعات', icon: '👫' },
-    ],
-  },
-  {
-    title: 'إدارة المستخدمين',
-    items: [
-      { to: '/admin/users', label: 'المستخدمين', icon: '👥' },
-      { to: '/admin/rbac', label: 'المشرفين والصلاحيات', icon: '🛡️' },
-      { to: '/admin/reports', label: 'البلاغات والمحظورين', icon: '🚫', badge: 'HOT' },
-    ],
-  },
-  {
-    title: 'النظام',
-    items: [
-      { to: '/admin/audit', label: 'سجل التدقيق', icon: '🧾' },
-      { to: '/admin/notifications', label: 'الإشعارات', icon: '🔔' },
-      { to: '/admin/settings', label: 'الإعدادات العامة', icon: '⚙️' },
-    ],
-  },
-];
-
-// Static fallback values for charts/tables — these display nice data when the
-// API is unreachable so the dashboard never looks empty.
-const STATIC_VIEWS_HISTORY = [
-  { date: 'مايو 12', viewers: 3500 },
-  { date: 'مايو 13', viewers: 4200 },
-  { date: 'مايو 14', viewers: 3800 },
-  { date: 'مايو 15', viewers: 5100 },
-  { date: 'مايو 16', viewers: 4900 },
-  { date: 'مايو 17', viewers: 5800 },
-  { date: 'مايو 18', viewers: 6200 },
-];
-
-const STATIC_PIE_DATA = [
-  { name: 'بثوث مباشرة', value: 40 },
-  { name: 'منشورات', value: 25 },
-  { name: 'ريلز', value: 20 },
-  { name: 'ستوري', value: 10 },
-  { name: 'أخرى', value: 5 },
-];
-
-const STATIC_BAR_DATA = [
-  { name: '19 أبريل', views: 400 },
-  { name: '28 أبريل', views: 300 },
-  { name: '29 أبريل', views: 500 },
-  { name: '4 مايو', views: 450 },
-  { name: '9 مايو', views: 600 },
-  { name: '14 مايو', views: 550 },
-  { name: '18 مايو', views: 700 },
-];
-
-const STATIC_ACTIVITIES = [
-  { user: 'PlayerOne', action: 'بث جديد من المستخدم', time: 'منذ 5 دقائق' },
-  { user: 'KhaledGamer', action: 'تم نشر منشور جديد', time: 'منذ 15 دقيقة' },
-  { user: 'ShadowGirl', action: 'تعليق جديد على البث المباشر', time: 'منذ 20 دقيقة' },
-  { user: 'MoxX', action: 'تم نشر ستوري جديد', time: 'منذ 30 دقيقة' },
-];
-
-const STATIC_LIVE_ROWS = [
-  { user: 'أحمد محمود', title: 'مغامرة جديدة', views: '1,250' },
-  { user: 'خالد محمد', title: 'بطولة العالم', views: '980' },
-  { user: 'ليلى علي', title: 'تحديات البطولة', views: '620' },
-];
-
-const STATIC_POST_ROWS = [
-  { user: 'خالد محمد', text: 'لحظات من البث...', reactions: '2.5K' },
-  { user: 'ليلى علي', text: 'شكراً على الدعم...', reactions: '1.8K' },
-  { user: 'محمد أحمد', text: 'أخبروني عن رأيكم...', reactions: '965' },
-];
-
-const STATIC_CHAT_ROWS = [
-  { user: 'ahmed_king', message: 'شكراً على البث!' },
-  { user: 'lina_music', message: 'متى البث القادم؟' },
-  { user: 'game_master', message: 'رائع جداً استمر' },
+  { title: 'الرئيسية', items: [{ to: '/admin/dashboard', label: 'لوحة التحكم', icon: '📊', exact: true }] },
+  { title: 'إدارة المحتوى', items: [
+    { to: '/admin/live', label: 'إدارة البثوث', icon: '📡', badge: 'LIVE' },
+    { to: '/admin/posts', label: 'إدارة المنشورات', icon: '📝' },
+    { to: '/admin/chat', label: 'إدارة الشات', icon: '💬' },
+    { to: '/admin/stories', label: 'إدارة الستوري', icon: '📱' },
+    { to: '/admin/reels', label: 'إدارة الريلز', icon: '🎬' },
+    { to: '/admin/groups', label: 'إدارة المجموعات', icon: '👫' },
+  ] },
+  { title: 'إدارة المستخدمين', items: [
+    { to: '/admin/users', label: 'المستخدمين', icon: '👥' },
+    { to: '/admin/rbac', label: 'المشرفين والصلاحيات', icon: '🛡️' },
+    { to: '/admin/reports', label: 'البلاغات والمحظورين', icon: '🚫', badge: 'HOT' },
+  ] },
+  { title: 'النظام', items: [
+    { to: '/admin/audit', label: 'سجل التدقيق', icon: '🧾' },
+    { to: '/admin/notifications', label: 'الإشعارات', icon: '🔔' },
+    { to: '/admin/settings', label: 'الإعدادات العامة', icon: '⚙️' },
+  ] },
 ];
 
 function formatNumber(value, fallback = '—') {
@@ -113,425 +38,124 @@ function formatNumber(value, fallback = '—') {
 }
 
 function formatCurrency(value) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return '$ 0.00';
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
   return `$ ${Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function EmptyBlock({ text = 'لا توجد بيانات متاحة حالياً.' }) {
+  return <div style={{ color: '#94a3b8', textAlign: 'center', padding: '18px 12px' }}>{text}</div>;
 }
 
 export default function AdminLiveDashboard() {
   const navigate = useNavigate();
   const { pushToast } = useToast?.() || { pushToast: () => {} };
   const user = getStoredUser?.() || {};
-
   const [overview, setOverview] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Pull live overview from backend with graceful fallback.
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const { data } = await getAdminOverview();
-        if (active && data) setOverview(data);
-      } catch (error) {
-        // Silent fallback — show static data; status banner already exists in shell.
-        if (active) setOverview(null);
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-    return () => { active = false; };
-  }, []);
+  const loadOverview = useCallback(async () => {
+    try {
+      setLoading(true);
+      const { data } = await getAdminOverview();
+      setOverview(data || null);
+    } catch (error) {
+      setOverview(null);
+      pushToast({ type: 'warning', title: 'تعذر تحميل لوحة البث', description: error?.response?.data?.detail || 'الخادم لم يرجع بيانات حالياً.' });
+    } finally {
+      setLoading(false);
+    }
+  }, [pushToast]);
+
+  useEffect(() => { loadOverview(); }, [loadOverview]);
 
   const metrics = overview?.metrics || {};
-
-  // Stats cards — wire to real metrics when present, otherwise show showcase values.
   const stats = useMemo(() => ([
-    {
-      key: 'users',
-      label: 'إجمالي المستخدمين',
-      value: formatNumber(metrics.total_users ?? metrics.totalUsers, '128,560'),
-      change: '+12.5%',
-      iconClass: 'purple',
-      icon: '👥',
-      to: '/admin/users',
-    },
-    {
-      key: 'live',
-      label: 'البثوث المباشرة',
-      value: formatNumber(metrics.live_rooms_active ?? metrics.activeLive, '1,245'),
-      change: '+18.7%',
-      iconClass: 'blue',
-      icon: '📡',
-      to: '/admin/live',
-    },
-    {
-      key: 'views',
-      label: 'المشاهدات الكلية',
-      value: formatNumber(metrics.total_views ?? metrics.totalViews, '2.45M'),
-      change: '+15.3%',
-      iconClass: 'green',
-      icon: '👁️',
-      to: '/admin/reports',
-    },
-    {
-      key: 'revenue',
-      label: 'الإيرادات',
-      value: formatCurrency(metrics.revenue_total ?? metrics.revenue ?? 45231.89),
-      change: '+21.4%',
-      iconClass: 'orange',
-      icon: '💰',
-      to: '/admin/reports',
-    },
-    {
-      key: 'posts',
-      label: 'المنشورات',
-      value: formatNumber(metrics.total_posts ?? metrics.totalPosts, '15,890'),
-      change: '+17.2%',
-      iconClass: 'pink',
-      icon: '📝',
-      to: '/admin/posts',
-    },
-    {
-      key: 'reels',
-      label: 'الريلز',
-      value: formatNumber(metrics.total_reels ?? metrics.totalReels, '8,456'),
-      change: '+11.3%',
-      iconClass: 'red',
-      icon: '🎬',
-      to: '/admin/reels',
-    },
+    { key: 'users', label: 'إجمالي المستخدمين', value: formatNumber(metrics.total_users ?? metrics.totalUsers ?? 0, '0'), iconClass: 'purple', icon: '👥', to: '/admin/users' },
+    { key: 'live', label: 'البثوث المباشرة', value: formatNumber(metrics.live_rooms_active ?? metrics.activeLive ?? 0, '0'), iconClass: 'blue', icon: '📡', to: '/admin/live' },
+    { key: 'views', label: 'المشاهدات الكلية', value: formatNumber(metrics.total_views ?? metrics.totalViews ?? 0, '0'), iconClass: 'green', icon: '👁️', to: '/admin/reports' },
+    { key: 'revenue', label: 'الإيرادات', value: formatCurrency(metrics.revenue_total ?? metrics.revenue ?? 0), iconClass: 'orange', icon: '💰', to: '/admin/reports' },
+    { key: 'posts', label: 'المنشورات', value: formatNumber(metrics.total_posts ?? metrics.totalPosts ?? 0, '0'), iconClass: 'pink', icon: '📝', to: '/admin/posts' },
+    { key: 'reels', label: 'الريلز', value: formatNumber(metrics.total_reels ?? metrics.totalReels ?? 0, '0'), iconClass: 'red', icon: '🎬', to: '/admin/reels' },
   ]), [metrics]);
 
-  // Live chart data — falls back to demo data when backend is silent.
   const viewsHistory = useMemo(() => {
-    const source = metrics.trafficHistory || metrics.viewsHistory;
-    if (Array.isArray(source) && source.length > 0) {
-      return source.map((item) => ({
-        date: item.label || item.date,
-        viewers: Number(item.value ?? item.viewers ?? 0),
-      }));
-    }
-    return STATIC_VIEWS_HISTORY;
+    const source = metrics.trafficHistory || metrics.viewsHistory || metrics.traffic_history || metrics.views_history;
+    if (!Array.isArray(source)) return [];
+    return source.map((item) => ({ date: item.label || item.date || item.name || '—', viewers: Number(item.value ?? item.viewers ?? item.views ?? 0) })).filter((item) => item.date);
   }, [metrics]);
 
   const pieData = useMemo(() => {
-    if (Array.isArray(metrics.audienceMix) && metrics.audienceMix.length > 0) {
-      return metrics.audienceMix.map((row) => ({ name: row.label, value: Number(row.value || 0) }));
-    }
-    return STATIC_PIE_DATA;
+    const source = metrics.audienceMix || metrics.audience_mix || metrics.content_mix;
+    if (!Array.isArray(source)) return [];
+    return source.map((row) => ({ name: row.label || row.name || '—', value: Number(row.value || 0) })).filter((item) => item.value > 0);
   }, [metrics]);
 
   const barData = useMemo(() => {
-    if (Array.isArray(metrics.growthHistory) && metrics.growthHistory.length > 0) {
-      return metrics.growthHistory.map((row) => ({ name: row.label, views: Number(row.value || 0) }));
-    }
-    return STATIC_BAR_DATA;
+    const source = metrics.growthHistory || metrics.growth_history || metrics.bar_data;
+    if (!Array.isArray(source)) return [];
+    return source.map((row) => ({ name: row.label || row.name || '—', views: Number(row.value ?? row.views ?? 0) })).filter((item) => item.views > 0);
   }, [metrics]);
 
+  const recentActivity = useMemo(() => {
+    const source = overview?.activity_stream || overview?.activities || overview?.recent_activity || [];
+    if (!Array.isArray(source)) return [];
+    return source.slice(0, 6).map((item, index) => ({
+      id: item.id || `activity-${index}`,
+      user: item.user || item.username || item.actor || 'النظام',
+      action: item.action || item.description || item.title || 'تحديث جديد',
+      time: item.created_at || item.timestamp ? new Date(item.created_at || item.timestamp).toLocaleString('ar-EG') : 'الآن',
+    }));
+  }, [overview]);
+
+  const tableRows = useMemo(() => {
+    const source = overview?.content_tables || overview?.tables || {};
+    return {
+      live: Array.isArray(source.live) ? source.live : [],
+      posts: Array.isArray(source.posts) ? source.posts : [],
+      chat: Array.isArray(source.chat) ? source.chat : [],
+      stories: Array.isArray(source.stories) ? source.stories : [],
+      reels: Array.isArray(source.reels) ? source.reels : [],
+    };
+  }, [overview]);
+
   const handleLogout = useCallback(() => {
-    try {
-      clearStoredUser?.();
-    } catch (_) { /* ignore */ }
+    try { clearStoredUser?.(); } catch (_) {}
     pushToast({ title: 'تم تسجيل الخروج', description: 'إلى اللقاء — شكراً لاستخدامك يمشات.', type: 'info' });
     navigate('/admin/login', { replace: true });
   }, [navigate, pushToast]);
 
   return (
     <div className="livestream-dashboard yamshat-admin-live-dashboard" dir="rtl">
-      {/* Sidebar */}
       <aside className="sidebar">
-        <div className="sidebar-header">
-          <div className="logo">
-            <span className="logo-icon">Y</span>
-            <span className="logo-text">Yamshat Admin</span>
-          </div>
-        </div>
-
-        <div className="user-profile">
-          <div className="user-avatar">{(user?.username || 'A').slice(0, 1).toUpperCase()}</div>
-          <div className="user-info">
-            <p className="user-name">{user?.full_name || user?.username || 'المدير العام'}</p>
-            <p className="user-status">
-              <span className="status-dot" /> متصل
-            </p>
-          </div>
-        </div>
-
-        <nav className="sidebar-menu">
-          {SIDEBAR_GROUPS.map((group) => (
-            <div key={group.title} className="sidebar-group">
-              <p className="menu-title">{group.title}</p>
-              {group.items.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.exact}
-                  className={({ isActive }) => `menu-item ${isActive ? 'active' : ''}`}
-                >
-                  <span className="menu-icon" aria-hidden="true">{item.icon}</span>
-                  <span className="menu-label">{item.label}</span>
-                  {item.badge ? <span className="badge">{item.badge}</span> : null}
-                </NavLink>
-              ))}
-            </div>
-          ))}
-        </nav>
-
-        <div className="sidebar-footer">
-          <button type="button" className="logout-btn" onClick={handleLogout}>
-            <span>🚪</span>
-            <span>تسجيل الخروج</span>
-          </button>
-        </div>
+        <div className="sidebar-header"><div className="logo"><span className="logo-icon">Y</span><span className="logo-text">Yamshat Admin</span></div></div>
+        <div className="user-profile"><div className="user-avatar">{(user?.username || 'A').slice(0, 1).toUpperCase()}</div><div className="user-info"><p className="user-name">{user?.full_name || user?.username || 'المدير العام'}</p><p className="user-status"><span className="status-dot" /> متصل</p></div></div>
+        <nav className="sidebar-menu">{SIDEBAR_GROUPS.map((group) => <div key={group.title} className="nav-group"><div className="nav-group-title">{group.title}</div>{group.items.map((item) => <NavLink key={item.to} to={item.to} end={Boolean(item.exact)} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><span>{item.icon}</span><span>{item.label}</span>{item.badge ? <small>{item.badge}</small> : null}</NavLink>)}</div>)}</nav>
+        <button type="button" className="logout-btn" onClick={handleLogout}>تسجيل الخروج</button>
       </aside>
 
-      {/* Main Content */}
       <main className="main-content">
-        <header className="top-bar">
-          <div className="search-bar">
-            <span className="search-icon">🔍</span>
-            <input type="text" placeholder="بحث عن مستخدم، بث، منشور..." aria-label="بحث" />
-          </div>
-          <div className="top-actions">
-            <Link to="/admin/settings" className="icon-btn" title="الإعدادات">⚙️</Link>
-            <Link to="/admin/notifications" className="icon-btn has-notification" title="الإشعارات">🔔</Link>
-            <Link to="/admin/chat" className="icon-btn" title="الشات">✉️</Link>
-            <div className="user-menu">
-              <div className="user-avatar-small">{(user?.username || 'A').slice(0, 1).toUpperCase()}</div>
-              <span>{user?.full_name || user?.username || 'المدير العام'}</span>
-            </div>
-          </div>
-        </header>
+        <div className="top-header"><div><h1>لوحة البث والإدارة المباشرة</h1><p>تعرض بيانات الخادم الفعلية فقط، بدون أي Demo Data أو أرقام تجريبية.</p></div><div style={{ display: 'flex', gap: 10 }}><button type="button" className="add-btn" onClick={loadOverview}>{loading ? 'جارٍ التحديث...' : 'تحديث'}</button><Link to="/admin/dashboard" className="add-btn">لوحة التحكم</Link></div></div>
 
-        <div className="dashboard-content">
-          <div className="page-header">
-            <h1>لوحة التحكم</h1>
-            <p>
-              {loading
-                ? 'جاري تحميل بيانات اللوحة الحية...'
-                : 'مرحباً بك، إليك نظرة عامة حية على المنصة.'}
-            </p>
-          </div>
+        <div className="stats-grid">{stats.map((item) => <Link key={item.key} to={item.to} className="stat-card" style={{ textDecoration: 'none' }}><div className={`stat-icon ${item.iconClass}`}>{item.icon}</div><div className="stat-label">{item.label}</div><div className="stat-value">{item.value}</div></Link>)}</div>
 
-          {/* Stats Grid */}
-          <section className="stats-grid">
-            {stats.map((stat) => (
-              <Link key={stat.key} to={stat.to} className="stat-card stat-card-link">
-                <div className={`stat-icon ${stat.iconClass}`}>{stat.icon}</div>
-                <span className="stat-label">{stat.label}</span>
-                <span className="stat-value">{stat.value}</span>
-                <div className="stat-change">
-                  <span className="positive">▲ {stat.change}</span>
-                  <span className="text-muted">من الشهر الماضي</span>
-                </div>
-              </Link>
-            ))}
-          </section>
+        <div className="charts-row">
+          <div className="chart-card"><h3>📈 المشاهدات</h3>{viewsHistory.length ? <ResponsiveContainer width="100%" height={260}><AreaChart data={viewsHistory}><defs><linearGradient id="viewsGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#7C3AED" stopOpacity={0.55} /><stop offset="95%" stopColor="#7C3AED" stopOpacity={0.05} /></linearGradient></defs><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="date" /><YAxis /><Tooltip /><Area type="monotone" dataKey="viewers" stroke="#7C3AED" fill="url(#viewsGradient)" /></AreaChart></ResponsiveContainer> : <EmptyBlock />}</div>
+          <div className="chart-card"><h3>🧩 توزيع المحتوى</h3>{pieData.length ? <ResponsiveContainer width="100%" height={260}><PieChart><Pie data={pieData} dataKey="value" nameKey="name" outerRadius={90} innerRadius={48}>{pieData.map((item, index) => <Cell key={`${item.name}-${index}`} fill={COLORS[index % COLORS.length]} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer> : <EmptyBlock />}</div>
+          <div className="chart-card"><h3>📊 النمو</h3>{barData.length ? <ResponsiveContainer width="100%" height={260}><BarChart data={barData}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Bar dataKey="views" fill="#3B82F6" radius={[6, 6, 0, 0]} /></BarChart></ResponsiveContainer> : <EmptyBlock />}</div>
+        </div>
 
-          {/* Charts Row */}
-          <div className="charts-row">
-            <div className="chart-card">
-              <h3>📈 المشاهدات خلال آخر 7 أيام</h3>
-              <ResponsiveContainer width="100%" height={250}>
-                <AreaChart data={viewsHistory}>
-                  <defs>
-                    <linearGradient id="colorViewers" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#7C3AED" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#7C3AED" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                  <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ backgroundColor: '#151a24', border: 'none', borderRadius: '8px' }} />
-                  <Area type="monotone" dataKey="viewers" stroke="#7C3AED" fillOpacity={1} fill="url(#colorViewers)" strokeWidth={3} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+        <div className="charts-row"><div className="chart-card"><h3>🔔 النشاطات الأخيرة</h3><div className="activities-list">{recentActivity.length ? recentActivity.map((item) => <div key={item.id} className="activity-item"><div className="activity-avatar"></div><div className="activity-details"><p><strong>{item.user}</strong> {item.action}</p><span>{item.time}</span></div></div>) : <EmptyBlock text="لا يوجد نشاط حديث لعرضه." />}</div></div></div>
 
-            <div className="chart-card">
-              <h3>🥧 توزيع المحتوى</h3>
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie data={pieData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                    {pieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="pie-legend" style={{ marginTop: '10px' }}>
-                {pieData.map((item, index) => (
-                  <div key={item.name} className="legend-item" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '5px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: COLORS[index % COLORS.length] }}></div>
-                      <span>{item.name}</span>
-                    </div>
-                    <span>{item.value}%</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+        <div className="tables-row">
+          <div className="table-card"><div className="table-header"><h3>📡 إدارة البثوث</h3><Link to="/admin/live" className="add-btn">إدارة</Link></div><table className="data-table"><thead><tr><th>المستخدم</th><th>العنوان</th><th>المشاهدات</th></tr></thead><tbody>{tableRows.live.length ? tableRows.live.map((row, i) => <tr key={i}><td>{row.user || row.username || '—'}</td><td>{row.title || '—'}</td><td>{formatNumber(row.views ?? row.viewers ?? 0, '0')}</td></tr>) : <tr><td colSpan="3"><EmptyBlock /></td></tr>}</tbody></table></div>
+          <div className="table-card"><div className="table-header"><h3>📝 إدارة المنشورات</h3><Link to="/admin/posts" className="add-btn">إدارة</Link></div><table className="data-table"><thead><tr><th>المستخدم</th><th>المحتوى</th><th>التفاعلات</th></tr></thead><tbody>{tableRows.posts.length ? tableRows.posts.map((row, i) => <tr key={i}><td>{row.user || row.username || '—'}</td><td>{row.text || row.content || '—'}</td><td>{formatNumber(row.reactions ?? row.engagement ?? 0, '0')}</td></tr>) : <tr><td colSpan="3"><EmptyBlock /></td></tr>}</tbody></table></div>
+          <div className="table-card"><div className="table-header"><h3>💬 إدارة الشات</h3><Link to="/admin/chat" className="add-btn">فتح الشات</Link></div><table className="data-table chat-list"><thead><tr><th>المستخدم</th><th>آخر رسالة</th></tr></thead><tbody>{tableRows.chat.length ? tableRows.chat.map((row, i) => <tr key={i}><td>{row.user || row.username || '—'}</td><td>{row.message || row.last_message || '—'}</td></tr>) : <tr><td colSpan="2"><EmptyBlock /></td></tr>}</tbody></table></div>
+        </div>
 
-            <div className="chart-card">
-              <h3>🔔 النشاطات الأخيرة</h3>
-              <div className="activities-list">
-                {STATIC_ACTIVITIES.map((item, i) => (
-                  <div key={i} className="activity-item">
-                    <div className="activity-avatar"></div>
-                    <div className="activity-details">
-                      <p><strong>{item.user}</strong> {item.action}</p>
-                      <span>{item.time}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Tables Row */}
-          <div className="tables-row">
-            <div className="table-card">
-              <div className="table-header">
-                <h3>📡 إدارة البثوث</h3>
-                <Link to="/admin/live" className="add-btn">+ بث مباشر جديد</Link>
-              </div>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>المستخدم</th>
-                    <th>عنوان البث</th>
-                    <th>المشاهدات</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {STATIC_LIVE_ROWS.map((row, i) => (
-                    <tr key={i}>
-                      <td>{row.user}</td>
-                      <td>{row.title}</td>
-                      <td>{row.views}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="table-card">
-              <div className="table-header">
-                <h3>📝 إدارة المنشورات</h3>
-                <Link to="/admin/posts" className="add-btn">+ منشور جديد</Link>
-              </div>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>المستخدم</th>
-                    <th>المحتوى</th>
-                    <th>التفاعلات</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {STATIC_POST_ROWS.map((row, i) => (
-                    <tr key={i}>
-                      <td>{row.user}</td>
-                      <td>{row.text}</td>
-                      <td>{row.reactions}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="table-card">
-              <div className="table-header">
-                <h3>💬 إدارة الشات</h3>
-                <Link to="/admin/chat" className="add-btn">فتح الشات</Link>
-              </div>
-              <div className="chat-container">
-                <table className="data-table chat-list">
-                  <thead>
-                    <tr>
-                      <th>المستخدم</th>
-                      <th>آخر رسالة</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {STATIC_CHAT_ROWS.map((row, i) => (
-                      <tr key={i}>
-                        <td>{row.user}</td>
-                        <td>{row.message}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <div className="chat-preview">
-                  <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '10px' }}>تفاصيل المحادثة</p>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ width: '50px', height: '50px', borderRadius: '50%', backgroundColor: '#334155', margin: '0 auto 10px' }}></div>
-                    <p style={{ fontSize: '14px', fontWeight: '600' }}>ahmed_king</p>
-                    <p style={{ fontSize: '11px', color: '#94a3b8' }}>ahmed@example.com</p>
-                    <Link
-                      to="/admin/users"
-                      style={{ display: 'inline-block', marginTop: '15px', width: '100%', padding: '8px', borderRadius: '8px', backgroundColor: '#ef4444', color: 'white', border: 'none', fontSize: '12px', textAlign: 'center', textDecoration: 'none' }}
-                    >
-                      حظر المستخدم
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Bottom Grid */}
-          <div className="bottom-grid">
-            <div className="table-card">
-              <div className="table-header">
-                <h3>📱 إدارة الستوري</h3>
-                <Link to="/admin/stories" className="add-btn">إدارة</Link>
-              </div>
-              <table className="data-table">
-                <tbody>
-                  <tr><td>MoxX</td><td>1.2K مشاهدة</td></tr>
-                  <tr><td>ShadowGirl</td><td>980 مشاهدة</td></tr>
-                </tbody>
-              </table>
-            </div>
-            <div className="table-card">
-              <div className="table-header">
-                <h3>🎬 إدارة الريلز</h3>
-                <Link to="/admin/reels" className="add-btn">إدارة</Link>
-              </div>
-              <table className="data-table">
-                <tbody>
-                  <tr><td>ProHunter</td><td>2.5K مشاهدة</td></tr>
-                  <tr><td>KhaledGamer</td><td>1.8K مشاهدة</td></tr>
-                </tbody>
-              </table>
-            </div>
-            <div className="table-card">
-              <div className="table-header">
-                <h3>📊 التقارير والإحصائيات</h3>
-                <Link to="/admin/reports" className="add-btn">التقارير</Link>
-              </div>
-              <div style={{ padding: '20px', display: 'flex', gap: '20px' }}>
-                <ResponsiveContainer width="50%" height={150}>
-                  <BarChart data={barData}>
-                    <Bar dataKey="views" fill="#7C3AED" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-                <div style={{ flex: 1 }}>
-                  <div style={{ marginBottom: '10px' }}>
-                    <p style={{ fontSize: '11px', color: '#94a3b8' }}>معدل التفاعل</p>
-                    <p style={{ fontSize: '18px', fontWeight: '700' }}>5.23% <span style={{ color: '#10B981', fontSize: '12px' }}>▲ 12.7%</span></p>
-                  </div>
-                  <div>
-                    <p style={{ fontSize: '11px', color: '#94a3b8' }}>إجمالي الإيرادات</p>
-                    <p style={{ fontSize: '18px', fontWeight: '700' }}>$ 45,231</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div className="bottom-grid">
+          <div className="table-card"><div className="table-header"><h3>📱 إدارة الستوري</h3><Link to="/admin/stories" className="add-btn">إدارة</Link></div><table className="data-table"><tbody>{tableRows.stories.length ? tableRows.stories.map((row, i) => <tr key={i}><td>{row.user || row.username || '—'}</td><td>{formatNumber(row.views ?? row.viewers ?? 0, '0')} مشاهدة</td></tr>) : <tr><td colSpan="2"><EmptyBlock /></td></tr>}</tbody></table></div>
+          <div className="table-card"><div className="table-header"><h3>🎬 إدارة الريلز</h3><Link to="/admin/reels" className="add-btn">إدارة</Link></div><table className="data-table"><tbody>{tableRows.reels.length ? tableRows.reels.map((row, i) => <tr key={i}><td>{row.user || row.username || '—'}</td><td>{formatNumber(row.views ?? row.viewers ?? 0, '0')} مشاهدة</td></tr>) : <tr><td colSpan="2"><EmptyBlock /></td></tr>}</tbody></table></div>
+          <div className="table-card"><div className="table-header"><h3>📊 التقارير والإحصائيات</h3><Link to="/admin/reports" className="add-btn">التقارير</Link></div><div style={{ padding: '20px' }}><div style={{ display: 'grid', gap: 12 }}><div><p style={{ fontSize: '11px', color: '#94a3b8' }}>معدل التفاعل</p><p style={{ fontSize: '18px', fontWeight: '700' }}>{formatNumber(metrics.engagement_rate ?? metrics.engagementRate, '—')}</p></div><div><p style={{ fontSize: '11px', color: '#94a3b8' }}>إجمالي الإيرادات</p><p style={{ fontSize: '18px', fontWeight: '700' }}>{formatCurrency(metrics.revenue_total ?? metrics.revenue ?? 0)}</p></div></div></div></div>
         </div>
       </main>
     </div>

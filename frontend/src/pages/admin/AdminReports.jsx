@@ -11,80 +11,10 @@ const ROW_HEIGHT = 94;
 const QUEUE_HEIGHT = 520;
 const OVERSCAN = 4;
 
-const FALLBACK_REPORTS = [
-  {
-    id: 'REP-4102',
-    type: 'انتحال شخصية',
-    target: '@fake.company.support',
-    targetType: 'account',
-    reporter: '@salma',
-    severity: 'critical',
-    status: 'pending',
-    score: 96,
-    queue: 'identity',
-    reason: 'مطابقة اسم وهوية مع حساب موثّق ومحاولة سحب بيانات المستخدمين.',
-    slaMinutes: 12,
-    createdAt: '2026-05-11T08:15:00.000Z',
-  },
-  {
-    id: 'REP-4103',
-    type: 'تحرش ورسائل مسيئة',
-    target: 'Chat Room #778',
-    targetType: 'chat',
-    reporter: '@mahmoud',
-    severity: 'high',
-    status: 'investigating',
-    score: 82,
-    queue: 'safety',
-    reason: 'بلاغ متكرر من أكثر من مستخدم مع كلمات مفتاحية خطيرة.',
-    slaMinutes: 28,
-    createdAt: '2026-05-11T08:21:00.000Z',
-  },
-  {
-    id: 'REP-4104',
-    type: 'محتوى عنيف',
-    target: 'Post #29018',
-    targetType: 'post',
-    reporter: '@nada',
-    severity: 'high',
-    status: 'pending',
-    score: 77,
-    queue: 'content',
-    reason: 'صورة حساسة بدون تحذير + انتشار سريع داخل الريلز.',
-    slaMinutes: 34,
-    createdAt: '2026-05-11T08:31:00.000Z',
-  },
-  {
-    id: 'REP-4105',
-    type: 'Spam / Scam',
-    target: 'Live Room #44',
-    targetType: 'live',
-    reporter: '@zeinab',
-    severity: 'medium',
-    status: 'escalated',
-    score: 71,
-    queue: 'commerce',
-    reason: 'روابط مشبوهة وعروض وهمية أثناء البث.',
-    slaMinutes: 49,
-    createdAt: '2026-05-11T08:37:00.000Z',
-  },
-  {
-    id: 'REP-4106',
-    type: 'copyright',
-    target: 'Reel #7771',
-    targetType: 'reel',
-    reporter: '@rights.owner',
-    severity: 'medium',
-    status: 'resolved',
-    score: 58,
-    queue: 'ip',
-    reason: 'مطالبة حقوق نشر مع إثبات ملكية للمحتوى الصوتي.',
-    slaMinutes: 81,
-    createdAt: '2026-05-11T08:41:00.000Z',
-  },
-];
+const FALLBACK_REPORTS = [];
 
 function duplicateSeedReports(base) {
+  if (!Array.isArray(base) || !base.length) return [];
   return Array.from({ length: 42 }, (_, index) => {
     const template = base[index % base.length];
     return {
@@ -110,7 +40,7 @@ function normalizeReports(payload) {
         ? payload
         : null;
 
-  if (!items?.length) return duplicateSeedReports(FALLBACK_REPORTS);
+  if (!items?.length) return [];
 
   return items.map((item, index) => ({
     id: String(item.id ?? item.report_id ?? `REP-${9000 + index}`),
@@ -287,12 +217,11 @@ export default function AdminReports() {
       setRemovals((prev) => prev.length ? prev : seedRemovalRegistry(normalized));
       setAppeals((prev) => prev.length ? prev : seedAppealsRegistry(normalized));
     } catch (error) {
-      const fallback = duplicateSeedReports(FALLBACK_REPORTS);
-      setReports(fallback);
-      setActiveReportId((prev) => prev || fallback[0]?.id || '');
-      setRemovals((prev) => prev.length ? prev : seedRemovalRegistry(fallback));
-      setAppeals((prev) => prev.length ? prev : seedAppealsRegistry(fallback));
-      pushToast({ type: 'warning', title: 'تم تشغيل بيانات تجريبية', description: error?.response?.data?.detail || 'تعذر جلب البلاغات من الخادم حاليًا.' });
+      setReports([]);
+      setActiveReportId('');
+      setRemovals([]);
+      setAppeals([]);
+      pushToast({ type: 'warning', title: 'تعذر تحميل البلاغات', description: error?.response?.data?.detail || 'الخادم لم يرجع بلاغات حالياً.' });
     } finally {
       setLoading(false);
     }

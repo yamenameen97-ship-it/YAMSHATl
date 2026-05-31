@@ -44,35 +44,15 @@ export function formatTimeOnly(value) {
 }
 
 export function sampleLineData() {
-  return [
-    { label: '12 مايو', value: 140000 },
-    { label: '13 مايو', value: 285000 },
-    { label: '14 مايو', value: 230000 },
-    { label: '15 مايو', value: 340230 },
-    { label: '16 مايو', value: 185000 },
-    { label: '17 مايو', value: 292000 },
-    { label: '18 مايو', value: 418000 },
-  ];
+  return [];
 }
 
 export function sampleBarData() {
-  return [
-    { label: 'المنشورات', value: 78 },
-    { label: 'الشات', value: 63 },
-    { label: 'الستوري', value: 54 },
-    { label: 'الريلز', value: 91 },
-    { label: 'البث', value: 47 },
-    { label: 'المجموعات', value: 35 },
-  ];
+  return [];
 }
 
 export function sampleActivity() {
-  return [
-    { id: '1', title: 'PlayerOne بدأ بث جديد', description: 'منذ دقائق قليلة', created_at: new Date().toISOString(), level: 'live' },
-    { id: '2', title: 'KhaledGamer نشر منشوراً جديداً', description: 'محتوى تفاعلي جديد', created_at: new Date(Date.now() - 1000 * 60 * 12).toISOString(), level: 'post' },
-    { id: '3', title: 'ShadowGirl استقبلت ردوداً على الستوري', description: 'ارتفاع ملحوظ في التفاعل', created_at: new Date(Date.now() - 1000 * 60 * 28).toISOString(), level: 'story' },
-    { id: '4', title: 'MoX انضم إلى مجموعة جديدة', description: 'نشاط مجتمعي متزايد', created_at: new Date(Date.now() - 1000 * 60 * 42).toISOString(), level: 'group' },
-  ];
+  return [];
 }
 
 export function getStatusTone(status) {

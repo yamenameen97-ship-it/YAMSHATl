@@ -7,56 +7,7 @@ import { useToast } from '../../components/admin/ToastProvider.jsx';
 import { adminService } from '../../services/adminService.js';
 import socket from '../../api/socket.js';
 
-const FALLBACK_LOGS = [
-  {
-    id: 'AUD-2001',
-    action: 'approve_report',
-    admin_name: 'Super Admin',
-    actor: 'superadmin@yamsat.local',
-    scope: 'reports',
-    severity: 'info',
-    summary: 'اعتماد بلاغ انتحال شخصية بعد مراجعة الأدلة.',
-    ip_address: '41.33.18.10',
-    entity: 'REP-4102',
-    timestamp: '2026-05-11T08:42:00.000Z',
-  },
-  {
-    id: 'AUD-2002',
-    action: 'shadow_ban_user',
-    admin_name: 'Content Lead',
-    actor: 'contentlead@yamsat.local',
-    scope: 'users',
-    severity: 'warning',
-    summary: 'تفعيل Shadow Ban لحساب عالي الخطورة بعد موجة Spam.',
-    ip_address: '41.33.18.12',
-    entity: 'USR-991',
-    timestamp: '2026-05-11T08:39:00.000Z',
-  },
-  {
-    id: 'AUD-2003',
-    action: 'export_analytics',
-    admin_name: 'Analytics Admin',
-    actor: 'analytics@yamsat.local',
-    scope: 'analytics',
-    severity: 'info',
-    summary: 'تصدير live metrics لمتابعة النمو خلال آخر 24 ساعة.',
-    ip_address: '41.33.18.16',
-    entity: 'growth-board',
-    timestamp: '2026-05-11T08:32:00.000Z',
-  },
-  {
-    id: 'AUD-2004',
-    action: 'force_logout',
-    admin_name: 'Security Admin',
-    actor: 'security@yamsat.local',
-    scope: 'security',
-    severity: 'critical',
-    summary: 'تسجيل خروج إجباري لعدة جلسات بعد سلوك مشبوه من نفس البصمة.',
-    ip_address: '41.33.18.22',
-    entity: 'session-batch-22',
-    timestamp: '2026-05-11T08:21:00.000Z',
-  },
-];
+const FALLBACK_LOGS = [];
 
 function normalizeLogs(payload) {
   const items = Array.isArray(payload?.items)
@@ -68,14 +19,7 @@ function normalizeLogs(payload) {
         : null;
 
   if (!items?.length) {
-    return Array.from({ length: 28 }, (_, index) => {
-      const base = FALLBACK_LOGS[index % FALLBACK_LOGS.length];
-      return {
-        ...base,
-        id: `${base.id}-${index + 1}`,
-        timestamp: new Date(Date.now() - index * 8 * 60 * 1000).toISOString(),
-      };
-    });
+    return [];
   }
 
   return items.map((item, index) => ({
@@ -124,15 +68,9 @@ export default function AdminAudit() {
         security: Number(summaryData?.security ?? normalized.filter((item) => item.scope === 'security').length),
       });
     } catch (error) {
-      const fallback = normalizeLogs([]);
-      setLogs(fallback);
-      setSummary({
-        today: fallback.length,
-        critical: fallback.filter((item) => item.severity === 'critical').length,
-        exports: fallback.filter((item) => item.action.includes('export')).length,
-        security: fallback.filter((item) => item.scope === 'security').length,
-      });
-      pushToast({ type: 'warning', title: 'تم تشغيل سجل محلي', description: error?.response?.data?.detail || 'تعذر جلب سجل النشاط من الـ API.' });
+      setLogs([]);
+      setSummary({ today: 0, critical: 0, exports: 0, security: 0 });
+      pushToast({ type: 'warning', title: 'تعذر تحميل سجل النشاط', description: error?.response?.data?.detail || 'الخادم لم يرجع سجلات حالياً.' });
     } finally {
       setLoading(false);
     }

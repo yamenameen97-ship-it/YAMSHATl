@@ -16,18 +16,28 @@ router = APIRouter()
 
 
 def _serialize_reel(db: Session, reel: Reel, current_user: User | None = None) -> dict:
-    owner = db.query(User).filter(User.id == reel.user_id).first()
+    try:
+        owner = db.query(User).filter(User.id == reel.user_id).first()
+    except Exception:
+        owner = None
+
     is_liked = False
     is_saved = False
     if current_user is not None:
-        is_liked = db.query(ReelLike.id).filter(
-            ReelLike.reel_id == reel.id,
-            ReelLike.user_id == current_user.id,
-        ).first() is not None
-        is_saved = db.query(SavedReel.id).filter(
-            SavedReel.reel_id == reel.id,
-            SavedReel.user_id == current_user.id,
-        ).first() is not None
+        try:
+            is_liked = db.query(ReelLike.id).filter(
+                ReelLike.reel_id == reel.id,
+                ReelLike.user_id == current_user.id,
+            ).first() is not None
+        except Exception:
+            is_liked = False
+        try:
+            is_saved = db.query(SavedReel.id).filter(
+                SavedReel.reel_id == reel.id,
+                SavedReel.user_id == current_user.id,
+            ).first() is not None
+        except Exception:
+            is_saved = False
 
     video_url = normalize_media_url(reel.video_url)
     thumbnail_url = normalize_media_url(reel.thumbnail_url)

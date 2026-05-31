@@ -17,121 +17,7 @@ import { adminService } from '../../services/adminService.js';
 import socket from '../../api/socket.js';
 
 function seedUsers() {
-  const now = Date.now();
-  return [
-    {
-      id: 'USR-1001',
-      username: 'mona.design',
-      name: 'منى عادل',
-      email: 'mona@yamshat.app',
-      role: 'creator',
-      status: 'active',
-      riskScore: 22,
-      reports: 1,
-      warnings: 0,
-      strikes: 0,
-      shadowBanned: false,
-      joinedAt: '2026-02-05T10:30:00.000Z',
-      lastActive: new Date(now - 12 * 60 * 1000).toISOString(),
-      ip: '196.204.21.11',
-      deviceId: 'and-a13-mona',
-      country: 'EG',
-      followers: 12840,
-      contentCounts: { posts: 43, reels: 61, comments: 122, removals: 0 },
-      recentContent: [
-        { id: 'POST-201', type: 'post', title: 'بوست براندينج', status: 'visible', risk: 12 },
-        { id: 'REEL-902', type: 'reel', title: 'ريل تعليمي', status: 'visible', risk: 18 },
-      ],
-      auditTrail: [
-        { id: 'UA-1', action: 'successful_login', note: 'تسجيل دخول طبيعي من نفس الجهاز المعتاد.', at: new Date(now - 6 * 60 * 60 * 1000).toISOString() },
-      ],
-      appealOpen: false,
-    },
-    {
-      id: 'USR-1002',
-      username: 'saleh.fastcash',
-      name: 'صالح عمر',
-      email: 'saleh@yamshat.app',
-      role: 'user',
-      status: 'flagged',
-      riskScore: 81,
-      reports: 7,
-      warnings: 2,
-      strikes: 1,
-      shadowBanned: true,
-      joinedAt: '2025-12-17T14:10:00.000Z',
-      lastActive: new Date(now - 34 * 60 * 1000).toISOString(),
-      ip: '41.38.18.92',
-      deviceId: 'sm-a546e-saleh',
-      country: 'EG',
-      followers: 320,
-      contentCounts: { posts: 15, reels: 8, comments: 204, removals: 2 },
-      recentContent: [
-        { id: 'POST-871', type: 'post', title: 'عرض ربحي مشبوه', status: 'review', risk: 90 },
-        { id: 'COMM-8771', type: 'comment', title: 'تعليق سبامي متكرر', status: 'removed', risk: 88 },
-      ],
-      auditTrail: [
-        { id: 'UA-2', action: 'shadow_ban_enabled', note: 'تم تفعيل Shadow Ban بعد موجة بلاغات سبام.', at: new Date(now - 9 * 60 * 60 * 1000).toISOString() },
-        { id: 'UA-3', action: 'warning_sent', note: 'إرسال إنذار أول وسياسة مكافحة الاحتيال.', at: new Date(now - 27 * 60 * 60 * 1000).toISOString() },
-      ],
-      appealOpen: true,
-    },
-    {
-      id: 'USR-1003',
-      username: 'huda.live',
-      name: 'هدى سامي',
-      email: 'huda@yamshat.app',
-      role: 'moderator',
-      status: 'active',
-      riskScore: 11,
-      reports: 0,
-      warnings: 0,
-      strikes: 0,
-      shadowBanned: false,
-      joinedAt: '2025-11-02T08:20:00.000Z',
-      lastActive: new Date(now - 5 * 60 * 1000).toISOString(),
-      ip: '41.38.120.41',
-      deviceId: 'iphone15-huda',
-      country: 'SA',
-      followers: 9850,
-      contentCounts: { posts: 8, reels: 3, comments: 51, removals: 0 },
-      recentContent: [
-        { id: 'POST-410', type: 'post', title: 'إعلان جلسة بث', status: 'visible', risk: 6 },
-      ],
-      auditTrail: [
-        { id: 'UA-4', action: 'role_verified', note: 'صلاحيات الإشراف مفعلة بنجاح.', at: new Date(now - 48 * 60 * 60 * 1000).toISOString() },
-      ],
-      appealOpen: false,
-    },
-    {
-      id: 'USR-1004',
-      username: 'nour_clipz',
-      name: 'نور خالد',
-      email: 'nour@yamshat.app',
-      role: 'user',
-      status: 'banned',
-      riskScore: 96,
-      reports: 12,
-      warnings: 4,
-      strikes: 3,
-      shadowBanned: true,
-      joinedAt: '2025-08-14T22:00:00.000Z',
-      lastActive: new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString(),
-      ip: '154.177.62.90',
-      deviceId: 'redmi-note-nour',
-      country: 'DZ',
-      followers: 1820,
-      contentCounts: { posts: 74, reels: 29, comments: 410, removals: 12 },
-      recentContent: [
-        { id: 'REEL-1881', type: 'reel', title: 'مقطع مخالف', status: 'removed', risk: 97 },
-        { id: 'POST-560', type: 'post', title: 'إعادة نشر محظورة', status: 'removed', risk: 93 },
-      ],
-      auditTrail: [
-        { id: 'UA-5', action: 'permanent_ban', note: 'حظر نهائي بسبب تكرار الانتهاكات بعد 3 strikes.', at: new Date(now - 3 * 24 * 60 * 60 * 1000).toISOString() },
-      ],
-      appealOpen: true,
-    },
-  ];
+  return [];
 }
 
 function normalizeUsers(payload) {
@@ -143,7 +29,7 @@ function normalizeUsers(payload) {
         ? payload
         : null;
 
-  if (!items?.length) return seedUsers();
+  if (!items?.length) return [];
 
   return items.map((item, index) => ({
     id: String(item.id ?? item.user_id ?? `USR-${index + 1}`),
@@ -255,7 +141,7 @@ export default function AdminUsers() {
         getAdminUsers({ page: 1, page_size: 80 }),
         getAdminBanHistory(20),
       ]);
-      const normalized = usersResponse.status === 'fulfilled' ? normalizeUsers(usersResponse.value?.data) : seedUsers();
+      const normalized = usersResponse.status === 'fulfilled' ? normalizeUsers(usersResponse.value?.data) : [];
       setUsers(normalized);
       setSelectedId((prev) => prev || normalized[0]?.id || '');
       const historyPayload = banHistoryResponse.status === 'fulfilled' ? banHistoryResponse.value?.data : null;
@@ -266,14 +152,13 @@ export default function AdminUsers() {
           : [];
       setBanHistory(historyItems.slice(0, 20));
       if (usersResponse.status !== 'fulfilled') {
-        pushToast({ type: 'warning', title: 'تم تحميل نسخة احتياطية', description: 'تعذر جلب المستخدمين من الـ API، فتم تشغيل بيانات إدارة محلية.' });
+        pushToast({ type: 'warning', title: 'تعذر تحميل المستخدمين', description: 'لا توجد بيانات مستخدمين متاحة من الخادم حالياً.' });
       }
     } catch (error) {
-      const fallback = seedUsers();
-      setUsers(fallback);
-      setSelectedId((prev) => prev || fallback[0]?.id || '');
+      setUsers([]);
+      setSelectedId('');
       setBanHistory([]);
-      pushToast({ type: 'warning', title: 'تعذر تحميل المستخدمين', description: error?.response?.data?.detail || error?.message || 'تم تشغيل نسخة واجهة بديلة.' });
+      pushToast({ type: 'warning', title: 'تعذر تحميل المستخدمين', description: error?.response?.data?.detail || error?.message || 'الخادم لم يرجع بيانات حالياً.' });
     } finally {
       setLoading(false);
     }

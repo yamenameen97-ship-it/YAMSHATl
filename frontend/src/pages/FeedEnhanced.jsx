@@ -56,37 +56,7 @@ const SUMMARY_ITEMS = [
   { icon: 'bookmark', text: 'انضم في يناير 2023' },
 ];
 
-const MOCK_POSTS = [
-  {
-    id: 'mock-1',
-    authorName: 'أحمد محمد',
-    handle: '@ahmed.mohammed',
-    time: 'منذ 2 س',
-    text: 'لحظات لا تُنسى من رحلتي اليوم ✨\nالطبيعة دائماً تمنحنا السلام الذي نبحث عنه.',
-    likes: 1200,
-    comments: 128,
-    shares: 64,
-    views: 2400,
-    media: [
-      { type: 'scenic-video' },
-      { type: 'scenic-lake' },
-      { type: 'scenic-forest' },
-    ],
-  },
-  {
-    id: 'mock-2',
-    authorName: 'تصميم ملهم',
-    handle: '@inspired.design',
-    time: 'منذ 4 س',
-    text: 'تصميم بسيط.. تأثير كبير. 🎨\nشارك رأيك في هذا العمل.',
-    likes: 860,
-    comments: 34,
-    shares: 19,
-    views: 1700,
-    media: [{ type: 'portrait-purple' }],
-    brandRing: true,
-  },
-];
+const MOCK_POSTS = [];
 
 
 function SocialEnhancements({ post }) {
@@ -150,7 +120,7 @@ function buildFeedPosts(posts = []) {
     });
   }
 
-  return MOCK_POSTS;
+  return [];
 }
 
 function Avatar({ name, size = 46, accent = false, image = false }) {
@@ -379,7 +349,7 @@ export default function FeedEnhanced() {
   });
 
   const feedPosts = useMemo(() => buildFeedPosts(posts), [posts]);
-  const totalPosts = feedPosts.length ? Math.max(128, feedPosts.length) : 128;
+  const totalPosts = feedPosts.length;
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;

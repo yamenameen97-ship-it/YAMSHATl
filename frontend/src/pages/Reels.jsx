@@ -65,6 +65,20 @@ function normalizeReel(item = {}) {
   };
 }
 
+function dataUrlToFile(dataUrl = '', fileName = 'thumbnail.jpg') {
+  if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) return null;
+  const [meta, content] = dataUrl.split(',');
+  if (!meta || !content) return null;
+  const mimeMatch = meta.match(/data:(.*?);base64/);
+  const mime = mimeMatch?.[1] || 'image/jpeg';
+  const binary = atob(content);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new File([bytes], fileName, { type: mime });
+}
+
 const QUALITY_OPTIONS = [
   { value: 'auto', label: 'تلقائي' },
   { value: 'high', label: 'عالي' },
@@ -196,6 +210,12 @@ function ReelItem({ index, style, data }) {
           </div>
         </div>
 
+        <div className="reel-swipe-indicator" aria-hidden="true">
+          <span>︿</span>
+          <small>اسحب</small>
+          <span>﹀</span>
+        </div>
+
         <div className="reel-actions-stack absolute right-4 bottom-24 flex flex-col gap-4 items-center z-20">
           <div className="flex flex-col items-center gap-1">
             <button onClick={() => handleLike(reel)} className={`reel-action-btn ${reel.is_liked ? 'liked' : ''}`}>❤️</button>
@@ -276,7 +296,7 @@ export default function ReelsPage() {
       return acc;
     }, {});
   });
-  const [uploadState, setUploadState] = useState({ mediaUrl: '', previewUrl: '', uploading: false, publishing: false, content: '', fileName: '' });
+  const [uploadState, setUploadState] = useState({ mediaUrl: '', previewUrl: '', thumbnailUrl: '', uploading: false, publishing: false, content: '', fileName: '', processedFile: null, originalFile: null });
 
   const deviceProfile = useMemo(() => getDeviceProfile(), []);
   const preloadRange = deviceProfile.videoPreloadRange || (deviceProfile.isLowEndDevice ? 1 : 2);
@@ -285,7 +305,7 @@ export default function ReelsPage() {
   const activeInsights = activeReelItem ? getReelInsightsById(activeReelItem.id) : null;
 
   const resetUploadState = useCallback(() => {
-    setUploadState({ mediaUrl: '', previewUrl: '', uploading: false, publishing: false, content: '', fileName: '' });
+    setUploadState({ mediaUrl: '', previewUrl: '', thumbnailUrl: '', uploading: false, publishing: false, content: '', fileName: '', processedFile: null, originalFile: null });
   }, []);
 
   const hydrateFromCache = useCallback(() => {
@@ -785,26 +805,54 @@ export default function ReelsPage() {
   };
 
   const publishReel = async () => {
-    if (!uploadState.mediaUrl) {
+    if (!uploadState.mediaUrl && !uploadState.processedFile) {
       pushToast({ type: 'warning', title: 'ارفع فيديو أولاً' });
       return;
     }
+
+    const caption = uploadState.content?.trim() || 'ريل جديد';
+    setUploadState((prev) => ({ ...prev, publishing: true }));
+
+    const tryMultipartFallback = async () => {
+      const fallbackFile = uploadState.processedFile || uploadState.originalFile;
+      if (!fallbackFile) throw new Error('لا يوجد ملف متاح لإعادة المحاولة.');
+      const formData = new FormData();
+      formData.append('file', fallbackFile);
+      const thumbnailFile = dataUrlToFile(uploadState.thumbnailUrl, `${String(fallbackFile.name || 'reel').replace(/\.[^.]+$/, '')}-thumb.jpg`);
+      if (thumbnailFile) formData.append('thumbnail', thumbnailFile);
+      formData.append('caption', caption);
+      formData.append('category', 'general');
+      return API.post('/reels', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+    };
+
     try {
-      setUploadState((prev) => ({ ...prev, publishing: true }));
       await API.post('/reels', {
-        caption: uploadState.content?.trim() || 'ريل جديد',
+        caption,
         media_url: uploadState.mediaUrl,
         video_url: uploadState.mediaUrl,
       });
-      setShowUploadModal(false);
-      resetUploadState();
-      navigate('/reels', { replace: true });
-      await loadReels();
-      pushToast({ type: 'success', title: 'تم نشر الريل بنجاح' });
     } catch (error) {
-      setUploadState((prev) => ({ ...prev, publishing: false }));
-      pushToast({ type: 'error', title: 'فشل نشر الريل', description: error?.response?.data?.detail || error?.message });
+      try {
+        await tryMultipartFallback();
+      } catch (fallbackError) {
+        setUploadState((prev) => ({ ...prev, publishing: false }));
+        pushToast({
+          type: 'error',
+          title: 'فشل نشر الريل',
+          description: fallbackError?.response?.data?.detail || fallbackError?.message || error?.response?.data?.detail || error?.message,
+        });
+        return;
+      }
     }
+
+    setShowUploadModal(false);
+    setUploadState((prev) => ({ ...prev, publishing: false }));
+    resetUploadState();
+    navigate('/reels', { replace: true });
+    await loadReels();
+    pushToast({ type: 'success', title: 'تم نشر الريل بنجاح' });
   };
 
   const listData = useMemo(() => ({
@@ -957,12 +1005,15 @@ export default function ReelsPage() {
 
             <VideoUploader
               label="رفع فيديو الريل"
-              onUploadComplete={({ url, previewUrl, file }) => {
+              onUploadComplete={({ url, previewUrl, file, originalFile, thumbnailUrl }) => {
                 setUploadState((prev) => ({
                   ...prev,
                   mediaUrl: url || '',
                   previewUrl: previewUrl || '',
+                  thumbnailUrl: thumbnailUrl || '',
                   fileName: file?.name || '',
+                  processedFile: file || null,
+                  originalFile: originalFile || null,
                   uploading: false,
                 }));
                 pushToast({ type: 'success', title: 'تم رفع الفيديو', description: 'راجع المعاينة ثم اضغط نشر الريل.' });
@@ -1164,6 +1215,30 @@ export default function ReelsPage() {
             right: 18px;
             bottom: 28px;
           }
+          .reel-swipe-indicator {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 19;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            padding: 10px 8px;
+            border-radius: 999px;
+            background: rgba(9,14,28,0.42);
+            border: 1px solid rgba(255,255,255,0.08);
+            color: rgba(255,255,255,0.82);
+            backdrop-filter: blur(14px);
+            pointer-events: none;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.18);
+          }
+          .reel-swipe-indicator small {
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 0.02em;
+          }
           .reel-progress-rail {
             position: absolute;
             left: 16px;
@@ -1270,7 +1345,7 @@ export default function ReelsPage() {
           }
           .reel-arrow {
             position: absolute;
-            left: 18px;
+            left: 12px;
             width: 48px;
             height: 48px;
             border-radius: 16px;
@@ -1287,8 +1362,8 @@ export default function ReelsPage() {
             opacity: 0.35;
             cursor: not-allowed;
           }
-          .reel-arrow-up { top: 50%; transform: translateY(-68px); }
-          .reel-arrow-down { top: 50%; transform: translateY(16px); }
+          .reel-arrow-up { top: 50%; transform: translateY(-72px); }
+          .reel-arrow-down { top: 50%; transform: translateY(20px); }
           .reel-heart-burst {
             position: absolute;
             inset: 0;
@@ -1356,6 +1431,14 @@ export default function ReelsPage() {
             justify-content: flex-end;
             gap: 10px;
             flex-wrap: wrap;
+          }
+          @media (max-width: 768px) {
+            .reel-swipe-indicator {
+              left: 8px;
+              top: auto;
+              bottom: 120px;
+              transform: none;
+            }
           }
           @keyframes reelSpin {
             to { transform: rotate(360deg); }

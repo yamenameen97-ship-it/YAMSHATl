@@ -2,17 +2,26 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Button from '../ui/Button.jsx';
 import mediaUploadService from '../../services/media/mediaUploadService.js';
 import {
+  AUDIO_MODE_OPTIONS,
+  VIDEO_FILTER_PRESETS,
+  buildVideoFilterStyle,
   buildVideoPreview,
-  compressVideoFile,
   createManagedUploadTask,
   formatBytes,
   formatEta,
   formatSpeed,
+  processVideoFile,
   revokeObjectUrl,
 } from '../../services/upload/uploadHelpers.js';
 
 const MAX_VIDEO_SIZE = 500 * 1024 * 1024;
 const ALLOWED_TYPES = ['video/mp4', 'video/webm', 'video/quicktime'];
+const DEFAULT_ADJUSTMENTS = {
+  brightness: 100,
+  contrast: 100,
+  saturation: 110,
+  blur: 0,
+};
 
 function formatDuration(seconds = 0) {
   const total = Math.max(0, Math.round(Number(seconds || 0)));
@@ -22,6 +31,7 @@ function formatDuration(seconds = 0) {
 }
 
 function stageLabel(stage = '') {
+  if (stage === 'processing-video') return 'تحسين الفيديو والصوت';
   if (stage === 'compressing-video') return 'جاري ضغط الفيديو فعلياً';
   if (stage === 'validating') return 'فحص الملف';
   if (stage === 'hashing') return 'تجهيز الاستئناف';
@@ -33,6 +43,26 @@ function stageLabel(stage = '') {
   return 'جاهز';
 }
 
+function SliderControl({ label, value, min, max, step = 1, suffix = '', disabled, onChange }) {
+  return (
+    <label className="studio-slider">
+      <div className="studio-slider-head">
+        <span>{label}</span>
+        <strong>{value}{suffix}</strong>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+    </label>
+  );
+}
+
 export default function VideoUploader({ onUploadComplete, onError, label = 'رفع فيديو الريل' }) {
   const [videoFile, setVideoFile] = useState(null);
   const [preparedFile, setPreparedFile] = useState(null);
@@ -42,6 +72,11 @@ export default function VideoUploader({ onUploadComplete, onError, label = 'رف
   const [preview, setPreview] = useState(null);
   const [compressionEnabled, setCompressionEnabled] = useState(true);
   const [compressionPreset, setCompressionPreset] = useState('balanced');
+  const [enhancementEnabled, setEnhancementEnabled] = useState(true);
+  const [videoFilter, setVideoFilter] = useState('enhance');
+  const [audioMode, setAudioMode] = useState('original');
+  const [audioVolume, setAudioVolume] = useState(100);
+  const [adjustments, setAdjustments] = useState(DEFAULT_ADJUSTMENTS);
   const [errorMessage, setErrorMessage] = useState('');
   const [lastPayload, setLastPayload] = useState(null);
   const fileInputRef = useRef(null);
@@ -53,6 +88,22 @@ export default function VideoUploader({ onUploadComplete, onError, label = 'رف
   }, [preview?.objectUrl]);
 
   const acceptedText = useMemo(() => 'MP4, WebM أو MOV', []);
+  const previewFilter = useMemo(() => buildVideoFilterStyle({
+    enhancementEnabled,
+    videoFilter,
+    adjustments,
+  }), [adjustments, enhancementEnabled, videoFilter]);
+
+  const studioSummary = useMemo(() => {
+    const selectedFilter = VIDEO_FILTER_PRESETS.find((item) => item.value === videoFilter)?.label || videoFilter;
+    const selectedAudio = AUDIO_MODE_OPTIONS.find((item) => item.value === audioMode)?.label || audioMode;
+    return [
+      compressionEnabled ? `ضغط ${compressionPreset}` : 'بدون ضغط إضافي',
+      enhancementEnabled ? `فلتر ${selectedFilter}` : 'تحسين بصري متوقف',
+      `الصوت: ${selectedAudio}`,
+      audioMode === 'mute' ? 'كتم قبل الرفع' : `مستوى الصوت ${audioVolume}%`,
+    ];
+  }, [audioMode, audioVolume, compressionEnabled, compressionPreset, enhancementEnabled, videoFilter]);
 
   const resetLocalState = () => {
     if (taskRef.current?.abort) taskRef.current.abort();
@@ -68,20 +119,32 @@ export default function VideoUploader({ onUploadComplete, onError, label = 'رف
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  const propagateUploadProgress = (payload = {}) => {
+    setProgress(Math.min(100, Number(payload?.percent || 0)));
+    setProgressMeta((prev) => ({
+      ...prev,
+      ...payload,
+      stage: payload?.stage || prev.stage,
+    }));
+  };
+
   const startUpload = async (sourceFile, currentPreview = null) => {
     if (!sourceFile) return;
     setUploading(true);
     setErrorMessage('');
     setProgress(0);
+    setLastPayload(null);
 
     try {
-      const fileForUpload = await compressVideoFile(sourceFile, {
-        enabled: compressionEnabled,
-        preset: compressionPreset,
-        onProgress: (payload) => {
-          setProgress(Math.min(99, Number(payload?.percent || 0)));
-          setProgressMeta((prev) => ({ ...prev, stage: payload?.stage || 'compressing-video' }));
-        },
+      const fileForUpload = await processVideoFile(sourceFile, {
+        enhancementEnabled,
+        compressionEnabled,
+        compressionPreset,
+        videoFilter,
+        audioMode,
+        volume: audioVolume,
+        adjustments,
+        onProgress: propagateUploadProgress,
       });
       setPreparedFile(fileForUpload);
 
@@ -92,7 +155,10 @@ export default function VideoUploader({ onUploadComplete, onError, label = 'رف
         compressionPreset,
         chunkRetries: 4,
         retries: 3,
-      }));
+        processingProfile: `${videoFilter}:${audioMode}`,
+      }), {
+        onProgress: propagateUploadProgress,
+      });
       taskRef.current = task;
 
       const upload = await task.promise;
@@ -107,6 +173,8 @@ export default function VideoUploader({ onUploadComplete, onError, label = 'رف
         url: upload.mediaUrl || upload.url || '',
         payload: upload,
         compressed: fileForUpload !== sourceFile,
+        enhancementPreset: videoFilter,
+        audioMode,
       });
     } catch (error) {
       const message = error?.name === 'AbortError'
@@ -125,12 +193,16 @@ export default function VideoUploader({ onUploadComplete, onError, label = 'رف
     if (!file) return;
 
     if (!ALLOWED_TYPES.includes(file.type)) {
-      onError?.('نوع الملف غير مدعوم. استخدم MP4 أو WebM أو MOV');
+      const message = 'نوع الملف غير مدعوم. استخدم MP4 أو WebM أو MOV';
+      setErrorMessage(message);
+      onError?.(message);
       return;
     }
 
     if (file.size > MAX_VIDEO_SIZE) {
-      onError?.(`حجم الملف كبير جداً. الحد الأقصى: ${MAX_VIDEO_SIZE / (1024 * 1024)}MB`);
+      const message = `حجم الملف كبير جداً. الحد الأقصى: ${MAX_VIDEO_SIZE / (1024 * 1024)}MB`;
+      setErrorMessage(message);
+      onError?.(message);
       return;
     }
 
@@ -140,6 +212,7 @@ export default function VideoUploader({ onUploadComplete, onError, label = 'رف
     setPreparedFile(file);
     setPreview(nextPreview);
     setLastPayload(null);
+    setErrorMessage('');
     await startUpload(file, nextPreview);
   };
 
@@ -148,33 +221,102 @@ export default function VideoUploader({ onUploadComplete, onError, label = 'رف
     await startUpload(videoFile, preview);
   };
 
+  const updateAdjustment = (key, value) => {
+    setAdjustments((prev) => ({ ...prev, [key]: value }));
+  };
+
   return (
     <div className="video-uploader-shell">
       <div className="upload-settings-card">
-        <div className="settings-row">
-          <label className="settings-toggle">
-            <input type="checkbox" checked={compressionEnabled} onChange={(event) => setCompressionEnabled(event.target.checked)} disabled={uploading} />
-            <span>ضغط فيديو فعلي قبل الرفع</span>
-          </label>
-          <select value={compressionPreset} onChange={(event) => setCompressionPreset(event.target.value)} disabled={uploading} className="quality-select">
-            <option value="light">Light</option>
-            <option value="balanced">Balanced</option>
-            <option value="strong">Strong</option>
-          </select>
+        <div className="settings-head">
+          <div>
+            <strong>استوديو تحسين الفيديو قبل الرفع</strong>
+            <p className="muted">فلترة الصورة، تحسين الإضاءة، ومعالجة الصوت أو كتمه قبل نشر الريل.</p>
+          </div>
+          <div className="settings-badges">
+            {studioSummary.map((item) => <span key={item} className="studio-badge">{item}</span>)}
+          </div>
         </div>
-        <p className="muted">الرفع يدعم الاستئناف + chunk upload + إلغاء + retry + معاينة Thumbnail حقيقية.</p>
+
+        <div className="settings-grid two-cols">
+          <label className="settings-toggle cardish">
+            <input type="checkbox" checked={compressionEnabled} onChange={(event) => setCompressionEnabled(event.target.checked)} disabled={uploading} />
+            <div>
+              <span>ضغط فيديو فعلي قبل الرفع</span>
+              <small>يقلل الحجم مع الحفاظ على وضوح مناسب للريلز.</small>
+            </div>
+          </label>
+
+          <label className="settings-select cardish">
+            <span>قوة الضغط</span>
+            <select value={compressionPreset} onChange={(event) => setCompressionPreset(event.target.value)} disabled={uploading} className="quality-select">
+              <option value="light">Light</option>
+              <option value="balanced">Balanced</option>
+              <option value="strong">Strong</option>
+            </select>
+          </label>
+
+          <label className="settings-toggle cardish">
+            <input type="checkbox" checked={enhancementEnabled} onChange={(event) => setEnhancementEnabled(event.target.checked)} disabled={uploading} />
+            <div>
+              <span>تحسين بصري قبل الرفع</span>
+              <small>تطبيق فلتر وإضاءة وتباين على الفيديو النهائي.</small>
+            </div>
+          </label>
+
+          <label className="settings-select cardish">
+            <span>فلتر الفيديو</span>
+            <select value={videoFilter} onChange={(event) => setVideoFilter(event.target.value)} disabled={uploading || !enhancementEnabled} className="quality-select">
+              {VIDEO_FILTER_PRESETS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+
+          <label className="settings-select cardish">
+            <span>وضع الصوت</span>
+            <select value={audioMode} onChange={(event) => setAudioMode(event.target.value)} disabled={uploading} className="quality-select">
+              {AUDIO_MODE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+
+          <SliderControl
+            label="مستوى الصوت"
+            value={audioVolume}
+            min={0}
+            max={200}
+            suffix="%"
+            disabled={uploading || audioMode === 'mute'}
+            onChange={(value) => setAudioVolume(value)}
+          />
+        </div>
+
+        <div className="studio-sliders-grid">
+          <SliderControl label="السطوع" value={adjustments.brightness} min={60} max={140} suffix="%" disabled={uploading || !enhancementEnabled} onChange={(value) => updateAdjustment('brightness', value)} />
+          <SliderControl label="التباين" value={adjustments.contrast} min={60} max={160} suffix="%" disabled={uploading || !enhancementEnabled} onChange={(value) => updateAdjustment('contrast', value)} />
+          <SliderControl label="التشبع" value={adjustments.saturation} min={0} max={180} suffix="%" disabled={uploading || !enhancementEnabled} onChange={(value) => updateAdjustment('saturation', value)} />
+          <SliderControl label="تمويه خفيف" value={adjustments.blur} min={0} max={8} step={0.5} suffix="px" disabled={uploading || !enhancementEnabled} onChange={(value) => updateAdjustment('blur', value)} />
+        </div>
+
+        <p className="muted">الرفع يدعم الاستئناف + chunk upload + retry + معاينة Thumbnail حقيقية، ومعالجة الفيديو والصوت قبل النشر داخل نفس الصندوق.</p>
       </div>
 
       {videoFile ? (
         <div className="video-upload-status">
           <div className="video-preview-card">
-            <video src={preview?.objectUrl || ''} controls playsInline className="video-preview-player" />
+            <div className="preview-ribbon">{enhancementEnabled ? 'معاينة بالفلتر الحالي' : 'معاينة أصلية'}</div>
+            <video
+              src={preview?.objectUrl || ''}
+              controls
+              playsInline
+              muted={audioMode === 'mute'}
+              className="video-preview-player"
+              style={{ filter: previewFilter || 'none' }}
+            />
           </div>
 
           <div className="video-info-row">
             <div>
               <strong>{videoFile.name}</strong>
-              <p className="muted">الأصلي: {formatBytes(videoFile.size)}{preparedFile && preparedFile !== videoFile ? ` • بعد الضغط: ${formatBytes(preparedFile.size)}` : ''}</p>
+              <p className="muted">الأصلي: {formatBytes(videoFile.size)}{preparedFile && preparedFile !== videoFile ? ` • بعد المعالجة: ${formatBytes(preparedFile.size)}` : ''}</p>
               <p className="muted">{preview?.duration ? `المدة ${formatDuration(preview.duration)}` : 'بدون مدة'}{preview?.width ? ` • ${preview.width}×${preview.height}` : ''}</p>
             </div>
             <span className={`upload-state-pill ${uploading ? 'busy' : errorMessage ? 'error' : 'done'}`}>
@@ -187,7 +329,7 @@ export default function VideoUploader({ onUploadComplete, onError, label = 'رف
               <img src={preview.thumbnailUrl} alt="معاينة الفيديو" className="video-thumb" />
               <div>
                 <strong>Preview جاهز</strong>
-                <p className="muted">تم توليد thumbnail محلي قبل الرفع.</p>
+                <p className="muted">تم توليد thumbnail محلي قبل الرفع، ويمكن استخدامه عند نشر الريل.</p>
               </div>
             </div>
           ) : null}
@@ -248,7 +390,80 @@ export default function VideoUploader({ onUploadComplete, onError, label = 'رف
           border: 1px solid rgba(255,255,255,0.08);
           background: rgba(15,23,42,0.66);
         }
-        .settings-row,
+        .settings-head {
+          display: grid;
+          gap: 8px;
+        }
+        .settings-head strong {
+          color: #fff;
+          font-size: 15px;
+        }
+        .settings-badges {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .studio-badge {
+          padding: 7px 10px;
+          border-radius: 999px;
+          background: rgba(59,130,246,0.14);
+          color: #dbeafe;
+          font-size: 12px;
+          border: 1px solid rgba(147,197,253,0.16);
+        }
+        .settings-grid.two-cols {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+        .cardish {
+          border-radius: 16px;
+          padding: 12px;
+          background: rgba(255,255,255,0.03);
+          border: 1px solid rgba(255,255,255,0.06);
+        }
+        .settings-toggle {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          color: #fff;
+        }
+        .settings-toggle small {
+          display: block;
+          margin-top: 4px;
+          color: #94a3b8;
+          font-size: 12px;
+        }
+        .settings-select {
+          display: grid;
+          gap: 8px;
+          color: #fff;
+        }
+        .studio-sliders-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+        .studio-slider {
+          display: grid;
+          gap: 8px;
+          padding: 12px;
+          border-radius: 16px;
+          background: rgba(255,255,255,0.03);
+          border: 1px solid rgba(255,255,255,0.06);
+        }
+        .studio-slider-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          color: #fff;
+          font-size: 13px;
+        }
+        .studio-slider input[type="range"] {
+          width: 100%;
+          accent-color: #8b5cf6;
+        }
         .upload-actions,
         .progress-info,
         .video-info-row {
@@ -258,14 +473,25 @@ export default function VideoUploader({ onUploadComplete, onError, label = 'رف
           gap: 10px;
           flex-wrap: wrap;
         }
-        .settings-toggle { display: flex; align-items: center; gap: 8px; color: #fff; }
         .video-upload-area { text-align: center; justify-items: center; padding: 20px 16px; }
         .upload-icon {
           width: 58px; height: 58px; border-radius: 18px; display: grid; place-items: center;
           background: linear-gradient(135deg, rgba(124,58,237,0.28), rgba(59,130,246,0.16)); font-size: 28px;
         }
         .upload-title { font-weight: 800; color: #fff; margin: 0; }
-        .video-preview-card { border-radius: 18px; overflow: hidden; background: #020617; border: 1px solid rgba(255,255,255,0.08); }
+        .video-preview-card { position: relative; border-radius: 18px; overflow: hidden; background: #020617; border: 1px solid rgba(255,255,255,0.08); }
+        .preview-ribbon {
+          position: absolute;
+          top: 10px;
+          left: 10px;
+          z-index: 2;
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: rgba(15,23,42,0.72);
+          color: #fff;
+          font-size: 12px;
+          border: 1px solid rgba(255,255,255,0.08);
+        }
         .video-preview-player { width: 100%; max-height: 320px; display: block; background: #000; }
         .upload-state-pill { padding: 8px 12px; border-radius: 999px; font-size: 12px; font-weight: 800; background: rgba(34,197,94,0.16); color: #86efac; }
         .upload-state-pill.busy { background: rgba(59,130,246,0.16); color: #93c5fd; }
@@ -282,6 +508,13 @@ export default function VideoUploader({ onUploadComplete, onError, label = 'رف
           background: rgba(15,23,42,0.82); color: #fff;
         }
         .error-banner { border-radius: 14px; padding: 10px 12px; background: rgba(127,29,29,0.25); border: 1px solid rgba(248,113,113,0.26); color: #fecaca; }
+        @media (max-width: 720px) {
+          .settings-grid.two-cols,
+          .studio-sliders-grid,
+          .progress-stats-grid {
+            grid-template-columns: minmax(0, 1fr);
+          }
+        }
       `}</style>
     </div>
   );

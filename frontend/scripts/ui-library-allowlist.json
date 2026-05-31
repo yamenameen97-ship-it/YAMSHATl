@@ -108,6 +108,11 @@
     "src/components/upload/FileUploader.jsx",
     "src/components/upload/ImageUploader.jsx",
     "src/components/upload/VideoUploader.jsx",
+    "src/components/mobile/MobileComposer.jsx",
+    "src/components/mobile/MobileFilterPills.jsx",
+    "src/components/mobile/MobilePostCard.jsx",
+    "src/components/mobile/MobileTabs.jsx",
+    "src/components/mobile/MobileTopBar.jsx",
     "src/components/yamshat/YamshatIcon.jsx"
   ]
 }

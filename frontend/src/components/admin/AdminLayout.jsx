@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { getAdminNotifications } from '../../api/admin.js';
 import socket from '../../api/socket.js';
 import { getAuthToken, getStoredUser } from '../../utils/auth.js';
+import '../../styles/admin-modern.css';
 import Breadcrumbs from './Breadcrumbs.jsx';
 import AdminSidebar from './AdminSidebar.jsx';
 import AdminTopbar from './AdminTopbar.jsx';
@@ -72,23 +73,14 @@ export default function AdminLayout({ children }) {
   }, [pushToast, token, user?.username]);
 
   return (
-    <div className="admin-app-shell admin-reference-shell">
+    <div className="admin-app-shell admin-reference-shell admin-shell-modern">
       <AdminSidebar collapsed={collapsed} permissions={user?.permissions || []} role={user?.role || 'user'} />
-      <div className="admin-main-shell">
+      <div className="admin-main-shell admin-main-shell-modern">
         <AdminTopbar title={meta.title} onToggleSidebar={() => setCollapsed((prev) => !prev)} notifications={notifications} />
-        <main className="admin-page-shell admin-reference-page-shell">
+        <main className="admin-page-shell admin-reference-page-shell admin-page-shell-modern">
           <Breadcrumbs items={breadcrumbs} />
           {children}
-        
-<div className="bottom-mobile-nav">
-  <Link className="nav-btn" to="/">🏠<span>الرئيسية</span></Link>
-  <Link className="nav-btn" to="/reels">🎬<span>الريلز</span></Link>
-  <Link className="add-btn" to="/reels?upload=1" aria-label="رفع ريل جديد">+</Link>
-  <Link className="nav-btn" to="/inbox">💬<span>الدردشة</span></Link>
-  <Link className="nav-btn" to="/profile">👤<span>حسابي</span></Link>
-</div>
-
-</main>
+        </main>
       </div>
     </div>
   );

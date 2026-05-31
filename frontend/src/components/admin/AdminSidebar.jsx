@@ -1,33 +1,23 @@
-import { NavLink } from 'react-router-dom';
-
-const groups = [
-  {
-    title: 'إدارة المحتوى',
-    items: [
-      { to: '/admin/dashboard', label: 'لوحة التحكم', icon: '◈', permission: 'dashboard.view' },
-      { to: '/admin/posts', label: 'المنشورات', icon: '✦', permission: 'posts.view' },
-      { to: '/admin/stories', label: 'الستوري', icon: '◎', permission: 'dashboard.view' },
-      { to: '/admin/reels', label: 'الريلز', icon: '▶', permission: 'dashboard.view' },
-      { to: '/admin/live', label: 'البث المباشر', icon: '◉', permission: 'live.manage', badge: 'LIVE' },
-      { to: '/admin/chat', label: 'الشات', icon: '✉', permission: 'dashboard.view' },
-      { to: '/admin/groups', label: 'المجموعات', icon: '◌', permission: 'dashboard.view' },
-    ],
-  },
-  {
-    title: 'الإدارة',
-    items: [
-      { to: '/admin/users', label: 'المستخدمون', icon: '◍', permission: 'users.view' },
-      { to: '/admin/rbac', label: 'الصلاحيات', icon: '⌘', permission: 'rbac.view' },
-      { to: '/admin/notifications', label: 'الإشعارات', icon: '◔', permission: 'notifications.manage' },
-      { to: '/admin/reports', label: 'مركز البلاغات', icon: '▣', permission: 'reports.view', badge: 'HOT' },
-      { to: '/admin/audit', label: 'سجل الأدمن', icon: '⧉', permission: 'dashboard.view' },
-      { to: '/admin/settings', label: 'الإعدادات', icon: '⚙', permission: 'settings.manage' },
-    ],
-  },
-];
+import { useMemo } from 'react';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { logoutUser } from '../../api/auth.js';
+import { clearStoredUser, getStoredUser } from '../../utils/auth.js';
+import { getAdminNavItems } from './adminNavigation.js';
 
 export default function AdminSidebar({ collapsed, permissions = [], role = 'user' }) {
-  const isAllowed = (permission) => !permission || role === 'admin' || permissions.includes(permission);
+  const navigate = useNavigate();
+  const currentUser = getStoredUser();
+  const navGroups = useMemo(() => getAdminNavItems(role, permissions), [permissions, role]);
+
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+    } catch {
+      // ignore network logout errors and clear locally
+    }
+    clearStoredUser();
+    navigate('/admin/login', { replace: true });
+  };
 
   return (
     <aside className={`admin-sidebar admin-reference-sidebar ${collapsed ? 'collapsed' : ''}`}>
@@ -36,29 +26,34 @@ export default function AdminSidebar({ collapsed, permissions = [], role = 'user
         {!collapsed ? (
           <div>
             <strong>Yamshat Admin</strong>
-            <span>لوحة إدارة عربية احترافية</span>
+            <span>لوحة تحكم موحّدة</span>
           </div>
         ) : null}
       </div>
 
       {!collapsed ? (
         <div className="admin-sidebar-usercard">
-          <div className="admin-sidebar-avatar">A</div>
+          <div className="admin-sidebar-avatar">{(currentUser?.username || 'A').slice(0, 1).toUpperCase()}</div>
           <div>
-            <strong>المدير العام</strong>
-            <span>Super Admin</span>
+            <strong>{currentUser?.full_name || currentUser?.username || 'المدير العام'}</strong>
+            <span>{role === 'admin' ? 'Super Admin' : role || 'Admin'}</span>
           </div>
           <div className="admin-sidebar-status">متصل</div>
         </div>
       ) : null}
 
       <div className="admin-sidebar-scroll">
-        {groups.map((group) => (
+        {navGroups.map((group) => (
           <div key={group.title} className="admin-sidebar-group">
             {!collapsed ? <div className="admin-sidebar-group-title">{group.title}</div> : null}
             <nav className="admin-nav admin-reference-nav">
-              {group.items.filter((item) => isAllowed(item.permission)).map((item) => (
-                <NavLink key={item.to} to={item.to} className={({ isActive }) => `admin-nav-link admin-reference-link ${isActive ? 'active' : ''}`}>
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={Boolean(item.exact)}
+                  className={({ isActive }) => `admin-nav-link admin-reference-link ${isActive ? 'active' : ''}`}
+                >
                   <span className="admin-nav-icon admin-reference-icon">{item.icon}</span>
                   {!collapsed ? <span>{item.label}</span> : null}
                   {!collapsed && item.badge ? <em className="admin-nav-badge">{item.badge}</em> : null}
@@ -69,12 +64,18 @@ export default function AdminSidebar({ collapsed, permissions = [], role = 'user
         ))}
       </div>
 
-      {!collapsed ? (
-        <div className="sidebar-promo admin-reference-promo">
-          <span className="badge">واجهة محسّنة</span>
-          <p>تم إضافة مركز بلاغات كامل، سجل تدقيق للأدمن، وإحصائيات حية مع تحسينات للجوال والريلز لتقليل استهلاك الذاكرة وتحسين الأداء على الأجهزة الضعيفة.</p>
-        </div>
-      ) : null}
+      <div className="admin-sidebar-footer-block">
+        {!collapsed ? (
+          <div className="sidebar-promo admin-reference-promo compact">
+            <span className="badge">واجهة واحدة</span>
+            <p>تم ضغط القوائم والصناديق لتظهر جميع أقسام الإدارة بشكل أوضح مع تنقّل أسرع من الشريط الجانبي والقائمة المنسدلة.</p>
+          </div>
+        ) : null}
+        <button type="button" className="admin-sidebar-logout" onClick={handleLogout}>
+          <span>⇠</span>
+          {!collapsed ? <span>تسجيل الخروج</span> : null}
+        </button>
+      </div>
     </aside>
   );
 }

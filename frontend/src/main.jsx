@@ -30,7 +30,7 @@ import './styles/brand-chat-notifications-refresh.css';
 import './styles/mobile-yamshat-redesign.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 
-const BUILD_ID = 'yamshat-pwa-mobile-redesign-20260531-r5';
+const BUILD_ID = 'yamshat-pwa-mobile-wired-20260531-r6';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

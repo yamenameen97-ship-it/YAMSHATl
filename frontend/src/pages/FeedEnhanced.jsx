@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import MainLayout from '../components/layout/MainLayout.jsx';
+// تم التبديل إلى layouts/MainLayout (الجديد) الذي يستخدم MobileLayout
+// (MobileTopBar + BottomNav الجديدين) لتجنب التعارض مع Topbar و MobileDock القديمين.
+import MainLayout from '../layouts/MainLayout.jsx';
+import MainLayoutDesktop from '../components/layout/MainLayout.jsx';
 import useIsMobile from '../hooks/useIsMobile.js';
 import FeedMobile from './FeedMobile.jsx';
 import PostComposer from '../components/feed/PostComposer.jsx';
@@ -316,6 +319,8 @@ function PostCard({ post }) {
 
 export default function FeedEnhanced() {
   // التحويل إلى تصميم الموبايل الجديد (مطابق للنموذج المرجعي)
+  // الموبايل: استخدام layouts/MainLayout (الجديد) الذي يلفّ MobileLayout (TopBar + BottomNav الجديدين)
+  // الديسكتوب: استخدام MainLayoutDesktop القديم (Topbar) - لم يـمس.
   const isMobile = useIsMobile();
   if (isMobile) {
     return (
@@ -324,7 +329,11 @@ export default function FeedEnhanced() {
       </MainLayout>
     );
   }
-  return <FeedDesktopInner />;
+  return (
+    <MainLayoutDesktop>
+      <FeedDesktopInner />
+    </MainLayoutDesktop>
+  );
 }
 
 function FeedDesktopInner() {
@@ -470,7 +479,7 @@ function FeedDesktopInner() {
   };
 
   return (
-    <MainLayout>
+    <>
       <div className="yam-laptop-page" dir="rtl">
         <div className="yam-page-noise" />
         <div className="yam-laptop-shell">
@@ -1803,6 +1812,6 @@ function FeedDesktopInner() {
           }
         `}</style>
       </div>
-    </MainLayout>
+    </>
   );
 }

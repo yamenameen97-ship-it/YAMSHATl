@@ -6,7 +6,10 @@ import { memo } from 'react';
  * - رأس: صورة شخصية + اسم + توثيق + توقيت + قائمة (...)
  * - نص + هاشتاجات بنفسجية
  * - بنر اختياري للترويج (يدعم صور أيضاً)
- * - شريط تفاعل: تعليق / إعادة نشر / إعجاب / مشاركة
+ * - شريط تفاعل: تعليق / إعادة نشر / إعجاب / حفظ / مشاركة
+ *
+ * كل الأزرار مُربطة عبر props بـ handlers من الأب (FeedMobile)
+ * التي تستدعي backend API الحقيقية.
  */
 
 function VerifiedBadge() {
@@ -51,6 +54,7 @@ function MobilePostCard({
   onComment,
   onRepost,
   onShare,
+  onSave,
   onMore,
 }) {
   const {
@@ -66,7 +70,13 @@ function MobilePostCard({
     reposts = 0,
     liked = false,
     reposted = false,
+    saved = false,
   } = post;
+
+  const handleClick = (handler) => (e) => {
+    e?.stopPropagation?.();
+    handler?.(post);
+  };
 
   return (
     <article className="ym-post" aria-label={`منشور من ${authorName}`}>
@@ -89,7 +99,7 @@ function MobilePostCard({
             </span>
           </div>
         </div>
-        <button type="button" className="ym-post-more" aria-label="المزيد" onClick={onMore}>
+        <button type="button" className="ym-post-more" aria-label="المزيد" onClick={handleClick(onMore)}>
           <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
             <circle cx="5" cy="12" r="1.6" fill="currentColor" />
             <circle cx="12" cy="12" r="1.6" fill="currentColor" />
@@ -127,13 +137,13 @@ function MobilePostCard({
       ) : null}
 
       <div className="ym-post-actions" role="group" aria-label="إجراءات المنشور">
-        <button type="button" className="ym-action" onClick={onComment} aria-label="تعليق">
+        <button type="button" className="ym-action" onClick={handleClick(onComment)} aria-label="تعليق">
           <svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 1 1-3.6-6.7L21 4l-1.3 4.6A7.97 7.97 0 0 1 21 12Z" strokeLinejoin="round"/></svg>
           <span className="count">{formatCount(comments)}</span>
         </button>
         <button type="button"
                 className={`ym-action repost ${reposted ? 'is-active' : ''}`}
-                onClick={onRepost} aria-label="إعادة نشر">
+                onClick={handleClick(onRepost)} aria-label="إعادة نشر">
           <svg viewBox="0 0 24 24">
             <path d="M7 7h11l-2-2 M17 17H6l2 2" strokeLinecap="round" strokeLinejoin="round" />
             <path d="M18 7v6 M6 17v-6" strokeLinecap="round" />
@@ -142,11 +152,22 @@ function MobilePostCard({
         </button>
         <button type="button"
                 className={`ym-action like ${liked ? 'is-active' : ''}`}
-                onClick={onLike} aria-label="إعجاب">
+                onClick={handleClick(onLike)} aria-label="إعجاب"
+                aria-pressed={liked}>
           <svg viewBox="0 0 24 24"><path d="M12 21s-7-4.5-9.5-9A5.5 5.5 0 0 1 12 6a5.5 5.5 0 0 1 9.5 6c-2.5 4.5-9.5 9-9.5 9Z" strokeLinejoin="round"/></svg>
           <span className="count">{formatCount(likes)}</span>
         </button>
-        <button type="button" className="ym-action" onClick={onShare} aria-label="مشاركة">
+        <button type="button"
+                className={`ym-action save ${saved ? 'is-active' : ''}`}
+                onClick={handleClick(onSave)} aria-label="حفظ"
+                aria-pressed={saved}>
+          <svg viewBox="0 0 24 24">
+            <path d="M6 4 H18 V21 L12 16 L6 21 Z"
+                  strokeLinejoin="round"
+                  fill={saved ? 'currentColor' : 'none'} />
+          </svg>
+        </button>
+        <button type="button" className="ym-action" onClick={handleClick(onShare)} aria-label="مشاركة">
           <svg viewBox="0 0 24 24"><path d="M12 16V4 M7 9l5-5 5 5 M5 20h14" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </button>
       </div>

@@ -692,3 +692,211 @@ body {
   align-items: center;
   justify-content: center;
 }
+
+/* ============================================================
+   Compose Modal — نافذة إنشاء منشور للموبايل
+   ============================================================ */
+.ym-modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(5, 8, 15, 0.78);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 9999;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: ym-fade-in 0.18s ease;
+}
+@keyframes ym-fade-in { from { opacity: 0 } to { opacity: 1 } }
+@keyframes ym-slide-up { from { transform: translateY(100%) } to { transform: translateY(0) } }
+
+.ym-modal {
+  width: 100%;
+  max-width: 540px;
+  max-height: 92dvh;
+  background: var(--ym-card, #141A29);
+  border-radius: 20px 20px 0 0;
+  display: flex; flex-direction: column;
+  animation: ym-slide-up 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+@media (min-width: 640px) {
+  .ym-modal-overlay { align-items: center }
+  .ym-modal { border-radius: 20px; max-height: 86vh }
+}
+
+.ym-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.ym-modal-head h3 { margin: 0; font-size: 16px; color: var(--ym-text, #fff); font-weight: 700 }
+.ym-modal-close {
+  background: transparent; border: none; color: var(--ym-text-muted, #8E97A9);
+  width: 36px; height: 36px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.ym-modal-close:hover { background: rgba(255,255,255,0.06); color: var(--ym-text, #fff) }
+.ym-modal-publish {
+  background: var(--ym-purple, #7C3AED);
+  color: #fff; border: none;
+  padding: 8px 18px; border-radius: 999px;
+  font-weight: 700; font-size: 14px; cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.ym-modal-publish:hover:not(:disabled) { opacity: 0.92 }
+.ym-modal-publish:active:not(:disabled) { transform: scale(0.97) }
+.ym-modal-publish:disabled { opacity: 0.45; cursor: not-allowed }
+
+.ym-modal-body {
+  flex: 1; overflow-y: auto;
+  padding: 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.ym-modal-textarea {
+  width: 100%; min-height: 140px;
+  background: transparent; border: none; outline: none; resize: none;
+  color: var(--ym-text, #fff); font-size: 17px; line-height: 1.6;
+  font-family: inherit;
+}
+.ym-modal-textarea::placeholder { color: var(--ym-text-muted, #8E97A9) }
+
+.ym-modal-media-preview {
+  position: relative;
+  border-radius: 14px; overflow: hidden;
+  background: rgba(0,0,0,0.3);
+  max-height: 60vh;
+}
+.ym-modal-media-preview img,
+.ym-modal-media-preview video {
+  width: 100%; height: auto; display: block;
+  max-height: 60vh; object-fit: contain;
+}
+.ym-modal-media-remove {
+  position: absolute; top: 8px; inset-inline-end: 8px;
+  width: 32px; height: 32px; border-radius: 50%;
+  background: rgba(0,0,0,0.7); border: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer;
+}
+.ym-modal-upload-progress {
+  position: absolute; bottom: 8px; inset-inline-start: 8px;
+  background: rgba(0,0,0,0.75); color: #fff;
+  padding: 4px 10px; border-radius: 999px;
+  font-size: 12px;
+}
+.ym-modal-counter {
+  text-align: end; color: var(--ym-text-muted, #8E97A9); font-size: 12px;
+}
+
+.ym-modal-actions {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+.ym-modal-action {
+  background: transparent; border: none;
+  color: var(--ym-purple-light, #8B5CF6);
+  width: 44px; height: 44px; border-radius: 12px;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ym-modal-action:hover { background: rgba(124, 58, 237, 0.12) }
+
+/* ============================================================
+   Comments Sheet — بوتوم شيت للتعليقات
+   ============================================================ */
+.ym-sheet-overlay {
+  position: fixed; inset: 0;
+  background: rgba(5, 8, 15, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 9998;
+  display: flex; align-items: flex-end; justify-content: center;
+  animation: ym-fade-in 0.18s ease;
+}
+.ym-sheet {
+  width: 100%; max-width: 540px;
+  height: 78dvh; max-height: 78dvh;
+  background: var(--ym-card, #141A29);
+  border-radius: 20px 20px 0 0;
+  display: flex; flex-direction: column;
+  animation: ym-slide-up 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+.ym-sheet-handle {
+  width: 40px; height: 4px;
+  background: rgba(255,255,255,0.2); border-radius: 2px;
+  margin: 8px auto 4px;
+}
+.ym-sheet-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 16px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.ym-sheet-head h3 { margin: 0; font-size: 16px; color: var(--ym-text, #fff); font-weight: 700 }
+.ym-sheet-close {
+  background: transparent; border: none; color: var(--ym-text-muted, #8E97A9);
+  width: 36px; height: 36px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.ym-sheet-close:hover { background: rgba(255,255,255,0.06); color: var(--ym-text, #fff) }
+.ym-sheet-body {
+  flex: 1; overflow-y: auto; padding: 12px 16px;
+  -webkit-overflow-scrolling: touch;
+}
+.ym-sheet-empty {
+  text-align: center; color: var(--ym-text-muted, #8E97A9);
+  padding: 48px 12px;
+}
+.ym-sheet-empty .icon { font-size: 36px; margin-bottom: 12px }
+
+.ym-comment-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 14px }
+.ym-comment-item { display: flex; gap: 10px; align-items: flex-start }
+.ym-comment-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: linear-gradient(135deg, #6D28D9, #A78BFA);
+  display: inline-flex; align-items: center; justify-content: center;
+  overflow: hidden; flex-shrink: 0;
+  color: #fff; font-weight: 700;
+}
+.ym-comment-avatar img { width: 100%; height: 100%; object-fit: cover }
+.ym-comment-avatar .ph { font-size: 15px }
+.ym-comment-body {
+  background: rgba(255,255,255,0.04); border-radius: 14px;
+  padding: 8px 12px; flex: 1; min-width: 0;
+}
+.ym-comment-author { color: var(--ym-text, #fff); font-weight: 700; font-size: 13px }
+.ym-comment-text { color: var(--ym-text, #fff); font-size: 14px; line-height: 1.55; margin-top: 2px; word-wrap: break-word }
+
+.ym-sheet-composer {
+  display: flex; gap: 8px; align-items: center;
+  padding: 10px 12px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+.ym-sheet-input {
+  flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08);
+  color: var(--ym-text, #fff); border-radius: 999px;
+  padding: 10px 14px; font-size: 14px; outline: none;
+}
+.ym-sheet-input:focus { border-color: var(--ym-purple, #7C3AED); background: rgba(124,58,237,0.08) }
+.ym-sheet-input::placeholder { color: var(--ym-text-muted, #8E97A9) }
+.ym-sheet-send {
+  background: var(--ym-purple, #7C3AED); color: #fff; border: none;
+  width: 40px; height: 40px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.ym-sheet-send:hover:not(:disabled) { opacity: 0.92 }
+.ym-sheet-send:active:not(:disabled) { transform: scale(0.95) }
+.ym-sheet-send:disabled { opacity: 0.4; cursor: not-allowed }
+
+/* ============================================================
+   Saved Action State — حالة زر الحفظ النشط
+   ============================================================ */
+.ym-action.save.is-active { color: var(--ym-purple-light, #8B5CF6); }
+.ym-action.save.is-active svg path { fill: var(--ym-purple-light, #8B5CF6); stroke: var(--ym-purple-light, #8B5CF6); }

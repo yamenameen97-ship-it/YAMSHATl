@@ -72,8 +72,14 @@ function BottomNav() {
       label: 'إنشاء',
       isCenter: true,
       onClick: () => {
-        // افتح صفحة إنشاء منشور (أو الـ feed مع query لفتح composer)
-        navigate('/?compose=1');
+        // 1) إذا كنا في الصفحة الرئيسية: أطلق حدث فتح المُنشئ مباشرة
+        // 2) وإلا: انتقل للرئيسية مع علم ?compose=1 ليفتح FeedMobile المودال
+        const onHome = location.pathname === '/' || location.pathname === '/feed';
+        if (onHome) {
+          window.dispatchEvent(new CustomEvent('yamshat:open-composer', { detail: { action: null } }));
+        } else {
+          navigate('/?compose=1');
+        }
       },
     },
     {

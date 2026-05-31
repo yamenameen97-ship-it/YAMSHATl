@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
+import useIsMobile from '../hooks/useIsMobile.js';
+import FeedMobile from './FeedMobile.jsx';
 import PostComposer from '../components/feed/PostComposer.jsx';
 import YamshatIcon from '../components/yamshat/YamshatIcon.jsx';
 import useSmartFeed from '../hooks/useSmartFeed.js';
@@ -313,6 +315,19 @@ function PostCard({ post }) {
 }
 
 export default function FeedEnhanced() {
+  // التحويل إلى تصميم الموبايل الجديد (مطابق للنموذج المرجعي)
+  const isMobile = useIsMobile();
+  if (isMobile) {
+    return (
+      <MainLayout>
+        <FeedMobile />
+      </MainLayout>
+    );
+  }
+  return <FeedDesktopInner />;
+}
+
+function FeedDesktopInner() {
   const navigate = useNavigate();
   const postStackRef = useRef(null);
   const { pushToast } = useToast();

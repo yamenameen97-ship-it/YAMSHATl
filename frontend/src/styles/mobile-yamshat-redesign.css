@@ -1,0 +1,694 @@
+/* ============================================================
+   YAMSHAT — Mobile Redesign (matches reference mockup)
+   نمط الموبايل المحسّن: مطابق للتصميم المرجعي
+   - أسود ليلي عميق + بنفسجي نيون
+   - بطاقات بحواف 16-20px ومسافات منظّمة
+   - TopBar مع لوغو وسط + بحرف Y + جرس
+   - تبويبات بخط سفلي بنفسجي
+   - شريط فلاتر دائري (pills)
+   - بطاقات منشورات نظيفة بصورة بنر
+   - شريط سفلي بزرّ + مركزي بارز
+   ============================================================
+   التحميل: يجب أن يُحمَّل بعد theme.css و mobile-first.css
+   حتى يطغى على القواعد الأقدم.
+   ============================================================ */
+
+:root {
+  /* لوحة ألوان مطابقة للتصميم المرجعي */
+  --ym-bg: #0A0D1A;
+  --ym-bg-soft: #0D111D;
+  --ym-card: #141A29;
+  --ym-card-2: #1A2133;
+  --ym-border: rgba(148, 163, 184, 0.10);
+  --ym-border-soft: rgba(148, 163, 184, 0.06);
+  --ym-text: #FFFFFF;
+  --ym-text-soft: #C7CFDD;
+  --ym-text-muted: #8E97A9;
+  --ym-violet: #7C3AED;
+  --ym-violet-2: #8B5CF6;
+  --ym-violet-glow: rgba(124, 58, 237, 0.45);
+  --ym-blue-check: #1D9BF0;
+  --ym-pink: #EC4899;
+  --ym-gradient: linear-gradient(135deg, #7C3AED 0%, #6D28D9 50%, #4C1D95 100%);
+  --ym-gradient-soft: linear-gradient(135deg, rgba(124,58,237,0.18), rgba(76,29,149,0.10));
+
+  --ym-topbar-h: 56px;
+  --ym-tabs-h: 48px;
+  --ym-bottombar-h: 72px;
+  --ym-radius-card: 20px;
+  --ym-radius-pill: 999px;
+  --ym-radius-md: 14px;
+}
+
+/* ===== الخلفية الأساسية للموبايل ===== */
+html, body {
+  background: var(--ym-bg) !important;
+  color: var(--ym-text);
+}
+
+body {
+  font-family: 'Tajawal', 'Almarai', 'Cairo', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ===== التخطيط العام للموبايل ===== */
+.mobile-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  min-height: var(--yam-vh, 100vh);
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(124,58,237,0.10), transparent 60%),
+    var(--ym-bg);
+  color: var(--ym-text);
+  position: relative;
+}
+
+.mobile-content {
+  flex: 1;
+  padding-top: calc(var(--ym-topbar-h) + var(--ym-tabs-h) + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(var(--ym-bottombar-h) + env(safe-area-inset-bottom, 0px) + 12px);
+  padding-inline: 14px;
+  width: 100%;
+  max-width: 540px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+@media (min-width: 1024px) {
+  /* لا نُطبّق إعادة التصميم على الديسكتوب — نتركه كما هو */
+  .mobile-layout {
+    background: transparent;
+  }
+}
+
+/* ============================================================
+   1) TopBar (الشريط العلوي)
+   ============================================================ */
+.ym-topbar {
+  position: fixed;
+  top: 0;
+  inset-inline: 0;
+  z-index: 60;
+  height: calc(var(--ym-topbar-h) + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
+  background: rgba(10, 13, 26, 0.88);
+  backdrop-filter: saturate(140%) blur(16px);
+  -webkit-backdrop-filter: saturate(140%) blur(16px);
+  border-bottom: 1px solid var(--ym-border);
+  display: flex;
+  align-items: center;
+}
+
+.ym-topbar-inner {
+  height: var(--ym-topbar-h);
+  width: 100%;
+  max-width: 540px;
+  margin: 0 auto;
+  padding: 0 14px;
+  display: grid;
+  grid-template-columns: 40px 1fr 40px;
+  align-items: center;
+  gap: 8px;
+}
+
+.ym-topbar-btn {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  color: var(--ym-text);
+  border-radius: 10px;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.18s ease;
+}
+.ym-topbar-btn:hover,
+.ym-topbar-btn:focus-visible {
+  background: rgba(255,255,255,0.06);
+  outline: none;
+}
+.ym-topbar-btn svg {
+  width: 22px;
+  height: 22px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+}
+
+.ym-topbar-brand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-decoration: none;
+  color: var(--ym-text);
+}
+.ym-topbar-logo {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ym-topbar-logo svg { width: 100%; height: 100%; }
+
+.ym-topbar-wordmark {
+  font-weight: 800;
+  font-size: 17px;
+  letter-spacing: 4px;
+  background: linear-gradient(180deg, #FFFFFF 0%, #C7CFDD 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.ym-topbar-bell-dot {
+  position: absolute;
+  top: 8px;
+  inset-inline-end: 9px;
+  width: 8px;
+  height: 8px;
+  background: var(--ym-violet);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--ym-bg);
+}
+
+/* ============================================================
+   2) Tabs (الرئيسية / الرائج / المتابعون)
+   ============================================================ */
+.ym-tabs {
+  position: fixed;
+  inset-inline: 0;
+  top: calc(var(--ym-topbar-h) + env(safe-area-inset-top, 0px));
+  z-index: 55;
+  height: var(--ym-tabs-h);
+  background: rgba(10, 13, 26, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--ym-border);
+}
+.ym-tabs-inner {
+  height: 100%;
+  max-width: 540px;
+  margin: 0 auto;
+  padding: 0 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: stretch;
+}
+.ym-tab {
+  position: relative;
+  background: transparent;
+  border: 0;
+  color: var(--ym-text-muted);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: color 0.18s ease;
+}
+.ym-tab.is-active {
+  color: var(--ym-violet-2);
+}
+.ym-tab.is-active::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  inset-inline: 25%;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--ym-violet);
+  box-shadow: 0 0 12px var(--ym-violet-glow);
+}
+
+/* ============================================================
+   3) Composer "بماذا تفكر؟"
+   ============================================================ */
+.ym-composer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--ym-card);
+  border: 1px solid var(--ym-border);
+  border-radius: 18px;
+  padding: 10px 12px;
+  margin: 12px 0;
+}
+.ym-composer-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--ym-gradient);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 0 14px rgba(124,58,237,0.25);
+}
+.ym-composer-avatar svg { width: 18px; height: 18px; }
+.ym-composer-input {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: var(--ym-text);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: right;
+}
+.ym-composer-input::placeholder {
+  color: var(--ym-text-muted);
+}
+.ym-composer-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.ym-composer-action {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  background: transparent;
+  border-radius: 10px;
+  color: var(--ym-text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s;
+}
+.ym-composer-action:hover { background: rgba(255,255,255,0.05); color: var(--ym-text); }
+.ym-composer-action svg { width: 20px; height: 20px; }
+.ym-gif-pill {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  border: 1.5px solid currentColor;
+  padding: 2px 5px;
+  border-radius: 5px;
+}
+
+/* ============================================================
+   4) Filter Pills (الكل / التحديثات / الإعلانات / المجتمع)
+   ============================================================ */
+.ym-filters {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 4px 2px 10px;
+  margin: 0 -2px 8px;
+}
+.ym-filters::-webkit-scrollbar { display: none; }
+
+.ym-filter-pill {
+  flex-shrink: 0;
+  background: var(--ym-card);
+  color: var(--ym-text-soft);
+  border: 1px solid var(--ym-border);
+  border-radius: var(--ym-radius-pill);
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.ym-filter-pill:hover {
+  background: var(--ym-card-2);
+}
+.ym-filter-pill.is-active {
+  background: var(--ym-violet);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 6px 18px var(--ym-violet-glow);
+}
+
+/* ============================================================
+   5) Post Cards (بطاقات المنشورات)
+   ============================================================ */
+.ym-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ym-post {
+  background: var(--ym-card);
+  border: 1px solid var(--ym-border);
+  border-radius: var(--ym-radius-card);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: border-color 0.2s, transform 0.2s;
+}
+.ym-post:hover {
+  border-color: rgba(124,58,237,0.25);
+}
+
+.ym-post-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ym-post-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--ym-gradient);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  box-shadow: 0 0 0 2px rgba(124,58,237,0.18);
+}
+.ym-post-avatar svg { width: 22px; height: 22px; }
+.ym-post-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.ym-post-meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.ym-post-author {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ym-text);
+}
+.ym-verified {
+  width: 16px;
+  height: 16px;
+  background: var(--ym-blue-check);
+  color: #fff;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+.ym-verified svg { width: 10px; height: 10px; fill: #fff; }
+.ym-post-sub {
+  font-size: 12px;
+  color: var(--ym-text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ym-post-sub .dot { width: 3px; height: 3px; border-radius: 50%; background: currentColor; opacity: 0.6; }
+.ym-post-more {
+  background: transparent;
+  border: 0;
+  color: var(--ym-text-muted);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.18s, color 0.18s;
+}
+.ym-post-more:hover { background: rgba(255,255,255,0.05); color: var(--ym-text); }
+
+.ym-post-body {
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: var(--ym-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ym-post-body .hashtag {
+  color: var(--ym-violet-2);
+  font-weight: 600;
+}
+
+.ym-post-banner {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 16px;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 80% at 50% 50%, rgba(124,58,237,0.45), transparent 60%),
+    linear-gradient(135deg, #1A0F3A 0%, #2D1B69 60%, #0A0D1A 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  position: relative;
+}
+.ym-post-banner img,
+.ym-post-banner video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.ym-post-banner-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+}
+.ym-post-banner-overlay .brand-logo {
+  width: 56px;
+  height: 56px;
+}
+.ym-post-banner-overlay .brand-name {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 6px;
+  color: #fff;
+}
+.ym-post-banner-overlay .brand-slogan {
+  font-size: 12px;
+  color: rgba(255,255,255,0.85);
+  letter-spacing: 1px;
+}
+
+/* أزرار التفاعل أسفل البطاقة */
+.ym-post-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  align-items: center;
+  gap: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--ym-border-soft);
+  margin-top: 2px;
+}
+.ym-action {
+  background: transparent;
+  border: 0;
+  color: var(--ym-text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 6px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.18s, background 0.18s, transform 0.1s;
+}
+.ym-action:hover {
+  background: rgba(255,255,255,0.04);
+}
+.ym-action:active { transform: scale(0.96); }
+.ym-action svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; }
+.ym-action.like.is-active { color: var(--ym-pink); }
+.ym-action.like.is-active svg { fill: var(--ym-pink); stroke: var(--ym-pink); }
+.ym-action.repost.is-active { color: #22C55E; }
+.ym-action .count { font-variant-numeric: tabular-nums; }
+
+/* ============================================================
+   6) Bottom Navigation Bar
+   ============================================================ */
+.ym-bottomnav {
+  position: fixed;
+  bottom: 0;
+  inset-inline: 0;
+  z-index: 65;
+  height: calc(var(--ym-bottombar-h) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: rgba(10, 13, 26, 0.94);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border-top: 1px solid var(--ym-border);
+}
+.ym-bottomnav-inner {
+  height: var(--ym-bottombar-h);
+  max-width: 540px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+  align-items: center;
+  position: relative;
+  padding: 0 6px;
+}
+.ym-nav-item {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  text-decoration: none;
+  color: var(--ym-text-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 6px 2px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  transition: color 0.18s;
+}
+.ym-nav-item svg {
+  width: 24px;
+  height: 24px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+}
+.ym-nav-item.is-active {
+  color: var(--ym-violet-2);
+}
+.ym-nav-item.is-active svg {
+  fill: rgba(124,58,237,0.18);
+  stroke: var(--ym-violet-2);
+}
+
+/* الزرّ المركزي البارز للنشر */
+.ym-nav-plus-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ym-nav-plus {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: var(--ym-gradient);
+  color: #fff;
+  border: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow:
+    0 10px 30px rgba(124,58,237,0.55),
+    0 0 0 4px rgba(124,58,237,0.15);
+  transform: translateY(-12px);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.ym-nav-plus:hover { transform: translateY(-14px) scale(1.04); }
+.ym-nav-plus:active { transform: translateY(-10px) scale(0.97); }
+.ym-nav-plus svg { width: 26px; height: 26px; stroke: #fff; stroke-width: 2.6; fill: none; }
+
+/* مؤشر بادج للإشعارات في تبويب الدردشة/الإشعارات */
+.ym-nav-item .badge {
+  position: absolute;
+  top: 6px;
+  inset-inline-end: calc(50% - 18px);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  background: #EF4444;
+  color: #fff;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 2px var(--ym-bg);
+}
+
+/* ============================================================
+   7) إخفاء العناصر القديمة على الموبايل لمنع التضارب
+   ============================================================ */
+@media (max-width: 1023.98px) {
+  /* إخفاء TopBar/BottomNav القديم في حال الظهور بجانب الجديد */
+  body .mobile-layout .ui-topbar,
+  body .mobile-layout > .ui-bottom-nav {
+    display: none !important;
+  }
+}
+
+/* ============================================================
+   8) Helpers / Animations
+   ============================================================ */
+@keyframes ym-pop-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.ym-post, .ym-composer, .ym-filters {
+  animation: ym-pop-in 0.32s ease both;
+}
+
+/* تحسين منطقة اللمس */
+.ym-tab, .ym-filter-pill, .ym-action, .ym-nav-item, .ym-topbar-btn, .ym-composer-action {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* تحسين التركيز للوصول */
+.ym-tab:focus-visible,
+.ym-filter-pill:focus-visible,
+.ym-action:focus-visible,
+.ym-nav-item:focus-visible,
+.ym-topbar-btn:focus-visible,
+.ym-composer-action:focus-visible {
+  outline: 2px solid var(--ym-violet-2);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+/* Skeleton placeholder */
+.ym-skeleton {
+  background: linear-gradient(90deg, rgba(255,255,255,0.04), rgba(255,255,255,0.08), rgba(255,255,255,0.04));
+  background-size: 200% 100%;
+  animation: ym-shimmer 1.4s linear infinite;
+  border-radius: 12px;
+}
+@keyframes ym-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Empty state */
+.ym-empty {
+  text-align: center;
+  padding: 40px 16px;
+  color: var(--ym-text-muted);
+}
+.ym-empty .icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  background: var(--ym-card);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}

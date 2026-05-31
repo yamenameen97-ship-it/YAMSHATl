@@ -26,9 +26,11 @@ import './styles/design-system-enforce.css';
 /* ⚠️ يجب أن يكون آخر استيراد CSS حتى يفوز في cascade ويصلح مشاكل الموبايل */
 import './styles/mobile-fixes.css';
 import './styles/brand-chat-notifications-refresh.css';
+/* 🎨 إعادة تصميم الموبايل (مطابق للنموذج المرجعي) - يجب أن يكون الأخير */
+import './styles/mobile-yamshat-redesign.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 
-const BUILD_ID = 'yamshat-pwa-polish-20260531-r4';
+const BUILD_ID = 'yamshat-pwa-mobile-redesign-20260531-r5';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

@@ -1,3 +1,6 @@
+import { useState, useEffect } from 'react';
+import { resolveMediaUrl } from '../../config/mediaConfig.js';
+
 const sizeMap = {
   xs: 28,
   sm: 36,
@@ -22,6 +25,14 @@ export default function Avatar({
 }) {
   const resolvedSize = typeof size === 'number' ? size : (sizeMap[size] || sizeMap.md);
   const initial = String(name || alt || 'Y').trim().charAt(0).toUpperCase() || 'Y';
+  const resolvedSrc = resolveMediaUrl(src);
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    setHasError(false);
+  }, [resolvedSrc]);
+
+  const showImage = Boolean(resolvedSrc) && !hasError;
 
   return (
     <span
@@ -30,8 +41,13 @@ export default function Avatar({
       aria-label={alt || name || 'avatar'}
       {...props}
     >
-      {src ? (
-        <img src={src} alt={alt || name || 'avatar'} loading="lazy" />
+      {showImage ? (
+        <img
+          src={resolvedSrc}
+          alt={alt || name || 'avatar'}
+          loading="lazy"
+          onError={() => setHasError(true)}
+        />
       ) : (
         <span className="ui-avatar-fallback" aria-hidden="true">
           {icon || initial}

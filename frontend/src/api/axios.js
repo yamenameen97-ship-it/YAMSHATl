@@ -5,7 +5,10 @@ import { getCsrfToken } from '../utils/csrf.js';
 import sessionManager from '../auth/sessionManager.js';
 import { redirectToAppPath } from '../utils/router.js';
 
-const DEFAULT_TIMEOUT_MS = 20_000;
+// Render passe en état « cold » après 15 min d'inactivité, le premier appel
+// peut prendre jusqu'à 30s. On augmente le timeout pour éviter d'avorter le
+// chargement initial du profil avant que le backend ait fini de se réveiller.
+const DEFAULT_TIMEOUT_MS = 45_000;
 const RETRYABLE_STATUSES = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
 const IDEMPOTENT_METHODS = new Set(['get', 'head', 'options']);
 const NON_RETRYABLE_PATH_PATTERNS = [

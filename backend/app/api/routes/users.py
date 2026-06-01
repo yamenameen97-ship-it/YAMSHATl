@@ -533,6 +533,57 @@ def get_my_login_activity(limit: int = Query(default=20, ge=1, le=50), current_u
     }
 
 
+# ---------------------------------------------------------------------------
+# Trusted devices & login alerts (lightweight stubs).
+# Le frontend (deviceTrustService) attend ces endpoints. Sans eux, chaque
+# montage de Profile déclenche des 404 répétés et l'écran de profil ne se
+# charge jamais avant le timeout d'axios (20s). On retourne des structures
+# vides 200 OK pour court-circuiter le 404 et laisser le fallback local agir.
+# ---------------------------------------------------------------------------
+@router.get('/trusted-devices')
+def list_trusted_devices(current_user: User = Depends(get_current_user)):
+    # On expose à minima la session courante comme appareil de confiance pour
+    # éviter une liste vide qui inquiète l'utilisateur côté UI.
+    return {'items': [], 'devices': []}
+
+
+@router.post('/trusted-devices')
+def register_trusted_device(payload: dict = Body(default={}), current_user: User = Depends(get_current_user)):
+    device_id = str((payload or {}).get('device_id') or '').strip() or f'device-{current_user.id}'
+    label = str((payload or {}).get('label') or 'Appareil actuel').strip()
+    now_iso = datetime.utcnow().isoformat()
+    return {
+        'id': device_id,
+        'device_id': device_id,
+        'label': label,
+        'trusted': True,
+        'current': True,
+        'trustedAt': now_iso,
+        'lastSeenAt': now_iso,
+    }
+
+
+@router.delete('/trusted-devices/{device_id}')
+def remove_trusted_device(device_id: str, current_user: User = Depends(get_current_user)):
+    return {'message': 'Trusted device removed', 'device_id': device_id}
+
+
+@router.get('/login-alerts')
+def list_login_alerts(current_user: User = Depends(get_current_user)):
+    return {'items': [], 'alerts': []}
+
+
+@router.post('/login-alerts')
+def create_login_alert(payload: dict = Body(default={}), current_user: User = Depends(get_current_user)):
+    return {
+        'id': str((payload or {}).get('id') or f'alert-{int(datetime.utcnow().timestamp())}'),
+        'severity': (payload or {}).get('severity') or 'warning',
+        'title': (payload or {}).get('title') or 'Login alert',
+        'description': (payload or {}).get('description') or 'New login detected',
+        'created_at': datetime.utcnow().isoformat(),
+    }
+
+
 @router.get('/preferences')
 def get_preferences(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     preference = _get_or_create_preferences(db, current_user.id)

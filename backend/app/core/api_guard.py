@@ -17,6 +17,36 @@ PUBLIC_AUTH_PATHS = {
     '/auth/reset-password',
 }
 
+# Endpoints à haut volume (chat, présence, upload, notifications) — on leur
+# accorde un quota plus large car le frontend peut légitimement envoyer
+# plusieurs requêtes par seconde (offline-queue flush, polling présence,
+# upload chunké, etc.). Sans cela, /api/send_message déclenche en boucle
+# des 429 (Too Many Requests) puis la file d'attente offline retente
+# indéfiniment.
+HIGH_VOLUME_PATHS = (
+    '/send_message',
+    '/message_seen',
+    '/upload',
+    '/notifications',
+    '/presence',
+    '/chat_threads',
+    '/messages',
+    '/update_online',
+    '/typing',
+)
+
+# Endpoints quasi-statiques (lectures profile, prefs) — limite généreuse
+# pour ne jamais bloquer le chargement initial.
+READ_ONLY_PATHS = (
+    '/users/profile/',
+    '/users/preferences',
+    '/users/trusted-devices',
+    '/users/login-alerts',
+    '/users/sessions',
+    '/users/login-activity',
+    '/users/me',
+)
+
 
 def client_ip(request: Request) -> str:
     forwarded_for = (request.headers.get('x-forwarded-for') or '').strip()
@@ -30,6 +60,24 @@ def client_ip(request: Request) -> str:
         return real_ip
 
     return request.client.host if request.client else 'unknown'
+
+
+def _rate_limit_for_path(short_path: str, method: str) -> int:
+    """Renvoie la limite/minute appropriée selon la route et la méthode."""
+    base = settings.API_RATE_LIMIT_PER_MINUTE
+
+    if short_path in PUBLIC_AUTH_PATHS:
+        return max(base, settings.LOGIN_RATE_LIMIT_PER_MINUTE * 3)
+
+    # GET en lecture seule : limite très haute (10x base)
+    if method.upper() == 'GET' and any(short_path.startswith(p) for p in READ_ONLY_PATHS):
+        return max(base * 10, 1200)
+
+    # Endpoints chat/upload haute fréquence : 5x la base
+    if any(short_path.startswith(p) for p in HIGH_VOLUME_PATHS):
+        return max(base * 5, 1000)
+
+    return base
 
 
 async def api_rate_guard(request: Request, call_next):
@@ -50,13 +98,15 @@ async def api_rate_guard(request: Request, call_next):
                 },
             )
 
-        rate_limit = settings.API_RATE_LIMIT_PER_MINUTE
-        if short_path in PUBLIC_AUTH_PATHS:
-            rate_limit = max(rate_limit, settings.LOGIN_RATE_LIMIT_PER_MINUTE * 3)
+        rate_limit = _rate_limit_for_path(short_path, request.method)
 
         key = f'api:{client_ip(request)}:{request.method}:{short_path}'
         if not await enforce_rate_limit(key, rate_limit, 60):
-            return JSONResponse(status_code=429, content={'detail': 'Too many requests'})
+            return JSONResponse(
+                status_code=429,
+                content={'detail': 'Too many requests', 'retry_after': 30},
+                headers={'Retry-After': '30'},
+            )
 
     response = await call_next(request)
     if path.startswith(f'{settings.API_PREFIX}/auth'):

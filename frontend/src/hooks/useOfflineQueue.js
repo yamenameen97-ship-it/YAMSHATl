@@ -70,9 +70,32 @@ export default function useOfflineQueue() {
             continue;
           }
 
+          // En 429 on respecte un backoff bien plus long (5s→60s)
+          // et on cap les retries pour éviter la boucle infinie qu'on voit
+          // dans la console : [yamshat:warn] offline queue item failed status:429.
+          if (status === 429 && attempts >= 5) {
+            pushDeadLetter(getCurrentUsername(), {
+              id: action.id,
+              payload: action.payload,
+              error: 'Rate limited (429) too many times',
+              type: action?.type,
+              priority: action?.priority,
+              attempts,
+            });
+            dequeueAction(action.id);
+            fireQueueEvent('yamshat:queued-message-failed', {
+              queuedId: action.id,
+              client_id: action.payload.client_id,
+              payload: action.payload,
+              error: 'Rate limited',
+              permanent: true,
+            });
+            continue;
+          }
+
           const delayMs = getBackoffDelayMs(attempts - 1, {
-            baseDelayMs: status === 429 ? 1400 : 900,
-            maxDelayMs: 45_000,
+            baseDelayMs: status === 429 ? 5_000 : 900,
+            maxDelayMs: status === 429 ? 60_000 : 45_000,
             jitterRatio: 0.4,
           });
           updateQueuedAction(action.id, {
@@ -80,6 +103,8 @@ export default function useOfflineQueue() {
             lastAttemptAt: new Date().toISOString(),
             nextRetryAt: new Date(Date.now() + delayMs).toISOString(),
           });
+          // Stop la boucle après un échec : on attendra le prochain tick
+          // au lieu de continuer à marteler le serveur dans la même frame.
           break;
         }
       }

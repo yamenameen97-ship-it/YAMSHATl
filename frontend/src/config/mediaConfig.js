@@ -3,10 +3,37 @@ import { BACKEND_ORIGIN } from '../api/config.js';
 const trim = (value) => String(value || '').trim();
 const trimSlash = (value) => trim(value).replace(/\/+$/, '');
 const isAbsoluteUrl = (value = '') => /^(blob:|data:|https?:)/i.test(trim(value));
+
+// Liste de domaines obsolètes qui ont migré vers le backend actuel.
+// Toute URL pointant vers ces hôtes est réécrite vers BACKEND_ORIGIN courant,
+// ce qui évite les 404 répétés sur les anciennes images stockées en base.
+const LEGACY_HOSTS = ['yamshat8.onrender.com', 'yamshat.onrender.com', 'yamshat-backend.onrender.com'];
+
+const rewriteLegacyHost = (value = '') => {
+  const cleaned = trim(value);
+  if (!cleaned || !isAbsoluteUrl(cleaned) || /^(blob:|data:)/i.test(cleaned)) return cleaned;
+  try {
+    const parsed = new URL(cleaned);
+    if (LEGACY_HOSTS.includes(parsed.hostname.toLowerCase())) {
+      const target = MEDIA_CDN_BASE || BACKEND_ORIGIN;
+      if (target) {
+        const base = new URL(trimSlash(target));
+        parsed.host = base.host;
+        parsed.protocol = base.protocol;
+        parsed.port = base.port;
+        return parsed.toString();
+      }
+    }
+    return cleaned;
+  } catch {
+    return cleaned;
+  }
+};
+
 const toAbsoluteMediaUrl = (value = '') => {
   const cleaned = trim(value);
   if (!cleaned) return '';
-  if (isAbsoluteUrl(cleaned)) return cleaned;
+  if (isAbsoluteUrl(cleaned)) return rewriteLegacyHost(cleaned);
   const normalizedPath = `/${cleaned.replace(/^\/+/, '')}`;
   if (MEDIA_CDN_BASE) return `${MEDIA_CDN_BASE}${normalizedPath}`;
   if (BACKEND_ORIGIN) return `${trimSlash(BACKEND_ORIGIN)}${normalizedPath}`;

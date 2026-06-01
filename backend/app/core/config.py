@@ -162,7 +162,9 @@ class Settings:
     )
     LOGIN_RATE_LIMIT_PER_MINUTE: int = int(os.getenv('LOGIN_RATE_LIMIT_PER_MINUTE', '10'))
     REGISTER_RATE_LIMIT_PER_MINUTE: int = int(os.getenv('REGISTER_RATE_LIMIT_PER_MINUTE', '10'))
-    API_RATE_LIMIT_PER_MINUTE: int = int(os.getenv('API_RATE_LIMIT_PER_MINUTE', '100'))
+    # On augmente la limite par défaut : 100/min créait des 429 dès qu'un
+    # utilisateur envoyait plusieurs messages en rafale sur /api/send_message.
+    API_RATE_LIMIT_PER_MINUTE: int = int(os.getenv('API_RATE_LIMIT_PER_MINUTE', '600'))
     THREAT_MONITOR_WINDOW_SECONDS: int = int(os.getenv('THREAT_MONITOR_WINDOW_SECONDS', '60'))
     THREAT_UNIQUE_PATH_THRESHOLD: int = int(os.getenv('THREAT_UNIQUE_PATH_THRESHOLD', '20'))
     BOT_SCORE_BLOCK_THRESHOLD: int = int(os.getenv('BOT_SCORE_BLOCK_THRESHOLD', '80'))

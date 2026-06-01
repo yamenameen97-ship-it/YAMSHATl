@@ -207,11 +207,8 @@ export default function AdminLiveDashboard() {
       <section className="admin-unified-dashboard">
         <div className="admin-unified-hero">
           <div className="admin-unified-hero-copy">
-            <span className="badge">مرجع موحّد</span>
-            <h2>لوحة إدارة واحدة لكل المحتويات والخدمات</h2>
-            <p>
-              تم إعادة ترتيب الصفحة لتظهر الصناديق والجداول في واجهة واحدة مضغوطة، مع الحفاظ على التنقّل إلى كل قسم من خلال الأزرار والروابط داخل نفس لوحة الأدمن.
-            </p>
+            <h2>لوحة التحكم</h2>
+            <p>مرحباً بك، إليك نظرة عامة على المنصة</p>
           </div>
           <div className="admin-unified-actions">
             <label className="field select-field admin-unified-select">
@@ -239,7 +236,7 @@ export default function AdminLiveDashboard() {
               </div>
               <div className="admin-kpi-label">{item.label}</div>
               <div className="admin-kpi-value">{item.value}</div>
-              <div className="admin-dashboard-table-note">مقارنة بالشهر الماضي</div>
+              <div className="admin-dashboard-table-note">من الشهر الماضي</div>
             </Link>
           ))}
         </div>
@@ -247,11 +244,8 @@ export default function AdminLiveDashboard() {
         <div className="admin-dashboard-main-grid">
           <section className="admin-dashboard-card">
             <div className="admin-dashboard-card-header">
-              <div>
-                <h3>المشاهدات خلال آخر 7 أيام</h3>
-                <div className="admin-dashboard-table-note">مخطط حي بمساحة مضغوطة ليتسع داخل واجهة واحدة</div>
-              </div>
-              <span className="badge">مشاهدات</span>
+              <h3>المشاهدات خلال آخر 7 أيام</h3>
+              <span className="badge">المشاهدات</span>
             </div>
             <div className="admin-chart-shell">
               <ResponsiveContainer width="100%" height="100%">
@@ -272,66 +266,61 @@ export default function AdminLiveDashboard() {
             </div>
           </section>
 
-          <div style={{ display: 'grid', gap: 14 }}>
-            <section className="admin-dashboard-card">
-              <div className="admin-dashboard-card-header">
-                <div>
-                  <h3>توزيع المحتوى</h3>
-                  <div className="admin-dashboard-table-note">النسب الرئيسية داخل لوحة الأدمن</div>
-                </div>
-                <span className="badge">100%</span>
-              </div>
-              <div className="admin-distribution-layout">
-                <div className="admin-chart-shell" style={{ height: 180 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={dashboard.distribution} dataKey="value" nameKey="name" innerRadius={44} outerRadius={72} paddingAngle={2}>
-                        {dashboard.distribution.map((entry, index) => <Cell key={`${entry.name}-${index}`} fill={COLORS[index % COLORS.length]} />)}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="admin-distribution-legend">
-                  {dashboard.distribution.map((item, index) => {
-                    const total = dashboard.distribution.reduce((sum, entry) => sum + numberValue(entry.value), 0) || 1;
-                    const percentage = Math.round((numberValue(item.value) / total) * 100);
-                    return (
-                      <div key={`${item.name}-${index}`} className="admin-distribution-item">
-                        <span className="admin-distribution-label">
-                          <span className="admin-color-dot" style={{ background: COLORS[index % COLORS.length] }} />
-                          <strong>{item.name}</strong>
-                        </span>
-                        <span>{percentage}%</span>
-                      </div>
-                    );
-                  })}
+          <section className="admin-dashboard-card">
+            <div className="admin-dashboard-card-header">
+              <h3>توزيع المحتوى</h3>
+            </div>
+            <div className="admin-distribution-layout">
+              <div className="admin-chart-shell" style={{ height: 200, position: 'relative' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={dashboard.distribution} dataKey="value" nameKey="name" innerRadius={52} outerRadius={82} paddingAngle={2}>
+                      {dashboard.distribution.map((entry, index) => <Cell key={`${entry.name}-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', pointerEvents: 'none' }}>
+                  <div style={{ fontSize: 11, color: '#94a3b8' }}>الإجمالي</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: '#f8fafc' }}>100%</div>
                 </div>
               </div>
-            </section>
-
-            <section className="admin-dashboard-card">
-              <div className="admin-dashboard-card-header">
-                <div>
-                  <h3>النشاطات الأخيرة</h3>
-                  <div className="admin-dashboard-table-note">آخر التحديثات داخل النظام</div>
-                </div>
-                <Link className="admin-action-link" to="/admin/audit">عرض السجل</Link>
-              </div>
-              <div className="admin-activity-list">
-                {dashboard.recentActivities.length ? dashboard.recentActivities.map((item) => (
-                  <div key={item.id} className="admin-activity-item-modern">
-                    <div className="admin-activity-avatar">{(item.user || 'ن').slice(0, 1).toUpperCase()}</div>
-                    <div className="admin-activity-copy">
-                      <strong>{item.user}</strong>
-                      <p>{item.action}</p>
+              <div className="admin-distribution-legend">
+                {dashboard.distribution.map((item, index) => {
+                  const total = dashboard.distribution.reduce((sum, entry) => sum + numberValue(entry.value), 0) || 1;
+                  const percentage = Math.round((numberValue(item.value) / total) * 100);
+                  return (
+                    <div key={`${item.name}-${index}`} className="admin-distribution-item">
+                      <span className="admin-distribution-label">
+                        <span className="admin-color-dot" style={{ background: COLORS[index % COLORS.length] }} />
+                        <strong>{item.name}</strong>
+                      </span>
+                      <span>{percentage}%</span>
                     </div>
-                    <span className={item.type === 'critical' ? 'admin-live-badge' : 'admin-dashboard-table-note'}>{item.type === 'critical' ? 'هام' : formatTime(item.time)}</span>
-                  </div>
-                )) : <div className="admin-dashboard-empty">لا توجد نشاطات حديثة حالياً.</div>}
+                  );
+                })}
               </div>
-            </section>
-          </div>
+            </div>
+          </section>
+
+          <section className="admin-dashboard-card">
+            <div className="admin-dashboard-card-header">
+              <h3>النشاطات الأخيرة</h3>
+              <Link className="admin-action-link" to="/admin/audit">عرض الكل</Link>
+            </div>
+            <div className="admin-activity-list">
+              {dashboard.recentActivities.length ? dashboard.recentActivities.map((item) => (
+                <div key={item.id} className="admin-activity-item-modern">
+                  <div className="admin-activity-avatar">{(item.user || 'ن').slice(0, 1).toUpperCase()}</div>
+                  <div className="admin-activity-copy">
+                    <strong>{item.user}</strong>
+                    <p>{item.action}</p>
+                  </div>
+                  <span className={item.type === 'critical' ? 'admin-live-badge' : 'admin-dashboard-table-note'}>{item.type === 'critical' ? 'LIVE' : formatTime(item.time)}</span>
+                </div>
+              )) : <div className="admin-dashboard-empty">لا توجد نشاطات حديثة حالياً.</div>}
+            </div>
+          </section>
         </div>
 
         <div className="admin-dashboard-table-grid">

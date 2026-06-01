@@ -78,7 +78,6 @@ export default function AdminLayout({ children }) {
       <div className="admin-main-shell admin-main-shell-modern">
         <AdminTopbar title={meta.title} onToggleSidebar={() => setCollapsed((prev) => !prev)} notifications={notifications} />
         <main className="admin-page-shell admin-reference-page-shell admin-page-shell-modern">
-          <Breadcrumbs items={breadcrumbs} />
           {children}
         </main>
       </div>

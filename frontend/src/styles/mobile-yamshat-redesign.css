@@ -900,3 +900,165 @@ body {
    ============================================================ */
 .ym-action.save.is-active { color: var(--ym-purple-light, #8B5CF6); }
 .ym-action.save.is-active svg path { fill: var(--ym-purple-light, #8B5CF6); stroke: var(--ym-purple-light, #8B5CF6); }
+/* ============================================================
+   إصلاح مشكلة زر المشاركة في الجوال
+   Fix for Share Button Layout Issue on Mobile
+   ============================================================ */
+
+/* تحديث قاعدة .ym-post-actions لاستخدام 5 أعمدة متساوية */
+.ym-post-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+  align-items: center;
+  gap: 2px;
+  padding-top: 8px;
+  padding-bottom: 4px;
+  border-top: 1px solid var(--ym-border-soft);
+  margin-top: 8px;
+}
+
+/* تحسين أزرار التفاعل */
+.ym-action {
+  background: transparent;
+  border: 0;
+  color: var(--ym-text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 4px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.18s, background 0.18s, transform 0.1s;
+  flex-direction: column;
+  min-height: 40px;
+  width: 100%;
+}
+
+.ym-action:hover {
+  background: rgba(255,255,255,0.04);
+}
+
+.ym-action:active {
+  transform: scale(0.96);
+}
+
+.ym-action svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+}
+
+.ym-action.like.is-active {
+  color: var(--ym-pink);
+}
+
+.ym-action.like.is-active svg {
+  fill: var(--ym-pink);
+  stroke: var(--ym-pink);
+}
+
+.ym-action.repost.is-active {
+  color: #22C55E;
+}
+
+.ym-action .count {
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  margin-top: 2px;
+}
+
+.ym-action.save.is-active {
+  color: var(--ym-purple-light, #8B5CF6);
+}
+
+.ym-action.save.is-active svg path {
+  fill: var(--ym-purple-light, #8B5CF6);
+  stroke: var(--ym-purple-light, #8B5CF6);
+}
+
+/* Media Query للأجهزة الصغيرة جداً (أقل من 320px) */
+@media (max-width: 320px) {
+  .ym-action {
+    padding: 4px 2px;
+    font-size: 10px;
+    min-height: 36px;
+  }
+  
+  .ym-action svg {
+    width: 14px;
+    height: 14px;
+  }
+  
+  .ym-action .count {
+    display: none;
+  }
+}
+
+/* Media Query للأجهزة الصغيرة (320px - 375px) */
+@media (min-width: 321px) and (max-width: 375px) {
+  .ym-action {
+    padding: 5px 3px;
+    font-size: 11px;
+    min-height: 38px;
+  }
+  
+  .ym-action svg {
+    width: 15px;
+    height: 15px;
+  }
+  
+  .ym-action .count {
+    font-size: 9px;
+  }
+}
+
+/* Media Query للأجهزة المتوسطة (375px - 480px) */
+@media (min-width: 376px) and (max-width: 480px) {
+  .ym-action {
+    padding: 6px 4px;
+    font-size: 12px;
+    min-height: 40px;
+  }
+  
+  .ym-action svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+/* Media Query للأجهزة الكبيرة (أكثر من 480px) */
+@media (min-width: 481px) {
+  .ym-action {
+    padding: 8px 6px;
+    font-size: 13px;
+    min-height: 44px;
+  }
+  
+  .ym-action svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+/* تحسينات الوصول (Accessibility) */
+.ym-action:focus-visible {
+  outline: 2px solid var(--ym-violet);
+  outline-offset: 2px;
+}
+
+/* دعم الأجهزة ذات الشاشات الصغيرة جداً (Landscape) */
+@media (max-height: 500px) and (orientation: landscape) {
+  .ym-action {
+    min-height: 32px;
+    padding: 4px 3px;
+  }
+  
+  .ym-action .count {
+    font-size: 9px;
+  }
+}

@@ -6,6 +6,8 @@
 - تحويل الصيغ (Format Conversion)
 - معالجة الفيديو (Video Processing)
 - التخزين المؤقت (Caching)
+- معالجة الأخطاء الشاملة
+- التحقق من سلامة الملفات
 """
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query
@@ -19,6 +21,7 @@ import hashlib
 import json
 from datetime import datetime
 import logging
+import mimetypes
 
 # إعداد السجلات
 logging.basicConfig(level=logging.INFO)
@@ -27,7 +30,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Yamshat Media Service",
     description="خدمة معالجة وتوسيع الوسائط",
-    version="2.0.0"
+    version="2.1.0"
 )
 
 # إضافة CORS
@@ -39,17 +42,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# إعدادات الخدمة
-UPLOAD_DIR = Path("/tmp/uploads")
-CACHE_DIR = Path("/tmp/media_cache")
-UPLOAD_DIR.mkdir(exist_ok=True)
-CACHE_DIR.mkdir(exist_ok=True)
+# إعدادات الخدمة - استخدام مسارات دائمة
+BASE_DIR = Path(__file__).parent.parent.parent
+UPLOAD_DIR = BASE_DIR / "uploads" / "media"
+CACHE_DIR = BASE_DIR / "uploads" / "cache"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+logger.info(f"📁 Upload directory: {UPLOAD_DIR}")
+logger.info(f"📁 Cache directory: {CACHE_DIR}")
 
 # الصيغ المدعومة
 SUPPORTED_IMAGE_FORMATS = {"png", "jpg", "jpeg", "webp", "gif"}
 SUPPORTED_VIDEO_FORMATS = {"mp4", "webm", "mov", "avi"}
 MAX_FILE_SIZE = 500 * 1024 * 1024  # 500 MB
 ALLOWED_EXTENSIONS = SUPPORTED_IMAGE_FORMATS | SUPPORTED_VIDEO_FORMATS
+
+# MIME types
+MIME_TYPES = {
+    'png': 'image/png',
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'webp': 'image/webp',
+    'gif': 'image/gif',
+    'mp4': 'video/mp4',
+    'webm': 'video/webm',
+    'mov': 'video/quicktime',
+    'avi': 'video/x-msvideo',
+}
 
 
 class MediaProcessor:
@@ -64,7 +84,31 @@ class MediaProcessor:
     def generate_file_hash(filename: str, content: bytes) -> str:
         """توليد بصمة فريدة للملف"""
         hash_input = f"{filename}{len(content)}{datetime.utcnow().isoformat()}"
-        return hashlib.md5(hash_input.encode()).hexdigest()[:12]
+        return hashlib.md5(hash_input.encode()).hexdigest()[:16]
+    
+    @staticmethod
+    def validate_file_content(content: bytes, file_ext: str) -> bool:
+        """التحقق من صحة محتوى الملف"""
+        if not content:
+            return False
+        
+        # التحقق من الحد الأدنى للحجم
+        if len(content) < 100:
+            return False
+        
+        # التحقق من البصمات (Magic Numbers)
+        if file_ext in {'png'}:
+            return content[:8] == b'\x89PNG\r\n\x1a\n'
+        elif file_ext in {'jpg', 'jpeg'}:
+            return content[:2] == b'\xff\xd8' and content[-2:] == b'\xff\xd9'
+        elif file_ext == 'webp':
+            return content[:4] == b'RIFF' and b'WEBP' in content[:12]
+        elif file_ext == 'gif':
+            return content[:6] in {b'GIF87a', b'GIF89a'}
+        elif file_ext in {'mp4'}:
+            return b'ftyp' in content[:32]
+        
+        return True
     
     @staticmethod
     async def process_image(
@@ -115,7 +159,7 @@ class MediaProcessor:
                 '-preset', 'medium',
                 '-c:a', 'aac',
                 '-b:a', '128k',
-                '-y',  # Overwrite output file
+                '-y',
                 str(output_path)
             ]
             
@@ -145,16 +189,22 @@ class MediaMetadata:
     def save_metadata(file_hash: str, metadata: dict):
         """حفظ بيانات الملف"""
         metadata_file = CACHE_DIR / f"{file_hash}.json"
-        with open(metadata_file, 'w') as f:
-            json.dump(metadata, f)
+        try:
+            with open(metadata_file, 'w', encoding='utf-8') as f:
+                json.dump(metadata, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.error(f"Failed to save metadata: {str(e)}")
     
     @staticmethod
     def get_metadata(file_hash: str) -> Optional[dict]:
         """الحصول على بيانات الملف"""
         metadata_file = CACHE_DIR / f"{file_hash}.json"
         if metadata_file.exists():
-            with open(metadata_file, 'r') as f:
-                return json.load(f)
+            try:
+                with open(metadata_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.error(f"Failed to read metadata: {str(e)}")
         return None
 
 
@@ -166,7 +216,9 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "media-service",
-        "version": "2.0.0"
+        "version": "2.1.0",
+        "upload_dir": str(UPLOAD_DIR),
+        "cache_dir": str(CACHE_DIR)
     }
 
 
@@ -192,7 +244,7 @@ async def upload_media(
         if file_ext not in ALLOWED_EXTENSIONS:
             raise HTTPException(
                 status_code=400,
-                detail=f"Unsupported file format: {file_ext}"
+                detail=f"Unsupported file format: {file_ext}. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
             )
         
         # قراءة محتوى الملف
@@ -205,13 +257,22 @@ async def upload_media(
                 detail=f"File too large. Max size: {MAX_FILE_SIZE / 1024 / 1024}MB"
             )
         
+        # التحقق من صحة محتوى الملف
+        if not MediaProcessor.validate_file_content(content, file_ext):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid file content for format: {file_ext}"
+            )
+        
         # توليد بصمة فريدة
         file_hash = MediaProcessor.generate_file_hash(file.filename, content)
         
-        # حفظ الملف مؤقتاً
+        # حفظ الملف بشكل دائم
         temp_path = UPLOAD_DIR / f"{file_hash}_{file.filename}"
         with open(temp_path, 'wb') as f:
             f.write(content)
+        
+        logger.info(f"📥 File saved: {temp_path}")
         
         # معالجة الملف حسب نوعه
         if file_ext in SUPPORTED_IMAGE_FORMATS:
@@ -248,7 +309,9 @@ async def upload_media(
             "file_type": file_ext,
             "processed_at": datetime.utcnow().isoformat(),
             "quality": quality,
-            "format": format
+            "format": format,
+            "local_path": str(processed_path),
+            "status": "success"
         }
         MediaMetadata.save_metadata(file_hash, metadata)
         
@@ -257,7 +320,7 @@ async def upload_media(
             "success": True,
             "file_hash": file_hash,
             "filename": processed_path.name,
-            "url": f"https://cdn.yamshat.com/media/{file_hash}",
+            "url": f"/api/media/{file_hash}",
             "size": len(content),
             "type": file_ext,
             "metadata": metadata
@@ -282,15 +345,8 @@ async def get_media(file_hash: str):
         file_path = matching_files[0]
         
         # تحديد نوع المحتوى
-        content_type = "application/octet-stream"
-        if file_path.suffix.lower() in {'.jpg', '.jpeg'}:
-            content_type = "image/jpeg"
-        elif file_path.suffix.lower() == '.png':
-            content_type = "image/png"
-        elif file_path.suffix.lower() == '.webp':
-            content_type = "image/webp"
-        elif file_path.suffix.lower() == '.mp4':
-            content_type = "video/mp4"
+        file_ext = file_path.suffix.lower().lstrip('.')
+        content_type = MIME_TYPES.get(file_ext, "application/octet-stream")
         
         return FileResponse(file_path, media_type=content_type)
     
@@ -331,13 +387,37 @@ async def batch_upload(
                 continue
             
             content = await file.read()
+            
+            # التحقق من الحجم
+            if len(content) > MAX_FILE_SIZE:
+                results.append({
+                    "filename": file.filename,
+                    "success": False,
+                    "error": f"File too large"
+                })
+                continue
+            
+            # التحقق من صحة المحتوى
+            if not MediaProcessor.validate_file_content(content, file_ext):
+                results.append({
+                    "filename": file.filename,
+                    "success": False,
+                    "error": f"Invalid file content"
+                })
+                continue
+            
             file_hash = MediaProcessor.generate_file_hash(file.filename, content)
+            
+            # حفظ الملف
+            file_path = UPLOAD_DIR / f"{file_hash}_{file.filename}"
+            with open(file_path, 'wb') as f:
+                f.write(content)
             
             results.append({
                 "filename": file.filename,
                 "success": True,
                 "file_hash": file_hash,
-                "url": f"https://cdn.yamshat.com/media/{file_hash}"
+                "url": f"/api/media/{file_hash}"
             })
         
         except Exception as e:
@@ -365,6 +445,7 @@ async def delete_media(file_hash: str):
         
         for file_path in matching_files:
             file_path.unlink()
+            logger.info(f"🗑️ File deleted: {file_path}")
         
         # حذف البيانات الوصفية
         metadata_file = CACHE_DIR / f"{file_hash}.json"
@@ -386,9 +467,13 @@ async def get_stats():
     upload_count = len(list(UPLOAD_DIR.glob("*")))
     cache_count = len(list(CACHE_DIR.glob("*.json")))
     
+    # حساب حجم الملفات
+    total_size = sum(f.stat().st_size for f in UPLOAD_DIR.glob("*") if f.is_file())
+    
     return {
         "uploaded_files": upload_count,
         "cached_metadata": cache_count,
+        "total_size_mb": round(total_size / (1024 * 1024), 2),
         "upload_dir": str(UPLOAD_DIR),
         "cache_dir": str(CACHE_DIR)
     }

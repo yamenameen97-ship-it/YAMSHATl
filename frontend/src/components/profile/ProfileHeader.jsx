@@ -26,6 +26,49 @@ const ProfileTab = React.memo(({ label, active, onClick }) => {
   );
 });
 
+// Fallback Avatar Component
+const FallbackAvatar = ({ name = 'User' }) => {
+  const initials = name
+    .split(' ')
+    .map(n => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+
+  return (
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)',
+        color: 'white',
+        fontSize: '24px',
+        fontWeight: 'bold',
+        borderRadius: '50%'
+      }}
+    >
+      {initials}
+    </div>
+  );
+};
+
+// Fallback Cover Component
+const FallbackCover = () => {
+  return (
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 50%, #4C1D95 100%)',
+        borderRadius: '12px'
+      }}
+    />
+  );
+};
+
 export default function ProfileHeader({
   profile,
   isOwnProfile,
@@ -39,6 +82,8 @@ export default function ProfileHeader({
   
   const [coverImage, setCoverImage] = useState(profile?.user?.profile?.cover_url || '');
   const [avatarImage, setAvatarImage] = useState(profile?.user?.profile?.avatar_url || '');
+  const [coverImageError, setCoverImageError] = useState(false);
+  const [avatarImageError, setAvatarImageError] = useState(false);
   
   const fileInputRef = useRef(null);
   const avatarInputRef = useRef(null);
@@ -50,8 +95,26 @@ export default function ProfileHeader({
   const handleCoverUpload = (e) => {
     const file = e.target.files?.[0];
     if (file) {
+      // التحقق من نوع الملف
+      if (!file.type.startsWith('image/')) {
+        alert('الرجاء اختيار صورة');
+        return;
+      }
+
+      // التحقق من حجم الملف (5MB max)
+      if (file.size > 5 * 1024 * 1024) {
+        alert('حجم الصورة كبير جداً (الحد الأقصى 5MB)');
+        return;
+      }
+
       const reader = new FileReader();
-      reader.onload = (event) => setCoverImage(event.target?.result);
+      reader.onload = (event) => {
+        setCoverImage(event.target?.result);
+        setCoverImageError(false);
+      };
+      reader.onerror = () => {
+        alert('حدث خطأ في قراءة الملف');
+      };
       reader.readAsDataURL(file);
     }
   };
@@ -59,10 +122,26 @@ export default function ProfileHeader({
   const handleAvatarUpload = (e) => {
     const file = e.target.files?.[0];
     if (file) {
+      // التحقق من نوع الملف
+      if (!file.type.startsWith('image/')) {
+        alert('الرجاء اختيار صورة');
+        return;
+      }
+
+      // التحقق من حجم الملف (2MB max)
+      if (file.size > 2 * 1024 * 1024) {
+        alert('حجم الصورة كبير جداً (الحد الأقصى 2MB)');
+        return;
+      }
+
       const reader = new FileReader();
       reader.onload = (event) => {
         setAvatarImage(event.target?.result);
+        setAvatarImageError(false);
         setShowAvatarCropper(true);
+      };
+      reader.onerror = () => {
+        alert('حدث خطأ في قراءة الملف');
       };
       reader.readAsDataURL(file);
     }
@@ -74,6 +153,7 @@ export default function ProfileHeader({
       setShowAvatarCropper(false);
     } catch (error) {
       console.error('Failed to update avatar:', error);
+      alert('فشل تحديث الصورة الشخصية');
     }
   };
 
@@ -83,6 +163,7 @@ export default function ProfileHeader({
       setShowCoverEditor(false);
     } catch (error) {
       console.error('Failed to update cover:', error);
+      alert('فشل تحديث صورة الغلاف');
     }
   };
 
@@ -92,15 +173,41 @@ export default function ProfileHeader({
     { key: 'likes', label: 'الإعجابات' }
   ], []);
 
+  const username = profile?.user?.username || 'مستخدم';
+  const postsCount = profile?.posts_count || 0;
+  const followersCount = profile?.followers_count || 0;
+  const followingCount = profile?.following_count || 0;
+  const bio = profile?.user?.profile?.bio || 'لا يوجد نبذة شخصية';
+  const isVerified = profile?.user?.is_verified || false;
+
   return (
     <>
-      {/* Cover Image with Optimization */}
-      <div style={{ position: 'relative', height: 200, marginBottom: 30 }}>
-        <OptimizedImage 
-          src={coverImage} 
-          alt="Cover" 
-          style={{ borderRadius: 12, height: '100%' }} 
-        />
+      {/* Cover Image with Optimization and Fallback */}
+      <div
+        style={{
+          position: 'relative',
+          height: 200,
+          marginBottom: 30,
+          borderRadius: 12,
+          overflow: 'hidden',
+          backgroundColor: '#1a1a1a'
+        }}
+      >
+        {coverImage && !coverImageError ? (
+          <OptimizedImage
+            src={coverImage}
+            alt="غلاف البروفايل"
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover'
+            }}
+            onError={() => setCoverImageError(true)}
+          />
+        ) : (
+          <FallbackCover />
+        )}
+
         {isOwnProfile && (
           <button
             onClick={() => setShowCoverEditor(true)}
@@ -109,14 +216,18 @@ export default function ProfileHeader({
               bottom: 10,
               right: 10,
               padding: '8px 16px',
-              background: 'rgba(0, 0, 0, 0.6)',
+              background: 'rgba(0, 0, 0, 0.7)',
               color: 'white',
               border: 'none',
               borderRadius: 6,
               cursor: 'pointer',
               fontSize: 12,
-              zIndex: 2
+              zIndex: 2,
+              transition: 'background 0.2s',
+              backdropFilter: 'blur(4px)'
             }}
+            onMouseEnter={(e) => e.target.style.background = 'rgba(0, 0, 0, 0.9)'}
+            onMouseLeave={(e) => e.target.style.background = 'rgba(0, 0, 0, 0.7)'}
           >
             ✏️ تعديل الغلاف
           </button>
@@ -124,11 +235,46 @@ export default function ProfileHeader({
       </div>
 
       {/* Profile Info */}
-      <div style={{ display: 'flex', gap: 30, alignItems: 'flex-start', marginBottom: 30 }}>
-        <div style={{ position: 'relative' }}>
-          <div style={{ width: 120, height: 120, borderRadius: '50%', overflow: 'hidden', border: '4px solid var(--bg)' }}>
-            <OptimizedImage src={avatarImage} alt="Avatar" />
+      <div
+        style={{
+          display: 'flex',
+          gap: 30,
+          alignItems: 'flex-start',
+          marginBottom: 30,
+          flexWrap: 'wrap'
+        }}
+      >
+        {/* Avatar */}
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <div
+            style={{
+              width: 120,
+              height: 120,
+              borderRadius: '50%',
+              overflow: 'hidden',
+              border: '4px solid var(--bg)',
+              backgroundColor: '#1a1a1a',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            {avatarImage && !avatarImageError ? (
+              <OptimizedImage
+                src={avatarImage}
+                alt={username}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover'
+                }}
+                onError={() => setAvatarImageError(true)}
+              />
+            ) : (
+              <FallbackAvatar name={username} />
+            )}
           </div>
+
           {isOwnProfile && (
             <button
               onClick={() => avatarInputRef.current?.click()}
@@ -147,45 +293,121 @@ export default function ProfileHeader({
                 alignItems: 'center',
                 justifyContent: 'center',
                 fontSize: 18,
-                zIndex: 2
+                zIndex: 2,
+                transition: 'transform 0.2s',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)'
               }}
+              onMouseEnter={(e) => e.target.style.transform = 'scale(1.1)'}
+              onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
             >
               📷
             </button>
           )}
-          <input ref={avatarInputRef} type="file" accept="image/*" onChange={handleAvatarUpload} style={{ display: 'none' }} />
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleAvatarUpload}
+            style={{ display: 'none' }}
+          />
         </div>
 
-        <div style={{ flex: 1 }}>
-          <h2 style={{ margin: '0 0 15px 0', fontSize: 24, fontWeight: 'bold', color: 'white' }}>
-            {profile?.user?.username}
-            {profile?.user?.is_verified && <span style={{ color: '#3b82f6', marginLeft: 8 }}>✓</span>}
+        {/* User Info */}
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <h2
+            style={{
+              margin: '0 0 15px 0',
+              fontSize: 24,
+              fontWeight: 'bold',
+              color: 'white',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8
+            }}
+          >
+            {username}
+            {isVerified && (
+              <span
+                style={{
+                  color: '#3b82f6',
+                  fontSize: 20,
+                  title: 'حساب موثّق'
+                }}
+              >
+                ✓
+              </span>
+            )}
           </h2>
 
-          <div style={{ display: 'flex', gap: 30, marginBottom: 15, fontSize: 14, color: 'white' }}>
-            <div><strong>{profile?.posts_count || 0}</strong> <span style={{ color: '#888' }}>منشور</span></div>
-            <div><strong>{profile?.followers_count || 0}</strong> <span style={{ color: '#888' }}>متابع</span></div>
-            <div><strong>{profile?.following_count || 0}</strong> <span style={{ color: '#888' }}>يتابع</span></div>
+          {/* Stats */}
+          <div
+            style={{
+              display: 'flex',
+              gap: 30,
+              marginBottom: 15,
+              fontSize: 14,
+              color: 'white',
+              flexWrap: 'wrap'
+            }}
+          >
+            <div>
+              <strong style={{ fontSize: 16 }}>{postsCount}</strong>
+              <span style={{ color: '#888', marginLeft: 8 }}>منشور</span>
+            </div>
+            <div>
+              <strong style={{ fontSize: 16 }}>{followersCount}</strong>
+              <span style={{ color: '#888', marginLeft: 8 }}>متابع</span>
+            </div>
+            <div>
+              <strong style={{ fontSize: 16 }}>{followingCount}</strong>
+              <span style={{ color: '#888', marginLeft: 8 }}>يتابع</span>
+            </div>
           </div>
 
-          <p style={{ margin: '0 0 15px 0', color: '#ccc', fontSize: 14 }}>
-            {profile?.user?.profile?.bio || 'لا يوجد نبذة شخصية'}
+          {/* Bio */}
+          <p
+            style={{
+              margin: '0 0 15px 0',
+              color: '#ccc',
+              fontSize: 14,
+              lineHeight: 1.5,
+              wordBreak: 'break-word'
+            }}
+          >
+            {bio}
           </p>
 
-          <div style={{ display: 'flex', gap: 10 }}>
+          {/* Action Buttons */}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {isOwnProfile ? (
-              <Button variant="secondary" size="small" onClick={onCustomizationClick}>⚙️ الإعدادات</Button>
+              <Button
+                variant="secondary"
+                size="small"
+                onClick={onCustomizationClick}
+              >
+                ⚙️ الإعدادات
+              </Button>
             ) : (
-              <Button size="small" onClick={onFollowClick}>متابعة</Button>
+              <Button size="small" onClick={onFollowClick}>
+                متابعة
+              </Button>
             )}
           </div>
         </div>
       </div>
 
-      {/* Optimized Tabs */}
-      <div style={{ display: 'flex', borderBottom: '1px solid #222', marginBottom: 20 }}>
+      {/* Tabs */}
+      <div
+        style={{
+          display: 'flex',
+          borderBottom: '1px solid #222',
+          marginBottom: 20,
+          overflowX: 'auto',
+          WebkitOverflowScrolling: 'touch'
+        }}
+      >
         {tabs.map(tab => (
-          <ProfileTab 
+          <ProfileTab
             key={tab.key}
             label={tab.label}
             active={activeTab === tab.key}
@@ -194,20 +416,92 @@ export default function ProfileHeader({
         ))}
       </div>
 
-      {/* Modals */}
-      <Modal open={showCoverEditor} onClose={() => setShowCoverEditor(false)} title="تعديل الغلاف">
+      {/* Cover Editor Modal */}
+      <Modal
+        open={showCoverEditor}
+        onClose={() => setShowCoverEditor(false)}
+        title="تعديل الغلاف"
+      >
         <div style={{ padding: 20 }}>
-          <div style={{ height: 200, marginBottom: 20 }}><OptimizedImage src={coverImage} /></div>
-          <Button onClick={() => fileInputRef.current?.click()} style={{ width: '100%' }}>اختيار صورة</Button>
-          <input ref={fileInputRef} type="file" accept="image/*" onChange={handleCoverUpload} style={{ display: 'none' }} />
-          <Button onClick={saveCoverImage} style={{ width: '100%', marginTop: 10 }}>حفظ</Button>
+          <div
+            style={{
+              height: 200,
+              marginBottom: 20,
+              borderRadius: 8,
+              overflow: 'hidden',
+              backgroundColor: '#1a1a1a'
+            }}
+          >
+            {coverImage ? (
+              <OptimizedImage
+                src={coverImage}
+                alt="معاينة الغلاف"
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover'
+                }}
+              />
+            ) : (
+              <FallbackCover />
+            )}
+          </div>
+          <Button
+            onClick={() => fileInputRef.current?.click()}
+            style={{ width: '100%', marginBottom: 10 }}
+          >
+            اختيار صورة
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleCoverUpload}
+            style={{ display: 'none' }}
+          />
+          <Button
+            onClick={saveCoverImage}
+            style={{ width: '100%' }}
+          >
+            حفظ
+          </Button>
         </div>
       </Modal>
 
-      <Modal open={showAvatarCropper} onClose={() => setShowAvatarCropper(false)} title="تعديل الصورة">
+      {/* Avatar Cropper Modal */}
+      <Modal
+        open={showAvatarCropper}
+        onClose={() => setShowAvatarCropper(false)}
+        title="تعديل الصورة الشخصية"
+      >
         <div style={{ padding: 20 }}>
-          <div style={{ width: 200, height: 200, borderRadius: '50%', overflow: 'hidden', margin: '0 auto 20px' }}><OptimizedImage src={avatarImage} /></div>
-          <Button onClick={applyCrop} style={{ width: '100%' }}>تطبيق</Button>
+          <div
+            style={{
+              width: 200,
+              height: 200,
+              borderRadius: '50%',
+              overflow: 'hidden',
+              margin: '0 auto 20px',
+              backgroundColor: '#1a1a1a'
+            }}
+          >
+            {avatarImage ? (
+              <OptimizedImage
+                src={avatarImage}
+                alt="معاينة الصورة الشخصية"
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover'
+                }}
+              />
+            ) : (
+              <FallbackAvatar name={username} />
+            )}
+          </div>
+          <Button onClick={applyCrop} style={{ width: '100%' }}>
+            تطبيق
+          </Button>
         </div>
       </Modal>
     </>

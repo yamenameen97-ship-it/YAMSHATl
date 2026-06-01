@@ -1,6 +1,6 @@
 {
   "id": "/",
-  "name": "Yamshat",
+  "name": "يمشات - Yamshat",
   "short_name": "Yamshat",
   "lang": "ar",
   "dir": "rtl",
@@ -8,11 +8,12 @@
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui", "browser"],
-  "orientation": "portrait",
-  "background_color": "#0f172a",
-  "theme_color": "#0f172a",
-  "description": "Yamshat social app with chat, reels, live, push notifications, offline support, and share target support.",
+  "orientation": "portrait-primary",
+  "background_color": "#0A0D1A",
+  "theme_color": "#7C3AED",
+  "description": "تطبيق التواصل الاجتماعي العربي - منصة للتواصل والمشاركة والتفاعل والبث المباشر والريلز",
   "categories": ["social", "communication", "entertainment"],
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/icons/icon-72.png",
@@ -75,25 +76,26 @@
       "purpose": "maskable"
     }
   ],
-  "shortcuts": [
+  "screenshots": [
     {
-      "name": "الدردشة",
-      "short_name": "الدردشة",
-      "description": "افتح المحادثات مباشرة",
-      "url": "/#/chat",
-      "icons": [
-        {
-          "src": "/icons/icon-192.png",
-          "sizes": "192x192",
-          "type": "image/png"
-        }
-      ]
+      "src": "/screenshots/screenshot-540x720.png",
+      "sizes": "540x720",
+      "type": "image/png",
+      "form_factor": "narrow"
     },
+    {
+      "src": "/screenshots/screenshot-1280x720.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide"
+    }
+  ],
+  "shortcuts": [
     {
       "name": "الرسائل",
       "short_name": "الرسائل",
-      "description": "الذهاب إلى صندوق الرسائل",
-      "url": "/#/inbox",
+      "description": "افتح الرسائل المباشرة",
+      "url": "/#/messages",
       "icons": [
         {
           "src": "/icons/icon-192.png",
@@ -105,7 +107,7 @@
     {
       "name": "الإشعارات",
       "short_name": "الإشعارات",
-      "description": "عرض آخر الإشعارات",
+      "description": "افتح الإشعارات",
       "url": "/#/notifications",
       "icons": [
         {
@@ -116,10 +118,23 @@
       ]
     },
     {
-      "name": "البث المباشر",
-      "short_name": "البث",
-      "description": "افتح البث المباشر بسرعة",
-      "url": "/#/live",
+      "name": "الملف الشخصي",
+      "short_name": "الملف الشخصي",
+      "description": "افتح ملفك الشخصي",
+      "url": "/#/profile",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "الريلز",
+      "short_name": "الريلز",
+      "description": "شاهد الريلز",
+      "url": "/#/reels",
       "icons": [
         {
           "src": "/icons/icon-192.png",
@@ -140,9 +155,19 @@
       "files": [
         {
           "name": "files",
-          "accept": ["image/*", "video/*"]
+          "accept": ["image/*", "video/*", "audio/*"]
         }
       ]
     }
-  }
+  },
+  "file_handlers": [
+    {
+      "action": "/open-file",
+      "accept": {
+        "image/*": [".png", ".jpg", ".jpeg", ".webp", ".gif"],
+        "video/*": [".mp4", ".webm", ".mov"],
+        "audio/*": [".mp3", ".wav", ".m4a"]
+      }
+    }
+  ]
 }

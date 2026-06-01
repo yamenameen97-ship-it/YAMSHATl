@@ -147,8 +147,8 @@ async def create_reel(request: Request, db: Session = Depends(get_db), current_u
         form = await request.form()
         caption = str(form.get('caption') or '').strip()
         category = str(form.get('category') or 'general').strip() or 'general'
-        file = form.get('file')
-        thumbnail = form.get('thumbnail')
+        file = form.get('file') or form.get('video') or form.get('media')
+        thumbnail = form.get('thumbnail') or form.get('poster') or form.get('preview')
         if file is not None and hasattr(file, 'filename'):
             upload_payload = save_upload(file)
             video_url = str(upload_payload.get('media_url') or upload_payload.get('file_url') or upload_payload.get('url') or '').strip()
@@ -157,10 +157,21 @@ async def create_reel(request: Request, db: Session = Depends(get_db), current_u
             thumbnail_url = str(thumb_payload.get('media_url') or thumb_payload.get('file_url') or thumb_payload.get('url') or '').strip()
     else:
         payload = await request.json()
+        upload_payload = payload.get('upload') if isinstance(payload.get('upload'), dict) else {}
         caption = str(payload.get('caption') or payload.get('content') or '').strip()
         category = str(payload.get('category') or 'general').strip() or 'general'
-        video_url = str(payload.get('video_url') or payload.get('media_url') or payload.get('media') or '').strip()
-        thumbnail_url = str(payload.get('thumbnail_url') or payload.get('image_url') or '').strip()
+        video_url = str(
+            payload.get('video_url')
+            or payload.get('media_url')
+            or payload.get('media')
+            or payload.get('url')
+            or payload.get('file_url')
+            or upload_payload.get('media_url')
+            or upload_payload.get('url')
+            or upload_payload.get('file_url')
+            or ''
+        ).strip()
+        thumbnail_url = str(payload.get('thumbnail_url') or payload.get('image_url') or payload.get('preview_url') or upload_payload.get('thumbnail_url') or '').strip()
 
     video_url = normalize_media_url(video_url)
     thumbnail_url = normalize_media_url(thumbnail_url)

@@ -21,6 +21,8 @@ import {
 import { useToast } from '../admin/ToastProvider.jsx';
 import { getCurrentUsername } from '../../utils/auth.js';
 import socketManager from '../../services/socketManager.js';
+import { resolveMediaUrl } from '../../config/mediaConfig.js';
+import UniversalPlayer from '../video/UniversalPlayer.jsx';
 
 const ADVANCED_REACTIONS = [
   { emoji: '❤️', label: 'حب' },
@@ -114,6 +116,43 @@ function insertCommentIntoTree(items = [], comment) {
   });
 }
 
+function looksLikeVideoCandidate(value = '') {
+  const candidate = String(value || '').toLowerCase();
+  if (!candidate) return false;
+  return /\.(mp4|webm|mov|m4v|m3u8|mkv|avi)(\?.*)?$/i.test(candidate)
+    || /(^data:video\/)|([?&](resource_type|content_type|mime_type)=video)/i.test(candidate)
+    || /\/video\/upload\//i.test(candidate)
+    || /\b(video|reel|stream|playlist)\b/i.test(candidate);
+}
+
+function getPrimaryMediaUrl(post = {}) {
+  const candidates = [
+    ...(Array.isArray(post.media_urls) ? post.media_urls : []),
+    post.media_url,
+    post.media,
+    post.image_url,
+    post.preview_url,
+  ].map((item) => resolveMediaUrl(item)).filter(Boolean);
+  return candidates[0] || '';
+}
+
+function getPosterUrl(post = {}) {
+  const candidates = [post.thumbnail_url, post.preview_url, post.image_url]
+    .map((item) => resolveMediaUrl(item))
+    .filter(Boolean);
+  return candidates.find((item) => !looksLikeVideoCandidate(item)) || candidates[0] || '';
+}
+
+function isVideoPost(post = {}) {
+  if (post.has_video || String(post.media_type || '').toLowerCase() === 'video') return true;
+  return [
+    ...(Array.isArray(post.media_urls) ? post.media_urls : []),
+    post.media_url,
+    post.media,
+    post.image_url,
+  ].some((item) => looksLikeVideoCandidate(item));
+}
+
 export default function PostCard({ post, onShowAnalytics, onLike }) {
   const { pushToast } = useToast();
   const currentUser = getCurrentUsername();
@@ -145,6 +184,10 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
     const reactionCounts = Object.values(post?.reactions || {}).reduce((sum, value) => sum + Number(value || 0), 0);
     return reactionCounts + Number(post?.likes_count || 0) + Number(post?.comments_count || 0) + Number(post?.share_count || 0);
   }, [post?.comments_count, post?.likes_count, post?.reactions, post?.share_count]);
+
+  const mediaUrl = useMemo(() => getPrimaryMediaUrl(post), [post]);
+  const posterUrl = useMemo(() => getPosterUrl(post), [post]);
+  const hasVideoMedia = useMemo(() => isVideoPost(post), [post]);
 
   const persistPostPref = (key, value, targetType = 'post') => {
     const currentPrefs = loadPostPrefs();
@@ -458,11 +501,40 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
       <div style={{ fontSize: 16, lineHeight: 1.8, marginBottom: 16, whiteSpace: 'pre-wrap' }}>
         <div>{renderRichText(post.content || '')}</div>
         {post.hashtags?.length ? <div style={{ marginTop: 8, fontSize: 13, color: 'var(--primary)' }}>{post.hashtags.map((item) => `#${item}`).join(' · ')}</div> : null}
-        {post.media_url ? (
-          <div onClick={() => setShowMediaModal(true)} style={{ marginTop: 12, borderRadius: 12, overflow: 'hidden', cursor: 'pointer', background: '#000', maxHeight: 420, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {post.media_url.match(/\.(mp4|webm|mov|m3u8)$/i)
-              ? <video src={post.media_url} style={{ width: '100%', maxHeight: 420 }} muted loop autoPlay playsInline />
-              : <img src={post.media_url} alt="Post Media" style={{ width: '100%', height: 'auto', objectFit: 'contain' }} />}
+        {mediaUrl ? (
+          <div
+            onClick={() => setShowMediaModal(true)}
+            style={{
+              marginTop: 12,
+              borderRadius: 16,
+              overflow: 'hidden',
+              cursor: 'pointer',
+              background: '#000',
+              minHeight: hasVideoMedia ? 280 : 220,
+              maxHeight: 460,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: '1px solid rgba(255,255,255,0.08)',
+            }}
+          >
+            {hasVideoMedia ? (
+              <div style={{ width: '100%', minHeight: 280 }} onClick={(event) => event.stopPropagation()}>
+                <UniversalPlayer
+                  src={mediaUrl}
+                  poster={posterUrl}
+                  variant="post"
+                  muted
+                  className="post-media-player"
+                />
+              </div>
+            ) : (
+              <img
+                src={posterUrl || mediaUrl}
+                alt="Post Media"
+                style={{ width: '100%', maxHeight: 460, objectFit: 'contain', display: 'block', background: '#000' }}
+              />
+            )}
           </div>
         ) : null}
       </div>
@@ -506,10 +578,20 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
       </div>
 
       <Modal open={showMediaModal} onClose={() => setShowMediaModal(false)} title="الوسائط">
-        <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
-          {post.media_url?.match(/\.(mp4|webm|mov|m3u8)$/i)
-            ? <video src={post.media_url} controls autoPlay style={{ maxWidth: '100%', maxHeight: '80vh' }} />
-            : <img src={post.media_url} alt="Full Media" style={{ maxWidth: '100%', maxHeight: '80vh', objectFit: 'contain' }} />}
+        <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', minHeight: 320 }}>
+          {hasVideoMedia ? (
+            <div style={{ width: '100%' }}>
+              <UniversalPlayer
+                src={mediaUrl}
+                poster={posterUrl}
+                variant="post"
+                autoplay
+                className="post-media-modal-player"
+              />
+            </div>
+          ) : (
+            <img src={posterUrl || mediaUrl} alt="Full Media" style={{ maxWidth: '100%', maxHeight: '80vh', objectFit: 'contain' }} />
+          )}
         </div>
       </Modal>
 
@@ -574,6 +656,12 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
         }
         .post-inline-btn:hover {
           background: rgba(59,130,246,0.08);
+        }
+        .post-media-player {
+          min-height: 280px;
+        }
+        .post-media-modal-player {
+          min-height: min(70vh, 720px);
         }
       `}</style>
     </Card>

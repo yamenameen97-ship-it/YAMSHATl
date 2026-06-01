@@ -29,6 +29,7 @@ import {
 } from '../services/reelsEngine.js';
 import { FixedSizeList as List } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
+import UniversalPlayer from '../components/video/UniversalPlayer.jsx';
 
 function computeReelScore(item) {
   const likes = Number(item.likes_count || 0);
@@ -821,7 +822,7 @@ export default function ReelsPage() {
   };
 
   const publishReel = async () => {
-    if (!uploadState.mediaUrl && !uploadState.processedFile) {
+    if (!uploadState.mediaUrl && !uploadState.processedFile && !uploadState.originalFile) {
       pushToast({ type: 'warning', title: 'ارفع فيديو أولاً' });
       return;
     }
@@ -844,12 +845,16 @@ export default function ReelsPage() {
     };
 
     try {
-      await API.post('/reels', {
-        caption,
-        media_url: uploadState.mediaUrl,
-        video_url: uploadState.mediaUrl,
-        thumbnail_url: uploadState.thumbnailUrl || undefined,
-      });
+      if (uploadState.mediaUrl) {
+        await API.post('/reels', {
+          caption,
+          media_url: uploadState.mediaUrl,
+          video_url: uploadState.mediaUrl,
+          thumbnail_url: uploadState.thumbnailUrl || undefined,
+        });
+      } else {
+        await tryMultipartFallback();
+      }
     } catch (error) {
       try {
         await tryMultipartFallback();
@@ -929,6 +934,7 @@ export default function ReelsPage() {
 
   const closeUploadModal = () => {
     setShowUploadModal(false);
+    resetUploadState();
     navigate('/reels', { replace: true });
   };
 
@@ -1022,35 +1028,41 @@ export default function ReelsPage() {
 
             <VideoUploader
               label="رفع فيديو الريل"
-              onUploadComplete={({ url, previewUrl, file, originalFile, thumbnailUrl }) => {
+              onUploadComplete={({ url, previewUrl, file, originalFile, thumbnailUrl, payload }) => {
                 setUploadState((prev) => ({
                   ...prev,
-                  mediaUrl: url || '',
-                  previewUrl: previewUrl || '',
-                  thumbnailUrl: thumbnailUrl || '',
-                  fileName: file?.name || '',
+                  mediaUrl: url || payload?.mediaUrl || payload?.url || '',
+                  previewUrl: previewUrl || url || payload?.mediaUrl || '',
+                  thumbnailUrl: thumbnailUrl || payload?.thumbnailUrl || '',
+                  fileName: file?.name || originalFile?.name || '',
                   processedFile: file || null,
                   originalFile: originalFile || null,
                   uploading: false,
                 }));
-                pushToast({ type: 'success', title: 'تم رفع الفيديو', description: 'راجع المعاينة ثم اضغط نشر الريل.' });
+                pushToast({ type: 'success', title: 'تم رفع الفيديو', description: 'راجع المشغل ثم اضغط نشر الريل.' });
               }}
               onError={(message) => pushToast({ type: 'error', title: 'فشل رفع الفيديو', description: message })}
             />
 
-            {uploadState.mediaUrl ? (
+            {(uploadState.mediaUrl || uploadState.previewUrl) ? (
               <div className="uploaded-preview-shell">
                 <div className="uploaded-preview-head">
                   <strong>معاينة الريل</strong>
                   <span>{uploadState.fileName || 'video.mp4'}</span>
                 </div>
-                <video src={resolveMediaUrl(uploadState.mediaUrl)} controls playsInline className="uploaded-preview-video" />
+                <UniversalPlayer
+                  src={resolveMediaUrl(uploadState.mediaUrl || uploadState.previewUrl)}
+                  poster={uploadState.thumbnailUrl || ''}
+                  variant="post"
+                  muted
+                  className="uploaded-preview-player"
+                />
               </div>
             ) : null}
 
             <div className="upload-modal-actions">
               <Button variant="secondary" onClick={closeUploadModal}>إغلاق</Button>
-              <Button onClick={publishReel} loading={uploadState.publishing} disabled={!uploadState.mediaUrl || uploadState.publishing}>نشر الريل الآن</Button>
+              <Button onClick={publishReel} loading={uploadState.publishing} disabled={(!uploadState.mediaUrl && !uploadState.processedFile && !uploadState.originalFile) || uploadState.publishing}>نشر الريل الآن</Button>
             </div>
           </div>
         </Modal>
@@ -1437,9 +1449,11 @@ export default function ReelsPage() {
             color: #fff;
             font-size: 13px;
           }
+          .uploaded-preview-player,
           .uploaded-preview-video {
             width: 100%;
-            max-height: 320px;
+            min-height: 320px;
+            max-height: 420px;
             border-radius: 14px;
             background: #000;
           }

@@ -91,6 +91,26 @@ def _normalize_poll(poll) -> list[dict]:
     return options[:6]
 
 
+def _looks_like_video_url(value: str | None) -> bool:
+    candidate = str(value or '').strip().lower()
+    if not candidate:
+        return False
+    if candidate.startswith('data:video/'):
+        return True
+    video_markers = (
+        '.mp4', '.webm', '.mov', '.m4v', '.mkv', '.avi', '.m3u8',
+        '/video/upload/', '/videos/', '/stream/', '/reels/', 'resource_type=video',
+        'content_type=video', 'mime_type=video', 'video/',
+    )
+    return any(marker in candidate for marker in video_markers)
+
+
+def _infer_media_kind(media_list: list[str]) -> str | None:
+    if not media_list:
+        return None
+    return 'video' if any(_looks_like_video_url(item) for item in media_list) else 'image'
+
+
 def _can_view_post(post: Post, current_user: User | None) -> bool:
     now = utcnow_naive()
     if post.is_draft:
@@ -113,6 +133,16 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
         media_list = normalize_media_list([post.image_url])
     if not media_list and getattr(post, 'media', None):
         media_list = normalize_media_list([post.media])
+    primary_media_url = media_list[0] if media_list else normalize_media_url(post.image_url or post.media or '') or ''
+    media_kind = _infer_media_kind(media_list or ([primary_media_url] if primary_media_url else []))
+    thumbnail_url = ''
+    if media_kind == 'video':
+        for item in media_list[1:]:
+            if not _looks_like_video_url(item):
+                thumbnail_url = item
+                break
+        if not thumbnail_url and post.image_url and not _looks_like_video_url(post.image_url):
+            thumbnail_url = normalize_media_url(post.image_url) or ''
     poll_options = _loads_list(post.poll_options_json)
     poll_votes_rows = db.query(PostPollVote).filter(PostPollVote.post_id == post.id).all()
     poll_votes = {}
@@ -156,9 +186,14 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
         'avatar': user.avatar if user else None,
         'content': post.content,
         'content_html': post.content_html or '',
-        'image_url': media_list[0] if media_list else (post.image_url or ''),
-        'media': media_list[0] if media_list else (post.image_url or ''),
+        'image_url': thumbnail_url or primary_media_url,
+        'media': primary_media_url,
+        'media_url': primary_media_url,
         'media_urls': media_list,
+        'media_type': media_kind or 'image',
+        'has_video': media_kind == 'video',
+        'thumbnail_url': thumbnail_url,
+        'preview_url': thumbnail_url or primary_media_url,
         'hashtags': _loads_list(post.hashtags_json),
         'mentions': _loads_list(post.mentions_json),
         'poll': poll_items,

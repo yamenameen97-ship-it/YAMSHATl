@@ -2,16 +2,24 @@ import API from './axios.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
 
 function looksLikeVideo(post = {}, mediaUrls = []) {
-  const typeHint = String(post.media_type || post.type || post.mime_type || post.content_type || '').toLowerCase();
-  const candidates = [post.media_url, post.media, post.image_url, post.video_url, ...mediaUrls]
+  const typeHint = String(post.media_type || post.type || post.kind || post.mime_type || post.content_type || '').toLowerCase();
+  const candidates = [post.media_url, post.media, post.image_url, post.video_url, post.thumbnail_url, ...mediaUrls]
     .map((value) => String(value || '').toLowerCase())
     .filter(Boolean);
 
+  const hasVideoCandidate = candidates.some((value) => (
+    /\.(mp4|webm|mov|m4v|m3u8|mkv|avi)(\?.*)?$/i.test(value)
+    || /(^data:video\/)|([?&](resource_type|content_type|mime_type)=video)/i.test(value)
+    || /\/video\/upload\//i.test(value)
+    || /\b(video|reel|stream|playlist)\b/i.test(value)
+  ));
+
   return Boolean(
-    post.is_reel ||
-    typeHint === 'video' ||
-    typeHint.startsWith('video/') ||
-    candidates.some((value) => /\.(mp4|webm|mov|m4v|m3u8)(\?.*)?$/i.test(value) || /\b(video|reel|stream)\b/i.test(value)),
+    post.is_reel
+    || post.has_video
+    || typeHint === 'video'
+    || typeHint.startsWith('video/')
+    || hasVideoCandidate
   );
 }
 
@@ -19,14 +27,27 @@ function normalizePost(post = {}) {
   const rawMediaUrls = Array.isArray(post.media_urls)
     ? post.media_urls
     : [post.media_url || post.media || post.image_url].filter(Boolean);
-  const normalizedMediaUrls = rawMediaUrls.map((url) => resolveMediaUrl(url)).filter(Boolean);
-  const mediaUrl = resolveMediaUrl(post.media_url || post.media || post.image_url || normalizedMediaUrls[0] || '');
+
+  const normalizedMediaUrls = Array.from(new Set(rawMediaUrls.map((url) => resolveMediaUrl(url)).filter(Boolean)));
+  const hasVideo = looksLikeVideo(post, rawMediaUrls);
+  const mediaUrl = resolveMediaUrl(post.media_url || post.media || normalizedMediaUrls[0] || post.image_url || '');
+  const imageUrl = resolveMediaUrl(
+    post.thumbnail_url
+    || (hasVideo ? '' : post.image_url)
+    || normalizedMediaUrls.find((url) => !/\.(mp4|webm|mov|m4v|m3u8|mkv|avi)(\?.*)?$/i.test(String(url || '').toLowerCase()))
+    || mediaUrl
+    || '',
+  );
+
   return {
     ...post,
     media: mediaUrl || '',
     media_url: mediaUrl || '',
-    image_url: resolveMediaUrl(post.image_url || mediaUrl || ''),
+    image_url: imageUrl || '',
+    thumbnail_url: imageUrl || '',
+    preview_url: resolveMediaUrl(post.preview_url || imageUrl || mediaUrl || ''),
     media_urls: normalizedMediaUrls.length ? normalizedMediaUrls : mediaUrl ? [mediaUrl] : [],
+    media_type: hasVideo ? 'video' : String(post.media_type || post.type || 'image').toLowerCase(),
     likes_count: Number(post.likes_count ?? post.like_count ?? post.likes ?? 0),
     comments_count: Number(post.comments_count ?? post.comment_count ?? 0),
     saved_count: Number(post.saved_count ?? post.save_count ?? 0),
@@ -34,7 +55,7 @@ function normalizePost(post = {}) {
     is_liked: Boolean(post.is_liked ?? post.liked_by_me),
     is_saved: Boolean(post.is_saved ?? post.saved_by_me),
     user_avatar: resolveMediaUrl(post.user_avatar || post.avatar || ''),
-    has_video: looksLikeVideo(post, rawMediaUrls),
+    has_video: hasVideo,
   };
 }
 

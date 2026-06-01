@@ -1,0 +1,17 @@
+groups:
+  - name: app-alerts
+    rules:
+      - alert: HighErrorRate
+        expr: sum(rate(yamshat_gateway_requests_total{status_code=~"5.."}[5m])) > 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: 'High traffic error rate detected on gateway'
+      - alert: ChatServiceDown
+        expr: up{job="chat-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          description: 'chat-service is unreachable from Prometheus'

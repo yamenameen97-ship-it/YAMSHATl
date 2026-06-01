@@ -131,6 +131,24 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
         }
         for option in poll_options
     ]
+    # البحث عن بث مباشر نشط للمستخدم
+    from app.models.live_session import LiveRoomSession
+    live_room = db.query(LiveRoomSession).filter(
+        LiveRoomSession.host_user_id == post.user_id,
+        LiveRoomSession.is_active == True
+    ).first()
+    
+    live_stream_data = None
+    if live_room:
+        live_stream_data = {
+            'id': live_room.id,
+            'host': live_room.host_username,
+            'title': live_room.title,
+            'stream_status': live_room.stream_status,
+            'viewer_count': live_room.viewer_count,
+            'is_active': live_room.is_active
+        }
+
     return {
         'id': post.id,
         'user_id': post.user_id,
@@ -162,6 +180,9 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
         'liked_by_me': liked_by_me,
         'saved_by_me': saved_by_me,
         'share_url': _share_url(post.id),
+        'has_live_stream': live_room is not None,
+        'live_stream_id': live_room.id if live_room else None,
+        'live_stream': live_stream_data
     }
 
 

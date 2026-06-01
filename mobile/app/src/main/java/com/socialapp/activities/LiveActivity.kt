@@ -113,23 +113,27 @@ class LiveActivity : AppCompatActivity() {
         val title = binding.roomInput.text.toString().trim().ifBlank { "Live Room" }
         ApiClient.api.createLive(
             mapOf("title" to title)
-        ).enqueue(object : Callback<ApiMessage> {
-            override fun onResponse(call: Call<ApiMessage>, response: Response<ApiMessage>) {
-                val roomId = response.body()?.room_id
-                if (!roomId.isNullOrBlank()) {
-                    binding.roomInput.setText(roomId)
-                    openAuthenticatedPage(buildLiveTargetPath(roomId))
+        ).enqueue(object : Callback<com.socialapp.models.LiveRoomInfo> {
+            override fun onResponse(call: Call<com.socialapp.models.LiveRoomInfo>, response: Response<com.socialapp.models.LiveRoomInfo>) {
+                if (response.isSuccessful) {
+                    val roomId = response.body()?.id
+                    if (!roomId.isNullOrBlank()) {
+                        binding.roomInput.setText(roomId)
+                        openAuthenticatedPage(buildLiveTargetPath(roomId))
+                    } else {
+                        openAuthenticatedPage(buildLiveTargetPath())
+                    }
+                    Toast.makeText(
+                        this@LiveActivity,
+                        "تم تجهيز البث المباشر",
+                        Toast.LENGTH_LONG
+                    ).show()
                 } else {
-                    openAuthenticatedPage(buildLiveTargetPath())
+                    Toast.makeText(this@LiveActivity, "Error: ${response.code()}", Toast.LENGTH_SHORT).show()
                 }
-                Toast.makeText(
-                    this@LiveActivity,
-                    response.body()?.message ?: "تم تجهيز البث المباشر",
-                    Toast.LENGTH_LONG
-                ).show()
             }
 
-            override fun onFailure(call: Call<ApiMessage>, t: Throwable) {
+            override fun onFailure(call: Call<com.socialapp.models.LiveRoomInfo>, t: Throwable) {
                 Toast.makeText(this@LiveActivity, t.message ?: "Live failed", Toast.LENGTH_SHORT).show()
             }
         })

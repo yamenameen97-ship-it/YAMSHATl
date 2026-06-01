@@ -49,10 +49,16 @@ interface ApiService {
     fun saveDeviceToken(@Body body: Map<String, String>): Call<ApiMessage>
 
     @GET("posts")
-    fun getPosts(): Call<List<Post>>
+    fun getPosts(@Query("mode") mode: String = "following", @Query("page") page: Int = 1): Call<com.socialapp.models.PostsResponse>
 
-    @POST("post")
+    @POST("posts")
     fun createPost(@Body body: Map<String, String?>): Call<ApiMessage>
+
+    @POST("posts/{id}/like")
+    fun likePost(@Path("id") id: Int): Call<ApiMessage>
+
+    @POST("posts/{id}/comment")
+    fun commentOnPost(@Path("id") id: Int, @Body body: Map<String, String>): Call<ApiMessage>
 
     @POST("send_message")
     fun sendMessage(@Body body: Map<String, @JvmSuppressWildcards Any?>): Call<ApiMessage>
@@ -100,7 +106,13 @@ interface ApiService {
     fun createGroup(@Body body: Map<String, String>): Call<ApiMessage>
 
     @POST("create_live")
-    fun createLive(@Body body: Map<String, String>): Call<ApiMessage>
+    fun createLive(@Body body: Map<String, String>): Call<com.socialapp.models.LiveRoomInfo>
+
+    @POST("end_live/{roomId}")
+    fun endLive(@Path("roomId") roomId: String): Call<ApiMessage>
+
+    @POST("live/{roomId}/token")
+    fun getLiveToken(@Path("roomId") roomId: String, @Body body: Map<String, String>): Call<Map<String, String>>
 
     @POST("track")
     fun track(@Body body: Map<String, String>): Call<ApiMessage>

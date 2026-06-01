@@ -122,15 +122,20 @@ class HomeFragment : Fragment() {
     }
 
     private fun loadPosts() {
-        ApiClient.api.getPosts()
-            .enqueue(object : Callback<List<Post>> {
-                override fun onResponse(call: Call<List<Post>>, response: Response<List<Post>>) {
-                    cache.clear()
-                    cache.addAll(response.body().orEmpty())
-                    postAdapter.submitList(cache.toList())
+        ApiClient.api.getPosts(mode = "trending")
+            .enqueue(object : Callback<com.socialapp.models.PostsResponse> {
+                override fun onResponse(call: Call<com.socialapp.models.PostsResponse>, response: Response<com.socialapp.models.PostsResponse>) {
+                    if (response.isSuccessful) {
+                        cache.clear()
+                        val posts = response.body()?.posts ?: emptyList()
+                        cache.addAll(posts)
+                        postAdapter.submitList(cache.toList())
+                    } else {
+                        Toast.makeText(requireContext(), "Error: ${response.code()}", Toast.LENGTH_SHORT).show()
+                    }
                 }
 
-                override fun onFailure(call: Call<List<Post>>, t: Throwable) {
+                override fun onFailure(call: Call<com.socialapp.models.PostsResponse>, t: Throwable) {
                     Toast.makeText(requireContext(), t.message ?: "Load failed", Toast.LENGTH_SHORT).show()
                 }
             })

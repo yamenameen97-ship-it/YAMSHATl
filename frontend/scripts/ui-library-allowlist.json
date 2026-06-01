@@ -115,6 +115,9 @@
         "src/components/mobile/MobilePostCard.jsx",
         "src/components/mobile/MobileTabs.jsx",
         "src/components/mobile/MobileTopBar.jsx",
+        "src/components/feed/FeedLiveStreamWidget.jsx",
+        "src/components/live/EnhancedLiveControls.jsx",
+        "src/components/live/LiveStreamCard.jsx",
         "src/components/notifications/GlobalNotificationListener.jsx"
     ]
 }

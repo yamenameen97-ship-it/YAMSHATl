@@ -173,6 +173,7 @@ export default function Chat() {
   const [callMode, setCallMode] = useState(null);
   const [flyingHearts, setFlyingHearts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showSearchBar, setShowSearchBar] = useState(false);
   const [showDetailsDrawer, setShowDetailsDrawer] = useState(false);
   const [mediaViewerState, setMediaViewerState] = useState({ open: false, index: 0 });
   const initialChatPrefs = useMemo(() => getChatPreferences(), []);
@@ -1471,6 +1472,145 @@ export default function Chat() {
               padding: 4px;
             }
           }
+
+          /* Mobile-first single-panel conversation layout */
+          .yam-conversation-screen {
+            grid-template-columns: minmax(0, 1fr) !important;
+            width: 100%;
+            max-width: 100vw;
+            min-height: 100dvh;
+            background:
+              radial-gradient(circle at top right, rgba(124,58,237,0.18), transparent 22%),
+              radial-gradient(circle at bottom left, rgba(59,130,246,0.1), transparent 22%),
+              #040714;
+          }
+          .yam-chat-sidebar,
+          .yam-side-profile-panel {
+            display: none !important;
+          }
+          .yam-chat-stage {
+            min-height: 100dvh;
+            gap: 10px;
+            padding: 0;
+            grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+          }
+          .yam-stage-top-search {
+            display: none;
+            min-height: 52px;
+            margin: 12px 12px 0;
+            padding: 0 14px;
+            border-radius: 18px;
+          }
+          .yam-stage-top-search.open {
+            display: flex;
+          }
+          .yam-chat-stage-header.mobile-like {
+            position: sticky;
+            top: 0;
+            z-index: 12;
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 12px;
+            padding: calc(10px + env(safe-area-inset-top, 0px)) 14px 12px;
+            border: none;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            border-radius: 0 0 24px 24px;
+            background: linear-gradient(180deg, rgba(6,9,23,0.98), rgba(8,12,26,0.94));
+            box-shadow: 0 18px 42px rgba(0,0,0,0.28);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+          }
+          .yam-stage-back,
+          .yam-stage-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 999px;
+            border: 1px solid rgba(255,255,255,0.08);
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+          }
+          .yam-stage-back {
+            font-size: 20px;
+            font-weight: 900;
+          }
+          .yam-stage-icon.active {
+            background: linear-gradient(135deg, rgba(124,58,237,0.28), rgba(79,70,229,0.24));
+            border-color: rgba(167,139,250,0.3);
+          }
+          .yam-chat-stage-peer {
+            min-width: 0;
+            gap: 12px;
+          }
+          .yam-chat-stage-peer-copy strong {
+            font-size: 18px;
+          }
+          .yam-chat-stage-peer-copy span {
+            font-size: 12px;
+          }
+          .yam-chat-stage-actions {
+            justify-content: flex-end;
+            gap: 8px;
+            flex-wrap: nowrap;
+          }
+          .yam-chat-details-drawer,
+          .yam-block-banner,
+          .yam-search-summary {
+            margin: 0 12px;
+            border-radius: 18px;
+          }
+          .yam-details-grid {
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+          }
+          .yam-messages-area {
+            margin: 0;
+            border: none;
+            border-radius: 0;
+            box-shadow: none;
+            padding: 18px 14px calc(20px + var(--yam-keyboard-offset, 0px));
+            background:
+              radial-gradient(circle at top right, rgba(124,58,237,0.06), transparent 22%),
+              radial-gradient(circle at bottom left, rgba(59,130,246,0.05), transparent 24%),
+              linear-gradient(180deg, rgba(5,8,18,0.92), rgba(3,6,14,0.98));
+          }
+          .yam-chat-input-wrap {
+            position: sticky;
+            bottom: 0;
+            z-index: 11;
+            margin: 0;
+            padding: 0 12px calc(12px + env(safe-area-inset-bottom, 0px));
+            border: none;
+            border-radius: 28px 28px 0 0;
+            background: linear-gradient(180deg, rgba(4,7,18,0), rgba(4,7,18,0.96) 32%, rgba(4,7,18,0.99));
+          }
+          .yam-message-stack {
+            max-width: min(82%, 720px);
+          }
+          .yam-scroll-jump {
+            bottom: 110px;
+          }
+          @media (max-width: 720px) {
+            .yam-chat-stage-header.mobile-like {
+              padding-inline: 10px;
+              gap: 10px;
+            }
+            .yam-stage-top-search,
+            .yam-chat-details-drawer,
+            .yam-block-banner,
+            .yam-search-summary {
+              margin-inline: 10px;
+            }
+            .yam-chat-input-wrap {
+              padding: 0 10px calc(10px + env(safe-area-inset-bottom, 0px));
+            }
+            .yam-message-stack {
+              max-width: 92%;
+            }
+          }
         `}</style>
 
         <aside className="yam-chat-sidebar">
@@ -1532,7 +1672,7 @@ export default function Chat() {
         </aside>
 
         <main className="yam-chat-stage">
-          <div className="yam-stage-top-search">
+          <div className={`yam-stage-top-search ${showSearchBar ? 'open' : ''}`}>
             <span>⌕</span>
             <input
               ref={searchInputRef}
@@ -1541,13 +1681,36 @@ export default function Chat() {
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
             />
-            {searchQuery ? <button type="button" className="yam-clear-search" onClick={() => setSearchQuery('')}>×</button> : null}
+            {searchQuery ? (
+              <button
+                type="button"
+                className="yam-clear-search"
+                onClick={() => {
+                  setSearchQuery('');
+                  searchInputRef.current?.focus();
+                }}
+              >
+                ×
+              </button>
+            ) : null}
           </div>
 
-          <header className="yam-chat-stage-header">
+          <header className="yam-chat-stage-header mobile-like">
+            <button
+              type="button"
+              className="yam-stage-back"
+              aria-label="الرجوع للمحادثات"
+              onClick={() => {
+                if (window.history.length > 1) navigate(-1);
+                else navigate('/inbox');
+              }}
+            >
+              ←
+            </button>
+
             <div className="yam-chat-stage-peer">
               <div className="yam-avatar-wrap">
-                <Avatar name={peer} src={peerDetails.avatar} size={56} ring showStatus status={isOnline ? 'online' : 'offline'} />
+                <Avatar name={peer} src={peerDetails.avatar} size={52} ring showStatus status={isOnline ? 'online' : 'offline'} />
               </div>
               <div className="yam-chat-stage-peer-copy">
                 <strong>{peer}</strong>
@@ -1556,10 +1719,20 @@ export default function Chat() {
             </div>
 
             <div className="yam-chat-stage-actions">
-              <button type="button" className="yam-stage-icon" onClick={() => setCallMode('voice')}>📞</button>
-              <button type="button" className="yam-stage-icon" onClick={() => setCallMode('video')}>🎥</button>
-              <button type="button" className="yam-stage-icon" onClick={() => searchInputRef.current?.focus()}>⌕</button>
-              <button type="button" className="yam-stage-icon" onClick={() => setShowDetailsDrawer((prev) => !prev)}>⋮</button>
+              <button type="button" className="yam-stage-icon" onClick={() => setCallMode('voice')} aria-label="اتصال صوتي">📞</button>
+              <button type="button" className="yam-stage-icon" onClick={() => setCallMode('video')} aria-label="اتصال فيديو">🎥</button>
+              <button
+                type="button"
+                className={`yam-stage-icon ${showSearchBar ? 'active' : ''}`}
+                aria-label="بحث"
+                onClick={() => {
+                  setShowSearchBar((prev) => !prev);
+                  window.requestAnimationFrame(() => searchInputRef.current?.focus());
+                }}
+              >
+                ⌕
+              </button>
+              <button type="button" className={`yam-stage-icon ${showDetailsDrawer ? 'active' : ''}`} aria-label="المزيد" onClick={() => setShowDetailsDrawer((prev) => !prev)}>⋮</button>
             </div>
           </header>
 

@@ -1409,6 +1409,10 @@ export default function Chat() {
             font-size: 15px;
             word-break: break-word;
           }
+          /* ============ Mobile Header (visible only on mobile) ============ */
+          .yam-mobile-topbar {
+            display: none;
+          }
           @media (max-width: 1280px) {
             .yam-conversation-screen {
               grid-template-columns: 290px minmax(0, 1fr);
@@ -1420,48 +1424,140 @@ export default function Chat() {
           @media (max-width: 980px) {
             .yam-conversation-screen {
               grid-template-columns: minmax(0, 1fr);
+              background: #040714;
+              height: 100dvh;
+              max-height: 100dvh;
             }
             .yam-chat-sidebar {
               display: none;
             }
+            /* show mobile topbar */
+            .yam-mobile-topbar {
+              display: flex;
+              align-items: center;
+              gap: 10px;
+              padding: 10px 14px;
+              padding-top: calc(10px + env(safe-area-inset-top, 0px));
+              background: linear-gradient(180deg, rgba(7,10,24,0.98), rgba(5,8,18,0.96));
+              border-bottom: 1px solid rgba(255,255,255,0.06);
+              position: sticky;
+              top: 0;
+              z-index: 20;
+            }
+            .yam-mobile-back-btn {
+              width: 38px;
+              height: 38px;
+              border-radius: 12px;
+              border: none;
+              background: transparent;
+              color: #a78bfa;
+              font-size: 22px;
+              display: grid;
+              place-items: center;
+              cursor: pointer;
+              flex-shrink: 0;
+            }
+            .yam-mobile-peer-info {
+              display: flex;
+              align-items: center;
+              gap: 10px;
+              flex: 1;
+              min-width: 0;
+            }
+            .yam-mobile-peer-copy {
+              min-width: 0;
+              display: grid;
+              gap: 2px;
+            }
+            .yam-mobile-peer-copy strong {
+              font-size: 15px;
+              font-weight: 800;
+              color: #fff;
+              white-space: nowrap;
+              overflow: hidden;
+              text-overflow: ellipsis;
+            }
+            .yam-mobile-peer-copy span {
+              font-size: 11px;
+              color: #94a3b8;
+              white-space: nowrap;
+              overflow: hidden;
+              text-overflow: ellipsis;
+            }
+            .yam-mobile-peer-copy span.online {
+              color: #4ade80;
+            }
+            .yam-mobile-actions {
+              display: flex;
+              align-items: center;
+              gap: 4px;
+              flex-shrink: 0;
+            }
+            .yam-mobile-action-btn {
+              width: 38px;
+              height: 38px;
+              border-radius: 12px;
+              border: none;
+              background: transparent;
+              color: #a78bfa;
+              font-size: 18px;
+              display: grid;
+              place-items: center;
+              cursor: pointer;
+            }
+            .yam-mobile-action-btn:hover {
+              background: rgba(124,58,237,0.12);
+            }
+            /* hide desktop header & top search on mobile */
+            .yam-stage-top-search,
+            .yam-chat-stage-header {
+              display: none !important;
+            }
             .yam-chat-stage {
-              padding: 14px;
+              padding: 0;
+              gap: 0;
+              grid-template-rows: auto auto minmax(0, 1fr) auto;
+              height: 100%;
+              min-height: 0;
+            }
+            .yam-chat-details-drawer {
+              border-radius: 0;
+              border-left: none;
+              border-right: none;
+              border-top: none;
             }
             .yam-details-grid {
               grid-template-columns: repeat(2, minmax(0, 1fr));
             }
-            .yam-chat-stage-header {
-              flex-direction: column;
-              align-items: stretch;
-            }
-            .yam-chat-stage-actions {
-              justify-content: flex-end;
-            }
-            .yam-message-stack {
-              max-width: 88%;
-            }
-          }
-          @media (max-width: 720px) {
-            .yam-chat-stage {
-              gap: 10px;
-            }
-            .yam-stage-top-search,
-            .yam-chat-stage-header,
-            .yam-chat-details-drawer,
             .yam-block-banner,
-            .yam-search-summary,
-            .yam-messages-area,
-            .yam-chat-input-wrap {
-              border-radius: 22px;
+            .yam-search-summary {
+              border-radius: 0;
+              border-left: none;
+              border-right: none;
+              border-top: none;
             }
             .yam-messages-area {
-              padding: 12px 10px calc(18px + env(safe-area-inset-bottom, 0px));
+              border-radius: 0;
+              border: none;
+              padding: 14px 12px calc(14px + var(--yam-keyboard-offset, 0px));
+              background:
+                radial-gradient(circle at top right, rgba(124,58,237,0.05), transparent 30%),
+                radial-gradient(circle at bottom left, rgba(59,130,246,0.04), transparent 30%),
+                #040714;
+            }
+            .yam-chat-input-wrap {
+              border-radius: 0;
+              border-left: none;
+              border-right: none;
+              border-bottom: none;
+              padding: 6px 8px;
+              padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
             }
             .yam-message-stack {
-              max-width: 94%;
+              max-width: 82%;
             }
             .yam-bubble {
-              padding: 10px 12px 8px;
+              padding: 10px 14px 8px;
               border-radius: 20px;
             }
             .yam-bubble-toolbar {
@@ -1469,6 +1565,15 @@ export default function Chat() {
               top: -14px;
               gap: 4px;
               padding: 4px;
+            }
+          }
+          @media (max-width: 480px) {
+            .yam-message-stack {
+              max-width: 86%;
+            }
+            .yam-mobile-topbar {
+              padding: 8px 10px;
+              padding-top: calc(8px + env(safe-area-inset-top, 0px));
             }
           }
         `}</style>
@@ -1532,6 +1637,27 @@ export default function Chat() {
         </aside>
 
         <main className="yam-chat-stage">
+          {/* Mobile-only topbar (matches reference mobile design) */}
+          <div className="yam-mobile-topbar">
+            <button type="button" className="yam-mobile-back-btn" onClick={() => navigate('/inbox')} aria-label="رجوع">←</button>
+            <div className="yam-mobile-peer-info">
+              <div className="yam-avatar-wrap">
+                <Avatar name={peer} src={peerDetails.avatar} size={40} showStatus status={isOnline ? 'online' : 'offline'} />
+              </div>
+              <div className="yam-mobile-peer-copy">
+                <strong>{peer}</strong>
+                <span className={isOnline ? 'online' : ''}>
+                  {isTyping ? 'يكتب الآن...' : formatLastSeen(lastSeen, isOnline)}
+                </span>
+              </div>
+            </div>
+            <div className="yam-mobile-actions">
+              <button type="button" className="yam-mobile-action-btn" onClick={() => setCallMode('voice')} aria-label="اتصال">📞</button>
+              <button type="button" className="yam-mobile-action-btn" onClick={() => setCallMode('video')} aria-label="فيديو">🎥</button>
+              <button type="button" className="yam-mobile-action-btn" onClick={() => setShowDetailsDrawer((prev) => !prev)} aria-label="المزيد">⋮</button>
+            </div>
+          </div>
+
           <div className="yam-stage-top-search">
             <span>⌕</span>
             <input

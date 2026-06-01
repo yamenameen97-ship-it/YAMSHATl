@@ -605,44 +605,88 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
           color: #94a3b8;
           font-size: 11px;
         }
-        @media (max-width: 720px) {
+        @media (max-width: 980px) {
           .yam-composer-shell {
             border-radius: 22px;
-            padding: 10px;
+            padding: 8px;
+            gap: 8px;
+            box-shadow: 0 -6px 18px rgba(0,0,0,0.18);
           }
           .yam-attachments-grid {
             max-height: 156px;
           }
           .yam-composer-row {
-            gap: 8px;
-            flex-wrap: nowrap;
-            align-items: flex-end;
+            gap: 6px;
+            flex-wrap: nowrap !important;
+            align-items: center;
+            min-width: 0;
+            width: 100%;
           }
           .yam-composer-actions {
             width: auto;
             justify-content: flex-end;
             flex-shrink: 0;
+            gap: 4px;
           }
           .yam-input-frame {
             width: auto;
-            flex: 1 1 auto;
+            flex: 1 1 0%;
             min-width: 0;
+            padding: 4px 10px;
+            border-radius: 22px;
+            align-items: center;
+          }
+          .yam-input-frame textarea {
+            min-width: 0;
+            width: 100%;
+            font-size: 14px;
+            line-height: 1.4;
+            min-height: 36px;
+            max-height: 110px;
+            padding: 6px 0;
+            word-break: break-word;
+            overflow-wrap: anywhere;
           }
           .yam-action-btn,
           .yam-emoji-btn,
           .yam-ghost-btn {
+            width: 38px;
+            height: 38px;
+            border-radius: 12px;
+            font-size: 16px;
+          }
+          .yam-send-btn {
+            min-width: 42px;
             width: 42px;
             height: 42px;
             border-radius: 14px;
-          }
-          .yam-send-btn {
-            min-width: 48px;
-            height: 48px;
-            border-radius: 16px;
-            padding: 0 14px;
+            padding: 0;
+            font-size: 16px;
+            flex-shrink: 0;
           }
           .yam-emoji-grid {
             grid-template-columns: repeat(4, minmax(0, 1fr));
+          }
+          .yam-composer-footer {
+            display: none !important;
+          }
+          .yam-composer-top {
+            display: none !important;
+          }
+        }
+        @media (max-width: 480px) {
+          .yam-action-btn,
+          .yam-emoji-btn,
+          .yam-ghost-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 12px;
+          }
+          .yam-composer-actions {
+            gap: 2px;
+          }
+          .yam-input-frame {
+            padding: 4px 8px;
           }
         }
       `}</style>

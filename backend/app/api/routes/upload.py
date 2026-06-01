@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import mimetypes
+import os
+import re
 import shutil
 import uuid
 from pathlib import Path
@@ -28,6 +31,101 @@ ALLOWED_EXTRA_TYPES = {
     'application/pdf',
     'application/octet-stream',
 }
+
+# خريطة صريحة mime → امتداد لضمان حفظ الملفات بامتدادات صحيحة
+# (مهم لأن secure_filename يحذف الأحرف غير ASCII فتضيع الأسماء العربية امتداداتها)
+_MIME_EXTENSION_MAP = {
+    'image/jpeg': '.jpg',
+    'image/jpg': '.jpg',
+    'image/png': '.png',
+    'image/gif': '.gif',
+    'image/webp': '.webp',
+    'image/bmp': '.bmp',
+    'image/svg+xml': '.svg',
+    'image/heic': '.heic',
+    'image/heif': '.heif',
+    'video/mp4': '.mp4',
+    'video/quicktime': '.mov',
+    'video/webm': '.webm',
+    'video/x-matroska': '.mkv',
+    'video/x-msvideo': '.avi',
+    'video/3gpp': '.3gp',
+    'audio/mpeg': '.mp3',
+    'audio/mp3': '.mp3',
+    'audio/mp4': '.m4a',
+    'audio/x-m4a': '.m4a',
+    'audio/aac': '.aac',
+    'audio/wav': '.wav',
+    'audio/x-wav': '.wav',
+    'audio/ogg': '.ogg',
+    'audio/webm': '.webm',
+    'audio/opus': '.opus',
+    'audio/3gpp': '.3gp',
+    'application/pdf': '.pdf',
+}
+
+
+def _base_mime(content_type: str | None) -> str:
+    """جرد معلمات الكودك/charset من mime type (مثل 'audio/webm;codecs=opus' → 'audio/webm')."""
+    return str(content_type or '').split(';')[0].strip().lower()
+
+
+def _extension_from_mime(content_type: str | None) -> str:
+    base = _base_mime(content_type)
+    if not base:
+        return ''
+    if base in _MIME_EXTENSION_MAP:
+        return _MIME_EXTENSION_MAP[base]
+    # الرجوع إلى mimetypes القياسية للبايثون
+    guessed = mimetypes.guess_extension(base, strict=False) or ''
+    # التصحيح الشائع: '.jpe' → '.jpg'
+    if guessed == '.jpe':
+        return '.jpg'
+    return guessed or ''
+
+
+def _split_extension(name: str) -> tuple[str, str]:
+    """استخراج الجذر والامتداد بشكل آمن حتى للأسماء غير ASCII."""
+    stem, dot, ext = str(name or '').rpartition('.')
+    if dot and ext and len(ext) <= 8 and re.fullmatch(r'[A-Za-z0-9]+', ext):
+        return stem, f'.{ext.lower()}'
+    return str(name or ''), ''
+
+
+def _safe_storage_name(original_name: str | None, content_type: str | None) -> str:
+    """بناء اسم تخزين آمن يحافظ دائماً على الامتداد الصحيح.
+
+    werkzeug.secure_filename يحذف الأحرف غير ASCII بالكامل، فإذا كان الاسم
+    "صورة.jpg" فإنه يعيد "jpg" فقط بدون نقطة → الملف يُحفظ بدون امتداد → تكسر!
+    هذا الدالة تتأكد من وجود امتداد صحيح دائماً بناء على mime type.
+    """
+    name = str(original_name or '').strip()
+    _, original_ext = _split_extension(name)
+    mime_ext = _extension_from_mime(content_type)
+
+    safe = secure_filename(name)
+    # إذا أفرغ secure_filename الاسم (أسماء عربية)، أو جعله الامتداد فقط
+    if not safe or safe.startswith('.') or '.' not in safe:
+        safe = f'upload_{uuid.uuid4().hex}'
+
+    safe_stem, safe_ext = _split_extension(safe)
+    # اختر أفضل امتداد متوفر: الباقي من secure → الأصلي → من mime
+    final_ext = safe_ext or original_ext or mime_ext
+    if not final_ext:
+        # افتراضي أخير حسب فئة mime
+        base = _base_mime(content_type)
+        if base.startswith('image/'):
+            final_ext = '.bin'
+        elif base.startswith('video/'):
+            final_ext = '.bin'
+        elif base.startswith('audio/'):
+            final_ext = '.bin'
+        else:
+            final_ext = ''
+
+    # تقصير الجذر لتجنب أسماء طويلة جداً
+    safe_stem = (safe_stem or 'upload')[:80]
+    return f'{safe_stem}{final_ext}'
 
 
 def _file_size(upload: UploadFile) -> int:
@@ -69,8 +167,8 @@ def _session_path(session_id: str) -> Path:
     return CHUNKS_DIR / f'{session_id}.json'
 
 
-def _session_file_path(session_id: str, filename: str) -> Path:
-    safe_name = secure_filename(filename) or f'upload_{session_id}'
+def _session_file_path(session_id: str, filename: str, content_type: str | None = None) -> Path:
+    safe_name = _safe_storage_name(filename, content_type)
     return CHUNKS_DIR / f'{session_id}_{safe_name}'
 
 
@@ -137,7 +235,8 @@ async def process_media_background(file_path: str, _user_id: int):
 
 def save_upload(file: UploadFile) -> dict:
     original_name, size, kind = _validate_upload(file)
-    safe_name = secure_filename(original_name) or f'upload_{uuid.uuid4().hex}'
+    content_type = str(file.content_type or 'application/octet-stream')
+    safe_name = _safe_storage_name(original_name, content_type)
     target_path = UPLOAD_DIR / f'{uuid.uuid4().hex}_{safe_name}'
     file.file.seek(0)
     with open(target_path, 'wb') as buffer:
@@ -145,7 +244,7 @@ def save_upload(file: UploadFile) -> dict:
     payload = _finalize_upload_payload(
         target_path,
         original_name=original_name,
-        content_type=str(file.content_type or 'application/octet-stream'),
+        content_type=content_type,
         size=size,
         kind=kind,
     )
@@ -155,10 +254,11 @@ def save_upload(file: UploadFile) -> dict:
 @router.post('/resumable/init')
 def init_resumable_upload(payload: dict = Body(...), current_user: User = Depends(get_current_user)):
     session_id = str(uuid.uuid4())
-    filename = secure_filename(str(payload.get('filename') or 'upload.bin')) or f'upload_{session_id}'
+    raw_filename = str(payload.get('filename') or 'upload.bin')
+    content_type = str(payload.get('content_type') or 'application/octet-stream')
+    filename = _safe_storage_name(raw_filename, content_type)
     total_size = int(payload.get('total_size') or 0)
     total_chunks = int(payload.get('total_chunks') or 0)
-    content_type = str(payload.get('content_type') or 'application/octet-stream')
     if total_size <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='total_size is required')
     if total_size > MAX_FILE_SIZE_BYTES:
@@ -205,7 +305,7 @@ async def upload_chunk(file_id: str, request: Request, background_tasks: Backgro
         except Exception:
             start_offset = int(meta.get('uploaded_size') or 0)
 
-    file_path = _session_file_path(file_id, meta['filename'])
+    file_path = _session_file_path(file_id, meta['filename'], meta.get('content_type'))
     with open(file_path, 'r+b' if file_path.exists() else 'wb') as buffer:
         buffer.seek(int(start_offset))
         buffer.write(chunk_data)
@@ -255,7 +355,7 @@ async def upload_resumable_chunk(session_id: str, chunk_index: int, request: Req
     if not chunk_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Chunk body is empty')
 
-    file_path = _session_file_path(session_id, meta['filename'])
+    file_path = _session_file_path(session_id, meta['filename'], meta.get('content_type'))
     declared_chunk_size = max(int(meta.get('chunk_size') or 0), 0)
     chunk_size = len(chunk_data)
 
@@ -296,11 +396,12 @@ async def complete_resumable_upload(session_id: str, background_tasks: Backgroun
     if int(meta.get('user_id') or 0) != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Upload session does not belong to this user')
 
-    temp_path = _session_file_path(session_id, meta['filename'])
+    temp_path = _session_file_path(session_id, meta['filename'], meta.get('content_type'))
     if not temp_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Upload file not found')
 
-    final_name = f'{uuid.uuid4().hex}_{secure_filename(meta["filename"]) or "upload.bin"}'
+    safe_basename = _safe_storage_name(meta['filename'], meta.get('content_type'))
+    final_name = f'{uuid.uuid4().hex}_{safe_basename}'
     final_path = UPLOAD_DIR / final_name
     shutil.move(str(temp_path), str(final_path))
     meta['status'] = 'completed'

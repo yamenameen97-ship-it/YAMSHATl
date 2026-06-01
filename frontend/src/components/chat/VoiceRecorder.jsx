@@ -2,11 +2,28 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import AudioWaveform from './AudioWaveform.jsx';
 import VoiceMessagePlayer from '../ui/VoiceMessagePlayer.jsx';
 
-const CODEC_PRIORITY = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/webm'];
+const CODEC_PRIORITY = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/webm', 'audio/ogg', 'audio/mp4', 'audio/mpeg'];
 
 function pickSupportedMimeType() {
   if (typeof MediaRecorder === 'undefined') return '';
   return CODEC_PRIORITY.find((codec) => MediaRecorder.isTypeSupported?.(codec)) || '';
+}
+
+/**
+ * جرد معلمات الكودك من mime type (مثل "audio/webm;codecs=opus" → "audio/webm").
+ * مهم لأن بعض السيرفرات / قوائم التحقق ترفض الصيغة الكاملة.
+ */
+function normalizeMime(rawType = '') {
+  return String(rawType || '').split(';')[0].trim().toLowerCase();
+}
+
+function extensionForMime(mime = '') {
+  const base = normalizeMime(mime);
+  if (base.includes('ogg')) return 'ogg';
+  if (base.includes('mpeg')) return 'mp3';
+  if (base.includes('mp4') || base.includes('m4a') || base.includes('aac')) return 'm4a';
+  if (base.includes('wav')) return 'wav';
+  return 'webm';
 }
 
 function formatTime(seconds = 0) {
@@ -148,8 +165,12 @@ export default function VoiceRecorder({ onSend, onCancel, onStateChange }) {
 
   const handleSend = () => {
     if (!previewBlob) return;
-    const file = new File([previewBlob], `voice-note-${Date.now()}.${mimeType.includes('ogg') ? 'ogg' : 'webm'}`, {
-      type: mimeType || previewBlob.type || 'audio/webm',
+    // تطبيع mime type: إزالة معلمة codecs لأن السيرفر وبعض الأنظمة ترفض "audio/webm;codecs=opus"
+    const rawType = mimeType || previewBlob.type || 'audio/webm';
+    const cleanType = normalizeMime(rawType) || 'audio/webm';
+    const ext = extensionForMime(cleanType);
+    const file = new File([previewBlob], `voice-note-${Date.now()}.${ext}`, {
+      type: cleanType,
       lastModified: Date.now(),
     });
 
@@ -157,7 +178,7 @@ export default function VoiceRecorder({ onSend, onCancel, onStateChange }) {
       blob: previewBlob,
       file,
       durationSeconds: durationRef.current,
-      mimeType: file.type,
+      mimeType: cleanType,
       waveformSeed: waveSeed,
     });
 

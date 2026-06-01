@@ -29,16 +29,24 @@ const stagePercent = {
   done: 100,
 };
 
+/**
+ * إرجاع mime type أساسي بدون معلمات (مثل codecs).
+ * مثال: "audio/webm;codecs=opus" → "audio/webm"
+ */
+function baseMime(type = '') {
+  return String(type || '').split(';')[0].trim().toLowerCase();
+}
+
 function isImage(file) {
-  return Boolean(file?.type?.startsWith('image/'));
+  return baseMime(file?.type).startsWith('image/');
 }
 
 function isVideo(file) {
-  return Boolean(file?.type?.startsWith('video/'));
+  return baseMime(file?.type).startsWith('video/');
 }
 
 function isAudio(file) {
-  return Boolean(file?.type?.startsWith('audio/'));
+  return baseMime(file?.type).startsWith('audio/');
 }
 
 function extensionFor(type = '') {
@@ -172,8 +180,15 @@ function validateFile(file) {
   if (!file) {
     throw new Error('الملف غير صالح.');
   }
-  if (FILE_RULES.allowedMimeTypes.length && !FILE_RULES.allowedMimeTypes.includes(file.type)) {
-    throw new Error(`نوع الملف ${file.type || 'غير معروف'} غير مسموح.`);
+  if (FILE_RULES.allowedMimeTypes.length) {
+    const fileType = baseMime(file.type);
+    const allowedBase = FILE_RULES.allowedMimeTypes.map(baseMime);
+    const isAllowed = allowedBase.includes(fileType)
+      // سماح تلقائي لأي صوت مسجل إذا كانت الفئة audio/* مدرجة
+      || (fileType.startsWith('audio/') && allowedBase.some((item) => item === 'audio/*' || item.startsWith('audio/')));
+    if (!isAllowed) {
+      throw new Error(`نوع الملف ${file.type || 'غير معروف'} غير مسموح.`);
+    }
   }
   if (file.size > FILE_RULES.maxFileSizeBytes) {
     throw new Error(`حجم الملف أكبر من الحد المسموح (${Math.round(FILE_RULES.maxFileSizeBytes / (1024 * 1024))}MB).`);
@@ -555,10 +570,17 @@ class MediaUploadService {
   }
 
   async uploadVoiceNote(blob, options = {}) {
-    const fileName = options?.fileName || `voice-note-${Date.now()}.ogg`;
+    // تطبيع: إزالة معلمات الكودك من mime type وتوليد اسم ملف بامتداد مناسب
+    const rawType = baseMime(blob?.type) || 'audio/webm';
+    const extByType = rawType.includes('ogg') ? 'ogg'
+      : rawType.includes('mpeg') ? 'mp3'
+      : rawType.includes('mp4') || rawType.includes('m4a') ? 'm4a'
+      : rawType.includes('wav') ? 'wav'
+      : 'webm';
+    const fileName = options?.fileName || `voice-note-${Date.now()}.${extByType}`;
     const file = blob instanceof File
-      ? blob
-      : new File([blob], fileName, { type: blob?.type || 'audio/ogg' });
+      ? new File([blob], blob.name || fileName, { type: rawType, lastModified: blob.lastModified || Date.now() })
+      : new File([blob], fileName, { type: rawType });
 
     return this.uploadFile(file, {
       ...options,

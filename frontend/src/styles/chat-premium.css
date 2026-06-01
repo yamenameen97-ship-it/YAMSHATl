@@ -578,6 +578,142 @@
 }
 .yam-voice-player .waveform .bar.played { opacity: 1; }
 
+/* ============================================================ */
+/* Voice Pill — نمط واتساب (بدون صندوق فقاعة)         */
+/* ============================================================ */
+
+/* إزالة الخلفية والحدود عن فقاعة الرسالة الصوتية الخالصة */
+.yam-bubble.is-voice-only {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+.yam-bubble.is-voice-only .bubble-meta {
+  padding: 2px 8px 0;
+  justify-content: flex-end;
+}
+.yam-bubble.is-voice-only .yam-bubble-more {
+  inset-inline-end: -4px;
+  top: -4px;
+  background: rgba(0,0,0,0.32);
+  color: #fff;
+}
+
+/* الحاوي الرئيسي للرسالة الصوتية بنمط واتساب */
+.yam-voice-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 22px;
+  min-width: 200px;
+  max-width: 320px;
+  width: 100%;
+  background: var(--chat-bubble-bg-them, rgba(255,255,255,0.06));
+  border: 1px solid var(--chat-bubble-border, rgba(255,255,255,0.08));
+  box-shadow: var(--chat-shadow-them, 0 1px 2px rgba(0,0,0,0.06));
+  color: var(--chat-bubble-text-them, #e4e9f2);
+  transition: background var(--ds-dur-fast, 160ms) ease,
+              box-shadow var(--ds-dur-fast, 160ms) ease;
+  direction: ltr;
+}
+.yam-voice-pill.me {
+  background: var(--chat-bubble-bg-me, linear-gradient(135deg, #8b5cf6, #4f46e5));
+  border-color: transparent;
+  color: var(--chat-bubble-text-me, #ffffff);
+  box-shadow: var(--chat-shadow-me, 0 8px 18px rgba(79,70,229,0.22));
+}
+.yam-voice-pill.playing {
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.35), var(--chat-shadow-me, 0 8px 18px rgba(79,70,229,0.22));
+}
+
+.yam-voice-pill__play {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 0;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  background: rgba(255,255,255,0.94);
+  color: #4f46e5;
+  transition: transform 120ms ease, background 160ms ease;
+}
+.yam-voice-pill.me .yam-voice-pill__play {
+  background: rgba(255,255,255,0.96);
+  color: #6d28d9;
+}
+.yam-voice-pill.them .yam-voice-pill__play {
+  background: linear-gradient(135deg, #8b5cf6, #4f46e5);
+  color: #fff;
+}
+.yam-voice-pill__play:hover { transform: scale(1.06); }
+.yam-voice-pill__play:active { transform: scale(0.94); }
+.yam-voice-pill__play:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.yam-voice-pill__wave {
+  flex: 1 1 auto;
+  min-width: 80px;
+  height: 32px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  opacity: 0.85;
+}
+.yam-voice-pill__wave:hover { opacity: 1; }
+.yam-voice-pill.me .yam-voice-pill__wave { color: rgba(255,255,255,0.85); }
+
+.yam-voice-pill__meta {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.yam-voice-pill__time {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.78;
+  min-width: 32px;
+  text-align: center;
+}
+.yam-voice-pill__rate {
+  border: 0;
+  background: rgba(255,255,255,0.18);
+  color: inherit;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1.4;
+  transition: background 160ms ease;
+}
+.yam-voice-pill.me .yam-voice-pill__rate {
+  background: rgba(255,255,255,0.24);
+}
+.yam-voice-pill__rate:hover { background: rgba(255,255,255,0.32); }
+
+/* على الجوال: أصغر وأحكم */
+@media (max-width: 480px) {
+  .yam-voice-pill {
+    min-width: 180px;
+    max-width: 260px;
+    padding: 6px 10px;
+    gap: 8px;
+  }
+  .yam-voice-pill__play { width: 32px; height: 32px; }
+  .yam-voice-pill__wave { height: 28px; min-width: 70px; }
+}
+
 /* ---------- 19) Media Viewer Modal Transitions ---------- */
 .yam-media-viewer-overlay,
 [data-ds='media-viewer'] {

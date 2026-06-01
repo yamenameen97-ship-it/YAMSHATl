@@ -108,10 +108,13 @@ function MessageBubble({
     onOpenMedia?.(message);
   };
 
+  // الرسائل الصوتية الخالصة (بدون نص مرافق ولا رد) تُعرض كـ pill بدون صندوق الفقاعة (نمط واتساب)
+  const isVoiceOnly = isVoice && !content && !replyTarget && !message?.deleted;
+
   return (
     <motion.div
       ref={(node) => registerMessageNode?.(String(messageId), node)}
-      className={`yam-message-row ${isMe ? 'me' : 'them'} ${groupedWithPrev ? 'grouped-prev' : ''} ${groupedWithNext ? 'grouped-next' : ''}`}
+      className={`yam-message-row ${isMe ? 'me' : 'them'} ${groupedWithPrev ? 'grouped-prev' : ''} ${groupedWithNext ? 'grouped-next' : ''} ${isVoiceOnly ? 'voice-only' : ''}`}
       data-msg-id={messageId}
       layout={!reduceMotion}
       onMouseEnter={() => setShowToolbar(true)}
@@ -132,7 +135,7 @@ function MessageBubble({
 
       <div className="yam-message-stack">
         <motion.div
-          className={`yam-bubble ${isMe ? 'bubble-me' : 'bubble-them'} ${shouldGlow ? 'search-hit' : ''} ${showToolbar ? 'toolbar-open' : ''}`}
+          className={`yam-bubble ${isMe ? 'bubble-me' : 'bubble-them'} ${shouldGlow ? 'search-hit' : ''} ${showToolbar ? 'toolbar-open' : ''} ${isVoiceOnly ? 'is-voice-only' : ''}`}
           layout={!reduceMotion}
         >
           <button
@@ -197,7 +200,13 @@ function MessageBubble({
           ) : null}
 
           {isVoice && message?.media_url ? (
-            <VoiceMessagePlayer src={message.media_url} seed={message?.waveform_seed || message?.created_at || messageId} title="رسالة صوتية" compact />
+            <VoiceMessagePlayer
+              src={message.media_url}
+              seed={message?.waveform_seed || message?.created_at || messageId}
+              title="رسالة صوتية"
+              bubbleless
+              isMe={isMe}
+            />
           ) : null}
 
           {isFile && message?.media_url ? (

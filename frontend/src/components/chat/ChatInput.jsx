@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import VoiceRecorder from './VoiceRecorder.jsx';
+import VoiceMessagePlayer from '../ui/VoiceMessagePlayer.jsx';
 import socketManager from '../../services/socketManager.js';
 import mediaUploadService from '../../services/media/mediaUploadService.js';
 import signalProtocolService from '../../services/chat/signalProtocol.js';
@@ -735,8 +736,10 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
 
               {entry.previewUrl && entry.kind === 'image' ? <img src={entry.previewUrl} alt={entry.file.name} className="yam-attachment-preview" /> : null}
               {entry.previewUrl && entry.kind === 'video' ? <video src={entry.previewUrl} className="yam-attachment-preview" muted /> : null}
-              {entry.kind === 'audio' && entry.previewUrl ? <audio src={entry.previewUrl} controls style={{ width: '100%' }} /> : null}
-              {!entry.previewUrl ? <div className="yam-attachment-preview" style={{ display: 'grid', placeItems: 'center', fontSize: 30 }}>📄</div> : null}
+              {entry.kind === 'audio' && entry.previewUrl ? (
+                <VoiceMessagePlayer src={entry.previewUrl} seed={entry.id} bubbleless title="معاينة صوت" />
+              ) : null}
+              {entry.kind !== 'image' && entry.kind !== 'video' && entry.kind !== 'audio' ? <div className="yam-attachment-preview" style={{ display: 'grid', placeItems: 'center', fontSize: 30 }}>📄</div> : null}
 
               <div className="yam-attachment-meta">
                 <span style={{ fontSize: 12, color: '#dbe4ff' }}>{entry.progress}%</span>

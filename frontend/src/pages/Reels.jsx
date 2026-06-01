@@ -6,7 +6,7 @@ import Modal from '../components/ui/Modal.jsx';
 import VideoUploader from '../components/upload/VideoUploader.jsx';
 import NestedComments from '../components/feed/NestedComments.jsx';
 import { useToast } from '../components/admin/ToastProvider.jsx';
-import { addComment, getComments, likePost, savePost, sharePost } from '../api/posts.js';
+import { addComment, getComments, getPosts } from '../api/posts.js';
 import API from '../api/axios.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
 import { getCurrentUsername } from '../utils/auth.js';
@@ -419,7 +419,23 @@ export default function ReelsPage() {
       try {
         ({ data } = await API.get('/reels/feed', { params: { limit: 40, offset: 0 } }));
       } catch {
-        ({ data } = await API.get('/reels', { params: { limit: 40, offset: 0 } }));
+        try {
+          ({ data } = await API.get('/reels', { params: { limit: 40, offset: 0 } }));
+        } catch {
+          const postsResponse = await getPosts({ page: 1, limit: 40 });
+          const fallbackItems = Array.isArray(postsResponse?.data)
+            ? postsResponse.data
+                .filter((post) => isVideoUrl(post?.media_url || post?.image_url || ''))
+                .map((post) => ({
+                  ...post,
+                  video_url: post.media_url || post.image_url || '',
+                  media_url: post.media_url || post.image_url || '',
+                  thumbnail_url: post.image_url || post.media_url || '',
+                  image_url: post.image_url || post.media_url || '',
+                }))
+            : [];
+          data = { items: fallbackItems, reels: fallbackItems };
+        }
       }
       const source = Array.isArray(data) ? data : data?.items || data?.reels || [];
       const onlyVideos = source
@@ -552,6 +568,7 @@ export default function ReelsPage() {
             thumbnail_url: current.poster_url,
             quality: activeSessionRef.current?.quality,
           });
+          API.post(`/reels/${encodeURIComponent(current.id)}/view`).catch(() => {});
         }, 2000);
         viewTimersRef.current.set(currentKey, timer);
         return () => clearTimeout(timer);
@@ -730,7 +747,7 @@ export default function ReelsPage() {
     } : item));
 
     try {
-      await likePost(reel.id);
+      await API.post(`/reels/${encodeURIComponent(reel.id)}/like`);
     } catch {
       setReels(originalReels);
       pushToast({ type: 'error', title: 'تعذر تحديث الإعجاب' });
@@ -741,7 +758,7 @@ export default function ReelsPage() {
     const originalReels = [...reels];
     setReels((prev) => prev.map((item) => item.id === reel.id ? { ...item, is_saved: !item.is_saved } : item));
     try {
-      await savePost(reel.id);
+      await API.post(`/reels/${encodeURIComponent(reel.id)}/save`);
     } catch {
       setReels(originalReels);
       pushToast({ type: 'error', title: 'تعذر حفظ الريل' });
@@ -752,7 +769,6 @@ export default function ReelsPage() {
     try {
       await navigator.clipboard.writeText(`${window.location.origin}/reels?reel=${encodeURIComponent(reel.id)}`);
       pushToast({ type: 'success', title: 'تم نسخ رابط الريل' });
-      await sharePost(reel.id, 'copy');
     } catch {
       pushToast({ type: 'warning', title: 'تعذر نسخ الرابط' });
     }
@@ -832,6 +848,7 @@ export default function ReelsPage() {
         caption,
         media_url: uploadState.mediaUrl,
         video_url: uploadState.mediaUrl,
+        thumbnail_url: uploadState.thumbnailUrl || undefined,
       });
     } catch (error) {
       try {

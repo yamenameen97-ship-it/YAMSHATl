@@ -49,7 +49,6 @@ export function useReels(initialReels = []) {
         try {
           const link = document.createElement('link');
           link.rel = 'prefetch';
-          link.as = 'video';
           link.href = url;
           // priority hint: الأقرب الأعلى أولوية
           if (i === 0) link.setAttribute('fetchpriority', 'high');

@@ -51,7 +51,7 @@ function normalizeFeedParams(params = {}) {
     ...rest
   } = params;
 
-  const resolvedLimit = Math.max(Number(limit) || 10, 1);
+  const resolvedLimit = Math.min(Math.max(Number(limit) || 10, 1), 100);
   const normalized = {
     ...rest,
     limit: resolvedLimit,

@@ -129,8 +129,7 @@ export function preloadPoster(url = '') {
 export function primeVideo(url = '') {
   if (!canUseWindow() || !url) return null;
   const link = document.createElement('link');
-  link.rel = 'preload';
-  link.as = 'video';
+  link.rel = 'prefetch';
   link.href = url;
   link.crossOrigin = 'anonymous';
   document.head.appendChild(link);

@@ -6,6 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_token_payload, get_current_user, get_db
+from app.db.bootstrap import initialize_database
 from app.models.audit_log import AuditLog
 from app.models.close_friend import CloseFriend
 from app.models.follow import Follow
@@ -139,6 +140,113 @@ def _user_payload(db: Session, user: User, following: bool | None = None) -> dic
 
 def _session_label(record: UserSession) -> str:
     return str(record.device_label or 'Unknown browser').strip()[:120] or 'Unknown browser'
+
+
+def _repair_user_schema(db: Session) -> None:
+    try:
+        db.rollback()
+    except Exception:
+        pass
+    try:
+        initialize_database(db.get_bind(), force=True)
+    except Exception:
+        pass
+
+
+def _basic_user_payload(user: User, following: bool | None = None) -> dict:
+    payload = {
+        'id': user.id,
+        'name': user.username,
+        'username': user.username,
+        'email': user.email,
+        'avatar': user.avatar,
+        'role': user.role,
+        'is_active': bool(user.is_active),
+        'followers_count': int(user.followers_count or 0),
+        'following_count': int(user.following_count or 0),
+        'created_at': user.created_at.isoformat() if user.created_at else None,
+        'last_login_at': user.last_login_at.isoformat() if user.last_login_at else None,
+        'profile': {
+            'bio': '',
+            'cover_photo': None,
+            'badges': [],
+            'is_verified': False,
+            'verification_badge': None,
+            'profile_theme': 'midnight',
+            'privacy_level': 'public',
+            'activity_tagline': '',
+            'achievements': [],
+            'completion': 40,
+        },
+        'wallet': {
+            'coin_balance': 0,
+            'total_earned': 0,
+            'total_spent': 0,
+        },
+    }
+    if following is not None:
+        payload['following'] = following
+    return payload
+
+
+def _safe_relationship_flags(db: Session, viewer: User, target: User) -> dict:
+    try:
+        return _relationship_flags(db, viewer, target)
+    except Exception:
+        return {
+            'following': False,
+            'blocked': False,
+            'muted': False,
+            'close_friend': False,
+        }
+
+
+def _basic_profile_bundle(db: Session, target: User, viewer: User) -> dict:
+    relationship = _safe_relationship_flags(db, viewer, target)
+    try:
+        posts = get_posts_by_username(db, target.username, current_user=viewer)
+    except Exception:
+        posts = []
+    base_user = _basic_user_payload(target, following=relationship['following'])
+    return {
+        'user': base_user,
+        'counts': {
+            'posts': len(posts),
+            'followers': int(target.followers_count or 0),
+            'following': int(target.following_count or 0),
+        },
+        'posts': posts,
+        'saved_posts': [],
+        'liked_posts': [],
+        'relationship': relationship,
+        'privacy': {
+            'level': 'public',
+            'show_saved_posts': viewer.id == target.id,
+            'show_liked_posts': viewer.id == target.id,
+            'show_activity_timeline': False,
+        },
+        'followers_analytics': {
+            'growth_hint': 'متاح بعد اكتمال مزامنة البيانات',
+            'engaged_followers': 0,
+            'close_friends_count': 0,
+        },
+        'profile_insights': {
+            'profile_completion': base_user['profile']['completion'],
+            'theme': base_user['profile']['profile_theme'],
+            'verification_badge': base_user['profile']['verification_badge'],
+            'badges_count': 0,
+        },
+        'creator_dashboard': {
+            'engagement_rate': 0,
+            'best_next_step': 'حدث الملف الشخصي ثم انشر محتوى جديد بانتظام',
+            'wallet': base_user['wallet'],
+        },
+        'activity_timeline': [],
+        'achievements': [],
+        'block_list': [],
+        'muted_users': [],
+        'close_friends': [],
+    }
 
 
 def _serialize_post_card(db: Session, post: Post, current_user: User | None = None) -> dict:
@@ -317,10 +425,38 @@ def _profile_bundle(db: Session, target: User, viewer: User) -> dict:
 
 
 @router.get('')
-def list_users(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    users = db.query(User).filter(User.is_active.is_(True)).order_by(User.created_at.desc()).all()
-    following_ids = {follow.following_id for follow in db.query(Follow).filter(Follow.follower_id == current_user.id).all()}
-    return [_user_payload(db, user, following=user.id in following_ids) for user in users]
+def list_users(
+    limit: int = Query(default=80, ge=1, le=100),
+    page: int = Query(default=1, ge=1),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    offset = (page - 1) * limit
+
+    def _load_users():
+        return db.query(User).filter(User.is_active.is_(True)).order_by(User.created_at.desc()).offset(offset).limit(limit).all()
+
+    def _load_following_ids():
+        return {follow.following_id for follow in db.query(Follow).filter(Follow.follower_id == current_user.id).all()}
+
+    try:
+        users = _load_users()
+        following_ids = _load_following_ids()
+        return [_user_payload(db, user, following=user.id in following_ids) for user in users]
+    except Exception:
+        _repair_user_schema(db)
+
+    try:
+        users = _load_users()
+        following_ids = _load_following_ids()
+        return [_user_payload(db, user, following=user.id in following_ids) for user in users]
+    except Exception:
+        users = _load_users()
+        try:
+            following_ids = _load_following_ids()
+        except Exception:
+            following_ids = set()
+        return [_basic_user_payload(user, following=user.id in following_ids) for user in users]
 
 
 @router.get('/me')
@@ -333,7 +469,19 @@ def get_profile_bundle(username: str, db: Session = Depends(get_db), current_use
     target = _find_active_user_by_username(db, username)
     if target is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
-    return _profile_bundle(db, target, current_user)
+
+    try:
+        return _profile_bundle(db, target, current_user)
+    except Exception:
+        _repair_user_schema(db)
+        target = _find_active_user_by_username(db, username)
+        if target is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
+
+    try:
+        return _profile_bundle(db, target, current_user)
+    except Exception:
+        return _basic_profile_bundle(db, target, current_user)
 
 
 @router.get('/sessions')

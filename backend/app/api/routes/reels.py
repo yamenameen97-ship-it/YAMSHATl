@@ -9,10 +9,40 @@ from sqlalchemy.orm import Session
 from app.api.routes.upload import save_upload
 from app.core.dependencies import get_current_user, get_db
 from app.core.media_urls import normalize_media_url
+from app.db.bootstrap import initialize_database
 from app.models.stories_reels import Reel, ReelLike, ReelView, SavedReel
 from app.models.user import User
 
 router = APIRouter()
+
+
+def _repair_reels_schema(db: Session) -> None:
+    try:
+        db.rollback()
+    except Exception:
+        pass
+    try:
+        initialize_database(db.get_bind(), force=True)
+    except Exception:
+        pass
+
+
+def _build_reels_response(items: list[dict], *, limit: int, offset: int) -> dict:
+    return {
+        'items': items,
+        'reels': items,
+        'total': len(items),
+        'offset': offset,
+        'limit': limit,
+    }
+
+
+def _load_reels_items(db: Session, current_user: User, *, limit: int, offset: int, category: str) -> list[dict]:
+    query = db.query(Reel).filter(Reel.is_deleted.is_(False))
+    if str(category or 'all').strip().lower() != 'all':
+        query = query.filter(Reel.category == str(category).strip())
+    reels = query.order_by(desc(Reel.created_at), Reel.id.desc()).offset(offset).limit(limit).all()
+    return [_serialize_reel(db, reel, current_user=current_user) for reel in reels]
 
 
 def _serialize_reel(db: Session, reel: Reel, current_user: User | None = None) -> dict:
@@ -83,18 +113,15 @@ def get_reels(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    query = db.query(Reel).filter(Reel.is_deleted.is_(False))
-    if str(category or 'all').strip().lower() != 'all':
-        query = query.filter(Reel.category == str(category).strip())
-    reels = query.order_by(desc(Reel.created_at), Reel.id.desc()).offset(offset).limit(limit).all()
-    items = [_serialize_reel(db, reel, current_user=current_user) for reel in reels]
-    return {
-        'items': items,
-        'reels': items,
-        'total': len(items),
-        'offset': offset,
-        'limit': limit,
-    }
+    try:
+        items = _load_reels_items(db, current_user, limit=limit, offset=offset, category=category)
+    except Exception:
+        _repair_reels_schema(db)
+        try:
+            items = _load_reels_items(db, current_user, limit=limit, offset=offset, category=category)
+        except Exception:
+            items = []
+    return _build_reels_response(items, limit=limit, offset=offset)
 
 
 @router.get('/reels/feed')
@@ -141,19 +168,29 @@ async def create_reel(request: Request, db: Session = Depends(get_db), current_u
     if not video_url:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='video file or media_url is required')
 
-    reel = Reel(
-        user_id=current_user.id,
-        video_url=video_url,
-        thumbnail_url=thumbnail_url or None,
-        caption=caption or None,
-        category=category,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
-    )
-    db.add(reel)
-    db.commit()
-    db.refresh(reel)
-    return _serialize_reel(db, reel, current_user=current_user)
+    def _persist_reel() -> dict:
+        reel = Reel(
+            user_id=current_user.id,
+            video_url=video_url,
+            thumbnail_url=thumbnail_url or None,
+            caption=caption or None,
+            category=category,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        db.add(reel)
+        db.commit()
+        db.refresh(reel)
+        return _serialize_reel(db, reel, current_user=current_user)
+
+    try:
+        return _persist_reel()
+    except Exception as exc:
+        _repair_reels_schema(db)
+        try:
+            return _persist_reel()
+        except Exception as retry_exc:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='تعذر حفظ الريل حالياً، جرّب تاني بعد لحظات') from retry_exc
 
 
 @router.post('/reels/{reel_id}/like')

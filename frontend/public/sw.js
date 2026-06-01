@@ -198,7 +198,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (url.origin !== self.location.origin) return;
+  if (url.origin !== self.location.origin && !url.hostname.includes('cloudinary.com')) return;
 
   if (/\.(?:js|css|woff2?|ttf|otf)$/i.test(url.pathname)) {
     event.respondWith(staleWhileRevalidate(request, CACHE_NAMES.STATIC));

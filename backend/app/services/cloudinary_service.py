@@ -49,7 +49,7 @@ def upload_file(file_path: str, folder: str | None = None, is_video: bool = Fals
 
     result = cloudinary.uploader.upload(file_path, **upload_options)
     
-    secure_url = result.get('secure_url')
+    secure_url = result.get('secure_url') or result.get('url')
     if not secure_url:
         raise RuntimeError('Cloudinary upload failed')
         

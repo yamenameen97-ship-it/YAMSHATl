@@ -48,1129 +48,1128 @@ function Avatar({ name = '', src, size = 42, ring = false }) {
 }
 
 function FloatingHearts({ items }) {
-  return (
-    <div className="yam-live-hearts-layer" aria-hidden>
-      {items.map((item) => (
-        <span key={item.id} className="yam-live-heart" style={{ left: `${item.left}%`, animationDuration: `${item.duration}ms` }}>
-          💜
-        </span>
-      ))}
-    </div>
-  );
-}
-
-export default function Live() {
-  const { pushToast } = useToast();
-  const currentUser = getCurrentUsername();
-
-  const [rooms, setRooms] = useState([]);
-  const [activeRoom, setActiveRoom] = useState(null);
-  const [comments, setComments] = useState([]);
-  const [commentText, setCommentText] = useState('');
-  const [loadingRooms, setLoadingRooms] = useState(true);
-  const [loadingRoom, setLoadingRoom] = useState(false);
-  const [busy, setBusy] = useState('');
-  const [roomQuery, setRoomQuery] = useState('');
-  const [roomFilter, setRoomFilter] = useState('all');
-  const [roomSort, setRoomSort] = useState('viewers');
-  const [showGiftTray, setShowGiftTray] = useState(false);
-  const [showMobileCommentComposer, setShowMobileCommentComposer] = useState(false);
-  const [floatingHearts, setFloatingHearts] = useState([]);
-  const [latencyMs, setLatencyMs] = useState(1250);
-  const [coHosts, setCoHosts] = useState([]);
-  const [cameraEnabled, setCameraEnabled] = useState(true);
-  const [microphoneEnabled, setMicrophoneEnabled] = useState(true);
-  const [joinedRole, setJoinedRole] = useState('');
-  const [streamReady, setStreamReady] = useState(false);
-  const [mediaStatus, setMediaStatus] = useState('جاهز');
-  const [connectionLabel, setConnectionLabel] = useState('غير متصل');
-  const [remoteParticipantName, setRemoteParticipantName] = useState('');
-  const [hasPreview, setHasPreview] = useState(false);
-
-  const commentsEndRef = useRef(null);
-  const previewVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
-  const previewStreamRef = useRef(null);
-  const liveRoomRef = useRef(null);
-  const livekitRef = useRef(null);
-  const remoteTrackRef = useRef(null);
-  const remoteAudioElementsRef = useRef([]);
-
-  const loadRooms = useCallback(async () => {
-    setLoadingRooms(true);
-    try {
-      const { data } = await getLiveRooms();
-      const next = Array.isArray(data) ? data : [];
-      setRooms(next);
-      setActiveRoom((prev) => {
-        if (!next.length) return null;
-        if (prev?.id) {
-          const matchedRoom = next.find((room) => room.id === prev.id);
-          if (matchedRoom) return matchedRoom;
-        }
-        return next[0];
-      });
-    } catch (error) {
-      pushToast({ type: 'error', title: 'تعذر تحميل البثوث', description: error?.response?.data?.detail || error?.message });
-    } finally {
-      setLoadingRooms(false);
-    }
-  }, [pushToast]);
-
-  const loadRoomDetails = useCallback(async (roomId) => {
-    if (!roomId) return;
-    setLoadingRoom(true);
-    try {
-      const [{ data: room }, { data: liveComments }] = await Promise.all([
-        getLiveRoom(roomId),
-        getLiveComments(roomId),
-      ]);
-      setActiveRoom(room);
-      setComments(Array.isArray(liveComments) ? liveComments : []);
-      setCoHosts(room?.multi_host?.current_hosts || room?.co_hosts || []);
-      setStreamReady(Boolean(room?.livekit_configured));
-    } catch (error) {
-      pushToast({ type: 'error', title: 'تعذر تحميل تفاصيل البث', description: error?.response?.data?.detail || error?.message });
-    } finally {
-      setLoadingRoom(false);
-    }
-  }, [pushToast]);
-
-  const cleanupAudioElements = useCallback(() => {
-    remoteAudioElementsRef.current.forEach((element) => {
-      try {
-        element.remove?.();
-      } catch {
-        // ignore cleanup failures
-      }
-    });
-    remoteAudioElementsRef.current = [];
-  }, []);
-
-  const stopPreviewStream = useCallback(() => {
-    previewStreamRef.current?.getTracks?.().forEach((track) => track.stop());
-    previewStreamRef.current = null;
-    setHasPreview(false);
-    if (previewVideoRef.current) {
-      previewVideoRef.current.pause?.();
-      previewVideoRef.current.srcObject = null;
-    }
-  }, []);
-
-  const disconnectLiveSession = useCallback(async ({ keepPreview = false } = {}) => {
-    if (remoteTrackRef.current && remoteVideoRef.current) {
-      try {
-        remoteTrackRef.current.detach(remoteVideoRef.current);
-      } catch {
-        // ignore detach failures
-      }
-      remoteTrackRef.current = null;
-    }
-
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.pause?.();
-      remoteVideoRef.current.srcObject = null;
-      remoteVideoRef.current.removeAttribute('src');
-      remoteVideoRef.current.load?.();
-    }
-
-    cleanupAudioElements();
-
-    if (liveRoomRef.current) {
-      try {
-        await liveRoomRef.current.disconnect();
-      } catch {
-        // ignore disconnect failures
-      }
-      liveRoomRef.current = null;
-    }
-
-    setJoinedRole('');
-    setConnectionLabel('غير متصل');
-    setRemoteParticipantName('');
-
-    if (!keepPreview) {
-      stopPreviewStream();
-    }
-  }, [cleanupAudioElements, stopPreviewStream]);
-
-  const ensureCameraPreview = useCallback(async () => {
-    if (previewStreamRef.current) return previewStreamRef.current;
-    if (!navigator.mediaDevices?.getUserMedia) {
-      throw new Error('المتصفح لا يدعم تشغيل الكاميرا');
-    }
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-    previewStreamRef.current = stream;
-    setHasPreview(true);
-    if (previewVideoRef.current) {
-      previewVideoRef.current.srcObject = stream;
-      previewVideoRef.current.muted = true;
-      previewVideoRef.current.playsInline = true;
-      await previewVideoRef.current.play().catch(() => {});
-    }
-    setMediaStatus('تم فتح الكاميرا');
-    return stream;
-  }, []);
-
-  const attachRemoteTrack = useCallback((track, participantName = '') => {
-    if (!track) return;
-    if (track.kind === 'video' && remoteVideoRef.current) {
-      try {
-        track.attach(remoteVideoRef.current);
-      } catch {
-        // ignore attach failures
-      }
-      remoteTrackRef.current = track;
-      setRemoteParticipantName(participantName || 'ضيف مباشر');
-    }
-    if (track.kind === 'audio') {
-      const audioElement = track.attach();
-      audioElement.autoplay = true;
-      audioElement.style.display = 'none';
-      document.body.appendChild(audioElement);
-      remoteAudioElementsRef.current.push(audioElement);
-    }
-  }, []);
-
-  const connectToLiveKit = useCallback(async (role) => {
-    if (!activeRoom?.id) {
-      pushToast({ type: 'warning', title: 'اختر غرفة بث أولاً' });
-      return;
-    }
-
-    if (!activeRoom.livekit_configured) {
-      pushToast({ type: 'warning', title: 'سيتم تجربة الاتصال الحقيقي', description: 'سيتم طلب توكن البث مباشرة من الخادم للتأكد من إعداد LiveKit الفعلي.' });
-      if (role === 'host') {
-        await ensureCameraPreview();
-      }
-    }
-
-    setBusy('connect-livekit');
-    try {
-      const { Room, RoomEvent } = livekitRef.current || await import('livekit-client');
-      livekitRef.current = { Room, RoomEvent };
-
-      const { data } = await getLiveToken(activeRoom.id, { role });
-      await disconnectLiveSession({ keepPreview: role === 'host' });
-
-      const room = new Room({ adaptiveStream: true, dynacast: true });
-      liveRoomRef.current = room;
-
-      room.on(RoomEvent.ConnectionStateChanged, (state) => {
-        setConnectionLabel(state === 'connected' ? 'متصل' : state === 'reconnecting' ? 'جارٍ إعادة الاتصال' : 'غير متصل');
-      });
-      room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
-        attachRemoteTrack(track, participant?.name || participant?.identity || 'ضيف مباشر');
-      });
-      room.on(RoomEvent.TrackUnsubscribed, (track) => {
-        try {
-          track.detach?.(remoteVideoRef.current);
-        } catch {
-          // ignore detach failures
-        }
-      });
-      room.on(RoomEvent.ParticipantConnected, (participant) => {
-        setRemoteParticipantName(participant?.name || participant?.identity || 'ضيف مباشر');
-      });
-      room.on(RoomEvent.Disconnected, () => {
-        setConnectionLabel('غير متصل');
-      });
-
-      await room.connect(data.livekit_url, data.token);
-      setJoinedRole(role);
-      setConnectionLabel('متصل');
-
-      if (role === 'host') {
-        await ensureCameraPreview();
-        await room.localParticipant.setCameraEnabled(cameraEnabled);
-        await room.localParticipant.setMicrophoneEnabled(microphoneEnabled);
-        setMediaStatus(cameraEnabled ? 'الكاميرا تعمل والبث متصل' : 'البث متصل والكاميرا مغلقة');
-      } else {
-        setMediaStatus('تم الدخول للمشاهدة');
-      }
-
-      pushToast({ type: 'success', title: role === 'host' ? 'تم تشغيل البث الحقيقي' : 'تم الدخول إلى البث' });
-    } catch (error) {
-      await disconnectLiveSession({ keepPreview: true });
-      await triggerLiveRecovery(activeRoom.id).catch(() => null);
-      await loadRoomDetails(activeRoom.id).catch(() => null);
-      pushToast({ type: 'error', title: 'تعذر الاتصال بالبث الحقيقي', description: error?.response?.data?.detail || error?.message || 'تم تفعيل محاولة استعادة الاتصال وتحميل حالة البث من جديد.' });
-    } finally {
-      setBusy('');
-    }
-  }, [activeRoom?.id, activeRoom?.livekit_configured, attachRemoteTrack, cameraEnabled, disconnectLiveSession, ensureCameraPreview, loadRoomDetails, microphoneEnabled, pushToast]);
-
-  useEffect(() => {
-    loadRooms();
-  }, [loadRooms]);
-
-  useEffect(() => {
-    if (!activeRoom?.id) return;
-    loadRoomDetails(activeRoom.id);
-  }, [activeRoom?.id, loadRoomDetails]);
-
-  useEffect(() => {
-    commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [comments]);
-
-  useEffect(() => {
-    if (!activeRoom?.id) return undefined;
-
-    socketManager.connect();
-    socketManager.emit('join_live', {
-      room_id: activeRoom.id,
-      role: activeRoom.host === currentUser ? 'host' : 'viewer',
-      platform: 'web',
-      device_type: 'browser',
-    });
-
-    const handleComment = (payload) => {
-      if (!payload || payload.room_id !== activeRoom.id) return;
-      setComments((prev) => [...prev, payload]);
-    };
-
-    const handleStats = (payload) => {
-      if (!payload || payload.room_id !== activeRoom.id) return;
-      setActiveRoom((prev) => prev ? { ...prev, viewer_count: payload.viewer_count, hearts_count: payload.hearts_count } : prev);
-      setRooms((prev) => prev.map((room) => room.id === payload.room_id ? { ...room, viewer_count: payload.viewer_count, hearts_count: payload.hearts_count } : room));
-      setLatencyMs((prev) => prev > 1950 ? 980 : prev + 75);
-    };
-
-    const handleHeart = () => {
-      const id = `heart-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      const next = { id, left: 14 + Math.random() * 72, duration: 1500 + Math.random() * 900 };
-      setFloatingHearts((prev) => [...prev, next]);
-      setTimeout(() => setFloatingHearts((prev) => prev.filter((item) => item.id !== id)), next.duration);
-    };
-
-    socketManager.on('new_comment', handleComment);
-    socketManager.on('room_stats', handleStats);
-    socketManager.on('new_heart', handleHeart);
-
-    return () => {
-      socketManager.emit('leave_live', { room_id: activeRoom.id });
-      socketManager.off('new_comment', handleComment);
-      socketManager.off('room_stats', handleStats);
-      socketManager.off('new_heart', handleHeart);
-    };
-  }, [activeRoom?.id, activeRoom?.host, currentUser]);
-
-  useEffect(() => () => {
-    disconnectLiveSession();
-  }, [disconnectLiveSession]);
-
-  const hostName = activeRoom?.host || activeRoom?.username || 'Streamer';
-  const isHost = hostName === currentUser;
-  const currentPot = Number(activeRoom?.economy?.pot || activeRoom?.economy?.current_pot || 0);
-  const goalTarget = 2000;
-  const goalPercent = Math.min(100, Math.round((currentPot / goalTarget) * 100));
-  const topGifters = Array.isArray(activeRoom?.economy?.top_gifters) ? activeRoom.economy.top_gifters : [];
-  const recordingStatus = activeRoom?.recording?.status || 'idle';
-  const healthScore = Number(activeRoom?.analytics?.health_score || 92);
-  const bitrate = Number(activeRoom?.analytics?.avg_bitrate || 4200);
-  const heartsCount = Number(activeRoom?.hearts_count || 0);
-  const viewerCount = Number(activeRoom?.viewer_count || 0);
-
-  const filteredRooms = useMemo(() => {
-    const queryText = roomQuery.trim().toLowerCase();
-    const nextRooms = [...rooms].filter((room) => {
-      const hostNameValue = String(room.host || room.username || room.host_username || '').toLowerCase();
-      const roomTitle = String(room.title || room.room_name || '').toLowerCase();
-      const matchesQuery = !queryText || roomTitle.includes(queryText) || hostNameValue.includes(queryText);
-      const matchesFilter = roomFilter === 'all'
-        || (roomFilter === 'active' && Boolean(room.is_active || room.status === 'live'))
-        || (roomFilter === 'mine' && hostNameValue === String(currentUser || '').toLowerCase())
-        || (roomFilter === 'ready' && Boolean(room.livekit_configured));
-      return matchesQuery && matchesFilter;
-    });
-
-    nextRooms.sort((left, right) => {
-      if (roomSort === 'newest') {
-        return new Date(right.started_at || right.created_at || 0).getTime() - new Date(left.started_at || left.created_at || 0).getTime();
-      }
-      return Number(right.viewer_count || 0) - Number(left.viewer_count || 0);
-    });
-
-    return nextRooms;
-  }, [currentUser, roomFilter, roomQuery, roomSort, rooms]);
-
-  useEffect(() => {
-    if (!filteredRooms.length) return;
-    if (!activeRoom?.id || !filteredRooms.some((room) => room.id === activeRoom.id)) {
-      setActiveRoom(filteredRooms[0]);
-    }
-  }, [activeRoom?.id, filteredRooms]);
-
-  const sendComment = async () => {
-    const text = commentText.trim();
-    if (!text || !activeRoom?.id) return;
-
-    try {
-      const { data } = await addLiveComment({ room_id: activeRoom.id, text });
-      setCommentText('');
-      setShowMobileCommentComposer(false);
-
-      if (data?.status === 'blocked') {
-        pushToast({ type: 'warning', title: 'تم حظر التعليق', description: data?.reason || 'التعليق خالف سياسات البث.' });
-        return;
-      }
-
-      if (!socketManager.connected && data?.comment) {
-        setComments((prev) => [...prev, data.comment]);
-      }
-    } catch (error) {
-      pushToast({ type: 'error', title: 'تعذر إرسال التعليق', description: error?.response?.data?.detail || error?.message });
-    }
-  };
-
-  const sendHeart = () => {
-    if (!activeRoom?.id) return;
-    socketManager.emit('send_heart', { room_id: activeRoom.id });
-    const id = `heart-${Date.now()}`;
-    const next = { id, left: 14 + Math.random() * 72, duration: 1500 + Math.random() * 900 };
-    setFloatingHearts((prev) => [...prev, next]);
-    setTimeout(() => setFloatingHearts((prev) => prev.filter((item) => item.id !== id)), next.duration);
-  };
-
-  const giveGift = async (gift) => {
-    if (!activeRoom?.id) return;
-    try {
-      await sendLiveGift({ room_id: activeRoom.id, gift_name: gift.name, coins: gift.price });
-      pushToast({ type: 'success', title: `تم إرسال ${gift.icon} ${gift.name}` });
-      loadRoomDetails(activeRoom.id);
-      setShowGiftTray(false);
-    } catch (error) {
-      pushToast({ type: 'error', title: 'تعذر إرسال الهدية', description: error?.response?.data?.detail || error?.message });
-    }
-  };
-
-  const handleShare = async () => {
-    try {
-      const url = `${window.location.origin}${window.location.pathname}#/live`;
-      await navigator.clipboard.writeText(url);
-      pushToast({ type: 'success', title: 'تم نسخ رابط البث' });
-    } catch {
-      pushToast({ type: 'warning', title: 'تعذر النسخ', description: 'انسخ الرابط يدويًا.' });
-    }
-  };
-
-  const handleCreateRoom = async () => {
-    try {
-      setBusy('create');
-      const { data } = await createLiveRoom({ title: `بث مباشر مع ${currentUser}` });
-      setActiveRoom(data);
-      await loadRooms();
-      pushToast({ type: 'success', title: 'تم إنشاء غرفة البث وربطها بقاعدة البيانات' });
-    } catch (error) {
-      pushToast({ type: 'error', title: 'تعذر إنشاء البث', description: error?.response?.data?.detail || error?.message });
-    } finally {
-      setBusy('');
-    }
-  };
-
-  const toggleRecording = async () => {
-    if (!activeRoom?.id) return;
-    try {
-      setBusy('recording');
-      const action = recordingStatus === 'recording' ? 'stop' : 'start';
-      await updateLiveRecording({ room_id: activeRoom.id, action });
-      await loadRoomDetails(activeRoom.id);
-      pushToast({ type: 'success', title: action === 'start' ? 'تم بدء التسجيل' : 'تم إيقاف التسجيل' });
-    } catch (error) {
-      pushToast({ type: 'error', title: 'تعذر تحديث التسجيل', description: error?.response?.data?.detail || error?.message });
-    } finally {
-      setBusy('');
-    }
-  };
-
-  const stopLive = async () => {
-    if (!activeRoom?.id) return;
-    try {
-      setBusy('end');
-      await disconnectLiveSession();
-      await endLiveRoom(activeRoom.id);
-      setActiveRoom(null);
-      setComments([]);
-      await loadRooms();
-      pushToast({ type: 'success', title: 'تم إنهاء البث' });
-    } catch (error) {
-      pushToast({ type: 'error', title: 'تعذر إنهاء البث', description: error?.response?.data?.detail || error?.message });
-    } finally {
-      setBusy('');
-    }
-  };
-
-  const toggleCamera = async () => {
-    const nextValue = !cameraEnabled;
-    setCameraEnabled(nextValue);
-    try {
-      if (nextValue) {
-        await ensureCameraPreview();
-      } else if (!joinedRole) {
-        stopPreviewStream();
-      }
-      if (joinedRole === 'host' && liveRoomRef.current) {
-        await liveRoomRef.current.localParticipant.setCameraEnabled(nextValue);
-      }
-      setMediaStatus(nextValue ? 'الكاميرا تعمل' : 'الكاميرا متوقفة');
-    } catch (error) {
-      setCameraEnabled(!nextValue);
-      pushToast({ type: 'error', title: 'تعذر التحكم في الكاميرا', description: error?.message });
-    }
-  };
-
-  const toggleMic = async () => {
-    const nextValue = !microphoneEnabled;
-    setMicrophoneEnabled(nextValue);
-    try {
-      if (joinedRole === 'host' && liveRoomRef.current) {
-        await liveRoomRef.current.localParticipant.setMicrophoneEnabled(nextValue);
-      }
-      setMediaStatus(nextValue ? 'المايك مفتوح' : 'المايك مغلق');
-    } catch (error) {
-      setMicrophoneEnabled(!nextValue);
-      pushToast({ type: 'error', title: 'تعذر التحكم في المايك', description: error?.message });
-    }
-  };
+  const latestComments = [...comments].slice(-6).reverse();
+  const consoleStatCards = [
+    { key: 'viewers', icon: '👁️', label: 'المشاهدون', value: viewerCount || 0, accent: 'purple' },
+    { key: 'likes', icon: '💜', label: 'الإعجابات', value: heartsCount || 0, accent: 'pink' },
+    { key: 'gifts', icon: '🎁', label: 'الهدايا', value: currentPot || 0, accent: 'gold' },
+    { key: 'duration', icon: '⏱️', label: 'حالة البث', value: joinedRole ? 'متصل الآن' : 'جاهز', accent: 'blue' },
+  ];
+  const serviceStatusCards = [
+    { label: 'قاعدة البيانات', value: activeRoom?.id ? 'مرتبطة' : 'غير مرتبطة' },
+    { label: 'LiveKit', value: streamReady ? 'مفعّل' : 'ينتظر الإعداد' },
+    { label: 'الاتصال', value: connectionLabel },
+    { label: 'الوسائط', value: mediaStatus },
+  ];
 
   return (
     <MainLayout>
-      <div className="yam-live-page desktop-post mobile-post">
-        <div className="yam-live-main">
-          <div className="yam-live-stage-card">
-            <FloatingHearts items={floatingHearts} />
-            <div className="yam-live-stage-gradient" />
-            <div className="yam-live-stage-head">
-              <div className="yam-live-badges">
-                <span className="live-badge live">LIVE</span>
-                <span className="live-badge">👁 {viewerCount}</span>
-                <span className="live-badge">💜 {heartsCount}</span>
-                <span className="live-badge">⚡ {latencyMs}ms</span>
-              </div>
-              <div className="yam-live-stage-actions">
-                <button type="button" className="yam-live-action-btn" onClick={loadRooms}>تحديث</button>
-                <button type="button" className="yam-live-action-btn" onClick={handleShare}>مشاركة</button>
-                {isHost ? <button type="button" className="yam-live-action-btn" onClick={toggleRecording}>{recordingStatus === 'recording' ? 'إيقاف التسجيل' : 'بدء التسجيل'}</button> : null}
-                {isHost ? <button type="button" className="yam-live-action-btn danger" onClick={stopLive}>إنهاء البث</button> : null}
-              </div>
-            </div>
+      <div className="yam-console-page desktop-post mobile-post">
+        <div className="yam-console-header">
+          <div className="yam-console-header-copy">
+            <div className="yam-console-page-kicker">أنت الآن مباشر</div>
+            <h1>تحكم البث المباشر</h1>
+            <p>تصميم موحد ومضغوط للبث على الويب والويب للجوال وتطبيق الموبايل بدون تشتت للأزرار أو تمدد مبالغ فيه للصفحات.</p>
+          </div>
+          <div className="yam-console-header-actions">
+            <button type="button" className="yam-console-live-pill">● مباشر</button>
+            <button type="button" className="yam-console-icon-btn" onClick={loadRooms} title="تحديث البيانات">↻</button>
+            <button type="button" className="yam-console-icon-btn" onClick={handleShare} title="مشاركة رابط البث">⋯</button>
+          </div>
+        </div>
 
-            <div className="yam-live-video-shell">
-              <video ref={remoteVideoRef} className={`yam-live-main-video ${joinedRole === 'viewer' ? 'visible' : ''}`} playsInline autoPlay controls={false} />
-              <video ref={previewVideoRef} className={`yam-live-preview-video ${hasPreview ? 'visible' : ''} ${joinedRole === 'host' ? 'host-mode' : ''}`} playsInline muted autoPlay />
-              {joinedRole === 'viewer' && remoteParticipantName ? <div className="yam-remote-tag">البث من {remoteParticipantName}</div> : null}
-              {!joinedRole ? (
-                <div className="yam-live-video-placeholder">
-                  <div className="yam-live-hero-icon">🎥</div>
-                  <h1>{activeRoom?.title || 'بث مباشر مميز'}</h1>
-                  <p>المضيف: <strong>{hostName}</strong></p>
-                  <div className="yam-live-stage-tech">غرف بث مرتبطة بقاعدة البيانات • تكامل LiveKit • معاينة الكاميرا • تعليقات لحظية مباشرة</div>
-                </div>
-              ) : null}
-            </div>
+        <div className="yam-console-layout">
+          <div className="yam-console-main-column">
+            <div className="yam-console-hero-grid">
+              <section className="yam-console-stage-card">
+                <FloatingHearts items={floatingHearts} />
+                <div className="yam-console-stage-glow" />
 
-            <div className="yam-live-stage-footer">
-              <div className="yam-live-host-box">
-                <Avatar name={hostName} size={52} ring />
-                <div>
-                  <strong>{hostName}</strong>
-                  <p>{activeRoom?.title || 'بث مباشر'}</p>
-                </div>
-              </div>
-              <div className="yam-live-stage-tools">
-                {isHost ? <button type="button" className="yam-chip-btn" onClick={toggleCamera}>{cameraEnabled ? 'إغلاق الكاميرا' : 'فتح الكاميرا'}</button> : null}
-                {isHost ? <button type="button" className="yam-chip-btn" onClick={toggleMic}>{microphoneEnabled ? 'كتم المايك' : 'فتح المايك'}</button> : null}
-                {isHost ? <button type="button" className="yam-chip-btn primary" onClick={() => connectToLiveKit('host')} disabled={busy === 'connect-livekit'}>{joinedRole === 'host' ? 'إعادة مزامنة البث' : 'بدء البث الحقيقي'}</button> : null}
-                {!isHost ? <button type="button" className="yam-chip-btn primary" onClick={() => connectToLiveKit('viewer')} disabled={busy === 'connect-livekit'}>دخول المشاهدة</button> : null}
-                {joinedRole ? <button type="button" className="yam-chip-btn" onClick={() => disconnectLiveSession({ keepPreview: false })}>فصل الاتصال</button> : null}
-                <button type="button" className="yam-chip-btn yam-mobile-hidden-interaction" onClick={sendHeart}>إرسال قلب</button>
-                <button
-                  type="button"
-                  className="yam-chip-btn yam-mobile-hidden-interaction"
-                  onClick={() => {
-                    setShowGiftTray((prev) => !prev);
-                    setShowMobileCommentComposer(false);
-                  }}
-                >
-                  الهدايا
-                </button>
-              </div>
-            </div>
+                <div className="yam-console-stage-media">
+                  <div className="yam-console-stage-overlay-top">
+                    <div className="yam-console-live-metrics-inline">
+                      <span className="yam-console-inline-badge live">LIVE</span>
+                      <span className="yam-console-inline-badge">👁 {viewerCount}</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="yam-console-overlay-edit"
+                      onClick={() => {
+                        if (activeRoom?.id) loadRoomDetails(activeRoom.id);
+                      }}
+                    >
+                      ✎
+                    </button>
+                  </div>
 
-            <div className="yam-live-mobile-dock">
-              <div className="yam-live-mobile-actions">
-                <button
-                  type="button"
-                  className={`yam-live-mobile-btn ${showMobileCommentComposer ? 'active' : ''}`}
-                  onClick={() => {
-                    setShowMobileCommentComposer((prev) => !prev);
-                    setShowGiftTray(false);
-                  }}
-                >
-                  💬 تعليق
-                </button>
-                <button type="button" className="yam-live-mobile-btn" onClick={sendHeart}>💜 قلب</button>
-                <button
-                  type="button"
-                  className={`yam-live-mobile-btn ${showGiftTray ? 'active' : ''}`}
-                  onClick={() => {
-                    setShowGiftTray((prev) => !prev);
-                    setShowMobileCommentComposer(false);
-                  }}
-                >
-                  🎁 هدية
-                </button>
-              </div>
+                  <video ref={remoteVideoRef} className={`yam-console-main-video ${joinedRole === 'viewer' ? 'visible' : ''}`} playsInline autoPlay controls={false} />
+                  <video ref={previewVideoRef} className={`yam-console-preview-video ${hasPreview ? 'visible' : ''} ${joinedRole === 'host' ? 'host-mode' : ''}`} playsInline muted autoPlay />
 
-              {showMobileCommentComposer ? (
-                <div className="yam-live-mobile-comment-box">
-                  <input
-                    value={commentText}
-                    onChange={(event) => setCommentText(event.target.value)}
-                    placeholder="اكتب تعليقك"
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') sendComment();
+                  {joinedRole === 'viewer' && remoteParticipantName ? (
+                    <div className="yam-console-remote-pill">البث من {remoteParticipantName}</div>
+                  ) : null}
+
+                  {!joinedRole ? (
+                    <div className="yam-console-empty-stage">
+                      <div className="yam-console-empty-icon">🎥</div>
+                      <h2>{activeRoom?.title || 'بث مباشر مميز'}</h2>
+                      <p>المضيف: <strong>{hostName}</strong></p>
+                      <span>تكامل LiveKit • تعليقات لحظية • غرفة بث مرتبطة بالخادم</span>
+                    </div>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    className="yam-console-overlay-cta"
+                    onClick={() => {
+                      if (activeRoom?.id) loadRoomDetails(activeRoom.id);
                     }}
-                  />
-                  <button type="button" onClick={sendComment}>إرسال</button>
+                  >
+                    تحديث المعاينة
+                  </button>
                 </div>
-              ) : null}
+              </section>
+
+              <section className="yam-console-card yam-console-stats-card">
+                <div className="yam-console-card-head">
+                  <strong>إحصائيات البث</strong>
+                  <span>LIVE</span>
+                </div>
+                <div className="yam-console-stat-stack">
+                  {consoleStatCards.map((item) => (
+                    <div key={item.key} className={`yam-console-stat-row ${item.accent}`}>
+                      <div className="yam-console-stat-icon">{item.icon}</div>
+                      <div className="yam-console-stat-copy">
+                        <strong>{item.value}</strong>
+                        <span>{item.label}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
+
+            <section className="yam-console-card yam-console-quick-actions-card">
+              <div className="yam-console-quick-grid">
+                {isHost ? (
+                  <button type="button" className="yam-console-quick-btn danger" onClick={stopLive}>
+                    <span>⏹</span>
+                    <strong>إيقاف البث</strong>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="yam-console-quick-btn primary"
+                    onClick={() => connectToLiveKit('viewer')}
+                    disabled={busy === 'connect-livekit'}
+                  >
+                    <span>▶</span>
+                    <strong>دخول المشاهدة</strong>
+                  </button>
+                )}
+
+                <button type="button" className="yam-console-quick-btn" onClick={handleShare}>
+                  <span>📤</span>
+                  <strong>مشاركة البث</strong>
+                </button>
+
+                {isHost ? (
+                  <button type="button" className="yam-console-quick-btn" onClick={toggleRecording}>
+                    <span>{recordingStatus === 'recording' ? '⏺' : '●'}</span>
+                    <strong>{recordingStatus === 'recording' ? 'إيقاف التسجيل' : 'بدء التسجيل'}</strong>
+                  </button>
+                ) : (
+                  <button type="button" className="yam-console-quick-btn" onClick={sendHeart}>
+                    <span>💜</span>
+                    <strong>إرسال قلب</strong>
+                  </button>
+                )}
+
+                {isHost ? (
+                  <button type="button" className="yam-console-quick-btn" onClick={toggleCamera}>
+                    <span>{cameraEnabled ? '📷' : '📷‍🚫'}</span>
+                    <strong>{cameraEnabled ? 'الكاميرا' : 'تشغيل الكاميرا'}</strong>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="yam-console-quick-btn"
+                    onClick={() => document.getElementById('yam-console-rooms')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                  >
+                    <span>📡</span>
+                    <strong>غرف البث</strong>
+                  </button>
+                )}
+
+                {isHost ? (
+                  <button type="button" className="yam-console-quick-btn" onClick={toggleMic}>
+                    <span>{microphoneEnabled ? '🎤' : '🔇'}</span>
+                    <strong>{microphoneEnabled ? 'كتم الصوت' : 'فتح الصوت'}</strong>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="yam-console-quick-btn"
+                    onClick={() => {
+                      setShowGiftTray((prev) => !prev);
+                      setShowMobileCommentComposer(false);
+                    }}
+                  >
+                    <span>🎁</span>
+                    <strong>الهدايا</strong>
+                  </button>
+                )}
+
+                {isHost ? (
+                  <button
+                    type="button"
+                    className="yam-console-quick-btn primary"
+                    onClick={() => connectToLiveKit('host')}
+                    disabled={busy === 'connect-livekit'}
+                  >
+                    <span>📡</span>
+                    <strong>{joinedRole === 'host' ? 'إعادة مزامنة البث' : 'بدء البث الحقيقي'}</strong>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="yam-console-quick-btn"
+                    onClick={() => document.getElementById('yam-console-chat')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                  >
+                    <span>💬</span>
+                    <strong>الرسائل</strong>
+                  </button>
+                )}
+              </div>
+            </section>
+
+            <section className="yam-console-card yam-console-title-card">
+              <div className="yam-console-card-head aligned-start">
+                <div>
+                  <div className="yam-console-section-label">عنوان البث</div>
+                  <strong>{activeRoom?.title || `بث مباشر مع ${hostName}`}</strong>
+                </div>
+                <button type="button" className="yam-console-icon-btn" onClick={loadRooms} title="تحديث العنوان والبيانات">✎</button>
+              </div>
+              <div className="yam-console-title-meta">
+                <div className="yam-console-host-inline">
+                  <Avatar name={hostName} size={44} ring />
+                  <div>
+                    <strong>{hostName}</strong>
+                    <span>{joinedRole === 'host' ? 'أنت تبث الآن' : joinedRole === 'viewer' ? 'أنت في وضع المشاهدة' : 'جاهز للانطلاق'}</span>
+                  </div>
+                </div>
+                <div className="yam-console-service-pills">
+                  <span className={`yam-console-service-pill ${streamReady ? 'good' : ''}`}>LiveKit {streamReady ? 'جاهز' : 'قيد الإعداد'}</span>
+                  <span className={`yam-console-service-pill ${connectionLabel === 'متصل' ? 'good' : ''}`}>الاتصال {connectionLabel}</span>
+                  <span className="yam-console-service-pill">التسجيل {recordingStatus}</span>
+                </div>
+              </div>
+            </section>
+
+            <div className="yam-console-dual-grid">
+              <section className="yam-console-card yam-console-goal-card">
+                <div className="yam-console-card-head">
+                  <strong>هدف الهدايا</strong>
+                  <span>{currentPot} / {goalTarget}</span>
+                </div>
+                <div className="yam-console-goal-progress">
+                  <span style={{ width: `${goalPercent}%` }} />
+                </div>
+                <div className="yam-console-goal-footer">
+                  <strong>{goalPercent}% مكتمل</strong>
+                  <button type="button" className="yam-console-subtle-btn" onClick={() => setShowGiftTray((prev) => !prev)}>عرض الهدايا</button>
+                </div>
+                <div className="yam-console-supporters">
+                  {topGifters.length ? topGifters.map(([name, coins]) => (
+                    <span key={name} className="yam-console-support-pill">{name} • {coins}</span>
+                  )) : <span className="yam-console-support-pill">لا يوجد داعمين بعد</span>}
+                </div>
+              </section>
+
+              <section className="yam-console-card yam-console-health-card">
+                <div className="yam-console-card-head">
+                  <strong>حالة البث</strong>
+                  <span>{healthScore}%</span>
+                </div>
+                <div className="yam-console-micro-grid">
+                  <div className="yam-console-mini-stat">
+                    <span>البت ريت</span>
+                    <strong>{bitrate} kbps</strong>
+                  </div>
+                  <div className="yam-console-mini-stat">
+                    <span>التأخير</span>
+                    <strong>{latencyMs}ms</strong>
+                  </div>
+                  <div className="yam-console-mini-stat">
+                    <span>آخر نشاط</span>
+                    <strong>{activeRoom?.last_activity_at ? formatTimeAgo(activeRoom.last_activity_at) : 'الآن'}</strong>
+                  </div>
+                  <div className="yam-console-mini-stat">
+                    <span>المضيفون</span>
+                    <strong>{coHosts.length || 1}</strong>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <section id="yam-console-chat" className="yam-console-card yam-console-chat-card">
+              <div className="yam-console-card-head">
+                <strong>لوحة الرسائل</strong>
+                <span>{comments.length} رسالة</span>
+              </div>
+
+              <div className="yam-console-chat-toolbar">
+                <button type="button" className={`yam-console-chat-pill ${showGiftTray ? '' : 'active'}`} onClick={() => setShowGiftTray(false)}>الكل</button>
+                <button type="button" className={`yam-console-chat-pill ${showGiftTray ? 'active' : ''}`} onClick={() => setShowGiftTray((prev) => !prev)}>الهدايا</button>
+                <button type="button" className="yam-console-chat-pill" onClick={() => document.getElementById('yam-console-services')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>إعدادات الرسائل</button>
+              </div>
+
+              <div className="yam-console-chat-list">
+                {latestComments.length ? latestComments.map((comment, index) => {
+                  const author = comment.user || comment.username || 'عضو';
+                  return (
+                    <div key={comment.id || `${author}-${index}`} className="yam-console-message-row">
+                      <Avatar name={author} size={42} />
+                      <div className="yam-console-message-body">
+                        <div className="yam-console-message-headline">
+                          <strong>{author}</strong>
+                          <span className="yam-console-level-badge">Lv {12 - index}</span>
+                        </div>
+                        <p>{comment.text}</p>
+                      </div>
+                      <span className="yam-console-message-time">الآن</span>
+                    </div>
+                  );
+                }) : (
+                  <div className="yam-console-empty-list">لا توجد رسائل بعد، ابدأ التفاعل من الشات المباشر.</div>
+                )}
+                <div ref={commentsEndRef} />
+              </div>
 
               {showGiftTray ? (
-                <div className="yam-gift-tray yam-live-mobile-gift-tray">
+                <div className="yam-console-gift-grid">
                   {GIFTS.map((gift) => (
-                    <button key={`mobile-${gift.id}`} type="button" className="yam-gift-card" onClick={() => giveGift(gift)}>
+                    <button key={gift.id} type="button" className="yam-console-gift-card" onClick={() => giveGift(gift)}>
                       <span>{gift.icon}</span>
                       <strong>{gift.name}</strong>
-                      <small>{gift.price}</small>
+                      <small>{gift.price} عملة</small>
                     </button>
                   ))}
                 </div>
               ) : null}
-            </div>
+
+              <div className="yam-console-chat-composer">
+                <input
+                  value={commentText}
+                  onChange={(event) => setCommentText(event.target.value)}
+                  placeholder="اكتب تعليقك"
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') sendComment();
+                  }}
+                />
+                <button type="button" onClick={sendComment}>إرسال</button>
+              </div>
+            </section>
           </div>
 
-          <div className="yam-live-grid-aux">
-            <div className="yam-live-info-card">
-              <div className="yam-card-head"><strong>حالة الربط</strong><span>{loadingRoom ? 'جارٍ التحديث...' : 'مباشر'}</span></div>
-              <div className="yam-info-grid">
-                <div className="yam-stat-box"><span>القاعدة</span><strong>{activeRoom?.id ? 'مرتبطة' : 'غير مرتبطة'}</strong></div>
-                <div className="yam-stat-box"><span>المفاتيح</span><strong>{streamReady ? 'مفعلة' : 'تحتاج إعداد'}</strong></div>
-                <div className="yam-stat-box"><span>الاتصال</span><strong>{connectionLabel}</strong></div>
-                <div className="yam-stat-box"><span>الأجهزة</span><strong>{mediaStatus}</strong></div>
+          <aside className="yam-console-side-column">
+            <section id="yam-console-rooms" className="yam-console-card">
+              <div className="yam-console-card-head">
+                <strong>غرف البث</strong>
+                <button type="button" className="yam-console-subtle-btn primary" onClick={handleCreateRoom} disabled={busy === 'create'}>+ إنشاء</button>
               </div>
-            </div>
+              <div className="yam-console-room-tools">
+                <input
+                  className="yam-console-room-search"
+                  value={roomQuery}
+                  onChange={(event) => setRoomQuery(event.target.value)}
+                  placeholder="ابحث عن بث أو مضيف"
+                />
+                <div className="yam-console-room-filters">
+                  {ROOM_FILTERS.map((filter) => (
+                    <button
+                      key={filter.key}
+                      type="button"
+                      className={`yam-console-filter-chip ${roomFilter === filter.key ? 'active' : ''}`}
+                      onClick={() => setRoomFilter(filter.key)}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+                <select className="yam-console-room-sort" value={roomSort} onChange={(event) => setRoomSort(event.target.value)}>
+                  <option value="viewers">الأكثر مشاهدة</option>
+                  <option value="newest">الأحدث</option>
+                </select>
+              </div>
+              <div className="yam-console-room-list">
+                {loadingRooms ? <div className="yam-console-empty-list">جارٍ تحميل الغرف...</div> : filteredRooms.length ? filteredRooms.map((room) => (
+                  <button key={room.id} type="button" className={`yam-console-room-card ${activeRoom?.id === room.id ? 'active' : ''}`} onClick={() => setActiveRoom(room)}>
+                    <div>
+                      <strong>{room.title}</strong>
+                      <p>@{room.host || room.username}</p>
+                    </div>
+                    <span>{room.viewer_count || 0} 👁</span>
+                  </button>
+                )) : <div className="yam-console-empty-list">لا توجد غرف مطابقة للفلاتر الحالية.</div>}
+              </div>
+            </section>
 
-            <div className="yam-live-info-card">
-              <div className="yam-card-head"><strong>جودة البث</strong><span>{healthScore}%</span></div>
-              <div className="yam-info-grid">
-                <div className="yam-stat-box"><span>المشاهدون</span><strong>{viewerCount}</strong></div>
-                <div className="yam-stat-box"><span>البت ريت</span><strong>{bitrate} kbps</strong></div>
-                <div className="yam-stat-box"><span>التسجيل</span><strong>{recordingStatus}</strong></div>
-                <div className="yam-stat-box"><span>آخر نشاط</span><strong>{activeRoom?.last_activity_at ? formatTimeAgo(activeRoom.last_activity_at) : 'الآن'}</strong></div>
+            <section className="yam-console-card">
+              <div className="yam-console-card-head">
+                <strong>المضيفون المشاركون</strong>
+                <span>{coHosts.length || 1}</span>
               </div>
-            </div>
+              <div className="yam-console-participants-list">
+                {(coHosts.length ? coHosts : [hostName]).map((name) => (
+                  <div key={name} className="yam-console-participant-row">
+                    <Avatar name={name} size={40} />
+                    <div>
+                      <strong>{name}</strong>
+                      <span>{name === hostName ? 'المضيف الرئيسي' : 'مضيف مشارك'}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
 
-            <div className="yam-live-info-card">
-              <div className="yam-card-head"><strong>هدف الدعم</strong><span>{goalPercent}%</span></div>
-              <div className="yam-goal-bar"><span style={{ width: `${goalPercent}%` }} /></div>
-              <p className="yam-subtle-copy">{currentPot} / {goalTarget} عملة</p>
-              <div className="yam-supporter-row">
-                {topGifters.length ? topGifters.map(([name, coins]) => (
-                  <div key={name} className="yam-supporter-pill">{name} • {coins}</div>
-                )) : <div className="yam-supporter-pill">لا يوجد داعمين بعد</div>}
+            <section id="yam-console-services" className="yam-console-card">
+              <div className="yam-console-card-head">
+                <strong>الخدمات والربط</strong>
+                <span>{loadingRoom ? 'جارٍ الفحص' : 'جاهز'}</span>
               </div>
-            </div>
-          </div>
+              <div className="yam-console-service-grid">
+                {serviceStatusCards.map((item) => (
+                  <div key={item.label} className="yam-console-service-box">
+                    <span>{item.label}</span>
+                    <strong>{item.value}</strong>
+                  </div>
+                ))}
+              </div>
+              <div className="yam-console-side-actions">
+                <button type="button" className="yam-console-subtle-btn" onClick={loadRooms}>تحديث شامل</button>
+                {joinedRole ? (
+                  <button type="button" className="yam-console-subtle-btn" onClick={() => disconnectLiveSession({ keepPreview: false })}>فصل الاتصال</button>
+                ) : null}
+                <button type="button" className="yam-console-subtle-btn" onClick={sendHeart}>إرسال قلب</button>
+                <button type="button" className="yam-console-subtle-btn" onClick={() => setShowGiftTray((prev) => !prev)}>فتح الهدايا</button>
+              </div>
+            </section>
+          </aside>
         </div>
 
-        <aside className="yam-live-sidebar">
-          <div className="yam-live-side-card">
-            <div className="yam-card-head">
-              <strong>غرف البث</strong>
-              <button type="button" className="yam-mini-btn" onClick={handleCreateRoom} disabled={busy === 'create'}>+ إنشاء</button>
-            </div>
-            <div className="yam-live-room-filters">
-              <input
-                className="yam-live-room-search"
-                value={roomQuery}
-                onChange={(event) => setRoomQuery(event.target.value)}
-                placeholder="ابحث عن بث أو مضيف"
-              />
-              <div className="yam-live-room-filter-chips">
-                {ROOM_FILTERS.map((filter) => (
-                  <button
-                    key={filter.key}
-                    type="button"
-                    className={`yam-live-filter-chip ${roomFilter === filter.key ? 'active' : ''}`}
-                    onClick={() => setRoomFilter(filter.key)}
-                  >
-                    {filter.label}
-                  </button>
-                ))}
-              </div>
-              <select className="yam-live-room-sort" value={roomSort} onChange={(event) => setRoomSort(event.target.value)}>
-                <option value="viewers">الأكثر مشاهدة</option>
-                <option value="newest">الأحدث</option>
-              </select>
-            </div>
-            <div className="yam-room-list">
-              {loadingRooms ? <p className="yam-subtle-copy">جارٍ تحميل الغرف...</p> : filteredRooms.length ? filteredRooms.map((room) => (
-                <button key={room.id} type="button" className={`yam-room-card ${activeRoom?.id === room.id ? 'active' : ''}`} onClick={() => setActiveRoom(room)}>
-                  <div>
-                    <strong>{room.title}</strong>
-                    <p>@{room.host || room.username}</p>
-                  </div>
-                  <span>{room.viewer_count || 0} 👁</span>
-                </button>
-              )) : <p className="yam-subtle-copy">لا توجد غرف مطابقة للفلاتر الحالية.</p>}
-            </div>
-          </div>
+        <div className="yam-console-mobile-dock">
+          <button type="button" className="yam-console-mobile-tab" onClick={handleShare}>
+            <span>📤</span>
+            <strong>مشاركة</strong>
+          </button>
+          <button type="button" className="yam-console-mobile-tab" onClick={() => document.getElementById('yam-console-rooms')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+            <span>👥</span>
+            <strong>غرف</strong>
+          </button>
+          <button
+            type="button"
+            className="yam-console-mobile-tab center"
+            onClick={() => {
+              setShowGiftTray((prev) => !prev);
+              setShowMobileCommentComposer(false);
+            }}
+          >
+            <span>🎁</span>
+            <strong>إرسال هدية</strong>
+          </button>
+          <button
+            type="button"
+            className={`yam-console-mobile-tab ${showMobileCommentComposer ? 'active' : ''}`}
+            onClick={() => {
+              setShowMobileCommentComposer((prev) => !prev);
+              setShowGiftTray(false);
+            }}
+          >
+            <span>💬</span>
+            <strong>تعليق</strong>
+          </button>
+          <button type="button" className="yam-console-mobile-tab" onClick={() => document.getElementById('yam-console-services')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+            <span>⋯</span>
+            <strong>المزيد</strong>
+          </button>
+        </div>
 
-          <div className="yam-live-side-card">
-            <div className="yam-card-head"><strong>المضيفون المشاركون</strong><span>{coHosts.length}</span></div>
-            <div className="yam-cohost-list">
-              {(coHosts.length ? coHosts : [hostName]).map((name) => (
-                <div key={name} className="yam-cohost-row">
-                  <Avatar name={name} size={40} />
-                  <div>
-                    <strong>{name}</strong>
-                    <p>{name === hostName ? 'المضيف الرئيسي' : 'مضيف مشارك'}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+        {showMobileCommentComposer ? (
+          <div className="yam-console-mobile-composer">
+            <input
+              value={commentText}
+              onChange={(event) => setCommentText(event.target.value)}
+              placeholder="اكتب تعليقك"
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') sendComment();
+              }}
+            />
+            <button type="button" onClick={sendComment}>إرسال</button>
           </div>
-
-          <div className="yam-live-side-card yam-live-chat-box">
-            <div className="yam-card-head"><strong>الشات المباشر</strong><span>{comments.length}</span></div>
-            <div className="yam-comment-stream">
-              {comments.map((comment) => (
-                <div key={comment.id} className="yam-live-comment">
-                  <strong>{comment.user || comment.username || 'عضو'}</strong>
-                  <p>{comment.text}</p>
-                </div>
-              ))}
-              <div ref={commentsEndRef} />
-            </div>
-            {showGiftTray ? (
-              <div className="yam-gift-tray yam-live-desktop-panel">
-                {GIFTS.map((gift) => (
-                  <button key={gift.id} type="button" className="yam-gift-card" onClick={() => giveGift(gift)}>
-                    <span>{gift.icon}</span>
-                    <strong>{gift.name}</strong>
-                    <small>{gift.price}</small>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            <div className="yam-comment-composer yam-live-desktop-panel">
-              <input value={commentText} onChange={(event) => setCommentText(event.target.value)} placeholder="اكتب تعليقك" />
-              <button type="button" onClick={sendComment}>إرسال</button>
-            </div>
-          </div>
-        </aside>
+        ) : null}
 
         <style>{`
-          .yam-live-page {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) 340px;
-            gap: 18px;
-            padding: 18px;
+          .yam-console-page {
+            min-height: 100%;
+            padding: 18px 18px 120px;
             direction: rtl;
-            color: #fff;
+            color: #f8fafc;
+            background:
+              radial-gradient(circle at top right, rgba(139, 92, 246, 0.18), transparent 26%),
+              radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 22%),
+              linear-gradient(180deg, #050816 0%, #090d1f 42%, #0b1020 100%);
           }
-          .yam-live-main {
-            display: grid;
-            gap: 18px;
+          .yam-console-header,
+          .yam-console-card,
+          .yam-console-stage-card {
+            border: 1px solid rgba(255,255,255,0.08);
+            background: rgba(10, 14, 30, 0.88);
+            box-shadow: 0 22px 60px rgba(2, 6, 23, 0.4);
+            backdrop-filter: blur(16px);
           }
-          .yam-live-stage-card,
-          .yam-live-info-card,
-          .yam-live-side-card {
-            position: relative;
-            border-radius: 28px;
-            background: rgba(7, 12, 24, 0.92);
-            border: 1px solid rgba(255,255,255,0.06);
-            box-shadow: 0 28px 60px rgba(2,6,23,0.35);
-            overflow: hidden;
-          }
-          .yam-live-stage-card {
-            padding: 20px;
-            min-height: 620px;
-          }
-          .yam-live-stage-gradient {
-            position: absolute;
-            inset: 0;
-            background: radial-gradient(circle at top, rgba(139,92,246,0.18), transparent 48%), linear-gradient(180deg, rgba(59,130,246,0.08), transparent 30%);
-            pointer-events: none;
-          }
-          .yam-live-stage-head,
-          .yam-live-stage-footer,
-          .yam-live-video-shell,
-          .yam-live-grid-aux {
-            position: relative;
-            z-index: 1;
-          }
-          .yam-live-stage-head,
-          .yam-live-stage-footer,
-          .yam-card-head {
+          .yam-console-header {
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: space-between;
-            gap: 12px;
-            flex-wrap: wrap;
+            gap: 16px;
+            border-radius: 28px;
+            padding: 20px 22px;
+            margin-bottom: 18px;
           }
-          .yam-live-badges,
-          .yam-live-stage-actions,
-          .yam-live-stage-tools,
-          .yam-supporter-row {
+          .yam-console-page-kicker {
+            color: #a78bfa;
+            font-size: 13px;
+            font-weight: 800;
+            margin-bottom: 8px;
+          }
+          .yam-console-header-copy h1 {
+            margin: 0;
+            font-size: clamp(24px, 4vw, 34px);
+          }
+          .yam-console-header-copy p {
+            margin: 8px 0 0;
+            color: #94a3b8;
+            max-width: 880px;
+            line-height: 1.8;
+          }
+          .yam-console-header-actions {
             display: flex;
             align-items: center;
             gap: 10px;
             flex-wrap: wrap;
           }
-          .live-badge,
-          .yam-chip-btn,
-          .yam-mini-btn,
-          .yam-supporter-pill,
-          .yam-remote-tag {
+          .yam-console-live-pill,
+          .yam-console-icon-btn,
+          .yam-console-subtle-btn,
+          .yam-console-filter-chip,
+          .yam-console-chat-pill,
+          .yam-console-mobile-tab,
+          .yam-console-overlay-edit,
+          .yam-console-overlay-cta,
+          .yam-console-room-card,
+          .yam-console-gift-card,
+          .yam-console-quick-btn,
+          .yam-console-chat-composer button,
+          .yam-console-mobile-composer button {
+            border: none;
+            transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+            cursor: pointer;
+          }
+          .yam-console-live-pill {
+            min-height: 42px;
+            padding: 0 18px;
+            border-radius: 999px;
+            color: #fff;
+            font-weight: 900;
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+          }
+          .yam-console-icon-btn {
+            width: 42px;
+            height: 42px;
+            border-radius: 14px;
+            color: #fff;
+            background: rgba(255,255,255,0.08);
+            font-size: 18px;
+          }
+          .yam-console-layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.75fr);
+            gap: 18px;
+            align-items: start;
+          }
+          .yam-console-main-column,
+          .yam-console-side-column {
+            display: grid;
+            gap: 18px;
+          }
+          .yam-console-hero-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 290px;
+            gap: 18px;
+          }
+          .yam-console-stage-card,
+          .yam-console-card {
+            border-radius: 28px;
+            overflow: hidden;
+          }
+          .yam-console-card {
+            padding: 18px;
+          }
+          .yam-console-card-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 14px;
+          }
+          .yam-console-card-head.aligned-start {
+            align-items: flex-start;
+          }
+          .yam-console-card-head span,
+          .yam-console-section-label,
+          .yam-console-mini-stat span,
+          .yam-console-service-box span,
+          .yam-console-stat-copy span,
+          .yam-console-participant-row span,
+          .yam-console-host-inline span,
+          .yam-console-room-card p,
+          .yam-console-empty-list,
+          .yam-console-empty-stage span,
+          .yam-console-empty-stage p,
+          .yam-console-message-time {
+            color: #94a3b8;
+          }
+          .yam-console-section-label {
+            margin-bottom: 6px;
+            font-size: 12px;
+            font-weight: 700;
+          }
+          .yam-console-stage-card {
+            position: relative;
+            padding: 14px;
+            min-height: 430px;
+          }
+          .yam-console-stage-glow {
+            position: absolute;
+            inset: 0;
+            background:
+              radial-gradient(circle at top, rgba(139,92,246,0.24), transparent 42%),
+              radial-gradient(circle at bottom left, rgba(59,130,246,0.14), transparent 35%);
+            pointer-events: none;
+            z-index: 0;
+          }
+          .yam-console-stage-media {
+            position: relative;
+            min-height: 400px;
+            border-radius: 24px;
+            overflow: hidden;
+            background: linear-gradient(180deg, rgba(14, 18, 38, 0.9), rgba(6, 10, 24, 0.96));
+            border: 1px solid rgba(255,255,255,0.08);
+          }
+          .yam-console-stage-overlay-top {
+            position: absolute;
+            top: 14px;
+            left: 14px;
+            right: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            z-index: 3;
+          }
+          .yam-console-live-metrics-inline {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+          .yam-console-inline-badge,
+          .yam-console-remote-pill,
+          .yam-console-service-pill,
+          .yam-console-level-badge,
+          .yam-console-support-pill {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             border-radius: 999px;
             border: 1px solid rgba(255,255,255,0.08);
-            background: rgba(15,23,42,0.66);
+            background: rgba(15,23,42,0.72);
             color: #fff;
             font-weight: 800;
           }
-          .live-badge {
-            padding: 9px 12px;
+          .yam-console-inline-badge {
+            min-height: 34px;
+            padding: 0 12px;
             font-size: 12px;
           }
-          .live-badge.live {
-            background: rgba(239,68,68,0.18);
+          .yam-console-inline-badge.live {
+            background: rgba(239,68,68,0.2);
             color: #fecaca;
-            border-color: rgba(239,68,68,0.3);
           }
-          .yam-live-action-btn,
-          .yam-chip-btn,
-          .yam-mini-btn,
-          .yam-comment-composer button,
-          .yam-gift-card,
-          .yam-room-card {
-            transition: 0.18s ease;
-          }
-          .yam-live-action-btn,
-          .yam-chip-btn,
-          .yam-mini-btn,
-          .yam-comment-composer button {
-            border: none;
-            cursor: pointer;
-            padding: 11px 16px;
-          }
-          .yam-live-action-btn {
-            border-radius: 16px;
-            background: rgba(255,255,255,0.08);
+          .yam-console-overlay-edit {
+            width: 38px;
+            height: 38px;
+            border-radius: 12px;
             color: #fff;
-            font-weight: 800;
+            background: rgba(11, 17, 34, 0.7);
           }
-          .yam-live-action-btn.danger {
-            background: rgba(239,68,68,0.18);
-            color: #fecaca;
-          }
-          .yam-live-video-shell {
-            margin-top: 18px;
-            min-height: 360px;
-            border-radius: 24px;
-            background: linear-gradient(180deg, rgba(15,23,42,0.85), rgba(2,6,23,0.96));
-            overflow: hidden;
-            border: 1px solid rgba(255,255,255,0.06);
-            display: grid;
-            place-items: center;
-          }
-          .yam-live-main-video,
-          .yam-live-preview-video {
+          .yam-console-main-video,
+          .yam-console-preview-video {
             width: 100%;
             height: 100%;
             object-fit: cover;
             display: none;
             background: #000;
           }
-          .yam-live-main-video.visible {
+          .yam-console-main-video.visible,
+          .yam-console-preview-video.visible,
+          .yam-console-preview-video.host-mode {
             display: block;
           }
-          .yam-live-preview-video.visible {
-            display: block;
-          }
-          .yam-live-preview-video.host-mode {
-            display: block;
-          }
-          .yam-live-preview-video.host-mode:not(.visible) {
+          .yam-console-preview-video.host-mode:not(.visible) {
             display: none;
           }
-          .yam-remote-tag {
+          .yam-console-remote-pill {
             position: absolute;
-            top: 18px;
-            right: 18px;
-            padding: 8px 12px;
+            right: 16px;
+            bottom: 16px;
+            min-height: 38px;
+            padding: 0 14px;
+            z-index: 3;
           }
-          .yam-live-video-placeholder {
+          .yam-console-empty-stage {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            align-content: center;
+            justify-items: center;
             text-align: center;
-            padding: 32px;
+            padding: 28px;
+            z-index: 1;
           }
-          .yam-live-hero-icon {
-            width: 86px;
-            height: 86px;
-            border-radius: 28px;
+          .yam-console-empty-icon {
+            width: 94px;
+            height: 94px;
+            border-radius: 30px;
             display: grid;
             place-items: center;
-            margin: 0 auto 18px;
-            font-size: 38px;
-            background: linear-gradient(135deg, rgba(139,92,246,0.28), rgba(59,130,246,0.12));
+            margin-bottom: 16px;
+            font-size: 40px;
+            background: linear-gradient(135deg, rgba(139,92,246,0.36), rgba(59,130,246,0.18));
           }
-          .yam-live-video-placeholder h1 {
+          .yam-console-empty-stage h2 {
             margin: 0 0 8px;
-            font-size: 28px;
+            font-size: clamp(24px, 4vw, 32px);
           }
-          .yam-live-video-placeholder p,
-          .yam-live-stage-tech,
-          .yam-subtle-copy,
-          .yam-room-card p,
-          .yam-cohost-row p,
-          .yam-live-comment p {
-            margin: 0;
-            color: #94a3b8;
+          .yam-console-empty-stage p {
+            margin: 0 0 10px;
           }
-          .yam-live-stage-tech {
-            margin-top: 14px;
-            font-size: 13px;
+          .yam-console-overlay-cta {
+            position: absolute;
+            right: 16px;
+            bottom: 16px;
+            min-height: 42px;
+            padding: 0 16px;
+            border-radius: 14px;
+            color: #fff;
+            background: rgba(15, 23, 42, 0.86);
+            z-index: 2;
           }
-          .yam-live-stage-footer {
-            margin-top: 18px;
+          .yam-console-stats-card {
+            align-content: start;
           }
-          .yam-live-host-box {
+          .yam-console-stat-stack {
+            display: grid;
+            gap: 12px;
+          }
+          .yam-console-stat-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px;
+            border-radius: 18px;
+            border: 1px solid rgba(255,255,255,0.06);
+            background: rgba(15, 23, 42, 0.56);
+          }
+          .yam-console-stat-row.purple .yam-console-stat-icon { background: rgba(168,85,247,0.18); color: #c084fc; }
+          .yam-console-stat-row.pink .yam-console-stat-icon { background: rgba(236,72,153,0.16); color: #f9a8d4; }
+          .yam-console-stat-row.gold .yam-console-stat-icon { background: rgba(250,204,21,0.16); color: #fde68a; }
+          .yam-console-stat-row.blue .yam-console-stat-icon { background: rgba(59,130,246,0.16); color: #93c5fd; }
+          .yam-console-stat-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 16px;
+            display: grid;
+            place-items: center;
+            font-size: 22px;
+          }
+          .yam-console-stat-copy {
+            display: grid;
+            gap: 4px;
+          }
+          .yam-console-stat-copy strong {
+            font-size: 20px;
+          }
+          .yam-console-quick-grid {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: 12px;
+          }
+          .yam-console-quick-btn {
+            min-height: 92px;
+            border-radius: 22px;
+            background: rgba(15,23,42,0.6);
+            color: #fff;
+            padding: 14px 12px;
+            display: grid;
+            gap: 8px;
+            justify-items: center;
+            text-align: center;
+            border: 1px solid rgba(255,255,255,0.06);
+          }
+          .yam-console-quick-btn span {
+            font-size: 24px;
+            line-height: 1;
+            color: #a78bfa;
+          }
+          .yam-console-quick-btn strong {
+            font-size: 14px;
+          }
+          .yam-console-quick-btn.primary,
+          .yam-console-subtle-btn.primary,
+          .yam-console-chat-composer button,
+          .yam-console-mobile-composer button,
+          .yam-console-mobile-tab.center {
+            background: linear-gradient(135deg, #8b5cf6, #5b21b6);
+            box-shadow: 0 16px 30px rgba(91,33,182,0.36);
+          }
+          .yam-console-quick-btn.danger {
+            background: linear-gradient(135deg, rgba(239,68,68,0.2), rgba(127,29,29,0.55));
+          }
+          .yam-console-title-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            flex-wrap: wrap;
+          }
+          .yam-console-host-inline {
             display: flex;
             align-items: center;
             gap: 12px;
           }
-          .yam-live-host-box p,
-          .yam-cohost-row p {
-            margin-top: 4px;
-            font-size: 13px;
+          .yam-console-host-inline strong {
+            display: block;
+            margin-bottom: 4px;
           }
-          .yam-chip-btn {
-            padding: 10px 14px;
-            cursor: pointer;
+          .yam-console-service-pills,
+          .yam-console-supporters,
+          .yam-console-room-filters,
+          .yam-console-side-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
           }
-          .yam-chip-btn.primary,
-          .yam-mini-btn,
-          .yam-comment-composer button {
-            background: linear-gradient(135deg, #8b5cf6, #3b82f6);
+          .yam-console-service-pill,
+          .yam-console-support-pill,
+          .yam-console-level-badge {
+            min-height: 34px;
+            padding: 0 12px;
+            font-size: 12px;
           }
-          .yam-live-grid-aux {
+          .yam-console-service-pill.good {
+            background: rgba(16,185,129,0.16);
+            color: #bbf7d0;
+          }
+          .yam-console-dual-grid {
             display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 16px;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 18px;
           }
-          .yam-live-info-card,
-          .yam-live-side-card {
-            padding: 18px;
-            display: grid;
-            gap: 14px;
+          .yam-console-goal-progress {
+            width: 100%;
+            height: 12px;
+            border-radius: 999px;
+            background: rgba(148,163,184,0.18);
+            overflow: hidden;
+            margin: 8px 0 12px;
           }
-          .yam-card-head span {
-            color: #94a3b8;
-            font-size: 13px;
+          .yam-console-goal-progress span {
+            display: block;
+            height: 100%;
+            background: linear-gradient(90deg, #8b5cf6, #c084fc, #7c3aed);
           }
-          .yam-info-grid {
+          .yam-console-goal-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+          }
+          .yam-console-subtle-btn {
+            min-height: 38px;
+            padding: 0 14px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.08);
+            color: #fff;
+            font-weight: 800;
+          }
+          .yam-console-micro-grid,
+          .yam-console-service-grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 12px;
           }
-          .yam-stat-box {
-            padding: 14px;
+          .yam-console-mini-stat,
+          .yam-console-service-box {
             border-radius: 18px;
-            background: rgba(15,23,42,0.64);
-            border: 1px solid rgba(255,255,255,0.05);
+            padding: 14px;
+            background: rgba(15, 23, 42, 0.56);
+            border: 1px solid rgba(255,255,255,0.06);
             display: grid;
             gap: 6px;
           }
-          .yam-stat-box span {
-            color: #94a3b8;
-            font-size: 12px;
-          }
-          .yam-stat-box strong {
+          .yam-console-mini-stat strong,
+          .yam-console-service-box strong {
             color: #fff;
             font-size: 17px;
           }
-          .yam-goal-bar {
-            width: 100%;
-            height: 12px;
+          .yam-console-chat-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+          }
+          .yam-console-chat-pill {
+            min-height: 36px;
+            padding: 0 14px;
             border-radius: 999px;
-            background: rgba(148,163,184,0.14);
-            overflow: hidden;
+            color: #dbe4ff;
+            background: rgba(15,23,42,0.56);
+            border: 1px solid rgba(255,255,255,0.06);
+            font-weight: 800;
           }
-          .yam-goal-bar span {
-            display: block;
-            height: 100%;
-            background: linear-gradient(90deg, #8b5cf6, #10b981);
+          .yam-console-chat-pill.active,
+          .yam-console-filter-chip.active {
+            background: linear-gradient(135deg, rgba(139,92,246,0.94), rgba(59,130,246,0.9));
+            color: #fff;
           }
-          .yam-live-sidebar {
-            display: grid;
-            gap: 18px;
-            align-content: start;
-          }
-          .yam-live-room-filters {
+          .yam-console-chat-list,
+          .yam-console-room-list,
+          .yam-console-participants-list,
+          .yam-console-gift-grid {
             display: grid;
             gap: 10px;
           }
-          .yam-live-room-search,
-          .yam-live-room-sort {
+          .yam-console-chat-list {
+            max-height: 420px;
+            overflow-y: auto;
+            padding-inline-end: 4px;
+          }
+          .yam-console-message-row,
+          .yam-console-participant-row {
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr) auto;
+            gap: 12px;
+            align-items: center;
+            border-radius: 18px;
+            padding: 12px 14px;
+            background: rgba(15, 23, 42, 0.52);
+            border: 1px solid rgba(255,255,255,0.06);
+          }
+          .yam-console-participant-row {
+            grid-template-columns: auto minmax(0, 1fr);
+          }
+          .yam-console-message-body,
+          .yam-console-participant-row div {
+            min-width: 0;
+          }
+          .yam-console-message-headline {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+            flex-wrap: wrap;
+          }
+          .yam-console-message-body p {
+            margin: 0;
+            color: #f8fafc;
+            line-height: 1.7;
+            word-break: break-word;
+          }
+          .yam-console-room-tools {
+            display: grid;
+            gap: 10px;
+            margin-bottom: 12px;
+          }
+          .yam-console-room-search,
+          .yam-console-room-sort {
             width: 100%;
-            min-height: 44px;
-            border-radius: 14px;
+            min-height: 46px;
+            border-radius: 16px;
             border: 1px solid rgba(255,255,255,0.08);
             background: rgba(15,23,42,0.58);
             color: #fff;
             padding: 0 14px;
           }
-          .yam-live-room-filter-chips {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-          }
-          .yam-live-filter-chip {
-            border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 999px;
-            background: rgba(15,23,42,0.52);
-            color: #dbe4ff;
-            min-height: 38px;
+          .yam-console-filter-chip {
+            min-height: 36px;
             padding: 0 14px;
-            cursor: pointer;
-            font-weight: 700;
-          }
-          .yam-live-filter-chip.active {
-            background: linear-gradient(135deg, rgba(139,92,246,0.94), rgba(59,130,246,0.94));
-            color: #fff;
-          }
-          .yam-room-list,
-          .yam-cohost-list,
-          .yam-comment-stream,
-          .yam-gift-tray {
-            display: grid;
-            gap: 10px;
-          }
-          .yam-room-card {
-            width: 100%;
+            border-radius: 999px;
+            background: rgba(15,23,42,0.56);
+            color: #e2e8f0;
             border: 1px solid rgba(255,255,255,0.06);
-            background: rgba(15,23,42,0.5);
-            border-radius: 18px;
+            font-weight: 800;
+          }
+          .yam-console-room-card {
+            width: 100%;
             padding: 14px;
+            border-radius: 18px;
+            text-align: start;
+            background: rgba(15,23,42,0.5);
+            color: #fff;
+            border: 1px solid rgba(255,255,255,0.06);
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 12px;
-            color: #fff;
-            text-align: start;
-            cursor: pointer;
           }
-          .yam-room-card.active,
-          .yam-room-card:hover {
+          .yam-console-room-card.active {
             background: rgba(124,58,237,0.18);
-            border-color: rgba(167,139,250,0.24);
+            border-color: rgba(167,139,250,0.26);
           }
-          .yam-cohost-row,
-          .yam-live-comment {
+          .yam-console-room-card strong,
+          .yam-console-message-body strong,
+          .yam-console-card-head strong,
+          .yam-console-participant-row strong,
+          .yam-console-title-card strong {
+            color: #fff;
+          }
+          .yam-console-room-card p {
+            margin: 4px 0 0;
+          }
+          .yam-console-gift-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            margin-top: 12px;
+          }
+          .yam-console-gift-card {
+            border-radius: 18px;
+            padding: 14px 12px;
+            background: rgba(15,23,42,0.56);
+            color: #fff;
+            border: 1px solid rgba(255,255,255,0.06);
+            display: grid;
+            gap: 6px;
+            justify-items: center;
+          }
+          .yam-console-gift-card span {
+            font-size: 28px;
+          }
+          .yam-console-chat-composer,
+          .yam-console-mobile-composer {
             display: flex;
-            align-items: flex-start;
             gap: 10px;
-            padding: 12px 14px;
-            border-radius: 16px;
-            background: rgba(15,23,42,0.5);
-            border: 1px solid rgba(255,255,255,0.05);
+            margin-top: 12px;
           }
-          .yam-live-chat-box {
-            min-height: 420px;
-          }
-          .yam-comment-stream {
-            max-height: 280px;
-            overflow-y: auto;
-            padding-inline-end: 4px;
-          }
-          .yam-comment-composer {
-            display: flex;
-            gap: 10px;
-          }
-          .yam-comment-composer input,
-          .yam-live-mobile-comment-box input {
+          .yam-console-chat-composer input,
+          .yam-console-mobile-composer input {
             flex: 1;
+            min-width: 0;
+            min-height: 48px;
             border-radius: 16px;
             border: 1px solid rgba(255,255,255,0.08);
             background: rgba(15,23,42,0.7);
             color: #fff;
-            padding: 12px 14px;
-            min-width: 0;
+            padding: 0 14px;
           }
-          .yam-live-mobile-dock {
+          .yam-console-chat-composer button,
+          .yam-console-mobile-composer button {
+            min-width: 96px;
+            border-radius: 16px;
+            color: #fff;
+            font-weight: 800;
+          }
+          .yam-console-mobile-dock,
+          .yam-console-mobile-composer {
             display: none;
           }
-          .yam-live-mobile-actions {
-            display: flex;
-            align-items: center;
+          .yam-console-mobile-dock {
+            position: fixed;
+            left: 12px;
+            right: 12px;
+            bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+            z-index: 30;
+            border-radius: 24px;
+            padding: 10px;
+            border: 1px solid rgba(255,255,255,0.08);
+            background: rgba(9, 13, 28, 0.94);
+            backdrop-filter: blur(18px);
+            box-shadow: 0 22px 50px rgba(2, 6, 23, 0.45);
+            grid-template-columns: repeat(5, minmax(0, 1fr));
             gap: 8px;
           }
-          .yam-live-mobile-btn {
-            flex: 1;
-            min-height: 42px;
-            border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 16px;
-            background: rgba(15,23,42,0.82);
-            color: #fff;
-            font-weight: 800;
-            cursor: pointer;
-          }
-          .yam-live-mobile-btn.active {
-            background: linear-gradient(135deg, rgba(139,92,246,0.92), rgba(59,130,246,0.92));
-          }
-          .yam-live-mobile-comment-box {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-          }
-          .yam-live-mobile-comment-box button {
-            border: none;
-            min-height: 44px;
-            padding: 0 16px;
-            border-radius: 16px;
-            background: linear-gradient(135deg, #8b5cf6, #3b82f6);
-            color: #fff;
-            font-weight: 800;
-            cursor: pointer;
-          }
-          .yam-gift-tray {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-          .yam-gift-card {
-            border: 1px solid rgba(255,255,255,0.08);
+          .yam-console-mobile-tab {
+            min-height: 72px;
             border-radius: 18px;
-            padding: 14px;
-            background: rgba(15,23,42,0.54);
+            background: rgba(255,255,255,0.05);
             color: #fff;
             display: grid;
             gap: 6px;
-            justify-items: start;
-            cursor: pointer;
+            justify-items: center;
+            align-content: center;
+            padding: 6px;
           }
-          .yam-gift-card:hover,
-          .yam-live-action-btn:hover,
-          .yam-chip-btn:hover,
-          .yam-mini-btn:hover,
-          .yam-comment-composer button:hover {
+          .yam-console-mobile-tab span {
+            font-size: 22px;
+            line-height: 1;
+          }
+          .yam-console-mobile-tab strong {
+            font-size: 12px;
+          }
+          .yam-console-mobile-tab.active {
+            background: linear-gradient(135deg, rgba(139,92,246,0.9), rgba(59,130,246,0.85));
+          }
+          .yam-console-mobile-tab.center {
+            transform: translateY(-10px);
+            border-radius: 22px;
+          }
+          .yam-console-mobile-composer {
+            position: fixed;
+            left: 12px;
+            right: 12px;
+            bottom: calc(108px + env(safe-area-inset-bottom, 0px));
+            z-index: 31;
+            padding: 10px;
+            border-radius: 20px;
+            background: rgba(9, 13, 28, 0.96);
+            border: 1px solid rgba(255,255,255,0.08);
+            box-shadow: 0 18px 40px rgba(2, 6, 23, 0.42);
+          }
+          .yam-console-live-pill:hover,
+          .yam-console-icon-btn:hover,
+          .yam-console-subtle-btn:hover,
+          .yam-console-filter-chip:hover,
+          .yam-console-chat-pill:hover,
+          .yam-console-room-card:hover,
+          .yam-console-gift-card:hover,
+          .yam-console-overlay-edit:hover,
+          .yam-console-overlay-cta:hover,
+          .yam-console-quick-btn:hover,
+          .yam-console-chat-composer button:hover,
+          .yam-console-mobile-tab:hover,
+          .yam-console-mobile-composer button:hover {
             transform: translateY(-1px);
           }
           .yam-live-hearts-layer {
             position: absolute;
             inset: 0;
-            pointer-events: none;
             overflow: hidden;
-            z-index: 3;
+            pointer-events: none;
+            z-index: 4;
           }
           .yam-live-heart {
             position: absolute;
@@ -1185,120 +1184,92 @@ export default function Live() {
             25% { opacity: 1; }
             100% { transform: translateY(-260px) translateX(16px) scale(1.16); opacity: 0; }
           }
-          @media (max-width: 1200px) {
-            .yam-live-page {
+          @media (max-width: 1280px) {
+            .yam-console-layout,
+            .yam-console-hero-grid {
               grid-template-columns: 1fr;
             }
-            .yam-live-grid-aux {
-              grid-template-columns: 1fr;
+            .yam-console-quick-grid {
+              grid-template-columns: repeat(3, minmax(0, 1fr));
             }
           }
-          @media (max-width: 1024px) {
-            .yam-live-page {
-              padding: 12px 12px 96px;
-              gap: 14px;
+          @media (max-width: 860px) {
+            .yam-console-page {
+              padding: 12px 12px 190px;
             }
-            .yam-live-stage-card,
-            .yam-live-info-card,
-            .yam-live-side-card {
-              border-radius: 22px;
+            .yam-console-header,
+            .yam-console-card,
+            .yam-console-stage-card {
+              border-radius: 24px;
             }
-            .yam-live-stage-card {
+            .yam-console-header {
+              padding: 16px;
+            }
+            .yam-console-header-actions {
+              width: 100%;
+              justify-content: space-between;
+            }
+            .yam-console-stage-card {
               min-height: auto;
-              padding: 14px;
-            }
-            .yam-live-stage-head,
-            .yam-live-stage-footer {
-              align-items: stretch;
-            }
-            .yam-live-badges,
-            .yam-live-stage-actions,
-            .yam-live-stage-tools {
-              display: grid;
-              grid-template-columns: repeat(2, minmax(0, 1fr));
-              width: 100%;
-              gap: 8px;
-            }
-            .yam-live-action-btn,
-            .yam-chip-btn {
-              width: 100%;
-              justify-content: center;
-              text-align: center;
-            }
-            .yam-mobile-hidden-interaction,
-            .yam-live-desktop-panel {
-              display: none !important;
-            }
-            .yam-live-video-shell {
-              min-height: 220px;
-              margin-top: 14px;
-            }
-            .yam-live-video-placeholder {
-              padding: 24px 18px;
-            }
-            .yam-live-video-placeholder h1 {
-              font-size: 24px;
-            }
-            .yam-live-stage-tech {
-              font-size: 12px;
-              line-height: 1.7;
-            }
-            .yam-info-grid {
-              grid-template-columns: 1fr 1fr;
-            }
-            .yam-stat-box {
               padding: 12px;
             }
-            .yam-live-chat-box {
-              min-height: 320px;
+            .yam-console-stage-media {
+              min-height: 280px;
             }
-            .yam-comment-stream {
-              max-height: 220px;
+            .yam-console-quick-grid,
+            .yam-console-dual-grid,
+            .yam-console-micro-grid,
+            .yam-console-service-grid,
+            .yam-console-gift-grid {
+              grid-template-columns: repeat(2, minmax(0, 1fr));
             }
-            .yam-live-mobile-dock {
+            .yam-console-message-row {
+              grid-template-columns: auto minmax(0, 1fr);
+            }
+            .yam-console-message-time {
+              display: none;
+            }
+            .yam-console-mobile-dock,
+            .yam-console-mobile-composer {
               display: grid;
-              gap: 10px;
-              margin-top: 14px;
-              padding: 10px;
-              border-radius: 18px;
-              border: 1px solid rgba(255,255,255,0.06);
-              background: rgba(6,10,20,0.9);
-              position: fixed;
-              left: 12px;
-              right: 12px;
-              bottom: calc(76px + env(safe-area-inset-bottom, 0px));
-              z-index: 20;
-              backdrop-filter: blur(16px);
-              box-shadow: 0 18px 40px rgba(2,6,23,0.42);
             }
-            .yam-live-mobile-actions {
-              display: grid;
-              grid-template-columns: repeat(3, minmax(0, 1fr));
-              gap: 8px;
+            .yam-console-chat-composer {
+              display: none;
             }
-            .yam-live-mobile-comment-box {
-              flex-direction: row;
-              padding: 2px 0 0;
+          }
+          @media (max-width: 560px) {
+            .yam-console-header-copy h1 {
+              font-size: 24px;
             }
-            .yam-live-mobile-comment-box button {
-              width: auto;
-              flex-shrink: 0;
+            .yam-console-header-copy p {
+              font-size: 13px;
             }
-            .yam-live-mobile-gift-tray,
-            .yam-gift-tray {
-              grid-template-columns: repeat(3, minmax(0, 1fr));
+            .yam-console-card,
+            .yam-console-stage-card {
+              padding: 14px;
             }
-            .yam-gift-card {
-              padding: 10px 8px;
-              border-radius: 14px;
-              justify-items: center;
-              text-align: center;
+            .yam-console-stage-media {
+              min-height: 220px;
             }
-            .yam-live-stage-card {
-              padding-bottom: 118px;
+            .yam-console-quick-grid,
+            .yam-console-dual-grid,
+            .yam-console-micro-grid,
+            .yam-console-service-grid,
+            .yam-console-gift-grid {
+              grid-template-columns: 1fr;
             }
-            .yam-live-sidebar .yam-live-chat-box {
-              padding-bottom: 118px;
+            .yam-console-live-metrics-inline {
+              flex-wrap: wrap;
+            }
+            .yam-console-mobile-dock {
+              gap: 6px;
+              padding: 8px;
+            }
+            .yam-console-mobile-tab {
+              min-height: 66px;
+            }
+            .yam-console-mobile-tab strong {
+              font-size: 11px;
             }
           }
         `}</style>

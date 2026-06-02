@@ -1,18 +1,22 @@
-import apiClient from './api/apiClient';
+import {
+  getPosts,
+  likePost,
+  savePost,
+  sharePost,
+} from '../../api/posts.js';
+import { getStories } from '../../api/stories.js';
+import { followUser } from '../../api/users.js';
 
 export const socialApi = {
-  feed: () => apiClient.get('/api/feed'),
-  stories: () => apiClient.get('/api/stories'),
-  follow: (userId) =>
-    apiClient.post(`/api/users/${userId}/follow`, {}),
-  unfollow: (userId) =>
-    apiClient.post(`/api/users/${userId}/unfollow`, {}),
-  react: (postId, reaction) =>
-    apiClient.post(`/api/posts/${postId}/react`, {
-      reaction,
-    }),
-  savePost: (postId) =>
-    apiClient.post(`/api/posts/${postId}/save`, {}),
+  feed: (params = {}) => getPosts(params),
+  stories: () => getStories(),
+  follow: (username) => followUser(username),
+  unfollow: (username) => Promise.resolve({ data: { status: 'use-block-or-unfollow-flow', username } }),
+  react: (postId, reaction = 'like') => {
+    if (reaction === 'like') return likePost(postId);
+    return sharePost(postId, reaction || 'copy');
+  },
+  savePost: (postId) => savePost(postId),
 };
 
 export default socialApi;

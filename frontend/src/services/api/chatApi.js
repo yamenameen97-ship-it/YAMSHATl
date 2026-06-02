@@ -1,17 +1,11 @@
-import apiClient from './api/apiClient';
+import { getChatThreads, getMessages, markMessagesSeen, sendMessageApi } from '../../api/chat.js';
 
 export const chatApi = {
-  conversations: () => apiClient.get('/api/chat/conversations'),
-  messages: (chatId) =>
-    apiClient.get(`/api/chat/${chatId}/messages`),
-  sendMessage: (chatId, payload) =>
-    apiClient.post(`/api/chat/${chatId}/messages`, payload),
-  typing: (chatId) =>
-    apiClient.post(`/api/chat/${chatId}/typing`, {}),
-  read: (chatId, messageId) =>
-    apiClient.post(`/api/chat/${chatId}/read`, {
-      messageId,
-    }),
+  conversations: (options = {}) => getChatThreads(options),
+  messages: (chatId, options = {}) => getMessages(chatId, 40, undefined, options),
+  sendMessage: (chatId, payload = {}) => sendMessageApi({ receiver: chatId, ...payload }),
+  typing: (chatId) => Promise.resolve({ data: { status: 'realtime_only', chatId } }),
+  read: (chatId) => markMessagesSeen(chatId),
 };
 
 export default chatApi;

@@ -1,46 +1,11 @@
-const API_BASE =
-  import.meta.env.VITE_API_URL ||
-  'http://localhost:8000';
-
-async function request(endpoint, options = {}) {
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
-    ...options,
-  });
-
-  if (!response.ok) {
-    throw new Error(`API Error: ${response.status}`);
-  }
-
-  const contentType = response.headers.get('content-type') || '';
-
-  if (contentType.includes('application/json')) {
-    return response.json();
-  }
-
-  return response.text();
-}
+import API from '../../api/axios.js';
 
 export const apiClient = {
-  get: (url) => request(url),
-  post: (url, body) =>
-    request(url, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-  put: (url, body) =>
-    request(url, {
-      method: 'PUT',
-      body: JSON.stringify(body),
-    }),
-  delete: (url) =>
-    request(url, {
-      method: 'DELETE',
-    }),
+  get: (url, config = {}) => API.get(url, config),
+  post: (url, body = {}, config = {}) => API.post(url, body, config),
+  put: (url, body = {}, config = {}) => API.put(url, body, config),
+  patch: (url, body = {}, config = {}) => API.patch(url, body, config),
+  delete: (url, config = {}) => API.delete(url, config),
 };
 
 export default apiClient;

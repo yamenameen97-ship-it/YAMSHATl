@@ -45,6 +45,30 @@ function severityTone(level) {
   }
 }
 
+function exportAuditRows(rows) {
+  const payload = rows.map((item) => ({
+    id: item.id,
+    action: item.action,
+    scope: item.scope,
+    severity: item.severity,
+    admin_name: item.admin_name,
+    actor: item.actor,
+    summary: item.summary,
+    entity: item.entity,
+    ip_address: item.ip_address,
+    timestamp: item.timestamp,
+  }));
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `yamshat-admin-audit-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function AdminAudit() {
   const { pushToast } = useToast();
   const [logs, setLogs] = useState([]);
@@ -106,6 +130,15 @@ export default function AdminAudit() {
     return Array.from(map.entries());
   }, [filteredLogs]);
 
+  const handleExport = useCallback(() => {
+    if (!filteredLogs.length) {
+      pushToast({ type: 'warning', title: 'لا توجد بيانات للتصدير', description: 'قم بتوسيع الفلاتر أو تحديث السجل أولًا.' });
+      return;
+    }
+    exportAuditRows(filteredLogs);
+    pushToast({ type: 'success', title: 'تم تصدير السجل', description: `تم إنشاء ملف JSON بعدد ${filteredLogs.length} سجل.` });
+  }, [filteredLogs, pushToast]);
+
   return (
     <AdminLayout>
       <section style={{ display: 'grid', gap: 18 }}>
@@ -120,7 +153,7 @@ export default function AdminAudit() {
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <Button variant="secondary" onClick={loadAuditLogs} loading={loading}>تحديث</Button>
-              <Button onClick={() => pushToast({ type: 'info', title: 'Audit export queued', description: 'جاهز لربط التصدير مع الـ backend.' })}>تصدير السجل</Button>
+              <Button onClick={handleExport}>تصدير السجل</Button>
             </div>
           </div>
         </Card>

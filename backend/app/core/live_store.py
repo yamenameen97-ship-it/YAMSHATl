@@ -121,6 +121,60 @@ class LiveStore:
     def list_rooms(self) -> list[dict]:
         return [self.serialize_room(room) for room in self.rooms.values() if room.active]
 
+    def toggle_featured(self, room_id: str, featured: bool | None = None) -> dict:
+        room = self.get_room(room_id)
+        if not room:
+            raise KeyError('Room not found')
+        room.featured = (not room.featured) if featured is None else bool(featured)
+        room.last_activity_at = _utcnow()
+        return self.serialize_room(room)
+
+    def pin_latest_comment(self, room_id: str) -> dict:
+        room = self.get_room(room_id)
+        if not room:
+            raise KeyError('Room not found')
+        if not room.comments:
+            raise KeyError('No comments available')
+        for comment in room.comments:
+            comment.pinned = False
+        latest = room.comments[-1]
+        latest.pinned = True
+        room.pinned_comment_id = latest.id
+        room.last_activity_at = _utcnow()
+        return self.serialize_room(room)
+
+    def end_room(self, room_id: str) -> dict | None:
+        room = self.get_room(room_id)
+        if not room:
+            return None
+        room.active = False
+        room.stream_status = 'ended'
+        room.viewers.clear()
+        room.viewer_count = 0
+        room.last_activity_at = _utcnow()
+        return self.serialize_room(room)
+
+    def admin_overview(self) -> dict:
+        rooms = [self.serialize_room(room) for room in self.rooms.values()]
+        active_rooms = [room for room in rooms if room.get('active')]
+        active_rooms.sort(
+            key=lambda room: (room.get('viewer_count', 0), room.get('featured', False), room.get('last_activity_at') or ''),
+            reverse=True,
+        )
+        stats = {
+            'active_rooms': len(active_rooms),
+            'featured_rooms': sum(1 for room in active_rooms if room.get('featured')),
+            'current_viewers': sum(int(room.get('viewer_count', 0) or 0) for room in active_rooms),
+            'comments_count': sum(int(room.get('comments_count', 0) or 0) for room in active_rooms),
+            'hearts_count': sum(int(room.get('hearts_count', 0) or 0) for room in active_rooms),
+            'top_peak_viewers': max([int(room.get('peak_viewer_count', 0) or 0) for room in active_rooms] or [0]),
+        }
+        return {
+            'stats': stats,
+            'rooms': active_rooms,
+            'generated_at': _utcnow(),
+        }
+
     def activate_presence(self, room_id: str, sid: str, username: str, is_host: bool = False, platform: str = 'web', device_type: str = 'browser') -> dict | None:
         room = self.get_room(room_id)
         if not room:
@@ -243,6 +297,7 @@ class LiveStore:
     def serialize_room(self, room: LiveRoom) -> dict:
         unique_viewers = room.stream_analytics.get('unique_viewers') or set()
         top_gifters = sorted(room.economy['top_gifters'].items(), key=lambda item: item[1], reverse=True)[:5]
+        pinned_comment = next((comment for comment in room.comments if comment.id == room.pinned_comment_id), None)
         return {
             'id': room.id,
             'host': room.username,
@@ -254,6 +309,14 @@ class LiveStore:
             'peak_viewer_count': room.peak_viewer_count,
             'hearts_count': room.hearts_count,
             'active': room.active,
+            'featured': room.featured,
+            'stream_status': getattr(room, 'stream_status', 'live' if room.active else 'ended'),
+            'pinned_comment': ({
+                'id': pinned_comment.id,
+                'user': pinned_comment.user,
+                'text': pinned_comment.text,
+                'created_at': pinned_comment.created_at,
+            } if pinned_comment else None),
             'recording': {
                 'status': room.recording_status,
                 'url': room.recording_url,

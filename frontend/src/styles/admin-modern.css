@@ -1067,3 +1067,34 @@
   .admin-kpi-grid { grid-template-columns: 1fr 1fr; }
   .admin-kpi-value { font-size: 20px; }
 }
+
+/* ---------- Admin dark surface safety ---------- */
+.admin-page-shell-modern .card,
+.admin-page-shell-modern [data-ds='card'] {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(9, 14, 26, 0.92));
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  color: var(--adm-text);
+  box-shadow: 0 18px 48px rgba(2, 6, 23, 0.34);
+}
+
+.admin-page-shell-modern .input,
+.admin-page-shell-modern textarea.input,
+.admin-page-shell-modern select.input,
+.admin-page-shell-modern .input-shell {
+  background: rgba(15, 23, 42, 0.82);
+  color: var(--adm-text);
+  border-color: rgba(148, 163, 184, 0.14);
+}
+
+.admin-page-shell-modern .input::placeholder,
+.admin-page-shell-modern textarea.input::placeholder {
+  color: rgba(148, 163, 184, 0.72);
+}
+
+.admin-page-shell-modern .ui-modal,
+.admin-page-shell-modern .modal-content,
+.admin-page-shell-modern .modal-card {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(8, 13, 24, 0.98));
+  color: var(--adm-text);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}

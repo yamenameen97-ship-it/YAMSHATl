@@ -373,6 +373,29 @@ def _room_members_count(room_name: str, namespace: str = '/') -> int:
         return 0
 
 
+def _normalize_audit_entry(log: AuditLog, *, fallback_id: int = 0) -> dict[str, Any]:
+    serialized = _serialize_audit_log(log, fallback_id=fallback_id)
+    meta = serialized.get('meta') or {}
+    action_text = str(serialized.get('action') or '').lower()
+    severity = 'info'
+    if any(keyword in action_text for keyword in ['delete', 'ban', 'critical', 'escalat', 'block']):
+        severity = 'critical'
+    elif any(keyword in action_text for keyword in ['export', 'warn', 'flag', 'suspend']):
+        severity = 'warning'
+    elif any(keyword in action_text for keyword in ['create', 'update', 'restore', 'feature', 'pin']):
+        severity = 'success'
+    return {
+        **serialized,
+        'scope': serialized.get('entity_type') or 'general',
+        'severity': severity,
+        'summary': serialized.get('description') or 'لا يوجد وصف إضافي.',
+        'admin_name': meta.get('actor_name') or meta.get('username') or 'Admin',
+        'actor': meta.get('actor_email') or meta.get('email') or meta.get('username') or 'admin@yamshat.local',
+        'timestamp': serialized.get('created_at'),
+        'ip_address': meta.get('ip_address') or meta.get('ip') or '--',
+        'entity': serialized.get('entity_id') or '--',
+    }
+
 def _service_health_snapshot(db: Session) -> list[dict[str, Any]]:
     try:
         db.execute(text('SELECT 1'))
@@ -1387,6 +1410,72 @@ def broadcast_notification(
     )
     return {'message': 'Broadcast sent', 'recipients': created}
 
+
+@router.get('/analytics/dashboard')
+def get_admin_analytics_dashboard(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return get_overview(db, current_user)
+
+@router.get('/analytics/system-health')
+def get_admin_system_health(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    _require_permission(current_user, 'dashboard.view')
+    return {
+        'generated_at': datetime.utcnow().isoformat(),
+        'services': _service_health_snapshot(db),
+    }
+
+@router.get('/audit-logs')
+def get_audit_logs_alias(
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    search: str | None = None,
+    scope: str | None = None,
+    severity: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_permission(current_user, 'rbac.view')
+    query = db.query(AuditLog)
+    if search:
+        pattern = f'%{search.strip()}%'
+        query = query.filter(
+            or_(
+                AuditLog.action.ilike(pattern),
+                AuditLog.description.ilike(pattern),
+                AuditLog.entity_type.ilike(pattern),
+                AuditLog.entity_id.ilike(pattern),
+            )
+        )
+    if scope and scope != 'all':
+        query = query.filter(AuditLog.entity_type == scope)
+    total = query.count()
+    logs = query.order_by(AuditLog.created_at.desc()).offset(offset).limit(limit).all()
+    items = [_normalize_audit_entry(log, fallback_id=offset + index + 1) for index, log in enumerate(logs)]
+    if severity and severity != 'all':
+        items = [item for item in items if item.get('severity') == severity]
+    return {
+        'items': items,
+        'total': total,
+    }
+
+@router.get('/audit-logs/summary')
+def get_audit_logs_summary_alias(
+    period: str = Query(default='24h'),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_permission(current_user, 'rbac.view')
+    hours = 24
+    if period.endswith('h') and period[:-1].isdigit():
+        hours = max(1, int(period[:-1]))
+    since = datetime.utcnow() - timedelta(hours=hours)
+    logs = db.query(AuditLog).filter(AuditLog.created_at >= since).order_by(AuditLog.created_at.desc()).all()
+    items = [_normalize_audit_entry(log, fallback_id=index + 1) for index, log in enumerate(logs)]
+    return {
+        'today': len(items),
+        'critical': sum(1 for item in items if item.get('severity') == 'critical'),
+        'exports': sum(1 for item in items if 'export' in str(item.get('action') or '').lower()),
+        'security': sum(1 for item in items if str(item.get('scope') or '').lower() in {'security', 'auth', 'session'}),
+    }
 
 @router.get('/reports/summary')
 def get_report_summary(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):

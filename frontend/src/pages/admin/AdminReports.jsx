@@ -354,11 +354,48 @@ export default function AdminReports() {
     pushActivity('content_status_changed', `${removalId} أصبح ${status}`, status === 'restored' ? '#22c55e' : '#f97316');
   }, [pushActivity]);
 
+  const handleManualReview = useCallback(async (report) => {
+    if (!report) {
+      pushToast({ type: 'warning', title: 'اختر بلاغًا أولًا', description: 'حدد بلاغًا من القائمة لتطبيق الإجراء.' });
+      return;
+    }
+    const originalStatus = report.status;
+    try {
+      setBusyId(report.id);
+      patchReport(report.id, { status: 'investigating' });
+      await updateReportStatus(report.id, 'investigating');
+      pushActivity('manual_review', `${report.id} دخل المراجعة اليدوية`, '#3b82f6');
+      pushToast({ type: 'success', title: 'تم تحويل البلاغ للمراجعة', description: `${report.id} أصبح قيد التحقيق.` });
+    } catch (error) {
+      patchReport(report.id, { status: originalStatus });
+      pushToast({ type: 'error', title: 'تعذر تحويل البلاغ', description: error?.response?.data?.detail || error?.message });
+    } finally {
+      setBusyId('');
+    }
+  }, [patchReport, pushActivity, pushToast]);
+
+  const handleTemporaryBan = useCallback(async (report) => {
+    if (!report) {
+      pushToast({ type: 'warning', title: 'اختر بلاغًا أولًا', description: 'حدد بلاغًا من القائمة لتطبيق الإجراء.' });
+      return;
+    }
+    patchReport(report.id, { status: 'investigating', severity: report.severity === 'low' ? 'medium' : report.severity });
+    createRemovalRecord(report, report.targetType === 'account' ? 'account_restriction' : 'temporary_ban');
+    createAppealRecord(report, 'تم تنفيذ قيد مؤقت وربطه بسجل البلاغ مع فتح الاستئناف.');
+    pushToast({ type: 'warning', title: 'تم تسجيل الحظر المؤقت', description: `${report.id} دخل مسار القيود المؤقتة.` });
+  }, [createAppealRecord, createRemovalRecord, patchReport, pushToast]);
+
+  const handleFullSync = useCallback(async () => {
+    await loadReports();
+    pushActivity('queue_synced', 'تم تحديث البلاغات وسجلات الإزالة والاستئناف.', '#38bdf8');
+    pushToast({ type: 'success', title: 'تمت المزامنة', description: 'تم جلب أحدث بيانات البلاغات من الخادم.' });
+  }, [loadReports, pushActivity, pushToast]);
+
   const moderationActions = [
-    { title: 'حظر مؤقت', description: 'إيقاف 24 ساعة مع إرسال تنبيه للمستخدم', tone: '#ef4444' },
-    { title: 'إخفاء المحتوى', description: 'إزالة فورية من الـ feed والبحث والريلز', tone: '#f97316' },
-    { title: 'مراجعة يدوية', description: 'إسناد البلاغ لأعلى محلل متاح', tone: '#3b82f6' },
-    { title: 'فتح استئناف', description: 'إنشاء طلب اعتراض وربطه بنفس التقرير', tone: '#8b5cf6' },
+    { key: 'temporary_ban', title: 'حظر مؤقت', description: 'تسجيل قيد مؤقت وربطه بالبلاغ المحدد', tone: '#ef4444', action: () => handleTemporaryBan(activeReport) },
+    { key: 'remove_content', title: 'إخفاء المحتوى', description: 'إزالة فورية للمحتوى وربطه بسجل الإزالة', tone: '#f97316', action: () => handleRemoveContent(activeReport) },
+    { key: 'manual_review', title: 'مراجعة يدوية', description: 'تحويل البلاغ المحدد إلى حالة التحقيق', tone: '#3b82f6', action: () => handleManualReview(activeReport) },
+    { key: 'open_appeal', title: 'فتح استئناف', description: 'إنشاء اعتراض مرتبط مباشرة بالبلاغ الحالي', tone: '#8b5cf6', action: () => activeReport ? createAppealRecord(activeReport, 'تم إنشاء استئناف يدوي من صندوق الأدوات.') : pushToast({ type: 'warning', title: 'اختر بلاغًا أولًا', description: 'حدد بلاغًا من القائمة لفتح الاستئناف.' }) },
   ];
 
   return (
@@ -375,7 +412,7 @@ export default function AdminReports() {
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <Button variant="secondary" onClick={loadReports} loading={loading}>تحديث الآن</Button>
-              <Button onClick={() => pushToast({ type: 'info', title: 'Queue synced', description: 'تمت مزامنة الـ queue والـ appeals والـ removal registry.' })}>مزامنة كاملة</Button>
+              <Button onClick={handleFullSync}>مزامنة كاملة</Button>
             </div>
           </div>
         </Card>
@@ -476,9 +513,9 @@ export default function AdminReports() {
                 <div style={{ display: 'grid', gap: 10 }}>
                   {moderationActions.map((tool) => (
                     <button
-                      key={tool.title}
+                      key={tool.key}
                       type="button"
-                      onClick={() => pushToast({ type: 'info', title: tool.title, description: tool.description })}
+                      onClick={tool.action}
                       style={{
                         border: `1px solid ${tool.tone}55`,
                         background: `${tool.tone}16`,

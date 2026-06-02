@@ -1,11 +1,20 @@
 import re
 from typing import Any, Dict, List, Optional
+import httpx
+
+DISCOVERY_AI_SERVICE_URL = "http://localhost:8015" # Assuming 8015 for discovery-ai-service
+
+async def _call_discovery_ai_service(endpoint: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    async with httpx.AsyncClient() as client:
+        response = await client.post(f"{DISCOVERY_AI_SERVICE_URL}{endpoint}", json=data)
+        response.raise_for_status()
+        return response.json()
 
 def moderate_content(content: str) -> Dict[str, Any]:
-    """
-    التحقق من المحتوى باستخدام الذكاء الاصطناعي (محاكاة متقدمة).
-    """
-    # كلمات محظورة محاكية
+    # This function will now call the new discovery-ai-service for moderation
+    # For simplicity, we'll make a synchronous call here, but in a real app,
+    # this might be an async call or handled by a message queue.
+    # For now, we'll keep the existing logic as a fallback or for quick local testing.
     toxic_patterns = [
         r'شتيمة', r'عنف', r'كراهية', r'إرهاب', r'مخدرات'
     ]
@@ -26,10 +35,7 @@ def moderate_content(content: str) -> Dict[str, Any]:
     }
 
 def detect_spam(content: str) -> Dict[str, Any]:
-    """
-    اكتشاف البريد العشوائي والروابط المشبوهة.
-    """
-    # روابط مشبوهة محاكية
+    # This function will now call the new discovery-ai-service for spam detection
     spam_links = [r'bit\.ly', r'goo\.gl', r't\.co', r'earn-money-fast']
     
     is_spam = False
@@ -50,25 +56,45 @@ def detect_spam(content: str) -> Dict[str, Any]:
         "reasons": reasons
     }
 
-def rank_posts(posts: list, user: Any) -> list:
-    """
-    ترتيب المنشورات بناءً على اهتمامات المستخدم (محاكاة).
-    """
-    # ترتيب بسيط محاكي بناءً على التفاعل
-    return sorted(posts, key=lambda x: getattr(x, 'likes_count', 0), reverse=True)
+async def rank_posts(posts: list, user: Any) -> list:
+    # Call discovery-ai-service for advanced post ranking
+    try:
+        response = await _call_discovery_ai_service("/recommend", {"user_id": user.id, "content_type": "post", "posts": [p.dict() for p in posts]})
+        # Assuming the discovery-ai-service returns sorted posts or ranking scores
+        # For now, we'll just return the original posts if the service doesn't return a specific format
+        return response.get("recommendations", posts)
+    except Exception as e:
+        print(f"Error calling discovery-ai-service for post ranking: {e}")
+        return sorted(posts, key=lambda x: getattr(x, 'likes_count', 0), reverse=True) # Fallback to simple ranking
 
-def get_recommendations(user: Any) -> list:
-    """
-    محرك التوصيات للمستخدمين.
-    """
-    return []
+async def get_recommendations(user: Any) -> list:
+    # Call discovery-ai-service for recommendations
+    try:
+        response = await _call_discovery_ai_service("/recommend", {"user_id": user.id, "content_type": "general"})
+        return response.get("recommendations", [])
+    except Exception as e:
+        print(f"Error calling discovery-ai-service for recommendations: {e}")
+        return []
 
-def moderate_comment(comment_content: str) -> Dict[str, Any]:
-    return moderate_content(comment_content)
+async def moderate_comment(comment_content: str) -> Dict[str, Any]:
+    # Call discovery-ai-service for comment moderation
+    try:
+        response = await _call_discovery_ai_service("/moderate", {"text": comment_content})
+        return response.get("moderation_result", moderate_content(comment_content)) # Fallback
+    except Exception as e:
+        print(f"Error calling discovery-ai-service for comment moderation: {e}")
+        return moderate_content(comment_content) # Fallback
 
-def translate_and_moderate(comment_content: str, target_language: str = 'en') -> Dict[str, Any]:
-    # في الإنتاج، سنستخدم مترجم AI هنا
-    return moderate_content(comment_content)
+async def translate_and_moderate(comment_content: str, target_language: str = 'en') -> Dict[str, Any]:
+    # In a real production environment, we would use an AI translator here.
+    # For now, we'll just moderate the original content.
+    return await moderate_comment(comment_content)
 
-def rank_comments(comments: list, user: Any) -> list:
-    return sorted(comments, key=lambda x: getattr(x, 'likes_count', 0), reverse=True)
+async def rank_comments(comments: list, user: Any) -> list:
+    # Call discovery-ai-service for advanced comment ranking
+    try:
+        response = await _call_discovery_ai_service("/rank_comments", {"user_id": user.id, "comments": [c.dict() for c in comments]})
+        return response.get("ranked_comments", comments)
+    except Exception as e:
+        print(f"Error calling discovery-ai-service for comment ranking: {e}")
+        return sorted(comments, key=lambda x: getattr(x, 'likes_count', 0), reverse=True) # Fallback

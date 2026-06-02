@@ -1,27 +1,16 @@
-"""
-خدمة الوسائط المحسّنة - Media Scaling Service
-يوفر:
-- تحجيم الصور (Image Resizing)
-- ضغط الوسائط (Media Compression)
-- تحويل الصيغ (Format Conversion)
-- معالجة الفيديو (Video Processing)
-- التخزين المؤقت (Caching)
-- معالجة الأخطاء الشاملة
-- التحقق من سلامة الملفات
-"""
-
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import asyncio
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 import hashlib
 import json
 from datetime import datetime
 import logging
 import mimetypes
+import boto3
 
 # إعداد السجلات
 logging.basicConfig(level=logging.INFO)
@@ -51,6 +40,20 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 logger.info(f"📁 Upload directory: {UPLOAD_DIR}")
 logger.info(f"📁 Cache directory: {CACHE_DIR}")
+
+# AWS S3 and CloudFront Configuration
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "yamshat-media-bucket")
+CLOUDFRONT_DOMAIN = os.getenv("CLOUDFRONT_DOMAIN", "d12345.cloudfront.net") # Replace with your CloudFront domain
+
+s3_client = boto3.client(
+    "s3",
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+    region_name=AWS_REGION
+)
 
 # الصيغ المدعومة
 SUPPORTED_IMAGE_FORMATS = {"png", "jpg", "jpeg", "webp", "gif"}
@@ -207,6 +210,15 @@ class MediaMetadata:
                 logger.error(f"Failed to read metadata: {str(e)}")
         return None
 
+async def upload_to_s3(file_path: Path, object_name: str, content_type: str):
+    try:
+        s3_client.upload_file(str(file_path), S3_BUCKET_NAME, object_name, ExtraArgs={'ContentType': content_type})
+        logger.info(f"✅ Uploaded {file_path} to S3 bucket {S3_BUCKET_NAME} as {object_name}")
+        return f"https://{CLOUDFRONT_DOMAIN}/{object_name}"
+    except Exception as e:
+        logger.error(f"❌ Failed to upload {file_path} to S3: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload to S3: {e}")
+
 
 # المسارات (Routes)
 
@@ -218,7 +230,9 @@ async def health_check():
         "service": "media-service",
         "version": "2.1.0",
         "upload_dir": str(UPLOAD_DIR),
-        "cache_dir": str(CACHE_DIR)
+        "cache_dir": str(CACHE_DIR),
+        "s3_bucket": S3_BUCKET_NAME,
+        "cloudfront_domain": CLOUDFRONT_DOMAIN
     }
 
 
@@ -267,13 +281,14 @@ async def upload_media(
         # توليد بصمة فريدة
         file_hash = MediaProcessor.generate_file_hash(file.filename, content)
         
-        # حفظ الملف بشكل دائم
-        temp_path = UPLOAD_DIR / f"{file_hash}_{file.filename}"
-        with open(temp_path, 'wb') as f:
+        # حفظ الملف بشكل مؤقت للمعالجة
+        temp_local_path = UPLOAD_DIR / f"{file_hash}_{file.filename}"
+        with open(temp_local_path, 'wb') as f:
             f.write(content)
         
-        logger.info(f"📥 File saved: {temp_path}")
+        logger.info(f"📥 File saved locally for processing: {temp_local_path}")
         
+        processed_path = temp_local_path
         # معالجة الملف حسب نوعه
         if file_ext in SUPPORTED_IMAGE_FORMATS:
             resize_tuple = None
@@ -285,7 +300,7 @@ async def upload_media(
                     pass
             
             processed_path = await MediaProcessor.process_image(
-                temp_path,
+                temp_local_path,
                 resize_to=resize_tuple,
                 quality=quality,
                 format=format
@@ -293,13 +308,20 @@ async def upload_media(
         
         elif file_ext in SUPPORTED_VIDEO_FORMATS:
             processed_path = await MediaProcessor.process_video(
-                temp_path,
+                temp_local_path,
                 bitrate="1000k",
                 resolution="1280:720"
             )
         
-        else:
-            processed_path = temp_path
+        # Upload to S3
+        object_name = f"{file_hash}.{processed_path.suffix.lstrip('.')}"
+        content_type = MIME_TYPES.get(processed_path.suffix.lstrip('.'), "application/octet-stream")
+        s3_url = await upload_to_s3(processed_path, object_name, content_type)
+
+        # Clean up local temporary file
+        os.remove(temp_local_path)
+        if processed_path != temp_local_path: # Remove processed file if different
+            os.remove(processed_path)
         
         # حفظ البيانات الوصفية
         metadata = {
@@ -310,7 +332,7 @@ async def upload_media(
             "processed_at": datetime.utcnow().isoformat(),
             "quality": quality,
             "format": format,
-            "local_path": str(processed_path),
+            "s3_url": s3_url,
             "status": "success"
         }
         MediaMetadata.save_metadata(file_hash, metadata)
@@ -320,7 +342,7 @@ async def upload_media(
             "success": True,
             "file_hash": file_hash,
             "filename": processed_path.name,
-            "url": f"/api/media/{file_hash}",
+            "url": s3_url,
             "size": len(content),
             "type": file_ext,
             "metadata": metadata
@@ -336,25 +358,12 @@ async def upload_media(
 @app.get("/media/{file_hash}")
 async def get_media(file_hash: str):
     """الحصول على الملف المعالج"""
-    try:
-        # البحث عن الملف
-        matching_files = list(UPLOAD_DIR.glob(f"{file_hash}_*"))
-        if not matching_files:
-            raise HTTPException(status_code=404, detail="File not found")
-        
-        file_path = matching_files[0]
-        
-        # تحديد نوع المحتوى
-        file_ext = file_path.suffix.lower().lstrip('.')
-        content_type = MIME_TYPES.get(file_ext, "application/octet-stream")
-        
-        return FileResponse(file_path, media_type=content_type)
+    metadata = MediaMetadata.get_metadata(file_hash)
+    if not metadata or "s3_url" not in metadata:
+        raise HTTPException(status_code=404, detail="File not found or not available on S3")
     
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Get media error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+    # Redirect to CloudFront URL
+    return RedirectResponse(url=metadata["s3_url"])
 
 
 @app.get("/media/{file_hash}/metadata")
@@ -408,16 +417,30 @@ async def batch_upload(
             
             file_hash = MediaProcessor.generate_file_hash(file.filename, content)
             
-            # حفظ الملف
-            file_path = UPLOAD_DIR / f"{file_hash}_{file.filename}"
-            with open(file_path, 'wb') as f:
+            # حفظ الملف بشكل مؤقت
+            temp_local_path = UPLOAD_DIR / f"{file_hash}_{file.filename}"
+            with open(temp_local_path, 'wb') as f:
                 f.write(content)
             
+            processed_path = temp_local_path
+            # معالجة الملف حسب نوعه (يمكن إضافة معالجة للصور/الفيديو هنا إذا لزم الأمر)
+            # For batch upload, we might skip complex processing for simplicity or offload it.
+
+            # Upload to S3
+            object_name = f"{file_hash}.{processed_path.suffix.lstrip('.')}"
+            content_type = MIME_TYPES.get(processed_path.suffix.lstrip('.'), "application/octet-stream")
+            s3_url = await upload_to_s3(processed_path, object_name, content_type)
+
+            # Clean up local temporary file
+            os.remove(temp_local_path)
+            if processed_path != temp_local_path: # Remove processed file if different
+                os.remove(processed_path)
+
             results.append({
                 "filename": file.filename,
                 "success": True,
                 "file_hash": file_hash,
-                "url": f"/api/media/{file_hash}"
+                "url": s3_url
             })
         
         except Exception as e:
@@ -433,52 +456,3 @@ async def batch_upload(
         "failed": sum(1 for r in results if not r["success"]),
         "results": results
     }
-
-
-@app.delete("/media/{file_hash}")
-async def delete_media(file_hash: str):
-    """حذف الملف"""
-    try:
-        matching_files = list(UPLOAD_DIR.glob(f"{file_hash}_*"))
-        if not matching_files:
-            raise HTTPException(status_code=404, detail="File not found")
-        
-        for file_path in matching_files:
-            file_path.unlink()
-            logger.info(f"🗑️ File deleted: {file_path}")
-        
-        # حذف البيانات الوصفية
-        metadata_file = CACHE_DIR / f"{file_hash}.json"
-        if metadata_file.exists():
-            metadata_file.unlink()
-        
-        return {"success": True, "message": "File deleted"}
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Delete error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/stats")
-async def get_stats():
-    """إحصائيات الخدمة"""
-    upload_count = len(list(UPLOAD_DIR.glob("*")))
-    cache_count = len(list(CACHE_DIR.glob("*.json")))
-    
-    # حساب حجم الملفات
-    total_size = sum(f.stat().st_size for f in UPLOAD_DIR.glob("*") if f.is_file())
-    
-    return {
-        "uploaded_files": upload_count,
-        "cached_metadata": cache_count,
-        "total_size_mb": round(total_size / (1024 * 1024), 2),
-        "upload_dir": str(UPLOAD_DIR),
-        "cache_dir": str(CACHE_DIR)
-    }
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)

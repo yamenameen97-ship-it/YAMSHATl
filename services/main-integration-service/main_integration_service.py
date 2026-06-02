@@ -47,6 +47,10 @@ SERVICES = {
     "reels_stories_service": "http://localhost:8010",
     "admin_dashboard_service": "http://localhost:8011",
     "notifications_search_service": "http://localhost:8012",
+    "billing_service": "http://localhost:8013",
+    "identity_service": "http://localhost:8014",
+    "discovery_ai_service": "http://localhost:8015",
+    "i18n_service": "http://localhost:8016",
 }
 
 # ============ مدير الجلسات ============
@@ -428,6 +432,219 @@ async def get_reel(reel_id: str):
         logger.error(f"❌ Error getting reel: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ============ التعدد اللغوي (i18n) ============
+
+@app.post("/i18n/translate")
+async def translate_text_route(text: str = Query(...), target_lang: str = Query(...), source_lang: str = Query("auto")):
+    """ترجمة نص"""
+    try:
+        result = await service_manager.call_service(
+            "i18n_service",
+            "/translate",
+            "POST",
+            data={"text": text, "target_lang": target_lang, "source_lang": source_lang}
+        )
+        return result
+    except Exception as e:
+        logger.error(f"❌ Error translating text: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/i18n/languages")
+async def get_supported_languages_route():
+    """الحصول على اللغات المدعومة"""
+    try:
+        result = await service_manager.call_service(
+            "i18n_service",
+            "/languages",
+            "GET"
+        )
+        return result
+    except Exception as e:
+        logger.error(f"❌ Error getting supported languages: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/i18n/phrases/{lang}")
+async def get_language_phrases_route(lang: str):
+    """الحصول على عبارات اللغة"""
+    try:
+        result = await service_manager.call_service(
+            "i18n_service",
+            f"/phrases/{lang}",
+            "GET"
+        )
+        return result
+    except Exception as e:
+        logger.error(f"❌ Error getting language phrases: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ============ الذكاء الاصطناعي والتوصية ============
+
+@app.post("/ai/moderate")
+async def ai_moderate_content_route(content: dict):
+    """تعديل المحتوى باستخدام الذكاء الاصطناعي"""
+    try:
+        result = await service_manager.call_service(
+            "discovery_ai_service",
+            "/moderate",
+            "POST",
+            data=content
+        )
+        return result
+    except Exception as e:
+        logger.error(f"❌ Error moderating content with AI: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/ai/recommend/{user_id}")
+async def ai_recommend_content_route(user_id: int, content_type: str = Query(...), limit: int = Query(10)):
+    """الحصول على توصيات المحتوى باستخدام الذكاء الاصطناعي"""
+    try:
+        result = await service_manager.call_service(
+            "discovery_ai_service",
+            f"/recommend",
+            "POST",
+            data={"user_id": user_id, "content_type": content_type, "limit": limit}
+        )
+        return result
+    except Exception as e:
+        logger.error(f"❌ Error getting AI recommendations: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/ai/sentiment")
+async def ai_analyze_sentiment_route(content: dict):
+    """تحليل المشاعر باستخدام الذكاء الاصطناعي"""
+    try:
+        result = await service_manager.call_service(
+            "discovery_ai_service",
+            "/sentiment",
+            "POST",
+            data=content
+        )
+        return result
+    except Exception as e:
+        logger.error(f"❌ Error analyzing sentiment with AI: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ============ الهوية والأمان ============
+
+@app.post("/identity/{user_id}/2fa/enable")
+async def enable_2fa_route(user_id: int):
+    """تفعيل المصادقة الثنائية"""
+    try:
+        result = await service_manager.call_service(
+            "identity_service",
+            f"/identity/{user_id}/2fa/enable",
+            "POST"
+        )
+        return result
+    except Exception as e:
+        logger.error(f"❌ Error enabling 2FA: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/identity/{user_id}/2fa/verify")
+async def verify_2fa_route(user_id: int, otp_code: str = Query(...)):
+    """التحقق من المصادقة الثنائية"""
+    try:
+        result = await service_manager.call_service(
+            "identity_service",
+            f"/identity/{user_id}/2fa/verify",
+            "POST",
+            data={"otp_code": otp_code}
+        )
+        return result
+    except Exception as e:
+        logger.error(f"❌ Error verifying 2FA: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/identity/{user_id}/2fa/disable")
+async def disable_2fa_route(user_id: int, otp_code: str = Query(...)):
+    """تعطيل المصادقة الثنائية"""
+    try:
+        result = await service_manager.call_service(
+            "identity_service",
+            f"/identity/{user_id}/2fa/disable",
+            "POST",
+            data={"otp_code": otp_code}
+        )
+        return result
+    except Exception as e:
+        logger.error(f"❌ Error disabling 2FA: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/identity/{user_id}/recovery/generate")
+async def generate_recovery_codes_route(user_id: int):
+    """توليد رموز الاسترداد"""
+    try:
+        result = await service_manager.call_service(
+            "identity_service",
+            f"/identity/{user_id}/recovery/generate",
+            "POST"
+        )
+        return result
+    except Exception as e:
+        logger.error(f"❌ Error generating recovery codes: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/identity/{user_id}/recovery/use")
+async def use_recovery_code_route(user_id: int, recovery_code: str = Query(...)):
+    """استخدام رمز الاسترداد"""
+    try:
+        result = await service_manager.call_service(
+            "identity_service",
+            f"/identity/{user_id}/recovery/use",
+            "POST",
+            data={"recovery_code": recovery_code}
+        )
+        return result
+    except Exception as e:
+        logger.error(f"❌ Error using recovery code: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ============ النظام المالي ============
+
+@app.post("/billing/wallet/{user_id}/deposit")
+async def deposit_to_wallet_route(user_id: int, update: dict):
+    """إيداع في المحفظة"""
+    try:
+        result = await service_manager.call_service(
+            "billing_service",
+            f"/wallet/{user_id}/deposit",
+            "POST",
+            data=update
+        )
+        return result
+    except Exception as e:
+        logger.error(f"❌ Error depositing to wallet: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/billing/wallet/{user_id}/withdraw")
+async def withdraw_from_wallet_route(user_id: int, update: dict):
+    """سحب من المحفظة"""
+    try:
+        result = await service_manager.call_service(
+            "billing_service",
+            f"/wallet/{user_id}/withdraw",
+            "POST",
+            data=update
+        )
+        return result
+    except Exception as e:
+        logger.error(f"❌ Error withdrawing from wallet: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/billing/wallet/{user_id}")
+async def get_wallet_balance_route(user_id: int):
+    """الحصول على رصيد المحفظة"""
+    try:
+        result = await service_manager.call_service(
+            "billing_service",
+            f"/wallet/{user_id}",
+            "GET"
+        )
+        return result
+    except Exception as e:
+        logger.error(f"❌ Error getting wallet balance: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ============ الإشعارات ============
 

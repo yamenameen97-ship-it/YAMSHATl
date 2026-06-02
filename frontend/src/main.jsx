@@ -31,9 +31,15 @@ import './styles/mobile-yamshat-redesign.css';
 /* 🔧 إصلاح أزرار التفاعل في بطاقات المنشورات للجوال */
 import './styles/mobile-post-actions-fix.css';
 import './styles/mobile-app-experience.css';
+/* ✨ v2.3.2 — Premium Neon polish (يجب أن تكون آخر ملفات CSS) */
+import './styles/neon-theme-v2.css';
+import './styles/animations-glow.css';
+import './styles/badges-indicators.css';
+import './styles/responsive-mobile-v2.css';
+import './styles/performance-v2.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 
-const BUILD_ID = 'yamshat-pwa-mobile-wired-20260531-r6';
+const BUILD_ID = 'yamshat-pwa-neon-v2.3.2-20260602-r1';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

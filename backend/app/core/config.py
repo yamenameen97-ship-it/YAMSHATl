@@ -1,7 +1,7 @@
 import os
 import re
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from dotenv import load_dotenv
 
@@ -56,11 +56,44 @@ def env_bool(name: str, default: bool = False) -> bool:
     return value.strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
+def _ensure_render_postgres_sslmode(value: str) -> str:
+    cleaned = (value or '').strip()
+    if not cleaned.startswith(('postgresql://', 'postgres://')):
+        return cleaned
+
+    parsed = urlparse(cleaned)
+    host = (parsed.hostname or '').strip().lower()
+    if not host:
+        return cleaned
+
+    render_postgres_hosts = (
+        '.render.com',
+        '.render-postgres.com',
+    )
+    if not host.endswith(render_postgres_hosts) and 'render' not in host:
+        return cleaned
+
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    if str(query.get('sslmode') or '').strip():
+        return cleaned
+
+    query['sslmode'] = 'require'
+    return urlunparse((
+        parsed.scheme,
+        parsed.netloc,
+        parsed.path,
+        parsed.params,
+        urlencode(query),
+        parsed.fragment,
+    ))
+
+
+
 def normalize_database_url(value: str) -> str:
     cleaned = (value or '').strip()
     if cleaned.startswith('postgres://'):
-        return cleaned.replace('postgres://', 'postgresql://', 1)
-    return cleaned
+        cleaned = cleaned.replace('postgres://', 'postgresql://', 1)
+    return _ensure_render_postgres_sslmode(cleaned)
 
 
 def csv_list(value: str) -> list[str]:

@@ -488,10 +488,10 @@ body {
   letter-spacing: 1px;
 }
 
-/* أزرار التفاعل أسفل البطاقة */
+/* أزرار التفاعل أسفل البطاقة - تم تحسينها لـ 5 أعمدة متساوية */
 .ym-post-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr auto;
+  grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
   align-items: center;
   gap: 4px;
   padding-top: 4px;

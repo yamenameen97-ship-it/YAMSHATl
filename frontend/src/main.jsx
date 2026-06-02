@@ -28,6 +28,8 @@ import './styles/mobile-fixes.css';
 import './styles/brand-chat-notifications-refresh.css';
 /* 🎨 إعادة تصميم الموبايل (مطابق للنموذج المرجعي) - يجب أن يكون الأخير */
 import './styles/mobile-yamshat-redesign.css';
+/* 🔧 إصلاح أزرار التفاعل في بطاقات المنشورات للجوال */
+import './styles/mobile-post-actions-fix.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 
 const BUILD_ID = 'yamshat-pwa-mobile-wired-20260531-r6';

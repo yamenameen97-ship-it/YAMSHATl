@@ -1,7 +1,7 @@
 import os
 import re
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from dotenv import load_dotenv
 
@@ -56,10 +56,25 @@ def env_bool(name: str, default: bool = False) -> bool:
     return value.strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
+def _is_render_external_postgres_host(hostname: str | None) -> bool:
+    host = (hostname or '').strip().lower()
+    return bool(host.endswith('.render.com') and '-postgres.' in host)
+
+
+
 def normalize_database_url(value: str) -> str:
     cleaned = (value or '').strip()
+    if not cleaned:
+        return ''
     if cleaned.startswith('postgres://'):
-        return cleaned.replace('postgres://', 'postgresql://', 1)
+        cleaned = cleaned.replace('postgres://', 'postgresql://', 1)
+
+    parsed = urlparse(cleaned)
+    if parsed.scheme in {'postgresql', 'postgres'} and _is_render_external_postgres_host(parsed.hostname):
+        query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+        if not str(query.get('sslmode') or '').strip():
+            query['sslmode'] = 'require'
+            cleaned = urlunparse(parsed._replace(query=urlencode(query)))
     return cleaned
 
 

@@ -126,6 +126,8 @@
         "src/components/profile/WalletCard.jsx",
         "src/components/settings/LanguageSettings.jsx",
         "src/components/settings/WalletSettings.jsx",
+        "src/components/common/AdvancedSearch.jsx",
+        "src/components/common/LastActivityIndicator.jsx",
         "src/components/yamshat/YamshatIcon.jsx"
     ]
 }

@@ -274,7 +274,7 @@ export default function Live() {
       cancelled = true;
       stopPreview();
     };
-  }, [activeRoom?.id, isHost]);
+  }, [activeRoom?.id, activeRoom?.host_username, currentUsername]);
 
   // تنظيف القلوب الطافية تلقائياً
   useEffect(() => {

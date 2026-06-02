@@ -20,10 +20,16 @@ from app.services.cloudinary_service import upload_file as cloudinary_upload_fil
 
 router = APIRouter()
 
-UPLOAD_DIR = Path('uploads')
-UPLOAD_DIR.mkdir(exist_ok=True)
+# IMPORTANT: use an absolute uploads directory rooted at the project level.
+# On Render the process may start with CWD=/app/backend, while FastAPI serves
+# static files from the project-root /uploads mount. Using a relative path here
+# caused files to be written to backend/uploads but served from /uploads,
+# producing 404 after a seemingly successful upload.
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
+UPLOAD_DIR = PROJECT_ROOT / 'uploads'
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 CHUNKS_DIR = UPLOAD_DIR / 'chunks'
-CHUNKS_DIR.mkdir(exist_ok=True)
+CHUNKS_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_FILE_SIZE_BYTES = 600 * 1024 * 1024
 ALLOWED_PREFIXES = ('image/', 'video/', 'audio/')

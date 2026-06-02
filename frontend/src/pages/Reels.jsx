@@ -850,7 +850,9 @@ export default function ReelsPage() {
           caption,
           media_url: uploadState.mediaUrl,
           video_url: uploadState.mediaUrl,
-          thumbnail_url: uploadState.thumbnailUrl || undefined,
+          thumbnail_url: uploadState.thumbnailUrl && !String(uploadState.thumbnailUrl).startsWith('data:')
+            ? uploadState.thumbnailUrl
+            : undefined,
         });
       } else {
         await tryMultipartFallback();

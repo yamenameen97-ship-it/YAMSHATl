@@ -17,8 +17,10 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-UPLOAD_DIR = Path("backend/uploads")
-MEDIA_DIR = Path("backend/media")
+# Keep media storage aligned with the public /uploads mount used by FastAPI.
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+UPLOAD_DIR = PROJECT_ROOT / "uploads"
+MEDIA_DIR = PROJECT_ROOT / "media"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 

@@ -17,7 +17,6 @@ from app.core.dependencies import get_current_user
 from app.models.user import User
 from app.services.cloudinary_service import is_configured as cloudinary_is_configured
 from app.services.cloudinary_service import upload_file as cloudinary_upload_file
-from app.services.ai_service import moderate_content
 
 router = APIRouter()
 
@@ -227,19 +226,6 @@ def _apply_remote_storage(file_path: Path, payload: dict) -> dict:
 
 async def process_media_background(file_path: str, _user_id: int):
     await asyncio.sleep(0.2)
-    
-    # AI Content Moderation
-    try:
-        with open(file_path, 'rb') as f:
-            # محاكاة فحص المحتوى للوسائط
-            # في الواقع سنقوم باستخراج النص أو استخدام موديل رؤية حاسوبية
-            moderation = moderate_content("فحص وسائط مرفوعة")
-            if not moderation['is_safe']:
-                print(f"AI Moderation blocked file: {file_path}")
-                # هنا يمكن إضافة منطق لحذف الملف أو وسمه
-    except Exception as e:
-        print(f"Moderation error: {e}")
-
     if cloudinary_is_configured():
         try:
             cloudinary_upload_file(file_path, is_video=file_path.endswith(('.mp4', '.mov', '.webm', '.mkv')))

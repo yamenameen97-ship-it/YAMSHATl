@@ -6,6 +6,7 @@ import Button from '../components/ui/Button.jsx';
 import Modal from '../components/ui/Modal.jsx';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import { getProfileBundle, updateMyProfile, uploadAvatar } from '../api/users.js';
+import { resolveMediaUrl } from '../config/mediaConfig.js';
 import { getCurrentUsername } from '../utils/auth.js';
 
 const TAB_LABELS = {
@@ -208,7 +209,10 @@ export default function Profile() {
 
   const bio = profile.user.profile?.bio || 'لا يوجد نبذة شخصية';
   const tagline = profile.user.profile?.activity_tagline || '';
-  const coverPhoto = profile.user.profile?.cover_photo || '';
+  const coverPhoto = resolveMediaUrl(profile.user.profile?.cover_photo || '');
+  const avatarUrl = resolveMediaUrl(profile.user.avatar || '');
+  const editCoverPhoto = resolveMediaUrl(editForm.cover_photo || '');
+  const editAvatarUrl = resolveMediaUrl(editForm.avatar || '');
   const stats = [
     { label: 'منشور', value: profile.counts?.posts ?? profile.posts_count ?? 0 },
     { label: 'متابع', value: profile.counts?.followers ?? profile.followers_count ?? 0 },
@@ -227,8 +231,8 @@ export default function Profile() {
 
           <div className="profile-hero-grid">
             <div className="profile-avatar-shell">
-              {profile.user.avatar ? (
-                <img src={profile.user.avatar} alt={profile.user.username} className="profile-avatar-image" />
+              {avatarUrl ? (
+                <img src={avatarUrl} alt={profile.user.username} className="profile-avatar-image" />
               ) : (
                 <span>{profile.user.username?.[0]?.toUpperCase() || 'Y'}</span>
               )}
@@ -305,10 +309,10 @@ export default function Profile() {
           <div className="profile-edit-section">
             <label className="profile-edit-label">صورة الغلاف</label>
             <div
-              className={`profile-edit-cover ${editForm.cover_photo ? '' : 'empty'}`}
-              style={editForm.cover_photo ? { backgroundImage: `url(${editForm.cover_photo})` } : {}}
+              className={`profile-edit-cover ${editCoverPhoto ? '' : 'empty'}`}
+              style={editCoverPhoto ? { backgroundImage: `url(${editCoverPhoto})` } : {}}
             >
-              {!editForm.cover_photo ? <span>لا يوجد غلاف</span> : null}
+              {!editCoverPhoto ? <span>لا يوجد غلاف</span> : null}
               <button
                 type="button"
                 className="profile-edit-cover-btn"
@@ -317,7 +321,7 @@ export default function Profile() {
               >
                 {uploadingCover ? 'جارٍ الرفع...' : '📷 تغيير الغلاف'}
               </button>
-              {editForm.cover_photo ? (
+              {editCoverPhoto ? (
                 <button
                   type="button"
                   className="profile-edit-cover-btn profile-edit-cover-remove"
@@ -341,8 +345,8 @@ export default function Profile() {
             <label className="profile-edit-label">الصورة الشخصية</label>
             <div className="profile-edit-avatar-row">
               <div className="profile-edit-avatar-shell">
-                {editForm.avatar ? (
-                  <img src={editForm.avatar} alt="avatar preview" className="profile-edit-avatar-image" />
+                {editAvatarUrl ? (
+                  <img src={editAvatarUrl} alt="avatar preview" className="profile-edit-avatar-image" />
                 ) : (
                   <span>{(editForm.username || 'Y')[0]?.toUpperCase()}</span>
                 )}
@@ -355,7 +359,7 @@ export default function Profile() {
                 >
                   {uploadingAvatar ? 'جارٍ الرفع...' : '📷 اختيار صورة'}
                 </Button>
-                {editForm.avatar ? (
+                {editAvatarUrl ? (
                   <Button
                     size="small"
                     variant="secondary"
@@ -384,6 +388,7 @@ export default function Profile() {
               className="profile-edit-input"
               value={editForm.username}
               onChange={(e) => setEditForm((prev) => ({ ...prev, username: e.target.value }))}
+              data-modal-autofocus="true"
               placeholder="اسم المستخدم"
               maxLength={50}
             />

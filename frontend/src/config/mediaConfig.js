@@ -145,10 +145,7 @@ export function buildSignedMediaUrl(candidate = '', options = {}) {
 export function resolveMediaUrl(candidate = '', options = {}) {
   const value = trim(candidate);
   if (!value) return '';
-  if (isAbsoluteUrl(value)) {
-    return MEDIA_SECURITY.signedUrls ? buildSignedMediaUrl(value, options) : value;
-  }
-  const absolute = toAbsoluteMediaUrl(value);
+  const absolute = isAbsoluteUrl(value) ? rewriteLegacyHost(value) : toAbsoluteMediaUrl(value);
   return MEDIA_SECURITY.signedUrls ? buildSignedMediaUrl(absolute, options) : absolute;
 }
 

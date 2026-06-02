@@ -72,7 +72,12 @@ export default function Live() {
   const [floatingHearts, setFloatingHearts] = useState([]);
   const [viewerCount, setViewerCount] = useState(0);
   const [heartsCount, setHeartsCount] = useState(0);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [cameraError, setCameraError] = useState('');
+  const [liveTokenInfo, setLiveTokenInfo] = useState(null);
   const heartTimer = useRef(null);
+  const localVideoRef = useRef(null);
+  const localStreamRef = useRef(null);
 
   const loadRooms = useCallback(async () => {
     setLoading(true);
@@ -143,6 +148,9 @@ export default function Live() {
       await endLiveRoom(activeRoom.id);
       pushToast?.({ type: 'success', title: 'تم إنهاء البث' });
       setActiveRoom(null);
+      setCameraReady(false);
+      setCameraError('');
+      setLiveTokenInfo(null);
       loadRooms();
     } catch {
       pushToast?.({ type: 'warning', title: 'تعذر إنهاء البث' });
@@ -155,7 +163,7 @@ export default function Live() {
     const text = commentText.trim();
     if (!text || !activeRoom?.id) return;
     try {
-      await addLiveComment(activeRoom.id, { text });
+      await addLiveComment({ room_id: activeRoom.id, text });
       setCommentText('');
       loadComments(activeRoom.id);
     } catch {
@@ -172,7 +180,7 @@ export default function Live() {
   const handleSendGift = useCallback(async (gift) => {
     if (!activeRoom?.id || !gift) return;
     try {
-      await sendLiveGift(activeRoom.id, { gift_id: gift.id, price: gift.price });
+      await sendLiveGift({ room_id: activeRoom.id, gift_id: gift.id, name: gift.name, price: gift.price });
       pushToast?.({ type: 'success', title: `تم إرسال ${gift.name}` });
       setShowGiftTray(false);
     } catch {
@@ -183,6 +191,90 @@ export default function Live() {
   useEffect(() => {
     loadRooms();
   }, [loadRooms]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const stopPreview = () => {
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((track) => track.stop());
+        localStreamRef.current = null;
+      }
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = null;
+      }
+    };
+
+    const setupLivePreview = async () => {
+      stopPreview();
+      setCameraReady(false);
+      setCameraError('');
+      setLiveTokenInfo(null);
+
+      if (!activeRoom?.id || !isHost) return;
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setCameraError('هذا المتصفح لا يدعم تشغيل الكاميرا للبث المباشر.');
+        return;
+      }
+
+      try {
+        const [stream, tokenResponse] = await Promise.all([
+          navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: 'user',
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
+            audio: true,
+          }),
+          getLiveToken(activeRoom.id, { role: 'host' }).catch((error) => ({ error })),
+        ]);
+
+        if (cancelled) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        localStreamRef.current = stream;
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream;
+          localVideoRef.current.muted = true;
+          try {
+            await localVideoRef.current.play();
+          } catch {
+            // تجاهل فشل التشغيل التلقائي — سيعمل بعد أول تفاعل من المستخدم.
+          }
+        }
+
+        if (tokenResponse?.data?.token) {
+          setLiveTokenInfo(tokenResponse.data);
+        } else if (tokenResponse?.error?.response?.status === 503) {
+          setCameraError('تم تشغيل معاينة الكاميرا محلياً، لكن خدمة البث غير مفعلة على الخادم حالياً.');
+        }
+
+        setCameraReady(true);
+      } catch (error) {
+        if (cancelled) return;
+        const permissionDenied = error?.name === 'NotAllowedError' || error?.name === 'PermissionDeniedError';
+        const deviceMissing = error?.name === 'NotFoundError' || error?.name === 'DevicesNotFoundError';
+        setCameraReady(false);
+        setCameraError(
+          permissionDenied
+            ? 'تم رفض إذن الكاميرا أو الميكروفون. اسمح بالوصول ثم أعد المحاولة.'
+            : deviceMissing
+              ? 'لم يتم العثور على كاميرا أو ميكروفون متاح لهذا البث.'
+              : 'تعذر تشغيل معاينة الكاميرا للبث الآن.',
+        );
+      }
+    };
+
+    setupLivePreview();
+
+    return () => {
+      cancelled = true;
+      stopPreview();
+    };
+  }, [activeRoom?.id, isHost]);
 
   // تنظيف القلوب الطافية تلقائياً
   useEffect(() => {
@@ -306,11 +398,21 @@ export default function Live() {
 
             <div className="yam-live-stage-body">
               <FloatingHearts items={floatingHearts} />
-              <div className="yam-live-stage-placeholder">
-                <div className="yam-live-stage-icon">🎥</div>
-                <p>منصة البث المرئي</p>
-                <small>سيتم تفعيل الفيديو عند الاتصال بخدمة البث.</small>
-              </div>
+              {isHost && cameraReady ? (
+                <>
+                  <video ref={localVideoRef} className="yam-live-stage-video" autoPlay muted playsInline />
+                  <div className="yam-live-stage-overlay">
+                    <span className="yam-live-live-badge">● على الهواء</span>
+                    <small>{liveTokenInfo?.configured ? 'الكاميرا شغالة والبث جاهز للربط.' : 'معاينة الكاميرا شغالة محلياً.'}</small>
+                  </div>
+                </>
+              ) : (
+                <div className="yam-live-stage-placeholder">
+                  <div className="yam-live-stage-icon">🎥</div>
+                  <p>{isHost ? 'جارٍ تجهيز الكاميرا للبث' : 'منصة البث المرئي'}</p>
+                  <small>{cameraError || (isHost ? 'اسمح للكاميرا والميكروفون ليظهر البث هنا مباشرة.' : 'سيتم تفعيل الفيديو عند الاتصال بخدمة البث.')}</small>
+                </div>
+              )}
             </div>
 
             {/* أزرار سريعة */}
@@ -525,7 +627,39 @@ export default function Live() {
             place-items: center;
             overflow: hidden;
           }
-          .yam-live-stage-placeholder { text-align: center; }
+          .yam-live-stage-video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            background: #05070f;
+          }
+          .yam-live-stage-overlay {
+            position: absolute;
+            inset-inline: 14px;
+            top: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            background: rgba(8, 11, 22, 0.58);
+            backdrop-filter: blur(10px);
+            color: #fff;
+            z-index: 2;
+          }
+          .yam-live-stage-overlay small {
+            color: rgba(255,255,255,0.86);
+          }
+          .yam-live-stage-placeholder {
+            text-align: center;
+            padding: 24px;
+            display: grid;
+            gap: 8px;
+            z-index: 1;
+          }
           .yam-live-stage-icon { font-size: 56px; }
           .yam-floating-hearts { position: absolute; inset: 0; pointer-events: none; }
           .yam-floating-heart { position: absolute; bottom: 0; font-size: 22px; animation: yam-rise 1.5s ease-out forwards; }

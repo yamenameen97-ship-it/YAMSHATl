@@ -124,8 +124,6 @@
         "src/components/live/LiveStreamCard.jsx",
         "src/components/profile/ProfileHeader_Fixed.jsx",
         "src/components/profile/WalletCard.jsx",
-        "src/components/settings/LanguageSettings.jsx",
-        "src/components/settings/WalletSettings.jsx",
         "src/components/yamshat/YamshatIcon.jsx"
     ]
 }

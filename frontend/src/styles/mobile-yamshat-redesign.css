@@ -108,9 +108,56 @@ body {
   margin: 0 auto;
   padding: 0 14px;
   display: grid;
-  grid-template-columns: 40px 1fr 40px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+}
+
+.ym-topbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ym-topbar-shortcuts {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.ym-topbar-shortcuts::-webkit-scrollbar {
+  display: none;
+}
+
+.ym-topbar-shortcuts-spacer {
+  min-height: 1px;
+}
+
+.ym-topbar-shortcut {
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ym-text-muted);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: 0.18s ease;
+}
+
+.ym-topbar-shortcut.is-active,
+.ym-topbar-shortcut:hover,
+.ym-topbar-shortcut:focus-visible {
+  color: #fff;
+  background: rgba(139, 92, 246, 0.18);
+  border-color: rgba(139, 92, 246, 0.32);
+  outline: none;
 }
 
 .ym-topbar-btn {
@@ -143,10 +190,11 @@ body {
 .ym-topbar-brand {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   gap: 8px;
   text-decoration: none;
   color: var(--ym-text);
+  flex-shrink: 0;
 }
 .ym-topbar-logo {
   width: 26px;
@@ -165,6 +213,11 @@ body {
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+}
+
+.ym-topbar.has-shortcuts .ym-topbar-wordmark {
+  font-size: 15px;
+  letter-spacing: 2px;
 }
 
 .ym-topbar-bell-dot {

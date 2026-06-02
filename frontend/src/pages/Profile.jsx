@@ -6,6 +6,7 @@ import Button from '../components/ui/Button.jsx';
 import Modal from '../components/ui/Modal.jsx';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import { getProfileBundle, updateMyProfile, uploadAvatar } from '../api/users.js';
+import WalletCard from '../components/profile/WalletCard.jsx';
 import { getCurrentUsername } from '../utils/auth.js';
 
 const TAB_LABELS = {
@@ -267,6 +268,11 @@ export default function Profile() {
               <p className="profile-bio-copy">{bio}</p>
             </div>
           </div>
+          {isOwnProfile && (
+            <div className="profile-wallet-container" style={{ padding: '0 1.5rem 1.5rem' }}>
+              <WalletCard balance={profile?.user?.wallet_balance || 0} />
+            </div>
+          )}
         </Card>
 
         <div className="profile-tabs-row" role="tablist" aria-label="أقسام الملف الشخصي">

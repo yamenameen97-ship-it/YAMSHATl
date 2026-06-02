@@ -20,6 +20,15 @@ REPAIRED_AUTH_COLUMNS = {
     'last_admin_user_agent_hash',
 }
 
+REPAIRED_SESSION_COLUMNS = {
+    'device_id_hash',
+    'ip_hash',
+    'user_agent_hash',
+    'device_label',
+    'remember_me',
+    'login_method',
+}
+
 
 def test_initialize_database_repairs_legacy_auth_schema_and_preserves_seed_logins(tmp_path):
     db_file = tmp_path / 'legacy-login.db'
@@ -57,6 +66,22 @@ def test_initialize_database_repairs_legacy_auth_schema_and_preserves_seed_login
                 'created_at': datetime.utcnow(),
             },
         )
+        connection.execute(
+            text(
+                '''
+                CREATE TABLE user_sessions (
+                    id INTEGER PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    session_key VARCHAR(96) NOT NULL,
+                    refresh_token_hash VARCHAR(255) NOT NULL,
+                    expires_at TIMESTAMP NOT NULL,
+                    last_seen_at TIMESTAMP NULL,
+                    revoked_at TIMESTAMP NULL,
+                    created_at TIMESTAMP NULL
+                )
+                '''
+            )
+        )
 
     initialize_database(engine, force=True)
 
@@ -65,6 +90,8 @@ def test_initialize_database_repairs_legacy_auth_schema_and_preserves_seed_login
     assert {'users', 'user_sessions', 'audit_logs', 'login_challenges'}.issubset(tables)
     user_columns = {column['name'] for column in inspector.get_columns('users')}
     assert REPAIRED_AUTH_COLUMNS.issubset(user_columns)
+    session_columns = {column['name'] for column in inspector.get_columns('user_sessions')}
+    assert REPAIRED_SESSION_COLUMNS.issubset(session_columns)
 
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     session = SessionLocal()

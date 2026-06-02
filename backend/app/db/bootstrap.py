@@ -59,7 +59,21 @@ REQUIRED_SCHEMA_COLUMNS: dict[str, set[str]] = {
         'phone_verification_locked_until',
     },
     'audit_logs': {'action', 'entity_type', 'description', 'meta', 'created_at'},
-    'user_sessions': {'user_id', 'session_key', 'refresh_token_hash', 'expires_at', 'revoked_at', 'last_seen_at'},
+    'user_sessions': {
+        'user_id',
+        'session_key',
+        'refresh_token_hash',
+        'device_id_hash',
+        'ip_hash',
+        'user_agent_hash',
+        'device_label',
+        'expires_at',
+        'created_at',
+        'remember_me',
+        'login_method',
+        'revoked_at',
+        'last_seen_at',
+    },
     'login_challenges': {'user_id', 'challenge_id', 'code_hash', 'challenge_type', 'expires_at', 'consumed_at'},
     'posts': {'user_id', 'username', 'media', 'image_url', 'media_json', 'is_draft'},
     'comments': {'user_id', 'username', 'comment', 'content'},
@@ -694,6 +708,7 @@ def _migrate_user_sessions_table(engine: Engine) -> None:
     _add_column_if_missing(engine, 'user_sessions', 'device_id_hash', 'device_id_hash VARCHAR(128)')
     _add_column_if_missing(engine, 'user_sessions', 'ip_hash', 'ip_hash VARCHAR(128)')
     _add_column_if_missing(engine, 'user_sessions', 'user_agent_hash', 'user_agent_hash VARCHAR(128)')
+    _add_column_if_missing(engine, 'user_sessions', 'device_label', 'device_label VARCHAR(255)')
     _add_column_if_missing(engine, 'user_sessions', 'expires_at', 'expires_at TIMESTAMP NULL')
     _add_column_if_missing(engine, 'user_sessions', 'created_at', 'created_at TIMESTAMP NULL')
     _add_column_if_missing(engine, 'user_sessions', 'last_seen_at', 'last_seen_at TIMESTAMP NULL')

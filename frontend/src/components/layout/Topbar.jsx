@@ -22,7 +22,8 @@ const PRIMARY_ITEMS = Object.freeze([
   { to: '/settings', label: 'الإعدادات', icon: '⚙', match: (path) => path.startsWith('/settings') },
 ]);
 
-// الأزرار السريعة في الهيدر العلوي (مرئية على الموبايل)
+// الأزرار السريعة في الهيدر العلوي
+// ملاحظة: على الموبايل تُخفى عبر CSS (mobile-fixes.css) — تظهر فقط على الديسكتوب
 const MOBILE_QUICK_LINKS = Object.freeze([
   { to: '/groups', label: 'المجموعات', icon: '👫', ariaLabel: 'المجموعات' },
   { to: '/reels', label: 'الريلز', icon: '🎬', ariaLabel: 'الريلز' },
@@ -134,9 +135,10 @@ function Topbar() {
     }
   }, [loggingOut]);
 
-  // الأزرار السريعة على الموبايل
+  // الأزرار السريعة — تظهر فقط على الديسكتوب (>= 768px)
+  // على الجوال يتم إخفاؤها بالكامل لأنها متوفرة في الـ BottomNav والـ Header المخصص
   const mobileQuickLinks = (
-    <div className="topbar-mobile-quick-links">
+    <div className="topbar-mobile-quick-links topbar-desktop-only">
       {MOBILE_QUICK_LINKS.map((item) => (
         <Link
           key={item.to}

@@ -4,8 +4,8 @@ import MainLayout from '../components/layout/MainLayout.jsx';
 import { getChatThreads, markMessagesSeen } from '../api/chat.js';
 import { getNotifications, markNotificationRead, markNotificationsRead } from '../api/notifications.js';
 import { getStories, viewStory } from '../api/stories.js';
-import { getGroups } from '../api/groups.js';
-import { getMe } from '../api/users.js';
+import { getGroups, createGroup } from '../api/groups.js';
+import { getMe, getUsers } from '../api/users.js';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import useIsMobile from '../hooks/useIsMobile.js';
 
@@ -275,6 +275,321 @@ function MobileNav({ unreadCount = 0, requestCount = 0 }) {
   );
 }
 
+function ComposeModal({ open, onClose, navigate, pushToast }) {
+  const [tab, setTab] = useState('chat');
+  const [query, setQuery] = useState('');
+  const [users, setUsers] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [groupName, setGroupName] = useState('');
+  const [groupDesc, setGroupDesc] = useState('');
+  const [creatingGroup, setCreatingGroup] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setQuery('');
+      setUsers([]);
+      setGroupName('');
+      setGroupDesc('');
+      setTab('chat');
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || tab !== 'chat') return undefined;
+    const handle = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const resp = await getUsers({ q: query, limit: 20 });
+        const list = Array.isArray(resp?.data) ? resp.data : (resp?.data?.users || []);
+        setUsers(Array.isArray(list) ? list : []);
+      } catch {
+        setUsers([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [open, tab, query]);
+
+  const handleOpenChat = useCallback((user) => {
+    if (!user) return;
+    const username = user.username || user.user_name || user.handle;
+    onClose?.();
+    if (username) {
+      navigate(`/chat/${encodeURIComponent(username)}`);
+    } else if (user.id) {
+      navigate(`/chat/${encodeURIComponent(user.id)}`);
+    }
+  }, [navigate, onClose]);
+
+  const handleCreateGroup = useCallback(async () => {
+    const name = groupName.trim();
+    if (!name) {
+      pushToast?.({ type: 'info', title: 'أدخل اسم المجموعة' });
+      return;
+    }
+    setCreatingGroup(true);
+    try {
+      const resp = await createGroup({ name, description: groupDesc.trim() });
+      const group = resp?.data || resp;
+      pushToast?.({ type: 'success', title: 'تم إنشاء المجموعة', description: name });
+      onClose?.();
+      if (group?.id) {
+        navigate(`/groups`);
+      }
+    } catch {
+      pushToast?.({ type: 'warning', title: 'تعذر إنشاء المجموعة', description: 'تحقق من الاتصال وحاول مجدداً.' });
+    } finally {
+      setCreatingGroup(false);
+    }
+  }, [groupName, groupDesc, pushToast, onClose, navigate]);
+
+  if (!open) return null;
+
+  return (
+    <div className="yam-compose-overlay" dir="rtl" role="dialog" aria-modal="true" aria-label="إنشاء جديد" onClick={onClose}>
+      <div className="yam-compose-modal" onClick={(e) => e.stopPropagation()} style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}>
+        <header className="yam-compose-head">
+          <strong>إنشاء جديد</strong>
+          <button type="button" className="yam-compose-close" onClick={onClose} aria-label="إغلاق">✕</button>
+        </header>
+
+        <div className="yam-compose-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'chat'}
+            className={`yam-compose-tab ${tab === 'chat' ? 'active' : ''}`}
+            onClick={() => setTab('chat')}
+          >
+            دردشة جديدة
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'group'}
+            className={`yam-compose-tab ${tab === 'group' ? 'active' : ''}`}
+            onClick={() => setTab('group')}
+          >
+            مجموعة جديدة
+          </button>
+        </div>
+
+        {tab === 'chat' ? (
+          <div className="yam-compose-body">
+            <input
+              type="search"
+              className="yam-compose-input"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="ابحث عن شخص للمحادثة..."
+              aria-label="البحث عن مستخدم"
+              autoFocus
+            />
+            <div className="yam-compose-users-list">
+              {searching ? (
+                <p className="yam-compose-hint">جارٍ البحث…</p>
+              ) : users.length === 0 ? (
+                <p className="yam-compose-hint">{query ? 'لا توجد نتائج لـ "' + query + '".' : 'ابدأ بكتابة اسم المستخدم.'}</p>
+              ) : (
+                users.map((u) => {
+                  const name = u.full_name || u.name || u.username || 'mostakhdam';
+                  const handle = u.username || u.user_name || u.handle || '';
+                  return (
+                    <button
+                      key={u.id || handle || name}
+                      type="button"
+                      className="yam-compose-user-row"
+                      onClick={() => handleOpenChat(u)}
+                    >
+                      <span className="yam-compose-user-avatar" aria-hidden="true">{(name || '?').slice(0, 1)}</span>
+                      <span className="yam-compose-user-meta">
+                        <strong>{name}</strong>
+                        {handle ? <small>@{handle}</small> : null}
+                      </span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="yam-compose-body">
+            <label className="yam-compose-label" htmlFor="yam-group-name">اسم المجموعة</label>
+            <input
+              id="yam-group-name"
+              type="text"
+              className="yam-compose-input"
+              value={groupName}
+              onChange={(e) => setGroupName(e.target.value)}
+              placeholder="مثال: عائلة تواصل"
+              maxLength={80}
+              autoFocus
+            />
+            <label className="yam-compose-label" htmlFor="yam-group-desc">وصف (اختياري)</label>
+            <textarea
+              id="yam-group-desc"
+              className="yam-compose-input yam-compose-textarea"
+              value={groupDesc}
+              onChange={(e) => setGroupDesc(e.target.value)}
+              placeholder="وصف قصير للمجموعة"
+              rows={3}
+              maxLength={200}
+            />
+            <button
+              type="button"
+              className="yam-compose-primary"
+              onClick={handleCreateGroup}
+              disabled={creatingGroup || !groupName.trim()}
+            >
+              {creatingGroup ? 'جارٍ الإنشاء…' : 'إنشاء المجموعة'}
+            </button>
+          </div>
+        )}
+
+        <style>{`
+          .yam-compose-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            display: grid;
+            place-items: center;
+            z-index: 9999;
+            padding: 16px;
+            font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+          }
+          .yam-compose-modal {
+            width: min(440px, 100%);
+            max-height: calc(100vh - 32px);
+            overflow-y: auto;
+            background: var(--panel, #1a1a25);
+            border: 1px solid var(--line, #2a2a3a);
+            border-radius: 18px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            color: var(--text, #fff);
+          }
+          .yam-compose-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--line, #2a2a3a);
+          }
+          .yam-compose-head strong { font-size: 16px; }
+          .yam-compose-close {
+            min-width: 36px;
+            min-height: 36px;
+            border-radius: 10px;
+            border: none;
+            background: transparent;
+            color: var(--muted, #aaa);
+            font-size: 18px;
+            cursor: pointer;
+          }
+          .yam-compose-close:hover { background: rgba(255,255,255,0.06); color: var(--text, #fff); }
+          .yam-compose-tabs {
+            display: flex;
+            gap: 6px;
+            padding: 10px 12px 0;
+          }
+          .yam-compose-tab {
+            flex: 1;
+            min-height: 40px;
+            border-radius: 12px;
+            border: 1px solid var(--line, #2a2a3a);
+            background: transparent;
+            color: var(--text, #fff);
+            font-weight: 600;
+            cursor: pointer;
+          }
+          .yam-compose-tab.active {
+            background: linear-gradient(135deg, #8b5cf6, #6366f1);
+            border-color: transparent;
+            color: white;
+          }
+          .yam-compose-body {
+            padding: 14px 16px 18px;
+            display: grid;
+            gap: 10px;
+          }
+          .yam-compose-label { font-size: 13px; color: var(--muted, #aaa); }
+          .yam-compose-input {
+            width: 100%;
+            min-height: 44px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px solid var(--line, #2a2a3a);
+            background: var(--bg, #0e0e18);
+            color: var(--text, #fff);
+            font-family: inherit;
+            font-size: 14px;
+            box-sizing: border-box;
+          }
+          .yam-compose-textarea { min-height: 72px; resize: vertical; }
+          .yam-compose-input:focus {
+            outline: 2px solid rgba(139, 92, 246, 0.5);
+            outline-offset: 1px;
+          }
+          .yam-compose-users-list {
+            display: grid;
+            gap: 4px;
+            max-height: 320px;
+            overflow-y: auto;
+          }
+          .yam-compose-hint {
+            color: var(--muted, #aaa);
+            text-align: center;
+            font-size: 13px;
+            padding: 18px 8px;
+            margin: 0;
+          }
+          .yam-compose-user-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            padding: 10px;
+            border-radius: 12px;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--text, #fff);
+            cursor: pointer;
+            text-align: start;
+          }
+          .yam-compose-user-row:hover {
+            background: rgba(255,255,255,0.04);
+            border-color: var(--line, #2a2a3a);
+          }
+          .yam-compose-user-avatar {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            display: grid;
+            place-items: center;
+            background: linear-gradient(135deg, #8b5cf6, #6366f1);
+            color: white;
+            font-weight: 800;
+            flex-shrink: 0;
+          }
+          .yam-compose-user-meta { display: grid; gap: 2px; }
+          .yam-compose-user-meta small { color: var(--muted, #aaa); font-size: 12px; }
+          .yam-compose-primary {
+            margin-top: 6px;
+            min-height: 46px;
+            border-radius: 12px;
+            border: none;
+            background: linear-gradient(135deg, #8b5cf6, #6366f1);
+            color: white;
+            font-weight: 700;
+            cursor: pointer;
+            font-size: 15px;
+          }
+          .yam-compose-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+        `}</style>
+      </div>
+    </div>
+  );
+}
+
 export default function Inbox() {
   const navigate = useNavigate();
   const { pushToast } = useToast();
@@ -289,6 +604,7 @@ export default function Inbox() {
   const [stories, setStories] = useState([]);
   const [groups, setGroups] = useState([]);
   const [profile, setProfile] = useState(null);
+  const [composeOpen, setComposeOpen] = useState(false);
 
   const loadData = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true);
@@ -475,10 +791,17 @@ export default function Inbox() {
               <span className="yam-brand-text">YAMSHAT</span>
             </button>
 
-            <button type="button" className="yam-icon-btn" onClick={() => navigate('/users')} aria-label="إنشاء محادثة">
+            <button type="button" className="yam-icon-btn" onClick={() => setComposeOpen(true)} aria-label="إنشاء محادثة">
               <ComposeIcon />
             </button>
           </header>
+
+          <ComposeModal
+            open={composeOpen}
+            onClose={() => setComposeOpen(false)}
+            navigate={navigate}
+            pushToast={pushToast}
+          />
 
           <div className="yam-search-box">
             <SearchIcon />

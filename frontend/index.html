@@ -6,7 +6,13 @@
     <meta name="theme-color" content="#0f172a" />
     <meta name="description" content="Yamshat PWA social app with chat, reels, live, offline mode, and push notifications" />
     <meta name="application-name" content="Yamshat" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; media-src 'self' data: blob: https:; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data: https:; object-src 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; media-src 'self' data: blob: https:; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https: https://fonts.gstatic.com; object-src 'none'" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;600;700;800&family=Tajawal:wght@400;500;700&display=swap" />
+    <style>
+      html, body { font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    </style>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />

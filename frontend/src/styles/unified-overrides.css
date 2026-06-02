@@ -1052,15 +1052,33 @@ small,
 
 .yam-account-dropdown {
   position: absolute;
-  inset-inline-end: 0;
+  /* تثبيت القائمة داخل حدود الشاشة — في RTL يجب أن تفتح للجهة الأخرى (يسار الزر) */
+  inset-inline-start: 0;
+  inset-inline-end: auto;
   top: calc(100% + 10px);
   width: min(320px, 86vw);
+  max-width: calc(100vw - 24px);
   background: color-mix(in srgb, var(--panel-strong) 98%, transparent);
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
   padding: 14px;
   box-shadow: var(--shadow-large);
   display: none;
+  z-index: 1000;
+}
+
+/* على الجوال: تثبيت القائمة بشكل صريح داخل حدود الشاشة */
+@media (max-width: 1023.98px) {
+  .yam-account-dropdown {
+    position: fixed;
+    top: 64px;
+    inset-inline-start: 12px;
+    inset-inline-end: 12px;
+    width: auto;
+    max-width: none;
+    max-height: calc(100vh - 140px);
+    overflow-y: auto;
+  }
 }
 
 .yam-account-dropdown.open {

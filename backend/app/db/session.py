@@ -7,11 +7,7 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-engine_kwargs = {
-    'pool_pre_ping': True,
-    'pool_recycle': 180,
-    'pool_use_lifo': True,
-}
+engine_kwargs = {'pool_pre_ping': True}
 connect_args = {}
 
 
@@ -46,15 +42,6 @@ if DATABASE_URL != RAW_DB_URL:
 
 if DATABASE_URL.startswith('sqlite'):
     connect_args['check_same_thread'] = False
-elif DATABASE_URL.startswith(('postgresql://', 'postgres://')):
-    connect_args.update({
-        'connect_timeout': 10,
-        'application_name': getattr(settings, 'SERVICE_NAME', 'yamshat-backend'),
-        'keepalives': 1,
-        'keepalives_idle': 30,
-        'keepalives_interval': 10,
-        'keepalives_count': 5,
-    })
 
 if connect_args:
     engine_kwargs['connect_args'] = connect_args

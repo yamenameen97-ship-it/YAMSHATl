@@ -88,20 +88,12 @@ input, textarea, [contenteditable] {
     display: none !important;
   }
 
-  /* عرض الأزرار السريعة على الموبايل */
-  .ui-topbar-mobile-section {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex: 1;
-    gap: 4px;
-  }
-
-  .topbar-mobile-quick-links {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
+  /* إخفاء الأزرار السريعة (البث/المجموعات/الستوري) من الهيدر العلوي على الجوال */
+  /* المستخدم لا يحتاجها هنا — فهي موجودة في BottomNav والصفحة الرئيسية */
+  .ui-topbar-mobile-section,
+  .topbar-mobile-quick-links,
+  .topbar-desktop-only {
+    display: none !important;
   }
 
   .topbar-quick-link {

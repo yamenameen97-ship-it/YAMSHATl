@@ -5,6 +5,7 @@ import Avatar from './Avatar.jsx';
 function TopBar({
   brand = { to: '/', label: 'YAMSHAT', icon: '👑' },
   navItems = [],
+  mobileQuickLinks = null,
   trailingActions = null,
   account = null,
   className = '',
@@ -35,6 +36,9 @@ function TopBar({
             );
           })}
         </nav>
+
+        {/* الأزرار السريعة على الموبايل */}
+        {mobileQuickLinks ? <div className="ui-topbar-mobile-section">{mobileQuickLinks}</div> : null}
 
         <div className="ui-topbar-actions">{trailingActions}</div>
 

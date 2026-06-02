@@ -1,0 +1,413 @@
+/* ============================================================
+   YAMSHAT — Mobile App Experience Enhancement
+   تحسين تجربة الجوال لجعلها تبدو كتطبيق حقيقي
+   - إضافة أزرار المجموعات والريلز والستوري في الهيدر
+   - إصلاح مشكلة السحب بإصبع واحدة
+   - تحسين الاستجابة للمس والإيماءات
+   ============================================================ */
+
+:root {
+  /* متغيرات الألوان والأحجام */
+  --topbar-quick-link-size: 40px;
+  --topbar-quick-link-icon-size: 20px;
+  --touch-target-min: 44px;
+  --gesture-transition: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ============================================================
+   1) تحسين معالجة اللمس والسحب بإصبع واحدة
+   ============================================================ */
+
+html, body {
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* السماح بالتحديد في حقول الإدخال */
+input, textarea, [contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* ضمان السحب بإصبع واحدة على الموبايل */
+@media (max-width: 1023.98px) {
+  .page-content {
+    touch-action: pan-y !important;
+    -webkit-touch-callout: none;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* إزالة أي تأثيرات تمنع السحب */
+  .gesture-container,
+  .swipe-container,
+  [data-swipeable] {
+    touch-action: pan-y !important;
+  }
+
+  /* ضمان عدم تقييد السحب في أي عنصر */
+  .feed-container,
+  .post-list,
+  .story-viewer,
+  .reels-player {
+    touch-action: pan-y !important;
+  }
+}
+
+/* ============================================================
+   2) تحسين الهيدر العلوي على الموبايل
+   ============================================================ */
+
+@media (max-width: 1023.98px) {
+  .ui-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    background: rgba(10, 13, 26, 0.95);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: env(safe-area-inset-top, 0px);
+    min-height: calc(56px + env(safe-area-inset-top, 0px));
+  }
+
+  .ui-topbar-track {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 12px;
+    flex-wrap: nowrap;
+    width: 100%;
+  }
+
+  /* إخفاء الـ nav الرئيسي على الموبايل */
+  .ui-topbar-nav {
+    display: none !important;
+  }
+
+  /* عرض الأزرار السريعة على الموبايل */
+  .ui-topbar-mobile-section {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    gap: 4px;
+  }
+
+  .topbar-mobile-quick-links {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .topbar-quick-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--topbar-quick-link-size);
+    height: var(--topbar-quick-link-size);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.8);
+    text-decoration: none;
+    transition: all var(--gesture-transition);
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    position: relative;
+  }
+
+  .topbar-quick-link:active {
+    transform: scale(0.92);
+    background: rgba(124, 58, 237, 0.2);
+    border-color: rgba(124, 58, 237, 0.4);
+    color: #fff;
+  }
+
+  .topbar-quick-link:focus-visible {
+    outline: 2px solid rgba(124, 58, 237, 0.6);
+    outline-offset: 2px;
+  }
+
+  .topbar-quick-link-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--topbar-quick-link-icon-size);
+    line-height: 1;
+  }
+
+  /* الأزرار الزائدة على الموبايل */
+  .topbar-trailing-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .topbar-theme-toggle .btn-small {
+    padding: 6px 10px;
+    font-size: 0.75rem;
+  }
+
+  /* حساب الأزرار الدقيق */
+  .ui-topbar-brand {
+    flex-shrink: 0;
+    min-width: 44px;
+  }
+
+  .ui-topbar-account {
+    flex-shrink: 0;
+  }
+}
+
+/* ============================================================
+   3) تحسين الاستجابة للمس والإيماءات
+   ============================================================ */
+
+@media (max-width: 1023.98px) {
+  /* جميع الأزرار والعناصر التفاعلية */
+  button,
+  a.btn,
+  .btn,
+  .icon-btn,
+  [role="button"],
+  .interactive {
+    min-width: var(--touch-target-min);
+    min-height: var(--touch-target-min);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: all var(--gesture-transition);
+  }
+
+  /* تأثير الضغط على الأزرار */
+  button:active,
+  a.btn:active,
+  .btn:active,
+  [role="button"]:active {
+    transform: scale(0.96);
+    opacity: 0.9;
+  }
+
+  /* إزالة التأثير الافتراضي للمتصفح */
+  button:focus-visible,
+  a:focus-visible,
+  [role="button"]:focus-visible {
+    outline: 2px solid rgba(124, 58, 237, 0.6);
+    outline-offset: 2px;
+  }
+
+  /* تحسين الاستجابة للمس في المنشورات والبطاقات */
+  .post,
+  .card,
+  .feed-item,
+  [role="article"] {
+    touch-action: pan-y;
+    transition: all var(--gesture-transition);
+  }
+
+  .post:active,
+  .card:active,
+  .feed-item:active {
+    opacity: 0.95;
+  }
+
+  /* تحسين الاستجابة للمس في قوائم التمرير */
+  .list,
+  .feed,
+  .scroll-container {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+  }
+}
+
+/* ============================================================
+   4) تحسين الأداء والسلاسة على الموبايل
+   ============================================================ */
+
+@media (max-width: 1023.98px) {
+  /* تفعيل GPU acceleration */
+  .page-content,
+  .post,
+  .card,
+  .feed-item {
+    will-change: transform, opacity;
+    transform: translate3d(0, 0, 0);
+    -webkit-transform: translate3d(0, 0, 0);
+  }
+
+  /* تحسين الأداء للعناصر المتحركة */
+  .gesture-container,
+  [data-swipeable],
+  .swipe-container {
+    will-change: transform;
+    transform: translate3d(0, 0, 0);
+  }
+
+  /* تحسين الأداء للقوائم الطويلة */
+  .infinite-list,
+  .virtual-list {
+    contain: layout style paint;
+  }
+}
+
+/* ============================================================
+   5) تحسين الوضوح والقراءة على الموبايل
+   ============================================================ */
+
+@media (max-width: 1023.98px) {
+  /* تحسين وضوح النصوص */
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* تحسين الحواشي والحدود */
+  button,
+  input,
+  textarea,
+  select {
+    border-radius: 12px;
+    font-size: 16px; /* منع التكبير التلقائي على iOS */
+  }
+
+  /* تحسين المسافات على الموبايل */
+  .page-content {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
+
+/* ============================================================
+   6) تحسين الحالات الخاصة (Notch, Safe Area, إلخ)
+   ============================================================ */
+
+@media (max-width: 1023.98px) {
+  /* دعم الأجهزة ذات الـ notch */
+  .ui-topbar {
+    padding-left: max(12px, env(safe-area-inset-left, 0px));
+    padding-right: max(12px, env(safe-area-inset-right, 0px));
+  }
+
+  .ui-bottom-nav,
+  .mobile-dock {
+    padding-left: max(8px, env(safe-area-inset-left, 0px));
+    padding-right: max(8px, env(safe-area-inset-right, 0px));
+    padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+  }
+
+  /* ضمان عدم إخفاء المحتوى خلف الـ notch أو الأشرطة */
+  .page-content {
+    padding-top: calc(56px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* ============================================================
+   7) تحسينات إضافية للتطبيق الشبيه
+   ============================================================ */
+
+@media (max-width: 1023.98px) {
+  /* إخفاء عناصر سطح المكتب */
+  .desktop-only,
+  .hide-on-mobile {
+    display: none !important;
+  }
+
+  /* عرض عناصر الموبايل فقط */
+  .mobile-only,
+  .show-on-mobile {
+    display: block !important;
+  }
+
+  /* تحسين الانتقالات */
+  * {
+    transition-duration: var(--gesture-transition);
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* منع الارتجاج والتأرجح */
+  .page-content {
+    scroll-behavior: smooth;
+    scroll-padding-top: calc(56px + env(safe-area-inset-top, 0px));
+  }
+
+  /* تحسين الرؤية في الوضع الليلي */
+  @media (prefers-color-scheme: dark) {
+    .ui-topbar {
+      background: rgba(10, 13, 26, 0.98);
+    }
+
+    .topbar-quick-link {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.06);
+    }
+  }
+
+  /* تحسين الرؤية في الوضع الفاتح */
+  @media (prefers-color-scheme: light) {
+    .ui-topbar {
+      background: rgba(255, 255, 255, 0.95);
+    }
+
+    .topbar-quick-link {
+      background: rgba(0, 0, 0, 0.05);
+      border-color: rgba(0, 0, 0, 0.08);
+      color: rgba(0, 0, 0, 0.8);
+    }
+
+    .topbar-quick-link:active {
+      background: rgba(124, 58, 237, 0.15);
+      border-color: rgba(124, 58, 237, 0.3);
+      color: #000;
+    }
+  }
+
+  /* دعم الحركة المختزلة */
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ============================================================
+   8) تحسينات الأداء والبطارية
+   ============================================================ */
+
+@media (max-width: 1023.98px) {
+  /* تقليل استهلاك البطارية */
+  .page-content {
+    content-visibility: auto;
+    contain: layout style paint;
+  }
+
+  /* تحسين الأداء للعناصر البعيدة */
+  .feed-item,
+  .post,
+  .card {
+    content-visibility: auto;
+    contain-intrinsic-size: 100% 400px;
+  }
+
+  /* تقليل عدد repaints */
+  .animation-frame-optimized {
+    will-change: auto;
+  }
+
+  .animation-frame-optimized.animating {
+    will-change: transform;
+  }
+}

@@ -30,6 +30,7 @@ import './styles/brand-chat-notifications-refresh.css';
 import './styles/mobile-yamshat-redesign.css';
 /* 🔧 إصلاح أزرار التفاعل في بطاقات المنشورات للجوال */
 import './styles/mobile-post-actions-fix.css';
+import './styles/mobile-app-experience.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 
 const BUILD_ID = 'yamshat-pwa-mobile-wired-20260531-r6';

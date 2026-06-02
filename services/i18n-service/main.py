@@ -11,12 +11,24 @@ TRANSLATIONS = {
     "ar": {
         "hello": "مرحباً",
         "welcome": "أهلاً وسهلاً",
-        "goodbye": "إلى اللقاء"
+        "goodbye": "إلى اللقاء",
+        "wallet": "المحفظة",
+        "security": "الأمان",
+        "settings": "الإعدادات",
+        "balance": "الرصيد",
+        "deposit": "إيداع",
+        "withdraw": "سحب"
     },
     "en": {
         "hello": "Hello",
         "welcome": "Welcome",
-        "goodbye": "Goodbye"
+        "goodbye": "Goodbye",
+        "wallet": "Wallet",
+        "security": "Security",
+        "settings": "Settings",
+        "balance": "Balance",
+        "deposit": "Deposit",
+        "withdraw": "Withdraw"
     },
     "fr": {
         "hello": "Bonjour",

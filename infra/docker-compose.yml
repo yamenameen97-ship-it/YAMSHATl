@@ -13,6 +13,10 @@ services:
       NOTIFICATION_SERVICE_URL: http://notification-service:8000
       MEDIA_SERVICE_URL: http://media-service:8000
       SEARCH_SERVICE_URL: http://search-service:8000
+      BILLING_SERVICE_URL: http://billing-service:8000
+      IDENTITY_SERVICE_URL: http://identity-service:8000
+      I18N_SERVICE_URL: http://i18n-service:8000
+      DISCOVERY_SERVICE_URL: http://discovery-ai-service:8000
 
   auth-service:
     build: ../services/auth-service
@@ -34,6 +38,18 @@ services:
 
   search-service:
     build: ../services/search-service
+
+  billing-service:
+    build: ../services/billing-service
+
+  identity-service:
+    build: ../services/identity-service
+
+  i18n-service:
+    build: ../services/i18n-service
+
+  discovery-ai-service:
+    build: ../services/discovery-ai-service
 
   redis:
     image: redis

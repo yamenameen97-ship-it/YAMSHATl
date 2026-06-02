@@ -50,7 +50,25 @@
     overflow-x: hidden !important;
     -webkit-overflow-scrolling: touch !important;
     overscroll-behavior-y: contain;
-    touch-action: pan-y;
+    touch-action: pan-y !important;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* إزالة touch-action: none من جميع العناصر */
+  * {
+    touch-action: auto;
+  }
+
+  /* السماح بالسحب العمودي فقط على الموبايل */
+  .gesture-container,
+  [data-swipeable],
+  .swipe-container,
+  .feed-container,
+  .post-list,
+  .story-viewer,
+  .reels-player {
+    touch-action: pan-y !important;
   }
 
   /* مساحة آمنة أسفل الصفحة كي لا يختفي المحتوى خلف الـ BottomNav */
@@ -442,4 +460,41 @@ video.yam-post-media-image,
 .mobile-dock {
   transform: translateZ(0);
   backface-visibility: hidden;
+}
+
+
+/* ===== إصلاح نهائي: ضمان السحب بإصبع واحدة على الموبايل ===== */
+@media (max-width: 1023.98px) {
+  /* ضمان عدم تقييد السحب بإصبع واحدة */
+  html, body {
+    touch-action: manipulation !important;
+  }
+
+  /* السماح بالسحب العمودي على جميع عناصر المحتوى */
+  .page-content,
+  .feed,
+  .feed-container,
+  .scroll-container,
+  [role="main"] {
+    touch-action: pan-y !important;
+    -webkit-touch-callout: none;
+  }
+
+  /* إزالة أي قيود على السحب */
+  .gesture-container {
+    touch-action: pan-y !important;
+  }
+
+  /* تحسين السلاسة */
+  .page-content {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* منع التأخير في الاستجابة للمس */
+  button,
+  a,
+  [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+  }
 }

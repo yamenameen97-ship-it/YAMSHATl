@@ -130,7 +130,8 @@ class Settings:
     API_PREFIX: str = '/api'
     ENVIRONMENT: str = env_str('ENVIRONMENT', env_str('APP_ENV', 'production')).lower()
     DEBUG: bool = env_bool('DEBUG', False)
-    DATABASE_URL: str = normalize_database_url(env_str('DATABASE_URL', 'sqlite:///./yamshat.db'))
+    # In production, we should default to a robust database like PostgreSQL
+    DATABASE_URL: str = normalize_database_url(env_str('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/yamshat'))
     SECRET_KEY: str = env_str('SECRET_KEY', 'change-this-secret-key')
     ALGORITHM: str = os.getenv('ALGORITHM', 'HS256')
     JWT_ISSUER: str = (os.getenv('JWT_ISSUER') or 'yamshat-api').strip()

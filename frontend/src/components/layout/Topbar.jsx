@@ -22,6 +22,13 @@ const PRIMARY_ITEMS = Object.freeze([
   { to: '/settings', label: 'الإعدادات', icon: '⚙', match: (path) => path.startsWith('/settings') },
 ]);
 
+// الأزرار السريعة في الهيدر العلوي (مرئية على الموبايل)
+const MOBILE_QUICK_LINKS = Object.freeze([
+  { to: '/groups', label: 'المجموعات', icon: '👫', ariaLabel: 'المجموعات' },
+  { to: '/reels', label: 'الريلز', icon: '🎬', ariaLabel: 'الريلز' },
+  { to: '/stories', label: 'القصص', icon: '📖', ariaLabel: 'القصص' },
+]);
+
 const ACCOUNT_MENU_ITEMS = Object.freeze([
   { to: '/profile', label: 'الملف الشخصي', icon: '👤' },
   { to: '/users', label: 'اكتشاف أشخاص', icon: '👥' },
@@ -127,11 +134,32 @@ function Topbar() {
     }
   }, [loggingOut]);
 
+  // الأزرار السريعة على الموبايل
+  const mobileQuickLinks = (
+    <div className="topbar-mobile-quick-links">
+      {MOBILE_QUICK_LINKS.map((item) => (
+        <Link
+          key={item.to}
+          to={item.to}
+          className="topbar-quick-link"
+          aria-label={item.ariaLabel}
+          title={item.label}
+        >
+          <span className="topbar-quick-link-icon">{item.icon}</span>
+        </Link>
+      ))}
+    </div>
+  );
+
   const trailingActions = (
-    <button type="button" className="btn btn-secondary btn-small" onClick={toggleTheme} aria-label="تبديل المظهر">
-      <span aria-hidden="true">{theme === 'dark' ? '☾' : '☀'}</span>
-      <span>{theme === 'dark' ? 'ليلي' : 'نهاري'}</span>
-    </button>
+    <div className="topbar-trailing-actions">
+      <div className="topbar-theme-toggle">
+        <button type="button" className="btn btn-secondary btn-small" onClick={toggleTheme} aria-label="تبديل المظهر">
+          <span aria-hidden="true">{theme === 'dark' ? '☾' : '☀'}</span>
+          <span>{theme === 'dark' ? 'ليلي' : 'نهاري'}</span>
+        </button>
+      </div>
+    </div>
   );
 
   const account = (
@@ -171,6 +199,7 @@ function Topbar() {
     <TopBarUI
       brand={BRAND}
       navItems={navItems}
+      mobileQuickLinks={mobileQuickLinks}
       trailingActions={trailingActions}
       account={account}
       className="yam-topbar-shell"

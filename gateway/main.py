@@ -26,6 +26,10 @@ ROUTE_TABLE = {
     '/notifications': NOTIFICATION_SERVICE_URL,
     '/media': MEDIA_SERVICE_URL,
     '/search': SEARCH_SERVICE_URL,
+    '/billing': os.getenv('BILLING_SERVICE_URL', 'http://billing-service:8000'),
+    '/identity': os.getenv('IDENTITY_SERVICE_URL', 'http://identity-service:8000'),
+    '/i18n': os.getenv('I18N_SERVICE_URL', 'http://i18n-service:8000'),
+    '/discovery': os.getenv('DISCOVERY_SERVICE_URL', 'http://discovery-ai-service:8000'),
     '/api/auth': AUTH_SERVICE_URL,
     '/api/users': USER_SERVICE_URL,
     '/api/posts': POST_SERVICE_URL,
@@ -36,6 +40,10 @@ ROUTE_TABLE = {
     '/api/notifications': NOTIFICATION_SERVICE_URL,
     '/api/search': SEARCH_SERVICE_URL,
     '/api/upload': MEDIA_SERVICE_URL,
+    '/api/billing': os.getenv('BILLING_SERVICE_URL', 'http://billing-service:8000'),
+    '/api/identity': os.getenv('IDENTITY_SERVICE_URL', 'http://identity-service:8000'),
+    '/api/i18n': os.getenv('I18N_SERVICE_URL', 'http://i18n-service:8000'),
+    '/api/discovery': os.getenv('DISCOVERY_SERVICE_URL', 'http://discovery-ai-service:8000'),
 }
 
 REQUEST_COUNT = Counter(

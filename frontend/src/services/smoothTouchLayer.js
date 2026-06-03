@@ -485,7 +485,8 @@ export class SmoothTouchLayer {
     element.addEventListener('touchend', handleTouchEnd, { passive: true });
     element.addEventListener('touchcancel', handleTouchCancel, { passive: true });
 
-    // دعم الماوس للاختبار على سطح المكتب
+    // تم تعطيل دعم الماوس لمنع التشويش والاهتزاز على اللابتوب
+    /*
     element.addEventListener('mousedown', (e) => {
       this.handleTouchStart({
         touches: [{ clientX: e.clientX, clientY: e.clientY, force: 1 }],
@@ -508,6 +509,7 @@ export class SmoothTouchLayer {
         target: e.target
       });
     });
+    */
 
     // حفظ دالة التنظيف
     const cleanup = () => {

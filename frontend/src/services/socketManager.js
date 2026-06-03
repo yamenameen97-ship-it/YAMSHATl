@@ -65,15 +65,6 @@ class SocketManager {
       reconnectionDelayMax: 30000,
       timeout: 20000,
       auth: this.buildAuthPayload(),
-      // تحسينات الأداء
-      upgrade: true,
-      rememberUpgrade: true,
-      // تقليل حجم الرسائل
-      maxHttpBufferSize: 1e6, // 1MB
-      // تحسين الاتصال
-      ackTimeout: 10000,
-      // منع مشاكل الذاكرة
-      enablesXDR: true,
     });
 
     this.queueOwner = getCurrentUsername() || '';
@@ -85,11 +76,6 @@ class SocketManager {
     this.lastLatencyMs = null;
     this.eventDeduper = new Map();
     this.activeListeners = new Map();
-    this.connectionAttempts = 0;
-    this.maxConnectionAttempts = 10;
-    this.lastConnectionErrorTime = 0;
-    this.connectionErrorThrottleMs = 5000;
-    
     this.handleBrowserOnline = this.handleBrowserOnline.bind(this);
     this.handleBrowserOffline = this.handleBrowserOffline.bind(this);
     this.setupRobustListeners();
@@ -143,11 +129,7 @@ class SocketManager {
 
   emitBrowserEvent(name, detail = {}) {
     if (typeof window === 'undefined') return;
-    try {
-      window.dispatchEvent(new CustomEvent(name, { detail }));
-    } catch (error) {
-      console.warn('Failed to emit browser event:', error);
-    }
+    window.dispatchEvent(new CustomEvent(name, { detail }));
   }
 
   setupBrowserListeners() {
@@ -178,7 +160,6 @@ class SocketManager {
 
   setupRobustListeners() {
     this.socket.on('connect', () => {
-      this.connectionAttempts = 0;
       this.rehydrateQueueForCurrentUser();
       logger.info('Socket connected', { id: this.socket.id });
       this.emitBrowserEvent('yamshat:socket-state', {
@@ -202,35 +183,16 @@ class SocketManager {
         networkOnline: typeof navigator === 'undefined' ? true : navigator.onLine,
       });
       this.stopHeartbeat();
-      
-      // إعادة الاتصال تلقائياً في حالات معينة
-      if (reason === 'io server disconnect') {
-        setTimeout(() => this.socket.connect(), 1000);
-      }
+      if (reason === 'io server disconnect') this.socket.connect();
     });
 
     this.socket.on('connect_error', (error) => {
-      const now = Date.now();
-      
-      // تجنب الإرسال المتكرر للأخطاء
-      if (now - this.lastConnectionErrorTime < this.connectionErrorThrottleMs) {
-        return;
-      }
-      
-      this.lastConnectionErrorTime = now;
-      this.connectionAttempts++;
-      
-      logger.warn('Socket connect error', { 
-        detail: error?.message,
-        attempt: this.connectionAttempts 
-      });
-      
+      logger.warn('Socket connect error', { detail: error?.message });
       this.emitBrowserEvent('yamshat:socket-state', {
         connected: false,
         reconnecting: true,
         error: error?.message || 'connect_error',
         latencyMs: this.lastLatencyMs,
-        attempt: this.connectionAttempts,
       });
     });
 
@@ -279,23 +241,14 @@ class SocketManager {
         description: payload.detail || 'سجّل الدخول مرة تانية.',
       });
     });
-
-    // معالجة الأخطاء العامة
-    this.socket.on('error', (error) => {
-      logger.error('Socket error:', error);
-    });
   }
 
   startHeartbeat() {
     this.stopHeartbeat();
     this.heartbeatInterval = setInterval(() => {
       if (!this.socket.connected) return;
-      try {
-        this.lastHeartbeatAt = Date.now();
-        this.socket.emit('ping', this.decoratePayload('ping', { ts: this.lastHeartbeatAt }));
-      } catch (error) {
-        logger.warn('Failed to send heartbeat:', error);
-      }
+      this.lastHeartbeatAt = Date.now();
+      this.socket.emit('ping', this.decoratePayload('ping', { ts: this.lastHeartbeatAt }));
     }, 25000);
   }
 
@@ -438,24 +391,12 @@ class SocketManager {
   connect() {
     if (!getAuthToken()) return;
     this.syncAuth();
-    if (!this.socket.connected) {
-      try {
-        this.socket.connect();
-      } catch (error) {
-        logger.warn('Failed to connect socket:', error);
-      }
-    }
+    if (!this.socket.connected) this.socket.connect();
   }
 
   disconnect() {
     this.stopHeartbeat();
-    if (this.socket.connected) {
-      try {
-        this.socket.disconnect();
-      } catch (error) {
-        logger.warn('Failed to disconnect socket:', error);
-      }
-    }
+    if (this.socket.connected) this.socket.disconnect();
   }
 
   cleanup() {
@@ -465,13 +406,7 @@ class SocketManager {
       this.queueReplayTimer = null;
     }
     this.activeListeners.forEach((listeners, event) => {
-      listeners.forEach((wrappedHandler) => {
-        try {
-          this.socket.off(event, wrappedHandler);
-        } catch (error) {
-          logger.warn('Failed to remove listener:', error);
-        }
-      });
+      listeners.forEach((wrappedHandler) => this.socket.off(event, wrappedHandler));
     });
     this.activeListeners.clear();
     this.eventDeduper.clear();
@@ -479,13 +414,7 @@ class SocketManager {
       window.removeEventListener('online', this.handleBrowserOnline);
       window.removeEventListener('offline', this.handleBrowserOffline);
     }
-    if (this.socket.connected) {
-      try {
-        this.socket.disconnect();
-      } catch (error) {
-        logger.warn('Failed to disconnect during cleanup:', error);
-      }
-    }
+    if (this.socket.connected) this.socket.disconnect();
   }
 
   emit(eventName, payload = {}, options = {}) {
@@ -513,21 +442,16 @@ class SocketManager {
     }
 
     return new Promise((resolve, reject) => {
-      try {
-        this.socket.timeout(timeout).emit(eventName, signedPayload, (error, response) => {
-          if (error) {
-            if (this.shouldQueue(eventName, options)) {
-              this.enqueue(eventName, signedPayload, options);
-            }
-            reject(error);
-            return;
+      this.socket.timeout(timeout).emit(eventName, signedPayload, (error, response) => {
+        if (error) {
+          if (this.shouldQueue(eventName, options)) {
+            this.enqueue(eventName, signedPayload, options);
           }
-          resolve(response);
-        });
-      } catch (error) {
-        logger.warn('Failed to emit with ack:', error);
-        reject(error);
-      }
+          reject(error);
+          return;
+        }
+        resolve(response);
+      });
     });
   }
 
@@ -542,48 +466,34 @@ class SocketManager {
     }
 
     const wrappedHandler = (data) => {
-      try {
-        handler(data);
-      } catch (error) {
-        logger.error('Error in socket event handler:', error);
-      }
+      const entityId = data?.id || data?.message_id || data?.client_id || data?._nonce || JSON.stringify(data || {});
+      const eventId = `${event}:${entityId}`;
+      const lastSeenAt = this.eventDeduper.get(eventId) || 0;
+      const now = Date.now();
+      if (now - lastSeenAt < 1200) return;
+
+      this.eventDeduper.set(eventId, now);
+      setTimeout(() => this.eventDeduper.delete(eventId), 1500);
+      handler(data);
     };
 
     listeners.set(handler, wrappedHandler);
     this.socket.on(event, wrappedHandler);
-
     return () => this.off(event, handler);
   }
 
   off(event, handler) {
     const listeners = this.activeListeners.get(event);
-    if (!listeners) return;
-
-    const wrappedHandler = listeners.get(handler);
+    const wrappedHandler = listeners?.get(handler);
     if (wrappedHandler) {
       this.socket.off(event, wrappedHandler);
       listeners.delete(handler);
+      if (listeners.size === 0) this.activeListeners.delete(event);
+      return;
     }
-
-    if (listeners.size === 0) {
-      this.activeListeners.delete(event);
-    }
-  }
-
-  once(event, handler) {
-    const wrappedHandler = (data) => {
-      try {
-        handler(data);
-      } catch (error) {
-        logger.error('Error in socket once handler:', error);
-      }
-      this.off(event, wrappedHandler);
-    };
-
-    this.on(event, wrappedHandler);
+    this.socket.off(event, handler);
   }
 }
 
 const socketManager = new SocketManager();
-export { socketManager };
 export default socketManager;

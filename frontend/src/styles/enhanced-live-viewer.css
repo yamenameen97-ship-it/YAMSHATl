@@ -1,26 +1,16 @@
-/* Enhanced Live Stream Viewer CSS - Fixed for Performance */
-
-* {
-  /* تحسين الأداء بتقليل عمليات إعادة الرسم */
-  box-sizing: border-box;
-}
+/* Enhanced Live Stream Viewer CSS */
 
 .enhanced-live-viewer {
   min-height: 100vh;
   background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
   color: #e2e8f0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  /* منع الرجفة عند التفاعل */
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
 .viewer-container {
   max-width: 1600px;
   margin: 0 auto;
   padding: 20px;
-  /* تحسين الأداء */
-  will-change: auto;
 }
 
 /* Header */
@@ -34,9 +24,6 @@
   border-radius: 12px;
   border: 1px solid rgba(148, 163, 184, 0.1);
   backdrop-filter: blur(10px);
-  /* منع الرجفة */
-  transform: translateZ(0);
-  backface-visibility: hidden;
 }
 
 .header-content h1 {
@@ -63,12 +50,7 @@
   border-radius: 8px;
   cursor: pointer;
   font-weight: 600;
-  transition: all 0.2s ease;
-  /* منع الرجفة */
-  transform: translateZ(0);
-  backface-visibility: hidden;
-  -webkit-user-select: none;
-  user-select: none;
+  transition: all 0.3s ease;
 }
 
 .refresh-btn:hover:not(:disabled) {
@@ -87,24 +69,18 @@
   grid-template-columns: 1fr 350px;
   gap: 20px;
   min-height: calc(100vh - 200px);
-  /* تحسين الأداء */
-  will-change: auto;
 }
 
 .viewer-main {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  /* منع الرجفة */
-  contain: layout style paint;
 }
 
 .streams-sidebar {
   display: flex;
   flex-direction: column;
   gap: 15px;
-  /* منع الرجفة */
-  contain: layout style paint;
 }
 
 /* Filters */
@@ -116,9 +92,6 @@
   border-radius: 12px;
   padding: 12px;
   backdrop-filter: blur(10px);
-  /* منع الرجفة */
-  transform: translateZ(0);
-  backface-visibility: hidden;
 }
 
 .filter-btn {
@@ -131,12 +104,7 @@
   cursor: pointer;
   font-weight: 600;
   font-size: 13px;
-  transition: all 0.2s ease;
-  /* منع الرجفة */
-  transform: translateZ(0);
-  backface-visibility: hidden;
-  -webkit-user-select: none;
-  user-select: none;
+  transition: all 0.3s ease;
 }
 
 .filter-btn:hover {
@@ -157,9 +125,6 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  /* تحسين الأداء */
-  contain: layout style paint;
-  -webkit-overflow-scrolling: touch;
 }
 
 .empty-streams {
@@ -182,14 +147,8 @@
   border-radius: 12px;
   padding: 12px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
   backdrop-filter: blur(10px);
-  /* منع الرجفة */
-  transform: translateZ(0);
-  backface-visibility: hidden;
-  will-change: transform;
-  -webkit-user-select: none;
-  user-select: none;
 }
 
 .stream-card:hover {
@@ -262,8 +221,6 @@
   border-radius: 12px;
   overflow: hidden;
   backdrop-filter: blur(10px);
-  /* منع الرجفة */
-  contain: layout style paint;
 }
 
 /* Stream Player */
@@ -273,9 +230,6 @@
   aspect-ratio: 16 / 9;
   background: #000;
   overflow: hidden;
-  /* تحسين الأداء */
-  contain: strict;
-  will-change: auto;
 }
 
 .player-placeholder {
@@ -313,8 +267,6 @@
   height: 100%;
   pointer-events: none;
   overflow: hidden;
-  /* تحسين الأداء */
-  contain: strict;
 }
 
 .floating-heart {
@@ -323,10 +275,6 @@
   font-size: 32px;
   opacity: 0.8;
   z-index: 10;
-  /* تحسين الأداء */
-  will-change: transform, opacity;
-  transform: translateZ(0);
-  backface-visibility: hidden;
 }
 
 @keyframes floatUp {
@@ -343,8 +291,6 @@
 /* Stream Info */
 .stream-info {
   padding: 20px;
-  /* تحسين الأداء */
-  contain: layout style paint;
 }
 
 .info-header {
@@ -390,14 +336,10 @@
   margin-bottom: 20px;
   padding-bottom: 20px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.1);
-  /* تحسين الأداء */
-  contain: layout style paint;
 }
 
 .stat {
   text-align: center;
-  /* تحسين الأداء */
-  contain: layout style;
 }
 
 .stat-icon {
@@ -424,8 +366,6 @@
   display: flex;
   gap: 10px;
   margin-bottom: 20px;
-  /* تحسين الأداء */
-  contain: layout style paint;
 }
 
 .action-btn {
@@ -443,13 +383,7 @@
   cursor: pointer;
   font-weight: 600;
   font-size: 12px;
-  transition: all 0.2s ease;
-  /* منع الرجفة */
-  transform: translateZ(0);
-  backface-visibility: hidden;
-  will-change: transform;
-  -webkit-user-select: none;
-  user-select: none;
+  transition: all 0.3s ease;
 }
 
 .action-btn:hover {
@@ -511,8 +445,6 @@
   border-radius: 8px;
   padding: 15px;
   margin-bottom: 20px;
-  /* تحسين الأداء */
-  contain: layout style paint;
 }
 
 .gifts-title {
@@ -538,14 +470,8 @@
   border: 1px solid rgba(124, 58, 237, 0.3);
   border-radius: 8px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
   color: #c4b5fd;
-  /* منع الرجفة */
-  transform: translateZ(0);
-  backface-visibility: hidden;
-  will-change: transform;
-  -webkit-user-select: none;
-  user-select: none;
 }
 
 .gift-option:hover {
@@ -579,8 +505,6 @@
   display: flex;
   flex-direction: column;
   max-height: 400px;
-  /* تحسين الأداء */
-  contain: layout style paint;
 }
 
 .comments-header {
@@ -615,9 +539,6 @@
   flex-direction: column;
   gap: 12px;
   margin-bottom: 15px;
-  /* تحسين الأداء */
-  contain: layout style paint;
-  -webkit-overflow-scrolling: touch;
 }
 
 .empty-comments {
@@ -646,9 +567,6 @@
   padding: 12px;
   background: rgba(15, 23, 42, 0.5);
   border-radius: 8px;
-  /* تحسين الأداء */
-  contain: layout style;
-  animation: fadeIn 0.2s ease-out;
 }
 
 .comment-content {
@@ -684,10 +602,7 @@
   border-radius: 8px;
   color: #e2e8f0;
   font-size: 14px;
-  transition: all 0.2s ease;
-  /* منع الرجفة */
-  transform: translateZ(0);
-  backface-visibility: hidden;
+  transition: all 0.3s ease;
 }
 
 .comment-input-area input:focus {
@@ -705,13 +620,7 @@
   cursor: pointer;
   font-weight: 600;
   font-size: 14px;
-  transition: all 0.2s ease;
-  /* منع الرجفة */
-  transform: translateZ(0);
-  backface-visibility: hidden;
-  will-change: transform;
-  -webkit-user-select: none;
-  user-select: none;
+  transition: all 0.3s ease;
 }
 
 .send-btn:hover:not(:disabled) {
@@ -773,18 +682,6 @@
 .streams-list::-webkit-scrollbar-thumb:hover,
 .comments-list::-webkit-scrollbar-thumb:hover {
   background: rgba(124, 58, 237, 0.5);
-}
-
-/* Animations */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 /* Responsive */
@@ -898,4 +795,21 @@
   .send-btn {
     width: 100%;
   }
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stream-card,
+.comment-item {
+  animation: fadeIn 0.3s ease-out;
 }

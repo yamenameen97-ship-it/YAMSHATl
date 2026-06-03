@@ -10,7 +10,7 @@
    ============================================================ */
 
 /* ===== فرض ظهور أشرطة التنقل على الموبايل (إلا في شاشة الدردشة) ===== */
-@media (max-width: 1023.98px) and (hover: none) and (pointer: coarse) {
+@media (max-width: 1023.98px) {
   body:not(.is-chat-open) .ui-bottom-nav,
   body:not(.is-chat-open) .mobile-dock {
     display: grid !important;
@@ -27,10 +27,8 @@
   }
 }
 
-/* ===== ضمان أن المحتوى قابل للتمرير على الموبايل (لمس فقط) ===== */
-/* ⚠️ إصلاح نعومة الشاشة على Desktop: قيود اللمس تُفعَّل فقط على أجهزة اللمس الفعلية،
-   وليس عند تصغير نافذة Desktop (نتحقق من hover:none + pointer:coarse) */
-@media (max-width: 1023.98px) and (hover: none) and (pointer: coarse) {
+/* ===== ضمان أن المحتوى قابل للتمرير على الموبايل ===== */
+@media (max-width: 1023.98px) {
   html,
   body {
     overflow-x: hidden;
@@ -57,7 +55,7 @@
     user-select: none;
   }
 
-  /* إزالة touch-action: none من جميع العناصر (فقط على أجهزة اللمس) */
+  /* إزالة touch-action: none من جميع العناصر */
   * {
     touch-action: auto;
   }
@@ -469,7 +467,7 @@ video.yam-post-media-image,
 @media (max-width: 1023.98px) {
   /* ضمان عدم تقييد السحب بإصبع واحدة */
   html, body {
-    touch-action: manipulation;
+    touch-action: manipulation !important;
   }
 
   /* السماح بالسحب العمودي على جميع عناصر المحتوى */

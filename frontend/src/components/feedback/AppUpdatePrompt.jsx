@@ -33,16 +33,16 @@ export default function AppUpdatePrompt() {
   };
 
   return (
-    <div className="yam-update-banner" dir="rtl" role="status" aria-live="polite">
+    <div className="yam-update-banner system-style" dir="rtl" role="status" aria-live="polite">
       <div className="yam-update-copy">
-        <strong>يوجد إصدار جديد</strong>
-        <span>حدّث الآن للحصول على آخر تحسينات الـ PWA والإشعارات والعمل بدون إنترنت.</span>
+        <strong>إصدار جديد متوفر</strong>
+        <span>تتوفر تحسينات جديدة للنظام، هل تود التحديث الآن؟</span>
       </div>
       <div className="yam-update-actions">
-        <button type="button" className="yam-update-btn primary" onClick={handleUpdateNow} disabled={refreshing}>
-          {refreshing ? 'جاري التحديث...' : 'تحديث الآن'}
+        <button type="button" className="yam-update-btn primary system-btn" onClick={handleUpdateNow} disabled={refreshing}>
+          {refreshing ? 'جاري التحديث...' : 'تحديث'}
         </button>
-        <button type="button" className="yam-update-btn" onClick={() => setVisible(false)}>
+        <button type="button" className="yam-update-btn system-btn secondary" onClick={() => setVisible(false)}>
           لاحقاً
         </button>
       </div>
@@ -50,22 +50,18 @@ export default function AppUpdatePrompt() {
       <style>{`
         .yam-update-banner {
           position: fixed;
-          inset-inline: 12px;
-          bottom: calc(92px + env(safe-area-inset-bottom, 0px));
-          z-index: 130;
+          inset-inline: 0;
+          bottom: 0;
+          z-index: 9999;
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 14px;
-          flex-wrap: wrap;
-          padding: 14px 16px;
-          border-radius: 18px;
-          background: linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.98));
-          color: #fff;
-          border: 1px solid rgba(99, 102, 241, 0.28);
-          box-shadow: 0 16px 36px rgba(15, 23, 42, 0.28);
-          backdrop-filter: blur(16px);
-          -webkit-backdrop-filter: blur(16px);
+          padding: 12px 20px;
+          background: var(--bg-surface, #1e293b);
+          color: var(--text-primary, #fff);
+          border-top: 1px solid var(--border-color, rgba(255,255,255,0.1));
+          box-shadow: 0 -4px 12px rgba(0,0,0,0.2);
         }
 
         .yam-update-copy {
@@ -102,8 +98,8 @@ export default function AppUpdatePrompt() {
         }
 
         .yam-update-btn.primary {
-          border-color: transparent;
-          background: linear-gradient(135deg, #8b5cf6, #6366f1);
+          background: var(--accent-color, #6366f1);
+          border: none;
         }
 
         .yam-update-btn:disabled {

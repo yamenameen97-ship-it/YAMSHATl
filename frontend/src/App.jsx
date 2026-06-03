@@ -44,7 +44,6 @@ const Feed = lazy(() => import('./pages/FeedEnhanced.jsx'));
 const Stories = lazy(() => import('./pages/Stories.jsx'));
 const Reels = lazy(() => import('./pages/Reels.jsx'));
 const Groups = lazy(() => import('./pages/GroupsHome.jsx'));
-const GroupChat = lazy(() => import('./pages/GroupChat.jsx'));
 const LiveViewer = lazy(() => import('./pages/EnhancedLiveStreamViewer.jsx'));
 const LiveStudio = lazy(() => import('./pages/EnhancedLiveStreamControl.jsx'));
 const Inbox = lazy(() => import('./features/chat/index.js').then((mod) => ({ default: mod.Inbox })));
@@ -100,6 +99,8 @@ function AppGuards() {
     };
 
     const handlePointerDown = (event) => {
+      // منع التأثيرات عند استخدام الماوس على اللابتوب لتجنب الاهتزاز
+      if (event.pointerType === 'mouse') return;
       const target = resolveTarget(event);
       if (!target) return;
       const isDisabled = target.matches?.(':disabled') || target.getAttribute('aria-disabled') === 'true';
@@ -116,6 +117,8 @@ function AppGuards() {
     };
 
     const handlePointerFeedback = (event) => {
+      // منع التأثيرات عند استخدام الماوس على اللابتوب
+      if (event.pointerType === 'mouse') return;
       const target = resolveTarget(event);
       if (!target) return;
       const isDisabled = target.matches?.(':disabled') || target.getAttribute('aria-disabled') === 'true';
@@ -187,9 +190,6 @@ export default function App() {
             <Route path="/stories" element={<ProtectedRoute><Stories /></ProtectedRoute>} />
             <Route path="/reels" element={<ProtectedRoute><Reels /></ProtectedRoute>} />
             <Route path="/groups" element={<ProtectedRoute><Groups /></ProtectedRoute>} />
-            <Route path="/groups/:groupId" element={<ProtectedRoute><GroupChat /></ProtectedRoute>} />
-            <Route path="/group-chat" element={<Navigate to="/groups" replace />} />
-            <Route path="/group-chat/:groupId" element={<ProtectedRoute><GroupChat /></ProtectedRoute>} />
             <Route path="/live" element={<ProtectedRoute><LiveViewer /></ProtectedRoute>} />
             <Route path="/live/watch/:streamId" element={<ProtectedRoute><LiveViewer /></ProtectedRoute>} />
             <Route path="/live/view/:streamId" element={<ProtectedRoute><LiveViewer /></ProtectedRoute>} />

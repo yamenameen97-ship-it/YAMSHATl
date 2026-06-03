@@ -21,7 +21,6 @@ function normalizePath(pathname = '/') {
   if (!pathname) return '/';
   if (pathname.startsWith('/profile/')) return '/profile';
   if (pathname.startsWith('/chat/')) return '/chat';
-  if (pathname.startsWith('/groups/')) return '/groups';
   return pathname;
 }
 

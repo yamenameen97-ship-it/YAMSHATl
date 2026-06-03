@@ -331,30 +331,9 @@ export class EnhancedGestureService {
 
   /**
    * إضافة مستمع الحركات إلى عنصر
-   * ملاحظة (إصلاح نعومة الشاشة على Desktop):
-   * - تم حذف معالجات mousedown/mousemove/mouseup التي كانت تحاكي اللمس.
-   * - السبب: محاكاة اللمس عبر الماوس كانت تتداخل مع touch-action في CSS
-   *   وتسبب اهتزاز/تخفّت الشاشة عند الضغط بالماوس على Desktop.
-   * - الآن: لا نُسجّل أي مستمعات touch على الأجهزة التي ليس فيها لمس فعلي
-   *   (نتحقق عبر window.matchMedia('(pointer: coarse)') و'ontouchstart').
    */
   attachToElement(element) {
-    if (!element) return () => {};
-
-    // لا نُفعّل خدمة الإيماءات على Desktop / أجهزة الماوس
-    const isTouchDevice = (
-      typeof window !== 'undefined' &&
-      (
-        ('ontouchstart' in window) ||
-        (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) ||
-        (navigator.maxTouchPoints && navigator.maxTouchPoints > 0)
-      )
-    );
-
-    if (!isTouchDevice) {
-      // Desktop: لا نُسجّل أي مستمعات → استجابة ماوس أصلية وسلسة
-      return () => {};
-    }
+    if (!element) return;
 
     const handleTouchStart = (e) => this.handleTouchStart(e);
     const handleTouchMove = (e) => this.handleTouchMove(e);
@@ -363,6 +342,28 @@ export class EnhancedGestureService {
     element.addEventListener('touchstart', handleTouchStart, { passive: true });
     element.addEventListener('touchmove', handleTouchMove, { passive: true });
     element.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+    // دعم الماوس للاختبار
+    element.addEventListener('mousedown', (e) => {
+      this.handleTouchStart({
+        touches: [{ clientX: e.clientX, clientY: e.clientY }],
+        target: e.target
+      });
+    });
+
+    element.addEventListener('mousemove', (e) => {
+      this.handleTouchMove({
+        touches: [{ clientX: e.clientX, clientY: e.clientY }],
+        target: e.target
+      });
+    });
+
+    element.addEventListener('mouseup', (e) => {
+      this.handleTouchEnd({
+        touches: [],
+        target: e.target
+      });
+    });
 
     return () => {
       element.removeEventListener('touchstart', handleTouchStart);

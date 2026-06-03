@@ -42,7 +42,7 @@ import { pwaInitializer } from './services/pwaInitializer.js';
 import { smoothTouchLayer } from './services/smoothTouchLayer.js';
 import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 
-const BUILD_ID = 'yamshat-pwa-neon-v2.3.2-20260602-r1';
+const BUILD_ID = 'yamshat-pwa-neon-v2.3.2-fixed-final';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

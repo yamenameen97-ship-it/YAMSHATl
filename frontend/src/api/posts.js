@@ -93,7 +93,13 @@ export const getPosts = async (params = {}) => {
     response = await API.get('/posts/', { params: normalizedParams });
   } catch (error) {
     const status = Number(error?.response?.status || 0);
-    if (![400, 422].includes(status)) throw error;
+    const canFallback = [400, 422, 500, 502, 503, 504].includes(status);
+    const hadAdvancedParams = (
+      normalizedParams.filter_type !== undefined
+      || normalizedParams.sort_by !== undefined
+      || normalizedParams.include_drafts !== undefined
+    );
+    if (!canFallback || !hadAdvancedParams) throw error;
 
     const fallbackParams = {
       page: normalizedParams.page,

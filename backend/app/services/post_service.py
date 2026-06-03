@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import datetime, timezone
 from urllib.parse import quote
@@ -22,6 +23,7 @@ from app.models.user import User
 
 HASHTAG_RE = re.compile(r'(?<!\w)#([\w\u0600-\u06FF]{1,50})', re.UNICODE)
 MENTION_RE = re.compile(r'(?<!\w)@([\w.\-]{1,50})', re.UNICODE)
+logger = logging.getLogger(__name__)
 
 
 def utcnow_naive() -> datetime:
@@ -162,22 +164,27 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
         for option in poll_options
     ]
     # البحث عن بث مباشر نشط للمستخدم
-    from app.models.live_session import LiveRoomSession
-    live_room = db.query(LiveRoomSession).filter(
-        LiveRoomSession.host_user_id == post.user_id,
-        LiveRoomSession.is_active == True
-    ).first()
-    
+    # لا نسمح لتعطل ميزة البث المباشر أو غياب جدولها أن يكسر API المنشورات.
+    live_room = None
     live_stream_data = None
-    if live_room:
-        live_stream_data = {
-            'id': live_room.id,
-            'host': live_room.host_username,
-            'title': live_room.title,
-            'stream_status': live_room.stream_status,
-            'viewer_count': live_room.viewer_count,
-            'is_active': live_room.is_active
-        }
+    try:
+        from app.models.live_session import LiveRoomSession
+        live_room = db.query(LiveRoomSession).filter(
+            LiveRoomSession.host_user_id == post.user_id,
+            LiveRoomSession.is_active == True
+        ).first()
+
+        if live_room:
+            live_stream_data = {
+                'id': live_room.id,
+                'host': live_room.host_username,
+                'title': live_room.title,
+                'stream_status': live_room.stream_status,
+                'viewer_count': live_room.viewer_count,
+                'is_active': live_room.is_active
+            }
+    except Exception as exc:
+        logger.warning('Skipping live stream enrichment for post %s due to backend issue: %s', post.id, exc)
 
     return {
         'id': post.id,

@@ -1,42 +1,33 @@
-"""خدمة LiveKit Production - LiveKit Production Service
+"""خدمة البث المباشر المحسّنة - Enhanced Live Service
 يوفر:
-- إدارة غرف البث المباشر (Live Rooms)
-- إدارة الجودة التكيفية (Adaptive Bitrate)
-- إدارة خوادم TURN/STUN
-- إدارة SFU (Selective Forwarding Unit)
-- تسجيل البث (Stream Recording)
-- معالجة الأخطاء والإعادة التلقائية
+- إنشاء وإدارة غرف البث المباشر
+- توليد توكنات الوصول
+- التعليقات والهدايا
+- التحليلات والإحصائيات
+- التسجيل والاسترجاع
+- دعم المضيفين المتعددين
 """
 
-from fastapi import FastAPI, HTTPException, Query, Depends, WebSocket, status
+from fastapi import FastAPI, HTTPException, Query, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-import os
 import json
-import asyncio
 from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Set
+from typing import Optional, List, Dict
 from dataclasses import dataclass, asdict, field
 from enum import Enum
 import logging
 import uuid
-import aiohttp
-from functools import lru_cache
+import random
+import string
 
 # إعداد السجلات
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# إعدادات LiveKit
-LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY", "devkey")
-LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET", "secret")
-LIVEKIT_URL = os.getenv("LIVEKIT_URL", "ws://localhost:7880")
-LIVEKIT_HTTP_URL = os.getenv("LIVEKIT_HTTP_URL", "http://localhost:7880")
-
 app = FastAPI(
-    title="Yamshat LiveKit Production Service",
-    description="خدمة البث المباشر مع LiveKit Production",
-    version="1.0.0"
+    title="Yamshat Enhanced Live Service",
+    description="خدمة البث المباشر المحسّنة",
+    version="2.0.0"
 )
 
 # إضافة CORS
@@ -50,577 +41,576 @@ app.add_middleware(
 
 # ============ تعريفات الأنواع ============
 
+class RoomStatus(str, Enum):
+    """حالة الغرفة"""
+    IDLE = "idle"
+    LIVE = "live"
+    ENDED = "ended"
+    ARCHIVED = "archived"
+
+
 class StreamQuality(str, Enum):
     """جودة البث"""
-    LOW = "low"          # 360p
-    MEDIUM = "medium"    # 720p
-    HIGH = "high"        # 1080p
-    ULTRA = "ultra"      # 2K/4K
-
-
-class StreamStatus(str, Enum):
-    """حالة البث"""
-    IDLE = "idle"
-    STARTING = "starting"
-    LIVE = "live"
-    PAUSED = "paused"
-    STOPPING = "stopping"
-    STOPPED = "stopped"
-    ERROR = "error"
-
-
-class BitrateProfile(str, Enum):
-    """ملف تعريف معدل البت"""
-    ULTRA_LOW = "ultra_low"      # 500 kbps
-    LOW = "low"                  # 1 mbps
-    MEDIUM = "medium"            # 2.5 mbps
-    HIGH = "high"                # 5 mbps
-    ULTRA_HIGH = "ultra_high"    # 10+ mbps
+    ULTRA_HD = "4k"
+    FULL_HD = "1080p"
+    HD = "720p"
+    SD = "480p"
+    LOW = "360p"
 
 
 @dataclass
-class BitrateConfig:
-    """إعدادات معدل البت التكيفي"""
-    profile: BitrateProfile = BitrateProfile.MEDIUM
-    min_bitrate: int = 500000      # 500 kbps
-    max_bitrate: int = 5000000     # 5 mbps
-    target_bitrate: int = 2500000  # 2.5 mbps
-    fps: int = 30
-    resolution: str = "1280x720"   # 720p
-    codec: str = "h264"
-
-
-@dataclass
-class TURNServer:
-    """خادم TURN"""
-    id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    host: str = ""
-    port: int = 3478
-    username: str = ""
-    password: str = ""
-    protocol: str = "udp"  # udp, tcp, tls
-    priority: int = 100
-    is_active: bool = True
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-
-
-@dataclass
-class STUNServer:
-    """خادم STUN"""
-    id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    host: str = ""
-    port: int = 3478
-    protocol: str = "udp"
-    priority: int = 100
-    is_active: bool = True
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-
-
-@dataclass
-class StreamParticipant:
-    """مشارك في البث"""
-    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+class LiveToken:
+    """توكن البث المباشر"""
+    token: str = field(default_factory=lambda: ''.join(random.choices(string.ascii_letters + string.digits, k=32)))
+    room_id: str = ""
     user_id: str = ""
-    user_name: str = ""
-    user_avatar: str = ""
-    role: str = "viewer"  # broadcaster, moderator, viewer
-    is_muted: bool = False
-    is_camera_off: bool = False
-    bitrate: int = 2500000
-    quality: StreamQuality = StreamQuality.MEDIUM
-    connection_quality: str = "good"  # good, fair, poor
-    joined_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-    left_at: Optional[str] = None
+    role: str = "viewer"  # host, cohost, viewer
+    expires_at: str = field(default_factory=lambda: (datetime.utcnow() + timedelta(hours=24)).isoformat())
+    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
 
 
 @dataclass
-class LiveStream:
-    """جلسة البث المباشر"""
+class LiveComment:
+    """تعليق على البث المباشر"""
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    room_name: str = ""
+    room_id: str = ""
+    user_id: str = ""
+    username: str = ""
+    user_avatar: str = ""
+    content: str = ""
+    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+
+
+@dataclass
+class LiveGift:
+    """هدية للبث المباشر"""
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    room_id: str = ""
+    sender_id: str = ""
+    sender_name: str = ""
+    gift_type: str = ""
+    gift_icon: str = ""
+    amount: int = 0
+    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+
+
+@dataclass
+class LiveRoom:
+    """غرفة البث المباشر"""
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    host_id: str = ""
+    host_username: str = ""
+    host_avatar: str = ""
     title: str = ""
     description: str = ""
-    broadcaster_id: str = ""
-    broadcaster_name: str = ""
-    status: StreamStatus = StreamStatus.IDLE
-    participants: List[StreamParticipant] = field(default_factory=list)
-    bitrate_config: BitrateConfig = field(default_factory=BitrateConfig)
+    status: RoomStatus = RoomStatus.IDLE
+    quality: StreamQuality = StreamQuality.HD
+    
+    # الإحصائيات
     viewers_count: int = 0
+    likes_count: int = 0
+    comments_count: int = 0
+    gifts_count: int = 0
+    total_gifts_value: int = 0
+    
+    # البث
+    stream_url: str = ""
+    thumbnail_url: str = ""
+    is_recording: bool = False
+    recording_url: str = ""
+    
+    # المضيفون الإضافيون
+    cohosts: List[str] = field(default_factory=list)
+    
     created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     started_at: Optional[str] = None
     ended_at: Optional[str] = None
-    duration: int = 0  # بالثواني
-    is_recording: bool = False
-    recording_url: Optional[str] = None
-    thumbnail_url: Optional[str] = None
-    metadata: Dict = field(default_factory=dict)
-
-
-@dataclass
-class StreamMetrics:
-    """مقاييس البث"""
-    stream_id: str = ""
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-    bitrate: int = 0
-    fps: int = 0
-    resolution: str = ""
-    packet_loss: float = 0.0  # نسبة فقدان الحزم (0-100)
-    latency: int = 0  # بالميلي ثانية
-    jitter: int = 0  # تذبذب التأخير
-    connection_quality: str = "good"
 
 
 # ============ مدير البث المباشر ============
 
-class LiveStreamManager:
+class LiveManager:
     """مدير البث المباشر"""
 
     def __init__(self):
-        # البث النشط
-        self.active_streams: Dict[str, LiveStream] = {}
-        
-        # الاتصالات النشطة
-        self.active_connections: Dict[str, List[WebSocket]] = {}
-        
-        # سجل البث
-        self.stream_history: List[LiveStream] = []
-        
-        # خوادم TURN
-        self.turn_servers: List[TURNServer] = []
-        
-        # خوادم STUN
-        self.stun_servers: List[STUNServer] = []
-        
-        # مقاييس البث
-        self.stream_metrics: Dict[str, List[StreamMetrics]] = {}
-        
-        # حالة الاتصال
-        self.connection_status: Dict[str, str] = {}
+        self.rooms: Dict[str, LiveRoom] = {}
+        self.comments: Dict[str, List[LiveComment]] = {}  # {room_id: [comments]}
+        self.gifts: Dict[str, List[LiveGift]] = {}  # {room_id: [gifts]}
+        self.tokens: Dict[str, LiveToken] = {}  # {token: token_obj}
+        self.viewers: Dict[str, set] = {}  # {room_id: {user_ids}}
 
-    async def initialize_servers(self):
-        """تهيئة خوادم TURN/STUN الافتراضية"""
-        # خوادم STUN العامة
-        default_stun_servers = [
-            {"host": "stun.l.google.com", "port": 19302},
-            {"host": "stun1.l.google.com", "port": 19302},
-            {"host": "stun2.l.google.com", "port": 19302},
-            {"host": "stun3.l.google.com", "port": 19302},
-            {"host": "stun4.l.google.com", "port": 19302},
-        ]
-        
-        for i, server_config in enumerate(default_stun_servers):
-            stun = STUNServer(
-                host=server_config["host"],
-                port=server_config["port"],
-                priority=100 - i
-            )
-            self.stun_servers.append(stun)
-        
-        logger.info(f"Initialized {len(self.stun_servers)} STUN servers")
-
-    async def create_stream(
+    async def create_room(
         self,
+        host_id: str,
+        host_username: str,
+        host_avatar: str,
         title: str,
-        description: str,
-        broadcaster_id: str,
-        broadcaster_name: str,
-        quality: StreamQuality = StreamQuality.HIGH
-    ) -> LiveStream:
-        """إنشاء بث مباشر جديد"""
-        room_name = f"room_{uuid.uuid4().hex[:8]}"
-        
-        stream = LiveStream(
-            room_name=room_name,
+        description: str = "",
+        quality: str = "720p"
+    ) -> LiveRoom:
+        """إنشاء غرفة بث جديدة"""
+        room = LiveRoom(
+            host_id=host_id,
+            host_username=host_username,
+            host_avatar=host_avatar,
             title=title,
             description=description,
-            broadcaster_id=broadcaster_id,
-            broadcaster_name=broadcaster_name,
-            status=StreamStatus.STARTING
+            quality=StreamQuality(quality) if quality in [q.value for q in StreamQuality] else StreamQuality.HD
         )
-        
-        # تعيين ملف تعريف معدل البت بناءً على الجودة
-        stream.bitrate_config = self._get_bitrate_config(quality)
-        
-        # إضافة المبث كمشارك
-        broadcaster = StreamParticipant(
-            user_id=broadcaster_id,
-            user_name=broadcaster_name,
-            role="broadcaster"
-        )
-        stream.participants.append(broadcaster)
-        
-        self.active_streams[stream.id] = stream
-        self.active_connections[stream.id] = []
-        self.stream_metrics[stream.id] = []
-        
-        logger.info(f"Stream created: {stream.id} ({room_name})")
-        return stream
 
-    def _get_bitrate_config(self, quality: StreamQuality) -> BitrateConfig:
-        """الحصول على إعدادات معدل البت بناءً على الجودة"""
-        configs = {
-            StreamQuality.LOW: BitrateConfig(
-                profile=BitrateProfile.LOW,
-                min_bitrate=500000,
-                max_bitrate=1500000,
-                target_bitrate=1000000,
-                fps=24,
-                resolution="854x480"
-            ),
-            StreamQuality.MEDIUM: BitrateConfig(
-                profile=BitrateProfile.MEDIUM,
-                min_bitrate=1000000,
-                max_bitrate=3000000,
-                target_bitrate=2500000,
-                fps=30,
-                resolution="1280x720"
-            ),
-            StreamQuality.HIGH: BitrateConfig(
-                profile=BitrateProfile.HIGH,
-                min_bitrate=2500000,
-                max_bitrate=6000000,
-                target_bitrate=5000000,
-                fps=30,
-                resolution="1920x1080"
-            ),
-            StreamQuality.ULTRA: BitrateConfig(
-                profile=BitrateProfile.ULTRA_HIGH,
-                min_bitrate=5000000,
-                max_bitrate=15000000,
-                target_bitrate=10000000,
-                fps=60,
-                resolution="3840x2160"
-            ),
-        }
-        return configs.get(quality, BitrateConfig())
+        self.rooms[room.id] = room
+        self.comments[room.id] = []
+        self.gifts[room.id] = []
+        self.viewers[room.id] = set()
 
-    async def start_stream(self, stream_id: str) -> bool:
+        logger.info(f"✅ Live room created: {room.id} by {host_username}")
+        return room
+
+    async def get_room(self, room_id: str) -> Optional[LiveRoom]:
+        """الحصول على غرفة"""
+        return self.rooms.get(room_id)
+
+    async def get_rooms(self, filter_type: str = "all") -> List[LiveRoom]:
+        """الحصول على قائمة الغرف"""
+        rooms_list = list(self.rooms.values())
+        
+        if filter_type == "active":
+            rooms_list = [r for r in rooms_list if r.status == RoomStatus.LIVE]
+        elif filter_type == "ended":
+            rooms_list = [r for r in rooms_list if r.status == RoomStatus.ENDED]
+        
+        rooms_list.sort(key=lambda r: r.created_at, reverse=True)
+        return rooms_list
+
+    async def start_room(self, room_id: str) -> bool:
         """بدء البث المباشر"""
-        if stream_id not in self.active_streams:
+        if room_id not in self.rooms:
             return False
+
+        room = self.rooms[room_id]
+        room.status = RoomStatus.LIVE
+        room.started_at = datetime.utcnow().isoformat()
         
-        stream = self.active_streams[stream_id]
-        stream.status = StreamStatus.LIVE
-        stream.started_at = datetime.utcnow().isoformat()
-        
-        logger.info(f"Stream started: {stream_id}")
+        logger.info(f"🔴 Live room started: {room_id}")
         return True
 
-    async def stop_stream(self, stream_id: str) -> bool:
-        """إيقاف البث المباشر"""
-        if stream_id not in self.active_streams:
+    async def end_room(self, room_id: str) -> bool:
+        """إنهاء البث المباشر"""
+        if room_id not in self.rooms:
             return False
+
+        room = self.rooms[room_id]
+        room.status = RoomStatus.ENDED
+        room.ended_at = datetime.utcnow().isoformat()
         
-        stream = self.active_streams[stream_id]
-        stream.status = StreamStatus.STOPPED
-        stream.ended_at = datetime.utcnow().isoformat()
-        
-        # حساب المدة
-        if stream.started_at:
-            start = datetime.fromisoformat(stream.started_at)
-            end = datetime.fromisoformat(stream.ended_at)
-            stream.duration = int((end - start).total_seconds())
-        
-        # إضافة إلى السجل
-        self.stream_history.append(stream)
-        
-        # تنظيف الاتصالات
-        if stream_id in self.active_connections:
-            del self.active_connections[stream_id]
-        
-        logger.info(f"Stream stopped: {stream_id}")
+        logger.info(f"⚫ Live room ended: {room_id}")
         return True
 
-    async def add_viewer(
+    async def generate_token(
         self,
-        stream_id: str,
+        room_id: str,
         user_id: str,
-        user_name: str
-    ) -> bool:
-        """إضافة مشاهد للبث"""
-        if stream_id not in self.active_streams:
-            return False
-        
-        stream = self.active_streams[stream_id]
-        
-        # التحقق من عدم وجود المشاهد بالفعل
-        if any(p.user_id == user_id for p in stream.participants):
-            return False
-        
-        viewer = StreamParticipant(
+        role: str = "viewer"
+    ) -> LiveToken:
+        """توليد توكن الوصول"""
+        token = LiveToken(
+            room_id=room_id,
             user_id=user_id,
-            user_name=user_name,
-            role="viewer"
+            role=role
         )
-        stream.participants.append(viewer)
-        stream.viewers_count += 1
-        
-        logger.info(f"Viewer {user_id} joined stream {stream_id}")
-        return True
 
-    async def remove_viewer(self, stream_id: str, user_id: str) -> bool:
-        """إزالة مشاهد من البث"""
-        if stream_id not in self.active_streams:
-            return False
-        
-        stream = self.active_streams[stream_id]
-        for participant in stream.participants:
-            if participant.user_id == user_id and participant.role == "viewer":
-                participant.left_at = datetime.utcnow().isoformat()
-                stream.viewers_count = max(0, stream.viewers_count - 1)
-                logger.info(f"Viewer {user_id} left stream {stream_id}")
-                return True
-        
-        return False
+        self.tokens[token.token] = token
+        logger.info(f"🔑 Token generated for {user_id} (role: {role})")
+        return token
 
-    async def update_bitrate(
+    async def add_comment(
         self,
-        stream_id: str,
-        new_bitrate: int,
-        quality: Optional[StreamQuality] = None
-    ) -> bool:
-        """تحديث معدل البت (Adaptive Bitrate)"""
-        if stream_id not in self.active_streams:
-            return False
-        
-        stream = self.active_streams[stream_id]
-        
-        if quality:
-            stream.bitrate_config = self._get_bitrate_config(quality)
-        else:
-            # تحديث معدل البت فقط
-            stream.bitrate_config.target_bitrate = new_bitrate
-            stream.bitrate_config.max_bitrate = max(
-                stream.bitrate_config.max_bitrate,
-                new_bitrate
-            )
-        
-        logger.info(f"Bitrate updated for stream {stream_id}: {new_bitrate} bps")
-        return True
+        room_id: str,
+        user_id: str,
+        username: str,
+        user_avatar: str,
+        content: str
+    ) -> Optional[LiveComment]:
+        """إضافة تعليق"""
+        if room_id not in self.comments:
+            return None
 
-    async def record_metrics(self, stream_id: str, metrics: StreamMetrics) -> bool:
-        """تسجيل مقاييس البث"""
-        if stream_id not in self.stream_metrics:
-            return False
-        
-        self.stream_metrics[stream_id].append(metrics)
-        
-        # الاحتفاظ بآخر 1000 قياس فقط
-        if len(self.stream_metrics[stream_id]) > 1000:
-            self.stream_metrics[stream_id] = self.stream_metrics[stream_id][-1000:]
-        
-        return True
+        comment = LiveComment(
+            room_id=room_id,
+            user_id=user_id,
+            username=username,
+            user_avatar=user_avatar,
+            content=content
+        )
 
-    def get_stream(self, stream_id: str) -> Optional[LiveStream]:
-        """الحصول على تفاصيل البث"""
-        return self.active_streams.get(stream_id)
+        self.comments[room_id].append(comment)
+        
+        room = await self.get_room(room_id)
+        if room:
+            room.comments_count += 1
 
-    def get_stream_metrics(
-        self,
-        stream_id: str,
-        limit: int = 100
-    ) -> List[StreamMetrics]:
-        """الحصول على مقاييس البث"""
-        if stream_id not in self.stream_metrics:
+        logger.info(f"💬 Comment added to room {room_id}")
+        return comment
+
+    async def get_comments(self, room_id: str) -> List[LiveComment]:
+        """الحصول على التعليقات"""
+        if room_id not in self.comments:
             return []
-        return self.stream_metrics[stream_id][-limit:]
 
-    def get_turn_servers(self) -> List[Dict]:
-        """الحصول على قائمة خوادم TURN النشطة"""
-        return [
-            asdict(server) for server in self.turn_servers
-            if server.is_active
-        ]
+        return self.comments[room_id]
 
-    def get_stun_servers(self) -> List[Dict]:
-        """الحصول على قائمة خوادم STUN النشطة"""
-        return [
-            asdict(server) for server in self.stun_servers
-            if server.is_active
-        ]
+    async def send_gift(
+        self,
+        room_id: str,
+        sender_id: str,
+        sender_name: str,
+        gift_type: str,
+        gift_icon: str,
+        amount: int
+    ) -> Optional[LiveGift]:
+        """إرسال هدية"""
+        if room_id not in self.gifts:
+            return None
+
+        gift = LiveGift(
+            room_id=room_id,
+            sender_id=sender_id,
+            sender_name=sender_name,
+            gift_type=gift_type,
+            gift_icon=gift_icon,
+            amount=amount
+        )
+
+        self.gifts[room_id].append(gift)
+        
+        room = await self.get_room(room_id)
+        if room:
+            room.gifts_count += 1
+            room.total_gifts_value += amount
+
+        logger.info(f"🎁 Gift sent to room {room_id}: {gift_type}")
+        return gift
+
+    async def get_gifts(self, room_id: str) -> List[LiveGift]:
+        """الحصول على الهدايا"""
+        if room_id not in self.gifts:
+            return []
+
+        return self.gifts[room_id]
+
+    async def add_viewer(self, room_id: str, user_id: str) -> bool:
+        """إضافة مشاهد"""
+        if room_id not in self.viewers:
+            return False
+
+        self.viewers[room_id].add(user_id)
+        
+        room = await self.get_room(room_id)
+        if room:
+            room.viewers_count = len(self.viewers[room_id])
+
+        logger.info(f"👁️ Viewer added to room {room_id}")
+        return True
+
+    async def remove_viewer(self, room_id: str, user_id: str) -> bool:
+        """إزالة مشاهد"""
+        if room_id not in self.viewers:
+            return False
+
+        self.viewers[room_id].discard(user_id)
+        
+        room = await self.get_room(room_id)
+        if room:
+            room.viewers_count = len(self.viewers[room_id])
+
+        logger.info(f"👁️ Viewer removed from room {room_id}")
+        return True
+
+    async def get_analytics(self, room_id: str) -> Dict:
+        """الحصول على التحليلات"""
+        room = await self.get_room(room_id)
+        if not room:
+            return {}
+
+        return {
+            "room_id": room_id,
+            "viewers": room.viewers_count,
+            "likes": room.likes_count,
+            "comments": room.comments_count,
+            "gifts": room.gifts_count,
+            "total_gifts_value": room.total_gifts_value,
+            "status": room.status.value,
+            "created_at": room.created_at,
+            "started_at": room.started_at,
+            "ended_at": room.ended_at
+        }
 
 
-# ============ مثيل مدير البث ============
-
-stream_manager = LiveStreamManager()
-
-
-# ============ المسارات (Routes) ============
-
-@app.on_event("startup")
-async def startup_event():
-    """تهيئة الخدمة عند البدء"""
-    await stream_manager.initialize_servers()
-    logger.info("LiveKit Production Service started")
+# إنشاء مدير البث
+live_manager = LiveManager()
 
 
-@app.get("/health")
+# ============ الـ Routes ============
+
+@app.post('/create_live')
+async def create_live_room(
+    host_id: str = Form("user_1"),
+    host_username: str = Form("user"),
+    host_avatar: str = Form(""),
+    title: str = Form(""),
+    description: str = Form(""),
+    quality: str = Form("720p")
+):
+    """إنشاء غرفة بث جديدة"""
+    try:
+        room = await live_manager.create_room(
+            host_id=host_id,
+            host_username=host_username,
+            host_avatar=host_avatar,
+            title=title,
+            description=description,
+            quality=quality
+        )
+
+        return {
+            "success": True,
+            "room": asdict(room),
+            "message": "تم إنشاء غرفة البث"
+        }
+    except Exception as error:
+        logger.error(f"❌ Error creating live room: {error}")
+        raise HTTPException(status_code=400, detail=str(error))
+
+
+@app.get('/live_rooms')
+async def get_live_rooms(filter_type: str = Query("all")):
+    """الحصول على قائمة غرف البث"""
+    try:
+        rooms = await live_manager.get_rooms(filter_type)
+        return {
+            "rooms": [asdict(r) for r in rooms],
+            "total": len(rooms)
+        }
+    except Exception as error:
+        logger.error(f"❌ Error fetching live rooms: {error}")
+        raise HTTPException(status_code=400, detail=str(error))
+
+
+@app.get('/live_room/{room_id}')
+async def get_live_room(room_id: str):
+    """الحصول على غرفة بث محددة"""
+    room = await live_manager.get_room(room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="غرفة البث غير موجودة")
+    return asdict(room)
+
+
+@app.post('/live/{room_id}/start')
+async def start_live_room(room_id: str):
+    """بدء البث المباشر"""
+    room = await live_manager.get_room(room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="غرفة البث غير موجودة")
+    
+    await live_manager.start_room(room_id)
+    
+    return {
+        "success": True,
+        "message": "تم بدء البث المباشر"
+    }
+
+
+@app.post('/end_live/{room_id}')
+async def end_live_room(room_id: str):
+    """إنهاء البث المباشر"""
+    room = await live_manager.get_room(room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="غرفة البث غير موجودة")
+    
+    await live_manager.end_room(room_id)
+    
+    return {
+        "success": True,
+        "message": "تم إنهاء البث المباشر"
+    }
+
+
+@app.post('/live/{room_id}/token')
+async def get_live_token(
+    room_id: str,
+    user_id: str = Form("user_1"),
+    role: str = Form("viewer")
+):
+    """الحصول على توكن البث"""
+    room = await live_manager.get_room(room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="غرفة البث غير موجودة")
+    
+    token = await live_manager.generate_token(room_id, user_id, role)
+    
+    return {
+        "success": True,
+        "token": asdict(token)
+    }
+
+
+@app.post('/live/{room_id}/comment')
+async def add_live_comment(
+    room_id: str,
+    user_id: str = Form("user_1"),
+    username: str = Form("user"),
+    user_avatar: str = Form(""),
+    content: str = Form("")
+):
+    """إضافة تعليق على البث"""
+    room = await live_manager.get_room(room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="غرفة البث غير موجودة")
+    
+    comment = await live_manager.add_comment(
+        room_id=room_id,
+        user_id=user_id,
+        username=username,
+        user_avatar=user_avatar,
+        content=content
+    )
+    
+    return {
+        "success": True,
+        "comment": asdict(comment) if comment else None
+    }
+
+
+@app.get('/live_comments/{room_id}')
+async def get_live_comments(room_id: str):
+    """الحصول على تعليقات البث"""
+    comments = await live_manager.get_comments(room_id)
+    
+    return {
+        "comments": [asdict(c) for c in comments],
+        "total": len(comments)
+    }
+
+
+@app.post('/live/{room_id}/gift')
+async def send_live_gift(
+    room_id: str,
+    sender_id: str = Form("user_1"),
+    sender_name: str = Form("user"),
+    gift_type: str = Form(""),
+    gift_icon: str = Form(""),
+    amount: int = Form(0)
+):
+    """إرسال هدية للبث"""
+    room = await live_manager.get_room(room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="غرفة البث غير موجودة")
+    
+    gift = await live_manager.send_gift(
+        room_id=room_id,
+        sender_id=sender_id,
+        sender_name=sender_name,
+        gift_type=gift_type,
+        gift_icon=gift_icon,
+        amount=amount
+    )
+    
+    return {
+        "success": True,
+        "gift": asdict(gift) if gift else None
+    }
+
+
+@app.get('/live/{room_id}/analytics')
+async def get_live_analytics(room_id: str):
+    """الحصول على تحليلات البث"""
+    analytics = await live_manager.get_analytics(room_id)
+    if not analytics:
+        raise HTTPException(status_code=404, detail="غرفة البث غير موجودة")
+    
+    return analytics
+
+
+@app.post('/live/{room_id}/viewer/add')
+async def add_live_viewer(room_id: str, user_id: str = Form("user_1")):
+    """إضافة مشاهد"""
+    success = await live_manager.add_viewer(room_id, user_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="غرفة البث غير موجودة")
+    
+    return {
+        "success": True,
+        "message": "تم إضافة المشاهد"
+    }
+
+
+@app.post('/live/{room_id}/viewer/remove')
+async def remove_live_viewer(room_id: str, user_id: str = Form("user_1")):
+    """إزالة مشاهد"""
+    success = await live_manager.remove_viewer(room_id, user_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="غرفة البث غير موجودة")
+    
+    return {
+        "success": True,
+        "message": "تم إزالة المشاهد"
+    }
+
+
+@app.post('/live/{room_id}/recording/start')
+async def start_recording(room_id: str):
+    """بدء التسجيل"""
+    room = await live_manager.get_room(room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="غرفة البث غير موجودة")
+    
+    room.is_recording = True
+    
+    return {
+        "success": True,
+        "message": "تم بدء التسجيل"
+    }
+
+
+@app.post('/live/{room_id}/recording/stop')
+async def stop_recording(room_id: str):
+    """إيقاف التسجيل"""
+    room = await live_manager.get_room(room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="غرفة البث غير موجودة")
+    
+    room.is_recording = False
+    
+    return {
+        "success": True,
+        "message": "تم إيقاف التسجيل"
+    }
+
+
+@app.post('/live/{room_id}/recovery')
+async def trigger_live_recovery(room_id: str):
+    """تفعيل استرجاع البث"""
+    room = await live_manager.get_room(room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="غرفة البث غير موجودة")
+    
+    return {
+        "success": True,
+        "message": "تم تفعيل استرجاع البث"
+    }
+
+
+@app.get('/health')
 async def health_check():
     """فحص صحة الخدمة"""
     return {
         "status": "healthy",
-        "service": "livekit-production-service",
-        "version": "1.0.0",
-        "livekit_url": LIVEKIT_URL,
-        "active_streams": len(stream_manager.active_streams)
+        "service": "live-service",
+        "version": "2.0.0",
+        "active_rooms": len([r for r in live_manager.rooms.values() if r.status == RoomStatus.LIVE])
     }
 
 
-@app.post("/streams")
-async def create_stream(
-    title: str = Query(...),
-    description: str = Query(...),
-    broadcaster_id: str = Query(...),
-    broadcaster_name: str = Query(...),
-    quality: StreamQuality = Query(StreamQuality.HIGH)
-):
-    """إنشاء بث مباشر جديد"""
-    try:
-        stream = await stream_manager.create_stream(
-            title,
-            description,
-            broadcaster_id,
-            broadcaster_name,
-            quality
-        )
-        return {
-            "success": True,
-            "stream_id": stream.id,
-            "room_name": stream.room_name,
-            "stream": asdict(stream)
-        }
-    except Exception as e:
-        logger.error(f"Error creating stream: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/streams/{stream_id}")
-async def get_stream(stream_id: str):
-    """الحصول على تفاصيل البث"""
-    try:
-        stream = stream_manager.get_stream(stream_id)
-        if stream:
-            return {
-                "success": True,
-                "stream": asdict(stream)
-            }
-        else:
-            raise HTTPException(status_code=404, detail="البث غير موجود")
-    except Exception as e:
-        logger.error(f"Error getting stream: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/streams/{stream_id}/start")
-async def start_stream(stream_id: str):
-    """بدء البث المباشر"""
-    try:
-        if await stream_manager.start_stream(stream_id):
-            return {"success": True, "message": "تم بدء البث"}
-        else:
-            raise HTTPException(status_code=404, detail="البث غير موجود")
-    except Exception as e:
-        logger.error(f"Error starting stream: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/streams/{stream_id}/stop")
-async def stop_stream(stream_id: str):
-    """إيقاف البث المباشر"""
-    try:
-        if await stream_manager.stop_stream(stream_id):
-            return {"success": True, "message": "تم إيقاف البث"}
-        else:
-            raise HTTPException(status_code=404, detail="البث غير موجود")
-    except Exception as e:
-        logger.error(f"Error stopping stream: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/streams/{stream_id}/viewers")
-async def add_viewer(
-    stream_id: str,
-    user_id: str = Query(...),
-    user_name: str = Query(...)
-):
-    """إضافة مشاهد للبث"""
-    try:
-        if await stream_manager.add_viewer(stream_id, user_id, user_name):
-            return {"success": True, "message": "تم إضافة المشاهد"}
-        else:
-            raise HTTPException(status_code=400, detail="فشل إضافة المشاهد")
-    except Exception as e:
-        logger.error(f"Error adding viewer: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.delete("/streams/{stream_id}/viewers/{user_id}")
-async def remove_viewer(stream_id: str, user_id: str):
-    """إزالة مشاهد من البث"""
-    try:
-        if await stream_manager.remove_viewer(stream_id, user_id):
-            return {"success": True, "message": "تم إزالة المشاهد"}
-        else:
-            raise HTTPException(status_code=400, detail="فشل إزالة المشاهد")
-    except Exception as e:
-        logger.error(f"Error removing viewer: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/streams/{stream_id}/bitrate")
-async def update_bitrate(
-    stream_id: str,
-    bitrate: int = Query(...),
-    quality: Optional[StreamQuality] = Query(None)
-):
-    """تحديث معدل البت (Adaptive Bitrate)"""
-    try:
-        if await stream_manager.update_bitrate(stream_id, bitrate, quality):
-            return {"success": True, "message": "تم تحديث معدل البت"}
-        else:
-            raise HTTPException(status_code=404, detail="البث غير موجود")
-    except Exception as e:
-        logger.error(f"Error updating bitrate: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/streams/{stream_id}/metrics")
-async def get_stream_metrics(stream_id: str, limit: int = Query(100)):
-    """الحصول على مقاييس البث"""
-    try:
-        metrics = stream_manager.get_stream_metrics(stream_id, limit)
-        return {
-            "success": True,
-            "metrics": [asdict(m) for m in metrics]
-        }
-    except Exception as e:
-        logger.error(f"Error getting metrics: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/servers/turn")
-async def get_turn_servers():
-    """الحصول على قائمة خوادم TURN"""
-    try:
-        servers = stream_manager.get_turn_servers()
-        return {
-            "success": True,
-            "servers": servers
-        }
-    except Exception as e:
-        logger.error(f"Error getting TURN servers: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/servers/stun")
-async def get_stun_servers():
-    """الحصول على قائمة خوادم STUN"""
-    try:
-        servers = stream_manager.get_stun_servers()
-        return {
-            "success": True,
-            "servers": servers
-        }
-    except Exception as e:
-        logger.error(f"Error getting STUN servers: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8006)

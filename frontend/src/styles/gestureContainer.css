@@ -4,7 +4,7 @@
 
 .gesture-container {
   position: relative;
-  touch-action: none;
+  touch-action: manipulation;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
@@ -111,10 +111,20 @@
   }
 }
 
-/* دعم الأجهزة ذات الشاشات الصغيرة */
+/* دعم الأجهزة ذات الشاشات الصغيرة - إصلاح السحب بإصبع واحد */
 @media (max-width: 768px) {
   .gesture-container {
-    touch-action: manipulation;
+    touch-action: pan-y pan-x;
+  }
+  
+  /* السماح بالسحب العمودي والأفقي على الشاشات الصغيرة */
+  body, html {
+    touch-action: pan-y pan-x;
+  }
+  
+  /* إزالة أي قيود على touch-action من العناصر الأب */
+  .main-content, .feed-center, .reel-container {
+    touch-action: pan-y pan-x;
   }
 }
 
@@ -281,6 +291,7 @@
     background:
       radial-gradient(circle at top right, rgba(124,58,237,.25), transparent 25%),
       linear-gradient(180deg,#050816,#091120 45%,#050816)!important;
+    touch-action: pan-y pan-x;
   }
 
   .desktop-layout{
@@ -297,6 +308,7 @@
     max-width:100%!important;
     padding:0!important;
     margin:0!important;
+    touch-action: pan-y pan-x;
   }
 
   .post-card,
@@ -323,6 +335,7 @@
 
   .main-content{
     padding-bottom:110px!important;
+    touch-action: pan-y pan-x;
   }
 
   .bottom-mobile-nav{

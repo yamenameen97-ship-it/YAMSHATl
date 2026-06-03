@@ -1,0 +1,268 @@
+.yam-create-group-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  color: #fff;
+  direction: rtl;
+}
+
+.yam-create-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(10px);
+}
+
+.yam-create-header h1 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  flex: 1;
+  text-align: center;
+}
+
+.yam-back-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+
+.yam-back-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.yam-create-form {
+  flex: 1;
+  padding: 20px;
+  max-width: 600px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.yam-form-section {
+  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+}
+
+.yam-form-label {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #e2e8f0;
+}
+
+.yam-form-input,
+.yam-form-textarea,
+.yam-form-select {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 12px 16px;
+  color: #fff;
+  font-size: 14px;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+.yam-form-input:focus,
+.yam-form-textarea:focus,
+.yam-form-select:focus {
+  outline: none;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+}
+
+.yam-form-textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+
+.yam-form-select {
+  cursor: pointer;
+}
+
+.yam-form-select option {
+  background: #1e293b;
+  color: #fff;
+}
+
+.yam-char-count {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: 4px;
+  text-align: left;
+}
+
+.yam-image-upload-area {
+  background: rgba(255, 255, 255, 0.03);
+  border: 2px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  padding: 24px;
+  text-align: center;
+  transition: all 0.2s;
+}
+
+.yam-image-upload-area:hover {
+  border-color: #8b5cf6;
+  background: rgba(139, 92, 246, 0.05);
+}
+
+.yam-upload-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  gap: 8px;
+}
+
+.yam-upload-icon {
+  font-size: 32px;
+}
+
+.yam-upload-text {
+  font-size: 14px;
+  color: #cbd5e1;
+}
+
+.yam-image-preview {
+  position: relative;
+  display: inline-block;
+}
+
+.yam-image-preview img {
+  max-width: 200px;
+  max-height: 200px;
+  border-radius: 8px;
+}
+
+.yam-remove-image-btn {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  background: #ef4444;
+  border: none;
+  color: #fff;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.yam-remove-image-btn:hover {
+  background: #dc2626;
+}
+
+.yam-privacy-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.yam-privacy-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.yam-privacy-option:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.yam-privacy-option input[type="radio"] {
+  cursor: pointer;
+  width: 18px;
+  height: 18px;
+  accent-color: #8b5cf6;
+}
+
+.yam-privacy-option span {
+  font-size: 14px;
+}
+
+.yam-form-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.yam-btn-primary,
+.yam-btn-secondary {
+  flex: 1;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.yam-btn-primary {
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  color: #fff;
+}
+
+.yam-btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(139, 92, 246, 0.4);
+}
+
+.yam-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.yam-btn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.yam-btn-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.yam-btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .yam-create-form {
+    padding: 16px;
+  }
+
+  .yam-form-section {
+    margin-bottom: 20px;
+  }
+
+  .yam-form-actions {
+    flex-direction: column;
+  }
+}

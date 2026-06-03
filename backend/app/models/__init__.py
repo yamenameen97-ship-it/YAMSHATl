@@ -23,3 +23,4 @@ from app.models.user_wallet import UserWallet  # noqa: F401
 from app.models.live_session import LiveRoomSession  # noqa: F401
 from app.models.search_history import SearchCategoryEnum, SearchHistory  # noqa: F401
 from app.models.stories_reels import Reel, ReelComment, ReelLike, ReelView, SavedReel, Story, StoryReply, StoryView  # noqa: F401
+from app.models.group import Group, GroupMember, GroupInvitation, GroupJoinRequest, GroupPost, GroupRule, GroupEvent, GroupPoll, GroupAnnouncement, GroupSettings  # noqa: F401

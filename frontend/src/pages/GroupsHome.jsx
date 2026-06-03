@@ -100,7 +100,7 @@ const GroupsHome = () => {
         </div>
       </header>
 
-      <button className="yam-create-group-btn">
+      <button className="yam-create-group-btn" onClick={() => navigate('/groups/create')}>
         <span>+</span> إنشاء مجموعة
       </button>
 
@@ -130,7 +130,7 @@ const GroupsHome = () => {
       {/* قائمة المجموعات */}
       <section className="yam-groups-list">
         {groups.map(group => (
-          <div key={group.id} className="yam-group-card">
+          <div key={group.id} className="yam-group-card" onClick={() => navigate(`/groups/${group.id}/chat`)} style={{cursor: 'pointer'}}>
             <div className="yam-group-main-info">
               <div className="yam-group-neon-icon" style={{'--neon-color': group.color}}>
                 <span style={{color: group.color}}>{group.icon}</span>
@@ -150,7 +150,10 @@ const GroupsHome = () => {
                 {group.lastActive}
               </span>
               <div className="yam-unread-badge">{group.unread}</div>
-              <div className="yam-more-btn">⋮</div>
+              <div className="yam-more-btn" onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/groups/${group.id}/settings`);
+              }}>⋮</div>
             </div>
           </div>
         ))}

@@ -44,6 +44,8 @@ const Feed = lazy(() => import('./pages/FeedEnhanced.jsx'));
 const Stories = lazy(() => import('./pages/Stories.jsx'));
 const Reels = lazy(() => import('./pages/Reels.jsx'));
 const Groups = lazy(() => import('./pages/GroupsHome.jsx'));
+const CreateGroup = lazy(() => import('./pages/CreateGroup.jsx'));
+const GroupChatPage = lazy(() => import('./pages/GroupChat.jsx'));
 const LiveViewer = lazy(() => import('./pages/LiveViewer.jsx'));
 const LiveStudio = lazy(() => import('./pages/LiveStudio.jsx'));
 const Inbox = lazy(() => import('./features/chat/index.js').then((mod) => ({ default: mod.Inbox })));
@@ -191,6 +193,8 @@ export default function App() {
             <Route path="/stories" element={<ProtectedRoute><Stories /></ProtectedRoute>} />
             <Route path="/reels" element={<ProtectedRoute><Reels /></ProtectedRoute>} />
             <Route path="/groups" element={<ProtectedRoute><Groups /></ProtectedRoute>} />
+            <Route path="/groups/create" element={<ProtectedRoute><CreateGroup /></ProtectedRoute>} />
+            <Route path="/groups/:groupId/chat" element={<ProtectedRoute><GroupChatPage /></ProtectedRoute>} />
             <Route path="/live" element={<ProtectedRoute><LiveViewer /></ProtectedRoute>} />
             <Route path="/live/watch/:streamId" element={<ProtectedRoute><LiveViewer /></ProtectedRoute>} />
             <Route path="/live/view/:streamId" element={<ProtectedRoute><LiveViewer /></ProtectedRoute>} />

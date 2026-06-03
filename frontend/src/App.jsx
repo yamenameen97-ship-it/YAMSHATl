@@ -53,6 +53,7 @@ const Chat = lazy(() => import('./features/chat/index.js').then((mod) => ({ defa
 const Notifications = lazy(() => import('./features/notifications/index.js').then((mod) => ({ default: mod.Notifications })));
 const Search = lazy(() => import('./pages/Search.jsx'));
 const Settings = lazy(() => import('./pages/Settings.jsx'));
+const GroupSettings = lazy(() => import('./pages/GroupSettings.jsx'));
 const ShareTargetLanding = lazy(() => import('./pages/ShareTargetLanding.jsx'));
 
 function AppGuards() {
@@ -202,6 +203,8 @@ export default function App() {
             <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
             <Route path="/search" element={<ProtectedRoute><Search /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            <Route path="/groups/settings" element={<ProtectedRoute><GroupSettings /></ProtectedRoute>} />
+            <Route path="/groups/settings/:groupId" element={<ProtectedRoute><GroupSettings /></ProtectedRoute>} />
             <Route path="/share-target" element={<ShareTargetLanding />} />
             <Route path="/post/:postId" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
             <Route path="/profile/:username" element={<ProtectedRoute><Profile /></ProtectedRoute>} />

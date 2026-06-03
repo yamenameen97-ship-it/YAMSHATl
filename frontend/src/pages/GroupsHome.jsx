@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import '../styles/groups-list.css';
 
 const GroupsHome = () => {
+  const navigate = useNavigate();
   const [activeCategory, setActiveCategory] = useState('الكل');
 
   const categories = [
@@ -104,7 +106,7 @@ const GroupsHome = () => {
 
       {/* البحث */}
       <section className="yam-search-filter-section" style={{marginTop: '24px'}}>
-        <div className="yam-filter-btn">⚙️</div>
+        <div className="yam-filter-btn" onClick={() => navigate('/groups/settings')}>⚙️</div>
         <div className="yam-search-bar-wrap">
           <input type="text" className="yam-search-input" placeholder="ابحث عن مجموعة..." />
           <span className="yam-search-icon">🔍</span>

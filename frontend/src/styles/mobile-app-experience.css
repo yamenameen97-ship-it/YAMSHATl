@@ -18,11 +18,24 @@
    1) تحسين معالجة اللمس والسحب بإصبع واحدة
    ============================================================ */
 
-html, body {
-  touch-action: manipulation;
-  -webkit-touch-callout: none;
-  -webkit-user-select: none;
-  user-select: none;
+/* تطبيق لمس مخفّف فقط على أجهزة اللمس الفعلية لتجنب تداخل الماوس على Desktop */
+@media (hover: none) and (pointer: coarse) {
+  html, body {
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+/* Desktop: ترك السلوك الأصلي للماوس دون أي touch-action يسبب الاهتزاز */
+@media (hover: hover) and (pointer: fine) {
+  html, body {
+    touch-action: auto;
+    -webkit-touch-callout: default;
+    -webkit-user-select: auto;
+    user-select: auto;
+  }
 }
 
 /* السماح بالتحديد في حقول الإدخال */
@@ -31,8 +44,9 @@ input, textarea, [contenteditable] {
   user-select: text;
 }
 
-/* ضمان السحب بإصبع واحدة على الموبايل */
-@media (max-width: 1023.98px) {
+/* ضمان السحب بإصبع واحدة فقط على أجهزة اللمس الحقيقية
+   (أضفنا hover:none + pointer:coarse لأن max-width وحده يفعّل هذه القواعد عند تصغير نافذة Desktop) */
+@media (max-width: 1023.98px) and (hover: none) and (pointer: coarse) {
   .page-content {
     touch-action: pan-y !important;
     -webkit-touch-callout: none;

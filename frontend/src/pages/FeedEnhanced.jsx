@@ -363,7 +363,11 @@ function PostCard({ post }) {
 export default function FeedEnhanced() {
   // التحويل إلى تصميم الموبايل الجديد (مطابق للنموذج المرجعي)
   // الموبايل: استخدام layouts/MainLayout (الجديد) الذي يلفّ MobileLayout (TopBar + BottomNav الجديدين)
-  // الديسكتوب: استخدام MainLayoutDesktop القديم (Topbar) - لم يـمس.
+  // الديسكتوب: عرض FeedDesktopInner مباشرة بدون أي تغليف خارجي بـ MainLayoutDesktop
+  //   لأن FeedDesktopInner يحتوي بالفعل على هيكل صفحته الكامل (yam-laptop-page + الـ Sidebar)
+  //   التغليف بـ MainLayoutDesktop كان يُنشئ نسختين من الـ Feed فوق بعضهما البعض
+  //   (نسخة حقيقية تستقبل المنشورات الجديدة + نسخة عالقة في DOM تعرض البيانات القديمة)
+  //   فيظهر المنشور كأنه لم يُنشر رغم وصوله للخادم.
   const isMobile = useIsMobile();
   if (isMobile) {
     return (
@@ -372,11 +376,8 @@ export default function FeedEnhanced() {
       </MainLayout>
     );
   }
-  return (
-    <MainLayoutDesktop>
-      <FeedDesktopInner />
-    </MainLayoutDesktop>
-  );
+  // ✅ إصلاح الفيد المزدوج: عرض FeedDesktopInner مباشرة بدون تغليف مضاعف
+  return <FeedDesktopInner />;
 }
 
 function FeedDesktopInner() {

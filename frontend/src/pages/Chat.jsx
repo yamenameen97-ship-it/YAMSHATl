@@ -769,6 +769,8 @@ export default function Chat() {
             grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
             gap: 14px;
             padding: 20px 20px calc(16px + env(safe-area-inset-bottom, 0px));
+            height: 100%;
+            overflow: hidden;
           }
           .yam-stage-top-search,
           .yam-chat-stage-header,
@@ -781,6 +783,12 @@ export default function Chat() {
             border-radius: 26px;
             border: 1px solid rgba(255,255,255,0.06);
             background: linear-gradient(180deg, rgba(7,10,24,0.95), rgba(4,7,18,0.98));
+          }
+          .yam-chat-input-wrap {
+            flex-shrink: 0;
+            position: relative;
+            z-index: 20;
+            box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1);
           }
           .yam-stage-top-search {
             min-height: 60px;
@@ -813,6 +821,10 @@ export default function Chat() {
             justify-content: space-between;
             gap: 14px;
             padding: 16px 18px;
+            flex-shrink: 0;
+            position: relative;
+            z-index: 20;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
           }
           .yam-chat-stage-peer {
             display: flex;
@@ -882,12 +894,16 @@ export default function Chat() {
           }
           .yam-messages-area {
             min-height: 0;
-            overflow: auto;
+            flex: 1;
+            overflow-y: auto !important;
+            overflow-x: hidden;
             overscroll-behavior-y: contain;
             -webkit-overflow-scrolling: touch;
             scroll-behavior: smooth;
             scroll-padding-bottom: 132px;
             scrollbar-gutter: stable both-edges;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(139, 92, 246, 0.5) rgba(255,255,255,0.04);
             padding: 18px 18px calc(26px + var(--yam-keyboard-offset, 0px));
             display: flex;
             flex-direction: column;
@@ -897,6 +913,7 @@ export default function Chat() {
               radial-gradient(circle at top right, rgba(124,58,237,0.06), transparent 22%),
               radial-gradient(circle at bottom left, rgba(59,130,246,0.05), transparent 22%),
               linear-gradient(180deg, rgba(7,10,24,0.95), rgba(4,7,18,0.98));
+            contain: layout style paint;
           }
           .yam-day-divider {
             align-self: center;
@@ -913,6 +930,18 @@ export default function Chat() {
             align-items: flex-end;
             gap: 8px;
             margin-bottom: 8px;
+            animation: message-slide-up 0.3s ease-out;
+            contain: layout style;
+          }
+          @keyframes message-slide-up {
+            from {
+              opacity: 0;
+              transform: translateY(10px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
           }
           .yam-message-row.me {
             justify-content: flex-start;

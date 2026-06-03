@@ -1,3 +1,10 @@
+"""
+إصلاح شامل لمشكلة اختفاء الريلز بعد الرفع
+- التأكد من حفظ البيانات الكاملة في قاعدة البيانات
+- إضافة معالجة أخطاء محسّنة
+- التحقق من العلاقات والمراجع
+"""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -17,6 +24,7 @@ router = APIRouter()
 
 
 def _repair_reels_schema(db: Session) -> None:
+    """إصلاح مخطط قاعدة البيانات إذا حدثت مشاكل."""
     try:
         db.rollback()
     except Exception:
@@ -28,6 +36,7 @@ def _repair_reels_schema(db: Session) -> None:
 
 
 def _build_reels_response(items: list[dict], *, limit: int, offset: int) -> dict:
+    """بناء استجابة موحدة للريلز."""
     return {
         'items': items,
         'reels': items,
@@ -38,6 +47,7 @@ def _build_reels_response(items: list[dict], *, limit: int, offset: int) -> dict
 
 
 def _load_reels_items(db: Session, current_user: User, *, limit: int, offset: int, category: str) -> list[dict]:
+    """تحميل عناصر الريلز من قاعدة البيانات."""
     query = db.query(Reel).filter(Reel.is_deleted.is_(False))
     if str(category or 'all').strip().lower() != 'all':
         query = query.filter(Reel.category == str(category).strip())
@@ -46,6 +56,7 @@ def _load_reels_items(db: Session, current_user: User, *, limit: int, offset: in
 
 
 def _serialize_reel(db: Session, reel: Reel, current_user: User | None = None) -> dict:
+    """تحويل كائن الريل إلى قاموس JSON."""
     try:
         owner = db.query(User).filter(User.id == reel.user_id).first()
     except Exception:
@@ -113,14 +124,18 @@ def get_reels(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """الحصول على قائمة الريلز مع معالجة الأخطاء المحسّنة."""
     try:
         items = _load_reels_items(db, current_user, limit=limit, offset=offset, category=category)
-    except Exception:
+    except Exception as exc:
         _repair_reels_schema(db)
         try:
             items = _load_reels_items(db, current_user, limit=limit, offset=offset, category=category)
-        except Exception:
-            items = []
+        except Exception as retry_exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f'تعذر تحميل الريلز: {str(retry_exc)[:100]}'
+            ) from retry_exc
     return _build_reels_response(items, limit=limit, offset=offset)
 
 
@@ -132,30 +147,43 @@ def get_reels_feed(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """الحصول على تغذية الريلز (نفس نقطة النهاية الأساسية)."""
     return get_reels(limit=limit, offset=offset, category=category, db=db, current_user=current_user)
 
 
 @router.post('/reels', status_code=status.HTTP_201_CREATED)
 async def create_reel(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """
+    إنشاء ريل جديد مع معالجة شاملة للأخطاء والتحقق من البيانات.
+    
+    يدعم:
+    - رفع multipart/form-data مع الملفات
+    - JSON مع URLs للوسائط
+    - تحويل تلقائي للصور المصغرة
+    """
     content_type = str(request.headers.get('content-type') or '').lower()
     caption = ''
     category = 'general'
     video_url = ''
     thumbnail_url = ''
 
+    # معالجة البيانات متعددة الأجزاء
     if 'multipart/form-data' in content_type:
         form = await request.form()
         caption = str(form.get('caption') or '').strip()
         category = str(form.get('category') or 'general').strip() or 'general'
         file = form.get('file') or form.get('video') or form.get('media')
         thumbnail = form.get('thumbnail') or form.get('poster') or form.get('preview')
+        
         if file is not None and hasattr(file, 'filename'):
             upload_payload = save_upload(file)
             video_url = str(upload_payload.get('media_url') or upload_payload.get('file_url') or upload_payload.get('url') or '').strip()
+        
         if thumbnail is not None and hasattr(thumbnail, 'filename'):
             thumb_payload = save_upload(thumbnail)
             thumbnail_url = str(thumb_payload.get('media_url') or thumb_payload.get('file_url') or thumb_payload.get('url') or '').strip()
     else:
+        # معالجة JSON
         payload = await request.json()
         upload_payload = payload.get('upload') if isinstance(payload.get('upload'), dict) else {}
         caption = str(payload.get('caption') or payload.get('content') or '').strip()
@@ -180,11 +208,13 @@ async def create_reel(request: Request, db: Session = Depends(get_db), current_u
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='video file or media_url is required')
 
     def _persist_reel() -> dict:
+        """حفظ الريل في قاعدة البيانات مع التحقق الكامل."""
         # التحقق من وجود المستخدم
         user_check = db.query(User).filter(User.id == current_user.id).first()
         if not user_check:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='User not found')
         
+        # إنشاء كائن الريل الجديد
         reel = Reel(
             user_id=current_user.id,
             video_url=video_url,
@@ -194,8 +224,14 @@ async def create_reel(request: Request, db: Session = Depends(get_db), current_u
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )
+        
+        # إضافة الريل إلى الجلسة
         db.add(reel)
+        
+        # حفظ التغييرات
         db.commit()
+        
+        # تحديث الكائن للحصول على ID المولد تلقائياً
         db.refresh(reel)
         
         # التحقق من أن الريل تم حفظه بنجاح
@@ -216,11 +252,15 @@ async def create_reel(request: Request, db: Session = Depends(get_db), current_u
             return _persist_reel()
         except Exception as retry_exc:
             db.rollback()
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='تعذر حفظ الريل حالياً، جرّب تاني بعد لحظات') from retry_exc
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f'تعذر حفظ الريل: {str(retry_exc)[:100]}'
+            ) from retry_exc
 
 
 @router.post('/reels/{reel_id}/like')
 def like_reel(reel_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """إضافة أو إزالة إعجاب على ريل."""
     reel = db.query(Reel).filter(Reel.id == reel_id, Reel.is_deleted.is_(False)).first()
     if reel is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Reel not found')
@@ -247,6 +287,7 @@ def like_reel(reel_id: int, db: Session = Depends(get_db), current_user: User = 
 
 @router.post('/reels/{reel_id}/view')
 def record_reel_view(reel_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """تسجيل مشاهدة الريل."""
     reel = db.query(Reel).filter(Reel.id == reel_id, Reel.is_deleted.is_(False)).first()
     if reel is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Reel not found')
@@ -272,6 +313,7 @@ def get_trending_reels(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """الحصول على الريلز الرائجة."""
     reels = db.query(Reel).filter(Reel.is_deleted.is_(False)).order_by(desc(Reel.views_count), desc(Reel.likes_count), desc(Reel.created_at)).limit(limit).all()
     items = [_serialize_reel(db, reel, current_user=current_user) for reel in reels]
     return {
@@ -283,6 +325,7 @@ def get_trending_reels(
 
 @router.post('/reels/{reel_id}/save')
 def save_reel(reel_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """حفظ أو إزالة حفظ ريل."""
     reel = db.query(Reel).filter(Reel.id == reel_id, Reel.is_deleted.is_(False)).first()
     if reel is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Reel not found')

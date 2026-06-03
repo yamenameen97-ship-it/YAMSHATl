@@ -38,6 +38,9 @@ import './styles/badges-indicators.css';
 import './styles/responsive-mobile-v2.css';
 import './styles/performance-v2.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
+import { pwaInitializer } from './services/pwaInitializer.js';
+import { smoothTouchLayer } from './services/smoothTouchLayer.js';
+import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 
 const BUILD_ID = 'yamshat-pwa-neon-v2.3.2-20260602-r1';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
@@ -118,6 +121,28 @@ if (typeof window !== 'undefined') {
   initializePerformanceToolkit();
   initializeRuntimeErrorCapture();
   initializeViewportTracker();
+
+  // تفعيل تحسينات PWA وتجربة المستخدم
+  try {
+    // تفعيل طبقة اللمس السلس
+    smoothTouchLayer.attachToElement(document.documentElement);
+    console.log('[Yamshat] Smooth touch layer activated');
+
+    // تفعيل محسّن الأجهزة القديمة
+    const deviceState = legacyDeviceOptimizer.getState();
+    if (deviceState.isLegacyDevice) {
+      console.log('[Yamshat] Legacy device optimizations applied');
+    }
+
+    // تفعيل PWA
+    pwaInitializer.init().then(() => {
+      console.log('[Yamshat] PWA initialized successfully');
+    }).catch(err => {
+      console.warn('[Yamshat] PWA initialization error:', err);
+    });
+  } catch (err) {
+    console.warn('[Yamshat] Enhancement initialization error:', err);
+  }
 
   try {
     activateMediaEventBridge({

@@ -1,0 +1,372 @@
+/**
+ * تحسينات تجربة اللمس والسحب السلس
+ * (Smooth Touch Experience CSS)
+ * 
+ * يوفر:
+ * - تجربة تطبيق أصيل على الويب
+ * - دعم الأجهزة القديمة
+ * - سلاسة عالية في الحركات
+ * - تأثيرات بصرية ناعمة
+ */
+
+/* ============================================
+   1. إعدادات عامة للمس والسحب
+   ============================================ */
+
+html,
+body {
+  /* منع السلوك الافتراضي غير المرغوب */
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  user-select: none;
+  
+  /* تحسين الأداء على الأجهزة القديمة */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  
+  /* منع الارتجاج عند اللمس */
+  -webkit-tap-highlight-color: transparent;
+  
+  /* دعم الحركات السلسة */
+  scroll-behavior: smooth;
+}
+
+/* ============================================
+   2. تحسينات الأداء على الأجهزة المحمولة
+   ============================================ */
+
+* {
+  /* تحسين الأداء على الأجهزة القديمة */
+  -webkit-backface-visibility: hidden;
+  -webkit-perspective: 1000;
+  backface-visibility: hidden;
+}
+
+/* تحسين الأداء للعناصر القابلة للتفاعل */
+button,
+a,
+[role="button"],
+[role="link"],
+input,
+textarea,
+select {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  
+  /* تحسين الاستجابة */
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+}
+
+/* ============================================
+   3. تحسينات اللمس والسحب
+   ============================================ */
+
+/* العناصر القابلة للسحب */
+.swipeable,
+.draggable,
+.scrollable {
+  /* تفعيل التسارع على الأجهزة المحمولة */
+  -webkit-overflow-scrolling: touch;
+  
+  /* تحسين الأداء */
+  will-change: transform;
+  
+  /* منع الارتجاج */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* تحسين سلاسة الحركات */
+.smooth-transition {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.smooth-transform {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ============================================
+   4. تأثيرات اللمس البصرية
+   ============================================ */
+
+/* تأثير النقر الخفيف */
+.touch-feedback {
+  position: relative;
+}
+
+.touch-feedback::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+  border-radius: inherit;
+  transform: translate(-50%, -50%) scale(0);
+  pointer-events: none;
+  opacity: 0;
+}
+
+.touch-feedback:active::after {
+  animation: touchRipple 0.6s ease-out;
+}
+
+@keyframes touchRipple {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2);
+    opacity: 0;
+  }
+}
+
+/* ============================================
+   5. تحسينات الأداء للقوائم والتمرير
+   ============================================ */
+
+.list-container,
+.feed-container,
+.scroll-container {
+  -webkit-overflow-scrolling: touch;
+  overflow-y: auto;
+  overflow-x: hidden;
+  
+  /* تحسين الأداء */
+  will-change: scroll-position;
+  contain: layout style paint;
+}
+
+/* تحسين الأداء للعناصر الديناميكية */
+.dynamic-item,
+.feed-item,
+.list-item {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* ============================================
+   6. دعم الأجهزة القديمة
+   ============================================ */
+
+/* تحسينات لأجهزة Redmi و Honor و Galaxy A32 */
+@supports (display: grid) {
+  .legacy-device-optimized {
+    /* استخدام Grid للأداء الأفضل */
+    display: grid;
+    grid-auto-flow: row;
+  }
+}
+
+/* تقليل الحركات على الأجهزة البطيئة */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================
+   7. تحسينات الاستجابة على الشاشات الصغيرة
+   ============================================ */
+
+@media (max-width: 768px) {
+  /* تحسين المساحة القابلة للنقر */
+  button,
+  a,
+  [role="button"],
+  [role="link"] {
+    min-height: 44px;
+    min-width: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* تحسين الحشو للعناصر التفاعلية */
+  input,
+  textarea,
+  select {
+    min-height: 44px;
+    padding: 12px;
+    font-size: 16px; /* منع التكبير على iOS */
+  }
+
+  /* تحسين المسافات */
+  .touch-spacing {
+    padding: 12px;
+    margin: 8px 0;
+  }
+}
+
+/* ============================================
+   8. تحسينات الشريط العلوي والسفلي
+   ============================================ */
+
+/* منع الارتجاج عند ظهور/اختفاء الشريط العلوي */
+body {
+  position: fixed;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#root {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ============================================
+   9. تحسينات الكيبورد الافتراضي
+   ============================================ */
+
+/* منع التكبير عند التركيز على الإدخال */
+input[type="text"],
+input[type="email"],
+input[type="number"],
+input[type="password"],
+textarea,
+select {
+  font-size: 16px;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+/* تحسين مظهر الإدخال على iOS */
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="number"]:focus,
+input[type="password"]:focus,
+textarea:focus,
+select:focus {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  outline: none;
+}
+
+/* ============================================
+   10. تحسينات الصور والفيديو
+   ============================================ */
+
+img,
+video {
+  /* منع السحب */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  
+  /* تحسين الأداء */
+  -webkit-user-drag: none;
+}
+
+/* ============================================
+   11. تحسينات الحركات على الأجهزة القديمة
+   ============================================ */
+
+/* تقليل الحركات على الأجهزة ذات الأداء المنخفض */
+@media (max-width: 480px) {
+  /* تقليل مدة الانتقالات */
+  .transition-fast {
+    transition-duration: 150ms;
+  }
+
+  /* تقليل الحركات المعقدة */
+  .animation-disabled {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ============================================
+   12. تحسينات الألوان والتباين
+   ============================================ */
+
+/* دعم الوضع الداكن على الأجهزة القديمة */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+  }
+}
+
+/* دعم الوضع الفاتح */
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+  }
+}
+
+/* ============================================
+   13. تحسينات الشاشة الكاملة
+   ============================================ */
+
+/* دعم الشاشة الكاملة على الأجهزة المحمولة */
+@supports (padding: max(0px)) {
+  body {
+    padding-left: max(0px, env(safe-area-inset-left));
+    padding-right: max(0px, env(safe-area-inset-right));
+    padding-top: max(0px, env(safe-area-inset-top));
+    padding-bottom: max(0px, env(safe-area-inset-bottom));
+  }
+}
+
+/* ============================================
+   14. تحسينات الأداء العامة
+   ============================================ */
+
+/* تحسين الأداء للعناصر الثابتة */
+.fixed-element {
+  position: fixed;
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* تحسين الأداء للعناصر المطلقة */
+.absolute-element {
+  position: absolute;
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* ============================================
+   15. تحسينات خاصة بالمتصفحات
+   ============================================ */
+
+/* تحسينات Chrome على Android */
+@supports (-webkit-appearance: none) {
+  body {
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* تحسينات Firefox */
+@-moz-document url-prefix() {
+  body {
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* تحسينات Safari */
+@supports (-webkit-touch-callout: none) {
+  body {
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+}

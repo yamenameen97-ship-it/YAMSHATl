@@ -5044,3 +5044,13 @@ img {
     grid-template-columns:320px 1fr 360px;
   }
 }
+
+/* استيراد إصلاحات شريط التمرير وهروب الشات */
+@import './feed-scrollbar-fix.css';
+@import './chat-layout-fix.css';
+
+/* استيراد تصميم دردشة المجموعات الجديد */
+@import './group-chat.css';
+
+/* استيراد تصميم قائمة المجموعات الجديد */
+@import './groups-list.css';

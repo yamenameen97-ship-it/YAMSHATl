@@ -133,6 +133,19 @@ export default function EnhancedLiveStreamControl() {
           description: 'جاهز لبدء البث المباشر',
         });
 
+        // نشر منشور تلقائي للأصدقاء
+        try {
+          const { createPost } = await import('../api/posts.js');
+          await createPost({
+            content: `📢 أنا الآن في بث مباشر بعنوان: ${title.trim()}! تعالوا وانضموا إليّ.`,
+            media_url: '/live-stream-thumbnail.png',
+            type: 'live_announcement',
+            live_id: response.data.id
+          });
+        } catch (postError) {
+          console.error('Failed to create live announcement post:', postError);
+        }
+
         // بدء البث
         await handleStartStream(response.data.id);
       }

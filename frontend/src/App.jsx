@@ -43,7 +43,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
 const Feed = lazy(() => import('./pages/FeedEnhanced.jsx'));
 const Stories = lazy(() => import('./pages/Stories.jsx'));
 const Reels = lazy(() => import('./pages/Reels.jsx'));
-const Groups = lazy(() => import('./pages/Groups.jsx'));
+const Groups = lazy(() => import('./pages/GroupsHome.jsx'));
 const Live = lazy(() => import('./pages/Live.jsx'));
 const Inbox = lazy(() => import('./features/chat/index.js').then((mod) => ({ default: mod.Inbox })));
 const Users = lazy(() => import('./pages/Users.jsx'));

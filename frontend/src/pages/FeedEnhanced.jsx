@@ -699,7 +699,7 @@ function FeedDesktopInner() {
 
           .yam-left-rail,
           .yam-right-rail {
-            position: sticky;
+            position: sticky !important;
             top: 18px;
             align-self: start;
             /* الأشرطة الجانبية ثابتة عند التمرير ولها تمريرها الداخلي الخاص إذا طال محتواها */
@@ -707,6 +707,8 @@ function FeedDesktopInner() {
             overflow-y: auto;
             scrollbar-width: thin;
             scrollbar-color: rgba(139, 92, 246, 0.5) transparent;
+            z-index: 10;
+            contain: layout style paint;
           }
 
           .yam-left-rail::-webkit-scrollbar,
@@ -1053,8 +1055,9 @@ function FeedDesktopInner() {
             min-height: 0;
             position: relative;
             overflow-x: hidden;
-            overflow-y: scroll;
+            overflow-y: scroll !important;
             overscroll-behavior-y: contain;
+            scroll-behavior: smooth;
             scrollbar-gutter: stable both-edges;
             scrollbar-width: auto;
             scrollbar-color: rgba(139, 92, 246, 0.92) rgba(255,255,255,0.04);
@@ -1065,6 +1068,8 @@ function FeedDesktopInner() {
             padding-inline-end: 12px;
             padding-bottom: 28px;
             border-inline-end: 1px solid rgba(139, 92, 246, 0.14);
+            -webkit-overflow-scrolling: touch;
+            contain: layout style paint;
           }
 
           .yam-post-stack-v2 > * {

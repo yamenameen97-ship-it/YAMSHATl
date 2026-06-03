@@ -212,12 +212,16 @@ class MediaMetadata:
 
 async def upload_to_s3(file_path: Path, object_name: str, content_type: str):
     try:
+        if not AWS_ACCESS_KEY_ID or "your" in AWS_ACCESS_KEY_ID.lower():
+            logger.warning("⚠️ AWS Credentials not configured, using local URL")
+            return f"/uploads/media/{object_name}"
+            
         s3_client.upload_file(str(file_path), S3_BUCKET_NAME, object_name, ExtraArgs={'ContentType': content_type})
         logger.info(f"✅ Uploaded {file_path} to S3 bucket {S3_BUCKET_NAME} as {object_name}")
         return f"https://{CLOUDFRONT_DOMAIN}/{object_name}"
     except Exception as e:
-        logger.error(f"❌ Failed to upload {file_path} to S3: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to upload to S3: {e}")
+        logger.error(f"❌ Failed to upload {file_path} to S3: {e}, falling back to local")
+        return f"/uploads/media/{object_name}"
 
 
 # المسارات (Routes)
@@ -318,10 +322,19 @@ async def upload_media(
         content_type = MIME_TYPES.get(processed_path.suffix.lstrip('.'), "application/octet-stream")
         s3_url = await upload_to_s3(processed_path, object_name, content_type)
 
-        # Clean up local temporary file
-        os.remove(temp_local_path)
-        if processed_path != temp_local_path: # Remove processed file if different
-            os.remove(processed_path)
+        # If S3 is not used, keep the file in UPLOAD_DIR
+        if s3_url.startswith("/uploads/"):
+            final_path = UPLOAD_DIR / object_name
+            if processed_path != final_path:
+                import shutil
+                shutil.copy2(processed_path, final_path)
+        
+        # Clean up temporary files
+        try:
+            if temp_local_path.exists(): os.remove(temp_local_path)
+            if processed_path.exists() and processed_path != (UPLOAD_DIR / object_name): 
+                os.remove(processed_path)
+        except: pass
         
         # حفظ البيانات الوصفية
         metadata = {

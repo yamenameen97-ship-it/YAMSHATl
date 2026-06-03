@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import {
   getActiveLiveStreams,
@@ -79,6 +80,8 @@ function FloatingHearts({ items = [] }) {
 export default function EnhancedLiveStreamViewer() {
   const { pushToast } = useToast();
   const currentUsername = getCurrentUsername();
+  const navigate = useNavigate();
+  const { streamId } = useParams();
 
   // حالة البثوث
   const [streams, setStreams] = useState([]);
@@ -108,6 +111,7 @@ export default function EnhancedLiveStreamViewer() {
   const heartTimerRef = useRef(null);
   const statsIntervalRef = useRef(null);
   const commentsIntervalRef = useRef(null);
+  const routeStreamId = String(streamId || '').trim();
 
   // تحميل البثوث النشطة
   const loadStreams = useCallback(async () => {
@@ -139,8 +143,12 @@ export default function EnhancedLiveStreamViewer() {
   }, [filter, pushToast]);
 
   // فتح البث
-  const openStream = useCallback(async (stream) => {
+  const openStream = useCallback(async (stream, options = {}) => {
     if (!stream?.id) return;
+
+    if (options.syncUrl !== false) {
+      navigate(`/live/watch/${stream.id}`);
+    }
 
     setActiveStream(stream);
 
@@ -190,7 +198,7 @@ export default function EnhancedLiveStreamViewer() {
         description: 'حاول مرة أخرى',
       });
     }
-  }, [pushToast]);
+  }, [navigate, pushToast]);
 
   // تحديث إحصائيات البث
   const updateStreamStats = useCallback(async (streamId) => {
@@ -317,6 +325,16 @@ export default function EnhancedLiveStreamViewer() {
     loadStreams();
   }, [loadStreams]);
 
+  // فتح البث المطلوب من الرابط مباشرة لو كان موجوداً
+  useEffect(() => {
+    if (!routeStreamId || !streams.length) return;
+
+    const matchedStream = streams.find((stream) => String(stream.id) === routeStreamId);
+    if (matchedStream && String(activeStream?.id || '') !== String(matchedStream.id)) {
+      openStream(matchedStream, { syncUrl: false });
+    }
+  }, [routeStreamId, streams, activeStream?.id, openStream]);
+
   // تطبيق الفلتر
   useEffect(() => {
     let filtered = streams;
@@ -340,22 +358,36 @@ export default function EnhancedLiveStreamViewer() {
 
   const hostName = activeStream?.host_name || activeStream?.host_username || 'مضيف البث';
 
+  const handleOpenStudio = useCallback(() => {
+    navigate('/live/control');
+  }, [navigate]);
+
   return (
     <div className="enhanced-live-viewer" dir="rtl">
       <div className="viewer-container">
         {/* الشريط العلوي */}
         <header className="viewer-header">
           <div className="header-content">
-            <h1>📡 البث المباشر</h1>
-            <p>تابع البثوث الحية والمشاهدين من حول العالم</p>
+            <h1>📡 صفحة مشاهدة البث</h1>
+            <p>دي صفحة المشاهدين. لمتابعة أو اختيار أي بث مباشر متاح.</p>
           </div>
-          <button
-            className="refresh-btn"
-            onClick={loadStreams}
-            disabled={loading}
-          >
-            {loading ? 'جارٍ التحديث...' : '↻ تحديث'}
-          </button>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              className="refresh-btn"
+              onClick={handleOpenStudio}
+              type="button"
+            >
+              🎥 لوحة التحكم
+            </button>
+            <button
+              className="refresh-btn"
+              onClick={loadStreams}
+              disabled={loading}
+              type="button"
+            >
+              {loading ? 'جارٍ التحديث...' : '↻ تحديث'}
+            </button>
+          </div>
         </header>
 
         <div className="viewer-layout">
@@ -547,7 +579,7 @@ export default function EnhancedLiveStreamViewer() {
                   <div
                     key={stream.id}
                     className={`stream-card ${activeStream?.id === stream.id ? 'active' : ''}`}
-                    onClick={() => openStream(stream)}
+                    onClick={() => openStream(stream, { syncUrl: true })}
                   >
                     <div className="stream-card-header">
                       <Avatar name={stream.host_name || stream.host_username} size={36} />

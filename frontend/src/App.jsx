@@ -44,7 +44,8 @@ const Feed = lazy(() => import('./pages/FeedEnhanced.jsx'));
 const Stories = lazy(() => import('./pages/Stories.jsx'));
 const Reels = lazy(() => import('./pages/Reels.jsx'));
 const Groups = lazy(() => import('./pages/GroupsHome.jsx'));
-const Live = lazy(() => import('./pages/Live.jsx'));
+const LiveViewer = lazy(() => import('./pages/EnhancedLiveStreamViewer.jsx'));
+const LiveStudio = lazy(() => import('./pages/EnhancedLiveStreamControl.jsx'));
 const Inbox = lazy(() => import('./features/chat/index.js').then((mod) => ({ default: mod.Inbox })));
 const Users = lazy(() => import('./pages/Users.jsx'));
 const Profile = lazy(() => import('./pages/Profile.jsx'));
@@ -185,7 +186,11 @@ export default function App() {
             <Route path="/stories" element={<ProtectedRoute><Stories /></ProtectedRoute>} />
             <Route path="/reels" element={<ProtectedRoute><Reels /></ProtectedRoute>} />
             <Route path="/groups" element={<ProtectedRoute><Groups /></ProtectedRoute>} />
-            <Route path="/live" element={<ProtectedRoute><Live /></ProtectedRoute>} />
+            <Route path="/live" element={<ProtectedRoute><LiveViewer /></ProtectedRoute>} />
+            <Route path="/live/watch/:streamId" element={<ProtectedRoute><LiveViewer /></ProtectedRoute>} />
+            <Route path="/live/view/:streamId" element={<ProtectedRoute><LiveViewer /></ProtectedRoute>} />
+            <Route path="/live/control" element={<ProtectedRoute><LiveStudio /></ProtectedRoute>} />
+            <Route path="/live/studio" element={<ProtectedRoute><LiveStudio /></ProtectedRoute>} />
             <Route path="/messages" element={<Navigate to="/inbox" replace />} />
             <Route path="/inbox" element={<ProtectedRoute><Inbox /></ProtectedRoute>} />
             <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />

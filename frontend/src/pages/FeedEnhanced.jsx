@@ -73,6 +73,26 @@ function isVideoMediaUrl(value = '', options = {}) {
   return /\.(mp4|webm|mov|m4v|m3u8)(\?.*)?$/i.test(candidate) || /\b(video|reel|stream)\b/i.test(candidate);
 }
 
+function extractFirstUrl(value = '') {
+  const match = String(value || '').match(/https?:\/\/[^\s]+/i);
+  return match ? match[0] : '';
+}
+
+function stripFirstUrl(value = '') {
+  return String(value || '').replace(/\s*https?:\/\/[^\s]+/i, '').trim();
+}
+
+function resolveLiveViewerUrl(post = {}) {
+  if (post?.live_id) {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    return `${origin}/#/live/watch/${post.live_id}`;
+  }
+
+  const directUrl = extractFirstUrl(post.content || post.text || '');
+  if (!directUrl) return '';
+  return /#\/live\/(watch|view)\//.test(directUrl) ? directUrl : '';
+}
+
 function buildFeedPosts(posts = []) {
   if (Array.isArray(posts) && posts.length) {
     return posts.map((post, index) => {
@@ -103,7 +123,9 @@ function buildFeedPosts(posts = []) {
         authorAvatar: resolveMediaUrl(post.user_avatar || post.avatar || post.author_avatar || ''),
         handle: normalizeHandle(post.username || post.user || `user.${index + 1}`),
         time: post.created_at || post.published_at ? 'منشور سابق' : 'الآن',
-        text: post.content || 'منشور جديد على يام شات.',
+        text: stripFirstUrl(post.content || 'منشور جديد على يام شات.'),
+        liveUrl: resolveLiveViewerUrl(post),
+        rawText: post.content || 'منشور جديد على يام شات.',
         likes: Number(post.likes_count || post.like_count || post.likes || 0),
         comments: Number(post.comments_count || post.comment_count || 0),
         shares: Number(post.share_count || post.shares || 0),
@@ -176,6 +198,7 @@ function MediaTile({ item, index }) {
 }
 
 function PostCard({ post }) {
+  const navigate = useNavigate();
   const { pushToast } = useToast();
   const postUrl = `${window.location.origin}/#/post/${post.id}`;
   const mediaItems = Array.isArray(post.media) ? post.media.slice(0, 3) : [];
@@ -187,6 +210,16 @@ function PostCard({ post }) {
   const [showComments, setShowComments] = useState(false);
   const [commentDraft, setCommentDraft] = useState('');
   const [localComments, setLocalComments] = useState([]);
+
+  const handleOpenLiveAnnouncement = () => {
+    if (!post.liveUrl) return;
+    const hashRoute = post.liveUrl.includes('/#/') ? post.liveUrl.split('/#/')[1] : '';
+    if (hashRoute) {
+      navigate(`/${hashRoute.replace(/^\/+/, '')}`);
+      return;
+    }
+    window.location.href = post.liveUrl;
+  };
 
   const handleLike = () => {
     setLiked((prev) => {
@@ -262,6 +295,16 @@ function PostCard({ post }) {
       </div>
 
       <p className="yam-post-copy-v2">{post.text}</p>
+
+      {post.liveUrl ? (
+        <button
+          type="button"
+          className="yam-post-live-cta"
+          onClick={handleOpenLiveAnnouncement}
+        >
+          🎥 متابعة البث المباشر
+        </button>
+      ) : null}
 
       <div className={`yam-post-media-grid-v2 media-count-${mediaItems.length || 1}`}>
         {mediaItems.map((item, index) => (

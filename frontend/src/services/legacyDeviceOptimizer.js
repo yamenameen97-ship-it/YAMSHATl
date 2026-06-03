@@ -159,21 +159,7 @@ export class LegacyDeviceOptimizer {
       body {
         font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans Arabic', sans-serif;
       }
-
-      /* تقليل عدد أوزان الخطوط */
-      @font-face {
-        font-family: 'Noto Sans Arabic';
-        font-weight: 400;
-        src: url('/fonts/noto-sans-arabic-400.woff2') format('woff2');
-        font-display: swap;
-      }
-
-      @font-face {
-        font-family: 'Noto Sans Arabic';
-        font-weight: 700;
-        src: url('/fonts/noto-sans-arabic-700.woff2') format('woff2');
-        font-display: swap;
-      }
+      /* الاعتماد على خطوط النظام لتجنب 404 على ملفات خطوط غير موجودة */
     `;
     document.head.appendChild(style);
   }

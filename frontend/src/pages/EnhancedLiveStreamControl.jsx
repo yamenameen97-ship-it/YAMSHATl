@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import {
   getActiveLiveStreams,
@@ -33,6 +34,7 @@ const STREAM_CATEGORIES = [
 export default function EnhancedLiveStreamControl() {
   const { pushToast } = useToast();
   const currentUsername = getCurrentUsername();
+  const navigate = useNavigate();
 
   // حالة البث
   const [streams, setStreams] = useState([]);
@@ -73,6 +75,45 @@ export default function EnhancedLiveStreamControl() {
   const localStreamRef = useRef(null);
   const statsIntervalRef = useRef(null);
   const durationIntervalRef = useRef(null);
+
+  const buildViewerUrl = useCallback((streamId) => {
+    if (!streamId) return '';
+    if (typeof window === 'undefined') return `/live/watch/${streamId}`;
+    return `${window.location.origin}/#/live/watch/${streamId}`;
+  }, []);
+
+  const openViewerPage = useCallback((streamId = activeStream?.id) => {
+    if (!streamId) {
+      navigate('/live');
+      return;
+    }
+    navigate(`/live/watch/${streamId}`);
+  }, [activeStream?.id, navigate]);
+
+  const copyViewerLink = useCallback(async (streamId = activeStream?.id) => {
+    const viewerUrl = buildViewerUrl(streamId);
+    if (!viewerUrl) return;
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(viewerUrl);
+        pushToast?.({
+          type: 'success',
+          title: 'تم نسخ رابط المشاهدة',
+          description: 'ابعت الرابط للمشتركين أو استخدمه في المنشور.',
+        });
+        return;
+      }
+    } catch (error) {
+      console.error('فشل نسخ رابط المشاهدة:', error);
+    }
+
+    pushToast?.({
+      type: 'info',
+      title: 'رابط المشاهدة جاهز',
+      description: viewerUrl,
+    });
+  }, [activeStream?.id, buildViewerUrl, pushToast]);
 
   // تحميل البثوث النشطة
   const loadStreams = useCallback(async () => {
@@ -133,14 +174,13 @@ export default function EnhancedLiveStreamControl() {
           description: 'جاهز لبدء البث المباشر',
         });
 
-        // نشر منشور تلقائي للأصدقاء
+        // نشر منشور تلقائي للأصدقاء مع رابط صفحة المشاهدة الصحيحة
         try {
           const { createPost } = await import('../api/posts.js');
+          const viewerUrl = buildViewerUrl(response.data.id);
           await createPost({
-            content: `📢 أنا الآن في بث مباشر بعنوان: ${title.trim()}! تعالوا وانضموا إليّ.`,
-            media_url: '/live-stream-thumbnail.png',
-            type: 'live_announcement',
-            live_id: response.data.id
+            content: `📢 أنا الآن في بث مباشر بعنوان: ${title.trim()}!\nتابعوا البث من هنا: ${viewerUrl}`,
+            image_url: '/live-stream-thumbnail.png',
           });
         } catch (postError) {
           console.error('Failed to create live announcement post:', postError);
@@ -158,7 +198,7 @@ export default function EnhancedLiveStreamControl() {
     } finally {
       setLoading(false);
     }
-  }, [newStreamData, pushToast]);
+  }, [buildViewerUrl, newStreamData, pushToast]);
 
   // بدء البث
   const handleStartStream = useCallback(async (streamId) => {
@@ -441,15 +481,25 @@ export default function EnhancedLiveStreamControl() {
         <header className="control-header">
           <div className="header-content">
             <h1>🎥 لوحة التحكم بالبث المباشر</h1>
-            <p>تحكم كامل بالبث والمشاهدين والإحصائيات</p>
+            <p>دي صفحة التحكم الخاصة بصاحب البث فقط، ومفصولة عن صفحة المشاهدة للمشتركين.</p>
           </div>
-          <button
-            className="refresh-btn"
-            onClick={loadStreams}
-            disabled={loading}
-          >
-            {loading ? 'جارٍ التحديث...' : '↻ تحديث'}
-          </button>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              className="refresh-btn"
+              onClick={() => openViewerPage()}
+              type="button"
+            >
+              👁 صفحة المشاهدة
+            </button>
+            <button
+              className="refresh-btn"
+              onClick={loadStreams}
+              disabled={loading}
+              type="button"
+            >
+              {loading ? 'جارٍ التحديث...' : '↻ تحديث'}
+            </button>
+          </div>
         </header>
 
         <div className="control-layout">
@@ -569,6 +619,20 @@ export default function EnhancedLiveStreamControl() {
                     onClick={handleToggleRecording}
                   >
                     {recordingEnabled ? '⏹ إيقاف التسجيل' : '⏺ بدء التسجيل'}
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => openViewerPage(activeStream?.id)}
+                    type="button"
+                  >
+                    👁 فتح صفحة المشاهدة
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => copyViewerLink(activeStream?.id)}
+                    type="button"
+                  >
+                    🔗 نسخ رابط البث
                   </button>
                   <button
                     className="btn btn-danger"

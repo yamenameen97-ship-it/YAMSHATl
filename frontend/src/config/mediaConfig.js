@@ -9,6 +9,22 @@ const isAbsoluteUrl = (value = '') => /^(blob:|data:|https?:)/i.test(trim(value)
 // ce qui évite les 404 répétés sur les anciennes images stockées en base.
 const LEGACY_HOSTS = ['yamshat8.onrender.com', 'yamshat.onrender.com', 'yamshat-backend.onrender.com'];
 
+const rewriteKnownBrokenBrandAsset = (value = '') => {
+  const cleaned = trim(value);
+  if (!cleaned) return cleaned;
+
+  try {
+    const pathname = isAbsoluteUrl(cleaned) ? new URL(cleaned).pathname : cleaned;
+    if (/^(?:\/)?uploads\/.+yamshat-logo\.(?:png|jpe?g|webp)$/i.test(pathname.replace(/^\/+/, ''))) {
+      return '/brand/yamshat-logo.png';
+    }
+  } catch {
+    // ignore URL parsing errors and fall back to original value
+  }
+
+  return cleaned;
+};
+
 const rewriteLegacyHost = (value = '') => {
   const cleaned = trim(value);
   if (!cleaned || !isAbsoluteUrl(cleaned) || /^(blob:|data:)/i.test(cleaned)) return cleaned;
@@ -145,7 +161,8 @@ export function buildSignedMediaUrl(candidate = '', options = {}) {
 export function resolveMediaUrl(candidate = '', options = {}) {
   const value = trim(candidate);
   if (!value) return '';
-  const absolute = isAbsoluteUrl(value) ? rewriteLegacyHost(value) : toAbsoluteMediaUrl(value);
+  const repairedValue = rewriteKnownBrokenBrandAsset(value);
+  const absolute = isAbsoluteUrl(repairedValue) ? rewriteLegacyHost(repairedValue) : toAbsoluteMediaUrl(repairedValue);
   return MEDIA_SECURITY.signedUrls ? buildSignedMediaUrl(absolute, options) : absolute;
 }
 

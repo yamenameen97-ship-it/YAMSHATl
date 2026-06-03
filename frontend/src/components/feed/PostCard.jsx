@@ -443,6 +443,54 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
     )));
   };
 
+  // عرض خاص للبثوث المباشرة
+  if (post?.is_live_stream || post?.type === 'live_stream') {
+    return (
+      <Card style={{ padding: 16, border: '2px solid var(--accent)', background: 'rgba(59,130,246,0.08)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+          <div style={{ fontSize: 24 }}>🔴</div>
+          <div>
+            <div style={{ fontWeight: 'bold', fontSize: 18 }}>بث مباشر</div>
+            <div style={{ color: 'var(--accent)', fontSize: 12 }}>نشط الآن</div>
+          </div>
+        </div>
+        <div style={{ fontSize: 16, marginBottom: 12 }}>{post.content || post.text || post.title}</div>
+        {post.thumbnail_url || post.preview_url ? (
+          <div
+            onClick={() => window.location.href = `/live/watch/${post.live_stream_id}`}
+            style={{
+              marginBottom: 12,
+              borderRadius: 16,
+              overflow: 'hidden',
+              cursor: 'pointer',
+              background: '#000',
+              height: 280,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: '2px solid var(--accent)',
+              position: 'relative',
+            }}
+          >
+            <img
+              src={post.thumbnail_url || post.preview_url}
+              alt="Live Stream"
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+            <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontSize: 48 }}>▶️</div>
+          </div>
+        ) : null}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Button onClick={() => window.location.href = `/live/watch/${post.live_stream_id}`} style={{ flex: 1 }}>مشاهدة البث</Button>
+          <Button variant="secondary" onClick={() => window.location.href = `/live/studio`}>التحكم بالبث</Button>
+        </div>
+        <div style={{ marginTop: 12, fontSize: 13, color: 'var(--muted)' }}>
+          👁 {post.viewers_count || 0} مشاهد · 💜 {post.likes_count || 0} إعجاب
+        </div>
+      </Card>
+    );
+  }
+
   if (postPrefsState.hidden || postPrefsState.archived || postPrefsState.muted) {
     const label = postPrefsState.hidden ? 'مخفي' : postPrefsState.archived ? 'مؤرشف' : 'مكتوم';
     return (

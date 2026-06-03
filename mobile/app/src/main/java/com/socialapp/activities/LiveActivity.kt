@@ -168,9 +168,9 @@ class LiveActivity : AppCompatActivity() {
     private fun buildLiveTargetPath(roomId: String? = null): String {
         val safeRoomId = roomId?.trim().orEmpty()
         return if (safeRoomId.isBlank()) {
-            "/live"
+            "/live/studio"
         } else {
-            "/live?room=${Uri.encode(safeRoomId)}"
+            "/live/studio?room=${Uri.encode(safeRoomId)}"
         }
     }
 

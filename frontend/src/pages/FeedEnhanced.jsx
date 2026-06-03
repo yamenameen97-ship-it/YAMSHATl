@@ -19,6 +19,8 @@ import { redirectToAppPath } from '../utils/router.js';
 import ReactionBar from '../components/social/ReactionBar.jsx';
 import FollowControls from '../components/social/FollowControls.jsx';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
+import { getActiveLiveStreams } from '../services/api/liveStreamApi.js';
+import { useEffect, useState } from 'react';
 
 const FEED_TABS = [
   { id: 'favorites', label: 'المفضلة' },
@@ -49,6 +51,40 @@ const QUICK_ACTIONS = [
 const DEFAULT_PROFILE_HIGHLIGHTS = [
   { label: 'جديد', kind: 'add' },
 ];
+
+// دالة لتحويل البث المباشر إلى منشور
+function convertLiveStreamToPost(stream) {
+  if (!stream || !stream.id) return null;
+  return {
+    id: `live_${stream.id}`,
+    type: 'live_stream',
+    is_live_stream: true,
+    live_stream_id: stream.id,
+    title: stream.title || 'بث مباشر',
+    content: stream.title || 'بث مباشر',
+    text: stream.title || 'بث مباشر جديد',
+    author: stream.host_username || 'مستخدم',
+    username: stream.host_username || 'مستخدم',
+    handle: `@${stream.host_username || 'مستخدم'}`,
+    avatar: stream.host_avatar || '',
+    user_avatar: stream.host_avatar || '',
+    created_at: stream.started_at || new Date().toISOString(),
+    media_type: 'live',
+    media_url: stream.thumbnail_url || '',
+    thumbnail_url: stream.thumbnail_url || '',
+    preview_url: stream.thumbnail_url || '',
+    viewers_count: stream.viewers_count || 0,
+    likes_count: stream.hearts_count || 0,
+    comments_count: stream.comments_count || 0,
+    is_liked: false,
+    is_saved: false,
+    is_verified: false,
+    is_reel: false,
+    has_video: false,
+    has_live_stream: true,
+    live_stream: stream,
+  };
+}
 
 const MOCK_POSTS = [];
 
@@ -388,6 +424,8 @@ function FeedDesktopInner() {
   const [activeTab, setActiveTab] = useState('all');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [liveStreams, setLiveStreams] = useState([]);
+  const [loadingLiveStreams, setLoadingLiveStreams] = useState(false);
   const profile = getStoredUserSnapshot();
   const profileDetails = profile?.profile || {};
   const username = getCurrentUsername() || profile?.username || profile?.user || '';
@@ -436,7 +474,33 @@ function FeedDesktopInner() {
     pollingInterval: 25_000,
   });
 
-  const feedPosts = useMemo(() => buildFeedPosts(posts), [posts]);
+  // جلب البثوث المباشرة النشطة وإضافتها إلى المنشورات
+  useEffect(() => {
+    const fetchActiveLiveStreams = async () => {
+      try {
+        setLoadingLiveStreams(true);
+        const response = await getActiveLiveStreams({ limit: 10 });
+        const streams = Array.isArray(response?.data) ? response.data : [];
+        setLiveStreams(streams);
+      } catch (error) {
+        console.error('Error fetching live streams:', error);
+        setLiveStreams([]);
+      } finally {
+        setLoadingLiveStreams(false);
+      }
+    };
+
+    fetchActiveLiveStreams();
+    const interval = setInterval(fetchActiveLiveStreams, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const liveStreamPosts = liveStreams.map(convertLiveStreamToPost).filter(Boolean);
+  const feedPosts = useMemo(() => {
+    const allPosts = buildFeedPosts(posts);
+    return [...liveStreamPosts, ...allPosts];
+  }, [posts, liveStreamPosts]);
+
   const totalPosts = feedPosts.length;
   const profilePostsCount = Number(profile?.posts_count || profileDetails.posts_count || profileDetails.posts || profile?.posts || totalPosts || 0);
 

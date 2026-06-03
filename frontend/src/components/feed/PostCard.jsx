@@ -457,7 +457,7 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
         <div style={{ fontSize: 16, marginBottom: 12 }}>{post.content || post.text || post.title}</div>
         {post.thumbnail_url || post.preview_url ? (
           <div
-            onClick={() => window.location.href = `/live/watch/${post.live_stream_id}`}
+            onClick={() => window.location.href = `/live/view/${post.live_stream_id}`}
             style={{
               marginBottom: 12,
               borderRadius: 16,
@@ -481,7 +481,7 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
           </div>
         ) : null}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Button onClick={() => window.location.href = `/live/watch/${post.live_stream_id}`} style={{ flex: 1 }}>مشاهدة البث</Button>
+          <Button onClick={() => window.location.href = `/live/view/${post.live_stream_id}`} style={{ flex: 1 }}>مشاهدة البث</Button>
           <Button variant="secondary" onClick={() => window.location.href = `/live/studio`}>التحكم بالبث</Button>
         </div>
         <div style={{ marginTop: 12, fontSize: 13, color: 'var(--muted)' }}>

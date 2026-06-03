@@ -33,7 +33,7 @@ const FEED_TABS = [
 const NAV_ITEMS = [
   { to: '/', label: 'الرئيسية', icon: 'home', exact: true },
   { to: '/reels', label: 'الريلز', icon: 'clips' },
-  { to: '/live', label: 'البث', icon: 'live' },
+  { to: '/live/control', label: 'البث', icon: 'live' },
   { to: '/groups', label: 'المجموعات', icon: 'groups' },
   { to: '/stories', label: 'الستوري', icon: 'bookmark' },
   { to: '/inbox', label: 'الدردشة', icon: 'message' },
@@ -121,7 +121,7 @@ function stripFirstUrl(value = '') {
 function resolveLiveViewerUrl(post = {}) {
   if (post?.live_id) {
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    return `${origin}/#/live/watch/${post.live_id}`;
+    return `${origin}/#/live/view/${post.live_id}`;
   }
 
   const directUrl = extractFirstUrl(post.content || post.text || '');

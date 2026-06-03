@@ -195,8 +195,8 @@ export default function App() {
             <Route path="/groups" element={<ProtectedRoute><Groups /></ProtectedRoute>} />
             <Route path="/groups/create" element={<ProtectedRoute><CreateGroup /></ProtectedRoute>} />
             <Route path="/groups/:groupId/chat" element={<ProtectedRoute><GroupChatPage /></ProtectedRoute>} />
-            <Route path="/live" element={<ProtectedRoute><LiveViewer /></ProtectedRoute>} />
-            <Route path="/live/watch/:streamId" element={<ProtectedRoute><LiveViewer /></ProtectedRoute>} />
+            <Route path="/live" element={<Navigate to="/live/control" replace />} />
+            <Route path="/live/view/:streamId" element={<ProtectedRoute><LiveViewer /></ProtectedRoute>} />
             <Route path="/live/view/:streamId" element={<ProtectedRoute><LiveViewer /></ProtectedRoute>} />
             <Route path="/live/control" element={<ProtectedRoute><LiveStudio /></ProtectedRoute>} />
             <Route path="/live/studio" element={<ProtectedRoute><LiveStudio /></ProtectedRoute>} />

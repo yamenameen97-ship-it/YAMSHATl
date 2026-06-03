@@ -11,7 +11,7 @@ function MobileDock() {
     () => [
       { to: '/', label: 'الرئيسية', icon: '⌂', match: (path) => path === '/' },
       { to: '/search', label: 'بحث', icon: '⌕', match: (path) => path.startsWith('/search') },
-      { to: '/live', label: 'بث', icon: '◉', badge: isOnline ? 'live' : null, match: (path) => path.startsWith('/live') },
+      { to: '/live/control', label: 'بث', icon: '◉', badge: isOnline ? 'live' : null, match: (path) => path.startsWith('/live') },
       {
         to: '/inbox',
         label: 'الدردشة',

@@ -134,7 +134,7 @@ export default function LiveViewer() {
     if (!stream?.id) return;
 
     if (options.syncUrl !== false) {
-      navigate(`/live/watch/${stream.id}`);
+      navigate(`/live/view/${stream.id}`);
     }
 
     setActiveStream(stream);

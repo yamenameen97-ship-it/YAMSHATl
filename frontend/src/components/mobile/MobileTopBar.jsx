@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 
 const HOME_SHORTCUTS = Object.freeze([
-  { to: '/live', label: 'البث' },
+  { to: '/live/control', label: 'البث' },
   { to: '/groups', label: 'المجموعات' },
   { to: '/stories', label: 'الستوري' },
   { to: '/reels', label: 'الريلز' },

@@ -1,10 +1,28 @@
 .yam-create-group-page {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
   background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
   color: #fff;
   direction: rtl;
+  scrollbar-width: auto;
+  scrollbar-color: #8b5cf6 rgba(255, 255, 255, 0.05);
+}
+
+.yam-create-group-page::-webkit-scrollbar {
+  width: 10px;
+}
+
+.yam-create-group-page::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.yam-create-group-page::-webkit-scrollbar-thumb {
+  background: #8b5cf6;
+  border-radius: 10px;
+  border: 2px solid #0f172a;
 }
 
 .yam-create-header {

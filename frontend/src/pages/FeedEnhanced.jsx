@@ -20,7 +20,7 @@ import ReactionBar from '../components/social/ReactionBar.jsx';
 import FollowControls from '../components/social/FollowControls.jsx';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
 import { getActiveLiveStreams } from '../services/api/liveStreamApi.js';
-import { useEffect, useState } from 'react';
+
 
 const FEED_TABS = [
   { id: 'favorites', label: 'المفضلة' },
@@ -1162,12 +1162,12 @@ function FeedDesktopInner() {
             min-height: 0;
             position: relative;
             overflow-x: hidden;
-            overflow-y: scroll !important;
+            overflow-y: auto !important;
             overscroll-behavior-y: contain;
             scroll-behavior: smooth;
-            scrollbar-gutter: stable both-edges;
+            scrollbar-gutter: stable;
             scrollbar-width: auto;
-            scrollbar-color: rgba(139, 92, 246, 0.92) rgba(255,255,255,0.04);
+            scrollbar-color: #8b5cf6 rgba(255,255,255,0.04);
             display: grid;
             gap: 18px;
             direction: ltr;
@@ -1177,6 +1177,22 @@ function FeedDesktopInner() {
             border-inline-end: 1px solid rgba(139, 92, 246, 0.14);
             -webkit-overflow-scrolling: touch;
             contain: layout style paint;
+          }
+
+          .yam-post-stack-v2::-webkit-scrollbar {
+            width: 10px !important;
+            display: block !important;
+          }
+
+          .yam-post-stack-v2::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.02) !important;
+            border-radius: 10px !important;
+          }
+
+          .yam-post-stack-v2::-webkit-scrollbar-thumb {
+            background: #8b5cf6 !important;
+            border-radius: 10px !important;
+            border: 2px solid #070d1d !important;
           }
 
           .yam-post-stack-v2 > * {
@@ -1919,7 +1935,8 @@ function FeedDesktopInner() {
             .yam-center-stage,
             .yam-post-stack-v2 {
               max-height: none;
-              overflow: visible;
+              overflow: visible !important;
+              height: auto !important;
             }
           }
         `}</style>

@@ -73,14 +73,14 @@ export default function Dashboard() {
 
   const handleLogout = () => {
     clearStoredUser();
-    pushToast({ type: 'info', title: 'تم تسجيل الخروج', description: 'نراك قريبًا داخل يمشات.' });
+    pushToast({ type: 'info', title: 'تم تسجيل الخروج', description: 'نراك قريبًا داخل يام شات.' });
     navigate('/login', { replace: true });
   };
 
   // Deep Analytics State
   const analytics = useMemo(() => ({
     topPosts: [
-      { id: 1, title: 'تحديث يمشات الجديد', engagement: '98%', reach: '12.5k' },
+      { id: 1, title: 'تحديث يام شات الجديد', engagement: '98%', reach: '12.5k' },
       { id: 2, title: 'كيف تستخدم الذكاء الاصطناعي', engagement: '85%', reach: '8.2k' },
     ],
     userGrowth: '+15% هذا الأسبوع',
@@ -115,7 +115,7 @@ export default function Dashboard() {
         <Card className="welcome-widget">
           <div className="welcome-flex">
             <div className="user-info">
-              <h2>أهلاً بك، {user?.username || 'مستخدم يمشات'} 👋</h2>
+              <h2>أهلاً بك، {user?.username || 'مستخدم يام شات'} 👋</h2>
               <p className="muted">إليك نظرة سريعة على نشاط حسابك ومنصتك اليوم.</p>
             </div>
             <div className="status-badges">

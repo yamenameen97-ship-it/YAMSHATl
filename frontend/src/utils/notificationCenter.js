@@ -38,7 +38,7 @@ export function normalizeNotification(item) {
 
   const payload = item?.payload || item?.data || {};
   const title = item?.title || payload?.title || 'إشعار جديد';
-  const body = item?.body || item?.message || item?.text || payload?.body || 'وصلك تحديث جديد داخل يمشات.';
+  const body = item?.body || item?.message || item?.text || payload?.body || 'وصلك تحديث جديد داخل يام شات.';
   const seen = Boolean(item?.seen ?? item?.is_read ?? item?.read);
 
   const path = resolveNotificationPath({ ...item, payload });

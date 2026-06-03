@@ -314,14 +314,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun subtitleForPath(path: String): String = when {
-        path.contains("/notifications", ignoreCase = true) -> "مركز الإشعارات والتنبيهات اللحظية بنفس هوية يمشات"
+        path.contains("/notifications", ignoreCase = true) -> "مركز الإشعارات والتنبيهات اللحظية بنفس هوية يام شات"
         path.contains("/live", ignoreCase = true) -> "البث المباشر بنفس الهوية الداكنة والبنفسجية"
         path.contains("/groups", ignoreCase = true) -> "المجموعات وخدمات المجتمع موحدة داخل الجوال والويب"
         path.contains("/users", ignoreCase = true) -> "الأصدقاء والمتابعة وبدء المحادثات بنفس الستايل"
         path.contains("/dashboard", ignoreCase = true) -> "لوحة النشاط السريعة والخدمات المرتبطة"
         itemIdForPath(path) == R.id.nav_stories -> "الستوري بنفس الحلقات البنفسجية والواجهة الداكنة"
         itemIdForPath(path) == R.id.nav_reels -> "ريلز عمودي سريع بنفس توزيع المرجع"
-        itemIdForPath(path) == R.id.nav_chat -> "الدردشات وقائمة الرسائل بستايل يمشات الجديد"
+        itemIdForPath(path) == R.id.nav_chat -> "الدردشات وقائمة الرسائل بستايل يام شات الجديد"
         itemIdForPath(path) == R.id.nav_profile -> "الملف الشخصي والإحصائيات بنفس الهوية"
         else -> "الصفحة الرئيسية ومنشورات المجتمع بستايل الجوال الجديد"
     }

@@ -37,7 +37,7 @@ function timeAgoAr(dateLike) {
 }
 
 function normalizePost(p, i) {
-  const author = p.author_name || p.username || p.user || 'مستخدم يمشات';
+  const author = p.author_name || p.username || p.user || 'مستخدم يام شات';
   const handle = (p.username || p.user || `user${i}`).toString();
   const verified = Boolean(p.verified || p.is_verified || p.official);
   const bannerUrl = resolveMediaUrl(
@@ -70,11 +70,11 @@ function normalizePost(p, i) {
 const WELCOME_POST = {
   id: 'welcome',
   rawId: null,
-  authorName: 'فريق يمشات',
+  authorName: 'فريق يام شات',
   handle: '@yamshat_team',
   timeText: 'الآن',
   verified: true,
-  text: 'مرحباً بك في يمشات 🚀\nابدأ بنشر أول منشور لك أو تابع أصدقاءك لتظهر منشوراتهم هنا.',
+  text: 'مرحباً بك في يام شات 🚀\nابدأ بنشر أول منشور لك أو تابع أصدقاءك لتظهر منشوراتهم هنا.',
   banner: { type: 'logo', title: 'YAMSHAT', slogan: 'تواصل، تفاعل، اربح' },
   likes: 0,
   comments: 0,
@@ -194,7 +194,7 @@ function FeedMobile() {
     const postUrl = `${window.location.origin}/#/post/${post.rawId || post.id}`;
     const shareData = {
       title: post.authorName,
-      text: post.text?.slice(0, 200) || 'منشور على يمشات',
+      text: post.text?.slice(0, 200) || 'منشور على يام شات',
       url: postUrl,
     };
 

@@ -99,11 +99,11 @@ function buildFeedPosts(posts = []) {
 
       return {
         id: post.id || `post-${index}`,
-        authorName: post.author_name || post.username || post.user || 'مستخدم يامشات',
+        authorName: post.author_name || post.username || post.user || 'مستخدم يام شات',
         authorAvatar: resolveMediaUrl(post.user_avatar || post.avatar || post.author_avatar || ''),
         handle: normalizeHandle(post.username || post.user || `user.${index + 1}`),
         time: post.created_at || post.published_at ? 'منشور سابق' : 'الآن',
-        text: post.content || 'منشور جديد على يامشات.',
+        text: post.content || 'منشور جديد على يام شات.',
         likes: Number(post.likes_count || post.like_count || post.likes || 0),
         comments: Number(post.comments_count || post.comment_count || 0),
         shares: Number(post.share_count || post.shares || 0),
@@ -348,7 +348,7 @@ function FeedDesktopInner() {
   const profile = getStoredUserSnapshot();
   const profileDetails = profile?.profile || {};
   const username = getCurrentUsername() || profile?.username || profile?.user || '';
-  const displayName = profileDetails.full_name || profile?.name || profile?.full_name || username || 'مستخدم يامشات';
+  const displayName = profileDetails.full_name || profile?.name || profile?.full_name || username || 'مستخدم يام شات';
   const profileAvatar = resolveMediaUrl(profileDetails.avatar || profile?.avatar || profileDetails.avatar_url || profile?.avatar_url || '');
   const isVerified = Boolean(profile?.is_verified || profile?.verified || profileDetails.is_verified || profileDetails.verified);
   const followersCount = Number(profile?.followers_count || profileDetails.followers_count || profile?.followers || 0);

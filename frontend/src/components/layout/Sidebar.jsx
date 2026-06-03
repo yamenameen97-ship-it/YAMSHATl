@@ -77,7 +77,7 @@ export default function Sidebar() {
         <div>
           <div className="yam-brand-title">YAMSHAT PRO</div>
           <p className="yam-brand-copy">
-            {language === 'en' ? 'Upgrade for an ad-free gaming social experience.' : 'ترقية لحسابك لتجربة يامشات الخاصة بك بمميزات حصرية وإشعارات خاصة والمزيد.'}
+            {language === 'en' ? 'Upgrade for an ad-free gaming social experience.' : 'ترقية لحسابك لتجربة يام شات الخاصة بك بمميزات حصرية وإشعارات خاصة والمزيد.'}
           </p>
           <button type="button" className="yam-primary-btn" onClick={() => {
             pushToast({ type: 'info', title: 'تم فتح إعدادات الترقية', description: 'راجع إعدادات الحساب والاشتراك لتفعيل المزايا الاحترافية.' });

@@ -391,8 +391,8 @@ export class PWAInstallPrompt {
     container.innerHTML = `
       <div class="pwa-install-content">
         <div class="pwa-install-text">
-          <h3 class="pwa-install-title">تثبيت يمشات</h3>
-          <p class="pwa-install-description">احصل على تطبيق يمشات على جهازك للوصول السريع</p>
+          <h3 class="pwa-install-title">تثبيت يام شات</h3>
+          <p class="pwa-install-description">احصل على تطبيق يام شات على جهازك للوصول السريع</p>
         </div>
         <div class="pwa-install-actions">
           <button class="pwa-install-btn pwa-install-btn-install" id="pwa-install-btn">

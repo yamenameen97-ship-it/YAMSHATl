@@ -61,7 +61,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
                 android:gravity="center"
-                android:text="انضم لمجتمع يمشات وابدأ بواجهة جوال بنفس روح التصميم المرجعي"
+                android:text="انضم لمجتمع يام شات وابدأ بواجهة جوال بنفس روح التصميم المرجعي"
                 android:textColor="@color/text_secondary"
                 android:textSize="14sp" />
         </LinearLayout>

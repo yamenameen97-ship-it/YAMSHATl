@@ -65,7 +65,7 @@ export default function NotificationPermissionPrompt() {
       <div className="yam-notification-prompt-head">
         <div className="yam-notification-prompt-mark" aria-hidden="true" />
         <div className="yam-notification-prompt-copy">
-          <strong>{isDenied ? 'الإشعارات متوقفة في المتصفح' : 'فعّل إشعارات يمشات'}</strong>
+          <strong>{isDenied ? 'الإشعارات متوقفة في المتصفح' : 'فعّل إشعارات يام شات'}</strong>
           <p>
             {isDenied
               ? 'لو عايز تنبيهات الرسائل والتفاعلات، فعّل الإشعارات من إعدادات المتصفح ثم حدّث الصفحة.'

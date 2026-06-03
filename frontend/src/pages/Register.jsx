@@ -335,7 +335,7 @@ export default function RegisterEnhanced() {
     <AuthShell
       badge="YAMSHAT"
       title="إنشاء حساب"
-      description="انضم إلى مجتمع يمشات اليوم وابدأ التواصل."
+      description="انضم إلى مجتمع يام شات اليوم وابدأ التواصل."
     >
       <form className="auth-form" onSubmit={handleSubmit} noValidate>
         {step === 1 ? (

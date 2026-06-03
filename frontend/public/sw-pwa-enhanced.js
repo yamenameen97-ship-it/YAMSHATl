@@ -287,7 +287,7 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title || 'يمشات', options)
+    self.registration.showNotification(data.title || 'يام شات', options)
   );
 });
 

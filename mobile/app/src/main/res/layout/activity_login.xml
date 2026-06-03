@@ -61,7 +61,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
                 android:gravity="center"
-                android:text="سجّل دخولك وارجع لصفحات يمشات بنفس الترتيب الداكن البنفسجي"
+                android:text="سجّل دخولك وارجع لصفحات يام شات بنفس الترتيب الداكن البنفسجي"
                 android:textColor="@color/text_secondary"
                 android:textSize="14sp" />
         </LinearLayout>

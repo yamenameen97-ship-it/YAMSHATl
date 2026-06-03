@@ -58,7 +58,7 @@ export default function PostCardAdvanced({
     try {
       if (navigator.share) {
         await navigator.share({
-          title: 'يمشات',
+          title: 'يام شات',
           text: post.content || post.message,
           url: window.location.href,
         });

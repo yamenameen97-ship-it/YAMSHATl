@@ -225,7 +225,7 @@ export default function LoginEnhanced() {
     <AuthShell
       badge="YAMSHAT"
       title="تسجيل الدخول"
-      description="مرحباً بك مجدداً في يمشات. سجل دخولك للمتابعة."
+      description="مرحباً بك مجدداً في يام شات. سجل دخولك للمتابعة."
     >
       <form className="auth-form auth-form-enhanced" onSubmit={handleSubmit} noValidate>
         <div className="auth-form-head">

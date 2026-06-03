@@ -60,7 +60,7 @@ function MobileTopBar({ onMenuClick, hasNotifications = true }) {
           </nav>
         ) : <div className="ym-topbar-shortcuts-spacer" aria-hidden="true" />}
 
-        <Link to="/" className="ym-topbar-brand" aria-label="الرئيسية - يمشات">
+        <Link to="/" className="ym-topbar-brand" aria-label="الرئيسية - يام شات">
           <span className="ym-topbar-wordmark">YAMSHAT</span>
           <span className="ym-topbar-logo" aria-hidden="true">
             <svg viewBox="0 0 32 32">

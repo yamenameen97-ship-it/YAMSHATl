@@ -644,14 +644,22 @@ export default function PostComposer() {
           .composer-actions-row {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 8px;
+            gap: 12px;
+            padding: 8px 0;
           }
           .composer-action-btn,
           .composer-actions-row > button {
             width: 100%;
             min-width: 0;
+            min-height: 54px;
             justify-content: center;
-            padding-inline: 12px;
+            padding-inline: 16px;
+            font-size: 15px;
+            font-weight: 700;
+            border-radius: 14px;
+          }
+          .composer-action-btn span:first-child {
+            font-size: 20px;
           }
           .composer-status-badge {
             align-self: flex-start;

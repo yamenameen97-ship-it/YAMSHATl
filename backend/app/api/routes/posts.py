@@ -52,7 +52,7 @@ def create(payload: dict = Body(...), db: Session = Depends(get_db), current_use
     content = str(payload.get('content') or '').strip()
     
     # AI Moderation Hook
-    if not moderate_content(content):
+    if content and not moderate_content(content):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Content failed AI moderation.')
         
     image_url = payload.get('image_url') or payload.get('media')

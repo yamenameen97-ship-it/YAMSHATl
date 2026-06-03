@@ -147,7 +147,6 @@ export const createPost = (data = {}) => {
     media_urls: Array.isArray(data.media_urls) ? data.media_urls : mediaUrl ? [mediaUrl] : undefined,
     is_draft: data.is_draft ?? status === 'draft',
   };
-  delete payload.media_url;
   return API.post('/posts/', payload);
 };
 export const updatePost = (postId, data) => API.patch(`/posts/${postId}`, data);

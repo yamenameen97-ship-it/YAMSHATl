@@ -262,7 +262,7 @@ def create_post(
     allow_comments: bool = True,
 ) -> dict:
     prepared = _prepare_post_fields(content, content_html, media_urls or ([image_url] if image_url else []), poll)
-    if not prepared['content'] and not prepared['image_url'] and prepared['poll_options_json'] is None:
+    if not prepared['content'] and not prepared['image_url'] and not prepared['media'] and prepared['poll_options_json'] is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='content, media, or poll is required')
     now = utcnow_naive()
     publish_at = None if is_draft else (scheduled_at if scheduled_at and scheduled_at > now else now)

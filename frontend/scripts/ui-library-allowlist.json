@@ -128,6 +128,10 @@
         "src/components/settings/WalletSettings.jsx",
         "src/components/common/AdvancedSearch.jsx",
         "src/components/common/LastActivityIndicator.jsx",
+        "src/components/chat/MessageBubbleWithTranslation.jsx",
+        "src/components/chat/MessageTranslator.jsx",
+        "src/components/live/AdvancedStreamControls.jsx",
+        "src/components/live/StreamRecordingAndFilters.jsx",
         "src/components/yamshat/YamshatIcon.jsx"
     ]
 }

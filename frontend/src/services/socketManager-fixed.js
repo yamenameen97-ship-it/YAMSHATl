@@ -584,6 +584,4 @@ class SocketManager {
   }
 }
 
-const socketManager = new SocketManager();
-export { socketManager };
-export default socketManager;
+export const socketManager = new SocketManager();

@@ -4,7 +4,7 @@ import MainLayout from '../components/layout/MainLayout.jsx';
 import { getChatThreads, markMessagesSeen } from '../api/chat.js';
 import { getNotifications, markNotificationRead, markNotificationsRead } from '../api/notifications.js';
 import { getStories, viewStory } from '../api/stories.js';
-import { getGroups, createGroup } from '../api/groups.js';
+import { getGroups } from '../api/groups.js';
 import { getMe, getUsers } from '../api/users.js';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import useIsMobile from '../hooks/useIsMobile.js';
@@ -323,26 +323,19 @@ function ComposeModal({ open, onClose, navigate, pushToast }) {
   }, [navigate, onClose]);
 
   const handleCreateGroup = useCallback(async () => {
-    const name = groupName.trim();
-    if (!name) {
+    if (!groupName.trim()) {
       pushToast?.({ type: 'info', title: 'أدخل اسم المجموعة' });
       return;
     }
     setCreatingGroup(true);
     try {
-      const resp = await createGroup({ name, description: groupDesc.trim() });
-      const group = resp?.data || resp;
-      pushToast?.({ type: 'success', title: 'تم إنشاء المجموعة', description: name });
+      pushToast?.({ type: 'success', title: 'تم تحويلك لصفحة المجموعات الحديثة', description: 'كل إنشاء المجموعات أصبح من الشاشة الجديدة لتجنب التعارض.' });
       onClose?.();
-      if (group?.id) {
-        navigate(`/groups`);
-      }
-    } catch {
-      pushToast?.({ type: 'warning', title: 'تعذر إنشاء المجموعة', description: 'تحقق من الاتصال وحاول مجدداً.' });
+      navigate('/groups?create=1');
     } finally {
       setCreatingGroup(false);
     }
-  }, [groupName, groupDesc, pushToast, onClose, navigate]);
+  }, [groupName, pushToast, onClose, navigate]);
 
   if (!open) return null;
 
@@ -763,6 +756,11 @@ export default function Inbox() {
 
   const handleOpenGroup = useCallback((group) => {
     if (!group) return;
+    const groupId = group.groupId || group.id || group.slug || group.title;
+    if (groupId) {
+      navigate(`/groups/${encodeURIComponent(groupId)}`);
+      return;
+    }
     navigate('/groups');
   }, [navigate]);
 

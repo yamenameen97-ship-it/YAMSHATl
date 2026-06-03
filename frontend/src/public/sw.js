@@ -1,4 +1,4 @@
-const VERSION = 'yamshat-v20260531-030537-1780196737386';
+const VERSION = 'yamshat-v20260603-fixed-cache-socket';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -31,12 +31,30 @@ const APP_SHELL = [
   '/brand/yamshat-logo.png',
 ];
 
+// قائمة المسارات التي لا يجب تخزينها في الذاكرة المؤقتة
+const NO_CACHE_PATHS = [
+  '/api/live',
+  '/api/stream',
+  '/api/socket',
+  '/notifications',
+  '/realtime',
+];
+
 function isRuntimeConfigPath(url) {
-  return /^\/(?:app-config\.js|background-sync\.js|sw(?:-enhanced)?\.js)$/i.test(url.pathname);
+  return /^\/(?:app-config\.js|background-sync\.js|sw(?:-enhanced|-fixed)?\.js)$/i.test(url.pathname);
 }
 
 function isSignedMedia(url) {
   return /([?&])(sig|signature|token|expires)=/i.test(url.search);
+}
+
+function isLiveStreamPath(url) {
+  return /\/(api\/)?(?:live|stream|realtime|socket|notifications)/i.test(url.pathname);
+}
+
+function isPartialResponse(response) {
+  // تجنب تخزين الاستجابات الجزئية (206 Partial Content)
+  return response?.status === 206;
 }
 
 function normalizeAppTarget(target = '/') {
@@ -110,56 +128,129 @@ async function handleShareTarget(request) {
   }
 }
 
+/**
+ * استراتيجية Stale While Revalidate محسّنة
+ * تتجنب تخزين الاستجابات الجزئية والاستجابات غير الناجحة
+ */
 async function staleWhileRevalidate(request, cacheName) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(request);
+  
   const network = fetch(request, { cache: 'no-store' })
     .then(async (response) => {
-      if (response?.status === 200) await cache.put(request, response.clone()).catch(() => null);
+      // تجنب تخزين الاستجابات الجزئية أو غير الناجحة
+      if (response?.status === 200 && !isPartialResponse(response)) {
+        try {
+          await cache.put(request, response.clone());
+        } catch (error) {
+          console.warn('Failed to cache response:', error);
+        }
+      }
       return response;
     })
-    .catch(() => null);
+    .catch((error) => {
+      console.warn('Network request failed:', error);
+      return null;
+    });
+
   return cached || (await network) || emptyResponse();
 }
 
+/**
+ * استراتيجية Network First محسّنة
+ * تتجنب تخزين الاستجابات الجزئية والاستجابات غير الناجحة
+ */
 async function networkFirst(request, cacheName) {
   const cache = await caches.open(cacheName);
   try {
     const response = await fetch(request, { cache: 'no-store' });
-    if (response?.status === 200) await cache.put(request, response.clone()).catch(() => null);
+    
+    // تجنب تخزين الاستجابات الجزئية أو غير الناجحة
+    if (response?.status === 200 && !isPartialResponse(response)) {
+      try {
+        await cache.put(request, response.clone());
+      } catch (error) {
+        console.warn('Failed to cache response:', error);
+      }
+    }
+    
     return response;
-  } catch {
+  } catch (error) {
+    console.warn('Network request failed, falling back to cache:', error);
     const cached = await cache.match(request);
     return cached || emptyResponse();
   }
 }
 
+/**
+ * استراتيجية Cache First محسّنة
+ * تتجنب تخزين الاستجابات الجزئية والاستجابات غير الناجحة
+ */
 async function cacheFirst(request, cacheName) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(request);
+  
   if (cached) return cached;
+  
   try {
     const response = await fetch(request);
-    if (response?.status === 200) await cache.put(request, response.clone()).catch(() => null);
+    
+    // تجنب تخزين الاستجابات الجزئية أو غير الناجحة
+    if (response?.status === 200 && !isPartialResponse(response)) {
+      try {
+        await cache.put(request, response.clone());
+      } catch (error) {
+        console.warn('Failed to cache response:', error);
+      }
+    }
+    
     return response;
-  } catch {
+  } catch (error) {
+    console.warn('Network request failed:', error);
     return emptyResponse();
   }
 }
 
 async function broadcastMessage(message) {
-  const clientsList = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
-  clientsList.forEach((client) => client.postMessage(message));
+  try {
+    const clientsList = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+    clientsList.forEach((client) => {
+      try {
+        client.postMessage(message);
+      } catch (error) {
+        console.warn('Failed to post message to client:', error);
+      }
+    });
+  } catch (error) {
+    console.warn('Failed to get clients:', error);
+  }
 }
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_NAMES.SHELL).then((cache) => cache.addAll(APP_SHELL)));
+  event.waitUntil(
+    caches.open(CACHE_NAMES.SHELL)
+      .then((cache) => {
+        return Promise.allSettled(
+          APP_SHELL.map(url => cache.add(url).catch(err => console.warn(`Failed to cache ${url}:`, err)))
+        );
+      })
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => !Object.values(CACHE_NAMES).includes(key)).map((key) => caches.delete(key))))
+      .then((keys) => {
+        return Promise.all(
+          keys
+            .filter((key) => !Object.values(CACHE_NAMES).includes(key))
+            .map((key) => {
+              console.log('Deleting old cache:', key);
+              return caches.delete(key);
+            })
+        );
+      })
       .then(() => self.clients.claim())
       .then(() => broadcastMessage({ type: 'yamshat:sw-activated', version: VERSION }))
   );
@@ -169,24 +260,35 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
+  // معالجة مشاركة الملفات
   if (request.method === 'POST' && url.origin === self.location.origin && url.pathname === '/share-target') {
     event.respondWith(handleShareTarget(request));
     return;
   }
 
+  // تجاهل الطلبات غير GET
   if (request.method !== 'GET') return;
 
+  // معالجة ملفات الإعدادات في الوقت الفعلي
   if (isRuntimeConfigPath(url)) {
-    event.respondWith(fetch(request, { cache: 'no-store' }).catch(() => caches.match(request)));
+    event.respondWith(
+      fetch(request, { cache: 'no-store' })
+        .catch(() => caches.match(request))
+    );
     return;
   }
 
+  // معالجة طلبات التنقل
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request, { cache: 'no-store' })
         .then(async (response) => {
           const cache = await caches.open(CACHE_NAMES.SHELL);
-          cache.put(request, response.clone()).catch(() => null);
+          try {
+            cache.put(request, response.clone()).catch(() => null);
+          } catch (error) {
+            console.warn('Failed to cache navigation response:', error);
+          }
           return response;
         })
         .catch(async () => {
@@ -198,28 +300,47 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // تجاهل الطلبات من مصادر خارجية
   if (url.origin !== self.location.origin) return;
 
+  // تجنب تخزين مسارات البث المباشر والاتصالات الفورية
+  if (isLiveStreamPath(url)) {
+    event.respondWith(
+      fetch(request, { cache: 'no-store' })
+        .catch(() => emptyResponse())
+    );
+    return;
+  }
+
+  // معالجة الملفات الثابتة (JS, CSS, Fonts)
   if (/\.(?:js|css|woff2?|ttf|otf)$/i.test(url.pathname)) {
     event.respondWith(staleWhileRevalidate(request, CACHE_NAMES.STATIC));
     return;
   }
 
+  // معالجة طلبات API
   if (/\/(api|notifications)\//i.test(url.pathname)) {
     event.respondWith(networkFirst(request, CACHE_NAMES.API));
     return;
   }
 
+  // معالجة الصور
   if (/\.(?:png|jpg|jpeg|svg|webp|gif|avif)$/i.test(url.pathname)) {
     event.respondWith(staleWhileRevalidate(request, CACHE_NAMES.MEDIA));
     return;
   }
 
+  // معالجة الوسائط (فيديو، صوت)
   if (/\.(?:mp4|webm|mp3|wav|m3u8)$/i.test(url.pathname)) {
-    event.respondWith(isSignedMedia(url) ? networkFirst(request, CACHE_NAMES.MEDIA) : cacheFirst(request, CACHE_NAMES.MEDIA));
+    event.respondWith(
+      isSignedMedia(url) 
+        ? networkFirst(request, CACHE_NAMES.MEDIA) 
+        : cacheFirst(request, CACHE_NAMES.MEDIA)
+    );
     return;
   }
 
+  // الاستراتيجية الافتراضية
   event.respondWith(networkFirst(request, CACHE_NAMES.OFFLINE));
 });
 

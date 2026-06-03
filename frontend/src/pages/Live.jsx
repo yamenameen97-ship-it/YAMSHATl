@@ -2,17 +2,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import {
-  addLiveComment,
-  createLiveRoom,
-  endLiveRoom,
+  getActiveLiveStreams,
+  getLiveStreamDetails,
+  createLiveStream,
+  startLiveStream,
+  endLiveStream,
+  sendLiveComment,
   getLiveComments,
-  getLiveRoom,
-  getLiveRooms,
-  getLiveToken,
   sendLiveGift,
-} from '../api/live.js';
+  sendLiveHeart,
+  getLiveStreamStats,
+  getLiveStreamViewers,
+} from '../services/api/liveStreamApi.js';
 import { getCurrentUsername } from '../utils/auth.js';
-import { avatarGradient, initialsFromName } from '../components/yamshat/YamshatDesign.js';
 
 const GIFTS = [
   { id: 1, name: 'وردة', icon: '🌹', price: 10 },
@@ -40,7 +42,7 @@ function Avatar({ name = '', src, size = 42, ring = false }) {
   };
   return src
     ? <img src={src} alt={name} style={style} />
-    : <div style={{ ...style, display: 'grid', placeItems: 'center', color: 'white', fontWeight: 900, background: avatarGradient(name) }}>{initialsFromName(name).slice(0, 1)}</div>;
+    : <div style={{ ...style, display: 'grid', placeItems: 'center', color: 'white', fontWeight: 900, background: `linear-gradient(135deg, #7c3aed, #3b82f6)` }}>{name?.charAt(0).toUpperCase() || '?'}</div>;
 }
 
 function FloatingHearts({ items = [] }) {
@@ -75,14 +77,22 @@ export default function Live() {
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState('');
   const [liveTokenInfo, setLiveTokenInfo] = useState(null);
+  const [streamStats, setStreamStats] = useState({
+    viewers: 0,
+    hearts: 0,
+    comments: 0,
+  });
+
   const heartTimer = useRef(null);
   const localVideoRef = useRef(null);
   const localStreamRef = useRef(null);
+  const statsIntervalRef = useRef(null);
+  const commentsIntervalRef = useRef(null);
 
   const loadRooms = useCallback(async () => {
     setLoading(true);
     try {
-      const resp = await getLiveRooms();
+      const resp = await getActiveLiveStreams({ limit: 100 });
       setRooms(Array.isArray(resp?.data) ? resp.data : []);
     } catch (err) {
       pushToast?.({ type: 'warning', title: 'تعذر تحميل غرف البث', description: 'حاول مرة أخرى لاحقاً.' });
@@ -94,12 +104,27 @@ export default function Live() {
   const loadComments = useCallback(async (roomId) => {
     if (!roomId) return;
     try {
-      const resp = await getLiveComments(roomId);
+      const resp = await getLiveComments(roomId, 50);
       setComments(Array.isArray(resp?.data) ? resp.data : []);
     } catch {
       setComments([]);
     }
   }, []);
+
+  const updateStreamStats = useCallback(async (streamId) => {
+    try {
+      const response = await getLiveStreamStats(streamId);
+      if (response?.data) {
+        setStreamStats({
+          viewers: response.data.viewers_count || response.data.unique_viewers || 0,
+          hearts: response.data.hearts_count || 0,
+          comments: comments.length,
+        });
+      }
+    } catch (error) {
+      console.error('خطأ في تحديث الإحصائيات:', error);
+    }
+  }, [comments.length]);
 
   const openRoom = useCallback(async (room) => {
     if (!room?.id) return;
@@ -107,7 +132,7 @@ export default function Live() {
     setViewerCount(Number(room.viewers_count) || 0);
     setHeartsCount(Number(room.hearts_count) || 0);
     try {
-      const detail = await getLiveRoom(room.id);
+      const detail = await getLiveStreamDetails(room.id);
       if (detail?.data) {
         setActiveRoom(detail.data);
         setViewerCount(Number(detail.data.viewers_count) || 0);
@@ -117,7 +142,19 @@ export default function Live() {
       // silent
     }
     loadComments(room.id);
-  }, [loadComments]);
+
+    // بدء تحديث الإحصائيات
+    if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
+    statsIntervalRef.current = setInterval(() => {
+      updateStreamStats(room.id);
+    }, 3000);
+
+    // بدء تحديث التعليقات
+    if (commentsIntervalRef.current) clearInterval(commentsIntervalRef.current);
+    commentsIntervalRef.current = setInterval(() => {
+      loadComments(room.id);
+    }, 2000);
+  }, [loadComments, updateStreamStats]);
 
   const handleCreateRoom = useCallback(async () => {
     const title = newRoomTitle.trim();
@@ -127,7 +164,7 @@ export default function Live() {
     }
     setBusy('create');
     try {
-      const resp = await createLiveRoom({ title });
+      const resp = await createLiveStream({ title });
       if (resp?.data) {
         pushToast?.({ type: 'success', title: 'تم إنشاء غرفة البث' });
         setNewRoomTitle('');
@@ -145,12 +182,14 @@ export default function Live() {
     if (!activeRoom?.id) return;
     setBusy('end');
     try {
-      await endLiveRoom(activeRoom.id);
+      await endLiveStream(activeRoom.id);
       pushToast?.({ type: 'success', title: 'تم إنهاء البث' });
       setActiveRoom(null);
       setCameraReady(false);
       setCameraError('');
       setLiveTokenInfo(null);
+      if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
+      if (commentsIntervalRef.current) clearInterval(commentsIntervalRef.current);
       loadRooms();
     } catch {
       pushToast?.({ type: 'warning', title: 'تعذر إنهاء البث' });
@@ -163,7 +202,7 @@ export default function Live() {
     const text = commentText.trim();
     if (!text || !activeRoom?.id) return;
     try {
-      await addLiveComment({ room_id: activeRoom.id, text });
+      await sendLiveComment(activeRoom.id, { text });
       setCommentText('');
       loadComments(activeRoom.id);
     } catch {
@@ -171,16 +210,22 @@ export default function Live() {
     }
   }, [commentText, activeRoom, pushToast, loadComments]);
 
-  const sendHeart = useCallback(() => {
-    setHeartsCount((c) => c + 1);
-    const heart = { id: Date.now() + Math.random(), icon: '💜', x: Math.floor(Math.random() * 80) + 10 };
-    setFloatingHearts((arr) => [...arr.slice(-12), heart]);
-  }, []);
+  const sendHeart = useCallback(async () => {
+    if (!activeRoom?.id) return;
+    try {
+      await sendLiveHeart(activeRoom.id);
+      setHeartsCount((c) => c + 1);
+      const heart = { id: Date.now() + Math.random(), icon: '💜', x: Math.floor(Math.random() * 80) + 10 };
+      setFloatingHearts((arr) => [...arr.slice(-12), heart]);
+    } catch (error) {
+      console.error('خطأ في إرسال القلب:', error);
+    }
+  }, [activeRoom]);
 
   const handleSendGift = useCallback(async (gift) => {
     if (!activeRoom?.id || !gift) return;
     try {
-      await sendLiveGift({ room_id: activeRoom.id, gift_id: gift.id, name: gift.name, price: gift.price });
+      await sendLiveGift(activeRoom.id, { gift_id: gift.id, name: gift.name, price: gift.price });
       pushToast?.({ type: 'success', title: `تم إرسال ${gift.name}` });
       setShowGiftTray(false);
     } catch {
@@ -211,7 +256,11 @@ export default function Live() {
       setCameraError('');
       setLiveTokenInfo(null);
 
-      if (!activeRoom?.id || !isHost) return;
+      if (!activeRoom?.id) return;
+
+      const isHost = activeRoom?.host_username === currentUsername;
+      if (!isHost) return;
+
       if (!navigator.mediaDevices?.getUserMedia) {
         setCameraError('هذا المتصفح لا يدعم تشغيل الكاميرا للبث المباشر.');
         return;
@@ -227,7 +276,7 @@ export default function Live() {
             },
             audio: true,
           }),
-          getLiveToken(activeRoom.id, { role: 'host' }).catch((error) => ({ error })),
+          startLiveStream(activeRoom.id, { role: 'host' }).catch((error) => ({ error })),
         ]);
 
         if (cancelled) {
@@ -242,14 +291,12 @@ export default function Live() {
           try {
             await localVideoRef.current.play();
           } catch {
-            // تجاهل فشل التشغيل التلقائي — سيعمل بعد أول تفاعل من المستخدم.
+            // تجاهل فشل التشغيل التلقائي
           }
         }
 
         if (tokenResponse?.data?.token) {
           setLiveTokenInfo(tokenResponse.data);
-        } else if (tokenResponse?.error?.response?.status === 503) {
-          setCameraError('تم تشغيل معاينة الكاميرا محلياً، لكن خدمة البث غير مفعلة على الخادم حالياً.');
         }
 
         setCameraReady(true);
@@ -276,7 +323,6 @@ export default function Live() {
     };
   }, [activeRoom?.id, activeRoom?.host_username, currentUsername]);
 
-  // تنظيف القلوب الطافية تلقائياً
   useEffect(() => {
     if (floatingHearts.length === 0) return undefined;
     if (heartTimer.current) clearTimeout(heartTimer.current);
@@ -285,6 +331,13 @@ export default function Live() {
       if (heartTimer.current) clearTimeout(heartTimer.current);
     };
   }, [floatingHearts]);
+
+  useEffect(() => {
+    return () => {
+      if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
+      if (commentsIntervalRef.current) clearInterval(commentsIntervalRef.current);
+    };
+  }, []);
 
   const filteredRooms = useMemo(() => {
     if (!Array.isArray(rooms)) return [];
@@ -390,76 +443,76 @@ export default function Live() {
                 <span>💜 {heartsCount}</span>
                 {isHost ? (
                   <button type="button" className="yam-live-end-btn" onClick={handleEndRoom} disabled={busy === 'end'}>
-                    {busy === 'end' ? 'جارٍ الإنهاء…' : '⏹ إنهاء البث'}
+                    {busy === 'end' ? 'جارٍ الإنهاء…' : '🛑 إنهاء'}
                   </button>
                 ) : null}
               </div>
             </div>
 
             <div className="yam-live-stage-body">
-              <FloatingHearts items={floatingHearts} />
-              {isHost && cameraReady ? (
-                <>
-                  <video ref={localVideoRef} className="yam-live-stage-video" autoPlay muted playsInline />
-                  <div className="yam-live-stage-overlay">
-                    <span className="yam-live-live-badge">● على الهواء</span>
-                    <small>{liveTokenInfo?.configured ? 'الكاميرا شغالة والبث جاهز للربط.' : 'معاينة الكاميرا شغالة محلياً.'}</small>
-                  </div>
-                </>
-              ) : (
+              {cameraError ? (
                 <div className="yam-live-stage-placeholder">
-                  <div className="yam-live-stage-icon">🎥</div>
-                  <p>{isHost ? 'جارٍ تجهيز الكاميرا للبث' : 'منصة البث المرئي'}</p>
-                  <small>{cameraError || (isHost ? 'اسمح للكاميرا والميكروفون ليظهر البث هنا مباشرة.' : 'سيتم تفعيل الفيديو عند الاتصال بخدمة البث.')}</small>
+                  <div className="yam-live-stage-icon">⚠️</div>
+                  <p>{cameraError}</p>
                 </div>
+              ) : (
+                <>
+                  <video
+                    ref={localVideoRef}
+                    className="yam-live-stage-video"
+                    autoPlay
+                    muted
+                    playsInline
+                  />
+                  {!cameraReady && (
+                    <div className="yam-live-stage-placeholder">
+                      <div className="yam-live-stage-icon">📹</div>
+                      <p>جاري تحضير الكاميرا...</p>
+                    </div>
+                  )}
+                </>
               )}
+              <FloatingHearts items={floatingHearts} />
             </div>
 
-            {/* أزرار سريعة */}
             <div className="yam-live-actions">
-              <button type="button" className="yam-live-action" onClick={sendHeart}>💜 قلب</button>
-              <button type="button" className="yam-live-action" onClick={() => setShowGiftTray((v) => !v)}>🎁 هدية</button>
-              <button
-                type="button"
-                className="yam-live-action"
-                onClick={() => {
-                  if (navigator.share) {
-                    navigator.share({ title: activeRoom.title || 'بث مباشر', url: window.location.href });
-                  } else if (navigator.clipboard) {
-                    navigator.clipboard.writeText(window.location.href);
-                    pushToast?.({ type: 'success', title: 'تم نسخ رابط البث' });
-                  }
-                }}
-              >
-                📤 مشاركة
+              <button type="button" className="yam-live-action" onClick={sendHeart}>
+                💜 قلب ({heartsCount})
+              </button>
+              <button type="button" className="yam-live-action" onClick={() => setShowGiftTray(!showGiftTray)}>
+                🎁 هدية
               </button>
             </div>
 
-            {showGiftTray ? (
-              <div className="yam-live-gift-tray" role="dialog" aria-label="اختر هدية">
-                {GIFTS.map((g) => (
-                  <button key={g.id} type="button" className="yam-live-gift" onClick={() => handleSendGift(g)}>
-                    <span className="yam-live-gift-icon">{g.icon}</span>
-                    <strong>{g.name}</strong>
-                    <small>{g.price} نقطة</small>
+            {showGiftTray && (
+              <div className="yam-live-gift-tray">
+                {GIFTS.map((gift) => (
+                  <button
+                    key={gift.id}
+                    type="button"
+                    className="yam-live-gift"
+                    onClick={() => handleSendGift(gift)}
+                    title={`${gift.name} - ${gift.price} نقطة`}
+                  >
+                    <span className="yam-live-gift-icon">{gift.icon}</span>
+                    <span>{gift.name}</span>
+                    <small>{gift.price}</small>
                   </button>
                 ))}
               </div>
-            ) : null}
+            )}
 
-            {/* التعليقات */}
             <div className="yam-live-comments">
-              <strong className="yam-live-comments-title">التعليقات الحية</strong>
               <div className="yam-live-comments-list">
                 {comments.length === 0 ? (
-                  <p className="yam-live-comments-empty">لا توجد تعليقات بعد. كن أول من يعلق.</p>
+                  <div className="yam-live-comments-empty">لا توجد تعليقات حالياً</div>
                 ) : (
-                  comments.map((c) => (
-                    <div key={c.id} className="yam-live-comment-row">
-                      <Avatar name={c.author_name || c.author_username || 'مستخدم'} size={28} />
+                  comments.map((comment) => (
+                    <div key={comment.id} className="yam-live-comment-row">
+                      <Avatar name={comment.username} size={32} />
                       <div>
-                        <strong>{c.author_name || c.author_username || 'مستخدم'}</strong>
-                        <p>{c.text}</p>
+                        <strong>{comment.username}</strong>
+                        <p>{comment.text}</p>
                       </div>
                     </div>
                   ))
@@ -470,34 +523,26 @@ export default function Live() {
                   type="text"
                   value={commentText}
                   onChange={(e) => setCommentText(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleSendComment(); }}
-                  placeholder="اكتب تعليقاً…"
-                  aria-label="اكتب تعليقاً"
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') handleSendComment();
+                  }}
+                  placeholder="أضف تعليقاً..."
                 />
-                <button type="button" onClick={handleSendComment}>إرسال</button>
+                <button type="button" onClick={handleSendComment} disabled={!commentText.trim()}>
+                  إرسال
+                </button>
               </div>
             </div>
           </section>
         ) : null}
 
         <style>{`
-          .yam-live-page {
-            max-width: 1100px;
-            margin: 0 auto;
-            padding: 16px;
-            display: grid;
-            gap: 16px;
-          }
-          .yam-live-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-            gap: 12px;
-            flex-wrap: wrap;
-          }
-          .yam-live-header h1 { margin: 4px 0; font-size: 22px; }
-          .yam-live-header p { margin: 0; color: var(--muted, #888); font-size: 14px; }
-          .yam-live-kicker { font-size: 12px; color: var(--accent, #8b5cf6); font-weight: 700; letter-spacing: 0.5px; }
+          .yam-live-page { padding: 16px; }
+          .yam-live-header { display: grid; gap: 16px; margin-bottom: 24px; }
+          .yam-live-header > div { display: grid; gap: 6px; }
+          .yam-live-kicker { font-size: 12px; color: var(--muted, #888); font-weight: 700; text-transform: uppercase; }
+          .yam-live-header h1 { margin: 0; font-size: 28px; }
+          .yam-live-header p { margin: 0; color: var(--muted, #888); }
           .yam-live-refresh {
             min-height: 40px;
             padding: 0 14px;
@@ -514,6 +559,7 @@ export default function Live() {
             padding: 14px;
             display: grid;
             gap: 10px;
+            margin-bottom: 20px;
           }
           .yam-live-create-row {
             display: flex;
@@ -544,6 +590,7 @@ export default function Live() {
             display: flex;
             gap: 8px;
             overflow-x: auto;
+            margin-bottom: 20px;
           }
           .yam-live-filter {
             min-height: 38px;
@@ -563,6 +610,7 @@ export default function Live() {
             display: grid;
             gap: 12px;
             grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            margin-bottom: 24px;
           }
           .yam-live-empty {
             grid-column: 1 / -1;
@@ -580,6 +628,12 @@ export default function Live() {
             padding: 14px;
             display: grid;
             gap: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+          }
+          .yam-live-room-card:hover {
+            border-color: #8b5cf6;
+            background: rgba(139, 92, 246, 0.05);
           }
           .yam-live-room-card.is-active { border-color: #ef4444; box-shadow: 0 0 0 2px rgba(239,68,68,0.15); }
           .yam-live-room-head { display: flex; align-items: center; gap: 10px; }
@@ -596,6 +650,11 @@ export default function Live() {
             color: white;
             font-weight: 700;
             cursor: pointer;
+            transition: all 0.3s ease;
+          }
+          .yam-live-room-cta:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
           }
           .yam-live-stage {
             background: var(--panel, #1a1a25);
@@ -635,24 +694,6 @@ export default function Live() {
             object-fit: cover;
             background: #05070f;
           }
-          .yam-live-stage-overlay {
-            position: absolute;
-            inset-inline: 14px;
-            top: 14px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            padding: 10px 12px;
-            border-radius: 12px;
-            background: rgba(8, 11, 22, 0.58);
-            backdrop-filter: blur(10px);
-            color: #fff;
-            z-index: 2;
-          }
-          .yam-live-stage-overlay small {
-            color: rgba(255,255,255,0.86);
-          }
           .yam-live-stage-placeholder {
             text-align: center;
             padding: 24px;
@@ -674,6 +715,11 @@ export default function Live() {
             color: var(--text, #fff);
             cursor: pointer;
             font-weight: 600;
+            transition: all 0.3s ease;
+          }
+          .yam-live-action:hover {
+            background: var(--accent, #8b5cf6);
+            border-color: var(--accent, #8b5cf6);
           }
           .yam-live-gift-tray {
             display: grid;
@@ -694,6 +740,12 @@ export default function Live() {
             background: var(--panel, #1a1a25);
             color: var(--text, #fff);
             cursor: pointer;
+            transition: all 0.3s ease;
+          }
+          .yam-live-gift:hover {
+            background: var(--accent, #8b5cf6);
+            border-color: var(--accent, #8b5cf6);
+            transform: translateY(-2px);
           }
           .yam-live-gift-icon { font-size: 26px; }
           .yam-live-gift small { color: var(--muted, #888); font-size: 11px; }
@@ -710,6 +762,7 @@ export default function Live() {
           }
           .yam-live-comments-empty { color: var(--muted, #888); font-size: 13px; text-align: center; padding: 12px; }
           .yam-live-comment-row { display: flex; gap: 8px; align-items: flex-start; padding: 6px; }
+          .yam-live-comment-row strong { display: block; }
           .yam-live-comment-row p { margin: 2px 0 0; font-size: 14px; }
           .yam-live-comment-input { display: flex; gap: 8px; }
           .yam-live-comment-input input {

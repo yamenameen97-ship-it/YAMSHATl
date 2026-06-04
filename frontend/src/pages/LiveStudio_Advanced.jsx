@@ -16,6 +16,7 @@ import {
   getRecoveryData,
   sendHeartbeat,
 } from '../services/api/correctedLiveStreamApi.js';
+import { API_BASE } from '../api/config.js';
 import { getCurrentUsername } from '../utils/auth.js';
 import ViewersManagementPanel from '../components/live/ViewersManagementPanel.jsx';
 import '../styles/modern-live-control.css';
@@ -133,6 +134,14 @@ export default function LiveStudioAdvanced() {
   const [streamHealth, setStreamHealth] = useState('good');
   const [editingTitle, setEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState('');
+  const [backendStatus, setBackendStatus] = useState({
+    checking: true,
+    online: false,
+    livekitConfigured: false,
+    apiBase: API_BASE,
+    serviceStatus: 'unknown',
+    error: '',
+  });
 
   // إعدادات البث
   const [streamSettings, setStreamSettings] = useState({
@@ -153,6 +162,50 @@ export default function LiveStudioAdvanced() {
   const durationIntervalRef = useRef(null);
   const heartbeatIntervalRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
+
+  const refreshBackendStatus = useCallback(async () => {
+    const backendOrigin = API_BASE.replace(/\/api\/?$/, '');
+
+    setBackendStatus((prev) => ({
+      ...prev,
+      checking: true,
+      apiBase: API_BASE,
+      error: '',
+    }));
+
+    try {
+      const response = await fetch(`${backendOrigin}/health`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          Accept: 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      setBackendStatus({
+        checking: false,
+        online: true,
+        livekitConfigured: Boolean(data?.livekit_configured || data?.services?.livekit?.configured),
+        apiBase: API_BASE,
+        serviceStatus: data?.status || 'ok',
+        error: '',
+      });
+    } catch (error) {
+      setBackendStatus({
+        checking: false,
+        online: false,
+        livekitConfigured: false,
+        apiBase: API_BASE,
+        serviceStatus: 'offline',
+        error: error?.message || 'تعذر الوصول للخادم',
+      });
+    }
+  }, []);
 
   // إنشاء بث جديد
   const handleCreateStream = useCallback(async () => {
@@ -457,6 +510,12 @@ export default function LiveStudioAdvanced() {
     }
   }, [activeStream, recordingEnabled, pushToast]);
 
+  useEffect(() => {
+    refreshBackendStatus();
+    const interval = setInterval(refreshBackendStatus, 30000);
+    return () => clearInterval(interval);
+  }, [refreshBackendStatus]);
+
   // تحميل الكاميرا
   useEffect(() => {
     if (!isStreaming || !activeStream?.id && !activeStream?.room_id) return;
@@ -519,6 +578,14 @@ export default function LiveStudioAdvanced() {
   const giftProgress = newStreamData.giftGoal > 0 
     ? Math.min((streamStats.gifts / newStreamData.giftGoal) * 100, 100)
     : 0;
+  const backendReadyForLive = backendStatus.online && backendStatus.livekitConfigured;
+  const backendStatusTone = backendStatus.checking
+    ? 'checking'
+    : backendReadyForLive
+      ? 'ready'
+      : backendStatus.online
+        ? 'warning'
+        : 'offline';
 
   return (
     <div className="modern-live-control" dir="rtl">
@@ -576,10 +643,22 @@ export default function LiveStudioAdvanced() {
               </div>
             </div>
 
-            {/* Stream Title Section */}
-            {isStreaming && (
-              <div className="mlc-stream-title-section">
-                <h3>عنوان البث</h3>
+            {/* Stream Title + Backend Link Status */}
+            <div className="mlc-stream-title-section">
+              <div className="mlc-section-title-row">
+                <h3>{isStreaming ? 'عنوان البث' : 'تجهيز البث'}</h3>
+                <span className={`mlc-status-pill mlc-status-pill-${backendStatusTone}`}>
+                  {backendStatus.checking
+                    ? 'جارٍ فحص الربط'
+                    : backendReadyForLive
+                      ? 'الربط كامل وجاهز للبث'
+                      : backendStatus.online
+                        ? 'الخادم متصل لكن LiveKit غير مهيأ'
+                        : 'الخادم غير متصل'}
+                </span>
+              </div>
+
+              {isStreaming ? (
                 <div className="mlc-stream-title-box">
                   {editingTitle ? (
                     <>
@@ -609,7 +688,10 @@ export default function LiveStudioAdvanced() {
                     </>
                   ) : (
                     <>
-                      <p>{activeStream?.title || 'بث بدون عنوان'}</p>
+                      <div className="mlc-title-copy">
+                        <p>{activeStream?.title || 'بث بدون عنوان'}</p>
+                        <span>العنوان متزامن مع الخادم ويمكن تعديله مباشرة أثناء البث.</span>
+                      </div>
                       <button
                         className="mlc-edit-btn"
                         onClick={() => setEditingTitle(true)}
@@ -620,8 +702,57 @@ export default function LiveStudioAdvanced() {
                     </>
                   )}
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="mlc-pre-live-grid">
+                  <div className="mlc-pre-live-card">
+                    <label className="mlc-title-label" htmlFor="stream-title-input">مربع عنوان البث</label>
+                    <input
+                      id="stream-title-input"
+                      type="text"
+                      value={newStreamData.title}
+                      onChange={(e) => setNewStreamData((prev) => ({ ...prev, title: e.target.value }))}
+                      placeholder="اكتب عنوان البث الذي سيظهر للمشاهدين"
+                      className="mlc-title-input mlc-title-input-full"
+                      maxLength="100"
+                    />
+                    <div className="mlc-field-meta">
+                      <span>يظهر قبل البث ويمكن تعديله لاحقاً من نفس الصفحة.</span>
+                      <strong>{newStreamData.title.trim().length}/100</strong>
+                    </div>
+                  </div>
+
+                  <div className="mlc-pre-live-card mlc-backend-status-card">
+                    <div className="mlc-backend-status-head">
+                      <strong>حالة الربط</strong>
+                      <button className="mlc-inline-link" onClick={refreshBackendStatus} type="button">تحديث الفحص</button>
+                    </div>
+                    <div className="mlc-status-grid">
+                      <div className="mlc-status-chip">
+                        <span>API</span>
+                        <strong>{backendStatus.online ? 'متصل' : backendStatus.checking ? 'جارٍ الفحص' : 'غير متصل'}</strong>
+                      </div>
+                      <div className="mlc-status-chip">
+                        <span>LiveKit</span>
+                        <strong>{backendStatus.livekitConfigured ? 'جاهز' : 'غير مربوط'}</strong>
+                      </div>
+                      <div className="mlc-status-chip">
+                        <span>الحالة</span>
+                        <strong>{backendStatus.serviceStatus}</strong>
+                      </div>
+                    </div>
+                    <p className="mlc-backend-note">
+                      {backendReadyForLive
+                        ? 'صفحة البث مربوطة بالواجهة الخلفية وجاهزة للتشغيل الكامل.'
+                        : backendStatus.online
+                          ? 'الصفحة مرتبطة بالباك إند، لكن البث الفعلي يحتاج تفعيل LiveKit في إعدادات الخادم.'
+                          : 'الواجهة موجودة، لكن التشغيل الكامل لن يكتمل قبل ربط الخادم وتشغيل خدمات البث.'}
+                    </p>
+                    <code className="mlc-api-base">{backendStatus.apiBase}</code>
+                    {backendStatus.error ? <span className="mlc-error-text">{backendStatus.error}</span> : null}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Stats Panel */}
             <div className="mlc-stats-panel">

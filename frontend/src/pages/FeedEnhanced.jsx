@@ -417,6 +417,7 @@ export default function FeedEnhanced() {
 
 function FeedDesktopInner() {
   const navigate = useNavigate();
+  const centerStageRef = useRef(null);
   const postStackRef = useRef(null);
   const { pushToast } = useToast();
   const toggleTheme = useAppStore((state) => state.toggleTheme);
@@ -531,24 +532,24 @@ function FeedDesktopInner() {
   }, []);
 
   useEffect(() => {
-    const stack = postStackRef.current;
-    if (!stack) return undefined;
+    const scroller = centerStageRef.current;
+    if (!scroller) return undefined;
 
     const handleScroll = () => {
       if (!hasNextPage || isFetchingNextPage) return;
-      const remainingDistance = stack.scrollHeight - stack.scrollTop - stack.clientHeight;
-      if (remainingDistance <= 280) fetchNextPage();
+      const remainingDistance = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+      if (remainingDistance <= 320) fetchNextPage();
     };
 
-    stack.addEventListener('scroll', handleScroll, { passive: true });
+    scroller.addEventListener('scroll', handleScroll, { passive: true });
     handleScroll();
-    return () => stack.removeEventListener('scroll', handleScroll);
+    return () => scroller.removeEventListener('scroll', handleScroll);
   }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
 
   useEffect(() => {
-    const stack = postStackRef.current;
-    if (!stack) return;
-    stack.scrollTo({ top: 0, behavior: 'auto' });
+    const scroller = centerStageRef.current;
+    if (!scroller) return;
+    scroller.scrollTo({ top: 0, behavior: 'auto' });
   }, [activeTab]);
 
   const handleQuickAction = (action) => {
@@ -627,7 +628,7 @@ function FeedDesktopInner() {
             </div>
           </aside>
 
-          <main className="yam-center-stage">
+          <main className="yam-center-stage" ref={centerStageRef}>
             <section className="yam-feed-header-card">
               <div className="yam-feed-header-top">
                 <h1>المنشورات</h1>
@@ -1025,14 +1026,49 @@ function FeedDesktopInner() {
             min-height: 0;
             height: calc(100vh - 36px);
             max-height: calc(100vh - 36px);
-            overflow: hidden;
+            overflow-x: hidden;
+            overflow-y: auto;
             align-self: start;
+            direction: rtl;
+            scrollbar-gutter: stable both-edges;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(139, 92, 246, 0.92) rgba(255,255,255,0.06);
+            padding-inline-start: 4px;
+            padding-inline-end: 10px;
+            scroll-behavior: smooth;
+            overscroll-behavior-y: contain;
+          }
+
+          .yam-center-stage > * {
+            direction: rtl;
+          }
+
+          .yam-center-stage::-webkit-scrollbar {
+            width: 14px;
+            -webkit-appearance: none;
+          }
+
+          .yam-center-stage::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.06);
+            border-radius: 999px;
+            box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.18);
+          }
+
+          .yam-center-stage::-webkit-scrollbar-thumb {
+            border-radius: 999px;
+            background: linear-gradient(180deg, rgba(139, 92, 246, 0.92), rgba(99, 102, 241, 0.88));
+            border: 2px solid transparent;
+            background-clip: padding-box;
+          }
+
+          .yam-center-stage::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(180deg, rgba(167, 139, 250, 1), rgba(129, 140, 248, 1));
           }
 
           .yam-feed-header-card {
-            position: sticky;
-            top: 0;
-            z-index: 4;
+            position: relative;
+            top: auto;
+            z-index: 1;
             flex-shrink: 0;
             padding: 18px 20px 14px;
           }
@@ -1158,25 +1194,19 @@ function FeedDesktopInner() {
           }
 
           .yam-post-stack-v2 {
-            flex: 1;
-            min-height: 0;
+            flex: 0 0 auto;
+            min-height: min-content;
             position: relative;
-            overflow-x: hidden;
-            overflow-y: auto !important;
-            overscroll-behavior-y: contain;
-            scroll-behavior: smooth;
-            scrollbar-gutter: stable;
-            scrollbar-width: auto;
-            scrollbar-color: #8b5cf6 rgba(255,255,255,0.04);
+            overflow: visible !important;
             display: grid;
             gap: 18px;
-            direction: ltr;
-            padding-inline-start: 6px;
-            padding-inline-end: 12px;
+            direction: rtl;
+            padding-inline-start: 0;
+            padding-inline-end: 0;
             padding-bottom: 28px;
-            border-inline-end: 1px solid rgba(139, 92, 246, 0.14);
+            border: 0;
             -webkit-overflow-scrolling: touch;
-            contain: layout style paint;
+            contain: none;
           }
 
 
@@ -1206,11 +1236,6 @@ function FeedDesktopInner() {
             background: linear-gradient(180deg, rgba(167, 139, 250, 1), rgba(129, 140, 248, 1));
           }
 
-          /* Firefox scrollbar support */
-          .yam-post-stack-v2 {
-            scrollbar-width: thin;
-            scrollbar-color: rgba(139, 92, 246, 0.92) rgba(255,255,255,0.06);
-          }
 
           .yam-feed-status-row {
             display: flex;

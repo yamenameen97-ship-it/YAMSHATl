@@ -69,19 +69,27 @@ function normalizeFeedParams(params = {}) {
     filter,
     sort,
     includeDrafts,
+    filter_type: legacyFilterType,
+    sort_by: legacySortBy,
+    include_drafts: legacyIncludeDrafts,
     ...rest
   } = params;
 
   const resolvedLimit = Math.min(Math.max(Number(limit) || 10, 1), 100);
+  const resolvedFilter = String(filterType ?? legacyFilterType ?? tab ?? filter ?? 'all').trim().toLowerCase();
+  const resolvedSort = String(sortBy ?? legacySortBy ?? sort ?? 'recent').trim().toLowerCase();
+  const resolvedIncludeDrafts = includeDrafts ?? legacyIncludeDrafts;
+
   const normalized = {
     ...rest,
     limit: resolvedLimit,
     page: Math.max(Number(page) || 1, 1),
-    filter_type: filterType ?? tab ?? filter ?? 'all',
-    sort_by: sortBy ?? sort ?? 'recent',
   };
 
-  if (includeDrafts !== undefined) normalized.include_drafts = includeDrafts;
+  if (resolvedFilter && resolvedFilter !== 'all') normalized.filter_type = resolvedFilter;
+  if (resolvedSort && resolvedSort !== 'recent') normalized.sort_by = resolvedSort;
+  if (resolvedIncludeDrafts === true) normalized.include_drafts = true;
+
   return normalized;
 }
 
@@ -105,10 +113,6 @@ export const getPosts = async (params = {}) => {
       page: normalizedParams.page,
       limit: normalizedParams.limit,
     };
-
-    if (normalizedParams.include_drafts !== undefined) {
-      fallbackParams.include_drafts = normalizedParams.include_drafts;
-    }
 
     response = await API.get('/posts/', { params: fallbackParams });
   }

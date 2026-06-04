@@ -31,7 +31,7 @@ export function useFeed(options = {}) {
         limit: pageSize,
         filterType: effectiveFilter,
         sortBy: effectiveSort,
-        include_drafts: includeDrafts,
+        includeDrafts,
       });
       lastFetchRef.current = Date.now();
       return {

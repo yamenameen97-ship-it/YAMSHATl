@@ -202,6 +202,11 @@ export default function Chat() {
     }
   }, [navigate, pushToast]);
 
+  const openChatSettings = useCallback(() => {
+    if (!peer) return;
+    navigate(`/chat/${encodeURIComponent(peer)}/settings`);
+  }, [navigate, peer]);
+
   useViewportHeight();
 
   const threadList = useMemo(() => Object.values(threadsMap || {}), [threadsMap]);
@@ -831,6 +836,19 @@ export default function Chat() {
             align-items: center;
             gap: 14px;
             min-width: 0;
+          }
+          .yam-chat-stage-peer-button,
+          .yam-mobile-peer-button {
+            all: unset;
+            display: flex;
+            align-items: center;
+            gap: inherit;
+            min-width: 0;
+            cursor: pointer;
+            text-align: right;
+          }
+          .yam-chat-stage-peer-button {
+            flex: 1;
           }
           .yam-chat-stage-peer-copy {
             min-width: 0;
@@ -1486,6 +1504,10 @@ export default function Chat() {
               cursor: pointer;
               flex-shrink: 0;
             }
+            .yam-mobile-peer-button {
+              flex: 1;
+              min-width: 0;
+            }
             .yam-mobile-peer-info {
               display: flex;
               align-items: center;
@@ -1568,19 +1590,27 @@ export default function Chat() {
             .yam-messages-area {
               border-radius: 0;
               border: none;
-              padding: 14px 12px calc(14px + var(--yam-keyboard-offset, 0px));
+              padding: 14px 12px calc(118px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px));
+              scroll-padding-top: 72px;
+              scroll-padding-bottom: 136px;
               background:
                 radial-gradient(circle at top right, rgba(124,58,237,0.05), transparent 30%),
                 radial-gradient(circle at bottom left, rgba(59,130,246,0.04), transparent 30%),
                 #040714;
             }
             .yam-chat-input-wrap {
+              position: sticky;
+              bottom: 0;
+              z-index: 24;
               border-radius: 0;
               border-left: none;
               border-right: none;
               border-bottom: none;
-              padding: 6px 8px;
-              padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+              padding: 8px 8px;
+              padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+              background: linear-gradient(180deg, rgba(7,10,24,0.88), rgba(5,8,18,0.98));
+              backdrop-filter: blur(16px);
+              box-shadow: 0 -14px 32px rgba(0,0,0,0.28);
             }
             .yam-message-stack {
               max-width: 82%;
@@ -1669,17 +1699,19 @@ export default function Chat() {
           {/* Mobile-only topbar (matches reference mobile design) */}
           <div className="yam-mobile-topbar">
             <button type="button" className="yam-mobile-back-btn" onClick={() => navigate('/inbox')} aria-label="رجوع">←</button>
-            <div className="yam-mobile-peer-info">
-              <div className="yam-avatar-wrap">
-                <Avatar name={peer} src={peerDetails.avatar} size={40} showStatus status={isOnline ? 'online' : 'offline'} />
+            <button type="button" className="yam-mobile-peer-button" onClick={openChatSettings} aria-label="إعدادات المحادثة">
+              <div className="yam-mobile-peer-info">
+                <div className="yam-avatar-wrap">
+                  <Avatar name={peer} src={peerDetails.avatar} size={40} showStatus status={isOnline ? 'online' : 'offline'} />
+                </div>
+                <div className="yam-mobile-peer-copy">
+                  <strong>{peer}</strong>
+                  <span className={isOnline ? 'online' : ''}>
+                    {isTyping ? 'يكتب الآن...' : formatLastSeen(lastSeen, isOnline)}
+                  </span>
+                </div>
               </div>
-              <div className="yam-mobile-peer-copy">
-                <strong>{peer}</strong>
-                <span className={isOnline ? 'online' : ''}>
-                  {isTyping ? 'يكتب الآن...' : formatLastSeen(lastSeen, isOnline)}
-                </span>
-              </div>
-            </div>
+            </button>
             <div className="yam-mobile-actions">
               <button type="button" className="yam-mobile-action-btn" onClick={() => setCallMode('voice')} aria-label="اتصال">📞</button>
               <button type="button" className="yam-mobile-action-btn" onClick={() => setCallMode('video')} aria-label="فيديو">🎥</button>
@@ -1701,13 +1733,15 @@ export default function Chat() {
 
           <header className="yam-chat-stage-header">
             <div className="yam-chat-stage-peer">
-              <div className="yam-avatar-wrap">
-                <Avatar name={peer} src={peerDetails.avatar} size={56} ring showStatus status={isOnline ? 'online' : 'offline'} />
-              </div>
-              <div className="yam-chat-stage-peer-copy">
-                <strong>{peer}</strong>
-                <span>{isTyping ? 'يكتب الآن...' : formatLastSeen(lastSeen, isOnline)}</span>
-              </div>
+              <button type="button" className="yam-chat-stage-peer-button" onClick={openChatSettings} aria-label="إعدادات المحادثة">
+                <div className="yam-avatar-wrap">
+                  <Avatar name={peer} src={peerDetails.avatar} size={56} ring showStatus status={isOnline ? 'online' : 'offline'} />
+                </div>
+                <div className="yam-chat-stage-peer-copy">
+                  <strong>{peer}</strong>
+                  <span>{isTyping ? 'يكتب الآن...' : formatLastSeen(lastSeen, isOnline)}</span>
+                </div>
+              </button>
             </div>
 
             <div className="yam-chat-stage-actions">

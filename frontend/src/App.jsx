@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect } from 'react';
 import StaticContentPage from './pages/StaticContentPage.jsx';
 import { Navigate, Route, Routes } from 'react-router-dom';
+import GlobalPageBackButton from './components/ui/GlobalPageBackButton.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import { ToastProvider } from './components/admin/ToastProvider.jsx';
 import AppStatusBanner from './components/system/AppStatusBanner.jsx';
@@ -55,6 +56,7 @@ const Chat = lazy(() => import('./features/chat/index.js').then((mod) => ({ defa
 const Notifications = lazy(() => import('./features/notifications/index.js').then((mod) => ({ default: mod.Notifications })));
 const Search = lazy(() => import('./pages/Search.jsx'));
 const Settings = lazy(() => import('./pages/Settings.jsx'));
+const ChatSettings = lazy(() => import('./pages/ChatSettings.jsx'));
 const GroupSettings = lazy(() => import('./pages/GroupSettings.jsx'));
 const ShareTargetLanding = lazy(() => import('./pages/ShareTargetLanding.jsx'));
 
@@ -172,6 +174,7 @@ export default function App() {
     <ToastProvider>
       <AppErrorBoundary>
         <AppGuards />
+        <GlobalPageBackButton />
         <Suspense fallback={<RouteFallback />}>
           <Routes>
             <Route path="/login" element={<Login />} />
@@ -195,6 +198,7 @@ export default function App() {
             <Route path="/groups" element={<ProtectedRoute><Groups /></ProtectedRoute>} />
             <Route path="/groups/create" element={<ProtectedRoute><CreateGroup /></ProtectedRoute>} />
             <Route path="/groups/:groupId/chat" element={<ProtectedRoute><GroupChatPage /></ProtectedRoute>} />
+            <Route path="/groups/:groupId/settings" element={<ProtectedRoute><GroupSettings /></ProtectedRoute>} />
             <Route path="/live" element={<Navigate to="/live/control" replace />} />
             <Route path="/live/view/:streamId" element={<ProtectedRoute><LiveViewer /></ProtectedRoute>} />
             <Route path="/live/view/:streamId" element={<ProtectedRoute><LiveViewer /></ProtectedRoute>} />
@@ -214,6 +218,7 @@ export default function App() {
             <Route path="/profile/:username" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
             <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
             <Route path="/chat/:userId" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
+            <Route path="/chat/:userId/settings" element={<ProtectedRoute><ChatSettings /></ProtectedRoute>} />
 
             <Route path="/admin/dashboard" element={<ProtectedRoute requiredPermission="dashboard.view"><AdminDashboard /></ProtectedRoute>} />
             <Route path="/admin/users" element={<ProtectedRoute requiredPermission="users.view"><AdminUsers /></ProtectedRoute>} />

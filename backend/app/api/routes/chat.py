@@ -180,8 +180,9 @@ async def send_message(payload: dict, db: Session = Depends(get_db), current_use
         _assert_can_chat(db, current_user.id, receiver.id)
         receiver_id = receiver.id
     else:
-        # للمجموعات، لا يوجد receiver_id فردي
-        receiver_id = 0 
+        # للمجموعات: نستخدم معرف المُرسل نفسه كـ receiver_id لتلبية قيد FK
+        # (التمييز يتم عبر حقل receiver النصي الذي يبدأ بـ 'group:')
+        receiver_id = current_user.id
 
     if client_id:
         existing = db.query(Message).filter(Message.sender_id == current_user.id, Message.client_id == client_id).first()

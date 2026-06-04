@@ -6,7 +6,8 @@
 .yam-group-chat-container {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  min-height: 100vh;
+  min-height: 100svh;
   height: 100dvh;
   background-color: #080a12; /* خلفية داكنة جداً */
   color: #ffffff;
@@ -20,9 +21,14 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  background: rgba(13, 17, 28, 0.8);
-  backdrop-filter: blur(10px);
+  padding-top: calc(16px + env(safe-area-inset-top, 0px));
+  background: rgba(13, 17, 28, 0.88);
+  backdrop-filter: blur(14px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  flex-shrink: 0;
 }
 
 .yam-group-info {
@@ -98,13 +104,15 @@
 .yam-group-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 24px 20px;
+  padding: 24px 20px calc(132px + env(safe-area-inset-bottom, 0px));
   display: flex;
   flex-direction: column;
   gap: 24px;
   background: radial-gradient(circle at center, rgba(139, 92, 246, 0.03) 0%, transparent 70%);
   scrollbar-width: auto;
   scrollbar-color: #8b5cf6 rgba(255, 255, 255, 0.05);
+  scroll-padding-top: 90px;
+  scroll-padding-bottom: 132px;
 }
 
 .yam-group-messages::-webkit-scrollbar {
@@ -253,12 +261,18 @@
 
 /* منطقة الإدخال */
 .yam-group-input-area {
-  padding: 20px;
-  background: rgba(13, 17, 28, 0.8);
+  padding: 14px 20px;
+  padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  background: rgba(13, 17, 28, 0.92);
   border-top: 1px solid rgba(255, 255, 255, 0.05);
   display: flex;
   align-items: center;
   gap: 12px;
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 -16px 32px rgba(0, 0, 0, 0.28);
 }
 
 .yam-input-wrapper {
@@ -327,4 +341,23 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .yam-group-header {
+    padding-inline: 12px;
+  }
+
+  .yam-group-messages {
+    padding-inline: 12px;
+    gap: 16px;
+  }
+
+  .yam-group-input-area {
+    padding-inline: 12px;
+  }
+
+  .yam-message-group {
+    max-width: 88%;
+  }
 }

@@ -125,6 +125,7 @@
         "src/components/live/AdvancedStreamControls.jsx",
         "src/components/live/EnhancedLiveControls.jsx",
         "src/components/live/LiveStreamCard.jsx",
+        "src/components/live/ViewersManagementPanel.jsx",
         "src/components/live/StreamRecordingAndFilters.jsx",
         "src/components/profile/ProfileHeader_Fixed.jsx",
         "src/components/profile/WalletCard.jsx",

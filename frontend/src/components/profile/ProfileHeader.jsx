@@ -3,6 +3,7 @@ import Button from '../ui/Button.jsx';
 import Modal from '../ui/Modal.jsx';
 import OptimizedImage from '../ui/OptimizedImage.jsx';
 import { updateMyProfile } from '../../api/users.js';
+import { resolveMediaUrl } from '../../config/mediaConfig.js';
 
 // Memoized Tab Component to prevent unnecessary rerenders
 const ProfileTab = React.memo(({ label, active, onClick }) => {
@@ -80,8 +81,8 @@ export default function ProfileHeader({
   const [showAvatarCropper, setShowAvatarCropper] = useState(false);
   const [activeTab, setActiveTab] = useState('posts');
   
-  const [coverImage, setCoverImage] = useState(profile?.user?.profile?.cover_url || '');
-  const [avatarImage, setAvatarImage] = useState(profile?.user?.profile?.avatar_url || '');
+  const [coverImage, setCoverImage] = useState(profile?.user?.profile?.cover_photo || '');
+  const [avatarImage, setAvatarImage] = useState(profile?.user?.avatar || '');
   const [coverImageError, setCoverImageError] = useState(false);
   const [avatarImageError, setAvatarImageError] = useState(false);
   
@@ -149,7 +150,7 @@ export default function ProfileHeader({
 
   const applyCrop = async () => {
     try {
-      await updateMyProfile({ avatar_url: avatarImage });
+      await updateMyProfile({ avatar: avatarImage });
       setShowAvatarCropper(false);
     } catch (error) {
       console.error('Failed to update avatar:', error);
@@ -159,7 +160,7 @@ export default function ProfileHeader({
 
   const saveCoverImage = async () => {
     try {
-      await updateMyProfile({ cover_url: coverImage });
+      await updateMyProfile({ cover_photo: coverImage });
       setShowCoverEditor(false);
     } catch (error) {
       console.error('Failed to update cover:', error);
@@ -195,7 +196,7 @@ export default function ProfileHeader({
       >
         {coverImage && !coverImageError ? (
           <OptimizedImage
-            src={coverImage}
+            src={resolveMediaUrl(coverImage)}
             alt="غلاف البروفايل"
             style={{
               width: '100%',
@@ -261,7 +262,7 @@ export default function ProfileHeader({
           >
             {avatarImage && !avatarImageError ? (
               <OptimizedImage
-                src={avatarImage}
+                src={resolveMediaUrl(avatarImage)}
                 alt={username}
                 style={{
                   width: '100%',
@@ -434,7 +435,7 @@ export default function ProfileHeader({
           >
             {coverImage ? (
               <OptimizedImage
-                src={coverImage}
+                src={resolveMediaUrl(coverImage)}
                 alt="معاينة الغلاف"
                 style={{
                   width: '100%',
@@ -487,7 +488,7 @@ export default function ProfileHeader({
           >
             {avatarImage ? (
               <OptimizedImage
-                src={avatarImage}
+                src={resolveMediaUrl(avatarImage)}
                 alt="معاينة الصورة الشخصية"
                 style={{
                   width: '100%',

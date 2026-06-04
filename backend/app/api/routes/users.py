@@ -612,10 +612,14 @@ def update_me(payload: dict = Body(...), db: Session = Depends(get_db), current_
     if existing is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Username already exists')
     current_user.username = requested_username
-    current_user.avatar = str(payload.get('avatar') or current_user.avatar or '').strip() or None
+    avatar_value = str(payload.get('avatar') or payload.get('avatar_url') or current_user.avatar or '').strip() or None
+    if avatar_value:
+        current_user.avatar = avatar_value
     profile = _get_or_create_profile(db, current_user.id)
     profile.bio = str(payload.get('bio') or profile.bio or '').strip()[:800]
-    profile.cover_photo = str(payload.get('cover_photo') or profile.cover_photo or '').strip() or None
+    cover_value = str(payload.get('cover_photo') or payload.get('cover_url') or profile.cover_photo or '').strip() or None
+    if cover_value:
+        profile.cover_photo = cover_value
     profile.profile_theme = str(payload.get('profile_theme') or profile.profile_theme or 'midnight').strip()[:40] or 'midnight'
     profile.privacy_level = str(payload.get('privacy_level') or profile.privacy_level or 'public').strip()[:20] or 'public'
     profile.activity_tagline = str(payload.get('activity_tagline') or profile.activity_tagline or '').strip()[:255]

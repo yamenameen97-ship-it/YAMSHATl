@@ -1179,21 +1179,6 @@ function FeedDesktopInner() {
             contain: layout style paint;
           }
 
-          .yam-post-stack-v2::-webkit-scrollbar {
-            width: 10px !important;
-            display: block !important;
-          }
-
-          .yam-post-stack-v2::-webkit-scrollbar-track {
-            background: rgba(255, 255, 255, 0.02) !important;
-            border-radius: 10px !important;
-          }
-
-          .yam-post-stack-v2::-webkit-scrollbar-thumb {
-            background: #8b5cf6 !important;
-            border-radius: 10px !important;
-            border: 2px solid #070d1d !important;
-          }
 
           .yam-post-stack-v2 > * {
             direction: rtl;
@@ -1219,6 +1204,12 @@ function FeedDesktopInner() {
 
           .yam-post-stack-v2::-webkit-scrollbar-thumb:hover {
             background: linear-gradient(180deg, rgba(167, 139, 250, 1), rgba(129, 140, 248, 1));
+          }
+
+          /* Firefox scrollbar support */
+          .yam-post-stack-v2 {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(139, 92, 246, 0.92) rgba(255,255,255,0.06);
           }
 
           .yam-feed-status-row {

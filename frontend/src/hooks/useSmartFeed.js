@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { useFeed } from './useFeed.js';
 
 const FEED_CACHE_PREFIX = 'yamshat:feed:cache:v2';
-const CACHE_TTL_MS = 10 * 60 * 1000;
+const CACHE_TTL_MS = 1 * 60 * 1000; // تقليل من 10 دقائق إلى 1 دقيقة لضمان ظهور المنشورات الجديدة بسرعة
 
 function safeParse(raw) {
   try {

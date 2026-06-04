@@ -1,4 +1,4 @@
-# إصلاحات الإصدار v2.3.1 — يمشات
+# إصلاحات الإصدار v2.3.1 — يام شات
 
 <div dir="rtl" style="font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;">
 

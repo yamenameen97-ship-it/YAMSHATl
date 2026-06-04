@@ -21,6 +21,17 @@ except Exception:  # pragma: no cover - handled at runtime if package missing
 router = APIRouter()
 
 
+DEFAULT_STREAM_SETTINGS = {
+    'is_public': True,
+    'allow_comments': True,
+    'allow_gifts': True,
+    'require_comment_approval': False,
+    'chat_speed_limit': 0,
+    'minimum_gift_amount': 0,
+    'gift_goal': 0,
+}
+
+
 def _utcnow() -> datetime:
     return datetime.utcnow()
 
@@ -91,10 +102,14 @@ def _hydrate_runtime_room(record: LiveRoomSession):
     if snapshot:
         runtime_room.comments = [LiveComment(**comment) for comment in snapshot.get('comments', []) if isinstance(comment, dict)]
         runtime_room.gifts = [LiveGift(**gift) for gift in snapshot.get('gifts', []) if isinstance(gift, dict)]
+        runtime_room.viewers = {str(key): value for key, value in (snapshot.get('viewers') or {}).items() if isinstance(value, dict)}
+        runtime_room.muted_users = set(snapshot.get('muted_users') or [])
+        runtime_room.kicked_users = set(snapshot.get('kicked_users') or [])
         runtime_room.co_hosts = list(snapshot.get('co_hosts') or runtime_room.co_hosts)
         runtime_room.economy = {**runtime_room.economy, **(snapshot.get('economy') or {})}
         runtime_room.recovery_data = {**runtime_room.recovery_data, **(snapshot.get('recovery_data') or {})}
         runtime_room.multi_host_config = {**runtime_room.multi_host_config, **(snapshot.get('multi_host_config') or {})}
+        runtime_room.settings = {**DEFAULT_STREAM_SETTINGS, **(snapshot.get('settings') or {})}
         analytics = snapshot.get('stream_analytics') or {}
         runtime_room.stream_analytics = {
             **runtime_room.stream_analytics,
@@ -103,6 +118,11 @@ def _hydrate_runtime_room(record: LiveRoomSession):
         }
         if runtime_room.co_hosts:
             runtime_room.multi_host_config['current_hosts'] = list(runtime_room.co_hosts)
+
+    runtime_room.settings = {
+        **DEFAULT_STREAM_SETTINGS,
+        **(getattr(runtime_room, 'settings', None) or {}),
+    }
 
     return runtime_room
 
@@ -120,10 +140,14 @@ def _sync_record_from_runtime(db: Session, record: LiveRoomSession, runtime_room
     record.extra_json = json.dumps({
         'comments': [comment.__dict__ for comment in (runtime_room.comments or [])],
         'gifts': [gift.__dict__ for gift in (runtime_room.gifts or [])],
+        'viewers': runtime_room.viewers or {},
+        'muted_users': list(runtime_room.muted_users or []),
+        'kicked_users': list(runtime_room.kicked_users or []),
         'co_hosts': list(runtime_room.co_hosts or []),
         'economy': runtime_room.economy or {},
         'recovery_data': runtime_room.recovery_data or {},
         'multi_host_config': runtime_room.multi_host_config or {},
+        'settings': getattr(runtime_room, 'settings', DEFAULT_STREAM_SETTINGS) or DEFAULT_STREAM_SETTINGS,
         'stream_analytics': {
             **(runtime_room.stream_analytics or {}),
             'unique_viewers': list((runtime_room.stream_analytics or {}).get('unique_viewers') or []),
@@ -154,10 +178,63 @@ def _serialize_record(db: Session, record: LiveRoomSession) -> dict:
             'status': record.recording_status or payload.get('recording', {}).get('status') or 'idle',
             'url': record.recording_url or payload.get('recording', {}).get('url'),
         },
+        'settings': getattr(runtime_room, 'settings', DEFAULT_STREAM_SETTINGS) or DEFAULT_STREAM_SETTINGS,
         'livekit_configured': _is_livekit_configured(),
     })
     db.commit()
     return payload
+
+
+def _require_room(room_id: str, db: Session) -> LiveRoomSession:
+    record = _find_room_record(db, room_id)
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Room not found')
+    return record
+
+
+def _require_host(record: LiveRoomSession, current_user: User):
+    if record.host_user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Only host can manage this live room')
+    return _hydrate_runtime_room(record)
+
+
+def _serialize_viewers(runtime_room) -> list[dict]:
+    viewers = []
+    for key, viewer in (runtime_room.viewers or {}).items():
+        if not isinstance(viewer, dict):
+            continue
+        username = str(viewer.get('username') or viewer.get('user_id') or key)
+        user_key = str(viewer.get('user_id') or viewer.get('sid') or key)
+        viewers.append({
+            'user_id': user_key,
+            'sid': str(viewer.get('sid') or key),
+            'username': username,
+            'user_avatar': viewer.get('user_avatar') or '',
+            'joined_at': viewer.get('joined_at') or _iso(_utcnow()),
+            'platform': viewer.get('platform') or 'web',
+            'device_type': viewer.get('device_type') or 'browser',
+            'is_host': bool(viewer.get('is_host')),
+            'is_muted': username in (runtime_room.muted_users or set()) or user_key in (runtime_room.muted_users or set()),
+            'is_banned': username in (runtime_room.kicked_users or set()) or user_key in (runtime_room.kicked_users or set()),
+            'is_active': True,
+        })
+    return viewers
+
+
+def _find_viewer(runtime_room, user_id: str):
+    target = str(user_id)
+    for key, viewer in (runtime_room.viewers or {}).items():
+        if not isinstance(viewer, dict):
+            continue
+        candidates = {
+            str(key),
+            str(viewer.get('user_id') or ''),
+            str(viewer.get('sid') or ''),
+            str(viewer.get('username') or ''),
+        }
+        if target in candidates:
+            return key, viewer
+    return None, None
 
 
 @router.get('/live_rooms')
@@ -409,3 +486,192 @@ async def add_comment(room_id: str, payload: dict = Body(...), db: Session = Dep
         return {'status': 'blocked', 'reason': 'AI Moderation flagged this content'}
     await sio.emit('new_comment', comment.__dict__, room=room_id)
     return {'status': 'success', 'comment': comment.__dict__}
+
+
+@router.post('/live/{room_id}/title')
+def update_live_title(room_id: str, payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    record = _require_room(room_id, db)
+    runtime_room = _require_host(record, current_user)
+    title = str(payload.get('title') or '').strip()
+    if not title:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='title is required')
+    record.title = title
+    runtime_room.title = title
+    _sync_record_from_runtime(db, record, runtime_room)
+    db.commit()
+    db.refresh(record)
+    return _serialize_record(db, record)
+
+
+@router.get('/live/{room_id}/viewers')
+def get_live_viewers(room_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    record = _require_room(room_id, db)
+    runtime_room = _hydrate_runtime_room(record)
+    if record.host_user_id != current_user.id and current_user.username not in (runtime_room.co_hosts or []):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Access denied')
+    return _serialize_viewers(runtime_room)
+
+
+@router.post('/live/{room_id}/add-viewer')
+def add_live_viewer(room_id: str, payload: dict = Body(default={}), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    record = _require_room(room_id, db)
+    runtime_room = _hydrate_runtime_room(record)
+    username = str(payload.get('username') or current_user.username).strip() or current_user.username
+    user_key = str(payload.get('user_id') or current_user.id)
+    if username in (runtime_room.kicked_users or set()) or user_key in (runtime_room.kicked_users or set()):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Viewer is banned from this room')
+    runtime_room.viewers[user_key] = {
+        'sid': str(payload.get('sid') or user_key),
+        'user_id': user_key,
+        'username': username,
+        'user_avatar': payload.get('user_avatar') or '',
+        'platform': payload.get('platform') or 'web',
+        'device_type': payload.get('device_type') or 'browser',
+        'joined_at': payload.get('joined_at') or _iso(_utcnow()),
+        'is_host': bool(payload.get('is_host') or record.host_user_id == current_user.id),
+    }
+    runtime_room.viewer_count = len(runtime_room.viewers)
+    runtime_room.peak_viewer_count = max(int(runtime_room.peak_viewer_count or 0), int(runtime_room.viewer_count or 0))
+    runtime_room.stream_analytics['unique_viewers'].add(username)
+    runtime_room.last_activity_at = _iso(_utcnow())
+    _sync_record_from_runtime(db, record, runtime_room)
+    db.commit()
+    return {'status': 'success', 'viewer_count': runtime_room.viewer_count, 'viewers': _serialize_viewers(runtime_room)}
+
+
+@router.post('/live/{room_id}/remove-viewer')
+def remove_live_viewer(room_id: str, payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    record = _require_room(room_id, db)
+    runtime_room = _require_host(record, current_user)
+    user_id = str(payload.get('user_id') or '').strip()
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='user_id is required')
+    viewer_key, viewer = _find_viewer(runtime_room, user_id)
+    if viewer_key is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Viewer not found')
+    runtime_room.viewers.pop(viewer_key, None)
+    runtime_room.viewer_count = len(runtime_room.viewers)
+    runtime_room.last_activity_at = _iso(_utcnow())
+    _sync_record_from_runtime(db, record, runtime_room)
+    db.commit()
+    return {'status': 'success', 'removed_user': viewer.get('username') or user_id, 'viewer_count': runtime_room.viewer_count}
+
+
+@router.post('/live/{room_id}/mute')
+def mute_live_viewer(room_id: str, payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    record = _require_room(room_id, db)
+    runtime_room = _require_host(record, current_user)
+    user_id = str(payload.get('user_id') or '').strip()
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='user_id is required')
+    _, viewer = _find_viewer(runtime_room, user_id)
+    target = str((viewer or {}).get('username') or user_id)
+    runtime_room.muted_users.add(target)
+    runtime_room.muted_users.add(user_id)
+    runtime_room.last_activity_at = _iso(_utcnow())
+    _sync_record_from_runtime(db, record, runtime_room)
+    db.commit()
+    return {'status': 'success', 'muted_user': target}
+
+
+@router.post('/live/{room_id}/unmute')
+def unmute_live_viewer(room_id: str, payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    record = _require_room(room_id, db)
+    runtime_room = _require_host(record, current_user)
+    user_id = str(payload.get('user_id') or '').strip()
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='user_id is required')
+    _, viewer = _find_viewer(runtime_room, user_id)
+    target = str((viewer or {}).get('username') or user_id)
+    runtime_room.muted_users.discard(target)
+    runtime_room.muted_users.discard(user_id)
+    runtime_room.last_activity_at = _iso(_utcnow())
+    _sync_record_from_runtime(db, record, runtime_room)
+    db.commit()
+    return {'status': 'success', 'unmuted_user': target}
+
+
+@router.post('/live/{room_id}/ban')
+def ban_live_viewer(room_id: str, payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    record = _require_room(room_id, db)
+    runtime_room = _require_host(record, current_user)
+    user_id = str(payload.get('user_id') or '').strip()
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='user_id is required')
+    viewer_key, viewer = _find_viewer(runtime_room, user_id)
+    target = str((viewer or {}).get('username') or user_id)
+    runtime_room.kicked_users.add(target)
+    runtime_room.kicked_users.add(user_id)
+    if viewer_key is not None:
+        runtime_room.viewers.pop(viewer_key, None)
+    runtime_room.viewer_count = len(runtime_room.viewers)
+    runtime_room.last_activity_at = _iso(_utcnow())
+    _sync_record_from_runtime(db, record, runtime_room)
+    db.commit()
+    return {'status': 'success', 'banned_user': target, 'viewer_count': runtime_room.viewer_count}
+
+
+@router.post('/live/{room_id}/unban')
+def unban_live_viewer(room_id: str, payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    record = _require_room(room_id, db)
+    runtime_room = _require_host(record, current_user)
+    user_id = str(payload.get('user_id') or '').strip()
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='user_id is required')
+    _, viewer = _find_viewer(runtime_room, user_id)
+    target = str((viewer or {}).get('username') or user_id)
+    runtime_room.kicked_users.discard(target)
+    runtime_room.kicked_users.discard(user_id)
+    runtime_room.last_activity_at = _iso(_utcnow())
+    _sync_record_from_runtime(db, record, runtime_room)
+    db.commit()
+    return {'status': 'success', 'unbanned_user': target}
+
+
+@router.get('/live/{room_id}/recovery')
+def get_live_recovery(room_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    record = _require_room(room_id, db)
+    runtime_room = _hydrate_runtime_room(record)
+    if record.host_user_id != current_user.id and current_user.username not in (runtime_room.co_hosts or []):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Access denied')
+    runtime_room.recovery_data['last_stable_timestamp'] = runtime_room.recovery_data.get('last_stable_timestamp') or _iso(_utcnow())
+    _sync_record_from_runtime(db, record, runtime_room)
+    db.commit()
+    return runtime_room.recovery_data
+
+
+@router.post('/live/{room_id}/recovery/heartbeat')
+def heartbeat_live_recovery(room_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    record = _require_room(room_id, db)
+    runtime_room = _hydrate_runtime_room(record)
+    if record.host_user_id != current_user.id and current_user.username not in (runtime_room.co_hosts or []):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Access denied')
+    runtime_room.recovery_data['last_stable_timestamp'] = _iso(_utcnow())
+    runtime_room.last_activity_at = _iso(_utcnow())
+    _sync_record_from_runtime(db, record, runtime_room)
+    db.commit()
+    return {'status': 'alive', 'recovery_data': runtime_room.recovery_data}
+
+
+@router.get('/live/{room_id}/settings')
+def get_live_settings(room_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    record = _require_room(room_id, db)
+    runtime_room = _hydrate_runtime_room(record)
+    if record.host_user_id != current_user.id and current_user.username not in (runtime_room.co_hosts or []):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Access denied')
+    return getattr(runtime_room, 'settings', DEFAULT_STREAM_SETTINGS) or DEFAULT_STREAM_SETTINGS
+
+
+@router.post('/live/{room_id}/settings')
+def save_live_settings(room_id: str, payload: dict = Body(default={}), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    record = _require_room(room_id, db)
+    runtime_room = _require_host(record, current_user)
+    runtime_room.settings = {
+        **DEFAULT_STREAM_SETTINGS,
+        **(getattr(runtime_room, 'settings', None) or {}),
+        **{key: value for key, value in payload.items() if value is not None},
+    }
+    runtime_room.last_activity_at = _iso(_utcnow())
+    _sync_record_from_runtime(db, record, runtime_room)
+    db.commit()
+    return runtime_room.settings

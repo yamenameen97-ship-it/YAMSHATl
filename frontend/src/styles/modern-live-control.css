@@ -350,6 +350,178 @@
   border-color: rgba(124, 58, 237, 0.5);
 }
 
+.mlc-section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.mlc-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.mlc-status-pill-ready {
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.35);
+  color: #6ee7b7;
+}
+
+.mlc-status-pill-warning {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+}
+
+.mlc-status-pill-offline {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}
+
+.mlc-status-pill-checking {
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(59, 130, 246, 0.35);
+  color: #93c5fd;
+}
+
+.mlc-title-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.mlc-title-copy span {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.mlc-pre-live-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.95fr);
+  gap: 12px;
+}
+
+.mlc-pre-live-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: 10px;
+  border: 1px solid rgba(124, 58, 237, 0.16);
+}
+
+.mlc-title-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.mlc-title-input-full {
+  width: 100%;
+}
+
+.mlc-field-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.mlc-field-meta strong {
+  color: #c4b5fd;
+}
+
+.mlc-backend-status-card {
+  border-color: rgba(59, 130, 246, 0.18);
+}
+
+.mlc-backend-status-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mlc-inline-link {
+  background: transparent;
+  border: none;
+  color: #93c5fd;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mlc-inline-link:hover {
+  color: #bfdbfe;
+}
+
+.mlc-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mlc-status-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.mlc-status-chip span {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.mlc-status-chip strong {
+  font-size: 13px;
+  color: #e2e8f0;
+}
+
+.mlc-backend-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #cbd5e1;
+}
+
+.mlc-api-base {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  color: #c4b5fd;
+  font-size: 11px;
+  direction: ltr;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.mlc-error-text {
+  color: #fca5a5;
+  font-size: 12px;
+}
+
 /* ==================== GIFT GOAL ==================== */
 .mlc-gift-goal-section {
   background: rgba(30, 41, 59, 0.6);
@@ -726,6 +898,14 @@
     grid-template-columns: 1fr;
   }
 
+  .mlc-pre-live-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mlc-status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .mlc-sidebar {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -844,6 +1024,7 @@
 
   .mlc-stats-panel,
   .mlc-stream-title-section,
+  .mlc-pre-live-card,
   .mlc-gift-goal-section,
   .mlc-messages-section,
   .mlc-viewers-section,
@@ -1267,6 +1448,7 @@
 }
 
 .mlc-stream-title-section,
+.mlc-pre-live-card,
 .mlc-gift-goal-section {
   animation: slideIn 0.3s ease-out;
 }
@@ -1322,6 +1504,7 @@
 /* Responsive Adjustments for New Features */
 @media (max-width: 768px) {
   .mlc-stream-title-section,
+  .mlc-pre-live-card,
   .mlc-gift-goal-section {
     margin-bottom: 12px;
   }
@@ -1333,9 +1516,21 @@
 
 @media (max-width: 480px) {
   .mlc-title-input,
+  .mlc-status-pill,
   .mlc-save-btn,
   .mlc-cancel-btn {
     font-size: 12px;
+  }
+
+  .mlc-status-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mlc-field-meta,
+  .mlc-backend-status-head,
+  .mlc-section-title-row {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .mlc-save-btn,

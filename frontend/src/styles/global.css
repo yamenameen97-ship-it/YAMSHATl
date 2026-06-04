@@ -5045,12 +5045,4 @@ img {
   }
 }
 
-/* استيراد إصلاحات شريط التمرير وهروب الشات */
-@import './feed-scrollbar-fix.css';
-@import './chat-layout-fix.css';
-
-/* استيراد تصميم دردشة المجموعات الجديد */
-@import './group-chat.css';
-
-/* استيراد تصميم قائمة المجموعات الجديد */
-@import './groups-list.css';
+/* تم نقل الاستيرادات إلى index.css للحفاظ على ترتيب @import الصحيح أثناء البناء. */

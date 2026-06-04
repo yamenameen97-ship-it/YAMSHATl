@@ -56,7 +56,7 @@ export const getLiveStreamDetails = (roomId) =>
  * POST /api/create_live (إعادة استخدام لتحديث العنوان)
  */
 export const updateStreamTitle = (roomId, title) =>
-  apiClient.post('/create_live', {
+  apiClient.post(`/live/${roomId}/title`, {
     title: title.trim(),
   });
 

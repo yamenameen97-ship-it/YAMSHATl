@@ -37,6 +37,7 @@ import './styles/animations-glow.css';
 import './styles/badges-indicators.css';
 import './styles/responsive-mobile-v2.css';
 import './styles/performance-v2.css';
+import './styles/feed-scrollbar-fix.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { pwaInitializer } from './services/pwaInitializer.js';
 import { smoothTouchLayer } from './services/smoothTouchLayer.js';

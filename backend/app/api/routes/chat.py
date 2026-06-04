@@ -121,18 +121,25 @@ def get_messages(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    other_user = _find_active_user_by_username(db, receiver)
-    if other_user is None:
-        return {'items': [], 'paging': {'limit': limit, 'has_more': False, 'next_before_id': None}}
+    # دعم دردشة المجموعات: إذا بدأ المستلم بـ "group:"
+    is_group = str(receiver).startswith('group:')
+    
+    if is_group:
+        # في الوقت الحالي، نستخدم جدول الرسائل نفسه للمجموعات مع وضع معرف المجموعة في حقل receiver
+        query = db.query(Message).filter(Message.receiver == receiver)
+    else:
+        other_user = _find_active_user_by_username(db, receiver)
+        if other_user is None:
+            return {'items': [], 'paging': {'limit': limit, 'has_more': False, 'next_before_id': None}}
 
-    _assert_can_chat(db, current_user.id, other_user.id)
+        _assert_can_chat(db, current_user.id, other_user.id)
 
-    query = db.query(Message).filter(
-        or_(
-            and_(Message.sender_id == current_user.id, Message.receiver_id == other_user.id),
-            and_(Message.sender_id == other_user.id, Message.receiver_id == current_user.id),
+        query = db.query(Message).filter(
+            or_(
+                and_(Message.sender_id == current_user.id, Message.receiver_id == other_user.id),
+                and_(Message.sender_id == other_user.id, Message.receiver_id == current_user.id),
+            )
         )
-    )
     if before_id is not None:
         query = query.filter(Message.id < before_id)
 
@@ -155,16 +162,120 @@ async def send_message(payload: dict, db: Session = Depends(get_db), current_use
     media_url = str(payload.get('media_url') or '').strip()
     message_type = str(payload.get('type') or ('image' if media_url else 'text')).strip() or 'text'
     client_id = str(payload.get('client_id') or '').strip() or None
+    
     if not receiver_username or (not raw_message and not media_url):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='receiver and message or media_url are required')
+    
     if not await _resolve_rate_limit_result(allow_socket_message(f'chat:{current_user.id}')):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='You are sending messages too quickly')
 
-    receiver = _find_active_user_by_username(db, receiver_username)
-    if receiver is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Receiver not found')
+    # دعم دردشة المجموعات
+    is_group = receiver_username.startswith('group:')
+    receiver_id = None
+    
+    if not is_group:
+        receiver = _find_active_user_by_username(db, receiver_username)
+        if receiver is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Receiver not found')
+        _assert_can_chat(db, current_user.id, receiver.id)
+        receiver_id = receiver.id
+    else:
+        # للمجموعات، لا يوجد receiver_id فردي
+        receiver_id = 0 
 
-    _assert_can_chat(db, current_user.id, receiver.id)
+    if client_id:
+        existing = db.query(Message).filter(Message.sender_id == current_user.id, Message.client_id == client_id).first()
+        if existing is not None:
+            return serialize_message(existing, db)
+
+    if media_url and not scan_media_for_malware(media_url):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Media failed malware scan.')
+
+    delivered_now = is_group or is_user_online(username=receiver_username, user_id=receiver_id)
+    delivered_at = datetime.utcnow() if delivered_now else None
+    clean_message = bleach.clean(raw_message)
+    message = Message(
+        sender_id=current_user.id,
+        receiver_id=receiver_id,
+        sender=current_user.username,
+        receiver=receiver_username,
+        client_id=client_id,
+        message=clean_message,
+        content=encrypt_message(clean_message),
+        media_url=media_url or None,
+        message_type=message_type,
+        is_delivered=delivered_now,
+        delivered_at=delivered_at,
+        is_seen=False,
+    )
+    db.add(message)
+    db.commit()
+    db.refresh(message)
+    serialized = serialize_message(message, db)
+
+    if is_group:
+        # إرسال إلى غرفة المجموعة في السوكيت
+        await sio.emit('new_message', serialized, room=receiver_username)
+    else:
+        await sio.emit('new_private_message', serialized, room=f'username:{receiver_username}')
+        await sio.emit('new_private_message', serialized, room=f'username:{current_user.username}')
+
+    # الإشعارات (للمحادثات الخاصة فقط حالياً لتجنب الإزعاج في المجموعات)
+    if not is_group:
+        try:
+            preview = (clean_message or '').strip()
+            if not preview and media_url:
+                preview = '📎 وسائط جديدة'
+            if len(preview) > 140:
+                preview = preview[:137] + '...'
+            notification = Notification(
+                user_id=receiver_id,
+                type='CHAT',
+                title=f'رسالة جديدة من {current_user.username}',
+                body=preview or 'رسالة جديدة',
+                data={
+                    'from_user_id': current_user.id,
+                    'username': current_user.username,
+                    'message_id': message.id,
+                    'screen': 'chat',
+                    'path': f'/chat/{current_user.username}',
+                },
+            )
+            db.add(notification)
+            db.commit()
+            db.refresh(notification)
+            await sio.emit(
+                'new_notification',
+                {
+                    'id': notification.id,
+                    'type': 'CHAT',
+                    'title': notification.title,
+                    'message': notification.body,
+                    'text': notification.body,
+                    'body': notification.body,
+                    'created_at': notification.created_at.isoformat(),
+                    'seen': False,
+                    'screen': 'chat',
+                    'path': f'/chat/{current_user.username}',
+                    'data': {
+                        'username': current_user.username,
+                        'screen': 'chat',
+                        'path': f'/chat/{current_user.username}',
+                        'message_id': message.id,
+                    },
+                },
+                room=f'user:{receiver_id}',
+            )
+        except Exception:
+            pass
+
+    if not is_group and message.is_delivered:
+        await sio.emit(
+            'messages_delivered',
+            {'sender': current_user.username, 'viewer': receiver_username, 'message_ids': [message.id]},
+            room=f'username:{current_user.username}',
+        )
+    return serialized
 
     if client_id:
         existing = db.query(Message).filter(Message.sender_id == current_user.id, Message.client_id == client_id).first()

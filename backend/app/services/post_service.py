@@ -190,7 +190,7 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
         'id': post.id,
         'user_id': post.user_id,
         'username': user.username if user else (getattr(post, 'username', None) or 'unknown'),
-        'avatar': user.avatar if user else None,
+        'avatar': user.avatar if user else (getattr(post, 'user_avatar', None) or None),
         'content': post.content,
         'content_html': post.content_html or '',
         'image_url': thumbnail_url or primary_media_url,

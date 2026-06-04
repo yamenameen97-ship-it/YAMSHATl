@@ -4,6 +4,7 @@ import { HashRouter } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import App from './App.jsx';
 import './styles/index.css';
+import './styles/smooth-touch-experience.css';
 import { queryClient } from './lib/queryClient.js';
 import { useAppStore } from './store/appStore.js';
 import RealtimeProvider from './realtime/RealtimeProvider.jsx';
@@ -38,6 +39,8 @@ import './styles/badges-indicators.css';
 import './styles/responsive-mobile-v2.css';
 import './styles/performance-v2.css';
 import './styles/feed-scrollbar-fix.css';
+/* 🔧 إصلاح نهائي للسحب على الموبايل + تجربة كأنها تطبيق (يجب أن يكون الأخير) */
+import './styles/mobile-scroll-fix.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { pwaInitializer } from './services/pwaInitializer.js';
 import { smoothTouchLayer } from './services/smoothTouchLayer.js';

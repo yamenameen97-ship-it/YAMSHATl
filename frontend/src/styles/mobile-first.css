@@ -44,8 +44,8 @@ html, body {
 }
 
 body {
-  /* امنع double-tap zoom في iOS Safari */
-  touch-action: manipulation;
+  /* السماح بالتمرير العمودي + قفل double-tap-zoom */
+  touch-action: pan-y;
 }
 
 #root {

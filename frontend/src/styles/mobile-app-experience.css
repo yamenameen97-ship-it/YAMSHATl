@@ -19,10 +19,23 @@
    ============================================================ */
 
 html, body {
-  touch-action: manipulation;
+  /* السماح بالسحب العمودي الطبيعي + قفل double-tap-zoom */
+  touch-action: pan-y;
   -webkit-touch-callout: none;
+  /* لا نمنع تحديد النص عالمياً — فقط على الأزرار/الأيقونات */
+}
+
+button,
+[role="button"],
+.btn,
+.icon-btn,
+.nav-item,
+.tap-target,
+.mobile-dock-link,
+.ui-bottom-nav-item {
   -webkit-user-select: none;
   user-select: none;
+  -webkit-touch-callout: none;
 }
 
 /* السماح بالتحديد في حقول الإدخال */

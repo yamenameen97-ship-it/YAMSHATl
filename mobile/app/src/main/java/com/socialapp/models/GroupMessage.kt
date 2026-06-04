@@ -4,56 +4,84 @@ import com.google.gson.annotations.SerializedName
 
 data class GroupMessage(
     @SerializedName("id")
-    val id: Int = 0,
+    val id: String = "",
     
     @SerializedName("group_id")
-    val groupId: Int = 0,
+    val groupId: String = "",
     
-    @SerializedName("sender")
-    val sender: String = "",
+    @SerializedName("sender_username")
+    val senderUsername: String = "",
     
-    @SerializedName("sender_name")
-    val senderName: String = "",
+    @SerializedName("sender_avatar")
+    val senderAvatar: String = "",
     
-    @SerializedName("message")
-    val message: String = "",
+    @SerializedName("sender_display_name")
+    val senderDisplayName: String = "",
     
     @SerializedName("content")
     val content: String = "",
     
-    @SerializedName("type")
-    val type: String = "text", // text, image, video, voice, file
+    @SerializedName("message_type")
+    val messageType: String = "text", // text, image, video, voice, file
     
-    @SerializedName("media_url")
-    val mediaUrl: String? = null,
-    
-    @SerializedName("encrypted_message")
-    val encryptedMessage: String? = null,
-    
-    @SerializedName("deleted")
-    val deleted: Boolean? = false,
-    
-    @SerializedName("status")
-    val status: String = "sent", // sent, delivered, seen
-    
-    @SerializedName("reactions")
-    val reactions: Map<String, List<String>> = emptyMap(), // emoji -> list of usernames
-    
-    @SerializedName("reply_to_id")
-    val replyToId: Int? = null,
-    
-    @SerializedName("reply_to_message")
-    val replyToMessage: String? = null,
+    @SerializedName("attachments")
+    val attachments: List<Map<String, Any>> = emptyList(),
     
     @SerializedName("created_at")
     val createdAt: String = "",
     
-    @SerializedName("updated_at")
-    val updatedAt: String? = null,
+    @SerializedName("edited_at")
+    val editedAt: String? = null,
+    
+    @SerializedName("is_edited")
+    val isEdited: Boolean = false,
+    
+    @SerializedName("is_deleted")
+    val isDeleted: Boolean = false,
+    
+    @SerializedName("reply_to")
+    val replyTo: String? = null,
+    
+    @SerializedName("reactions")
+    val reactions: Map<String, List<String>> = emptyMap(), // emoji -> list of usernames
+    
+    @SerializedName("seen_by")
+    val seenBy: List<String> = emptyList(),
+    
+    @SerializedName("seen_count")
+    val seenCount: Int = 0,
 
     var displayMessage: String = "",
     var isOwn: Boolean = false
-)
+) {
+    /**
+     * الحصول على عدد التفاعلات
+     */
+    fun getReactionCount(emoji: String): Int {
+        return reactions[emoji]?.size ?: 0
+    }
+    
+    /**
+     * التحقق من وجود تفاعل معين من المستخدم
+     */
+    fun hasReaction(emoji: String, username: String): Boolean {
+        return reactions[emoji]?.contains(username) ?: false
+    }
+    
+    /**
+     * التحقق من قراءة الرسالة من قبل المستخدم
+     */
+    fun isSeenBy(username: String): Boolean {
+        return seenBy.contains(username)
+    }
+    
+    /**
+     * الحصول على نسبة القراءة
+     */
+    fun getSeenPercentage(totalMembers: Int): Int {
+        return if (totalMembers > 0) (seenCount * 100) / totalMembers else 0
+    }
+}
 
 data class GroupInfo(
     @SerializedName("id")

@@ -50,9 +50,10 @@ def _parse_datetime(value):
 @router.post('/', status_code=status.HTTP_201_CREATED)
 def create(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     content = str(payload.get('content') or '').strip()
-    
+
     # AI Moderation Hook
-    if content and not moderate_content(content):
+    moderation_result = moderate_content(content) if content else {"is_safe": True}
+    if content and not bool(moderation_result.get('is_safe', True)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Content failed AI moderation.')
         
     image_url = payload.get('image_url') or payload.get('media')
@@ -83,7 +84,7 @@ def create(payload: dict = Body(...), db: Session = Depends(get_db), current_use
 
 @router.get('')
 @router.get('/')
-def get_all(
+async def get_all(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=30, ge=1, le=100),
     page: int | None = Query(default=None, ge=1),
@@ -126,13 +127,13 @@ def get_all(
     elif active_sort == 'oldest':
         posts = sorted(posts, key=lambda post: str(post.get('created_at') or ''))
     else:
-        posts = rank_posts(posts, current_user)
+        posts = await rank_posts(posts, current_user)
 
     total_candidates = len(posts)
     paginated_posts = posts[effective_skip:effective_skip + effective_limit] if manual_pagination else posts
     has_more = total_candidates > (effective_skip + len(paginated_posts)) if manual_pagination else len(posts) == effective_limit
 
-    recommended_posts = get_recommendations(current_user)
+    recommended_posts = await get_recommendations(current_user)
 
     return {
         "posts": paginated_posts,

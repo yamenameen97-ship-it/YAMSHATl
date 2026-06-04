@@ -911,3 +911,445 @@
 .mlc-viewers-list::-webkit-scrollbar-thumb:hover {
   background: rgba(124, 58, 237, 0.6);
 }
+
+
+/* ==================== NEW FEATURES STYLES ==================== */
+
+/* Stream Title Input */
+.mlc-title-input {
+  flex: 1;
+  padding: 10px 12px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(124, 58, 237, 0.4);
+  border-radius: 6px;
+  color: #e2e8f0;
+  font-size: 14px;
+  font-family: inherit;
+  transition: all 0.3s ease;
+}
+
+.mlc-title-input:focus {
+  outline: none;
+  border-color: rgba(124, 58, 237, 0.7);
+  background: rgba(15, 23, 42, 0.95);
+  box-shadow: 0 0 12px rgba(124, 58, 237, 0.3);
+}
+
+.mlc-title-input::placeholder {
+  color: #64748b;
+}
+
+/* Save and Cancel Buttons */
+.mlc-save-btn,
+.mlc-cancel-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  border: 1px solid rgba(124, 58, 237, 0.3);
+  background: rgba(124, 58, 237, 0.1);
+  color: #a78bfa;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+}
+
+.mlc-save-btn:hover {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: rgba(16, 185, 129, 0.5);
+  color: #10b981;
+}
+
+.mlc-cancel-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #ef4444;
+}
+
+/* Health Badge */
+.mlc-health-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  color: white;
+  backdrop-filter: blur(10px);
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Control Button States */
+.mlc-control-btn.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mlc-control-btn-camera {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #60a5fa;
+}
+
+.mlc-control-btn-camera:hover:not(.disabled) {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.5);
+}
+
+.mlc-control-btn-camera.disabled {
+  background: rgba(107, 114, 128, 0.1);
+  border-color: rgba(107, 114, 128, 0.3);
+  color: #9ca3af;
+}
+
+.mlc-control-btn-mute {
+  background: rgba(168, 85, 247, 0.1);
+  border-color: rgba(168, 85, 247, 0.3);
+  color: #d8b4fe;
+}
+
+.mlc-control-btn-mute:hover:not(.disabled) {
+  background: rgba(168, 85, 247, 0.2);
+  border-color: rgba(168, 85, 247, 0.5);
+}
+
+.mlc-control-btn-mute.disabled {
+  background: rgba(107, 114, 128, 0.1);
+  border-color: rgba(107, 114, 128, 0.3);
+  color: #9ca3af;
+}
+
+.mlc-control-btn-record {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+
+.mlc-control-btn-record:hover:not(.disabled) {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.mlc-control-btn-record.active {
+  background: rgba(239, 68, 68, 0.3);
+  border-color: rgba(239, 68, 68, 0.6);
+  color: #ef4444;
+  animation: recordingPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes recordingPulse {
+  0%, 100% { 
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+  }
+  50% { 
+    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.1);
+  }
+}
+
+/* Comment Input Styles */
+.mlc-comment-input {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(15, 23, 42, 0.5);
+  border-top: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 0 0 12px 12px;
+}
+
+.mlc-comment-input input {
+  flex: 1;
+  padding: 8px 12px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 6px;
+  color: #e2e8f0;
+  font-size: 12px;
+  font-family: inherit;
+  transition: all 0.3s ease;
+}
+
+.mlc-comment-input input:focus {
+  outline: none;
+  border-color: rgba(124, 58, 237, 0.4);
+  background: rgba(15, 23, 42, 0.95);
+}
+
+.mlc-comment-input input::placeholder {
+  color: #64748b;
+}
+
+.mlc-comment-input button {
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #7c3aed, #a78bfa);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.mlc-comment-input button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
+}
+
+.mlc-comment-input button:active {
+  transform: translateY(0);
+}
+
+/* Gift Button Disabled State */
+.mlc-gift-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mlc-gift-btn:disabled:hover {
+  background: rgba(124, 58, 237, 0.1);
+  border-color: rgba(124, 58, 237, 0.3);
+  transform: none;
+}
+
+/* Stream Settings Panel */
+.mlc-settings-panel {
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 12px;
+  padding: 16px;
+  backdrop-filter: blur(10px);
+}
+
+.mlc-settings-panel h3 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.mlc-setting-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px;
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  gap: 12px;
+}
+
+.mlc-setting-item:last-child {
+  margin-bottom: 0;
+}
+
+.mlc-setting-label {
+  font-size: 12px;
+  color: #cbd5e1;
+  flex: 1;
+}
+
+.mlc-setting-toggle {
+  width: 40px;
+  height: 24px;
+  background: rgba(107, 114, 128, 0.3);
+  border: 1px solid rgba(107, 114, 128, 0.5);
+  border-radius: 12px;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.mlc-setting-toggle.active {
+  background: rgba(16, 185, 129, 0.3);
+  border-color: rgba(16, 185, 129, 0.5);
+}
+
+.mlc-setting-toggle::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  background: #cbd5e1;
+  border-radius: 50%;
+  top: 2px;
+  left: 2px;
+  transition: all 0.3s ease;
+}
+
+.mlc-setting-toggle.active::after {
+  left: 18px;
+  background: #10b981;
+}
+
+/* Recovery Status */
+.mlc-recovery-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 6px;
+  font-size: 12px;
+  color: #60a5fa;
+  margin-top: 8px;
+}
+
+.mlc-recovery-status.reconnecting {
+  background: rgba(251, 146, 60, 0.1);
+  border-color: rgba(251, 146, 60, 0.3);
+  color: #fb923c;
+}
+
+.mlc-recovery-status.error {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+.mlc-recovery-indicator {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: currentColor;
+  border-radius: 50%;
+  animation: statusPulse 1s ease-in-out infinite;
+}
+
+@keyframes statusPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Advanced Stats */
+.mlc-advanced-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.mlc-advanced-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mlc-advanced-stat-label {
+  font-size: 10px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.mlc-advanced-stat-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+/* Animations */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.mlc-stream-title-section,
+.mlc-gift-goal-section {
+  animation: slideIn 0.3s ease-out;
+}
+
+/* Loading State */
+.mlc-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.mlc-loading::after {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  background: #94a3b8;
+  border-radius: 50%;
+  animation: loadingDots 1.4s infinite;
+}
+
+@keyframes loadingDots {
+  0%, 60%, 100% { opacity: 0.3; }
+  30% { opacity: 1; }
+}
+
+/* Error State */
+.mlc-error-message {
+  padding: 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  color: #fca5a5;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+/* Success State */
+.mlc-success-message {
+  padding: 12px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 8px;
+  color: #6ee7b7;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+/* Responsive Adjustments for New Features */
+@media (max-width: 768px) {
+  .mlc-stream-title-section,
+  .mlc-gift-goal-section {
+    margin-bottom: 12px;
+  }
+
+  .mlc-advanced-stats {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .mlc-title-input,
+  .mlc-save-btn,
+  .mlc-cancel-btn {
+    font-size: 12px;
+  }
+
+  .mlc-save-btn,
+  .mlc-cancel-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  .mlc-advanced-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .mlc-health-badge {
+    font-size: 10px;
+    padding: 4px 8px;
+  }
+}

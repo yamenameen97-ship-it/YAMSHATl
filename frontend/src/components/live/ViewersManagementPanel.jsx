@@ -6,7 +6,7 @@ import {
   banUser,
   unbanUser,
   removeViewer,
-} from '../../services/api/advancedLiveStreamApi.js';
+} from '../../services/api/correctedLiveStreamApi.js';
 import { useToast } from '../admin/ToastProvider.jsx';
 import '../../styles/viewers-management.css';
 

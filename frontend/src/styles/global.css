@@ -5046,3 +5046,104 @@ img {
 }
 
 /* تم نقل الاستيرادات إلى index.css للحفاظ على ترتيب @import الصحيح أثناء البناء. */
+
+.brand-logo-img {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.auth-brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.auth-brand-orb {
+  width: 92px;
+  height: 92px;
+  flex-shrink: 0;
+  border-radius: 26px;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 30% 30%, rgba(167, 139, 250, 0.32), rgba(91, 33, 182, 0.12) 60%, rgba(15, 23, 42, 0.02) 100%);
+  border: 1px solid rgba(167, 139, 250, 0.16);
+  box-shadow: 0 24px 60px rgba(76, 29, 149, 0.28);
+}
+
+.auth-brand-content {
+  display: grid;
+  gap: 8px;
+}
+
+.auth-brand-content h1,
+.auth-brand-content p {
+  margin: 0;
+}
+
+.auth-form-panel-watermarked {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.auth-form-panel-watermarked::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 75% 20%, rgba(124, 58, 237, 0.14), transparent 34%), radial-gradient(circle at 20% 100%, rgba(56, 189, 248, 0.08), transparent 28%);
+  z-index: 0;
+}
+
+.auth-form-panel-content {
+  position: relative;
+  z-index: 1;
+}
+
+.auth-floating-watermark {
+  position: absolute;
+  inset-inline-start: 50%;
+  inset-block-start: 50%;
+  transform: translate(-50%, -50%);
+  width: min(78%, 420px);
+  aspect-ratio: 1 / 1;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.auth-floating-watermark-logo {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain;
+  opacity: 0.95;
+  mix-blend-mode: screen;
+}
+
+.yam-brand-mark img,
+.brand-logo-reference img,
+.sidebar-logo img,
+.yam-brand img,
+.ym-inline-brand,
+.ym-banner-brand {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+@media (max-width: 900px) {
+  .auth-brand-lockup {
+    align-items: flex-start;
+  }
+
+  .auth-brand-orb {
+    width: 74px;
+    height: 74px;
+    border-radius: 22px;
+  }
+
+  .auth-floating-watermark {
+    width: min(92%, 360px);
+  }
+}

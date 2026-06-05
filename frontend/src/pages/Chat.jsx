@@ -24,6 +24,7 @@ import { MESSAGE_LIFECYCLE, normalizeMessageStatus, withLifecycle } from '../fea
 import { getChatPreferences, toggleChatPreference } from '../utils/chatPreferences.js';
 import { formatLastSeen } from '../components/yamshat/YamshatDesign.js';
 import { CHAT_NAV_ITEMS, buildContacts, getContactDetails } from '../features/chat/chatShellFixtures.js';
+import BrandLogo from '../components/ui/BrandLogo.jsx';
 
 const EMPTY_MESSAGES = [];
 const REACTION_STORAGE_KEY = 'yamshat-message-reactions-v2';
@@ -1639,7 +1640,9 @@ export default function Chat() {
 
         <aside className="yam-chat-sidebar">
           <div className="yam-sidebar-brand">
-            <div className="yam-brand-mark">Y</div>
+            <div className="yam-brand-mark">
+              <BrandLogo size={30} alt="Yamshat" className="yam-brand-mark-image" />
+            </div>
             <div className="yam-brand-name">YAMSHAT</div>
           </div>
 

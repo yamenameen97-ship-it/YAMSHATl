@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { logoutUser } from '../../api/auth.js';
+import BrandLogo from '../ui/BrandLogo.jsx';
 import { clearStoredUser, getStoredUser } from '../../utils/auth.js';
 import { getAdminNavItems } from './adminNavigation.js';
 
@@ -22,7 +23,9 @@ export default function AdminSidebar({ collapsed, permissions = [], role = 'user
   return (
     <aside className={`admin-sidebar admin-reference-sidebar ${collapsed ? 'collapsed' : ''}`}>
       <div className="admin-brand admin-reference-brand">
-        <div className="brand-logo brand-logo-reference">YS</div>
+        <div className="brand-logo brand-logo-reference">
+          <BrandLogo size={38} alt="Yamshat Admin" className="brand-logo-reference-image" />
+        </div>
         {!collapsed ? (
           <div>
             <strong>Yamshat Admin</strong>
@@ -68,7 +71,7 @@ export default function AdminSidebar({ collapsed, permissions = [], role = 'user
         {!collapsed ? (
           <div className="sidebar-promo admin-reference-promo compact">
             <span className="badge">واجهة واحدة</span>
-            <p>تم ضغط القوائم والصناديق لتظهر جميع أقسام الإدارة بشكل أوضح مع تنقّل أسرع من الشريط الجانبي والقائمة المنسدلة.</p>
+            <p>تم تثبيت الشعار الرسمي في كامل واجهات الإدارة مع الحفاظ على نفس سرعة التنقّل والتنظيم.</p>
           </div>
         ) : null}
         <button type="button" className="admin-sidebar-logout" onClick={handleLogout}>

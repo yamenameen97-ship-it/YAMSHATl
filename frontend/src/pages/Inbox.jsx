@@ -8,6 +8,7 @@ import { getGroups, createGroup } from '../api/groups.js';
 import { getMe, getUsers } from '../api/users.js';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import useIsMobile from '../hooks/useIsMobile.js';
+import BrandLogo from '../components/ui/BrandLogo.jsx';
 
 const TABS = [
   { key: 'all', label: 'الكل' },
@@ -787,7 +788,9 @@ export default function Inbox() {
             </button>
 
             <button type="button" className="yam-brand" onClick={() => navigate('/')} aria-label="YAMSHAT">
-              <span className="yam-brand-mark">Y</span>
+              <span className="yam-brand-mark">
+                <BrandLogo size={28} alt="Yamshat" className="yam-brand-mark-image" />
+              </span>
               <span className="yam-brand-text">YAMSHAT</span>
             </button>
 

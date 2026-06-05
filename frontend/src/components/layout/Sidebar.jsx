@@ -2,6 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getUsers } from '../../api/users.js';
 import { getLiveRooms } from '../../api/live.js';
+import BrandLogo from '../ui/BrandLogo.jsx';
 import { useAppStore } from '../../store/appStore.js';
 import { selectUnreadTotal, useChatStore } from '../../store/appStore.js';
 import { avatarGradient, formatCompactNumber, initialsFromName } from '../yamshat/YamshatDesign.js';
@@ -73,11 +74,13 @@ export default function Sidebar() {
   return (
     <aside className="yamshat-side-rail">
       <div className="yamshat-side-section yam-brand-card">
-        <div className="yam-brand-mark">🜲</div>
+        <div className="yam-brand-mark yam-brand-mark-logo">
+          <BrandLogo size={42} alt="شعار يام شات الرسمي" className="yam-brand-mark-image" />
+        </div>
         <div>
-          <div className="yam-brand-title">YAMSHAT PRO</div>
+          <div className="yam-brand-title">YAMSHAT</div>
           <p className="yam-brand-copy">
-            {language === 'en' ? 'Upgrade for an ad-free gaming social experience.' : 'ترقية لحسابك لتجربة يام شات الخاصة بك بمميزات حصرية وإشعارات خاصة والمزيد.'}
+            {language === 'en' ? 'The official Yamshat identity is now active across web, PWA, and mobile.' : 'تم تثبيت الشعار الرسمي المعتمد في الويب وتجربة الـ PWA والموبايل مع إزالة أي تعارض بصري سابق.'}
           </p>
           <button type="button" className="yam-primary-btn" onClick={() => {
             pushToast({ type: 'info', title: 'تم فتح إعدادات الترقية', description: 'راجع إعدادات الحساب والاشتراك لتفعيل المزايا الاحترافية.' });
@@ -211,10 +214,9 @@ export default function Sidebar() {
           border-radius: 18px;
           display: grid;
           place-items: center;
-          font-size: 28px;
-          background: linear-gradient(135deg, rgba(139,92,246,0.3), rgba(6,182,212,0.18));
-          color: #d8b4fe;
-          border: 1px solid rgba(167,139,250,0.24);
+          background: linear-gradient(135deg, rgba(139,92,246,0.18), rgba(6,182,212,0.08));
+          border: 1px solid rgba(167,139,250,0.18);
+          overflow: hidden;
         }
         .yam-brand-title { font-size: 20px; font-weight: 900; letter-spacing: 0.04em; }
         .yam-brand-copy { margin: 6px 0 14px; color: #94a3b8; font-size: 13px; line-height: 1.8; }
@@ -265,10 +267,11 @@ export default function Sidebar() {
           height: 24px;
           padding: 0 8px;
           border-radius: 999px;
-          display: grid;
-          place-items: center;
-          background: #7c3aed;
-          color: white;
+          background: rgba(239, 68, 68, 0.18);
+          color: #fecaca;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
           font-size: 12px;
           font-weight: 800;
         }
@@ -276,30 +279,31 @@ export default function Sidebar() {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 10px;
+          color: #f8fafc;
         }
-        .yam-section-head h3 {
-          margin: 0;
-          font-size: 17px;
-        }
-        .yam-section-head span {
-          color: #8b5cf6;
-          font-size: 13px;
-          font-weight: 700;
-        }
-        .yam-stack-list { display: grid; gap: 12px; }
-        .yam-entity-row {
-          display: flex;
-          align-items: center;
+        .yam-section-head h3 { margin: 0; font-size: 15px; }
+        .yam-section-head span { color: #94a3b8; font-size: 12px; }
+        .yam-stack-list {
+          display: grid;
           gap: 12px;
         }
-        .yam-entity-row.compact { gap: 10px; }
-        .yam-entity-copy { min-width: 0; display: grid; gap: 2px; }
+        .yam-entity-row {
+          display: grid;
+          grid-template-columns: auto 1fr auto;
+          gap: 12px;
+          align-items: center;
+        }
+        .yam-entity-row.compact { grid-template-columns: auto 1fr auto; }
+        .yam-entity-copy {
+          display: grid;
+          gap: 4px;
+          min-width: 0;
+        }
         .yam-entity-copy strong {
+          font-size: 14px;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          font-size: 15px;
         }
         .yam-entity-copy small {
           color: #94a3b8;
@@ -308,34 +312,27 @@ export default function Sidebar() {
           text-overflow: ellipsis;
         }
         .yam-live-metric {
-          margin-inline-start: auto;
           display: inline-flex;
           align-items: center;
           gap: 6px;
           color: #fda4af;
-          font-size: 13px;
-          font-weight: 700;
+          font-size: 12px;
+          font-weight: 800;
         }
         .yam-live-metric .dot {
-          width: 7px;
-          height: 7px;
-          border-radius: 50%;
-          background: #ef4444;
-          box-shadow: 0 0 0 4px rgba(239,68,68,0.14);
+          width: 8px;
+          height: 8px;
+          border-radius: 999px;
+          background: #f43f5e;
+          box-shadow: 0 0 0 4px rgba(244, 63, 94, 0.12);
         }
         .yam-group-badge {
           width: 40px;
           height: 40px;
-          border-radius: 14px;
+          border-radius: 12px;
           display: grid;
           place-items: center;
-          background: linear-gradient(135deg, rgba(99,102,241,0.26), rgba(139,92,246,0.18));
-        }
-        @media (max-width: 1180px) {
-          .yamshat-side-rail { width: 290px; }
-        }
-        @media (max-width: 1024px) {
-          .yamshat-side-rail { display: none; }
+          background: rgba(124,58,237,0.14);
         }
       `}</style>
     </aside>

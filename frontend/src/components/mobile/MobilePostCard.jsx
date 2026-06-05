@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import BrandLogo from '../ui/BrandLogo.jsx';
 
 /**
  * MobilePostCard
@@ -23,11 +24,7 @@ function VerifiedBadge() {
 }
 
 function YamshatY({ size = 22 }) {
-  return (
-    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
-      <path d="M5 3 L12 13 L19 3 L16 3 L12 8 L8 3 Z M10 13 L14 13 L14 21 L10 21 Z" fill="#fff" />
-    </svg>
-  );
+  return <BrandLogo size={size} alt="Yamshat" shadow={false} className="ym-inline-brand" />;
 }
 
 function formatCount(n) {
@@ -119,15 +116,7 @@ function MobilePostCard({
           ) : (
             <div className="ym-post-banner-overlay">
               <span className="brand-logo">
-                <svg viewBox="0 0 64 64" width="56" height="56">
-                  <defs>
-                    <linearGradient id="ym-banner-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#C4B5FD" />
-                      <stop offset="100%" stopColor="#7C3AED" />
-                    </linearGradient>
-                  </defs>
-                  <path d="M14 8 L32 36 L50 8 L42 8 L32 22 L22 8 Z M28 36 L36 36 L36 58 L28 58 Z" fill="url(#ym-banner-grad)" />
-                </svg>
+                <BrandLogo size={56} alt="Yamshat" shadow={false} className="ym-banner-brand" />
               </span>
               <span className="brand-name">{banner.title || 'YAMSHAT'}</span>
               {banner.slogan ? <span className="brand-slogan">{banner.slogan}</span> : null}

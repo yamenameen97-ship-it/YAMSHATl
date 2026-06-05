@@ -1098,3 +1098,15 @@
   color: var(--adm-text);
   border: 1px solid rgba(148, 163, 184, 0.14);
 }
+
+.brand-logo-reference {
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.brand-logo-reference-image {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain;
+}

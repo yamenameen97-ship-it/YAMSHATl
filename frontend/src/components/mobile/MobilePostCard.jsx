@@ -1,16 +1,10 @@
 import { memo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import BrandLogo from '../ui/BrandLogo.jsx';
 
 /**
  * MobilePostCard
- * بطاقة منشور بتصميم مطابق للنموذج المرجعي:
- * - رأس: صورة شخصية + اسم + توثيق + توقيت + قائمة (...)
- * - نص + هاشتاجات بنفسجية
- * - بنر اختياري للترويج (يدعم صور أيضاً)
- * - شريط تفاعل مع عدادات: إعجاب / تعليق / مشاركة / حفظ
- *
- * كل الأزرار مُربطة عبر props بـ handlers من الأب (FeedMobile)
- * التي تستدعي backend API الحقيقية.
+ * بطاقة منشور بتصميم مطابق للنموذج المرجعي مع دعم البث المباشر
  */
 
 function VerifiedBadge() {
@@ -53,6 +47,7 @@ function MobilePostCard({
   onSave,
   onMore,
 }) {
+  const navigate = useNavigate();
   const {
     authorName = 'مستخدم',
     handle = '@user',
@@ -60,17 +55,28 @@ function MobilePostCard({
     verified = false,
     avatarUrl = '',
     text = '',
-    banner = null, // { type: 'image'|'logo', url?, title?, slogan? }
+    banner = null,
     liked = false,
     saved = false,
     likes = 0,
     comments = 0,
     reposts = 0,
+    is_live = false,
+    live_stream_id = null,
+    viewers = 0,
+    thumbnail = null,
   } = post;
 
   const handleClick = (handler) => (e) => {
     e?.stopPropagation?.();
     handler?.(post);
+  };
+
+  const handleJoinLive = (e) => {
+    e?.stopPropagation();
+    if (live_stream_id) {
+      navigate(`/live/view/${live_stream_id}`);
+    }
   };
 
   return (
@@ -107,7 +113,69 @@ function MobilePostCard({
         <div className="ym-post-body">{renderTextWithHashtags(text)}</div>
       ) : null}
 
-      {banner ? (
+      {is_live ? (
+        <div className="ym-post-live-banner" onClick={handleJoinLive} style={{
+          position: 'relative',
+          borderRadius: '16px',
+          overflow: 'hidden',
+          cursor: 'pointer',
+          aspectRatio: '16/9',
+          background: '#000',
+          margin: '8px 0'
+        }}>
+          <img src={thumbnail || 'https://via.placeholder.com/800x450?text=Live+Stream'} alt="Live" style={{width:'100%', height:'100%', objectFit:'cover'}} />
+          <div style={{
+            position: 'absolute',
+            top: '12px',
+            left: '12px',
+            background: '#ef4444',
+            color: 'white',
+            padding: '4px 12px',
+            borderRadius: '20px',
+            fontSize: '12px',
+            fontWeight: 'bold',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px'
+          }}>
+            <span style={{width:8, height:8, background:'white', borderRadius:'50%'}}></span> مباشر
+          </div>
+          <div style={{
+            position: 'absolute',
+            top: '12px',
+            right: '12px',
+            background: 'rgba(0,0,0,0.6)',
+            color: 'white',
+            padding: '4px 10px',
+            borderRadius: '20px',
+            fontSize: '12px'
+          }}>
+            👁 {formatCount(viewers)}
+          </div>
+          <div style={{
+            position: 'absolute',
+            bottom: '0',
+            left: '0',
+            right: '0',
+            background: 'linear-gradient(transparent, rgba(0,0,0,0.8))',
+            padding: '20px 12px 12px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <span style={{color:'white', fontWeight:'bold'}}>انضم للبث المباشر الآن</span>
+            <button style={{
+              background: '#7c3aed',
+              color: 'white',
+              border: 'none',
+              padding: '8px 16px',
+              borderRadius: '20px',
+              fontWeight: 'bold',
+              fontSize: '13px'
+            }}>انضم الآن</button>
+          </div>
+        </div>
+      ) : banner ? (
         <div className="ym-post-banner">
           {banner.type === 'image' && banner.url ? (
             <img src={banner.url} alt={banner.title || ''} loading="lazy" />
@@ -123,7 +191,6 @@ function MobilePostCard({
         </div>
       ) : null}
 
-      {/* عرض إحصائيات المنشور */}
       {(likes > 0 || comments > 0 || reposts > 0) ? (
         <div className="ym-post-stats" style={{
           display: 'flex',

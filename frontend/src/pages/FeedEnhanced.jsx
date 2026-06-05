@@ -90,35 +90,44 @@ function timeAgoAr(dateLike) {
 // دالة لتحويل البث المباشر إلى منشور
 function convertLiveStreamToPost(stream) {
   if (!stream || !stream.id) return null;
+  const thumbnail = stream.thumbnail_url || stream.thumbnail || '';
+  const viewers = stream.viewers_count || stream.viewer_count || 0;
+  
   return {
     id: `live_${stream.id}`,
+    rawId: `live_${stream.id}`,
     type: 'live_stream',
+    is_live: true,
     is_live_stream: true,
     live_stream_id: stream.id,
     title: stream.title || 'بث مباشر',
     content: stream.title || 'بث مباشر',
     text: stream.title || 'بث مباشر جديد',
-    author: stream.host_username || 'مستخدم',
+    authorName: stream.host_name || stream.host_username || 'مستخدم',
+    authorAvatar: stream.host_avatar || '',
     username: stream.host_username || 'مستخدم',
-    handle: `@${stream.host_username || 'مستخدم'}`,
+    handle: `@${(stream.host_username || 'مستخدم').replace(/^@/, '')}`,
     avatar: stream.host_avatar || '',
     user_avatar: stream.host_avatar || '',
     created_at: stream.started_at || new Date().toISOString(),
+    time: 'مباشر الآن',
     media_type: 'live',
-    media_url: stream.thumbnail_url || '',
-    thumbnail_url: stream.thumbnail_url || '',
-    preview_url: stream.thumbnail_url || '',
-    viewers_count: stream.viewers_count || 0,
+    media_url: thumbnail,
+    thumbnail_url: thumbnail,
+    preview_url: thumbnail,
+    viewers_count: viewers,
+    viewers: viewers,
     likes_count: stream.hearts_count || 0,
     comments_count: stream.comments_count || 0,
     share_count: stream.share_count || 0,
     is_liked: false,
     is_saved: false,
-    is_verified: false,
+    is_verified: Boolean(stream.is_verified),
     is_reel: false,
     has_video: false,
     has_live_stream: true,
     live_stream: stream,
+    media: thumbnail ? [{ type: 'image-primary', kind: 'image', url: thumbnail }] : []
   };
 }
 
@@ -180,27 +189,35 @@ function buildFeedPosts(posts = []) {
         };
       });
 
+      const isLive = Boolean(post.is_live_stream || post.is_live || post.type === 'LIVE');
+      const liveThumbnail = post.thumbnail_url || post.thumbnail || post.preview_url || '';
+      
+      // إذا كان بثاً مباشراً ولا توجد ميديا عادية، نستخدم الثمنيل
+      const finalMedia = (isLive && !normalizedMedia.length && liveThumbnail)
+        ? [{ type: 'image-primary', kind: 'image', url: resolveMediaUrl(liveThumbnail) }]
+        : normalizedMedia;
+
       return {
         id: post.id || `post-${index}`,
-        rawId: post.id || null, // المعرف الحقيقي للمنشور من الـ backend (null للمنشورات الترحيبية)
+        rawId: post.id || null,
         userId: post.user_id || null,
         rawUsername: post.username || post.user || '',
-        isLive: Boolean(post.is_live_stream),
-        liveStreamId: post.live_stream_id || null,
+        isLive: isLive,
+        liveStreamId: post.live_stream_id || post.live_id || null,
         authorName: post.author_name || post.username || post.user || 'مستخدم يام شات',
         authorAvatar: resolveMediaUrl(post.user_avatar || post.avatar || post.author_avatar || ''),
         handle: normalizeHandle(post.username || post.user || `user.${index + 1}`),
-        time: timeAgoAr(post.created_at || post.published_at),
+        time: isLive ? 'مباشر الآن' : timeAgoAr(post.created_at || post.published_at),
         text: stripFirstUrl(post.content || post.text || ''),
         liveUrl: resolveLiveViewerUrl(post),
         rawText: post.content || post.text || '',
         likes: Number(post.likes_count || post.like_count || post.likes || 0),
         comments: Number(post.comments_count || post.comment_count || 0),
         shares: Number(post.share_count || post.shares || 0),
-        views: Number(post.views_count || post.view_count || 0),
+        views: Number(post.viewers_count || post.viewers || post.views_count || 0),
         isLiked: Boolean(post.is_liked ?? post.liked_by_me),
         isSaved: Boolean(post.is_saved ?? post.saved_by_me),
-        media: normalizedMedia,
+        media: finalMedia,
       };
     });
   }
@@ -589,13 +606,21 @@ function PostCard({ post }) {
 
       <p className="yam-post-copy-v2">{post.text}</p>
 
-      {post.liveUrl ? (
+      {post.isLive ? (
+        <div className="yam-post-live-indicator">
+          <span className="live-dot"></span>
+          <span className="live-text">مباشر الآن</span>
+          <span className="live-viewers">👁 {formatCompactNumber(post.views || 0)} مشاهد</span>
+        </div>
+      ) : null}
+
+      {post.liveUrl || post.isLive ? (
         <button
           type="button"
           className="yam-post-live-cta"
           onClick={handleOpenLiveAnnouncement}
         >
-          🎥 متابعة البث المباشر
+          {post.isLive ? '🚀 انضم للبث المباشر الآن' : '🎥 متابعة البث المباشر'}
         </button>
       ) : null}
 
@@ -1644,6 +1669,74 @@ function FeedDesktopInner() {
             line-height: 1.9;
             white-space: pre-line;
             font-size: 15px;
+          }
+
+          .yam-post-live-cta {
+            width: 100%;
+            min-height: 52px;
+            border-radius: 18px;
+            border: none;
+            background: linear-gradient(135deg, #8b5cf6, #6366f1);
+            color: #fff;
+            font-weight: 800;
+            font-size: 15px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 12px 28px rgba(124, 58, 237, 0.32);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 8px;
+          }
+
+          .yam-post-live-cta:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 16px 36px rgba(124, 58, 237, 0.42);
+            background: linear-gradient(135deg, #9333ea, #4f46e5);
+          }
+
+          .yam-post-live-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+            padding: 10px 16px;
+            background: rgba(239, 68, 68, 0.12);
+            border-radius: 14px;
+            border: 1px solid rgba(239, 68, 68, 0.25);
+          }
+
+          .live-dot {
+            width: 10px;
+            height: 10px;
+            background: #ef4444;
+            border-radius: 50%;
+            box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.2);
+            animation: pulse-live 1.5s infinite;
+          }
+
+          @keyframes pulse-live {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+          }
+
+          .live-text {
+            color: #ef4444;
+            font-weight: 900;
+            font-size: 14px;
+            letter-spacing: 0.5px;
+          }
+
+          .live-viewers {
+            color: #cbd5e1;
+            font-size: 13px;
+            font-weight: 700;
+            margin-inline-start: auto;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 2px 10px;
+            border-radius: 8px;
           }
 
           .yam-post-media-grid-v2 {

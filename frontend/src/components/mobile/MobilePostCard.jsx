@@ -65,7 +65,10 @@ function MobilePostCard({
     live_stream_id = null,
     viewers = 0,
     thumbnail = null,
+    media = [],
   } = post;
+
+  const liveThumbnail = thumbnail || (media && media[0]?.url) || '';
 
   const handleClick = (handler) => (e) => {
     e?.stopPropagation?.();
@@ -123,7 +126,7 @@ function MobilePostCard({
           background: '#000',
           margin: '8px 0'
         }}>
-          <img src={thumbnail || 'https://via.placeholder.com/800x450?text=Live+Stream'} alt="Live" style={{width:'100%', height:'100%', objectFit:'cover'}} />
+          <img src={liveThumbnail || 'https://via.placeholder.com/800x450?text=Live+Stream'} alt="Live" style={{width:'100%', height:'100%', objectFit:'cover'}} />
           <div style={{
             position: 'absolute',
             top: '12px',

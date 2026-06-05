@@ -88,6 +88,18 @@ function getHealthStatus(bitrate, packetLoss = 0) {
   return { status: 'good', color: '#10b981', label: 'ممتاز' };
 }
 
+const LIVE_STATS_POLL_MS = 15000;
+const LIVE_COMMENTS_POLL_MS = 10000;
+const LIVE_HEARTBEAT_MS = 45000;
+
+function getRetryDelay(error, fallbackMs) {
+  const retryAfter = Number(error?.response?.headers?.['retry-after'] || error?.response?.data?.retry_after || 0);
+  if (Number.isFinite(retryAfter) && retryAfter > 0) {
+    return retryAfter * 1000;
+  }
+  return fallbackMs;
+}
+
 export default function LiveStudioAdvanced() {
   const { pushToast } = useToast();
   const currentUsername = getCurrentUsername();
@@ -162,6 +174,8 @@ export default function LiveStudioAdvanced() {
   const durationIntervalRef = useRef(null);
   const heartbeatIntervalRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
+  const analyticsRequestRef = useRef({ inFlight: false, backoffUntil: 0 });
+  const commentsRequestRef = useRef({ inFlight: false, backoffUntil: 0 });
 
   const refreshBackendStatus = useCallback(async () => {
     const backendOrigin = API_BASE.replace(/\/api\/?$/, '');
@@ -283,7 +297,7 @@ export default function LiveStudioAdvanced() {
         if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
         statsIntervalRef.current = setInterval(() => {
           updateStreamStats(roomId);
-        }, 5000);
+        }, LIVE_STATS_POLL_MS);
 
         // بدء عداد المدة
         if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
@@ -297,7 +311,7 @@ export default function LiveStudioAdvanced() {
         if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
         heartbeatIntervalRef.current = setInterval(() => {
           sendHeartbeat(roomId).catch(err => console.error('Heartbeat error:', err));
-        }, 30000);
+        }, LIVE_HEARTBEAT_MS);
 
         pushToast?.({
           type: 'success',
@@ -395,8 +409,13 @@ export default function LiveStudioAdvanced() {
 
   // تحديث إحصائيات البث
   const updateStreamStats = useCallback(async (roomId) => {
+    const state = analyticsRequestRef.current;
+    if (!roomId || state.inFlight || Date.now() < state.backoffUntil) return;
+
+    state.inFlight = true;
     try {
       const response = await getStreamAnalytics(roomId);
+      state.backoffUntil = 0;
       if (response?.data) {
         const data = response.data;
         setStreamStats(prev => ({
@@ -414,17 +433,32 @@ export default function LiveStudioAdvanced() {
         setStreamHealth(health.status);
       }
     } catch (error) {
+      if (Number(error?.response?.status) === 429) {
+        state.backoffUntil = Date.now() + getRetryDelay(error, LIVE_STATS_POLL_MS * 2);
+      }
       console.error('خطأ في تحديث الإحصائيات:', error);
+    } finally {
+      state.inFlight = false;
     }
   }, []);
 
   // تحميل التعليقات
   const loadComments = useCallback(async (roomId) => {
+    const state = commentsRequestRef.current;
+    if (!roomId || state.inFlight || Date.now() < state.backoffUntil) return;
+
+    state.inFlight = true;
     try {
       const response = await getLiveComments(roomId);
+      state.backoffUntil = 0;
       setComments(Array.isArray(response?.data) ? response.data : []);
     } catch (error) {
+      if (Number(error?.response?.status) === 429) {
+        state.backoffUntil = Date.now() + getRetryDelay(error, LIVE_COMMENTS_POLL_MS * 2);
+      }
       console.error('خطأ في تحميل التعليقات:', error);
+    } finally {
+      state.inFlight = false;
     }
   }, []);
 
@@ -569,7 +603,7 @@ export default function LiveStudioAdvanced() {
     if (activeStream?.id || activeStream?.room_id) {
       const roomId = activeStream.id || activeStream.room_id;
       loadComments(roomId);
-      const interval = setInterval(() => loadComments(roomId), 3000);
+      const interval = setInterval(() => loadComments(roomId), LIVE_COMMENTS_POLL_MS);
       return () => clearInterval(interval);
     }
   }, [activeStream?.id, activeStream?.room_id, loadComments]);

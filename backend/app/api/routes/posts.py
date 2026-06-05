@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
@@ -30,6 +31,7 @@ from app.services.post_service import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _parse_datetime(value):
@@ -108,7 +110,15 @@ async def get_all(
     candidate_limit = max(effective_limit * 6, 60) if manual_pagination else effective_limit
     candidate_skip = 0 if manual_pagination else effective_skip
 
-    posts = get_posts(db, current_user=current_user, skip=candidate_skip, limit=candidate_limit, include_drafts=include_drafts)
+    try:
+        posts = get_posts(db, current_user=current_user, skip=candidate_skip, limit=candidate_limit, include_drafts=include_drafts)
+    except Exception as exc:
+        logger.exception('Posts feed primary query failed: %s', exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        posts = []
 
     if active_filter == 'following':
         following_ids = {
@@ -127,13 +137,20 @@ async def get_all(
     elif active_sort == 'oldest':
         posts = sorted(posts, key=lambda post: str(post.get('created_at') or ''))
     else:
-        posts = await rank_posts(posts, current_user)
+        try:
+            posts = await rank_posts(posts, current_user)
+        except Exception as exc:
+            logger.warning('AI post ranking failed, using local feed order: %s', exc)
 
     total_candidates = len(posts)
     paginated_posts = posts[effective_skip:effective_skip + effective_limit] if manual_pagination else posts
     has_more = total_candidates > (effective_skip + len(paginated_posts)) if manual_pagination else len(posts) == effective_limit
 
-    recommended_posts = await get_recommendations(current_user)
+    try:
+        recommended_posts = await get_recommendations(current_user)
+    except Exception as exc:
+        logger.warning('Recommendations lookup failed, returning empty list: %s', exc)
+        recommended_posts = []
 
     return {
         "posts": paginated_posts,

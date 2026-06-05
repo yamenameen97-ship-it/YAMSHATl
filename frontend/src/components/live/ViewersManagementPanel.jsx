@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   getStreamViewers,
   muteUser,
@@ -47,28 +47,37 @@ export default function ViewersManagementPanel({
   const [selectedViewer, setSelectedViewer] = useState(null);
   const [showActionMenu, setShowActionMenu] = useState(null);
   const [filterStatus, setFilterStatus] = useState('all'); // all, muted, banned
+  const pollingStateRef = useRef({ inFlight: false, backoffUntil: 0 });
 
   // تحميل قائمة المشاهدين
   const loadViewers = useCallback(async () => {
-    if (!streamId) return;
+    const state = pollingStateRef.current;
+    if (!streamId || state.inFlight || Date.now() < state.backoffUntil) return;
 
+    state.inFlight = true;
     setLoading(true);
     try {
       const response = await getStreamViewers(streamId);
+      state.backoffUntil = 0;
       const viewersList = Array.isArray(response?.data) ? response.data : [];
       setViewers(viewersList);
       onViewerCountChange?.(viewersList.length);
     } catch (error) {
+      if (Number(error?.response?.status) === 429) {
+        const retryAfter = Number(error?.response?.headers?.['retry-after'] || error?.response?.data?.retry_after || 20);
+        state.backoffUntil = Date.now() + (Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 20000);
+      }
       console.error('خطأ في تحميل المشاهدين:', error);
     } finally {
+      state.inFlight = false;
       setLoading(false);
     }
   }, [streamId, onViewerCountChange]);
 
-  // تحديث قائمة المشاهدين كل 5 ثوان
+  // تحديث قائمة المشاهدين بإيقاع أهدأ مع backoff عند 429
   useEffect(() => {
     loadViewers();
-    const interval = setInterval(loadViewers, 5000);
+    const interval = setInterval(loadViewers, 12000);
     return () => clearInterval(interval);
   }, [loadViewers]);
 

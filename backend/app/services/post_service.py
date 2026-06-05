@@ -306,7 +306,15 @@ def get_posts(db: Session, current_user: User | None = None, skip: int = 0, limi
             continue
         if post.is_draft and not include_drafts:
             continue
-        visible.append(_serialize_post(db, post, current_user=current_user))
+        try:
+            visible.append(_serialize_post(db, post, current_user=current_user))
+        except Exception as exc:
+            logger.warning('Skipping malformed post %s during feed serialization: %s', getattr(post, 'id', 'unknown'), exc)
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            continue
         if len(visible) >= limit:
             break
     return visible

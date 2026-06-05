@@ -33,6 +33,7 @@ HIGH_VOLUME_PATHS = (
     '/messages',
     '/update_online',
     '/typing',
+    '/live',
 )
 
 # Endpoints quasi-statiques (lectures profile, prefs) — limite généreuse
@@ -73,9 +74,14 @@ def _rate_limit_for_path(short_path: str, method: str) -> int:
     if method.upper() == 'GET' and any(short_path.startswith(p) for p in READ_ONLY_PATHS):
         return max(base * 10, 1200)
 
-    # Endpoints chat/upload haute fréquence : 5x la base
+    # Lecture live/polling (analytics, viewers, comments) : quota bien plus large
+    # pour éviter les 429 quand le studio recharge plusieurs panneaux.
+    if method.upper() == 'GET' and short_path.startswith('/live'):
+        return max(base * 12, 1800)
+
+    # Endpoints chat/upload/live haute fréquence : 5x la base
     if any(short_path.startswith(p) for p in HIGH_VOLUME_PATHS):
-        return max(base * 5, 1000)
+        return max(base * 8, 1200)
 
     return base
 

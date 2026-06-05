@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 import logging
+import shutil
 from pathlib import Path
 
 import socketio
@@ -26,6 +27,28 @@ from app.db.session import engine
 logger = logging.getLogger(__name__)
 
 
+def _sync_legacy_uploads() -> None:
+    project_uploads = Path(__file__).resolve().parents[2] / 'uploads'
+    legacy_uploads = Path(__file__).resolve().parents[1] / 'uploads'
+    project_uploads.mkdir(parents=True, exist_ok=True)
+    if not legacy_uploads.exists() or legacy_uploads.resolve() == project_uploads.resolve():
+        return
+
+    migrated = 0
+    for file_path in legacy_uploads.rglob('*'):
+        if not file_path.is_file():
+            continue
+        target = project_uploads / file_path.relative_to(legacy_uploads)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists():
+            continue
+        shutil.copy2(file_path, target)
+        migrated += 1
+
+    if migrated:
+        logger.info('Recovered %s legacy upload file(s) into /uploads mount.', migrated)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     # IMPORTANT: On force toujours la normalisation du schéma au démarrage
@@ -41,6 +64,10 @@ async def lifespan(_app: FastAPI):
         # On ne lève pas l'exception : on laisse le serveur démarrer en mode
         # dégradé pour pouvoir exposer /health avec l'erreur DB et permettre
         # le diagnostic plutôt que d'avoir un crash silencieux de Render.
+    try:
+        _sync_legacy_uploads()
+    except Exception as exc:
+        logger.warning('Legacy uploads sync skipped: %s', exc)
     yield
 
 

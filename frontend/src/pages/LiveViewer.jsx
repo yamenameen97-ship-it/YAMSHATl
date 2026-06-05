@@ -7,7 +7,7 @@ import {
   getLiveComments,
   sendLiveGift,
   sendLiveHeart,
-  getLiveStreamStats,
+  getStreamStats,
 } from '../services/api/correctedLiveStreamApi.js';
 import { getCurrentUsername } from '../utils/auth.js';
 import '../styles/professional-live-view.css';
@@ -67,7 +67,7 @@ export default function LiveViewer() {
   const updateStats = useCallback(async () => {
     if (!streamId) return;
     try {
-      const response = await getLiveStreamStats(streamId);
+      const response = await getStreamStats(streamId);
       if (response?.data) {
         setStreamStats(prev => ({
           ...prev,

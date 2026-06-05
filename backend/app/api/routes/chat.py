@@ -13,13 +13,21 @@ from app.core.security import ACCESS_TOKEN_TYPE, TokenError, decode_token
 from app.core.socket_server import is_user_online, sio
 from app.db.session import SessionLocal
 from app.models.message import Message
+from app.models.message_attachment import MessageAttachment
+from app.models.message_reaction import MessageReaction
 from app.models.notification import Notification
 from app.models.user import User
 from app.models.user_block import UserBlock
 from app.services.chat_realtime import mark_messages_delivered, mark_messages_seen_for_sender, serialize_message
 from app.services.encryption_service import encrypt_message
 from app.services.media_service import scan_media_for_malware
-from app.services.chat_features import recall_message, add_reaction, apply_retention_policy
+from app.services.chat_features import (
+    recall_message,
+    add_reaction,
+    remove_reaction,
+    list_reactions,
+    apply_retention_policy,
+)
 from app.services.connection_manager import manager
 
 router = APIRouter()
@@ -155,6 +163,35 @@ def get_messages(
     }
 
 
+def _parse_attachments(payload: dict) -> list[dict]:
+    """تجميع وتطبيع قائمة المرفقات الواردة في payload."""
+    raw = payload.get('attachments') or []
+    if not isinstance(raw, list):
+        return []
+    items: list[dict] = []
+    for idx, item in enumerate(raw):
+        if not isinstance(item, dict):
+            continue
+        url = str(item.get('url') or item.get('media_url') or '').strip()
+        if not url:
+            continue
+        items.append({
+            'url': url,
+            'cdn_url': str(item.get('cdn_url') or '').strip() or None,
+            'thumbnail_url': str(item.get('thumbnail_url') or '').strip() or None,
+            'kind': str(item.get('kind') or item.get('type') or 'file').strip() or 'file',
+            'mime_type': str(item.get('mime_type') or item.get('mimeType') or '').strip() or None,
+            'file_name': str(item.get('file_name') or item.get('fileName') or item.get('originalName') or '').strip() or None,
+            'file_size': int(item.get('file_size') or item.get('size') or 0) or None,
+            'width': int(item.get('width') or 0) or None,
+            'height': int(item.get('height') or 0) or None,
+            'duration_seconds': float(item.get('duration_seconds') or item.get('duration') or 0) or None,
+            'waveform': item.get('waveform') if isinstance(item.get('waveform'), str) else None,
+            'position': int(item.get('position') or idx),
+        })
+    return items
+
+
 @router.post('/send_message')
 async def send_message(payload: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     receiver_username = str(payload.get('receiver') or '').strip()
@@ -162,17 +199,33 @@ async def send_message(payload: dict, db: Session = Depends(get_db), current_use
     media_url = str(payload.get('media_url') or '').strip()
     message_type = str(payload.get('type') or ('image' if media_url else 'text')).strip() or 'text'
     client_id = str(payload.get('client_id') or '').strip() or None
-    
-    if not receiver_username or (not raw_message and not media_url):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='receiver and message or media_url are required')
-    
+    reply_to_id = payload.get('reply_to_id') or (payload.get('reply_to') or {}).get('id') if isinstance(payload.get('reply_to'), dict) else payload.get('reply_to_id')
+    try:
+        reply_to_id = int(reply_to_id) if reply_to_id else None
+    except (TypeError, ValueError):
+        reply_to_id = None
+    forwarded_from_id = payload.get('forwarded_from_id')
+    try:
+        forwarded_from_id = int(forwarded_from_id) if forwarded_from_id else None
+    except (TypeError, ValueError):
+        forwarded_from_id = None
+    disappearing_seconds = 0
+    try:
+        disappearing_seconds = int(payload.get('disappearing_in_seconds') or 0)
+    except (TypeError, ValueError):
+        disappearing_seconds = 0
+    attachments = _parse_attachments(payload)
+
+    if not receiver_username or (not raw_message and not media_url and not attachments):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='receiver and message or media_url/attachments are required')
+
     if not await _resolve_rate_limit_result(allow_socket_message(f'chat:{current_user.id}')):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='You are sending messages too quickly')
 
     # دعم دردشة المجموعات
     is_group = receiver_username.startswith('group:')
     receiver_id = None
-    
+
     if not is_group:
         receiver = _find_active_user_by_username(db, receiver_username)
         if receiver is None:
@@ -181,7 +234,6 @@ async def send_message(payload: dict, db: Session = Depends(get_db), current_use
         receiver_id = receiver.id
     else:
         # للمجموعات: نستخدم معرف المُرسل نفسه كـ receiver_id لتلبية قيد FK
-        # (التمييز يتم عبر حقل receiver النصي الذي يبدأ بـ 'group:')
         receiver_id = current_user.id
 
     if client_id:
@@ -191,6 +243,21 @@ async def send_message(payload: dict, db: Session = Depends(get_db), current_use
 
     if media_url and not scan_media_for_malware(media_url):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Media failed malware scan.')
+    for att in attachments:
+        if not scan_media_for_malware(att['url']):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Attachment failed malware scan.')
+
+    # التحقق من reply_to_id
+    if reply_to_id is not None:
+        reply_target = db.query(Message).filter(Message.id == reply_to_id).first()
+        if reply_target is None:
+            reply_to_id = None
+
+    # حساب expires_at للرسائل المختفية
+    expires_at = None
+    if disappearing_seconds and disappearing_seconds > 0:
+        from datetime import timedelta
+        expires_at = datetime.utcnow() + timedelta(seconds=disappearing_seconds)
 
     delivered_now = is_group or is_user_online(username=receiver_username, user_id=receiver_id)
     delivered_at = datetime.utcnow() if delivered_now else None
@@ -203,15 +270,40 @@ async def send_message(payload: dict, db: Session = Depends(get_db), current_use
         client_id=client_id,
         message=clean_message,
         content=encrypt_message(clean_message),
-        media_url=media_url or None,
+        media_url=media_url or (attachments[0]['url'] if attachments else None),
         message_type=message_type,
         is_delivered=delivered_now,
         delivered_at=delivered_at,
         is_seen=False,
+        reply_to_id=reply_to_id,
+        forwarded_from_id=forwarded_from_id,
+        expires_at=expires_at,
     )
     db.add(message)
     db.commit()
     db.refresh(message)
+
+    # حفظ المرفقات المتعددة في الجدول الجديد
+    if attachments:
+        for item in attachments:
+            db.add(MessageAttachment(
+                message_id=message.id,
+                url=item['url'],
+                cdn_url=item['cdn_url'],
+                thumbnail_url=item['thumbnail_url'],
+                kind=item['kind'],
+                mime_type=item['mime_type'],
+                file_name=item['file_name'],
+                file_size=item['file_size'],
+                width=item['width'],
+                height=item['height'],
+                duration_seconds=item['duration_seconds'],
+                waveform=item['waveform'],
+                position=item['position'],
+            ))
+        db.commit()
+        db.refresh(message)
+
     serialized = serialize_message(message, db)
 
     if is_group:
@@ -274,115 +366,6 @@ async def send_message(payload: dict, db: Session = Depends(get_db), current_use
         await sio.emit(
             'messages_delivered',
             {'sender': current_user.username, 'viewer': receiver_username, 'message_ids': [message.id]},
-            room=f'username:{current_user.username}',
-        )
-    return serialized
-
-    if client_id:
-        existing = db.query(Message).filter(Message.sender_id == current_user.id, Message.client_id == client_id).first()
-        if existing is not None:
-            return serialize_message(existing, db)
-
-    if media_url and not scan_media_for_malware(media_url):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Media failed malware scan.')
-
-    delivered_now = is_user_online(username=receiver.username, user_id=receiver.id)
-    delivered_at = datetime.utcnow() if delivered_now else None
-    clean_message = bleach.clean(raw_message)
-    message = Message(
-        sender_id=current_user.id,
-        receiver_id=receiver.id,
-        sender=current_user.username,
-        receiver=receiver.username,
-        client_id=client_id,
-        message=clean_message,
-        content=encrypt_message(clean_message),
-        media_url=media_url or None,
-        message_type=message_type,
-        is_delivered=delivered_now,
-        delivered_at=delivered_at,
-        is_seen=False,
-    )
-    db.add(message)
-    db.commit()
-    db.refresh(message)
-    serialized = serialize_message(message, db)
-
-    await sio.emit('new_private_message', serialized, room=f'username:{receiver.username}')
-    await sio.emit('new_private_message', serialized, room=f'username:{current_user.username}')
-
-    # Create a Notification record + emit `new_notification` for the receiver so the
-    # bell icon and browser/push notifications fire end-to-end (fixes: chat
-    # messages weren't producing notifications on the other side).
-    try:
-        preview = (clean_message or '').strip()
-        if not preview and media_url:
-            preview = '📎 وسائط جديدة'
-        if len(preview) > 140:
-            preview = preview[:137] + '...'
-        notification = Notification(
-            user_id=receiver.id,
-            type='CHAT',
-            title=f'رسالة جديدة من {current_user.username}',
-            body=preview or 'رسالة جديدة',
-            data={
-                'from_user_id': current_user.id,
-                'username': current_user.username,
-                'message_id': message.id,
-                'screen': 'chat',
-                'path': f'/chat/{current_user.username}',
-            },
-        )
-        db.add(notification)
-        db.commit()
-        db.refresh(notification)
-        await sio.emit(
-            'new_notification',
-            {
-                'id': notification.id,
-                'type': 'CHAT',
-                'title': notification.title,
-                'message': notification.body,
-                'text': notification.body,
-                'body': notification.body,
-                'created_at': notification.created_at.isoformat(),
-                'seen': False,
-                'screen': 'chat',
-                'path': f'/chat/{current_user.username}',
-                'data': {
-                    'username': current_user.username,
-                    'screen': 'chat',
-                    'path': f'/chat/{current_user.username}',
-                    'message_id': message.id,
-                },
-            },
-            room=f'user:{receiver.id}',
-        )
-        # Also emit to the username room as a safety net (some clients join by username)
-        await sio.emit(
-            'new_notification',
-            {
-                'id': notification.id,
-                'type': 'CHAT',
-                'title': notification.title,
-                'message': notification.body,
-                'body': notification.body,
-                'created_at': notification.created_at.isoformat(),
-                'seen': False,
-                'screen': 'chat',
-                'path': f'/chat/{current_user.username}',
-                'data': {'username': current_user.username, 'screen': 'chat'},
-            },
-            room=f'username:{receiver.username}',
-        )
-    except Exception:
-        # Never let a notification failure block the actual message delivery.
-        pass
-
-    if message.is_delivered:
-        await sio.emit(
-            'messages_delivered',
-            {'sender': current_user.username, 'viewer': receiver.username, 'message_ids': [message.id]},
             room=f'username:{current_user.username}',
         )
     return serialized
@@ -506,11 +489,265 @@ def recall(message_id: int, db: Session = Depends(get_db), current_user: User = 
 
 
 @router.post('/{message_id}/react')
-def react(message_id: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def react(message_id: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     reaction = str(payload.get('reaction') or '').strip()
     if not reaction:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Reaction is required')
-    return add_reaction(db, message_id, current_user.id, reaction)
+    result = add_reaction(db, message_id, current_user.id, reaction)
+    # بث تحديث للطرف الآخر عبر Socket.IO
+    try:
+        msg = db.query(Message).filter(Message.id == message_id).first()
+        if msg is not None:
+            payload_evt = {
+                'message_id': message_id,
+                'user': current_user.username,
+                'reaction': reaction,
+                'action': result.get('status'),
+                'total': result.get('total'),
+                'summary': result.get('summary'),
+            }
+            await sio.emit('message_reaction', payload_evt, room=f'username:{msg.sender}')
+            if msg.receiver:
+                await sio.emit('message_reaction', payload_evt, room=f'username:{msg.receiver}')
+    except Exception:
+        pass
+    return result
+
+
+@router.delete('/{message_id}/react')
+async def unreact(message_id: int, reaction: str | None = None, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    result = remove_reaction(db, message_id, current_user.id, reaction)
+    try:
+        msg = db.query(Message).filter(Message.id == message_id).first()
+        if msg is not None:
+            payload_evt = {
+                'message_id': message_id,
+                'user': current_user.username,
+                'reaction': reaction,
+                'action': 'removed',
+                'total': result.get('total'),
+                'summary': result.get('summary'),
+            }
+            await sio.emit('message_reaction', payload_evt, room=f'username:{msg.sender}')
+            if msg.receiver:
+                await sio.emit('message_reaction', payload_evt, room=f'username:{msg.receiver}')
+    except Exception:
+        pass
+    return result
+
+
+@router.get('/{message_id}/reactions')
+def get_message_reactions(message_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return list_reactions(db, message_id)
+
+
+@router.post('/edit_message')
+async def edit_message(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """تعديل رسالة أرسلها المستخدم الحالي (خلال نافذة 24 ساعة)."""
+    try:
+        message_id = int(payload.get('message_id') or 0)
+    except (TypeError, ValueError):
+        message_id = 0
+    new_text = str(payload.get('content') or payload.get('message') or '').strip()
+    if not message_id or not new_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='message_id and content are required')
+
+    message = db.query(Message).filter(
+        Message.id == message_id,
+        Message.sender_id == current_user.id,
+    ).first()
+    if message is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Message not found')
+    if message.deleted_at or message.is_recalled:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Cannot edit deleted/recalled message')
+
+    from datetime import timedelta
+    if message.created_at and (datetime.utcnow() - message.created_at) > timedelta(hours=24):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Edit window expired (24h)')
+
+    clean = bleach.clean(new_text)
+    message.message = clean
+    message.content = encrypt_message(clean)
+    message.is_edited = True
+    message.edited_at = datetime.utcnow()
+    db.commit()
+    db.refresh(message)
+    serialized = serialize_message(message, db)
+
+    # بث التحديث عبر Socket.IO
+    try:
+        if str(message.receiver or '').startswith('group:'):
+            await sio.emit('message_edited', serialized, room=message.receiver)
+        else:
+            await sio.emit('message_edited', serialized, room=f'username:{message.receiver}')
+            await sio.emit('message_edited', serialized, room=f'username:{current_user.username}')
+    except Exception:
+        pass
+    return serialized
+
+
+@router.post('/forward_message')
+async def forward_message(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """تمرير رسالة إلى واحد أو أكثر من المستخدمين/المجموعات."""
+    try:
+        message_id = int(payload.get('message_id') or 0)
+    except (TypeError, ValueError):
+        message_id = 0
+    receivers = payload.get('receivers') or payload.get('to') or []
+    if not isinstance(receivers, list):
+        receivers = [receivers]
+    receivers = [str(r).strip() for r in receivers if str(r or '').strip()]
+    if not message_id or not receivers:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='message_id and receivers are required')
+
+    source = db.query(Message).filter(Message.id == message_id).first()
+    if source is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Source message not found')
+    if source.deleted_at or source.is_recalled:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Cannot forward a deleted/recalled message')
+
+    # المستخدم لا يستطيع تمرير رسالة ليس طرفاً فيها إلا إذا كانت في مجموعة عضو بها
+    if source.sender_id != current_user.id and source.receiver_id != current_user.id:
+        if not str(source.receiver or '').startswith('group:'):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Not allowed to forward this message')
+
+    src_text = source.message or ''
+    if source.content and not src_text:
+        try:
+            from app.services.encryption_service import decrypt_message
+            src_text = decrypt_message(source.content) or ''
+        except Exception:
+            src_text = ''
+    src_media = source.media_url
+    src_type = source.message_type or ('image' if src_media else 'text')
+
+    created: list[dict] = []
+    for to_target in receivers:
+        is_group = to_target.startswith('group:')
+        target_id = current_user.id
+        if not is_group:
+            tgt_user = _find_active_user_by_username(db, to_target)
+            if tgt_user is None:
+                continue
+            if not _block_status(db, current_user.id, tgt_user.id)['can_chat']:
+                continue
+            target_id = tgt_user.id
+
+        delivered_now = is_group or is_user_online(username=to_target, user_id=target_id)
+        new_msg = Message(
+            sender_id=current_user.id,
+            receiver_id=target_id,
+            sender=current_user.username,
+            receiver=to_target,
+            client_id=None,
+            message=src_text,
+            content=encrypt_message(src_text) if src_text else '',
+            media_url=src_media,
+            message_type=src_type,
+            is_delivered=delivered_now,
+            delivered_at=datetime.utcnow() if delivered_now else None,
+            is_seen=False,
+            forwarded_from_id=source.id,
+        )
+        db.add(new_msg)
+        db.commit()
+        db.refresh(new_msg)
+
+        # نسخ المرفقات أيضاً
+        try:
+            src_atts = db.query(MessageAttachment).filter(MessageAttachment.message_id == source.id).all()
+            for att in src_atts:
+                db.add(MessageAttachment(
+                    message_id=new_msg.id,
+                    url=att.url,
+                    cdn_url=att.cdn_url,
+                    thumbnail_url=att.thumbnail_url,
+                    kind=att.kind,
+                    mime_type=att.mime_type,
+                    file_name=att.file_name,
+                    file_size=att.file_size,
+                    width=att.width,
+                    height=att.height,
+                    duration_seconds=att.duration_seconds,
+                    waveform=att.waveform,
+                    position=att.position,
+                ))
+            if src_atts:
+                db.commit()
+                db.refresh(new_msg)
+        except Exception:
+            db.rollback()
+
+        serialized = serialize_message(new_msg, db)
+        created.append(serialized)
+
+        try:
+            if is_group:
+                await sio.emit('new_message', serialized, room=to_target)
+            else:
+                await sio.emit('new_private_message', serialized, room=f'username:{to_target}')
+                await sio.emit('new_private_message', serialized, room=f'username:{current_user.username}')
+        except Exception:
+            pass
+
+    return {'forwarded': len(created), 'items': created}
+
+
+@router.get('/search_messages')
+def search_messages(
+    q: str = Query(..., min_length=1, max_length=200),
+    peer: str | None = None,
+    limit: int = Query(default=40, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """بحث في الرسائل التي تخص المستخدم الحالي (أو في محادثة محددة)."""
+    needle = q.strip()
+    if not needle:
+        return {'items': []}
+
+    query = db.query(Message).filter(
+        or_(Message.sender_id == current_user.id, Message.receiver_id == current_user.id),
+        Message.deleted_at.is_(None),
+        Message.is_recalled.is_(False),
+        Message.message.ilike(f'%{needle}%'),
+    )
+    if peer:
+        peer = peer.strip()
+        if peer.startswith('group:'):
+            query = query.filter(Message.receiver == peer)
+        else:
+            other = _find_active_user_by_username(db, peer)
+            if other is None:
+                return {'items': []}
+            query = query.filter(
+                or_(
+                    and_(Message.sender_id == current_user.id, Message.receiver_id == other.id),
+                    and_(Message.sender_id == other.id, Message.receiver_id == current_user.id),
+                )
+            )
+
+    messages = query.order_by(Message.id.desc()).limit(limit).all()
+    return {
+        'q': needle,
+        'items': [serialize_message(m, db) for m in messages],
+    }
+
+
+@router.post('/typing')
+async def chat_typing(payload: dict = Body(...), current_user: User = Depends(get_current_user)):
+    """إعلام الطرف الآخر بحالة الكتابة (HTTP fallback إلى جانب socket)."""
+    to = str(payload.get('to') or payload.get('receiver') or '').strip()
+    is_typing = bool(payload.get('is_typing', True))
+    if not to:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='to/receiver is required')
+    event = 'typing_started' if is_typing else 'typing_stopped'
+    room = to if to.startswith('group:') else f'username:{to}'
+    try:
+        await sio.emit(event, {'from': current_user.username, 'to': to}, room=room)
+    except Exception:
+        pass
+    return {'ok': True, 'event': event, 'to': to}
 
 
 @router.post('/apply_retention')

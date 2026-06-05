@@ -7,6 +7,8 @@ from app.models.follow import Follow  # noqa: F401
 from app.models.like import Like  # noqa: F401
 from app.models.login_challenge import LoginChallenge  # noqa: F401
 from app.models.message import Message  # noqa: F401
+from app.models.message_reaction import MessageReaction  # noqa: F401
+from app.models.message_attachment import MessageAttachment  # noqa: F401
 from app.models.notification import Notification  # noqa: F401
 from app.models.post import Post  # noqa: F401
 from app.models.post_edit_history import PostEditHistory  # noqa: F401

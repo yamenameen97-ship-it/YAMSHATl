@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 // تم التبديل إلى layouts/MainLayout (الجديد) الذي يستخدم MobileLayout
 // (MobileTopBar + BottomNav الجديدين) لتجنب التعارض مع Topbar و MobileDock القديمين.
 import MainLayout from '../layouts/MainLayout.jsx';
@@ -20,6 +21,14 @@ import { followUser, muteUser, unmuteUser } from '../api/users.js';
 import { blockUserApi, unblockUserApi } from '../api/chat.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
 import { getActiveLiveStreams } from '../services/api/liveStreamApi.js';
+import {
+  likePost as apiLikePost,
+  savePost as apiSavePost,
+  sharePost as apiSharePost,
+  addComment as apiAddComment,
+  getComments as apiGetComments,
+  deletePost as apiDeletePost,
+} from '../api/posts.js';
 
 
 const FEED_TABS = [
@@ -163,6 +172,11 @@ function buildFeedPosts(posts = []) {
 
       return {
         id: post.id || `post-${index}`,
+        rawId: post.id || null, // المعرف الحقيقي للمنشور من الـ backend (null للمنشورات الترحيبية)
+        userId: post.user_id || null,
+        rawUsername: post.username || post.user || '',
+        isLive: Boolean(post.is_live_stream),
+        liveStreamId: post.live_stream_id || null,
         authorName: post.author_name || post.username || post.user || 'مستخدم يام شات',
         authorAvatar: resolveMediaUrl(post.user_avatar || post.avatar || post.author_avatar || ''),
         handle: normalizeHandle(post.username || post.user || `user.${index + 1}`),
@@ -174,6 +188,8 @@ function buildFeedPosts(posts = []) {
         comments: Number(post.comments_count || post.comment_count || 0),
         shares: Number(post.share_count || post.shares || 0),
         views: Number(post.views_count || post.view_count || 0),
+        isLiked: Boolean(post.is_liked ?? post.liked_by_me),
+        isSaved: Boolean(post.is_saved ?? post.saved_by_me),
         media: normalizedMedia,
       };
     });
@@ -234,23 +250,35 @@ function MediaTile({ item, index }) {
 function PostCard({ post }) {
   const navigate = useNavigate();
   const { pushToast } = useToast();
-  const postUrl = `${window.location.origin}/#/post/${post.id}`;
+  const queryClient = useQueryClient();
+  const postUrl = `${window.location.origin}/#/post/${post.rawId || post.id}`;
   const mediaItems = Array.isArray(post.media) ? post.media.slice(0, 3) : [];
-  const [liked, setLiked] = useState(false);
-  const [saved, setSaved] = useState(false);
+  // ✅ تهيئة الحالة من البيانات القادمة من الـ backend (is_liked / is_saved)
+  const [liked, setLiked] = useState(Boolean(post.isLiked));
+  const [saved, setSaved] = useState(Boolean(post.isSaved));
   const [likesCount, setLikesCount] = useState(Number(post.likes || 0));
   const [commentsCount, setCommentsCount] = useState(Number(post.comments || 0));
   const [sharesCount, setSharesCount] = useState(Number(post.shares || 0));
   const [showComments, setShowComments] = useState(false);
   const [commentDraft, setCommentDraft] = useState('');
   const [localComments, setLocalComments] = useState([]);
+  const [commentsLoaded, setCommentsLoaded] = useState(false);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [sendingComment, setSendingComment] = useState(false);
+  const [busyAction, setBusyAction] = useState(null); // 'like' | 'save' | 'share' | null
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
-  const authorUsername = String(post.handle || '').replace(/^@/, '');
+  const [isDeleted, setIsDeleted] = useState(false);
+  const authorUsername = String(post.rawUsername || post.handle || '').replace(/^@/, '');
   const currentUsername = getCurrentUsername();
   const isOwnPost = Boolean(authorUsername && currentUsername && authorUsername === currentUsername);
+  // المنشورات الترحيبية أو منشورات البث المباشر لا تملك rawId صحيحًا
+  const canCallBackend = Boolean(post.rawId) && !post.isLive;
+  const invalidateFeed = useCallback(() => {
+    try { queryClient.invalidateQueries({ queryKey: ['feed-data'] }); } catch (_) { /* ignore */ }
+  }, [queryClient]);
 
   const handleOpenLiveAnnouncement = () => {
     if (!post.liveUrl) return;
@@ -262,31 +290,116 @@ function PostCard({ post }) {
     window.location.href = post.liveUrl;
   };
 
-  const handleLike = () => {
-    setLiked((prev) => {
-      const next = !prev;
-      setLikesCount((count) => Math.max(0, count + (next ? 1 : -1)));
-      return next;
-    });
-  };
-
-  const handleShare = async () => {
+  // ===== ربط الإعجاب بـ backend =====
+  const handleLike = async () => {
+    if (busyAction === 'like') return;
+    const prevLiked = liked;
+    const prevCount = likesCount;
+    // تحديث متفائل فوري
+    const nextLiked = !prevLiked;
+    setLiked(nextLiked);
+    setLikesCount((count) => Math.max(0, count + (nextLiked ? 1 : -1)));
+    if (!canCallBackend) return;
+    setBusyAction('like');
     try {
-      if (navigator.share) {
-        await navigator.share({ title: post.authorName, text: post.text, url: postUrl });
-      } else if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(postUrl);
-      }
-      setSharesCount((count) => count + 1);
-      pushToast({ type: 'success', title: 'تمت مشاركة المنشور أو نسخ رابطه' });
-    } catch {
-      pushToast({ type: 'info', title: 'تعذر فتح نافذة المشاركة', description: 'تم تجاهل العملية بدون خطأ مؤثر.' });
+      const response = await apiLikePost(post.rawId);
+      const data = response?.data || {};
+      if (typeof data.is_liked === 'boolean') setLiked(data.is_liked);
+      if (typeof data.likes_count === 'number') setLikesCount(data.likes_count);
+      else if (typeof data.like_count === 'number') setLikesCount(data.like_count);
+      invalidateFeed();
+    } catch (error) {
+      // تراجع عند الفشل
+      setLiked(prevLiked);
+      setLikesCount(prevCount);
+      pushToast({ type: 'error', title: 'تعذر تنفيذ الإعجاب', description: error?.response?.data?.detail || error?.message });
+    } finally {
+      setBusyAction(null);
     }
   };
 
-  const handleSave = () => {
-    setSaved((prev) => !prev);
-    pushToast({ type: 'success', title: saved ? 'تمت إزالة المنشور من المحفوظات' : 'تم حفظ المنشور' });
+  // ===== ربط المشاركة بـ backend =====
+  const handleShare = async () => {
+    if (busyAction === 'share') return;
+    let platform = 'copy';
+    let succeeded = false;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: post.authorName, text: post.text, url: postUrl });
+        platform = 'native';
+        succeeded = true;
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(postUrl);
+        platform = 'copy';
+        succeeded = true;
+      }
+    } catch (err) {
+      if (err?.name !== 'AbortError') {
+        pushToast({ type: 'info', title: 'تعذر فتح نافذة المشاركة' });
+      }
+      return;
+    }
+
+    if (!succeeded) return;
+
+    // تحديث متفائل
+    setSharesCount((count) => count + 1);
+    pushToast({ type: 'success', title: 'تمت مشاركة المنشور' });
+
+    if (!canCallBackend) return;
+    setBusyAction('share');
+    try {
+      const response = await apiSharePost(post.rawId, platform);
+      const data = response?.data || {};
+      if (typeof data.share_count === 'number') setSharesCount(data.share_count);
+      else if (typeof data.shares === 'number') setSharesCount(data.shares);
+      invalidateFeed();
+    } catch (error) {
+      // مشاركة الـ UI نجحت بالفعل، فقط نسجّل التحذير
+      console.warn('share tracking failed', error);
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  // ===== ربط الحفظ بـ backend =====
+  const handleSave = async () => {
+    if (busyAction === 'save') return;
+    const prevSaved = saved;
+    const nextSaved = !prevSaved;
+    setSaved(nextSaved);
+    if (!canCallBackend) {
+      pushToast({ type: 'success', title: nextSaved ? 'تم حفظ المنشور' : 'تمت إزالة المنشور من المحفوظات' });
+      return;
+    }
+    setBusyAction('save');
+    try {
+      const response = await apiSavePost(post.rawId);
+      const data = response?.data || {};
+      if (typeof data.is_saved === 'boolean') setSaved(data.is_saved);
+      pushToast({ type: 'success', title: (data.is_saved ?? nextSaved) ? 'تم حفظ المنشور' : 'تمت إزالة المنشور من المحفوظات' });
+      invalidateFeed();
+    } catch (error) {
+      setSaved(prevSaved);
+      pushToast({ type: 'error', title: 'تعذر حفظ المنشور', description: error?.response?.data?.detail || error?.message });
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  // ===== حذف المنشور (للمالك فقط) =====
+  const handleDeletePost = async () => {
+    if (!isOwnPost || !canCallBackend) return;
+    if (!window.confirm('هل تريد حذف هذا المنشور نهائيًا؟')) return;
+    try {
+      await apiDeletePost(post.rawId);
+      setIsDeleted(true);
+      setShowMoreMenu(false);
+      pushToast({ type: 'success', title: 'تم حذف المنشور' });
+      invalidateFeed();
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر حذف المنشور', description: error?.response?.data?.detail || error?.message });
+    }
   };
 
   const handleMoreOptions = () => {
@@ -348,15 +461,84 @@ function PostCard({ post }) {
     pushToast({ type: 'success', title: 'تم إرسال البلاغ للمراجعة' });
   };
 
-  const handleAddComment = () => {
+  // ===== تحميل التعليقات من backend عند فتح القسم لأول مرة =====
+  const loadComments = useCallback(async () => {
+    if (!canCallBackend || commentsLoaded || commentsLoading) return;
+    setCommentsLoading(true);
+    try {
+      const response = await apiGetComments(post.rawId, { page: 1, limit: 20, sort_by: 'newest' });
+      const data = response?.data;
+      const items = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
+      const mapped = items.map((item) => ({
+        id: item.id,
+        author: item.username || item.user || item.author_name || 'مستخدم',
+        content: item.content || item.text || '',
+      }));
+      setLocalComments(mapped);
+      if (typeof data?.total === 'number') setCommentsCount(data.total);
+      else if (typeof data?.total_count === 'number') setCommentsCount(data.total_count);
+      setCommentsLoaded(true);
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر تحميل التعليقات', description: error?.response?.data?.detail || error?.message });
+    } finally {
+      setCommentsLoading(false);
+    }
+  }, [canCallBackend, commentsLoaded, commentsLoading, post.rawId, pushToast]);
+
+  // تحميل التعليقات عند فتح اللوحة لأول مرة
+  useEffect(() => {
+    if (showComments && !commentsLoaded && canCallBackend) {
+      loadComments();
+    }
+  }, [showComments, commentsLoaded, canCallBackend, loadComments]);
+
+  // ===== ربط إضافة تعليق بـ backend =====
+  const handleAddComment = async () => {
     const content = commentDraft.trim();
-    if (!content) return;
-    setLocalComments((prev) => [{ id: `${post.id}-${Date.now()}`, author: 'أنت', content }, ...prev]);
+    if (!content || sendingComment) return;
+
+    // منشورات ترحيبية / بث مباشر: تعليق محلي فقط
+    if (!canCallBackend) {
+      setLocalComments((prev) => [{ id: `${post.id}-${Date.now()}`, author: 'أنت', content }, ...prev]);
+      setCommentsCount((count) => count + 1);
+      setCommentDraft('');
+      if (!showComments) setShowComments(true);
+      pushToast({ type: 'success', title: 'تمت إضافة التعليق' });
+      return;
+    }
+
+    setSendingComment(true);
+    // تحديث متفائل
+    const tempId = `temp-${Date.now()}`;
+    const tempComment = { id: tempId, author: currentUsername || 'أنت', content, pending: true };
+    setLocalComments((prev) => [tempComment, ...prev]);
     setCommentsCount((count) => count + 1);
     setCommentDraft('');
     if (!showComments) setShowComments(true);
-    pushToast({ type: 'success', title: 'تمت إضافة التعليق' });
+
+    try {
+      const response = await apiAddComment(post.rawId, content);
+      const data = response?.data || {};
+      const finalComment = {
+        id: data.id || tempId,
+        author: data.username || data.user || currentUsername || 'أنت',
+        content: data.content || content,
+      };
+      setLocalComments((prev) => prev.map((c) => (c.id === tempId ? finalComment : c)));
+      pushToast({ type: 'success', title: 'تمت إضافة التعليق' });
+      invalidateFeed();
+    } catch (error) {
+      // تراجع
+      setLocalComments((prev) => prev.filter((c) => c.id !== tempId));
+      setCommentsCount((count) => Math.max(0, count - 1));
+      setCommentDraft(content);
+      pushToast({ type: 'error', title: 'تعذر إرسال التعليق', description: error?.response?.data?.detail || error?.message });
+    } finally {
+      setSendingComment(false);
+    }
   };
+
+  if (isDeleted) return null;
 
   return (
     <article className="yam-post-card-v2">
@@ -384,9 +566,11 @@ function PostCard({ post }) {
                     <button type="button" className="yam-settings-popover-item" onClick={handleFollowAuthor}>{isFollowing ? 'إلغاء المتابعة' : 'متابعة'}</button>
                     <button type="button" className="yam-settings-popover-item" onClick={handleMuteAuthor}>{isMuted ? 'إلغاء الكتم' : 'كتم'}</button>
                     <button type="button" className="yam-settings-popover-item danger" onClick={handleBlockAuthor}>{isBlocked ? 'إلغاء الحظر' : 'حظر'}</button>
+                    <button type="button" className="yam-settings-popover-item danger" onClick={handleReportPost}>بلاغ</button>
                   </>
-                ) : null}
-                <button type="button" className="yam-settings-popover-item danger" onClick={handleReportPost}>بلاغ</button>
+                ) : (
+                  <button type="button" className="yam-settings-popover-item danger" onClick={handleDeletePost}>حذف المنشور</button>
+                )}
               </div>
             ) : null}
           </div>
@@ -414,10 +598,18 @@ function PostCard({ post }) {
       ) : null}
 
       <div className="yam-post-actions-v2">
-        <button type="button" className={liked ? 'active' : ''} onClick={handleLike}><YamshatIcon name="heart" size={17} />{liked ? 'تم الإعجاب' : 'أعجبني'}</button>
-        <button type="button" className={showComments ? 'active' : ''} onClick={() => setShowComments((prev) => !prev)}><YamshatIcon name="comment" size={17} />تعليق</button>
-        <button type="button" onClick={handleShare}><YamshatIcon name="repeat" size={17} />مشاركة</button>
-        <button type="button" className={saved ? 'active' : ''} onClick={handleSave}><YamshatIcon name="bookmark" size={17} />{saved ? 'محفوظ' : 'حفظ'}</button>
+        <button type="button" className={liked ? 'active' : ''} onClick={handleLike} disabled={busyAction === 'like'} aria-label="إعجاب">
+          <YamshatIcon name="heart" size={17} />{liked ? `تم الإعجاب${likesCount ? ` (${likesCount})` : ''}` : `أعجبني${likesCount ? ` (${likesCount})` : ''}`}
+        </button>
+        <button type="button" className={showComments ? 'active' : ''} onClick={() => setShowComments((prev) => !prev)} aria-label="تعليق">
+          <YamshatIcon name="comment" size={17} />تعليق{commentsCount ? ` (${commentsCount})` : ''}
+        </button>
+        <button type="button" onClick={handleShare} disabled={busyAction === 'share'} aria-label="مشاركة">
+          <YamshatIcon name="repeat" size={17} />مشاركة{sharesCount ? ` (${sharesCount})` : ''}
+        </button>
+        <button type="button" className={saved ? 'active' : ''} onClick={handleSave} disabled={busyAction === 'save'} aria-label="حفظ">
+          <YamshatIcon name="bookmark" size={17} />{saved ? 'محفوظ' : 'حفظ'}
+        </button>
       </div>
 
       {showComments ? (
@@ -428,13 +620,18 @@ function PostCard({ post }) {
               onChange={(event) => setCommentDraft(event.target.value)}
               placeholder="اكتب تعليقك هنا..."
               rows={3}
+              disabled={sendingComment}
             />
-            <button type="button" className="yam-post-comment-send" onClick={handleAddComment}>إرسال التعليق</button>
+            <button type="button" className="yam-post-comment-send" onClick={handleAddComment} disabled={sendingComment || !commentDraft.trim()}>
+              {sendingComment ? 'جارٍ الإرسال...' : 'إرسال التعليق'}
+            </button>
           </div>
 
           <div className="yam-post-comment-list">
-            {localComments.length ? localComments.map((comment) => (
-              <div key={comment.id} className="yam-post-comment-item">
+            {commentsLoading ? (
+              <div className="yam-post-comment-empty">جارٍ تحميل التعليقات...</div>
+            ) : localComments.length ? localComments.map((comment) => (
+              <div key={comment.id} className="yam-post-comment-item" style={comment.pending ? { opacity: 0.6 } : undefined}>
                 <strong>{comment.author}</strong>
                 <p>{comment.content}</p>
               </div>

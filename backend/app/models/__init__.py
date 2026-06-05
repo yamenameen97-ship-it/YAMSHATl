@@ -23,6 +23,9 @@ from app.models.user_profile import UserProfile  # noqa: F401
 from app.models.user_session import UserSession  # noqa: F401
 from app.models.user_wallet import UserWallet  # noqa: F401
 from app.models.live_session import LiveRoomSession  # noqa: F401
+from app.models.live_viewers import LiveStreamViewer, LiveStreamSession, LiveStreamHostSettings, LiveStreamCameraState  # noqa: F401
+from app.models.live_moderation import LiveRoomModerator, LiveRoomMutedUser, LiveRoomKickedUser, LiveRoomBannedUser, LiveRoomComment  # noqa: F401
+from app.models.gift import Gift, UserCoins, GiftTransaction, LiveStreamRecording  # noqa: F401
 from app.models.search_history import SearchCategoryEnum, SearchHistory  # noqa: F401
 from app.models.stories_reels import Reel, ReelComment, ReelLike, ReelView, SavedReel, Story, StoryReply, StoryView  # noqa: F401
 from app.models.group import Group, GroupMember, GroupInvitation, GroupJoinRequest, GroupPost, GroupRule, GroupEvent, GroupPoll, GroupAnnouncement, GroupSettings  # noqa: F401

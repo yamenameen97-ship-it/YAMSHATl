@@ -27,16 +27,25 @@ function timeAgoAr(dateLike) {
   const d = new Date(dateLike);
   if (Number.isNaN(d.getTime())) return 'الآن';
   const diffSec = Math.max(1, Math.floor((Date.now() - d.getTime()) / 1000));
-  if (diffSec < 60) return 'منذ لحظات';
+  if (diffSec < 60) return 'الآن';
   const m = Math.floor(diffSec / 60);
   if (m < 60) return `منذ ${m} دقيقة`;
   const h = Math.floor(m / 60);
   if (h < 24) return `منذ ${h} ساعة`;
   const days = Math.floor(h / 24);
-  if (days < 30) return `منذ ${days} يوم`;
-  const months = Math.floor(days / 30);
-  if (months < 12) return `منذ ${months} شهر`;
-  return `منذ ${Math.floor(months / 12)} سنة`;
+  if (days === 1) return 'أمس';
+  if (days < 7) return `منذ ${days} أيام`;
+  if (days < 30) return `منذ ${Math.floor(days / 7)} أسابيع`;
+  if (days < 365) {
+    const months = Math.floor(days / 30);
+    return `منذ ${months} شهر`;
+  }
+  // للمنشورات القديمة جداً، عرض التاريخ الكامل
+  const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+  const day = d.getDate();
+  const month = monthNames[d.getMonth()];
+  const year = d.getFullYear();
+  return `${day} ${month} ${year}`;
 }
 
 function isVideoMediaUrl(value = '', post = {}) {

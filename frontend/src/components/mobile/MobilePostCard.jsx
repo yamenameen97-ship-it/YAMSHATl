@@ -7,7 +7,7 @@ import BrandLogo from '../ui/BrandLogo.jsx';
  * - رأس: صورة شخصية + اسم + توثيق + توقيت + قائمة (...)
  * - نص + هاشتاجات بنفسجية
  * - بنر اختياري للترويج (يدعم صور أيضاً)
- * - شريط تفاعل مبسط: إعجاب / تعليق / مشاركة / حفظ
+ * - شريط تفاعل مع عدادات: إعجاب / تعليق / مشاركة / حفظ
  *
  * كل الأزرار مُربطة عبر props بـ handlers من الأب (FeedMobile)
  * التي تستدعي backend API الحقيقية.
@@ -63,6 +63,9 @@ function MobilePostCard({
     banner = null, // { type: 'image'|'logo', url?, title?, slogan? }
     liked = false,
     saved = false,
+    likes = 0,
+    comments = 0,
+    reposts = 0,
   } = post;
 
   const handleClick = (handler) => (e) => {
@@ -120,18 +123,35 @@ function MobilePostCard({
         </div>
       ) : null}
 
+      {/* عرض إحصائيات المنشور */}
+      {(likes > 0 || comments > 0 || reposts > 0) ? (
+        <div className="ym-post-stats" style={{
+          display: 'flex',
+          gap: '12px',
+          padding: '8px 0',
+          fontSize: '13px',
+          color: 'var(--text-muted, #65676b)',
+          borderBottom: '1px solid var(--line, #e5e5ea)',
+          marginBottom: '8px',
+        }}>
+          {likes > 0 && <span>{formatCount(likes)} إعجاب</span>}
+          {comments > 0 && <span>{formatCount(comments)} تعليق</span>}
+          {reposts > 0 && <span>{formatCount(reposts)} مشاركة</span>}
+        </div>
+      ) : null}
+
       <div className="ym-post-actions" role="group" aria-label="إجراءات المنشور">
         <button type="button" className={`ym-action like ${liked ? 'is-active' : ''}`} onClick={handleClick(onLike)} aria-label="إعجاب" aria-pressed={liked}>
           <svg viewBox="0 0 24 24"><path d="M12 21s-7-4.5-9.5-9A5.5 5.5 0 0 1 12 6a5.5 5.5 0 0 1 9.5 6c-2.5 4.5-9.5 9-9.5 9Z" strokeLinejoin="round"/></svg>
-          <span className="label">أعجبني</span>
+          <span className="label">أعجبني {likes > 0 ? `(${formatCount(likes)})` : ''}</span>
         </button>
         <button type="button" className="ym-action" onClick={handleClick(onComment)} aria-label="تعليق">
           <svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 1 1-3.6-6.7L21 4l-1.3 4.6A7.97 7.97 0 0 1 21 12Z" strokeLinejoin="round"/></svg>
-          <span className="label">تعليق</span>
+          <span className="label">تعليق {comments > 0 ? `(${formatCount(comments)})` : ''}</span>
         </button>
         <button type="button" className="ym-action" onClick={handleClick(onShare)} aria-label="مشاركة">
           <svg viewBox="0 0 24 24"><path d="M12 16V4 M7 9l5-5 5 5 M5 20h14" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          <span className="label">مشاركة</span>
+          <span className="label">مشاركة {reposts > 0 ? `(${formatCount(reposts)})` : ''}</span>
         </button>
         <button type="button" className={`ym-action save ${saved ? 'is-active' : ''}`} onClick={handleClick(onSave)} aria-label="حفظ" aria-pressed={saved}>
           <svg viewBox="0 0 24 24">

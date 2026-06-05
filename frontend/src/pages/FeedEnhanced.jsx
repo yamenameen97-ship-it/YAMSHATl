@@ -72,10 +72,19 @@ function timeAgoAr(dateLike) {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `منذ ${hours} ساعة`;
   const days = Math.floor(hours / 24);
-  if (days < 30) return `منذ ${days} يوم`;
-  const months = Math.floor(days / 30);
-  if (months < 12) return `منذ ${months} شهر`;
-  return `منذ ${Math.floor(months / 12)} سنة`;
+  if (days === 1) return 'أمس';
+  if (days < 7) return `منذ ${days} أيام`;
+  if (days < 30) return `منذ ${Math.floor(days / 7)} أسابيع`;
+  if (days < 365) {
+    const months = Math.floor(days / 30);
+    return `منذ ${months} شهر`;
+  }
+  // للمنشورات القديمة جداً، عرض التاريخ الكامل
+  const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+  const day = date.getDate();
+  const month = monthNames[date.getMonth()];
+  const year = date.getFullYear();
+  return `${day} ${month} ${year}`;
 }
 
 // دالة لتحويل البث المباشر إلى منشور
@@ -102,6 +111,7 @@ function convertLiveStreamToPost(stream) {
     viewers_count: stream.viewers_count || 0,
     likes_count: stream.hearts_count || 0,
     comments_count: stream.comments_count || 0,
+    share_count: stream.share_count || 0,
     is_liked: false,
     is_saved: false,
     is_verified: false,

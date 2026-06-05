@@ -156,7 +156,7 @@ export const sendLiveHeart = async (roomId) => {
 
 /**
  * الحصول على إحصائيات البث
- * GET /api/live/{room_id}/analytics
+ * GET /api/live/${room_id}/analytics
  */
 export const getStreamAnalytics = (roomId) =>
   apiClient.get(`/live/${roomId}/analytics`, { cache: false, forceRefresh: true });
@@ -219,6 +219,33 @@ export const updateStreamSettings = (roomId, settings = {}) =>
     gift_goal: settings.giftGoal,
   });
 
+// ==================== Feed Integration ====================
+
+/**
+ * ربط البث المباشر بمنشور في الخلاصة
+ * POST /api/v1/feed/live/create
+ */
+export const linkLiveStreamToPost = (streamId, streamData = {}) =>
+  apiClient.post('/v1/feed/live/create', {
+    stream_id: streamId,
+    title: streamData.title || 'بث مباشر جديد',
+    thumbnail_url: streamData.thumbnail || streamData.thumbnail_url || '',
+    description: streamData.description || '',
+  });
+
+/**
+ * تحديث حالة البث في المنشور (مثلاً عند الإنهاء)
+ * POST /api/v1/feed/live/{stream_id}/end
+ */
+export const updateStreamPostStatus = (streamId, isLive, duration = null) => {
+  if (!isLive) {
+    return apiClient.post(`/v1/feed/live/${streamId}/end`, {
+      duration: duration,
+    });
+  }
+  return Promise.resolve({ data: { success: true, message: 'Stream is still live' } });
+};
+
 // ==================== Helper Functions ====================
 
 export const applyModerationAction = async (roomId, actionData = {}) => {
@@ -260,7 +287,7 @@ export const getUserStreamStatus = async (roomId, userId) => {
   }
 };
 
-export default {
+const liveStreamApi = {
   createLiveStream,
   getLiveToken,
   endLiveStream,
@@ -288,6 +315,10 @@ export default {
   getRecoveryData,
   sendHeartbeat,
   updateStreamSettings,
+  linkLiveStreamToPost,
+  updateStreamPostStatus,
   applyModerationAction,
   getUserStreamStatus,
 };
+
+export default liveStreamApi;

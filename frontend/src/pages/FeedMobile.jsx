@@ -80,6 +80,13 @@ function normalizePost(p, i) {
     liked: Boolean(p.is_liked ?? p.liked_by_me ?? p.liked),
     reposted: Boolean(p.reposted ?? p.is_reposted),
     saved: Boolean(p.is_saved ?? p.saved_by_me ?? p.saved),
+    // حقول البث
+    type: p.type || 'POST',
+    is_live: Boolean(p.is_live),
+    live_stream_id: p.live_stream_id,
+    viewers: Number(p.viewers || 0),
+    thumbnail: p.thumbnail,
+    duration: p.duration,
   };
 }
 
@@ -117,7 +124,15 @@ function FeedMobile() {
   const { pushToast } = useToast();
   const session = useAppStore((s) => s.session);
 
-  const smart = useSmartFeed?.({ filterType: activeFilter });
+  // تحديد نوع المحتوى بناءً على التبويب النشط
+  const feedType = useMemo(() => {
+    if (activeFilter === 'posts') return 'POST';
+    if (activeFilter === 'stories') return 'STORY';
+    if (activeFilter === 'live') return 'LIVE';
+    return 'all';
+  }, [activeFilter]);
+
+  const smart = useSmartFeed?.({ filterType: feedType });
   const rawPosts = smart?.posts || smart?.data || smart?.items || [];
   const loading = smart?.isLoading || smart?.loading;
   const error = smart?.error;
@@ -145,23 +160,17 @@ function FeedMobile() {
   const posts = useMemo(() => {
     const list = (Array.isArray(rawPosts) && rawPosts.length)
       ? rawPosts.map((p, i) => normalizePost(p, i))
-      : [WELCOME_POST];
+      : (activeFilter === 'posts' ? [WELCOME_POST] : []);
 
     // دمج overlay (optimistic)
     return list.map((p) => {
       const o = overlay[p.id];
       return o ? { ...p, ...o } : p;
     });
-  }, [rawPosts, overlay]);
+  }, [rawPosts, overlay, activeFilter]);
 
   // فلترة محلية بسيطة (الفلترة الحقيقية تتم في backend عبر filterType)
-  const filtered = useMemo(() => {
-    if (activeFilter === 'all') return posts;
-    if (activeFilter === 'updates') return posts.filter((p) => /تحديث|تطوير|إطلاق|جديد/.test(p.text));
-    if (activeFilter === 'ads') return posts.filter((p) => /إعلان|عرض|خصم/.test(p.text));
-    if (activeFilter === 'community') return posts.filter((p) => /مجتمع|عائلة|أعضاء|#/.test(p.text));
-    return posts;
-  }, [activeFilter, posts]);
+  const filtered = posts; // الفلترة تتم الآن عبر الـ backend بناءً على feedType
 
   const requireAuth = useCallback(() => {
     if (!session) {

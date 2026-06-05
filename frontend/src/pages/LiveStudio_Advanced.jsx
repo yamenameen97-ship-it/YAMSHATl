@@ -15,6 +15,8 @@ import {
   updateStreamSettings,
   getRecoveryData,
   sendHeartbeat,
+  linkLiveStreamToPost,
+  updateStreamPostStatus,
 } from '../services/api/correctedLiveStreamApi.js';
 import { API_BASE } from '../api/config.js';
 import { getCurrentUsername } from '../utils/auth.js';
@@ -313,6 +315,18 @@ export default function LiveStudioAdvanced() {
           sendHeartbeat(roomId).catch(err => console.error('Heartbeat error:', err));
         }, LIVE_HEARTBEAT_MS);
 
+        // إنشاء بطاقة في الفيد عند بدء البث
+        try {
+          await linkLiveStreamToPost(roomId, {
+            title: newStreamData.title || 'بث مباشر جديد',
+            username: currentUsername,
+            thumbnail: activeStream?.thumbnail_url || '',
+            viewers: 0
+          });
+        } catch (linkErr) {
+          console.error('Failed to link stream to feed:', linkErr);
+        }
+
         pushToast?.({
           type: 'success',
           title: 'بدأ البث بنجاح',
@@ -349,9 +363,18 @@ export default function LiveStudioAdvanced() {
         localStreamRef.current = null;
       }
 
+      // تحديث حالة البطاقة في الفيد عند إنهاء البث
+      try {
+        const durationText = formatDuration(streamStats.duration);
+        await updateStreamPostStatus(roomId, false, durationText);
+      } catch (updateErr) {
+        console.error('Failed to update stream post status:', updateErr);
+      }
+
       setActiveStream(null);
       setIsStreaming(false);
       setCameraReady(false);
+      const finalStats = { ...streamStats };
       setStreamStats({
         viewers: 0,
         peakViewers: 0,

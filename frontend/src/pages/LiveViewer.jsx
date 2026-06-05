@@ -52,14 +52,14 @@ function FloatingHearts({ items = [] }) {
   if (!Array.isArray(items) || items.length === 0) return null;
 
   return (
-    <div className="mlv-floating-hearts" aria-hidden="true">
+    <div className="floating-hearts" aria-hidden="true">
       {items.map((heart) => (
         <div
           key={heart.id}
-          className="mlv-floating-heart"
+          className="floating-heart"
           style={{
             right: `${heart.x}%`,
-            animation: `mlvFloatUp 1.5s ease-out forwards`,
+            animation: `floatUp 1.5s ease-out forwards`,
           }}
         >
           {heart.icon || '💜'}
@@ -340,32 +340,31 @@ export default function LiveViewer() {
   const hostName = activeStream?.host_name || activeStream?.host_username || 'مضيف البث';
 
   return (
-    <div className="modern-live-viewer" dir="rtl">
-      {/* Header */}
-      <header className="mlv-header">
-        <div className="mlv-header-left">
-          <button className="mlv-back-btn" onClick={() => navigate(-1)}>
-            &lt;
+    <div className="enhanced-live-viewer" dir="rtl">
+      <div className="viewer-container">
+        {/* Header */}
+        <header className="viewer-header">
+          <div className="header-content">
+            <button className="back-btn" onClick={() => navigate(-1)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: '24px', marginInlineEnd: '15px' }}>
+              &larr;
+            </button>
+            <h1>البث المباشر</h1>
+            <p>شاهد وتفاعل مع البثوث المباشرة</p>
+          </div>
+          <button className="refresh-btn" onClick={loadStreams} disabled={loading}>
+            {loading ? 'جاري التحديث...' : 'تحديث القائمة'}
           </button>
-          <h1>البث المباشر</h1>
-        </div>
-        <div className="mlv-header-right">
-          <button className="mlv-refresh-btn" onClick={loadStreams} disabled={loading}>
-            ↻
-          </button>
-        </div>
-      </header>
+        </header>
 
-      <div className="mlv-container">
-        {/* Main Content */}
-        <main className="mlv-main">
-          {activeStream ? (
-            <>
-              {/* Video Player */}
-              <div className="mlv-player-section">
-                <div className="mlv-player">
-                  <div className="mlv-player-placeholder">
-                    <div className="mlv-player-icon">📺</div>
+        <div className="viewer-layout">
+          {/* Main Content */}
+          <main className="viewer-main">
+            {activeStream ? (
+              <div className="stream-container">
+                {/* Video Player */}
+                <div className="stream-player">
+                  <div className="player-placeholder">
+                    <div className="player-icon">📺</div>
                     <p>بث مباشر من {hostName}</p>
                     <small>{activeStream.title}</small>
                   </div>
@@ -373,186 +372,166 @@ export default function LiveViewer() {
                 </div>
 
                 {/* Stream Info */}
-                <div className="mlv-stream-info">
-                  <div className="mlv-info-header">
+                <div className="stream-info">
+                  <div className="info-header">
                     <Avatar name={hostName} size={48} />
-                    <div className="mlv-host-details">
+                    <div className="host-details">
                       <h2>{activeStream.title}</h2>
                       <p>المضيف: {hostName}</p>
                     </div>
                     {activeStream.is_active && (
-                      <span className="mlv-live-badge">● مباشر</span>
+                      <span className="live-badge">● مباشر</span>
                     )}
                   </div>
 
                   {/* Stats Row */}
-                  <div className="mlv-stats-row">
-                    <div className="mlv-stat">
-                      <span className="mlv-stat-icon">👁</span>
-                      <span className="mlv-stat-value">{streamStats.viewers}</span>
-                      <span className="mlv-stat-label">مشاهد</span>
+                  <div className="stats-row">
+                    <div className="stat">
+                      <span className="stat-icon">👁</span>
+                      <span className="stat-value">{streamStats.viewers}</span>
+                      <span className="stat-label">مشاهد</span>
                     </div>
-                    <div className="mlv-stat">
-                      <span className="mlv-stat-icon">💜</span>
-                      <span className="mlv-stat-value">{streamStats.hearts}</span>
-                      <span className="mlv-stat-label">قلب</span>
+                    <div className="stat">
+                      <span className="stat-icon">💜</span>
+                      <span className="stat-value">{streamStats.hearts}</span>
+                      <span className="stat-label">قلب</span>
                     </div>
-                    <div className="mlv-stat">
-                      <span className="mlv-stat-icon">💬</span>
-                      <span className="mlv-stat-value">{streamStats.comments}</span>
-                      <span className="mlv-stat-label">تعليق</span>
+                    <div className="stat">
+                      <span className="stat-icon">💬</span>
+                      <span className="stat-value">{streamStats.comments}</span>
+                      <span className="stat-label">تعليق</span>
+                    </div>
+                    <div className="stat">
+                      <span className="stat-icon">🏆</span>
+                      <span className="stat-value">#1</span>
+                      <span className="stat-label">الترتيب</span>
                     </div>
                   </div>
-                </div>
-              </div>
 
-              {/* Action Buttons */}
-              <div className="mlv-action-buttons">
-                <button className="mlv-action-btn mlv-action-heart" onClick={handleSendHeart}>
-                  <span>💜</span>
-                  إعجاب
-                </button>
-                <button className="mlv-action-btn mlv-action-gift" onClick={() => setShowGiftPanel(!showGiftPanel)}>
-                  <span>🎁</span>
-                  هدية
-                </button>
-                <button className="mlv-action-btn mlv-action-share">
-                  <span>↗</span>
-                  مشاركة
-                </button>
-                <button className="mlv-action-btn mlv-action-follow">
-                  <span>👥</span>
-                  متابعة
-                </button>
-              </div>
-
-              {/* Gifts Panel */}
-              {showGiftPanel && (
-                <div className="mlv-gifts-panel">
-                  <h3>اختر هدية</h3>
-                  <div className="mlv-gifts-list">
-                    {GIFTS.map((gift) => (
-                      <button
-                        key={gift.id}
-                        className="mlv-gift-option"
-                        onClick={() => handleSendGift(gift)}
-                      >
-                        <span className="mlv-gift-icon">{gift.icon}</span>
-                        <span className="mlv-gift-name">{gift.name}</span>
-                        <span className="mlv-gift-price">{gift.price}</span>
-                      </button>
-                    ))}
+                  {/* Action Buttons */}
+                  <div className="action-buttons">
+                    <button className="action-btn heart-btn" onClick={handleSendHeart}>
+                      <span className="btn-icon">💜</span>
+                      <span className="btn-label">إعجاب</span>
+                    </button>
+                    <button className="action-btn gift-btn" onClick={() => setShowGiftPanel(!showGiftPanel)}>
+                      <span className="btn-icon">🎁</span>
+                      <span className="btn-label">هدية</span>
+                    </button>
+                    <button className="action-btn">
+                      <span className="btn-icon">↗</span>
+                      <span className="btn-label">مشاركة</span>
+                    </button>
+                    <button className={`action-btn follow-btn ${isFollowing ? 'following' : ''}`} onClick={() => setIsFollowing(!isFollowing)}>
+                      <span className="btn-icon">👥</span>
+                      <span className="btn-label">{isFollowing ? 'متابع' : 'متابعة'}</span>
+                    </button>
                   </div>
-                </div>
-              )}
 
-              {/* Comments Section */}
-              <div className="mlv-comments-section">
-                <h3>التعليقات</h3>
-
-                <div className="mlv-comments-list">
-                  {comments.length > 0 ? (
-                    comments.map((comment) => (
-                      <div key={comment.id} className="mlv-comment-item">
-                        <Avatar name={comment.username} size={32} />
-                        <div className="mlv-comment-content">
-                          <div className="mlv-comment-header">
-                            <span className="mlv-comment-name">{comment.username}</span>
-                            <span className="mlv-comment-time">الآن</span>
-                          </div>
-                          <p className="mlv-comment-text">{comment.text}</p>
-                        </div>
+                  {/* Gifts Panel */}
+                  {showGiftPanel && (
+                    <div className="gifts-panel">
+                      <h3 className="gifts-title">اختر هدية للدعم</h3>
+                      <div className="gifts-grid">
+                        {GIFTS.map((gift) => (
+                          <button
+                            key={gift.id}
+                            className="gift-option"
+                            onClick={() => handleSendGift(gift)}
+                          >
+                            <span className="gift-emoji">{gift.icon}</span>
+                            <span className="gift-name">{gift.name}</span>
+                            <span className="gift-price">{gift.price} عملة</span>
+                          </button>
+                        ))}
                       </div>
-                    ))
-                  ) : (
-                    <div className="mlv-empty-comments">
-                      <p>لا توجد تعليقات حتى الآن</p>
                     </div>
                   )}
-                </div>
 
-                {/* Comment Input */}
-                <div className="mlv-comment-input">
-                  <input
-                    type="text"
-                    placeholder="أضف تعليقاً..."
-                    value={commentText}
-                    onChange={(e) => setCommentText(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSendComment()}
-                  />
-                  <button onClick={handleSendComment} disabled={!commentText.trim()}>
-                    إرسال
-                  </button>
+                  {/* Comments Section */}
+                  <div className="comments-container">
+                    <div className="comments-list" style={{ height: '300px', overflowY: 'auto', marginBottom: '15px', padding: '10px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
+                      {comments.length > 0 ? (
+                        comments.map((c, i) => (
+                          <div key={i} className="comment-item" style={{ marginBottom: '10px', display: 'flex', gap: '10px' }}>
+                            <Avatar name={c.username || c.user} size={32} />
+                            <div>
+                              <strong style={{ fontSize: '12px', color: '#7c3aed' }}>{c.username || c.user}</strong>
+                              <p style={{ margin: 0, fontSize: '14px' }}>{c.text}</p>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <p style={{ textAlign: 'center', color: '#94a3b8', marginTop: '100px' }}>لا توجد تعليقات بعد. كن أول من يعلق!</p>
+                      )}
+                    </div>
+                    <div className="comment-input-area" style={{ display: 'flex', gap: '10px' }}>
+                      <input
+                        type="text"
+                        value={commentText}
+                        onChange={(e) => setCommentText(e.target.value)}
+                        placeholder="اكتب تعليقاً..."
+                        style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid rgba(148, 163, 184, 0.2)', background: 'rgba(15, 23, 42, 0.5)', color: 'white' }}
+                        onKeyPress={(e) => e.key === 'Enter' && handleSendComment()}
+                      />
+                      <button 
+                        onClick={handleSendComment}
+                        style={{ padding: '0 20px', borderRadius: '8px', background: '#7c3aed', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
+                      >
+                        إرسال
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </>
-          ) : (
-            <div className="mlv-empty-state">
-              <div className="mlv-empty-icon">📡</div>
-              <p>لا توجد بثوث نشطة حالياً</p>
-              <p className="mlv-empty-subtitle">تحقق لاحقاً لمتابعة البثوث المباشرة</p>
-            </div>
-          )}
-        </main>
+            ) : (
+              <div className="empty-state" style={{ textAlign: 'center', padding: '100px 20px', background: 'rgba(30, 41, 59, 0.4)', borderRadius: '12px', border: '1px dashed rgba(148, 163, 184, 0.2)' }}>
+                <div style={{ fontSize: '64px', marginBottom: '20px' }}>📺</div>
+                <h2>لم يتم اختيار بث</h2>
+                <p>اختر أحد البثوث المباشرة من القائمة الجانبية للمشاهدة</p>
+              </div>
+            )}
+          </main>
 
-        {/* Sidebar */}
-        <aside className="mlv-sidebar">
-          {/* Streams List */}
-          <div className="mlv-streams-list-section">
-            <h3>البثوث المتاحة</h3>
-
-            {/* Filters */}
-            <div className="mlv-filter-buttons">
-              <button
-                className={`mlv-filter-btn ${filter === 'all' ? 'active' : ''}`}
-                onClick={() => setFilter('all')}
-              >
-                الكل
-              </button>
-              <button
-                className={`mlv-filter-btn ${filter === 'active' ? 'active' : ''}`}
-                onClick={() => setFilter('active')}
-              >
-                النشطة
-              </button>
-              <button
-                className={`mlv-filter-btn ${filter === 'popular' ? 'active' : ''}`}
-                onClick={() => setFilter('popular')}
-              >
-                الأكثر
-              </button>
+          {/* Sidebar */}
+          <aside className="streams-sidebar">
+            <div className="filters">
+              <button className={`filter-btn ${filter === 'all' ? 'active' : ''}`} onClick={() => setFilter('all')}>الكل</button>
+              <button className={`filter-btn ${filter === 'active' ? 'active' : ''}`} onClick={() => setFilter('active')}>النشط</button>
+              <button className={`filter-btn ${filter === 'popular' ? 'active' : ''}`} onClick={() => setFilter('popular')}>الشائع</button>
             </div>
 
-            {/* Streams Items */}
-            <div className="mlv-streams-items">
+            <div className="streams-list">
               {filteredStreams.length > 0 ? (
-                filteredStreams.map((stream) => (
-                  <button
-                    key={stream.id}
-                    className={`mlv-stream-card ${activeStream?.id === stream.id ? 'active' : ''}`}
-                    onClick={() => openStream(stream)}
+                filteredStreams.map((s) => (
+                  <div
+                    key={s.id}
+                    className={`stream-card ${activeStream?.id === s.id ? 'active' : ''}`}
+                    onClick={() => openStream(s)}
                   >
-                    <div className="mlv-stream-card-header">
-                      <Avatar name={stream.host_username} size={32} />
-                      <div className="mlv-stream-card-info">
-                        <h4>{stream.title}</h4>
-                        <p>{stream.host_username}</p>
-                      </div>
+                    <div className="stream-card-header">
+                      <Avatar name={s.host_name || s.host_username} size={32} />
+                      {s.is_active && <span className="live-indicator">مباشر</span>}
                     </div>
-                    <div className="mlv-stream-card-stats">
-                      <span>👁 {stream.viewers_count || 0}</span>
-                      <span>💜 {stream.hearts_count || 0}</span>
+                    <div className="stream-card-content">
+                      <h4>{s.title}</h4>
+                      <p className="host-name">{s.host_name || s.host_username}</p>
                     </div>
-                  </button>
+                    <div className="stream-card-stats">
+                      <span>👁 {s.viewers_count || 0}</span>
+                      <span>💜 {s.hearts_count || 0}</span>
+                    </div>
+                    <div className="stream-category">{s.category || 'عام'}</div>
+                  </div>
                 ))
               ) : (
-                <div className="mlv-empty-streams">
-                  <p>لا توجد بثوث متاحة</p>
+                <div className="empty-streams">
+                  <p>لا توجد بثوث مباشرة حالياً</p>
                 </div>
               )}
             </div>
-          </div>
-        </aside>
+          </aside>
+        </div>
       </div>
     </div>
   );

@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import Optional, List
 import logging
 
-from app.db.session import get_db
+from app.core.dependencies import get_db, get_current_user
 from app.models.live_moderation import (
     LiveRoomModerator,
     LiveRoomMutedUser,
@@ -42,7 +42,7 @@ router = APIRouter(prefix="/api/v1/live", tags=["live_stream"])
 async def create_live_stream(
     stream_data: LiveStreamCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(lambda: None),  # يجب استبداله بـ get_current_user
+    current_user: User = Depends(get_current_user),
 ):
     """إنشاء بث مباشر جديد"""
     try:
@@ -106,7 +106,7 @@ async def create_live_stream(
 async def start_live_stream(
     stream_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(lambda: None),
+    current_user: User = Depends(get_current_user),
 ):
     """بدء البث المباشر"""
     try:
@@ -150,7 +150,7 @@ async def start_live_stream(
 async def end_live_stream(
     stream_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(lambda: None),
+    current_user: User = Depends(get_current_user),
 ):
     """إنهاء البث المباشر"""
     try:
@@ -631,7 +631,7 @@ async def update_camera_state(
     video_bitrate: Optional[int] = None,
     audio_bitrate: Optional[int] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(lambda: None),
+    current_user: User = Depends(get_current_user),
 ):
     """تحديث حالة الكاميرا"""
     try:
@@ -681,7 +681,7 @@ async def update_camera_state(
 async def close_camera(
     stream_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(lambda: None),
+    current_user: User = Depends(get_current_user),
 ):
     """إغلاق الكاميرا"""
     try:

@@ -8,10 +8,9 @@ from sqlalchemy.orm import Session
 from typing import Optional, List
 import logging
 
-from app.db.session import get_db
+from app.core.dependencies import get_db, get_current_user
 from app.services.live_feed_service import LiveFeedService
 from app.schemas.post import PostResponse
-from app.core.auth import get_current_user
 from app.models.user import User
 
 logger = logging.getLogger(__name__)

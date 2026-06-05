@@ -16,8 +16,8 @@ import { BACKEND_ORIGIN } from '../api/config.js';
 import { getCsrfToken } from '../utils/csrf.js';
 import { clearStoredUser, getAuthToken, getCurrentUsername, getStoredUserSnapshot } from '../utils/auth.js';
 import { redirectToAppPath } from '../utils/router.js';
-import ReactionBar from '../components/social/ReactionBar.jsx';
-import FollowControls from '../components/social/FollowControls.jsx';
+import { followUser, muteUser, unmuteUser } from '../api/users.js';
+import { blockUserApi, unblockUserApi } from '../api/chat.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
 import { getActiveLiveStreams } from '../services/api/liveStreamApi.js';
 
@@ -51,6 +51,23 @@ const QUICK_ACTIONS = [
 const DEFAULT_PROFILE_HIGHLIGHTS = [
   { label: 'جديد', kind: 'add' },
 ];
+
+function timeAgoAr(dateLike) {
+  if (!dateLike) return 'الآن';
+  const date = new Date(dateLike);
+  if (Number.isNaN(date.getTime())) return 'الآن';
+  const diffSeconds = Math.max(1, Math.floor((Date.now() - date.getTime()) / 1000));
+  if (diffSeconds < 60) return 'الآن';
+  const minutes = Math.floor(diffSeconds / 60);
+  if (minutes < 60) return `منذ ${minutes} دقيقة`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `منذ ${hours} ساعة`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `منذ ${days} يوم`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `منذ ${months} شهر`;
+  return `منذ ${Math.floor(months / 12)} سنة`;
+}
 
 // دالة لتحويل البث المباشر إلى منشور
 function convertLiveStreamToPost(stream) {
@@ -88,15 +105,6 @@ function convertLiveStreamToPost(stream) {
 
 const MOCK_POSTS = [];
 
-
-function SocialEnhancements({ post }) {
-  return (
-    <div className="mt-4 space-y-3">
-      <FollowControls userId={post.handle} username={post.handle.replace('@', '')} />
-      <ReactionBar postId={post.id} />
-    </div>
-  );
-}
 
 function normalizeHandle(value = '') {
   const cleaned = String(value || '').trim().replace(/^@+/, '');
@@ -158,17 +166,15 @@ function buildFeedPosts(posts = []) {
         authorName: post.author_name || post.username || post.user || 'مستخدم يام شات',
         authorAvatar: resolveMediaUrl(post.user_avatar || post.avatar || post.author_avatar || ''),
         handle: normalizeHandle(post.username || post.user || `user.${index + 1}`),
-        time: post.created_at || post.published_at ? 'منشور سابق' : 'الآن',
-        text: stripFirstUrl(post.content || 'منشور جديد على يام شات.'),
+        time: timeAgoAr(post.created_at || post.published_at),
+        text: stripFirstUrl(post.content || post.text || ''),
         liveUrl: resolveLiveViewerUrl(post),
-        rawText: post.content || 'منشور جديد على يام شات.',
+        rawText: post.content || post.text || '',
         likes: Number(post.likes_count || post.like_count || post.likes || 0),
         comments: Number(post.comments_count || post.comment_count || 0),
         shares: Number(post.share_count || post.shares || 0),
         views: Number(post.views_count || post.view_count || 0),
-        media: normalizedMedia.length
-          ? normalizedMedia
-          : [{ type: index % 2 === 0 ? 'scenic-lake' : 'portrait-purple' }],
+        media: normalizedMedia,
       };
     });
   }
@@ -222,15 +228,7 @@ function MediaTile({ item, index }) {
     );
   }
 
-  return (
-    <div className={`yam-post-media-tile tile-${index} ${item?.type || 'scenic-lake'}`}>
-      {index === 0 ? (
-        <div className="yam-post-play-overlay">
-          <YamshatIcon name="play" size={24} filled />
-        </div>
-      ) : null}
-    </div>
-  );
+  return null;
 }
 
 function PostCard({ post }) {
@@ -246,6 +244,13 @@ function PostCard({ post }) {
   const [showComments, setShowComments] = useState(false);
   const [commentDraft, setCommentDraft] = useState('');
   const [localComments, setLocalComments] = useState([]);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
+  const authorUsername = String(post.handle || '').replace(/^@/, '');
+  const currentUsername = getCurrentUsername();
+  const isOwnPost = Boolean(authorUsername && currentUsername && authorUsername === currentUsername);
 
   const handleOpenLiveAnnouncement = () => {
     if (!post.liveUrl) return;
@@ -284,19 +289,63 @@ function PostCard({ post }) {
     pushToast({ type: 'success', title: saved ? 'تمت إزالة المنشور من المحفوظات' : 'تم حفظ المنشور' });
   };
 
-  const handleMoreOptions = async () => {
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(postUrl);
-        pushToast({ type: 'success', title: 'تم نسخ رابط المنشور' });
-        return;
-      }
-    } catch {
-      // fallback below
-    }
+  const handleMoreOptions = () => {
+    setShowMoreMenu((prev) => !prev);
+  };
 
-    setShowComments(true);
-    pushToast({ type: 'info', title: 'تم فتح التعليقات', description: 'تم ربط زر الخيارات بإجراء مفيد بدل بقائه بدون وظيفة.' });
+  const handleFollowAuthor = async () => {
+    if (!authorUsername || isOwnPost) return;
+    try {
+      const response = await followUser(authorUsername);
+      const nextFollowing = Boolean(response?.data?.following ?? !isFollowing);
+      setIsFollowing(nextFollowing);
+      setShowMoreMenu(false);
+      pushToast({ type: 'success', title: nextFollowing ? 'تمت المتابعة' : 'تم إلغاء المتابعة' });
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر تحديث المتابعة', description: error?.response?.data?.detail || error?.message });
+    }
+  };
+
+  const handleMuteAuthor = async () => {
+    if (!authorUsername || isOwnPost) return;
+    try {
+      if (isMuted) await unmuteUser(authorUsername);
+      else await muteUser(authorUsername);
+      const nextMuted = !isMuted;
+      setIsMuted(nextMuted);
+      setShowMoreMenu(false);
+      pushToast({ type: 'success', title: nextMuted ? 'تم الكتم' : 'تم إلغاء الكتم' });
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر تحديث الكتم', description: error?.response?.data?.detail || error?.message });
+    }
+  };
+
+  const handleBlockAuthor = async () => {
+    if (!authorUsername || isOwnPost) return;
+    try {
+      if (isBlocked) await unblockUserApi(authorUsername);
+      else await blockUserApi(authorUsername);
+      const nextBlocked = !isBlocked;
+      setIsBlocked(nextBlocked);
+      setShowMoreMenu(false);
+      pushToast({ type: 'success', title: nextBlocked ? 'تم الحظر' : 'تم إلغاء الحظر' });
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر تحديث الحظر', description: error?.response?.data?.detail || error?.message });
+    }
+  };
+
+  const handleReportPost = () => {
+    try {
+      const key = 'yamshat_reported_posts';
+      const current = JSON.parse(window.localStorage.getItem(key) || '[]');
+      const next = Array.isArray(current) ? current : [];
+      next.unshift({ id: post.id, username: authorUsername, created_at: new Date().toISOString() });
+      window.localStorage.setItem(key, JSON.stringify(next.slice(0, 100)));
+    } catch {
+      // ignore storage failures
+    }
+    setShowMoreMenu(false);
+    pushToast({ type: 'success', title: 'تم إرسال البلاغ للمراجعة' });
   };
 
   const handleAddComment = () => {
@@ -324,9 +373,23 @@ function PostCard({ post }) {
         </div>
         <div className="yam-post-meta-v2">
           <span>{post.time}</span>
-          <button type="button" className="yam-ghost-icon-btn" aria-label="خيارات المنشور" onClick={handleMoreOptions} title="نسخ رابط المنشور">
-            <YamshatIcon name="more" size={18} />
-          </button>
+          <div className="yam-settings-menu-wrap">
+            <button type="button" className="yam-ghost-icon-btn" aria-label="خيارات المنشور" onClick={handleMoreOptions} title="خيارات المنشور">
+              <YamshatIcon name="more" size={18} />
+            </button>
+            {showMoreMenu ? (
+              <div className="yam-settings-popover">
+                {!isOwnPost ? (
+                  <>
+                    <button type="button" className="yam-settings-popover-item" onClick={handleFollowAuthor}>{isFollowing ? 'إلغاء المتابعة' : 'متابعة'}</button>
+                    <button type="button" className="yam-settings-popover-item" onClick={handleMuteAuthor}>{isMuted ? 'إلغاء الكتم' : 'كتم'}</button>
+                    <button type="button" className="yam-settings-popover-item danger" onClick={handleBlockAuthor}>{isBlocked ? 'إلغاء الحظر' : 'حظر'}</button>
+                  </>
+                ) : null}
+                <button type="button" className="yam-settings-popover-item danger" onClick={handleReportPost}>بلاغ</button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -342,25 +405,13 @@ function PostCard({ post }) {
         </button>
       ) : null}
 
-      <div className={`yam-post-media-grid-v2 media-count-${mediaItems.length || 1}`}>
-        {mediaItems.map((item, index) => (
-          <MediaTile key={`${post.id}-media-${index}`} item={item} index={index} />
-        ))}
-      </div>
-
-      <div className="yam-post-stats-v2">
-        <div className="yam-post-reactions-v2">
-          <span className="reaction-bubble like">❤</span>
-          <span className="reaction-bubble support">👍</span>
-          <span className="reaction-bubble wow">💙</span>
-          <strong>{formatCompactNumber(likesCount)}</strong>
+      {mediaItems.length ? (
+        <div className={`yam-post-media-grid-v2 media-count-${mediaItems.length}`}>
+          {mediaItems.map((item, index) => (
+            <MediaTile key={`${post.id}-media-${index}`} item={item} index={index} />
+          ))}
         </div>
-        <div className="yam-post-numbers-v2">
-          <span>{formatCompactNumber(commentsCount)} تعليق</span>
-          <span>{formatCompactNumber(sharesCount)} مشاركة</span>
-          <span>{formatCompactNumber(post.views || 0)} مشاهدة</span>
-        </div>
-      </div>
+      ) : null}
 
       <div className="yam-post-actions-v2">
         <button type="button" className={liked ? 'active' : ''} onClick={handleLike}><YamshatIcon name="heart" size={17} />{liked ? 'تم الإعجاب' : 'أعجبني'}</button>
@@ -391,8 +442,7 @@ function PostCard({ post }) {
           </div>
         </div>
       ) : null}
-    <SocialEnhancements post={post} />
-                </article>
+    </article>
   );
 }
 

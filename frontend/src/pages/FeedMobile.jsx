@@ -5,9 +5,12 @@ import MobileFilterPills from '../components/mobile/MobileFilterPills.jsx';
 import MobilePostCard from '../components/mobile/MobilePostCard.jsx';
 import MobileComposeModal from '../components/mobile/MobileComposeModal.jsx';
 import MobileCommentsSheet from '../components/mobile/MobileCommentsSheet.jsx';
+import Modal from '../components/ui/Modal.jsx';
 import useSmartFeed from '../hooks/useSmartFeed.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
 import { likePost, savePost, sharePost, deletePost } from '../api/posts.js';
+import { followUser, muteUser, unmuteUser } from '../api/users.js';
+import { blockUserApi, unblockUserApi } from '../api/chat.js';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import { useAppStore } from '../store/appStore.js';
 
@@ -36,15 +39,31 @@ function timeAgoAr(dateLike) {
   return `منذ ${Math.floor(months / 12)} سنة`;
 }
 
+function isVideoMediaUrl(value = '', post = {}) {
+  const candidate = String(value || '');
+  return Boolean(
+    post.has_video
+    || post.is_reel
+    || String(post.media_type || '').toLowerCase() === 'video'
+    || /\.(mp4|webm|mov|m4v|m3u8|mkv|avi)(\?.*)?$/i.test(candidate)
+    || /\b(video|reel|stream)\b/i.test(candidate)
+  );
+}
+
+function buildBanner(post = {}) {
+  const rawMedia = Array.isArray(post.media_urls) && post.media_urls.length
+    ? post.media_urls
+    : [post.image_url || post.media_url || post.thumbnail_url || post.media].filter(Boolean);
+  const firstMedia = rawMedia[0] || '';
+  const resolved = resolveMediaUrl(firstMedia);
+  if (!resolved || isVideoMediaUrl(resolved || firstMedia, post)) return null;
+  return { type: 'image', url: resolved };
+}
+
 function normalizePost(p, i) {
   const author = p.author_name || p.username || p.user || 'مستخدم يام شات';
   const handle = (p.username || p.user || `user${i}`).toString();
   const verified = Boolean(p.verified || p.is_verified || p.official);
-  const bannerUrl = resolveMediaUrl(
-    Array.isArray(p.media_urls) && p.media_urls.length
-      ? p.media_urls[0]
-      : (p.media_url || p.image_url || '')
-  );
   return {
     id: p.id ?? `p-${i}`,
     rawId: p.id,
@@ -54,9 +73,7 @@ function normalizePost(p, i) {
     verified,
     avatarUrl: resolveMediaUrl(p.user_avatar || p.avatar || p.author_avatar || ''),
     text: p.content || p.text || '',
-    banner: bannerUrl
-      ? { type: 'image', url: bannerUrl }
-      : null,
+    banner: buildBanner(p),
     likes: Number(p.likes_count ?? p.like_count ?? p.likes ?? 0),
     comments: Number(p.comments_count ?? p.comment_count ?? p.comments ?? 0),
     reposts: Number(p.share_count ?? p.shares ?? p.reposts ?? 0),
@@ -89,6 +106,9 @@ function FeedMobile() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerAction, setComposerAction] = useState(null);
   const [commentsPostId, setCommentsPostId] = useState(null);
+  const [moreMenuPost, setMoreMenuPost] = useState(null);
+  const [moreMenuBusy, setMoreMenuBusy] = useState(false);
+  const [moreMenuState, setMoreMenuState] = useState({ following: false, muted: false, blocked: false });
 
   // overlay فوري للحالة التفاعلية (optimistic UI) قبل وصول استجابة API
   const [overlay, setOverlay] = useState({}); // { [postId]: { liked, likes, saved, reposted, reposts } }
@@ -253,37 +273,103 @@ function FeedMobile() {
     setCommentsPostId(post.rawId);
   }, [pushToast]);
 
-  const handleMore = useCallback(async (post) => {
-    // نسخ الرابط + خيار حذف للمنشور الخاص بالمستخدم
-    const postUrl = `${window.location.origin}/#/post/${post.rawId || post.id}`;
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(postUrl);
-        pushToast?.({ type: 'success', title: 'تم نسخ رابط المنشور' });
-      } else {
-        pushToast?.({ type: 'info', title: 'انسخ الرابط', description: postUrl });
-      }
-    } catch {
-      pushToast?.({ type: 'info', title: 'تم فتح الخيارات' });
-    }
+  const handleMore = useCallback((post) => {
+    setMoreMenuPost(post);
+    setMoreMenuState({
+      following: Boolean(post?.following),
+      muted: Boolean(post?.muted),
+      blocked: Boolean(post?.blocked_by_me),
+    });
+  }, []);
 
-    // إذا كان المنشور للمستخدم نفسه -> اعرض خيار الحذف (تأكيد بسيط)
-    const myUsername = session?.username || session?.user_name || session?.handle;
-    const handleNorm = String(post.handle || '').replace(/^@/, '');
-    if (myUsername && post.rawId && handleNorm && handleNorm === myUsername) {
-      // confirm بسيط — يمكن لاحقاً استبداله بـ bottom sheet
-      const ok = window.confirm('هل تريد حذف هذا المنشور؟');
-      if (ok) {
-        try {
-          await deletePost(post.rawId);
-          pushToast?.({ type: 'success', title: 'تم حذف المنشور' });
-          queryClient.invalidateQueries({ queryKey: ['feed-data'] });
-        } catch (err) {
-          pushToast?.({ type: 'error', title: 'تعذر حذف المنشور' });
-        }
-      }
+  const closeMoreMenu = useCallback(() => {
+    setMoreMenuPost(null);
+    setMoreMenuBusy(false);
+  }, []);
+
+  const handleMenuFollow = useCallback(async () => {
+    if (!moreMenuPost) return;
+    const username = String(moreMenuPost.handle || '').replace(/^@/, '');
+    if (!username || !requireAuth()) return;
+    setMoreMenuBusy(true);
+    try {
+      const response = await followUser(username);
+      const nextFollowing = Boolean(response?.data?.following ?? !moreMenuState.following);
+      setMoreMenuState((prev) => ({ ...prev, following: nextFollowing }));
+      pushToast?.({ type: 'success', title: nextFollowing ? 'تمت المتابعة' : 'تم إلغاء المتابعة' });
+      closeMoreMenu();
+    } catch (error) {
+      pushToast?.({ type: 'error', title: 'تعذر تحديث المتابعة', description: error?.response?.data?.detail || error?.message });
+      setMoreMenuBusy(false);
     }
-  }, [session, pushToast, queryClient]);
+  }, [moreMenuPost, moreMenuState.following, requireAuth, pushToast, closeMoreMenu]);
+
+  const handleMenuMute = useCallback(async () => {
+    if (!moreMenuPost) return;
+    const username = String(moreMenuPost.handle || '').replace(/^@/, '');
+    if (!username || !requireAuth()) return;
+    setMoreMenuBusy(true);
+    try {
+      if (moreMenuState.muted) await unmuteUser(username);
+      else await muteUser(username);
+      const nextMuted = !moreMenuState.muted;
+      setMoreMenuState((prev) => ({ ...prev, muted: nextMuted }));
+      pushToast?.({ type: 'success', title: nextMuted ? 'تم الكتم' : 'تم إلغاء الكتم' });
+      closeMoreMenu();
+    } catch (error) {
+      pushToast?.({ type: 'error', title: 'تعذر تحديث الكتم', description: error?.response?.data?.detail || error?.message });
+      setMoreMenuBusy(false);
+    }
+  }, [moreMenuPost, moreMenuState.muted, requireAuth, pushToast, closeMoreMenu]);
+
+  const handleMenuBlock = useCallback(async () => {
+    if (!moreMenuPost) return;
+    const username = String(moreMenuPost.handle || '').replace(/^@/, '');
+    if (!username || !requireAuth()) return;
+    setMoreMenuBusy(true);
+    try {
+      if (moreMenuState.blocked) await unblockUserApi(username);
+      else await blockUserApi(username);
+      const nextBlocked = !moreMenuState.blocked;
+      setMoreMenuState((prev) => ({ ...prev, blocked: nextBlocked }));
+      pushToast?.({ type: 'success', title: nextBlocked ? 'تم الحظر' : 'تم إلغاء الحظر' });
+      closeMoreMenu();
+    } catch (error) {
+      pushToast?.({ type: 'error', title: 'تعذر تحديث الحظر', description: error?.response?.data?.detail || error?.message });
+      setMoreMenuBusy(false);
+    }
+  }, [moreMenuPost, moreMenuState.blocked, requireAuth, pushToast, closeMoreMenu]);
+
+  const handleMenuReport = useCallback(() => {
+    if (!moreMenuPost) return;
+    try {
+      const key = 'yamshat_reported_posts';
+      const current = JSON.parse(window.localStorage.getItem(key) || '[]');
+      const next = Array.isArray(current) ? current : [];
+      next.unshift({ id: moreMenuPost.id, username: moreMenuPost.handle, created_at: new Date().toISOString() });
+      window.localStorage.setItem(key, JSON.stringify(next.slice(0, 100)));
+    } catch {
+      // ignore storage failures
+    }
+    pushToast?.({ type: 'success', title: 'تم إرسال البلاغ للمراجعة' });
+    closeMoreMenu();
+  }, [moreMenuPost, pushToast, closeMoreMenu]);
+
+  const handleMenuDeleteOwnPost = useCallback(async () => {
+    if (!moreMenuPost?.rawId) return;
+    setMoreMenuBusy(true);
+    try {
+      await deletePost(moreMenuPost.rawId);
+      pushToast?.({ type: 'success', title: 'تم حذف المنشور' });
+      closeMoreMenu();
+      queryClient.invalidateQueries({ queryKey: ['feed-data'] });
+    } catch (error) {
+      pushToast?.({ type: 'error', title: 'تعذر حذف المنشور', description: error?.response?.data?.detail || error?.message });
+      setMoreMenuBusy(false);
+    }
+  }, [moreMenuPost, pushToast, queryClient, closeMoreMenu]);
+
+  const isOwnMoreMenuPost = Boolean(moreMenuPost && (session?.username || session?.user_name || session?.handle) === String(moreMenuPost.handle || '').replace(/^@/, ''));
 
   return (
     <>
@@ -322,7 +408,6 @@ function FeedMobile() {
             post={post}
             onLike={handleLike}
             onComment={handleComment}
-            onRepost={handleRepost}
             onShare={handleShare}
             onSave={handleSave}
             onMore={handleMore}
@@ -350,6 +435,21 @@ function FeedMobile() {
         postId={commentsPostId}
         onClose={() => setCommentsPostId(null)}
       />
+
+      <Modal isOpen={Boolean(moreMenuPost)} onClose={closeMoreMenu} title="خيارات المنشور">
+        <div className="profile-modal-stack">
+          {!isOwnMoreMenuPost ? (
+            <>
+              <button type="button" className="profile-tab active" onClick={handleMenuFollow} disabled={moreMenuBusy}>{moreMenuState.following ? 'إلغاء المتابعة' : 'متابعة'}</button>
+              <button type="button" className="profile-tab" onClick={handleMenuMute} disabled={moreMenuBusy}>{moreMenuState.muted ? 'إلغاء الكتم' : 'كتم'}</button>
+              <button type="button" className="profile-tab" onClick={handleMenuBlock} disabled={moreMenuBusy}>{moreMenuState.blocked ? 'إلغاء الحظر' : 'حظر'}</button>
+            </>
+          ) : (
+            <button type="button" className="profile-tab" onClick={handleMenuDeleteOwnPost} disabled={moreMenuBusy}>حذف المنشور</button>
+          )}
+          <button type="button" className="profile-tab" onClick={handleMenuReport} disabled={moreMenuBusy}>بلاغ</button>
+        </div>
+      </Modal>
     </>
   );
 }

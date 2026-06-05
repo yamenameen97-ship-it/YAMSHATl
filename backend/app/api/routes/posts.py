@@ -133,14 +133,17 @@ async def get_all(
         posts = [post for post in posts if int(post.get('user_id') or 0) == current_user.id]
 
     if active_filter == 'trending' or active_sort == 'trending':
-        posts = sorted(posts, key=lambda post: (interaction_score(post), str(post.get('created_at') or '')), reverse=True)
+        posts = sorted(posts, key=lambda post: (interaction_score(post), str(post.get('published_at') or post.get('created_at') or ''), int(post.get('id') or 0)), reverse=True)
     elif active_sort == 'oldest':
-        posts = sorted(posts, key=lambda post: str(post.get('created_at') or ''))
+        posts = sorted(posts, key=lambda post: (str(post.get('published_at') or post.get('created_at') or ''), int(post.get('id') or 0)))
+    elif active_sort in {'recent', 'newest', 'latest'}:
+        posts = sorted(posts, key=lambda post: (str(post.get('published_at') or post.get('created_at') or ''), int(post.get('id') or 0)), reverse=True)
     else:
         try:
             posts = await rank_posts(posts, current_user)
         except Exception as exc:
             logger.warning('AI post ranking failed, using local feed order: %s', exc)
+            posts = sorted(posts, key=lambda post: (str(post.get('published_at') or post.get('created_at') or ''), int(post.get('id') or 0)), reverse=True)
 
     total_candidates = len(posts)
     paginated_posts = posts[effective_skip:effective_skip + effective_limit] if manual_pagination else posts

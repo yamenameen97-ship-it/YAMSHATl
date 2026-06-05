@@ -1,6 +1,7 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { getPosts } from '../api/posts.js';
 import { useRef } from 'react';
+import { sortPostsNewestFirst } from '../utils/feedCache.js';
 
 /**
  * Advanced Feed Hook with backend-aware filtering, sorting, and pagination.
@@ -57,7 +58,7 @@ export function useFeed(options = {}) {
     },
   });
 
-  const posts = query.data?.pages.flatMap((page) => page.items || []) || [];
+  const posts = sortPostsNewestFirst(query.data?.pages.flatMap((page) => page.items || []) || []);
   const meta = query.data?.pages?.[0]?.meta || {};
 
   return {

@@ -299,7 +299,7 @@ def _publish_due_posts(db: Session) -> None:
 
 def get_posts(db: Session, current_user: User | None = None, skip: int = 0, limit: int = 10, include_drafts: bool = False) -> list[dict]:
     _publish_due_posts(db)
-    posts = db.query(Post).order_by(Post.is_pinned.desc(), Post.pinned_at.desc(), Post.created_at.desc()).offset(skip).limit(limit * 3).all()
+    posts = db.query(Post).order_by(func.coalesce(Post.published_at, Post.created_at).desc(), Post.id.desc()).offset(skip).limit(limit * 3).all()
     visible = []
     for post in posts:
         if not _can_view_post(post, current_user):
@@ -328,9 +328,9 @@ def get_user_drafts(db: Session, user: User) -> list[dict]:
 def get_posts_by_username(db: Session, username: str, current_user: User | None = None) -> list[dict]:
     user = db.query(User).filter(User.username == username, User.is_active.is_(True)).first()
     if user is not None:
-        posts = db.query(Post).filter(Post.user_id == user.id).order_by(Post.is_pinned.desc(), Post.created_at.desc()).all()
+        posts = db.query(Post).filter(Post.user_id == user.id).order_by(func.coalesce(Post.published_at, Post.created_at).desc(), Post.id.desc()).all()
         return [_serialize_post(db, post, current_user=current_user) for post in posts if _can_view_post(post, current_user)]
-    posts = db.query(Post).filter(Post.username == username).order_by(Post.is_pinned.desc(), Post.created_at.desc()).all()
+    posts = db.query(Post).filter(Post.username == username).order_by(func.coalesce(Post.published_at, Post.created_at).desc(), Post.id.desc()).all()
     return [_serialize_post(db, post, current_user=current_user) for post in posts if _can_view_post(post, current_user)]
 
 

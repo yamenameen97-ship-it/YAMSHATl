@@ -26,10 +26,27 @@ router = APIRouter()
 # caused files to be written to backend/uploads but served from /uploads,
 # producing 404 after a seemingly successful upload.
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
+BACKEND_ROOT = Path(__file__).resolve().parents[3]
 UPLOAD_DIR = PROJECT_ROOT / 'uploads'
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+LEGACY_UPLOAD_DIR = BACKEND_ROOT / 'uploads'
+LEGACY_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 CHUNKS_DIR = UPLOAD_DIR / 'chunks'
 CHUNKS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _mirror_to_legacy_uploads(source_path: Path) -> None:
+    """انسخ الملف أيضاً إلى backend/uploads لتفادي أي اختلاف في نقطة الخدمة أثناء النشر."""
+    try:
+        if not source_path.exists() or source_path.is_dir():
+            return
+        target_path = LEGACY_UPLOAD_DIR / source_path.name
+        if target_path.resolve() == source_path.resolve():
+            return
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, target_path)
+    except Exception:
+        return
 
 MAX_FILE_SIZE_BYTES = 600 * 1024 * 1024
 ALLOWED_PREFIXES = ('image/', 'video/', 'audio/')
@@ -247,6 +264,7 @@ def save_upload(file: UploadFile) -> dict:
     file.file.seek(0)
     with open(target_path, 'wb') as buffer:
         shutil.copyfileobj(file.file, buffer)
+    _mirror_to_legacy_uploads(target_path)
     payload = _finalize_upload_payload(
         target_path,
         original_name=original_name,
@@ -410,6 +428,7 @@ async def complete_resumable_upload(session_id: str, background_tasks: Backgroun
     final_name = f'{uuid.uuid4().hex}_{safe_basename}'
     final_path = UPLOAD_DIR / final_name
     shutil.move(str(temp_path), str(final_path))
+    _mirror_to_legacy_uploads(final_path)
     meta['status'] = 'completed'
     meta['uploaded_size'] = int(final_path.stat().st_size)
     _write_session(session_id, meta)

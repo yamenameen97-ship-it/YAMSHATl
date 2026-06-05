@@ -5,6 +5,7 @@ import Card from '../ui/Card.jsx';
 import { createPost } from '../../api/posts.js';
 import mediaUploadService from '../../services/media/mediaUploadService.js';
 import { useToast } from '../admin/ToastProvider.jsx';
+import { clearLocalFeedCaches, injectPostIntoFeedCache } from '../../utils/feedCache.js';
 
 const DRAFT_KEY = 'yamshat_post_draft';
 const QUOTE_KEY = 'yamshat_quote_draft';
@@ -177,7 +178,7 @@ export default function PostComposer() {
         ? normalizedPollOptions.map((label) => ({ label }))
         : undefined;
 
-      await createPost({
+      const createdPostResponse = await createPost({
         content: pollQuestion.trim() ? `${pollQuestion.trim()}\n${content}`.trim() : content,
         media_url: mediaUrl,
         status,
@@ -188,6 +189,13 @@ export default function PostComposer() {
         poll,
         quote_source_id: quoteDraft?.id || null,
       });
+
+      const createdPost = createdPostResponse?.data || null;
+      if (status === 'published' && createdPost) {
+        injectPostIntoFeedCache(queryClient, createdPost);
+      } else {
+        clearLocalFeedCaches();
+      }
 
       pushToast({
         type: 'success',

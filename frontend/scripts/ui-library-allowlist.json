@@ -133,6 +133,8 @@
         "src/components/settings/WalletSettings.jsx",
         "src/components/common/AdvancedSearch.jsx",
         "src/components/common/LastActivityIndicator.jsx",
+        "src/components/MobilePostCard.jsx",
+        "src/components/MobileTabs.jsx",
         "src/components/yamshat/YamshatIcon.jsx"
     ]
 }

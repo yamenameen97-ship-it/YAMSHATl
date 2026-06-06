@@ -160,20 +160,39 @@ def _serialize_record(db: Session, record: LiveRoomSession) -> dict:
     runtime_room = _hydrate_runtime_room(record)
     _sync_record_from_runtime(db, record, runtime_room)
     payload = live_store.serialize_room(runtime_room)
+    # جلب بيانات المضيف (الصورة الشخصية)
+    host_user = db.query(User).filter(User.id == record.host_user_id).first()
+    host_avatar = ""
+    if host_user:
+        try:
+            profile_data = json.loads(host_user.profile_json or '{}') if hasattr(host_user, 'profile_json') else {}
+            host_avatar = profile_data.get('avatar') or host_user.avatar_url if hasattr(host_user, 'avatar_url') else ""
+        except:
+            pass
+
+    snapshot = _read_extra_snapshot(record)
+    thumbnail_url = snapshot.get('thumbnail_url') or ""
+
     payload.update({
         'id': record.id,
         'host': record.host_username,
         'username': record.host_username,
+        'host_username': record.host_username,
+        'host_avatar': host_avatar,
         'title': record.title,
+        'thumbnail_url': thumbnail_url,
         'created_at': _iso(record.created_at),
+        'started_at': _iso(record.created_at),
         'last_activity_at': _iso(record.last_activity_at),
         'active': bool(record.is_active),
         'livekit_room': record.livekit_room,
         'livekit_url': record.livekit_url or settings.LIVEKIT_URL or '',
         'stream_status': record.stream_status,
         'viewer_count': int(record.viewer_count or payload.get('viewer_count') or 0),
+        'viewers_count': int(record.viewer_count or payload.get('viewer_count') or 0),
         'peak_viewer_count': int(record.peak_viewer_count or payload.get('peak_viewer_count') or 0),
         'hearts_count': int(record.hearts_count or payload.get('hearts_count') or 0),
+        'comments_count': len(runtime_room.comments) if hasattr(runtime_room, 'comments') else 0,
         'recording': {
             'status': record.recording_status or payload.get('recording', {}).get('status') or 'idle',
             'url': record.recording_url or payload.get('recording', {}).get('url'),
@@ -272,11 +291,20 @@ def create_live(payload: dict = Body(...), db: Session = Depends(get_db), curren
         LiveRoomSession.is_active.is_(True),
     ).order_by(LiveRoomSession.created_at.desc()).first()
 
+    thumbnail_url = str(payload.get('thumbnail_url') or '').strip()
+    
     if existing:
         existing.title = title
         existing.livekit_url = settings.LIVEKIT_URL or existing.livekit_url
         existing.stream_status = 'ready' if _is_livekit_configured() else 'setup_required'
         existing.last_activity_at = _utcnow()
+        
+        # تحديث extra_json ليشمل thumbnail_url
+        extra = _read_extra_snapshot(existing)
+        if thumbnail_url:
+            extra['thumbnail_url'] = thumbnail_url
+        existing.extra_json = json.dumps(extra, ensure_ascii=False)
+        
         room = _hydrate_runtime_room(existing)
         room.title = existing.title
         room.livekit_url = existing.livekit_url or settings.LIVEKIT_URL or ''
@@ -311,6 +339,7 @@ def create_live(payload: dict = Body(...), db: Session = Depends(get_db), curren
         stream_status=stream_status,
         is_active=True,
         last_activity_at=_utcnow(),
+        extra_json=json.dumps({'thumbnail_url': thumbnail_url}, ensure_ascii=False) if thumbnail_url else None
     )
     db.add(record)
     db.commit()

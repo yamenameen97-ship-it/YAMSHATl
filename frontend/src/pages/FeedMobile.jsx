@@ -131,6 +131,23 @@ function FeedMobile() {
   const loading = smart?.isLoading || smart?.loading;
   const error = smart?.error;
 
+  // جلب البث المباشر النشط
+  const [liveStreams, setLiveStreams] = useState([]);
+  useEffect(() => {
+    const fetchLives = async () => {
+      try {
+        const { getActiveLiveStreams } = await import('../services/api/liveStreamApi.js');
+        const res = await getActiveLiveStreams({ limit: 5 });
+        if (res?.data) setLiveStreams(res.data);
+      } catch (err) {
+        console.warn('Failed to fetch live streams for mobile feed', err);
+      }
+    };
+    fetchLives();
+    const timer = setInterval(fetchLives, 30000);
+    return () => clearInterval(timer);
+  }, []);
+
   // فتح المُنشئ عبر حدث (من BottomNav أو composer slot)
   useEffect(() => {
     const handler = (e) => {
@@ -152,16 +169,41 @@ function FeedMobile() {
   }, []);
 
   const posts = useMemo(() => {
-    const list = (Array.isArray(rawPosts) && rawPosts.length)
+    const normalizedPosts = (Array.isArray(rawPosts) && rawPosts.length)
       ? rawPosts.map((p, i) => normalizePost(p, i))
       : [WELCOME_POST];
 
+    // تحويل البث المباشر إلى منشورات
+    const liveAsPosts = liveStreams.map((stream) => ({
+      id: `live-${stream.id}`,
+      rawId: null,
+      authorName: stream.host_username || 'مستخدم',
+      handle: `@${stream.host_username || 'مستخدم'}`,
+      timeText: 'مباشر الآن',
+      verified: true,
+      avatarUrl: resolveMediaUrl(stream.host_avatar || ''),
+      text: stream.title || 'بث مباشر جديد',
+      banner: stream.thumbnail_url ? { type: 'image', url: resolveMediaUrl(stream.thumbnail_url) } : null,
+      likes: stream.hearts_count || 0,
+      comments: stream.comments_count || 0,
+      reposts: 0,
+      liked: false,
+      reposted: false,
+      saved: false,
+      isLive: true,
+      liveStreamId: stream.id,
+      liveStream: stream,
+    }));
+
+    // دمج البث في البداية (أو تصفية المكرر إذا كان المنشور مرتبطاً ببث)
+    const combined = [...liveAsPosts, ...normalizedPosts];
+
     // دمج overlay (optimistic)
-    return list.map((p) => {
+    return combined.map((p) => {
       const o = overlay[p.id];
       return o ? { ...p, ...o } : p;
     });
-  }, [rawPosts, overlay]);
+  }, [rawPosts, liveStreams, overlay]);
 
   // فلترة محلية بسيطة (الفلترة الحقيقية تتم في backend عبر filterType)
   const filtered = useMemo(() => {
@@ -403,12 +445,22 @@ function FeedMobile() {
       <div className="ym-feed">
         {filtered.map((post) => {
           // عرض منشورات البث المباشر
-          if (post.isLive && post.liveStreamId && post.liveStream) {
+          if (post.isLive) {
             return (
               <MobileLiveStreamCard
                 key={post.id}
                 post={post}
-                liveStream={post.liveStream}
+                liveStream={post.liveStream || {
+                  id: post.liveStreamId,
+                  host_username: post.handle.replace(/^@/, ''),
+                  host_name: post.authorName,
+                  title: post.text,
+                  thumbnail_url: post.banner?.url || '',
+                  host_avatar: post.avatarUrl || '',
+                  viewer_count: post.views || 0,
+                  hearts_count: post.likes || 0,
+                  comments_count: post.comments || 0
+                }}
                 onStreamEnd={() => queryClient.invalidateQueries({ queryKey: ['feed-data'] })}
               />
             );

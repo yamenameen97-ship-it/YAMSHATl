@@ -158,6 +158,7 @@ export default function LiveStudio() {
         category,
         quality,
         isPublic: newStreamData.isPublic,
+        thumbnail_url: uploadedCover,
       });
 
       if (response?.data) {

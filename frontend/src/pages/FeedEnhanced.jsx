@@ -83,35 +83,37 @@ function timeAgoAr(dateLike) {
 // دالة لتحويل البث المباشر إلى منشور
 function convertLiveStreamToPost(stream) {
   if (!stream || !stream.id) return null;
-  return {
-    id: `live_${stream.id}`,
-    type: 'live_stream',
-    is_live_stream: true,
-    live_stream_id: stream.id,
-    title: stream.title || 'بث مباشر',
-    content: stream.title || 'بث مباشر',
-    text: stream.title || 'بث مباشر جديد',
-    author: stream.host_username || 'مستخدم',
-    username: stream.host_username || 'مستخدم',
-    handle: `@${stream.host_username || 'مستخدم'}`,
-    avatar: stream.host_avatar || '',
-    user_avatar: stream.host_avatar || '',
-    created_at: stream.started_at || new Date().toISOString(),
-    media_type: 'live',
-    media_url: stream.thumbnail_url || '',
-    thumbnail_url: stream.thumbnail_url || '',
-    preview_url: stream.thumbnail_url || '',
-    viewers_count: stream.viewers_count || 0,
-    likes_count: stream.hearts_count || 0,
-    comments_count: stream.comments_count || 0,
-    is_liked: false,
-    is_saved: false,
-    is_verified: false,
-    is_reel: false,
-    has_video: false,
-    has_live_stream: true,
-    live_stream: stream,
-  };
+      const mediaUrl = stream.thumbnail_url || '';
+      return {
+        id: `live_${stream.id}`,
+        type: 'live_stream',
+        is_live_stream: true,
+        live_stream_id: stream.id,
+        title: stream.title || 'بث مباشر',
+        content: stream.title || 'بث مباشر',
+        text: stream.title || 'بث مباشر جديد',
+        author: stream.host_username || 'مستخدم',
+        username: stream.host_username || 'مستخدم',
+        handle: `@${stream.host_username || 'مستخدم'}`,
+        avatar: stream.host_avatar || '',
+        user_avatar: stream.host_avatar || '',
+        created_at: stream.started_at || new Date().toISOString(),
+        media_type: 'live',
+        media_url: mediaUrl,
+        thumbnail_url: mediaUrl,
+        preview_url: mediaUrl,
+        viewers_count: stream.viewers_count || 0,
+        likes_count: stream.hearts_count || 0,
+        comments_count: stream.comments_count || 0,
+        is_liked: false,
+        is_saved: false,
+        is_verified: false,
+        is_reel: false,
+        has_video: false,
+        has_live_stream: true,
+        live_stream: stream,
+        media: mediaUrl ? [{ type: 'image-primary', kind: 'image', url: resolveMediaUrl(mediaUrl) }] : []
+      };
 }
 
 const MOCK_POSTS = [];

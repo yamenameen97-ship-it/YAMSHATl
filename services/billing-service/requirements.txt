@@ -1,8 +1,0 @@
-fastapi
-uvicorn
-sqlalchemy
-python-jose[cryptography]
-passlib[bcrypt]
-python-multipart
-asyncpg
-psycopg2-binary

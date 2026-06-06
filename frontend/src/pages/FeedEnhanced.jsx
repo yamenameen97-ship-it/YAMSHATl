@@ -194,8 +194,15 @@ function buildFeedPosts(posts = []) {
         };
       });
 
-      const isLive = Boolean(post.is_live_stream || post.is_live || post.type === 'LIVE');
-      const liveThumbnail = post.thumbnail_url || post.thumbnail || post.preview_url || '';
+      const isLive = Boolean(
+        post.is_live_stream || 
+        post.is_live || 
+        post.has_live_stream || 
+        post.type === 'LIVE' || 
+        post.type === 'live' || 
+        post.post_type === 'LIVE'
+      );
+      const liveThumbnail = post.thumbnail_url || post.thumbnail || post.preview_url || post.media_url || '';
       
       // إذا كان بثاً مباشراً ولا توجد ميديا عادية، نستخدم الثمنيل
       const finalMedia = (isLive && !normalizedMedia.length && liveThumbnail)
@@ -208,13 +215,13 @@ function buildFeedPosts(posts = []) {
         userId: post.user_id || null,
         rawUsername: post.username || post.user || '',
         isLive: isLive,
-        liveStreamId: post.live_stream_id || post.live_id || null,
+        liveStreamId: post.live_stream_id || post.live_id || post.streamId || null,
         authorName: post.author_name || post.username || post.user || 'مستخدم يام شات',
         authorAvatar: resolveMediaUrl(post.user_avatar || post.avatar || post.author_avatar || ''),
         handle: normalizeHandle(post.username || post.user || `user.${index + 1}`),
         time: isLive ? 'مباشر الآن' : timeAgoAr(post.created_at || post.published_at),
         text: stripFirstUrl(post.content || post.text || ''),
-        liveUrl: resolveLiveViewerUrl(post),
+        liveUrl: post.liveUrl || resolveLiveViewerUrl(post),
         rawText: post.content || post.text || '',
         likes: Number(post.likes_count || post.like_count || post.likes || 0),
         comments: Number(post.comments_count || post.comment_count || 0),

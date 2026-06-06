@@ -1,0 +1,325 @@
+
+.yam-brand-mark,
+.yam-logo-mark,
+.logo-icon,
+.ui-topbar-brand-mark {
+  background-image: url('/brand/yamshat-logo.png');
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  color: transparent !important;
+  font-size: 0 !important;
+  text-indent: -9999px;
+  overflow: hidden;
+}
+
+.ui-topbar-brand-mark {
+  width: 42px !important;
+  height: 42px !important;
+  border-radius: 14px !important;
+  box-shadow: 0 14px 26px rgba(91, 33, 182, 0.32);
+}
+
+body .yam-brand-mark,
+body .yam-logo-mark,
+body .logo-icon {
+  background-color: transparent !important;
+  box-shadow: 0 18px 32px rgba(91, 33, 182, 0.34) !important;
+}
+
+.ui-topbar-brand-copy {
+  letter-spacing: 0.24em;
+}
+
+body .yam-brand-caption {
+  letter-spacing: 0.08em;
+}
+
+body .yam-chat-shell,
+body .yam-conversation-screen {
+  isolation: isolate;
+}
+
+body .yam-left-rail,
+body .yam-profile-panel,
+body .yam-chat-sidebar,
+body .yam-side-profile-panel,
+body .yam-thread-list,
+body .yam-contact-list,
+body .yam-messages-area {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(167, 139, 250, 0.32) transparent;
+}
+
+body .yam-thread-row,
+body .yam-contact-row,
+body .yam-favorite-row,
+body .yam-nav-item,
+body .yam-quick-card,
+body .yam-stage-icon,
+body .yam-mini-action,
+body .yam-detail-action,
+body .yam-open-chat-btn,
+body .yam-danger-btn {
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+
+body .yam-thread-row:hover,
+body .yam-contact-row:hover,
+body .yam-favorite-row:hover,
+body .yam-nav-item:hover,
+body .yam-quick-card:hover,
+body .yam-stage-icon:hover,
+body .yam-mini-action:hover,
+body .yam-detail-action:hover,
+body .yam-open-chat-btn:hover,
+body .yam-danger-btn:hover {
+  transform: translateY(-1px);
+}
+
+body .yam-chat-shell--inbox .yam-toolbar-card {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  padding-bottom: 2px;
+  background: linear-gradient(180deg, rgba(4, 7, 20, 0.98), rgba(4, 7, 20, 0.88), transparent);
+}
+
+body .yam-chat-stage-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  backdrop-filter: blur(18px);
+  box-shadow: 0 14px 24px rgba(2, 6, 23, 0.18);
+}
+
+body .yam-stage-top-search,
+body .yam-chat-stage-header,
+body .yam-chat-details-drawer,
+body .yam-chat-input-wrap,
+body .yam-toolbar-card .yam-top-search-bar,
+body .yam-toolbar-card .yam-stat-card,
+body .yam-stage-card,
+body .yam-info-card {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 16px 34px rgba(2, 6, 23, 0.18);
+}
+
+body .yam-messages-area {
+  background:
+    radial-gradient(circle at top right, rgba(124,58,237,0.08), transparent 24%),
+    radial-gradient(circle at bottom left, rgba(59,130,246,0.06), transparent 26%),
+    linear-gradient(180deg, rgba(7,10,24,0.98), rgba(4,7,18,0.98)) !important;
+}
+
+body .yam-chat-input-wrap {
+  box-shadow: 0 -14px 28px rgba(2, 6, 23, 0.18);
+}
+
+body .yam-thread-header-line,
+body .yam-thread-footer-line,
+body .yam-chat-stage-peer,
+body .yam-chat-stage-actions {
+  min-width: 0;
+}
+
+body .yam-thread-preview-line p,
+body .yam-contact-copy span,
+body .yam-favorite-copy span {
+  line-height: 1.5;
+}
+
+body .yam-thread-badges {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+body .yam-notification-prompt {
+  position: fixed;
+  left: 18px;
+  bottom: calc(18px + var(--yam-mobile-dock-offset, 0px));
+  z-index: 80;
+  width: min(380px, calc(100vw - 24px));
+  padding: 16px;
+  border-radius: 24px;
+  border: 1px solid rgba(167,139,250,0.24);
+  background: linear-gradient(180deg, rgba(15,23,42,0.96), rgba(6,10,24,0.98));
+  color: #fff;
+  box-shadow: 0 24px 44px rgba(2, 6, 23, 0.34);
+  backdrop-filter: blur(16px);
+}
+
+body .yam-notification-prompt.is-denied {
+  border-color: rgba(251, 191, 36, 0.24);
+}
+
+body .yam-notification-prompt-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+body .yam-notification-prompt-mark {
+  width: 48px;
+  height: 48px;
+  border-radius: 18px;
+  flex-shrink: 0;
+  background: url('/brand/yamshat-logo.png') center/cover no-repeat;
+  box-shadow: 0 14px 26px rgba(91, 33, 182, 0.32);
+}
+
+body .yam-notification-prompt-copy {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+body .yam-notification-prompt-copy strong {
+  font-size: 15px;
+  font-weight: 900;
+}
+
+body .yam-notification-prompt-copy p {
+  margin: 0;
+  color: #cbd5e1;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+body .yam-notification-prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+body .yam-notification-prompt button {
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.05);
+  color: #fff;
+  font-weight: 800;
+}
+
+body .yam-notification-prompt .primary {
+  background: linear-gradient(135deg, #8b5cf6, #4f46e5);
+  border-color: transparent;
+  box-shadow: 0 18px 28px rgba(79,70,229,0.24);
+}
+
+body .yam-notification-prompt .ghost {
+  color: #cbd5e1;
+}
+
+@media (max-width: 1280px) {
+  body .yam-chat-shell {
+    grid-template-columns: 280px minmax(0, 1fr) 300px !important;
+  }
+
+  body .yam-conversation-screen {
+    grid-template-columns: 280px minmax(0, 1fr) 300px !important;
+  }
+}
+
+@media (max-width: 980px) {
+  body .yam-chat-shell,
+  body .yam-conversation-screen {
+    min-height: 100dvh;
+    height: 100dvh;
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  body .yam-center-stage,
+  body .yam-chat-stage {
+    padding: max(12px, env(safe-area-inset-top, 0px)) 12px calc(12px + env(safe-area-inset-bottom, 0px)) !important;
+    gap: 12px !important;
+  }
+
+  body .yam-chat-shell--inbox .yam-toolbar-card {
+    top: calc(env(safe-area-inset-top, 0px) - 2px);
+  }
+
+  body .yam-thread-row {
+    grid-template-columns: 68px minmax(0, 1fr) auto !important;
+    align-items: start !important;
+    padding: 14px 14px !important;
+  }
+
+  body .yam-thread-content {
+    gap: 6px;
+  }
+
+  body .yam-thread-header-line,
+  body .yam-thread-footer-line {
+    align-items: flex-start !important;
+    flex-direction: column;
+  }
+
+  body .yam-chat-stage-header {
+    padding: 14px !important;
+    gap: 12px !important;
+    border-radius: 22px !important;
+  }
+
+  body .yam-chat-stage-actions {
+    width: 100%;
+    justify-content: space-between !important;
+  }
+
+  body .yam-stage-top-search {
+    min-height: 54px !important;
+    padding: 0 14px !important;
+  }
+
+  body .yam-messages-area {
+    padding: 12px 10px calc(20px + var(--yam-keyboard-offset, 0px)) !important;
+    scroll-padding-bottom: 128px !important;
+  }
+
+  body .yam-chat-input-wrap {
+    padding: 10px !important;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important;
+    border-radius: 22px !important;
+  }
+
+  body .yam-notification-prompt {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    bottom: calc(12px + var(--yam-mobile-dock-offset, 0px));
+  }
+}
+
+@media (max-width: 720px) {
+  body .yam-chat-shell--inbox .yam-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  body .yam-stage-card,
+  body .yam-messages-area,
+  body .yam-chat-input-wrap,
+  body .yam-stage-top-search,
+  body .yam-chat-stage-header,
+  body .yam-chat-details-drawer {
+    border-radius: 20px !important;
+  }
+
+  body .yam-thread-row {
+    grid-template-columns: 58px minmax(0, 1fr) !important;
+  }
+
+  body .yam-thread-actions {
+    grid-column: 2;
+    justify-content: flex-end;
+  }
+
+  body .yam-stage-top-search {
+    display: none !important;
+  }
+
+  body .yam-chat-stage-actions {
+    justify-content: space-around !important;
+  }
+}

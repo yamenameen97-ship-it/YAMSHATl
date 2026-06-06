@@ -1,0 +1,144 @@
+import { useEffect, useRef } from 'react';
+import { sendMessageApi } from '../api/chat.js';
+import { pushDeadLetter, prioritizeQueuedActions } from '../features/chat/offlineQueueRuntime.js';
+import { getCurrentUsername } from '../utils/auth.js';
+import { useAppStore } from '../store/appStore.js';
+import logger from '../utils/logger.js';
+import featureFlags from '../utils/featureFlags.js';
+import { getBackoffDelayMs, sleep } from '../utils/retry.js';
+
+function fireQueueEvent(name, detail) {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(name, { detail }));
+}
+
+export default function useOfflineQueue() {
+  const isOnline = useAppStore((state) => state.isOnline);
+  const queuedActions = useAppStore((state) => state.queuedActions);
+  const dequeueAction = useAppStore((state) => state.dequeueAction);
+  const updateQueuedAction = useAppStore((state) => state.updateQueuedAction);
+  const replaceQueuedActions = useAppStore((state) => state.replaceQueuedActions);
+  const runningRef = useRef(false);
+
+  useEffect(() => {
+    if (!featureFlags.offlineQueue || !isOnline || runningRef.current || queuedActions.length === 0) return;
+    window.__YAMSHAT_SW_READY__?.then((registration) => registration?.active?.postMessage?.({ type: 'yamshat:queue-sync' })).catch(() => null);
+
+    let cancelled = false;
+    runningRef.current = true;
+
+    const flushQueue = async () => {
+      logger.info('offline queue flush started', { size: queuedActions.length });
+      for (const action of prioritizeQueuedActions(queuedActions)) {
+        if (cancelled) break;
+        if (action?.type !== 'chat:send_message' || !action?.payload) {
+          pushDeadLetter(getCurrentUsername(), { id: action?.id, payload: action?.payload, error: 'Unknown queue action type', type: action?.type, priority: action?.priority, attempts: action?.attempts });
+          dequeueAction(action?.id);
+          continue;
+        }
+
+        const retryAtMs = action?.nextRetryAt ? new Date(action.nextRetryAt).getTime() : 0;
+        if (retryAtMs && retryAtMs > Date.now()) {
+          continue;
+        }
+
+        try {
+          updateQueuedAction(action.id, { lastAttemptAt: new Date().toISOString() });
+          const { data } = await sendMessageApi(action.payload);
+          dequeueAction(action.id);
+          fireQueueEvent('yamshat:queued-message-sent', {
+            queuedId: action.id,
+            client_id: action.payload.client_id,
+            payload: action.payload,
+            response: data?.data || data,
+          });
+          await sleep(120);
+        } catch (error) {
+          const status = error?.response?.status;
+          const attempts = Number(action?.attempts || 0) + 1;
+          logger.warn('offline queue item failed', { actionId: action.id, status, attempts });
+          if (status && status < 500 && status !== 429) {
+            pushDeadLetter(getCurrentUsername(), { id: action.id, payload: action.payload, error: error?.response?.data?.detail || error?.message || 'Queue item failed', type: action?.type, priority: action?.priority, attempts });
+            dequeueAction(action.id);
+            fireQueueEvent('yamshat:queued-message-failed', {
+              queuedId: action.id,
+              client_id: action.payload.client_id,
+              payload: action.payload,
+              error: error?.response?.data?.detail || error?.message || 'Queue item failed',
+              permanent: true,
+            });
+            continue;
+          }
+
+          // En 429 on respecte un backoff bien plus long (5s→60s)
+          // et on cap les retries pour éviter la boucle infinie qu'on voit
+          // dans la console : [yamshat:warn] offline queue item failed status:429.
+          if (status === 429 && attempts >= 5) {
+            pushDeadLetter(getCurrentUsername(), {
+              id: action.id,
+              payload: action.payload,
+              error: 'Rate limited (429) too many times',
+              type: action?.type,
+              priority: action?.priority,
+              attempts,
+            });
+            dequeueAction(action.id);
+            fireQueueEvent('yamshat:queued-message-failed', {
+              queuedId: action.id,
+              client_id: action.payload.client_id,
+              payload: action.payload,
+              error: 'Rate limited',
+              permanent: true,
+            });
+            continue;
+          }
+
+          const delayMs = getBackoffDelayMs(attempts - 1, {
+            baseDelayMs: status === 429 ? 5_000 : 900,
+            maxDelayMs: status === 429 ? 60_000 : 45_000,
+            jitterRatio: 0.4,
+          });
+          updateQueuedAction(action.id, {
+            attempts,
+            lastAttemptAt: new Date().toISOString(),
+            nextRetryAt: new Date(Date.now() + delayMs).toISOString(),
+          });
+          // Stop la boucle après un échec : on attendra le prochain tick
+          // au lieu de continuer à marteler le serveur dans la même frame.
+          break;
+        }
+      }
+      runningRef.current = false;
+    };
+
+    flushQueue();
+
+    const handleSyncNow = () => {
+      replaceQueuedActions([...useAppStore.getState().queuedActions]);
+    };
+    const handleServiceWorkerMessage = (event) => {
+      if (event.data?.type === 'yamshat:sync-now') handleSyncNow();
+    };
+    window.addEventListener('yamshat:sync-now', handleSyncNow);
+    navigator.serviceWorker?.addEventListener?.('message', handleServiceWorkerMessage);
+
+    const pendingRetryAt = queuedActions
+      .map((item) => (item?.nextRetryAt ? new Date(item.nextRetryAt).getTime() : 0))
+      .filter((value) => value > Date.now())
+      .sort((a, b) => a - b)[0];
+
+    const timer = pendingRetryAt
+      ? window.setTimeout(() => {
+        replaceQueuedActions([...useAppStore.getState().queuedActions]);
+      }, Math.max(250, pendingRetryAt - Date.now() + 50))
+      : null;
+
+    return () => {
+      cancelled = true;
+      runningRef.current = false;
+      if (timer) window.clearTimeout(timer);
+      window.removeEventListener('yamshat:sync-now', handleSyncNow);
+      navigator.serviceWorker?.removeEventListener?.('message', handleServiceWorkerMessage);
+    };
+  }, [dequeueAction, isOnline, queuedActions, replaceQueuedActions, updateQueuedAction]);
+}

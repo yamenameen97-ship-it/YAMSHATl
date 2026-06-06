@@ -223,21 +223,13 @@ export default function LiveStudio() {
           };
 
           try {
-            // إضافة معلومات المضيف للمنشور المحلي لضمان ظهوره بشكل صحيح في الويب
-            const hostInfo = {
-              authorName: currentUsername,
-              username: currentUsername,
-              avatarUrl: '', // يمكن جلبها من الـ store إذا لزم الأمر
-            };
-
             // 1. الإرسال إلى الـ Backend ليراه الجميع
-            const backendResponse = await createPost({ ...livePostData, ...hostInfo });
+            const backendResponse = await createPost(livePostData);
             const savedPost = backendResponse?.data || livePostData;
             
             // 2. التحديث المحلي (للتوافق مع الكود الحالي)
             const localPost = {
               ...savedPost,
-              ...hostInfo,
               id: savedPost.id || `live-${streamId}`,
               streamId: streamId,
               isLive: true,
@@ -246,9 +238,7 @@ export default function LiveStudio() {
             };
             
             const existing = JSON.parse(localStorage.getItem('yamshat_posts') || '[]');
-            // التأكد من عدم تكرار نفس البث
-            const filteredExisting = existing.filter(p => p.streamId !== streamId);
-            localStorage.setItem('yamshat_posts', JSON.stringify([localPost, ...filteredExisting]));
+            localStorage.setItem('yamshat_posts', JSON.stringify([localPost, ...existing]));
             
             // إرسال حدث لتحديث الخلاصة فوراً
             window.dispatchEvent(new CustomEvent('yamshat:live-post-created', { detail: localPost }));
@@ -257,19 +247,9 @@ export default function LiveStudio() {
             console.error('Error syncing live post with backend:', e);
             
             // Fallback to local storage if backend fails
-            const fallbackPost = { 
-              ...livePostData, 
-              authorName: currentUsername,
-              username: currentUsername,
-              id: `live-${streamId}`, 
-              streamId, 
-              isLive: true, 
-              thumbnail,
-              createdAt: new Date().toISOString()
-            };
+            const fallbackPost = { ...livePostData, id: `live-${streamId}`, streamId, isLive: true, thumbnail };
             const existing = JSON.parse(localStorage.getItem('yamshat_posts') || '[]');
-            const filteredExisting = existing.filter(p => p.streamId !== streamId);
-            localStorage.setItem('yamshat_posts', JSON.stringify([fallbackPost, ...filteredExisting]));
+            localStorage.setItem('yamshat_posts', JSON.stringify([fallbackPost, ...existing]));
             window.dispatchEvent(new CustomEvent('yamshat:live-post-created', { detail: fallbackPost }));
           }
         }, 500);

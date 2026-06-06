@@ -201,16 +201,14 @@ function MobilePostCard({
             
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '28px', height: '28px', borderRadius: '50%', overflow: 'hidden', border: '1.5px solid white', boxShadow: '0 0 8px rgba(255,255,255,0.3)' }}>
-                  {avatarUrl ? <img src={avatarUrl} alt="" style={{width:'100%', height:'100%', objectFit:'cover'}} /> : <div style={{width:'100%', height:'100%', background:'linear-gradient(135deg, #7c3aed, #3b82f6)', color:'white', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'12px', fontWeight:'bold'}}>{authorName.charAt(0)}</div>}
+                <div style={{ width: '24px', height: '24px', borderRadius: '50%', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.5)' }}>
+                  {avatarUrl ? <img src={avatarUrl} alt="" style={{width:'100%', height:'100%', objectFit:'cover'}} /> : <YamshatY size={16} />}
                 </div>
-                <div>
-                  <div style={{ color: 'white', fontSize: '13px', fontWeight: '700', lineHeight: 1.1 }}>
-                    {authorName} {verified && <VerifiedBadge />}
-                  </div>
-                  <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: '11px' }}>
-                    @{handle.replace('@', '')}
-                  </div>
+                <div style={{ color: 'white', fontSize: '13px', fontWeight: '600' }}>
+                  {authorName} {verified && <VerifiedBadge />}
+                </div>
+                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px' }}>
+                  {formatCount(viewers)} مشاهد
                 </div>
               </div>
               
@@ -218,13 +216,12 @@ function MobilePostCard({
                 background: 'linear-gradient(135deg, #7c3aed, #3b82f6)',
                 color: 'white',
                 border: 'none',
-                padding: '8px 16px',
-                borderRadius: '10px',
-                fontWeight: '800',
+                padding: '6px 14px',
+                borderRadius: '8px',
+                fontWeight: 'bold',
                 fontSize: '12px',
                 cursor: 'pointer',
-                boxShadow: '0 4px 12px rgba(124, 58, 237, 0.4)',
-                transition: 'transform 0.2s'
+                boxShadow: '0 4px 12px rgba(124, 58, 237, 0.4)'
               }}>انضم الآن</button>
             </div>
           </div>

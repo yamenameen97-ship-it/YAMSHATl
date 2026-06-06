@@ -136,7 +136,7 @@ function convertLiveStreamToPost(stream) {
   };
 }
 
-const MOCK_POSTS = null;
+const MOCK_POSTS = [];
 
 
 function normalizeHandle(value = '') {
@@ -928,85 +928,24 @@ function FeedDesktopInner() {
         setLoadingLiveStreams(true);
         const response = await getActiveLiveStreams({ limit: 10 });
         const streams = Array.isArray(response?.data) ? response.data : [];
-        
-        // دمج بثوث localStorage مع بثوث الـ API
-        const localPosts = JSON.parse(localStorage.getItem('yamshat_posts') || '[]');
-        const localStreams = localPosts
-          .filter(p => (p.type === 'live' || p.is_live) && p.streamId)
-          .map(p => ({
-            id: p.streamId,
-            title: p.title || p.content || 'بث مباشر',
-            thumbnail_url: p.thumbnail || p.media_url,
-            viewers_count: p.viewers || 0,
-            host_name: p.authorName || p.username || 'مستخدم',
-            host_username: p.username || 'user',
-            host_avatar: p.avatarUrl || p.user_avatar || '',
-            started_at: p.createdAt || p.created_at || new Date().toISOString(),
-          }));
-
-        // تجنب التكرار بناءً على id البث
-        const combinedStreams = [...streams];
-        localStreams.forEach(ls => {
-          if (!combinedStreams.find(s => String(s.id) === String(ls.id))) {
-            combinedStreams.unshift(ls);
-          }
-        });
-
-        setLiveStreams(combinedStreams);
+        setLiveStreams(streams);
       } catch (error) {
         console.error('Error fetching live streams:', error);
-        // حتى لو فشل الـ API، نحاول عرض البثوث المحلية
-        try {
-          const localPosts = JSON.parse(localStorage.getItem('yamshat_posts') || '[]');
-          const localStreams = localPosts
-            .filter(p => (p.type === 'live' || p.is_live) && p.streamId)
-            .map(p => ({
-              id: p.streamId,
-              title: p.title || p.content || 'بث مباشر',
-              thumbnail_url: p.thumbnail || p.media_url,
-              viewers_count: p.viewers || 0,
-              host_name: p.authorName || p.username || 'مستخدم',
-              host_username: p.username || 'user',
-              host_avatar: p.avatarUrl || p.user_avatar || '',
-              started_at: p.createdAt || p.created_at || new Date().toISOString(),
-            }));
-          setLiveStreams(localStreams);
-        } catch (e) {
-          setLiveStreams([]);
-        }
+        setLiveStreams([]);
       } finally {
         setLoadingLiveStreams(false);
       }
     };
 
     fetchActiveLiveStreams();
-    
-    // الاستماع لأحداث البث لتحديث الخلاصة فوراً
-    const handleRefresh = () => fetchActiveLiveStreams();
-    window.addEventListener('yamshat:live-post-created', handleRefresh);
-    window.addEventListener('yamshat:stream-started', handleRefresh);
-    window.addEventListener('yamshat:stream-ended', handleRefresh);
-    
-    const interval = setInterval(fetchActiveLiveStreams, 5000); // تحديث أسرع للمزامنة
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('yamshat:live-post-created', handleRefresh);
-      window.removeEventListener('yamshat:stream-started', handleRefresh);
-      window.removeEventListener('yamshat:stream-ended', handleRefresh);
-    };
+    const interval = setInterval(fetchActiveLiveStreams, 30000);
+    return () => clearInterval(interval);
   }, []);
 
-  const liveStreamPosts = useMemo(() => liveStreams.map(convertLiveStreamToPost).filter(Boolean), [liveStreams]);
+  const liveStreamPosts = liveStreams.map(convertLiveStreamToPost).filter(Boolean);
   const feedPosts = useMemo(() => {
     const allPosts = buildFeedPosts(posts);
-    
-    // تجنب تكرار منشورات البث إذا كانت موجودة في الـ posts العادية
-    const filteredLivePosts = liveStreamPosts.filter(lp => 
-      !allPosts.find(ap => String(ap.liveStreamId) === String(lp.liveStreamId))
-    );
-    
-    const combined = [...filteredLivePosts, ...allPosts];
-    return combined.filter(p => p.id !== 'welcome');
+    return [...liveStreamPosts, ...allPosts];
   }, [posts, liveStreamPosts]);
 
   const totalPosts = feedPosts.length;

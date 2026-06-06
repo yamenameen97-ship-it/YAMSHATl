@@ -111,7 +111,22 @@ function normalizePost(p, i) {
 }
 
 // منشور ترحيبي افتراضي (يُعرض فقط حين تكون قائمة backend فارغة فعلاً)
-const WELCOME_POST = null;
+const WELCOME_POST = {
+  id: 'welcome',
+  rawId: null,
+  authorName: 'فريق يام شات',
+  handle: '@yamshat_team',
+  timeText: 'الآن',
+  verified: true,
+  text: 'مرحباً بك في يام شات 🚀\nابدأ بنشر أول منشور لك أو تابع أصدقاءك لتظهر منشوراتهم هنا.',
+  banner: { type: 'logo', title: 'YAMSHAT', slogan: 'تواصل، تفاعل، اربح' },
+  likes: 0,
+  comments: 0,
+  reposts: 0,
+  liked: false,
+  reposted: false,
+  saved: false,
+};
 
 function FeedMobile() {
   const [activeFilter, setActiveFilter] = useState('all');
@@ -214,9 +229,9 @@ function FeedMobile() {
       list = normalizedRawPosts;
     }
 
-    // إذا كانت القائمة فارغة، لا نعرض المنشور الترحيبي الافتراضي
+    // إذا كانت القائمة فارغة في تبويب "الكل" أو "المنشورات"، اعرض منشور ترحيبي
     if (list.length === 0 && (activeFilter === 'all' || activeFilter === 'posts')) {
-      list = [];
+      list = [WELCOME_POST];
     }
 
     // دمج overlay (optimistic)

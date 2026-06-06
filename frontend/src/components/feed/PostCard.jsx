@@ -443,158 +443,50 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
     )));
   };
 
-  // عرض احترافي للبث المباشر (مطابق لطلب المستخدم)
-  if (post?.is_live_stream || post?.type === 'live_stream' || post?.isLive) {
-    const liveStreamId = post.live_stream_id || post.liveStreamId;
-    const handleJoinLive = () => {
-      if (liveStreamId) {
-        window.location.href = `/#/live/view/${liveStreamId}`;
-      }
-    };
-
+  // عرض خاص للبثوث المباشرة
+  if (post?.is_live_stream || post?.type === 'live_stream') {
     return (
-      <Card className="yam-post-live-card-desktop-pro" style={{ 
-        padding: 0, 
-        border: 'none', 
-        background: '#000',
-        borderRadius: '24px',
-        overflow: 'hidden',
-        position: 'relative',
-        aspectRatio: '16/9',
-        boxShadow: '0 12px 40px rgba(0,0,0,0.3)',
-        marginBottom: '20px'
-      }}>
-        {/* الخلفية */}
-        <img 
-          src={post.thumbnail_url || post.preview_url || post.media_url || post.media?.[0]?.url || 'https://via.placeholder.com/800x450?text=Live+Stream'} 
-          alt="Live Stream" 
-          style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.7 }}
-        />
-        
-        {/* طبقة التدرج */}
-        <div style={{
-          position: 'absolute',
-          inset: 0,
-          background: 'linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0.9) 100%)',
-          zIndex: 1
-        }} />
-
-        {/* شارة البث المباشر */}
-        <div style={{
-          position: 'absolute',
-          top: '20px',
-          left: '20px',
-          background: 'linear-gradient(135deg, #ef4444, #f97316)',
-          color: 'white',
-          padding: '8px 16px',
-          borderRadius: '30px',
-          fontSize: '14px',
-          fontWeight: 'bold',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          zIndex: 2,
-          boxShadow: '0 4px 15px rgba(239, 68, 68, 0.4)'
-        }}>
-          <span className="live-dot-blink-pro"></span> مباشر
-        </div>
-
-        {/* عدد المشاهدين */}
-        <div style={{
-          position: 'absolute',
-          top: '20px',
-          right: '20px',
-          background: 'rgba(0,0,0,0.5)',
-          color: 'white',
-          padding: '8px 16px',
-          borderRadius: '15px',
-          fontSize: '14px',
-          fontWeight: '600',
-          backdropFilter: 'blur(10px)',
-          zIndex: 2,
-          border: '1px solid rgba(255,255,255,0.1)'
-        }}>
-          👁 {post.viewers_count || post.views || 0} مشاهد
-        </div>
-
-        {/* المحتوى السفلي */}
-        <div style={{
-          position: 'absolute',
-          bottom: '0',
-          left: '0',
-          right: '0',
-          padding: '30px',
-          zIndex: 2,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '15px'
-        }}>
-          <h2 style={{ color: 'white', fontSize: '24px', fontWeight: '900', margin: 0, textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>
-            {post.content || post.text || post.title || 'بث مباشر جديد'}
-          </h2>
-          
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', border: '2px solid white', boxShadow: '0 0 15px rgba(255,255,255,0.3)' }}>
-                {post.avatar || post.authorAvatar ? (
-                  <img src={post.avatar || post.authorAvatar} alt="" style={{width:'100%', height:'100%', objectFit:'cover'}} />
-                ) : (
-                  <div style={{width:'100%', height:'100%', background:'linear-gradient(135deg, #7c3aed, #3b82f6)', color:'white', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'20px', fontWeight:'bold'}}>
-                    {(post.username || post.authorName || 'Y').charAt(0).toUpperCase()}
-                  </div>
-                )}
-              </div>
-              <div>
-                <div style={{ color: 'white', fontSize: '18px', fontWeight: '800' }}>{post.username || post.authorName}</div>
-                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px' }}>@{post.handle?.replace('@', '') || post.username}</div>
-              </div>
-            </div>
-            
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button onClick={handleJoinLive} style={{
-                background: 'linear-gradient(135deg, #7c3aed, #3b82f6)',
-                color: 'white',
-                border: 'none',
-                padding: '12px 30px',
-                borderRadius: '15px',
-                fontWeight: '900',
-                fontSize: '16px',
-                cursor: 'pointer',
-                boxShadow: '0 6px 20px rgba(124, 58, 237, 0.5)',
-                transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
-              }} onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'} onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}>
-                مشاهدة الآن
-              </button>
-              {post.username === currentUser && (
-                <button onClick={() => window.location.href = '/#/live/studio'} style={{
-                  background: 'rgba(255,255,255,0.1)',
-                  color: 'white',
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  padding: '12px 20px',
-                  borderRadius: '15px',
-                  fontWeight: '700',
-                  fontSize: '16px',
-                  cursor: 'pointer',
-                  backdropFilter: 'blur(10px)'
-                }}>لوحة التحكم</button>
-              )}
-            </div>
+      <Card style={{ padding: 16, border: '2px solid var(--accent)', background: 'rgba(59,130,246,0.08)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+          <div style={{ fontSize: 24 }}>🔴</div>
+          <div>
+            <div style={{ fontWeight: 'bold', fontSize: 18 }}>بث مباشر</div>
+            <div style={{ color: 'var(--accent)', fontSize: 12 }}>نشط الآن</div>
           </div>
         </div>
-        
-        <style>{`
-          .live-dot-blink-pro {
-            width: 10px;
-            height: 10px;
-            background: white;
-            border-radius: 50%;
-            animation: blink-pro 1.2s ease-in-out infinite;
-          }
-          @keyframes blink-pro {
-            0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 rgba(255,255,255,0.7); }
-            50% { opacity: 0.5; transform: scale(0.8); box-shadow: 0 0 10px 4px rgba(255,255,255,0.3); }
-          }
-        `}</style>
+        <div style={{ fontSize: 16, marginBottom: 12 }}>{post.content || post.text || post.title}</div>
+        {post.thumbnail_url || post.preview_url ? (
+          <div
+            onClick={() => window.location.href = `/live/view/${post.live_stream_id}`}
+            style={{
+              marginBottom: 12,
+              borderRadius: 16,
+              overflow: 'hidden',
+              cursor: 'pointer',
+              background: '#000',
+              height: 280,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: '2px solid var(--accent)',
+              position: 'relative',
+            }}
+          >
+            <img
+              src={post.thumbnail_url || post.preview_url}
+              alt="Live Stream"
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+            <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontSize: 48 }}>▶️</div>
+          </div>
+        ) : null}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Button onClick={() => window.location.href = `/live/view/${post.live_stream_id}`} style={{ flex: 1 }}>مشاهدة البث</Button>
+          <Button variant="secondary" onClick={() => window.location.href = `/live/studio`}>التحكم بالبث</Button>
+        </div>
+        <div style={{ marginTop: 12, fontSize: 13, color: 'var(--muted)' }}>
+          👁 {post.viewers_count || 0} مشاهد · 💜 {post.likes_count || 0} إعجاب
+        </div>
       </Card>
     );
   }

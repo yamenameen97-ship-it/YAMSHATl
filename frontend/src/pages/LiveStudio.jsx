@@ -15,7 +15,7 @@ import {
   toggleCamera,
   toggleMicrophone,
   getStreamViewers,
-} from '../services/api/advancedLiveStreamApi.js';
+} from '../services/api/correctedLiveStreamApi.js';
 import { createPost, updatePost } from '../api/posts.js';
 import { getCurrentUsername } from '../utils/auth.js';
 import ViewersManagementPanel from '../components/live/ViewersManagementPanel.jsx';

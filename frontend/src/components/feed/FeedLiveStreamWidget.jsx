@@ -2,11 +2,17 @@ import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import LiveStreamCard from '../live/LiveStreamCard.jsx';
 import { getLiveStreamDetails, sendLiveComment, sendLiveGift, sendLiveHeart } from '../../services/api/liveStreamApi.js';
+import { resolveMediaUrl } from '../../config/mediaConfig.js';
 import { getCurrentUsername } from '../../utils/auth.js';
 
 /**
  * FeedLiveStreamWidget - عنصر واجهة لعرض البث المباشر في صفحة المنشورات
  * يعرض بطاقة صغيرة للبث المباشر مع خيار فتح الواجهة الكاملة
+ * 
+ * تحسينات:
+ * - معالجة الحقول الناقصة بشكل آمن
+ * - استخدام resolveMediaUrl لتصحيح مسارات الصور
+ * - دعم الحقول الجديدة من الباكيند
  */
 export default function FeedLiveStreamWidget({ 
   post,
@@ -27,9 +33,22 @@ export default function FeedLiveStreamWidget({
       try {
         setIsLoading(true);
         const response = await getLiveStreamDetails(liveStream.id);
-        setStreamData(response.data);
+        const data = response?.data || {};
+        
+        // دمج البيانات الجديدة مع البيانات الموجودة
+        setStreamData(prev => ({
+          ...prev,
+          ...data,
+          // التأكد من أن جميع الحقول المطلوبة موجودة
+          host_name: data.host_name || data.host || prev?.host_name || 'مستخدم',
+          host_avatar: data.host_avatar || prev?.host_avatar || '',
+          thumbnail_url: data.thumbnail_url || prev?.thumbnail_url || '',
+          hearts_count: data.hearts_count ?? prev?.hearts_count ?? 0,
+          comments_count: data.comments_count ?? prev?.comments_count ?? 0,
+        }));
       } catch (error) {
         console.error('Error loading stream data:', error);
+        // الاحتفاظ بالبيانات السابقة في حالة الخطأ
       } finally {
         setIsLoading(false);
       }
@@ -77,6 +96,15 @@ export default function FeedLiveStreamWidget({
   if (!streamData) return null;
 
   const isHost = streamData.host === currentUser;
+  
+  // معالجة آمنة للحقول
+  const hostName = streamData.host_name || streamData.host || 'مستخدم';
+  const hostAvatar = resolveMediaUrl(streamData.host_avatar || '');
+  const thumbnail = resolveMediaUrl(streamData.thumbnail_url || '');
+  const viewerCount = streamData.viewer_count || 0;
+  const heartsCount = streamData.hearts_count || 0;
+  const commentsCount = streamData.comments_count || 0;
+  const title = streamData.title || 'بث مباشر';
 
   return (
     <>
@@ -92,11 +120,16 @@ export default function FeedLiveStreamWidget({
           <div className="yam-feed-live-widget-container">
             {/* خلفية البث */}
             <div className="yam-feed-live-widget-background">
-              {streamData.thumbnail_url && (
+              {thumbnail && (
                 <img 
-                  src={streamData.thumbnail_url} 
-                  alt={streamData.title}
+                  src={thumbnail} 
+                  alt={title}
                   className="yam-feed-live-widget-thumbnail"
+                  loading="lazy"
+                  onError={(e) => {
+                    // إذا فشل تحميل الصورة، إخفاء العنصر
+                    e.target.style.display = 'none';
+                  }}
                 />
               )}
               <div className="yam-feed-live-widget-overlay" />
@@ -113,28 +146,41 @@ export default function FeedLiveStreamWidget({
               {/* معلومات المضيف */}
               <div className="yam-feed-live-widget-host">
                 <div className="yam-feed-live-widget-avatar">
-                  {streamData.host_avatar ? (
-                    <img src={streamData.host_avatar} alt={streamData.host_name} />
-                  ) : (
+                  {hostAvatar ? (
+                    <img 
+                      src={hostAvatar} 
+                      alt={hostName}
+                      loading="lazy"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                      }}
+                    />
+                  ) : null}
+                  {!hostAvatar && (
                     <div className="yam-feed-live-widget-avatar-placeholder">
-                      {streamData.host_name?.charAt(0).toUpperCase()}
+                      {hostName?.charAt(0).toUpperCase() || 'م'}
                     </div>
                   )}
                 </div>
                 <div className="yam-feed-live-widget-info">
-                  <h3>{streamData.host_name}</h3>
-                  <p>{streamData.title}</p>
+                  <h3>{hostName}</h3>
+                  <p>{title}</p>
                 </div>
               </div>
 
               {/* إحصائيات البث */}
               <div className="yam-feed-live-widget-stats">
                 <span className="yam-feed-live-widget-stat">
-                  👁 {streamData.viewer_count || 0}
+                  👁 {viewerCount}
                 </span>
                 <span className="yam-feed-live-widget-stat">
-                  💜 {streamData.hearts_count || 0}
+                  💜 {heartsCount}
                 </span>
+                {commentsCount > 0 && (
+                  <span className="yam-feed-live-widget-stat">
+                    💬 {commentsCount}
+                  </span>
+                )}
               </div>
 
               {/* زر الدخول */}
@@ -192,6 +238,7 @@ export default function FeedLiveStreamWidget({
           right: 0;
           bottom: 0;
           overflow: hidden;
+          background: linear-gradient(135deg, #0a0e27 0%, #1a0f3f 100%);
         }
 
         .yam-feed-live-widget-thumbnail {
@@ -268,6 +315,10 @@ export default function FeedLiveStreamWidget({
           overflow: hidden;
           border: 2px solid rgba(255, 255, 255, 0.3);
           flex-shrink: 0;
+          background: linear-gradient(135deg, #7c3aed, #3b82f6);
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
 
         .yam-feed-live-widget-avatar img {
@@ -291,12 +342,16 @@ export default function FeedLiveStreamWidget({
         .yam-feed-live-widget-info {
           flex: 1;
           color: white;
+          min-width: 0;
         }
 
         .yam-feed-live-widget-info h3 {
           margin: 0;
           font-size: 14px;
           font-weight: 700;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .yam-feed-live-widget-info p {

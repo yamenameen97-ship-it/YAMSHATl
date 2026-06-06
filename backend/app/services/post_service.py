@@ -175,13 +175,24 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
         ).first()
 
         if live_room:
+            # جلب بيانات المضيف للحصول على صورته
+            host_user = db.query(User).filter(User.id == live_room.host_user_id).first()
+            host_avatar = host_user.avatar if host_user else None
+            
             live_stream_data = {
                 'id': live_room.id,
                 'host': live_room.host_username,
+                'host_username': live_room.host_username,
+                'host_name': live_room.host_username,
+                'host_avatar': host_avatar,  # إضافة صورة المضيف
                 'title': live_room.title,
                 'stream_status': live_room.stream_status,
                 'viewer_count': live_room.viewer_count,
-                'is_active': live_room.is_active
+                'hearts_count': getattr(live_room, 'hearts_count', 0),  # إضافة عدد القلوب
+                'comments_count': 0,  # سيتم تحديثها من قاعدة البيانات إذا لزم الأمر
+                'thumbnail_url': None,  # يمكن إضافة صورة مصغرة إذا توفرت
+                'is_active': live_room.is_active,
+                'started_at': live_room.created_at.isoformat() if live_room.created_at else None,
             }
     except Exception as exc:
         logger.warning('Skipping live stream enrichment for post %s due to backend issue: %s', post.id, exc)
@@ -222,8 +233,8 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
         'liked_by_me': liked_by_me,
         'saved_by_me': saved_by_me,
         'share_url': _share_url(post.id),
-        'has_live_stream': live_room is not None,
-        'live_stream_id': live_room.id if live_room else None,
+        'has_live_stream': bool(live_stream_data),
+        'live_stream_id': live_stream_data.get('id') if live_stream_data else None,
         'live_stream': live_stream_data
     }
 
@@ -370,168 +381,40 @@ def update_post(
         media_urls if media_urls is not None else _loads_list(post.media_json),
         poll if poll is not None else _loads_list(post.poll_options_json),
     )
-    post.content = prepared['content']
-    post.content_html = prepared['content_html']
-    post.image_url = prepared['image_url']
-    post.media = prepared['media']
-    post.media_json = prepared['media_json']
-    post.hashtags_json = prepared['hashtags_json']
-    post.mentions_json = prepared['mentions_json']
-    post.poll_options_json = prepared['poll_options_json']
+    for key, value in prepared.items():
+        setattr(post, key, value)
     if scheduled_at is not None:
         post.scheduled_at = scheduled_at
-        if not post.is_draft:
-            post.published_at = None if scheduled_at > utcnow_naive() else utcnow_naive()
     if is_draft is not None:
         post.is_draft = bool(is_draft)
-        if not post.is_draft and post.published_at is None:
-            post.published_at = utcnow_naive()
     if is_pinned is not None:
         post.is_pinned = bool(is_pinned)
-        post.pinned_at = utcnow_naive() if post.is_pinned else None
+        if post.is_pinned:
+            post.pinned_at = utcnow_naive()
     if allow_comments is not None:
         post.allow_comments = bool(allow_comments)
-    post.edit_count = int(post.edit_count or 0) + 1
-    post.last_edited_at = utcnow_naive()
     post.updated_at = utcnow_naive()
+    post.last_edited_at = post.updated_at
+    post.edit_count = (post.edit_count or 0) + 1
     db.commit()
     db.refresh(post)
-    current_user = db.query(User).filter(User.id == user_id).first()
-    return _serialize_post(db, post, current_user=current_user)
+    return _serialize_post(db, post, current_user=db.query(User).filter(User.id == user_id).first())
 
 
-def get_post_history(db: Session, post_id: int, user_id: int) -> list[dict]:
+def delete_post(db: Session, post_id: int, user_id: int) -> None:
     post = db.query(Post).filter(Post.id == post_id).first()
     if post is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Post not found')
     if post.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Not allowed')
-    rows = db.query(PostEditHistory).filter(PostEditHistory.post_id == post_id).order_by(PostEditHistory.edited_at.desc()).all()
-    return [
-        {
-            'id': row.id,
-            'previous_content': row.previous_content or '',
-            'previous_content_html': row.previous_content_html or '',
-            'previous_media_urls': _loads_list(row.previous_media_json),
-            'previous_poll': _loads_list(row.previous_poll_json),
-            'edited_at': row.edited_at,
-        }
-        for row in rows
-    ]
+    db.delete(post)
+    db.commit()
 
 
-def get_post_insights(db: Session, post_id: int, current_user: User | None = None) -> dict:
+def get_post_by_id(db: Session, post_id: int, current_user: User | None = None) -> dict:
     post = db.query(Post).filter(Post.id == post_id).first()
     if post is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Post not found')
     if not _can_view_post(post, current_user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Not allowed')
-
-    like_count = db.query(func.count(Like.id)).filter(Like.post_id == post_id).scalar() or 0
-    comment_count = db.query(func.count(Comment.id)).filter(Comment.post_id == post_id).scalar() or 0
-    save_count = db.query(func.count(PostSave.id)).filter(PostSave.post_id == post_id).scalar() or 0
-    share_count = db.query(func.count(PostShare.id)).filter(PostShare.post_id == post_id).scalar() or 0
-    latest_comments = db.query(Comment).filter(Comment.post_id == post_id).order_by(Comment.created_at.desc()).limit(5).all()
-    recent_commenters = []
-    for comment in latest_comments:
-        user = db.query(User).filter(User.id == comment.user_id).first()
-        recent_commenters.append({
-            'id': comment.id,
-            'username': user.username if user else 'unknown',
-            'content': comment.content,
-            'created_at': comment.created_at,
-            'parent_id': comment.parent_id,
-        })
-
-    engagement_score = int(like_count + (comment_count * 2) + share_count + save_count)
-    return {
-        'post_id': post_id,
-        'likes': int(like_count),
-        'comments': int(comment_count),
-        'shares': int(share_count),
-        'saves': int(save_count),
-        'edits': int(post.edit_count or 0),
-        'engagement_score': engagement_score,
-        'comment_velocity': 'مرتفع' if comment_count >= 10 else ('متوسط' if comment_count >= 3 else 'منخفض'),
-        'share_url': _share_url(post_id),
-        'recent_commenters': recent_commenters,
-        'updated_at': post.updated_at or post.created_at,
-    }
-
-
-def like_post(db: Session, user_id: int, post_id: int) -> dict:
-    post = db.query(Post).filter(Post.id == post_id).first()
-    if post is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Post not found')
-
-    existing_like = db.query(Like).filter(Like.user_id == user_id, Like.post_id == post_id).first()
-    liked = False
-    if existing_like:
-        db.delete(existing_like)
-    else:
-        like = Like(user_id=user_id, post_id=post_id)
-        db.add(like)
-        liked = True
-    db.commit()
-    like_count = db.query(func.count(Like.id)).filter(Like.post_id == post_id).scalar() or 0
-    return {'message': 'Liked' if liked else 'Unliked', 'post_id': post_id, 'like_count': like_count, 'likes': like_count, 'liked': liked}
-
-
-def toggle_save_post(db: Session, user_id: int, post_id: int) -> dict:
-    post = db.query(Post).filter(Post.id == post_id).first()
-    if post is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Post not found')
-    existing = db.query(PostSave).filter(PostSave.user_id == user_id, PostSave.post_id == post_id).first()
-    saved = False
-    if existing:
-        db.delete(existing)
-    else:
-        db.add(PostSave(user_id=user_id, post_id=post_id))
-        saved = True
-    db.commit()
-    post.save_count = db.query(func.count(PostSave.id)).filter(PostSave.post_id == post_id).scalar() or 0
-    db.commit()
-    return {'post_id': post_id, 'saved': saved, 'save_count': int(post.save_count or 0)}
-
-
-def share_post(db: Session, user_id: int, post_id: int, platform: str | None = None) -> dict:
-    post = db.query(Post).filter(Post.id == post_id).first()
-    if post is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Post not found')
-    db.add(PostShare(user_id=user_id, post_id=post_id, platform=(platform or 'copy')[:60]))
-    post.share_count = int(post.share_count or 0) + 1
-    post.updated_at = utcnow_naive()
-    db.commit()
-    return {'post_id': post_id, 'share_count': int(post.share_count or 0), 'share_url': _share_url(post_id)}
-
-
-def vote_poll(db: Session, user_id: int, post_id: int, option_key: str) -> dict:
-    post = db.query(Post).filter(Post.id == post_id).first()
-    if post is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Post not found')
-    options = _loads_list(post.poll_options_json)
-    valid_keys = {item.get('id') for item in options if isinstance(item, dict)}
-    if not valid_keys:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Poll is not available')
-    if option_key not in valid_keys:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid poll option')
-    existing = db.query(PostPollVote).filter(PostPollVote.post_id == post_id, PostPollVote.user_id == user_id).first()
-    if existing:
-        existing.option_key = option_key
-    else:
-        db.add(PostPollVote(post_id=post_id, user_id=user_id, option_key=option_key))
-    db.commit()
-    current_user = db.query(User).filter(User.id == user_id).first()
     return _serialize_post(db, post, current_user=current_user)
-
-
-def delete_post(db: Session, post_id: int, user_id: int) -> dict:
-    post = db.query(Post).filter(Post.id == post_id).first()
-    if post is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Post not found')
-    if post.user_id != user_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Not allowed')
-
-    db.delete(post)
-    db.commit()
-    return {'message': 'Deleted'}

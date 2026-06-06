@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import MobileComposer from '../components/mobile/MobileComposer.jsx';
 import MobileFilterPills from '../components/mobile/MobileFilterPills.jsx';
 import MobilePostCard from '../components/mobile/MobilePostCard.jsx';
+import MobileLiveStreamCard from '../components/mobile/MobileLiveStreamCard.jsx';
 import MobileComposeModal from '../components/mobile/MobileComposeModal.jsx';
 import MobileCommentsSheet from '../components/mobile/MobileCommentsSheet.jsx';
 import Modal from '../components/ui/Modal.jsx';
@@ -20,6 +21,7 @@ import { useAppStore } from '../store/appStore.js';
  * - تربط كل أزرار التفاعل (إعجاب، تعليق، مشاركة، حفظ، إعادة نشر، المزيد) بـ API الحقيقي
  * - تعرض MobileComposeModal لإنشاء منشور جديد + MobileCommentsSheet للتعليقات
  * - تستمع لحدث 'yamshat:open-composer' لفتح المنشئ من BottomNav
+ * - تدعم عرض منشورات البث المباشر عبر MobileLiveStreamCard
  */
 
 function timeAgoAr(dateLike) {
@@ -80,6 +82,10 @@ function normalizePost(p, i) {
     liked: Boolean(p.is_liked ?? p.liked_by_me ?? p.liked),
     reposted: Boolean(p.reposted ?? p.is_reposted),
     saved: Boolean(p.is_saved ?? p.saved_by_me ?? p.saved),
+    // حقول البث المباشر
+    isLive: Boolean(p.is_live_stream || p.has_live_stream),
+    liveStreamId: p.live_stream_id,
+    liveStream: p.live_stream,
   };
 }
 
@@ -99,6 +105,9 @@ const WELCOME_POST = {
   liked: false,
   reposted: false,
   saved: false,
+  isLive: false,
+  liveStreamId: null,
+  liveStream: null,
 };
 
 function FeedMobile() {
@@ -343,76 +352,80 @@ function FeedMobile() {
   const handleMenuReport = useCallback(() => {
     if (!moreMenuPost) return;
     try {
-      const key = 'yamshat_reported_posts';
-      const current = JSON.parse(window.localStorage.getItem(key) || '[]');
-      const next = Array.isArray(current) ? current : [];
-      next.unshift({ id: moreMenuPost.id, username: moreMenuPost.handle, created_at: new Date().toISOString() });
-      window.localStorage.setItem(key, JSON.stringify(next.slice(0, 100)));
-    } catch {
-      // ignore storage failures
+      const key = 'yamshat:report-post';
+      const event = new CustomEvent(key, { detail: { postId: moreMenuPost.rawId, authorHandle: moreMenuPost.handle } });
+      window.dispatchEvent(event);
+      closeMoreMenu();
+    } catch (err) {
+      console.error('Report error:', err);
     }
-    pushToast?.({ type: 'success', title: 'تم إرسال البلاغ للمراجعة' });
-    closeMoreMenu();
-  }, [moreMenuPost, pushToast, closeMoreMenu]);
+  }, [moreMenuPost, closeMoreMenu]);
 
   const handleMenuDeleteOwnPost = useCallback(async () => {
     if (!moreMenuPost?.rawId) return;
+    if (!window.confirm('هل أنت متأكد من حذف هذا المنشور؟')) return;
     setMoreMenuBusy(true);
     try {
       await deletePost(moreMenuPost.rawId);
       pushToast?.({ type: 'success', title: 'تم حذف المنشور' });
-      closeMoreMenu();
       queryClient.invalidateQueries({ queryKey: ['feed-data'] });
+      closeMoreMenu();
     } catch (error) {
       pushToast?.({ type: 'error', title: 'تعذر حذف المنشور', description: error?.response?.data?.detail || error?.message });
       setMoreMenuBusy(false);
     }
   }, [moreMenuPost, pushToast, queryClient, closeMoreMenu]);
 
-  const isOwnMoreMenuPost = Boolean(moreMenuPost && (session?.username || session?.user_name || session?.handle) === String(moreMenuPost.handle || '').replace(/^@/, ''));
+  const isOwnMoreMenuPost = moreMenuPost?.authorName === session?.username;
 
   return (
     <>
-      <MobileComposer onFocus={() => { setComposerAction(null); setComposerOpen(true); }} />
-      <MobileFilterPills activeId={activeFilter} onChange={setActiveFilter} />
+      <div className="ym-feed-header">
+        <h1>المنشورات</h1>
+      </div>
 
-      {error ? (
-        <div className="ym-empty">
-          <div className="icon">⚠️</div>
-          تعذر تحميل المنشورات. حاول لاحقاً.
-        </div>
-      ) : null}
+      {/* Composer Slot */}
+      <div className="ym-composer-slot">
+        <button
+          type="button"
+          className="ym-composer-trigger"
+          onClick={() => { setComposerAction(null); setComposerOpen(true); }}
+        >
+          <span className="icon">✏️</span>
+          <span>ما بالك؟</span>
+        </button>
+      </div>
 
-      {loading && !filtered.length ? (
-        <div className="ym-feed">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="ym-post" aria-busy="true">
-              <div className="ym-post-head">
-                <div className="ym-skeleton" style={{ width: 44, height: 44, borderRadius: '50%' }} />
-                <div className="ym-post-meta">
-                  <div className="ym-skeleton" style={{ width: '40%', height: 14 }} />
-                  <div className="ym-skeleton" style={{ width: '25%', height: 12, marginTop: 6 }} />
-                </div>
-              </div>
-              <div className="ym-skeleton" style={{ width: '100%', height: 60 }} />
-              <div className="ym-skeleton" style={{ width: '100%', aspectRatio: '16/9' }} />
-            </div>
-          ))}
-        </div>
-      ) : null}
+      {/* Filter Pills */}
+      <MobileFilterPills activeFilter={activeFilter} onFilterChange={setActiveFilter} />
 
+      {/* Posts Feed */}
       <div className="ym-feed">
-        {filtered.map((post) => (
-          <MobilePostCard
-            key={post.id}
-            post={post}
-            onLike={handleLike}
-            onComment={handleComment}
-            onShare={handleShare}
-            onSave={handleSave}
-            onMore={handleMore}
-          />
-        ))}
+        {filtered.map((post) => {
+          // عرض منشورات البث المباشر
+          if (post.isLive && post.liveStreamId && post.liveStream) {
+            return (
+              <MobileLiveStreamCard
+                key={post.id}
+                post={post}
+                liveStream={post.liveStream}
+                onStreamEnd={() => queryClient.invalidateQueries({ queryKey: ['feed-data'] })}
+              />
+            );
+          }
+          // عرض المنشورات العادية
+          return (
+            <MobilePostCard
+              key={post.id}
+              post={post}
+              onLike={handleLike}
+              onComment={handleComment}
+              onShare={handleShare}
+              onSave={handleSave}
+              onMore={handleMore}
+            />
+          );
+        })}
       </div>
 
       {!loading && filtered.length === 0 ? (

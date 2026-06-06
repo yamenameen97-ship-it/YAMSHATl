@@ -422,7 +422,8 @@ function FeedMobile() {
 
   return (
     <>
-      <div className="ym-feed-header">
+      <div className="ym-feed-header" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <img src="/logo192.png" alt="Y" style={{ width: '32px', height: '32px', objectFit: 'contain' }} onError={(e) => e.target.style.display = 'none'} />
         <h1>المنشورات</h1>
       </div>
 

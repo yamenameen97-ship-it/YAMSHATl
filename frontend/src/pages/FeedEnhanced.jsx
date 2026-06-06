@@ -179,8 +179,9 @@ function buildFeedPosts(posts = []) {
         rawId: post.id || null, // المعرف الحقيقي للمنشور من الـ backend (null للمنشورات الترحيبية)
         userId: post.user_id || null,
         rawUsername: post.username || post.user || '',
-        isLive: Boolean(post.is_live_stream),
-        liveStreamId: post.live_stream_id || null,
+        isLive: Boolean(post.is_live_stream || post.has_live_stream),
+        liveStreamId: post.live_stream_id || post.live_id || null,
+        live_stream: post.live_stream || null,
         authorName: post.author_name || post.username || post.user || 'مستخدم يام شات',
         authorAvatar: resolveMediaUrl(post.user_avatar || post.avatar || post.author_avatar || ''),
         handle: normalizeHandle(post.username || post.user || `user.${index + 1}`),
@@ -904,8 +905,11 @@ function FeedDesktopInner() {
         <div className="yam-page-noise" />
         <div className="yam-laptop-shell">
           <aside className="yam-left-rail">
-            <div className="yam-logo-card">
-              <div className="yam-logo-mark">Y</div>
+            <div className="yam-logo-card" onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>
+              <div className="yam-logo-mark">
+                <img src="/logo192.png" alt="Y" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }} />
+                <span style={{ display: 'none' }}>Y</span>
+              </div>
               <div className="yam-logo-text">YAMSHAT</div>
             </div>
 
@@ -944,7 +948,10 @@ function FeedDesktopInner() {
             <section className="yam-feed-header-card">
               <div className="yam-feed-header-top">
                 <h1>المنشورات</h1>
-                <div className="yam-mobile-brand">YAMSHAT</div>
+                <div className="yam-mobile-brand">
+                  <img src="/logo192.png" alt="YAMSHAT" style={{ height: '24px', marginRight: '8px', verticalAlign: 'middle' }} onError={(e) => e.target.style.display = 'none'} />
+                  YAMSHAT
+                </div>
               </div>
 
               <div className="yam-composer-prompt-bar">
@@ -978,13 +985,16 @@ function FeedDesktopInner() {
 
             <div className="yam-post-stack-v2" ref={postStackRef}>
               {feedPosts.map((post) => {
+                // التأكد من عرض ويدجت البث المباشر إذا كان المنشور يمثل بثاً نشطاً
                 if (post.isLive && post.liveStreamId) {
                   return (
                     <FeedLiveStreamWidget
                       key={post.id}
                       post={post}
                       liveStream={post.live_stream || { id: post.liveStreamId }}
-                      onStreamEnd={() => {}}
+                      onStreamEnd={() => {
+                        // تحديث الحالة محلياً عند انتهاء البث إذا لزم الأمر
+                      }}
                       onStreamUpdate={() => {}}
                     />
                   );

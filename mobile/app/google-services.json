@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "165115090621",
+    "project_id": "yamshat-8a74b",
+    "storage_bucket": "yamshat-8a74b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:165115090621:android:1da57af5e4a905998dc9d4",
+        "android_client_info": {
+          "package_name": "com.socialapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBZ2DLJ5NHXxf2pEdHL4O4mxXGQOuI4ehI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

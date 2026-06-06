@@ -91,10 +91,10 @@ function normalizePost(p, i) {
     saved: Boolean(p.is_saved ?? p.saved_by_me ?? p.saved),
     // حقول البث
     type: p.type || 'POST',
-    is_live: Boolean(p.is_live),
+    is_live: Boolean(p.is_live || p.is_live_stream),
     live_stream_id: p.live_stream_id,
-    viewers: Number(p.viewers || 0),
-    thumbnail: p.thumbnail,
+    viewers: Number(p.viewers_count || p.viewers || p.viewer_count || 0),
+    thumbnail: resolveMediaUrl(p.thumbnail_url || p.thumbnail || p.preview_url || p.media_url || ""),
     duration: p.duration,
   };
 }

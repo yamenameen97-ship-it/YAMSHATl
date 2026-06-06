@@ -127,34 +127,53 @@ function MobilePostCard({
           margin: '8px 0'
         }}>
           <img src={liveThumbnail || 'https://via.placeholder.com/800x450?text=Live+Stream'} alt="Live" style={{width:'100%', height:'100%', objectFit:'cover'}} />
+          
+          {/* طبقة التدرج */}
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.5) 50%, rgba(0,0,0,0.8) 100%)',
+            zIndex: 1
+          }} />
+          
+          {/* شارة البث المباشر */}
           <div style={{
             position: 'absolute',
             top: '12px',
             left: '12px',
-            background: '#ef4444',
+            background: 'linear-gradient(135deg, #ef4444, #f97316)',
             color: 'white',
-            padding: '4px 12px',
+            padding: '6px 12px',
             borderRadius: '20px',
             fontSize: '12px',
             fontWeight: 'bold',
             display: 'flex',
             alignItems: 'center',
-            gap: '4px'
+            gap: '4px',
+            animation: 'pulse 2s ease-in-out infinite',
+            zIndex: 2
           }}>
-            <span style={{width:8, height:8, background:'white', borderRadius:'50%'}}></span> مباشر
+            <span style={{width:8, height:8, background:'white', borderRadius:'50%', animation: 'blink 1s ease-in-out infinite'}}></span> مباشر
           </div>
+          
+          {/* عدد المشاهدين */}
           <div style={{
             position: 'absolute',
             top: '12px',
             right: '12px',
-            background: 'rgba(0,0,0,0.6)',
+            background: 'rgba(0,0,0,0.4)',
             color: 'white',
             padding: '4px 10px',
-            borderRadius: '20px',
-            fontSize: '12px'
+            borderRadius: '12px',
+            fontSize: '12px',
+            fontWeight: '600',
+            backdropFilter: 'blur(10px)',
+            zIndex: 2
           }}>
             👁 {formatCount(viewers)}
           </div>
+          
+          {/* معلومات المضيف والزر */}
           <div style={{
             position: 'absolute',
             bottom: '0',
@@ -164,19 +183,34 @@ function MobilePostCard({
             padding: '20px 12px 12px',
             display: 'flex',
             justifyContent: 'space-between',
-            alignItems: 'center'
+            alignItems: 'center',
+            zIndex: 2
           }}>
-            <span style={{color:'white', fontWeight:'bold'}}>انضم للبث المباشر الآن</span>
+            <span style={{color:'white', fontWeight:'bold', fontSize: '14px'}}>انضم للبث المباشر الآن</span>
             <button style={{
-              background: '#7c3aed',
+              background: 'linear-gradient(135deg, #7c3aed, #3b82f6)',
               color: 'white',
               border: 'none',
               padding: '8px 16px',
-              borderRadius: '20px',
+              borderRadius: '8px',
               fontWeight: 'bold',
-              fontSize: '13px'
+              fontSize: '12px',
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(124, 58, 237, 0.4)',
+              transition: 'all 0.2s ease'
             }}>انضم الآن</button>
           </div>
+          
+          <style>{`
+            @keyframes blink {
+              0%, 100% { opacity: 1; }
+              50% { opacity: 0.5; }
+            }
+            @keyframes pulse {
+              0%, 100% { opacity: 1; }
+              50% { opacity: 0.8; }
+            }
+          `}</style>
         </div>
       ) : banner ? (
         <div className="ym-post-banner">

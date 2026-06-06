@@ -127,7 +127,12 @@ function convertLiveStreamToPost(stream) {
     has_video: false,
     has_live_stream: true,
     live_stream: stream,
-    media: thumbnail ? [{ type: 'image-primary', kind: 'image', url: thumbnail }] : []
+    media: thumbnail ? [{ type: 'image-primary', kind: 'image', url: thumbnail }] : [],
+    // حقول إضافية للعرض الجذاب
+    liveStreamId: stream.id,
+    liveUrl: `/#/live/view/${stream.id}`,
+    isLive: true,
+    views: viewers
   };
 }
 
@@ -606,21 +611,175 @@ function PostCard({ post }) {
 
       <p className="yam-post-copy-v2">{post.text}</p>
 
-      {post.isLive ? (
-        <div className="yam-post-live-indicator">
-          <span className="live-dot"></span>
-          <span className="live-text">مباشر الآن</span>
-          <span className="live-viewers">👁 {formatCompactNumber(post.views || 0)} مشاهد</span>
+      {post.isLive && post.authorAvatar ? (
+        <div className="yam-post-live-card" onClick={handleOpenLiveAnnouncement} style={{ cursor: 'pointer' }}>
+          {/* الخلفية مع الصورة */}
+          <div className="yam-post-live-background" style={{
+            position: 'relative',
+            borderRadius: '16px',
+            overflow: 'hidden',
+            background: '#000',
+            aspectRatio: '16/9',
+            marginBottom: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            {post.media_url || post.thumbnail_url ? (
+              <img 
+                src={post.media_url || post.thumbnail_url} 
+                alt="Live Stream" 
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            ) : null}
+            
+            {/* طبقة التدرج */}
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.5) 50%, rgba(0,0,0,0.8) 100%)'
+            }} />
+            
+            {/* شارة البث المباشر */}
+            <div style={{
+              position: 'absolute',
+              top: '12px',
+              left: '12px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              background: 'linear-gradient(135deg, #ef4444, #f97316)',
+              borderRadius: '20px',
+              color: 'white',
+              fontSize: '12px',
+              fontWeight: '700',
+              animation: 'pulse 2s ease-in-out infinite',
+              zIndex: 2
+            }}>
+              <span style={{ fontSize: '8px', animation: 'blink 1s ease-in-out infinite' }}>🔴</span>
+              <span>مباشر</span>
+            </div>
+            
+            {/* عدد المشاهدين */}
+            <div style={{
+              position: 'absolute',
+              top: '12px',
+              right: '12px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '4px 10px',
+              background: 'rgba(0, 0, 0, 0.4)',
+              borderRadius: '12px',
+              color: 'white',
+              fontSize: '11px',
+              fontWeight: '600',
+              backdropFilter: 'blur(10px)',
+              zIndex: 2
+            }}>
+              👁 {formatCompactNumber(post.views || 0)}
+            </div>
+            
+            {/* معلومات المضيف والزر */}
+            <div style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              background: 'linear-gradient(transparent, rgba(0,0,0,0.8))',
+              padding: '20px 12px 12px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              zIndex: 2
+            }}>
+              {/* معلومات المضيف */}
+              <div style={{
+                display: 'flex',
+                gap: '10px',
+                alignItems: 'center',
+                flex: 1
+              }}>
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '50%',
+                  overflow: 'hidden',
+                  border: '2px solid rgba(255, 255, 255, 0.3)',
+                  flexShrink: 0
+                }}>
+                  {post.authorAvatar ? (
+                    <img src={post.authorAvatar} alt={post.authorName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <div style={{
+                      width: '100%',
+                      height: '100%',
+                      background: 'linear-gradient(135deg, #7c3aed, #3b82f6)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'white',
+                      fontWeight: 'bold',
+                      fontSize: '16px'
+                    }}>
+                      {post.authorName?.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                </div>
+                <div style={{ color: 'white', flex: 1 }}>
+                  <div style={{ fontSize: '14px', fontWeight: '700' }}>{post.authorName}</div>
+                  <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.8)' }}>{post.text || post.title}</div>
+                </div>
+              </div>
+              
+              {/* زر الانضمام */}
+              <button 
+                type="button"
+                style={{
+                  padding: '8px 16px',
+                  background: 'linear-gradient(135deg, #7c3aed, #3b82f6)',
+                  border: 'none',
+                  borderRadius: '8px',
+                  color: 'white',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 4px 12px rgba(124, 58, 237, 0.4)',
+                  flexShrink: 0
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.transform = 'translateY(-2px)';
+                  e.target.style.boxShadow = '0 6px 16px rgba(124, 58, 237, 0.6)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.transform = 'translateY(0)';
+                  e.target.style.boxShadow = '0 4px 12px rgba(124, 58, 237, 0.4)';
+                }}
+              >
+                انضم الآن
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
 
-      {post.liveUrl || post.isLive ? (
+      {post.isLive && !post.authorAvatar ? (
+        <div className="yam-post-live-indicator">
+          <span className="live-dot"></span>
+          <span className="live-text">مباشر الآن</span>
+          <span className="live-viewers">للا {formatCompactNumber(post.views || 0)} مشاهد</span>
+        </div>
+      ) : null}
+
+      {post.liveUrl && !post.isLive ? (
         <button
           type="button"
           className="yam-post-live-cta"
           onClick={handleOpenLiveAnnouncement}
         >
-          {post.isLive ? '🚀 انضم للبث المباشر الآن' : '🎥 متابعة البث المباشر'}
+          📵 متابعة البث المباشر
         </button>
       ) : null}
 
@@ -2151,6 +2310,25 @@ function FeedDesktopInner() {
 
           .yam-laptop-avatar.accent {
             box-shadow: 0 0 0 4px rgba(124,58,237,0.18), 0 14px 24px rgba(0,0,0,0.24);
+          }
+
+          @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+          }
+
+          @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
+          }
+
+          .yam-post-live-card {
+            width: 100%;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+          }
+
+          .yam-post-live-card:hover .yam-post-live-background {
+            box-shadow: 0 8px 24px rgba(124, 58, 237, 0.2);
           }
 
           @media (max-width: 1380px) {

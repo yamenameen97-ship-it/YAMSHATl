@@ -16,6 +16,8 @@ import {
   toggleMicrophone,
   getStreamViewers,
 } from '../services/api/advancedLiveStreamApi.js';
+import { createPost, updatePost } from '../api/posts.js';
+import { uploadFile } from '../services/media/mediaUploadService.js';
 import { getCurrentUsername } from '../utils/auth.js';
 import ViewersManagementPanel from '../components/live/ViewersManagementPanel.jsx';
 import '../styles/modern-live-control.css';
@@ -117,6 +119,11 @@ export default function LiveStudio() {
     screenShareEnabled: false,
   });
 
+  // صورة الغلاف
+  const [coverImage, setCoverImage] = useState(null);
+  const [coverPreview, setCoverPreview] = useState('');
+  const [activePostId, setActivePostId] = useState(null);
+
   const localVideoRef = useRef(null);
   const localStreamRef = useRef(null);
   const statsIntervalRef = useRef(null);
@@ -137,6 +144,14 @@ export default function LiveStudio() {
 
     setLoading(true);
     try {
+      let uploadedCover = '';
+      if (coverImage) {
+        const uploadRes = await uploadFile(coverImage, (p) => {
+          console.log(`Uploading cover: ${p.percent}%`);
+        });
+        uploadedCover = uploadRes?.url || '';
+      }
+
       const response = await createLiveStream({
         title: title.trim(),
         description: description.trim(),
@@ -146,8 +161,31 @@ export default function LiveStudio() {
       });
 
       if (response?.data) {
+        const streamId = response.data.stream_id;
         setActiveStream(response.data);
         setIsStreaming(true);
+
+        // إنشاء منشور تلقائياً
+        try {
+          const livePost = {
+            type: 'live_stream',
+            content: title.trim(),
+            title: title.trim(),
+            media_url: uploadedCover,
+            image_url: uploadedCover,
+            stream_id: streamId,
+            username: currentUsername,
+            is_live: true,
+            status: 'published'
+          };
+          const postRes = await createPost(livePost);
+          if (postRes?.data?.id) {
+            setActivePostId(postRes.data.id);
+          }
+        } catch (postErr) {
+          console.error('Failed to create live post:', postErr);
+        }
+
         setNewStreamData({
           title: '',
           description: '',
@@ -155,6 +193,8 @@ export default function LiveStudio() {
           quality: '720p',
           isPublic: true,
         });
+        setCoverImage(null);
+        setCoverPreview('');
 
         pushToast?.({
           type: 'success',
@@ -162,7 +202,7 @@ export default function LiveStudio() {
           description: 'جاهز لبدء البث المباشر',
         });
 
-        await handleStartStream(response.data.stream_id);
+        await handleStartStream(streamId);
       }
     } catch (error) {
       pushToast?.({
@@ -226,6 +266,20 @@ export default function LiveStudio() {
     try {
       await endLiveStream(activeStream.stream_id);
 
+      // تحديث المنشور ليتحول إلى فيديو
+      if (activePostId) {
+        try {
+          await updatePost(activePostId, {
+            is_live: false,
+            type: 'video',
+            // في البيئة الحقيقية ستحصل على رابط الفيديو المسجل من الـ backend
+            // هنا نضع قيمة افتراضية أو نترك الرابط الحالي
+          });
+        } catch (updateErr) {
+          console.error('Failed to update post on end stream:', updateErr);
+        }
+      }
+
       if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
       if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
 
@@ -237,6 +291,7 @@ export default function LiveStudio() {
       setActiveStream(null);
       setIsStreaming(false);
       setCameraReady(false);
+      setActivePostId(null);
       setStreamStats({
         viewers: 0,
         hearts: 0,
@@ -524,6 +579,54 @@ export default function LiveStudio() {
         <main className="mlc-main">
           {/* Video Section */}
           <div className="mlc-video-section">
+            {!isStreaming && (
+              <div className="mlc-pre-live-card" style={{ marginBottom: '16px' }}>
+                <h3 className="mlc-title-label">إعدادات البث</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <input
+                    type="text"
+                    placeholder="عنوان البث..."
+                    className="mlc-message-text"
+                    style={{ background: 'rgba(15, 23, 42, 0.5)', border: '1px solid rgba(124, 58, 237, 0.2)', padding: '10px', borderRadius: '8px', color: 'white' }}
+                    value={newStreamData.title}
+                    onChange={(e) => setNewStreamData(prev => ({ ...prev, title: e.target.value }))}
+                  />
+                  
+                  <div className="cover-upload-section">
+                    <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px', color: '#94a3b8' }}>صورة الغلاف</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      id="cover-upload-input"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setCoverImage(file);
+                        setCoverPreview(URL.createObjectURL(file));
+                      }}
+                    />
+                    <button 
+                      onClick={() => document.getElementById('cover-upload-input').click()}
+                      style={{ padding: '8px 16px', borderRadius: '8px', background: 'rgba(124, 58, 237, 0.2)', border: '1px solid rgba(124, 58, 237, 0.4)', color: 'white', cursor: 'pointer' }}
+                    >
+                      رفع صورة الغلاف
+                    </button>
+                    {coverPreview && (
+                      <div style={{ marginTop: '12px', position: 'relative', width: '100%', aspectRatio: '16/9', borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(124, 58, 237, 0.3)' }}>
+                        <img src={coverPreview} alt="Cover Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        <button 
+                          onClick={() => { setCoverImage(null); setCoverPreview(''); }}
+                          style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(0,0,0,0.6)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer' }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="mlc-video-container">
               {cameraReady ? (
                 <video

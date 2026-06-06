@@ -281,6 +281,10 @@ function PostCard({ post }) {
   }, [queryClient]);
 
   const handleOpenLiveAnnouncement = () => {
+    if (post.isLive && post.liveStreamId) {
+      navigate(`/live/view/${post.liveStreamId}`);
+      return;
+    }
     if (!post.liveUrl) return;
     const hashRoute = post.liveUrl.includes('/#/') ? post.liveUrl.split('/#/')[1] : '';
     if (hashRoute) {
@@ -577,25 +581,82 @@ function PostCard({ post }) {
         </div>
       </div>
 
-      <p className="yam-post-copy-v2">{post.text}</p>
-
-      {post.liveUrl ? (
-        <button
-          type="button"
-          className="yam-post-live-cta"
+      {post.isLive ? (
+        <div 
+          className="live-stream-card-special" 
           onClick={handleOpenLiveAnnouncement}
+          style={{ 
+            cursor: 'pointer', 
+            borderRadius: '12px', 
+            overflow: 'hidden', 
+            position: 'relative',
+            border: '2px solid #0047ff',
+            background: '#000',
+            margin: '12px 0'
+          }}
         >
-          🎥 متابعة البث المباشر
-        </button>
-      ) : null}
-
-      {mediaItems.length ? (
-        <div className={`yam-post-media-grid-v2 media-count-${mediaItems.length}`}>
-          {mediaItems.map((item, index) => (
-            <MediaTile key={`${post.id}-media-${index}`} item={item} index={index} />
-          ))}
+          {mediaItems[0]?.url ? (
+            <img src={mediaItems[0].url} alt="Cover" style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover' }} />
+          ) : (
+            <div style={{ width: '100%', aspectRatio: '16/9', background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: '48px' }}>📺</span>
+            </div>
+          )}
+          
+          <div style={{ position: 'absolute', top: '12px', left: '12px' }}>
+            <span className="live-badge" style={{ 
+              background: '#0047ff', 
+              color: 'white', 
+              padding: '4px 12px', 
+              borderRadius: '20px', 
+              fontSize: '12px', 
+              fontWeight: 'bold',
+              boxShadow: '0 0 15px #0047ff',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              <span style={{ width: '8px', height: '8px', background: 'white', borderRadius: '50%', display: 'inline-block' }}></span>
+              مباشر
+            </span>
+          </div>
+          
+          <div style={{ 
+            position: 'absolute', 
+            bottom: 0, 
+            left: 0, 
+            right: 0, 
+            padding: '16px', 
+            background: 'linear-gradient(transparent, rgba(0,0,0,0.8))',
+            color: 'white'
+          }}>
+            <h3 style={{ margin: 0, fontSize: '16px' }}>{post.authorName} بدأ البث</h3>
+            <p style={{ margin: '4px 0 0', fontSize: '13px', opacity: 0.8 }}>👁 {post.viewers || 0} مشاهد</p>
+          </div>
         </div>
-      ) : null}
+      ) : (
+        <>
+          <p className="yam-post-copy-v2">{post.text}</p>
+
+          {post.liveUrl ? (
+            <button
+              type="button"
+              className="yam-post-live-cta"
+              onClick={handleOpenLiveAnnouncement}
+            >
+              🎥 متابعة البث المباشر
+            </button>
+          ) : null}
+
+          {mediaItems.length ? (
+            <div className={`yam-post-media-grid-v2 media-count-${mediaItems.length}`}>
+              {mediaItems.map((item, index) => (
+                <MediaTile key={`${post.id}-media-${index}`} item={item} index={index} />
+              ))}
+            </div>
+          ) : null}
+        </>
+      )}
 
       <div className="yam-post-actions-v2">
         <button type="button" className={liked ? 'active' : ''} onClick={handleLike} disabled={busyAction === 'like'} aria-label="إعجاب">

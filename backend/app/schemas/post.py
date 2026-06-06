@@ -19,7 +19,3 @@ class PostOut(BaseModel):
     created_at: datetime
     like_count: int
     comment_count: int
-
-
-class PostResponse(PostOut):
-    pass

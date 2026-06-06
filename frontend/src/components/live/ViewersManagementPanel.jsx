@@ -1,15 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  getLiveStreamViewers as getStreamViewers,
-  applyModerationAction as applyAction,
-} from '../../services/api/liveStreamApi.js';
-import {
-  muteParticipant as muteUser,
-  unmuteParticipant as unmuteUser,
-  banViewer as banUser,
-  unbanViewer as unbanUser,
-  kickParticipant as removeViewer,
-} from '../../services/api/advancedStreamApi.js';
+  getStreamViewers,
+  muteUser,
+  unmuteUser,
+  banUser,
+  unbanUser,
+  removeViewer,
+} from '../../services/api/correctedLiveStreamApi.js';
 import { useToast } from '../admin/ToastProvider.jsx';
 import '../../styles/viewers-management.css';
 

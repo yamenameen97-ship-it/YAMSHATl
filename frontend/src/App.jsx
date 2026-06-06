@@ -48,7 +48,7 @@ const Groups = lazy(() => import('./pages/GroupsHome.jsx'));
 const CreateGroup = lazy(() => import('./pages/CreateGroup.jsx'));
 const GroupChatPage = lazy(() => import('./pages/GroupChat.jsx'));
 const LiveViewer = lazy(() => import('./pages/LiveViewer.jsx'));
-const LiveStudio = lazy(() => import('./pages/LiveStudio.jsx'));
+const LiveStudio = lazy(() => import('./pages/LiveStudio_Advanced.jsx'));
 const Inbox = lazy(() => import('./features/chat/index.js').then((mod) => ({ default: mod.Inbox })));
 const Users = lazy(() => import('./pages/Users.jsx'));
 const Profile = lazy(() => import('./pages/Profile.jsx'));

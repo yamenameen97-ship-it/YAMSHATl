@@ -199,7 +199,7 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
         'media_urls': media_list,
         'media_type': media_kind or 'image',
         'has_video': media_kind == 'video',
-        'thumbnail_url': post.thumbnail_url or thumbnail_url,
+        'thumbnail_url': thumbnail_url,
         'preview_url': thumbnail_url or primary_media_url,
         'hashtags': _loads_list(post.hashtags_json),
         'mentions': _loads_list(post.mentions_json),
@@ -222,13 +222,9 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
         'liked_by_me': liked_by_me,
         'saved_by_me': saved_by_me,
         'share_url': _share_url(post.id),
-        'has_live_stream': (live_room is not None) or bool(post.is_live),
-        'live_stream_id': (live_room.id if live_room else None) or post.live_stream_id,
-        'live_stream': live_stream_data,
-        'is_live': bool(post.is_live) or (live_room is not None),
-        'viewers': post.viewers_count or (live_room.viewer_count if live_room else 0),
-        'type': post.post_type or ('LIVE' if live_room else 'POST'),
-        'thumbnail': post.thumbnail_url or (live_room.thumbnail_url if live_room and hasattr(live_room, 'thumbnail_url') else None)
+        'has_live_stream': live_room is not None,
+        'live_stream_id': live_room.id if live_room else None,
+        'live_stream': live_stream_data
     }
 
 

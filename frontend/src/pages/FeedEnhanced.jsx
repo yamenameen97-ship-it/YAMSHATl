@@ -72,71 +72,47 @@ function timeAgoAr(dateLike) {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `منذ ${hours} ساعة`;
   const days = Math.floor(hours / 24);
-  if (days === 1) return 'أمس';
-  if (days < 7) return `منذ ${days} أيام`;
-  if (days < 30) return `منذ ${Math.floor(days / 7)} أسابيع`;
-  if (days < 365) {
-    const months = Math.floor(days / 30);
-    return `منذ ${months} شهر`;
-  }
-  // للمنشورات القديمة جداً، عرض التاريخ الكامل
-  const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-  const day = date.getDate();
-  const month = monthNames[date.getMonth()];
-  const year = date.getFullYear();
-  return `${day} ${month} ${year}`;
+  if (days < 30) return `منذ ${days} يوم`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `منذ ${months} شهر`;
+  return `منذ ${Math.floor(months / 12)} سنة`;
 }
 
 // دالة لتحويل البث المباشر إلى منشور
 function convertLiveStreamToPost(stream) {
   if (!stream || !stream.id) return null;
-  const thumbnail = stream.thumbnail_url || stream.thumbnail || '';
-  const viewers = stream.viewers_count || stream.viewer_count || 0;
-  
   return {
     id: `live_${stream.id}`,
-    rawId: `live_${stream.id}`,
     type: 'live_stream',
-    is_live: true,
     is_live_stream: true,
     live_stream_id: stream.id,
     title: stream.title || 'بث مباشر',
     content: stream.title || 'بث مباشر',
     text: stream.title || 'بث مباشر جديد',
-    authorName: stream.host_name || stream.host_username || 'مستخدم',
-    authorAvatar: stream.host_avatar || '',
+    author: stream.host_username || 'مستخدم',
     username: stream.host_username || 'مستخدم',
-    handle: `@${(stream.host_username || 'مستخدم').replace(/^@/, '')}`,
+    handle: `@${stream.host_username || 'مستخدم'}`,
     avatar: stream.host_avatar || '',
     user_avatar: stream.host_avatar || '',
     created_at: stream.started_at || new Date().toISOString(),
-    time: 'مباشر الآن',
     media_type: 'live',
-    media_url: thumbnail,
-    thumbnail_url: thumbnail,
-    preview_url: thumbnail,
-    viewers_count: viewers,
-    viewers: viewers,
+    media_url: stream.thumbnail_url || '',
+    thumbnail_url: stream.thumbnail_url || '',
+    preview_url: stream.thumbnail_url || '',
+    viewers_count: stream.viewers_count || 0,
     likes_count: stream.hearts_count || 0,
     comments_count: stream.comments_count || 0,
-    share_count: stream.share_count || 0,
     is_liked: false,
     is_saved: false,
-    is_verified: Boolean(stream.is_verified),
+    is_verified: false,
     is_reel: false,
     has_video: false,
     has_live_stream: true,
     live_stream: stream,
-    media: thumbnail ? [{ type: 'image-primary', kind: 'image', url: thumbnail }] : [],
-    // حقول إضافية للعرض الجذاب
-    liveStreamId: stream.id,
-    liveUrl: `/#/live/view/${stream.id}`,
-    isLive: true,
-    views: viewers
   };
 }
 
-const MOCK_POSTS = null;
+const MOCK_POSTS = [];
 
 
 function normalizeHandle(value = '') {
@@ -194,42 +170,27 @@ function buildFeedPosts(posts = []) {
         };
       });
 
-      const isLive = Boolean(
-        post.is_live_stream || 
-        post.is_live || 
-        post.has_live_stream || 
-        post.type === 'LIVE' || 
-        post.type === 'live' || 
-        post.post_type === 'LIVE'
-      );
-      const liveThumbnail = post.thumbnail_url || post.thumbnail || post.preview_url || post.media_url || '';
-      
-      // إذا كان بثاً مباشراً ولا توجد ميديا عادية، نستخدم الثمنيل
-      const finalMedia = (isLive && !normalizedMedia.length && liveThumbnail)
-        ? [{ type: 'image-primary', kind: 'image', url: resolveMediaUrl(liveThumbnail) }]
-        : normalizedMedia;
-
       return {
         id: post.id || `post-${index}`,
-        rawId: post.id || null,
+        rawId: post.id || null, // المعرف الحقيقي للمنشور من الـ backend (null للمنشورات الترحيبية)
         userId: post.user_id || null,
         rawUsername: post.username || post.user || '',
-        isLive: isLive,
-        liveStreamId: post.live_stream_id || post.live_id || post.streamId || null,
+        isLive: Boolean(post.is_live_stream),
+        liveStreamId: post.live_stream_id || null,
         authorName: post.author_name || post.username || post.user || 'مستخدم يام شات',
         authorAvatar: resolveMediaUrl(post.user_avatar || post.avatar || post.author_avatar || ''),
         handle: normalizeHandle(post.username || post.user || `user.${index + 1}`),
-        time: isLive ? 'مباشر الآن' : timeAgoAr(post.created_at || post.published_at),
+        time: timeAgoAr(post.created_at || post.published_at),
         text: stripFirstUrl(post.content || post.text || ''),
-        liveUrl: post.liveUrl || resolveLiveViewerUrl(post),
+        liveUrl: resolveLiveViewerUrl(post),
         rawText: post.content || post.text || '',
         likes: Number(post.likes_count || post.like_count || post.likes || 0),
         comments: Number(post.comments_count || post.comment_count || 0),
         shares: Number(post.share_count || post.shares || 0),
-        views: Number(post.viewers_count || post.viewers || post.views_count || 0),
+        views: Number(post.views_count || post.view_count || 0),
         isLiked: Boolean(post.is_liked ?? post.liked_by_me),
         isSaved: Boolean(post.is_saved ?? post.saved_by_me),
-        media: finalMedia,
+        media: normalizedMedia,
       };
     });
   }
@@ -618,173 +579,13 @@ function PostCard({ post }) {
 
       <p className="yam-post-copy-v2">{post.text}</p>
 
-      {post.isLive && post.authorAvatar ? (
-        <div className="yam-post-live-card" onClick={handleOpenLiveAnnouncement} style={{ cursor: 'pointer' }}>
-          {/* الخلفية مع الصورة */}
-          <div className="yam-post-live-background" style={{
-            position: 'relative',
-            borderRadius: '16px',
-            overflow: 'hidden',
-            background: '#000',
-            aspectRatio: '16/9',
-            marginBottom: '12px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            {post.media_url || post.thumbnail_url ? (
-              <img 
-                src={post.media_url || post.thumbnail_url} 
-                alt="Live Stream" 
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-              />
-            ) : null}
-            
-            {/* طبقة التدرج */}
-            <div style={{
-              position: 'absolute',
-              inset: 0,
-              background: 'linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.5) 50%, rgba(0,0,0,0.8) 100%)'
-            }} />
-            
-            {/* شارة البث المباشر (مطابق للتصميم المرفق) */}
-            <div style={{
-              position: 'absolute',
-              top: '12px',
-              left: '12px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 12px',
-              background: '#ef4444',
-              borderRadius: '6px',
-              color: 'white',
-              fontSize: '12px',
-              fontWeight: 'bold',
-              zIndex: 2
-            }}>
-              <span>مباشر</span>
-            </div>
-            
-            {/* عدد المشاهدين (مطابق للتصميم المرفق) */}
-            <div style={{
-              position: 'absolute',
-              top: '12px',
-              left: '75px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-              padding: '6px 10px',
-              background: 'rgba(0, 0, 0, 0.4)',
-              borderRadius: '6px',
-              color: 'white',
-              fontSize: '12px',
-              fontWeight: '600',
-              backdropFilter: 'blur(10px)',
-              zIndex: 2
-            }}>
-              👁 {formatCompactNumber(post.views || 0)}
-            </div>
-            
-            {/* معلومات المضيف والزر */}
-            <div style={{
-              position: 'absolute',
-              bottom: 0,
-              left: 0,
-              right: 0,
-              background: 'linear-gradient(transparent, rgba(0,0,0,0.8))',
-              padding: '20px 12px 12px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              zIndex: 2
-            }}>
-              {/* معلومات المضيف */}
-              <div style={{
-                display: 'flex',
-                gap: '10px',
-                alignItems: 'center',
-                flex: 1
-              }}>
-                <div style={{
-                  width: '40px',
-                  height: '40px',
-                  borderRadius: '50%',
-                  overflow: 'hidden',
-                  border: '2px solid rgba(255, 255, 255, 0.3)',
-                  flexShrink: 0
-                }}>
-                  {post.authorAvatar ? (
-                    <img src={post.authorAvatar} alt={post.authorName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <div style={{
-                      width: '100%',
-                      height: '100%',
-                      background: 'linear-gradient(135deg, #7c3aed, #3b82f6)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'white',
-                      fontWeight: 'bold',
-                      fontSize: '16px'
-                    }}>
-                      {post.authorName?.charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                </div>
-                <div style={{ color: 'white', flex: 1 }}>
-                  <div style={{ fontSize: '14px', fontWeight: '700' }}>{post.authorName}</div>
-                  <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.8)' }}>{post.text || post.title}</div>
-                </div>
-              </div>
-              
-              {/* زر الانضمام */}
-              <button 
-                type="button"
-                style={{
-                  padding: '8px 16px',
-                  background: 'linear-gradient(135deg, #7c3aed, #3b82f6)',
-                  border: 'none',
-                  borderRadius: '8px',
-                  color: 'white',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  boxShadow: '0 4px 12px rgba(124, 58, 237, 0.4)',
-                  flexShrink: 0
-                }}
-                onMouseEnter={(e) => {
-                  e.target.style.transform = 'translateY(-2px)';
-                  e.target.style.boxShadow = '0 6px 16px rgba(124, 58, 237, 0.6)';
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.transform = 'translateY(0)';
-                  e.target.style.boxShadow = '0 4px 12px rgba(124, 58, 237, 0.4)';
-                }}
-              >
-                انضم الآن
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {post.isLive && !post.authorAvatar ? (
-        <div className="yam-post-live-indicator">
-          <span className="live-dot"></span>
-          <span className="live-text">مباشر الآن</span>
-          <span className="live-viewers">للا {formatCompactNumber(post.views || 0)} مشاهد</span>
-        </div>
-      ) : null}
-
-      {post.liveUrl && !post.isLive ? (
+      {post.liveUrl ? (
         <button
           type="button"
           className="yam-post-live-cta"
           onClick={handleOpenLiveAnnouncement}
         >
-          📵 متابعة البث المباشر
+          🎥 متابعة البث المباشر
         </button>
       ) : null}
 
@@ -945,10 +746,7 @@ function FeedDesktopInner() {
   const liveStreamPosts = liveStreams.map(convertLiveStreamToPost).filter(Boolean);
   const feedPosts = useMemo(() => {
     const allPosts = buildFeedPosts(posts);
-    const combined = [...liveStreamPosts, ...allPosts];
-    
-    // إزالة أي منشورات ترحيبية يدوية أو مكررة والتأكد من وجود بيانات حقيقية
-    return combined.filter(p => p.id !== 'welcome');
+    return [...liveStreamPosts, ...allPosts];
   }, [posts, liveStreamPosts]);
 
   const totalPosts = feedPosts.length;
@@ -1838,74 +1636,6 @@ function FeedDesktopInner() {
             font-size: 15px;
           }
 
-          .yam-post-live-cta {
-            width: 100%;
-            min-height: 52px;
-            border-radius: 18px;
-            border: none;
-            background: linear-gradient(135deg, #8b5cf6, #6366f1);
-            color: #fff;
-            font-weight: 800;
-            font-size: 15px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            box-shadow: 0 12px 28px rgba(124, 58, 237, 0.32);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            margin-top: 8px;
-          }
-
-          .yam-post-live-cta:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 16px 36px rgba(124, 58, 237, 0.42);
-            background: linear-gradient(135deg, #9333ea, #4f46e5);
-          }
-
-          .yam-post-live-indicator {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 12px;
-            padding: 10px 16px;
-            background: rgba(239, 68, 68, 0.12);
-            border-radius: 14px;
-            border: 1px solid rgba(239, 68, 68, 0.25);
-          }
-
-          .live-dot {
-            width: 10px;
-            height: 10px;
-            background: #ef4444;
-            border-radius: 50%;
-            box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.2);
-            animation: pulse-live 1.5s infinite;
-          }
-
-          @keyframes pulse-live {
-            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-            70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
-            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-          }
-
-          .live-text {
-            color: #ef4444;
-            font-weight: 900;
-            font-size: 14px;
-            letter-spacing: 0.5px;
-          }
-
-          .live-viewers {
-            color: #cbd5e1;
-            font-size: 13px;
-            font-weight: 700;
-            margin-inline-start: auto;
-            background: rgba(0, 0, 0, 0.2);
-            padding: 2px 10px;
-            border-radius: 8px;
-          }
-
           .yam-post-media-grid-v2 {
             display: grid;
             grid-template-columns: 1.05fr 1.25fr 0.72fr;
@@ -2318,25 +2048,6 @@ function FeedDesktopInner() {
 
           .yam-laptop-avatar.accent {
             box-shadow: 0 0 0 4px rgba(124,58,237,0.18), 0 14px 24px rgba(0,0,0,0.24);
-          }
-
-          @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-          }
-
-          @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.8; }
-          }
-
-          .yam-post-live-card {
-            width: 100%;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-          }
-
-          .yam-post-live-card:hover .yam-post-live-background {
-            box-shadow: 0 8px 24px rgba(124, 58, 237, 0.2);
           }
 
           @media (max-width: 1380px) {

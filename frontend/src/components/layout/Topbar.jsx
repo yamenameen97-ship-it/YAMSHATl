@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getNotifications } from '../../api/notifications.js';
-import { getActiveLiveStreams as getLiveRooms } from '../../services/api/liveStreamApi.js';
+import { getLiveRooms } from '../../api/live.js';
 import { BACKEND_ORIGIN } from '../../api/config.js';
 import { resolveMediaUrl } from '../../config/mediaConfig.js';
 import { clearStoredUser, getAuthToken, getCurrentUsername, getStoredUserSnapshot } from '../../utils/auth.js';

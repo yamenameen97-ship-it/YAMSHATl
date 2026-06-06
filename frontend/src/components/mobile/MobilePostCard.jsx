@@ -1,10 +1,16 @@
 import { memo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import BrandLogo from '../ui/BrandLogo.jsx';
 
 /**
  * MobilePostCard
- * بطاقة منشور بتصميم مطابق للنموذج المرجعي مع دعم البث المباشر
+ * بطاقة منشور بتصميم مطابق للنموذج المرجعي:
+ * - رأس: صورة شخصية + اسم + توثيق + توقيت + قائمة (...)
+ * - نص + هاشتاجات بنفسجية
+ * - بنر اختياري للترويج (يدعم صور أيضاً)
+ * - شريط تفاعل مبسط: إعجاب / تعليق / مشاركة / حفظ
+ *
+ * كل الأزرار مُربطة عبر props بـ handlers من الأب (FeedMobile)
+ * التي تستدعي backend API الحقيقية.
  */
 
 function VerifiedBadge() {
@@ -47,7 +53,6 @@ function MobilePostCard({
   onSave,
   onMore,
 }) {
-  const navigate = useNavigate();
   const {
     authorName = 'مستخدم',
     handle = '@user',
@@ -55,38 +60,14 @@ function MobilePostCard({
     verified = false,
     avatarUrl = '',
     text = '',
-    banner = null,
+    banner = null, // { type: 'image'|'logo', url?, title?, slogan? }
     liked = false,
     saved = false,
-    likes = 0,
-    comments = 0,
-    reposts = 0,
-    is_live = false,
-    live_stream_id = null,
-    viewers = 0,
-    thumbnail = null,
-    media = [],
   } = post;
-
-  const liveThumbnail = thumbnail || (media && media[0]?.url) || '';
 
   const handleClick = (handler) => (e) => {
     e?.stopPropagation?.();
     handler?.(post);
-  };
-
-  const handleJoinLive = (e) => {
-    e?.stopPropagation();
-    if (live_stream_id) {
-      navigate(`/live/view/${live_stream_id}`);
-    }
-  };
-  
-  const handleLiveCardClick = (e) => {
-    e?.stopPropagation();
-    if (live_stream_id) {
-      navigate(`/live/view/${live_stream_id}`);
-    }
   };
 
   return (
@@ -123,121 +104,7 @@ function MobilePostCard({
         <div className="ym-post-body">{renderTextWithHashtags(text)}</div>
       ) : null}
 
-      {is_live ? (
-        <div className="ym-post-live-banner" onClick={handleLiveCardClick} style={{
-          position: 'relative',
-          borderRadius: '16px',
-          overflow: 'hidden',
-          cursor: 'pointer',
-          aspectRatio: '16/9',
-          background: '#000',
-          margin: '8px 0'
-        }}>
-          <img src={liveThumbnail || 'https://via.placeholder.com/800x450?text=Live+Stream'} alt="Live" style={{width:'100%', height:'100%', objectFit:'cover'}} />
-          
-          {/* طبقة التدرج */}
-          <div style={{
-            position: 'absolute',
-            inset: 0,
-            background: 'linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.5) 50%, rgba(0,0,0,0.8) 100%)',
-            zIndex: 1
-          }} />
-          
-          {/* شارة البث المباشر */}
-          <div style={{
-            position: 'absolute',
-            top: '12px',
-            left: '12px',
-            background: 'linear-gradient(135deg, #ef4444, #f97316)',
-            color: 'white',
-            padding: '6px 12px',
-            borderRadius: '20px',
-            fontSize: '12px',
-            fontWeight: 'bold',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px',
-            animation: 'pulse 2s ease-in-out infinite',
-            zIndex: 2
-          }}>
-            <span style={{width:8, height:8, background:'white', borderRadius:'50%', animation: 'blink 1s ease-in-out infinite'}}></span> مباشر
-          </div>
-          
-          {/* عدد المشاهدين */}
-          <div style={{
-            position: 'absolute',
-            top: '12px',
-            right: '12px',
-            background: 'rgba(0,0,0,0.4)',
-            color: 'white',
-            padding: '4px 10px',
-            borderRadius: '12px',
-            fontSize: '12px',
-            fontWeight: '600',
-            backdropFilter: 'blur(10px)',
-            zIndex: 2
-          }}>
-            👁 {formatCount(viewers)}
-          </div>
-          
-          {/* معلومات المضيف والزر (مطابق للتصميم المرفق) */}
-          <div style={{
-            position: 'absolute',
-            bottom: '0',
-            left: '0',
-            right: '0',
-            background: 'linear-gradient(transparent, rgba(0,0,0,0.9))',
-            padding: '30px 12px 12px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
-            zIndex: 2
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ fontSize: '15px', fontWeight: 'bold', color: 'white' }}>
-                {text || 'بث مباشر جديد'}
-              </div>
-            </div>
-            
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '24px', height: '24px', borderRadius: '50%', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.5)' }}>
-                  {avatarUrl ? <img src={avatarUrl} alt="" style={{width:'100%', height:'100%', objectFit:'cover'}} /> : <YamshatY size={16} />}
-                </div>
-                <div style={{ color: 'white', fontSize: '13px', fontWeight: '600' }}>
-                  {authorName} {verified && <VerifiedBadge />}
-                </div>
-                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px' }}>
-                  {formatCount(viewers)} مشاهد
-                </div>
-              </div>
-              
-              <button onClick={handleLiveCardClick} style={{
-                background: 'linear-gradient(135deg, #7c3aed, #3b82f6)',
-                color: 'white',
-                border: 'none',
-                padding: '6px 14px',
-                borderRadius: '8px',
-                fontWeight: 'bold',
-                fontSize: '12px',
-                cursor: 'pointer',
-                boxShadow: '0 4px 12px rgba(124, 58, 237, 0.4)'
-              }}>انضم الآن</button>
-            </div>
-          </div>
-          
-          <style>{`
-            @keyframes blink {
-              0%, 100% { opacity: 1; }
-              50% { opacity: 0.5; }
-            }
-            @keyframes pulse {
-              0%, 100% { opacity: 1; }
-              50% { opacity: 0.8; }
-            }
-          `}</style>
-        </div>
-      ) : banner ? (
+      {banner ? (
         <div className="ym-post-banner">
           {banner.type === 'image' && banner.url ? (
             <img src={banner.url} alt={banner.title || ''} loading="lazy" />
@@ -253,35 +120,18 @@ function MobilePostCard({
         </div>
       ) : null}
 
-      {(likes > 0 || comments > 0 || reposts > 0) ? (
-        <div className="ym-post-stats" style={{
-          display: 'flex',
-          gap: '12px',
-          padding: '8px 0',
-          fontSize: '13px',
-          color: 'var(--text-muted, #65676b)',
-          borderBottom: '1px solid var(--line, #e5e5ea)',
-          marginBottom: '8px',
-        }}>
-          {likes > 0 && <span>{formatCount(likes)} إعجاب</span>}
-          {comments > 0 && <span>{formatCount(comments)} تعليق</span>}
-          {reposts > 0 && <span>{formatCount(reposts)} مشاركة</span>}
-        </div>
-      ) : null}
-
-      {!is_live ? (
-        <div className="ym-post-actions" role="group" aria-label="إجراءات المنشور">
+      <div className="ym-post-actions" role="group" aria-label="إجراءات المنشور">
         <button type="button" className={`ym-action like ${liked ? 'is-active' : ''}`} onClick={handleClick(onLike)} aria-label="إعجاب" aria-pressed={liked}>
           <svg viewBox="0 0 24 24"><path d="M12 21s-7-4.5-9.5-9A5.5 5.5 0 0 1 12 6a5.5 5.5 0 0 1 9.5 6c-2.5 4.5-9.5 9-9.5 9Z" strokeLinejoin="round"/></svg>
-          <span className="label">أعجبني {likes > 0 ? `(${formatCount(likes)})` : ''}</span>
+          <span className="label">أعجبني</span>
         </button>
         <button type="button" className="ym-action" onClick={handleClick(onComment)} aria-label="تعليق">
           <svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 1 1-3.6-6.7L21 4l-1.3 4.6A7.97 7.97 0 0 1 21 12Z" strokeLinejoin="round"/></svg>
-          <span className="label">تعليق {comments > 0 ? `(${formatCount(comments)})` : ''}</span>
+          <span className="label">تعليق</span>
         </button>
         <button type="button" className="ym-action" onClick={handleClick(onShare)} aria-label="مشاركة">
           <svg viewBox="0 0 24 24"><path d="M12 16V4 M7 9l5-5 5 5 M5 20h14" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          <span className="label">مشاركة {reposts > 0 ? `(${formatCount(reposts)})` : ''}</span>
+          <span className="label">مشاركة</span>
         </button>
         <button type="button" className={`ym-action save ${saved ? 'is-active' : ''}`} onClick={handleClick(onSave)} aria-label="حفظ" aria-pressed={saved}>
           <svg viewBox="0 0 24 24">
@@ -289,8 +139,7 @@ function MobilePostCard({
           </svg>
           <span className="label">حفظ</span>
         </button>
-        </div>
-      ) : null}
+      </div>
     </article>
   );
 }

@@ -21,8 +21,6 @@ import com.socialapp.network.ApiClient
 import com.socialapp.network.SessionManager
 import com.socialapp.utils.AppAnalytics
 import com.socialapp.utils.SecureMediaManager
-import com.socialapp.activities.LiveActivity
-import android.content.Intent
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -60,23 +58,15 @@ class HomeFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        postAdapter = PostAdapter(
-            onLike = { post ->
-                if (post.username != SessionManager.getUsername()) {
-                    ApiClient.api.like(mapOf("to_user" to post.username, "post_id" to post.id.toString()))
-                        .enqueue(simpleCallback())
-                    ApiClient.api.track(mapOf("event" to "like_post"))
-                        .enqueue(simpleCallback())
-                    AppAnalytics.trackLike(post.id.toString())
-                }
-            },
-            onWatchLive = { post ->
-                val intent = Intent(requireContext(), LiveActivity::class.java)
-                val streamId = post.liveStream?.id ?: post.liveStreamId ?: ""
-                intent.putExtra(LiveActivity.EXTRA_TARGET_PATH, "/live/studio?room=$streamId")
-                startActivity(intent)
+        postAdapter = PostAdapter { post ->
+            if (post.username != SessionManager.getUsername()) {
+                ApiClient.api.like(mapOf("to_user" to post.username, "post_id" to post.id.toString()))
+                    .enqueue(simpleCallback())
+                ApiClient.api.track(mapOf("event" to "like_post"))
+                    .enqueue(simpleCallback())
+                AppAnalytics.trackLike(post.id.toString())
             }
-        )
+        }
 
         binding.recyclerPosts.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerPosts.setHasFixedSize(true)

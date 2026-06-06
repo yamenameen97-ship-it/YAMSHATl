@@ -10,7 +10,7 @@ import { ListSkeleton } from '../components/feedback/Skeleton.jsx';
 import useDebounce from '../hooks/useDebounce';
 import { getPosts } from '../api/posts.js';
 import { getUsers } from '../api/users.js';
-import { getActiveLiveStreams as getLiveRooms } from '../services/api/liveStreamApi.js';
+import { getLiveRooms } from '../api/live.js';
 import { getSearchSuggestions, getTrendingSearches, liveSearch } from '../api/search.js';
 import { groupSearchResults } from '../utils/fuzzySearch.js';
 import {

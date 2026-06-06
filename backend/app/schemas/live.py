@@ -40,7 +40,7 @@ class LiveStreamCreate(BaseModel):
     description: Optional[str] = Field(None, max_length=2000)
     category: Optional[str] = Field(None, max_length=100)
     thumbnail_url: Optional[str] = None
-    quality: Optional[str] = Field("720p", pattern="^(1080p|720p|480p)$")
+    quality: Optional[str] = Field("720p", regex="^(1080p|720p|480p)$")
     is_public: bool = True
     allow_comments: bool = True
     allow_gifts: bool = True
@@ -96,10 +96,10 @@ class UpdateCameraStateRequest(BaseModel):
 
 class ModerationActionRequest(BaseModel):
     """طلب إجراء اعتدال"""
-    action: str = Field(..., pattern="^(mute|unmute|ban|unban|kick|close_camera)$")
+    action: str = Field(..., regex="^(mute|unmute|ban|unban|kick|close_camera)$")
     user_id: int
     reason: Optional[str] = None
-    duration: Optional[str] = Field(None, pattern="^(temporary|long_term|permanent)$")
+    duration: Optional[str] = Field(None, regex="^(temporary|long_term|permanent)$")
 
     class Config:
         schema_extra = {

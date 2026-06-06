@@ -31,13 +31,3 @@ class Post(Base):
     share_count = Column(Integer, default=0, nullable=False)
     save_count = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
-    
-    # حقول البث المباشر
-    post_type = Column(Text, default='POST', nullable=False, index=True)  # POST, STORY, LIVE, RECORDED_STREAM
-    live_stream_id = Column(Text, nullable=True, index=True)
-    thumbnail_url = Column(Text, nullable=True)
-    viewers_count = Column(Integer, default=0, nullable=False)
-    is_live = Column(Boolean, default=False, nullable=False, index=True)
-    stream_duration = Column(Text, nullable=True)  # مدة البث (مثل: 1h 20m)
-    stream_started_at = Column(DateTime, nullable=True)
-    stream_ended_at = Column(DateTime, nullable=True)

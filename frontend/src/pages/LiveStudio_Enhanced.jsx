@@ -70,7 +70,7 @@ function Avatar({ name = '', size = 42 }) {
   );
 }
 
-export default function LiveStudio() {
+export default function LiveStudioEnhanced() {
   const { pushToast } = useToast();
   const currentUsername = getCurrentUsername();
   const navigate = useNavigate();

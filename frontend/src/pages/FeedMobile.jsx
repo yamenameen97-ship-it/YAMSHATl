@@ -27,25 +27,16 @@ function timeAgoAr(dateLike) {
   const d = new Date(dateLike);
   if (Number.isNaN(d.getTime())) return 'الآن';
   const diffSec = Math.max(1, Math.floor((Date.now() - d.getTime()) / 1000));
-  if (diffSec < 60) return 'الآن';
+  if (diffSec < 60) return 'منذ لحظات';
   const m = Math.floor(diffSec / 60);
   if (m < 60) return `منذ ${m} دقيقة`;
   const h = Math.floor(m / 60);
   if (h < 24) return `منذ ${h} ساعة`;
   const days = Math.floor(h / 24);
-  if (days === 1) return 'أمس';
-  if (days < 7) return `منذ ${days} أيام`;
-  if (days < 30) return `منذ ${Math.floor(days / 7)} أسابيع`;
-  if (days < 365) {
-    const months = Math.floor(days / 30);
-    return `منذ ${months} شهر`;
-  }
-  // للمنشورات القديمة جداً، عرض التاريخ الكامل
-  const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-  const day = d.getDate();
-  const month = monthNames[d.getMonth()];
-  const year = d.getFullYear();
-  return `${day} ${month} ${year}`;
+  if (days < 30) return `منذ ${days} يوم`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `منذ ${months} شهر`;
+  return `منذ ${Math.floor(months / 12)} سنة`;
 }
 
 function isVideoMediaUrl(value = '', post = {}) {
@@ -73,26 +64,15 @@ function normalizePost(p, i) {
   const author = p.author_name || p.username || p.user || 'مستخدم يام شات';
   const handle = (p.username || p.user || `user${i}`).toString();
   const verified = Boolean(p.verified || p.is_verified || p.official);
-  
-  // التحقق مما إذا كان المنشور بث مباشر (تحسين التحقق ليشمل جميع الحالات الممكنة)
-  const isLive = Boolean(
-    p.is_live || 
-    p.is_live_stream || 
-    p.has_live_stream || 
-    p.type === 'live' || 
-    p.type === 'LIVE' || 
-    p.post_type === 'LIVE'
-  );
-  
   return {
     id: p.id ?? `p-${i}`,
     rawId: p.id,
     authorName: author,
     handle: `@${handle.replace(/^@/, '')}`,
-    timeText: isLive ? 'مباشر الآن' : timeAgoAr(p.created_at || p.published_at || p.createdAt),
+    timeText: timeAgoAr(p.created_at || p.published_at),
     verified,
     avatarUrl: resolveMediaUrl(p.user_avatar || p.avatar || p.author_avatar || ''),
-    text: p.content || p.text || p.description || p.title || '',
+    text: p.content || p.text || '',
     banner: buildBanner(p),
     likes: Number(p.likes_count ?? p.like_count ?? p.likes ?? 0),
     comments: Number(p.comments_count ?? p.comment_count ?? p.comments ?? 0),
@@ -100,18 +80,26 @@ function normalizePost(p, i) {
     liked: Boolean(p.is_liked ?? p.liked_by_me ?? p.liked),
     reposted: Boolean(p.reposted ?? p.is_reposted),
     saved: Boolean(p.is_saved ?? p.saved_by_me ?? p.saved),
-    // حقول البث
-    type: p.type || (isLive ? 'live' : 'POST'),
-    is_live: isLive,
-    live_stream_id: p.live_stream_id || p.streamId || p.live_id,
-    viewers: Number(p.viewers_count || p.viewers || p.viewer_count || 0),
-    thumbnail: resolveMediaUrl(p.thumbnail || p.thumbnail_url || p.preview_url || p.media_url || ""),
-    duration: p.duration,
   };
 }
 
 // منشور ترحيبي افتراضي (يُعرض فقط حين تكون قائمة backend فارغة فعلاً)
-const WELCOME_POST = null;
+const WELCOME_POST = {
+  id: 'welcome',
+  rawId: null,
+  authorName: 'فريق يام شات',
+  handle: '@yamshat_team',
+  timeText: 'الآن',
+  verified: true,
+  text: 'مرحباً بك في يام شات 🚀\nابدأ بنشر أول منشور لك أو تابع أصدقاءك لتظهر منشوراتهم هنا.',
+  banner: { type: 'logo', title: 'YAMSHAT', slogan: 'تواصل، تفاعل، اربح' },
+  likes: 0,
+  comments: 0,
+  reposts: 0,
+  liked: false,
+  reposted: false,
+  saved: false,
+};
 
 function FeedMobile() {
   const [activeFilter, setActiveFilter] = useState('all');
@@ -124,60 +112,15 @@ function FeedMobile() {
 
   // overlay فوري للحالة التفاعلية (optimistic UI) قبل وصول استجابة API
   const [overlay, setOverlay] = useState({}); // { [postId]: { liked, likes, saved, reposted, reposts } }
-  
-  // منشورات البث المباشر
-  const [livePosts, setLivePosts] = useState([]);
 
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
   const session = useAppStore((s) => s.session);
 
-  // تحديد نوع المحتوى بناءً على التبويب النشط
-  const feedType = useMemo(() => {
-    if (activeFilter === 'posts') return 'POST';
-    if (activeFilter === 'stories') return 'STORY';
-    if (activeFilter === 'live') return 'LIVE';
-    return 'all';
-  }, [activeFilter]);
-
-  const smart = useSmartFeed?.({ filterType: feedType });
+  const smart = useSmartFeed?.({ filterType: activeFilter });
   const rawPosts = smart?.posts || smart?.data || smart?.items || [];
   const loading = smart?.isLoading || smart?.loading;
   const error = smart?.error;
-
-  // تحميل منشورات البث من localStorage
-  const loadLivePosts = useCallback(() => {
-    try {
-      const posts = JSON.parse(localStorage.getItem('yamshat_posts') || '[]');
-      const liveOnly = posts.filter(p => p.type === 'live' || p.is_live);
-      setLivePosts(liveOnly);
-    } catch (e) {
-      console.error('Error loading live posts:', e);
-    }
-  }, []);
-  
-  // الاستماع لأحداث البث
-  useEffect(() => {
-    loadLivePosts();
-    
-    const handleLivePostCreated = () => loadLivePosts();
-    const handleStreamStarted = () => loadLivePosts();
-    const handleStreamEnded = () => loadLivePosts();
-    
-    window.addEventListener('yamshat:live-post-created', handleLivePostCreated);
-    window.addEventListener('yamshat:stream-started', handleStreamStarted);
-    window.addEventListener('yamshat:stream-ended', handleStreamEnded);
-    
-    // تحديث منشورات البث كل 3 ثوان
-    const interval = setInterval(loadLivePosts, 3000);
-    
-    return () => {
-      window.removeEventListener('yamshat:live-post-created', handleLivePostCreated);
-      window.removeEventListener('yamshat:stream-started', handleStreamStarted);
-      window.removeEventListener('yamshat:stream-ended', handleStreamEnded);
-      clearInterval(interval);
-    };
-  }, [loadLivePosts]);
 
   // فتح المُنشئ عبر حدث (من BottomNav أو composer slot)
   useEffect(() => {
@@ -200,34 +143,25 @@ function FeedMobile() {
   }, []);
 
   const posts = useMemo(() => {
-    // دمج منشورات البث مع المنشورات العادية
-    const normalizedLivePosts = livePosts.map((p, i) => normalizePost(p, i));
-    const normalizedRawPosts = Array.isArray(rawPosts) ? rawPosts.map((p, i) => normalizePost(p, i)) : [];
-    
-    let list = [];
-    
-    if (activeFilter === 'all') {
-      list = [...normalizedLivePosts, ...normalizedRawPosts];
-    } else if (activeFilter === 'live') {
-      list = normalizedLivePosts;
-    } else {
-      list = normalizedRawPosts;
-    }
-
-    // إذا كانت القائمة فارغة، لا نعرض المنشور الترحيبي الافتراضي
-    if (list.length === 0 && (activeFilter === 'all' || activeFilter === 'posts')) {
-      list = [];
-    }
+    const list = (Array.isArray(rawPosts) && rawPosts.length)
+      ? rawPosts.map((p, i) => normalizePost(p, i))
+      : [WELCOME_POST];
 
     // دمج overlay (optimistic)
     return list.map((p) => {
       const o = overlay[p.id];
       return o ? { ...p, ...o } : p;
     });
-  }, [rawPosts, overlay, activeFilter, livePosts]);
+  }, [rawPosts, overlay]);
 
   // فلترة محلية بسيطة (الفلترة الحقيقية تتم في backend عبر filterType)
-  const filtered = posts; // الفلترة تتم الآن عبر الـ backend بناءً على feedType
+  const filtered = useMemo(() => {
+    if (activeFilter === 'all') return posts;
+    if (activeFilter === 'updates') return posts.filter((p) => /تحديث|تطوير|إطلاق|جديد/.test(p.text));
+    if (activeFilter === 'ads') return posts.filter((p) => /إعلان|عرض|خصم/.test(p.text));
+    if (activeFilter === 'community') return posts.filter((p) => /مجتمع|عائلة|أعضاء|#/.test(p.text));
+    return posts;
+  }, [activeFilter, posts]);
 
   const requireAuth = useCallback(() => {
     if (!session) {

@@ -12,9 +12,8 @@ from sqlalchemy import text
 import app.models  # noqa: F401
 from app.api.routes import (
     admin, analytics, auth, chat, comments, follow, groups, inbox,
-    live, notifications, posts, reels, search, stories, upload, users, ws, live_stream_complete
+    live, notifications, posts, reels, search, stories, upload, users, ws,
 )
-from app.api import live_feed_routes
 from app.core.api_guard import api_rate_guard
 from app.core.config import settings
 from app.core.error_handlers import register_error_handlers
@@ -163,8 +162,6 @@ fastapi_app.include_router(upload.router, prefix=f'{settings.API_PREFIX}/upload'
 fastapi_app.include_router(analytics.router, prefix=f'{settings.API_PREFIX}/analytics', tags=['analytics'])
 fastapi_app.include_router(admin.router, prefix=f'{settings.API_PREFIX}/admin', tags=['admin'])
 fastapi_app.include_router(live.router, prefix=settings.API_PREFIX, tags=['live'])
-fastapi_app.include_router(live_stream_complete.router, tags=['live_stream'])
-fastapi_app.include_router(live_feed_routes.router, tags=['feed'])
 fastapi_app.include_router(chat.router, prefix=settings.API_PREFIX, tags=['chat'])
 fastapi_app.include_router(stories.router, prefix=settings.API_PREFIX, tags=['stories'])
 fastapi_app.include_router(groups.router, prefix=settings.API_PREFIX, tags=['groups'])

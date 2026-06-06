@@ -315,43 +315,6 @@ def create_live(payload: dict = Body(...), db: Session = Depends(get_db), curren
     db.add(record)
     db.commit()
     db.refresh(record)
-
-    # تلقائياً: إنشاء منشور في الخلاصة عند بدء البث
-    try:
-        from app.services.live_feed_service import LiveFeedService
-        feed_service = LiveFeedService(db)
-        # نستخدم asyncio.run إذا كنا في بيئة sync أو نستدعيها مباشرة إذا كانت sync
-        # بما أن الخدمة معرفة كـ async في live_feed_service.py، سنقوم بتعديل استدعائها
-        import asyncio
-        # ملاحظة: المسار الحالي متزامن (sync)، لذا سنحاول إنشاء المنشور يدوياً أو استدعاء الخدمة
-        from app.models.post import Post
-        from app.services.live_feed_service import utcnow_naive
-        
-        # التأكد من عدم وجود منشور نشط لنفس البث لتجنب التكرار
-        existing_post = db.query(Post).filter(
-            Post.live_stream_id == record.id,
-            Post.post_type == "LIVE"
-        ).first()
-        
-        if not existing_post:
-            live_post = Post(
-                user_id=current_user.id,
-                username=current_user.username,
-                content=title,
-                post_type="LIVE",
-                live_stream_id=record.id,
-                is_live=True,
-                viewers_count=0,
-                stream_started_at=utcnow_naive(),
-                created_at=utcnow_naive(),
-                published_at=utcnow_naive()
-            )
-            db.add(live_post)
-            db.commit()
-            logger.info(f"Automatically created feed post for live stream {record.id}")
-    except Exception as exc:
-        logger.error(f"Failed to create automatic feed post for live stream: {exc}")
-
     return _serialize_record(db, record)
 
 
@@ -426,25 +389,6 @@ def end_live(room_id: str, db: Session = Depends(get_db), current_user: User = D
     record.ended_at = _utcnow()
     record.last_activity_at = _utcnow()
     _sync_record_from_runtime(db, record, room)
-    
-    # تلقائياً: تحديث منشور الخلاصة ليصبح مسجلاً بدلاً من مباشر
-    try:
-        from app.models.post import Post
-        from app.services.live_feed_service import utcnow_naive
-        
-        live_post = db.query(Post).filter(
-            Post.live_stream_id == room_id,
-            Post.post_type == "LIVE"
-        ).first()
-        
-        if live_post:
-            live_post.post_type = "RECORDED_STREAM"
-            live_post.is_live = False
-            live_post.stream_ended_at = utcnow_naive()
-            logger.info(f"Automatically ended feed post for live stream {room_id}")
-    except Exception as exc:
-        logger.error(f"Failed to end feed post for live stream: {exc}")
-
     db.commit()
     return {'status': 'ended', 'room_id': room_id}
 

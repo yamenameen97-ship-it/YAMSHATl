@@ -199,7 +199,7 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
         'media_urls': media_list,
         'media_type': media_kind or 'image',
         'has_video': media_kind == 'video',
-        'thumbnail_url': post.thumbnail_url or thumbnail_url,
+        'thumbnail_url': thumbnail_url,
         'preview_url': thumbnail_url or primary_media_url,
         'hashtags': _loads_list(post.hashtags_json),
         'mentions': _loads_list(post.mentions_json),
@@ -222,13 +222,9 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
         'liked_by_me': liked_by_me,
         'saved_by_me': saved_by_me,
         'share_url': _share_url(post.id),
-        'has_live_stream': (live_room is not None) or bool(post.is_live),
-        'live_stream_id': (live_room.id if live_room else None) or post.live_stream_id,
-        'live_stream': live_stream_data,
-        'is_live': bool(post.is_live) or (live_room is not None),
-        'viewers': post.viewers_count or (live_room.viewer_count if live_room else 0),
-        'type': post.post_type or ('LIVE' if live_room else 'POST'),
-        'thumbnail': post.thumbnail_url or (live_room.thumbnail_url if live_room and hasattr(live_room, 'thumbnail_url') else None)
+        'has_live_stream': live_room is not None,
+        'live_stream_id': live_room.id if live_room else None,
+        'live_stream': live_stream_data
     }
 
 
@@ -303,7 +299,7 @@ def _publish_due_posts(db: Session) -> None:
 
 def get_posts(db: Session, current_user: User | None = None, skip: int = 0, limit: int = 10, include_drafts: bool = False) -> list[dict]:
     _publish_due_posts(db)
-    posts = db.query(Post).order_by(func.coalesce(Post.published_at, Post.created_at).desc(), Post.id.desc()).offset(skip).limit(limit * 3).all()
+    posts = db.query(Post).order_by(Post.is_pinned.desc(), Post.pinned_at.desc(), Post.created_at.desc()).offset(skip).limit(limit * 3).all()
     visible = []
     for post in posts:
         if not _can_view_post(post, current_user):
@@ -332,9 +328,9 @@ def get_user_drafts(db: Session, user: User) -> list[dict]:
 def get_posts_by_username(db: Session, username: str, current_user: User | None = None) -> list[dict]:
     user = db.query(User).filter(User.username == username, User.is_active.is_(True)).first()
     if user is not None:
-        posts = db.query(Post).filter(Post.user_id == user.id).order_by(func.coalesce(Post.published_at, Post.created_at).desc(), Post.id.desc()).all()
+        posts = db.query(Post).filter(Post.user_id == user.id).order_by(Post.is_pinned.desc(), Post.created_at.desc()).all()
         return [_serialize_post(db, post, current_user=current_user) for post in posts if _can_view_post(post, current_user)]
-    posts = db.query(Post).filter(Post.username == username).order_by(func.coalesce(Post.published_at, Post.created_at).desc(), Post.id.desc()).all()
+    posts = db.query(Post).filter(Post.username == username).order_by(Post.is_pinned.desc(), Post.created_at.desc()).all()
     return [_serialize_post(db, post, current_user=current_user) for post in posts if _can_view_post(post, current_user)]
 
 

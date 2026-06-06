@@ -609,91 +609,85 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
         @media (max-width: 980px) {
           .yam-composer-shell {
             border-radius: 22px;
-            padding: 8px 10px;
+            padding: 8px;
             gap: 8px;
-            box-shadow: 0 -4px 12px rgba(0,0,0,0.12);
-            /* ضمان عدم الهروب فوق الأزرار */
-            position: relative;
-            z-index: 10;
+            box-shadow: 0 -6px 18px rgba(0,0,0,0.18);
           }
           .yam-attachments-grid {
-            max-height: 140px;
+            max-height: 156px;
           }
           .yam-composer-row {
-            display: flex;
-            flex-direction: row; /* الحفاظ على الصف */
-            align-items: flex-end; /* المحاذاة للأسفل ليتمدد النص للأعلى */
-            gap: 8px;
+            gap: 6px;
+            flex-wrap: nowrap !important;
+            align-items: center;
+            min-width: 0;
             width: 100%;
           }
           .yam-composer-actions {
-            display: flex;
-            order: 1; /* الأزرار على اليمين (RTL) */
-            gap: 4px;
+            width: auto;
+            justify-content: flex-end;
             flex-shrink: 0;
+            gap: 4px;
           }
           .yam-input-frame {
-            order: 2; /* مربع النص في المنتصف */
-            flex: 1;
+            width: auto;
+            flex: 1 1 0%;
             min-width: 0;
-            padding: 4px 12px;
-            border-radius: 20px;
-            background: rgba(15,23,42,0.8);
-            display: flex;
+            padding: 4px 10px;
+            border-radius: 22px;
             align-items: center;
           }
           .yam-input-frame textarea {
-            font-size: 15px;
+            min-width: 0;
+            width: 100%;
+            font-size: 14px;
             line-height: 1.4;
-            min-height: 38px;
-            max-height: 120px;
-            padding: 8px 0;
-          }
-          .yam-send-btn {
-            order: 3; /* زر الإرسال على اليسار */
-            min-width: 44px;
-            width: 44px;
-            height: 44px;
-            border-radius: 50%; /* شكل دائري مثل واتساب */
-            padding: 0;
-            display: grid;
-            place-items: center;
-            flex-shrink: 0;
+            min-height: 36px;
+            max-height: 110px;
+            padding: 6px 0;
+            word-break: break-word;
+            overflow-wrap: anywhere;
           }
           .yam-action-btn,
           .yam-emoji-btn,
           .yam-ghost-btn {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: transparent;
-            border: none;
+            width: 38px;
+            height: 38px;
+            border-radius: 12px;
+            font-size: 16px;
+          }
+          .yam-send-btn {
+            min-width: 42px;
+            width: 42px;
+            height: 42px;
+            border-radius: 14px;
+            padding: 0;
+            font-size: 16px;
+            flex-shrink: 0;
           }
           .yam-emoji-grid {
-            grid-template-columns: repeat(5, minmax(0, 1fr));
+            grid-template-columns: repeat(4, minmax(0, 1fr));
           }
-          .yam-composer-footer, .yam-composer-top {
+          .yam-composer-footer {
+            display: none !important;
+          }
+          .yam-composer-top {
             display: none !important;
           }
         }
         @media (max-width: 480px) {
-          .yam-composer-shell {
-            padding: 6px 8px;
-            gap: 6px;
-          }
-          .yam-composer-row {
-            gap: 4px;
-          }
-          .yam-action-btn, .yam-emoji-btn {
+          .yam-action-btn,
+          .yam-emoji-btn,
+          .yam-ghost-btn {
             width: 36px;
             height: 36px;
+            border-radius: 12px;
+          }
+          .yam-composer-actions {
+            gap: 2px;
           }
           .yam-input-frame {
-            padding: 4px 10px;
-          }
-          .yam-send-btn {
-            width: 40px;
-            height: 40px;
+            padding: 4px 8px;
           }
         }
       `}</style>

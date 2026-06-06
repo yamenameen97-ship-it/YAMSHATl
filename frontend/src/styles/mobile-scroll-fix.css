@@ -54,27 +54,9 @@ body {
     justify-content: flex-start;
     min-height: 100vh;
     min-height: 100dvh;
-    height: auto !important; /* السماح بالارتفاع التلقائي للتمرير */
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
-    -webkit-overflow-scrolling: touch !important;
     padding: 20px 16px;
     /* مساحة سفلية لتلافي زر التحديث العائم */
     padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
-    touch-action: pan-y !important; /* السماح بالسحب الرأسي فقط */
-  }
-
-  /* إصلاح خاص للحاوية الداخلية لمنع قفل اللمس */
-  .auth-card,
-  .auth-card-enhanced {
-    touch-action: pan-y !important;
-    user-select: none;
-    -webkit-user-drag: none;
-  }
-
-  /* تأكد من أن الفورم لا يمنع التمرير */
-  .auth-form-enhanced {
-    touch-action: pan-y !important;
   }
 
   .auth-card,
@@ -89,12 +71,6 @@ body {
 
   .auth-form-panel {
     padding: 16px !important;
-    overflow: visible !important; /* منع قفل التمرير الداخلي */
-  }
-
-  /* تحسين عام للمس لجميع المدخلات لضمان عدم قفل السحب */
-  input, button, select, textarea {
-    touch-action: manipulation !important;
   }
 
   /* زر تسجيل الدخول واضح ومميز */

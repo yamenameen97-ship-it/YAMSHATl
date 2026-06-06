@@ -160,32 +160,30 @@ export const InstallPromptScreen = () => {
 const styles = {
   banner: {
     position: 'fixed',
-    top: 'env(safe-area-inset-top, 0px)',
+    top: 0,
     left: 0,
     right: 0,
-    padding: '8px 16px',
+    padding: '12px 20px',
     zIndex: 9999,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    animation: 'slideDown 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)',
-    backdropFilter: 'blur(10px)',
-    WebkitBackdropFilter: 'blur(10px)',
+    animation: 'slideDown 0.3s ease-out'
   },
   warning: {
-    backgroundColor: 'rgba(255, 243, 205, 0.9)',
+    backgroundColor: '#FFF3CD',
     color: '#856404',
-    borderBottom: '1px solid rgba(255, 193, 7, 0.3)'
+    borderBottom: '2px solid #FFC107'
   },
   success: {
-    backgroundColor: 'rgba(212, 237, 218, 0.9)',
+    backgroundColor: '#D4EDDA',
     color: '#155724',
-    borderBottom: '1px solid rgba(76, 175, 80, 0.3)'
+    borderBottom: '2px solid #4CAF50'
   },
   info: {
-    backgroundColor: 'rgba(209, 236, 241, 0.9)',
+    backgroundColor: '#D1ECF1',
     color: '#0C5460',
-    borderBottom: '1px solid rgba(23, 162, 184, 0.3)'
+    borderBottom: '2px solid #17A2B8'
   },
   error: {
     backgroundColor: '#F8D7DA',

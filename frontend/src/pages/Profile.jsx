@@ -7,7 +7,7 @@ import Modal from '../components/ui/Modal.jsx';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import { getProfileBundle, updateMyProfile, uploadAvatar } from '../api/users.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
-import { getCurrentUsername, mergeStoredUser } from '../utils/auth.js';
+import { getCurrentUsername } from '../utils/auth.js';
 
 const TAB_LABELS = {
   posts: 'المنشورات',
@@ -39,7 +39,7 @@ async function uploadImageOrFallback(file) {
     const formData = new FormData();
     formData.append('file', file);
     const { data } = await uploadAvatar(formData);
-    const url = data?.file_url || data?.url || data?.media_url || data?.path || data?.data?.file_url || data?.data?.url || '';
+    const url = data?.file_url || data?.url || data?.path || '';
     if (url) return url;
     return await readFileAsDataURL(file);
   } catch (error) {
@@ -175,39 +175,10 @@ export default function Profile() {
         cover_photo: editForm.cover_photo || '',
         activity_tagline: editForm.activity_tagline || '',
       };
-      const response = await updateMyProfile(payload);
-      const nextUser = response?.data || {};
-      const nextProfile = nextUser?.profile || {};
-      setProfile((prev) => ({
-        ...(prev || {}),
-        user: {
-          ...(prev?.user || {}),
-          ...nextUser,
-          username: nextUser?.username || cleanedUsername,
-          avatar: nextUser?.avatar || payload.avatar || prev?.user?.avatar || '',
-          profile: {
-            ...(prev?.user?.profile || {}),
-            ...nextProfile,
-            bio: nextProfile?.bio ?? payload.bio ?? prev?.user?.profile?.bio ?? '',
-            cover_photo: nextProfile?.cover_photo || payload.cover_photo || prev?.user?.profile?.cover_photo || '',
-            activity_tagline: nextProfile?.activity_tagline ?? payload.activity_tagline ?? prev?.user?.profile?.activity_tagline ?? '',
-          },
-        },
-      }));
-      mergeStoredUser({
-        username: nextUser?.username || cleanedUsername,
-        user: nextUser?.username || cleanedUsername,
-        avatar: nextUser?.avatar || payload.avatar || '',
-        profile: {
-          avatar: nextUser?.avatar || payload.avatar || '',
-          cover_photo: nextProfile?.cover_photo || payload.cover_photo || '',
-          bio: nextProfile?.bio ?? payload.bio ?? '',
-          activity_tagline: nextProfile?.activity_tagline ?? payload.activity_tagline ?? '',
-        },
-      });
+      await updateMyProfile(payload);
       pushToast({ type: 'success', title: 'تم حفظ التعديلات' });
       setShowEditProfile(false);
-      // إعادة تحميل البيانات بعد الحفظ للتأكد من مزامنة الغلاف والصورة من الخادم
+      // إعادة تحميل البيانات بعد الحفظ
       await loadProfile();
     } catch (error) {
       pushToast({

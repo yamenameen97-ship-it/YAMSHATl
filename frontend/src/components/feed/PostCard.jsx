@@ -588,12 +588,8 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
       </div>
 
       <div style={{ display: 'grid', gap: 12 }}>
-        <div className="muted" style={{ fontSize: 13, display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-          {Number(post.likes_count || 0) > 0 && <span>❤️ {Number(post.likes_count || 0)} إعجاب</span>}
-          {Number(post.comments_count || 0) > 0 && <span>💬 {Number(post.comments_count || 0)} تعليق</span>}
-          {Number(post.share_count || 0) > 0 && <span>🔄 {Number(post.share_count || 0)} مشاركة</span>}
-          {Number(post.saved_count || 0) > 0 && <span>📄 {Number(post.saved_count || 0)} حفظ</span>}
-          {Number(post.views_count || 0) > 0 && <span>👁️ {Number(post.views_count || 0)} مشاهدة</span>}
+        <div className="muted" style={{ fontSize: 13 }}>
+          إجمالي التفاعل: {interactionCount} · حفظ {Number(post.saved_count || 0)} · مشاركة {Number(post.share_count || 0)} · مشاهدات {Number(post.views_count || 0)}
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--line)', paddingTop: 12, gap: 10, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>

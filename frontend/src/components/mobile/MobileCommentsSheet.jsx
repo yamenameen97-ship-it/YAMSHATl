@@ -28,11 +28,7 @@ function MobileCommentsSheet({ open, postId, onClose }) {
         setComments(list);
       })
       .catch((err) => {
-        // 500 من الـ backend عند غياب التعليقات => نتعامل بصمت بدون رمي خطأ في الكونسول
-        const status = err?.response?.status;
-        if (status && status !== 500) {
-          console.warn('Failed to load comments', err?.message || err);
-        }
+        console.warn('Failed to load comments', err);
         if (!cancelled) setComments([]);
       })
       .finally(() => { if (!cancelled) setLoading(false); });

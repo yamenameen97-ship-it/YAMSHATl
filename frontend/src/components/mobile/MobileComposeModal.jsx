@@ -3,7 +3,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { createPost, uploadPostMedia } from '../../api/posts.js';
 import { useToast } from '../admin/ToastProvider.jsx';
 import { resolveMediaUrl } from '../../config/mediaConfig.js';
-import { clearLocalFeedCaches, injectPostIntoFeedCache } from '../../utils/feedCache.js';
 
 /**
  * MobileComposeModal
@@ -120,13 +119,7 @@ function MobileComposeModal({ open, onClose, initialAction = null }) {
         payload.image_url = uploadedMediaUrl;
         payload.media_urls = [uploadedMediaUrl];
       }
-      const createdPostResponse = await createPost(payload);
-      const createdPost = createdPostResponse?.data || null;
-      if (createdPost) {
-        injectPostIntoFeedCache(queryClient, createdPost);
-      } else {
-        clearLocalFeedCaches();
-      }
+      await createPost(payload);
 
       // تحديث الفيد
       await queryClient.invalidateQueries({ queryKey: ['feed-data'] });

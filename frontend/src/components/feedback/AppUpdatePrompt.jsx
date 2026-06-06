@@ -22,15 +22,15 @@ export default function AppUpdatePrompt() {
   useEffect(() => {
     const handleReady = (event) => {
       const nextRegistration = event.detail?.registration || null;
-      // نتحقق من وجود تحديث حقيقي (waiting) قبل الإظهار
-      if (!nextRegistration || !nextRegistration.waiting) return;
-      
+      if (!nextRegistration) return;
       setRegistration(nextRegistration);
-      
-      // لا نظهر الشكل الدائري التلقائي، نظهر الشريط فقط إذا لم يتم تجاهله مؤخراً
-      if (!wasRecentlyDismissed()) {
+      if (wasRecentlyDismissed()) {
+        // يظهر بشكل مصغّر (شارة صغيرة فقط) بدلاً من شريط كامل يغطي الأزرار
+        setCollapsed(true);
         setVisible(true);
+      } else {
         setCollapsed(false);
+        setVisible(true);
       }
     };
 
@@ -45,8 +45,6 @@ export default function AppUpdatePrompt() {
     try {
       if (registration.waiting) {
         registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-        // ننتظر قليلاً حتى يقوم الـ SW بالتحديث
-        setTimeout(() => window.location.reload(), 1000);
         return;
       }
       await registration.update();
@@ -61,9 +59,67 @@ export default function AppUpdatePrompt() {
     } catch {
       /* noop */
     }
-    // عند الإغلاق يختفي تماماً ولا يتحول لشكل دائري يزعج المستخدم فوق الأزرار
-    setVisible(false);
+    // ندخل في وضع مصغّر بدلاً من الاختفاء الكامل (للمستخدمين الذين يرغبون بالعودة لاحقاً)
+    setCollapsed(true);
   };
+
+  // الوضع المصغّر: زر دائري صغير في الزاوية لا يغطي محتوى الصفحة
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        className="yam-update-mini"
+        dir="rtl"
+        title="إصدار جديد متاح — اضغط للتحديث"
+        aria-label="إصدار جديد متاح"
+        onClick={() => setCollapsed(false)}
+      >
+        <span className="yam-update-mini-dot" aria-hidden="true" />
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M21 12a9 9 0 11-3.5-7.1" />
+          <path d="M21 4v5h-5" />
+        </svg>
+        <style>{`
+          .yam-update-mini {
+            position: fixed;
+            inset-inline-start: 14px;
+            bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+            z-index: 9998;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: 1px solid rgba(168, 130, 255, 0.35);
+            background: linear-gradient(135deg, rgba(142, 61, 255, 0.92), rgba(91, 33, 182, 0.92));
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 8px 24px rgba(91, 33, 182, 0.45);
+            cursor: pointer;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            transition: transform 180ms ease;
+          }
+          .yam-update-mini:active { transform: scale(0.94); }
+          .yam-update-mini-dot {
+            position: absolute;
+            top: 6px;
+            inset-inline-end: 6px;
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: #34d399;
+            box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.9);
+            animation: yamUpdatePulse 1.6s ease-in-out infinite;
+          }
+          @keyframes yamUpdatePulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.25); opacity: 0.7; }
+          }
+        `}</style>
+      </button>
+    );
+  }
 
   // الوضع الكامل: شريط أنيق بألوان البراند البنفسجية، مع زر إغلاق واضح
   return (

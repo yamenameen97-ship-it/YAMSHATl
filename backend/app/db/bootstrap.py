@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.security import hash_password, verify_password
 from app.db.base import Base
 
-CURRENT_ALEMBIC_REVISION = '20260605_0005'
+CURRENT_ALEMBIC_REVISION = '20260506_0003'
 LEGACY_USER_TABLE_NAMES = ('suser', 'user')
 DEFAULT_SUBSCRIBER = {
     'username': ((settings.DEMO_ACCOUNT_EMAIL or 'yasryameen21@gmail.com').split('@')[0] or 'yasryameen21').strip().lower(),
@@ -78,19 +78,6 @@ REQUIRED_TABLES = {
     'login_challenges',
     'notifications',
     'live_room_sessions',
-    'live_stream_sessions',
-    'live_stream_viewers',
-    'live_stream_host_settings',
-    'live_stream_camera_states',
-    'live_room_moderators',
-    'live_room_muted_users',
-    'live_room_kicked_users',
-    'live_room_banned_users',
-    'live_room_comments',
-    'gifts',
-    'user_coins',
-    'gift_transactions',
-    'live_stream_recordings',
     'reels',
     'reel_likes',
     'reel_views',
@@ -524,15 +511,6 @@ def _migrate_messages_table(engine: Engine) -> None:
     _add_column_if_missing(engine, 'messages', 'deleted_at', 'deleted_at TIMESTAMP NULL')
     _add_column_if_missing(engine, 'messages', 'deleted_for_everyone', 'deleted_for_everyone BOOLEAN NOT NULL DEFAULT FALSE')
     _add_column_if_missing(engine, 'messages', 'created_at', 'created_at TIMESTAMP NULL')
-
-    # تحديث 2026-06-05: أعمدة استكمال ربط الشات (رد / تعديل / تمرير / اختفاء)
-    _add_column_if_missing(engine, 'messages', 'reply_to_id', 'reply_to_id INTEGER NULL')
-    _add_column_if_missing(engine, 'messages', 'forwarded_from_id', 'forwarded_from_id INTEGER NULL')
-    _add_column_if_missing(engine, 'messages', 'edited_at', 'edited_at TIMESTAMP NULL')
-    _add_column_if_missing(engine, 'messages', 'is_edited', 'is_edited BOOLEAN NOT NULL DEFAULT FALSE')
-    _add_column_if_missing(engine, 'messages', 'is_recalled', 'is_recalled BOOLEAN NOT NULL DEFAULT FALSE')
-    _add_column_if_missing(engine, 'messages', 'expires_at', 'expires_at TIMESTAMP NULL')
-    _add_column_if_missing(engine, 'messages', 'reactions_count', 'reactions_count INTEGER NOT NULL DEFAULT 0')
 
     _drop_not_null_if_possible(engine, 'messages', 'sender')
     _drop_not_null_if_possible(engine, 'messages', 'receiver')

@@ -1,0 +1,212 @@
+import { useEffect, useState, useRef } from 'react';
+import callService, {
+  bootstrapCallService,
+  onIncomingCall,
+  acceptIncomingCall,
+  rejectIncomingCall,
+  subscribe as subscribeCall,
+} from '../../services/callService.js';
+import CallExperience from './CallExperience.jsx';
+
+/**
+ * Global overlay that:
+ * 1) Listens for `incoming_call` socket events anywhere in the app.
+ * 2) Renders a ringing UI for the callee with Accept / Reject buttons.
+ * 3) Plays a soft ringtone (Web Audio beep loop) so the user notices the call
+ *    even if the browser tab is in the background.
+ * 4) Once accepted, swaps in <CallExperience /> for the live call view.
+ *
+ * This component must be mounted exactly once (inside AppGuards) so the
+ * subscription survives navigation between routes.
+ */
+export default function IncomingCallOverlay() {
+  const [invite, setInvite] = useState(null);
+  const [accepted, setAccepted] = useState(false);
+  const [activeCall, setActiveCall] = useState(null);
+  const ringtoneRef = useRef(null);
+  const ringtoneCtxRef = useRef(null);
+
+  // Wire up the global socket listeners exactly once.
+  useEffect(() => {
+    bootstrapCallService();
+    const unsubInvite = onIncomingCall((payload) => {
+      setInvite(payload);
+      setAccepted(false);
+      startRingtone();
+    });
+    const unsubCall = subscribeCall((snapshot) => {
+      setActiveCall(snapshot);
+      if (!snapshot) {
+        // Call ended somewhere else (callee accepted then peer hung up, or
+        // we hung up). Clear the overlay.
+        setInvite(null);
+        setAccepted(false);
+        stopRingtone();
+      }
+    });
+    return () => {
+      unsubInvite?.();
+      unsubCall?.();
+      stopRingtone();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const startRingtone = () => {
+    stopRingtone();
+    try {
+      // Reuse a single AudioContext per overlay lifetime.
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = ringtoneCtxRef.current || new Ctx();
+      ringtoneCtxRef.current = ctx;
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+
+      const loop = () => {
+        if (!ringtoneRef.current) return;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = 720;
+        gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.7);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.75);
+      };
+      ringtoneRef.current = setInterval(loop, 1400);
+      loop();
+
+      // Also try a system Notification with sound while the tab is hidden.
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.hidden) {
+        try {
+          new Notification('مكالمة واردة', {
+            body: 'يحاول مستخدم الاتصال بك',
+            tag: 'yamshat-incoming-call',
+            requireInteraction: true,
+          });
+        } catch (_) { /* noop */ }
+      }
+    } catch (_) { /* noop */ }
+  };
+
+  const stopRingtone = () => {
+    if (ringtoneRef.current) {
+      clearInterval(ringtoneRef.current);
+      ringtoneRef.current = null;
+    }
+  };
+
+  const handleAccept = async () => {
+    if (!invite) return;
+    stopRingtone();
+    setAccepted(true);
+    try {
+      await acceptIncomingCall(invite);
+    } catch (err) {
+      // If permission is denied, reject the call so the caller gets feedback.
+      rejectIncomingCall(invite, 'media_unavailable');
+      setInvite(null);
+      setAccepted(false);
+    }
+  };
+
+  const handleReject = () => {
+    if (!invite) return;
+    rejectIncomingCall(invite, 'rejected');
+    stopRingtone();
+    setInvite(null);
+    setAccepted(false);
+  };
+
+  const handleClose = () => {
+    setInvite(null);
+    setAccepted(false);
+  };
+
+  // Show the live call sheet once we accepted (uses callService internally).
+  if (accepted && activeCall) {
+    return (
+      <div style={overlayStyle}>
+        <div style={{ width: 'min(960px, 96vw)', maxHeight: '92vh', overflowY: 'auto' }}>
+          <CallExperience
+            open
+            mode={activeCall.mode}
+            callType="direct"
+            participantName={activeCall.peer}
+            incomingInvite={null /* already accepted via the service */}
+            onClose={handleClose}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (!invite) return null;
+
+  return (
+    <div style={overlayStyle}>
+      <div style={cardStyle}>
+        <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>مكالمة واردة</div>
+        <div style={{ fontSize: 22, fontWeight: 800 }}>{invite.caller || 'مستخدم'}</div>
+        <div style={{ marginTop: 4, opacity: 0.85 }}>
+          {invite.mode === 'video' ? '🎥 مكالمة فيديو' : '📞 مكالمة صوتية'}
+        </div>
+        <div style={{ display: 'flex', gap: 12, marginTop: 24, justifyContent: 'center' }}>
+          <button type="button" onClick={handleReject} style={{ ...btnBase, background: '#ef4444' }}>رفض</button>
+          <button type="button" onClick={handleAccept} style={{ ...btnBase, background: '#22c55e' }}>
+            {invite.mode === 'video' ? 'رد بالفيديو' : 'رد'}
+          </button>
+        </div>
+        <div style={{ marginTop: 16, fontSize: 12, opacity: 0.65 }}>
+          سيتم طلب أذونات الميكروفون{invite.mode === 'video' ? ' والكاميرا' : ''} عند القبول
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const overlayStyle = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(2, 6, 23, 0.78)',
+  zIndex: 9998,
+  display: 'grid',
+  placeItems: 'center',
+  padding: 16,
+  backdropFilter: 'blur(4px)',
+};
+
+const cardStyle = {
+  width: 'min(380px, 94vw)',
+  background: 'linear-gradient(160deg, rgba(15,23,42,0.97), rgba(30,41,59,0.97))',
+  color: 'white',
+  borderRadius: 24,
+  padding: '28px 24px',
+  textAlign: 'center',
+  boxShadow: '0 30px 80px rgba(0,0,0,0.45)',
+  border: '1px solid rgba(255,255,255,0.08)',
+  animation: 'incomingCallPulse 1.8s ease-in-out infinite',
+};
+
+const btnBase = {
+  flex: 1,
+  maxWidth: 140,
+  padding: '12px 18px',
+  fontSize: 15,
+  fontWeight: 700,
+  border: 0,
+  borderRadius: 14,
+  color: 'white',
+  cursor: 'pointer',
+};
+
+// Inject keyframes once.
+if (typeof document !== 'undefined' && !document.getElementById('incoming-call-keyframes')) {
+  const style = document.createElement('style');
+  style.id = 'incoming-call-keyframes';
+  style.textContent = `@keyframes incomingCallPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.02); } }`;
+  document.head.appendChild(style);
+}

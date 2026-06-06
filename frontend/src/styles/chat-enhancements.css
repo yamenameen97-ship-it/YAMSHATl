@@ -1,0 +1,383 @@
+/**
+ * Chat Enhancements CSS
+ * ====================
+ * تحسينات CSS شاملة لتجربة الشات على الموبايل
+ * 
+ * يتضمن:
+ * - تحسينات الـ Read Receipts
+ * - تحسينات الـ Retry
+ * - تحسينات الـ Empty States
+ * - تحسينات الـ Typing Indicator
+ * - تحسينات الـ Touch Feedback
+ */
+
+/* ===== Read Receipts ===== */
+.message-status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-left: 4px;
+  transition: color 200ms ease, opacity 200ms ease;
+}
+
+.message-status-icon.sent {
+  color: rgba(148, 163, 184, 0.6);
+}
+
+.message-status-icon.delivered {
+  color: rgba(148, 163, 184, 0.8);
+}
+
+.message-status-icon.read {
+  color: #60a5fa;
+  font-weight: 700;
+}
+
+.message-status-icon.pending {
+  color: rgba(251, 146, 60, 0.7);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.message-status-icon.failed {
+  color: #ef4444;
+}
+
+.message-status-icon.unknown {
+  color: rgba(148, 163, 184, 0.4);
+}
+
+/* ===== Retry Button ===== */
+.message-retry-container {
+  margin: 8px 0;
+}
+
+.message-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(220, 38, 38, 0.08));
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  font-size: 0.9rem;
+}
+
+.error-icon {
+  flex-shrink: 0;
+  font-size: 1rem;
+}
+
+.error-text {
+  flex: 1;
+  color: #fca5a5;
+  font-size: 0.85rem;
+}
+
+.retry-button {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 200ms ease;
+  min-height: 36px;
+  min-width: 36px;
+}
+
+.retry-button:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.3);
+  border-color: rgba(239, 68, 68, 0.7);
+}
+
+.retry-button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.retry-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.retry-icon {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
+.retry-button.retrying .retry-icon {
+  animation: spin 1s linear infinite;
+}
+
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(252, 165, 165, 0.3);
+  border-top-color: #fca5a5;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* ===== Empty States ===== */
+.empty-state-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.empty-state-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  max-width: 400px;
+}
+
+.empty-state-icon {
+  font-size: 4rem;
+  line-height: 1;
+  animation: float 3s ease-in-out infinite;
+}
+
+.empty-state-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+}
+
+.empty-state-description {
+  font-size: 0.95rem;
+  color: #94a3b8;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.empty-state-action {
+  margin-top: 12px;
+  padding: 10px 24px;
+  border-radius: 12px;
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.2), rgba(99, 102, 241, 0.1));
+  color: #dbe4ff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 200ms ease;
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.empty-state-action:hover {
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.3), rgba(99, 102, 241, 0.2));
+  border-color: rgba(167, 139, 250, 0.5);
+}
+
+.empty-state-action:active {
+  transform: scale(0.97);
+}
+
+.empty-state-container.loading {
+  min-height: 200px;
+}
+
+.empty-state-container.loading .empty-state-icon {
+  animation: spin 1s linear infinite;
+}
+
+/* ===== Typing Indicator ===== */
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(148, 163, 184, 0.1);
+  width: fit-content;
+}
+
+.typing-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(148, 163, 184, 0.6);
+  animation: typing 1.4s infinite;
+}
+
+.typing-dot:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing {
+  0%, 60%, 100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-8px);
+  }
+}
+
+/* ===== Last Seen ===== */
+.last-seen-indicator {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+.last-seen-indicator.online {
+  color: #22c55e;
+  font-weight: 600;
+}
+
+.last-seen-indicator.online::before {
+  content: '●';
+  margin-right: 4px;
+}
+
+/* ===== Connection Status ===== */
+.connection-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.connection-status.online {
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+}
+
+.connection-status.online::before {
+  content: '●';
+}
+
+.connection-status.offline {
+  background: rgba(148, 163, 184, 0.1);
+  color: #94a3b8;
+}
+
+.connection-status.offline::before {
+  content: '○';
+}
+
+.connection-status.connecting {
+  background: rgba(251, 146, 60, 0.1);
+  color: #fb923c;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.connection-status.connecting::before {
+  content: '◐';
+}
+
+/* ===== Animations ===== */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+/* ===== Mobile-specific adjustments ===== */
+@media (max-width: 768px) {
+  .message-error-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .retry-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .empty-state-container {
+    min-height: 200px;
+    padding: 30px 16px;
+  }
+
+  .empty-state-icon {
+    font-size: 3rem;
+  }
+
+  .empty-state-title {
+    font-size: 1.25rem;
+  }
+
+  .empty-state-description {
+    font-size: 0.9rem;
+  }
+}
+
+/* ===== Accessibility ===== */
+@media (prefers-reduced-motion: reduce) {
+  .message-status-icon,
+  .typing-dot,
+  .empty-state-icon,
+  .connection-status {
+    animation: none;
+  }
+
+  .retry-button,
+  .empty-state-action,
+  .error-action-btn {
+    transition: none;
+  }
+}
+
+/* ===== High contrast mode ===== */
+@media (prefers-contrast: more) {
+  .message-status-icon.read {
+    color: #3b82f6;
+    font-weight: 800;
+  }
+
+  .retry-button {
+    border-width: 2px;
+  }
+
+  .empty-state-action {
+    border-width: 2px;
+  }
+}

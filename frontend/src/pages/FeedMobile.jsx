@@ -128,6 +128,9 @@ function FeedMobile() {
 
   // overlay فوري للحالة التفاعلية (optimistic UI) قبل وصول استجابة API
   const [overlay, setOverlay] = useState({}); // { [postId]: { liked, likes, saved, reposted, reposts } }
+  
+  // منشورات البث المباشر
+  const [livePosts, setLivePosts] = useState([]);
 
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
@@ -145,6 +148,40 @@ function FeedMobile() {
   const rawPosts = smart?.posts || smart?.data || smart?.items || [];
   const loading = smart?.isLoading || smart?.loading;
   const error = smart?.error;
+
+  // تحميل منشورات البث من localStorage
+  const loadLivePosts = useCallback(() => {
+    try {
+      const posts = JSON.parse(localStorage.getItem('yamshat_posts') || '[]');
+      const liveOnly = posts.filter(p => p.type === 'live' || p.is_live);
+      setLivePosts(liveOnly);
+    } catch (e) {
+      console.error('Error loading live posts:', e);
+    }
+  }, []);
+  
+  // الاستماع لأحداث البث
+  useEffect(() => {
+    loadLivePosts();
+    
+    const handleLivePostCreated = () => loadLivePosts();
+    const handleStreamStarted = () => loadLivePosts();
+    const handleStreamEnded = () => loadLivePosts();
+    
+    window.addEventListener('yamshat:live-post-created', handleLivePostCreated);
+    window.addEventListener('yamshat:stream-started', handleStreamStarted);
+    window.addEventListener('yamshat:stream-ended', handleStreamEnded);
+    
+    // تحديث منشورات البث كل 3 ثوان
+    const interval = setInterval(loadLivePosts, 3000);
+    
+    return () => {
+      window.removeEventListener('yamshat:live-post-created', handleLivePostCreated);
+      window.removeEventListener('yamshat:stream-started', handleStreamStarted);
+      window.removeEventListener('yamshat:stream-ended', handleStreamEnded);
+      clearInterval(interval);
+    };
+  }, [loadLivePosts]);
 
   // فتح المُنشئ عبر حدث (من BottomNav أو composer slot)
   useEffect(() => {
@@ -167,16 +204,19 @@ function FeedMobile() {
   }, []);
 
   const posts = useMemo(() => {
+    // دمج منشورات البث مع المنشورات العادية
+    const normalizedLivePosts = livePosts.map((p, i) => normalizePost(p, i));
+    
     const list = (Array.isArray(rawPosts) && rawPosts.length)
-      ? rawPosts.map((p, i) => normalizePost(p, i))
-      : (activeFilter === 'posts' ? [WELCOME_POST] : []);
+      ? [...normalizedLivePosts, ...rawPosts.map((p, i) => normalizePost(p, i))]
+      : (activeFilter === 'posts' ? (normalizedLivePosts.length ? normalizedLivePosts : [WELCOME_POST]) : normalizedLivePosts);
 
     // دمج overlay (optimistic)
     return list.map((p) => {
       const o = overlay[p.id];
       return o ? { ...p, ...o } : p;
     });
-  }, [rawPosts, overlay, activeFilter]);
+  }, [rawPosts, overlay, activeFilter, livePosts]);
 
   // فلترة محلية بسيطة (الفلترة الحقيقية تتم في backend عبر filterType)
   const filtered = posts; // الفلترة تتم الآن عبر الـ backend بناءً على feedType

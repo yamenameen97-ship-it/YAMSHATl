@@ -121,6 +121,7 @@ export default function LiveStudio() {
   const localStreamRef = useRef(null);
   const statsIntervalRef = useRef(null);
   const durationIntervalRef = useRef(null);
+  const livePostUpdateIntervalRef = useRef(null);
 
   // إنشاء بث جديد
   const handleCreateStream = useCallback(async () => {
@@ -175,6 +176,22 @@ export default function LiveStudio() {
     }
   }, [newStreamData, pushToast]);
 
+  // دالة للتقاط لقطة من الفيديو
+  const captureThumbnail = () => {
+    const video = localVideoRef.current;
+    if (!video) return null;
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 800;
+    canvas.height = video.videoHeight || 450;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    
+    ctx.drawImage(video, 0, 0);
+    return canvas.toDataURL('image/jpeg', 0.8);
+  };
+
   // بدء البث
   const handleStartStream = useCallback(async (streamId) => {
     if (!streamId) return;
@@ -187,10 +204,56 @@ export default function LiveStudio() {
       if (tokenResponse?.data?.token) {
         setCameraReady(true);
         setStreamHealth('good');
+        
+        // إنشاء منشور البث تلقائياً في الخلاصة
+        setTimeout(() => {
+          const thumbnail = captureThumbnail() || 'https://placehold.co/800x450?text=Live+Stream';
+          
+          const livePost = {
+            id: `live-${streamId}`,
+            type: 'live',
+            streamId: streamId,
+            title: newStreamData.title || 'بث مباشر',
+            description: newStreamData.description || '',
+            username: currentUsername,
+            viewers: 0,
+            isLive: true,
+            is_live: true,
+            thumbnail: thumbnail,
+            createdAt: new Date().toISOString(),
+            // حقول إضافية للتوافق
+            author_name: currentUsername,
+            user_avatar: '',
+            likes_count: 0,
+            comments_count: 0,
+            share_count: 0,
+          };
+          
+          // حفظ في localStorage
+          try {
+            const existing = JSON.parse(localStorage.getItem('yamshat_posts') || '[]');
+            localStorage.setItem('yamshat_posts', JSON.stringify([livePost, ...existing]));
+            
+            // إرسال حدث لتحديث الخلاصة
+            window.dispatchEvent(new CustomEvent('yamshat:live-post-created', { detail: livePost }));
+          } catch (e) {
+            console.error('Error saving live post:', e);
+          }
+        }, 500);
 
         if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
         statsIntervalRef.current = setInterval(() => {
           updateStreamStats(streamId);
+          // تحديث عدد المشاهدين في منشور البث
+          try {
+            const existing = JSON.parse(localStorage.getItem('yamshat_posts') || '[]');
+            const updated = existing.map(p => 
+              p.streamId === streamId ? { ...p, viewers: streamStats.viewers } : p
+            );
+            localStorage.setItem('yamshat_posts', JSON.stringify(updated));
+          } catch (e) {
+            console.error('Error updating live post viewers:', e);
+          }
         }, 5000);
 
         if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
@@ -205,6 +268,9 @@ export default function LiveStudio() {
           title: 'بدأ البث بنجاح',
           description: 'أنت الآن مباشر!',
         });
+        
+        // إرسال حدث لتحديث الخلاصة
+        window.dispatchEvent(new CustomEvent('yamshat:stream-started', { detail: { streamId } }));
       }
     } catch (error) {
       setCameraError('فشل في بدء البث. تحقق من الاتصال.');
@@ -232,6 +298,18 @@ export default function LiveStudio() {
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(track => track.stop());
         localStreamRef.current = null;
+      }
+      
+      // إزالة منشور البث من الخلاصة
+      try {
+        const existing = JSON.parse(localStorage.getItem('yamshat_posts') || '[]');
+        const filtered = existing.filter(p => p.streamId !== activeStream.stream_id);
+        localStorage.setItem('yamshat_posts', JSON.stringify(filtered));
+        
+        // إرسال حدث لتحديث الخلاصة
+        window.dispatchEvent(new CustomEvent('yamshat:stream-ended', { detail: { streamId: activeStream.stream_id } }));
+      } catch (e) {
+        console.error('Error removing live post:', e);
       }
 
       setActiveStream(null);

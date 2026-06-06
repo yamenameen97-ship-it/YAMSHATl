@@ -81,6 +81,13 @@ function MobilePostCard({
       navigate(`/live/view/${live_stream_id}`);
     }
   };
+  
+  const handleLiveCardClick = (e) => {
+    e?.stopPropagation();
+    if (live_stream_id) {
+      navigate(`/live/view/${live_stream_id}`);
+    }
+  };
 
   return (
     <article className="ym-post" aria-label={`منشور من ${authorName}`}>
@@ -117,7 +124,7 @@ function MobilePostCard({
       ) : null}
 
       {is_live ? (
-        <div className="ym-post-live-banner" onClick={handleJoinLive} style={{
+        <div className="ym-post-live-banner" onClick={handleLiveCardClick} style={{
           position: 'relative',
           borderRadius: '16px',
           overflow: 'hidden',
@@ -187,7 +194,7 @@ function MobilePostCard({
             zIndex: 2
           }}>
             <span style={{color:'white', fontWeight:'bold', fontSize: '14px'}}>انضم للبث المباشر الآن</span>
-            <button style={{
+            <button onClick={handleLiveCardClick} style={{
               background: 'linear-gradient(135deg, #7c3aed, #3b82f6)',
               color: 'white',
               border: 'none',
@@ -244,7 +251,8 @@ function MobilePostCard({
         </div>
       ) : null}
 
-      <div className="ym-post-actions" role="group" aria-label="إجراءات المنشور">
+      {!is_live ? (
+        <div className="ym-post-actions" role="group" aria-label="إجراءات المنشور">
         <button type="button" className={`ym-action like ${liked ? 'is-active' : ''}`} onClick={handleClick(onLike)} aria-label="إعجاب" aria-pressed={liked}>
           <svg viewBox="0 0 24 24"><path d="M12 21s-7-4.5-9.5-9A5.5 5.5 0 0 1 12 6a5.5 5.5 0 0 1 9.5 6c-2.5 4.5-9.5 9-9.5 9Z" strokeLinejoin="round"/></svg>
           <span className="label">أعجبني {likes > 0 ? `(${formatCount(likes)})` : ''}</span>
@@ -263,7 +271,8 @@ function MobilePostCard({
           </svg>
           <span className="label">حفظ</span>
         </button>
-      </div>
+        </div>
+      ) : null}
     </article>
   );
 }

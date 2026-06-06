@@ -12,8 +12,9 @@ from sqlalchemy import text
 import app.models  # noqa: F401
 from app.api.routes import (
     admin, analytics, auth, chat, comments, follow, groups, inbox,
-    live, notifications, posts, reels, search, stories, upload, users, ws,
+    live, notifications, posts, reels, search, stories, upload, users, ws, live_stream_complete
 )
+from app.api import live_feed_routes
 from app.core.api_guard import api_rate_guard
 from app.core.config import settings
 from app.core.error_handlers import register_error_handlers
@@ -27,26 +28,38 @@ from app.db.session import engine
 logger = logging.getLogger(__name__)
 
 
-def _sync_legacy_uploads() -> None:
-    project_uploads = Path(__file__).resolve().parents[2] / 'uploads'
-    legacy_uploads = Path(__file__).resolve().parents[1] / 'uploads'
-    project_uploads.mkdir(parents=True, exist_ok=True)
-    if not legacy_uploads.exists() or legacy_uploads.resolve() == project_uploads.resolve():
-        return
-
-    migrated = 0
-    for file_path in legacy_uploads.rglob('*'):
+def _copy_missing_files(source_root: Path, target_root: Path) -> int:
+    copied = 0
+    if not source_root.exists() or source_root.resolve() == target_root.resolve():
+        return copied
+    target_root.mkdir(parents=True, exist_ok=True)
+    for file_path in source_root.rglob('*'):
         if not file_path.is_file():
             continue
-        target = project_uploads / file_path.relative_to(legacy_uploads)
+        target = target_root / file_path.relative_to(source_root)
         target.parent.mkdir(parents=True, exist_ok=True)
         if target.exists():
             continue
         shutil.copy2(file_path, target)
-        migrated += 1
+        copied += 1
+    return copied
 
-    if migrated:
-        logger.info('Recovered %s legacy upload file(s) into /uploads mount.', migrated)
+
+
+def _sync_legacy_uploads() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    project_uploads = project_root / 'uploads'
+    legacy_uploads = Path(__file__).resolve().parents[1] / 'uploads'
+    project_uploads.mkdir(parents=True, exist_ok=True)
+    legacy_uploads.mkdir(parents=True, exist_ok=True)
+
+    recovered = _copy_missing_files(legacy_uploads, project_uploads)
+    mirrored = _copy_missing_files(project_uploads, legacy_uploads)
+
+    if recovered:
+        logger.info('Recovered %s legacy upload file(s) into /uploads mount.', recovered)
+    if mirrored:
+        logger.info('Mirrored %s upload file(s) back into backend/uploads for compatibility.', mirrored)
 
 
 @asynccontextmanager
@@ -126,9 +139,16 @@ if settings.ENABLE_METRICS:
 fastapi_app.include_router(make_metrics_router())
 configure_tracing(fastapi_app, settings.SERVICE_NAME)
 
-uploads_dir = Path(__file__).resolve().parents[2] / 'uploads'
+project_root = Path(__file__).resolve().parents[2]
+uploads_dir = project_root / 'uploads'
 uploads_dir.mkdir(exist_ok=True)
 fastapi_app.mount('/uploads', StaticFiles(directory=str(uploads_dir)), name='uploads')
+
+brand_dir = project_root / 'frontend' / 'public' / 'brand'
+if not brand_dir.exists():
+    brand_dir = project_root / 'frontend' / 'dist' / 'brand'
+if brand_dir.exists():
+    fastapi_app.mount('/brand', StaticFiles(directory=str(brand_dir)), name='brand')
 
 fastapi_app.include_router(auth.router, prefix=f'{settings.API_PREFIX}/auth', tags=['auth'])
 fastapi_app.include_router(users.router, prefix=f'{settings.API_PREFIX}/users', tags=['users'])
@@ -143,6 +163,8 @@ fastapi_app.include_router(upload.router, prefix=f'{settings.API_PREFIX}/upload'
 fastapi_app.include_router(analytics.router, prefix=f'{settings.API_PREFIX}/analytics', tags=['analytics'])
 fastapi_app.include_router(admin.router, prefix=f'{settings.API_PREFIX}/admin', tags=['admin'])
 fastapi_app.include_router(live.router, prefix=settings.API_PREFIX, tags=['live'])
+fastapi_app.include_router(live_stream_complete.router, tags=['live_stream'])
+fastapi_app.include_router(live_feed_routes.router, tags=['feed'])
 fastapi_app.include_router(chat.router, prefix=settings.API_PREFIX, tags=['chat'])
 fastapi_app.include_router(stories.router, prefix=settings.API_PREFIX, tags=['stories'])
 fastapi_app.include_router(groups.router, prefix=settings.API_PREFIX, tags=['groups'])
@@ -159,6 +181,7 @@ def root() -> dict:
         'service': settings.SERVICE_NAME,
         'socketio': '/socket.io',
         'uploads': '/uploads',
+        'brand': '/brand',
         'analytics': f'{settings.API_PREFIX}/analytics/events',
     }
 

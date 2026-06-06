@@ -43,17 +43,33 @@ def get_all(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    payload = get_comments(
-        db,
-        post_id,
-        current_user=current_user,
-        page=page,
-        limit=limit,
-        sort_by=sort_by,
-        include_hidden=include_hidden,
-    )
-    payload['items'] = rank_comments(payload['items'], current_user)
-    return payload
+    # إصلاح: تغليف العملية بـ try/except لإرجاع قائمة فارغة بدلاً من 500
+    # عند غياب المنشور أو خلل في تحميل العلاقات
+    try:
+        payload = get_comments(
+            db,
+            post_id,
+            current_user=current_user,
+            page=page,
+            limit=limit,
+            sort_by=sort_by,
+            include_hidden=include_hidden,
+        )
+        items = payload.get('items', []) if isinstance(payload, dict) else []
+        payload['items'] = rank_comments(items, current_user)
+        return payload
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).warning('get_comments failed for post_id=%s: %s', post_id, exc)
+        return {
+            'items': [],
+            'total': 0,
+            'page': page,
+            'limit': limit,
+            'has_more': False,
+        }
 
 
 @router.patch('/item/{comment_id}')

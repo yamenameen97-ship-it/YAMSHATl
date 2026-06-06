@@ -3,12 +3,69 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.message import Message
+from app.models.message_attachment import MessageAttachment
+from app.models.message_reaction import MessageReaction
 from app.models.user import User
 from app.core.media_urls import normalize_media_url
 from app.services.encryption_service import decrypt_message
+
+
+def _serialize_attachment(att: MessageAttachment) -> dict:
+    return {
+        'id': att.id,
+        'url': normalize_media_url(att.url),
+        'cdn_url': att.cdn_url,
+        'thumbnail_url': normalize_media_url(att.thumbnail_url) if att.thumbnail_url else None,
+        'kind': att.kind,
+        'mime_type': att.mime_type,
+        'file_name': att.file_name,
+        'file_size': att.file_size,
+        'width': att.width,
+        'height': att.height,
+        'duration_seconds': att.duration_seconds,
+        'waveform': att.waveform,
+        'position': att.position,
+    }
+
+
+def _serialize_reactions(db: Session, message_id: int) -> dict:
+    rows = db.query(
+        MessageReaction.reaction,
+        func.count(MessageReaction.id),
+    ).filter(
+        MessageReaction.message_id == message_id,
+    ).group_by(MessageReaction.reaction).all()
+    summary = [{'reaction': r, 'count': int(c)} for r, c in rows]
+    return {
+        'summary': summary,
+        'total': sum(item['count'] for item in summary),
+    }
+
+
+def _serialize_reply_preview(reply_msg: Message | None) -> dict | None:
+    if reply_msg is None:
+        return None
+    preview = reply_msg.message or ''
+    if reply_msg.content and not preview:
+        try:
+            preview = decrypt_message(reply_msg.content) or ''
+        except Exception:
+            preview = ''
+    if reply_msg.deleted_at:
+        preview = 'تم حذف الرسالة'
+    if len(preview) > 140:
+        preview = preview[:137] + '...'
+    return {
+        'id': reply_msg.id,
+        'sender': reply_msg.sender,
+        'content': preview,
+        'message_type': reply_msg.message_type,
+        'media_url': normalize_media_url(reply_msg.media_url) if reply_msg.media_url else None,
+    }
 
 
 def serialize_message(message: Message, db: Session) -> dict:
@@ -16,11 +73,28 @@ def serialize_message(message: Message, db: Session) -> dict:
     receiver = db.query(User).filter(User.id == message.receiver_id).first()
     deleted = bool(message.deleted_at)
     deleted_for_everyone = bool(getattr(message, 'deleted_for_everyone', False))
-    if deleted:
+    is_recalled = bool(getattr(message, 'is_recalled', False))
+    if deleted or is_recalled:
         safe_content = ''
     else:
         raw_content = message.content or ''
         safe_content = decrypt_message(raw_content) if raw_content else str(getattr(message, 'message', '') or '')
+
+    # المرفقات المتعددة
+    attachments = []
+    try:
+        atts = getattr(message, 'attachments', None) or []
+        attachments = [_serialize_attachment(a) for a in atts]
+    except Exception:
+        attachments = []
+
+    # رد على رسالة
+    reply_preview = None
+    reply_to_id = getattr(message, 'reply_to_id', None)
+    if reply_to_id:
+        reply_msg = db.query(Message).filter(Message.id == reply_to_id).first()
+        reply_preview = _serialize_reply_preview(reply_msg)
+
     return {
         'id': message.id,
         'client_id': message.client_id,
@@ -29,13 +103,24 @@ def serialize_message(message: Message, db: Session) -> dict:
         'message': 'تم حذف الرسالة' if deleted else safe_content,
         'content': 'تم حذف الرسالة' if deleted else safe_content,
         'media_url': None if deleted else normalize_media_url(message.media_url),
+        'attachments': attachments,
         'type': message.message_type or ('image' if message.media_url else 'text'),
         'created_at': message.created_at.isoformat() if message.created_at else None,
         'delivered_at': message.delivered_at.isoformat() if message.delivered_at else None,
         'seen_at': message.seen_at.isoformat() if message.seen_at else None,
+        'edited_at': message.edited_at.isoformat() if getattr(message, 'edited_at', None) else None,
+        'is_edited': bool(getattr(message, 'is_edited', False)),
+        'is_recalled': is_recalled,
+        'expires_at': message.expires_at.isoformat() if getattr(message, 'expires_at', None) else None,
         'status': 'seen' if message.is_seen else 'delivered' if message.is_delivered else 'sent',
         'deleted': deleted,
         'deleted_for_everyone': deleted_for_everyone,
+        'reply_to_id': reply_to_id,
+        'reply_to': reply_preview,
+        'forwarded_from_id': getattr(message, 'forwarded_from_id', None),
+        'is_forwarded': bool(getattr(message, 'forwarded_from_id', None)),
+        'reactions_count': int(getattr(message, 'reactions_count', 0) or 0),
+        'reactions': _serialize_reactions(db, message.id),
         'cursor': message.id,
     }
 

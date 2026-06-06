@@ -16,7 +16,7 @@ const rewriteKnownBrokenBrandAsset = (value = '') => {
   try {
     const pathname = isAbsoluteUrl(cleaned) ? new URL(cleaned).pathname : cleaned;
     if (/^(?:\/)?uploads\/.+yamshat-logo\.(?:png|jpe?g|webp)$/i.test(pathname.replace(/^\/+/, ''))) {
-      return '/brand/yamshat-logo.png';
+      return '/brand/yamshat-logo.jpg';
     }
   } catch {
     // ignore URL parsing errors and fall back to original value

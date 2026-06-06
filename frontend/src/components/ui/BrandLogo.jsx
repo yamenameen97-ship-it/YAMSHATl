@@ -16,7 +16,7 @@ export default function BrandLogo({
 
   return (
     <img
-      src="/brand/yamshat-logo.png"
+      src="/brand/yamshat-logo.jpg"
       alt={alt}
       className={['brand-logo-img', className].filter(Boolean).join(' ')}
       style={mergedStyle}

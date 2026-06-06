@@ -3,7 +3,7 @@
 .yam-logo-mark,
 .logo-icon,
 .ui-topbar-brand-mark {
-  background-image: url('/brand/yamshat-logo.png');
+  background-image: url('/brand/yamshat-logo.jpg');
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
@@ -163,7 +163,7 @@ body .yam-notification-prompt-mark {
   height: 48px;
   border-radius: 18px;
   flex-shrink: 0;
-  background: url('/brand/yamshat-logo.png') center/cover no-repeat;
+  background: url('/brand/yamshat-logo.jpg') center/cover no-repeat;
   box-shadow: 0 14px 26px rgba(91, 33, 182, 0.32);
 }
 

@@ -161,7 +161,7 @@ export default function LiveStudio() {
       });
 
       if (response?.data) {
-        const streamId = response.data.stream_id;
+        const streamId = response.data.id;
         setActiveStream(response.data);
         setIsStreaming(true);
 
@@ -258,13 +258,13 @@ export default function LiveStudio() {
 
   // إنهاء البث
   const handleEndStream = useCallback(async () => {
-    if (!activeStream?.stream_id) return;
+    if (!activeStream?.id) return;
 
     if (!window.confirm('هل أنت متأكد من إنهاء البث؟')) return;
 
     setLoading(true);
     try {
-      await endLiveStream(activeStream.stream_id);
+      await endLiveStream(activeStream.id);
 
       // تحديث المنشور ليتحول إلى فيديو
       if (activePostId) {
@@ -356,7 +356,7 @@ export default function LiveStudio() {
 
   // إرسال تعليق
   const handleSendComment = useCallback(async () => {
-    if (!commentText.trim() || !activeStream?.stream_id) return;
+    if (!commentText.trim() || !activeStream?.id) return;
 
     try {
       const newComment = {
@@ -369,7 +369,7 @@ export default function LiveStudio() {
       setComments(prev => [...prev, newComment]);
       setCommentText('');
 
-      await sendLiveComment(activeStream.stream_id, {
+      await sendLiveComment(activeStream.id, {
         text: commentText,
       });
     } catch (error) {
@@ -383,10 +383,10 @@ export default function LiveStudio() {
 
   // إرسال هدية
   const handleSendGift = useCallback(async (gift) => {
-    if (!activeStream?.stream_id || !gift) return;
+    if (!activeStream?.id || !gift) return;
 
     try {
-      await sendLiveGift(activeStream.stream_id, {
+      await sendLiveGift(activeStream.id, {
         gift_id: gift.id,
         name: gift.name,
         price: gift.price,
@@ -415,11 +415,11 @@ export default function LiveStudio() {
 
   // تبديل التسجيل
   const handleToggleRecording = useCallback(async () => {
-    if (!activeStream?.stream_id) return;
+    if (!activeStream?.id) return;
 
     try {
       const action = recordingEnabled ? 'stop' : 'start';
-      await recordLiveStream(activeStream.stream_id, { action });
+      await recordLiveStream(activeStream.id, { action });
 
       setRecordingEnabled(!recordingEnabled);
       pushToast?.({
@@ -437,11 +437,11 @@ export default function LiveStudio() {
 
   // تبديل الكاميرا
   const handleToggleCamera = useCallback(async () => {
-    if (!activeStream?.stream_id) return;
+    if (!activeStream?.id) return;
 
     try {
       const newState = !cameraState.cameraEnabled;
-      await toggleCamera(activeStream.stream_id, newState);
+      await toggleCamera(activeStream.id, newState);
       
       setCameraState(prev => ({
         ...prev,
@@ -463,11 +463,11 @@ export default function LiveStudio() {
 
   // تبديل الميكروفون
   const handleToggleMicrophone = useCallback(async () => {
-    if (!activeStream?.stream_id) return;
+    if (!activeStream?.id) return;
 
     try {
       const newState = !cameraState.microphoneEnabled;
-      await toggleMicrophone(activeStream.stream_id, newState);
+      await toggleMicrophone(activeStream.id, newState);
       
       setCameraState(prev => ({
         ...prev,
@@ -489,7 +489,7 @@ export default function LiveStudio() {
 
   // تحميل الكاميرا
   useEffect(() => {
-    if (!isStreaming || !activeStream?.stream_id) return;
+    if (!isStreaming || !activeStream?.id) return;
 
     const setupCamera = async () => {
       try {
@@ -532,16 +532,16 @@ export default function LiveStudio() {
       if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
       if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
     };
-  }, [isStreaming, activeStream?.stream_id]);
+  }, [isStreaming, activeStream?.id]);
 
   // تحميل التعليقات عند تغيير البث النشط
   useEffect(() => {
-    if (activeStream?.stream_id) {
-      loadComments(activeStream.stream_id);
-      const interval = setInterval(() => loadComments(activeStream.stream_id), 3000);
+    if (activeStream?.id) {
+      loadComments(activeStream.id);
+      const interval = setInterval(() => loadComments(activeStream.id), 3000);
       return () => clearInterval(interval);
     }
-  }, [activeStream?.stream_id, loadComments]);
+  }, [activeStream?.id, loadComments]);
 
   const formatDuration = (seconds) => {
     const hours = Math.floor(seconds / 3600);
@@ -772,9 +772,9 @@ export default function LiveStudio() {
         {/* Sidebar */}
         <aside className="mlc-sidebar">
           {/* Viewers Management */}
-          {isStreaming && activeStream?.stream_id && (
+          {isStreaming && activeStream?.id && (
             <ViewersManagementPanel
-              streamId={activeStream.stream_id}
+              streamId={activeStream.id}
               hostId={activeStream.host_id}
               onViewerCountChange={(count) => {
                 setStreamStats(prev => ({ ...prev, viewers: count }));

@@ -28,7 +28,7 @@ const APP_SHELL = [
   '/icons/icon-maskable-512.png',
   '/icons/badge-96.png',
   '/icons/apple-touch-icon.png',
-  '/brand/yamshat-logo.png',
+  '/brand/yamshat-logo.jpg',
 ];
 
 function isRuntimeConfigPath(url) {

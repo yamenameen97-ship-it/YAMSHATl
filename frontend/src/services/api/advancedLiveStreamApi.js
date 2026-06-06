@@ -9,7 +9,7 @@ import socketManager from '../socketManager.js';
 // ==================== Stream Management ====================
 
 export const createLiveStream = (streamData = {}) =>
-  apiClient.post('/live/create', {
+  apiClient.post('/create_live', {
     title: streamData.title || '',
     description: streamData.description || '',
     category: streamData.category || 'أخرى',
@@ -21,16 +21,16 @@ export const createLiveStream = (streamData = {}) =>
   });
 
 export const startLiveStream = (streamId, payload = {}) =>
-  apiClient.post(`/live/${streamId}/start`, {
+  apiClient.post(`/live/${streamId}/token`, {
     quality: payload.quality || '720p',
     enable_recording: payload.enableRecording || false,
   });
 
 export const endLiveStream = (streamId) =>
-  apiClient.post(`/live/${streamId}/end`);
+  apiClient.post(`/end_live/${streamId}`);
 
 export const getLiveStreamDetails = (streamId) =>
-  apiClient.get(`/live/${streamId}`, { cache: false, forceRefresh: true });
+  apiClient.get(`/live_room/${streamId}`, { cache: false, forceRefresh: true });
 
 // ==================== Viewer Management ====================
 
@@ -38,7 +38,7 @@ export const addViewer = (streamId, viewerData = {}) =>
   apiClient.post(`/live/${streamId}/add-viewer`, {
     user_id: viewerData.userId,
     username: viewerData.username,
-    user_avatar: viewerData.userAvatar,
+    platform: viewerData.platform || 'web',
   });
 
 export const removeViewer = (streamId, userId) =>
@@ -47,27 +47,25 @@ export const removeViewer = (streamId, userId) =>
 export const getStreamViewers = (streamId) =>
   apiClient.get(`/live/${streamId}/viewers`, { cache: false, forceRefresh: true });
 
-// ==================== Moderation - Mute ====================
+// ==================== Moderation ====================
 
-export const muteUser = (streamId, userId, moderatorId, reason = '', durationMinutes = 5) =>
+export const muteUser = (streamId, userId, moderatorId, reason, duration) =>
   apiClient.post(`/live/${streamId}/mute`, {
     user_id: userId,
     moderator_id: moderatorId,
-    reason: reason,
-    duration_minutes: durationMinutes,
+    reason,
+    duration_minutes: duration || 5,
   });
 
 export const unmuteUser = (streamId, userId) =>
   apiClient.post(`/live/${streamId}/unmute`, { user_id: userId });
 
-// ==================== Moderation - Ban ====================
-
-export const banUser = (streamId, userId, moderatorId, reason = '', duration = 'temporary') =>
+export const banUser = (streamId, userId, moderatorId, reason, type) =>
   apiClient.post(`/live/${streamId}/ban`, {
     user_id: userId,
     moderator_id: moderatorId,
-    reason: reason,
-    duration: duration, // temporary, long_term, permanent
+    reason,
+    ban_type: type || 'temporary',
   });
 
 export const unbanUser = (streamId, userId) =>
@@ -76,16 +74,15 @@ export const unbanUser = (streamId, userId) =>
 // ==================== Camera Management ====================
 
 export const updateCameraState = (streamId, cameraData = {}) =>
-  apiClient.put(`/live/${streamId}/camera`, {
+  apiClient.post(`/live/${streamId}/settings`, {
     camera_enabled: cameraData.cameraEnabled,
     microphone_enabled: cameraData.microphoneEnabled,
-    screen_share_enabled: cameraData.screenShareEnabled,
     video_bitrate: cameraData.videoBitrate,
     audio_bitrate: cameraData.audioBitrate,
   });
 
 export const closeCameraStream = (streamId) =>
-  apiClient.post(`/live/${streamId}/close-camera`);
+  apiClient.post(`/live/${streamId}/settings`, { camera_enabled: false });
 
 export const toggleCamera = async (streamId, enabled) => {
   return updateCameraState(streamId, {
@@ -102,10 +99,10 @@ export const toggleMicrophone = async (streamId, enabled) => {
 // ==================== Statistics ====================
 
 export const getStreamStats = (streamId) =>
-  apiClient.get(`/live/${streamId}/stats`, { cache: false, forceRefresh: true });
+  apiClient.get(`/live/${streamId}/analytics`, { cache: false, forceRefresh: true });
 
 export const getLiveStreamAnalytics = (streamId) =>
-  apiClient.get(`/live/${streamId}/stats`, { cache: false, forceRefresh: true });
+  apiClient.get(`/live/${streamId}/analytics`, { cache: false, forceRefresh: true });
 
 // ==================== Comments & Gifts ====================
 
@@ -162,7 +159,7 @@ export const getActiveLiveStreams = (filters = {}) =>
   apiClient.get('/live_rooms', { params: filters, cache: false, forceRefresh: true });
 
 export const getActiveStreams = (limit = 50) =>
-  apiClient.get('/live', { params: { limit }, cache: false, forceRefresh: true });
+  apiClient.get('/live_rooms', { params: { limit }, cache: false, forceRefresh: true });
 
 // ==================== Helper Functions ====================
 
@@ -171,26 +168,19 @@ export const getActiveStreams = (limit = 50) =>
  */
 export const applyModerationAction = async (streamId, actionData = {}) => {
   const { action, userId, moderatorId, reason, duration } = actionData;
-
   switch (action) {
     case 'mute':
       return muteUser(streamId, userId, moderatorId, reason, duration || 5);
-    
     case 'unmute':
       return unmuteUser(streamId, userId);
-    
     case 'ban':
       return banUser(streamId, userId, moderatorId, reason, duration || 'temporary');
-    
     case 'unban':
       return unbanUser(streamId, userId);
-    
     case 'close_camera':
       return closeCameraStream(streamId);
-    
     case 'kick':
       return removeViewer(streamId, userId);
-    
     default:
       throw new Error(`Unknown moderation action: ${action}`);
   }
@@ -203,7 +193,6 @@ export const getUserStreamStatus = async (streamId, userId) => {
   try {
     const viewers = await getStreamViewers(streamId);
     const viewer = viewers?.data?.find(v => v.user_id === userId);
-    
     return {
       is_banned: viewer?.is_banned || false,
       is_muted: viewer?.is_muted || false,

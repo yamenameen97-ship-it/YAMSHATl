@@ -9,6 +9,7 @@ import Modal from '../components/ui/Modal.jsx';
 import useSmartFeed from '../hooks/useSmartFeed.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
 import { likePost, savePost, sharePost, deletePost } from '../api/posts.js';
+import { getActiveLiveStreams } from '../services/api/liveStreamApi.js';
 import { followUser, muteUser, unmuteUser } from '../api/users.js';
 import { blockUserApi, unblockUserApi } from '../api/chat.js';
 import { useToast } from '../components/admin/ToastProvider.jsx';
@@ -74,14 +75,15 @@ function normalizePost(p, i) {
   const handle = (p.username || p.user || `user${i}`).toString();
   const verified = Boolean(p.verified || p.is_verified || p.official);
   
-  // التحقق مما إذا كان المنشور بث مباشر (تحسين التحقق ليشمل جميع الحالات الممكنة)
+  // التحقق مما إذا كان المنشور بث مباشر
+  const liveType = String(p.type || '').toLowerCase();
   const isLive = Boolean(
-    p.is_live || 
-    p.is_live_stream || 
-    p.has_live_stream || 
-    p.type === 'live' || 
-    p.type === 'LIVE' || 
-    p.post_type === 'LIVE'
+    p.is_live
+    || p.is_live_stream
+    || liveType === 'live'
+    || liveType === 'live_stream'
+    || liveType === 'live-stream'
+    || String(p.post_type || '').toUpperCase() === 'LIVE'
   );
   
   return {
@@ -89,7 +91,7 @@ function normalizePost(p, i) {
     rawId: p.id,
     authorName: author,
     handle: `@${handle.replace(/^@/, '')}`,
-    timeText: isLive ? 'مباشر الآن' : timeAgoAr(p.created_at || p.published_at || p.createdAt),
+    timeText: timeAgoAr(p.created_at || p.published_at || p.createdAt),
     verified,
     avatarUrl: resolveMediaUrl(p.user_avatar || p.avatar || p.author_avatar || ''),
     text: p.content || p.text || p.description || p.title || '',
@@ -103,10 +105,13 @@ function normalizePost(p, i) {
     // حقول البث
     type: p.type || (isLive ? 'live' : 'POST'),
     is_live: isLive,
-    live_stream_id: p.live_stream_id || p.streamId || p.live_id,
+    live_stream_id: p.live_stream_id || p.streamId,
     viewers: Number(p.viewers_count || p.viewers || p.viewer_count || 0),
     thumbnail: resolveMediaUrl(p.thumbnail || p.thumbnail_url || p.preview_url || p.media_url || ""),
     duration: p.duration,
+    created_at: p.created_at || p.createdAt || p.published_at || null,
+    createdAt: p.createdAt || p.created_at || p.published_at || null,
+    livePriorityIndex: Number.isFinite(Number(p.livePriorityIndex)) ? Number(p.livePriorityIndex) : null,
   };
 }
 
@@ -147,27 +152,77 @@ function FeedMobile() {
   const { pushToast } = useToast();
   const session = useAppStore((s) => s.session);
 
-  // تحديد نوع المحتوى بناءً على التبويب النشط
-  const feedType = useMemo(() => {
-    if (activeFilter === 'posts') return 'POST';
-    if (activeFilter === 'stories') return 'STORY';
-    if (activeFilter === 'live') return 'LIVE';
-    return 'all';
-  }, [activeFilter]);
+  // نعتمد دائماً على الخلاصة الكاملة من الـ backend ثم نفلتر محلياً حتى لا تختفي المنشورات المخزنة
+  const feedType = 'all';
 
-  const smart = useSmartFeed?.({ filterType: feedType });
+  const smart = useSmartFeed?.({ filterType: feedType, sortBy: 'recent', limit: 20, pollingInterval: 20_000 });
   const rawPosts = smart?.posts || smart?.data || smart?.items || [];
   const loading = smart?.isLoading || smart?.loading;
   const error = smart?.error;
 
-  // تحميل منشورات البث من localStorage
-  const loadLivePosts = useCallback(() => {
+  // تحميل منشورات البث من الـ backend + localStorage مع دمج وإزالة التكرار
+  const loadLivePosts = useCallback(async () => {
     try {
-      const posts = JSON.parse(localStorage.getItem('yamshat_posts') || '[]');
-      const liveOnly = posts.filter(p => p.type === 'live' || p.is_live);
-      setLivePosts(liveOnly);
+      let localLivePosts = [];
+      try {
+        const storedPosts = JSON.parse(localStorage.getItem('yamshat_posts') || '[]');
+        localLivePosts = Array.isArray(storedPosts)
+          ? storedPosts.filter((p) => p?.type === 'live' || p?.is_live || p?.isLive)
+          : [];
+      } catch (storageError) {
+        console.error('Error reading local live posts:', storageError);
+      }
+
+      let remoteLivePosts = [];
+      try {
+        const response = await getActiveLiveStreams({ limit: 30 });
+        remoteLivePosts = Array.isArray(response?.data)
+          ? response.data.map((stream, index) => ({
+              id: `live-${stream.stream_id || stream.id}`,
+              type: 'live',
+              streamId: stream.stream_id || stream.id,
+              live_stream_id: stream.stream_id || stream.id,
+              title: stream.title || 'بث مباشر',
+              description: stream.description || '',
+              content: stream.title || 'بث مباشر',
+              username: stream.host_username || stream.host_name || stream.host || stream.username || 'مستخدم',
+              author_name: stream.host_name || stream.host_username || stream.host || stream.username || 'مستخدم',
+              user_avatar: stream.host_avatar || stream.avatar || stream.user_avatar || '',
+              viewers: Number(stream.viewers_count ?? stream.viewer_count ?? stream.viewers ?? 0),
+              viewers_count: Number(stream.viewers_count ?? stream.viewer_count ?? stream.viewers ?? 0),
+              isLive: true,
+              is_live: true,
+              thumbnail: stream.thumbnail || stream.thumbnail_url || stream.preview_url || '',
+              thumbnail_url: stream.thumbnail_url || stream.thumbnail || stream.preview_url || '',
+              createdAt: stream.created_at || stream.started_at || new Date().toISOString(),
+              created_at: stream.created_at || stream.started_at || new Date().toISOString(),
+              likes_count: Number(stream.hearts_count || 0),
+              comments_count: Number(stream.comments_count || 0),
+              share_count: Number(stream.share_count || 0),
+              livePriorityIndex: index,
+            }))
+          : [];
+      } catch (remoteError) {
+        console.error('Error loading live streams from backend:', remoteError);
+      }
+
+      const remoteByKey = new Map();
+      remoteLivePosts.forEach((post, index) => {
+        const key = post?.streamId || post?.live_stream_id || post?.id || `remote-live-${index}`;
+        if (!remoteByKey.has(key)) remoteByKey.set(key, { ...post, livePriorityIndex: index });
+      });
+
+      const extraLocalPosts = localLivePosts
+        .filter((post) => {
+          const key = post?.streamId || post?.live_stream_id || post?.id;
+          return key && !remoteByKey.has(key);
+        })
+        .sort((a, b) => new Date(b.created_at || b.createdAt || 0).getTime() - new Date(a.created_at || a.createdAt || 0).getTime());
+
+      setLivePosts([...remoteByKey.values(), ...extraLocalPosts]);
     } catch (e) {
       console.error('Error loading live posts:', e);
+      setLivePosts([]);
     }
   }, []);
   
@@ -215,34 +270,46 @@ function FeedMobile() {
   }, []);
 
   const posts = useMemo(() => {
-    // دمج منشورات البث مع المنشورات العادية
     const normalizedLivePosts = livePosts.map((p, i) => normalizePost(p, i));
     const normalizedRawPosts = Array.isArray(rawPosts) ? rawPosts.map((p, i) => normalizePost(p, i)) : [];
-    
-    let list = [];
-    
-    if (activeFilter === 'all') {
-      list = [...normalizedLivePosts, ...normalizedRawPosts];
+
+    const mergedMap = new Map();
+    [...normalizedLivePosts, ...normalizedRawPosts].forEach((post, index) => {
+      const key = post.live_stream_id || post.rawId || post.id || `post-${index}`;
+      if (!mergedMap.has(key)) mergedMap.set(key, post);
+    });
+
+    const mergedPosts = Array.from(mergedMap.values()).sort((a, b) => {
+      if (a.is_live && b.is_live) {
+        const leftPriority = Number.isFinite(a.livePriorityIndex) ? a.livePriorityIndex : Number.MAX_SAFE_INTEGER;
+        const rightPriority = Number.isFinite(b.livePriorityIndex) ? b.livePriorityIndex : Number.MAX_SAFE_INTEGER;
+        if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+      }
+      return new Date(b.created_at || b.createdAt || 0).getTime() - new Date(a.created_at || a.createdAt || 0).getTime();
+    });
+
+    let list = mergedPosts;
+    if (activeFilter === 'posts') {
+      list = mergedPosts.filter((post) => !post.is_live);
+    } else if (activeFilter === 'stories') {
+      list = mergedPosts.filter(
+        (post) => String(post.type || '').toLowerCase() === 'story' || String(post.type || '').toUpperCase() === 'STORY',
+      );
     } else if (activeFilter === 'live') {
-      list = normalizedLivePosts;
-    } else {
-      list = normalizedRawPosts;
+      list = mergedPosts.filter((post) => post.is_live);
     }
 
-    // إذا كانت القائمة فارغة في تبويب "الكل" أو "المنشورات"، اعرض منشور ترحيبي
     if (list.length === 0 && (activeFilter === 'all' || activeFilter === 'posts')) {
       list = [WELCOME_POST];
     }
 
-    // دمج overlay (optimistic)
     return list.map((p) => {
       const o = overlay[p.id];
       return o ? { ...p, ...o } : p;
     });
   }, [rawPosts, overlay, activeFilter, livePosts]);
 
-  // فلترة محلية بسيطة (الفلترة الحقيقية تتم في backend عبر filterType)
-  const filtered = posts; // الفلترة تتم الآن عبر الـ backend بناءً على feedType
+  const filtered = posts;
 
   const requireAuth = useCallback(() => {
     if (!session) {

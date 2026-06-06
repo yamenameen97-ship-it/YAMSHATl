@@ -2,13 +2,13 @@ import { memo } from 'react';
 
 /**
  * MobileFilterPills
- * أزرار فلاتر دائرية: الكل / التحديثات / الإعلانات / المجتمع
+ * أزرار فلاتر للخلاصة: الكل / التحديثات / البث / الستوري
  */
 const DEFAULT_FILTERS = [
   { id: 'all', label: 'الكل' },
-  { id: 'updates', label: 'التحديثات' },
-  { id: 'ads', label: 'الإعلانات' },
-  { id: 'community', label: 'المجتمع' },
+  { id: 'posts', label: 'التحديثات' },
+  { id: 'live', label: 'البث' },
+  { id: 'stories', label: 'الستوري' },
 ];
 
 function MobileFilterPills({ filters = DEFAULT_FILTERS, activeId = 'all', onChange }) {

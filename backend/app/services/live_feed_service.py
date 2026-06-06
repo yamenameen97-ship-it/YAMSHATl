@@ -163,16 +163,16 @@ class LiveFeedService:
                 following_ids = self._get_following_ids(current_user_id)
 
                 # ترتيب البثوث
-                friend_streams = query.filter(Post.user_id.in_(friends_ids)).all()
+                friend_streams = query.filter(Post.user_id.in_(friends_ids)).order_by(desc(Post.created_at)).all()
                 following_streams = query.filter(
                     and_(
                         Post.user_id.in_(following_ids),
                         ~Post.user_id.in_(friends_ids),
                     )
-                ).all()
+                ).order_by(desc(Post.created_at)).all()
                 suggested_streams = query.filter(
                     ~Post.user_id.in_(friends_ids + following_ids)
-                ).all()
+                ).order_by(desc(Post.created_at)).all()
 
                 all_streams = friend_streams + following_streams + suggested_streams
                 return all_streams[offset : offset + limit]

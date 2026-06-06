@@ -51,7 +51,9 @@ export function useFeed(options = {}) {
     staleTime: 5 * 60 * 1000,
     cacheTime: 30 * 60 * 1000,
     refetchOnWindowFocus: true,
+    refetchOnMount: 'always',
     initialData,
+    initialDataUpdatedAt: 0,
     refetchInterval: (data) => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return false;
       return data?.pages?.length === 1 ? pollingInterval : false;

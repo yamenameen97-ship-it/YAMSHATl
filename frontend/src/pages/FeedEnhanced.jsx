@@ -32,11 +32,10 @@ import {
 
 
 const FEED_TABS = [
-  { id: 'favorites', label: 'المفضلة' },
-  { id: 'groups', label: 'المجموعات' },
-  { id: 'friends', label: 'الأصدقاء' },
-  { id: 'following', label: 'متابعين' },
   { id: 'all', label: 'الكل' },
+  { id: 'friends', label: 'الأصدقاء' },
+  { id: 'live', label: 'البث' },
+  { id: 'stories', label: 'الستوري' },
 ];
 
 const NAV_ITEMS = [
@@ -88,7 +87,7 @@ function timeAgoAr(dateLike) {
 }
 
 // دالة لتحويل البث المباشر إلى منشور
-function convertLiveStreamToPost(stream) {
+function convertLiveStreamToPost(stream, index = 0) {
   if (!stream || !stream.id) return null;
   const thumbnail = stream.thumbnail_url || stream.thumbnail || '';
   const viewers = stream.viewers_count || stream.viewer_count || 0;
@@ -132,7 +131,8 @@ function convertLiveStreamToPost(stream) {
     liveStreamId: stream.id,
     liveUrl: `/#/live/view/${stream.id}`,
     isLive: true,
-    views: viewers
+    views: viewers,
+    livePriorityIndex: index,
   };
 }
 
@@ -194,15 +194,15 @@ function buildFeedPosts(posts = []) {
         };
       });
 
+      const postType = String(post.type || post.post_type || '').toLowerCase();
       const isLive = Boolean(
-        post.is_live_stream || 
-        post.is_live || 
-        post.has_live_stream || 
-        post.type === 'LIVE' || 
-        post.type === 'live' || 
-        post.post_type === 'LIVE'
+        post.is_live_stream
+        || post.is_live
+        || postType === 'live'
+        || postType === 'live_stream'
+        || postType === 'live-stream'
       );
-      const liveThumbnail = post.thumbnail_url || post.thumbnail || post.preview_url || post.media_url || '';
+      const liveThumbnail = post.thumbnail_url || post.thumbnail || post.preview_url || '';
       
       // إذا كان بثاً مباشراً ولا توجد ميديا عادية، نستخدم الثمنيل
       const finalMedia = (isLive && !normalizedMedia.length && liveThumbnail)
@@ -215,13 +215,13 @@ function buildFeedPosts(posts = []) {
         userId: post.user_id || null,
         rawUsername: post.username || post.user || '',
         isLive: isLive,
-        liveStreamId: post.live_stream_id || post.live_id || post.streamId || null,
+        liveStreamId: post.live_stream_id || post.live_id || null,
         authorName: post.author_name || post.username || post.user || 'مستخدم يام شات',
         authorAvatar: resolveMediaUrl(post.user_avatar || post.avatar || post.author_avatar || ''),
         handle: normalizeHandle(post.username || post.user || `user.${index + 1}`),
         time: isLive ? 'مباشر الآن' : timeAgoAr(post.created_at || post.published_at),
         text: stripFirstUrl(post.content || post.text || ''),
-        liveUrl: post.liveUrl || resolveLiveViewerUrl(post),
+        liveUrl: resolveLiveViewerUrl(post),
         rawText: post.content || post.text || '',
         likes: Number(post.likes_count || post.like_count || post.likes || 0),
         comments: Number(post.comments_count || post.comment_count || 0),
@@ -230,11 +230,45 @@ function buildFeedPosts(posts = []) {
         isLiked: Boolean(post.is_liked ?? post.liked_by_me),
         isSaved: Boolean(post.is_saved ?? post.saved_by_me),
         media: finalMedia,
+        media_url: finalMedia[0]?.url || resolveMediaUrl(post.media_url || post.image_url || ''),
+        thumbnail_url: resolveMediaUrl(post.thumbnail_url || post.thumbnail || post.preview_url || finalMedia[0]?.url || ''),
+        preview_url: resolveMediaUrl(post.preview_url || post.thumbnail_url || post.thumbnail || finalMedia[0]?.url || ''),
+        created_at: post.created_at || post.published_at || null,
+        type: post.type || post.post_type || 'POST',
+        livePriorityIndex: Number.isFinite(Number(post.livePriorityIndex)) ? Number(post.livePriorityIndex) : null,
       };
     });
   }
 
   return [];
+}
+
+function dedupeFeedPosts(posts = []) {
+  const uniquePosts = new Map();
+  posts.forEach((post, index) => {
+    const key = post?.liveStreamId || post?.live_stream_id || post?.rawId || post?.id || `feed-${index}`;
+    if (!uniquePosts.has(key)) uniquePosts.set(key, post);
+  });
+  return Array.from(uniquePosts.values()).sort((a, b) => {
+    const aTime = new Date(a?.created_at || a?.published_at || 0).getTime() || 0;
+    const bTime = new Date(b?.created_at || b?.published_at || 0).getTime() || 0;
+    return bTime - aTime;
+  });
+}
+
+function filterFeedPostsByTab(posts = [], activeTab = 'all') {
+  if (activeTab === 'live') {
+    return posts
+      .filter((post) => post.isLive)
+      .sort((a, b) => {
+        const leftPriority = Number.isFinite(a.livePriorityIndex) ? a.livePriorityIndex : Number.MAX_SAFE_INTEGER;
+        const rightPriority = Number.isFinite(b.livePriorityIndex) ? b.livePriorityIndex : Number.MAX_SAFE_INTEGER;
+        if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+        return (new Date(b.created_at || 0).getTime() || 0) - (new Date(a.created_at || 0).getTime() || 0);
+      });
+  }
+  if (activeTab === 'stories') return posts.filter((post) => String(post.type || '').toUpperCase() === 'STORY');
+  return posts;
 }
 
 function Avatar({ name, size = 46, accent = false, image = false, src = '' }) {
@@ -292,6 +326,7 @@ function PostCard({ post }) {
   const queryClient = useQueryClient();
   const postUrl = `${window.location.origin}/#/post/${post.rawId || post.id}`;
   const mediaItems = Array.isArray(post.media) ? post.media.slice(0, 3) : [];
+  const liveMediaUrl = post.media_url || post.thumbnail_url || post.preview_url || mediaItems[0]?.url || '';
   // ✅ تهيئة الحالة من البيانات القادمة من الـ backend (is_liked / is_saved)
   const [liked, setLiked] = useState(Boolean(post.isLiked));
   const [saved, setSaved] = useState(Boolean(post.isSaved));
@@ -618,7 +653,7 @@ function PostCard({ post }) {
 
       <p className="yam-post-copy-v2">{post.text}</p>
 
-      {post.isLive && post.authorAvatar ? (
+      {post.isLive ? (
         <div className="yam-post-live-card" onClick={handleOpenLiveAnnouncement} style={{ cursor: 'pointer' }}>
           {/* الخلفية مع الصورة */}
           <div className="yam-post-live-background" style={{
@@ -632,11 +667,27 @@ function PostCard({ post }) {
             alignItems: 'center',
             justifyContent: 'center'
           }}>
-            {post.media_url || post.thumbnail_url ? (
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'radial-gradient(circle at top right, rgba(168, 85, 247, 0.35), transparent 28%), linear-gradient(135deg, #090f1c 0%, #111827 45%, #12061f 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'rgba(255,255,255,0.92)',
+              fontWeight: '700',
+              letterSpacing: '0.02em'
+            }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '44px', marginBottom: '8px' }}>Y</div>
+                <div style={{ fontSize: '14px' }}>معاينة البث المباشر</div>
+              </div>
+            </div>
+            {liveMediaUrl ? (
               <img 
-                src={post.media_url || post.thumbnail_url} 
+                src={liveMediaUrl} 
                 alt="Live Stream" 
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'relative', zIndex: 1 }}
               />
             ) : null}
             
@@ -647,7 +698,7 @@ function PostCard({ post }) {
               background: 'linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.5) 50%, rgba(0,0,0,0.8) 100%)'
             }} />
             
-            {/* شارة البث المباشر (مطابق للتصميم المرفق) */}
+            {/* شارة البث المباشر */}
             <div style={{
               position: 'absolute',
               top: '12px',
@@ -656,29 +707,31 @@ function PostCard({ post }) {
               alignItems: 'center',
               gap: '6px',
               padding: '6px 12px',
-              background: '#ef4444',
-              borderRadius: '6px',
+              background: 'linear-gradient(135deg, #ef4444, #f97316)',
+              borderRadius: '20px',
               color: 'white',
               fontSize: '12px',
-              fontWeight: 'bold',
+              fontWeight: '700',
+              animation: 'pulse 2s ease-in-out infinite',
               zIndex: 2
             }}>
+              <span style={{ fontSize: '8px', animation: 'blink 1s ease-in-out infinite' }}>🔴</span>
               <span>مباشر</span>
             </div>
             
-            {/* عدد المشاهدين (مطابق للتصميم المرفق) */}
+            {/* عدد المشاهدين */}
             <div style={{
               position: 'absolute',
               top: '12px',
-              left: '75px',
+              right: '12px',
               display: 'inline-flex',
               alignItems: 'center',
               gap: '4px',
-              padding: '6px 10px',
+              padding: '4px 10px',
               background: 'rgba(0, 0, 0, 0.4)',
-              borderRadius: '6px',
+              borderRadius: '12px',
               color: 'white',
-              fontSize: '12px',
+              fontSize: '11px',
               fontWeight: '600',
               backdropFilter: 'blur(10px)',
               zIndex: 2
@@ -741,6 +794,7 @@ function PostCard({ post }) {
               {/* زر الانضمام */}
               <button 
                 type="button"
+                onClick={handleOpenLiveAnnouncement}
                 style={{
                   padding: '8px 16px',
                   background: 'linear-gradient(135deg, #7c3aed, #3b82f6)',
@@ -770,7 +824,7 @@ function PostCard({ post }) {
         </div>
       ) : null}
 
-      {post.isLive && !post.authorAvatar ? (
+      {false ? (
         <div className="yam-post-live-indicator">
           <span className="live-dot"></span>
           <span className="live-text">مباشر الآن</span>
@@ -872,6 +926,7 @@ function FeedDesktopInner() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [liveStreams, setLiveStreams] = useState([]);
+  const [localLiveStreams, setLocalLiveStreams] = useState([]);
   const [loadingLiveStreams, setLoadingLiveStreams] = useState(false);
   const profile = getStoredUserSnapshot();
   const profileDetails = profile?.profile || {};
@@ -915,7 +970,7 @@ function FeedDesktopInner() {
     isFetching,
     isFetchingNextPage,
   } = useSmartFeed({
-    filterType: activeTab === 'all' ? 'all' : 'following',
+    filterType: activeTab === 'friends' ? 'following' : 'all',
     sortBy: 'recent',
     limit: 12,
     pollingInterval: 25_000,
@@ -926,7 +981,7 @@ function FeedDesktopInner() {
     const fetchActiveLiveStreams = async () => {
       try {
         setLoadingLiveStreams(true);
-        const response = await getActiveLiveStreams({ limit: 10 });
+        const response = await getActiveLiveStreams({ limit: 20 });
         const streams = Array.isArray(response?.data) ? response.data : [];
         setLiveStreams(streams);
       } catch (error) {
@@ -937,16 +992,93 @@ function FeedDesktopInner() {
       }
     };
 
+    const loadLocalLiveStreams = () => {
+      try {
+        const storedPosts = JSON.parse(window.localStorage.getItem('yamshat_posts') || '[]');
+        const localOnly = Array.isArray(storedPosts)
+          ? storedPosts.filter((item) => item?.type === 'live' || item?.is_live || item?.isLive)
+          : [];
+        setLocalLiveStreams(localOnly);
+      } catch (storageError) {
+        console.error('Error reading local live streams:', storageError);
+        setLocalLiveStreams([]);
+      }
+    };
+
     fetchActiveLiveStreams();
-    const interval = setInterval(fetchActiveLiveStreams, 30000);
-    return () => clearInterval(interval);
+    loadLocalLiveStreams();
+
+    const refreshAll = () => {
+      fetchActiveLiveStreams();
+      loadLocalLiveStreams();
+    };
+
+    window.addEventListener('yamshat:live-post-created', refreshAll);
+    window.addEventListener('yamshat:stream-started', refreshAll);
+    window.addEventListener('yamshat:stream-ended', refreshAll);
+
+    const interval = setInterval(refreshAll, 3000);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('yamshat:live-post-created', refreshAll);
+      window.removeEventListener('yamshat:stream-started', refreshAll);
+      window.removeEventListener('yamshat:stream-ended', refreshAll);
+    };
   }, []);
 
-  const liveStreamPosts = liveStreams.map(convertLiveStreamToPost).filter(Boolean);
+  const liveStreamPosts = useMemo(() => {
+    const remotePosts = liveStreams.map((stream, index) => convertLiveStreamToPost(stream, index)).filter(Boolean);
+    const existingIds = new Set(remotePosts.map((post) => post.liveStreamId || post.live_stream_id || post.id));
+    const localPosts = (Array.isArray(localLiveStreams) ? localLiveStreams : [])
+      .filter((item) => {
+        const key = item?.streamId || item?.live_stream_id || item?.id;
+        return key && !existingIds.has(key);
+      })
+      .map((item, index) => ({
+        id: item.id || `local-live-${index}`,
+        rawId: item.id || null,
+        type: 'live_stream',
+        isLive: true,
+        is_live: true,
+        is_live_stream: true,
+        liveStreamId: item.streamId || item.live_stream_id || item.id,
+        live_stream_id: item.streamId || item.live_stream_id || item.id,
+        title: item.title || 'بث مباشر',
+        content: item.content || item.title || 'بث مباشر',
+        text: item.description || item.content || item.title || 'بث مباشر جديد',
+        authorName: item.author_name || item.username || item.user || 'مستخدم',
+        authorAvatar: resolveMediaUrl(item.user_avatar || item.avatar || ''),
+        username: item.username || item.user || 'مستخدم',
+        handle: normalizeHandle(item.username || item.user || 'مستخدم'),
+        avatar: resolveMediaUrl(item.user_avatar || item.avatar || ''),
+        user_avatar: resolveMediaUrl(item.user_avatar || item.avatar || ''),
+        created_at: item.created_at || item.createdAt || new Date().toISOString(),
+        time: 'مباشر الآن',
+        media_type: 'live',
+        media_url: resolveMediaUrl(item.thumbnail || item.thumbnail_url || item.preview_url || ''),
+        thumbnail_url: resolveMediaUrl(item.thumbnail_url || item.thumbnail || item.preview_url || ''),
+        preview_url: resolveMediaUrl(item.preview_url || item.thumbnail_url || item.thumbnail || ''),
+        viewers_count: Number(item.viewers_count || item.viewer_count || item.viewers || 0),
+        viewers: Number(item.viewers_count || item.viewer_count || item.viewers || 0),
+        likes_count: Number(item.likes_count || 0),
+        comments_count: Number(item.comments_count || 0),
+        share_count: Number(item.share_count || 0),
+        is_liked: false,
+        is_saved: false,
+        is_verified: Boolean(item.is_verified),
+        has_live_stream: true,
+        liveUrl: `/#/live/view/${item.streamId || item.live_stream_id || item.id}`,
+        views: Number(item.viewers_count || item.viewer_count || item.viewers || 0),
+        livePriorityIndex: remotePosts.length + index,
+      }));
+
+    return [...remotePosts, ...localPosts];
+  }, [liveStreams, localLiveStreams]);
   const feedPosts = useMemo(() => {
     const allPosts = buildFeedPosts(posts);
-    return [...liveStreamPosts, ...allPosts];
-  }, [posts, liveStreamPosts]);
+    const merged = dedupeFeedPosts([...liveStreamPosts, ...allPosts]);
+    return filterFeedPostsByTab(merged, activeTab);
+  }, [posts, liveStreamPosts, activeTab]);
 
   const totalPosts = feedPosts.length;
   const profilePostsCount = Number(profile?.posts_count || profileDetails.posts_count || profileDetails.posts || profile?.posts || totalPosts || 0);

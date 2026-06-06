@@ -4,8 +4,44 @@ import { getPosts } from '../../api/posts.js';
 
 const asResponse = (data) => ({ data });
 
-export const getActiveLiveStreams = (filters = {}) =>
-  apiClient.get('/live_rooms', { params: filters, cache: false, forceRefresh: true });
+function normalizeActiveStream(item = {}) {
+  const streamId = item.stream_id || item.id || item.room_id || item.live_stream_id;
+  return {
+    ...item,
+    id: streamId,
+    stream_id: streamId,
+    host_username: item.host_username || item.host || item.username || item.user || '',
+    host_name: item.host_name || item.host || item.username || item.user || '',
+    host_avatar: item.host_avatar || item.user_avatar || item.avatar || '',
+    thumbnail: item.thumbnail || item.thumbnail_url || item.preview_url || item.image_url || '',
+    thumbnail_url: item.thumbnail_url || item.thumbnail || item.preview_url || item.image_url || '',
+    viewers_count: Number(item.viewers_count ?? item.viewers ?? item.viewer_count ?? 0),
+    viewer_count: Number(item.viewer_count ?? item.viewers_count ?? item.viewers ?? 0),
+    created_at: item.created_at || item.started_at || item.last_activity_at || new Date().toISOString(),
+  };
+}
+
+export const getActiveLiveStreams = async (filters = {}) => {
+  try {
+    const prioritized = await apiClient.get('/v1/feed/live/active', { params: filters, cache: false, forceRefresh: true });
+    const items = Array.isArray(prioritized?.data?.streams)
+      ? prioritized.data.streams
+      : Array.isArray(prioritized?.data)
+        ? prioritized.data
+        : [];
+    return {
+      ...prioritized,
+      data: items.map(normalizeActiveStream),
+    };
+  } catch (error) {
+    const fallback = await apiClient.get('/live_rooms', { params: filters, cache: false, forceRefresh: true });
+    const items = Array.isArray(fallback?.data) ? fallback.data : [];
+    return {
+      ...fallback,
+      data: items.map(normalizeActiveStream),
+    };
+  }
+};
 
 export const getLiveStreamDetails = (streamId) =>
   apiClient.get(`/live_room/${streamId}`, { cache: false, forceRefresh: true });

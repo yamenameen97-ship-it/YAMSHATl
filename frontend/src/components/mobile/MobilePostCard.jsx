@@ -180,50 +180,32 @@ function MobilePostCard({
             👁 {formatCount(viewers)}
           </div>
           
-          {/* معلومات المضيف والزر (مطابق للتصميم المرفق) */}
+          {/* معلومات المضيف والزر */}
           <div style={{
             position: 'absolute',
             bottom: '0',
             left: '0',
             right: '0',
-            background: 'linear-gradient(transparent, rgba(0,0,0,0.9))',
-            padding: '30px 12px 12px',
+            background: 'linear-gradient(transparent, rgba(0,0,0,0.8))',
+            padding: '20px 12px 12px',
             display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
+            justifyContent: 'space-between',
+            alignItems: 'center',
             zIndex: 2
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ fontSize: '15px', fontWeight: 'bold', color: 'white' }}>
-                {text || 'بث مباشر جديد'}
-              </div>
-            </div>
-            
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '24px', height: '24px', borderRadius: '50%', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.5)' }}>
-                  {avatarUrl ? <img src={avatarUrl} alt="" style={{width:'100%', height:'100%', objectFit:'cover'}} /> : <YamshatY size={16} />}
-                </div>
-                <div style={{ color: 'white', fontSize: '13px', fontWeight: '600' }}>
-                  {authorName} {verified && <VerifiedBadge />}
-                </div>
-                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px' }}>
-                  {formatCount(viewers)} مشاهد
-                </div>
-              </div>
-              
-              <button onClick={handleLiveCardClick} style={{
-                background: 'linear-gradient(135deg, #7c3aed, #3b82f6)',
-                color: 'white',
-                border: 'none',
-                padding: '6px 14px',
-                borderRadius: '8px',
-                fontWeight: 'bold',
-                fontSize: '12px',
-                cursor: 'pointer',
-                boxShadow: '0 4px 12px rgba(124, 58, 237, 0.4)'
-              }}>انضم الآن</button>
-            </div>
+            <span style={{color:'white', fontWeight:'bold', fontSize: '14px'}}>انضم للبث المباشر الآن</span>
+            <button onClick={handleLiveCardClick} style={{
+              background: 'linear-gradient(135deg, #7c3aed, #3b82f6)',
+              color: 'white',
+              border: 'none',
+              padding: '8px 16px',
+              borderRadius: '8px',
+              fontWeight: 'bold',
+              fontSize: '12px',
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(124, 58, 237, 0.4)',
+              transition: 'all 0.2s ease'
+            }}>انضم الآن</button>
           </div>
           
           <style>{`

@@ -119,24 +119,68 @@ export const getPosts = async (params = {}) => {
   }
 
   const payload = response?.data;
-  const rawItems = Array.isArray(payload)
+  let rawItems = Array.isArray(payload)
     ? payload
     : Array.isArray(payload?.posts)
       ? payload.posts
       : Array.isArray(payload?.items)
         ? payload.items
         : [];
+
+  let fallbackMeta = null;
+  if (!rawItems.length && Number(normalizedParams.page || 1) === 1) {
+    try {
+      const contentResponse = await API.get('/v1/feed/content', {
+        params: { limit: normalizedParams.limit },
+        cache: false,
+        forceRefresh: true,
+      });
+      const contentPayload = contentResponse?.data || {};
+      const contentItems = Array.isArray(contentPayload?.posts) ? contentPayload.posts : [];
+      if (contentItems.length) {
+        rawItems = contentItems.map((item) => ({
+          id: item.id,
+          user_id: item.user_id || null,
+          username: item.author || item.username || 'مستخدم يام شات',
+          content: item.content || '',
+          image_url: item.thumbnail || item.thumbnail_url || '',
+          media_url: item.thumbnail || item.thumbnail_url || '',
+          thumbnail_url: item.thumbnail || item.thumbnail_url || '',
+          preview_url: item.thumbnail || item.thumbnail_url || '',
+          created_at: item.created_at,
+          published_at: item.created_at,
+          is_live: Boolean(item.is_live),
+          viewers: Number(item.viewers || 0),
+          type: item.type || 'POST',
+          live_stream_id: item.stream_id || item.live_stream_id || null,
+        }));
+        fallbackMeta = {
+          pagination: {
+            page: 1,
+            skip: 0,
+            limit: Number(normalizedParams.limit),
+            has_more: Boolean(contentItems.length === Number(normalizedParams.limit)),
+          },
+          source: 'feed-content-fallback',
+        };
+      }
+    } catch (fallbackError) {
+      console.warn('Feed content fallback failed:', fallbackError);
+    }
+  }
+
   const pagination = {
-    ...(payload?.pagination || {}),
-    has_more: Boolean(payload?.pagination?.has_more ?? (rawItems.length === normalizedParams.limit)),
-    page: Number(payload?.pagination?.page || normalizedParams.page || 1),
-    limit: Number(payload?.pagination?.limit || normalizedParams.limit),
+    ...(payload?.pagination || fallbackMeta?.pagination || {}),
+    has_more: Boolean((payload?.pagination || fallbackMeta?.pagination)?.has_more ?? (rawItems.length === normalizedParams.limit)),
+    page: Number((payload?.pagination || fallbackMeta?.pagination)?.page || normalizedParams.page || 1),
+    limit: Number((payload?.pagination || fallbackMeta?.pagination)?.limit || normalizedParams.limit),
   };
   return {
     ...response,
     data: sortPostsNewestFirst(rawItems.map(normalizePost)),
     meta: {
-      ...(payload && !Array.isArray(payload) ? payload : {}),
+      ...((payload && !Array.isArray(payload)) ? payload : {}),
+      ...(fallbackMeta || {}),
       pagination,
     },
   };

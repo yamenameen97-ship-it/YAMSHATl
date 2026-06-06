@@ -21,6 +21,8 @@ import { followUser, muteUser, unmuteUser } from '../api/users.js';
 import { blockUserApi, unblockUserApi } from '../api/chat.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
 import { getActiveLiveStreams } from '../services/api/liveStreamApi.js';
+import PostCardComponent from '../components/feed/PostCard.jsx';
+import FeedLiveStreamWidget from '../components/feed/FeedLiveStreamWidget.jsx';
 import {
   likePost as apiLikePost,
   savePost as apiSavePost,
@@ -973,9 +975,20 @@ function FeedDesktopInner() {
             </section>
 
             <div className="yam-post-stack-v2" ref={postStackRef}>
-              {feedPosts.map((post) => (
-                <PostCard key={post.id} post={post} />
-              ))}
+              {feedPosts.map((post) => {
+                if (post.isLive && post.liveStreamId) {
+                  return (
+                    <FeedLiveStreamWidget
+                      key={post.id}
+                      post={post}
+                      liveStream={post.live_stream || { id: post.liveStreamId }}
+                      onStreamEnd={() => {}}
+                      onStreamUpdate={() => {}}
+                    />
+                  );
+                }
+                return <PostCard key={post.id} post={post} />;
+              })}
               <div className="yam-feed-status-row">
                 {isFetchingNextPage
                   ? 'جارٍ تحميل المنشورات الأقدم...'

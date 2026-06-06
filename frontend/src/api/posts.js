@@ -1,5 +1,6 @@
 import API from './axios.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
+import { sortPostsNewestFirst } from '../utils/feedCache.js';
 
 function looksLikeVideo(post = {}, mediaUrls = []) {
   const typeHint = String(post.media_type || post.type || post.kind || post.mime_type || post.content_type || '').toLowerCase();
@@ -133,7 +134,7 @@ export const getPosts = async (params = {}) => {
   };
   return {
     ...response,
-    data: rawItems.map(normalizePost),
+    data: sortPostsNewestFirst(rawItems.map(normalizePost)),
     meta: {
       ...(payload && !Array.isArray(payload) ? payload : {}),
       pagination,

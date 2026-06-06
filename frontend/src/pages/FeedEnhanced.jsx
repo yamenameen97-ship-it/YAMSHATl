@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 // تم التبديل إلى layouts/MainLayout (الجديد) الذي يستخدم MobileLayout
 // (MobileTopBar + BottomNav الجديدين) لتجنب التعارض مع Topbar و MobileDock القديمين.
 import MainLayout from '../layouts/MainLayout.jsx';
@@ -16,10 +17,18 @@ import { BACKEND_ORIGIN } from '../api/config.js';
 import { getCsrfToken } from '../utils/csrf.js';
 import { clearStoredUser, getAuthToken, getCurrentUsername, getStoredUserSnapshot } from '../utils/auth.js';
 import { redirectToAppPath } from '../utils/router.js';
-import ReactionBar from '../components/social/ReactionBar.jsx';
-import FollowControls from '../components/social/FollowControls.jsx';
+import { followUser, muteUser, unmuteUser } from '../api/users.js';
+import { blockUserApi, unblockUserApi } from '../api/chat.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
 import { getActiveLiveStreams } from '../services/api/liveStreamApi.js';
+import {
+  likePost as apiLikePost,
+  savePost as apiSavePost,
+  sharePost as apiSharePost,
+  addComment as apiAddComment,
+  getComments as apiGetComments,
+  deletePost as apiDeletePost,
+} from '../api/posts.js';
 
 
 const FEED_TABS = [
@@ -52,51 +61,83 @@ const DEFAULT_PROFILE_HIGHLIGHTS = [
   { label: 'جديد', kind: 'add' },
 ];
 
+function timeAgoAr(dateLike) {
+  if (!dateLike) return 'الآن';
+  const date = new Date(dateLike);
+  if (Number.isNaN(date.getTime())) return 'الآن';
+  const diffSeconds = Math.max(1, Math.floor((Date.now() - date.getTime()) / 1000));
+  if (diffSeconds < 60) return 'الآن';
+  const minutes = Math.floor(diffSeconds / 60);
+  if (minutes < 60) return `منذ ${minutes} دقيقة`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `منذ ${hours} ساعة`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'أمس';
+  if (days < 7) return `منذ ${days} أيام`;
+  if (days < 30) return `منذ ${Math.floor(days / 7)} أسابيع`;
+  if (days < 365) {
+    const months = Math.floor(days / 30);
+    return `منذ ${months} شهر`;
+  }
+  // للمنشورات القديمة جداً، عرض التاريخ الكامل
+  const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+  const day = date.getDate();
+  const month = monthNames[date.getMonth()];
+  const year = date.getFullYear();
+  return `${day} ${month} ${year}`;
+}
+
 // دالة لتحويل البث المباشر إلى منشور
 function convertLiveStreamToPost(stream) {
   if (!stream || !stream.id) return null;
+  const thumbnail = stream.thumbnail_url || stream.thumbnail || '';
+  const viewers = stream.viewers_count || stream.viewer_count || 0;
+  
   return {
     id: `live_${stream.id}`,
+    rawId: `live_${stream.id}`,
     type: 'live_stream',
+    is_live: true,
     is_live_stream: true,
     live_stream_id: stream.id,
     title: stream.title || 'بث مباشر',
     content: stream.title || 'بث مباشر',
     text: stream.title || 'بث مباشر جديد',
-    author: stream.host_username || 'مستخدم',
+    authorName: stream.host_name || stream.host_username || 'مستخدم',
+    authorAvatar: stream.host_avatar || '',
     username: stream.host_username || 'مستخدم',
-    handle: `@${stream.host_username || 'مستخدم'}`,
+    handle: `@${(stream.host_username || 'مستخدم').replace(/^@/, '')}`,
     avatar: stream.host_avatar || '',
     user_avatar: stream.host_avatar || '',
     created_at: stream.started_at || new Date().toISOString(),
+    time: 'مباشر الآن',
     media_type: 'live',
-    media_url: stream.thumbnail_url || '',
-    thumbnail_url: stream.thumbnail_url || '',
-    preview_url: stream.thumbnail_url || '',
-    viewers_count: stream.viewers_count || 0,
+    media_url: thumbnail,
+    thumbnail_url: thumbnail,
+    preview_url: thumbnail,
+    viewers_count: viewers,
+    viewers: viewers,
     likes_count: stream.hearts_count || 0,
     comments_count: stream.comments_count || 0,
+    share_count: stream.share_count || 0,
     is_liked: false,
     is_saved: false,
-    is_verified: false,
+    is_verified: Boolean(stream.is_verified),
     is_reel: false,
     has_video: false,
     has_live_stream: true,
     live_stream: stream,
+    media: thumbnail ? [{ type: 'image-primary', kind: 'image', url: thumbnail }] : [],
+    // حقول إضافية للعرض الجذاب
+    liveStreamId: stream.id,
+    liveUrl: `/#/live/view/${stream.id}`,
+    isLive: true,
+    views: viewers
   };
 }
 
-const MOCK_POSTS = [];
+const MOCK_POSTS = null;
 
-
-function SocialEnhancements({ post }) {
-  return (
-    <div className="mt-4 space-y-3">
-      <FollowControls userId={post.handle} username={post.handle.replace('@', '')} />
-      <ReactionBar postId={post.id} />
-    </div>
-  );
-}
 
 function normalizeHandle(value = '') {
   const cleaned = String(value || '').trim().replace(/^@+/, '');
@@ -153,22 +194,42 @@ function buildFeedPosts(posts = []) {
         };
       });
 
+      const isLive = Boolean(
+        post.is_live_stream || 
+        post.is_live || 
+        post.has_live_stream || 
+        post.type === 'LIVE' || 
+        post.type === 'live' || 
+        post.post_type === 'LIVE'
+      );
+      const liveThumbnail = post.thumbnail_url || post.thumbnail || post.preview_url || post.media_url || '';
+      
+      // إذا كان بثاً مباشراً ولا توجد ميديا عادية، نستخدم الثمنيل
+      const finalMedia = (isLive && !normalizedMedia.length && liveThumbnail)
+        ? [{ type: 'image-primary', kind: 'image', url: resolveMediaUrl(liveThumbnail) }]
+        : normalizedMedia;
+
       return {
         id: post.id || `post-${index}`,
+        rawId: post.id || null,
+        userId: post.user_id || null,
+        rawUsername: post.username || post.user || '',
+        isLive: isLive,
+        liveStreamId: post.live_stream_id || post.live_id || post.streamId || null,
         authorName: post.author_name || post.username || post.user || 'مستخدم يام شات',
         authorAvatar: resolveMediaUrl(post.user_avatar || post.avatar || post.author_avatar || ''),
         handle: normalizeHandle(post.username || post.user || `user.${index + 1}`),
-        time: post.created_at || post.published_at ? 'منشور سابق' : 'الآن',
-        text: stripFirstUrl(post.content || 'منشور جديد على يام شات.'),
-        liveUrl: resolveLiveViewerUrl(post),
-        rawText: post.content || 'منشور جديد على يام شات.',
+        time: isLive ? 'مباشر الآن' : timeAgoAr(post.created_at || post.published_at),
+        text: stripFirstUrl(post.content || post.text || ''),
+        liveUrl: post.liveUrl || resolveLiveViewerUrl(post),
+        rawText: post.content || post.text || '',
         likes: Number(post.likes_count || post.like_count || post.likes || 0),
         comments: Number(post.comments_count || post.comment_count || 0),
         shares: Number(post.share_count || post.shares || 0),
-        views: Number(post.views_count || post.view_count || 0),
-        media: normalizedMedia.length
-          ? normalizedMedia
-          : [{ type: index % 2 === 0 ? 'scenic-lake' : 'portrait-purple' }],
+        views: Number(post.viewers_count || post.viewers || post.views_count || 0),
+        isLiked: Boolean(post.is_liked ?? post.liked_by_me),
+        isSaved: Boolean(post.is_saved ?? post.saved_by_me),
+        media: finalMedia,
       };
     });
   }
@@ -222,30 +283,41 @@ function MediaTile({ item, index }) {
     );
   }
 
-  return (
-    <div className={`yam-post-media-tile tile-${index} ${item?.type || 'scenic-lake'}`}>
-      {index === 0 ? (
-        <div className="yam-post-play-overlay">
-          <YamshatIcon name="play" size={24} filled />
-        </div>
-      ) : null}
-    </div>
-  );
+  return null;
 }
 
 function PostCard({ post }) {
   const navigate = useNavigate();
   const { pushToast } = useToast();
-  const postUrl = `${window.location.origin}/#/post/${post.id}`;
+  const queryClient = useQueryClient();
+  const postUrl = `${window.location.origin}/#/post/${post.rawId || post.id}`;
   const mediaItems = Array.isArray(post.media) ? post.media.slice(0, 3) : [];
-  const [liked, setLiked] = useState(false);
-  const [saved, setSaved] = useState(false);
+  // ✅ تهيئة الحالة من البيانات القادمة من الـ backend (is_liked / is_saved)
+  const [liked, setLiked] = useState(Boolean(post.isLiked));
+  const [saved, setSaved] = useState(Boolean(post.isSaved));
   const [likesCount, setLikesCount] = useState(Number(post.likes || 0));
   const [commentsCount, setCommentsCount] = useState(Number(post.comments || 0));
   const [sharesCount, setSharesCount] = useState(Number(post.shares || 0));
   const [showComments, setShowComments] = useState(false);
   const [commentDraft, setCommentDraft] = useState('');
   const [localComments, setLocalComments] = useState([]);
+  const [commentsLoaded, setCommentsLoaded] = useState(false);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [sendingComment, setSendingComment] = useState(false);
+  const [busyAction, setBusyAction] = useState(null); // 'like' | 'save' | 'share' | null
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [isDeleted, setIsDeleted] = useState(false);
+  const authorUsername = String(post.rawUsername || post.handle || '').replace(/^@/, '');
+  const currentUsername = getCurrentUsername();
+  const isOwnPost = Boolean(authorUsername && currentUsername && authorUsername === currentUsername);
+  // المنشورات الترحيبية أو منشورات البث المباشر لا تملك rawId صحيحًا
+  const canCallBackend = Boolean(post.rawId) && !post.isLive;
+  const invalidateFeed = useCallback(() => {
+    try { queryClient.invalidateQueries({ queryKey: ['feed-data'] }); } catch (_) { /* ignore */ }
+  }, [queryClient]);
 
   const handleOpenLiveAnnouncement = () => {
     if (!post.liveUrl) return;
@@ -257,57 +329,255 @@ function PostCard({ post }) {
     window.location.href = post.liveUrl;
   };
 
-  const handleLike = () => {
-    setLiked((prev) => {
-      const next = !prev;
-      setLikesCount((count) => Math.max(0, count + (next ? 1 : -1)));
-      return next;
-    });
+  // ===== ربط الإعجاب بـ backend =====
+  const handleLike = async () => {
+    if (busyAction === 'like') return;
+    const prevLiked = liked;
+    const prevCount = likesCount;
+    // تحديث متفائل فوري
+    const nextLiked = !prevLiked;
+    setLiked(nextLiked);
+    setLikesCount((count) => Math.max(0, count + (nextLiked ? 1 : -1)));
+    if (!canCallBackend) return;
+    setBusyAction('like');
+    try {
+      const response = await apiLikePost(post.rawId);
+      const data = response?.data || {};
+      if (typeof data.is_liked === 'boolean') setLiked(data.is_liked);
+      if (typeof data.likes_count === 'number') setLikesCount(data.likes_count);
+      else if (typeof data.like_count === 'number') setLikesCount(data.like_count);
+      invalidateFeed();
+    } catch (error) {
+      // تراجع عند الفشل
+      setLiked(prevLiked);
+      setLikesCount(prevCount);
+      pushToast({ type: 'error', title: 'تعذر تنفيذ الإعجاب', description: error?.response?.data?.detail || error?.message });
+    } finally {
+      setBusyAction(null);
+    }
   };
 
+  // ===== ربط المشاركة بـ backend =====
   const handleShare = async () => {
+    if (busyAction === 'share') return;
+    let platform = 'copy';
+    let succeeded = false;
     try {
       if (navigator.share) {
         await navigator.share({ title: post.authorName, text: post.text, url: postUrl });
+        platform = 'native';
+        succeeded = true;
       } else if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(postUrl);
+        platform = 'copy';
+        succeeded = true;
       }
-      setSharesCount((count) => count + 1);
-      pushToast({ type: 'success', title: 'تمت مشاركة المنشور أو نسخ رابطه' });
-    } catch {
-      pushToast({ type: 'info', title: 'تعذر فتح نافذة المشاركة', description: 'تم تجاهل العملية بدون خطأ مؤثر.' });
+    } catch (err) {
+      if (err?.name !== 'AbortError') {
+        pushToast({ type: 'info', title: 'تعذر فتح نافذة المشاركة' });
+      }
+      return;
     }
-  };
 
-  const handleSave = () => {
-    setSaved((prev) => !prev);
-    pushToast({ type: 'success', title: saved ? 'تمت إزالة المنشور من المحفوظات' : 'تم حفظ المنشور' });
-  };
+    if (!succeeded) return;
 
-  const handleMoreOptions = async () => {
+    // تحديث متفائل
+    setSharesCount((count) => count + 1);
+    pushToast({ type: 'success', title: 'تمت مشاركة المنشور' });
+
+    if (!canCallBackend) return;
+    setBusyAction('share');
     try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(postUrl);
-        pushToast({ type: 'success', title: 'تم نسخ رابط المنشور' });
-        return;
-      }
-    } catch {
-      // fallback below
+      const response = await apiSharePost(post.rawId, platform);
+      const data = response?.data || {};
+      if (typeof data.share_count === 'number') setSharesCount(data.share_count);
+      else if (typeof data.shares === 'number') setSharesCount(data.shares);
+      invalidateFeed();
+    } catch (error) {
+      // مشاركة الـ UI نجحت بالفعل، فقط نسجّل التحذير
+      console.warn('share tracking failed', error);
+    } finally {
+      setBusyAction(null);
     }
-
-    setShowComments(true);
-    pushToast({ type: 'info', title: 'تم فتح التعليقات', description: 'تم ربط زر الخيارات بإجراء مفيد بدل بقائه بدون وظيفة.' });
   };
 
-  const handleAddComment = () => {
+  // ===== ربط الحفظ بـ backend =====
+  const handleSave = async () => {
+    if (busyAction === 'save') return;
+    const prevSaved = saved;
+    const nextSaved = !prevSaved;
+    setSaved(nextSaved);
+    if (!canCallBackend) {
+      pushToast({ type: 'success', title: nextSaved ? 'تم حفظ المنشور' : 'تمت إزالة المنشور من المحفوظات' });
+      return;
+    }
+    setBusyAction('save');
+    try {
+      const response = await apiSavePost(post.rawId);
+      const data = response?.data || {};
+      if (typeof data.is_saved === 'boolean') setSaved(data.is_saved);
+      pushToast({ type: 'success', title: (data.is_saved ?? nextSaved) ? 'تم حفظ المنشور' : 'تمت إزالة المنشور من المحفوظات' });
+      invalidateFeed();
+    } catch (error) {
+      setSaved(prevSaved);
+      pushToast({ type: 'error', title: 'تعذر حفظ المنشور', description: error?.response?.data?.detail || error?.message });
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  // ===== حذف المنشور (للمالك فقط) =====
+  const handleDeletePost = async () => {
+    if (!isOwnPost || !canCallBackend) return;
+    if (!window.confirm('هل تريد حذف هذا المنشور نهائيًا؟')) return;
+    try {
+      await apiDeletePost(post.rawId);
+      setIsDeleted(true);
+      setShowMoreMenu(false);
+      pushToast({ type: 'success', title: 'تم حذف المنشور' });
+      invalidateFeed();
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر حذف المنشور', description: error?.response?.data?.detail || error?.message });
+    }
+  };
+
+  const handleMoreOptions = () => {
+    setShowMoreMenu((prev) => !prev);
+  };
+
+  const handleFollowAuthor = async () => {
+    if (!authorUsername || isOwnPost) return;
+    try {
+      const response = await followUser(authorUsername);
+      const nextFollowing = Boolean(response?.data?.following ?? !isFollowing);
+      setIsFollowing(nextFollowing);
+      setShowMoreMenu(false);
+      pushToast({ type: 'success', title: nextFollowing ? 'تمت المتابعة' : 'تم إلغاء المتابعة' });
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر تحديث المتابعة', description: error?.response?.data?.detail || error?.message });
+    }
+  };
+
+  const handleMuteAuthor = async () => {
+    if (!authorUsername || isOwnPost) return;
+    try {
+      if (isMuted) await unmuteUser(authorUsername);
+      else await muteUser(authorUsername);
+      const nextMuted = !isMuted;
+      setIsMuted(nextMuted);
+      setShowMoreMenu(false);
+      pushToast({ type: 'success', title: nextMuted ? 'تم الكتم' : 'تم إلغاء الكتم' });
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر تحديث الكتم', description: error?.response?.data?.detail || error?.message });
+    }
+  };
+
+  const handleBlockAuthor = async () => {
+    if (!authorUsername || isOwnPost) return;
+    try {
+      if (isBlocked) await unblockUserApi(authorUsername);
+      else await blockUserApi(authorUsername);
+      const nextBlocked = !isBlocked;
+      setIsBlocked(nextBlocked);
+      setShowMoreMenu(false);
+      pushToast({ type: 'success', title: nextBlocked ? 'تم الحظر' : 'تم إلغاء الحظر' });
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر تحديث الحظر', description: error?.response?.data?.detail || error?.message });
+    }
+  };
+
+  const handleReportPost = () => {
+    try {
+      const key = 'yamshat_reported_posts';
+      const current = JSON.parse(window.localStorage.getItem(key) || '[]');
+      const next = Array.isArray(current) ? current : [];
+      next.unshift({ id: post.id, username: authorUsername, created_at: new Date().toISOString() });
+      window.localStorage.setItem(key, JSON.stringify(next.slice(0, 100)));
+    } catch {
+      // ignore storage failures
+    }
+    setShowMoreMenu(false);
+    pushToast({ type: 'success', title: 'تم إرسال البلاغ للمراجعة' });
+  };
+
+  // ===== تحميل التعليقات من backend عند فتح القسم لأول مرة =====
+  const loadComments = useCallback(async () => {
+    if (!canCallBackend || commentsLoaded || commentsLoading) return;
+    setCommentsLoading(true);
+    try {
+      const response = await apiGetComments(post.rawId, { page: 1, limit: 20, sort_by: 'newest' });
+      const data = response?.data;
+      const items = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
+      const mapped = items.map((item) => ({
+        id: item.id,
+        author: item.username || item.user || item.author_name || 'مستخدم',
+        content: item.content || item.text || '',
+      }));
+      setLocalComments(mapped);
+      if (typeof data?.total === 'number') setCommentsCount(data.total);
+      else if (typeof data?.total_count === 'number') setCommentsCount(data.total_count);
+      setCommentsLoaded(true);
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر تحميل التعليقات', description: error?.response?.data?.detail || error?.message });
+    } finally {
+      setCommentsLoading(false);
+    }
+  }, [canCallBackend, commentsLoaded, commentsLoading, post.rawId, pushToast]);
+
+  // تحميل التعليقات عند فتح اللوحة لأول مرة
+  useEffect(() => {
+    if (showComments && !commentsLoaded && canCallBackend) {
+      loadComments();
+    }
+  }, [showComments, commentsLoaded, canCallBackend, loadComments]);
+
+  // ===== ربط إضافة تعليق بـ backend =====
+  const handleAddComment = async () => {
     const content = commentDraft.trim();
-    if (!content) return;
-    setLocalComments((prev) => [{ id: `${post.id}-${Date.now()}`, author: 'أنت', content }, ...prev]);
+    if (!content || sendingComment) return;
+
+    // منشورات ترحيبية / بث مباشر: تعليق محلي فقط
+    if (!canCallBackend) {
+      setLocalComments((prev) => [{ id: `${post.id}-${Date.now()}`, author: 'أنت', content }, ...prev]);
+      setCommentsCount((count) => count + 1);
+      setCommentDraft('');
+      if (!showComments) setShowComments(true);
+      pushToast({ type: 'success', title: 'تمت إضافة التعليق' });
+      return;
+    }
+
+    setSendingComment(true);
+    // تحديث متفائل
+    const tempId = `temp-${Date.now()}`;
+    const tempComment = { id: tempId, author: currentUsername || 'أنت', content, pending: true };
+    setLocalComments((prev) => [tempComment, ...prev]);
     setCommentsCount((count) => count + 1);
     setCommentDraft('');
     if (!showComments) setShowComments(true);
-    pushToast({ type: 'success', title: 'تمت إضافة التعليق' });
+
+    try {
+      const response = await apiAddComment(post.rawId, content);
+      const data = response?.data || {};
+      const finalComment = {
+        id: data.id || tempId,
+        author: data.username || data.user || currentUsername || 'أنت',
+        content: data.content || content,
+      };
+      setLocalComments((prev) => prev.map((c) => (c.id === tempId ? finalComment : c)));
+      pushToast({ type: 'success', title: 'تمت إضافة التعليق' });
+      invalidateFeed();
+    } catch (error) {
+      // تراجع
+      setLocalComments((prev) => prev.filter((c) => c.id !== tempId));
+      setCommentsCount((count) => Math.max(0, count - 1));
+      setCommentDraft(content);
+      pushToast({ type: 'error', title: 'تعذر إرسال التعليق', description: error?.response?.data?.detail || error?.message });
+    } finally {
+      setSendingComment(false);
+    }
   };
+
+  if (isDeleted) return null;
 
   return (
     <article className="yam-post-card-v2">
@@ -324,49 +594,221 @@ function PostCard({ post }) {
         </div>
         <div className="yam-post-meta-v2">
           <span>{post.time}</span>
-          <button type="button" className="yam-ghost-icon-btn" aria-label="خيارات المنشور" onClick={handleMoreOptions} title="نسخ رابط المنشور">
-            <YamshatIcon name="more" size={18} />
-          </button>
+          <div className="yam-settings-menu-wrap">
+            <button type="button" className="yam-ghost-icon-btn" aria-label="خيارات المنشور" onClick={handleMoreOptions} title="خيارات المنشور">
+              <YamshatIcon name="more" size={18} />
+            </button>
+            {showMoreMenu ? (
+              <div className="yam-settings-popover">
+                {!isOwnPost ? (
+                  <>
+                    <button type="button" className="yam-settings-popover-item" onClick={handleFollowAuthor}>{isFollowing ? 'إلغاء المتابعة' : 'متابعة'}</button>
+                    <button type="button" className="yam-settings-popover-item" onClick={handleMuteAuthor}>{isMuted ? 'إلغاء الكتم' : 'كتم'}</button>
+                    <button type="button" className="yam-settings-popover-item danger" onClick={handleBlockAuthor}>{isBlocked ? 'إلغاء الحظر' : 'حظر'}</button>
+                    <button type="button" className="yam-settings-popover-item danger" onClick={handleReportPost}>بلاغ</button>
+                  </>
+                ) : (
+                  <button type="button" className="yam-settings-popover-item danger" onClick={handleDeletePost}>حذف المنشور</button>
+                )}
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
 
       <p className="yam-post-copy-v2">{post.text}</p>
 
-      {post.liveUrl ? (
+      {post.isLive && post.authorAvatar ? (
+        <div className="yam-post-live-card" onClick={handleOpenLiveAnnouncement} style={{ cursor: 'pointer' }}>
+          {/* الخلفية مع الصورة */}
+          <div className="yam-post-live-background" style={{
+            position: 'relative',
+            borderRadius: '16px',
+            overflow: 'hidden',
+            background: '#000',
+            aspectRatio: '16/9',
+            marginBottom: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            {post.media_url || post.thumbnail_url ? (
+              <img 
+                src={post.media_url || post.thumbnail_url} 
+                alt="Live Stream" 
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            ) : null}
+            
+            {/* طبقة التدرج */}
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.5) 50%, rgba(0,0,0,0.8) 100%)'
+            }} />
+            
+            {/* شارة البث المباشر (مطابق للتصميم المرفق) */}
+            <div style={{
+              position: 'absolute',
+              top: '12px',
+              left: '12px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              background: '#ef4444',
+              borderRadius: '6px',
+              color: 'white',
+              fontSize: '12px',
+              fontWeight: 'bold',
+              zIndex: 2
+            }}>
+              <span>مباشر</span>
+            </div>
+            
+            {/* عدد المشاهدين (مطابق للتصميم المرفق) */}
+            <div style={{
+              position: 'absolute',
+              top: '12px',
+              left: '75px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '6px 10px',
+              background: 'rgba(0, 0, 0, 0.4)',
+              borderRadius: '6px',
+              color: 'white',
+              fontSize: '12px',
+              fontWeight: '600',
+              backdropFilter: 'blur(10px)',
+              zIndex: 2
+            }}>
+              👁 {formatCompactNumber(post.views || 0)}
+            </div>
+            
+            {/* معلومات المضيف والزر */}
+            <div style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              background: 'linear-gradient(transparent, rgba(0,0,0,0.8))',
+              padding: '20px 12px 12px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              zIndex: 2
+            }}>
+              {/* معلومات المضيف */}
+              <div style={{
+                display: 'flex',
+                gap: '10px',
+                alignItems: 'center',
+                flex: 1
+              }}>
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '50%',
+                  overflow: 'hidden',
+                  border: '2px solid rgba(255, 255, 255, 0.3)',
+                  flexShrink: 0
+                }}>
+                  {post.authorAvatar ? (
+                    <img src={post.authorAvatar} alt={post.authorName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <div style={{
+                      width: '100%',
+                      height: '100%',
+                      background: 'linear-gradient(135deg, #7c3aed, #3b82f6)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'white',
+                      fontWeight: 'bold',
+                      fontSize: '16px'
+                    }}>
+                      {post.authorName?.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                </div>
+                <div style={{ color: 'white', flex: 1 }}>
+                  <div style={{ fontSize: '14px', fontWeight: '700' }}>{post.authorName}</div>
+                  <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.8)' }}>{post.text || post.title}</div>
+                </div>
+              </div>
+              
+              {/* زر الانضمام */}
+              <button 
+                type="button"
+                style={{
+                  padding: '8px 16px',
+                  background: 'linear-gradient(135deg, #7c3aed, #3b82f6)',
+                  border: 'none',
+                  borderRadius: '8px',
+                  color: 'white',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 4px 12px rgba(124, 58, 237, 0.4)',
+                  flexShrink: 0
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.transform = 'translateY(-2px)';
+                  e.target.style.boxShadow = '0 6px 16px rgba(124, 58, 237, 0.6)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.transform = 'translateY(0)';
+                  e.target.style.boxShadow = '0 4px 12px rgba(124, 58, 237, 0.4)';
+                }}
+              >
+                انضم الآن
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {post.isLive && !post.authorAvatar ? (
+        <div className="yam-post-live-indicator">
+          <span className="live-dot"></span>
+          <span className="live-text">مباشر الآن</span>
+          <span className="live-viewers">للا {formatCompactNumber(post.views || 0)} مشاهد</span>
+        </div>
+      ) : null}
+
+      {post.liveUrl && !post.isLive ? (
         <button
           type="button"
           className="yam-post-live-cta"
           onClick={handleOpenLiveAnnouncement}
         >
-          🎥 متابعة البث المباشر
+          📵 متابعة البث المباشر
         </button>
       ) : null}
 
-      <div className={`yam-post-media-grid-v2 media-count-${mediaItems.length || 1}`}>
-        {mediaItems.map((item, index) => (
-          <MediaTile key={`${post.id}-media-${index}`} item={item} index={index} />
-        ))}
-      </div>
-
-      <div className="yam-post-stats-v2">
-        <div className="yam-post-reactions-v2">
-          <span className="reaction-bubble like">❤</span>
-          <span className="reaction-bubble support">👍</span>
-          <span className="reaction-bubble wow">💙</span>
-          <strong>{formatCompactNumber(likesCount)}</strong>
+      {mediaItems.length ? (
+        <div className={`yam-post-media-grid-v2 media-count-${mediaItems.length}`}>
+          {mediaItems.map((item, index) => (
+            <MediaTile key={`${post.id}-media-${index}`} item={item} index={index} />
+          ))}
         </div>
-        <div className="yam-post-numbers-v2">
-          <span>{formatCompactNumber(commentsCount)} تعليق</span>
-          <span>{formatCompactNumber(sharesCount)} مشاركة</span>
-          <span>{formatCompactNumber(post.views || 0)} مشاهدة</span>
-        </div>
-      </div>
+      ) : null}
 
       <div className="yam-post-actions-v2">
-        <button type="button" className={liked ? 'active' : ''} onClick={handleLike}><YamshatIcon name="heart" size={17} />{liked ? 'تم الإعجاب' : 'أعجبني'}</button>
-        <button type="button" className={showComments ? 'active' : ''} onClick={() => setShowComments((prev) => !prev)}><YamshatIcon name="comment" size={17} />تعليق</button>
-        <button type="button" onClick={handleShare}><YamshatIcon name="repeat" size={17} />مشاركة</button>
-        <button type="button" className={saved ? 'active' : ''} onClick={handleSave}><YamshatIcon name="bookmark" size={17} />{saved ? 'محفوظ' : 'حفظ'}</button>
+        <button type="button" className={liked ? 'active' : ''} onClick={handleLike} disabled={busyAction === 'like'} aria-label="إعجاب">
+          <YamshatIcon name="heart" size={17} />{liked ? `تم الإعجاب${likesCount ? ` (${likesCount})` : ''}` : `أعجبني${likesCount ? ` (${likesCount})` : ''}`}
+        </button>
+        <button type="button" className={showComments ? 'active' : ''} onClick={() => setShowComments((prev) => !prev)} aria-label="تعليق">
+          <YamshatIcon name="comment" size={17} />تعليق{commentsCount ? ` (${commentsCount})` : ''}
+        </button>
+        <button type="button" onClick={handleShare} disabled={busyAction === 'share'} aria-label="مشاركة">
+          <YamshatIcon name="repeat" size={17} />مشاركة{sharesCount ? ` (${sharesCount})` : ''}
+        </button>
+        <button type="button" className={saved ? 'active' : ''} onClick={handleSave} disabled={busyAction === 'save'} aria-label="حفظ">
+          <YamshatIcon name="bookmark" size={17} />{saved ? 'محفوظ' : 'حفظ'}
+        </button>
       </div>
 
       {showComments ? (
@@ -377,13 +819,18 @@ function PostCard({ post }) {
               onChange={(event) => setCommentDraft(event.target.value)}
               placeholder="اكتب تعليقك هنا..."
               rows={3}
+              disabled={sendingComment}
             />
-            <button type="button" className="yam-post-comment-send" onClick={handleAddComment}>إرسال التعليق</button>
+            <button type="button" className="yam-post-comment-send" onClick={handleAddComment} disabled={sendingComment || !commentDraft.trim()}>
+              {sendingComment ? 'جارٍ الإرسال...' : 'إرسال التعليق'}
+            </button>
           </div>
 
           <div className="yam-post-comment-list">
-            {localComments.length ? localComments.map((comment) => (
-              <div key={comment.id} className="yam-post-comment-item">
+            {commentsLoading ? (
+              <div className="yam-post-comment-empty">جارٍ تحميل التعليقات...</div>
+            ) : localComments.length ? localComments.map((comment) => (
+              <div key={comment.id} className="yam-post-comment-item" style={comment.pending ? { opacity: 0.6 } : undefined}>
                 <strong>{comment.author}</strong>
                 <p>{comment.content}</p>
               </div>
@@ -391,8 +838,7 @@ function PostCard({ post }) {
           </div>
         </div>
       ) : null}
-    <SocialEnhancements post={post} />
-                </article>
+    </article>
   );
 }
 
@@ -499,7 +945,10 @@ function FeedDesktopInner() {
   const liveStreamPosts = liveStreams.map(convertLiveStreamToPost).filter(Boolean);
   const feedPosts = useMemo(() => {
     const allPosts = buildFeedPosts(posts);
-    return [...liveStreamPosts, ...allPosts];
+    const combined = [...liveStreamPosts, ...allPosts];
+    
+    // إزالة أي منشورات ترحيبية يدوية أو مكررة والتأكد من وجود بيانات حقيقية
+    return combined.filter(p => p.id !== 'welcome');
   }, [posts, liveStreamPosts]);
 
   const totalPosts = feedPosts.length;
@@ -1389,6 +1838,74 @@ function FeedDesktopInner() {
             font-size: 15px;
           }
 
+          .yam-post-live-cta {
+            width: 100%;
+            min-height: 52px;
+            border-radius: 18px;
+            border: none;
+            background: linear-gradient(135deg, #8b5cf6, #6366f1);
+            color: #fff;
+            font-weight: 800;
+            font-size: 15px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 12px 28px rgba(124, 58, 237, 0.32);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 8px;
+          }
+
+          .yam-post-live-cta:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 16px 36px rgba(124, 58, 237, 0.42);
+            background: linear-gradient(135deg, #9333ea, #4f46e5);
+          }
+
+          .yam-post-live-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+            padding: 10px 16px;
+            background: rgba(239, 68, 68, 0.12);
+            border-radius: 14px;
+            border: 1px solid rgba(239, 68, 68, 0.25);
+          }
+
+          .live-dot {
+            width: 10px;
+            height: 10px;
+            background: #ef4444;
+            border-radius: 50%;
+            box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.2);
+            animation: pulse-live 1.5s infinite;
+          }
+
+          @keyframes pulse-live {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+          }
+
+          .live-text {
+            color: #ef4444;
+            font-weight: 900;
+            font-size: 14px;
+            letter-spacing: 0.5px;
+          }
+
+          .live-viewers {
+            color: #cbd5e1;
+            font-size: 13px;
+            font-weight: 700;
+            margin-inline-start: auto;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 2px 10px;
+            border-radius: 8px;
+          }
+
           .yam-post-media-grid-v2 {
             display: grid;
             grid-template-columns: 1.05fr 1.25fr 0.72fr;
@@ -1801,6 +2318,25 @@ function FeedDesktopInner() {
 
           .yam-laptop-avatar.accent {
             box-shadow: 0 0 0 4px rgba(124,58,237,0.18), 0 14px 24px rgba(0,0,0,0.24);
+          }
+
+          @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+          }
+
+          @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
+          }
+
+          .yam-post-live-card {
+            width: 100%;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+          }
+
+          .yam-post-live-card:hover .yam-post-live-background {
+            box-shadow: 0 8px 24px rgba(124, 58, 237, 0.2);
           }
 
           @media (max-width: 1380px) {

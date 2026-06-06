@@ -16,6 +16,7 @@ import {
   toggleMicrophone,
   getStreamViewers,
 } from '../services/api/advancedLiveStreamApi.js';
+import { createPost, updatePost } from '../api/posts.js';
 import { getCurrentUsername } from '../utils/auth.js';
 import ViewersManagementPanel from '../components/live/ViewersManagementPanel.jsx';
 import '../styles/modern-live-control.css';
@@ -121,6 +122,7 @@ export default function LiveStudio() {
   const localStreamRef = useRef(null);
   const statsIntervalRef = useRef(null);
   const durationIntervalRef = useRef(null);
+  const livePostUpdateIntervalRef = useRef(null);
 
   // إنشاء بث جديد
   const handleCreateStream = useCallback(async () => {
@@ -175,6 +177,22 @@ export default function LiveStudio() {
     }
   }, [newStreamData, pushToast]);
 
+  // دالة للتقاط لقطة من الفيديو
+  const captureThumbnail = () => {
+    const video = localVideoRef.current;
+    if (!video) return null;
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 800;
+    canvas.height = video.videoHeight || 450;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    
+    ctx.drawImage(video, 0, 0);
+    return canvas.toDataURL('image/jpeg', 0.8);
+  };
+
   // بدء البث
   const handleStartStream = useCallback(async (streamId) => {
     if (!streamId) return;
@@ -187,10 +205,68 @@ export default function LiveStudio() {
       if (tokenResponse?.data?.token) {
         setCameraReady(true);
         setStreamHealth('good');
+        
+        // إنشاء منشور البث تلقائياً في الخلاصة وإرساله للـ Backend
+        setTimeout(async () => {
+          const thumbnail = captureThumbnail() || 'https://placehold.co/800x450?text=Live+Stream';
+          
+          const livePostData = {
+            type: 'live',
+            post_type: 'LIVE',
+            live_stream_id: streamId,
+            title: newStreamData.title || 'بث مباشر',
+            content: newStreamData.description || newStreamData.title || 'بث مباشر جديد',
+            thumbnail_url: thumbnail,
+            media_url: thumbnail,
+            is_live: true,
+            status: 'published'
+          };
+
+          try {
+            // 1. الإرسال إلى الـ Backend ليراه الجميع
+            const backendResponse = await createPost(livePostData);
+            const savedPost = backendResponse?.data || livePostData;
+            
+            // 2. التحديث المحلي (للتوافق مع الكود الحالي)
+            const localPost = {
+              ...savedPost,
+              id: savedPost.id || `live-${streamId}`,
+              streamId: streamId,
+              isLive: true,
+              thumbnail: thumbnail,
+              createdAt: new Date().toISOString(),
+            };
+            
+            const existing = JSON.parse(localStorage.getItem('yamshat_posts') || '[]');
+            localStorage.setItem('yamshat_posts', JSON.stringify([localPost, ...existing]));
+            
+            // إرسال حدث لتحديث الخلاصة فوراً
+            window.dispatchEvent(new CustomEvent('yamshat:live-post-created', { detail: localPost }));
+            console.log('Live post synced with backend successfully');
+          } catch (e) {
+            console.error('Error syncing live post with backend:', e);
+            
+            // Fallback to local storage if backend fails
+            const fallbackPost = { ...livePostData, id: `live-${streamId}`, streamId, isLive: true, thumbnail };
+            const existing = JSON.parse(localStorage.getItem('yamshat_posts') || '[]');
+            localStorage.setItem('yamshat_posts', JSON.stringify([fallbackPost, ...existing]));
+            window.dispatchEvent(new CustomEvent('yamshat:live-post-created', { detail: fallbackPost }));
+          }
+        }, 500);
 
         if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
         statsIntervalRef.current = setInterval(() => {
           updateStreamStats(streamId);
+          // تحديث عدد المشاهدين في منشور البث
+          try {
+            const existing = JSON.parse(localStorage.getItem('yamshat_posts') || '[]');
+            const updated = existing.map(p => 
+              p.streamId === streamId ? { ...p, viewers: streamStats.viewers } : p
+            );
+            localStorage.setItem('yamshat_posts', JSON.stringify(updated));
+          } catch (e) {
+            console.error('Error updating live post viewers:', e);
+          }
         }, 5000);
 
         if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
@@ -205,6 +281,9 @@ export default function LiveStudio() {
           title: 'بدأ البث بنجاح',
           description: 'أنت الآن مباشر!',
         });
+        
+        // إرسال حدث لتحديث الخلاصة
+        window.dispatchEvent(new CustomEvent('yamshat:stream-started', { detail: { streamId } }));
       }
     } catch (error) {
       setCameraError('فشل في بدء البث. تحقق من الاتصال.');
@@ -223,9 +302,11 @@ export default function LiveStudio() {
     if (!window.confirm('هل أنت متأكد من إنهاء البث؟')) return;
 
     setLoading(true);
-    try {
-      await endLiveStream(activeStream.stream_id);
-
+    
+    // دالة تنظيف الحالة المحلية (Local Cleanup) وتحديث الـ Backend
+    const performLocalCleanup = async () => {
+      const streamId = activeStream.stream_id;
+      
       if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
       if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
 
@@ -233,29 +314,51 @@ export default function LiveStudio() {
         localStreamRef.current.getTracks().forEach(track => track.stop());
         localStreamRef.current = null;
       }
+      
+      // 1. محاولة تحديث حالة المنشور في الـ Backend
+      try {
+        const existing = JSON.parse(localStorage.getItem('yamshat_posts') || '[]');
+        const post = existing.find(p => p.streamId === streamId);
+        if (post && post.rawId) {
+          await updatePost(post.rawId, { is_live: false, status: 'archived' });
+        }
+      } catch (e) {
+        console.error('Error updating post status on backend:', e);
+      }
+
+      // 2. إزالة منشور البث من localStorage
+      try {
+        const existing = JSON.parse(localStorage.getItem('yamshat_posts') || '[]');
+        const filtered = existing.filter(p => p.streamId !== streamId);
+        localStorage.setItem('yamshat_posts', JSON.stringify(filtered));
+        
+        // إرسال حدث لتحديث الخلاصة
+        window.dispatchEvent(new CustomEvent('yamshat:stream-ended', { detail: { streamId } }));
+      } catch (e) {
+        console.error('Error removing live post:', e);
+      }
 
       setActiveStream(null);
       setIsStreaming(false);
       setCameraReady(false);
-      setStreamStats({
-        viewers: 0,
-        hearts: 0,
-        gifts: 0,
-        comments: 0,
-        duration: 0,
-        bitrate: 0,
-      });
+    };
 
+    try {
+      await endLiveStream(activeStream.stream_id);
+      await performLocalCleanup();
+      
       pushToast?.({
         type: 'success',
         title: 'تم إنهاء البث',
-        description: 'شكراً على البث!',
+        description: 'تم حفظ البث في سجلاتك',
       });
     } catch (error) {
+      // حتى لو فشل الـ API، نقوم بالتنظيف المحلي
+      await performLocalCleanup();
       pushToast?.({
         type: 'warning',
-        title: 'خطأ في إنهاء البث',
-        description: error?.response?.data?.message || 'حاول مرة أخرى',
+        title: 'تنبيه',
+        description: 'تم إنهاء البث محلياً، قد يكون هناك تأخير في تحديث الخادم',
       });
     } finally {
       setLoading(false);
@@ -263,441 +366,177 @@ export default function LiveStudio() {
   }, [activeStream, pushToast]);
 
   // تحديث إحصائيات البث
-  const updateStreamStats = useCallback(async (streamId) => {
+  const updateStreamStats = async (streamId) => {
     try {
-      const response = await getStreamStats(streamId);
-      if (response?.data) {
-        const data = response.data;
+      const stats = await getStreamStats(streamId);
+      if (stats?.data) {
         setStreamStats(prev => ({
           ...prev,
-          viewers: data.total_viewers || data.viewers_count || prev.viewers,
-          hearts: data.total_hearts || data.hearts_count || prev.hearts,
-          gifts: data.total_gifts || data.gifts_count || prev.gifts,
-          bitrate: data.bitrate || prev.bitrate,
+          viewers: stats.data.viewers_count || 0,
+          hearts: stats.data.hearts_count || 0,
+          gifts: stats.data.gifts_count || 0,
         }));
-
-        if (data.bitrate && data.bitrate < 1000) {
-          setStreamHealth('poor');
-        } else if (data.bitrate && data.bitrate < 2000) {
-          setStreamHealth('fair');
-        } else {
-          setStreamHealth('good');
-        }
       }
     } catch (error) {
-      console.error('خطأ في تحديث الإحصائيات:', error);
+      console.error('Error fetching stream stats:', error);
     }
-  }, []);
-
-  // تحميل التعليقات
-  const loadComments = useCallback(async (streamId) => {
-    try {
-      const response = await getLiveComments(streamId);
-      setComments(Array.isArray(response?.data) ? response.data : []);
-    } catch (error) {
-      console.error('خطأ في تحميل التعليقات:', error);
-    }
-  }, []);
+  };
 
   // إرسال تعليق
-  const handleSendComment = useCallback(async () => {
+  const handleSendComment = async () => {
     if (!commentText.trim() || !activeStream?.stream_id) return;
 
     try {
-      const newComment = {
-        id: Date.now(),
-        username: currentUsername,
-        text: commentText,
-        timestamp: new Date().toISOString(),
-      };
-
-      setComments(prev => [...prev, newComment]);
+      await sendLiveComment(activeStream.stream_id, commentText.trim());
       setCommentText('');
-
-      await sendLiveComment(activeStream.stream_id, {
-        text: commentText,
-      });
+      // سيتم تحديث التعليقات عبر الـ polling أو الـ socket لاحقاً
     } catch (error) {
       pushToast?.({
-        type: 'warning',
-        title: 'خطأ في إرسال التعليق',
-        description: 'حاول مرة أخرى',
+        type: 'error',
+        title: 'فشل إرسال التعليق',
       });
     }
-  }, [commentText, activeStream, currentUsername, pushToast]);
+  };
 
   // إرسال هدية
-  const handleSendGift = useCallback(async (gift) => {
-    if (!activeStream?.stream_id || !gift) return;
+  const handleSendGift = async (gift) => {
+    if (!activeStream?.stream_id) return;
 
     try {
-      await sendLiveGift(activeStream.stream_id, {
-        gift_id: gift.id,
-        name: gift.name,
-        price: gift.price,
-      });
-
-      setStreamStats(prev => ({
-        ...prev,
-        gifts: prev.gifts + 1,
-      }));
-
+      await sendLiveGift(activeStream.stream_id, gift.id);
+      setShowGiftPanel(false);
       pushToast?.({
         type: 'success',
         title: `تم إرسال ${gift.name}`,
-        description: 'شكراً على الدعم!',
-      });
-
-      setShowGiftPanel(false);
-    } catch (error) {
-      pushToast?.({
-        type: 'warning',
-        title: 'خطأ في إرسال الهدية',
-        description: 'حاول مرة أخرى',
-      });
-    }
-  }, [activeStream, pushToast]);
-
-  // تبديل التسجيل
-  const handleToggleRecording = useCallback(async () => {
-    if (!activeStream?.stream_id) return;
-
-    try {
-      const action = recordingEnabled ? 'stop' : 'start';
-      await recordLiveStream(activeStream.stream_id, { action });
-
-      setRecordingEnabled(!recordingEnabled);
-      pushToast?.({
-        type: 'success',
-        title: recordingEnabled ? 'تم إيقاف التسجيل' : 'بدأ التسجيل',
       });
     } catch (error) {
       pushToast?.({
-        type: 'warning',
-        title: 'خطأ في التسجيل',
-        description: 'حاول مرة أخرى',
+        type: 'error',
+        title: 'فشل إرسال الهدية',
+        description: 'تأكد من رصيدك',
       });
     }
-  }, [activeStream, recordingEnabled, pushToast]);
+  };
 
-  // تبديل الكاميرا
-  const handleToggleCamera = useCallback(async () => {
-    if (!activeStream?.stream_id) return;
-
-    try {
-      const newState = !cameraState.cameraEnabled;
-      await toggleCamera(activeStream.stream_id, newState);
-      
-      setCameraState(prev => ({
-        ...prev,
-        cameraEnabled: newState,
-      }));
-
-      pushToast?.({
-        type: 'success',
-        title: newState ? 'تم تشغيل الكاميرا' : 'تم إيقاف الكاميرا',
-      });
-    } catch (error) {
-      pushToast?.({
-        type: 'warning',
-        title: 'خطأ في تبديل الكاميرا',
-        description: 'حاول مرة أخرى',
-      });
-    }
-  }, [activeStream, cameraState.cameraEnabled, pushToast]);
-
-  // تبديل الميكروفون
-  const handleToggleMicrophone = useCallback(async () => {
-    if (!activeStream?.stream_id) return;
-
-    try {
-      const newState = !cameraState.microphoneEnabled;
-      await toggleMicrophone(activeStream.stream_id, newState);
-      
-      setCameraState(prev => ({
-        ...prev,
-        microphoneEnabled: newState,
-      }));
-
-      pushToast?.({
-        type: 'success',
-        title: newState ? 'تم تشغيل الميكروفون' : 'تم كتم الميكروفون',
-      });
-    } catch (error) {
-      pushToast?.({
-        type: 'warning',
-        title: 'خطأ في تبديل الميكروفون',
-        description: 'حاول مرة أخرى',
-      });
-    }
-  }, [activeStream, cameraState.microphoneEnabled, pushToast]);
-
-  // تحميل الكاميرا
-  useEffect(() => {
-    if (!isStreaming || !activeStream?.stream_id) return;
-
-    const setupCamera = async () => {
-      try {
-        if (!navigator.mediaDevices?.getUserMedia) {
-          setCameraError('هذا المتصفح لا يدعم الكاميرا');
-          return;
-        }
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: 'user',
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-          audio: true,
-        });
-
-        localStreamRef.current = stream;
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
-          localVideoRef.current.muted = true;
-          await localVideoRef.current.play();
-        }
-
-        setCameraReady(true);
-        setCameraError('');
-      } catch (error) {
-        const permissionDenied = error?.name === 'NotAllowedError';
-        setCameraError(
-          permissionDenied
-            ? 'تم رفض إذن الكاميرا. اسمح بالوصول وحاول مجدداً.'
-            : 'خطأ في تشغيل الكاميرا'
-        );
-      }
-    };
-
-    setupCamera();
-
-    return () => {
-      if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
-      if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
-    };
-  }, [isStreaming, activeStream?.stream_id]);
-
-  // تحميل التعليقات عند تغيير البث النشط
-  useEffect(() => {
+  // التحكم في الكاميرا والميكروفون
+  const handleToggleCamera = async () => {
+    const newState = !cameraState.cameraEnabled;
+    setCameraState(prev => ({ ...prev, cameraEnabled: newState }));
     if (activeStream?.stream_id) {
-      loadComments(activeStream.stream_id);
-      const interval = setInterval(() => loadComments(activeStream.stream_id), 3000);
-      return () => clearInterval(interval);
+      await toggleCamera(activeStream.stream_id, newState);
     }
-  }, [activeStream?.stream_id, loadComments]);
+  };
 
-  const formatDuration = (seconds) => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  const handleToggleMicrophone = async () => {
+    const newState = !cameraState.microphoneEnabled;
+    setCameraState(prev => ({ ...prev, microphoneEnabled: newState }));
+    if (activeStream?.stream_id) {
+      await toggleMicrophone(activeStream.stream_id, newState);
+    }
   };
 
   return (
-    <div className="modern-live-control" dir="rtl">
-      {/* Header */}
-      <header className="mlc-header">
-        <div className="mlc-header-content">
-          <button className="mlc-back-btn" onClick={() => navigate(-1)}>
-            <span>&lt;</span>
-          </button>
-          <div>
-            <h1>تحكم البث المباشر</h1>
-            <p>{isStreaming ? 'أنت الآن مباشر' : 'جاهز للبث'}</p>
-          </div>
-        </div>
-        <div className="mlc-header-actions">
-          {isStreaming && (
-            <button className="mlc-live-badge">
-              <span className="mlc-live-dot"></span>
-              مباشر
-            </button>
-          )}
-          <button className="mlc-menu-btn">⋮</button>
-        </div>
-      </header>
-
-      <div className="mlc-container">
-        {/* Main Content */}
-        <main className="mlc-main">
-          {/* Video Section */}
-          <div className="mlc-video-section">
-            <div className="mlc-video-container">
-              {cameraReady ? (
-                <video
-                  ref={localVideoRef}
-                  className="mlc-video"
-                  autoPlay
-                  muted
-                  playsInline
-                />
-              ) : (
-                <div className="mlc-video-placeholder">
-                  <div className="mlc-placeholder-icon">📺</div>
-                  <p>{cameraError || 'جاري تحضير الكاميرا...'}</p>
-                </div>
-              )}
-              <div className="mlc-video-overlay">
-                <span className="mlc-viewer-count">👁 {streamStats.viewers}K</span>
+    <div className="modern-live-studio">
+      {/* واجهة التحكم بالبث */}
+      <div className="studio-container">
+        {!isStreaming ? (
+          <div className="setup-screen">
+            <h1>إعداد البث المباشر</h1>
+            <div className="setup-form">
+              <input 
+                type="text" 
+                placeholder="عنوان البث..." 
+                value={newStreamData.title}
+                onChange={e => setNewStreamData(prev => ({ ...prev, title: e.target.value }))}
+              />
+              <textarea 
+                placeholder="وصف البث..." 
+                value={newStreamData.description}
+                onChange={e => setNewStreamData(prev => ({ ...prev, description: e.target.value }))}
+              />
+              <div className="form-row">
+                <select 
+                  value={newStreamData.category}
+                  onChange={e => setNewStreamData(prev => ({ ...prev, category: e.target.value }))}
+                >
+                  {STREAM_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <select 
+                  value={newStreamData.quality}
+                  onChange={e => setNewStreamData(prev => ({ ...prev, quality: e.target.value }))}
+                >
+                  {QUALITY_OPTIONS.map(q => <option key={q.value} value={q.value}>{q.label}</option>)}
+                </select>
               </div>
-            </div>
-
-            {/* Stats Panel */}
-            <div className="mlc-stats-panel">
-              <h3>إحصائيات البث</h3>
-              <div className="mlc-stats-grid">
-                <div className="mlc-stat-item">
-                  <span className="mlc-stat-icon">👁</span>
-                  <span className="mlc-stat-value">{streamStats.viewers}</span>
-                  <span className="mlc-stat-label">المشاهدون</span>
-                </div>
-                <div className="mlc-stat-item">
-                  <span className="mlc-stat-icon">💜</span>
-                  <span className="mlc-stat-value">{streamStats.hearts}</span>
-                  <span className="mlc-stat-label">الإعجابات</span>
-                </div>
-                <div className="mlc-stat-item">
-                  <span className="mlc-stat-icon">🎁</span>
-                  <span className="mlc-stat-value">{streamStats.gifts}</span>
-                  <span className="mlc-stat-label">الهدايا</span>
-                </div>
-                <div className="mlc-stat-item">
-                  <span className="mlc-stat-icon">⏱</span>
-                  <span className="mlc-stat-value">{formatDuration(streamStats.duration)}</span>
-                  <span className="mlc-stat-label">المدة</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Control Buttons - Now Connected */}
-          <div className="mlc-controls">
-            {!isStreaming ? (
-              <button
-                className="mlc-control-btn mlc-control-btn-start"
+              <button 
+                className="start-btn" 
                 onClick={handleCreateStream}
                 disabled={loading}
               >
-                <span>▶</span>
-                {loading ? 'جاري البدء...' : 'بدء البث'}
+                {loading ? 'جاري البدء...' : 'بدء البث المباشر'}
               </button>
-            ) : (
-              <>
-                <button
-                  className="mlc-control-btn mlc-control-btn-stop"
-                  onClick={handleEndStream}
-                  disabled={loading}
-                >
-                  <span>⏹</span>
-                  إيقاف البث
-                </button>
-                <button
-                  className={`mlc-control-btn mlc-control-btn-camera ${
-                    !cameraState.cameraEnabled ? 'disabled' : ''
-                  }`}
-                  onClick={handleToggleCamera}
-                >
-                  <span>{cameraState.cameraEnabled ? '📷' : '🚫'}</span>
-                  {cameraState.cameraEnabled ? 'إيقاف الكاميرا' : 'تشغيل الكاميرا'}
-                </button>
-                <button
-                  className={`mlc-control-btn mlc-control-btn-mute ${
-                    !cameraState.microphoneEnabled ? 'disabled' : ''
-                  }`}
-                  onClick={handleToggleMicrophone}
-                >
-                  <span>{cameraState.microphoneEnabled ? '🎤' : '🔇'}</span>
-                  {cameraState.microphoneEnabled ? 'كتم الميكروفون' : 'تشغيل الميكروفون'}
-                </button>
-                <button
-                  className={`mlc-control-btn mlc-control-btn-record ${
-                    recordingEnabled ? 'active' : ''
-                  }`}
-                  onClick={handleToggleRecording}
-                >
-                  <span>{recordingEnabled ? '⏹' : '⏺'}</span>
-                  {recordingEnabled ? 'إيقاف التسجيل' : 'بدء التسجيل'}
-                </button>
-              </>
-            )}
+            </div>
           </div>
-
-          {/* Messages Section */}
-          <div className="mlc-messages-section">
-            <div className="mlc-messages-header">
-              <h3>لوحة الرسائل</h3>
-              <div className="mlc-messages-info">
-                <span className="mlc-message-count">({comments.length}) الكل</span>
+        ) : (
+          <div className="live-screen">
+            <div className="video-preview">
+              <video ref={localVideoRef} autoPlay muted playsInline />
+              <div className="live-overlay">
+                <div className="live-badge">مباشر</div>
+                <div className="viewer-count">👁️ {streamStats.viewers}</div>
+              </div>
+              <div className="stream-controls">
+                <button onClick={handleToggleCamera} className={cameraState.cameraEnabled ? 'active' : ''}>
+                  {cameraState.cameraEnabled ? '📹' : '📵'}
+                </button>
+                <button onClick={handleToggleMicrophone} className={cameraState.microphoneEnabled ? 'active' : ''}>
+                  {cameraState.microphoneEnabled ? '🎤' : '🔇'}
+                </button>
+                <button className="end-btn" onClick={handleEndStream}>إنهاء البث</button>
               </div>
             </div>
-
-            <div className="mlc-messages-list">
-              {comments.length > 0 ? (
-                comments.map((comment) => (
-                  <div key={comment.id} className="mlc-message-item">
-                    <Avatar name={comment.username} size={36} />
-                    <div className="mlc-message-content">
-                      <div className="mlc-message-header">
-                        <span className="mlc-message-name">{comment.username}</span>
-                      </div>
-                      <p className="mlc-message-text">{comment.text}</p>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="mlc-empty-messages">
-                  <p>لا توجد رسائل حتى الآن</p>
+            
+            <div className="studio-sidebar">
+              <div className="stats-panel">
+                <div className="stat-item">
+                  <span className="label">المشاهدات</span>
+                  <span className="value">{streamStats.viewers}</span>
                 </div>
-              )}
-            </div>
-
-            <div className="mlc-comment-input">
-              <input
-                type="text"
-                placeholder="اكتب رسالة..."
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSendComment()}
-              />
-              <button onClick={handleSendComment}>إرسال</button>
-            </div>
-          </div>
-        </main>
-
-        {/* Sidebar */}
-        <aside className="mlc-sidebar">
-          {/* Viewers Management */}
-          {isStreaming && activeStream?.stream_id && (
-            <ViewersManagementPanel
-              streamId={activeStream.stream_id}
-              hostId={activeStream.host_id}
-              onViewerCountChange={(count) => {
-                setStreamStats(prev => ({ ...prev, viewers: count }));
-              }}
-            />
-          )}
-
-          {/* Gifts Panel */}
-          <div className="mlc-gifts-section">
-            <h3>الهدايا</h3>
-            <div className="mlc-gifts-grid">
-              {GIFTS.map((gift) => (
-                <button
-                  key={gift.id}
-                  className="mlc-gift-btn"
-                  onClick={() => handleSendGift(gift)}
-                  disabled={!isStreaming}
-                  title={`${gift.name} - ${gift.price} نقطة`}
-                >
-                  <span className="mlc-gift-icon-large">{gift.icon}</span>
-                  <span className="mlc-gift-price">{gift.price}</span>
-                </button>
-              ))}
+                <div className="stat-item">
+                  <span className="label">القلوب</span>
+                  <span className="value">{streamStats.hearts}</span>
+                </div>
+                <div className="stat-item">
+                  <span className="label">الوقت</span>
+                  <span className="value">
+                    {Math.floor(streamStats.duration / 60)}:
+                    {(streamStats.duration % 60).toString().padStart(2, '0')}
+                  </span>
+                </div>
+              </div>
+              
+              <div className="chat-panel">
+                <div className="chat-messages">
+                  {comments.map((c, i) => (
+                    <div key={i} className="chat-msg">
+                      <strong>{c.username}:</strong> {c.text}
+                    </div>
+                  ))}
+                </div>
+                <div className="chat-input">
+                  <input 
+                    type="text" 
+                    placeholder="اكتب تعليقاً..." 
+                    value={commentText}
+                    onChange={e => setCommentText(e.target.value)}
+                    onKeyPress={e => e.key === 'Enter' && handleSendComment()}
+                  />
+                  <button onClick={handleSendComment}>إرسال</button>
+                </div>
+              </div>
             </div>
           </div>
-        </aside>
+        )}
       </div>
     </div>
   );

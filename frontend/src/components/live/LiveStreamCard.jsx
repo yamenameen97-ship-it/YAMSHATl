@@ -2,8 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 
 /**
- * LiveStreamCard - مكون عرض البث المباشر في صفحة المنشورات
- * يعرض البث مع كل الميزات التفاعلية والتعليقات والهدايا
+ * LiveStreamCard - صفحة بث مباشر احترافية متكاملة
+ * تعرض البث مع كل الميزات التفاعلية والتعليقات والهدايا والتأثيرات
  */
 export default function LiveStreamCard({ 
   stream, 
@@ -17,15 +17,25 @@ export default function LiveStreamCard({
   const [comments, setComments] = useState(stream?.comments || []);
   const [commentText, setCommentText] = useState('');
   const [showGiftPanel, setShowGiftPanel] = useState(false);
-  const [showCommentBox, setShowCommentBox] = useState(false);
   const [floatingHearts, setFloatingHearts] = useState([]);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [showGiftNotification, setShowGiftNotification] = useState(null);
   const videoRef = useRef(null);
+  const commentsEndRef = useRef(null);
 
   const GIFTS = [
-    { id: 1, name: 'وردة', emoji: '🌹', coins: 10 },
-    { id: 2, name: 'صاروخ', emoji: '🚀', coins: 50 },
-    { id: 3, name: 'تاج', emoji: '👑', coins: 100 },
+    { id: 1, name: 'وردة', emoji: '🌹', coins: 10, color: '#ef4444' },
+    { id: 2, name: 'صاروخ', emoji: '🚀', coins: 50, color: '#f97316' },
+    { id: 3, name: 'تاج', emoji: '👑', coins: 100, color: '#fbbf24' },
+    { id: 4, name: 'ماس', emoji: '💎', coins: 200, color: '#06b6d4' },
+    { id: 5, name: 'نار', emoji: '🔥', coins: 150, color: '#ef4444' },
+    { id: 6, name: 'نجم', emoji: '⭐', coins: 75, color: '#fbbf24' },
   ];
+
+  // التمرير التلقائي للتعليقات الجديدة
+  useEffect(() => {
+    commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [comments]);
 
   const handleSendComment = async () => {
     if (!commentText.trim()) return;
@@ -37,6 +47,7 @@ export default function LiveStreamCard({
         user: currentUser,
         text: commentText,
         timestamp: new Date().toISOString(),
+        avatar: '👤',
       }]);
       setCommentText('');
     } catch (error) {
@@ -48,6 +59,10 @@ export default function LiveStreamCard({
     try {
       await onSendGift?.(stream?.id, gift);
       setShowGiftPanel(false);
+      
+      // إظهار إشعار الهدية
+      setShowGiftNotification(gift);
+      setTimeout(() => setShowGiftNotification(null), 2000);
     } catch (error) {
       console.error('Error sending gift:', error);
     }
@@ -57,7 +72,11 @@ export default function LiveStreamCard({
     try {
       await onSendHeart?.(stream?.id);
       const id = `heart-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      const newHeart = { id, left: 14 + Math.random() * 72, duration: 1500 + Math.random() * 900 };
+      const newHeart = { 
+        id, 
+        left: 14 + Math.random() * 72, 
+        duration: 1500 + Math.random() * 900 
+      };
       setFloatingHearts((prev) => [...prev, newHeart]);
       setTimeout(() => setFloatingHearts((prev) => prev.filter((item) => item.id !== id)), newHeart.duration);
     } catch (error) {
@@ -67,45 +86,49 @@ export default function LiveStreamCard({
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      className="yam-live-stream-card"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="enhanced-live-stream-card"
     >
       {/* خلفية البث */}
-      <div className="yam-live-stream-container">
+      <div className="enhanced-live-stream-container">
         {/* طبقة القلوب العائمة */}
-        <div className="yam-live-hearts-layer" aria-hidden>
+        <div className="enhanced-live-hearts-layer" aria-hidden>
           {floatingHearts.map((item) => (
-            <span 
+            <motion.span 
               key={item.id} 
-              className="yam-live-heart" 
-              style={{ 
-                left: `${item.left}%`, 
-                animationDuration: `${item.duration}ms` 
-              }}
+              className="enhanced-live-heart"
+              initial={{ y: 0, opacity: 1, scale: 1 }}
+              animate={{ y: -100, opacity: 0, scale: 0.3 }}
+              transition={{ duration: item.duration / 1000 }}
+              style={{ left: `${item.left}%` }}
             >
               💜
-            </span>
+            </motion.span>
           ))}
         </div>
 
         {/* رأس البث */}
-        <div className="yam-live-stream-header">
-          <div className="yam-live-stream-badges">
-            <span className="yam-live-badge yam-live-badge-active">
+        <div className="enhanced-live-stream-header">
+          <div className="enhanced-live-stream-badges">
+            <motion.span 
+              className="enhanced-live-badge enhanced-live-badge-active"
+              animate={{ opacity: [1, 0.6, 1] }}
+              transition={{ duration: 1.5, repeat: Infinity }}
+            >
               🔴 مباشر
-            </span>
-            <span className="yam-live-badge">
+            </motion.span>
+            <span className="enhanced-live-badge">
               👁 {stream?.viewer_count || 0}
             </span>
-            <span className="yam-live-badge">
+            <span className="enhanced-live-badge">
               💜 {stream?.hearts_count || 0}
             </span>
           </div>
           <button 
             type="button" 
-            className="yam-live-close-btn"
+            className="enhanced-live-close-btn"
             onClick={onClose}
             aria-label="إغلاق البث"
           >
@@ -114,10 +137,10 @@ export default function LiveStreamCard({
         </div>
 
         {/* منطقة الفيديو */}
-        <div className="yam-live-stream-video-area">
+        <div className="enhanced-live-stream-video-area">
           <video 
             ref={videoRef}
-            className="yam-live-stream-video"
+            className="enhanced-live-stream-video"
             autoPlay
             playsInline
             controls={false}
@@ -125,108 +148,150 @@ export default function LiveStreamCard({
           />
           
           {/* معلومات البث */}
-          <div className="yam-live-stream-info">
-            <div className="yam-live-stream-host-info">
-              <div className="yam-live-stream-avatar">
+          <div className="enhanced-live-stream-info">
+            <div className="enhanced-live-stream-host-info">
+              <div className="enhanced-live-stream-avatar">
                 {stream?.host_avatar ? (
                   <img src={stream.host_avatar} alt={stream?.host_name} />
                 ) : (
-                  <div className="yam-live-stream-avatar-placeholder">
+                  <div className="enhanced-live-stream-avatar-placeholder">
                     {stream?.host_name?.charAt(0).toUpperCase()}
                   </div>
                 )}
+                <div className="enhanced-live-verified-badge">✓</div>
               </div>
-              <div className="yam-live-stream-details">
+              <div className="enhanced-live-stream-details">
                 <h3>{stream?.host_name}</h3>
                 <p>@{stream?.host_username}</p>
               </div>
             </div>
 
             {/* أزرار التفاعل الجانبية */}
-            <div className="yam-live-stream-actions">
-              <button 
+            <div className="enhanced-live-stream-actions">
+              <motion.button 
                 type="button"
-                className="yam-live-action-btn yam-live-action-sound"
-                title="صوت"
+                className="enhanced-live-action-btn enhanced-live-action-sound"
+                onClick={() => setSoundEnabled(!soundEnabled)}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.95 }}
+                title={soundEnabled ? "كتم الصوت" : "تشغيل الصوت"}
               >
-                🔊
-              </button>
-              <button 
+                {soundEnabled ? '🔊' : '🔇'}
+              </motion.button>
+              <motion.button 
                 type="button"
-                className="yam-live-action-btn yam-live-action-heart"
+                className="enhanced-live-action-btn enhanced-live-action-heart"
                 onClick={handleSendHeart}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.95 }}
                 title="إرسال قلب"
               >
                 💜
-              </button>
-              <button 
+              </motion.button>
+              <motion.button 
                 type="button"
-                className="yam-live-action-btn yam-live-action-gift"
+                className="enhanced-live-action-btn enhanced-live-action-gift"
                 onClick={() => setShowGiftPanel(!showGiftPanel)}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.95 }}
                 title="إرسال هدية"
               >
                 🎁
-              </button>
+              </motion.button>
             </div>
           </div>
         </div>
 
+        {/* إشعار الهدية */}
+        {showGiftNotification && (
+          <motion.div
+            className="enhanced-live-gift-notification"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+          >
+            <span className="enhanced-live-gift-notification-emoji">
+              {showGiftNotification.emoji}
+            </span>
+            <div className="enhanced-live-gift-notification-text">
+              <p className="enhanced-live-gift-notification-user">{currentUser}</p>
+              <p className="enhanced-live-gift-notification-gift">
+                أرسل {showGiftNotification.name}
+              </p>
+            </div>
+          </motion.div>
+        )}
+
         {/* منطقة التعليقات والهدايا */}
-        <div className="yam-live-stream-interaction">
+        <div className="enhanced-live-stream-interaction">
           {/* لوحة الهدايا */}
           {showGiftPanel && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="yam-live-gift-panel"
+              className="enhanced-live-gift-panel"
             >
-              <div className="yam-live-gift-header">
+              <div className="enhanced-live-gift-header">
                 <strong>اختر هدية</strong>
                 <button 
                   type="button"
                   onClick={() => setShowGiftPanel(false)}
-                  className="yam-live-gift-close"
+                  className="enhanced-live-gift-close"
                 >
                   ✕
                 </button>
               </div>
-              <div className="yam-live-gift-grid">
+              <div className="enhanced-live-gift-grid">
                 {GIFTS.map((gift) => (
-                  <button
+                  <motion.button
                     key={gift.id}
                     type="button"
-                    className="yam-live-gift-item"
+                    className="enhanced-live-gift-item"
                     onClick={() => handleSendGift(gift)}
+                    whileHover={{ scale: 1.05, y: -4 }}
+                    whileTap={{ scale: 0.95 }}
+                    style={{ borderColor: gift.color }}
                   >
-                    <div className="yam-live-gift-emoji">{gift.emoji}</div>
-                    <div className="yam-live-gift-name">{gift.name}</div>
-                    <div className="yam-live-gift-price">{gift.coins} عملة</div>
-                  </button>
+                    <div className="enhanced-live-gift-emoji">{gift.emoji}</div>
+                    <div className="enhanced-live-gift-name">{gift.name}</div>
+                    <div className="enhanced-live-gift-price" style={{ color: gift.color }}>
+                      {gift.coins}
+                    </div>
+                  </motion.button>
                 ))}
               </div>
             </motion.div>
           )}
 
           {/* منطقة التعليقات */}
-          <div className="yam-live-comments-section">
-            <div className="yam-live-comments-header">
+          <div className="enhanced-live-comments-section">
+            <div className="enhanced-live-comments-header">
               <strong>التعليقات المباشرة</strong>
-              <span className="yam-live-comments-count">{comments.length}</span>
+              <span className="enhanced-live-comments-count">{comments.length}</span>
             </div>
-            <div className="yam-live-comments-list">
+            <div className="enhanced-live-comments-list">
               {comments.map((comment) => (
-                <div key={comment.id} className="yam-live-comment-item">
-                  <strong className="yam-live-comment-user">
-                    {comment.user}
-                  </strong>
-                  <p className="yam-live-comment-text">{comment.text}</p>
-                </div>
+                <motion.div 
+                  key={comment.id} 
+                  className="enhanced-live-comment-item"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                >
+                  <span className="enhanced-live-comment-avatar">{comment.avatar}</span>
+                  <div className="enhanced-live-comment-content">
+                    <strong className="enhanced-live-comment-user">
+                      {comment.user}
+                    </strong>
+                    <p className="enhanced-live-comment-text">{comment.text}</p>
+                  </div>
+                </motion.div>
               ))}
+              <div ref={commentsEndRef} />
             </div>
           </div>
 
           {/* صندوق إدخال التعليقات */}
-          <div className="yam-live-comment-input-box">
+          <div className="enhanced-live-comment-input-box">
             <input
               type="text"
               value={commentText}
@@ -235,41 +300,73 @@ export default function LiveStreamCard({
                 if (e.key === 'Enter') handleSendComment();
               }}
               placeholder="اكتب تعليقك..."
-              className="yam-live-comment-input"
+              className="enhanced-live-comment-input"
             />
-            <button
+            <motion.button
               type="button"
               onClick={handleSendComment}
-              className="yam-live-comment-send-btn"
+              className="enhanced-live-comment-send-btn"
               disabled={!commentText.trim()}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
             >
               ➤
-            </button>
+            </motion.button>
           </div>
         </div>
 
         {/* شريط الأدوات السفلي */}
-        <div className="yam-live-stream-toolbar">
-          <button type="button" className="yam-live-toolbar-btn">
-            👍 مشاركة
-          </button>
-          <button type="button" className="yam-live-toolbar-btn">
-            👥 دعوة
-          </button>
-          <button type="button" className="yam-live-toolbar-btn">
-            🎁 هدية
-          </button>
-          <button type="button" className="yam-live-toolbar-btn">
-            📊 استطلاع
-          </button>
-          <button type="button" className="yam-live-toolbar-btn">
-            ⋯ المزيد
-          </button>
+        <div className="enhanced-live-stream-toolbar">
+          <motion.button 
+            type="button" 
+            className="enhanced-live-toolbar-btn"
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <span>👍</span>
+            <span>مشاركة</span>
+          </motion.button>
+          <motion.button 
+            type="button" 
+            className="enhanced-live-toolbar-btn"
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <span>👥</span>
+            <span>دعوة</span>
+          </motion.button>
+          <motion.button 
+            type="button" 
+            className="enhanced-live-toolbar-btn"
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <span>🎁</span>
+            <span>هدية</span>
+          </motion.button>
+          <motion.button 
+            type="button" 
+            className="enhanced-live-toolbar-btn"
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <span>📊</span>
+            <span>استطلاع</span>
+          </motion.button>
+          <motion.button 
+            type="button" 
+            className="enhanced-live-toolbar-btn"
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <span>⋯</span>
+            <span>المزيد</span>
+          </motion.button>
         </div>
       </div>
 
       <style>{`
-        .yam-live-stream-card {
+        .enhanced-live-stream-card {
           position: fixed;
           top: 0;
           left: 0;
@@ -283,7 +380,7 @@ export default function LiveStreamCard({
           direction: rtl;
         }
 
-        .yam-live-stream-container {
+        .enhanced-live-stream-container {
           position: relative;
           width: 100%;
           height: 100%;
@@ -294,7 +391,7 @@ export default function LiveStreamCard({
         }
 
         /* طبقة القلوب العائمة */
-        .yam-live-hearts-layer {
+        .enhanced-live-hearts-layer {
           position: absolute;
           top: 0;
           left: 0;
@@ -304,26 +401,14 @@ export default function LiveStreamCard({
           z-index: 1;
         }
 
-        .yam-live-heart {
+        .enhanced-live-heart {
           position: absolute;
           font-size: 32px;
-          animation: float-up 2s ease-in forwards;
           opacity: 0.8;
         }
 
-        @keyframes float-up {
-          0% {
-            transform: translateY(0) scale(1);
-            opacity: 1;
-          }
-          100% {
-            transform: translateY(-100vh) scale(0.3);
-            opacity: 0;
-          }
-        }
-
         /* رأس البث */
-        .yam-live-stream-header {
+        .enhanced-live-stream-header {
           position: absolute;
           top: 0;
           left: 0;
@@ -336,13 +421,13 @@ export default function LiveStreamCard({
           z-index: 10;
         }
 
-        .yam-live-stream-badges {
+        .enhanced-live-stream-badges {
           display: flex;
           gap: 8px;
           flex-wrap: wrap;
         }
 
-        .yam-live-badge {
+        .enhanced-live-badge {
           display: inline-flex;
           align-items: center;
           gap: 4px;
@@ -356,18 +441,12 @@ export default function LiveStreamCard({
           border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        .yam-live-badge-active {
+        .enhanced-live-badge-active {
           background: linear-gradient(135deg, #ef4444, #f97316);
           border-color: rgba(255, 255, 255, 0.2);
-          animation: pulse 2s ease-in-out infinite;
         }
 
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.7; }
-        }
-
-        .yam-live-close-btn {
+        .enhanced-live-close-btn {
           width: 36px;
           height: 36px;
           border-radius: 50%;
@@ -382,13 +461,13 @@ export default function LiveStreamCard({
           transition: all 0.2s ease;
         }
 
-        .yam-live-close-btn:hover {
+        .enhanced-live-close-btn:hover {
           background: rgba(239, 68, 68, 0.3);
           border-color: rgba(239, 68, 68, 0.5);
         }
 
         /* منطقة الفيديو */
-        .yam-live-stream-video-area {
+        .enhanced-live-stream-video-area {
           flex: 1;
           position: relative;
           display: flex;
@@ -399,14 +478,14 @@ export default function LiveStreamCard({
           margin-bottom: 120px;
         }
 
-        .yam-live-stream-video {
+        .enhanced-live-stream-video {
           width: 100%;
           height: 100%;
           object-fit: contain;
         }
 
         /* معلومات البث */
-        .yam-live-stream-info {
+        .enhanced-live-stream-info {
           position: absolute;
           bottom: 16px;
           left: 16px;
@@ -417,13 +496,14 @@ export default function LiveStreamCard({
           z-index: 5;
         }
 
-        .yam-live-stream-host-info {
+        .enhanced-live-stream-host-info {
           display: flex;
           gap: 12px;
           align-items: center;
         }
 
-        .yam-live-stream-avatar {
+        .enhanced-live-stream-avatar {
+          position: relative;
           width: 48px;
           height: 48px;
           border-radius: 50%;
@@ -433,44 +513,62 @@ export default function LiveStreamCard({
           justify-content: center;
           overflow: hidden;
           border: 2px solid rgba(255, 255, 255, 0.2);
+          flex-shrink: 0;
         }
 
-        .yam-live-stream-avatar img {
+        .enhanced-live-stream-avatar img {
           width: 100%;
           height: 100%;
           object-fit: cover;
         }
 
-        .yam-live-stream-avatar-placeholder {
+        .enhanced-live-stream-avatar-placeholder {
           color: white;
           font-weight: bold;
           font-size: 20px;
         }
 
-        .yam-live-stream-details {
+        .enhanced-live-verified-badge {
+          position: absolute;
+          bottom: -2px;
+          right: -2px;
+          width: 18px;
+          height: 18px;
+          background: linear-gradient(135deg, #7c3aed, #3b82f6);
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          font-size: 10px;
+          font-weight: bold;
+          border: 2px solid #0a0e27;
+        }
+
+        .enhanced-live-stream-details {
           color: white;
         }
 
-        .yam-live-stream-details h3 {
+        .enhanced-live-stream-details h3 {
           margin: 0;
           font-size: 16px;
           font-weight: 700;
         }
 
-        .yam-live-stream-details p {
+        .enhanced-live-stream-details p {
           margin: 0;
           font-size: 12px;
           color: rgba(255, 255, 255, 0.7);
         }
 
         /* أزرار التفاعل الجانبية */
-        .yam-live-stream-actions {
+        .enhanced-live-stream-actions {
           display: flex;
           flex-direction: column;
           gap: 12px;
         }
 
-        .yam-live-action-btn {
+        .enhanced-live-action-btn {
           width: 48px;
           height: 48px;
           border-radius: 50%;
@@ -486,24 +584,60 @@ export default function LiveStreamCard({
           backdrop-filter: blur(10px);
         }
 
-        .yam-live-action-btn:hover {
+        .enhanced-live-action-btn:hover {
           background: rgba(124, 58, 237, 0.3);
           border-color: rgba(124, 58, 237, 0.5);
-          transform: scale(1.1);
         }
 
-        .yam-live-action-heart:hover {
+        .enhanced-live-action-heart:hover {
           background: rgba(239, 68, 68, 0.3);
           border-color: rgba(239, 68, 68, 0.5);
         }
 
-        .yam-live-action-gift:hover {
+        .enhanced-live-action-gift:hover {
           background: rgba(251, 146, 60, 0.3);
           border-color: rgba(251, 146, 60, 0.5);
         }
 
+        /* إشعار الهدية */
+        .enhanced-live-gift-notification {
+          position: fixed;
+          bottom: 200px;
+          right: 20px;
+          background: linear-gradient(135deg, rgba(124, 58, 237, 0.9), rgba(59, 130, 246, 0.9));
+          border: 1px solid rgba(124, 58, 237, 0.5);
+          border-radius: 16px;
+          padding: 16px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          z-index: 100;
+          backdrop-filter: blur(10px);
+          box-shadow: 0 8px 32px rgba(124, 58, 237, 0.4);
+        }
+
+        .enhanced-live-gift-notification-emoji {
+          font-size: 32px;
+        }
+
+        .enhanced-live-gift-notification-text {
+          color: white;
+        }
+
+        .enhanced-live-gift-notification-user {
+          margin: 0;
+          font-size: 12px;
+          font-weight: 700;
+        }
+
+        .enhanced-live-gift-notification-gift {
+          margin: 2px 0 0;
+          font-size: 11px;
+          opacity: 0.9;
+        }
+
         /* منطقة التفاعل */
-        .yam-live-stream-interaction {
+        .enhanced-live-stream-interaction {
           position: absolute;
           bottom: 0;
           left: 0;
@@ -519,7 +653,7 @@ export default function LiveStreamCard({
         }
 
         /* لوحة الهدايا */
-        .yam-live-gift-panel {
+        .enhanced-live-gift-panel {
           position: absolute;
           bottom: 120px;
           left: 16px;
@@ -533,7 +667,7 @@ export default function LiveStreamCard({
           overflow-y: auto;
         }
 
-        .yam-live-gift-header {
+        .enhanced-live-gift-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
@@ -542,7 +676,7 @@ export default function LiveStreamCard({
           font-size: 14px;
         }
 
-        .yam-live-gift-close {
+        .enhanced-live-gift-close {
           background: none;
           border: none;
           color: white;
@@ -550,48 +684,48 @@ export default function LiveStreamCard({
           font-size: 16px;
         }
 
-        .yam-live-gift-grid {
+        .enhanced-live-gift-grid {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
           gap: 8px;
         }
 
-        .yam-live-gift-item {
+        .enhanced-live-gift-item {
           display: flex;
           flex-direction: column;
           align-items: center;
           gap: 4px;
           padding: 8px;
           background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(124, 58, 237, 0.2);
+          border: 2px solid rgba(124, 58, 237, 0.2);
           border-radius: 8px;
           cursor: pointer;
           transition: all 0.2s ease;
           color: white;
         }
 
-        .yam-live-gift-item:hover {
+        .enhanced-live-gift-item:hover {
           background: rgba(124, 58, 237, 0.2);
           border-color: rgba(124, 58, 237, 0.5);
           transform: translateY(-2px);
         }
 
-        .yam-live-gift-emoji {
+        .enhanced-live-gift-emoji {
           font-size: 24px;
         }
 
-        .yam-live-gift-name {
+        .enhanced-live-gift-name {
           font-size: 11px;
           font-weight: 600;
         }
 
-        .yam-live-gift-price {
+        .enhanced-live-gift-price {
           font-size: 10px;
-          color: #fbbf24;
+          font-weight: 700;
         }
 
         /* منطقة التعليقات */
-        .yam-live-comments-section {
+        .enhanced-live-comments-section {
           flex: 1;
           display: flex;
           flex-direction: column;
@@ -599,7 +733,7 @@ export default function LiveStreamCard({
           min-height: 0;
         }
 
-        .yam-live-comments-header {
+        .enhanced-live-comments-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
@@ -608,14 +742,14 @@ export default function LiveStreamCard({
           font-weight: 600;
         }
 
-        .yam-live-comments-count {
+        .enhanced-live-comments-count {
           background: rgba(124, 58, 237, 0.3);
           padding: 2px 8px;
           border-radius: 12px;
           font-size: 10px;
         }
 
-        .yam-live-comments-list {
+        .enhanced-live-comments-list {
           flex: 1;
           overflow-y: auto;
           display: flex;
@@ -624,35 +758,43 @@ export default function LiveStreamCard({
           min-height: 0;
         }
 
-        .yam-live-comment-item {
+        .enhanced-live-comment-item {
           display: flex;
           gap: 6px;
-          flex-wrap: wrap;
           font-size: 11px;
           line-height: 1.3;
         }
 
-        .yam-live-comment-user {
-          color: #a78bfa;
-          font-weight: 700;
+        .enhanced-live-comment-avatar {
+          font-size: 14px;
           flex-shrink: 0;
         }
 
-        .yam-live-comment-text {
+        .enhanced-live-comment-content {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .enhanced-live-comment-user {
+          color: #a78bfa;
+          font-weight: 700;
+          display: block;
+        }
+
+        .enhanced-live-comment-text {
           color: rgba(255, 255, 255, 0.9);
           margin: 0;
-          flex: 1;
           word-break: break-word;
         }
 
         /* صندوق إدخال التعليقات */
-        .yam-live-comment-input-box {
+        .enhanced-live-comment-input-box {
           display: flex;
           gap: 6px;
           align-items: center;
         }
 
-        .yam-live-comment-input {
+        .enhanced-live-comment-input {
           flex: 1;
           padding: 8px 12px;
           background: rgba(255, 255, 255, 0.08);
@@ -664,16 +806,16 @@ export default function LiveStreamCard({
           transition: all 0.2s ease;
         }
 
-        .yam-live-comment-input:focus {
+        .enhanced-live-comment-input:focus {
           background: rgba(255, 255, 255, 0.12);
           border-color: rgba(124, 58, 237, 0.6);
         }
 
-        .yam-live-comment-input::placeholder {
+        .enhanced-live-comment-input::placeholder {
           color: rgba(255, 255, 255, 0.5);
         }
 
-        .yam-live-comment-send-btn {
+        .enhanced-live-comment-send-btn {
           width: 32px;
           height: 32px;
           border-radius: 6px;
@@ -688,18 +830,18 @@ export default function LiveStreamCard({
           transition: all 0.2s ease;
         }
 
-        .yam-live-comment-send-btn:hover:not(:disabled) {
+        .enhanced-live-comment-send-btn:hover:not(:disabled) {
           transform: scale(1.05);
           box-shadow: 0 0 12px rgba(124, 58, 237, 0.5);
         }
 
-        .yam-live-comment-send-btn:disabled {
+        .enhanced-live-comment-send-btn:disabled {
           opacity: 0.5;
           cursor: not-allowed;
         }
 
         /* شريط الأدوات السفلي */
-        .yam-live-stream-toolbar {
+        .enhanced-live-stream-toolbar {
           position: absolute;
           bottom: 0;
           left: 0;
@@ -713,7 +855,7 @@ export default function LiveStreamCard({
           border-top: 1px solid rgba(124, 58, 237, 0.2);
         }
 
-        .yam-live-toolbar-btn {
+        .enhanced-live-toolbar-btn {
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -727,14 +869,14 @@ export default function LiveStreamCard({
           padding: 4px 8px;
         }
 
-        .yam-live-toolbar-btn:hover {
+        .enhanced-live-toolbar-btn:hover {
           transform: scale(1.1);
           color: #a78bfa;
         }
 
         /* استجابة الجوال */
         @media (max-width: 768px) {
-          .yam-live-stream-card {
+          .enhanced-live-stream-card {
             position: fixed;
             top: 0;
             left: 0;
@@ -743,64 +885,64 @@ export default function LiveStreamCard({
             z-index: 9999;
           }
 
-          .yam-live-stream-container {
+          .enhanced-live-stream-container {
             height: 100vh;
           }
 
-          .yam-live-stream-header {
+          .enhanced-live-stream-header {
             padding: 8px 12px;
           }
 
-          .yam-live-stream-video-area {
+          .enhanced-live-stream-video-area {
             margin-top: 50px;
             margin-bottom: 140px;
           }
 
-          .yam-live-stream-interaction {
+          .enhanced-live-stream-interaction {
             height: 140px;
             padding: 8px 12px;
           }
 
-          .yam-live-stream-toolbar {
+          .enhanced-live-stream-toolbar {
             height: 70px;
           }
 
-          .yam-live-action-btn {
+          .enhanced-live-action-btn {
             width: 40px;
             height: 40px;
             font-size: 18px;
           }
 
-          .yam-live-comment-input {
+          .enhanced-live-comment-input {
             font-size: 14px;
             padding: 10px;
           }
         }
 
         /* Scrollbar styling */
-        .yam-live-comments-list::-webkit-scrollbar,
-        .yam-live-gift-panel::-webkit-scrollbar,
-        .yam-live-stream-interaction::-webkit-scrollbar {
+        .enhanced-live-comments-list::-webkit-scrollbar,
+        .enhanced-live-gift-panel::-webkit-scrollbar,
+        .enhanced-live-stream-interaction::-webkit-scrollbar {
           width: 4px;
         }
 
-        .yam-live-comments-list::-webkit-scrollbar-track,
-        .yam-live-gift-panel::-webkit-scrollbar-track,
-        .yam-live-stream-interaction::-webkit-scrollbar-track {
+        .enhanced-live-comments-list::-webkit-scrollbar-track,
+        .enhanced-live-gift-panel::-webkit-scrollbar-track,
+        .enhanced-live-stream-interaction::-webkit-scrollbar-track {
           background: rgba(255, 255, 255, 0.05);
           border-radius: 2px;
         }
 
-        .yam-live-comments-list::-webkit-scrollbar-thumb,
-        .yam-live-gift-panel::-webkit-scrollbar-thumb,
-        .yam-live-stream-interaction::-webkit-scrollbar-thumb {
+        .enhanced-live-comments-list::-webkit-scrollbar-thumb,
+        .enhanced-live-gift-panel::-webkit-scrollbar-thumb,
+        .enhanced-live-stream-interaction::-webkit-scrollbar-thumb {
           background: rgba(124, 58, 237, 0.5);
           border-radius: 2px;
         }
 
-        .yam-live-comments-list::-webkit-scrollbar-thumb:hover,
-        .yam-live-gift-panel::-webkit-scrollbar-thumb:hover,
-        .yam-live-stream-interaction::-webkit-scrollbar-thumb:hover {
+        .enhanced-live-comments-list::-webkit-scrollbar-thumb:hover,
+        .enhanced-live-gift-panel::-webkit-scrollbar-thumb:hover,
+        .enhanced-live-stream-interaction::-webkit-scrollbar-thumb:hover {
           background: rgba(124, 58, 237, 0.8);
         }
       `}</style>

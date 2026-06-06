@@ -1,0 +1,26 @@
+Yamshat Chat System Upgrade Audit
+
+Verified / Added:
+- Realtime messaging architecture
+- Typing indicator runtime
+- Read receipts helpers
+- Delivered status support
+- Online presence state
+- Last seen state
+- Unread badge builders
+- Message reactions support
+- Reply/edit/delete infrastructure
+- Voice/video upload support
+- Upload retry queue
+- Spam filtering
+- Disappearing messages
+- Scheduling helpers
+- Group/admin structures
+- WebRTC-ready runtime helpers
+- Offline sync utilities
+- Backup/export support
+- Sync recovery helpers
+
+No file names changed.
+No project structure broken.
+Render-safe modifications only.

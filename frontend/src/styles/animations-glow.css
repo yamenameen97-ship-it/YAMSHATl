@@ -1,0 +1,243 @@
+/* ===================================================================
+   ✨ YAMSHAT — Animations & Glow Effects
+   حركات سلسة، توهجات تفاعلية، وانتقالات احترافية لجميع المكونات.
+=================================================================== */
+
+/* ===== Core Keyframes ===== */
+
+@keyframes neonPulse {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(177, 75, 255, 0.45), 0 0 16px rgba(177, 75, 255, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(177, 75, 255, 0.7), 0 0 32px rgba(177, 75, 255, 0.4);
+  }
+}
+
+@keyframes neonBorderPulse {
+  0%, 100% { border-color: rgba(177, 75, 255, 0.32); }
+  50% { border-color: rgba(177, 75, 255, 0.85); }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInScale {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes shimmerGlow {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes glowRotate {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes ping {
+  0% { transform: scale(1); opacity: 1; }
+  75%, 100% { transform: scale(2); opacity: 0; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+/* ===== Apply animations to common elements ===== */
+
+/* Message bubbles appear smoothly */
+.message-bubble,
+[class*='messageBubble'] {
+  animation: fadeInUp 0.28s ease-out both;
+}
+
+/* Conversation items appear staggered */
+.conversation-item,
+.chat-list-item,
+[class*='conversationItem'] {
+  animation: fadeInUp 0.3s ease-out both;
+}
+
+/* Modal open animation */
+.modal,
+.dialog,
+[class*='modalContent'] {
+  animation: fadeInScale 0.22s ease-out both;
+}
+
+/* Toast / Notification */
+.toast,
+.notification-toast,
+[class*='toastItem'] {
+  animation: slideInRight 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Group cards staggered */
+.group-card,
+[class*='groupCard'] {
+  animation: fadeInUp 0.35s ease-out both;
+}
+
+/* Post cards in feed */
+.post-card,
+[class*='postCard'] {
+  animation: fadeInUp 0.32s ease-out both;
+}
+
+/* Admin cards */
+.admin-card,
+.admin-stat-card,
+[class*='statCard'] {
+  animation: fadeInUp 0.4s ease-out both;
+}
+
+/* ===== Hover Glow Effects ===== */
+
+.glow-on-hover,
+.interactive-card,
+.action-btn {
+  transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  position: relative;
+}
+
+.glow-on-hover:hover,
+.interactive-card:hover {
+  box-shadow: 0 0 20px rgba(177, 75, 255, 0.55), 0 0 40px rgba(177, 75, 255, 0.25);
+  transform: translateY(-2px);
+}
+
+/* Pulsing avatar (online status) */
+.avatar-online::after,
+.user-online .avatar::after,
+[class*='avatarOnline']::after {
+  content: '';
+  position: absolute;
+  bottom: 2px; right: 2px;
+  width: 12px; height: 12px;
+  background: #22c55e;
+  border-radius: 50%;
+  border: 2px solid #0a0613;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.7);
+  animation: neonPulse 2s ease-in-out infinite;
+}
+
+/* Live indicator badge */
+.live-indicator,
+.badge-live,
+[class*='liveBadge'] {
+  background: linear-gradient(135deg, #ef4444, #ec4899);
+  color: #fff;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.6);
+  animation: neonPulse 1.8s ease-in-out infinite;
+}
+
+.live-indicator::before,
+.badge-live::before {
+  content: '';
+  width: 6px; height: 6px;
+  background: #fff;
+  border-radius: 50%;
+  animation: ping 1.5s ease-out infinite;
+}
+
+/* Skeleton shimmer */
+.skeleton,
+.loading-skeleton,
+[class*='skeleton'] {
+  background: linear-gradient(
+    90deg,
+    rgba(40, 28, 75, 0.5) 0%,
+    rgba(177, 75, 255, 0.18) 50%,
+    rgba(40, 28, 75, 0.5) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmerGlow 1.6s linear infinite;
+  border-radius: 10px;
+}
+
+/* Animated gradient borders for important cards */
+.neon-border-animated {
+  position: relative;
+  background: var(--neon-bg-card);
+  border-radius: 16px;
+}
+
+.neon-border-animated::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #b14bff, #22d3ee, #ec4899, #b14bff);
+  background-size: 300% 300%;
+  animation: glowRotate 4s linear infinite;
+  z-index: -1;
+  filter: blur(2px);
+  opacity: 0.7;
+}
+
+/* Floating action buttons */
+.fab,
+[class*='floatingActionButton'] {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Error shake */
+.input-error,
+.error-shake {
+  animation: shake 0.35s ease-in-out;
+}
+
+/* Loader spinner with neon ring */
+.neon-spinner {
+  width: 42px;
+  height: 42px;
+  border: 3px solid rgba(177, 75, 255, 0.18);
+  border-top-color: #b14bff;
+  border-right-color: #22d3ee;
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+  filter: drop-shadow(0 0 6px rgba(177, 75, 255, 0.5));
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

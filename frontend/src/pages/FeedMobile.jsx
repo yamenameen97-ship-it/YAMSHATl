@@ -74,22 +74,15 @@ function normalizePost(p, i) {
   const handle = (p.username || p.user || `user${i}`).toString();
   const verified = Boolean(p.verified || p.is_verified || p.official);
   
-  // التحقق مما إذا كان المنشور بث مباشر (تحسين التحقق ليشمل جميع الحالات الممكنة)
-  const isLive = Boolean(
-    p.is_live || 
-    p.is_live_stream || 
-    p.has_live_stream || 
-    p.type === 'live' || 
-    p.type === 'LIVE' || 
-    p.post_type === 'LIVE'
-  );
+  // التحقق مما إذا كان المنشور بث مباشر
+  const isLive = Boolean(p.is_live || p.is_live_stream || p.type === 'live');
   
   return {
     id: p.id ?? `p-${i}`,
     rawId: p.id,
     authorName: author,
     handle: `@${handle.replace(/^@/, '')}`,
-    timeText: isLive ? 'مباشر الآن' : timeAgoAr(p.created_at || p.published_at || p.createdAt),
+    timeText: timeAgoAr(p.created_at || p.published_at || p.createdAt),
     verified,
     avatarUrl: resolveMediaUrl(p.user_avatar || p.avatar || p.author_avatar || ''),
     text: p.content || p.text || p.description || p.title || '',
@@ -103,7 +96,7 @@ function normalizePost(p, i) {
     // حقول البث
     type: p.type || (isLive ? 'live' : 'POST'),
     is_live: isLive,
-    live_stream_id: p.live_stream_id || p.streamId || p.live_id,
+    live_stream_id: p.live_stream_id || p.streamId,
     viewers: Number(p.viewers_count || p.viewers || p.viewer_count || 0),
     thumbnail: resolveMediaUrl(p.thumbnail || p.thumbnail_url || p.preview_url || p.media_url || ""),
     duration: p.duration,

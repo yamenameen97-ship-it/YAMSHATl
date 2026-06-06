@@ -194,15 +194,8 @@ function buildFeedPosts(posts = []) {
         };
       });
 
-      const isLive = Boolean(
-        post.is_live_stream || 
-        post.is_live || 
-        post.has_live_stream || 
-        post.type === 'LIVE' || 
-        post.type === 'live' || 
-        post.post_type === 'LIVE'
-      );
-      const liveThumbnail = post.thumbnail_url || post.thumbnail || post.preview_url || post.media_url || '';
+      const isLive = Boolean(post.is_live_stream || post.is_live || post.type === 'LIVE');
+      const liveThumbnail = post.thumbnail_url || post.thumbnail || post.preview_url || '';
       
       // إذا كان بثاً مباشراً ولا توجد ميديا عادية، نستخدم الثمنيل
       const finalMedia = (isLive && !normalizedMedia.length && liveThumbnail)
@@ -215,13 +208,13 @@ function buildFeedPosts(posts = []) {
         userId: post.user_id || null,
         rawUsername: post.username || post.user || '',
         isLive: isLive,
-        liveStreamId: post.live_stream_id || post.live_id || post.streamId || null,
+        liveStreamId: post.live_stream_id || post.live_id || null,
         authorName: post.author_name || post.username || post.user || 'مستخدم يام شات',
         authorAvatar: resolveMediaUrl(post.user_avatar || post.avatar || post.author_avatar || ''),
         handle: normalizeHandle(post.username || post.user || `user.${index + 1}`),
         time: isLive ? 'مباشر الآن' : timeAgoAr(post.created_at || post.published_at),
         text: stripFirstUrl(post.content || post.text || ''),
-        liveUrl: post.liveUrl || resolveLiveViewerUrl(post),
+        liveUrl: resolveLiveViewerUrl(post),
         rawText: post.content || post.text || '',
         likes: Number(post.likes_count || post.like_count || post.likes || 0),
         comments: Number(post.comments_count || post.comment_count || 0),
@@ -647,7 +640,7 @@ function PostCard({ post }) {
               background: 'linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.5) 50%, rgba(0,0,0,0.8) 100%)'
             }} />
             
-            {/* شارة البث المباشر (مطابق للتصميم المرفق) */}
+            {/* شارة البث المباشر */}
             <div style={{
               position: 'absolute',
               top: '12px',
@@ -656,29 +649,31 @@ function PostCard({ post }) {
               alignItems: 'center',
               gap: '6px',
               padding: '6px 12px',
-              background: '#ef4444',
-              borderRadius: '6px',
+              background: 'linear-gradient(135deg, #ef4444, #f97316)',
+              borderRadius: '20px',
               color: 'white',
               fontSize: '12px',
-              fontWeight: 'bold',
+              fontWeight: '700',
+              animation: 'pulse 2s ease-in-out infinite',
               zIndex: 2
             }}>
+              <span style={{ fontSize: '8px', animation: 'blink 1s ease-in-out infinite' }}>🔴</span>
               <span>مباشر</span>
             </div>
             
-            {/* عدد المشاهدين (مطابق للتصميم المرفق) */}
+            {/* عدد المشاهدين */}
             <div style={{
               position: 'absolute',
               top: '12px',
-              left: '75px',
+              right: '12px',
               display: 'inline-flex',
               alignItems: 'center',
               gap: '4px',
-              padding: '6px 10px',
+              padding: '4px 10px',
               background: 'rgba(0, 0, 0, 0.4)',
-              borderRadius: '6px',
+              borderRadius: '12px',
               color: 'white',
-              fontSize: '12px',
+              fontSize: '11px',
               fontWeight: '600',
               backdropFilter: 'blur(10px)',
               zIndex: 2

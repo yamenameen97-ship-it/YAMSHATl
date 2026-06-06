@@ -73,15 +73,19 @@ function normalizePost(p, i) {
   const author = p.author_name || p.username || p.user || 'مستخدم يام شات';
   const handle = (p.username || p.user || `user${i}`).toString();
   const verified = Boolean(p.verified || p.is_verified || p.official);
+  
+  // التحقق مما إذا كان المنشور بث مباشر
+  const isLive = Boolean(p.is_live || p.is_live_stream || p.type === 'live');
+  
   return {
     id: p.id ?? `p-${i}`,
     rawId: p.id,
     authorName: author,
     handle: `@${handle.replace(/^@/, '')}`,
-    timeText: timeAgoAr(p.created_at || p.published_at),
+    timeText: timeAgoAr(p.created_at || p.published_at || p.createdAt),
     verified,
     avatarUrl: resolveMediaUrl(p.user_avatar || p.avatar || p.author_avatar || ''),
-    text: p.content || p.text || '',
+    text: p.content || p.text || p.description || p.title || '',
     banner: buildBanner(p),
     likes: Number(p.likes_count ?? p.like_count ?? p.likes ?? 0),
     comments: Number(p.comments_count ?? p.comment_count ?? p.comments ?? 0),
@@ -90,11 +94,11 @@ function normalizePost(p, i) {
     reposted: Boolean(p.reposted ?? p.is_reposted),
     saved: Boolean(p.is_saved ?? p.saved_by_me ?? p.saved),
     // حقول البث
-    type: p.type || 'POST',
-    is_live: Boolean(p.is_live || p.is_live_stream),
-    live_stream_id: p.live_stream_id,
+    type: p.type || (isLive ? 'live' : 'POST'),
+    is_live: isLive,
+    live_stream_id: p.live_stream_id || p.streamId,
     viewers: Number(p.viewers_count || p.viewers || p.viewer_count || 0),
-    thumbnail: resolveMediaUrl(p.thumbnail_url || p.thumbnail || p.preview_url || p.media_url || ""),
+    thumbnail: resolveMediaUrl(p.thumbnail || p.thumbnail_url || p.preview_url || p.media_url || ""),
     duration: p.duration,
   };
 }
@@ -206,10 +210,22 @@ function FeedMobile() {
   const posts = useMemo(() => {
     // دمج منشورات البث مع المنشورات العادية
     const normalizedLivePosts = livePosts.map((p, i) => normalizePost(p, i));
+    const normalizedRawPosts = Array.isArray(rawPosts) ? rawPosts.map((p, i) => normalizePost(p, i)) : [];
     
-    const list = (Array.isArray(rawPosts) && rawPosts.length)
-      ? [...normalizedLivePosts, ...rawPosts.map((p, i) => normalizePost(p, i))]
-      : (activeFilter === 'posts' ? (normalizedLivePosts.length ? normalizedLivePosts : [WELCOME_POST]) : normalizedLivePosts);
+    let list = [];
+    
+    if (activeFilter === 'all') {
+      list = [...normalizedLivePosts, ...normalizedRawPosts];
+    } else if (activeFilter === 'live') {
+      list = normalizedLivePosts;
+    } else {
+      list = normalizedRawPosts;
+    }
+
+    // إذا كانت القائمة فارغة في تبويب "الكل" أو "المنشورات"، اعرض منشور ترحيبي
+    if (list.length === 0 && (activeFilter === 'all' || activeFilter === 'posts')) {
+      list = [WELCOME_POST];
+    }
 
     // دمج overlay (optimistic)
     return list.map((p) => {

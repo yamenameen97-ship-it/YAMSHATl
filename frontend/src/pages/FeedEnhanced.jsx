@@ -647,7 +647,7 @@ function PostCard({ post }) {
               background: 'linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.5) 50%, rgba(0,0,0,0.8) 100%)'
             }} />
             
-            {/* شارة البث المباشر */}
+            {/* شارة البث المباشر (مطابق للتصميم المرفق) */}
             <div style={{
               position: 'absolute',
               top: '12px',
@@ -656,31 +656,29 @@ function PostCard({ post }) {
               alignItems: 'center',
               gap: '6px',
               padding: '6px 12px',
-              background: 'linear-gradient(135deg, #ef4444, #f97316)',
-              borderRadius: '20px',
+              background: '#ef4444',
+              borderRadius: '6px',
               color: 'white',
               fontSize: '12px',
-              fontWeight: '700',
-              animation: 'pulse 2s ease-in-out infinite',
+              fontWeight: 'bold',
               zIndex: 2
             }}>
-              <span style={{ fontSize: '8px', animation: 'blink 1s ease-in-out infinite' }}>🔴</span>
               <span>مباشر</span>
             </div>
             
-            {/* عدد المشاهدين */}
+            {/* عدد المشاهدين (مطابق للتصميم المرفق) */}
             <div style={{
               position: 'absolute',
               top: '12px',
-              right: '12px',
+              left: '75px',
               display: 'inline-flex',
               alignItems: 'center',
               gap: '4px',
-              padding: '4px 10px',
+              padding: '6px 10px',
               background: 'rgba(0, 0, 0, 0.4)',
-              borderRadius: '12px',
+              borderRadius: '6px',
               color: 'white',
-              fontSize: '11px',
+              fontSize: '12px',
               fontWeight: '600',
               backdropFilter: 'blur(10px)',
               zIndex: 2

@@ -151,7 +151,11 @@ export default function LiveStudio() {
       let uploadedCover = '';
       if (coverImage) {
         const uploadRes = await uploadFile(coverImage, (p) => {
-          console.log(`Uploading cover: ${p.percent}%`);
+          // ✅ FIX: إغراق الكونسول بـ 16 سطراً أثناء الرفع غير مفيد للمستخدم
+          if (import.meta?.env?.DEV) {
+            // eslint-disable-next-line no-console
+            console.debug(`Uploading cover: ${p.percent}%`);
+          }
         });
         uploadedCover = uploadRes?.url || '';
       }

@@ -193,7 +193,11 @@ export class LegacyDeviceOptimizer {
         // حذف البيانات القديمة
       }
 
-      console.log('[Legacy] Memory cleanup performed');
+      // ✅ FIX: إزالة إغراق الكونسول – سجّل فقط في التطوير
+      if (import.meta?.env?.DEV) {
+        // eslint-disable-next-line no-console
+        console.debug('[Legacy] Memory cleanup performed');
+      }
     }, 30000);
   }
 
@@ -389,7 +393,11 @@ export class LegacyDeviceOptimizer {
     if ('connection' in navigator) {
       navigator.connection.addEventListener('change', () => {
         this.state.effectiveType = navigator.connection.effectiveType;
-        console.log('[Legacy] Connection changed:', this.state.effectiveType);
+        // ✅ FIX: إزالة إغراق الكونسول عند تغيّر نوع الشبكة
+        if (import.meta?.env?.DEV) {
+          // eslint-disable-next-line no-console
+          console.debug('[Legacy] Connection changed:', this.state.effectiveType);
+        }
       });
     }
   }

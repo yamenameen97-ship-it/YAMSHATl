@@ -104,7 +104,31 @@ export default function LiveViewer() {
   const heartTimerRef = useRef(null);
   const statsIntervalRef = useRef(null);
   const commentsIntervalRef = useRef(null);
+  // ✅ FIX: عدّاد الأخطاء المتتالية لإيقاف الاستطلاع وتجنّب إغراق الكونسول بـ 403/404
+  const statsErrorCountRef = useRef(0);
+  const commentsErrorCountRef = useRef(0);
+  const streamEndedRef = useRef(false);
   const routeStreamId = String(streamId || '').trim();
+
+  // ✅ FIX: حالة لإظهار رسالة "البث انتهى" بدلاً من شاشة سوداء صامتة
+  const [streamEnded, setStreamEnded] = useState(false);
+
+  const stopAllPolling = useCallback(() => {
+    if (statsIntervalRef.current) {
+      clearInterval(statsIntervalRef.current);
+      statsIntervalRef.current = null;
+    }
+    if (commentsIntervalRef.current) {
+      clearInterval(commentsIntervalRef.current);
+      commentsIntervalRef.current = null;
+    }
+  }, []);
+
+  // أخطاء متوقّعة لا يجب إغراق الكونسول بها
+  const isExpectedApiError = (error) => {
+    const status = error?.response?.status;
+    return status === 401 || status === 403 || status === 404;
+  };
 
   // تحميل البثوث النشطة
   const loadStreams = useCallback(async () => {
@@ -138,10 +162,20 @@ export default function LiveViewer() {
       navigate(`/live/view/${stream.id}`);
     }
 
+    // ✅ FIX: إعادة ضبط حالة الأخطاء والاستطلاع عند فتح بث جديد
+    stopAllPolling();
+    statsErrorCountRef.current = 0;
+    commentsErrorCountRef.current = 0;
+    streamEndedRef.current = false;
+    setStreamEnded(false);
+
     setActiveStream(stream);
 
     try {
-      const detailsResponse = await getLiveStreamDetails(stream.id);
+      const detailsResponse = await getLiveStreamDetails(stream.id).catch((err) => {
+        if (!isExpectedApiError(err)) throw err;
+        return null;
+      });
       if (detailsResponse?.data) {
         setStreamDetails(detailsResponse.data);
         setStreamStats({
@@ -151,23 +185,28 @@ export default function LiveViewer() {
         });
       }
 
-      const commentsResponse = await getLiveComments(stream.id);
+      // تحميل التعليقات بشكل آمن – 404 يعني لا توجد تعليقات بعد
+      const commentsResponse = await getLiveComments(stream.id).catch((err) => {
+        if (!isExpectedApiError(err)) throw err;
+        return { data: [] };
+      });
       setComments(Array.isArray(commentsResponse?.data) ? commentsResponse.data : []);
 
-      const viewersResponse = await getLiveStreamViewers(stream.id);
+      const viewersResponse = await getLiveStreamViewers(stream.id).catch(() => null);
       if (viewersResponse?.data?.viewers) {
         setViewers(viewersResponse.data.viewers);
       }
 
-      if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
+      // ✅ FIX: تشغيل الاستطلاع فقط بفترات أطول، مع إيقافه تلقائياً بعد فشل متكرر
       statsIntervalRef.current = setInterval(() => {
+        if (streamEndedRef.current) return;
         updateStreamStats(stream.id);
-      }, 3000);
+      }, 5000);
 
-      if (commentsIntervalRef.current) clearInterval(commentsIntervalRef.current);
       commentsIntervalRef.current = setInterval(() => {
+        if (streamEndedRef.current) return;
         loadComments(stream.id);
-      }, 2000);
+      }, 4000);
 
       pushToast?.({
         type: 'success',
@@ -175,19 +214,26 @@ export default function LiveViewer() {
         description: `مرحباً في بث ${stream.title}`,
       });
     } catch (error) {
+      // اطبع فقط الأخطاء غير المتوقعة (شبكة/برمجة)
+      if (!isExpectedApiError(error)) {
+        // eslint-disable-next-line no-console
+        console.warn('[LiveViewer] فشل غير متوقع عند فتح البث', error?.message || error);
+      }
       pushToast?.({
         type: 'warning',
         title: 'خطأ في فتح البث',
         description: 'حاول مرة أخرى',
       });
     }
-  }, [navigate, pushToast]);
+  }, [navigate, pushToast, stopAllPolling]);
 
   // تحديث إحصائيات البث
+  // ✅ FIX: لا نطبع 403/404 في الكونسول، ونوقف الاستطلاع بعد 3 إخفاقات متتالية
   const updateStreamStats = useCallback(async (streamId) => {
     try {
       const response = await getLiveStreamStats(streamId);
       if (response?.data) {
+        statsErrorCountRef.current = 0;
         setStreamStats(prev => ({
           ...prev,
           viewers: response.data.viewers_count || response.data.unique_viewers || prev.viewers,
@@ -195,21 +241,78 @@ export default function LiveViewer() {
         }));
       }
     } catch (error) {
-      console.error('خطأ في تحديث الإحصائيات:', error);
+      const status = error?.response?.status;
+      statsErrorCountRef.current += 1;
+
+      // 404 = البث انتهى/غير موجود → أوقف كل شيء
+      if (status === 404) {
+        streamEndedRef.current = true;
+        setStreamEnded(true);
+        stopAllPolling();
+        return;
+      }
+
+      // 403 = صلاحيات الإحصائيات للمضيف فقط – أوقف استطلاع الإحصائيات بهدوء
+      if (status === 403 && statsErrorCountRef.current >= 1) {
+        if (statsIntervalRef.current) {
+          clearInterval(statsIntervalRef.current);
+          statsIntervalRef.current = null;
+        }
+        return;
+      }
+
+      // أخطاء أخرى: 3 إخفاقات متتالية ⇒ أوقف الاستطلاع
+      if (statsErrorCountRef.current >= 3) {
+        if (statsIntervalRef.current) {
+          clearInterval(statsIntervalRef.current);
+          statsIntervalRef.current = null;
+        }
+        return;
+      }
+
+      if (!isExpectedApiError(error)) {
+        // eslint-disable-next-line no-console
+        console.warn('[LiveViewer] تعذّر تحديث الإحصائيات:', status || error?.message);
+      }
     }
-  }, []);
+  }, [stopAllPolling]);
 
   // تحميل التعليقات
+  // ✅ FIX: نفس استراتيجية كتم الضوضاء وإيقاف الاستطلاع
   const loadComments = useCallback(async (streamId) => {
     try {
       const response = await getLiveComments(streamId, 50);
+      commentsErrorCountRef.current = 0;
       setComments(Array.isArray(response?.data) ? response.data : []);
       setStreamStats(prev => ({
         ...prev,
         comments: Array.isArray(response?.data) ? response.data.length : 0,
       }));
     } catch (error) {
-      console.error('خطأ في تحميل التعليقات:', error);
+      const status = error?.response?.status;
+      commentsErrorCountRef.current += 1;
+
+      // 404 على التعليقات = البث انتهى أو لا توجد تعليقات بعد. أوقف الاستطلاع.
+      if (status === 404) {
+        if (commentsIntervalRef.current) {
+          clearInterval(commentsIntervalRef.current);
+          commentsIntervalRef.current = null;
+        }
+        return;
+      }
+
+      if (commentsErrorCountRef.current >= 3) {
+        if (commentsIntervalRef.current) {
+          clearInterval(commentsIntervalRef.current);
+          commentsIntervalRef.current = null;
+        }
+        return;
+      }
+
+      if (!isExpectedApiError(error)) {
+        // eslint-disable-next-line no-console
+        console.warn('[LiveViewer] تعذّر تحميل التعليقات:', status || error?.message);
+      }
     }
   }, []);
 
@@ -345,10 +448,19 @@ export default function LiveViewer() {
           openStream(stub, { syncUrl: false });
         }
       } catch (error) {
-        console.error('تعذّر تحميل تفاصيل البث مباشرة:', error);
+        // ✅ FIX: لا نغرق الكونسول بـ 404/403 — فقط اعرض حالة "البث انتهى"
+        const status = error?.response?.status;
+        if (status === 404 || status === 403) {
+          setStreamEnded(true);
+          streamEndedRef.current = true;
+          stopAllPolling();
+        } else {
+          // eslint-disable-next-line no-console
+          console.warn('[LiveViewer] تعذّر تحميل تفاصيل البث:', status || error?.message);
+        }
       }
     })();
-  }, [routeStreamId, streams, activeStream?.id, openStream]);
+  }, [routeStreamId, streams, activeStream?.id, openStream, stopAllPolling]);
 
   // تطبيق الفلتر
   useEffect(() => {
@@ -366,10 +478,9 @@ export default function LiveViewer() {
   // تنظيف الفترات الزمنية
   useEffect(() => {
     return () => {
-      if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
-      if (commentsIntervalRef.current) clearInterval(commentsIntervalRef.current);
+      stopAllPolling();
     };
-  }, []);
+  }, [stopAllPolling]);
 
   const hostName = activeStream?.host_name || activeStream?.host_username || 'مضيف البث';
   // ✅ FIX: استخدم صورة الغلاف من البث كخلفية للمشغّل قبل بدء التشغيل
@@ -540,6 +651,15 @@ export default function LiveViewer() {
                 </div>
               </div>
             </>
+          ) : streamEnded ? (
+            <div className="mlv-empty-state">
+              <div className="mlv-empty-icon">⏹️</div>
+              <p>انتهى البث أو لم يعد متاحاً</p>
+              <p className="mlv-empty-subtitle">تصفّح بثوثاً أخرى أو عد لاحقاً</p>
+              <button className="mlv-refresh-btn" onClick={() => { setStreamEnded(false); streamEndedRef.current = false; loadStreams(); navigate('/live'); }}>
+                عرض البثوث النشطة
+              </button>
+            </div>
           ) : (
             <div className="mlv-empty-state">
               <div className="mlv-empty-icon">📡</div>

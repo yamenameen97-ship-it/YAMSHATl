@@ -35,6 +35,22 @@ function shouldRetryRequest(config = {}, responseStatus) {
 const cache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+// ✅ FIX: أنماط مسارات البث التي ترجع 403/404 بشكل طبيعي
+// (غير مصرح / البث انتهى / لا توجد تعليقات) — لا تسجل أخطائها تلقائياً
+const SILENT_404_403_PATTERNS = [
+  /\/live\/[^/]+\/analytics$/i,
+  /\/live_comments\/[^/]+/i,
+  /\/live_room\/[^/]+/i,
+  /\/live\/[^/]+\/viewers$/i,
+];
+
+const shouldSilenceError = (config = {}, status) => {
+  if (status !== 403 && status !== 404) return false;
+  if (config.silent === true) return true;
+  const url = String(config.url || '');
+  return SILENT_404_403_PATTERNS.some((re) => re.test(url));
+};
+
 function getCacheOptions(config = {}) {
   const useCache = Boolean(config.useCache ?? config.cache);
   const forceRefresh = Boolean(config.forceRefresh);
@@ -120,6 +136,12 @@ API.interceptors.response.use(
       const delay = Math.pow(2, retryCount) * 1000 + Math.random() * 1000;
       await new Promise((resolve) => setTimeout(resolve, delay));
       return API(config);
+    }
+
+    // ✅ FIX: وسم الخطأ بأنه "صامت" حتى يعرف المستخدمون أنه لا داعي للسجل في الكونسول
+    if (config && shouldSilenceError(config, response?.status)) {
+      error.isSilent = true;
+      error.silent = true;
     }
 
     return Promise.reject(error);

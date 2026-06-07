@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect } from 'react';
 import StaticContentPage from './pages/StaticContentPage.jsx';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import GlobalPageBackButton from './components/ui/GlobalPageBackButton.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import { ToastProvider } from './components/admin/ToastProvider.jsx';
@@ -46,7 +46,13 @@ const Stories = lazy(() => import('./pages/Stories.jsx'));
 const Reels = lazy(() => import('./pages/Reels.jsx'));
 const Groups = lazy(() => import('./pages/GroupsHome.jsx'));
 const CreateGroup = lazy(() => import('./pages/CreateGroup.jsx'));
-const GroupChatPage = lazy(() => import('./pages/GroupChat.jsx'));
+const GroupChatPageInner = lazy(() => import('./pages/GroupChat.jsx'));
+// 🔑 لفافة تربط key={groupId} حتى يُعاد mount المكوّن بالكامل عند
+// الانتقال بين المجموعات (الحل الجوهري لتسرّب الرسائل بين المجموعات).
+function GroupChatPage() {
+  const { groupId } = useParams();
+  return <GroupChatPageInner key={`group-chat-${groupId}`} />;
+}
 const LiveViewer = lazy(() => import('./pages/LiveViewer.jsx'));
 const LiveStudio = lazy(() => import('./pages/LiveStudio.jsx'));
 const Inbox = lazy(() => import('./features/chat/index.js').then((mod) => ({ default: mod.Inbox })));

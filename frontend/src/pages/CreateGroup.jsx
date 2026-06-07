@@ -65,8 +65,27 @@ const CreateGroup = () => {
         is_public: formData.isPublic
       });
 
-      if (response?.data?.id || response?.id) {
-        pushToast?.({ type: 'success', title: 'تم', description: 'تم إنشاء المجموعة بنجاح' });
+      // الباك اند (group_store_enhanced.serialize_group) يرجّع كائن المجموعة
+      // مباشرة في data، ويحتوي على id فريد لهذه المجموعة بالذات.
+      const body = response?.data || response || {};
+      const newGroupId = body.id || body.group_id || body.group?.id;
+
+      if (newGroupId) {
+        pushToast?.({
+          type: 'success',
+          title: 'تم',
+          description: 'تم إنشاء المجموعة بنجاح',
+        });
+        // 🎯 الانتقال مباشرة لشات المجموعة الجديدة وليس لقائمة المجموعات،
+        // مع replace حتى لا يعود زر الرجوع لصفحة الإنشاء.
+        navigate(`/groups/${newGroupId}/chat`, { replace: true });
+      } else {
+        // fallback: لو لم نستلم id، نعود للقائمة بدل ما نعلق
+        pushToast?.({
+          type: 'warning',
+          title: 'تنبيه',
+          description: 'تم الإنشاء لكن لم نستلم معرّف المجموعة من الخادم',
+        });
         navigate('/groups');
       }
     } catch (error) {

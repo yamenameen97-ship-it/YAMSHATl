@@ -19,6 +19,8 @@ import {
 import { createPost, updatePost } from '../api/posts.js';
 import { uploadFile } from '../services/media/mediaUploadService.js';
 import { getCurrentUsername } from '../utils/auth.js';
+import socketManager from '../services/socketManager.js';
+import livekitService from '../services/livekitService.js';
 import ViewersManagementPanel from '../components/live/ViewersManagementPanel.jsx';
 import '../styles/modern-live-control.css';
 
@@ -128,6 +130,8 @@ export default function LiveStudio() {
   const localStreamRef = useRef(null);
   const statsIntervalRef = useRef(null);
   const durationIntervalRef = useRef(null);
+  const socketListenersRef = useRef(new Map());
+  const heartTimerRef = useRef(null);
 
   // إنشاء بث جديد
   const handleCreateStream = useCallback(async () => {
@@ -166,22 +170,17 @@ export default function LiveStudio() {
         setActiveStream(response.data);
         setIsStreaming(true);
 
-        // إنشاء منشور تلقائياً يمثل البث الجديد
-        // ملاحظة: نرسل حقول واضحة وصريحة حتى يستطيع الـ Feed تمييزه عن غيره
-        // ولا نخلط بين thumbnail_url و media_url لتجنب التباس في عرض البث
         try {
           const livePost = {
             type: 'live_stream',
             content: title.trim(),
             title: title.trim(),
-            // صورة الغلاف تفترض أن تظهر في المنشور وفي Live Card
             media_url: uploadedCover || undefined,
             image_url: uploadedCover || undefined,
             thumbnail_url: uploadedCover || undefined,
             preview_url: uploadedCover || undefined,
             cover_url: uploadedCover || undefined,
             media_urls: uploadedCover ? [uploadedCover] : undefined,
-            // حقول تعريف البث
             stream_id: streamId,
             live_stream_id: streamId,
             live_id: streamId,
@@ -226,7 +225,7 @@ export default function LiveStudio() {
     } finally {
       setLoading(false);
     }
-  }, [newStreamData, pushToast]);
+  }, [newStreamData, pushToast, coverImage, currentUsername]);
 
   // بدء البث
   const handleStartStream = useCallback(async (streamId) => {
@@ -240,6 +239,42 @@ export default function LiveStudio() {
       if (tokenResponse?.data?.token) {
         setCameraReady(true);
         setStreamHealth('good');
+
+        // ✅ FIX: انضمام المضيف لغرفة البث لاستقبال اللايكات والتعليقات
+        socketManager.emit('join_live', {
+          room_id: streamId,
+          role: 'host',
+          platform: 'web',
+          device_type: 'browser',
+        });
+
+        // ✅ FIX: الاستماع لأحداث البث المباشر
+        const handleNewHeart = (data) => {
+          setStreamStats(prev => ({
+            ...prev,
+            hearts: data?.count || prev.hearts + 1,
+          }));
+        };
+
+        const handleRoomStats = (data) => {
+          setStreamStats(prev => ({
+            ...prev,
+            viewers: data?.viewer_count || prev.viewers,
+            hearts: data?.hearts_count || prev.hearts,
+          }));
+        };
+
+        const handleNewComment = (data) => {
+          setComments(prev => [...prev, data]);
+        };
+
+        socketManager.on('new_heart', handleNewHeart);
+        socketManager.on('room_stats', handleRoomStats);
+        socketManager.on('new_comment', handleNewComment);
+
+        socketListenersRef.current.set('new_heart', { handler: handleNewHeart, event: 'new_heart' });
+        socketListenersRef.current.set('room_stats', { handler: handleRoomStats, event: 'room_stats' });
+        socketListenersRef.current.set('new_comment', { handler: handleNewComment, event: 'new_comment' });
 
         if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
         statsIntervalRef.current = setInterval(() => {
@@ -277,11 +312,18 @@ export default function LiveStudio() {
 
     setLoading(true);
     try {
+      // ✅ FIX: مغادرة غرفة البث وإيقاف الاستماع للأحداث
+      socketManager.emit('leave_live', { room_id: activeStream.id });
+      socketListenersRef.current.forEach(({ handler, event }) => {
+        socketManager.off(event, handler);
+      });
+      socketListenersRef.current.clear();
+
+      // ✅ FIX: قطع اتصال LiveKit إذا كان موجوداً
+      await livekitService.disconnect();
+
       await endLiveStream(activeStream.id);
 
-      // تحديث المنشور ليتحول إلى فيديو عادي (أو منشور غير مباشر) بعد إنهاء البث
-      // ملاحظة مهمة: نصفّر كل الأعلام المتعلقة بالبث حتى لا تبقى
-      // في الـ backend وتعود لـ Feed على أنها "بث نشط" فتتحول المنشورات السابقة في العرض.
       if (activePostId) {
         try {
           await updatePost(activePostId, {
@@ -289,7 +331,6 @@ export default function LiveStudio() {
             is_live_stream: false,
             has_live_stream: false,
             type: 'video',
-            // لا نلمس حقول الوسائط حتى تبقى صورة الغلاف كـ thumbnail للفيديو المسجل
           });
         } catch (updateErr) {
           console.error('Failed to update post on end stream:', updateErr);
@@ -331,7 +372,7 @@ export default function LiveStudio() {
     } finally {
       setLoading(false);
     }
-  }, [activeStream, pushToast]);
+  }, [activeStream, pushToast, activePostId]);
 
   // تحديث إحصائيات البث
   const updateStreamStats = useCallback(async (streamId) => {
@@ -341,7 +382,7 @@ export default function LiveStudio() {
         const data = response.data;
         setStreamStats(prev => ({
           ...prev,
-          viewers: data.total_viewers || data.viewers_count || prev.viewers,
+          viewers: data.total_viewers || data.viewers_count || data.viewer_count || prev.viewers,
           hearts: data.total_hearts || data.hearts_count || prev.hearts,
           gifts: data.total_gifts || data.gifts_count || prev.gifts,
           bitrate: data.bitrate || prev.bitrate,
@@ -364,11 +405,20 @@ export default function LiveStudio() {
   const loadComments = useCallback(async (streamId) => {
     try {
       const response = await getLiveComments(streamId);
-      setComments(Array.isArray(response?.data) ? response.data : []);
+      if (Array.isArray(response?.data)) {
+        setComments(response.data);
+      }
     } catch (error) {
       console.error('خطأ في تحميل التعليقات:', error);
     }
   }, []);
+
+  // ✅ FIX: تحميل التعليقات عند بدء البث
+  useEffect(() => {
+    if (activeStream?.id && isStreaming) {
+      loadComments(activeStream.id);
+    }
+  }, [activeStream?.id, isStreaming, loadComments]);
 
   // إرسال تعليق
   const handleSendComment = useCallback(async () => {
@@ -383,10 +433,17 @@ export default function LiveStudio() {
       };
 
       setComments(prev => [...prev, newComment]);
+      const textToSend = commentText;
       setCommentText('');
 
+      // ✅ FIX: إرسال التعليق عبر Socket للحصول على تحديثات فورية
+      socketManager.emit('send_comment', {
+        room_id: activeStream.id,
+        text: textToSend,
+      });
+
       await sendLiveComment(activeStream.id, {
-        text: commentText,
+        text: textToSend,
       });
     } catch (error) {
       pushToast?.({
@@ -402,6 +459,14 @@ export default function LiveStudio() {
     if (!activeStream?.id || !gift) return;
 
     try {
+      // ✅ FIX: إرسال الهدية عبر Socket للحصول على تحديثات فورية
+      socketManager.emit('send_gift', {
+        room_id: activeStream.id,
+        gift_id: gift.id,
+        name: gift.name,
+        price: gift.price,
+      });
+
       await sendLiveGift(activeStream.id, {
         gift_id: gift.id,
         name: gift.name,
@@ -550,21 +615,24 @@ export default function LiveStudio() {
     };
   }, [isStreaming, activeStream?.id]);
 
-  // تحميل التعليقات عند تغيير البث النشط
-  useEffect(() => {
-    if (activeStream?.id) {
-      loadComments(activeStream.id);
-      const interval = setInterval(() => loadComments(activeStream.id), 3000);
-      return () => clearInterval(interval);
-    }
-  }, [activeStream?.id, loadComments]);
-
   const formatDuration = (seconds) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
+
+  // تنظيف المستمعين عند مغادرة الصفحة
+  useEffect(() => {
+    return () => {
+      if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
+      if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
+      socketListenersRef.current.forEach(({ handler, event }) => {
+        socketManager.off(event, handler);
+      });
+      socketListenersRef.current.clear();
+    };
+  }, []);
 
   return (
     <div className="modern-live-control" dir="rtl">
@@ -691,7 +759,7 @@ export default function LiveStudio() {
             </div>
           </div>
 
-          {/* Control Buttons - Now Connected */}
+          {/* Control Buttons */}
           <div className="mlc-controls">
             {!isStreaming ? (
               <button

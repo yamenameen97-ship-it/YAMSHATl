@@ -2,40 +2,6 @@ import { buildAppUrl, redirectToAppPath } from './router.js';
 
 const shownNotificationIds = new Set();
 
-export function extractNotificationPeer(notification) {
-  const payload = notification?.payload || notification?.data || {};
-  const candidates = [
-    payload?.username,
-    payload?.target_username,
-    payload?.peer,
-    payload?.chat_with,
-    payload?.caller,
-    payload?.from,
-    notification?.username,
-  ];
-
-  return candidates
-    .map((value) => String(value || '').trim())
-    .find(Boolean) || '';
-}
-
-export function getNotificationFamily(notification) {
-  const payload = notification?.payload || notification?.data || {};
-  const raw = String(
-    payload?.screen ||
-    notification?.screen ||
-    notification?.category ||
-    notification?.notification_type ||
-    notification?.type ||
-    ''
-  ).toLowerCase();
-
-  if (["chat", "message", "messages", "dm", "call"].includes(raw)) return 'chat';
-  if (raw === 'mention') return 'mention';
-  if (raw === 'live') return 'live';
-  return raw || 'general';
-}
-
 export function resolveNotificationPath(notification) {
   const payload = notification?.payload || notification?.data || {};
   if (typeof payload?.path === 'string' && payload.path.trim()) return payload.path.trim();

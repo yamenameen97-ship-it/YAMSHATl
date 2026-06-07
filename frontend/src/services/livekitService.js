@@ -137,6 +137,22 @@ class LiveKitService {
       await this.qualityManager?.applyProfile?.(this.qualityManager.profile).catch(() => {});
       this.emit({ event: 'local_track_published' });
     });
+
+    this.room.on(LiveKit.RoomEvent.TrackSubscribed, (track, publication, participant) => {
+      this.emit({
+        event: 'track_subscribed',
+        trackKind: publication?.kind || track?.kind || '',
+        participantId: participant?.identity || participant?.sid || '',
+      });
+    });
+
+    this.room.on(LiveKit.RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+      this.emit({
+        event: 'track_unsubscribed',
+        trackKind: publication?.kind || track?.kind || '',
+        participantId: participant?.identity || participant?.sid || '',
+      });
+    });
   }
 
   startHealthCheck(intervalMs = 10_000) {

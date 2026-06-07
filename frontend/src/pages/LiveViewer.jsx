@@ -10,9 +10,13 @@ import {
   sendLiveHeart,
   getLiveStreamStats,
   getLiveStreamViewers,
+  getLiveToken,
+  addViewer,
 } from '../services/api/liveStreamApi.js';
 import { getCurrentUsername } from '../utils/auth.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
+import socketManager from '../services/socketManager.js';
+import livekitService from '../services/livekitService.js';
 import '../styles/modern-live-viewer.css';
 
 const GIFTS = [
@@ -104,6 +108,8 @@ export default function LiveViewer() {
   const heartTimerRef = useRef(null);
   const statsIntervalRef = useRef(null);
   const commentsIntervalRef = useRef(null);
+  const playerVideoRef = useRef(null);
+  const attachedStreamRef = useRef(null);
   // ✅ FIX: عدّاد الأخطاء المتتالية لإيقاف الاستطلاع وتجنّب إغراق الكونسول بـ 403/404
   const statsErrorCountRef = useRef(0);
   const commentsErrorCountRef = useRef(0);
@@ -112,6 +118,7 @@ export default function LiveViewer() {
 
   // ✅ FIX: حالة لإظهار رسالة "البث انتهى" بدلاً من شاشة سوداء صامتة
   const [streamEnded, setStreamEnded] = useState(false);
+  const [hasRemotePlayback, setHasRemotePlayback] = useState(false);
 
   const stopAllPolling = useCallback(() => {
     if (statsIntervalRef.current) {
@@ -129,6 +136,99 @@ export default function LiveViewer() {
     const status = error?.response?.status;
     return status === 401 || status === 403 || status === 404;
   };
+
+  const detachRemoteStream = useCallback(() => {
+    attachedStreamRef.current = null;
+    if (playerVideoRef.current) {
+      try {
+        playerVideoRef.current.pause?.();
+        playerVideoRef.current.srcObject = null;
+        playerVideoRef.current.removeAttribute('src');
+        playerVideoRef.current.load?.();
+      } catch {
+        // ignore detach failures
+      }
+    }
+    setHasRemotePlayback(false);
+  }, []);
+
+  const attachRemoteStream = useCallback(() => {
+    const room = livekitService.room;
+    const player = playerVideoRef.current;
+    if (!room || !player) {
+      setHasRemotePlayback(false);
+      return false;
+    }
+
+    const mediaTracks = [];
+    room.remoteParticipants?.forEach?.((participant) => {
+      participant?.trackPublications?.forEach?.((publication) => {
+        const mediaTrack = publication?.track?.mediaStreamTrack;
+        if (!mediaTrack) return;
+        if (!mediaTracks.some((track) => track.id === mediaTrack.id)) {
+          mediaTracks.push(mediaTrack);
+        }
+      });
+    });
+
+    if (!mediaTracks.length) {
+      setHasRemotePlayback(false);
+      return false;
+    }
+
+    try {
+      const mediaStream = new MediaStream(mediaTracks);
+      attachedStreamRef.current = mediaStream;
+      player.srcObject = mediaStream;
+      player.muted = false;
+      player.playsInline = true;
+      player.autoplay = true;
+      player.play?.().catch(() => {});
+      setHasRemotePlayback(true);
+      return true;
+    } catch {
+      setHasRemotePlayback(false);
+      return false;
+    }
+  }, []);
+
+  const connectToLivePlayback = useCallback(async (targetStreamId) => {
+    try {
+      const tokenResponse = await getLiveToken(targetStreamId, { role: 'viewer' });
+      const livekitUrl = tokenResponse?.data?.livekit_url || '';
+      const livekitRoom = tokenResponse?.data?.livekit_room || '';
+      const token = tokenResponse?.data?.token || '';
+      if (!livekitUrl || !livekitRoom || !token) {
+        setHasRemotePlayback(false);
+        return false;
+      }
+
+      const livekitResult = await livekitService.connect(
+        livekitUrl,
+        token,
+        livekitRoom,
+        currentUsername,
+        { autoSubscribe: true },
+      );
+
+      if (!livekitResult?.success) {
+        setHasRemotePlayback(false);
+        return false;
+      }
+
+      setTimeout(() => {
+        attachRemoteStream();
+      }, 300);
+      return true;
+    } catch (error) {
+      if (!isExpectedApiError(error)) {
+        // eslint-disable-next-line no-console
+        console.warn('[LiveViewer] تعذّر الاتصال ببث LiveKit:', error?.message || error);
+      }
+      setHasRemotePlayback(false);
+      return false;
+    }
+  }, [attachRemoteStream, currentUsername]);
 
   // تحميل البثوث النشطة
   const loadStreams = useCallback(async () => {
@@ -162,16 +262,37 @@ export default function LiveViewer() {
       navigate(`/live/view/${stream.id}`);
     }
 
+    if (activeStream?.id && String(activeStream.id) !== String(stream.id)) {
+      socketManager.emit('leave_live', { room_id: activeStream.id }, { queue: false });
+    }
+
     // ✅ FIX: إعادة ضبط حالة الأخطاء والاستطلاع عند فتح بث جديد
     stopAllPolling();
+    detachRemoteStream();
+    await livekitService.disconnect().catch(() => {});
     statsErrorCountRef.current = 0;
     commentsErrorCountRef.current = 0;
     streamEndedRef.current = false;
     setStreamEnded(false);
+    setHasRemotePlayback(false);
 
     setActiveStream(stream);
 
     try {
+      socketManager.connect();
+      socketManager.emit('join_live', {
+        room_id: stream.id,
+        role: 'viewer',
+        platform: 'web',
+        device_type: 'browser',
+      }, { queue: false });
+
+      await addViewer(stream.id, {
+        username: currentUsername,
+        platform: 'web',
+        device_type: 'browser',
+      }).catch(() => null);
+
       const detailsResponse = await getLiveStreamDetails(stream.id).catch((err) => {
         if (!isExpectedApiError(err)) throw err;
         return null;
@@ -179,11 +300,13 @@ export default function LiveViewer() {
       if (detailsResponse?.data) {
         setStreamDetails(detailsResponse.data);
         setStreamStats({
-          viewers: detailsResponse.data.viewers_count || 0,
-          hearts: detailsResponse.data.hearts_count || 0,
-          comments: 0,
+          viewers: detailsResponse.data.viewers_count ?? detailsResponse.data.viewer_count ?? 0,
+          hearts: detailsResponse.data.hearts_count ?? 0,
+          comments: detailsResponse.data.comments_count ?? 0,
         });
       }
+
+      await connectToLivePlayback(stream.id).catch(() => false);
 
       // تحميل التعليقات بشكل آمن – 404 يعني لا توجد تعليقات بعد
       const commentsResponse = await getLiveComments(stream.id).catch((err) => {
@@ -225,7 +348,7 @@ export default function LiveViewer() {
         description: 'حاول مرة أخرى',
       });
     }
-  }, [navigate, pushToast, stopAllPolling]);
+  }, [navigate, pushToast, stopAllPolling, detachRemoteStream, connectToLivePlayback, currentUsername, activeStream?.id]);
 
   // تحديث إحصائيات البث
   // ✅ FIX: لا نطبع 403/404 في الكونسول، ونوقف الاستطلاع بعد 3 إخفاقات متتالية
@@ -236,8 +359,8 @@ export default function LiveViewer() {
         statsErrorCountRef.current = 0;
         setStreamStats(prev => ({
           ...prev,
-          viewers: response.data.viewers_count || response.data.unique_viewers || prev.viewers,
-          hearts: response.data.hearts_count || prev.hearts,
+          viewers: response.data.viewers_count ?? response.data.viewer_count ?? response.data.unique_viewers ?? prev.viewers,
+          hearts: response.data.hearts_count ?? prev.hearts,
         }));
       }
     } catch (error) {
@@ -405,6 +528,20 @@ export default function LiveViewer() {
     };
   }, [floatingHearts]);
 
+  useEffect(() => {
+    const unsubscribe = livekitService.subscribe((snapshot = {}) => {
+      if (['participant_connected', 'track_subscribed', 'reconnected', 'track_unsubscribed'].includes(snapshot?.event)) {
+        setTimeout(() => {
+          attachRemoteStream();
+        }, 120);
+      }
+      if (snapshot?.event === 'disconnected') {
+        detachRemoteStream();
+      }
+    });
+    return () => unsubscribe?.();
+  }, [attachRemoteStream, detachRemoteStream]);
+
   // تحميل البثوث عند التحميل
   useEffect(() => {
     loadStreams();
@@ -441,9 +578,9 @@ export default function LiveViewer() {
             host_username: data.host_username || data.host || 'مضيف',
             host_name: data.host_name || data.host_username || 'مضيف',
             thumbnail_url: data.thumbnail_url || data.cover_url || data.preview_url || '',
-            is_active: data.is_active !== false,
-            viewers_count: data.viewers_count || 0,
-            hearts_count: data.hearts_count || 0,
+            is_active: (data.is_active ?? data.active) !== false,
+            viewers_count: data.viewers_count ?? data.viewer_count ?? 0,
+            hearts_count: data.hearts_count ?? 0,
           };
           openStream(stub, { syncUrl: false });
         }
@@ -479,8 +616,13 @@ export default function LiveViewer() {
   useEffect(() => {
     return () => {
       stopAllPolling();
+      if (activeStream?.id) {
+        socketManager.emit('leave_live', { room_id: activeStream.id }, { queue: false });
+      }
+      detachRemoteStream();
+      livekitService.disconnect().catch(() => {});
     };
-  }, [stopAllPolling]);
+  }, [stopAllPolling, activeStream?.id, detachRemoteStream]);
 
   const hostName = activeStream?.host_name || activeStream?.host_username || 'مضيف البث';
   // ✅ FIX: استخدم صورة الغلاف من البث كخلفية للمشغّل قبل بدء التشغيل
@@ -570,19 +712,21 @@ export default function LiveViewer() {
               {/* Video Player */}
               <div className="mlv-player-section">
                 <div className="mlv-player">
-                  {/* ✅ FIX: فيديو حقيقي إن توفّر رابط تشغيل، وإلا غلاف بديل */}
-                  {playbackUrl ? (
+                  {/* ✅ FIX: إمّا تشغيل LiveKit للمشاهدين أو رابط تشغيل مباشر إن وُجد */}
+                  {(hasRemotePlayback || playbackUrl) ? (
                     <video
+                      ref={playerVideoRef}
                       className="mlv-player-video"
-                      src={playbackUrl}
+                      src={!hasRemotePlayback ? playbackUrl || undefined : undefined}
                       poster={effectiveCover}
                       autoPlay
                       playsInline
-                      muted
+                      muted={false}
                       controls
                       onError={(e) => {
-                        // عند فشل تشغيل الفيديو، أخفّ وستبقى صورة الغلاف
-                        e.currentTarget.style.display = 'none';
+                        if (!hasRemotePlayback) {
+                          e.currentTarget.style.display = 'none';
+                        }
                       }}
                     />
                   ) : null}
@@ -598,7 +742,7 @@ export default function LiveViewer() {
                       }
                     }}
                   />
-                  <div className="mlv-player-placeholder">
+                  <div className="mlv-player-placeholder" style={{ opacity: hasRemotePlayback || playbackUrl ? 0.18 : 1 }}>
                     <div className="mlv-player-icon">📺</div>
                     <p>بث مباشر من {hostName}</p>
                     <small>{activeStream.title || 'جارٍ تحميل البث…'}</small>
@@ -691,10 +835,10 @@ export default function LiveViewer() {
                   {comments.length > 0 ? (
                     comments.map((comment) => (
                       <div key={comment.id} className="mlv-comment-item">
-                        <Avatar name={comment.username} size={32} />
+                        <Avatar name={comment.username || comment.user} size={32} />
                         <div className="mlv-comment-content">
                           <div className="mlv-comment-header">
-                            <span className="mlv-comment-name">{comment.username}</span>
+                            <span className="mlv-comment-name">{comment.username || comment.user}</span>
                             <span className="mlv-comment-time">الآن</span>
                           </div>
                           <p className="mlv-comment-text">{comment.text}</p>

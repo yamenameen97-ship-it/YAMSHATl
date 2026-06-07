@@ -13,8 +13,11 @@ export const getLiveStreamDetails = (streamId) =>
 export const createLiveStream = (streamData = {}) =>
   apiClient.post('/create_live', streamData);
 
+export const getLiveToken = (streamId, payload = {}) =>
+  apiClient.post(`/live/${streamId}/token`, payload);
+
 export const startLiveStream = (streamId, payload = {}) =>
-  apiClient.post(`/live/${streamId}/token`, { role: 'host', ...payload });
+  getLiveToken(streamId, { role: 'host', ...payload });
 
 export const endLiveStream = (streamId) =>
   apiClient.post(`/end_live/${streamId}`);
@@ -98,6 +101,7 @@ export default {
   getActiveLiveStreams,
   getLiveStreamDetails,
   createLiveStream,
+  getLiveToken,
   startLiveStream,
   endLiveStream,
   sendLiveComment,

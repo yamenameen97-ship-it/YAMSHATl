@@ -67,6 +67,12 @@ def _read_extra_snapshot(record: LiveRoomSession) -> dict:
 def _hydrate_runtime_room(record: LiveRoomSession):
     runtime_room = live_store.get_room(record.id)
     snapshot = _read_extra_snapshot(record)
+    snapshot_thumbnail = str(
+        snapshot.get('thumbnail_url')
+        or snapshot.get('cover_url')
+        or snapshot.get('preview_url')
+        or ''
+    ).strip()
 
     if runtime_room:
         runtime_room.title = record.title
@@ -74,51 +80,97 @@ def _hydrate_runtime_room(record: LiveRoomSession):
         runtime_room.livekit_url = record.livekit_url or settings.LIVEKIT_URL or ''
         runtime_room.stream_status = record.stream_status
         runtime_room.active = bool(record.is_active)
-        runtime_room.viewer_count = int(record.viewer_count or runtime_room.viewer_count)
-        runtime_room.peak_viewer_count = max(int(record.peak_viewer_count or 0), int(runtime_room.peak_viewer_count or 0))
-        runtime_room.hearts_count = max(int(record.hearts_count or 0), int(runtime_room.hearts_count or 0))
         runtime_room.recording_status = record.recording_status or runtime_room.recording_status
         runtime_room.recording_url = record.recording_url or runtime_room.recording_url
         runtime_room.last_activity_at = _iso(record.last_activity_at)
     else:
         runtime_room = live_store.create_room(
-        record.host_user_id,
-        record.host_username,
-        record.title,
-        room_id=record.id,
-        created_at=_iso(record.created_at),
-        last_activity_at=_iso(record.last_activity_at),
-        livekit_room=record.livekit_room,
-        livekit_url=record.livekit_url or settings.LIVEKIT_URL or '',
-        stream_status=record.stream_status,
-        active=record.is_active,
-        viewer_count=record.viewer_count,
-        peak_viewer_count=record.peak_viewer_count,
-        hearts_count=record.hearts_count,
-        recording_status=record.recording_status,
-        recording_url=record.recording_url,
-    )
+            record.host_user_id,
+            record.host_username,
+            record.title,
+            room_id=record.id,
+            created_at=_iso(record.created_at),
+            last_activity_at=_iso(record.last_activity_at),
+            livekit_room=record.livekit_room,
+            livekit_url=record.livekit_url or settings.LIVEKIT_URL or '',
+            stream_status=record.stream_status,
+            active=record.is_active,
+            viewer_count=record.viewer_count,
+            peak_viewer_count=record.peak_viewer_count,
+            hearts_count=record.hearts_count,
+            recording_status=record.recording_status,
+            recording_url=record.recording_url,
+        )
+
+    runtime_room.thumbnail_url = str(getattr(runtime_room, 'thumbnail_url', '') or snapshot_thumbnail or '').strip()
 
     if snapshot:
-        runtime_room.comments = [LiveComment(**comment) for comment in snapshot.get('comments', []) if isinstance(comment, dict)]
-        runtime_room.gifts = [LiveGift(**gift) for gift in snapshot.get('gifts', []) if isinstance(gift, dict)]
-        runtime_room.viewers = {str(key): value for key, value in (snapshot.get('viewers') or {}).items() if isinstance(value, dict)}
-        runtime_room.muted_users = set(snapshot.get('muted_users') or [])
-        runtime_room.kicked_users = set(snapshot.get('kicked_users') or [])
-        runtime_room.co_hosts = list(snapshot.get('co_hosts') or runtime_room.co_hosts)
-        runtime_room.economy = {**runtime_room.economy, **(snapshot.get('economy') or {})}
+        snapshot_comments = [LiveComment(**comment) for comment in snapshot.get('comments', []) if isinstance(comment, dict)]
+        if snapshot_comments and not getattr(runtime_room, 'comments', None):
+            runtime_room.comments = snapshot_comments
+        elif snapshot_comments:
+            existing_comment_ids = {str(comment.id) for comment in (runtime_room.comments or [])}
+            runtime_room.comments.extend([comment for comment in snapshot_comments if str(comment.id) not in existing_comment_ids])
+
+        snapshot_gifts = [LiveGift(**gift) for gift in snapshot.get('gifts', []) if isinstance(gift, dict)]
+        if snapshot_gifts and not getattr(runtime_room, 'gifts', None):
+            runtime_room.gifts = snapshot_gifts
+        elif snapshot_gifts:
+            existing_gift_ids = {str(gift.id) for gift in (runtime_room.gifts or [])}
+            runtime_room.gifts.extend([gift for gift in snapshot_gifts if str(gift.id) not in existing_gift_ids])
+
+        snapshot_viewers = {str(key): value for key, value in (snapshot.get('viewers') or {}).items() if isinstance(value, dict)}
+        if snapshot_viewers:
+            runtime_room.viewers = {
+                **snapshot_viewers,
+                **(runtime_room.viewers or {}),
+            }
+
+        runtime_room.muted_users = set(runtime_room.muted_users or set()) | set(snapshot.get('muted_users') or [])
+        runtime_room.kicked_users = set(runtime_room.kicked_users or set()) | set(snapshot.get('kicked_users') or [])
+
+        merged_co_hosts = []
+        for username in [*(snapshot.get('co_hosts') or []), *(runtime_room.co_hosts or [])]:
+            candidate = str(username or '').strip()
+            if candidate and candidate not in merged_co_hosts:
+                merged_co_hosts.append(candidate)
+        if record.host_username and record.host_username not in merged_co_hosts:
+            merged_co_hosts.insert(0, record.host_username)
+        runtime_room.co_hosts = merged_co_hosts or [record.host_username]
+
+        runtime_room.economy = {
+            **runtime_room.economy,
+            **(snapshot.get('economy') or {}),
+            'top_gifters': {
+                **((snapshot.get('economy') or {}).get('top_gifters') or {}),
+                **(runtime_room.economy.get('top_gifters') or {}),
+            },
+        }
         runtime_room.recovery_data = {**runtime_room.recovery_data, **(snapshot.get('recovery_data') or {})}
         runtime_room.multi_host_config = {**runtime_room.multi_host_config, **(snapshot.get('multi_host_config') or {})}
-        runtime_room.settings = {**DEFAULT_STREAM_SETTINGS, **(snapshot.get('settings') or {})}
+        runtime_room.settings = {**DEFAULT_STREAM_SETTINGS, **(snapshot.get('settings') or {}), **(getattr(runtime_room, 'settings', None) or {})}
         analytics = snapshot.get('stream_analytics') or {}
+        runtime_unique_viewers = set((runtime_room.stream_analytics or {}).get('unique_viewers') or set())
+        snapshot_unique_viewers = set(analytics.get('unique_viewers') or [])
         runtime_room.stream_analytics = {
             **runtime_room.stream_analytics,
             **analytics,
-            'unique_viewers': set(analytics.get('unique_viewers') or []),
+            'unique_viewers': runtime_unique_viewers | snapshot_unique_viewers,
         }
         if runtime_room.co_hosts:
             runtime_room.multi_host_config['current_hosts'] = list(runtime_room.co_hosts)
 
+    runtime_room.viewer_count = max(
+        len(runtime_room.viewers or {}),
+        int(runtime_room.viewer_count or 0),
+        int(record.viewer_count or 0),
+    )
+    runtime_room.peak_viewer_count = max(
+        int(runtime_room.peak_viewer_count or 0),
+        int(record.peak_viewer_count or 0),
+        int(runtime_room.viewer_count or 0),
+    )
+    runtime_room.hearts_count = max(int(record.hearts_count or 0), int(runtime_room.hearts_count or 0))
     runtime_room.settings = {
         **DEFAULT_STREAM_SETTINGS,
         **(getattr(runtime_room, 'settings', None) or {}),
@@ -130,14 +182,25 @@ def _hydrate_runtime_room(record: LiveRoomSession):
 def _sync_record_from_runtime(db: Session, record: LiveRoomSession, runtime_room) -> None:
     if not runtime_room:
         return
-    record.viewer_count = int(runtime_room.viewer_count or 0)
-    record.peak_viewer_count = max(int(record.peak_viewer_count or 0), int(runtime_room.peak_viewer_count or 0))
+    previous_snapshot = _read_extra_snapshot(record)
+    thumbnail_url = str(
+        getattr(runtime_room, 'thumbnail_url', '')
+        or previous_snapshot.get('thumbnail_url')
+        or previous_snapshot.get('cover_url')
+        or previous_snapshot.get('preview_url')
+        or ''
+    ).strip()
+    record.viewer_count = max(int(runtime_room.viewer_count or 0), len(runtime_room.viewers or {}))
+    record.peak_viewer_count = max(int(record.peak_viewer_count or 0), int(runtime_room.peak_viewer_count or 0), int(record.viewer_count or 0))
     record.hearts_count = int(runtime_room.hearts_count or 0)
     record.recording_status = runtime_room.recording_status or record.recording_status
     record.recording_url = runtime_room.recording_url or record.recording_url
     record.stream_status = runtime_room.stream_status or record.stream_status
     record.last_activity_at = _utcnow()
     record.extra_json = json.dumps({
+        'thumbnail_url': thumbnail_url,
+        'cover_url': thumbnail_url,
+        'preview_url': thumbnail_url,
         'comments': [comment.__dict__ for comment in (runtime_room.comments or [])],
         'gifts': [gift.__dict__ for gift in (runtime_room.gifts or [])],
         'viewers': runtime_room.viewers or {},
@@ -171,7 +234,13 @@ def _serialize_record(db: Session, record: LiveRoomSession) -> dict:
             pass
 
     snapshot = _read_extra_snapshot(record)
-    thumbnail_url = snapshot.get('thumbnail_url') or ""
+    thumbnail_url = str(
+        getattr(runtime_room, 'thumbnail_url', '')
+        or snapshot.get('thumbnail_url')
+        or snapshot.get('cover_url')
+        or snapshot.get('preview_url')
+        or ''
+    ).strip()
 
     payload.update({
         'id': record.id,
@@ -181,10 +250,14 @@ def _serialize_record(db: Session, record: LiveRoomSession) -> dict:
         'host_avatar': host_avatar,
         'title': record.title,
         'thumbnail_url': thumbnail_url,
+        'cover_url': thumbnail_url,
+        'preview_url': thumbnail_url,
+        'image_url': thumbnail_url,
         'created_at': _iso(record.created_at),
         'started_at': _iso(record.created_at),
         'last_activity_at': _iso(record.last_activity_at),
         'active': bool(record.is_active),
+        'is_active': bool(record.is_active),
         'livekit_room': record.livekit_room,
         'livekit_url': record.livekit_url or settings.LIVEKIT_URL or '',
         'stream_status': record.stream_status,
@@ -303,9 +376,12 @@ def create_live(payload: dict = Body(...), db: Session = Depends(get_db), curren
         extra = _read_extra_snapshot(existing)
         if thumbnail_url:
             extra['thumbnail_url'] = thumbnail_url
+            extra['cover_url'] = thumbnail_url
+            extra['preview_url'] = thumbnail_url
         existing.extra_json = json.dumps(extra, ensure_ascii=False)
         
         room = _hydrate_runtime_room(existing)
+        room.thumbnail_url = thumbnail_url or getattr(room, 'thumbnail_url', '')
         room.title = existing.title
         room.livekit_url = existing.livekit_url or settings.LIVEKIT_URL or ''
         room.stream_status = existing.stream_status
@@ -319,7 +395,7 @@ def create_live(payload: dict = Body(...), db: Session = Depends(get_db), curren
     livekit_url = settings.LIVEKIT_URL or ''
     stream_status = 'ready' if _is_livekit_configured() else 'setup_required'
 
-    live_store.create_room(
+    room = live_store.create_room(
         current_user.id,
         current_user.username,
         title,
@@ -328,6 +404,7 @@ def create_live(payload: dict = Body(...), db: Session = Depends(get_db), curren
         livekit_url=livekit_url,
         stream_status=stream_status,
     )
+    room.thumbnail_url = thumbnail_url
 
     record = LiveRoomSession(
         id=room_id,
@@ -460,9 +537,44 @@ def get_stream_analytics(room_id: str, db: Session = Depends(get_db), current_us
     if not record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Room not found')
     room = _hydrate_runtime_room(record)
-    if room.username != current_user.username and current_user.username not in room.co_hosts:
+    if record.host_user_id != current_user.id and current_user.username not in (room.co_hosts or []):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Access denied')
-    return room.stream_analytics
+
+    unique_viewers = room.stream_analytics.get('unique_viewers') or set()
+    gifts_count = len(room.gifts or [])
+    comments_count = len(room.comments or [])
+    viewers_count = int(room.viewer_count or len(room.viewers or {}))
+    hearts_count = int(room.hearts_count or 0)
+    avg_bitrate = int(room.stream_analytics.get('avg_bitrate') or 0)
+    packet_loss_events = int(room.stream_analytics.get('packet_loss_events') or 0)
+    gift_revenue = int(room.stream_analytics.get('gift_revenue') or 0)
+    total_watch_time = int(room.stream_analytics.get('total_watch_time') or 0)
+    health_score = max(0, 100 - (packet_loss_events * 10))
+
+    return {
+        'room_id': room_id,
+        'stream_status': getattr(room, 'stream_status', 'live' if room.active else 'ended'),
+        'is_live': bool(room.active),
+        'viewer_count': viewers_count,
+        'viewers_count': viewers_count,
+        'total_viewers': viewers_count,
+        'peak_viewer_count': int(room.peak_viewer_count or viewers_count),
+        'hearts_count': hearts_count,
+        'total_hearts': hearts_count,
+        'comments_count': comments_count,
+        'total_comments': comments_count,
+        'gifts_count': gifts_count,
+        'total_gifts': gifts_count,
+        'gift_revenue': gift_revenue,
+        'unique_viewers': len(unique_viewers),
+        'unique_viewers_list': list(unique_viewers),
+        'avg_bitrate': avg_bitrate,
+        'bitrate': avg_bitrate,
+        'packet_loss_events': packet_loss_events,
+        'total_watch_time': total_watch_time,
+        'health_score': health_score,
+        'last_activity_at': room.last_activity_at,
+    }
 
 
 @router.post('/live/{room_id}/gift')

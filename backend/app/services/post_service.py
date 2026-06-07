@@ -178,7 +178,18 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
             # جلب بيانات المضيف للحصول على صورته
             host_user = db.query(User).filter(User.id == live_room.host_user_id).first()
             host_avatar = host_user.avatar if host_user else None
-            
+            thumbnail_url = None
+            try:
+                live_extra = json.loads(live_room.extra_json or '{}') if getattr(live_room, 'extra_json', None) else {}
+                thumbnail_url = normalize_media_url(
+                    live_extra.get('thumbnail_url')
+                    or live_extra.get('cover_url')
+                    or live_extra.get('preview_url')
+                    or ''
+                ) or None
+            except Exception:
+                thumbnail_url = None
+
             live_stream_data = {
                 'id': live_room.id,
                 'host': live_room.host_username,
@@ -190,7 +201,7 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
                 'viewer_count': live_room.viewer_count,
                 'hearts_count': getattr(live_room, 'hearts_count', 0),  # إضافة عدد القلوب
                 'comments_count': 0,  # سيتم تحديثها من قاعدة البيانات إذا لزم الأمر
-                'thumbnail_url': None,  # يمكن إضافة صورة مصغرة إذا توفرت
+                'thumbnail_url': thumbnail_url,
                 'is_active': live_room.is_active,
                 'started_at': live_room.created_at.isoformat() if live_room.created_at else None,
             }
@@ -210,8 +221,8 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
         'media_urls': media_list,
         'media_type': media_kind or 'image',
         'has_video': media_kind == 'video',
-        'thumbnail_url': thumbnail_url,
-        'preview_url': thumbnail_url or primary_media_url,
+        'thumbnail_url': thumbnail_url or (live_stream_data.get('thumbnail_url') if live_stream_data else ''),
+        'preview_url': thumbnail_url or (live_stream_data.get('thumbnail_url') if live_stream_data else '') or primary_media_url,
         'hashtags': _loads_list(post.hashtags_json),
         'mentions': _loads_list(post.mentions_json),
         'poll': poll_items,

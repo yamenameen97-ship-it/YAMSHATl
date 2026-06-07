@@ -244,27 +244,51 @@ export default function LiveStudio() {
         setCameraReady(true);
         setStreamHealth('good');
 
+        // ✅ FIX: نشر الكاميرا/المايك فعلياً في LiveKit حتى يقدر المشاهدون يفتحوا البث
+        const livekitUrl = tokenResponse?.data?.livekit_url || '';
+        const livekitRoom = tokenResponse?.data?.livekit_room || '';
+        if (livekitUrl && livekitRoom) {
+          const livekitResult = await livekitService.connect(
+            livekitUrl,
+            tokenResponse.data.token,
+            livekitRoom,
+            currentUsername,
+            {
+              autoSubscribe: true,
+              mediaState: {
+                cameraEnabled: cameraState.cameraEnabled !== false,
+                microphoneEnabled: cameraState.microphoneEnabled !== false,
+              },
+            },
+          );
+          if (!livekitResult?.success) {
+            throw new Error(livekitResult?.error || 'livekit_connect_error');
+          }
+          await livekitService.setCameraEnabled(cameraState.cameraEnabled !== false).catch(() => {});
+          await livekitService.setMicrophoneEnabled(cameraState.microphoneEnabled !== false).catch(() => {});
+        }
+
         // ✅ FIX: انضمام المضيف لغرفة البث لاستقبال اللايكات والتعليقات
         socketManager.emit('join_live', {
           room_id: streamId,
           role: 'host',
           platform: 'web',
           device_type: 'browser',
-        });
+        }, { queue: false });
 
         // ✅ FIX: الاستماع لأحداث البث المباشر
         const handleNewHeart = (data) => {
           setStreamStats(prev => ({
             ...prev,
-            hearts: data?.count || prev.hearts + 1,
+            hearts: data?.count ?? (prev.hearts + 1),
           }));
         };
 
         const handleRoomStats = (data) => {
           setStreamStats(prev => ({
             ...prev,
-            viewers: data?.viewer_count || prev.viewers,
-            hearts: data?.hearts_count || prev.hearts,
+            viewers: data?.viewer_count ?? prev.viewers,
+            hearts: data?.hearts_count ?? prev.hearts,
           }));
         };
 
@@ -306,7 +330,7 @@ export default function LiveStudio() {
         description: error?.response?.data?.message || 'حاول مرة أخرى',
       });
     }
-  }, [newStreamData.quality, pushToast]);
+  }, [newStreamData.quality, pushToast, currentUsername, cameraState.cameraEnabled, cameraState.microphoneEnabled]);
 
   // إنهاء البث
   const handleEndStream = useCallback(async () => {
@@ -387,10 +411,10 @@ export default function LiveStudio() {
         const data = response.data;
         setStreamStats(prev => ({
           ...prev,
-          viewers: data.total_viewers || data.viewers_count || data.viewer_count || prev.viewers,
-          hearts: data.total_hearts || data.hearts_count || prev.hearts,
-          gifts: data.total_gifts || data.gifts_count || prev.gifts,
-          bitrate: data.bitrate || prev.bitrate,
+          viewers: data.total_viewers ?? data.viewers_count ?? data.viewer_count ?? prev.viewers,
+          hearts: data.total_hearts ?? data.hearts_count ?? prev.hearts,
+          gifts: data.total_gifts ?? data.gifts_count ?? prev.gifts,
+          bitrate: data.bitrate ?? prev.bitrate,
         }));
 
         if (data.bitrate && data.bitrate < 1000) {
@@ -538,6 +562,7 @@ export default function LiveStudio() {
     try {
       const newState = !cameraState.cameraEnabled;
       await toggleCamera(activeStream.id, newState);
+      await livekitService.setCameraEnabled(newState).catch(() => {});
       
       setCameraState(prev => ({
         ...prev,
@@ -564,6 +589,7 @@ export default function LiveStudio() {
     try {
       const newState = !cameraState.microphoneEnabled;
       await toggleMicrophone(activeStream.id, newState);
+      await livekitService.setMicrophoneEnabled(newState).catch(() => {});
       
       setCameraState(prev => ({
         ...prev,
@@ -839,10 +865,10 @@ export default function LiveStudio() {
               {comments.length > 0 ? (
                 comments.map((comment) => (
                   <div key={comment.id} className="mlc-message-item">
-                    <Avatar name={comment.username} size={36} />
+                    <Avatar name={comment.username || comment.user} size={36} />
                     <div className="mlc-message-content">
                       <div className="mlc-message-header">
-                        <span className="mlc-message-name">{comment.username}</span>
+                        <span className="mlc-message-name">{comment.username || comment.user}</span>
                       </div>
                       <p className="mlc-message-text">{comment.text}</p>
                     </div>

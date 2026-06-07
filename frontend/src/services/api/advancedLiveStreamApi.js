@@ -103,11 +103,12 @@ export const toggleMicrophone = async (streamId, enabled) => {
 
 // ==================== Statistics ====================
 
+// ✅ FIX: تعطيل إعادة المحاولة (retry) لتجنب إغراق الكونسول بـ 403 عند عدم صلاحية المشاهد
 export const getStreamStats = (streamId) =>
-  apiClient.get(`/live/${streamId}/analytics`, { cache: false, forceRefresh: true, retry: true });
+  apiClient.get(`/live/${streamId}/analytics`, { cache: false, forceRefresh: true, retry: false });
 
 export const getLiveStreamAnalytics = (streamId) =>
-  apiClient.get(`/live/${streamId}/analytics`, { cache: false, forceRefresh: true, retry: true });
+  apiClient.get(`/live/${streamId}/analytics`, { cache: false, forceRefresh: true, retry: false });
 
 // ==================== Comments & Gifts ====================
 

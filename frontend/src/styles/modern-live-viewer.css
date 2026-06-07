@@ -1432,3 +1432,34 @@
   border-radius: 16px;
   backdrop-filter: blur(6px);
 }
+
+/* ✅ FIX: عنصر فيديو حقيقي عند توفّر رابط تشغيل */
+.mlv-player-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 2;
+  background: #000;
+}
+
+/* ✅ FIX: شارة "على الهواء" داخل المشغّل */
+.mlv-player-live-pill {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 4px 12px;
+  background: rgba(239, 68, 68, 0.92);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .3px;
+  box-shadow: 0 4px 14px rgba(239,68,68,.45);
+  animation: mlvLivePulse 1.6s ease-in-out infinite;
+}
+
+@keyframes mlvLivePulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,.6); }
+  50%      { box-shadow: 0 0 0 8px rgba(239,68,68,0); }
+}

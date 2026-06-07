@@ -379,6 +379,7 @@ export default function LiveStudio() {
   }, [activeStream, pushToast, activePostId]);
 
   // تحديث إحصائيات البث
+  // ✅ FIX: إيقاف الاستطلاع بصمت عند 401/403/404 لتفادي إغراق الكونسول
   const updateStreamStats = useCallback(async (streamId) => {
     try {
       const response = await getStreamStats(streamId);
@@ -401,7 +402,17 @@ export default function LiveStudio() {
         }
       }
     } catch (error) {
-      console.error('خطأ في تحديث الإحصائيات:', error);
+      const status = error?.response?.status;
+      // 401/403/404 = صلاحيات/انتهاء/غير موجود → أوقف الاستطلاع بصمت
+      if (status === 401 || status === 403 || status === 404) {
+        if (statsIntervalRef.current) {
+          clearInterval(statsIntervalRef.current);
+          statsIntervalRef.current = null;
+        }
+        return;
+      }
+      // أخطاء أخرى: لا تطبع رسائل متكررة في الكونسول
+      // (تم استبدال console.error بصمت لتقليل الضوضاء)
     }
   }, []);
 

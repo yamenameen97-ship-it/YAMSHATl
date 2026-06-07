@@ -485,15 +485,65 @@ export default function LiveViewer() {
   const hostName = activeStream?.host_name || activeStream?.host_username || 'مضيف البث';
   // ✅ FIX: استخدم صورة الغلاف من البث كخلفية للمشغّل قبل بدء التشغيل
   // كانت منطقة المشغّل تظهر سوداء تماماً لأنه لا فيديو فعلي ولا غلاف.
-  const coverImage = resolveMediaUrl(
+  const rawCover = (
     streamDetails?.thumbnail_url
       || streamDetails?.cover_url
       || streamDetails?.preview_url
+      || streamDetails?.cover_image_url
+      || streamDetails?.image_url
       || activeStream?.thumbnail_url
       || activeStream?.cover_url
       || activeStream?.preview_url
+      || activeStream?.cover_image_url
+      || activeStream?.image_url
       || ''
   );
+  const coverImage = resolveMediaUrl(rawCover);
+  // ✅ FIX: رابط بث فيديو حقيقي (HLS/MP4) إن وفّره الباكيند
+  const playbackUrl = resolveMediaUrl(
+    streamDetails?.hls_url
+      || streamDetails?.playback_url
+      || streamDetails?.stream_url
+      || streamDetails?.video_url
+      || activeStream?.hls_url
+      || activeStream?.playback_url
+      || activeStream?.stream_url
+      || activeStream?.video_url
+      || ''
+  );
+  // ✅ FIX: غلاف احتياطي مولّد محلياً (SVG data URL) بدل صورة مكسورة
+  const getFallbackCover = (seedText = '') => {
+    const palette = ['#7c3aed', '#3b82f6', '#10b981', '#f97316', '#ec4899', '#06b6d4'];
+    const hash = String(seedText || hostName || 'live')
+      .split('')
+      .reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+    const c1 = palette[hash % palette.length];
+    const c2 = palette[(hash + 2) % palette.length];
+    const initial = (String(seedText || hostName || 'L').charAt(0) || 'L').toUpperCase();
+    const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="${c1}"/>
+      <stop offset="100%" stop-color="${c2}"/>
+    </linearGradient>
+    <radialGradient id="r" cx="30%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.25)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+    </radialGradient>
+  </defs>
+  <rect width="800" height="450" fill="url(#g)"/>
+  <rect width="800" height="450" fill="url(#r)"/>
+  <circle cx="400" cy="205" r="95" fill="rgba(255,255,255,0.18)"/>
+  <text x="400" y="235" font-family="system-ui,-apple-system,Segoe UI,sans-serif"
+        font-size="110" font-weight="900" fill="#fff" text-anchor="middle">${initial}</text>
+  <text x="400" y="360" font-family="system-ui,-apple-system,Segoe UI,sans-serif"
+        font-size="28" font-weight="700" fill="rgba(255,255,255,0.92)" text-anchor="middle">بث مباشر</text>
+</svg>`;
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  };
+  const fallbackCover = getFallbackCover(activeStream?.title || hostName);
+  const effectiveCover = coverImage || fallbackCover;
 
   return (
     <div className="modern-live-viewer" dir="rtl">
@@ -520,19 +570,41 @@ export default function LiveViewer() {
               {/* Video Player */}
               <div className="mlv-player-section">
                 <div className="mlv-player">
-                  {/* ✅ FIX: عرض صورة الغلاف كخلفية للمشغّل */}
-                  {coverImage ? (
-                    <img
-                      src={coverImage}
-                      alt={activeStream.title || 'غلاف البث'}
-                      className="mlv-player-cover"
-                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  {/* ✅ FIX: فيديو حقيقي إن توفّر رابط تشغيل، وإلا غلاف بديل */}
+                  {playbackUrl ? (
+                    <video
+                      className="mlv-player-video"
+                      src={playbackUrl}
+                      poster={effectiveCover}
+                      autoPlay
+                      playsInline
+                      muted
+                      controls
+                      onError={(e) => {
+                        // عند فشل تشغيل الفيديو، أخفّ وستبقى صورة الغلاف
+                        e.currentTarget.style.display = 'none';
+                      }}
                     />
                   ) : null}
+                  {/* ✅ FIX: صورة الغلاف دائماً تظهر (حتى لو فشلت الأصلية تعود لغلاف SVG محلي) */}
+                  <img
+                    src={effectiveCover}
+                    alt={activeStream.title || 'غلاف البث'}
+                    className="mlv-player-cover"
+                    onError={(e) => {
+                      // جرّب غلافاً بديلاً مولّداً محلياً بدل إخفاء الصورة
+                      if (e.currentTarget.src !== fallbackCover) {
+                        e.currentTarget.src = fallbackCover;
+                      }
+                    }}
+                  />
                   <div className="mlv-player-placeholder">
                     <div className="mlv-player-icon">📺</div>
                     <p>بث مباشر من {hostName}</p>
-                    <small>{activeStream.title}</small>
+                    <small>{activeStream.title || 'جارٍ تحميل البث…'}</small>
+                    {activeStream?.is_active && (
+                      <div className="mlv-player-live-pill">● على الهواء</div>
+                    )}
                   </div>
                   <FloatingHearts items={floatingHearts} />
                 </div>

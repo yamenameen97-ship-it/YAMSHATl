@@ -4,6 +4,14 @@ const trim = (value) => String(value || '').trim();
 const trimSlash = (value) => trim(value).replace(/\/+$/, '');
 const isAbsoluteUrl = (value = '') => /^(blob:|data:|https?:)/i.test(trim(value));
 
+// ✅ FIX: مسارات أصول الواجهة الأمامية (تُخدَم من frontend/public)
+// يجب ألا تُمرَّر عبر BACKEND_ORIGIN وإلا ستعيد 404 من الباكيند.
+const FRONTEND_STATIC_PREFIXES = ['/brand/', '/icons/', '/sounds/', '/offline.html', '/manifest.webmanifest'];
+const isFrontendStaticPath = (path = '') => {
+  const p = `/${String(path || '').replace(/^\/+/, '').toLowerCase()}`;
+  return FRONTEND_STATIC_PREFIXES.some((prefix) => p.startsWith(prefix));
+};
+
 // Liste de domaines obsolètes qui ont migré vers le backend actuel.
 // Toute URL pointant vers ces hôtes est réécrite vers BACKEND_ORIGIN courant,
 // ce qui évite les 404 répétés sur les anciennes images stockées en base.
@@ -15,8 +23,11 @@ const rewriteKnownBrokenBrandAsset = (value = '') => {
 
   try {
     const pathname = isAbsoluteUrl(cleaned) ? new URL(cleaned).pathname : cleaned;
-    if (/^(?:\/)?uploads\/.+yamshat-logo\.(?:png|jpe?g|webp)$/i.test(pathname.replace(/^\/+/, ''))) {
-      return '/brand/yamshat-logo.jpg';
+    // ✅ FIX: إعادة كتابة شعارات yamshat المكسورة في uploads أو brand إلى مسار محلي
+    // يخدمه frontend مباشرة (بدون BACKEND_ORIGIN) لتجنب 404 المتكررة.
+    if (/^(?:\/)?uploads\/.+yamshat-logo\.(?:png|jpe?g|webp)$/i.test(pathname.replace(/^\/+/, ''))
+        || /^(?:\/)?brand\/yamshat-logo\.(?:png|jpe?g|webp)$/i.test(pathname.replace(/^\/+/, ''))) {
+      return '__FRONTEND__/brand/yamshat-logo.jpg';
     }
   } catch {
     // ignore URL parsing errors and fall back to original value
@@ -49,8 +60,14 @@ const rewriteLegacyHost = (value = '') => {
 const toAbsoluteMediaUrl = (value = '') => {
   const cleaned = trim(value);
   if (!cleaned) return '';
+  // ✅ FIX: علامة __FRONTEND__ تعني صرفه من واجهة الفرونت محلياً (نفس الأصل)
+  if (cleaned.startsWith('__FRONTEND__/')) {
+    return `/${cleaned.replace(/^__FRONTEND__\/+/, '')}`;
+  }
   if (isAbsoluteUrl(cleaned)) return rewriteLegacyHost(cleaned);
   const normalizedPath = `/${cleaned.replace(/^\/+/, '')}`;
+  // ✅ FIX: أصول الواجهة الأمامية (شعارات، أيقونات، أصوات) تُخدَم من نفس الأصل
+  if (isFrontendStaticPath(normalizedPath)) return normalizedPath;
   if (MEDIA_CDN_BASE) return `${MEDIA_CDN_BASE}${normalizedPath}`;
   if (BACKEND_ORIGIN) return `${trimSlash(BACKEND_ORIGIN)}${normalizedPath}`;
   return normalizedPath;

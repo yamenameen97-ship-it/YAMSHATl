@@ -3,20 +3,19 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import {
   createLiveStream,
-  getLiveToken,
+  startLiveStream,
   endLiveStream,
   getLiveComments,
   sendLiveComment,
   sendLiveGift,
-  getStreamAnalytics,
-  manageRecording,
-  updateStreamTitle,
+  getStreamStats,
+  recordLiveStream,
+  updateCameraState,
+  closeCameraStream,
+  toggleCamera,
+  toggleMicrophone,
   getStreamViewers,
-  updateStreamSettings,
-  getRecoveryData,
-  sendHeartbeat,
-} from '../services/api/correctedLiveStreamApi.js';
-import { API_BASE } from '../api/config.js';
+} from '../services/api/advancedLiveStreamApi.js';
 import { getCurrentUsername } from '../utils/auth.js';
 import ViewersManagementPanel from '../components/live/ViewersManagementPanel.jsx';
 import '../styles/modern-live-control.css';
@@ -71,41 +70,13 @@ function Avatar({ name = '', size = 42 }) {
   );
 }
 
-function formatDuration(seconds) {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
-  
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  }
-  return `${minutes}:${String(secs).padStart(2, '0')}`;
-}
-
-function getHealthStatus(bitrate, packetLoss = 0) {
-  if (packetLoss > 5 || bitrate < 500) return { status: 'poor', color: '#ef4444', label: 'ضعيف' };
-  if (packetLoss > 2 || bitrate < 1500) return { status: 'fair', color: '#f59e0b', label: 'متوسط' };
-  return { status: 'good', color: '#10b981', label: 'ممتاز' };
-}
-
-const LIVE_STATS_POLL_MS = 15000;
-const LIVE_COMMENTS_POLL_MS = 10000;
-const LIVE_HEARTBEAT_MS = 45000;
-
-function getRetryDelay(error, fallbackMs) {
-  const retryAfter = Number(error?.response?.headers?.['retry-after'] || error?.response?.data?.retry_after || 0);
-  if (Number.isFinite(retryAfter) && retryAfter > 0) {
-    return retryAfter * 1000;
-  }
-  return fallbackMs;
-}
-
-export default function LiveStudioAdvanced() {
+export default function LiveStudioEnhanced() {
   const { pushToast } = useToast();
   const currentUsername = getCurrentUsername();
   const navigate = useNavigate();
 
   // حالة البث
+  const [streams, setStreams] = useState([]);
   const [activeStream, setActiveStream] = useState(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -117,26 +88,22 @@ export default function LiveStudioAdvanced() {
     category: 'ألعاب',
     quality: '720p',
     isPublic: true,
-    giftGoal: 0,
-    minimumGiftAmount: 0,
   });
 
   // إحصائيات البث
   const [streamStats, setStreamStats] = useState({
     viewers: 0,
-    peakViewers: 0,
     hearts: 0,
     gifts: 0,
     comments: 0,
     duration: 0,
     bitrate: 0,
-    packetLoss: 0,
-    avgBitrate: 0,
   });
 
   // التعليقات والهدايا
   const [comments, setComments] = useState([]);
   const [commentText, setCommentText] = useState('');
+  const [showGiftPanel, setShowGiftPanel] = useState(false);
   const [viewers, setViewers] = useState([]);
 
   // معلومات الكاميرا والبث
@@ -144,82 +111,16 @@ export default function LiveStudioAdvanced() {
   const [cameraError, setCameraError] = useState('');
   const [recordingEnabled, setRecordingEnabled] = useState(false);
   const [streamHealth, setStreamHealth] = useState('good');
-  const [editingTitle, setEditingTitle] = useState(false);
-  const [editedTitle, setEditedTitle] = useState('');
-  const [backendStatus, setBackendStatus] = useState({
-    checking: true,
-    online: false,
-    livekitConfigured: false,
-    apiBase: API_BASE,
-    serviceStatus: 'unknown',
-    error: '',
+  const [cameraState, setCameraState] = useState({
+    cameraEnabled: true,
+    microphoneEnabled: true,
+    screenShareEnabled: false,
   });
-
-  // إعدادات البث
-  const [streamSettings, setStreamSettings] = useState({
-    isPublic: true,
-    allowComments: true,
-    allowGifts: true,
-    requireCommentApproval: false,
-    chatSpeedLimit: 0,
-  });
-
-  // إعادة الاتصال
-  const [reconnectAttempts, setReconnectAttempts] = useState(0);
-  const [isReconnecting, setIsReconnecting] = useState(false);
 
   const localVideoRef = useRef(null);
   const localStreamRef = useRef(null);
   const statsIntervalRef = useRef(null);
   const durationIntervalRef = useRef(null);
-  const heartbeatIntervalRef = useRef(null);
-  const reconnectTimeoutRef = useRef(null);
-  const analyticsRequestRef = useRef({ inFlight: false, backoffUntil: 0 });
-  const commentsRequestRef = useRef({ inFlight: false, backoffUntil: 0 });
-
-  const refreshBackendStatus = useCallback(async () => {
-    const backendOrigin = API_BASE.replace(/\/api\/?$/, '');
-
-    setBackendStatus((prev) => ({
-      ...prev,
-      checking: true,
-      apiBase: API_BASE,
-      error: '',
-    }));
-
-    try {
-      const response = await fetch(`${backendOrigin}/health`, {
-        method: 'GET',
-        credentials: 'include',
-        headers: {
-          Accept: 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
-      setBackendStatus({
-        checking: false,
-        online: true,
-        livekitConfigured: Boolean(data?.livekit_configured || data?.services?.livekit?.configured),
-        apiBase: API_BASE,
-        serviceStatus: data?.status || 'ok',
-        error: '',
-      });
-    } catch (error) {
-      setBackendStatus({
-        checking: false,
-        online: false,
-        livekitConfigured: false,
-        apiBase: API_BASE,
-        serviceStatus: 'offline',
-        error: error?.message || 'تعذر الوصول للخادم',
-      });
-    }
-  }, []);
 
   // إنشاء بث جديد
   const handleCreateStream = useCallback(async () => {
@@ -242,22 +143,17 @@ export default function LiveStudioAdvanced() {
         category,
         quality,
         isPublic: newStreamData.isPublic,
-        giftGoal: newStreamData.giftGoal,
-        minimumGiftAmount: newStreamData.minimumGiftAmount,
       });
 
       if (response?.data) {
         setActiveStream(response.data);
         setIsStreaming(true);
-        setEditedTitle(response.data.title);
         setNewStreamData({
           title: '',
           description: '',
           category: 'ألعاب',
           quality: '720p',
           isPublic: true,
-          giftGoal: 0,
-          minimumGiftAmount: 0,
         });
 
         pushToast?.({
@@ -266,7 +162,7 @@ export default function LiveStudioAdvanced() {
           description: 'جاهز لبدء البث المباشر',
         });
 
-        await handleStartStream(response.data.id || response.data.room_id);
+        await handleStartStream(response.data.stream_id);
       }
     } catch (error) {
       pushToast?.({
@@ -280,12 +176,11 @@ export default function LiveStudioAdvanced() {
   }, [newStreamData, pushToast]);
 
   // بدء البث
-  const handleStartStream = useCallback(async (roomId) => {
-    if (!roomId) return;
+  const handleStartStream = useCallback(async (streamId) => {
+    if (!streamId) return;
 
     try {
-      const tokenResponse = await getLiveToken(roomId, {
-        role: 'host',
+      const tokenResponse = await startLiveStream(streamId, {
         quality: newStreamData.quality || '720p',
       });
 
@@ -293,25 +188,17 @@ export default function LiveStudioAdvanced() {
         setCameraReady(true);
         setStreamHealth('good');
 
-        // بدء تحديث الإحصائيات
         if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
         statsIntervalRef.current = setInterval(() => {
-          updateStreamStats(roomId);
-        }, LIVE_STATS_POLL_MS);
+          updateStreamStats(streamId);
+        }, 5000);
 
-        // بدء عداد المدة
         if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
         let duration = 0;
         durationIntervalRef.current = setInterval(() => {
           duration += 1;
           setStreamStats(prev => ({ ...prev, duration }));
         }, 1000);
-
-        // بدء نبض الاتصال
-        if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
-        heartbeatIntervalRef.current = setInterval(() => {
-          sendHeartbeat(roomId).catch(err => console.error('Heartbeat error:', err));
-        }, LIVE_HEARTBEAT_MS);
 
         pushToast?.({
           type: 'success',
@@ -331,18 +218,16 @@ export default function LiveStudioAdvanced() {
 
   // إنهاء البث
   const handleEndStream = useCallback(async () => {
-    if (!activeStream?.id && !activeStream?.room_id) return;
+    if (!activeStream?.stream_id) return;
 
     if (!window.confirm('هل أنت متأكد من إنهاء البث؟')) return;
 
     setLoading(true);
     try {
-      const roomId = activeStream.id || activeStream.room_id;
-      await endLiveStream(roomId);
+      await endLiveStream(activeStream.stream_id);
 
       if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
       if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
-      if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
 
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(track => track.stop());
@@ -354,14 +239,11 @@ export default function LiveStudioAdvanced() {
       setCameraReady(false);
       setStreamStats({
         viewers: 0,
-        peakViewers: 0,
         hearts: 0,
         gifts: 0,
         comments: 0,
         duration: 0,
         bitrate: 0,
-        packetLoss: 0,
-        avgBitrate: 0,
       });
 
       pushToast?.({
@@ -380,94 +262,48 @@ export default function LiveStudioAdvanced() {
     }
   }, [activeStream, pushToast]);
 
-  // تحديث عنوان البث
-  const handleUpdateTitle = useCallback(async () => {
-    if (!editedTitle.trim() || !activeStream?.id && !activeStream?.room_id) return;
-
-    try {
-      await updateStreamTitle(activeStream.id || activeStream.room_id, editedTitle);
-      
-      setActiveStream(prev => ({
-        ...prev,
-        title: editedTitle.trim(),
-      }));
-
-      setEditingTitle(false);
-      pushToast?.({
-        type: 'success',
-        title: 'تم تحديث العنوان',
-        description: 'تم حفظ عنوان البث الجديد',
-      });
-    } catch (error) {
-      pushToast?.({
-        type: 'warning',
-        title: 'خطأ في تحديث العنوان',
-        description: 'حاول مرة أخرى',
-      });
-    }
-  }, [editedTitle, activeStream, pushToast]);
-
   // تحديث إحصائيات البث
-  const updateStreamStats = useCallback(async (roomId) => {
-    const state = analyticsRequestRef.current;
-    if (!roomId || state.inFlight || Date.now() < state.backoffUntil) return;
-
-    state.inFlight = true;
+  const updateStreamStats = useCallback(async (streamId) => {
     try {
-      const response = await getStreamAnalytics(roomId);
-      state.backoffUntil = 0;
+      const response = await getStreamStats(streamId);
       if (response?.data) {
         const data = response.data;
         setStreamStats(prev => ({
           ...prev,
-          viewers: data.viewer_count || data.viewers || prev.viewers,
-          peakViewers: data.peak_viewer_count || data.peak_viewers || prev.peakViewers,
-          hearts: data.hearts_count || data.hearts || prev.hearts,
+          viewers: data.total_viewers || data.viewers_count || prev.viewers,
+          hearts: data.total_hearts || data.hearts_count || prev.hearts,
+          gifts: data.total_gifts || data.gifts_count || prev.gifts,
           bitrate: data.bitrate || prev.bitrate,
-          avgBitrate: data.avg_bitrate || prev.avgBitrate,
-          packetLoss: data.packet_loss || prev.packetLoss,
         }));
 
-        // تحديث حالة الصحة
-        const health = getHealthStatus(data.bitrate, data.packet_loss);
-        setStreamHealth(health.status);
+        if (data.bitrate && data.bitrate < 1000) {
+          setStreamHealth('poor');
+        } else if (data.bitrate && data.bitrate < 2000) {
+          setStreamHealth('fair');
+        } else {
+          setStreamHealth('good');
+        }
       }
     } catch (error) {
-      if (Number(error?.response?.status) === 429) {
-        state.backoffUntil = Date.now() + getRetryDelay(error, LIVE_STATS_POLL_MS * 2);
-      }
       console.error('خطأ في تحديث الإحصائيات:', error);
-    } finally {
-      state.inFlight = false;
     }
   }, []);
 
   // تحميل التعليقات
-  const loadComments = useCallback(async (roomId) => {
-    const state = commentsRequestRef.current;
-    if (!roomId || state.inFlight || Date.now() < state.backoffUntil) return;
-
-    state.inFlight = true;
+  const loadComments = useCallback(async (streamId) => {
     try {
-      const response = await getLiveComments(roomId);
-      state.backoffUntil = 0;
+      const response = await getLiveComments(streamId);
       setComments(Array.isArray(response?.data) ? response.data : []);
     } catch (error) {
-      if (Number(error?.response?.status) === 429) {
-        state.backoffUntil = Date.now() + getRetryDelay(error, LIVE_COMMENTS_POLL_MS * 2);
-      }
       console.error('خطأ في تحميل التعليقات:', error);
-    } finally {
-      state.inFlight = false;
     }
   }, []);
 
   // إرسال تعليق
   const handleSendComment = useCallback(async () => {
-    if (!commentText.trim() || !activeStream?.id && !activeStream?.room_id) return;
+    if (!commentText.trim() || !activeStream?.stream_id) return;
 
     try {
-      const roomId = activeStream.id || activeStream.room_id;
       const newComment = {
         id: Date.now(),
         username: currentUsername,
@@ -478,7 +314,7 @@ export default function LiveStudioAdvanced() {
       setComments(prev => [...prev, newComment]);
       setCommentText('');
 
-      await sendLiveComment(roomId, {
+      await sendLiveComment(activeStream.stream_id, {
         text: commentText,
       });
     } catch (error) {
@@ -492,12 +328,11 @@ export default function LiveStudioAdvanced() {
 
   // إرسال هدية
   const handleSendGift = useCallback(async (gift) => {
-    if (!activeStream?.id && !activeStream?.room_id || !gift) return;
+    if (!activeStream?.stream_id || !gift) return;
 
     try {
-      const roomId = activeStream.id || activeStream.room_id;
-      await sendLiveGift(roomId, {
-        giftId: gift.id,
+      await sendLiveGift(activeStream.stream_id, {
+        gift_id: gift.id,
         name: gift.name,
         price: gift.price,
       });
@@ -512,6 +347,8 @@ export default function LiveStudioAdvanced() {
         title: `تم إرسال ${gift.name}`,
         description: 'شكراً على الدعم!',
       });
+
+      setShowGiftPanel(false);
     } catch (error) {
       pushToast?.({
         type: 'warning',
@@ -523,12 +360,11 @@ export default function LiveStudioAdvanced() {
 
   // تبديل التسجيل
   const handleToggleRecording = useCallback(async () => {
-    if (!activeStream?.id && !activeStream?.room_id) return;
+    if (!activeStream?.stream_id) return;
 
     try {
-      const roomId = activeStream.id || activeStream.room_id;
       const action = recordingEnabled ? 'stop' : 'start';
-      await manageRecording(roomId, action);
+      await recordLiveStream(activeStream.stream_id, { action });
 
       setRecordingEnabled(!recordingEnabled);
       pushToast?.({
@@ -544,15 +380,61 @@ export default function LiveStudioAdvanced() {
     }
   }, [activeStream, recordingEnabled, pushToast]);
 
-  useEffect(() => {
-    refreshBackendStatus();
-    const interval = setInterval(refreshBackendStatus, 30000);
-    return () => clearInterval(interval);
-  }, [refreshBackendStatus]);
+  // تبديل الكاميرا
+  const handleToggleCamera = useCallback(async () => {
+    if (!activeStream?.stream_id) return;
+
+    try {
+      const newState = !cameraState.cameraEnabled;
+      await toggleCamera(activeStream.stream_id, newState);
+      
+      setCameraState(prev => ({
+        ...prev,
+        cameraEnabled: newState,
+      }));
+
+      pushToast?.({
+        type: 'success',
+        title: newState ? 'تم تشغيل الكاميرا' : 'تم إيقاف الكاميرا',
+      });
+    } catch (error) {
+      pushToast?.({
+        type: 'warning',
+        title: 'خطأ في تبديل الكاميرا',
+        description: 'حاول مرة أخرى',
+      });
+    }
+  }, [activeStream, cameraState.cameraEnabled, pushToast]);
+
+  // تبديل الميكروفون
+  const handleToggleMicrophone = useCallback(async () => {
+    if (!activeStream?.stream_id) return;
+
+    try {
+      const newState = !cameraState.microphoneEnabled;
+      await toggleMicrophone(activeStream.stream_id, newState);
+      
+      setCameraState(prev => ({
+        ...prev,
+        microphoneEnabled: newState,
+      }));
+
+      pushToast?.({
+        type: 'success',
+        title: newState ? 'تم تشغيل الميكروفون' : 'تم كتم الميكروفون',
+      });
+    } catch (error) {
+      pushToast?.({
+        type: 'warning',
+        title: 'خطأ في تبديل الميكروفون',
+        description: 'حاول مرة أخرى',
+      });
+    }
+  }, [activeStream, cameraState.microphoneEnabled, pushToast]);
 
   // تحميل الكاميرا
   useEffect(() => {
-    if (!isStreaming || !activeStream?.id && !activeStream?.room_id) return;
+    if (!isStreaming || !activeStream?.stream_id) return;
 
     const setupCamera = async () => {
       try {
@@ -594,35 +476,28 @@ export default function LiveStudioAdvanced() {
     return () => {
       if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
       if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
-      if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
     };
-  }, [isStreaming, activeStream?.id, activeStream?.room_id]);
+  }, [isStreaming, activeStream?.stream_id]);
 
   // تحميل التعليقات عند تغيير البث النشط
   useEffect(() => {
-    if (activeStream?.id || activeStream?.room_id) {
-      const roomId = activeStream.id || activeStream.room_id;
-      loadComments(roomId);
-      const interval = setInterval(() => loadComments(roomId), LIVE_COMMENTS_POLL_MS);
+    if (activeStream?.stream_id) {
+      loadComments(activeStream.stream_id);
+      const interval = setInterval(() => loadComments(activeStream.stream_id), 3000);
       return () => clearInterval(interval);
     }
-  }, [activeStream?.id, activeStream?.room_id, loadComments]);
+  }, [activeStream?.stream_id, loadComments]);
 
-  const healthStatus = getHealthStatus(streamStats.bitrate, streamStats.packetLoss);
-  const giftProgress = newStreamData.giftGoal > 0 
-    ? Math.min((streamStats.gifts / newStreamData.giftGoal) * 100, 100)
-    : 0;
-  const backendReadyForLive = backendStatus.online && backendStatus.livekitConfigured;
-  const backendStatusTone = backendStatus.checking
-    ? 'checking'
-    : backendReadyForLive
-      ? 'ready'
-      : backendStatus.online
-        ? 'warning'
-        : 'offline';
+  const formatDuration = (seconds) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
 
   return (
     <div className="modern-live-control" dir="rtl">
+      {/* Header */}
       <header className="mlc-header">
         <div className="mlc-header-content">
           <button className="mlc-back-btn" onClick={() => navigate(-1)}>
@@ -645,6 +520,7 @@ export default function LiveStudioAdvanced() {
       </header>
 
       <div className="mlc-container">
+        {/* Main Content */}
         <main className="mlc-main">
           {/* Video Section */}
           <div className="mlc-video-section">
@@ -665,127 +541,7 @@ export default function LiveStudioAdvanced() {
               )}
               <div className="mlc-video-overlay">
                 <span className="mlc-viewer-count">👁 {streamStats.viewers}K</span>
-                {isStreaming && (
-                  <span 
-                    className="mlc-health-badge"
-                    style={{ background: healthStatus.color }}
-                    title={`صحة البث: ${healthStatus.label}`}
-                  >
-                    {healthStatus.label}
-                  </span>
-                )}
               </div>
-            </div>
-
-            {/* Stream Title + Backend Link Status */}
-            <div className="mlc-stream-title-section">
-              <div className="mlc-section-title-row">
-                <h3>{isStreaming ? 'عنوان البث' : 'تجهيز البث'}</h3>
-                <span className={`mlc-status-pill mlc-status-pill-${backendStatusTone}`}>
-                  {backendStatus.checking
-                    ? 'جارٍ فحص الربط'
-                    : backendReadyForLive
-                      ? 'الربط كامل وجاهز للبث'
-                      : backendStatus.online
-                        ? 'الخادم متصل لكن LiveKit غير مهيأ'
-                        : 'الخادم غير متصل'}
-                </span>
-              </div>
-
-              {isStreaming ? (
-                <div className="mlc-stream-title-box">
-                  {editingTitle ? (
-                    <>
-                      <input
-                        type="text"
-                        value={editedTitle}
-                        onChange={(e) => setEditedTitle(e.target.value)}
-                        placeholder="أدخل عنوان البث..."
-                        className="mlc-title-input"
-                        maxLength="100"
-                      />
-                      <button
-                        className="mlc-save-btn"
-                        onClick={handleUpdateTitle}
-                      >
-                        ✓
-                      </button>
-                      <button
-                        className="mlc-cancel-btn"
-                        onClick={() => {
-                          setEditingTitle(false);
-                          setEditedTitle(activeStream?.title || '');
-                        }}
-                      >
-                        ✕
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <div className="mlc-title-copy">
-                        <p>{activeStream?.title || 'بث بدون عنوان'}</p>
-                        <span>العنوان متزامن مع الخادم ويمكن تعديله مباشرة أثناء البث.</span>
-                      </div>
-                      <button
-                        className="mlc-edit-btn"
-                        onClick={() => setEditingTitle(true)}
-                        title="تعديل العنوان"
-                      >
-                        ✎
-                      </button>
-                    </>
-                  )}
-                </div>
-              ) : (
-                <div className="mlc-pre-live-grid">
-                  <div className="mlc-pre-live-card">
-                    <label className="mlc-title-label" htmlFor="stream-title-input">مربع عنوان البث</label>
-                    <input
-                      id="stream-title-input"
-                      type="text"
-                      value={newStreamData.title}
-                      onChange={(e) => setNewStreamData((prev) => ({ ...prev, title: e.target.value }))}
-                      placeholder="اكتب عنوان البث الذي سيظهر للمشاهدين"
-                      className="mlc-title-input mlc-title-input-full"
-                      maxLength="100"
-                    />
-                    <div className="mlc-field-meta">
-                      <span>يظهر قبل البث ويمكن تعديله لاحقاً من نفس الصفحة.</span>
-                      <strong>{newStreamData.title.trim().length}/100</strong>
-                    </div>
-                  </div>
-
-                  <div className="mlc-pre-live-card mlc-backend-status-card">
-                    <div className="mlc-backend-status-head">
-                      <strong>حالة الربط</strong>
-                      <button className="mlc-inline-link" onClick={refreshBackendStatus} type="button">تحديث الفحص</button>
-                    </div>
-                    <div className="mlc-status-grid">
-                      <div className="mlc-status-chip">
-                        <span>API</span>
-                        <strong>{backendStatus.online ? 'متصل' : backendStatus.checking ? 'جارٍ الفحص' : 'غير متصل'}</strong>
-                      </div>
-                      <div className="mlc-status-chip">
-                        <span>LiveKit</span>
-                        <strong>{backendStatus.livekitConfigured ? 'جاهز' : 'غير مربوط'}</strong>
-                      </div>
-                      <div className="mlc-status-chip">
-                        <span>الحالة</span>
-                        <strong>{backendStatus.serviceStatus}</strong>
-                      </div>
-                    </div>
-                    <p className="mlc-backend-note">
-                      {backendReadyForLive
-                        ? 'صفحة البث مربوطة بالواجهة الخلفية وجاهزة للتشغيل الكامل.'
-                        : backendStatus.online
-                          ? 'الصفحة مرتبطة بالباك إند، لكن البث الفعلي يحتاج تفعيل LiveKit في إعدادات الخادم.'
-                          : 'الواجهة موجودة، لكن التشغيل الكامل لن يكتمل قبل ربط الخادم وتشغيل خدمات البث.'}
-                    </p>
-                    <code className="mlc-api-base">{backendStatus.apiBase}</code>
-                    {backendStatus.error ? <span className="mlc-error-text">{backendStatus.error}</span> : null}
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Stats Panel */}
@@ -796,11 +552,6 @@ export default function LiveStudioAdvanced() {
                   <span className="mlc-stat-icon">👁</span>
                   <span className="mlc-stat-value">{streamStats.viewers}</span>
                   <span className="mlc-stat-label">المشاهدون</span>
-                </div>
-                <div className="mlc-stat-item">
-                  <span className="mlc-stat-icon">📈</span>
-                  <span className="mlc-stat-value">{streamStats.peakViewers}</span>
-                  <span className="mlc-stat-label">الذروة</span>
                 </div>
                 <div className="mlc-stat-item">
                   <span className="mlc-stat-icon">💜</span>
@@ -817,39 +568,11 @@ export default function LiveStudioAdvanced() {
                   <span className="mlc-stat-value">{formatDuration(streamStats.duration)}</span>
                   <span className="mlc-stat-label">المدة</span>
                 </div>
-                <div className="mlc-stat-item">
-                  <span className="mlc-stat-icon">📊</span>
-                  <span className="mlc-stat-value">{streamStats.bitrate}kbps</span>
-                  <span className="mlc-stat-label">معدل البت</span>
-                </div>
               </div>
             </div>
-
-            {/* Gift Goal Section */}
-            {newStreamData.giftGoal > 0 && (
-              <div className="mlc-gift-goal-section">
-                <h3>هدف الهدايا</h3>
-                <div className="mlc-gift-goal-box">
-                  <div className="mlc-gift-goal-header">
-                    <span className="mlc-gift-icon">🎁</span>
-                    <span className="mlc-gift-label">تقدم هدفك</span>
-                  </div>
-                  <div className="mlc-progress-bar">
-                    <div
-                      className="mlc-progress-fill"
-                      style={{ width: `${giftProgress}%` }}
-                    ></div>
-                  </div>
-                  <div className="mlc-progress-text">
-                    <span>{streamStats.gifts} / {newStreamData.giftGoal}</span>
-                    <span>{Math.round(giftProgress)}%</span>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
 
-          {/* Control Buttons */}
+          {/* Control Buttons - Now Connected */}
           <div className="mlc-controls">
             {!isStreaming ? (
               <button
@@ -869,6 +592,24 @@ export default function LiveStudioAdvanced() {
                 >
                   <span>⏹</span>
                   إيقاف البث
+                </button>
+                <button
+                  className={`mlc-control-btn mlc-control-btn-camera ${
+                    !cameraState.cameraEnabled ? 'disabled' : ''
+                  }`}
+                  onClick={handleToggleCamera}
+                >
+                  <span>{cameraState.cameraEnabled ? '📷' : '🚫'}</span>
+                  {cameraState.cameraEnabled ? 'إيقاف الكاميرا' : 'تشغيل الكاميرا'}
+                </button>
+                <button
+                  className={`mlc-control-btn mlc-control-btn-mute ${
+                    !cameraState.microphoneEnabled ? 'disabled' : ''
+                  }`}
+                  onClick={handleToggleMicrophone}
+                >
+                  <span>{cameraState.microphoneEnabled ? '🎤' : '🔇'}</span>
+                  {cameraState.microphoneEnabled ? 'كتم الميكروفون' : 'تشغيل الميكروفون'}
                 </button>
                 <button
                   className={`mlc-control-btn mlc-control-btn-record ${
@@ -928,9 +669,9 @@ export default function LiveStudioAdvanced() {
         {/* Sidebar */}
         <aside className="mlc-sidebar">
           {/* Viewers Management */}
-          {isStreaming && (activeStream?.id || activeStream?.room_id) && (
+          {isStreaming && activeStream?.stream_id && (
             <ViewersManagementPanel
-              streamId={activeStream.id || activeStream.room_id}
+              streamId={activeStream.stream_id}
               hostId={activeStream.host_id}
               onViewerCountChange={(count) => {
                 setStreamStats(prev => ({ ...prev, viewers: count }));

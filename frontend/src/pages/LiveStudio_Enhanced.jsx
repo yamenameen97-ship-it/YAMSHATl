@@ -16,11 +16,7 @@ import {
   toggleMicrophone,
   getStreamViewers,
 } from '../services/api/advancedLiveStreamApi.js';
-import { createPost, updatePost } from '../api/posts.js';
-import { uploadFile } from '../services/media/mediaUploadService.js';
 import { getCurrentUsername } from '../utils/auth.js';
-import socketManager from '../services/socketManager.js';
-import livekitService from '../services/livekitService.js';
 import ViewersManagementPanel from '../components/live/ViewersManagementPanel.jsx';
 import '../styles/modern-live-control.css';
 
@@ -74,7 +70,7 @@ function Avatar({ name = '', size = 42 }) {
   );
 }
 
-export default function LiveStudio() {
+export default function LiveStudioEnhanced() {
   const { pushToast } = useToast();
   const currentUsername = getCurrentUsername();
   const navigate = useNavigate();
@@ -121,17 +117,10 @@ export default function LiveStudio() {
     screenShareEnabled: false,
   });
 
-  // صورة الغلاف
-  const [coverImage, setCoverImage] = useState(null);
-  const [coverPreview, setCoverPreview] = useState('');
-  const [activePostId, setActivePostId] = useState(null);
-
   const localVideoRef = useRef(null);
   const localStreamRef = useRef(null);
   const statsIntervalRef = useRef(null);
   const durationIntervalRef = useRef(null);
-  const socketListenersRef = useRef(new Map());
-  const heartTimerRef = useRef(null);
 
   // إنشاء بث جديد
   const handleCreateStream = useCallback(async () => {
@@ -148,56 +137,17 @@ export default function LiveStudio() {
 
     setLoading(true);
     try {
-      let uploadedCover = '';
-      if (coverImage) {
-        const uploadRes = await uploadFile(coverImage, (p) => {
-          console.log(`Uploading cover: ${p.percent}%`);
-        });
-        uploadedCover = uploadRes?.url || '';
-      }
-
       const response = await createLiveStream({
         title: title.trim(),
         description: description.trim(),
         category,
         quality,
         isPublic: newStreamData.isPublic,
-        thumbnail_url: uploadedCover,
       });
 
       if (response?.data) {
-        const streamId = response.data.id;
         setActiveStream(response.data);
         setIsStreaming(true);
-
-        try {
-          const livePost = {
-            type: 'live_stream',
-            content: title.trim(),
-            title: title.trim(),
-            media_url: uploadedCover || undefined,
-            image_url: uploadedCover || undefined,
-            thumbnail_url: uploadedCover || undefined,
-            preview_url: uploadedCover || undefined,
-            cover_url: uploadedCover || undefined,
-            media_urls: uploadedCover ? [uploadedCover] : undefined,
-            stream_id: streamId,
-            live_stream_id: streamId,
-            live_id: streamId,
-            username: currentUsername,
-            is_live: true,
-            is_live_stream: true,
-            has_live_stream: true,
-            status: 'published'
-          };
-          const postRes = await createPost(livePost);
-          if (postRes?.data?.id) {
-            setActivePostId(postRes.data.id);
-          }
-        } catch (postErr) {
-          console.error('Failed to create live post:', postErr);
-        }
-
         setNewStreamData({
           title: '',
           description: '',
@@ -205,8 +155,6 @@ export default function LiveStudio() {
           quality: '720p',
           isPublic: true,
         });
-        setCoverImage(null);
-        setCoverPreview('');
 
         pushToast?.({
           type: 'success',
@@ -214,7 +162,7 @@ export default function LiveStudio() {
           description: 'جاهز لبدء البث المباشر',
         });
 
-        await handleStartStream(streamId);
+        await handleStartStream(response.data.stream_id);
       }
     } catch (error) {
       pushToast?.({
@@ -225,7 +173,7 @@ export default function LiveStudio() {
     } finally {
       setLoading(false);
     }
-  }, [newStreamData, pushToast, coverImage, currentUsername]);
+  }, [newStreamData, pushToast]);
 
   // بدء البث
   const handleStartStream = useCallback(async (streamId) => {
@@ -239,42 +187,6 @@ export default function LiveStudio() {
       if (tokenResponse?.data?.token) {
         setCameraReady(true);
         setStreamHealth('good');
-
-        // ✅ FIX: انضمام المضيف لغرفة البث لاستقبال اللايكات والتعليقات
-        socketManager.emit('join_live', {
-          room_id: streamId,
-          role: 'host',
-          platform: 'web',
-          device_type: 'browser',
-        });
-
-        // ✅ FIX: الاستماع لأحداث البث المباشر
-        const handleNewHeart = (data) => {
-          setStreamStats(prev => ({
-            ...prev,
-            hearts: data?.count || prev.hearts + 1,
-          }));
-        };
-
-        const handleRoomStats = (data) => {
-          setStreamStats(prev => ({
-            ...prev,
-            viewers: data?.viewer_count || prev.viewers,
-            hearts: data?.hearts_count || prev.hearts,
-          }));
-        };
-
-        const handleNewComment = (data) => {
-          setComments(prev => [...prev, data]);
-        };
-
-        socketManager.on('new_heart', handleNewHeart);
-        socketManager.on('room_stats', handleRoomStats);
-        socketManager.on('new_comment', handleNewComment);
-
-        socketListenersRef.current.set('new_heart', { handler: handleNewHeart, event: 'new_heart' });
-        socketListenersRef.current.set('room_stats', { handler: handleRoomStats, event: 'room_stats' });
-        socketListenersRef.current.set('new_comment', { handler: handleNewComment, event: 'new_comment' });
 
         if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
         statsIntervalRef.current = setInterval(() => {
@@ -306,36 +218,13 @@ export default function LiveStudio() {
 
   // إنهاء البث
   const handleEndStream = useCallback(async () => {
-    if (!activeStream?.id) return;
+    if (!activeStream?.stream_id) return;
 
     if (!window.confirm('هل أنت متأكد من إنهاء البث؟')) return;
 
     setLoading(true);
     try {
-      // ✅ FIX: مغادرة غرفة البث وإيقاف الاستماع للأحداث
-      socketManager.emit('leave_live', { room_id: activeStream.id });
-      socketListenersRef.current.forEach(({ handler, event }) => {
-        socketManager.off(event, handler);
-      });
-      socketListenersRef.current.clear();
-
-      // ✅ FIX: قطع اتصال LiveKit إذا كان موجوداً
-      await livekitService.disconnect();
-
-      await endLiveStream(activeStream.id);
-
-      if (activePostId) {
-        try {
-          await updatePost(activePostId, {
-            is_live: false,
-            is_live_stream: false,
-            has_live_stream: false,
-            type: 'video',
-          });
-        } catch (updateErr) {
-          console.error('Failed to update post on end stream:', updateErr);
-        }
-      }
+      await endLiveStream(activeStream.stream_id);
 
       if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
       if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
@@ -348,7 +237,6 @@ export default function LiveStudio() {
       setActiveStream(null);
       setIsStreaming(false);
       setCameraReady(false);
-      setActivePostId(null);
       setStreamStats({
         viewers: 0,
         hearts: 0,
@@ -372,7 +260,7 @@ export default function LiveStudio() {
     } finally {
       setLoading(false);
     }
-  }, [activeStream, pushToast, activePostId]);
+  }, [activeStream, pushToast]);
 
   // تحديث إحصائيات البث
   const updateStreamStats = useCallback(async (streamId) => {
@@ -382,7 +270,7 @@ export default function LiveStudio() {
         const data = response.data;
         setStreamStats(prev => ({
           ...prev,
-          viewers: data.total_viewers || data.viewers_count || data.viewer_count || prev.viewers,
+          viewers: data.total_viewers || data.viewers_count || prev.viewers,
           hearts: data.total_hearts || data.hearts_count || prev.hearts,
           gifts: data.total_gifts || data.gifts_count || prev.gifts,
           bitrate: data.bitrate || prev.bitrate,
@@ -405,24 +293,15 @@ export default function LiveStudio() {
   const loadComments = useCallback(async (streamId) => {
     try {
       const response = await getLiveComments(streamId);
-      if (Array.isArray(response?.data)) {
-        setComments(response.data);
-      }
+      setComments(Array.isArray(response?.data) ? response.data : []);
     } catch (error) {
       console.error('خطأ في تحميل التعليقات:', error);
     }
   }, []);
 
-  // ✅ FIX: تحميل التعليقات عند بدء البث
-  useEffect(() => {
-    if (activeStream?.id && isStreaming) {
-      loadComments(activeStream.id);
-    }
-  }, [activeStream?.id, isStreaming, loadComments]);
-
   // إرسال تعليق
   const handleSendComment = useCallback(async () => {
-    if (!commentText.trim() || !activeStream?.id) return;
+    if (!commentText.trim() || !activeStream?.stream_id) return;
 
     try {
       const newComment = {
@@ -433,17 +312,10 @@ export default function LiveStudio() {
       };
 
       setComments(prev => [...prev, newComment]);
-      const textToSend = commentText;
       setCommentText('');
 
-      // ✅ FIX: إرسال التعليق عبر Socket للحصول على تحديثات فورية
-      socketManager.emit('send_comment', {
-        room_id: activeStream.id,
-        text: textToSend,
-      });
-
-      await sendLiveComment(activeStream.id, {
-        text: textToSend,
+      await sendLiveComment(activeStream.stream_id, {
+        text: commentText,
       });
     } catch (error) {
       pushToast?.({
@@ -456,18 +328,10 @@ export default function LiveStudio() {
 
   // إرسال هدية
   const handleSendGift = useCallback(async (gift) => {
-    if (!activeStream?.id || !gift) return;
+    if (!activeStream?.stream_id || !gift) return;
 
     try {
-      // ✅ FIX: إرسال الهدية عبر Socket للحصول على تحديثات فورية
-      socketManager.emit('send_gift', {
-        room_id: activeStream.id,
-        gift_id: gift.id,
-        name: gift.name,
-        price: gift.price,
-      });
-
-      await sendLiveGift(activeStream.id, {
+      await sendLiveGift(activeStream.stream_id, {
         gift_id: gift.id,
         name: gift.name,
         price: gift.price,
@@ -496,11 +360,11 @@ export default function LiveStudio() {
 
   // تبديل التسجيل
   const handleToggleRecording = useCallback(async () => {
-    if (!activeStream?.id) return;
+    if (!activeStream?.stream_id) return;
 
     try {
       const action = recordingEnabled ? 'stop' : 'start';
-      await recordLiveStream(activeStream.id, { action });
+      await recordLiveStream(activeStream.stream_id, { action });
 
       setRecordingEnabled(!recordingEnabled);
       pushToast?.({
@@ -518,11 +382,11 @@ export default function LiveStudio() {
 
   // تبديل الكاميرا
   const handleToggleCamera = useCallback(async () => {
-    if (!activeStream?.id) return;
+    if (!activeStream?.stream_id) return;
 
     try {
       const newState = !cameraState.cameraEnabled;
-      await toggleCamera(activeStream.id, newState);
+      await toggleCamera(activeStream.stream_id, newState);
       
       setCameraState(prev => ({
         ...prev,
@@ -544,11 +408,11 @@ export default function LiveStudio() {
 
   // تبديل الميكروفون
   const handleToggleMicrophone = useCallback(async () => {
-    if (!activeStream?.id) return;
+    if (!activeStream?.stream_id) return;
 
     try {
       const newState = !cameraState.microphoneEnabled;
-      await toggleMicrophone(activeStream.id, newState);
+      await toggleMicrophone(activeStream.stream_id, newState);
       
       setCameraState(prev => ({
         ...prev,
@@ -570,7 +434,7 @@ export default function LiveStudio() {
 
   // تحميل الكاميرا
   useEffect(() => {
-    if (!isStreaming || !activeStream?.id) return;
+    if (!isStreaming || !activeStream?.stream_id) return;
 
     const setupCamera = async () => {
       try {
@@ -613,7 +477,16 @@ export default function LiveStudio() {
       if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
       if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
     };
-  }, [isStreaming, activeStream?.id]);
+  }, [isStreaming, activeStream?.stream_id]);
+
+  // تحميل التعليقات عند تغيير البث النشط
+  useEffect(() => {
+    if (activeStream?.stream_id) {
+      loadComments(activeStream.stream_id);
+      const interval = setInterval(() => loadComments(activeStream.stream_id), 3000);
+      return () => clearInterval(interval);
+    }
+  }, [activeStream?.stream_id, loadComments]);
 
   const formatDuration = (seconds) => {
     const hours = Math.floor(seconds / 3600);
@@ -621,18 +494,6 @@ export default function LiveStudio() {
     const secs = seconds % 60;
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
-
-  // تنظيف المستمعين عند مغادرة الصفحة
-  useEffect(() => {
-    return () => {
-      if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
-      if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
-      socketListenersRef.current.forEach(({ handler, event }) => {
-        socketManager.off(event, handler);
-      });
-      socketListenersRef.current.clear();
-    };
-  }, []);
 
   return (
     <div className="modern-live-control" dir="rtl">
@@ -663,54 +524,6 @@ export default function LiveStudio() {
         <main className="mlc-main">
           {/* Video Section */}
           <div className="mlc-video-section">
-            {!isStreaming && (
-              <div className="mlc-pre-live-card" style={{ marginBottom: '16px' }}>
-                <h3 className="mlc-title-label">إعدادات البث</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <input
-                    type="text"
-                    placeholder="عنوان البث..."
-                    className="mlc-message-text"
-                    style={{ background: 'rgba(15, 23, 42, 0.5)', border: '1px solid rgba(124, 58, 237, 0.2)', padding: '10px', borderRadius: '8px', color: 'white' }}
-                    value={newStreamData.title}
-                    onChange={(e) => setNewStreamData(prev => ({ ...prev, title: e.target.value }))}
-                  />
-                  
-                  <div className="cover-upload-section">
-                    <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px', color: '#94a3b8' }}>صورة الغلاف</label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      style={{ display: 'none' }}
-                      id="cover-upload-input"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        setCoverImage(file);
-                        setCoverPreview(URL.createObjectURL(file));
-                      }}
-                    />
-                    <button 
-                      onClick={() => document.getElementById('cover-upload-input').click()}
-                      style={{ padding: '8px 16px', borderRadius: '8px', background: 'rgba(124, 58, 237, 0.2)', border: '1px solid rgba(124, 58, 237, 0.4)', color: 'white', cursor: 'pointer' }}
-                    >
-                      رفع صورة الغلاف
-                    </button>
-                    {coverPreview && (
-                      <div style={{ marginTop: '12px', position: 'relative', width: '100%', aspectRatio: '16/9', borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(124, 58, 237, 0.3)' }}>
-                        <img src={coverPreview} alt="Cover Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        <button 
-                          onClick={() => { setCoverImage(null); setCoverPreview(''); }}
-                          style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(0,0,0,0.6)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer' }}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
             <div className="mlc-video-container">
               {cameraReady ? (
                 <video
@@ -759,7 +572,7 @@ export default function LiveStudio() {
             </div>
           </div>
 
-          {/* Control Buttons */}
+          {/* Control Buttons - Now Connected */}
           <div className="mlc-controls">
             {!isStreaming ? (
               <button
@@ -856,9 +669,9 @@ export default function LiveStudio() {
         {/* Sidebar */}
         <aside className="mlc-sidebar">
           {/* Viewers Management */}
-          {isStreaming && activeStream?.id && (
+          {isStreaming && activeStream?.stream_id && (
             <ViewersManagementPanel
-              streamId={activeStream.id}
+              streamId={activeStream.stream_id}
               hostId={activeStream.host_id}
               onViewerCountChange={(count) => {
                 setStreamStats(prev => ({ ...prev, viewers: count }));

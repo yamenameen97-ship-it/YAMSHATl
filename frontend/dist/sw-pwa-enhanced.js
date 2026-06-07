@@ -11,7 +11,7 @@
  *  6) Background sync بدون رمي استثناءات غير مُعالجة
  */
 
-const SW_VERSION = '1.0.1-pwa-enhanced-patched';
+const SW_VERSION = '1.0.2-pwa-enhanced-fixed';
 
 const CACHE_NAMES = {
   STATIC: `yamshat-static-${SW_VERSION}`,
@@ -26,6 +26,9 @@ const PRECACHE_URLS = [
   '/offline.html',
   '/manifest.webmanifest',
   '/brand/yamshat-logo.png',
+  '/brand/yamshat-logo.jpg',
+  '/logo192.png',
+  '/icons/icon-192.png',
 ];
 
 const LOGO_FALLBACK = '/brand/yamshat-logo.png';
@@ -54,15 +57,34 @@ function isCacheable(request, response) {
 
 /**
  * تخزين آمن في الـ Cache لا يرمي استثناءات أبداً
+ * ملاحظة مهمة: يستقبل نسخة (clone) جاهزة من الـ response بدلاً من استدعاء clone()
+ * هنا، حتى نمنع خطأ "Response body is already used" عندما يكون المتصفح قد
+ * استهلك الـ body بالفعل قبل أن يصل التنفيذ الى هذا السطر.
  */
-async function safeCachePut(cacheName, request, response) {
+async function safeCachePut(cacheName, request, responseClone) {
   try {
-    if (!isCacheable(request, response)) return;
+    if (!responseClone) return;
+    if (!isCacheable(request, responseClone)) return;
     const cache = await caches.open(cacheName);
-    await cache.put(request, response.clone());
+    await cache.put(request, responseClone);
   } catch (err) {
     // ابتلاع الخطأ بهدوء بدلاً من رميه كـ Uncaught (in promise)
     console.debug('[SW] safeCachePut skipped:', err?.message || err);
+  }
+}
+
+/**
+ * مساعد: يأخذ نسخة من الـ response بأمان قبل تخزينها.
+ * إذا فشل clone (مثلاً لأن الـ body مستهلك)، نتجاهل بهدوء.
+ */
+function cloneSafe(response) {
+  try {
+    if (!response || typeof response.clone !== 'function') return null;
+    if (response.bodyUsed) return null;
+    return response.clone();
+  } catch (err) {
+    console.debug('[SW] cloneSafe failed:', err?.message || err);
+    return null;
   }
 }
 
@@ -118,8 +140,9 @@ async function cacheFirstStrategy(request, cacheName) {
     if (cached) return cached;
 
     const response = await fetch(request);
-    // safeCachePut يتجاهل 206 / opaque / errors تلقائياً
-    safeCachePut(cacheName, request, response);
+    // ننسخ الـ response فوراً قبل تسليمه للمتصفح حتى لا يُستهلك الـ body
+    const copy = cloneSafe(response);
+    if (copy) safeCachePut(cacheName, request, copy);
     return response;
   } catch (error) {
     console.debug('[SW] cacheFirst fallback:', error?.message || error);
@@ -141,12 +164,17 @@ async function mediaStrategy(request, cacheName) {
 
     const response = await fetch(request);
 
-    // 404 على شعار قديم => خادم الـ fallback المحلي
-    if (response.status === 404 && /yamshat-logo\.(png|jpe?g|webp)$/i.test(url.pathname)) {
-      const fallback = await caches.match(LOGO_FALLBACK);
+    // 404 على شعار قديم أو logo192 => خادم الـ fallback المحلي
+    if (
+      response.status === 404 &&
+      (/yamshat-logo\.(png|jpe?g|webp)$/i.test(url.pathname)
+        || /^\/logo192\.png$/i.test(url.pathname))
+    ) {
+      const fallbackPath = /^\/logo192\.png$/i.test(url.pathname) ? '/icons/icon-192.png' : LOGO_FALLBACK;
+      const fallback = await caches.match(fallbackPath);
       if (fallback) return fallback;
       try {
-        return await fetch(LOGO_FALLBACK);
+        return await fetch(fallbackPath);
       } catch {
         return new Response('', { status: 204 });
       }
@@ -157,7 +185,8 @@ async function mediaStrategy(request, cacheName) {
       return new Response('', { status: 204, statusText: 'Asset removed' });
     }
 
-    safeCachePut(cacheName, request, response);
+    const copy = cloneSafe(response);
+    if (copy) safeCachePut(cacheName, request, copy);
     return response;
   } catch (error) {
     console.debug('[SW] media fetch failed:', error?.message || error);
@@ -175,7 +204,8 @@ async function mediaStrategy(request, cacheName) {
 async function networkFirstStrategy(request, cacheName) {
   try {
     const response = await fetch(request);
-    safeCachePut(cacheName, request, response);
+    const copy = cloneSafe(response);
+    if (copy) safeCachePut(cacheName, request, copy);
     return response;
   } catch (error) {
     console.debug('[SW] networkFirst fallback:', error?.message || error);

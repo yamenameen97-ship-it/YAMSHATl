@@ -83,37 +83,49 @@ function timeAgoAr(dateLike) {
 // دالة لتحويل البث المباشر إلى منشور
 function convertLiveStreamToPost(stream) {
   if (!stream || !stream.id) return null;
-      const mediaUrl = stream.thumbnail_url || '';
-      return {
-        id: `live_${stream.id}`,
-        type: 'live_stream',
-        is_live_stream: true,
-        live_stream_id: stream.id,
-        title: stream.title || 'بث مباشر',
-        content: stream.title || 'بث مباشر',
-        text: stream.title || 'بث مباشر جديد',
-        author: stream.host_username || 'مستخدم',
-        username: stream.host_username || 'مستخدم',
-        handle: `@${stream.host_username || 'مستخدم'}`,
-        avatar: stream.host_avatar || '',
-        user_avatar: stream.host_avatar || '',
-        created_at: stream.started_at || new Date().toISOString(),
-        media_type: 'live',
-        media_url: mediaUrl,
-        thumbnail_url: mediaUrl,
-        preview_url: mediaUrl,
-        viewers_count: stream.viewers_count || 0,
-        likes_count: stream.hearts_count || 0,
-        comments_count: stream.comments_count || 0,
-        is_liked: false,
-        is_saved: false,
-        is_verified: false,
-        is_reel: false,
-        has_video: false,
-        has_live_stream: true,
-        live_stream: stream,
-        media: mediaUrl ? [{ type: 'image-primary', kind: 'image', url: resolveMediaUrl(mediaUrl) }] : []
-      };
+  // نجرب عدة أسماء محتملة لحقل صورة الغلاف حتى لا نفوت أيّاً منها
+  const mediaUrl =
+    stream.thumbnail_url ||
+    stream.cover_url ||
+    stream.preview_url ||
+    stream.image_url ||
+    stream.media_url ||
+    '';
+  const resolvedMedia = mediaUrl ? resolveMediaUrl(mediaUrl) : '';
+  return {
+    // بادئة live_ لضمان عدم التصادم مع معرفات المنشورات
+    id: `live_${stream.id}`,
+    type: 'live_stream',
+    is_live_stream: true,
+    isLive: true,
+    liveStreamId: stream.id,
+    live_stream_id: stream.id,
+    title: stream.title || 'بث مباشر',
+    content: stream.title || 'بث مباشر',
+    text: stream.title || 'بث مباشر جديد',
+    author: stream.host_username || 'مستخدم',
+    username: stream.host_username || 'مستخدم',
+    handle: `@${stream.host_username || 'مستخدم'}`,
+    avatar: stream.host_avatar || '',
+    user_avatar: stream.host_avatar || '',
+    created_at: stream.started_at || new Date().toISOString(),
+    media_type: 'live',
+    media_url: resolvedMedia,
+    thumbnail_url: resolvedMedia,
+    preview_url: resolvedMedia,
+    cover_url: resolvedMedia,
+    viewers_count: stream.viewers_count || 0,
+    likes_count: stream.hearts_count || 0,
+    comments_count: stream.comments_count || 0,
+    is_liked: false,
+    is_saved: false,
+    is_verified: false,
+    is_reel: false,
+    has_video: false,
+    has_live_stream: true,
+    live_stream: stream,
+    media: resolvedMedia ? [{ type: 'image-primary', kind: 'image', url: resolvedMedia }] : []
+  };
 }
 
 const MOCK_POSTS = [];
@@ -174,13 +186,24 @@ function buildFeedPosts(posts = []) {
         };
       });
 
+      // منشور يعتبر "بثّاً مباشراً نشطاً" فقط إذا:
+      // 1) تم وسمه بأنه بث (is_live_stream / has_live_stream / type === 'live_stream')
+      // 2) ولم يتم إغلاق البث (is_live ليست false بشكل صريح ولا type صار video)
+      // هذا يمنع تحول المنشورات السابقة لبث عندما يبقى أحد الأعلام في الداتابيس.
+      const taggedAsLive = Boolean(
+        post.is_live_stream || post.has_live_stream || post.type === 'live_stream',
+      );
+      const liveExplicitlyEnded = post.is_live === false || post.type === 'video';
+      const isActuallyLive = taggedAsLive && !liveExplicitlyEnded;
+      const liveStreamIdValue = post.live_stream_id || post.stream_id || post.live_id || null;
+
       return {
         id: post.id || `post-${index}`,
         rawId: post.id || null, // المعرف الحقيقي للمنشور من الـ backend (null للمنشورات الترحيبية)
         userId: post.user_id || null,
         rawUsername: post.username || post.user || '',
-        isLive: Boolean(post.is_live_stream || post.has_live_stream),
-        liveStreamId: post.live_stream_id || post.live_id || null,
+        isLive: isActuallyLive,
+        liveStreamId: isActuallyLive ? liveStreamIdValue : null,
         live_stream: post.live_stream || null,
         authorName: post.author_name || post.username || post.user || 'مستخدم يام شات',
         authorAvatar: resolveMediaUrl(post.user_avatar || post.avatar || post.author_avatar || ''),
@@ -809,11 +832,31 @@ function FeedDesktopInner() {
     return () => clearInterval(interval);
   }, []);
 
-  const liveStreamPosts = liveStreams.map(convertLiveStreamToPost).filter(Boolean);
+  // تحويل البثوث النشطة إلى منشورات للعرض
+  const liveStreamPosts = useMemo(
+    () => (Array.isArray(liveStreams) ? liveStreams.map(convertLiveStreamToPost).filter(Boolean) : []),
+    [liveStreams],
+  );
+
+  // جمع المنشورات + البثوث مع إزالة التكرار:
+  // 1) أحياناً يوجد منشور في التغذية يمثل نفس البث الموجود في liveStreams
+  // فنستخدم stream_id / live_stream_id / live_id لتحديد وإزالة التكرار.
   const feedPosts = useMemo(() => {
     const allPosts = buildFeedPosts(posts);
-    return [...liveStreamPosts, ...allPosts];
-  }, [posts, liveStreamPosts]);
+    const activeStreamIds = new Set(
+      (Array.isArray(liveStreams) ? liveStreams : [])
+        .map((s) => (s && s.id != null ? String(s.id) : null))
+        .filter(Boolean),
+    );
+    // نفلتر منشورات التغذية التي تشير لبث موجود في الويدجت المباشر
+    const dedupedPosts = allPosts.filter((p) => {
+      const sid = p?.liveStreamId != null ? String(p.liveStreamId) : null;
+      // إذا كان المنشور مرتبطاً ببث نشط موجود بالفعل في liveStreams حذفه لمنع التكرار
+      if (sid && activeStreamIds.has(sid)) return false;
+      return true;
+    });
+    return [...liveStreamPosts, ...dedupedPosts];
+  }, [posts, liveStreamPosts, liveStreams]);
 
   const totalPosts = feedPosts.length;
   const profilePostsCount = Number(profile?.posts_count || profileDetails.posts_count || profileDetails.posts || profile?.posts || totalPosts || 0);

@@ -166,17 +166,29 @@ export default function LiveStudio() {
         setActiveStream(response.data);
         setIsStreaming(true);
 
-        // إنشاء منشور تلقائياً
+        // إنشاء منشور تلقائياً يمثل البث الجديد
+        // ملاحظة: نرسل حقول واضحة وصريحة حتى يستطيع الـ Feed تمييزه عن غيره
+        // ولا نخلط بين thumbnail_url و media_url لتجنب التباس في عرض البث
         try {
           const livePost = {
             type: 'live_stream',
             content: title.trim(),
             title: title.trim(),
-            media_url: uploadedCover,
-            image_url: uploadedCover,
+            // صورة الغلاف تفترض أن تظهر في المنشور وفي Live Card
+            media_url: uploadedCover || undefined,
+            image_url: uploadedCover || undefined,
+            thumbnail_url: uploadedCover || undefined,
+            preview_url: uploadedCover || undefined,
+            cover_url: uploadedCover || undefined,
+            media_urls: uploadedCover ? [uploadedCover] : undefined,
+            // حقول تعريف البث
             stream_id: streamId,
+            live_stream_id: streamId,
+            live_id: streamId,
             username: currentUsername,
             is_live: true,
+            is_live_stream: true,
+            has_live_stream: true,
             status: 'published'
           };
           const postRes = await createPost(livePost);
@@ -267,14 +279,17 @@ export default function LiveStudio() {
     try {
       await endLiveStream(activeStream.id);
 
-      // تحديث المنشور ليتحول إلى فيديو
+      // تحديث المنشور ليتحول إلى فيديو عادي (أو منشور غير مباشر) بعد إنهاء البث
+      // ملاحظة مهمة: نصفّر كل الأعلام المتعلقة بالبث حتى لا تبقى
+      // في الـ backend وتعود لـ Feed على أنها "بث نشط" فتتحول المنشورات السابقة في العرض.
       if (activePostId) {
         try {
           await updatePost(activePostId, {
             is_live: false,
+            is_live_stream: false,
+            has_live_stream: false,
             type: 'video',
-            // في البيئة الحقيقية ستحصل على رابط الفيديو المسجل من الـ backend
-            // هنا نضع قيمة افتراضية أو نترك الرابط الحالي
+            // لا نلمس حقول الوسائط حتى تبقى صورة الغلاف كـ thumbnail للفيديو المسجل
           });
         } catch (updateErr) {
           console.error('Failed to update post on end stream:', updateErr);

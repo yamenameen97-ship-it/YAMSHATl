@@ -443,8 +443,17 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
     )));
   };
 
-  // عرض خاص للبثوث المباشرة
-  if (post?.is_live_stream || post?.type === 'live_stream') {
+  // عرض خاص للبثوث المباشرة النشطة فقط
+  // ملاحظة: لا نعرض بطاقة البث إلا إذا لم يتم إنهاؤه صراحة حتى لا تتحول المنشورات السابقة لبث
+  const isExplicitLivePost = (post?.is_live_stream === true || post?.type === 'live_stream');
+  const liveExplicitlyEnded = post?.is_live === false || post?.type === 'video';
+  if (isExplicitLivePost && !liveExplicitlyEnded) {
+    // نجرب عدة حقول لصورة الغلاف لتجنب فوات الحقل
+    const coverImage = post.thumbnail_url || post.preview_url || post.cover_url
+      || post.image_url || post.media_url
+      || (Array.isArray(post.media_urls) && post.media_urls[0])
+      || (Array.isArray(post.media) && post.media[0]?.url) || '';
+    const streamId = post.live_stream_id || post.stream_id || post.live_id || post.liveStreamId;
     return (
       <Card style={{ padding: 16, border: '2px solid var(--accent)', background: 'rgba(59,130,246,0.08)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
@@ -455,14 +464,14 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
           </div>
         </div>
         <div style={{ fontSize: 16, marginBottom: 12 }}>{post.content || post.text || post.title}</div>
-        {post.thumbnail_url || post.preview_url ? (
+        {coverImage ? (
           <div
-            onClick={() => window.location.href = `/live/view/${post.live_stream_id}`}
+            onClick={() => streamId && (window.location.href = `/live/view/${streamId}`)}
             style={{
               marginBottom: 12,
               borderRadius: 16,
               overflow: 'hidden',
-              cursor: 'pointer',
+              cursor: streamId ? 'pointer' : 'default',
               background: '#000',
               height: 280,
               display: 'flex',
@@ -473,15 +482,18 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
             }}
           >
             <img
-              src={post.thumbnail_url || post.preview_url}
+              src={coverImage}
               alt="Live Stream"
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              onError={(e) => { e.target.style.display = 'none'; }}
             />
             <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontSize: 48 }}>▶️</div>
           </div>
         ) : null}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Button onClick={() => window.location.href = `/live/view/${post.live_stream_id}`} style={{ flex: 1 }}>مشاهدة البث</Button>
+          {streamId ? (
+            <Button onClick={() => window.location.href = `/live/view/${streamId}`} style={{ flex: 1 }}>مشاهدة البث</Button>
+          ) : null}
           <Button variant="secondary" onClick={() => window.location.href = `/live/studio`}>التحكم بالبث</Button>
         </div>
         <div style={{ marginTop: 12, fontSize: 13, color: 'var(--muted)' }}>

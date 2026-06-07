@@ -82,9 +82,13 @@ function normalizePost(p, i) {
     liked: Boolean(p.is_liked ?? p.liked_by_me ?? p.liked),
     reposted: Boolean(p.reposted ?? p.is_reposted),
     saved: Boolean(p.is_saved ?? p.saved_by_me ?? p.saved),
-    // حقول البث المباشر
-    isLive: Boolean(p.is_live_stream || p.has_live_stream),
-    liveStreamId: p.live_stream_id,
+    // حقول البث المباشر — نصنف المنشور كبث فقط إذا لم يتم إنهاؤه صراحةً
+    isLive: (
+      Boolean(p.is_live_stream || p.has_live_stream || p.type === 'live_stream')
+      && p.is_live !== false
+      && p.type !== 'video'
+    ),
+    liveStreamId: p.live_stream_id || p.stream_id || p.live_id || null,
     liveStream: p.live_stream,
   };
 }

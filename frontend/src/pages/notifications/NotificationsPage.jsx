@@ -29,12 +29,56 @@ export default function NotificationsPage() {
     email_summary: false,
     chat_alerts: true,
     interaction_alerts: true,
-    segmentation: 'personalized'
+    segmentation: 'personalized',
+    notify_messages: true,
+    notify_groups: true,
+    notify_posts: true,
+    notify_reels: true,
+    notify_stories: true,
+    notify_live: true
   });
 
   useEffect(() => {
     loadNotifications();
+    loadPreferences();
   }, []);
+
+  const loadPreferences = async () => {
+    try {
+      const { getUserPreferences } = await import('../../api/users.js');
+      const { data } = await getUserPreferences();
+      if (data) {
+        setSettings(prev => ({
+          ...prev,
+          notify_messages: data.notify_messages ?? true,
+          notify_groups: data.notify_groups ?? true,
+          notify_posts: data.notify_posts ?? true,
+          notify_reels: data.notify_reels ?? true,
+          notify_stories: data.notify_stories ?? true,
+          notify_live: data.notify_live ?? true
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to load preferences', err);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    try {
+      const { updateUserPreferences } = await import('../../api/users.js');
+      await updateUserPreferences({
+        notify_messages: settings.notify_messages,
+        notify_groups: settings.notify_groups,
+        notify_posts: settings.notify_posts,
+        notify_reels: settings.notify_reels,
+        notify_stories: settings.notify_stories,
+        notify_live: settings.notify_live
+      });
+      setShowSettings(false);
+    } catch (err) {
+      console.error('Failed to save preferences', err);
+    }
+  };
 
   const loadNotifications = async () => {
     try {
@@ -228,26 +272,30 @@ export default function NotificationsPage() {
           </section>
 
           <section>
-            <h4 style={{ marginBottom: 15 }}>تفضيلات القنوات</h4>
+            <h4 style={{ marginBottom: 15 }}>تفضيلات الخدمات</h4>
             <div style={{ display: 'grid', gap: 15 }}>
-              <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
-                <div>
-                  <div>إشعارات الدفع</div>
-                  <div style={{ opacity: 0.6, fontSize: 12 }}>تنبيهات فورية</div>
-                </div>
-                <input type="checkbox" checked={settings.push_enabled} onChange={e => setSettings({...settings, push_enabled: e.target.checked})} />
-              </label>
-              <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
-                <div>
-                  <div>ملخص البريد</div>
-                  <div style={{ opacity: 0.6, fontSize: 12 }}>ملخص يومي</div>
-                </div>
-                <input type="checkbox" checked={settings.email_summary} onChange={e => setSettings({...settings, email_summary: e.target.checked})} />
-              </label>
+              {[
+                { id: 'notify_messages', label: 'الرسائل' },
+                { id: 'notify_groups', label: 'المجموعات' },
+                { id: 'notify_posts', label: 'المنشورات' },
+                { id: 'notify_reels', label: 'الريلز' },
+                { id: 'notify_stories', label: 'الستوري' },
+                { id: 'notify_live', label: 'البث المباشر' }
+              ].map(service => (
+                <label key={service.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
+                  <div>{service.label}</div>
+                  <input 
+                    type="checkbox" 
+                    checked={settings[service.id]} 
+                    onChange={e => setSettings({...settings, [service.id]: e.target.checked})} 
+                    style={{ width: 20, height: 20, cursor: 'pointer' }}
+                  />
+                </label>
+              ))}
             </div>
           </section>
 
-          <Button style={{ width: '100%', marginTop: 30 }} onClick={() => setShowSettings(false)}>حفظ</Button>
+          <Button style={{ width: '100%', marginTop: 30 }} onClick={handleSaveSettings}>حفظ</Button>
         </div>
       </Modal>
     </MainLayout>

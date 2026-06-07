@@ -344,6 +344,21 @@ def create_live(payload: dict = Body(...), db: Session = Depends(get_db), curren
     db.add(record)
     db.commit()
     db.refresh(record)
+
+    # إنشاء منشور تلقائي عند بدء البث لإعلام المتابعين
+    try:
+        from app.services.post_service import create_post
+        post_content = f"بدأت بثاً مباشراً الآن: {title}"
+        # نستخدم thumbnail_url إذا وجد كصورة للمنشور
+        create_post(
+            db=db,
+            user_id=current_user.id,
+            content=post_content,
+            image_url=thumbnail_url if thumbnail_url else None
+        )
+    except Exception as e:
+        print(f"Error creating live notification post: {e}")
+
     return _serialize_record(db, record)
 
 

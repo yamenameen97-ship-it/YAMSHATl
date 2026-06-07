@@ -36,11 +36,23 @@ def create_notification(
     title: str,
     body: str,
     data: Dict = None,
-) -> Dict[str, Any]:
+) -> Optional[Dict[str, Any]]:
     """إنشاء إشعار جديد"""
     
     if notif_type not in NOTIFICATION_TYPES:
         raise ValueError(f"نوع الإشعار غير صحيح: {notif_type}")
+
+    # التحقق من تفضيلات المستخدم
+    try:
+        from app.models.user_preference import UserPreference
+        pref = db.query(UserPreference).filter(UserPreference.user_id == user_id).first()
+        if pref:
+            if notif_type == "new_message" and not pref.notify_messages: return None
+            if notif_type == "live_started" and not pref.notify_live: return None
+            if notif_type in ["new_like", "new_comment", "new_share", "mention"] and not pref.notify_posts: return None
+            # يمكن إضافة المزيد من التحققات هنا للمجموعات والريلز والستوري حسب نوع الإشعار
+    except Exception as e:
+        print(f"Error checking notification preferences: {e}")
     
     notification = Notification(
         user_id=user_id,

@@ -587,7 +587,16 @@ def create_login_alert(payload: dict = Body(default={}), current_user: User = De
 @router.get('/preferences')
 def get_preferences(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     preference = _get_or_create_preferences(db, current_user.id)
-    return {'language': preference.language or 'ar', 'chat_translation_enabled': bool(preference.chat_translation_enabled)}
+    return {
+        'language': preference.language or 'ar',
+        'chat_translation_enabled': bool(preference.chat_translation_enabled),
+        'notify_messages': bool(preference.notify_messages),
+        'notify_groups': bool(preference.notify_groups),
+        'notify_posts': bool(preference.notify_posts),
+        'notify_reels': bool(preference.notify_reels),
+        'notify_stories': bool(preference.notify_stories),
+        'notify_live': bool(preference.notify_live),
+    }
 
 
 @router.put('/preferences')
@@ -598,9 +607,27 @@ def update_preferences(payload: dict = Body(...), db: Session = Depends(get_db),
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Unsupported language')
     preference.language = requested_language
     preference.chat_translation_enabled = bool(payload.get('chat_translation_enabled', preference.chat_translation_enabled))
+    
+    # Update notification preferences if provided
+    if 'notify_messages' in payload: preference.notify_messages = bool(payload['notify_messages'])
+    if 'notify_groups' in payload: preference.notify_groups = bool(payload['notify_groups'])
+    if 'notify_posts' in payload: preference.notify_posts = bool(payload['notify_posts'])
+    if 'notify_reels' in payload: preference.notify_reels = bool(payload['notify_reels'])
+    if 'notify_stories' in payload: preference.notify_stories = bool(payload['notify_stories'])
+    if 'notify_live' in payload: preference.notify_live = bool(payload['notify_live'])
+    
     db.commit()
     db.refresh(preference)
-    return {'language': preference.language, 'chat_translation_enabled': bool(preference.chat_translation_enabled)}
+    return {
+        'language': preference.language,
+        'chat_translation_enabled': bool(preference.chat_translation_enabled),
+        'notify_messages': bool(preference.notify_messages),
+        'notify_groups': bool(preference.notify_groups),
+        'notify_posts': bool(preference.notify_posts),
+        'notify_reels': bool(preference.notify_reels),
+        'notify_stories': bool(preference.notify_stories),
+        'notify_live': bool(preference.notify_live),
+    }
 
 
 @router.patch('/me')

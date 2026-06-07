@@ -74,7 +74,11 @@ export default function LoginEnhanced() {
   };
 
   useEffect(() => {
-    loadCaptcha(true);
+    // تأجيل تحميل الكابتشا قليلاً لضمان ظهور الصفحة أولاً
+    const timer = setTimeout(() => {
+      loadCaptcha(true);
+    }, 500);
+    return () => clearTimeout(timer);
   }, []);
 
   // إعادة تحميل الكابتشا تلقائياً قبل انتهاء صلاحيتها (مع هامش أمان 30s)

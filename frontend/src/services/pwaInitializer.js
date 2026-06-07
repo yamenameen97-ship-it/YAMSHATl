@@ -38,11 +38,14 @@ export class PWAInitializer {
   /**
    * تهيئة PWA
    */
-  async init() {
+  async init(options = {}) {
     if (this.state.isInitialized) {
       console.warn('[PWA] Already initialized');
       return;
     }
+
+    // دمج الخيارات الجديدة
+    this.config = { ...this.config, ...options };
 
     try {
       console.log('[PWA] Initializing...');

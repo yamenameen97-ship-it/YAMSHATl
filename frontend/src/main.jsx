@@ -126,26 +126,35 @@ if (typeof window !== 'undefined') {
   initializeRuntimeErrorCapture();
   initializeViewportTracker();
 
-  // تفعيل تحسينات PWA وتجربة المستخدم
-  try {
-    // تفعيل طبقة اللمس السلس
-    smoothTouchLayer.attachToElement(document.documentElement);
-    console.log('[Yamshat] Smooth touch layer activated');
+  // تفعيل تحسينات PWA وتجربة المستخدم بشكل مؤجل لضمان سرعة ظهور الصفحة الأولى
+  const initializeEnhancements = () => {
+    try {
+      // تفعيل طبقة اللمس السلس
+      smoothTouchLayer.attachToElement(document.documentElement);
+      console.log('[Yamshat] Smooth touch layer activated');
 
-    // تفعيل محسّن الأجهزة القديمة
-    const deviceState = legacyDeviceOptimizer.getState();
-    if (deviceState.isLegacyDevice) {
-      console.log('[Yamshat] Legacy device optimizations applied');
+      // تفعيل محسّن الأجهزة القديمة
+      const deviceState = legacyDeviceOptimizer.getState();
+      if (deviceState.isLegacyDevice) {
+        console.log('[Yamshat] Legacy device optimizations applied');
+      }
+
+      // تفعيل PWA - نستخدم sw.js الرئيسي الموحد
+      pwaInitializer.init({ swPath: '/sw.js' }).then(() => {
+        console.log('[Yamshat] PWA initialized successfully');
+      }).catch(err => {
+        console.warn('[Yamshat] PWA initialization error:', err);
+      });
+    } catch (err) {
+      console.warn('[Yamshat] Enhancement initialization error:', err);
     }
+  };
 
-    // تفعيل PWA
-    pwaInitializer.init().then(() => {
-      console.log('[Yamshat] PWA initialized successfully');
-    }).catch(err => {
-      console.warn('[Yamshat] PWA initialization error:', err);
-    });
-  } catch (err) {
-    console.warn('[Yamshat] Enhancement initialization error:', err);
+  // تأجيل التهيئة قليلاً للسماح للمتصفح برسم الواجهة أولاً
+  if (window.requestIdleCallback) {
+    window.requestIdleCallback(() => initializeEnhancements());
+  } else {
+    setTimeout(initializeEnhancements, 1000);
   }
 
   try {
@@ -172,18 +181,10 @@ if (typeof window !== 'undefined') {
     window.addEventListener('load', async () => {
       const resetTriggeredReload = await hardResetIfBuildChanged();
       if (resetTriggeredReload) return;
-
-      window.__YAMSHAT_SW_READY__ = navigator.serviceWorker.register('/sw.js', {
-        scope: '/',
-        updateViaCache: 'none',
-      })
-        .then((registration) => {
-          const watchedRegistration = watchServiceWorkerUpdates(registration);
-          initializePerformanceToolkit({ registration: watchedRegistration });
-          notificationService.initialize().catch(() => null);
-          return watchedRegistration;
-        })
-        .catch(() => null);
+      
+      // ملاحظة: pwaInitializer.init() يتولى الآن تسجيل sw.js بشكل موحد
+      // لضمان عدم وجود تعارضات وسرعة في التحميل
+      console.log('[Yamshat] Service Worker registration deferred to PWA Initializer');
     });
   }
 }

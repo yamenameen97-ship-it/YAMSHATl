@@ -1,83 +1,181 @@
 import { memo } from 'react';
-import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
-
-const HOME_SHORTCUTS = Object.freeze([
-  { to: '/live/control', label: 'البث' },
-  { to: '/groups', label: 'المجموعات' },
-  { to: '/stories', label: 'الستوري' },
-  { to: '/reels', label: 'الريلز' },
-]);
+import { Link, useNavigate } from 'react-router-dom';
+import { useAppStore } from '../../store/appStore.js';
 
 /**
  * MobileTopBar
- * شريط علوي للجوال مع شعار في الزاوية واختصارات سريعة في الهيدر العلوي.
+ * ------------
+ * الهيدر العلوي الموحّد المطابق للتصميم المرجعي (الصورة):
+ *  - الجانب الأيمن (RTL): زر القائمة (☰)
+ *  - الوسط: شعار Y المضيء + كلمة YAMSHAT
+ *  - الجانب الأيسر (RTL): الإشعارات، البث، الصورة الشخصية بإطار بنفسجي
+ *
+ * مثبّت في أعلى كل صفحات التطبيق (يُستدعى من MainLayout الموحّد).
+ * يتضمّن CSS مدمج حتى يعمل بمعزل عن أي ملف Layout.
  */
-function MobileTopBar({ onMenuClick, hasNotifications = true }) {
+function MobileTopBar({ onMenuClick }) {
   const navigate = useNavigate();
-  const location = useLocation();
-  const isHome = location.pathname === '/' || location.pathname === '/feed';
+  const user = useAppStore((state) => state.user);
 
   return (
-    <header className={`ym-topbar ${isHome ? 'has-shortcuts' : ''}`} role="banner">
+    <header className="ym-topbar fixed-top" role="banner">
       <div className="ym-topbar-inner">
-        <div className="ym-topbar-actions">
+        {/* الجانب الأيمن (في RTL): القائمة */}
+        <div className="ym-topbar-left">
+          <button
+            type="button"
+            className="ym-topbar-btn"
+            aria-label="القائمة"
+            onClick={onMenuClick || (() => navigate('/settings'))}
+          >
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        {/* المنتصف: الشعار */}
+        <Link to="/" className="ym-topbar-brand" aria-label="الصفحة الرئيسية">
+          <div className="ym-brand-container">
+            <svg className="ym-logo-v" viewBox="0 0 100 100" width="32" height="32" aria-hidden="true">
+              <defs>
+                <linearGradient id="ym-y-grad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#A78BFA" />
+                  <stop offset="100%" stopColor="#7C3AED" />
+                </linearGradient>
+              </defs>
+              <path d="M20 20 L50 60 L80 20 L70 20 L50 45 L30 20 Z" fill="url(#ym-y-grad)" />
+              <path d="M45 60 L55 60 L55 85 L45 85 Z" fill="url(#ym-y-grad)" />
+            </svg>
+            <span className="ym-wordmark">YAMSHAT</span>
+          </div>
+        </Link>
+
+        {/* الجانب الأيسر (في RTL): الإشعارات، البث، الملف الشخصي */}
+        <div className="ym-topbar-right">
           <button
             type="button"
             className="ym-topbar-btn"
             aria-label="الإشعارات"
             onClick={() => navigate('/notifications')}
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M6 8a6 6 0 1 1 12 0c0 7 3 7 3 9H3c0-2 3-2 3-9Z" strokeLinejoin="round" />
-              <path d="M10 21a2 2 0 0 0 4 0" strokeLinecap="round" />
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
             </svg>
-            {hasNotifications ? <span className="ym-topbar-bell-dot" aria-hidden="true" /> : null}
           </button>
 
           <button
             type="button"
             className="ym-topbar-btn"
-            aria-label="فتح القائمة"
-            onClick={onMenuClick || (() => navigate('/settings'))}
+            aria-label="البث المباشر"
+            onClick={() => navigate('/live/control')}
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="2" />
+              <path d="M16.24 7.76a6 6 0 0 1 0 8.48m-8.48 0a6 6 0 0 1 0-8.48m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14" />
             </svg>
           </button>
+
+          <Link to="/profile" className="ym-topbar-profile-link" aria-label="الملف الشخصي">
+            <div className="ym-topbar-avatar">
+              {user?.avatar ? (
+                <img src={user.avatar} alt="Profile" />
+              ) : (
+                <div className="ym-avatar-placeholder">Y</div>
+              )}
+            </div>
+          </Link>
         </div>
-
-        {isHome ? (
-          <nav className="ym-topbar-shortcuts" aria-label="اختصارات الصفحة الرئيسية">
-            {HOME_SHORTCUTS.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) => `ym-topbar-shortcut ${isActive ? 'is-active' : ''}`}
-              >
-                {item.label}
-              </NavLink>
-            ))}
-          </nav>
-        ) : <div className="ym-topbar-shortcuts-spacer" aria-hidden="true" />}
-
-        <Link to="/" className="ym-topbar-brand" aria-label="الرئيسية - يام شات">
-          <span className="ym-topbar-wordmark">YAMSHAT</span>
-          <span className="ym-topbar-logo" aria-hidden="true">
-            <svg viewBox="0 0 32 32">
-              <defs>
-                <linearGradient id="ym-logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#A78BFA" />
-                  <stop offset="100%" stopColor="#6D28D9" />
-                </linearGradient>
-              </defs>
-              <path
-                d="M6 4 L16 18 L26 4 L21 4 L16 11 L11 4 Z M14 18 L18 18 L18 28 L14 28 Z"
-                fill="url(#ym-logo-grad)"
-              />
-            </svg>
-          </span>
-        </Link>
       </div>
+
+      <style>{`
+        .ym-topbar {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 60px;
+          background-color: #0A0D1A;
+          border-bottom: 1px solid #1F2937;
+          z-index: 1000;
+          display: flex;
+          align-items: center;
+          padding: 0 16px;
+          box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+        }
+        .ym-topbar-inner {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          width: 100%;
+          max-width: 1200px;
+          margin: 0 auto;
+        }
+        .ym-topbar-right, .ym-topbar-left {
+          display: flex;
+          gap: 10px;
+          align-items: center;
+        }
+        .ym-topbar-btn {
+          background: none;
+          border: none;
+          color: #D1D5DB;
+          padding: 6px;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 8px;
+          transition: background 0.15s, color 0.15s;
+        }
+        .ym-topbar-btn:hover {
+          background: rgba(139, 92, 246, 0.12);
+          color: #C4B5FD;
+        }
+        .ym-topbar-brand {
+          text-decoration: none;
+          display: inline-flex;
+        }
+        .ym-brand-container {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .ym-wordmark {
+          color: #FFFFFF;
+          font-weight: 800;
+          font-size: 1.15rem;
+          letter-spacing: 2px;
+        }
+        @media (min-width: 1024px) {
+          .ym-wordmark { font-size: 1.35rem; }
+        }
+        .ym-topbar-profile-link { display: inline-flex; }
+        .ym-topbar-avatar {
+          width: 34px;
+          height: 34px;
+          border-radius: 50%;
+          border: 2px solid #8B5CF6;
+          overflow: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #1F2937;
+          box-shadow: 0 0 8px rgba(139, 92, 246, 0.35);
+        }
+        .ym-topbar-avatar img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+        .ym-avatar-placeholder {
+          color: #8B5CF6;
+          font-weight: 800;
+          font-size: 1rem;
+          line-height: 1;
+        }
+      `}</style>
     </header>
   );
 }

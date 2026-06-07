@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import MainLayout from '../components/layout/MainLayout.jsx';
 import { createGroup } from '../api/groups.js';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import '../styles/create-group.css';
@@ -101,6 +102,7 @@ const CreateGroup = () => {
   }, [formData, pushToast, navigate]);
 
   return (
+    <MainLayout>
     <div className="yam-create-group-page">
       <header className="yam-create-header">
         <button className="yam-back-btn" onClick={() => navigate(-1)}>
@@ -239,6 +241,7 @@ const CreateGroup = () => {
 
       <div style={{ height: '40px' }}></div>
     </div>
+    </MainLayout>
   );
 };
 

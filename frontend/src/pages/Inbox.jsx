@@ -9,6 +9,7 @@ import { getMe, getUsers } from '../api/users.js';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import useIsMobile from '../hooks/useIsMobile.js';
 import BrandLogo from '../components/ui/BrandLogo.jsx';
+import { extractNotificationPeer, getNotificationFamily } from '../utils/notificationCenter.js';
 
 const TABS = [
   { key: 'all', label: 'الكل' },
@@ -185,6 +186,9 @@ function normalizeThread(item = {}) {
 function normalizeNotificationItem(item = {}) {
   const title = String(item.title || 'إشعار جديد').trim() || 'إشعار جديد';
   const body = String(item.body || item.message || item.text || '').trim() || 'لديك تحديث جديد';
+  const peer = extractNotificationPeer(item);
+  const family = getNotificationFamily(item);
+  const path = item.path || item?.data?.path || (peer && family === 'chat' ? `/chat/${encodeURIComponent(peer)}` : '/notifications');
   return {
     type: 'notification',
     id: `notification:${item.id}`,
@@ -193,9 +197,56 @@ function normalizeNotificationItem(item = {}) {
     preview: body,
     unreadCount: item.is_read || item.seen ? 0 : 1,
     timestamp: item.created_at || null,
-    path: item.path || item?.data?.path || '/notifications',
+    path,
+    peer,
+    family,
+    entityKey: family === 'chat' && peer ? `chat:${peer}` : `notification:${peer || item.id || title}`,
     raw: item,
   };
+}
+
+function aggregateNotificationEntries(items = []) {
+  const grouped = new Map();
+
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    const key = item.entityKey || item.id;
+    const existing = grouped.get(key);
+    if (!existing) {
+      grouped.set(key, {
+        ...item,
+        groupedIds: [item.notificationId].filter(Boolean),
+        unreadCount: Number(item.unreadCount || 0),
+        preview: item.preview,
+        title: item.family === 'chat' && item.peer ? item.peer : item.title,
+      });
+      return;
+    }
+
+    const existingTime = new Date(existing.timestamp || 0).getTime();
+    const itemTime = new Date(item.timestamp || 0).getTime();
+    const latest = itemTime >= existingTime ? item : existing;
+
+    grouped.set(key, {
+      ...existing,
+      ...latest,
+      type: 'notification',
+      peer: existing.peer || item.peer,
+      family: existing.family || item.family,
+      entityKey: key,
+      title: (existing.family === 'chat' || item.family === 'chat') && (existing.peer || item.peer)
+        ? (existing.peer || item.peer)
+        : (latest.title || existing.title),
+      preview: latest.preview || existing.preview,
+      unreadCount: Number(existing.unreadCount || 0) + Number(item.unreadCount || 0),
+      groupedIds: [...new Set([...(existing.groupedIds || []), item.notificationId].filter(Boolean))],
+      path: latest.path || existing.path,
+      notificationId: latest.notificationId || existing.notificationId,
+      timestamp: latest.timestamp || existing.timestamp,
+      raw: latest.raw || existing.raw,
+    });
+  });
+
+  return Array.from(grouped.values()).sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
 }
 
 function normalizeGroupItem(item = {}, currentUsername = '') {
@@ -680,7 +731,7 @@ export default function Inbox() {
   );
 
   const requestItems = useMemo(
-    () => notifications.filter((item) => item.unreadCount > 0),
+    () => aggregateNotificationEntries(notifications.filter((item) => item.unreadCount > 0)),
     [notifications],
   );
 
@@ -706,17 +757,19 @@ export default function Inbox() {
   const filteredRequests = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return requestItems;
-    return requestItems.filter((item) => [item.title, item.preview].some((field) => String(field || '').toLowerCase().includes(query)));
+    return requestItems.filter((item) => [item.title, item.preview, item.peer].some((field) => String(field || '').toLowerCase().includes(query)));
   }, [requestItems, searchQuery]);
 
+  const sortedThreads = useMemo(
+    () => [...filteredThreads].sort((left, right) => new Date(right.timestamp || 0).getTime() - new Date(left.timestamp || 0).getTime()),
+    [filteredThreads],
+  );
+
   const unifiedItems = useMemo(() => {
-    const base = [];
-    if (activeTab === 'all' || activeTab === 'messages') base.push(...filteredThreads);
-    if (activeTab === 'all') base.push(...filteredRequests.slice(0, 4));
     if (activeTab === 'groups') return filteredGroups;
     if (activeTab === 'requests') return filteredRequests;
-    return base.sort((left, right) => new Date(right.timestamp || 0).getTime() - new Date(left.timestamp || 0).getTime());
-  }, [activeTab, filteredGroups, filteredRequests, filteredThreads]);
+    return sortedThreads;
+  }, [activeTab, filteredGroups, filteredRequests, sortedThreads]);
 
   const storyRail = useMemo(() => {
     const mine = currentUsername
@@ -740,13 +793,24 @@ export default function Inbox() {
   }, [navigate]);
 
   const handleOpenRequest = useCallback(async (item) => {
-    if (!item?.notificationId) return;
-    try {
-      await markNotificationRead(item.notificationId);
-      setNotifications((prev) => prev.map((entry) => (entry.notificationId === item.notificationId ? { ...entry, unreadCount: 0 } : entry)));
-    } catch {
-      // ignore
+    const ids = Array.isArray(item?.groupedIds) && item.groupedIds.length
+      ? item.groupedIds
+      : [item?.notificationId].filter(Boolean);
+
+    if (ids.length) {
+      try {
+        await Promise.all(ids.map((id) => markNotificationRead(id).catch(() => null)));
+        setNotifications((prev) => prev.map((entry) => (ids.includes(entry.notificationId) ? { ...entry, unreadCount: 0 } : entry)));
+      } catch {
+        // ignore
+      }
     }
+
+    if (item?.family === 'chat' && item?.peer) {
+      navigate(`/chat/${encodeURIComponent(item.peer)}`);
+      return;
+    }
+
     navigate(item.path || '/notifications');
   }, [navigate]);
 
@@ -984,6 +1048,9 @@ export default function Inbox() {
           .yam-mobile-page {
             min-height: 100vh;
             min-height: 100dvh;
+            width: 100%;
+            max-width: 100%;
+            overflow-x: hidden;
             background:
               radial-gradient(circle at top right, rgba(130, 73, 255, 0.16), transparent 20%),
               radial-gradient(circle at top left, rgba(52, 211, 153, 0.08), transparent 18%),
@@ -994,9 +1061,12 @@ export default function Inbox() {
           .yam-mobile-screen {
             min-height: 100vh;
             min-height: 100dvh;
+            width: 100%;
             max-width: 520px;
             margin: 0 auto;
-            padding: calc(14px + env(safe-area-inset-top, 0px)) 14px calc(104px + env(safe-area-inset-bottom, 0px));
+            box-sizing: border-box;
+            overflow-x: hidden;
+            padding: calc(14px + env(safe-area-inset-top, 0px)) clamp(10px, 3vw, 14px) calc(104px + env(safe-area-inset-bottom, 0px));
           }
 
           .yam-mobile-header {
@@ -1236,10 +1306,13 @@ export default function Inbox() {
           }
 
           .yam-content-card {
+            min-width: 0;
+            max-width: 100%;
             background: rgba(8, 13, 28, 0.92);
             border: 1px solid rgba(255,255,255,0.05);
             border-radius: 28px;
             padding: 16px;
+            overflow: hidden;
             box-shadow: 0 20px 50px rgba(2, 6, 23, 0.42);
           }
 
@@ -1277,6 +1350,8 @@ export default function Inbox() {
             display: grid;
             gap: 8px;
             margin-top: 12px;
+            min-width: 0;
+            max-width: 100%;
           }
 
           .yam-list-row {
@@ -1284,6 +1359,7 @@ export default function Inbox() {
             align-items: center;
             gap: 12px;
             width: 100%;
+            min-width: 0;
             text-align: right;
             border-radius: 22px;
             padding: 12px;
@@ -1343,6 +1419,10 @@ export default function Inbox() {
           }
 
           .yam-row-main-line strong {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
             font-size: 18px;
             line-height: 1.2;
             color: #fff;
@@ -1439,13 +1519,16 @@ export default function Inbox() {
 
           .yam-mobile-bottom-nav {
             position: fixed;
-            right: 50%;
+            left: 50%;
+            right: auto;
             bottom: 0;
-            transform: translateX(50%);
-            width: min(520px, 100%);
+            transform: translateX(-50%);
+            width: min(520px, calc(100vw - 12px));
+            max-width: calc(100vw - 12px);
+            box-sizing: border-box;
             padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
             display: grid;
-            grid-template-columns: repeat(5, 1fr);
+            grid-template-columns: repeat(5, minmax(0, 1fr));
             gap: 10px;
             background: linear-gradient(180deg, rgba(4,7,19,0), rgba(4,7,19,0.92) 30%, rgba(4,7,19,0.98));
             backdrop-filter: blur(20px);
@@ -1515,13 +1598,26 @@ export default function Inbox() {
           }
 
           @media (max-width: 420px) {
+            .yam-mobile-screen {
+              padding-inline: 10px;
+            }
+
             .yam-brand-text {
               letter-spacing: 0.18em;
               font-size: 13px;
             }
 
+            .yam-tab-pill {
+              padding-inline: 14px;
+            }
+
             .yam-row-main-line strong {
               font-size: 16px;
+            }
+
+            .yam-content-card {
+              border-radius: 24px;
+              padding: 14px;
             }
 
             .yam-content-head h1 {

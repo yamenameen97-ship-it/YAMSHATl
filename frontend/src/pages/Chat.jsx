@@ -606,6 +606,8 @@ export default function Chat() {
           .yam-conversation-screen {
             min-height: 100%;
             height: min(100dvh, var(--yam-vh, 100dvh));
+            width: 100%;
+            max-width: 100%;
             display: grid;
             grid-template-columns: 310px minmax(0, 1fr) 320px;
             background:
@@ -769,13 +771,16 @@ export default function Chat() {
             border-color: rgba(255,255,255,0.05);
           }
           .yam-chat-stage {
+            position: relative;
             min-width: 0;
             min-height: 0;
+            width: 100%;
+            max-width: 100%;
+            height: 100%;
             display: grid;
             grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
             gap: 14px;
             padding: 20px 20px calc(16px + env(safe-area-inset-bottom, 0px));
-            height: 100%;
             overflow: hidden;
           }
           .yam-stage-top-search,
@@ -792,6 +797,7 @@ export default function Chat() {
           }
           .yam-chat-input-wrap {
             flex-shrink: 0;
+            min-width: 0;
             position: relative;
             z-index: 20;
             box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1);
@@ -803,6 +809,8 @@ export default function Chat() {
             align-items: center;
             gap: 12px;
             color: #94a3b8;
+            position: relative;
+            z-index: 12;
           }
           .yam-stage-top-search input {
             flex: 1;
@@ -913,6 +921,7 @@ export default function Chat() {
           }
           .yam-messages-area {
             min-height: 0;
+            height: 100%;
             flex: 1;
             overflow-y: auto !important;
             overflow-x: hidden;
@@ -1339,10 +1348,12 @@ export default function Chat() {
             50% { transform: translateY(-4px); opacity: 1; }
           }
           .yam-chat-input-wrap {
+            align-self: stretch;
             padding: 10px;
             position: sticky;
+            inset-block-end: 0;
             bottom: 0;
-            z-index: 6;
+            z-index: 18;
             background: linear-gradient(180deg, rgba(4,7,18,0.74), rgba(4,7,18,0.97));
             backdrop-filter: blur(12px);
             padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
@@ -1473,8 +1484,11 @@ export default function Chat() {
             .yam-conversation-screen {
               grid-template-columns: minmax(0, 1fr);
               background: #040714;
-              height: 100dvh;
-              max-height: 100dvh;
+              height: min(100dvh, var(--yam-vh, 100dvh));
+              max-height: min(100dvh, var(--yam-vh, 100dvh));
+              width: 100%;
+              max-width: 100%;
+              overflow: hidden;
             }
             .yam-chat-sidebar {
               display: none;
@@ -1484,6 +1498,10 @@ export default function Chat() {
               display: flex;
               align-items: center;
               gap: 10px;
+              min-width: 0;
+              width: 100%;
+              max-width: 100%;
+              box-sizing: border-box;
               padding: 10px 14px;
               padding-top: calc(10px + env(safe-area-inset-top, 0px));
               background: linear-gradient(180deg, rgba(7,10,24,0.98), rgba(5,8,18,0.96));
@@ -1508,6 +1526,7 @@ export default function Chat() {
             .yam-mobile-peer-button {
               flex: 1;
               min-width: 0;
+              overflow: hidden;
             }
             .yam-mobile-peer-info {
               display: flex;
@@ -1544,6 +1563,7 @@ export default function Chat() {
               align-items: center;
               gap: 4px;
               flex-shrink: 0;
+              max-width: 112px;
             }
             .yam-mobile-action-btn {
               width: 38px;
@@ -1571,6 +1591,7 @@ export default function Chat() {
               grid-template-rows: auto auto minmax(0, 1fr) auto;
               height: 100%;
               min-height: 0;
+              overflow: hidden;
             }
             .yam-chat-details-drawer {
               border-radius: 0;
@@ -1591,6 +1612,7 @@ export default function Chat() {
             .yam-messages-area {
               border-radius: 0;
               border: none;
+              min-height: 0;
               padding: 14px 12px calc(118px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px));
               scroll-padding-top: 72px;
               scroll-padding-bottom: 136px;
@@ -1601,8 +1623,10 @@ export default function Chat() {
             }
             .yam-chat-input-wrap {
               position: sticky;
+              inset-block-end: 0;
               bottom: 0;
               z-index: 24;
+              margin-top: auto;
               border-radius: 0;
               border-left: none;
               border-right: none;
@@ -1634,6 +1658,9 @@ export default function Chat() {
             .yam-mobile-topbar {
               padding: 8px 10px;
               padding-top: calc(8px + env(safe-area-inset-top, 0px));
+            }
+            .yam-mobile-actions {
+              max-width: 102px;
             }
           }
         `}</style>

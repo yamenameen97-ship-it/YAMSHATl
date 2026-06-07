@@ -3,9 +3,9 @@ import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import Modal from '../components/ui/Modal.jsx';
-import { getNotifications } from '../api/notifications.js';
+import { getNotifications, markNotificationRead, markNotificationsRead } from '../api/notifications.js';
 import { useNotificationStore } from '../store/notificationStore.js';
-import { maybeShowBrowserNotification, normalizeNotification } from '../utils/notificationCenter.js';
+import { extractNotificationPeer, getNotificationFamily, maybeShowBrowserNotification, normalizeNotification } from '../utils/notificationCenter.js';
 import { redirectToAppPath } from '../utils/router.js';
 import socketManager from '../services/socketManager.js';
 import { useToast } from '../components/admin/ToastProvider.jsx';
@@ -36,8 +36,52 @@ function getNotificationMeta(item) {
   return { icon: '🔔', label: 'عامة', tone: '#8b5cf6' };
 }
 
+function groupNotifications(items = []) {
+  const map = new Map();
+
+  (Array.isArray(items) ? items : []).forEach((rawItem) => {
+    const item = normalizeNotification(rawItem);
+    const peer = extractNotificationPeer(item);
+    const family = getNotificationFamily(item);
+    const key = family === 'chat' && peer ? `chat:${peer}` : `${family}:${item.id}`;
+    const existing = map.get(key);
+
+    if (!existing) {
+      map.set(key, {
+        ...item,
+        peer,
+        family,
+        groupedIds: [item.id].filter(Boolean),
+        unreadCount: item.seen ? 0 : 1,
+        lastBody: item.body,
+      });
+      return;
+    }
+
+    const existingTime = new Date(existing.created_at || 0).getTime();
+    const itemTime = new Date(item.created_at || 0).getTime();
+    const latest = itemTime >= existingTime ? item : existing;
+
+    map.set(key, {
+      ...existing,
+      ...latest,
+      peer: existing.peer || peer,
+      family: existing.family || family,
+      groupedIds: [...new Set([...(existing.groupedIds || []), item.id].filter(Boolean))],
+      unreadCount: Number(existing.unreadCount || 0) + (item.seen ? 0 : 1),
+      title: family === 'chat' && (existing.peer || peer) ? (existing.peer || peer) : (latest.title || existing.title),
+      body: latest.body || existing.body,
+      lastBody: latest.body || existing.lastBody || existing.body,
+      seen: Boolean(existing.seen && item.seen),
+      path: latest.path || existing.path,
+    });
+  });
+
+  return Array.from(map.values()).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+}
+
 const NotificationRow = ({ index, style, data }) => {
-  const { items, markRead, removeNotification, settings } = data;
+  const { items, markRead, removeNotification, settings, handleOpen } = data;
   const notification = items[index];
   if (!notification) return null;
 
@@ -53,21 +97,20 @@ const NotificationRow = ({ index, style, data }) => {
             <div>
               <div style={{ fontWeight: 700, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 {notification.title}
-                {!notification.seen ? <span className="notif-live-badge">Live</span> : null}
+                {Number(notification.unreadCount || 0) > 1 ? <span className="notif-live-badge">{notification.unreadCount}</span> : (!notification.seen ? <span className="notif-live-badge">جديد</span> : null)}
               </div>
-              <div className="muted" style={{ marginTop: 4, lineHeight: 1.6, fontSize: 13 }}>{notification.body}</div>
+              <div className="muted" style={{ marginTop: 4, lineHeight: 1.6, fontSize: 13 }}>{notification.lastBody || notification.body}</div>
             </div>
             {!notification.seen ? <span className="notif-dot" /> : null}
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
             <span className="muted" style={{ fontSize: 12 }}>{new Date(notification.created_at || Date.now()).toLocaleString('ar-EG')}</span>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {!notification.seen ? <Button variant="secondary" size="sm" onClick={() => markRead(notification.id)}>مقروء</Button> : null}
+              {!notification.seen ? <Button variant="secondary" size="sm" onClick={() => markRead(notification)}>مقروء</Button> : null}
               <Button variant="secondary" size="sm" onClick={() => {
-                markRead(notification.id);
-                if (settings.deepLinking) redirectToAppPath(notification.path || '/notifications', { replace: false });
+                if (settings.deepLinking) data.handleOpen(notification);
               }}>فتح</Button>
-              <Button variant="secondary" size="sm" onClick={() => removeNotification(notification.id)}>إخفاء</Button>
+              <Button variant="secondary" size="sm" onClick={() => removeNotification(notification)}>إخفاء</Button>
             </div>
           </div>
         </div>
@@ -128,21 +171,61 @@ export default function Notifications() {
   }, [pushToast, settings.pushEnabled, settings.realtimeEnabled, upsertNotification]);
 
   const filteredItems = useMemo(() => {
-    const normalized = items.map(normalizeNotification);
-    return normalized.filter((item) => {
+    const grouped = groupNotifications(items);
+    return grouped.filter((item) => {
       if (activeFilter === 'all') return true;
-      if (activeFilter === 'unread') return !item.seen;
-      if (activeFilter === 'mention') return item.type === 'mention' || item.category === 'mention';
-      return item.type === activeFilter || item.category === activeFilter || item.payload?.screen === activeFilter;
+      if (activeFilter === 'unread') return Number(item.unreadCount || 0) > 0;
+      if (activeFilter === 'mention') return item.type === 'mention' || item.category === 'mention' || item.family === 'mention';
+      return item.type === activeFilter || item.category === activeFilter || item.payload?.screen === activeFilter || item.family === activeFilter;
     });
   }, [activeFilter, items]);
 
+  const handleMarkGroupedNotificationRead = useCallback(async (notification) => {
+    const ids = Array.isArray(notification?.groupedIds) && notification.groupedIds.length
+      ? notification.groupedIds
+      : [notification?.id].filter(Boolean);
+
+    if (!ids.length) return;
+
+    await Promise.all(ids.map((id) => markNotificationRead(id).catch(() => null)));
+    ids.forEach((id) => markRead(id));
+  }, [markRead]);
+
+  const handleHideGroupedNotification = useCallback((notification) => {
+    const ids = Array.isArray(notification?.groupedIds) && notification.groupedIds.length
+      ? notification.groupedIds
+      : [notification?.id].filter(Boolean);
+
+    ids.forEach((id) => removeNotification(id));
+  }, [removeNotification]);
+
+  const handleOpenGroupedNotification = useCallback(async (notification) => {
+    await handleMarkGroupedNotificationRead(notification);
+
+    if (notification?.family === 'chat' && notification?.peer) {
+      redirectToAppPath(`/chat/${encodeURIComponent(notification.peer)}`, { replace: false });
+      return;
+    }
+
+    redirectToAppPath(notification?.path || '/notifications', { replace: false });
+  }, [handleMarkGroupedNotificationRead]);
+
   const listData = useMemo(() => ({
     items: filteredItems,
-    markRead,
-    removeNotification,
-    settings
-  }), [filteredItems, markRead, removeNotification, settings]);
+    markRead: handleMarkGroupedNotificationRead,
+    removeNotification: handleHideGroupedNotification,
+    settings,
+    handleOpen: handleOpenGroupedNotification,
+  }), [filteredItems, handleHideGroupedNotification, handleMarkGroupedNotificationRead, handleOpenGroupedNotification, settings]);
+
+  const handleMarkAllAsReadRemote = useCallback(async () => {
+    try {
+      await markNotificationsRead();
+    } catch (_) {
+      // ignore backend sync failures, local state still updated below
+    }
+    markAllRead();
+  }, [markAllRead]);
 
   const unreadCount = useMemo(() => items.filter((item) => !normalizeNotification(item).seen).length, [items]);
 
@@ -157,7 +240,7 @@ export default function Notifications() {
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <Button variant="secondary" onClick={() => setShowSettings(true)}>⚙️ الإعدادات</Button>
-              <Button variant="secondary" onClick={() => markAllRead()}>تحديد الكل كمقروء</Button>
+              <Button variant="secondary" onClick={handleMarkAllAsReadRemote}>تحديد الكل كمقروء</Button>
             </div>
           </div>
         </Card>

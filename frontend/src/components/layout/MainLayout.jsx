@@ -94,6 +94,11 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
             flex-direction: column;
           }
 
+          .app-shell.conversation-shell {
+            height: min(100dvh, var(--yam-vh, 100dvh));
+            overflow: hidden;
+          }
+
           .main-shell {
             display: flex;
             flex-direction: column;
@@ -105,6 +110,10 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
 
           .main-shell.native-shell {
             width: 100%;
+          }
+
+          .app-shell.conversation-shell .main-shell {
+            height: 100%;
           }
 
           .page-content {
@@ -122,9 +131,14 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
           .page-content.conversation-mode {
             overflow: hidden;
             padding-bottom: 0;
+            height: 100%;
           }
 
           .page-content.lock-scroll {
+            overflow: hidden;
+          }
+
+          .conversation-shell .page-content.lock-scroll {
             overflow: hidden;
           }
 
@@ -147,6 +161,7 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
 
           .page-shell-glow.conversation-mode {
             min-height: 100vh;
+            height: 100%;
           }
 
           .page-content::-webkit-scrollbar {

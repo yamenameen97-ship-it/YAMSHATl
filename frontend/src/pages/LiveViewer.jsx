@@ -12,6 +12,7 @@ import {
   getLiveStreamViewers,
 } from '../services/api/liveStreamApi.js';
 import { getCurrentUsername } from '../utils/auth.js';
+import { resolveMediaUrl } from '../config/mediaConfig.js';
 import '../styles/modern-live-viewer.css';
 
 const GIFTS = [
@@ -307,13 +308,46 @@ export default function LiveViewer() {
   }, [loadStreams]);
 
   // فتح البث المطلوب من الرابط مباشرة
+  // ✅ FIX: إذا لم يُعثَر على البث في قائمة البثوث النشطة (مثلاً انتهى منذ قليل
+  // أو لم تُحمَّل القائمة بعد) نطلب تفاصيله مباشرة من الباكيند حتى لا تظهر
+  // الصفحة فارغة/سوداء.
   useEffect(() => {
-    if (!routeStreamId || !streams.length) return;
+    if (!routeStreamId) return;
 
-    const matchedStream = streams.find((stream) => String(stream.id) === routeStreamId);
-    if (matchedStream && String(activeStream?.id || '') !== String(matchedStream.id)) {
-      openStream(matchedStream, { syncUrl: false });
+    // إذا كان البث موجوداً في القائمة، نفتحه عبر openStream
+    if (streams.length) {
+      const matchedStream = streams.find((stream) => String(stream.id) === routeStreamId);
+      if (matchedStream && String(activeStream?.id || '') !== String(matchedStream.id)) {
+        openStream(matchedStream, { syncUrl: false });
+        return;
+      }
+      if (matchedStream) return; // البث المفتوح حالياً هو نفسه
     }
+
+    // إن لم نجده، نحاول تحميل تفاصيله مباشرة (fallback)
+    if (String(activeStream?.id || '') === routeStreamId) return;
+
+    (async () => {
+      try {
+        const detailsResponse = await getLiveStreamDetails(routeStreamId);
+        if (detailsResponse?.data) {
+          const data = detailsResponse.data;
+          const stub = {
+            id: data.id || routeStreamId,
+            title: data.title || 'بث مباشر',
+            host_username: data.host_username || data.host || 'مضيف',
+            host_name: data.host_name || data.host_username || 'مضيف',
+            thumbnail_url: data.thumbnail_url || data.cover_url || data.preview_url || '',
+            is_active: data.is_active !== false,
+            viewers_count: data.viewers_count || 0,
+            hearts_count: data.hearts_count || 0,
+          };
+          openStream(stub, { syncUrl: false });
+        }
+      } catch (error) {
+        console.error('تعذّر تحميل تفاصيل البث مباشرة:', error);
+      }
+    })();
   }, [routeStreamId, streams, activeStream?.id, openStream]);
 
   // تطبيق الفلتر
@@ -338,6 +372,17 @@ export default function LiveViewer() {
   }, []);
 
   const hostName = activeStream?.host_name || activeStream?.host_username || 'مضيف البث';
+  // ✅ FIX: استخدم صورة الغلاف من البث كخلفية للمشغّل قبل بدء التشغيل
+  // كانت منطقة المشغّل تظهر سوداء تماماً لأنه لا فيديو فعلي ولا غلاف.
+  const coverImage = resolveMediaUrl(
+    streamDetails?.thumbnail_url
+      || streamDetails?.cover_url
+      || streamDetails?.preview_url
+      || activeStream?.thumbnail_url
+      || activeStream?.cover_url
+      || activeStream?.preview_url
+      || ''
+  );
 
   return (
     <div className="modern-live-viewer" dir="rtl">
@@ -364,6 +409,15 @@ export default function LiveViewer() {
               {/* Video Player */}
               <div className="mlv-player-section">
                 <div className="mlv-player">
+                  {/* ✅ FIX: عرض صورة الغلاف كخلفية للمشغّل */}
+                  {coverImage ? (
+                    <img
+                      src={coverImage}
+                      alt={activeStream.title || 'غلاف البث'}
+                      className="mlv-player-cover"
+                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                    />
+                  ) : null}
                   <div className="mlv-player-placeholder">
                     <div className="mlv-player-icon">📺</div>
                     <p>بث مباشر من {hostName}</p>

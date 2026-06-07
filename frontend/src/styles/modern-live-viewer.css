@@ -813,3 +813,622 @@
 .comment-item {
   animation: fadeIn 0.3s ease-out;
 }
+
+/* ===========================================================
+   ✅ FIX: Modern Live Viewer (mlv-*) styles
+   ----------------------------------------------------------
+   كانت كل عناصر LiveViewer.jsx تستخدم بادئة `mlv-` بينما لا
+   توجد قواعد CSS بهذا الاسم، ما جعل الصفحة تظهر سوداء فارغة
+   بعد الضغط على زر "دخول البث". تمت إضافة الأنماط الكاملة هنا.
+   =========================================================== */
+
+.modern-live-viewer {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0a0e27 0%, #1a0f3f 50%, #0a0e27 100%);
+  color: #e2e8f0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  direction: rtl;
+}
+
+/* الرأس */
+.mlv-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  background: rgba(20, 12, 50, 0.9);
+  border-bottom: 1px solid rgba(124, 58, 237, 0.25);
+  backdrop-filter: blur(12px);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.mlv-header-left, .mlv-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mlv-header h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #a78bfa, #60a5fa);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.mlv-back-btn, .mlv-refresh-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid rgba(124, 58, 237, 0.4);
+  background: rgba(124, 58, 237, 0.15);
+  color: #e2e8f0;
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .2s ease;
+}
+
+.mlv-back-btn:hover, .mlv-refresh-btn:hover {
+  background: rgba(124, 58, 237, 0.35);
+  transform: translateY(-1px);
+}
+
+/* الحاوية الرئيسية */
+.mlv-container {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 20px;
+  padding: 20px;
+  max-width: 1500px;
+  margin: 0 auto;
+  align-items: start;
+}
+
+.mlv-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+/* مشغّل الفيديو */
+.mlv-player-section {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(124, 58, 237, 0.25);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0,0,0,.35);
+}
+
+.mlv-player {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16/9;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(124, 58, 237, 0.35), transparent 60%),
+    radial-gradient(circle at 70% 70%, rgba(59, 130, 246, 0.30), transparent 60%),
+    #0a0e27;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mlv-player-placeholder {
+  text-align: center;
+  color: #e2e8f0;
+  z-index: 2;
+  padding: 16px;
+}
+
+.mlv-player-icon {
+  font-size: 64px;
+  margin-bottom: 12px;
+  filter: drop-shadow(0 4px 20px rgba(124,58,237,.6));
+  animation: mlvPulse 2.5s ease-in-out infinite;
+}
+
+@keyframes mlvPulse {
+  0%, 100% { transform: scale(1); opacity: .95; }
+  50%      { transform: scale(1.08); opacity: 1; }
+}
+
+.mlv-player-placeholder p {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.mlv-player-placeholder small {
+  color: #a78bfa;
+  font-size: 14px;
+}
+
+/* القلوب العائمة */
+.mlv-floating-hearts {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 3;
+}
+
+.mlv-floating-heart {
+  position: absolute;
+  bottom: 0;
+  font-size: 28px;
+  opacity: 0;
+  filter: drop-shadow(0 4px 10px rgba(236, 72, 153, .6));
+}
+
+@keyframes mlvFloatUp {
+  0%   { transform: translateY(0)    scale(.8); opacity: 0; }
+  20%  { opacity: 1; }
+  100% { transform: translateY(-260px) scale(1.4); opacity: 0; }
+}
+
+/* معلومات البث */
+.mlv-stream-info {
+  padding: 16px 18px;
+  border-top: 1px solid rgba(124, 58, 237, 0.20);
+}
+
+.mlv-info-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.mlv-host-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.mlv-host-details h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #f1f5f9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mlv-host-details p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.mlv-live-badge {
+  background: linear-gradient(135deg, #ef4444, #f97316);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, .45);
+  animation: mlvBlink 1.6s ease-in-out infinite;
+}
+
+@keyframes mlvBlink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .65; }
+}
+
+.mlv-stats-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mlv-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: rgba(124, 58, 237, 0.15);
+  border: 1px solid rgba(124, 58, 237, 0.3);
+  border-radius: 14px;
+  color: #e2e8f0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mlv-stat-icon { font-size: 14px; }
+.mlv-stat-value { font-weight: 800; color: #f1f5f9; }
+.mlv-stat-label { color: #94a3b8; font-size: 11px; }
+
+/* أزرار التفاعل */
+.mlv-action-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  padding: 0;
+}
+
+.mlv-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.25), rgba(59, 130, 246, 0.20));
+  border: 1px solid rgba(124, 58, 237, 0.45);
+  border-radius: 14px;
+  color: #f1f5f9;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .25s ease;
+}
+
+.mlv-action-btn span { font-size: 18px; }
+
+.mlv-action-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(124, 58, 237, .35);
+  border-color: rgba(124, 58, 237, .8);
+}
+
+.mlv-action-heart:hover { background: linear-gradient(135deg, rgba(236,72,153,.30), rgba(244,114,182,.20)); }
+.mlv-action-gift:hover  { background: linear-gradient(135deg, rgba(245,158,11,.30), rgba(251,191,36,.20)); }
+.mlv-action-share:hover { background: linear-gradient(135deg, rgba(34,197,94,.30),  rgba(74,222,128,.20)); }
+.mlv-action-follow:hover{ background: linear-gradient(135deg, rgba(59,130,246,.30), rgba(96,165,250,.20)); }
+
+/* لوحة الهدايا */
+.mlv-gifts-panel {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(124, 58, 237, 0.3);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.mlv-gifts-panel h3 {
+  margin: 0 0 14px;
+  font-size: 16px;
+  color: #f1f5f9;
+}
+
+.mlv-gifts-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px;
+}
+
+.mlv-gift-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 8px;
+  background: rgba(124, 58, 237, 0.12);
+  border: 1px solid rgba(124, 58, 237, 0.3);
+  border-radius: 12px;
+  color: #e2e8f0;
+  cursor: pointer;
+  transition: all .2s ease;
+}
+
+.mlv-gift-option:hover {
+  background: rgba(124, 58, 237, 0.25);
+  transform: translateY(-2px);
+}
+
+.mlv-gift-icon { font-size: 28px; }
+.mlv-gift-name { font-size: 12px; font-weight: 600; }
+.mlv-gift-price {
+  font-size: 11px;
+  color: #fbbf24;
+  font-weight: 700;
+}
+
+/* قسم التعليقات */
+.mlv-comments-section {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(124, 58, 237, 0.25);
+  border-radius: 14px;
+  padding: 14px;
+  max-height: 360px;
+  display: flex;
+  flex-direction: column;
+}
+
+.mlv-comments-section h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: #cbd5e1;
+}
+
+.mlv-comments-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-left: 4px;
+}
+
+.mlv-comments-list::-webkit-scrollbar { width: 6px; }
+.mlv-comments-list::-webkit-scrollbar-thumb {
+  background: rgba(124, 58, 237, 0.4);
+  border-radius: 3px;
+}
+
+.mlv-comment-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  background: rgba(124, 58, 237, 0.08);
+  border-radius: 10px;
+  border: 1px solid rgba(124, 58, 237, 0.15);
+}
+
+.mlv-comment-content { flex: 1; min-width: 0; }
+
+.mlv-comment-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.mlv-comment-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #a78bfa;
+}
+
+.mlv-comment-time {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.mlv-comment-text {
+  margin: 0;
+  font-size: 13px;
+  color: #e2e8f0;
+  word-break: break-word;
+}
+
+.mlv-empty-comments {
+  text-align: center;
+  padding: 24px 16px;
+  color: #64748b;
+}
+
+/* إدخال التعليقات */
+.mlv-comment-input {
+  display: flex;
+  gap: 8px;
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid rgba(124, 58, 237, 0.2);
+}
+
+.mlv-comment-input input {
+  flex: 1;
+  padding: 10px 14px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(124, 58, 237, 0.3);
+  border-radius: 22px;
+  color: #f1f5f9;
+  font-size: 13px;
+  outline: none;
+  transition: all .2s ease;
+}
+
+.mlv-comment-input input::placeholder { color: #64748b; }
+
+.mlv-comment-input input:focus {
+  border-color: rgba(124, 58, 237, 0.7);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+}
+
+.mlv-comment-input button {
+  padding: 10px 18px;
+  background: linear-gradient(135deg, #7c3aed, #3b82f6);
+  border: none;
+  border-radius: 22px;
+  color: white;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all .2s ease;
+}
+
+.mlv-comment-input button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(124, 58, 237, 0.45);
+}
+
+.mlv-comment-input button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+/* الحالة الفارغة */
+.mlv-empty-state {
+  text-align: center;
+  padding: 80px 20px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px dashed rgba(124, 58, 237, 0.3);
+  border-radius: 16px;
+}
+
+.mlv-empty-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+  opacity: .8;
+}
+
+.mlv-empty-state p {
+  margin: 0;
+  font-size: 18px;
+  color: #cbd5e1;
+  font-weight: 700;
+}
+
+.mlv-empty-subtitle {
+  margin-top: 6px !important;
+  font-size: 13px !important;
+  color: #64748b !important;
+  font-weight: 500 !important;
+}
+
+/* الشريط الجانبي */
+.mlv-sidebar {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(124, 58, 237, 0.25);
+  border-radius: 16px;
+  padding: 16px;
+  position: sticky;
+  top: 90px;
+  max-height: calc(100vh - 110px);
+  overflow-y: auto;
+}
+
+.mlv-streams-list-section h3 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  color: #f1f5f9;
+}
+
+.mlv-filter-buttons {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.mlv-filter-btn {
+  flex: 1;
+  padding: 8px 10px;
+  background: rgba(124, 58, 237, 0.10);
+  border: 1px solid rgba(124, 58, 237, 0.25);
+  color: #cbd5e1;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .2s ease;
+}
+
+.mlv-filter-btn.active {
+  background: linear-gradient(135deg, #7c3aed, #3b82f6);
+  color: white;
+  border-color: transparent;
+}
+
+.mlv-streams-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mlv-stream-card {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  background: rgba(124, 58, 237, 0.08);
+  border: 1px solid rgba(124, 58, 237, 0.2);
+  border-radius: 12px;
+  text-align: right;
+  cursor: pointer;
+  transition: all .2s ease;
+}
+
+.mlv-stream-card:hover,
+.mlv-stream-card.active {
+  background: rgba(124, 58, 237, 0.20);
+  border-color: rgba(124, 58, 237, 0.5);
+  transform: translateX(-2px);
+}
+
+.mlv-stream-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.mlv-stream-card-info { flex: 1; min-width: 0; }
+
+.mlv-stream-card-info h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #f1f5f9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mlv-stream-card-info p {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.mlv-stream-card-stats {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: #cbd5e1;
+}
+
+.mlv-empty-streams {
+  text-align: center;
+  padding: 24px 12px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+/* استجابة الجوال */
+@media (max-width: 960px) {
+  .mlv-container {
+    grid-template-columns: 1fr;
+    padding: 12px;
+  }
+  .mlv-sidebar {
+    position: static;
+    max-height: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .mlv-header { padding: 12px 14px; }
+  .mlv-header h1 { font-size: 16px; }
+  .mlv-action-buttons { grid-template-columns: repeat(2, 1fr); }
+  .mlv-player-icon { font-size: 48px; }
+  .mlv-player-placeholder p { font-size: 15px; }
+}
+
+/* ✅ FIX: غلاف البث كخلفية للمشغّل */
+.mlv-player-cover {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 1;
+  filter: brightness(.55) blur(1px);
+}
+
+.mlv-player-cover + .mlv-player-placeholder {
+  position: relative;
+  z-index: 2;
+  background: rgba(0,0,0,0.35);
+  padding: 16px 24px;
+  border-radius: 16px;
+  backdrop-filter: blur(6px);
+}

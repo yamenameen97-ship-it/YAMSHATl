@@ -165,11 +165,22 @@ function resolveLiveViewerUrl(post = {}) {
 function buildFeedPosts(posts = []) {
   if (Array.isArray(posts) && posts.length) {
     return posts.map((post, index) => {
+      // ✅ FIX: استخراج روابط الوسائط من جميع الحقول المحتملة (مع تفضيل الغلاف للبث المباشر)
+      // كانت المنشورات المباشرة لا تظهر الغلاف لأنها أحيانًا ترجع فقط في thumbnail_url/cover_url
       const rawMedia = Array.isArray(post.media_urls) && post.media_urls.length
         ? post.media_urls
-        : [post.media_url || post.image_url].filter(Boolean);
+        : [
+            post.media_url,
+            post.image_url,
+            post.thumbnail_url,
+            post.cover_url,
+            post.preview_url,
+          ].filter(Boolean);
 
-      const normalizedMedia = rawMedia.slice(0, 3).map((url, mediaIndex) => {
+      // إزالة التكرار لتجنب عرض نفس الصورة عدة مرات
+      const dedupedMedia = Array.from(new Set(rawMedia.map((u) => String(u || '').trim()).filter(Boolean)));
+
+      const normalizedMedia = dedupedMedia.slice(0, 3).map((url, mediaIndex) => {
         const resolvedUrl = resolveMediaUrl(url);
         const isVideo = isVideoMediaUrl(resolvedUrl || url, {
           forceVideo: Boolean(post.has_video || post.is_reel || post.type === 'video' || post.media_type === 'video'),

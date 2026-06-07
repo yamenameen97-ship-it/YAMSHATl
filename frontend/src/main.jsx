@@ -41,12 +41,14 @@ import './styles/performance-v2.css';
 import './styles/feed-scrollbar-fix.css';
 /* 🔧 إصلاح نهائي للسحب على الموبايل + تجربة كأنها تطبيق (يجب أن يكون الأخير) */
 import './styles/mobile-scroll-fix.css';
+/* 📱 hotfix نهائي لتثبيت PWA على الجوال ومعالجة الدردشة والبث */
+import './styles/pwa-mobile-hotfix.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { pwaInitializer } from './services/pwaInitializer.js';
 import { smoothTouchLayer } from './services/smoothTouchLayer.js';
 import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 
-const BUILD_ID = 'yamshat-pwa-neon-v2.3.2-fixed-final';
+const BUILD_ID = 'yamshat-pwa-mobile-hotfix-v2.3.3';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

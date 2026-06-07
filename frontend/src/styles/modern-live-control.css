@@ -1548,3 +1548,171 @@
     padding: 4px 8px;
   }
 }
+
+/* ==================== PWA / MOBILE HOTFIX ==================== */
+@media (max-width: 1023.98px) {
+  .modern-live-control {
+    min-height: var(--yam-vh, 100dvh);
+    overflow-x: clip;
+  }
+
+  .mlc-header {
+    padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px;
+    gap: 10px;
+  }
+
+  .mlc-header-content {
+    min-width: 0;
+  }
+
+  .mlc-header-actions {
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .mlc-menu-btn {
+    display: none;
+  }
+
+  .mlc-container {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 100%;
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .mlc-main,
+  .mlc-sidebar,
+  .mlc-video-section,
+  .mlc-messages-section,
+  .mlc-gifts-section,
+  .mlc-viewers-section {
+    min-width: 0;
+  }
+
+  .mlc-sidebar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .mlc-video-container {
+    border-radius: 18px;
+  }
+
+  .mlc-pre-live-card,
+  .mlc-stats-panel,
+  .mlc-messages-section,
+  .mlc-gifts-section,
+  .mlc-viewers-section {
+    border-radius: 18px;
+    padding: 14px;
+  }
+
+  .mlc-pre-live-card .mlc-message-text {
+    width: 100%;
+    min-height: 48px;
+    border-radius: 14px !important;
+    font-size: 16px !important;
+  }
+
+  .cover-upload-section > button {
+    width: 100%;
+  }
+
+  .mlc-controls {
+    position: sticky;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    z-index: 35;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 20px;
+    background: rgba(4, 7, 19, 0.82);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.28);
+  }
+
+  .mlc-control-btn {
+    min-height: 74px;
+    border-radius: 16px;
+    padding: 12px 10px;
+  }
+
+  .mlc-control-btn-start,
+  .mlc-control-btn-stop {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    gap: 10px;
+    min-height: 56px;
+  }
+
+  .mlc-control-btn-start span,
+  .mlc-control-btn-stop span {
+    font-size: 18px;
+  }
+
+  .mlc-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mlc-messages-section {
+    order: 3;
+  }
+
+  .mlc-messages-list {
+    max-height: min(34svh, 360px);
+  }
+
+  .mlc-comment-input {
+    position: sticky;
+    bottom: 0;
+    padding-top: 10px;
+    background: linear-gradient(180deg, rgba(8, 17, 31, 0), rgba(8, 17, 31, 0.94) 28%);
+  }
+
+  .mlc-gifts-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .mlc-gift-btn {
+    min-height: 72px;
+    border-radius: 16px;
+  }
+}
+
+@media (max-width: 640px) {
+  .mlc-header-content h1 {
+    font-size: 15px;
+  }
+
+  .mlc-header-content p {
+    font-size: 11px;
+  }
+
+  .mlc-live-badge {
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+
+  .mlc-controls {
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .mlc-control-btn {
+    min-height: 68px;
+    font-size: 11px;
+  }
+
+  .mlc-control-btn span {
+    font-size: 16px;
+  }
+
+  .mlc-gifts-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

@@ -210,6 +210,14 @@ export default function Chat() {
 
   useViewportHeight();
 
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    document.body.classList.add('is-chat-open');
+    return () => {
+      document.body.classList.remove('is-chat-open');
+    };
+  }, []);
+
   const threadList = useMemo(() => Object.values(threadsMap || {}), [threadsMap]);
   const messages = useMemo(() => normalizeMessages(conversationState?.messages || EMPTY_MESSAGES), [conversationState?.messages]);
   const visibleMessages = useMemo(

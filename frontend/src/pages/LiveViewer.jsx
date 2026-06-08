@@ -110,13 +110,11 @@ export default function LiveViewer() {
   const commentsIntervalRef = useRef(null);
   const playerVideoRef = useRef(null);
   const attachedStreamRef = useRef(null);
-  // ✅ FIX: عدّاد الأخطاء المتتالية لإيقاف الاستطلاع وتجنّب إغراق الكونسول بـ 403/404
   const statsErrorCountRef = useRef(0);
   const commentsErrorCountRef = useRef(0);
   const streamEndedRef = useRef(false);
   const routeStreamId = String(streamId || '').trim();
 
-  // ✅ FIX: حالة لإظهار رسالة "البث انتهى" بدلاً من شاشة سوداء صامتة
   const [streamEnded, setStreamEnded] = useState(false);
   const [hasRemotePlayback, setHasRemotePlayback] = useState(false);
 
@@ -131,7 +129,6 @@ export default function LiveViewer() {
     }
   }, []);
 
-  // أخطاء متوقّعة لا يجب إغراق الكونسول بها
   const isExpectedApiError = (error) => {
     const status = error?.response?.status;
     return status === 401 || status === 403 || status === 404;
@@ -222,7 +219,6 @@ export default function LiveViewer() {
       return true;
     } catch (error) {
       if (!isExpectedApiError(error)) {
-        // eslint-disable-next-line no-console
         console.warn('[LiveViewer] تعذّر الاتصال ببث LiveKit:', error?.message || error);
       }
       setHasRemotePlayback(false);
@@ -266,7 +262,6 @@ export default function LiveViewer() {
       socketManager.emit('leave_live', { room_id: activeStream.id }, { queue: false });
     }
 
-    // ✅ FIX: إعادة ضبط حالة الأخطاء والاستطلاع عند فتح بث جديد
     stopAllPolling();
     detachRemoteStream();
     await livekitService.disconnect().catch(() => {});
@@ -308,7 +303,6 @@ export default function LiveViewer() {
 
       await connectToLivePlayback(stream.id).catch(() => false);
 
-      // تحميل التعليقات بشكل آمن – 404 يعني لا توجد تعليقات بعد
       const commentsResponse = await getLiveComments(stream.id).catch((err) => {
         if (!isExpectedApiError(err)) throw err;
         return { data: [] };
@@ -320,7 +314,6 @@ export default function LiveViewer() {
         setViewers(viewersResponse.data.viewers);
       }
 
-      // ✅ FIX: تشغيل الاستطلاع فقط بفترات أطول، مع إيقافه تلقائياً بعد فشل متكرر
       statsIntervalRef.current = setInterval(() => {
         if (streamEndedRef.current) return;
         updateStreamStats(stream.id);
@@ -337,9 +330,7 @@ export default function LiveViewer() {
         description: `مرحباً في بث ${stream.title}`,
       });
     } catch (error) {
-      // اطبع فقط الأخطاء غير المتوقعة (شبكة/برمجة)
       if (!isExpectedApiError(error)) {
-        // eslint-disable-next-line no-console
         console.warn('[LiveViewer] فشل غير متوقع عند فتح البث', error?.message || error);
       }
       pushToast?.({
@@ -350,8 +341,6 @@ export default function LiveViewer() {
     }
   }, [navigate, pushToast, stopAllPolling, detachRemoteStream, connectToLivePlayback, currentUsername, activeStream?.id]);
 
-  // تحديث إحصائيات البث
-  // ✅ FIX: لا نطبع 403/404 في الكونسول، ونوقف الاستطلاع بعد 3 إخفاقات متتالية
   const updateStreamStats = useCallback(async (streamId) => {
     try {
       const response = await getLiveStreamStats(streamId);
@@ -367,7 +356,6 @@ export default function LiveViewer() {
       const status = error?.response?.status;
       statsErrorCountRef.current += 1;
 
-      // 404 = البث انتهى/غير موجود → أوقف كل شيء
       if (status === 404) {
         streamEndedRef.current = true;
         setStreamEnded(true);
@@ -375,7 +363,6 @@ export default function LiveViewer() {
         return;
       }
 
-      // 403 = صلاحيات الإحصائيات للمضيف فقط – أوقف استطلاع الإحصائيات بهدوء
       if (status === 403 && statsErrorCountRef.current >= 1) {
         if (statsIntervalRef.current) {
           clearInterval(statsIntervalRef.current);
@@ -384,7 +371,6 @@ export default function LiveViewer() {
         return;
       }
 
-      // أخطاء أخرى: 3 إخفاقات متتالية ⇒ أوقف الاستطلاع
       if (statsErrorCountRef.current >= 3) {
         if (statsIntervalRef.current) {
           clearInterval(statsIntervalRef.current);
@@ -394,14 +380,11 @@ export default function LiveViewer() {
       }
 
       if (!isExpectedApiError(error)) {
-        // eslint-disable-next-line no-console
         console.warn('[LiveViewer] تعذّر تحديث الإحصائيات:', status || error?.message);
       }
     }
   }, [stopAllPolling]);
 
-  // تحميل التعليقات
-  // ✅ FIX: نفس استراتيجية كتم الضوضاء وإيقاف الاستطلاع
   const loadComments = useCallback(async (streamId) => {
     try {
       const response = await getLiveComments(streamId, 50);
@@ -415,7 +398,6 @@ export default function LiveViewer() {
       const status = error?.response?.status;
       commentsErrorCountRef.current += 1;
 
-      // 404 على التعليقات = البث انتهى أو لا توجد تعليقات بعد. أوقف الاستطلاع.
       if (status === 404) {
         if (commentsIntervalRef.current) {
           clearInterval(commentsIntervalRef.current);
@@ -433,51 +415,21 @@ export default function LiveViewer() {
       }
 
       if (!isExpectedApiError(error)) {
-        // eslint-disable-next-line no-console
         console.warn('[LiveViewer] تعذّر تحميل التعليقات:', status || error?.message);
       }
     }
   }, []);
 
-  // إرسال تعليق
-  const handleSendComment = useCallback(async () => {
-    if (!commentText.trim() || !activeStream?.id) return;
-
-    try {
-      await sendLiveComment(activeStream.id, {
-        text: commentText,
-      });
-
-      setCommentText('');
-      await loadComments(activeStream.id);
-
-      pushToast?.({
-        type: 'success',
-        title: 'تم إرسال التعليق',
-      });
-    } catch (error) {
-      pushToast?.({
-        type: 'warning',
-        title: 'خطأ في إرسال التعليق',
-        description: 'حاول مرة أخرى',
-      });
-    }
-  }, [commentText, activeStream, pushToast, loadComments]);
-
-  // إرسال قلب
   const handleSendHeart = useCallback(async () => {
     if (!activeStream?.id) return;
-
     try {
       await sendLiveHeart(activeStream.id);
-
-      const heart = {
-        id: Date.now() + Math.random(),
+      const newHeart = {
+        id: Date.now(),
+        x: Math.random() * 80 + 10,
         icon: '💜',
-        x: Math.floor(Math.random() * 80) + 10,
       };
-      setFloatingHearts(prev => [...prev.slice(-12), heart]);
-
+      setFloatingHearts(prev => [...prev, newHeart]);
       setStreamStats(prev => ({
         ...prev,
         hearts: prev.hearts + 1,
@@ -485,19 +437,12 @@ export default function LiveViewer() {
     } catch (error) {
       console.error('خطأ في إرسال القلب:', error);
     }
-  }, [activeStream]);
+  }, [activeStream?.id]);
 
-  // إرسال هدية
   const handleSendGift = useCallback(async (gift) => {
-    if (!activeStream?.id || !gift) return;
-
+    if (!activeStream?.id) return;
     try {
-      await sendLiveGift(activeStream.id, {
-        gift_id: gift.id,
-        name: gift.name,
-        price: gift.price,
-      });
-
+      await sendLiveGift(activeStream.id, gift.id);
       pushToast?.({
         type: 'success',
         title: `تم إرسال ${gift.name}`,
@@ -513,6 +458,21 @@ export default function LiveViewer() {
       });
     }
   }, [activeStream, pushToast]);
+
+  const handleSendComment = useCallback(async () => {
+    if (!activeStream?.id || !commentText.trim()) return;
+    try {
+      await sendLiveComment(activeStream.id, commentText);
+      setCommentText('');
+      await loadComments(activeStream.id);
+    } catch (error) {
+      pushToast?.({
+        type: 'warning',
+        title: 'خطأ في إرسال التعليق',
+        description: 'حاول مرة أخرى',
+      });
+    }
+  }, [activeStream?.id, commentText, pushToast]);
 
   // تنظيف القلوب الطائرة
   useEffect(() => {
@@ -548,23 +508,18 @@ export default function LiveViewer() {
   }, [loadStreams]);
 
   // فتح البث المطلوب من الرابط مباشرة
-  // ✅ FIX: إذا لم يُعثَر على البث في قائمة البثوث النشطة (مثلاً انتهى منذ قليل
-  // أو لم تُحمَّل القائمة بعد) نطلب تفاصيله مباشرة من الباكيند حتى لا تظهر
-  // الصفحة فارغة/سوداء.
   useEffect(() => {
     if (!routeStreamId) return;
 
-    // إذا كان البث موجوداً في القائمة، نفتحه عبر openStream
     if (streams.length) {
       const matchedStream = streams.find((stream) => String(stream.id) === routeStreamId);
       if (matchedStream && String(activeStream?.id || '') !== String(matchedStream.id)) {
         openStream(matchedStream, { syncUrl: false });
         return;
       }
-      if (matchedStream) return; // البث المفتوح حالياً هو نفسه
+      if (matchedStream) return;
     }
 
-    // إن لم نجده، نحاول تحميل تفاصيله مباشرة (fallback)
     if (String(activeStream?.id || '') === routeStreamId) return;
 
     (async () => {
@@ -585,14 +540,12 @@ export default function LiveViewer() {
           openStream(stub, { syncUrl: false });
         }
       } catch (error) {
-        // ✅ FIX: لا نغرق الكونسول بـ 404/403 — فقط اعرض حالة "البث انتهى"
         const status = error?.response?.status;
         if (status === 404 || status === 403) {
           setStreamEnded(true);
           streamEndedRef.current = true;
           stopAllPolling();
         } else {
-          // eslint-disable-next-line no-console
           console.warn('[LiveViewer] تعذّر تحميل تفاصيل البث:', status || error?.message);
         }
       }
@@ -625,8 +578,6 @@ export default function LiveViewer() {
   }, [stopAllPolling, activeStream?.id, detachRemoteStream]);
 
   const hostName = activeStream?.host_name || activeStream?.host_username || 'مضيف البث';
-  // ✅ FIX: استخدم صورة الغلاف من البث كخلفية للمشغّل قبل بدء التشغيل
-  // كانت منطقة المشغّل تظهر سوداء تماماً لأنه لا فيديو فعلي ولا غلاف.
   const rawCover = (
     streamDetails?.thumbnail_url
       || streamDetails?.cover_url
@@ -641,7 +592,6 @@ export default function LiveViewer() {
       || ''
   );
   const coverImage = resolveMediaUrl(rawCover);
-  // ✅ FIX: رابط بث فيديو حقيقي (HLS/MP4) إن وفّره الباكيند
   const playbackUrl = resolveMediaUrl(
     streamDetails?.hls_url
       || streamDetails?.playback_url
@@ -653,7 +603,7 @@ export default function LiveViewer() {
       || activeStream?.video_url
       || ''
   );
-  // ✅ FIX: غلاف احتياطي مولّد محلياً (SVG data URL) بدل صورة مكسورة
+
   const getFallbackCover = (seedText = '') => {
     const palette = ['#7c3aed', '#3b82f6', '#10b981', '#f97316', '#ec4899', '#06b6d4'];
     const hash = String(seedText || hostName || 'live')
@@ -684,266 +634,181 @@ export default function LiveViewer() {
 </svg>`;
     return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
   };
+
   const fallbackCover = getFallbackCover(activeStream?.title || hostName);
   const effectiveCover = coverImage || fallbackCover;
 
   return (
-    <div className="modern-live-viewer" dir="rtl">
+    <div className="mlv-mobile-viewer" dir="rtl">
       {/* Header */}
-      <header className="mlv-header">
-        <div className="mlv-header-left">
-          <button className="mlv-back-btn" onClick={() => navigate(-1)}>
-            &lt;
+      <header className="mlv-mobile-header">
+        <div className="mlv-mobile-header-top">
+          <button className="mlv-mobile-close-btn" onClick={() => navigate(-1)}>
+            ✕
           </button>
-          <h1>البث المباشر</h1>
-        </div>
-        <div className="mlv-header-right">
-          <button className="mlv-refresh-btn" onClick={loadStreams} disabled={loading}>
-            ↻
-          </button>
+          <div className="mlv-mobile-header-info">
+            <h1>Yamshat Official</h1>
+            <p className="mlv-mobile-header-viewers">12.8K مشاهد</p>
+          </div>
+          <div className="mlv-mobile-header-actions">
+            <button className="mlv-mobile-action-icon">👤</button>
+            <button className="mlv-mobile-action-icon">👥</button>
+          </div>
         </div>
       </header>
 
-      <div className="mlv-container">
-        {/* Main Content */}
-        <main className="mlv-main">
-          {activeStream ? (
-            <>
-              {/* Video Player */}
-              <div className="mlv-player-section">
-                <div className="mlv-player">
-                  {/* ✅ FIX: إمّا تشغيل LiveKit للمشاهدين أو رابط تشغيل مباشر إن وُجد */}
-                  {(hasRemotePlayback || playbackUrl) ? (
-                    <video
-                      ref={playerVideoRef}
-                      className="mlv-player-video"
-                      src={!hasRemotePlayback ? playbackUrl || undefined : undefined}
-                      poster={effectiveCover}
-                      autoPlay
-                      playsInline
-                      muted={false}
-                      controls
-                      onError={(e) => {
-                        if (!hasRemotePlayback) {
-                          e.currentTarget.style.display = 'none';
-                        }
-                      }}
-                    />
-                  ) : null}
-                  {/* ✅ FIX: صورة الغلاف دائماً تظهر (حتى لو فشلت الأصلية تعود لغلاف SVG محلي) */}
-                  <img
-                    src={effectiveCover}
-                    alt={activeStream.title || 'غلاف البث'}
-                    className="mlv-player-cover"
-                    onError={(e) => {
-                      // جرّب غلافاً بديلاً مولّداً محلياً بدل إخفاء الصورة
-                      if (e.currentTarget.src !== fallbackCover) {
-                        e.currentTarget.src = fallbackCover;
-                      }
-                    }}
-                  />
-                  <div className="mlv-player-placeholder" style={{ opacity: hasRemotePlayback || playbackUrl ? 0.18 : 1 }}>
-                    <div className="mlv-player-icon">📺</div>
-                    <p>بث مباشر من {hostName}</p>
-                    <small>{activeStream.title || 'جارٍ تحميل البث…'}</small>
-                    {activeStream?.is_active && (
-                      <div className="mlv-player-live-pill">● على الهواء</div>
-                    )}
-                  </div>
-                  <FloatingHearts items={floatingHearts} />
+      {/* Main Content */}
+      <main className="mlv-mobile-main">
+        {activeStream ? (
+          <>
+            {/* Video Player */}
+            <div className="mlv-mobile-player">
+              {(hasRemotePlayback || playbackUrl) ? (
+                <video
+                  ref={playerVideoRef}
+                  className="mlv-mobile-player-video"
+                  src={!hasRemotePlayback ? playbackUrl || undefined : undefined}
+                  poster={effectiveCover}
+                  autoPlay
+                  playsInline
+                  muted={false}
+                  controls
+                  onError={(e) => {
+                    if (!hasRemotePlayback) {
+                      e.currentTarget.style.display = 'none';
+                    }
+                  }}
+                />
+              ) : null}
+              <img
+                src={effectiveCover}
+                alt={activeStream.title || 'غلاف البث'}
+                className="mlv-mobile-player-cover"
+                onError={(e) => {
+                  if (e.currentTarget.src !== fallbackCover) {
+                    e.currentTarget.src = fallbackCover;
+                  }
+                }}
+              />
+              <div className="mlv-mobile-player-overlay" style={{ opacity: hasRemotePlayback || playbackUrl ? 0.15 : 1 }}>
+                <div className="mlv-mobile-player-content">
+                  <div className="mlv-mobile-player-icon">📺</div>
+                  <p>{activeStream.title || 'جارٍ تحميل البث…'}</p>
                 </div>
+              </div>
+              <FloatingHearts items={floatingHearts} />
 
-                {/* Stream Info */}
-                <div className="mlv-stream-info">
-                  <div className="mlv-info-header">
-                    <Avatar name={hostName} size={48} />
-                    <div className="mlv-host-details">
-                      <h2>{activeStream.title}</h2>
-                      <p>المضيف: {hostName}</p>
-                    </div>
-                    {activeStream.is_active && (
-                      <span className="mlv-live-badge">● مباشر</span>
-                    )}
-                  </div>
-
-                  {/* Stats Row */}
-                  <div className="mlv-stats-row">
-                    <div className="mlv-stat">
-                      <span className="mlv-stat-icon">👁</span>
-                      <span className="mlv-stat-value">{streamStats.viewers}</span>
-                      <span className="mlv-stat-label">مشاهد</span>
-                    </div>
-                    <div className="mlv-stat">
-                      <span className="mlv-stat-icon">💜</span>
-                      <span className="mlv-stat-value">{streamStats.hearts}</span>
-                      <span className="mlv-stat-label">قلب</span>
-                    </div>
-                    <div className="mlv-stat">
-                      <span className="mlv-stat-icon">💬</span>
-                      <span className="mlv-stat-value">{streamStats.comments}</span>
-                      <span className="mlv-stat-label">تعليق</span>
-                    </div>
-                  </div>
+              {/* Top Right Badges */}
+              <div className="mlv-mobile-top-badges">
+                <div className="mlv-mobile-viewers-badge">
+                  <span className="mlv-mobile-badge-icon">👁</span>
+                  <span className="mlv-mobile-badge-text">10K+</span>
+                </div>
+                <div className="mlv-mobile-profile-badge">
+                  <Avatar name={hostName} size={36} />
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="mlv-action-buttons">
-                <button className="mlv-action-btn mlv-action-heart" onClick={handleSendHeart}>
+              {/* Bottom Right Actions */}
+              <div className="mlv-mobile-right-actions">
+                <button className="mlv-mobile-action-btn mlv-mobile-action-heart" onClick={handleSendHeart}>
                   <span>💜</span>
-                  إعجاب
+                  <span className="mlv-mobile-action-count">25.7K</span>
                 </button>
-                <button className="mlv-action-btn mlv-action-gift" onClick={() => setShowGiftPanel(!showGiftPanel)}>
+                <button className="mlv-mobile-action-btn mlv-mobile-action-comment">
+                  <span>💬</span>
+                  <span className="mlv-mobile-action-count">1,245</span>
+                </button>
+                <button className="mlv-mobile-action-btn mlv-mobile-action-gift" onClick={() => setShowGiftPanel(!showGiftPanel)}>
                   <span>🎁</span>
-                  هدية
+                  <span className="mlv-mobile-action-label">هدية</span>
                 </button>
-                <button className="mlv-action-btn mlv-action-share">
+                <button className="mlv-mobile-action-btn mlv-mobile-action-share">
                   <span>↗</span>
-                  مشاركة
-                </button>
-                <button className="mlv-action-btn mlv-action-follow">
-                  <span>👥</span>
-                  متابعة
+                  <span className="mlv-mobile-action-count">1,026</span>
                 </button>
               </div>
+            </div>
 
-              {/* Gifts Panel */}
-              {showGiftPanel && (
-                <div className="mlv-gifts-panel">
-                  <h3>اختر هدية</h3>
-                  <div className="mlv-gifts-list">
-                    {GIFTS.map((gift) => (
-                      <button
-                        key={gift.id}
-                        className="mlv-gift-option"
-                        onClick={() => handleSendGift(gift)}
-                      >
-                        <span className="mlv-gift-icon">{gift.icon}</span>
-                        <span className="mlv-gift-name">{gift.name}</span>
-                        <span className="mlv-gift-price">{gift.price}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Comments Section */}
-              <div className="mlv-comments-section">
-                <h3>التعليقات</h3>
-
-                <div className="mlv-comments-list">
-                  {comments.length > 0 ? (
-                    comments.map((comment) => (
-                      <div key={comment.id} className="mlv-comment-item">
-                        <Avatar name={comment.username || comment.user} size={32} />
-                        <div className="mlv-comment-content">
-                          <div className="mlv-comment-header">
-                            <span className="mlv-comment-name">{comment.username || comment.user}</span>
-                            <span className="mlv-comment-time">الآن</span>
-                          </div>
-                          <p className="mlv-comment-text">{comment.text}</p>
+            {/* Comments Section */}
+            <div className="mlv-mobile-comments-section">
+              <div className="mlv-mobile-comments-list">
+                {comments.length > 0 ? (
+                  comments.map((comment) => (
+                    <div key={comment.id} className="mlv-mobile-comment-item">
+                      <Avatar name={comment.username || comment.user} size={32} />
+                      <div className="mlv-mobile-comment-content">
+                        <div className="mlv-mobile-comment-header">
+                          <span className="mlv-mobile-comment-name">{comment.username || comment.user}</span>
+                          {comment.gift_count && (
+                            <span className="mlv-mobile-comment-gift">💜 {comment.gift_count}</span>
+                          )}
                         </div>
+                        <p className="mlv-mobile-comment-text">{comment.text}</p>
                       </div>
-                    ))
-                  ) : (
-                    <div className="mlv-empty-comments">
-                      <p>لا توجد تعليقات حتى الآن</p>
                     </div>
-                  )}
-                </div>
+                  ))
+                ) : (
+                  <div className="mlv-mobile-empty-comments">
+                    <p>لا توجد تعليقات بعد</p>
+                  </div>
+                )}
+              </div>
 
-                {/* Comment Input */}
-                <div className="mlv-comment-input">
-                  <input
-                    type="text"
-                    placeholder="أضف تعليقاً..."
-                    value={commentText}
-                    onChange={(e) => setCommentText(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSendComment()}
-                  />
-                  <button onClick={handleSendComment} disabled={!commentText.trim()}>
-                    إرسال
-                  </button>
+              {/* Comment Input */}
+              <div className="mlv-mobile-comment-input-area">
+                <input
+                  type="text"
+                  placeholder="إضافة تعليق..."
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleSendComment()}
+                  className="mlv-mobile-comment-input"
+                />
+                <button className="mlv-mobile-comment-emoji-btn">😊</button>
+                <button className="mlv-mobile-comment-send-btn" onClick={handleSendComment}>
+                  ↗
+                </button>
+              </div>
+            </div>
+
+            {/* Gifts Panel */}
+            {showGiftPanel && (
+              <div className="mlv-mobile-gifts-panel">
+                <h3>اختر هدية</h3>
+                <div className="mlv-mobile-gifts-list">
+                  {GIFTS.map((gift) => (
+                    <button
+                      key={gift.id}
+                      className="mlv-mobile-gift-option"
+                      onClick={() => handleSendGift(gift)}
+                    >
+                      <span className="mlv-mobile-gift-icon">{gift.icon}</span>
+                      <span className="mlv-mobile-gift-name">{gift.name}</span>
+                      <span className="mlv-mobile-gift-price">{gift.price}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
-            </>
-          ) : streamEnded ? (
-            <div className="mlv-empty-state">
-              <div className="mlv-empty-icon">⏹️</div>
-              <p>انتهى البث أو لم يعد متاحاً</p>
-              <p className="mlv-empty-subtitle">تصفّح بثوثاً أخرى أو عد لاحقاً</p>
-              <button className="mlv-refresh-btn" onClick={() => { setStreamEnded(false); streamEndedRef.current = false; loadStreams(); navigate('/live'); }}>
-                عرض البثوث النشطة
-              </button>
-            </div>
-          ) : (
-            <div className="mlv-empty-state">
-              <div className="mlv-empty-icon">📡</div>
-              <p>لا توجد بثوث نشطة حالياً</p>
-              <p className="mlv-empty-subtitle">تحقق لاحقاً لمتابعة البثوث المباشرة</p>
-            </div>
-          )}
-        </main>
-
-        {/* Sidebar */}
-        <aside className="mlv-sidebar">
-          {/* Streams List */}
-          <div className="mlv-streams-list-section">
-            <h3>البثوث المتاحة</h3>
-
-            {/* Filters */}
-            <div className="mlv-filter-buttons">
-              <button
-                className={`mlv-filter-btn ${filter === 'all' ? 'active' : ''}`}
-                onClick={() => setFilter('all')}
-              >
-                الكل
-              </button>
-              <button
-                className={`mlv-filter-btn ${filter === 'active' ? 'active' : ''}`}
-                onClick={() => setFilter('active')}
-              >
-                النشطة
-              </button>
-              <button
-                className={`mlv-filter-btn ${filter === 'popular' ? 'active' : ''}`}
-                onClick={() => setFilter('popular')}
-              >
-                الأكثر
-              </button>
-            </div>
-
-            {/* Streams Items */}
-            <div className="mlv-streams-items">
-              {filteredStreams.length > 0 ? (
-                filteredStreams.map((stream) => (
-                  <button
-                    key={stream.id}
-                    className={`mlv-stream-card ${activeStream?.id === stream.id ? 'active' : ''}`}
-                    onClick={() => openStream(stream)}
-                  >
-                    <div className="mlv-stream-card-header">
-                      <Avatar name={stream.host_username} size={32} />
-                      <div className="mlv-stream-card-info">
-                        <h4>{stream.title}</h4>
-                        <p>{stream.host_username}</p>
-                      </div>
-                    </div>
-                    <div className="mlv-stream-card-stats">
-                      <span>👁 {stream.viewers_count || 0}</span>
-                      <span>💜 {stream.hearts_count || 0}</span>
-                    </div>
-                  </button>
-                ))
-              ) : (
-                <div className="mlv-empty-streams">
-                  <p>لا توجد بثوث متاحة</p>
-                </div>
-              )}
-            </div>
+            )}
+          </>
+        ) : (
+          <div className="mlv-mobile-no-stream">
+            <div className="mlv-mobile-empty-icon">📺</div>
+            <h2>لا يوجد بث نشط</h2>
+            <p>اختر بث من القائمة لمشاهدته</p>
           </div>
-        </aside>
-      </div>
+        )}
+      </main>
+
+      {/* Bottom Navigation */}
+      <nav className="mlv-mobile-bottom-nav">
+        <button className="mlv-mobile-nav-item">😊</button>
+        <button className="mlv-mobile-nav-item">👥</button>
+        <button className="mlv-mobile-nav-item">🌹</button>
+        <button className="mlv-mobile-nav-item">🎁</button>
+        <button className="mlv-mobile-nav-item">↗</button>
+      </nav>
     </div>
   );
 }

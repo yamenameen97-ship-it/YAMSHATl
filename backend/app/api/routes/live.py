@@ -538,22 +538,30 @@ def create_live_room(
     room_id = str(uuid4())
     lk_room_name = _room_name_for(current_user.username)
 
-    record = LiveRoomSession(
-        id=room_id,
-        host_user_id=current_user.id,
-        host_username=current_user.username,
-        title=title or f"{current_user.username}'s Room",
-        livekit_room=lk_room_name,
-        livekit_url=settings.LIVEKIT_URL,
-        is_active=True,
-        is_public=is_public,
-        stream_status='active',
-        created_at=_utcnow(),
-        last_activity_at=_utcnow(),
-    )
-    db.add(record)
-    db.commit()
-    db.refresh(record)
+    try:
+        record = LiveRoomSession(
+            id=room_id,
+            host_user_id=current_user.id,
+            host_username=current_user.username,
+            title=title or f"{current_user.username}'s Room",
+            livekit_room=lk_room_name,
+            livekit_url=settings.LIVEKIT_URL,
+            is_active=True,
+            is_public=bool(is_public),
+            stream_status='active',
+            created_at=_utcnow(),
+            last_activity_at=_utcnow(),
+        )
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+    except Exception as exc:
+        db.rollback()
+        logger.exception('Failed to create live room: %s', exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f'Failed to create live room: {exc}'
+        )
 
     return _serialize_record(db, record)
 

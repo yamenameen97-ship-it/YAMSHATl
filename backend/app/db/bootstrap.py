@@ -65,7 +65,7 @@ REQUIRED_SCHEMA_COLUMNS: dict[str, set[str]] = {
     'comments': {'user_id', 'username', 'comment', 'content'},
     'messages': {'sender_id', 'receiver_id', 'sender', 'receiver', 'message', 'content'},
     'notifications': {'user_id', 'type', 'title', 'body', 'data', 'is_read', 'created_at'},
-    'live_room_sessions': {'host_user_id', 'host_username', 'title', 'stream_status', 'is_active', 'extra_json', 'last_activity_at'},
+    'live_room_sessions': {'host_user_id', 'host_username', 'title', 'stream_status', 'is_active', 'is_public', 'extra_json', 'last_activity_at'},
     'reels': {'user_id', 'video_url', 'thumbnail_url', 'caption', 'category', 'duration', 'likes_count', 'comments_count', 'shares_count', 'views_count', 'is_deleted', 'created_at', 'updated_at'},
     'reel_likes': {'reel_id', 'user_id', 'created_at'},
     'reel_views': {'reel_id', 'user_id', 'viewed_at'},
@@ -566,6 +566,7 @@ def _migrate_live_room_sessions_table(engine: Engine) -> None:
     _add_column_if_missing(engine, 'live_room_sessions', 'livekit_url', 'livekit_url VARCHAR(500)')
     _add_column_if_missing(engine, 'live_room_sessions', 'stream_status', "stream_status VARCHAR(50) NOT NULL DEFAULT 'setup_required'")
     _add_column_if_missing(engine, 'live_room_sessions', 'is_active', 'is_active BOOLEAN NOT NULL DEFAULT TRUE')
+    _add_column_if_missing(engine, 'live_room_sessions', 'is_public', 'is_public BOOLEAN NOT NULL DEFAULT TRUE')
     _add_column_if_missing(engine, 'live_room_sessions', 'viewer_count', 'viewer_count INTEGER NOT NULL DEFAULT 0')
     _add_column_if_missing(engine, 'live_room_sessions', 'peak_viewer_count', 'peak_viewer_count INTEGER NOT NULL DEFAULT 0')
     _add_column_if_missing(engine, 'live_room_sessions', 'hearts_count', 'hearts_count INTEGER NOT NULL DEFAULT 0')

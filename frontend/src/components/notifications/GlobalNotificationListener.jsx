@@ -94,7 +94,24 @@ export default function GlobalNotificationListener() {
     };
 
     const unsubscribe = socketManager.on('new_notification', handleIncoming);
-    return () => { try { unsubscribe?.(); } catch (_) {} };
+
+    // ✅ دعم إشعارات محلية (تطلقها ويدجتات داخلية مثل بدء بث مباشر)
+    // تستخدم نفس دورة حياة socket لتحديث الجرس + إصدار بيب + إظهار توست.
+    const handleLocal = (event) => {
+      try { handleIncoming(event?.detail || {}); } catch (_) { /* noop */ }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('yamshat:notification', handleLocal);
+    }
+
+    return () => {
+      try { unsubscribe?.(); } catch (_) {}
+      try {
+        if (typeof window !== 'undefined') {
+          window.removeEventListener('yamshat:notification', handleLocal);
+        }
+      } catch (_) {}
+    };
   }, [upsertNotification]);
 
   return null;

@@ -218,6 +218,39 @@ export default function LiveStudio() {
           description: 'جاهز لبدء البث المباشر',
         });
 
+        // ✅ إرسال إشعار محلي للأصدقاء/المتابعين بأن البث بدأ.
+        // GlobalNotificationListener يلتقط الحدث ويعرض toast + يحدّث الجرس.
+        try {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('yamshat:notification', {
+              detail: {
+                id: `live-start-${streamId}`,
+                type: 'live_stream_started',
+                title: `🔴 ${currentUsername || 'مستخدم'} بدأ بثاً مباشراً`,
+                body: title.trim() || 'انضم الآن إلى البث المباشر',
+                path: `/live/view/${streamId}`,
+                created_at: new Date().toISOString(),
+                payload: {
+                  stream_id: streamId,
+                  host: currentUsername,
+                  thumbnail_url: uploadedCover || '',
+                },
+              },
+            }));
+            // Toast فوري للمستخدمين النشطين
+            window.dispatchEvent(new CustomEvent('yamshat:toast', {
+              detail: {
+                type: 'info',
+                title: `🔴 بث مباشر جديد من ${currentUsername || 'مستخدم'}`,
+                description: title.trim(),
+                duration: 5000,
+              },
+            }));
+          }
+        } catch (notifErr) {
+          console.error('Failed to dispatch live notification:', notifErr);
+        }
+
         await handleStartStream(streamId);
       }
     } catch (error) {

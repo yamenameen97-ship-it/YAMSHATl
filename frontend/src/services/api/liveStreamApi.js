@@ -1,4 +1,4 @@
-لاimport apiClient from './apiClient.js';
+import apiClient from './apiClient.js';
 import socketManager from '../socketManager.js';
 import { getPosts } from '../../api/posts.js';
 

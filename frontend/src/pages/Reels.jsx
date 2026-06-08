@@ -941,7 +941,7 @@ export default function ReelsPage() {
   };
 
   return (
-    <MainLayout hideNav>
+    <MainLayout>
       <div className="reels-page-shell" onWheelCapture={handleWheelNavigation} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
         <div className="reels-header-bar">
           <div>
@@ -1106,8 +1106,9 @@ export default function ReelsPage() {
         <style>{`
           .reels-page-shell {
             position: relative;
-            min-height: 100vh;
-            height: 100vh;
+            /* ✅ الارتفاع يحترم وجود الهيدر العلوي والفوتر السفلي في MainLayout */
+            min-height: calc(100dvh - var(--yam-top-chrome-height, 60px) - var(--yam-bottom-chrome-height, 70px));
+            height: calc(100dvh - var(--yam-top-chrome-height, 60px) - var(--yam-bottom-chrome-height, 70px));
             background: #000;
             color: #fff;
             display: flex;
@@ -1505,3 +1506,4 @@ export default function ReelsPage() {
     </MainLayout>
   );
 }
+

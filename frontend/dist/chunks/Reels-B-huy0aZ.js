@@ -2808,7 +2808,7 @@ function ReelsPage() {
     resetUploadState();
     navigate("/reels", { replace: true });
   };
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(MainLayout, { hideNav: true, children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "reels-page-shell", onWheelCapture: handleWheelNavigation, onTouchStart: handleTouchStart, onTouchEnd: handleTouchEnd, children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(MainLayout, {  children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "reels-page-shell", onWheelCapture: handleWheelNavigation, onTouchStart: handleTouchStart, onTouchEnd: handleTouchEnd, children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "reels-header-bar", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { children: "الريلز" }),
@@ -2965,8 +2965,8 @@ function ReelsPage() {
     /* @__PURE__ */ jsxRuntimeExports.jsx("style", { children: `
           .reels-page-shell {
             position: relative;
-            min-height: 100vh;
-            height: 100vh;
+            min-height: calc(100dvh - var(--yam-top-chrome-height, 60px) - var(--yam-bottom-chrome-height, 70px));
+            height: calc(100dvh - var(--yam-top-chrome-height, 60px) - var(--yam-bottom-chrome-height, 70px));
             background: #000;
             color: #fff;
             display: flex;

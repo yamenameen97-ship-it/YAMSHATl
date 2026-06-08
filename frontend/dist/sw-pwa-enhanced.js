@@ -11,7 +11,7 @@
  *  6) Background sync بدون رمي استثناءات غير مُعالجة
  */
 
-const SW_VERSION = '1.0.2-pwa-enhanced-fixed';
+const SW_VERSION = '1.0.3-pwa-enhanced-fixed';
 
 const CACHE_NAMES = {
   STATIC: `yamshat-static-${SW_VERSION}`,
@@ -165,8 +165,11 @@ async function mediaStrategy(request, cacheName) {
     const response = await fetch(request);
 
     // 404 على شعار قديم أو logo192 => خادم الـ fallback المحلي
+    // ⚠️ مهم: لا نُطبّق هذا الـ fallback على ملفات /uploads/ أبداً حتى
+    //         لا يظهر شعار Yamshat فوق فيديوهات الريلز عند فشل التحميل.
     if (
       response.status === 404 &&
+      !url.pathname.startsWith('/uploads/') &&
       (/yamshat-logo\.(png|jpe?g|webp)$/i.test(url.pathname)
         || /^\/logo192\.png$/i.test(url.pathname))
     ) {
@@ -176,13 +179,15 @@ async function mediaStrategy(request, cacheName) {
       try {
         return await fetch(fallbackPath);
       } catch {
-        return new Response('', { status: 204 });
+        // ✅ FIX: status 204 لا يسمح بـ body → نمرر null بدل ''
+        return new Response(null, { status: 204 });
       }
     }
 
     // 404 على ملفات الرفع => رد صامت 204 لمنع ضجيج الكونسول
+    // ✅ FIX: status 204 لا يسمح بـ body → null بدل ''
     if (response.status === 404 && url.pathname.startsWith('/uploads/')) {
-      return new Response('', { status: 204, statusText: 'Asset removed' });
+      return new Response(null, { status: 204, statusText: 'Asset removed' });
     }
 
     const copy = cloneSafe(response);
@@ -190,11 +195,16 @@ async function mediaStrategy(request, cacheName) {
     return response;
   } catch (error) {
     console.debug('[SW] media fetch failed:', error?.message || error);
-    if (/yamshat-logo\.(png|jpe?g|webp)$/i.test(url.pathname)) {
+    // ⚠️ لا نستبدل أصول /uploads/ بشعار Yamshat — نتركها 204 صامتة
+    if (
+      !url.pathname.startsWith('/uploads/') &&
+      /yamshat-logo\.(png|jpe?g|webp)$/i.test(url.pathname)
+    ) {
       const fallback = await caches.match(LOGO_FALLBACK);
       if (fallback) return fallback;
     }
-    return new Response('', { status: 204 });
+    // ✅ FIX: 204 must have null body
+    return new Response(null, { status: 204 });
   }
 }
 

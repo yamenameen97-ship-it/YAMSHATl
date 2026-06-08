@@ -134,6 +134,8 @@
         "src/components/common/AdvancedSearch.jsx",
         "src/components/common/LastActivityIndicator.jsx",
         "src/components/mobile/MobileLiveStreamCard.jsx",
+        "src/components/AdvancedGiftPicker.jsx",
+        "src/components/AdvancedReactions.jsx",
         "src/components/yamshat/YamshatIcon.jsx"
     ]
 }

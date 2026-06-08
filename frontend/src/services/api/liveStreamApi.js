@@ -3,7 +3,8 @@ import socketManager from '../socketManager.js';
 import { getPosts } from '../../api/posts.js';
 
 const asResponse = (data) => ({ data });
-
+export const addViewer = (streamId, viewerData = {}) =>
+  apiClient.post(`/live/${streamId}/viewer`, viewerData);
 export const getActiveLiveStreams = (filters = {}) =>
   apiClient.get('/live_rooms', { params: filters, cache: false, forceRefresh: true });
 

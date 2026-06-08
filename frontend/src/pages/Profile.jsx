@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
@@ -50,6 +50,7 @@ async function uploadImageOrFallback(file) {
 
 export default function Profile() {
   const { username: routeUsername } = useParams();
+  const location = useLocation();
   const { pushToast } = useToast();
   const currentUser = getCurrentUsername();
   const username = routeUsername || currentUser;
@@ -81,6 +82,17 @@ export default function Profile() {
     loadProfile();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [username]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const requestedTab = (params.get('tab') || location.hash.replace('#', '') || '').trim().toLowerCase();
+    if (requestedTab && TAB_LABELS[requestedTab]) {
+      setActiveTab(requestedTab);
+    }
+    if (params.get('panel') === 'themes' && isOwnProfile) {
+      setShowCustomization(true);
+    }
+  }, [isOwnProfile, location.hash, location.search]);
 
   const loadProfile = async () => {
     try {

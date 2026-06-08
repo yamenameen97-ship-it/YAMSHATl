@@ -429,3 +429,159 @@ def get_post_by_id(db: Session, post_id: int, current_user: User | None = None) 
     if not _can_view_post(post, current_user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Not allowed')
     return _serialize_post(db, post, current_user=current_user)
+
+
+def get_post_history(db: Session, post_id: int, user_id: int) -> dict:
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if post is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Post not found')
+    if post.user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Not allowed')
+
+    history_rows = db.query(PostEditHistory).filter(PostEditHistory.post_id == post_id).order_by(PostEditHistory.edited_at.desc(), PostEditHistory.id.desc()).all()
+    items = [
+        {
+            'id': row.id,
+            'post_id': row.post_id,
+            'editor_user_id': row.editor_user_id,
+            'previous_content': row.previous_content or '',
+            'previous_content_html': row.previous_content_html or '',
+            'previous_media_urls': normalize_media_list(_loads_list(row.previous_media_json)),
+            'previous_poll': _loads_list(row.previous_poll_json),
+            'edited_at': row.edited_at,
+        }
+        for row in history_rows
+    ]
+    return {
+        'post_id': post_id,
+        'edit_count': int(post.edit_count or len(items)),
+        'last_edited_at': post.last_edited_at,
+        'items': items,
+    }
+
+
+def like_post(db: Session, user_id: int, post_id: int) -> dict:
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if post is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Post not found')
+
+    existing = db.query(Like).filter(Like.post_id == post_id, Like.user_id == user_id).first()
+    if existing is not None:
+        db.delete(existing)
+        liked = False
+    else:
+        db.add(Like(post_id=post_id, user_id=user_id))
+        liked = True
+
+    db.flush()
+    post_like_count = db.query(func.count(Like.id)).filter(Like.post_id == post_id).scalar() or 0
+    db.commit()
+    return {
+        'post_id': post_id,
+        'liked': liked,
+        'like_count': int(post_like_count),
+        'likes_count': int(post_like_count),
+    }
+
+
+def toggle_save_post(db: Session, user_id: int, post_id: int) -> dict:
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if post is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Post not found')
+
+    existing = db.query(PostSave).filter(PostSave.post_id == post_id, PostSave.user_id == user_id).first()
+    if existing is not None:
+        db.delete(existing)
+        saved = False
+    else:
+        db.add(PostSave(post_id=post_id, user_id=user_id))
+        saved = True
+
+    db.flush()
+    save_count = db.query(func.count(PostSave.id)).filter(PostSave.post_id == post_id).scalar() or 0
+    post.save_count = int(save_count)
+    db.commit()
+    return {
+        'post_id': post_id,
+        'is_saved': saved,
+        'saved_by_me': saved,
+        'save_count': int(save_count),
+        'saved_count': int(save_count),
+    }
+
+
+def share_post(db: Session, user_id: int, post_id: int, platform: str | None = None) -> dict:
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if post is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Post not found')
+
+    share = PostShare(post_id=post_id, user_id=user_id, platform=str(platform or 'copy')[:60] or 'copy')
+    db.add(share)
+    db.flush()
+    share_count = db.query(func.count(PostShare.id)).filter(PostShare.post_id == post_id).scalar() or 0
+    post.share_count = int(share_count)
+    db.commit()
+    return {
+        'post_id': post_id,
+        'share_count': int(share_count),
+        'platform': share.platform,
+        'share_url': _share_url(post_id),
+    }
+
+
+def vote_poll(db: Session, user_id: int, post_id: int, option_key: str) -> dict:
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if post is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Post not found')
+
+    poll_options = _loads_list(post.poll_options_json)
+    option_keys = {str(option.get('id')) for option in poll_options if isinstance(option, dict) and option.get('id')}
+    if option_key not in option_keys:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid poll option')
+
+    existing_vote = db.query(PostPollVote).filter(PostPollVote.post_id == post_id, PostPollVote.user_id == user_id).first()
+    if existing_vote is None:
+        db.add(PostPollVote(post_id=post_id, user_id=user_id, option_key=option_key))
+    else:
+        existing_vote.option_key = option_key
+    db.commit()
+
+    serialized = _serialize_post(db, post, current_user=db.query(User).filter(User.id == user_id).first())
+    return {
+        'post_id': post_id,
+        'poll': serialized.get('poll', []),
+        'selected_option': option_key,
+    }
+
+
+def get_post_insights(db: Session, post_id: int, current_user: User) -> dict:
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if post is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Post not found')
+    if post.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Not allowed')
+
+    likes_count = db.query(func.count(Like.id)).filter(Like.post_id == post_id).scalar() or 0
+    comments_count = db.query(func.count(Comment.id)).filter(Comment.post_id == post_id).scalar() or 0
+    shares_count = db.query(func.count(PostShare.id)).filter(PostShare.post_id == post_id).scalar() or 0
+    saves_count = db.query(func.count(PostSave.id)).filter(PostSave.post_id == post_id).scalar() or 0
+    edits_count = db.query(func.count(PostEditHistory.id)).filter(PostEditHistory.post_id == post_id).scalar() or 0
+    votes_count = db.query(func.count(PostPollVote.id)).filter(PostPollVote.post_id == post_id).scalar() or 0
+
+    engagement_total = int(likes_count) + int(comments_count) + int(shares_count) + int(saves_count) + int(votes_count)
+    return {
+        'post_id': post_id,
+        'like_count': int(likes_count),
+        'likes_count': int(likes_count),
+        'comment_count': int(comments_count),
+        'comments_count': int(comments_count),
+        'share_count': int(shares_count),
+        'shares_count': int(shares_count),
+        'save_count': int(saves_count),
+        'saved_count': int(saves_count),
+        'poll_votes_count': int(votes_count),
+        'edit_count': int(edits_count),
+        'engagement_total': engagement_total,
+        'share_url': _share_url(post_id),
+        'post': _serialize_post(db, post, current_user=current_user),
+    }

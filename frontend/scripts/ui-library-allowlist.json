@@ -136,6 +136,8 @@
         "src/components/mobile/MobileLiveStreamCard.jsx",
         "src/components/AdvancedGiftPicker.jsx",
         "src/components/AdvancedReactions.jsx",
+        "src/components/social/FollowButton.jsx",
+        "src/components/social/FollowersListModal.jsx",
         "src/components/yamshat/YamshatIcon.jsx"
     ]
 }

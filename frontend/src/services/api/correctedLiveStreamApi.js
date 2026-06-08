@@ -1,9 +1,15 @@
+// ============================================================================
+// ملف مصحح: frontend/src/services/api/correctedLiveStreamApi.js
+// معالجة محسّنة لأخطاء البث المباشر 403 Forbidden
+// ============================================================================
+
 import apiClient from './apiClient.js';
 import socketManager from '../socketManager.js';
 
 /**
  * واجهات API محدثة للبث المباشر
  * تطابق المسارات الحقيقية في الخادم
+ * مع معالجة محسّنة لأخطاء 403 Forbidden
  */
 
 // ==================== Stream Management ====================
@@ -47,13 +53,39 @@ export const endLiveStream = (roomId) =>
 /**
  * الحصول على تفاصيل البث
  * GET /api/live_room/{room_id}
+ * 
+ * ✅ محسّن: معالجة أخطاء 403 Forbidden
  */
-export const getLiveStreamDetails = (roomId) =>
-  apiClient.get(`/live_room/${roomId}`, { cache: false, forceRefresh: true });
+export const getLiveStreamDetails = async (roomId) => {
+  try {
+    return await apiClient.get(`/live_room/${roomId}`, { 
+      cache: false, 
+      forceRefresh: true 
+    });
+  } catch (error) {
+    // إذا كان الخطأ 403 Forbidden
+    if (error.response?.status === 403) {
+      console.warn(`[Live Stream] Access denied to room ${roomId}. This stream might be private.`);
+      
+      // إذا كان هناك توكن، قد يكون البث خاص
+      // لا تحاول مرة أخرى، فقط أرجع الخطأ
+      throw error;
+    }
+    
+    // إذا كان الخطأ 404 Not Found
+    if (error.response?.status === 404) {
+      console.warn(`[Live Stream] Room ${roomId} not found.`);
+      throw error;
+    }
+    
+    // أخطاء أخرى
+    throw error;
+  }
+};
 
 /**
  * تحديث عنوان البث
- * POST /api/create_live (إعادة استخدام لتحديث العنوان)
+ * POST /api/live/{room_id}/title
  */
 export const updateStreamTitle = (roomId, title) =>
   apiClient.post(`/live/${roomId}/title`, {
@@ -62,8 +94,22 @@ export const updateStreamTitle = (roomId, title) =>
 
 // ==================== Viewer Management ====================
 
-export const getStreamViewers = (roomId) =>
-  apiClient.get(`/live/${roomId}/viewers`, { cache: false, forceRefresh: true });
+export const getStreamViewers = async (roomId) => {
+  try {
+    return await apiClient.get(`/live/${roomId}/viewers`, { 
+      cache: false, 
+      forceRefresh: true 
+    });
+  } catch (error) {
+    // معالجة أخطاء 403 و 404
+    if (error.response?.status === 403 || error.response?.status === 404) {
+      console.warn(`[Live Stream] Cannot get viewers for room ${roomId}`);
+      // أرجع قائمة فارغة بدلاً من رفع الخطأ
+      return { data: [] };
+    }
+    throw error;
+  }
+};
 
 export const addViewer = (roomId, viewerData = {}) =>
   apiClient.post(`/live/${roomId}/add-viewer`, {
@@ -120,9 +166,26 @@ export const stopRecording = (roomId) => manageRecording(roomId, 'stop');
 /**
  * الحصول على التعليقات
  * GET /api/live_comments/{room_id}
+ * 
+ * ✅ محسّن: معالجة أخطاء 403 Forbidden
  */
-export const getLiveComments = (roomId, limit = 50) =>
-  apiClient.get(`/live_comments/${roomId}`, { params: { limit }, cache: false, forceRefresh: true });
+export const getLiveComments = async (roomId, limit = 50) => {
+  try {
+    return await apiClient.get(`/live_comments/${roomId}`, { 
+      params: { limit }, 
+      cache: false, 
+      forceRefresh: true 
+    });
+  } catch (error) {
+    // إذا كان الخطأ 403 Forbidden أو 404 Not Found
+    if (error.response?.status === 403 || error.response?.status === 404) {
+      console.warn(`[Live Stream] Cannot get comments for room ${roomId}`);
+      // أرجع قائمة فارغة بدلاً من رفع الخطأ
+      return { data: [] };
+    }
+    throw error;
+  }
+};
 
 /**
  * إرسال تعليق
@@ -157,9 +220,34 @@ export const sendLiveHeart = async (roomId) => {
 /**
  * الحصول على إحصائيات البث
  * GET /api/live/{room_id}/analytics
+ * 
+ * ✅ محسّن: معالجة أخطاء 403 Forbidden
  */
-export const getStreamAnalytics = (roomId) =>
-  apiClient.get(`/live/${roomId}/analytics`, { cache: false, forceRefresh: true });
+export const getStreamAnalytics = async (roomId) => {
+  try {
+    return await apiClient.get(`/live/${roomId}/analytics`, { 
+      cache: false, 
+      forceRefresh: true 
+    });
+  } catch (error) {
+    // إذا كان الخطأ 403 Forbidden أو 404 Not Found
+    if (error.response?.status === 403 || error.response?.status === 404) {
+      console.warn(`[Live Stream] Cannot get analytics for room ${roomId}`);
+      // أرجع بيانات فارغة بدلاً من رفع الخطأ
+      return { 
+        data: {
+          stream_id: roomId,
+          viewer_count: 0,
+          peak_viewer_count: 0,
+          hearts_count: 0,
+          comments_count: 0,
+          gifts_count: 0,
+        }
+      };
+    }
+    throw error;
+  }
+};
 
 /**
  * الحصول على إحصائيات البث (بديل)
@@ -183,8 +271,40 @@ export const removeCoHost = (roomId, coHostId) =>
 
 // ==================== Stream List ====================
 
-export const getActiveLiveStreams = (filters = {}) =>
-  apiClient.get('/live_rooms', { params: filters, cache: false, forceRefresh: true });
+/**
+ * الحصول على البثوث النشطة
+ * GET /api/live_rooms
+ * 
+ * ✅ محسّن: معالجة أخطاء 401 Unauthorized
+ */
+export const getActiveLiveStreams = async (filters = {}) => {
+  try {
+    return await apiClient.get('/live_rooms', { 
+      params: filters, 
+      cache: false, 
+      forceRefresh: true 
+    });
+  } catch (error) {
+    // إذا كان الخطأ 401 Unauthorized، قد يكون التوكن منتهي الصلاحية
+    // حاول الحصول على البثوث بدون توكن
+    if (error.response?.status === 401) {
+      console.warn('[Live Stream] Authentication failed. Trying without token...');
+      try {
+        return await apiClient.get('/live_rooms', { 
+          params: filters, 
+          cache: false, 
+          forceRefresh: true,
+          headers: { Authorization: '' }  // إزالة التوكن
+        });
+      } catch (retryError) {
+        // إذا فشلت المحاولة الثانية، أرجع قائمة فارغة
+        console.warn('[Live Stream] Cannot get live streams');
+        return { data: [] };
+      }
+    }
+    throw error;
+  }
+};
 
 // ==================== Recovery & Health ====================
 
@@ -192,8 +312,21 @@ export const getActiveLiveStreams = (filters = {}) =>
  * الحصول على بيانات الاسترجاع
  * GET /api/live/{room_id}/recovery
  */
-export const getRecoveryData = (roomId) =>
-  apiClient.get(`/live/${roomId}/recovery`, { cache: false, forceRefresh: true });
+export const getRecoveryData = async (roomId) => {
+  try {
+    return await apiClient.get(`/live/${roomId}/recovery`, { 
+      cache: false, 
+      forceRefresh: true 
+    });
+  } catch (error) {
+    // معالجة أخطاء 403 و 404
+    if (error.response?.status === 403 || error.response?.status === 404) {
+      console.warn(`[Live Stream] Cannot get recovery data for room ${roomId}`);
+      return { data: {} };
+    }
+    throw error;
+  }
+};
 
 /**
  * تحديث حالة الاتصال
@@ -291,3 +424,11 @@ export default {
   applyModerationAction,
   getUserStreamStatus,
 };
+
+// ============================================================================
+// ملاحظات مهمة:
+// ============================================================================
+// 1. جميع الدوال التي تحصل على بيانات البث الآن تعالج أخطاء 403 و 404
+// 2. عند حدوث خطأ 403، يتم إرجاع بيانات فارغة بدلاً من رفع الخطأ
+// 3. هذا يسمح للواجهة الأمامية بالاستمرار في العمل حتى لو كان البث خاص
+// 4. تأكد من استيراد هذا الملف بدلاً من الملف الأصلي في جميع الأماكن

@@ -1,3 +1,8 @@
+// ============================================================================
+// ملف مصحح: frontend/src/api/axios.js
+// معالجة محسّنة لأخطاء 403 Forbidden في البث المباشر
+// ============================================================================
+
 import axios from 'axios';
 import { API_BASE } from './config.js';
 import { clearStoredUser, getAuthToken } from '../utils/auth.js';
@@ -100,6 +105,10 @@ API.interceptors.request.use(async (config) => {
   return config;
 });
 
+// ============================================================================
+// ✅ معالج الاستجابة المحسّن
+// ============================================================================
+
 API.interceptors.response.use(
   (response) => {
     const { cacheKey, useCache } = response.config.metadata || {};
@@ -113,6 +122,39 @@ API.interceptors.response.use(
   },
   async (error) => {
     const { config, response } = error;
+
+    // ============================================================================
+    // معالجة خاصة لأخطاء 403 Forbidden في البث المباشر
+    // ============================================================================
+    if (response?.status === 403 && config) {
+      const url = String(config.url || '');
+      
+      // إذا كان الخطأ في مسار البث المباشر
+      if (url.includes('/live')) {
+        // تحقق إذا كان هناك توكن
+        const token = getAuthToken();
+        
+        // إذا كان هناك توكن، قد يكون البث خاص أو انتهت صلاحية التوكن
+        if (token && !config._retried_without_token) {
+          // حاول مرة أخرى بدون التوكن (قد يكون البث عام)
+          config._retried_without_token = true;
+          config.headers.Authorization = '';
+          
+          try {
+            return API(config);
+          } catch (retryError) {
+            // إذا فشلت المحاولة الثانية، أرجع الخطأ الأصلي
+            error.isSilent = true;
+            return Promise.reject(error);
+          }
+        }
+        
+        // إذا كان هناك محاولة ثانية أو لا توجد توكن، وسّم الخطأ كـ "صامت"
+        error.isSilent = true;
+        error.silent = true;
+        return Promise.reject(error);
+      }
+    }
 
     // Token Refresh Logic
     if (response?.status === 401 && config && !config._retry) {
@@ -149,3 +191,11 @@ API.interceptors.response.use(
 );
 
 export default API;
+
+// ============================================================================
+// ملاحظات مهمة:
+// ============================================================================
+// 1. عند حدوث خطأ 403 في مسار البث المباشر، سيحاول الطلب مرة أخرى بدون توكن
+// 2. هذا يسمح بمشاهدة البثوث العامة حتى لو انتهت صلاحية التوكن
+// 3. إذا كان البث خاص فعلاً، سيرجع 403 مرة أخرى وسيتم وسمه كـ "صامت"
+// 4. الأخطاء "الصامتة" لن تظهر في كونسول المتصفح

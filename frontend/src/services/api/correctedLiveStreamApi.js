@@ -28,10 +28,10 @@ export const createLiveStream = (streamData = {}) =>
 
 /**
  * الحصول على توكن البث
- * POST /api/live/{room_id}/token
+ * POST /api/live_room/{room_id}/token
  */
 export const getLiveToken = (roomId, payload = {}) =>
-  apiClient.post(`/live/${roomId}/token`, {
+  apiClient.post(`/live_room/${roomId}/token`, {
     role: payload.role || 'host',
     quality: payload.quality || '720p',
     enable_recording: payload.enableRecording || false,
@@ -53,32 +53,32 @@ export const getLiveStreamDetails = (roomId) =>
 
 /**
  * تحديث عنوان البث
- * POST /api/create_live (إعادة استخدام لتحديث العنوان)
+ * POST /api/live_room/{room_id}/title
  */
 export const updateStreamTitle = (roomId, title) =>
-  apiClient.post(`/live/${roomId}/title`, {
+  apiClient.post(`/live_room/${roomId}/title`, {
     title: title.trim(),
   });
 
 // ==================== Viewer Management ====================
 
 export const getStreamViewers = (roomId) =>
-  apiClient.get(`/live/${roomId}/viewers`, { cache: false, forceRefresh: true });
+  apiClient.get(`/live_room/${roomId}/viewers`, { cache: false, forceRefresh: true });
 
 export const addViewer = (roomId, viewerData = {}) =>
-  apiClient.post(`/live/${roomId}/add-viewer`, {
+  apiClient.post(`/live_room/${roomId}/add-viewer`, {
     user_id: viewerData.userId,
     username: viewerData.username,
     user_avatar: viewerData.userAvatar,
   });
 
 export const removeViewer = (roomId, userId) =>
-  apiClient.post(`/live/${roomId}/remove-viewer`, { user_id: userId });
+  apiClient.post(`/live_room/${roomId}/remove-viewer`, { user_id: userId });
 
 // ==================== Moderation ====================
 
 export const muteUser = (roomId, userId, moderatorId, reason = '', durationMinutes = 5) =>
-  apiClient.post(`/live/${roomId}/mute`, {
+  apiClient.post(`/live_room/${roomId}/mute`, {
     user_id: userId,
     moderator_id: moderatorId,
     reason: reason,
@@ -86,10 +86,10 @@ export const muteUser = (roomId, userId, moderatorId, reason = '', durationMinut
   });
 
 export const unmuteUser = (roomId, userId) =>
-  apiClient.post(`/live/${roomId}/unmute`, { user_id: userId });
+  apiClient.post(`/live_room/${roomId}/unmute`, { user_id: userId });
 
 export const banUser = (roomId, userId, moderatorId, reason = '', duration = 'temporary') =>
-  apiClient.post(`/live/${roomId}/ban`, {
+  apiClient.post(`/live_room/${roomId}/ban`, {
     user_id: userId,
     moderator_id: moderatorId,
     reason: reason,
@@ -97,19 +97,19 @@ export const banUser = (roomId, userId, moderatorId, reason = '', duration = 'te
   });
 
 export const unbanUser = (roomId, userId) =>
-  apiClient.post(`/live/${roomId}/unban`, { user_id: userId });
+  apiClient.post(`/live_room/${roomId}/unban`, { user_id: userId });
 
 // ==================== Recording ====================
 
 /**
  * إدارة التسجيل
- * POST /api/live/{room_id}/recording/{action}
+ * POST /api/live_room/{room_id}/recording/{action}
  */
 export const manageRecording = (roomId, action) => {
   if (!['start', 'stop'].includes(action)) {
     throw new Error('Invalid recording action. Use "start" or "stop"');
   }
-  return apiClient.post(`/live/${roomId}/recording/${action}`);
+  return apiClient.post(`/live_room/${roomId}/recording/${action}`);
 };
 
 export const startRecording = (roomId) => manageRecording(roomId, 'start');
@@ -126,19 +126,19 @@ export const getLiveComments = (roomId, limit = 50) =>
 
 /**
  * إرسال تعليق
- * POST /api/live/{room_id}/comment
+ * POST /api/live_room/{room_id}/comment
  */
 export const sendLiveComment = (roomId, commentData = {}) =>
-  apiClient.post(`/live/${roomId}/comment`, {
+  apiClient.post(`/live_room/${roomId}/comment`, {
     text: commentData.text || '',
   });
 
 /**
  * إرسال هدية
- * POST /api/live/{room_id}/gift
+ * POST /api/live_room/{room_id}/gift
  */
 export const sendLiveGift = (roomId, giftData = {}) =>
-  apiClient.post(`/live/${roomId}/gift`, {
+  apiClient.post(`/live_room/${roomId}/gift`, {
     gift_id: giftData.giftId || giftData.id,
     name: giftData.name,
     price: giftData.price,
@@ -156,10 +156,10 @@ export const sendLiveHeart = async (roomId) => {
 
 /**
  * الحصول على إحصائيات البث
- * GET /api/live/{room_id}/analytics
+ * GET /api/live_room/{room_id}/analytics
  */
 export const getStreamAnalytics = (roomId) =>
-  apiClient.get(`/live/${roomId}/analytics`, { cache: false, forceRefresh: true });
+  apiClient.get(`/live_room/${roomId}/analytics`, { cache: false, forceRefresh: true });
 
 /**
  * الحصول على إحصائيات البث (بديل)
@@ -170,13 +170,13 @@ export const getStreamStats = (roomId) =>
 // ==================== Multi-Host ====================
 
 export const addCoHost = (roomId, coHostData = {}) =>
-  apiClient.post(`/live/${roomId}/multi-host`, {
+  apiClient.post(`/live_room/${roomId}/multi-host`, {
     action: 'add',
     username: coHostData.username || coHostData.coHostId,
   });
 
 export const removeCoHost = (roomId, coHostId) =>
-  apiClient.post(`/live/${roomId}/multi-host`, {
+  apiClient.post(`/live_room/${roomId}/multi-host`, {
     action: 'remove',
     username: coHostId,
   });
@@ -190,26 +190,26 @@ export const getActiveLiveStreams = (filters = {}) =>
 
 /**
  * الحصول على بيانات الاسترجاع
- * GET /api/live/{room_id}/recovery
+ * GET /api/live_room/{room_id}/recovery
  */
 export const getRecoveryData = (roomId) =>
-  apiClient.get(`/live/${roomId}/recovery`, { cache: false, forceRefresh: true });
+  apiClient.get(`/live_room/${roomId}/recovery`, { cache: false, forceRefresh: true });
 
 /**
  * تحديث حالة الاتصال
- * POST /api/live/{room_id}/recovery/heartbeat
+ * POST /api/live_room/{room_id}/recovery/heartbeat
  */
 export const sendHeartbeat = (roomId) =>
-  apiClient.post(`/live/${roomId}/recovery/heartbeat`);
+  apiClient.post(`/live_room/${roomId}/recovery/heartbeat`);
 
 // ==================== Settings ====================
 
 /**
  * تحديث إعدادات البث
- * POST /api/live/{room_id}/settings
+ * POST /api/live_room/{room_id}/settings
  */
 export const updateStreamSettings = (roomId, settings = {}) =>
-  apiClient.post(`/live/${roomId}/settings`, {
+  apiClient.post(`/live_room/${roomId}/settings`, {
     is_public: settings.isPublic,
     allow_comments: settings.allowComments,
     allow_gifts: settings.allowGifts,

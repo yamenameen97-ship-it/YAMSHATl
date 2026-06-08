@@ -26,7 +26,7 @@ export const createLiveStream = (streamData = {}) =>
   });
 
 export const startLiveStream = (streamId, payload = {}) =>
-  apiClient.post(`/live/${streamId}/token`, {
+  apiClient.post(`/live_room/${streamId}/token`, {
     quality: payload.quality || '720p',
     enable_recording: payload.enableRecording || false,
   }, { retry: true });
@@ -40,22 +40,22 @@ export const getLiveStreamDetails = (streamId) =>
 // ==================== Viewer Management ====================
 
 export const addViewer = (streamId, viewerData = {}) =>
-  apiClient.post(`/live/${streamId}/add-viewer`, {
+  apiClient.post(`/live_room/${streamId}/add-viewer`, {
     user_id: viewerData.userId,
     username: viewerData.username,
     platform: viewerData.platform || 'web',
   }, { retry: true });
 
 export const removeViewer = (streamId, userId) =>
-  apiClient.post(`/live/${streamId}/remove-viewer`, { user_id: userId }, { retry: true });
+  apiClient.post(`/live_room/${streamId}/remove-viewer`, { user_id: userId }, { retry: true });
 
 export const getStreamViewers = (streamId) =>
-  apiClient.get(`/live/${streamId}/viewers`, { cache: false, forceRefresh: true, retry: true });
+  apiClient.get(`/live_room/${streamId}/viewers`, { cache: false, forceRefresh: true, retry: true });
 
 // ==================== Moderation ====================
 
 export const muteUser = (streamId, userId, moderatorId, reason, duration) =>
-  apiClient.post(`/live/${streamId}/mute`, {
+  apiClient.post(`/live_room/${streamId}/mute`, {
     user_id: userId,
     moderator_id: moderatorId,
     reason,
@@ -63,10 +63,10 @@ export const muteUser = (streamId, userId, moderatorId, reason, duration) =>
   }, { retry: true });
 
 export const unmuteUser = (streamId, userId) =>
-  apiClient.post(`/live/${streamId}/unmute`, { user_id: userId }, { retry: true });
+  apiClient.post(`/live_room/${streamId}/unmute`, { user_id: userId }, { retry: true });
 
 export const banUser = (streamId, userId, moderatorId, reason, type) =>
-  apiClient.post(`/live/${streamId}/ban`, {
+  apiClient.post(`/live_room/${streamId}/ban`, {
     user_id: userId,
     moderator_id: moderatorId,
     reason,
@@ -74,12 +74,12 @@ export const banUser = (streamId, userId, moderatorId, reason, type) =>
   }, { retry: true });
 
 export const unbanUser = (streamId, userId) =>
-  apiClient.post(`/live/${streamId}/unban`, { user_id: userId }, { retry: true });
+  apiClient.post(`/live_room/${streamId}/unban`, { user_id: userId }, { retry: true });
 
 // ==================== Camera Management ====================
 
 export const updateCameraState = (streamId, cameraData = {}) =>
-  apiClient.post(`/live/${streamId}/settings`, {
+  apiClient.post(`/live_room/${streamId}/settings`, {
     camera_enabled: cameraData.cameraEnabled,
     microphone_enabled: cameraData.microphoneEnabled,
     video_bitrate: cameraData.videoBitrate,
@@ -87,7 +87,7 @@ export const updateCameraState = (streamId, cameraData = {}) =>
   }, { retry: true });
 
 export const closeCameraStream = (streamId) =>
-  apiClient.post(`/live/${streamId}/settings`, { camera_enabled: false }, { retry: true });
+  apiClient.post(`/live_room/${streamId}/settings`, { camera_enabled: false }, { retry: true });
 
 export const toggleCamera = async (streamId, enabled) => {
   return updateCameraState(streamId, {
@@ -105,15 +105,15 @@ export const toggleMicrophone = async (streamId, enabled) => {
 
 // ✅ FIX: تعطيل إعادة المحاولة (retry) لتجنب إغراق الكونسول بـ 403 عند عدم صلاحية المشاهد
 export const getStreamStats = (streamId) =>
-  apiClient.get(`/live/${streamId}/analytics`, { cache: false, forceRefresh: true, retry: false });
+  apiClient.get(`/live_room/${streamId}/analytics`, { cache: false, forceRefresh: true, retry: false });
 
 export const getLiveStreamAnalytics = (streamId) =>
-  apiClient.get(`/live/${streamId}/analytics`, { cache: false, forceRefresh: true, retry: false });
+  apiClient.get(`/live_room/${streamId}/analytics`, { cache: false, forceRefresh: true, retry: false });
 
 // ==================== Comments & Gifts ====================
 
 export const sendLiveComment = (streamId, commentData = {}) =>
-  apiClient.post(`/live/${streamId}/comment`, {
+  apiClient.post(`/live_room/${streamId}/comment`, {
     text: commentData.text || '',
   }, { retry: true });
 
@@ -121,7 +121,7 @@ export const getLiveComments = (streamId, limit = 50) =>
   apiClient.get(`/live_comments/${streamId}`, { params: { limit }, cache: false, forceRefresh: true, retry: true });
 
 export const sendLiveGift = (streamId, giftData = {}) =>
-  apiClient.post(`/live/${streamId}/gift`, {
+  apiClient.post(`/live_room/${streamId}/gift`, {
     gift_id: giftData.gift_id || giftData.giftId,
     name: giftData.name,
     price: giftData.price,
@@ -136,26 +136,26 @@ export const sendLiveHeart = async (streamId) => {
 // ==================== Recording ====================
 
 export const startRecording = (streamId) =>
-  apiClient.post(`/live/${streamId}/recording/start`, {}, { retry: true });
+  apiClient.post(`/live_room/${streamId}/recording/start`, {}, { retry: true });
 
 export const stopRecording = (streamId) =>
-  apiClient.post(`/live/${streamId}/recording/stop`, {}, { retry: true });
+  apiClient.post(`/live_room/${streamId}/recording/stop`, {}, { retry: true });
 
 export const recordLiveStream = (streamId, recordingData = {}) => {
   const action = recordingData.action || 'start';
-  return apiClient.post(`/live/${streamId}/recording/${action}`, {}, { retry: true });
+  return apiClient.post(`/live_room/${streamId}/recording/${action}`, {}, { retry: true });
 };
 
 // ==================== Multi-Host ====================
 
 export const addCoHost = (streamId, coHostData = {}) =>
-  apiClient.post(`/live/${streamId}/multi-host`, {
+  apiClient.post(`/live_room/${streamId}/multi-host`, {
     action: 'add',
     username: coHostData.username || coHostData.coHostId,
   }, { retry: true });
 
 export const removeCoHost = (streamId, coHostId) =>
-  apiClient.post(`/live/${streamId}/multi-host`, {
+  apiClient.post(`/live_room/${streamId}/multi-host`, {
     action: 'remove',
     username: coHostId,
   }, { retry: true });
@@ -272,7 +272,7 @@ export default {
   getStreamStats,
   getLiveStreamAnalytics,
   sendLiveComment,
-  getLiveComments,
+  getLive_comments: getLiveComments,
   sendLiveGift,
   sendLiveHeart,
   startRecording,

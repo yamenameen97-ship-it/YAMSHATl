@@ -1,4 +1,4 @@
-import apiClient from './apiClient.js';
+لاimport apiClient from './apiClient.js';
 import socketManager from '../socketManager.js';
 import { getPosts } from '../../api/posts.js';
 
@@ -115,6 +115,7 @@ export default {
   getPostsWithLiveStreams,
   updateLiveStreamInfo,
   getLiveStreamViewers,
+  addViewer,
   addCoHost,
   removeCoHost,
   applyModerationAction,

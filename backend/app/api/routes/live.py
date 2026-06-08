@@ -1,11 +1,14 @@
 import json
+import logging
 import re
 from datetime import datetime, timedelta
 from uuid import uuid4
 
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
+
+logger = logging.getLogger(__name__)
 
 from app.core.config import settings
 from app.core.dependencies import get_current_user, get_current_user_optional, get_db
@@ -106,14 +109,37 @@ def _hydrate_runtime_room(record: LiveRoomSession):
     runtime_room.thumbnail_url = str(getattr(runtime_room, 'thumbnail_url', '') or snapshot_thumbnail or '').strip()
 
     if snapshot:
-        snapshot_comments = [LiveComment(**comment) for comment in snapshot.get('comments', []) if isinstance(comment, dict)]
+        # حماية: بعض التعليقات/الهدايا القديمة في extra_json قد تحتوي حقولاً إضافية/ناقصة
+        def _safe_build(cls, payload):
+            items = []
+            for item in payload or []:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    items.append(cls(**item))
+                except TypeError:
+                    # فلترة الحقول غير المعروفة
+                    try:
+                        valid_keys = set(cls.__dataclass_fields__.keys())
+                        filtered = {k: v for k, v in item.items() if k in valid_keys}
+                        # ضمان وجود الحقول الإلزامية
+                        filtered.setdefault('id', item.get('id') or str(uuid4()))
+                        filtered.setdefault('room_id', item.get('room_id', ''))
+                        items.append(cls(**filtered))
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning('Skipped malformed %s snapshot entry: %s', cls.__name__, exc)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning('Skipped malformed %s entry: %s', cls.__name__, exc)
+            return items
+
+        snapshot_comments = _safe_build(LiveComment, snapshot.get('comments', []))
         if snapshot_comments and not getattr(runtime_room, 'comments', None):
             runtime_room.comments = snapshot_comments
         elif snapshot_comments:
             existing_comment_ids = {str(comment.id) for comment in (runtime_room.comments or [])}
             runtime_room.comments.extend([comment for comment in snapshot_comments if str(comment.id) not in existing_comment_ids])
 
-        snapshot_gifts = [LiveGift(**gift) for gift in snapshot.get('gifts', []) if isinstance(gift, dict)]
+        snapshot_gifts = _safe_build(LiveGift, snapshot.get('gifts', []))
         if snapshot_gifts and not getattr(runtime_room, 'gifts', None):
             runtime_room.gifts = snapshot_gifts
         elif snapshot_gifts:
@@ -333,28 +359,83 @@ def _find_viewer(runtime_room, user_id: str):
 
 @router.get('/live_rooms')
 def get_live_rooms(
-    db: Session = Depends(get_db), 
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_optional)
 ):
     """
     الحصول على البثوث النشطة.
     - السماح بالوصول للبثوث العامة بدون تسجيل دخول.
     - إذا كان المستخدم مسجل دخول، يرى البثوث العامة والخاصة به.
+    - يدعم الحد والإزاحة بدون إرجاع 500 عند فشل عنصر واحد.
     """
-    query = db.query(LiveRoomSession).filter(LiveRoomSession.is_active.is_(True))
-    
-    if not current_user:
-        query = query.filter(LiveRoomSession.is_public.is_(True))
-    else:
-        query = query.filter(
-            or_(
-                LiveRoomSession.is_public.is_(True),
-                LiveRoomSession.host_user_id == current_user.id
+    try:
+        query = db.query(LiveRoomSession).filter(LiveRoomSession.is_active.is_(True))
+
+        if not current_user:
+            query = query.filter(LiveRoomSession.is_public.is_(True))
+        else:
+            query = query.filter(
+                or_(
+                    LiveRoomSession.is_public.is_(True),
+                    LiveRoomSession.host_user_id == current_user.id
+                )
             )
+
+        records = (
+            query.order_by(LiveRoomSession.last_activity_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
         )
-    
-    records = query.order_by(LiveRoomSession.last_activity_at.desc()).all()
-    return [_serialize_record(db, record) for record in records]
+
+        rooms = []
+        for record in records:
+            try:
+                rooms.append(_serialize_record(db, record))
+            except Exception as exc:  # noqa: BLE001
+                logger.exception('Failed to serialize live room %s: %s', record.id, exc)
+                # بدل الفشل بـ 500 ، أرجع بطاقة مبسّطة
+                try:
+                    rooms.append({
+                        'id': record.id,
+                        'host': record.host_username,
+                        'username': record.host_username,
+                        'host_username': record.host_username,
+                        'title': record.title or '',
+                        'thumbnail_url': '',
+                        'created_at': _iso(record.created_at),
+                        'last_activity_at': _iso(record.last_activity_at),
+                        'active': bool(record.is_active),
+                        'is_active': bool(record.is_active),
+                        'is_public': bool(getattr(record, 'is_public', True)),
+                        'livekit_room': record.livekit_room,
+                        'livekit_url': record.livekit_url or settings.LIVEKIT_URL or '',
+                        'stream_status': record.stream_status,
+                        'viewer_count': int(record.viewer_count or 0),
+                        'peak_viewer_count': int(record.peak_viewer_count or 0),
+                        'hearts_count': int(record.hearts_count or 0),
+                        'comments_count': 0,
+                        'recording': {
+                            'status': record.recording_status or 'idle',
+                            'url': record.recording_url,
+                        },
+                        'settings': DEFAULT_STREAM_SETTINGS,
+                        'livekit_configured': _is_livekit_configured(),
+                    })
+                except Exception:
+                    continue
+        return rooms
+    except Exception as exc:  # noqa: BLE001
+        logger.exception('get_live_rooms failed: %s', exc)
+        # إرجاع قائمة فارغة بدل 500 حتى لا تفشل واجهة الفيد،
+        # والبث الجديد يبقى قابلاً للإنشاء.
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return []
 
 
 @router.get('/live_room/{room_id}')
@@ -444,8 +525,9 @@ def get_stream_viewers(
 
 
 @router.post('/live_rooms')
+@router.post('/create_live')
 def create_live_room(
-    title: str = Body(..., embed=True),
+    title: str = Body('', embed=True),
     is_public: bool = Body(True, embed=True),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -510,6 +592,7 @@ def get_live_token(
 
 
 @router.post('/live_room/{room_id}/end')
+@router.post('/end_live/{room_id}')
 def end_live_room(
     room_id: str,
     db: Session = Depends(get_db),
@@ -523,14 +606,19 @@ def end_live_room(
     record.ended_at = _utcnow()
     db.commit()
 
-    live_store.remove_room(room_id)
+    try:
+        live_store.remove_room(room_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('live_store.remove_room failed for %s: %s', room_id, exc)
     return {'status': 'success'}
 
 
 @router.post('/live_room/{room_id}/gift')
+@router.post('/live/{room_id}/gift')
 def send_live_gift(
     room_id: str,
-    gift_id: str = Body(...),
+    gift_id: str = Body('default'),
+    amount: int = Body(10),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -542,11 +630,14 @@ def send_live_gift(
     gift = LiveGift(
         id=str(uuid4()),
         room_id=room_id,
+        user=current_user.username,
+        gift_name=gift_id,
+        coins=int(amount or 10),
+        created_at=_iso(_utcnow()),
         user_id=current_user.id,
         username=current_user.username,
         gift_id=gift_id,
-        amount=10,  # Default amount
-        created_at=_iso(_utcnow()),
+        amount=int(amount or 10),
     )
     
     if not hasattr(room, 'gifts') or room.gifts is None:
@@ -560,9 +651,11 @@ def send_live_gift(
 
 
 @router.post('/live_room/{room_id}/comment')
+@router.post('/live/{room_id}/comment')
 def add_live_comment(
     room_id: str,
-    content: str = Body(..., embed=True),
+    content: str = Body('', embed=True),
+    text: str = Body('', embed=True),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -570,14 +663,20 @@ def add_live_comment(
     if not record.is_active:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Room is not active')
 
+    final_text = (content or text or '').strip()
+    if not final_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Comment cannot be empty')
+
     room = _hydrate_runtime_room(record)
     comment = LiveComment(
         id=str(uuid4()),
         room_id=room_id,
+        user=current_user.username,
+        text=final_text,
+        created_at=_iso(_utcnow()),
         user_id=current_user.id,
         username=current_user.username,
-        content=content,
-        created_at=_iso(_utcnow()),
+        content=final_text,
     )
     
     if not hasattr(room, 'comments') or room.comments is None:

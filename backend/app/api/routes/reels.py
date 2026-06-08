@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
+from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import and_, desc
@@ -12,6 +15,35 @@ from app.core.media_urls import normalize_media_url
 from app.db.bootstrap import initialize_database
 from app.models.stories_reels import Reel, ReelLike, ReelView, SavedReel
 from app.models.user import User
+
+logger = logging.getLogger(__name__)
+
+_UPLOADS_ROOT = Path(__file__).resolve().parents[3] / 'uploads'
+
+
+def _media_file_exists(url: str | None) -> bool:
+    """تحقّق أن ملف الوسائط فعليّاً موجود في /uploads (أو URL خارجي)."""
+    if not url:
+        return False
+    try:
+        path_part = url
+        parsed = urlparse(url)
+        if parsed.scheme in ('http', 'https'):
+            # روابط خارجية (CDN / S3) نثق بوجودها
+            if '/uploads/' not in (parsed.path or ''):
+                return True
+            path_part = parsed.path
+        # path_part الآن مثل: /uploads/abc.mp4
+        marker = '/uploads/'
+        idx = path_part.find(marker)
+        if idx < 0:
+            return True  # غير مرتبط بـ /uploads فلا نحكم عليه
+        filename = path_part[idx + len(marker):].lstrip('/')
+        if not filename:
+            return False
+        return (_UPLOADS_ROOT / filename).exists()
+    except Exception:
+        return True  # عند الشك لا تستبعده
 
 router = APIRouter()
 
@@ -41,8 +73,34 @@ def _load_reels_items(db: Session, current_user: User, *, limit: int, offset: in
     query = db.query(Reel).filter(Reel.is_deleted.is_(False))
     if str(category or 'all').strip().lower() != 'all':
         query = query.filter(Reel.category == str(category).strip())
-    reels = query.order_by(desc(Reel.created_at), Reel.id.desc()).offset(offset).limit(limit).all()
-    return [_serialize_reel(db, reel, current_user=current_user) for reel in reels]
+    # نجلب أكثر من المطلوب لأننا سنفلتر سجلات ملفاتها مفقودة (404 في الواجهة)
+    fetch_limit = max(limit * 4, limit + 20)
+    reels = query.order_by(desc(Reel.created_at), Reel.id.desc()).offset(offset).limit(fetch_limit).all()
+    serialized: list[dict] = []
+    for reel in reels:
+        try:
+            payload = _serialize_reel(db, reel, current_user=current_user)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('Failed to serialize reel %s: %s', getattr(reel, 'id', '?'), exc)
+            continue
+        # تخطي الريلز التي ملفاتها مفقودة لتجنب خطأ 404 في الفيد
+        video_ok = _media_file_exists(payload.get('video_url'))
+        if not video_ok:
+            try:
+                # تعليم السجل كمحذوف برفق حتى لا يعود
+                reel.is_deleted = True
+                db.add(reel)
+            except Exception:
+                pass
+            continue
+        serialized.append(payload)
+        if len(serialized) >= limit:
+            break
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+    return serialized
 
 
 def _serialize_reel(db: Session, reel: Reel, current_user: User | None = None) -> dict:

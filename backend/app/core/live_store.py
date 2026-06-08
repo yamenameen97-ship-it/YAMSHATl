@@ -13,22 +13,63 @@ def _utcnow() -> str:
 class LiveComment:
     id: str
     room_id: str
-    user: str
-    text: str
-    created_at: str
+    user: str = ''
+    text: str = ''
+    created_at: str = ''
     pinned: bool = False
     ai_moderated: bool = False
     moderation_score: float = 0.0
+    # ----- Backwards-compatible aliases (frontend/extra_json uses these names) -----
+    user_id: str | int | None = None
+    username: str | None = None
+    content: str | None = None
+
+    def __post_init__(self):
+        # Sync aliases: accept either (user/text) or (username/content) and keep both.
+        if not self.user and (self.username or self.user_id is not None):
+            self.user = str(self.username or self.user_id or '')
+        if not self.username:
+            self.username = self.user
+        if not self.text and self.content is not None:
+            self.text = str(self.content)
+        if self.content is None:
+            self.content = self.text
+        if not self.created_at:
+            self.created_at = _utcnow()
 
 
 @dataclass
 class LiveGift:
     id: str
     room_id: str
-    user: str
-    gift_name: str
-    coins: int
-    created_at: str
+    user: str = ''
+    gift_name: str = ''
+    coins: int = 0
+    created_at: str = ''
+    # ----- Backwards-compatible aliases -----
+    user_id: str | int | None = None
+    username: str | None = None
+    gift_id: str | None = None
+    amount: int | None = None
+
+    def __post_init__(self):
+        if not self.user and (self.username or self.user_id is not None):
+            self.user = str(self.username or self.user_id or '')
+        if not self.username:
+            self.username = self.user
+        if not self.gift_name and self.gift_id:
+            self.gift_name = str(self.gift_id)
+        if not self.gift_id:
+            self.gift_id = self.gift_name
+        if not self.coins and self.amount is not None:
+            try:
+                self.coins = int(self.amount)
+            except (TypeError, ValueError):
+                self.coins = 0
+        if self.amount is None:
+            self.amount = self.coins
+        if not self.created_at:
+            self.created_at = _utcnow()
 
 
 @dataclass
@@ -153,6 +194,20 @@ class LiveStore:
         room.viewer_count = 0
         room.last_activity_at = _utcnow()
         return self.serialize_room(room)
+
+    def remove_room(self, room_id: str) -> bool:
+        """إزالة الغرفة من الذاكرة بعد إنهاء البث (يُستدعى من end_live_room)."""
+        key = str(room_id)
+        if key in self.rooms:
+            try:
+                self.rooms[key].active = False
+                self.rooms[key].stream_status = 'ended'
+                self.rooms[key].viewers.clear()
+            except Exception:
+                pass
+            del self.rooms[key]
+            return True
+        return False
 
     def admin_overview(self) -> dict:
         rooms = [self.serialize_room(room) for room in self.rooms.values()]

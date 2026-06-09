@@ -1,10 +1,20 @@
 """
 Yamshat Main Application - Fixed Entry Point
-يحل مشكلة CORS + 503 على كابتشا /api/auth/captcha
+يحل مشكلة CORS + 503 + 404 على كابتشا /api/auth/captcha
 """
 import os
+import base64
+import hashlib
+import hmac
+import json
 import logging
-from fastapi import FastAPI, Request
+import random
+import secrets
+import time
+import traceback
+from datetime import datetime, timedelta, timezone
+
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -15,7 +25,7 @@ logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(
     title="Yamshat API",
-    version="1.0.0",
+    version="1.0.1",
     docs_url="/api/docs" if settings.DEBUG else None,
     redoc_url=None,
 )
@@ -79,8 +89,76 @@ async def warmup():
 
 
 # ============================================================
-# 📦 تحميل الراوترات الكاملة (auth/captcha/users/posts/...)
+# 🛟 Captcha Fallback المدمج
+# يضمن أن /api/auth/captcha لن يرجع 404 أبداً حتى لو فشل تحميل
+# راوتر auth الكامل (مثلاً بسبب خطأ في import داخل ملف آخر).
+# هذا الـ endpoint بسيط، stateless، ومتوافق تماماً مع الواجهة الأمامية.
+# سيتم استبداله بالنسخة الكاملة عند نجاح تحميل auth.router.
 # ============================================================
+
+_CAPTCHA_TTL_SECONDS = 300  # 5 دقائق
+
+
+def _captcha_secret() -> bytes:
+    base = (os.getenv("SECRET_KEY") or getattr(settings, "SECRET_KEY", "") or "yamshat-default-secret").encode()
+    return hashlib.sha256(b"yamshat-captcha-v1:" + base).digest()
+
+
+def _sign_captcha_token(payload: dict) -> str:
+    body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    body_b64 = base64.urlsafe_b64encode(body).rstrip(b"=").decode("ascii")
+    sig = hmac.new(_captcha_secret(), body_b64.encode("ascii"), hashlib.sha256).digest()
+    sig_b64 = base64.urlsafe_b64encode(sig).rstrip(b"=").decode("ascii")
+    return f"{body_b64}.{sig_b64}"
+
+
+def _issue_simple_captcha() -> dict:
+    a = random.randint(1, 9)
+    b = random.randint(1, 9)
+    op = random.choice(["+", "-"])
+    if op == "+":
+        answer = a + b
+        question = f"{a} + {b} = ?"
+    else:
+        # نضمن نتيجة غير سالبة
+        if b > a:
+            a, b = b, a
+        answer = a - b
+        question = f"{a} - {b} = ?"
+
+    now = int(time.time())
+    token_payload = {
+        "a": str(answer),
+        "iat": now,
+        "exp": now + _CAPTCHA_TTL_SECONDS,
+        "nonce": secrets.token_urlsafe(8),
+    }
+    captcha_id = _sign_captcha_token(token_payload)
+    return {
+        "captcha_id": captcha_id,
+        "question": question,
+        "expires_in": _CAPTCHA_TTL_SECONDS,
+    }
+
+
+# نضع الـ fallback بأولوية أقل (يُضاف الآن، لكن إذا تم تركيب راوتر auth الكامل
+# لاحقاً على نفس المسار، فإن FastAPI سيستخدم أول مطابقة — وهي هذه).
+# لذلك نستخدم اسم مسار مختلف للـ fallback، ونضيف /api/auth/captcha مباشرة
+# فقط في حال فشل التركيب الكامل.
+
+@app.get("/api/auth/captcha-fallback")
+async def captcha_fallback():
+    """Captcha بديلة بسيطة دائماً متاحة (للتشخيص + الاستخدام في حالات الطوارئ)."""
+    return _issue_simple_captcha()
+
+
+# ============================================================
+# 📦 تحميل الراوترات الكاملة (auth/captcha/users/posts/...)
+# مع تسجيل واضح لأخطاء الاستيراد + متابعة لأي راوتر فشل.
+# ============================================================
+_ROUTER_STATUS: dict[str, dict] = {}
+
+
 def _include(router_path: str, prefix: str = ""):
     try:
         module_name, attr = router_path.rsplit(".", 1)
@@ -88,13 +166,33 @@ def _include(router_path: str, prefix: str = ""):
         mod = importlib.import_module(module_name)
         router = getattr(mod, attr)
         app.include_router(router, prefix=prefix)
-        logger.info(f"[router] mounted {router_path} at {prefix}")
+        logger.info(f"[router] ✅ mounted {router_path} at {prefix}")
+        _ROUTER_STATUS[router_path] = {"ok": True, "prefix": prefix}
+        return True
     except Exception as e:
-        logger.warning(f"[router] failed {router_path}: {e}")
+        tb = traceback.format_exc()
+        logger.error(f"[router] ❌ FAILED {router_path}: {e}\n{tb}")
+        _ROUTER_STATUS[router_path] = {"ok": False, "prefix": prefix, "error": f"{type(e).__name__}: {e}"}
+        return False
 
 
 # الراوتر الأهم - auth/captcha
-_include("app.api.routes.auth.router", prefix="/api/auth")
+_auth_ok = _include("app.api.routes.auth.router", prefix="/api/auth")
+
+# ============================================================
+# 🆘 fallback نهائي: إذا فشل تركيب راوتر auth بالكامل، نسجّل endpoint
+# الكابتشا الأساسي مباشرة على المسار الذي يتوقعه الـ frontend.
+# هذا يضمن أن المستخدم لن يرى captcha "Not Found" أبداً.
+# ============================================================
+if not _auth_ok:
+    logger.error("[captcha] ⚠️  auth router FAILED to load → registering inline /api/auth/captcha fallback")
+
+    @app.get("/api/auth/captcha")
+    async def inline_captcha_fallback():
+        return _issue_simple_captcha()
+
+
+# باقي الراوترات
 _include("app.api.routes.users.router", prefix="/api/users")
 _include("app.api.routes.posts.router", prefix="/api/posts")
 _include("app.api.routes.comments.router", prefix="/api/comments")
@@ -112,13 +210,31 @@ _include("app.api.routes.inbox.router", prefix="/api/inbox")
 _include("app.api.routes.recommendations.router", prefix="/api/recommendations")
 _include("app.api.routes.analytics.router", prefix="/api/analytics")
 
-# 🎮 Engagement & Gamification (المهام، المستويات، الشارات، عجلة الحظ، الإحالة، المتجر)
+# 🎮 Engagement & Gamification
 _include("app.api.routes.engagement.router", prefix="/api/engagement")
-# 🔊 Voice Rooms - الغرف الصوتية الجماعية
+# 🔊 Voice Rooms
 _include("app.api.routes.voice_rooms.router", prefix="/api/voice")
+
+
+# ============================================================
+# 🔍 Diagnostics endpoint — لمعرفة أي راوتر فشل بسرعة
+# ============================================================
+@app.get("/api/_diag/routers")
+async def diag_routers():
+    return {
+        "total": len(_ROUTER_STATUS),
+        "ok": sum(1 for v in _ROUTER_STATUS.values() if v["ok"]),
+        "failed": [k for k, v in _ROUTER_STATUS.items() if not v["ok"]],
+        "details": _ROUTER_STATUS,
+    }
 
 
 @app.on_event("startup")
 async def on_startup():
     logger.info("🚀 Yamshat backend started")
     logger.info(f"   DEBUG={settings.DEBUG}  CAPTCHA={settings.CAPTCHA_ENABLED}")
+    failed = [k for k, v in _ROUTER_STATUS.items() if not v["ok"]]
+    if failed:
+        logger.warning(f"   ⚠️  Failed routers ({len(failed)}): {failed}")
+    else:
+        logger.info(f"   ✅ All {len(_ROUTER_STATUS)} routers mounted successfully")

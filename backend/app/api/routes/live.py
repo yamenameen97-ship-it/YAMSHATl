@@ -579,36 +579,70 @@ def create_live_room(
 
 
 @router.post('/live_room/{room_id}/token')
+@router.post('/live/{room_id}/token')
+@router.get('/live_room/{room_id}/token')
+@router.get('/live/{room_id}/token')
 def get_live_token(
     room_id: str,
+    payload: dict | None = Body(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    🔑 إصدار توكن LiveKit للبث المباشر.
+    إصلاحات:
+    - دعم كل من /live/ و /live_room/ (المسارين معاً) لمنع 404.
+    - دعم GET و POST لمنع فشل بعض عملاء الموبايل.
+    - إرجاع livekit_url و livekit_room ضمن الاستجابة (الفرونت يحتاجها).
+    - معالجة آمنة لفشل livekit + رسائل خطأ أوضح بدل 500 صامت.
+    """
     record = _require_room(room_id, db)
     if not record.is_active:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Room is not active')
 
     if not _is_livekit_configured():
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail='Live streaming is not configured')
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail='Live streaming is not configured (missing LIVEKIT_URL/API_KEY/API_SECRET).',
+        )
 
     # التحقق من الصلاحيات للبثوث الخاصة
     if not record.is_public and record.host_user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='This stream is private')
 
-    grant = livekit_api.VideoGrant(
-        room_join=True,
-        room=record.livekit_room,
-        can_publish=(record.host_user_id == current_user.id),
-        can_subscribe=True,
-    )
-    access_token = livekit_api.AccessToken(
-        settings.LIVEKIT_API_KEY,
-        settings.LIVEKIT_API_SECRET,
-        identity=current_user.username,
-        name=current_user.username,
-    )
-    access_token.add_grant(grant)
-    return {'token': access_token.to_jwt()}
+    is_host = record.host_user_id == current_user.id
+
+    try:
+        grant = livekit_api.VideoGrant(
+            room_join=True,
+            room=record.livekit_room,
+            can_publish=is_host,
+            can_subscribe=True,
+            can_publish_data=True,
+        )
+        access_token = livekit_api.AccessToken(
+            settings.LIVEKIT_API_KEY,
+            settings.LIVEKIT_API_SECRET,
+            identity=str(current_user.username or f"user-{current_user.id}"),
+            name=str(current_user.username or f"user-{current_user.id}"),
+        )
+        access_token.add_grant(grant)
+        jwt_token = access_token.to_jwt()
+    except Exception as exc:  # noqa: BLE001
+        logger.exception('Failed to generate LiveKit token for room %s: %s', room_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f'Failed to generate LiveKit token: {exc}',
+        )
+
+    return {
+        'token': jwt_token,
+        'livekit_url': record.livekit_url or settings.LIVEKIT_URL or '',
+        'livekit_room': record.livekit_room,
+        'role': 'host' if is_host else 'viewer',
+        'identity': str(current_user.username or f"user-{current_user.id}"),
+        'room_id': record.id,
+    }
 
 
 @router.post('/live_room/{room_id}/end')

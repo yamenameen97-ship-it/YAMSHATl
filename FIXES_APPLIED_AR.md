@@ -1,62 +1,62 @@
-# ✅ الإصلاحات المُطبَّقة على Yamshat — صفحة الريلز
+# تقرير إصلاح الأخطاء - Yamshat
 
-## ملخّص المشاكل التي تم حلها
+## الأخطاء التي تم إصلاحها
 
-### 1) إصلاح أخطاء الكونسول الخاصة بـ Service Worker
-**الخطأ:**
+### 1. ❌ خطأ 500 على `/api/auth/.../token` و `/api/live/{room_id}/token`
+**السبب:**
+- نقطة `token` كانت مسجّلة فقط على `/live_room/{room_id}/token` بينما الفرونت أحياناً يستدعي `/live/{room_id}/token` → 404.
+- الاستجابة لم تكن تُرجع `livekit_url` و `livekit_room` → الفرونت لا يقدر يفتح الكاميرا حتى لو نجح التوكن.
+- أي استثناء داخلي في `livekit_api.AccessToken(...)` كان يتسبب بـ 500 صامت.
+
+**الإصلاح في `backend/app/api/routes/live.py`:**
+- دعم 4 مسارات: `POST/GET /live/{room_id}/token` و `POST/GET /live_room/{room_id}/token`.
+- إضافة `livekit_url` + `livekit_room` + `role` + `identity` للاستجابة.
+- التفاف `try/except` يلتقط الأخطاء ويعيد رسالة واضحة بدل 500 صامت.
+- إضافة `can_publish_data=True` ليتمكن المضيف من إرسال البيانات الإضافية.
+
+### 2. ❌ خطأ 404 على `/api/live/{room_id}/viewers`
+**السبب:** الـ endpoint كان مسجّلاً، لكن مع `_require_room` وليس `_find_room_record` في بعض الحالات.
+**الإصلاح:** كان مُصلَحاً بالفعل عبر `@router.get('/live/{room_id}/viewers')` — تم التحقق من سلامة المسار.
+
+### 3. ❌ خطأ 404 على `/uploads/...logo192.png` (يتكرر 5+ مرات)
+**السبب:** مجلد `/uploads` غير مُركّب كملفات ثابتة في `main.py`، فأي طلب على `/uploads/*` يعود 404.
+
+**الإصلاح في `backend/app/main.py`:**
+- إضافة `app.mount("/uploads", StaticFiles(...))` على مجلد uploads.
+- إضافة fallback handler يعيد شعاراً افتراضياً (`logo192.png` من frontend/public) عند فقدان الملف.
+- في حالة عدم وجود أي شعار، يُرجع PNG شفاف 1×1 بدل 404 (يوقف فيضان أخطاء الكونسول).
+- نسخ `logo192.png` إلى `backend/uploads/` كنسخة احتياطية.
+
+### 4. ❌ خطأ Camera لم تفتح
+**السبب الرئيسي:** فشل `startLiveStream` بسبب 500 على `/token` (الإصلاح #1) منع `livekitService.connect(...)` من العمل.
+**الإصلاح:** بعد الإصلاحات #1 و #3:
+- التوكن يُرجع `livekit_url` و `livekit_room` بشكل صحيح.
+- إذا فشل LiveKit، رسالة الخطأ تظهر بوضوح بدل 500 غامض.
+- `getUserMedia` يبدأ بشكل طبيعي بمجرد نجاح `startLiveStream`.
+
+### 5. ❌ خطأ 500 على Captcha token
+**السبب:** كان موجود fallback لكن غير مُفعّل قبل تركيب راوتر auth.
+**الإصلاح:** الكود موجود بالفعل في `main.py`:
+- `/api/auth/captcha-fallback` متاح دائماً.
+- إذا فشل تحميل راوتر `auth`، يتم تركيب `/api/auth/captcha` مباشرة.
+
+## الملفات المعدّلة
+1. `backend/app/main.py` — إضافة `/uploads` static mount + fallback handler.
+2. `backend/app/api/routes/live.py` — إعادة هيكلة `get_live_token` بدعم 4 مسارات + معالجة أخطاء + إرجاع `livekit_url`.
+3. `backend/uploads/logo192.png` — إضافة الشعار كملف احتياطي.
+
+## كيفية الاختبار بعد النشر
+```bash
+# اختبار static
+curl -I https://yamshat-1ya4.onrender.com/uploads/logo192.png
+# يجب: 200 OK
+
+# اختبار token (مع جلسة مسجّلة)
+curl -X POST https://yamshat-1ya4.onrender.com/api/live/ROOM_ID/token \
+  -H "Cookie: session=..." 
+# يجب: {"token": "...", "livekit_url": "wss://...", "livekit_room": "..."}
+
+# اختبار viewers
+curl https://yamshat-1ya4.onrender.com/api/live/ROOM_ID/viewers
+# يجب: قائمة المشاهدين أو [] بدل 404
 ```
-TypeError: Failed to construct 'Response': Response with null body status cannot have body
-    at mediaStrategy (sw-pwa-enhanced.js:197:12)
-```
-
-**السبب:** كود الـ Service Worker كان يُنشئ `new Response('', { status: 204 })`. حسب
-معيار Fetch API، الاستجابات بحالة 204/205/304 **لا يُسمح لها بأن تحمل body** —
-حتى لو كان نصاً فارغاً `''`. هذا أدّى لرمي استثناء غير مُعالَج عند كل طلب
-يفشل من /uploads/.
-
-**الإصلاح:** استبدال جميع حالات `new Response('', { status: 204 })` بـ
-`new Response(null, { status: 204 })` في:
-- `frontend/public/sw-pwa-enhanced.js`
-- `frontend/dist/sw-pwa-enhanced.js`
-
-(ثلاث مواضع في الدالة `mediaStrategy`)
-
-### 2) شيل الشعار العائم فوق فيديو الريل
-**السبب:** عندما يفشل تحميل فيديو من /uploads/ (404)، كانت `mediaStrategy`
-تُعيد شعار Yamshat كـ fallback في بعض الحالات، مما يجعل شعار العلامة التجارية
-يظهر فوق إطار الفيديو الأسود.
-
-**الإصلاح:** في `mediaStrategy`، استثناء أي مسار يبدأ بـ `/uploads/` من منطق
-الـ logo fallback. الآن طلبات /uploads/ المفقودة تُرجع 204 صامتة بدلاً من
-صورة الشعار، فلا يظهر أي شعار عائم فوق الفيديو.
-
-### 3) إظهار الهيدر العلوي والسفلي في صفحة الريلز
-**السبب:** صفحة `Reels.jsx` كانت تستدعي `<MainLayout hideNav>` ممّا يخفي:
-- الهيدر العلوي (MobileTopBar)
-- شريط التنقّل السفلي (BottomNav)
-
-**الإصلاح:** إزالة `hideNav` من `<MainLayout>` في:
-- `frontend/src/pages/Reels.jsx`
-- `frontend/dist/chunks/Reels-B-huy0aZ.js` (نسخة البناء)
-
-**تعديل تكميلي:** تحديث `.reels-page-shell` لاستخدام:
-```css
-height: calc(100dvh - var(--yam-top-chrome-height, 60px) - var(--yam-bottom-chrome-height, 70px));
-```
-بدل `100vh` حتى لا يتقاطع المحتوى مع الهيدر/الفوتر العائمَين.
-
-## الملفات المُعدَّلة
-| الملف | نوع التعديل |
-| --- | --- |
-| `frontend/public/sw-pwa-enhanced.js` | إصلاح 204 + استثناء /uploads/ من logo fallback، رفع نسخة SW إلى 1.0.3 |
-| `frontend/dist/sw-pwa-enhanced.js` | نفس الإصلاح (نسخة البناء) |
-| `frontend/src/pages/Reels.jsx` | إزالة hideNav + ضبط ارتفاع المسرح |
-| `frontend/dist/chunks/Reels-B-huy0aZ.js` | نفس الإصلاحَين في نسخة البناء |
-
-## ملاحظات مهمة عند النشر
-1. **بعد رفع الإصدار الجديد**، يجب على المستخدم تحديث الصفحة (أو إعادة فتح
-   التطبيق) حتى يتم تنزيل الـ Service Worker الجديد. زيادة `SW_VERSION` من
-   `1.0.2` إلى `1.0.3` تضمن إعادة تثبيت الـ SW تلقائياً.
-2. **ملفات البناء (`dist/`) سليمة وغير محذوفة** — تم تعديل ملفّين فقط بداخلها
-   مع المحافظة على بقية الـ chunks وأصول البناء.
-3. **لا يحتوي المشروع على node_modules** كما هو مطلوب.

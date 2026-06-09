@@ -14,10 +14,13 @@ import time
 import traceback
 from datetime import datetime, timedelta, timezone
 
+from pathlib import Path
+
 import socketio
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 
@@ -87,6 +90,66 @@ async def health():
 async def warmup():
     """نقطة استيقاظ سريعة بدون أي تبعيات DB."""
     return {"warm": True}
+
+
+# ============================================================
+# 📁 خدمة مجلد /uploads كملفات ثابتة
+# إصلاح أخطاء 404 على /uploads/...logo192.png وصور أخرى
+# نجرب مسارين: project-root/uploads و backend/uploads (fallback).
+# ============================================================
+_BACKEND_ROOT = Path(__file__).resolve().parents[1]   # .../backend
+_PROJECT_ROOT = _BACKEND_ROOT.parent                  # .../
+_UPLOAD_DIRS = [_PROJECT_ROOT / "uploads", _BACKEND_ROOT / "uploads"]
+for _d in _UPLOAD_DIRS:
+    try:
+        _d.mkdir(parents=True, exist_ok=True)
+    except Exception as _exc:  # noqa: BLE001
+        logger.warning(f"[uploads] cannot create {_d}: {_exc}")
+
+_PRIMARY_UPLOAD_DIR = _UPLOAD_DIRS[0]
+try:
+    app.mount("/uploads", StaticFiles(directory=str(_PRIMARY_UPLOAD_DIR), check_dir=False), name="uploads")
+    logger.info(f"[uploads] ✅ mounted /uploads -> {_PRIMARY_UPLOAD_DIR}")
+except Exception as _exc:  # noqa: BLE001
+    logger.error(f"[uploads] failed to mount StaticFiles: {_exc}")
+
+# Fallback handler: يجرب كل المجلدات + يخدم شعار افتراضي بدل 404
+_DEFAULT_LOGO_CANDIDATES = [
+    _PROJECT_ROOT / "frontend" / "public" / "logo192.png",
+    _PROJECT_ROOT / "frontend" / "public" / "icons" / "icon-192.png",
+]
+
+
+@app.get("/uploads/{path:path}")
+async def uploads_fallback(path: str):
+    """
+    fallback لأي ملف تحت /uploads:
+    1. تجربة مجلدي uploads (project-root + backend).
+    2. إذا كان المطلوب logo192/icon ، نعيد شعار افتراضي.
+    3. خلاف ذلك: PNG شفاف 1×1 بدل 404 (يوقف فيضان خطأ الكونسول).
+    """
+    safe_name = path.lstrip("/")
+    for d in _UPLOAD_DIRS:
+        candidate = d / safe_name
+        try:
+            if candidate.is_file() and candidate.resolve().is_relative_to(d.resolve()):
+                return FileResponse(str(candidate))
+        except Exception:
+            pass
+
+    # فولباك خاص بالشعار
+    lower = safe_name.lower()
+    if "logo" in lower or "icon" in lower or lower.endswith((".png", ".jpg", ".jpeg", ".webp")):
+        for logo in _DEFAULT_LOGO_CANDIDATES:
+            if logo.is_file():
+                return FileResponse(str(logo), media_type="image/png")
+        # PNG شفاف 1x1 كملاذ أخير
+        tiny_png = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+        )
+        return Response(content=tiny_png, media_type="image/png")
+
+    raise HTTPException(status_code=404, detail=f"file not found: {safe_name}")
 
 
 # ============================================================

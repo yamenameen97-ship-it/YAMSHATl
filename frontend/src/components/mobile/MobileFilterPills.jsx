@@ -12,12 +12,20 @@ const FILTERS = [
   { id: 'live', label: 'البث' },
 ];
 
-function MobileFilterPills({ activeId = 'all', onChange }) {
+function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange }) {
+  // ✅ FIX: قبول الاسمين معاً (activeId/activeFilter و onChange/onFilterChange)
+  //   حتى لا تنكسر عند الاستخدام من صفحات مختلفة (FeedMobile وغيرها).
+  const currentActive = activeFilter ?? activeId ?? 'all';
+  const handleChange = (id) => {
+    if (typeof onFilterChange === 'function') onFilterChange(id);
+    if (typeof onChange === 'function') onChange(id);
+  };
+
   return (
     <div className="ym-filters-container">
       <div className="ym-filters" role="tablist">
         {FILTERS.map((f) => {
-          const isActive = f.id === activeId;
+          const isActive = f.id === currentActive;
           return (
             <button
               key={f.id}
@@ -25,7 +33,7 @@ function MobileFilterPills({ activeId = 'all', onChange }) {
               role="tab"
               aria-selected={isActive}
               className={`ym-filter-pill-new ${f.id} ${isActive ? 'is-active' : ''}`}
-              onClick={() => onChange?.(f.id)}
+              onClick={() => handleChange(f.id)}
             >
               <div className="pill-content">
                 {f.hasDot && <span className="pill-dot"></span>}

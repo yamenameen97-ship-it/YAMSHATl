@@ -193,23 +193,24 @@ function MobileLiveStreamCard({ post, liveStream, onStreamEnd }) {
             onError={() => setThumbnailError(true)}
           />
         ) : (
-          /* Placeholder احترافي بشعار Y بدلاً من خلفية سوداء */
+          /* Placeholder احترافي بشعار Y كبير في المنتصف (تصميم 2026) */
           <div className="ym-live-card__thumb-placeholder" aria-hidden="true">
             <div className="ym-live-card__thumb-glow" />
-            <svg className="ym-live-card__thumb-logo" viewBox="0 0 100 100" fill="none">
-              <path
-                d="M20 20 L50 55 L80 20 M50 55 L50 85"
-                stroke="url(#ymGrad)"
-                strokeWidth="10"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
+            <svg className="ym-live-card__thumb-logo" viewBox="0 0 120 120" fill="none">
               <defs>
-                <linearGradient id="ymGrad" x1="0" y1="0" x2="100" y2="100">
-                  <stop offset="0%" stopColor="#a78bfa" />
+                <linearGradient id={`ymGrad-${id || 'def'}`} x1="0" y1="0" x2="120" y2="120">
+                  <stop offset="0%" stopColor="#c4b5fd" />
+                  <stop offset="50%" stopColor="#a78bfa" />
                   <stop offset="100%" stopColor="#7c3aed" />
                 </linearGradient>
               </defs>
+              <path
+                d="M25 22 L60 65 L95 22 M60 65 L60 100"
+                stroke={`url(#ymGrad-${id || 'def'})`}
+                strokeWidth="12"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
             <span className="ym-live-card__thumb-label">YAMSHAT LIVE</span>
           </div>
@@ -576,16 +577,22 @@ function MobileLiveStreamCard({ post, liveStream, onStreamEnd }) {
         }
         .ym-live-card__thumb-logo {
           position: relative;
-          width: 56px;
-          height: 56px;
-          filter: drop-shadow(0 4px 16px rgba(167,139,250,0.5));
+          width: 96px;
+          height: 96px;
+          filter: drop-shadow(0 6px 22px rgba(167,139,250,0.6));
+          animation: ymLogoFloat 4s ease-in-out infinite;
+        }
+        @keyframes ymLogoFloat {
+          0%, 100% { transform: translateY(0) scale(1); }
+          50%      { transform: translateY(-4px) scale(1.04); }
         }
         .ym-live-card__thumb-label {
           position: relative;
-          color: rgba(255,255,255,0.85);
-          font-size: 11px;
-          font-weight: 800;
-          letter-spacing: 2.5px;
+          color: rgba(255,255,255,0.9);
+          font-size: 12px;
+          font-weight: 900;
+          letter-spacing: 3px;
+          text-shadow: 0 2px 8px rgba(124,58,237,0.6);
         }
 
         /* تدرج خفيف من الأسفل فقط (مش يغطي الصورة) */

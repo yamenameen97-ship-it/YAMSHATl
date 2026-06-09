@@ -374,14 +374,46 @@ export class PWAInitializer {
         return;
       }
 
-      const registration = this.state.swRegistration;
-      if (registration && registration.sync) {
-        await registration.sync.register('sync-data');
-        console.log('[PWA] Background sync registered');
-        this.emit('background-sync-ready');
+      // ✅ FIX: إصلاح خطأ "Registration failed - no active Service Worker"
+      //   بالانتظار حتى يصبح الـService Worker في حالة active قبل تسجيل sync.
+      const registration = this.state.swRegistration || (
+        navigator.serviceWorker?.ready ? await navigator.serviceWorker.ready : null
+      );
+      if (!registration) {
+        console.warn('[PWA] Background sync skipped: no SW registration');
+        return;
+      }
+      // إذا لم يكن هناك active worker بعد، انتظر حدث activate أو controllerchange
+      if (!registration.active) {
+        await new Promise((resolve) => {
+          let resolved = false;
+          const done = () => { if (!resolved) { resolved = true; resolve(); } };
+          const installing = registration.installing || registration.waiting;
+          if (installing) {
+            installing.addEventListener('statechange', () => {
+              if (installing.state === 'activated') done();
+            });
+          }
+          // fallback: لا ننتظر للأبد
+          setTimeout(done, 5000);
+        });
+      }
+      if (!registration.active) {
+        console.warn('[PWA] Background sync skipped: SW still not active');
+        return;
+      }
+      if (registration.sync && typeof registration.sync.register === 'function') {
+        try {
+          await registration.sync.register('sync-data');
+          console.log('[PWA] Background sync registered');
+          this.emit('background-sync-ready');
+        } catch (regErr) {
+          // لا ترفع الخطأ للأعلى — هذا أمر اختياري، تجنباً لإفساد تهيئة PWA
+          console.warn('[PWA] Background sync register failed (ignored):', regErr?.message || regErr);
+        }
       }
     } catch (error) {
-      console.error('[PWA] Background sync error:', error);
+      console.warn('[PWA] Background sync error (non-fatal):', error?.message || error);
     }
   }
 

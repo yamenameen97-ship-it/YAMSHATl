@@ -210,11 +210,20 @@ function FeedMobile() {
   }, [rawPosts, liveStreams, overlay]);
 
   // فلترة محلية بسيطة (الفلترة الحقيقية تتم في backend عبر filterType)
+  // ✅ FIX: دعم أزرار الفلتر الجديدة الكل / التحديثات / الستوري / البث
   const filtered = useMemo(() => {
     if (activeFilter === 'all') return posts;
-    if (activeFilter === 'updates') return posts.filter((p) => /تحديث|تطوير|إطلاق|جديد/.test(p.text));
-    if (activeFilter === 'ads') return posts.filter((p) => /إعلان|عرض|خصم/.test(p.text));
-    if (activeFilter === 'community') return posts.filter((p) => /مجتمع|عائلة|أعضاء|#/.test(p.text));
+    if (activeFilter === 'updates') {
+      return posts.filter((p) => /تحديث|تطوير|إطلاق|جديد|update/i.test(p.text || ''));
+    }
+    if (activeFilter === 'stories' || activeFilter === 'story') {
+      return posts.filter((p) => p.isStory || p.type === 'story' || /#story|ستوري/i.test(p.text || ''));
+    }
+    if (activeFilter === 'live' || activeFilter === 'broadcast') {
+      return posts.filter((p) => p.isLive || p.type === 'live_stream' || p.liveStreamId);
+    }
+    if (activeFilter === 'ads') return posts.filter((p) => /إعلان|عرض|خصم/.test(p.text || ''));
+    if (activeFilter === 'community') return posts.filter((p) => /مجتمع|عائلة|أعضاء|#/.test(p.text || ''));
     return posts;
   }, [activeFilter, posts]);
 

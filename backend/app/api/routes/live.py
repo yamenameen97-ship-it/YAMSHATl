@@ -611,23 +611,85 @@ def get_live_token(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='This stream is private')
 
     is_host = record.host_user_id == current_user.id
+    identity_value = str(current_user.username or f"user-{current_user.id}")
 
+    # ✅ FIX (يحل خطأ 500 على /token وفشل فتح كاميرا البث):
+    #   livekit-api 1.x غيّر الـAPI بالكامل:
+    #     - VideoGrant  → VideoGrants  (بالجمع)
+    #     - AccessToken(key, secret, identity=..., name=...) → AccessToken(key, secret).with_identity(...).with_name(...)
+    #     - add_grant() → with_grants()
+    #   نجرب API الجديد أولاً، وإذا فشل نسقط لـAPI القديم (توافق مع إصدارات السيرفر الأقدم).
     try:
-        grant = livekit_api.VideoGrant(
-            room_join=True,
-            room=record.livekit_room,
-            can_publish=is_host,
-            can_subscribe=True,
-            can_publish_data=True,
-        )
-        access_token = livekit_api.AccessToken(
-            settings.LIVEKIT_API_KEY,
-            settings.LIVEKIT_API_SECRET,
-            identity=str(current_user.username or f"user-{current_user.id}"),
-            name=str(current_user.username or f"user-{current_user.id}"),
-        )
-        access_token.add_grant(grant)
-        jwt_token = access_token.to_jwt()
+        jwt_token: str = ''
+        last_error: Exception | None = None
+
+        # --- (1) الـAPI الحديث (livekit-api >= 0.5 / 1.x) ---
+        try:
+            VideoGrantsCls = getattr(livekit_api, 'VideoGrants', None) or getattr(livekit_api, 'VideoGrant', None)
+            if VideoGrantsCls is None:
+                raise AttributeError('VideoGrants/VideoGrant not found in livekit_api')
+
+            grants = VideoGrantsCls(
+                room_join=True,
+                room=record.livekit_room,
+                can_publish=is_host,
+                can_subscribe=True,
+                can_publish_data=True,
+            )
+            token_builder = livekit_api.AccessToken(
+                settings.LIVEKIT_API_KEY,
+                settings.LIVEKIT_API_SECRET,
+            )
+            # builder pattern (fluent) — الأسلوب الصحيح في livekit-api 1.x
+            if hasattr(token_builder, 'with_identity'):
+                token_builder = token_builder.with_identity(identity_value).with_name(identity_value)
+                if hasattr(token_builder, 'with_grants'):
+                    token_builder = token_builder.with_grants(grants)
+                elif hasattr(token_builder, 'with_video_grants'):
+                    token_builder = token_builder.with_video_grants(grants)
+                else:
+                    raise AttributeError('AccessToken missing with_grants/with_video_grants')
+                # صلاحية التوكن (اختياري)
+                try:
+                    from datetime import timedelta
+                    if hasattr(token_builder, 'with_ttl'):
+                        token_builder = token_builder.with_ttl(timedelta(hours=6))
+                except Exception:  # noqa: BLE001
+                    pass
+                jwt_token = token_builder.to_jwt()
+            else:
+                raise AttributeError('AccessToken does not support fluent builder')
+        except Exception as new_api_err:  # noqa: BLE001
+            last_error = new_api_err
+            logger.warning('LiveKit new-API token build failed, falling back: %s', new_api_err)
+
+            # --- (2) fallback لـAPI القديم (livekit-server-sdk) ---
+            try:
+                VideoGrantOld = getattr(livekit_api, 'VideoGrant', None)
+                if VideoGrantOld is None:
+                    raise AttributeError('Legacy VideoGrant not available')
+                grant = VideoGrantOld(
+                    room_join=True,
+                    room=record.livekit_room,
+                    can_publish=is_host,
+                    can_subscribe=True,
+                    can_publish_data=True,
+                )
+                legacy_token = livekit_api.AccessToken(
+                    settings.LIVEKIT_API_KEY,
+                    settings.LIVEKIT_API_SECRET,
+                    identity=identity_value,
+                    name=identity_value,
+                )
+                if hasattr(legacy_token, 'add_grant'):
+                    legacy_token.add_grant(grant)
+                jwt_token = legacy_token.to_jwt()
+            except Exception as legacy_err:  # noqa: BLE001
+                logger.exception('LiveKit legacy-API token build also failed: %s', legacy_err)
+                raise legacy_err from last_error
+
+        if not jwt_token:
+            raise RuntimeError('LiveKit token generation returned empty token')
     except Exception as exc:  # noqa: BLE001
         logger.exception('Failed to generate LiveKit token for room %s: %s', room_id, exc)
         raise HTTPException(

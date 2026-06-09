@@ -16,6 +16,7 @@ from app.core.live_store import LiveComment, LiveGift, live_store
 from app.core.socket_server import sio
 from app.models.live_session import LiveRoomSession
 from app.models.user import User
+from app.models.user_wallet import UserWallet
 
 try:
     from livekit import api as livekit_api
@@ -55,6 +56,15 @@ def _slugify(value: str, fallback: str = 'room') -> str:
 
 def _room_name_for(username: str) -> str:
     return f"yamshat-{_slugify(username, 'host')}-{int(datetime.utcnow().timestamp())}"
+
+
+def _get_or_create_wallet(db: Session, user_id: int) -> UserWallet:
+    wallet = db.query(UserWallet).filter(UserWallet.user_id == user_id).first()
+    if wallet is None:
+        wallet = UserWallet(user_id=user_id, coin_balance=1000, total_earned=0, total_spent=0)
+        db.add(wallet)
+        db.flush()
+    return wallet
 
 
 def _find_room_record(db: Session, room_id: str) -> LiveRoomSession | None:
@@ -625,8 +635,7 @@ def end_live_room(
 @router.post('/live/{room_id}/gift')
 def send_live_gift(
     room_id: str,
-    gift_id: str = Body('default'),
-    amount: int = Body(10),
+    payload: dict | str | int | None = Body(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -634,28 +643,88 @@ def send_live_gift(
     if not record.is_active:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Room is not active')
 
+    normalized_payload = payload if isinstance(payload, dict) else {}
+    if isinstance(payload, (str, int)):
+        normalized_payload = {'gift_id': str(payload)}
+
+    gift_id = str(
+        normalized_payload.get('gift_id')
+        or normalized_payload.get('id')
+        or normalized_payload.get('name')
+        or 'default'
+    ).strip() or 'default'
+    gift_name = str(normalized_payload.get('name') or gift_id).strip() or gift_id
+
+    raw_amount = normalized_payload.get('amount', 1)
+    try:
+        gift_amount = max(int(raw_amount or 1), 1)
+    except (TypeError, ValueError):
+        gift_amount = 1
+
+    raw_unit_price = normalized_payload.get('price')
+    try:
+        unit_price = max(int(raw_unit_price or 10), 1)
+    except (TypeError, ValueError):
+        unit_price = 10
+
+    total_cost = unit_price * gift_amount
+    sender_wallet = _get_or_create_wallet(db, current_user.id)
+    receiver_wallet = _get_or_create_wallet(db, record.host_user_id)
+
+    if int(sender_wallet.coin_balance or 0) < total_cost:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='رصيد المحفظة غير كافٍ لإرسال الهدية')
+
+    sender_wallet.coin_balance = int(sender_wallet.coin_balance or 0) - total_cost
+    sender_wallet.total_spent = int(sender_wallet.total_spent or 0) + total_cost
+
+    host_earnings = int(total_cost * 0.8)
+    receiver_wallet.coin_balance = int(receiver_wallet.coin_balance or 0) + host_earnings
+    receiver_wallet.total_earned = int(receiver_wallet.total_earned or 0) + host_earnings
+
     room = _hydrate_runtime_room(record)
     gift = LiveGift(
         id=str(uuid4()),
         room_id=room_id,
         user=current_user.username,
-        gift_name=gift_id,
-        coins=int(amount or 10),
+        gift_name=gift_name,
+        coins=total_cost,
         created_at=_iso(_utcnow()),
         user_id=current_user.id,
         username=current_user.username,
         gift_id=gift_id,
-        amount=int(amount or 10),
+        amount=gift_amount,
     )
-    
+
     if not hasattr(room, 'gifts') or room.gifts is None:
         room.gifts = []
     room.gifts.append(gift)
-    
-    record.hearts_count += 1
+
+    economy = getattr(room, 'economy', None) or {}
+    top_gifters = dict(economy.get('top_gifters') or {})
+    current_sender_total = int(top_gifters.get(current_user.username) or 0) + total_cost
+    top_gifters[current_user.username] = current_sender_total
+    room.economy = {
+        **economy,
+        'total_gifts': int(economy.get('total_gifts') or 0) + gift_amount,
+        'total_coins_earned': int(economy.get('total_coins_earned') or 0) + host_earnings,
+        'gross_gift_coins': int(economy.get('gross_gift_coins') or 0) + total_cost,
+        'top_gifters': top_gifters,
+    }
+
+    _sync_record_from_runtime(db, record, room)
     db.commit()
-    
-    return {'status': 'success', 'gift': gift.__dict__}
+
+    return {
+        'status': 'success',
+        'gift': gift.__dict__,
+        'wallet': {
+            'sender_balance': int(sender_wallet.coin_balance or 0),
+            'receiver_balance': int(receiver_wallet.coin_balance or 0),
+            'host_earnings': host_earnings,
+            'total_cost': total_cost,
+        },
+        'economy': room.economy,
+    }
 
 
 @router.post('/live_room/{room_id}/comment')

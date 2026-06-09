@@ -29,8 +29,12 @@ export const sendLiveComment = (streamId, commentData = {}) =>
 export const getLiveComments = (streamId, limit = 50) =>
   apiClient.get(`/live_comments/${streamId}`, { params: { limit }, cache: false, forceRefresh: true });
 
-export const sendLiveGift = (streamId, giftData = {}) =>
-  apiClient.post(`/live/${streamId}/gift`, giftData);
+export const sendLiveGift = (streamId, giftData = {}) => {
+  const payload = typeof giftData === 'object' && giftData !== null
+    ? giftData
+    : { gift_id: giftData };
+  return apiClient.post(`/live/${streamId}/gift`, payload);
+};
 
 export const sendLiveHeart = async (streamId) => {
   socketManager.emit('send_heart', { room_id: streamId }, { queue: false });

@@ -1,6 +1,8 @@
 import API from './axios.js';
 import sessionManager from '../auth/sessionManager.js';
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const OAUTH_EVENT_SUCCESS = 'yamshat-oauth-success';
 const OAUTH_EVENT_ERROR = 'yamshat-oauth-error';
 const OAUTH_POPUP_FEATURES = 'popup=yes,width=560,height=720,menubar=no,toolbar=no,location=yes,resizable=yes,scrollbars=yes,status=no';
@@ -56,8 +58,29 @@ export const resendVerification = async (data) => {
 };
 
 export const getCaptchaChallenge = async () => {
-  const response = await API.get('/auth/captcha', { cache: false, forceRefresh: true });
-  return response;
+  let lastError;
+
+  // مهمة جداً على Render: أول طلب بعد السكون قد يرجّع 503 أو Network/CORS-like error
+  // قبل ما الخدمة تصحى بالكامل. نعيد المحاولة بشكل محدود لهذا الـ GET فقط.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await API.get('/auth/captcha', {
+        cache: false,
+        forceRefresh: true,
+        retryable: true,
+        timeout: 60000,
+      });
+      return response;
+    } catch (error) {
+      lastError = error;
+      const status = error?.response?.status;
+      const isRetriable = !status || [408, 425, 429, 500, 502, 503, 504].includes(status);
+      if (!isRetriable || attempt === 2) break;
+      await sleep(1200 * (attempt + 1));
+    }
+  }
+
+  throw lastError;
 };
 
 export const forgotPassword = async (data) => {

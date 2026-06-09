@@ -18,6 +18,7 @@ import { resolveMediaUrl } from '../config/mediaConfig.js';
 import socketManager from '../services/socketManager.js';
 import livekitService from '../services/livekitService.js';
 import '../styles/modern-live-viewer.css';
+import '../styles/modern-live-viewer-override.css';
 
 const GIFTS = [
   { id: 1, name: 'وردة', icon: '🌹', price: 10 },

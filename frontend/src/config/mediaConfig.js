@@ -29,6 +29,11 @@ const rewriteKnownBrokenBrandAsset = (value = '') => {
         || /^(?:\/)?brand\/yamshat-logo\.(?:png|jpe?g|webp)$/i.test(pathname.replace(/^\/+/, ''))) {
       return '__FRONTEND__/brand/yamshat-logo.jpg';
     }
+    // ✅ FIX (2026-06): إعادة كتابة logo192.png المكسور (uploads/<hash>_logo192.png) إلى الأصل المحلي
+    if (/(?:^|\/)uploads\/.+logo192\.png$/i.test(pathname)
+        || /(?:^|\/)logo192\.png$/i.test(pathname)) {
+      return '__FRONTEND__/logo192.png';
+    }
   } catch {
     // ignore URL parsing errors and fall back to original value
   }

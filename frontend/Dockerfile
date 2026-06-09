@@ -1,23 +1,37 @@
-
-# Stage 1: Build the frontend application
-FROM node:20-alpine as builder
+# Build stage
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm install --frozen-lockfile
+# Copy package files
+COPY package*.json ./
 
+# Install dependencies
+RUN npm ci
+
+# Copy source code
 COPY . .
+
+# Build the application
 RUN npm run build
 
-# Stage 2: Serve the application with Nginx
-FROM nginx:stable-alpine
+# Production stage
+FROM node:22-alpine
 
-COPY --from=builder /app/dist /usr/share/nginx/html
+WORKDIR /app
 
-# Copy custom Nginx configuration for SPA routing
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Install serve to run the preview
+RUN npm install -g serve
 
-EXPOSE 80
+# Copy built files from builder
+COPY --from=builder /app/dist ./dist
 
-CMD ["nginx", "-g", "daemon off;"]
+# Expose port
+EXPOSE 4173
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:4173', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
+
+# Start the application
+CMD ["serve", "-s", "dist", "-l", "4173"]

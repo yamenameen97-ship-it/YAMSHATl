@@ -14,6 +14,7 @@ import time
 import traceback
 from datetime import datetime, timedelta, timezone
 
+import socketio
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -215,6 +216,15 @@ _include("app.api.routes.engagement.router", prefix="/api/engagement")
 # 🔊 Voice Rooms
 _include("app.api.routes.voice_rooms.router", prefix="/api/voice")
 
+# ============================================================
+# ♻️ Legacy compatibility aliases
+# بعض شاشات الواجهة القديمة كانت تستدعي /api مباشرة بدون مقاطع /chat أو /live أو /voice
+# فنضيف aliases حتى لا ترجع 404 أثناء التشغيل على النسخ القديمة أو الكاش القديم.
+# ============================================================
+_include("app.api.routes.chat.router", prefix="/api")
+_include("app.api.routes.live.router", prefix="/api")
+_include("app.api.routes.voice_rooms.router", prefix="/api")
+
 
 # ============================================================
 # 🔍 Diagnostics endpoint — لمعرفة أي راوتر فشل بسرعة
@@ -238,3 +248,15 @@ async def on_startup():
         logger.warning(f"   ⚠️  Failed routers ({len(failed)}): {failed}")
     else:
         logger.info(f"   ✅ All {len(_ROUTER_STATUS)} routers mounted successfully")
+
+
+# ============================================================
+# 🔌 Socket.IO mounting
+# كان السيرفر مهيأ داخل socket_server.py لكنه غير مربوط بالتطبيق الرئيسي،
+# فكانت طلبات /socket.io ترجع 404 وتفشل كل اتصالات الويب سوكيت.
+# ============================================================
+from app.core.socket_server import sio
+
+fastapi_app = app
+app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app)
+application = app

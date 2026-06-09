@@ -489,6 +489,7 @@ def get_live_comments(
     return [comment.__dict__ for comment in (room.comments or [])]
 
 
+@router.get('/live_room/{room_id}/analytics')
 @router.get('/live/{room_id}/analytics')
 def get_stream_analytics(
     room_id: str,
@@ -515,6 +516,7 @@ def get_stream_analytics(
     }
 
 
+@router.get('/live_room/{room_id}/viewers')
 @router.get('/live/{room_id}/viewers')
 def get_stream_viewers(
     room_id: str,
@@ -767,3 +769,238 @@ def add_live_comment(
         pass
         
     return {'status': 'success', 'comment': comment.__dict__}
+
+
+@router.post('/live_room/{room_id}/settings')
+def update_live_room_settings(
+    room_id: str,
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """تحديث إعدادات البث الأساسية مثل الكاميرا والمايك والجودة."""
+    record = _require_room(room_id, db)
+    _require_host(record, current_user)
+
+    room = _hydrate_runtime_room(record)
+    room.settings = {
+        **DEFAULT_STREAM_SETTINGS,
+        **(getattr(room, 'settings', None) or {}),
+    }
+
+    field_map = {
+        'camera_enabled': 'camera_enabled',
+        'microphone_enabled': 'microphone_enabled',
+        'video_bitrate': 'video_bitrate',
+        'audio_bitrate': 'audio_bitrate',
+        'quality': 'quality',
+    }
+    for source_key, target_key in field_map.items():
+        if source_key in payload:
+            room.settings[target_key] = payload.get(source_key)
+
+    room.last_activity_at = _iso(_utcnow())
+    _sync_record_from_runtime(db, record, room)
+    db.commit()
+
+    return {
+        'status': 'success',
+        'room_id': room_id,
+        'settings': room.settings,
+    }
+
+
+@router.post('/live_room/{room_id}/recording/{action}')
+def update_live_recording_status(
+    room_id: str,
+    action: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """بديل متوافق مع الواجهة القديمة لبدء/إيقاف التسجيل."""
+    record = _require_room(room_id, db)
+    _require_host(record, current_user)
+
+    room = _hydrate_runtime_room(record)
+    normalized_action = str(action or '').strip().lower()
+    if normalized_action == 'start':
+        room.recording_status = 'recording'
+    elif normalized_action == 'pause':
+        room.recording_status = 'paused'
+    else:
+        room.recording_status = 'idle'
+        if normalized_action == 'stop':
+            room.recording_url = room.recording_url or ''
+
+    room.last_activity_at = _iso(_utcnow())
+    _sync_record_from_runtime(db, record, room)
+    db.commit()
+
+    return {
+        'status': 'success',
+        'room_id': room_id,
+        'recording': {
+            'status': room.recording_status,
+            'url': room.recording_url,
+        },
+    }
+
+
+@router.post('/live_room/{room_id}/add-viewer')
+def add_stream_viewer(
+    room_id: str,
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_optional),
+):
+    """Alias قديم لإضافة/تحديث مشاهد داخل الذاكرة."""
+    record = _require_room(room_id, db)
+    if not record.is_active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Room is not active')
+
+    room = _hydrate_runtime_room(record)
+    viewer_user_id = payload.get('user_id') or getattr(current_user, 'id', None) or 0
+    viewer_username = str(payload.get('username') or getattr(current_user, 'username', '') or f'user-{viewer_user_id}').strip()
+    viewer_key = f'viewer:{viewer_user_id or viewer_username}'
+    room.viewers[viewer_key] = {
+        'sid': viewer_key,
+        'user_id': viewer_user_id,
+        'username': viewer_username,
+        'is_host': False,
+        'platform': str(payload.get('platform') or 'web'),
+        'device_type': str(payload.get('device_type') or 'browser'),
+        'joined_at': _iso(_utcnow()),
+    }
+    room.viewer_count = len(room.viewers)
+    room.peak_viewer_count = max(int(room.peak_viewer_count or 0), int(room.viewer_count or 0))
+    room.last_activity_at = _iso(_utcnow())
+    _sync_record_from_runtime(db, record, room)
+    db.commit()
+    return {'status': 'success', 'viewers': _serialize_viewers(room)}
+
+
+@router.post('/live_room/{room_id}/remove-viewer')
+def remove_stream_viewer(
+    room_id: str,
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Alias قديم لإزالة مشاهد من القائمة."""
+    record = _require_room(room_id, db)
+    _require_host(record, current_user)
+
+    room = _hydrate_runtime_room(record)
+    target_user_id = str(payload.get('user_id') or '').strip()
+    target_keys = [key for key, value in (room.viewers or {}).items() if str(value.get('user_id') or '') == target_user_id]
+    for key in target_keys:
+        room.viewers.pop(key, None)
+    room.viewer_count = len(room.viewers)
+    room.last_activity_at = _iso(_utcnow())
+    _sync_record_from_runtime(db, record, room)
+    db.commit()
+    return {'status': 'success', 'viewers': _serialize_viewers(room)}
+
+
+@router.post('/live_room/{room_id}/mute')
+def mute_stream_viewer(
+    room_id: str,
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    record = _require_room(room_id, db)
+    _require_host(record, current_user)
+    room = _hydrate_runtime_room(record)
+    target_user_id = str(payload.get('user_id') or '').strip()
+    if target_user_id:
+        room.muted_users.add(target_user_id)
+    _sync_record_from_runtime(db, record, room)
+    db.commit()
+    return {'status': 'success', 'muted_users': list(room.muted_users)}
+
+
+@router.post('/live_room/{room_id}/unmute')
+def unmute_stream_viewer(
+    room_id: str,
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    record = _require_room(room_id, db)
+    _require_host(record, current_user)
+    room = _hydrate_runtime_room(record)
+    target_user_id = str(payload.get('user_id') or '').strip()
+    if target_user_id:
+        room.muted_users.discard(target_user_id)
+    _sync_record_from_runtime(db, record, room)
+    db.commit()
+    return {'status': 'success', 'muted_users': list(room.muted_users)}
+
+
+@router.post('/live_room/{room_id}/ban')
+def ban_stream_viewer(
+    room_id: str,
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    record = _require_room(room_id, db)
+    _require_host(record, current_user)
+    room = _hydrate_runtime_room(record)
+    target_user_id = str(payload.get('user_id') or '').strip()
+    if target_user_id:
+        room.kicked_users.add(target_user_id)
+    _sync_record_from_runtime(db, record, room)
+    db.commit()
+    return {'status': 'success', 'banned_users': list(room.kicked_users)}
+
+
+@router.post('/live_room/{room_id}/unban')
+def unban_stream_viewer(
+    room_id: str,
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    record = _require_room(room_id, db)
+    _require_host(record, current_user)
+    room = _hydrate_runtime_room(record)
+    target_user_id = str(payload.get('user_id') or '').strip()
+    if target_user_id:
+        room.kicked_users.discard(target_user_id)
+    _sync_record_from_runtime(db, record, room)
+    db.commit()
+    return {'status': 'success', 'banned_users': list(room.kicked_users)}
+
+
+@router.post('/live_room/{room_id}/multi-host')
+def update_multi_host(
+    room_id: str,
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    record = _require_room(room_id, db)
+    _require_host(record, current_user)
+    room = _hydrate_runtime_room(record)
+
+    action = str(payload.get('action') or '').strip().lower()
+    username = str(payload.get('username') or '').strip()
+    co_hosts = [user for user in list(room.co_hosts or []) if str(user or '').strip()]
+    if record.host_username not in co_hosts:
+        co_hosts.insert(0, record.host_username)
+
+    if username and action == 'add' and username not in co_hosts:
+        co_hosts.append(username)
+    elif username and action == 'remove':
+        co_hosts = [user for user in co_hosts if user != username or user == record.host_username]
+
+    room.co_hosts = co_hosts
+    room.multi_host_config = {
+        **(room.multi_host_config or {}),
+        'current_hosts': co_hosts,
+    }
+    _sync_record_from_runtime(db, record, room)
+    db.commit()
+    return {'status': 'success', 'co_hosts': co_hosts, 'multi_host_config': room.multi_host_config}

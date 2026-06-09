@@ -61,8 +61,8 @@ export const cspHeaders = {
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'Permissions-Policy': [
     'geolocation=()',
-    'microphone=()',
-    'camera=()',
+    'microphone=(self)',
+    'camera=(self)',
     'payment=()',
   ].join(', '),
 };

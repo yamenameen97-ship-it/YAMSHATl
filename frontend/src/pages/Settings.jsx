@@ -5,6 +5,7 @@ import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import { logoutUser } from '../api/auth.js';
 import SoundSettingsPanel from '../components/audio/SoundSettingsPanel.jsx';
+import LanguageSettings from '../components/settings/LanguageSettings.jsx';
 import YamServicesMenu from '../components/ui/YamServicesMenu.jsx';
 import { MEDIA_SECURITY, SIGNED_URL_TTL_SECONDS, currentMediaProviderLabel } from '../config/mediaConfig.js';
 import { CooldownUI, RateLimitUI, createAntiSpamReport } from '../security/spam.js';
@@ -14,11 +15,12 @@ import { clearStoredUser } from '../utils/auth.js';
 import { getCDNConfig, getMediaDeliveryProfile } from '../utils/performance.js';
 
 const TABS = [
+  { key: 'language', label: 'اللغة 🌐' },
   { key: 'security', label: 'الأمان' },
   { key: 'devices', label: 'الأجهزة الموثوقة' },
   { key: 'media', label: 'حماية الوسائط' },
-  { key: 'notifications', label: 'Push Notifications' },
-  { key: 'sync', label: 'Multi Device' },
+  { key: 'notifications', label: 'الإشعارات' },
+  { key: 'sync', label: 'تعدد الأجهزة' },
   { key: 'sounds', label: 'الأصوات' },
 ];
 
@@ -168,6 +170,9 @@ export default function Settings() {
           </aside>
 
           <main style={{ display: 'grid', gap: 16 }}>
+            {activeTab === 'language' ? (
+              <LanguageSettings />
+            ) : null}
             {activeTab === 'security' ? (
               <>
                 <Card style={{ padding: 18 }}>

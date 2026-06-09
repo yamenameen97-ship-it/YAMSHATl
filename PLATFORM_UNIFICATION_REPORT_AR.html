@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>تقرير مراجعة توحيد منصة Yamshat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;600;700;800&display=swap" />
+  <style>
+    :root {
+      --primary: #7C3AED;
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --text: #f1f5f9;
+      --line: rgba(255,255,255,0.08);
+      --success: #10B981;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Noto Sans Arabic', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      padding: 32px 16px;
+    }
+    .container { max-width: 980px; margin: 0 auto; }
+    h1 {
+      font-size: 32px; font-weight: 800; margin: 0 0 8px;
+      background: linear-gradient(135deg, #7C3AED, #06B6D4);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .subtitle { opacity: 0.7; margin-bottom: 32px; font-size: 16px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 10px 24px rgba(0,0,0,0.2);
+    }
+    h2 {
+      font-size: 22px; font-weight: 700;
+      margin: 0 0 16px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid var(--primary);
+      display: flex; align-items: center; gap: 10px;
+    }
+    ul { padding-inline-start: 22px; margin: 0; }
+    li { margin: 8px 0; }
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      background: var(--success);
+      color: #fff;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .chip {
+      padding: 10px 14px;
+      background: rgba(124,58,237,0.12);
+      border: 1px solid rgba(124,58,237,0.3);
+      border-radius: 10px;
+      font-size: 14px;
+      text-align: center;
+      font-weight: 600;
+    }
+    code {
+      background: rgba(0,0,0,0.35);
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-family: 'Inter', monospace;
+      font-size: 13px;
+      color: #06B6D4;
+    }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { padding: 10px 12px; text-align: start; border-bottom: 1px solid var(--line); }
+    th { background: rgba(124,58,237,0.15); font-weight: 700; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎯 تقرير استكمال توحيد منصة Yamshat</h1>
+    <p class="subtitle">توحيد الأزرار + المسافات + المقاسات + الخطوط + الألوان · ويب الجوال / اللابتوب / سطح المكتب · إضافة خيار اللغات</p>
+
+    <div class="card">
+      <h2>✅ 1. توحيد التصميم (Platform Unified v4) <span class="badge">مكتمل</span></h2>
+      <p>تم إنشاء طبقة CSS نهائية واحدة تلغي التضارب بين <strong>43 ملف CSS سابق</strong> وتفرض قيم موحّدة على كامل المنصة:</p>
+      <ul>
+        <li><strong>الخطوط:</strong> <code>Noto Sans Arabic</code> + <code>Inter</code> كأرقام — مع تطبيق <code>!important</code> لإلغاء التضارب</li>
+        <li><strong>الألوان:</strong> مصدر واحد للحقيقة عبر متغيرات CSS — primary / secondary / success / warning / danger</li>
+        <li><strong>المسافات:</strong> مقياس 4px موحّد <code>--gap-1</code> إلى <code>--gap-10</code></li>
+        <li><strong>مقاسات الأزرار:</strong> 5 مقاسات (xs/sm/md/lg/xl) — ارتفاعات ثابتة 32 / 40 / 44 / 52 / 60 بكسل</li>
+        <li><strong>مقاسات الخطوط:</strong> سلّم موحّد من 12px إلى 36px</li>
+        <li><strong>الحاويات:</strong> mobile / tablet / laptop / desktop / wide</li>
+      </ul>
+      <div class="grid">
+        <div class="chip">📱 جوال صغير &lt; 480px</div>
+        <div class="chip">📱 جوال كبير 480–767px</div>
+        <div class="chip">💻 تابلت 768–1023px</div>
+        <div class="chip">💻 لابتوب 1024–1279px</div>
+        <div class="chip">🖥️ سطح المكتب 1280px+</div>
+        <div class="chip">🖥️ شاشة عريضة 1440px+</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🌐 2. إضافة خيار اللغات في الإعدادات <span class="badge">مكتمل</span></h2>
+      <p>تم بناء نظام i18n وظيفي كامل (وليس واجهة ديكورية كما كان سابقاً):</p>
+      <ul>
+        <li>قاموس ترجمات شامل في <code>src/i18n/translations.js</code> — 8 لغات مدعومة</li>
+        <li><code>LanguageProvider</code> React Context يطبّق <code>dir/lang</code> تلقائياً على <code>&lt;html&gt;</code></li>
+        <li>حفظ تلقائي في <code>localStorage</code> + اكتشاف لغة المتصفح كقيمة افتراضية</li>
+        <li>تكامل اختياري مع الخادم عبر <code>PUT /api/users/me/language</code></li>
+        <li>تبويب «اللغة 🌐» مضاف لصفحة <code>/settings</code></li>
+      </ul>
+      <table>
+        <tr><th>الكود</th><th>الاسم الأصلي</th><th>الاتجاه</th></tr>
+        <tr><td>ar</td><td>العربية 🇸🇦</td><td>RTL</td></tr>
+        <tr><td>en</td><td>English 🇬🇧</td><td>LTR</td></tr>
+        <tr><td>fr</td><td>Français 🇫🇷</td><td>LTR</td></tr>
+        <tr><td>tr</td><td>Türkçe 🇹🇷</td><td>LTR</td></tr>
+        <tr><td>es</td><td>Español 🇪🇸</td><td>LTR</td></tr>
+        <tr><td>ur</td><td>اردو 🇵🇰</td><td>RTL</td></tr>
+        <tr><td>id</td><td>Bahasa Indonesia 🇮🇩</td><td>LTR</td></tr>
+        <tr><td>ru</td><td>Русский 🇷🇺</td><td>LTR</td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>📂 3. الملفات المضافة/المعدّلة</h2>
+      <ul>
+        <li>➕ <code>frontend/src/styles/platform-unified-v4.css</code> — طبقة التوحيد الجديدة</li>
+        <li>➕ <code>frontend/src/i18n/translations.js</code> — قاموس 8 لغات</li>
+        <li>➕ <code>frontend/src/i18n/LanguageProvider.jsx</code> — Context Provider</li>
+        <li>♻️ <code>frontend/src/components/settings/LanguageSettings.jsx</code> — إعادة بناء كامل (وظيفي حقيقي)</li>
+        <li>♻️ <code>frontend/src/pages/Settings.jsx</code> — إضافة تبويب «اللغة»</li>
+        <li>♻️ <code>frontend/src/main.jsx</code> — تركيب <code>LanguageProvider</code> + استيراد طبقة التوحيد</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>🎨 4. منع التضارب المستقبلي</h2>
+      <ul>
+        <li>طبقة <code>platform-unified-v4.css</code> هي آخر استيراد CSS — تفوز في cascade</li>
+        <li>توكنز موحّدة (CSS variables) في <code>:root</code> — أي ملف يحاول إعادة تعريف الألوان أو الخطوط يُتجاوز</li>
+        <li>دعم WCAG 2.5.5: لمسة 44×44 على الأجهزة العاملة باللمس</li>
+        <li>دعم <code>prefers-reduced-motion</code> + <code>safe-area-inset</code> للجوال الحديث</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>🚀 5. الاستخدام للمطوّر</h2>
+      <p style="margin-bottom:8px;">داخل أي مكوّن React:</p>
+      <pre style="background:#000; padding:16px; border-radius:10px; overflow-x:auto; font-family:'Inter',monospace; font-size:13px; color:#06B6D4;">
+import { useLanguage } from '@/i18n/LanguageProvider';
+
+function MyComponent() {
+  const { t, lang, dir, setLang } = useLanguage();
+  return &lt;h1&gt;{t('nav.home')}&lt;/h1&gt;;
+}</pre>
+    </div>
+
+    <p style="text-align:center; opacity:0.5; margin-top:32px; font-size:13px;">
+      Yamshat Platform · المراجعة v4 · يونيو 2026
+    </p>
+  </div>
+</body>
+</html>

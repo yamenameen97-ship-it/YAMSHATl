@@ -48,13 +48,16 @@
                 android:textSize="13sp" />
         </LinearLayout>
 
+        <!-- أزرار التفاعل (على الجهة اليمنى = نهاية السطر في RTL) -->
         <LinearLayout
+            android:id="@+id/reactionsContainer"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:gravity="center_horizontal"
             android:orientation="vertical">
 
             <TextView
+                android:id="@+id/likeButton"
                 android:layout_width="54dp"
                 android:layout_height="54dp"
                 android:background="@drawable/bg_input"
@@ -64,6 +67,7 @@
                 android:textSize="18sp" />
 
             <TextView
+                android:id="@+id/likeCount"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
@@ -72,4 +76,25 @@
                 android:textStyle="bold" />
         </LinearLayout>
     </LinearLayout>
+
+    <!--
+        ========================================================
+        الزر العائم لسحب الريل (Drag Handle / Floating Drag Button)
+        تم نقله من الجهة اليمنى (حيث أزرار التفاعل ❤) إلى الجهة
+        اليسرى (start في RTL) حتى لا يغطّي أزرار التفاعل.
+        ========================================================
+    -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/dragReelFab"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="bottom|start"
+        android:layout_marginStart="16dp"
+        android:layout_marginBottom="120dp"
+        android:contentDescription="سحب الريل"
+        android:src="@android:drawable/ic_menu_sort_by_size"
+        app:backgroundTint="#66000000"
+        app:fabSize="mini"
+        app:tint="@color/text_primary"
+        xmlns:app="http://schemas.android.com/apk/res-auto" />
 </FrameLayout>

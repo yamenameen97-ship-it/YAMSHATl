@@ -455,16 +455,26 @@ function FeedMobile() {
               <MobileLiveStreamCard
                 key={post.id}
                 post={post}
-                liveStream={post.liveStream || {
+                liveStream={{
+                  // نبدأ من قيم البوست الأساسية كـ fallback ثم نطبق قيم liveStream فوقها
                   id: post.liveStreamId,
-                  host_username: post.handle.replace(/^@/, ''),
-                  host_name: post.authorName,
-                  title: post.text,
-                  thumbnail_url: post.banner?.url || '',
-                  host_avatar: post.avatarUrl || '',
+                  host_username: (post.handle || '').replace(/^@/, '') || 'مستخدم',
+                  host_name: post.authorName || 'مستخدم',
+                  title: post.text || 'بث مباشر',
                   viewer_count: post.views || 0,
                   hearts_count: post.likes || 0,
-                  comments_count: post.comments || 0
+                  comments_count: post.comments || 0,
+                  verified: post.verified,
+                  // ادمج بيانات البث الحية (تعطي الأولوية للحقول الحقيقية إن وُجدت)
+                  ...(post.liveStream || {}),
+                  // تأكيد إن thumbnail_url يأخذ أول قيمة متوفرة (مهم: الـ banner من post يبقى fallback نهائي)
+                  thumbnail_url:
+                    post.liveStream?.thumbnail_url ||
+                    post.liveStream?.cover_url ||
+                    post.liveStream?.preview_url ||
+                    post.banner?.url ||
+                    '',
+                  host_avatar: post.liveStream?.host_avatar || post.avatarUrl || '',
                 }}
                 onStreamEnd={() => queryClient.invalidateQueries({ queryKey: ['feed-data'] })}
               />

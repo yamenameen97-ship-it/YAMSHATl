@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>تشخيص الكابتشا — Yamshat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --err: #ef4444;
+      --accent: #6366f1;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Noto Sans Arabic', 'Tahoma', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 24px;
+      direction: rtl;
+      line-height: 1.7;
+    }
+    h1 { font-size: 1.6rem; margin-bottom: 8px; }
+    .sub { color: var(--muted); margin-bottom: 20px; }
+    .card {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 18px;
+      margin-bottom: 14px;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .label { font-weight: 600; }
+    .status { padding: 4px 10px; border-radius: 999px; font-size: 0.85rem; font-weight: 700; }
+    .ok   { background: rgba(34,197,94,0.15); color: var(--ok); }
+    .warn { background: rgba(245,158,11,0.15); color: var(--warn); }
+    .err  { background: rgba(239,68,68,0.15); color: var(--err); }
+    input, button {
+      font-family: inherit;
+      font-size: 1rem;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    input { background: #0b1220; color: var(--text); width: 100%; }
+    button {
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      border: 0;
+      font-weight: 700;
+    }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    pre {
+      background: #0b1220;
+      padding: 12px;
+      border-radius: 8px;
+      overflow-x: auto;
+      direction: ltr;
+      text-align: left;
+      font-size: 0.85rem;
+      max-height: 280px;
+    }
+    .question { font-size: 1.4rem; font-weight: 700; color: #fbbf24; }
+  </style>
+</head>
+<body>
+  <h1>🔧 أداة تشخيص الكابتشا</h1>
+  <p class="sub">صفحة لاختبار مسار <code>/api/auth/captcha</code> مباشرة مع تشخيص CORS و cold start.</p>
+
+  <div class="card">
+    <div class="row">
+      <span class="label">عنوان الـ API:</span>
+      <input id="apiBase" placeholder="https://yamshat-1ya4.onrender.com/api" />
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <span class="label">1. استيقاظ الخادم (warmup)</span>
+      <span id="warmupStatus" class="status warn">في الانتظار</span>
+    </div>
+    <button id="warmupBtn" style="margin-top:10px;">استيقظ يا خادم</button>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <span class="label">2. جلب الكابتشا</span>
+      <span id="captchaStatus" class="status warn">في الانتظار</span>
+    </div>
+    <div style="margin-top: 12px;">
+      <div class="question" id="captchaQuestion">— لم يتم التحميل بعد —</div>
+      <small id="captchaId" style="color: var(--muted); direction: ltr; display: block;"></small>
+    </div>
+    <button id="fetchBtn" style="margin-top:10px;">اجلب كابتشا جديدة</button>
+  </div>
+
+  <div class="card">
+    <div class="label">سجل التشخيص:</div>
+    <pre id="log">جاهز...</pre>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const log = (msg) => { $('log').textContent += '\n' + new Date().toISOString().slice(11,19) + '  ' + msg; };
+    const setStatus = (el, cls, txt) => { el.className = 'status ' + cls; el.textContent = txt; };
+
+    // افتراضي معقول
+    $('apiBase').value = localStorage.getItem('apiBase') || 'https://yamshat-1ya4.onrender.com/api';
+
+    const getBase = () => $('apiBase').value.trim().replace(/\/+$/, '');
+
+    async function warmup() {
+      const base = getBase();
+      localStorage.setItem('apiBase', base);
+      setStatus($('warmupStatus'), 'warn', 'يستيقظ...');
+      $('warmupBtn').disabled = true;
+      const t0 = performance.now();
+      try {
+        const res = await fetch(base + '/warmup', { method: 'GET', credentials: 'include' });
+        const dt = Math.round(performance.now() - t0);
+        log(`warmup -> ${res.status} في ${dt}ms`);
+        if (res.ok) {
+          setStatus($('warmupStatus'), 'ok', `صاحٍ (${dt}ms)`);
+        } else {
+          setStatus($('warmupStatus'), 'err', `فشل ${res.status}`);
+        }
+      } catch (e) {
+        log('warmup error: ' + e.message);
+        setStatus($('warmupStatus'), 'err', 'فشل الشبكة');
+      } finally {
+        $('warmupBtn').disabled = false;
+      }
+    }
+
+    async function fetchCaptcha() {
+      const base = getBase();
+      setStatus($('captchaStatus'), 'warn', 'يجلب...');
+      $('fetchBtn').disabled = true;
+      $('captchaQuestion').textContent = 'جارٍ التحميل…';
+
+      const MAX = 5;
+      const delays = [0, 1500, 3000, 5000, 8000];
+      let lastErr = null;
+
+      for (let i = 0; i < MAX; i++) {
+        if (delays[i]) await new Promise(r => setTimeout(r, delays[i]));
+        try {
+          const t0 = performance.now();
+          const res = await fetch(base + '/auth/captcha', {
+            method: 'GET',
+            credentials: 'include',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+          });
+          const dt = Math.round(performance.now() - t0);
+          log(`محاولة ${i+1}: ${res.status} في ${dt}ms`);
+          if (res.ok) {
+            const data = await res.json();
+            $('captchaQuestion').textContent = data.question || '— لا يوجد سؤال —';
+            $('captchaId').textContent = 'id: ' + (data.captcha_id || '').slice(0, 60) + '...';
+            setStatus($('captchaStatus'), 'ok', `نجح (${dt}ms)`);
+            $('fetchBtn').disabled = false;
+            return;
+          }
+          lastErr = `HTTP ${res.status}`;
+        } catch (e) {
+          lastErr = e.message;
+          log(`محاولة ${i+1}: شبكة/CORS — ${e.message}`);
+        }
+      }
+
+      setStatus($('captchaStatus'), 'err', 'فشل');
+      $('captchaQuestion').textContent = '❌ فشل التحميل: ' + lastErr;
+      $('fetchBtn').disabled = false;
+    }
+
+    $('warmupBtn').addEventListener('click', warmup);
+    $('fetchBtn').addEventListener('click', fetchCaptcha);
+  </script>
+</body>
+</html>

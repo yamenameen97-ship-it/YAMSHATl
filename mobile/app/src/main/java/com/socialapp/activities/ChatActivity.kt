@@ -331,13 +331,26 @@ class ChatActivity : AppCompatActivity() {
 
     private fun confirmMessageAction(message: MessageItem) {
         val id = message.id ?: return
-        val options = arrayOf("تعديل الرسالة", "حذف الرسالة")
+        // التمييز بين رسائلي ورسائل الطرف الآخر:
+        // - رسائلي: تعديل + حذف لدي + حذف لدى الجميع
+        // - رسائل الآخرين: حذف لدي فقط
+        val isMine = (message.sender ?: "") == sender
+        val options = if (isMine) {
+            arrayOf("تعديل الرسالة", "حذف لدي", "حذف لدى الجميع")
+        } else {
+            arrayOf("حذف لدي")
+        }
         AlertDialog.Builder(this)
             .setTitle("إدارة الرسالة")
             .setItems(options) { _, which ->
-                when (which) {
-                    0 -> promptEditMessage(id, message.displayMessage ?: message.message)
-                    1 -> confirmDelete(id)
+                if (isMine) {
+                    when (which) {
+                        0 -> promptEditMessage(id, message.displayMessage ?: message.message)
+                        1 -> confirmDeleteScoped(id, scope = "me")
+                        2 -> confirmDeleteScoped(id, scope = "everyone")
+                    }
+                } else {
+                    confirmDeleteScoped(id, scope = "me")
                 }
             }
             .setNegativeButton("إلغاء", null)
@@ -375,11 +388,26 @@ class ChatActivity : AppCompatActivity() {
     }
 
     private fun confirmDelete(messageId: Int) {
+        // متروك للتوافق الخلفي - يستدعي حذف لدى الجميع
+        confirmDeleteScoped(messageId, scope = "everyone")
+    }
+
+    private fun confirmDeleteScoped(messageId: Int, scope: String) {
+        val (title, msg) = when (scope) {
+            "me"        -> "حذف لدي" to "سيتم حذف الرسالة من جهازك فقط، وستظل ظاهرة لدى الطرف الآخر."
+            "everyone"  -> "حذف لدى الجميع" to "سيتم حذف الرسالة لدى جميع المشاركين في المحادثة."
+            else        -> "حذف الرسالة" to "هل تريد حذف هذه الرسالة؟"
+        }
         AlertDialog.Builder(this)
-            .setTitle("حذف الرسالة")
-            .setMessage("هل تريد حذف الرسالة للجميع؟")
+            .setTitle(title)
+            .setMessage(msg)
             .setPositiveButton("حذف") { _, _ ->
-                ApiClient.api.deleteMessage(mapOf("message_id" to messageId)).enqueue(object : Callback<ApiMessage> {
+                val body = mapOf(
+                    "message_id" to messageId,
+                    "scope" to scope,
+                    "requester_id" to sender
+                )
+                ApiClient.api.deleteMessage(body).enqueue(object : Callback<ApiMessage> {
                     override fun onResponse(call: Call<ApiMessage>, response: Response<ApiMessage>) {
                         loadMessages(false)
                     }
@@ -388,6 +416,45 @@ class ChatActivity : AppCompatActivity() {
                         toast(t.message ?: "تعذر حذف الرسالة")
                     }
                 })
+            }
+            .setNegativeButton("إلغاء", null)
+            .show()
+    }
+
+    // حذف الدردشة كاملة (لدي / للجميع)
+    private fun confirmDeleteConversation() {
+        val options = arrayOf("حذف الدردشة لدي فقط", "حذف الدردشة لدى الجميع")
+        AlertDialog.Builder(this)
+            .setTitle("حذف الدردشة")
+            .setItems(options) { _, which ->
+                val scope = if (which == 0) "me" else "everyone"
+                val confirmMsg = if (scope == "me") {
+                    "سيتم حذف الدردشة من جهازك فقط."
+                } else {
+                    "سيتم حذف الدردشة لدى جميع المشاركين."
+                }
+                AlertDialog.Builder(this)
+                    .setTitle("تأكيد")
+                    .setMessage(confirmMsg)
+                    .setPositiveButton("حذف") { _, _ ->
+                        val body = mapOf(
+                            "conversation_id" to receiver,
+                            "requester_id" to sender,
+                            "scope" to scope
+                        )
+                        ApiClient.api.deleteConversation(body).enqueue(object : Callback<ApiMessage> {
+                            override fun onResponse(call: Call<ApiMessage>, response: Response<ApiMessage>) {
+                                toast("تم حذف الدردشة")
+                                loadMessages(false)
+                            }
+
+                            override fun onFailure(call: Call<ApiMessage>, t: Throwable) {
+                                toast(t.message ?: "تعذر حذف الدردشة")
+                            }
+                        })
+                    }
+                    .setNegativeButton("إلغاء", null)
+                    .show()
             }
             .setNegativeButton("إلغاء", null)
             .show()

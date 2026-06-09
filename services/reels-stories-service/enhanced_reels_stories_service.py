@@ -269,14 +269,47 @@ class EnhancedReelsStoriesManager:
         logger.info(f"✅ Reel updated: {reel_id}")
         return True
 
-    async def delete_reel(self, reel_id: str) -> bool:
-        """حذف ريل"""
+    async def delete_reel(self, reel_id: str, cascade_stories: bool = True) -> dict:
+        """حذف ريل + حذف القصة (Story) المرتبطة به تلقائياً
+        
+        إذا قرر المشترك حذف الريل يتم حذف الستوري المرتبط معه أيضاً.
+        """
         if reel_id not in self.reels:
-            return False
+            return {"deleted": False, "reel": False, "stories_deleted": []}
 
+        reel = self.reels[reel_id]
+        creator_id = getattr(reel, "creator_id", None)
+        video_url = getattr(reel, "video_url", None)
+
+        # حذف الريل نفسه
         del self.reels[reel_id]
         logger.info(f"✅ Reel deleted: {reel_id}")
-        return True
+
+        deleted_stories: List[str] = []
+        if cascade_stories:
+            # حذف أي ستوري مرتبط بنفس الريل (نفس المنشئ + نفس رابط الفيديو
+            # أو ستوري يحمل reel_id كمرجع)
+            stories_to_delete = []
+            for sid, story in list(self.stories.items()):
+                linked_reel_id = getattr(story, "linked_reel_id", None) or \
+                                 getattr(story, "reel_id", None)
+                if linked_reel_id == reel_id:
+                    stories_to_delete.append(sid)
+                    continue
+                # تطابق بالمنشئ + نفس الفيديو
+                if creator_id and getattr(story, "creator_id", None) == creator_id:
+                    for el in getattr(story, "elements", []) or []:
+                        el_url = getattr(el, "media_url", None) or getattr(el, "url", None)
+                        if video_url and el_url == video_url:
+                            stories_to_delete.append(sid)
+                            break
+
+            for sid in stories_to_delete:
+                del self.stories[sid]
+                deleted_stories.append(sid)
+                logger.info(f"🗑️  Linked story deleted with reel: {sid}")
+
+        return {"deleted": True, "reel": True, "stories_deleted": deleted_stories}
 
     async def like_reel(self, reel_id: str, user_id: str) -> bool:
         """إعجاب بريل"""
@@ -682,13 +715,28 @@ async def update_reel(
 
 
 @app.delete("/reels/{reel_id}")
-async def delete_reel(reel_id: str):
-    """حذف ريل"""
+async def delete_reel(reel_id: str, cascade_stories: bool = Query(True)):
+    """حذف ريل + حذف الستوري المرتبط به تلقائياً
+    
+    Query param `cascade_stories` (افتراضياً True): يحذف كل قصة (Story) مربوطة بهذا الريل.
+    """
     try:
-        if await reels_stories_manager.delete_reel(reel_id):
-            return {"success": True, "message": "تم حذف الريل"}
+        result = await reels_stories_manager.delete_reel(reel_id, cascade_stories=cascade_stories)
+        if result.get("deleted"):
+            stories_deleted = result.get("stories_deleted", [])
+            msg = "تم حذف الريل"
+            if stories_deleted:
+                msg += f" مع {len(stories_deleted)} ستوري مرتبط"
+            return {
+                "success": True,
+                "message": msg,
+                "stories_deleted": stories_deleted,
+                "stories_deleted_count": len(stories_deleted),
+            }
         else:
             raise HTTPException(status_code=404, detail="الريل غير موجود")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Error deleting reel: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

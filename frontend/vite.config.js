@@ -3,6 +3,11 @@ import { visualizer } from 'rollup-plugin-visualizer';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import compression from 'vite-plugin-compression';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const enableAnalyze = process.env.ANALYZE === 'true';
 const enableCompression = process.env.COMPRESS === 'true';
@@ -118,6 +123,14 @@ export default defineConfig({
           brotliSize: false,
         }),
       ] : [],
+    },
+  },
+
+  // Path aliases — يربط '@' بمجلد src حتى تعمل استيرادات
+  // مثل '@/api/client' و '@/features/engagement/...'
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
     },
   },
 

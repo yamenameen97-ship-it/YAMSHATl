@@ -26,3 +26,14 @@ from app.models.live_session import LiveRoomSession  # noqa: F401
 from app.models.search_history import SearchCategoryEnum, SearchHistory  # noqa: F401
 from app.models.stories_reels import Reel, ReelComment, ReelLike, ReelView, SavedReel, Story, StoryReply, StoryView  # noqa: F401
 from app.models.group import Group, GroupMember, GroupInvitation, GroupJoinRequest, GroupPost, GroupRule, GroupEvent, GroupPoll, GroupAnnouncement, GroupSettings  # noqa: F401
+
+# --- Engagement & Gamification (added) ---
+from app.models.engagement import (  # noqa: F401
+    DailyTask, UserDailyTask,
+    UserLevel, HostLevel,
+    Achievement, UserAchievement,
+    LuckyWheelPrize, LuckyWheelSpin,
+    ReferralCode, Referral,
+    ShopItem, UserInventory,
+    VoiceRoom, VoiceRoomMember, VoiceRoomMessage,
+)

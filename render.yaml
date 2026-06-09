@@ -1,0 +1,144 @@
+services:
+  # Frontend Service
+  - type: web
+    name: yamshat-frontend
+    env: node
+    buildCommand: cd frontend && npm install && npm run build
+    startCommand: cd frontend && npm run preview
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: VITE_API_URL
+        value: https://yamshat-gateway.onrender.com
+    staticPublishPath: frontend/dist
+    routes:
+      - path: /
+        destination: frontend
+
+  # Gateway Service
+  - type: web
+    name: yamshat-gateway
+    env: python
+    buildCommand: cd gateway && pip install -r requirements.txt
+    startCommand: cd gateway && python main.py
+    envVars:
+      - key: AUTH_SERVICE_URL
+        value: https://yamshat-auth-service.onrender.com
+      - key: USER_SERVICE_URL
+        value: https://yamshat-user-service.onrender.com
+      - key: POST_SERVICE_URL
+        value: https://yamshat-post-service.onrender.com
+      - key: CHAT_SERVICE_URL
+        value: https://yamshat-chat-service.onrender.com
+      - key: NOTIFICATION_SERVICE_URL
+        value: https://yamshat-notification-service.onrender.com
+      - key: MEDIA_SERVICE_URL
+        value: https://yamshat-media-service.onrender.com
+      - key: SEARCH_SERVICE_URL
+        value: https://yamshat-search-service.onrender.com
+      - key: CORS_ORIGINS
+        value: https://yamshat-frontend.onrender.com
+
+  # Auth Service
+  - type: web
+    name: yamshat-auth-service
+    env: python
+    buildCommand: cd services/auth-service && pip install -r requirements.txt
+    startCommand: cd services/auth-service && python main.py
+    envVars:
+      - key: DATABASE_URL
+        fromService:
+          name: yamshat-db
+          property: connectionString
+
+  # User Service
+  - type: web
+    name: yamshat-user-service
+    env: python
+    buildCommand: cd services/user-service && pip install -r requirements.txt
+    startCommand: cd services/user-service && python main.py
+    envVars:
+      - key: DATABASE_URL
+        fromService:
+          name: yamshat-db
+          property: connectionString
+
+  # Post Service
+  - type: web
+    name: yamshat-post-service
+    env: python
+    buildCommand: cd services/post-service && pip install -r requirements.txt
+    startCommand: cd services/post-service && python main.py
+    envVars:
+      - key: DATABASE_URL
+        fromService:
+          name: yamshat-db
+          property: connectionString
+
+  # Chat Service
+  - type: web
+    name: yamshat-chat-service
+    env: python
+    buildCommand: cd services/chat-service && pip install -r requirements.txt
+    startCommand: cd services/chat-service && python main.py
+    envVars:
+      - key: DATABASE_URL
+        fromService:
+          name: yamshat-db
+          property: connectionString
+
+  # Notification Service
+  - type: web
+    name: yamshat-notification-service
+    env: python
+    buildCommand: cd notification-service && pip install -r requirements.txt
+    startCommand: cd notification-service && python main.py
+    envVars:
+      - key: DATABASE_URL
+        fromService:
+          name: yamshat-db
+          property: connectionString
+
+  # Media Service
+  - type: web
+    name: yamshat-media-service
+    env: python
+    buildCommand: cd services/media-service && pip install -r requirements.txt
+    startCommand: cd services/media-service && python main.py
+    envVars:
+      - key: DATABASE_URL
+        fromService:
+          name: yamshat-db
+          property: connectionString
+
+  # Search Service
+  - type: web
+    name: yamshat-search-service
+    env: python
+    buildCommand: cd services/search-service && pip install -r requirements.txt
+    startCommand: cd services/search-service && python main.py
+    envVars:
+      - key: DATABASE_URL
+        fromService:
+          name: yamshat-db
+          property: connectionString
+
+  # Database
+  - type: pserv
+    name: yamshat-db
+    env: mysql
+    plan: standard
+    ipAllowList: []
+
+  # Redis Cache
+  - type: pserv
+    name: yamshat-redis
+    env: redis
+    plan: standard
+    ipAllowList: []
+
+databases:
+  - name: yamshat_db
+    dbName: yamshat
+    user: yamshat_user
+    plan: standard

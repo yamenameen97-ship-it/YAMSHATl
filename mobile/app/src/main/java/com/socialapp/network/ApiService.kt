@@ -73,10 +73,23 @@ interface ApiService {
     fun getMessages(@Query("receiver") receiver: String): Call<List<MessageItem>>
 
     @POST("delete_message")
-    fun deleteMessage(@Body body: Map<String, Int>): Call<ApiMessage>
+    fun deleteMessage(@Body body: Map<String, @JvmSuppressWildcards Any>): Call<ApiMessage>
 
     @POST("edit_message")
     fun editMessage(@Body body: Map<String, @JvmSuppressWildcards Any>): Call<ApiMessage>
+
+    // حذف الدردشة كاملة (لدي / للجميع)
+    @POST("delete_conversation")
+    fun deleteConversation(@Body body: Map<String, @JvmSuppressWildcards Any>): Call<ApiMessage>
+
+    // حذف/تعديل المنشورات
+    @retrofit2.http.DELETE("posts/{post_id}")
+    fun deletePost(@retrofit2.http.Path("post_id") postId: String,
+                   @retrofit2.http.Query("requester") requester: String? = null): Call<ApiMessage>
+
+    @retrofit2.http.PUT("posts/{post_id}")
+    fun editPost(@retrofit2.http.Path("post_id") postId: String,
+                 @Body body: Map<String, @JvmSuppressWildcards Any>): Call<ApiMessage>
 
     @POST("message_seen")
     fun messageSeen(@Body body: Map<String, String>): Call<ApiMessage>
@@ -95,6 +108,13 @@ interface ApiService {
 
     @GET("reels")
     fun getReels(): Call<List<Reel>>
+
+    // حذف ريل (cascade_stories=true لحذف الستوري المرتبط تلقائياً)
+    @retrofit2.http.DELETE("reels/{reel_id}")
+    fun deleteReel(
+        @retrofit2.http.Path("reel_id") reelId: String,
+        @retrofit2.http.Query("cascade_stories") cascadeStories: Boolean = true
+    ): Call<Map<String, @JvmSuppressWildcards Any>>
 
     @GET("notifications")
     fun getNotifications(): Call<List<NotificationItem>>

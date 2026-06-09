@@ -14,6 +14,8 @@ const NAV_ITEMS = [
   { to: '/users', label: 'المتابعون', icon: '◌' },
   { to: '/notifications', label: 'الإشعارات', icon: '◔', badgeType: 'notifications' },
   { to: '/inbox', label: 'الرسائل', icon: '✉', badgeType: 'messages' },
+  { to: '/engagement', label: 'مركز التفاعل', icon: '★' },
+  { to: '/voice', label: 'غرف صوتية', icon: '♫' },
   { to: '/profile', label: 'العلامات المحفوظة', icon: '▣' },
 ];
 

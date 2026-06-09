@@ -65,6 +65,9 @@ const Settings = lazy(() => import('./pages/Settings.jsx'));
 const ChatSettings = lazy(() => import('./pages/ChatSettings.jsx'));
 const GroupSettings = lazy(() => import('./pages/GroupSettings.jsx'));
 const ShareTargetLanding = lazy(() => import('./pages/ShareTargetLanding.jsx'));
+// 🎮 ميزات التفاعل والتلعيب + الغرف الصوتية
+const EngagementHub = lazy(() => import('./pages/EngagementHub.jsx'));
+const VoiceRoomsPage = lazy(() => import('./pages/VoiceRoomsPage.jsx'));
 
 function AppGuards() {
   useNetworkStatus();
@@ -219,6 +222,12 @@ export default function App() {
             <Route path="/groups/settings" element={<ProtectedRoute><GroupSettings /></ProtectedRoute>} />
             <Route path="/groups/settings/:groupId" element={<ProtectedRoute><GroupSettings /></ProtectedRoute>} />
             <Route path="/share-target" element={<ShareTargetLanding />} />
+            {/* 🎮 مركز التفاعل والتلعيب */}
+            <Route path="/engagement" element={<ProtectedRoute><EngagementHub /></ProtectedRoute>} />
+            <Route path="/engagement/:tab" element={<ProtectedRoute><EngagementHub /></ProtectedRoute>} />
+            {/* 🔊 الغرف الصوتية الجماعية */}
+            <Route path="/voice" element={<ProtectedRoute><VoiceRoomsPage /></ProtectedRoute>} />
+            <Route path="/voice/:roomId" element={<ProtectedRoute><VoiceRoomsPage /></ProtectedRoute>} />
             <Route path="/post/:postId" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
             <Route path="/profile/:username" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
             <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />

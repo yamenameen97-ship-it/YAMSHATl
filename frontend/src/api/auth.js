@@ -57,12 +57,29 @@ export const resendVerification = async (data) => {
   return response;
 };
 
+// 🔥 Warmup: استيقاظ الباك إند قبل أول طلب captcha
+// يحل مشكلة 503 cold start على Render Free
+let _warmupDone = false;
+const warmupBackend = async () => {
+  if (_warmupDone) return;
+  try {
+    await API.get('/warmup', { timeout: 60000, retryable: true, cache: false });
+    _warmupDone = true;
+  } catch {
+    // تجاهل — السيرفر قد لا يدعم /warmup، سنحاول /captcha مباشرة
+  }
+};
+
 export const getCaptchaChallenge = async () => {
   let lastError;
 
-  // مهمة جداً على Render: أول طلب بعد السكون قد يرجّع 503 أو Network/CORS-like error
-  // قبل ما الخدمة تصحى بالكامل. نعيد المحاولة بشكل محدود لهذا الـ GET فقط.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  // 🔥 إصلاح حاسم: على Render Free، الخدمة تنام بعد 15د.
+  // أول طلب يرجّع 503 وأحياناً يظهر كأنه CORS error.
+  // الحل: warmup + retries أطول (5 محاولات × backoff تصاعدي)
+  await warmupBackend();
+
+  const MAX_ATTEMPTS = 5;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
     try {
       const response = await API.get('/auth/captcha', {
         cache: false,
@@ -70,13 +87,18 @@ export const getCaptchaChallenge = async () => {
         retryable: true,
         timeout: 60000,
       });
+      _warmupDone = true; // نجح الطلب => السيرفر صاحٍ
       return response;
     } catch (error) {
       lastError = error;
       const status = error?.response?.status;
-      const isRetriable = !status || [408, 425, 429, 500, 502, 503, 504].includes(status);
-      if (!isRetriable || attempt === 2) break;
-      await sleep(1200 * (attempt + 1));
+      // معاملة أخطاء الشبكة (no response) كـ retriable لأنها غالباً cold start
+      const isNetworkError = !error?.response;
+      const isRetriable = isNetworkError || [408, 425, 429, 500, 502, 503, 504].includes(status);
+      if (!isRetriable || attempt === MAX_ATTEMPTS - 1) break;
+      // backoff: 1.5s, 3s, 5s, 8s
+      const delay = [1500, 3000, 5000, 8000][attempt] || 8000;
+      await sleep(delay);
     }
   }
 

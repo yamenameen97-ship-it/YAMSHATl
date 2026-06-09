@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import App from './App.jsx';
+import { LanguageProvider } from './i18n/LanguageProvider.jsx';
 import './styles/index.css';
 import './styles/smooth-touch-experience.css';
 import { queryClient } from './lib/queryClient.js';
@@ -43,6 +44,8 @@ import './styles/feed-scrollbar-fix.css';
 import './styles/mobile-scroll-fix.css';
 /* 📱 hotfix نهائي لتثبيت PWA على الجوال ومعالجة الدردشة والبث */
 import './styles/pwa-mobile-hotfix.css';
+/* 🎯 v4 — طبقة التوحيد النهائية (أزرار، مسافات، خطوط، ألوان لكل المنصة) */
+import './styles/platform-unified-v4.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { pwaInitializer } from './services/pwaInitializer.js';
 import { smoothTouchLayer } from './services/smoothTouchLayer.js';
@@ -194,11 +197,13 @@ if (typeof window !== 'undefined') {
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <HashRouter>
-        <RealtimeProvider>
-          <App />
-        </RealtimeProvider>
-      </HashRouter>
+      <LanguageProvider>
+        <HashRouter>
+          <RealtimeProvider>
+            <App />
+          </RealtimeProvider>
+        </HashRouter>
+      </LanguageProvider>
     </QueryClientProvider>
   </React.StrictMode>
 );

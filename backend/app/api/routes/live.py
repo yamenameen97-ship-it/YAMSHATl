@@ -726,7 +726,23 @@ def end_live_room(
         live_store.remove_room(room_id)
     except Exception as exc:  # noqa: BLE001
         logger.warning('live_store.remove_room failed for %s: %s', room_id, exc)
-    return {'status': 'success'}
+
+    # 🔔 إعلام جميع المشاهدين بأن البث انتهى (Realtime)
+    try:
+        import asyncio as _asyncio
+        _coro = sio.emit('live_ended', {
+            'room_id': room_id,
+            'livekit_room': record.livekit_room,
+            'ended_at': _iso(record.ended_at),
+        }, room=record.livekit_room)
+        try:
+            _asyncio.get_event_loop().create_task(_coro)
+        except RuntimeError:
+            _asyncio.run(_coro)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug('socket emit live_ended failed: %s', exc)
+
+    return {'success': True, 'status': 'success', 'data': {'room_id': room_id, 'ended_at': _iso(record.ended_at)}}
 
 
 @router.post('/live_room/{room_id}/gift')
@@ -812,15 +828,35 @@ def send_live_gift(
     _sync_record_from_runtime(db, record, room)
     db.commit()
 
+    # 🎁 بث الهدية فوراً لجميع المشاهدين في الغرفة (Realtime)
+    try:
+        import asyncio as _asyncio
+        _coro = sio.emit('new_gift', {
+            'room_id': room_id,
+            'gift': gift.__dict__,
+            'economy': room.economy,
+        }, room=record.livekit_room)
+        try:
+            _asyncio.get_event_loop().create_task(_coro)
+        except RuntimeError:
+            _asyncio.run(_coro)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug('socket emit new_gift failed: %s', exc)
+
     return {
+        'success': True,
         'status': 'success',
-        'gift': gift.__dict__,
-        'wallet': {
-            'sender_balance': int(sender_wallet.coin_balance or 0),
-            'receiver_balance': int(receiver_wallet.coin_balance or 0),
-            'host_earnings': host_earnings,
-            'total_cost': total_cost,
+        'data': {
+            'gift': gift.__dict__,
+            'wallet': {
+                'sender_balance': int(sender_wallet.coin_balance or 0),
+                'receiver_balance': int(receiver_wallet.coin_balance or 0),
+                'host_earnings': host_earnings,
+                'total_cost': total_cost,
+            },
+            'economy': room.economy,
         },
+        'gift': gift.__dict__,
         'economy': room.economy,
     }
 
@@ -857,14 +893,34 @@ def add_live_comment(
     if not hasattr(room, 'comments') or room.comments is None:
         room.comments = []
     room.comments.append(comment)
-    
-    # Notify via Socket.IO
+
+    # 🔄 مزامنة عداد التعليقات داخل DB حتى يظهر للجميع
     try:
-        sio.emit('live_comment', comment.__dict__, room=record.livekit_room)
-    except:
-        pass
-        
-    return {'status': 'success', 'comment': comment.__dict__}
+        _sync_record_from_runtime(db, record, room)
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug('comment sync failed: %s', exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+    # 🔔 Notify ALL viewers via Socket.IO (broadcast إلى غرفة livekit)
+    try:
+        import asyncio as _asyncio
+        payload = {**comment.__dict__, 'room_id': room_id}
+        # نُطلق حدثين: الاسم الجديد new_comment (المتفق عليه)
+        # والاسم القديم live_comment للتوافق العكسي
+        for evt in ('new_comment', 'live_comment'):
+            _coro = sio.emit(evt, payload, room=record.livekit_room)
+            try:
+                _asyncio.get_event_loop().create_task(_coro)
+            except RuntimeError:
+                _asyncio.run(_coro)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug('socket emit new_comment failed: %s', exc)
+
+    return {'success': True, 'status': 'success', 'data': {'comment': comment.__dict__}, 'comment': comment.__dict__}
 
 
 @router.post('/live_room/{room_id}/settings')
@@ -900,7 +956,9 @@ def update_live_room_settings(
     db.commit()
 
     return {
+        'success': True,
         'status': 'success',
+        'data': {'room_id': room_id, 'settings': room.settings},
         'room_id': room_id,
         'settings': room.settings,
     }
@@ -933,7 +991,15 @@ def update_live_recording_status(
     db.commit()
 
     return {
+        'success': True,
         'status': 'success',
+        'data': {
+            'room_id': room_id,
+            'recording': {
+                'status': room.recording_status,
+                'url': room.recording_url,
+            },
+        },
         'room_id': room_id,
         'recording': {
             'status': room.recording_status,
@@ -972,7 +1038,21 @@ def add_stream_viewer(
     room.last_activity_at = _iso(_utcnow())
     _sync_record_from_runtime(db, record, room)
     db.commit()
-    return {'status': 'success', 'viewers': _serialize_viewers(room)}
+    # 🔄 إعلام بقية المشاهدين بتحديث القائمة
+    try:
+        import asyncio as _asyncio
+        _coro = sio.emit('viewers_updated', {
+            'room_id': room_id,
+            'viewer_count': int(room.viewer_count or 0),
+            'viewers': _serialize_viewers(room),
+        }, room=record.livekit_room)
+        try:
+            _asyncio.get_event_loop().create_task(_coro)
+        except RuntimeError:
+            _asyncio.run(_coro)
+    except Exception:
+        pass
+    return {'success': True, 'status': 'success', 'data': {'viewers': _serialize_viewers(room)}, 'viewers': _serialize_viewers(room)}
 
 
 @router.post('/live_room/{room_id}/remove-viewer')
@@ -995,7 +1075,20 @@ def remove_stream_viewer(
     room.last_activity_at = _iso(_utcnow())
     _sync_record_from_runtime(db, record, room)
     db.commit()
-    return {'status': 'success', 'viewers': _serialize_viewers(room)}
+    try:
+        import asyncio as _asyncio
+        _coro = sio.emit('viewers_updated', {
+            'room_id': room_id,
+            'viewer_count': int(room.viewer_count or 0),
+            'viewers': _serialize_viewers(room),
+        }, room=record.livekit_room)
+        try:
+            _asyncio.get_event_loop().create_task(_coro)
+        except RuntimeError:
+            _asyncio.run(_coro)
+    except Exception:
+        pass
+    return {'success': True, 'status': 'success', 'data': {'viewers': _serialize_viewers(room)}, 'viewers': _serialize_viewers(room)}
 
 
 @router.post('/live_room/{room_id}/mute')
@@ -1013,7 +1106,21 @@ def mute_stream_viewer(
         room.muted_users.add(target_user_id)
     _sync_record_from_runtime(db, record, room)
     db.commit()
-    return {'status': 'success', 'muted_users': list(room.muted_users)}
+    try:
+        import asyncio as _asyncio
+        _coro = sio.emit('moderation_updated', {
+            'room_id': room_id,
+            'action': 'mute',
+            'user_id': target_user_id,
+            'muted_users': list(room.muted_users),
+        }, room=record.livekit_room)
+        try:
+            _asyncio.get_event_loop().create_task(_coro)
+        except RuntimeError:
+            _asyncio.run(_coro)
+    except Exception:
+        pass
+    return {'success': True, 'status': 'success', 'data': {'muted_users': list(room.muted_users)}, 'muted_users': list(room.muted_users)}
 
 
 @router.post('/live_room/{room_id}/unmute')
@@ -1031,7 +1138,21 @@ def unmute_stream_viewer(
         room.muted_users.discard(target_user_id)
     _sync_record_from_runtime(db, record, room)
     db.commit()
-    return {'status': 'success', 'muted_users': list(room.muted_users)}
+    try:
+        import asyncio as _asyncio
+        _coro = sio.emit('moderation_updated', {
+            'room_id': room_id,
+            'action': 'unmute',
+            'user_id': target_user_id,
+            'muted_users': list(room.muted_users),
+        }, room=record.livekit_room)
+        try:
+            _asyncio.get_event_loop().create_task(_coro)
+        except RuntimeError:
+            _asyncio.run(_coro)
+    except Exception:
+        pass
+    return {'success': True, 'status': 'success', 'data': {'muted_users': list(room.muted_users)}, 'muted_users': list(room.muted_users)}
 
 
 @router.post('/live_room/{room_id}/ban')
@@ -1049,7 +1170,21 @@ def ban_stream_viewer(
         room.kicked_users.add(target_user_id)
     _sync_record_from_runtime(db, record, room)
     db.commit()
-    return {'status': 'success', 'banned_users': list(room.kicked_users)}
+    try:
+        import asyncio as _asyncio
+        _coro = sio.emit('moderation_updated', {
+            'room_id': room_id,
+            'action': 'ban',
+            'user_id': target_user_id,
+            'banned_users': list(room.kicked_users),
+        }, room=record.livekit_room)
+        try:
+            _asyncio.get_event_loop().create_task(_coro)
+        except RuntimeError:
+            _asyncio.run(_coro)
+    except Exception:
+        pass
+    return {'success': True, 'status': 'success', 'data': {'banned_users': list(room.kicked_users)}, 'banned_users': list(room.kicked_users)}
 
 
 @router.post('/live_room/{room_id}/unban')
@@ -1067,7 +1202,21 @@ def unban_stream_viewer(
         room.kicked_users.discard(target_user_id)
     _sync_record_from_runtime(db, record, room)
     db.commit()
-    return {'status': 'success', 'banned_users': list(room.kicked_users)}
+    try:
+        import asyncio as _asyncio
+        _coro = sio.emit('moderation_updated', {
+            'room_id': room_id,
+            'action': 'unban',
+            'user_id': target_user_id,
+            'banned_users': list(room.kicked_users),
+        }, room=record.livekit_room)
+        try:
+            _asyncio.get_event_loop().create_task(_coro)
+        except RuntimeError:
+            _asyncio.run(_coro)
+    except Exception:
+        pass
+    return {'success': True, 'status': 'success', 'data': {'banned_users': list(room.kicked_users)}, 'banned_users': list(room.kicked_users)}
 
 
 @router.post('/live_room/{room_id}/multi-host')
@@ -1099,4 +1248,10 @@ def update_multi_host(
     }
     _sync_record_from_runtime(db, record, room)
     db.commit()
-    return {'status': 'success', 'co_hosts': co_hosts, 'multi_host_config': room.multi_host_config}
+    return {
+        'success': True,
+        'status': 'success',
+        'data': {'co_hosts': co_hosts, 'multi_host_config': room.multi_host_config},
+        'co_hosts': co_hosts,
+        'multi_host_config': room.multi_host_config,
+    }

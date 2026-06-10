@@ -129,8 +129,9 @@ export const sendLiveGift = (streamId, giftData = {}) =>
 
 export const sendLiveHeart = async (streamId) => {
   // ✅ FIX: إرسال القلب عبر Socket مع التوكين والتوقيع
+  socketManager.connect();
   socketManager.emit('send_heart', { room_id: streamId }, { queue: false });
-  return { data: { status: 'queued', room_id: streamId } };
+  return { data: { success: true, status: 'queued', room_id: streamId } };
 };
 
 // ==================== Recording ====================
@@ -272,7 +273,7 @@ export default {
   getStreamStats,
   getLiveStreamAnalytics,
   sendLiveComment,
-  getLive_comments: getLiveComments,
+  getLiveComments,
   sendLiveGift,
   sendLiveHeart,
   startRecording,

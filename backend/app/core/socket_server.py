@@ -449,8 +449,31 @@ async def send_heart_event(sid, data):
     if not await allow_socket_message(f'live-heart:{user.id}:{room_id}', min_interval_seconds=0.6, burst_limit=10, window_seconds=12):
         return
     room = live_store.add_heart(room_id)
-    await sio.emit('new_heart', {'count': room['hearts_count']}, room=room_id)
+    await sio.emit('new_heart', {'count': room['hearts_count'], 'room_id': room_id, 'username': user.username}, room=room_id)
     await sio.emit('room_stats', {'room_id': room_id, 'viewer_count': room['viewer_count'], 'hearts_count': room['hearts_count']}, room=room_id)
+
+
+# 🎁 حدث بث الهدايا عبر Socket (فوري)
+@sio.on('send_gift')
+async def send_gift_event(sid, data):
+    token = (data or {}).get('token')
+    session, user = await _resolve_authenticated_user(sid, token, client_ip=get_client_ip(sio.get_environ(sid) or {}))
+    room_id = str((data or {}).get('room_id') or '')
+    if user is None or not room_id:
+        return
+    if not await _enforce_realtime_security(sid, 'send_gift', data or {}, session, user, room_id=room_id):
+        return
+    if not await allow_socket_message(f'live-gift:{user.id}:{room_id}', min_interval_seconds=0.5, burst_limit=6, window_seconds=10):
+        return
+    gift_payload = {
+        'room_id': room_id,
+        'username': user.username,
+        'gift_id': str((data or {}).get('gift_id') or 'default'),
+        'gift_name': str((data or {}).get('gift_name') or (data or {}).get('name') or 'gift'),
+        'amount': int((data or {}).get('amount') or 1),
+        'coins': int((data or {}).get('coins') or 0),
+    }
+    await sio.emit('new_gift', gift_payload, room=room_id)
 
 
 @sio.on('chat_typing')

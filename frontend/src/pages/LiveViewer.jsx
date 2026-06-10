@@ -12,6 +12,7 @@ import {
   getLiveStreamViewers,
   getLiveToken,
   addViewer,
+  removeViewer,
 } from '../services/api/liveStreamApi.js';
 import { getCurrentUsername } from '../utils/auth.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
@@ -114,6 +115,8 @@ export default function LiveViewer() {
   const statsErrorCountRef = useRef(0);
   const commentsErrorCountRef = useRef(0);
   const streamEndedRef = useRef(false);
+  const socketUnsubsRef = useRef([]);
+  const livekitRoomNameRef = useRef('');
   const routeStreamId = String(streamId || '').trim();
 
   const [streamEnded, setStreamEnded] = useState(false);
@@ -200,6 +203,9 @@ export default function LiveViewer() {
         setHasRemotePlayback(false);
         return false;
       }
+
+      // 📡 نحفظ اسم غرفة livekit لاستقبال socket events الصحيحة
+      livekitRoomNameRef.current = livekitRoom;
 
       const livekitResult = await livekitService.connect(
         livekitUrl,
@@ -315,15 +321,16 @@ export default function LiveViewer() {
         setViewers(viewersResponse.data.viewers);
       }
 
+      // ⏱ Polling كـfallback فقط (بفترات أطول) — الأساس الآن socket realtime
       statsIntervalRef.current = setInterval(() => {
         if (streamEndedRef.current) return;
         updateStreamStats(stream.id);
-      }, 5000);
+      }, 15000);
 
       commentsIntervalRef.current = setInterval(() => {
         if (streamEndedRef.current) return;
         loadComments(stream.id);
-      }, 4000);
+      }, 12000);
 
       pushToast?.({
         type: 'success',
@@ -340,7 +347,42 @@ export default function LiveViewer() {
         description: 'حاول مرة أخرى',
       });
     }
-  }, [navigate, pushToast, stopAllPolling, detachRemoteStream, connectToLivePlayback, currentUsername, activeStream?.id]);
+  }, [navigate, pushToast, stopAllPolling, detachRemoteStream, connectToLivePlayback, currentUsername, activeStream?.id, loadComments, updateStreamStats]);
+
+  const loadComments = useCallback(async (streamId) => {
+    try {
+      const response = await getLiveComments(streamId, 50);
+      commentsErrorCountRef.current = 0;
+      setComments(Array.isArray(response?.data) ? response.data : []);
+      setStreamStats(prev => ({
+        ...prev,
+        comments: Array.isArray(response?.data) ? response.data.length : 0,
+      }));
+    } catch (error) {
+      const status = error?.response?.status;
+      commentsErrorCountRef.current += 1;
+
+      if (status === 404) {
+        if (commentsIntervalRef.current) {
+          clearInterval(commentsIntervalRef.current);
+          commentsIntervalRef.current = null;
+        }
+        return;
+      }
+
+      if (commentsErrorCountRef.current >= 3) {
+        if (commentsIntervalRef.current) {
+          clearInterval(commentsIntervalRef.current);
+          commentsIntervalRef.current = null;
+        }
+        return;
+      }
+
+      if (!isExpectedApiError(error)) {
+        console.warn('[LiveViewer] تعذّر تحميل التعليقات:', status || error?.message);
+      }
+    }
+  }, []);
 
   const updateStreamStats = useCallback(async (streamId) => {
     try {
@@ -386,41 +428,6 @@ export default function LiveViewer() {
     }
   }, [stopAllPolling]);
 
-  const loadComments = useCallback(async (streamId) => {
-    try {
-      const response = await getLiveComments(streamId, 50);
-      commentsErrorCountRef.current = 0;
-      setComments(Array.isArray(response?.data) ? response.data : []);
-      setStreamStats(prev => ({
-        ...prev,
-        comments: Array.isArray(response?.data) ? response.data.length : 0,
-      }));
-    } catch (error) {
-      const status = error?.response?.status;
-      commentsErrorCountRef.current += 1;
-
-      if (status === 404) {
-        if (commentsIntervalRef.current) {
-          clearInterval(commentsIntervalRef.current);
-          commentsIntervalRef.current = null;
-        }
-        return;
-      }
-
-      if (commentsErrorCountRef.current >= 3) {
-        if (commentsIntervalRef.current) {
-          clearInterval(commentsIntervalRef.current);
-          commentsIntervalRef.current = null;
-        }
-        return;
-      }
-
-      if (!isExpectedApiError(error)) {
-        console.warn('[LiveViewer] تعذّر تحميل التعليقات:', status || error?.message);
-      }
-    }
-  }, []);
-
   const handleSendHeart = useCallback(async () => {
     if (!activeStream?.id) return;
     try {
@@ -443,7 +450,7 @@ export default function LiveViewer() {
   const handleSendGift = useCallback(async (gift) => {
     if (!activeStream?.id) return;
     try {
-      await sendLiveGift(activeStream.id, gift.id);
+      await sendLiveGift(activeStream.id, { gift_id: gift.id, name: gift.name, price: gift.price });
       pushToast?.({
         type: 'success',
         title: `تم إرسال ${gift.name}`,
@@ -452,10 +459,11 @@ export default function LiveViewer() {
 
       setShowGiftPanel(false);
     } catch (error) {
+      const detail = error?.response?.data?.detail || error?.message || 'حاول مرة أخرى';
       pushToast?.({
         type: 'warning',
         title: 'خطأ في إرسال الهدية',
-        description: 'حاول مرة أخرى',
+        description: detail,
       });
     }
   }, [activeStream, pushToast]);
@@ -473,7 +481,7 @@ export default function LiveViewer() {
         description: 'حاول مرة أخرى',
       });
     }
-  }, [activeStream?.id, commentText, pushToast]);
+  }, [activeStream?.id, commentText, pushToast, loadComments]);
 
   // تنظيف القلوب الطائرة
   useEffect(() => {
@@ -502,6 +510,88 @@ export default function LiveViewer() {
     });
     return () => unsubscribe?.();
   }, [attachRemoteStream, detachRemoteStream]);
+
+  // 🔔 Socket.IO Realtime Listeners — تعليقات/قلوب/هدايا/إحصائيات، بدل polling بطيء
+  useEffect(() => {
+    if (!activeStream?.id) return;
+
+    // ننظف المستمعين السابقين
+    socketUnsubsRef.current.forEach((off) => { try { off?.(); } catch (_) {} });
+    socketUnsubsRef.current = [];
+
+    socketManager.connect();
+
+    const onNewComment = (payload) => {
+      const data = payload?.detail || payload || {};
+      if (data.room_id && String(data.room_id) !== String(activeStream.id)) return;
+      setComments((prev) => {
+        const id = data.id || data.client_id || `${data.username || data.user}-${data.created_at}`;
+        if (prev.some((c) => (c.id || `${c.username || c.user}-${c.created_at}`) === id)) return prev;
+        return [...prev, { ...data, id }].slice(-200);
+      });
+      setStreamStats((prev) => ({ ...prev, comments: (prev.comments || 0) + 1 }));
+    };
+
+    const onNewHeart = (payload) => {
+      const data = payload?.detail || payload || {};
+      const count = Number(data.count || data.hearts_count || 0);
+      setStreamStats((prev) => ({ ...prev, hearts: count > prev.hearts ? count : prev.hearts + 1 }));
+      const heart = { id: `h-${Date.now()}-${Math.random()}`, x: Math.random() * 80 + 10, icon: '💜' };
+      setFloatingHearts((prev) => [...prev, heart].slice(-15));
+    };
+
+    const onNewGift = (payload) => {
+      const data = payload?.detail || payload || {};
+      const gift = data.gift || data;
+      pushToast?.({
+        type: 'success',
+        title: `🎁 ${gift?.username || gift?.user || ''} أرسل ${gift?.gift_name || 'hadeya'}`,
+        description: `+${gift?.coins || 0} عملة`,
+      });
+      const heart = { id: `g-${Date.now()}`, x: Math.random() * 80 + 10, icon: '🎁' };
+      setFloatingHearts((prev) => [...prev, heart].slice(-15));
+    };
+
+    const onRoomStats = (payload) => {
+      const data = payload?.detail || payload || {};
+      if (data.room_id && livekitRoomNameRef.current && data.room_id !== livekitRoomNameRef.current && String(data.room_id) !== String(activeStream.id)) return;
+      setStreamStats((prev) => ({
+        ...prev,
+        viewers: Number(data.viewer_count ?? prev.viewers) || 0,
+        hearts: Number(data.hearts_count ?? prev.hearts) || prev.hearts,
+      }));
+    };
+
+    const onViewersUpdated = (payload) => {
+      const data = payload?.detail || payload || {};
+      if (Array.isArray(data.viewers)) setViewers(data.viewers);
+      if (typeof data.viewer_count === 'number') {
+        setStreamStats((prev) => ({ ...prev, viewers: data.viewer_count }));
+      }
+    };
+
+    const onLiveEnded = (payload) => {
+      const data = payload?.detail || payload || {};
+      if (data.room_id && livekitRoomNameRef.current && data.room_id !== livekitRoomNameRef.current && String(data.room_id) !== String(activeStream.id)) return;
+      streamEndedRef.current = true;
+      setStreamEnded(true);
+      stopAllPolling();
+      pushToast?.({ type: 'info', title: 'تم إنهاء البث', description: 'المضيف أنهى البث المباشر' });
+    };
+
+    socketUnsubsRef.current.push(socketManager.on('new_comment', onNewComment));
+    socketUnsubsRef.current.push(socketManager.on('live_comment', onNewComment));
+    socketUnsubsRef.current.push(socketManager.on('new_heart', onNewHeart));
+    socketUnsubsRef.current.push(socketManager.on('new_gift', onNewGift));
+    socketUnsubsRef.current.push(socketManager.on('room_stats', onRoomStats));
+    socketUnsubsRef.current.push(socketManager.on('viewers_updated', onViewersUpdated));
+    socketUnsubsRef.current.push(socketManager.on('live_ended', onLiveEnded));
+
+    return () => {
+      socketUnsubsRef.current.forEach((off) => { try { off?.(); } catch (_) {} });
+      socketUnsubsRef.current = [];
+    };
+  }, [activeStream?.id, pushToast, stopAllPolling]);
 
   // تحميل البثوث عند التحميل
   useEffect(() => {
@@ -566,17 +656,21 @@ export default function LiveViewer() {
     setFilteredStreams(filtered);
   }, [streams, filter]);
 
-  // تنظيف الفترات الزمنية
+  // تنظيف الفترات الزمنية + إعلام الباك إند بالمغادرة
   useEffect(() => {
     return () => {
       stopAllPolling();
       if (activeStream?.id) {
         socketManager.emit('leave_live', { room_id: activeStream.id }, { queue: false });
+        // أيضاً عبر API لتحديث DB
+        removeViewer(activeStream.id, currentUsername).catch(() => null);
       }
       detachRemoteStream();
       livekitService.disconnect().catch(() => {});
+      socketUnsubsRef.current.forEach((off) => { try { off?.(); } catch (_) {} });
+      socketUnsubsRef.current = [];
     };
-  }, [stopAllPolling, activeStream?.id, detachRemoteStream]);
+  }, [stopAllPolling, activeStream?.id, detachRemoteStream, currentUsername]);
 
   const hostName = activeStream?.host_name || activeStream?.host_username || 'مضيف البث';
   const rawCover = (
@@ -649,12 +743,14 @@ export default function LiveViewer() {
             ✕
           </button>
           <div className="mlv-mobile-header-info">
-            <h1>Yamshat Official</h1>
-            <p className="mlv-mobile-header-viewers">12.8K مشاهد</p>
+            <h1>{hostName}</h1>
+            <p className="mlv-mobile-header-viewers">{streamStats.viewers || 0} مشاهد</p>
           </div>
           <div className="mlv-mobile-header-actions">
-            <button className="mlv-mobile-action-icon">👤</button>
-            <button className="mlv-mobile-action-icon">👥</button>
+            <button className="mlv-mobile-action-icon" title="متابعة" onClick={() => setIsFollowing((v) => !v)}>
+              {isFollowing ? '✅' : '👤'}
+            </button>
+            <button className="mlv-mobile-action-icon" title={`${viewers.length} مشاهد`}>👥</button>
           </div>
         </div>
       </header>
@@ -708,34 +804,43 @@ export default function LiveViewer() {
               </div>
               <FloatingHearts items={floatingHearts} />
 
-              {/* Top Right Badges */}
+              {/* Top Right Badges — أرقام حقيقية */}
               <div className="mlv-mobile-top-badges">
                 <div className="mlv-mobile-viewers-badge">
                   <span className="mlv-mobile-badge-icon">👁</span>
-                  <span className="mlv-mobile-badge-text">10K+</span>
+                  <span className="mlv-mobile-badge-text">{streamStats.viewers || 0}</span>
                 </div>
                 <div className="mlv-mobile-profile-badge">
                   <Avatar name={hostName} size={36} />
                 </div>
               </div>
 
-              {/* Bottom Right Actions */}
+              {/* Bottom Right Actions — أرقام حقيقية */}
               <div className="mlv-mobile-right-actions">
                 <button className="mlv-mobile-action-btn mlv-mobile-action-heart" onClick={handleSendHeart}>
                   <span>💜</span>
-                  <span className="mlv-mobile-action-count">25.7K</span>
+                  <span className="mlv-mobile-action-count">{streamStats.hearts || 0}</span>
                 </button>
                 <button className="mlv-mobile-action-btn mlv-mobile-action-comment">
                   <span>💬</span>
-                  <span className="mlv-mobile-action-count">1,245</span>
+                  <span className="mlv-mobile-action-count">{streamStats.comments || comments.length || 0}</span>
                 </button>
                 <button className="mlv-mobile-action-btn mlv-mobile-action-gift" onClick={() => setShowGiftPanel(!showGiftPanel)}>
                   <span>🎁</span>
                   <span className="mlv-mobile-action-label">هدية</span>
                 </button>
-                <button className="mlv-mobile-action-btn mlv-mobile-action-share">
+                <button className="mlv-mobile-action-btn mlv-mobile-action-share" onClick={() => {
+                  try {
+                    if (navigator.share) {
+                      navigator.share({ title: activeStream?.title || 'بث مباشر', url: window.location.href });
+                    } else if (navigator.clipboard) {
+                      navigator.clipboard.writeText(window.location.href);
+                      pushToast?.({ type: 'success', title: 'تم نسخ رابط البث' });
+                    }
+                  } catch (_) {}
+                }}>
                   <span>↗</span>
-                  <span className="mlv-mobile-action-count">1,026</span>
+                  <span className="mlv-mobile-action-label">مشاركة</span>
                 </button>
               </div>
             </div>

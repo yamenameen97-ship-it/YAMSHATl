@@ -1,450 +1,815 @@
-/**
- * 👁 LiveViewer.jsx — واجهة المشاهد (Viewer)
- * ============================================================
- * المعمارية الجديدة (وفق متطلبات المالك):
- *   joinLiveRoom() (HTTP)            ← يضيف المشاهد لقائمة الغرفة
- *   get token (role=viewer)          ← من /live_room/{id}/token
- *   livekitService.connect(viewer)   ← اتصال بـ LiveKit (لا كاميرا)
- *   استقبال track عبر RoomEvent.TrackSubscribed
- *   ربط الفيديو بـ videoRef.current
- *
- * ❌ المشاهد لا يفتح الكاميرا إطلاقاً
- * ❌ لا navigator.getUserMedia()
- */
-
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import {
+  getActiveLiveStreams,
   getLiveStreamDetails,
-  getLiveToken,
   sendLiveComment,
-  sendLiveGift,
-  addViewer,
-  removeViewer,
   getLiveComments,
+  sendLiveGift,
+  sendLiveHeart,
+  getLiveStreamStats,
+  getLiveStreamViewers,
+  getLiveToken,
+  addViewer,
 } from '../services/api/liveStreamApi.js';
 import { getCurrentUsername } from '../utils/auth.js';
+import { resolveMediaUrl } from '../config/mediaConfig.js';
 import socketManager from '../services/socketManager.js';
 import livekitService from '../services/livekitService.js';
+import '../styles/modern-live-viewer.css';
+import '../styles/modern-live-viewer-override.css';
 
 const GIFTS = [
-  { id: 1, name: 'وردة',     icon: '🌹', price: 10 },
-  { id: 2, name: 'قهوة',     icon: '☕', price: 50 },
+  { id: 1, name: 'وردة', icon: '🌹', price: 10 },
+  { id: 2, name: 'قهوة', icon: '☕', price: 50 },
   { id: 3, name: 'قلب كبير', icon: '💜', price: 100 },
-  { id: 4, name: 'نجمة',     icon: '⭐', price: 250 },
+  { id: 4, name: 'نجمة', icon: '⭐', price: 250 },
   { id: 5, name: 'تاج ملكي', icon: '👑', price: 1000 },
 ];
 
-function Avatar({ name = '', size = 36 }) {
+function Avatar({ name = '', size = 42 }) {
   const colors = ['#7c3aed', '#3b82f6', '#10b981', '#f97316', '#ec4899'];
-  const hash = (name || '?').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
   const color = colors[hash % colors.length];
+
   return (
-    <div style={{
-      width: size, height: size, borderRadius: '50%', display: 'flex',
-      alignItems: 'center', justifyContent: 'center', background: color,
-      color: 'white', fontWeight: 900, fontSize: size / 2.5, flexShrink: 0,
-    }}>
-      {(name?.charAt(0) || '?').toUpperCase()}
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: '50%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: color,
+        color: 'white',
+        fontWeight: 900,
+        fontSize: size / 2.5,
+        flexShrink: 0,
+      }}
+    >
+      {name?.charAt(0).toUpperCase() || '?'}
+    </div>
+  );
+}
+
+function FloatingHearts({ items = [] }) {
+  if (!Array.isArray(items) || items.length === 0) return null;
+
+  return (
+    <div className="mlv-floating-hearts" aria-hidden="true">
+      {items.map((heart) => (
+        <div
+          key={heart.id}
+          className="mlv-floating-heart"
+          style={{
+            right: `${heart.x}%`,
+            animation: `mlvFloatUp 1.5s ease-out forwards`,
+          }}
+        >
+          {heart.icon || '💜'}
+        </div>
+      ))}
     </div>
   );
 }
 
 export default function LiveViewer() {
-  const { streamId: paramId } = useParams();
-  const navigate = useNavigate();
   const { pushToast } = useToast();
   const currentUsername = getCurrentUsername();
+  const navigate = useNavigate();
+  const { streamId } = useParams();
 
-  const [stream, setStream] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [connected, setConnected] = useState(false);
+  // حالة البثوث
+  const [streams, setStreams] = useState([]);
+  const [filteredStreams, setFilteredStreams] = useState([]);
+  const [activeStream, setActiveStream] = useState(null);
+  const [filter, setFilter] = useState('all');
+  const [loading, setLoading] = useState(false);
+
+  // بيانات البث النشط
+  const [streamDetails, setStreamDetails] = useState(null);
+  const [streamStats, setStreamStats] = useState({
+    viewers: 0,
+    hearts: 0,
+    comments: 0,
+  });
+
+  // التعليقات والهدايا
   const [comments, setComments] = useState([]);
-  const [commentInput, setCommentInput] = useState('');
-  const [stats, setStats] = useState({ viewers: 0, hearts: 0 });
+  const [commentText, setCommentText] = useState('');
+  const [showGiftPanel, setShowGiftPanel] = useState(false);
+
+  // الحالات الأخرى
   const [floatingHearts, setFloatingHearts] = useState([]);
-  const [floatingGifts, setFloatingGifts] = useState([]);
-  const [showGifts, setShowGifts] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [viewers, setViewers] = useState([]);
 
-  const remoteVideoRef = useRef(null);
-  const remoteAudioRef = useRef(null);
-  const commentsBoxRef = useRef(null);
+  const heartTimerRef = useRef(null);
+  const statsIntervalRef = useRef(null);
+  const commentsIntervalRef = useRef(null);
+  const playerVideoRef = useRef(null);
+  const attachedStreamRef = useRef(null);
+  const statsErrorCountRef = useRef(0);
+  const commentsErrorCountRef = useRef(0);
+  const streamEndedRef = useRef(false);
+  const routeStreamId = String(streamId || '').trim();
 
-  // ════════════════════════ join + connect to LiveKit ════════════════════════
-  const joinStream = useCallback(async (sid) => {
+  const [streamEnded, setStreamEnded] = useState(false);
+  const [hasRemotePlayback, setHasRemotePlayback] = useState(false);
+
+  const stopAllPolling = useCallback(() => {
+    if (statsIntervalRef.current) {
+      clearInterval(statsIntervalRef.current);
+      statsIntervalRef.current = null;
+    }
+    if (commentsIntervalRef.current) {
+      clearInterval(commentsIntervalRef.current);
+      commentsIntervalRef.current = null;
+    }
+  }, []);
+
+  const isExpectedApiError = (error) => {
+    const status = error?.response?.status;
+    return status === 401 || status === 403 || status === 404;
+  };
+
+  const detachRemoteStream = useCallback(() => {
+    attachedStreamRef.current = null;
+    if (playerVideoRef.current) {
+      try {
+        playerVideoRef.current.pause?.();
+        playerVideoRef.current.srcObject = null;
+        playerVideoRef.current.removeAttribute('src');
+        playerVideoRef.current.load?.();
+      } catch {
+        // ignore detach failures
+      }
+    }
+    setHasRemotePlayback(false);
+  }, []);
+
+  const attachRemoteStream = useCallback(() => {
+    const room = livekitService.room;
+    const player = playerVideoRef.current;
+    if (!room || !player) {
+      setHasRemotePlayback(false);
+      return false;
+    }
+
+    const mediaTracks = [];
+    room.remoteParticipants?.forEach?.((participant) => {
+      participant?.trackPublications?.forEach?.((publication) => {
+        const mediaTrack = publication?.track?.mediaStreamTrack;
+        if (!mediaTrack) return;
+        if (!mediaTracks.some((track) => track.id === mediaTrack.id)) {
+          mediaTracks.push(mediaTrack);
+        }
+      });
+    });
+
+    if (!mediaTracks.length) {
+      setHasRemotePlayback(false);
+      return false;
+    }
+
+    try {
+      const mediaStream = new MediaStream(mediaTracks);
+      attachedStreamRef.current = mediaStream;
+      player.srcObject = mediaStream;
+      player.muted = false;
+      player.playsInline = true;
+      player.autoplay = true;
+      player.play?.().catch(() => {});
+      setHasRemotePlayback(true);
+      return true;
+    } catch {
+      setHasRemotePlayback(false);
+      return false;
+    }
+  }, []);
+
+  const connectToLivePlayback = useCallback(async (targetStreamId) => {
+    try {
+      const tokenResponse = await getLiveToken(targetStreamId, { role: 'viewer' });
+      const livekitUrl = tokenResponse?.data?.livekit_url || '';
+      const livekitRoom = tokenResponse?.data?.livekit_room || '';
+      const token = tokenResponse?.data?.token || '';
+      if (!livekitUrl || !livekitRoom || !token) {
+        setHasRemotePlayback(false);
+        return false;
+      }
+
+      const livekitResult = await livekitService.connect(
+        livekitUrl,
+        token,
+        livekitRoom,
+        currentUsername,
+        { autoSubscribe: true },
+      );
+
+      if (!livekitResult?.success) {
+        setHasRemotePlayback(false);
+        return false;
+      }
+
+      setTimeout(() => {
+        attachRemoteStream();
+      }, 300);
+      return true;
+    } catch (error) {
+      if (!isExpectedApiError(error)) {
+        console.warn('[LiveViewer] تعذّر الاتصال ببث LiveKit:', error?.message || error);
+      }
+      setHasRemotePlayback(false);
+      return false;
+    }
+  }, [attachRemoteStream, currentUsername]);
+
+  // تحميل البثوث النشطة
+  const loadStreams = useCallback(async () => {
     setLoading(true);
     try {
-      // (1) جلب تفاصيل البث
-      const detailsRes = await getLiveStreamDetails(sid);
-      const detail = detailsRes?.data?.data || detailsRes?.data || {};
-      if (!detail?.id) throw new Error('البث غير موجود');
-      if (!detail.is_active) throw new Error('البث منتهٍ');
-      setStream(detail);
-      setStats({
-        viewers: detail.viewer_count || 0,
-        hearts: detail.hearts_count || 0,
-      });
+      const response = await getActiveLiveStreams({ limit: 100 });
+      const allStreams = Array.isArray(response?.data) ? response.data : [];
+      setStreams(allStreams);
 
-      // (2) إضافة المشاهد إلى DB (best-effort)
-      try { await addViewer(sid, { platform: 'web' }); } catch (_) {}
-
-      // (3) جلب التعليقات الموجودة (آخر 50)
-      try {
-        const cRes = await getLiveComments(sid, 50);
-        const cs = cRes?.data?.data || cRes?.data || [];
-        setComments(Array.isArray(cs) ? cs : []);
-      } catch (_) {}
-
-      // (4) طلب توكن viewer
-      const tokRes = await getLiveToken(sid, { role: 'viewer' });
-      const td = tokRes?.data?.data || tokRes?.data || {};
-      if (!td?.token || !td?.livekit_url) throw new Error('فشل استخراج توكن LiveKit');
-
-      // (5) connect — viewer لا يفتح كاميرا
-      const connectRes = await livekitService.connect({
-        url: td.livekit_url,
-        token: td.token,
-        role: 'viewer',
-        enableCamera: false,
-        enableMicrophone: false,
-      });
-      if (!connectRes.success) throw new Error(connectRes.error || 'فشل الاتصال');
-
-      // (6) socket join_live للتعليقات/القلوب
-      try {
-        const accessToken = (typeof window !== 'undefined' && window.localStorage)
-          ? window.localStorage.getItem('access_token') : '';
-        socketManager.emit?.('join_live', {
-          room_id: sid,
-          role: 'viewer',
-          token: accessToken,
-        }, { queue: false });
-      } catch (_) {}
-
-      setConnected(true);
-    } catch (err) {
-      console.error('joinStream error', err);
-      pushToast?.({ type: 'error', message: err?.message || 'فشل الانضمام للبث' });
-      setTimeout(() => navigate('/live'), 1500);
+      let filtered = allStreams;
+      if (filter === 'active') {
+        filtered = allStreams.filter(s => s.is_active);
+      } else if (filter === 'popular') {
+        filtered = allStreams
+          .filter(s => s.is_active)
+          .sort((a, b) => (b.viewers_count || 0) - (a.viewers_count || 0));
+      }
+      setFilteredStreams(filtered);
+    } catch (error) {
+      console.error('خطأ في تحميل البثوث:', error);
     } finally {
       setLoading(false);
     }
-  }, [navigate, pushToast]);
+  }, [filter]);
 
-  useEffect(() => {
-    if (paramId) joinStream(paramId);
-  }, [paramId, joinStream]);
-
-  // ════════════════════════ livekit events → ربط الفيديو ════════════════════════
-  useEffect(() => {
-    if (!connected) return;
-    const unsub = livekitService.subscribe((state) => {
-      if (state.event === 'track_subscribed') {
-        if (state.kind === 'video' && remoteVideoRef.current) {
-          setTimeout(() => livekitService.attachRemoteVideo(remoteVideoRef.current, state.identity), 80);
-        }
-        if (state.kind === 'audio' && remoteAudioRef.current) {
-          setTimeout(() => livekitService.attachRemoteAudio(remoteAudioRef.current, state.identity), 80);
-        }
-      }
-    });
-    // محاولة فورية إن كان الفيديو متاحاً مسبقاً
-    setTimeout(() => {
-      if (remoteVideoRef.current) livekitService.attachRemoteVideo(remoteVideoRef.current);
-      if (remoteAudioRef.current) livekitService.attachRemoteAudio(remoteAudioRef.current);
-    }, 600);
-    return unsub;
-  }, [connected]);
-
-  // ════════════════════════ socket events (تعليقات/قلوب/هدايا) ════════════════════════
-  useEffect(() => {
+  // فتح البث
+  const openStream = useCallback(async (stream, options = {}) => {
     if (!stream?.id) return;
-    const roomId = stream.id;
 
-    const onComment = (payload) => {
-      if (!payload || (payload.room_id && payload.room_id !== roomId)) return;
-      setComments((prev) => {
-        if (prev.some((c) => c.id === payload.id)) return prev;
-        return [...prev, payload];
-      });
-    };
-    const onStats = (payload) => {
-      if (!payload || payload.room_id !== roomId) return;
-      setStats((s) => ({
-        viewers: payload.viewer_count ?? s.viewers,
-        hearts: payload.hearts_count ?? s.hearts,
-      }));
-    };
-    const onHeart = (payload) => {
-      if (!payload || payload.room_id !== roomId) return;
-      const id = Date.now() + Math.random();
-      setFloatingHearts((p) => [...p, { id, left: 20 + Math.random() * 60 }]);
-      setTimeout(() => setFloatingHearts((p) => p.filter((h) => h.id !== id)), 3000);
-      setStats((s) => ({ ...s, hearts: payload.count ?? s.hearts + 1 }));
-    };
-    const onGift = (payload) => {
-      if (!payload || payload.room_id !== roomId) return;
-      const id = Date.now() + Math.random();
-      const giftName = payload.gift?.gift_name || payload.gift_name || 'هدية';
-      setFloatingGifts((p) => [...p, { id, name: giftName, user: payload.gift?.username || '' }]);
-      setTimeout(() => setFloatingGifts((p) => p.filter((g) => g.id !== id)), 4000);
-    };
-    const onEnded = (payload) => {
-      if (!payload || (payload.room_id && payload.room_id !== roomId)) return;
-      pushToast?.({ type: 'info', message: 'انتهى البث' });
-      setTimeout(() => navigate('/live'), 1200);
-    };
-
-    socketManager.on?.('new_comment', onComment);
-    socketManager.on?.('live_comment', onComment);
-    socketManager.on?.('room_stats', onStats);
-    socketManager.on?.('new_heart', onHeart);
-    socketManager.on?.('new_gift', onGift);
-    socketManager.on?.('live_ended', onEnded);
-
-    return () => {
-      socketManager.off?.('new_comment', onComment);
-      socketManager.off?.('live_comment', onComment);
-      socketManager.off?.('room_stats', onStats);
-      socketManager.off?.('new_heart', onHeart);
-      socketManager.off?.('new_gift', onGift);
-      socketManager.off?.('live_ended', onEnded);
-    };
-  }, [stream?.id, navigate, pushToast]);
-
-  // auto-scroll
-  useEffect(() => {
-    if (commentsBoxRef.current) {
-      commentsBoxRef.current.scrollTop = commentsBoxRef.current.scrollHeight;
+    if (options.syncUrl !== false) {
+      navigate(`/live/view/${stream.id}`);
     }
-  }, [comments]);
 
-  // ════════════════════════ المغادرة (cleanup) ════════════════════════
-  const leaveStream = useCallback(async () => {
+    if (activeStream?.id && String(activeStream.id) !== String(stream.id)) {
+      socketManager.emit('leave_live', { room_id: activeStream.id }, { queue: false });
+    }
+
+    stopAllPolling();
+    detachRemoteStream();
+    await livekitService.disconnect().catch(() => {});
+    statsErrorCountRef.current = 0;
+    commentsErrorCountRef.current = 0;
+    streamEndedRef.current = false;
+    setStreamEnded(false);
+    setHasRemotePlayback(false);
+
+    setActiveStream(stream);
+
     try {
-      if (stream?.id) {
-        try { await removeViewer(stream.id); } catch (_) {}
-        try { socketManager.emit?.('leave_live', { room_id: stream.id }, { queue: false }); } catch (_) {}
-      }
-    } finally {
-      await livekitService.disconnect();
-      setConnected(false);
-    }
-  }, [stream]);
+      socketManager.connect();
+      socketManager.emit('join_live', {
+        room_id: stream.id,
+        role: 'viewer',
+        platform: 'web',
+        device_type: 'browser',
+      }, { queue: false });
 
-  useEffect(() => {
-    return () => { leaveStream().catch(() => {}); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      await addViewer(stream.id, {
+        username: currentUsername,
+        platform: 'web',
+        device_type: 'browser',
+      }).catch(() => null);
+
+      const detailsResponse = await getLiveStreamDetails(stream.id).catch((err) => {
+        if (!isExpectedApiError(err)) throw err;
+        return null;
+      });
+      if (detailsResponse?.data) {
+        setStreamDetails(detailsResponse.data);
+        setStreamStats({
+          viewers: detailsResponse.data.viewers_count ?? detailsResponse.data.viewer_count ?? 0,
+          hearts: detailsResponse.data.hearts_count ?? 0,
+          comments: detailsResponse.data.comments_count ?? 0,
+        });
+      }
+
+      await connectToLivePlayback(stream.id).catch(() => false);
+
+      const commentsResponse = await getLiveComments(stream.id).catch((err) => {
+        if (!isExpectedApiError(err)) throw err;
+        return { data: [] };
+      });
+      setComments(Array.isArray(commentsResponse?.data) ? commentsResponse.data : []);
+
+      const viewersResponse = await getLiveStreamViewers(stream.id).catch(() => null);
+      if (viewersResponse?.data?.viewers) {
+        setViewers(viewersResponse.data.viewers);
+      }
+
+      statsIntervalRef.current = setInterval(() => {
+        if (streamEndedRef.current) return;
+        updateStreamStats(stream.id);
+      }, 5000);
+
+      commentsIntervalRef.current = setInterval(() => {
+        if (streamEndedRef.current) return;
+        loadComments(stream.id);
+      }, 4000);
+
+      pushToast?.({
+        type: 'success',
+        title: 'تم الانضمام للبث',
+        description: `مرحباً في بث ${stream.title}`,
+      });
+    } catch (error) {
+      if (!isExpectedApiError(error)) {
+        console.warn('[LiveViewer] فشل غير متوقع عند فتح البث', error?.message || error);
+      }
+      pushToast?.({
+        type: 'warning',
+        title: 'خطأ في فتح البث',
+        description: 'حاول مرة أخرى',
+      });
+    }
+  }, [navigate, pushToast, stopAllPolling, detachRemoteStream, connectToLivePlayback, currentUsername, activeStream?.id]);
+
+  const updateStreamStats = useCallback(async (streamId) => {
+    try {
+      const response = await getLiveStreamStats(streamId);
+      if (response?.data) {
+        statsErrorCountRef.current = 0;
+        setStreamStats(prev => ({
+          ...prev,
+          viewers: response.data.viewers_count ?? response.data.viewer_count ?? response.data.unique_viewers ?? prev.viewers,
+          hearts: response.data.hearts_count ?? prev.hearts,
+        }));
+      }
+    } catch (error) {
+      const status = error?.response?.status;
+      statsErrorCountRef.current += 1;
+
+      if (status === 404) {
+        streamEndedRef.current = true;
+        setStreamEnded(true);
+        stopAllPolling();
+        return;
+      }
+
+      if (status === 403 && statsErrorCountRef.current >= 1) {
+        if (statsIntervalRef.current) {
+          clearInterval(statsIntervalRef.current);
+          statsIntervalRef.current = null;
+        }
+        return;
+      }
+
+      if (statsErrorCountRef.current >= 3) {
+        if (statsIntervalRef.current) {
+          clearInterval(statsIntervalRef.current);
+          statsIntervalRef.current = null;
+        }
+        return;
+      }
+
+      if (!isExpectedApiError(error)) {
+        console.warn('[LiveViewer] تعذّر تحديث الإحصائيات:', status || error?.message);
+      }
+    }
+  }, [stopAllPolling]);
+
+  const loadComments = useCallback(async (streamId) => {
+    try {
+      const response = await getLiveComments(streamId, 50);
+      commentsErrorCountRef.current = 0;
+      setComments(Array.isArray(response?.data) ? response.data : []);
+      setStreamStats(prev => ({
+        ...prev,
+        comments: Array.isArray(response?.data) ? response.data.length : 0,
+      }));
+    } catch (error) {
+      const status = error?.response?.status;
+      commentsErrorCountRef.current += 1;
+
+      if (status === 404) {
+        if (commentsIntervalRef.current) {
+          clearInterval(commentsIntervalRef.current);
+          commentsIntervalRef.current = null;
+        }
+        return;
+      }
+
+      if (commentsErrorCountRef.current >= 3) {
+        if (commentsIntervalRef.current) {
+          clearInterval(commentsIntervalRef.current);
+          commentsIntervalRef.current = null;
+        }
+        return;
+      }
+
+      if (!isExpectedApiError(error)) {
+        console.warn('[LiveViewer] تعذّر تحميل التعليقات:', status || error?.message);
+      }
+    }
   }, []);
 
-  // ════════════════════════ Actions ════════════════════════
-  const handleSendComment = async () => {
-    if (!stream?.id || !commentInput.trim()) return;
-    const text = commentInput.trim();
-    setCommentInput('');
+  const handleSendHeart = useCallback(async () => {
+    if (!activeStream?.id) return;
     try {
-      await sendLiveComment(stream.id, { content: text });
-    } catch (_) {
-      pushToast?.({ type: 'error', message: 'فشل إرسال التعليق' });
+      await sendLiveHeart(activeStream.id);
+      const newHeart = {
+        id: Date.now(),
+        x: Math.random() * 80 + 10,
+        icon: '💜',
+      };
+      setFloatingHearts(prev => [...prev, newHeart]);
+      setStreamStats(prev => ({
+        ...prev,
+        hearts: prev.hearts + 1,
+      }));
+    } catch (error) {
+      console.error('خطأ في إرسال القلب:', error);
     }
-  };
+  }, [activeStream?.id]);
 
-  const handleSendHeart = () => {
-    if (!stream?.id) return;
+  const handleSendGift = useCallback(async (gift) => {
+    if (!activeStream?.id) return;
     try {
-      const accessToken = window.localStorage?.getItem('access_token') || '';
-      socketManager.emit?.('send_heart', { room_id: stream.id, token: accessToken }, { queue: false });
-    } catch (_) {}
-    // تأثير محلي فوري
-    const id = Date.now() + Math.random();
-    setFloatingHearts((p) => [...p, { id, left: 20 + Math.random() * 60 }]);
-    setTimeout(() => setFloatingHearts((p) => p.filter((h) => h.id !== id)), 3000);
-  };
-
-  const handleSendGift = async (gift) => {
-    if (!stream?.id) return;
-    setShowGifts(false);
-    try {
-      await sendLiveGift(stream.id, {
-        gift_id: String(gift.id),
-        name: gift.name,
-        price: gift.price,
-        amount: 1,
+      await sendLiveGift(activeStream.id, gift.id);
+      pushToast?.({
+        type: 'success',
+        title: `تم إرسال ${gift.name}`,
+        description: 'شكراً على الدعم!',
       });
-      pushToast?.({ type: 'success', message: `أرسلت ${gift.icon} ${gift.name}` });
-    } catch (err) {
-      pushToast?.({ type: 'error', message: err?.response?.data?.detail || 'فشل إرسال الهدية' });
+
+      setShowGiftPanel(false);
+    } catch (error) {
+      pushToast?.({
+        type: 'warning',
+        title: 'خطأ في إرسال الهدية',
+        description: 'حاول مرة أخرى',
+      });
     }
+  }, [activeStream, pushToast]);
+
+  const handleSendComment = useCallback(async () => {
+    if (!activeStream?.id || !commentText.trim()) return;
+    try {
+      await sendLiveComment(activeStream.id, commentText);
+      setCommentText('');
+      await loadComments(activeStream.id);
+    } catch (error) {
+      pushToast?.({
+        type: 'warning',
+        title: 'خطأ في إرسال التعليق',
+        description: 'حاول مرة أخرى',
+      });
+    }
+  }, [activeStream?.id, commentText, pushToast]);
+
+  // تنظيف القلوب الطائرة
+  useEffect(() => {
+    if (floatingHearts.length === 0) return;
+
+    if (heartTimerRef.current) clearTimeout(heartTimerRef.current);
+    heartTimerRef.current = setTimeout(() => {
+      setFloatingHearts(prev => prev.slice(1));
+    }, 1500);
+
+    return () => {
+      if (heartTimerRef.current) clearTimeout(heartTimerRef.current);
+    };
+  }, [floatingHearts]);
+
+  useEffect(() => {
+    const unsubscribe = livekitService.subscribe((snapshot = {}) => {
+      if (['participant_connected', 'track_subscribed', 'reconnected', 'track_unsubscribed'].includes(snapshot?.event)) {
+        setTimeout(() => {
+          attachRemoteStream();
+        }, 120);
+      }
+      if (snapshot?.event === 'disconnected') {
+        detachRemoteStream();
+      }
+    });
+    return () => unsubscribe?.();
+  }, [attachRemoteStream, detachRemoteStream]);
+
+  // تحميل البثوث عند التحميل
+  useEffect(() => {
+    loadStreams();
+  }, [loadStreams]);
+
+  // فتح البث المطلوب من الرابط مباشرة
+  useEffect(() => {
+    if (!routeStreamId) return;
+
+    if (streams.length) {
+      const matchedStream = streams.find((stream) => String(stream.id) === routeStreamId);
+      if (matchedStream && String(activeStream?.id || '') !== String(matchedStream.id)) {
+        openStream(matchedStream, { syncUrl: false });
+        return;
+      }
+      if (matchedStream) return;
+    }
+
+    if (String(activeStream?.id || '') === routeStreamId) return;
+
+    (async () => {
+      try {
+        const detailsResponse = await getLiveStreamDetails(routeStreamId);
+        if (detailsResponse?.data) {
+          const data = detailsResponse.data;
+          const stub = {
+            id: data.id || routeStreamId,
+            title: data.title || 'بث مباشر',
+            host_username: data.host_username || data.host || 'مضيف',
+            host_name: data.host_name || data.host_username || 'مضيف',
+            thumbnail_url: data.thumbnail_url || data.cover_url || data.preview_url || '',
+            is_active: (data.is_active ?? data.active) !== false,
+            viewers_count: data.viewers_count ?? data.viewer_count ?? 0,
+            hearts_count: data.hearts_count ?? 0,
+          };
+          openStream(stub, { syncUrl: false });
+        }
+      } catch (error) {
+        const status = error?.response?.status;
+        if (status === 404 || status === 403) {
+          setStreamEnded(true);
+          streamEndedRef.current = true;
+          stopAllPolling();
+        } else {
+          console.warn('[LiveViewer] تعذّر تحميل تفاصيل البث:', status || error?.message);
+        }
+      }
+    })();
+  }, [routeStreamId, streams, activeStream?.id, openStream, stopAllPolling]);
+
+  // تطبيق الفلتر
+  useEffect(() => {
+    let filtered = streams;
+    if (filter === 'active') {
+      filtered = streams.filter(s => s.is_active);
+    } else if (filter === 'popular') {
+      filtered = streams
+        .filter(s => s.is_active)
+        .sort((a, b) => (b.viewers_count || 0) - (a.viewers_count || 0));
+    }
+    setFilteredStreams(filtered);
+  }, [streams, filter]);
+
+  // تنظيف الفترات الزمنية
+  useEffect(() => {
+    return () => {
+      stopAllPolling();
+      if (activeStream?.id) {
+        socketManager.emit('leave_live', { room_id: activeStream.id }, { queue: false });
+      }
+      detachRemoteStream();
+      livekitService.disconnect().catch(() => {});
+    };
+  }, [stopAllPolling, activeStream?.id, detachRemoteStream]);
+
+  const hostName = activeStream?.host_name || activeStream?.host_username || 'مضيف البث';
+  const rawCover = (
+    streamDetails?.thumbnail_url
+      || streamDetails?.cover_url
+      || streamDetails?.preview_url
+      || streamDetails?.cover_image_url
+      || streamDetails?.image_url
+      || activeStream?.thumbnail_url
+      || activeStream?.cover_url
+      || activeStream?.preview_url
+      || activeStream?.cover_image_url
+      || activeStream?.image_url
+      || ''
+  );
+  const coverImage = resolveMediaUrl(rawCover);
+  const playbackUrl = resolveMediaUrl(
+    streamDetails?.hls_url
+      || streamDetails?.playback_url
+      || streamDetails?.stream_url
+      || streamDetails?.video_url
+      || activeStream?.hls_url
+      || activeStream?.playback_url
+      || activeStream?.stream_url
+      || activeStream?.video_url
+      || ''
+  );
+
+  const getFallbackCover = (seedText = '') => {
+    const palette = ['#7c3aed', '#3b82f6', '#10b981', '#f97316', '#ec4899', '#06b6d4'];
+    const hash = String(seedText || hostName || 'live')
+      .split('')
+      .reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+    const c1 = palette[hash % palette.length];
+    const c2 = palette[(hash + 2) % palette.length];
+    const initial = (String(seedText || hostName || 'L').charAt(0) || 'L').toUpperCase();
+    const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="${c1}"/>
+      <stop offset="100%" stop-color="${c2}"/>
+    </linearGradient>
+    <radialGradient id="r" cx="30%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.25)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+    </radialGradient>
+  </defs>
+  <rect width="800" height="450" fill="url(#g)"/>
+  <rect width="800" height="450" fill="url(#r)"/>
+  <circle cx="400" cy="205" r="95" fill="rgba(255,255,255,0.18)"/>
+  <text x="400" y="235" font-family="system-ui,-apple-system,Segoe UI,sans-serif"
+        font-size="110" font-weight="900" fill="#fff" text-anchor="middle">${initial}</text>
+  <text x="400" y="360" font-family="system-ui,-apple-system,Segoe UI,sans-serif"
+        font-size="28" font-weight="700" fill="rgba(255,255,255,0.92)" text-anchor="middle">بث مباشر</text>
+</svg>`;
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
   };
 
-  // ════════════════════════ Render ════════════════════════
-  if (loading) {
-    return (
-      <div dir="rtl" style={styles.loading}>
-        <div style={{ fontSize: 48 }}>⏳</div>
-        <div>جارٍ الانضمام للبث…</div>
-      </div>
-    );
-  }
+  const fallbackCover = getFallbackCover(activeStream?.title || hostName);
+  const effectiveCover = coverImage || fallbackCover;
 
   return (
-    <div dir="rtl" style={styles.viewer}>
-      <div style={styles.videoPane}>
-        <video
-          ref={remoteVideoRef}
-          autoPlay
-          playsInline
-          style={styles.video}
-        />
-        <audio ref={remoteAudioRef} autoPlay />
-
-        <div style={styles.topOverlay}>
-          <div style={styles.hostInfo}>
-            <Avatar name={stream?.host_username} size={36} />
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 14 }}>@{stream?.host_username}</div>
-              <div style={{ fontSize: 11, color: '#fca5a5' }}>🔴 مباشر</div>
-            </div>
+    <div className="mlv-mobile-viewer" dir="rtl">
+      {/* Header */}
+      <header className="mlv-mobile-header">
+        <div className="mlv-mobile-header-top">
+          <button className="mlv-mobile-close-btn" onClick={() => navigate(-1)}>
+            ✕
+          </button>
+          <div className="mlv-mobile-header-info">
+            <h1>Yamshat Official</h1>
+            <p className="mlv-mobile-header-viewers">12.8K مشاهد</p>
           </div>
-          <div style={styles.viewerCount}>👁 {stats.viewers}</div>
+          <div className="mlv-mobile-header-actions">
+            <button className="mlv-mobile-action-icon">👤</button>
+            <button className="mlv-mobile-action-icon">👥</button>
+          </div>
         </div>
+      </header>
 
-        {/* قلوب طائرة */}
-        {floatingHearts.map((h) => (
-          <div key={h.id} style={{
-            position: 'absolute', bottom: 100, left: `${h.left}%`, fontSize: 36,
-            animation: 'floatUp 3s ease-out forwards', pointerEvents: 'none',
-          }}>❤️</div>
-        ))}
+      {/* Main Content */}
+      <main className="mlv-mobile-main">
+        {activeStream ? (
+          <>
+            {/* Video Player */}
+            <div className="mlv-mobile-player">
+              {(hasRemotePlayback || playbackUrl) ? (
+                <video
+                  ref={playerVideoRef}
+                  className="mlv-mobile-player-video"
+                  src={!hasRemotePlayback ? playbackUrl || undefined : undefined}
+                  poster={effectiveCover}
+                  autoPlay
+                  playsInline
+                  muted={false}
+                  controls
+                  onError={(e) => {
+                    if (!hasRemotePlayback) {
+                      e.currentTarget.style.display = 'none';
+                    }
+                  }}
+                />
+              ) : null}
+              <img
+                src={effectiveCover}
+                alt={activeStream.title || 'غلاف البث'}
+                className="mlv-mobile-player-cover"
+                onError={(e) => {
+                  if (e.currentTarget.src !== fallbackCover) {
+                    e.currentTarget.src = fallbackCover;
+                  }
+                }}
+              />
+              <div className="mlv-mobile-player-overlay" style={{ opacity: hasRemotePlayback || playbackUrl ? 0.15 : 1 }}>
+                <div className="mlv-mobile-player-content">
+                  <div className="mlv-mobile-player-icon">📺</div>
+                  <p>{activeStream.title || 'جارٍ تحميل البث…'}</p>
+                </div>
+              </div>
+              <FloatingHearts items={floatingHearts} />
 
-        {/* هدايا متحركة */}
-        {floatingGifts.map((g) => (
-          <div key={g.id} style={{
-            position: 'absolute', top: '40%', right: 20,
-            background: 'linear-gradient(135deg, #fbbf24, #ef4444)',
-            color: 'white', padding: '10px 16px', borderRadius: 14,
-            fontWeight: 800, animation: 'slideIn 4s ease-out forwards',
-            boxShadow: '0 6px 20px rgba(0,0,0,0.4)', pointerEvents: 'none',
-          }}>
-            🎁 {g.name} {g.user ? `من @${g.user}` : ''}
-          </div>
-        ))}
+              {/* Top Right Badges */}
+              <div className="mlv-mobile-top-badges">
+                <div className="mlv-mobile-viewers-badge">
+                  <span className="mlv-mobile-badge-icon">👁</span>
+                  <span className="mlv-mobile-badge-text">10K+</span>
+                </div>
+                <div className="mlv-mobile-profile-badge">
+                  <Avatar name={hostName} size={36} />
+                </div>
+              </div>
 
-        <div style={styles.bottomActions}>
-          <button onClick={handleSendHeart} style={styles.actionBtn}>❤️</button>
-          <button onClick={() => setShowGifts((s) => !s)} style={styles.actionBtn}>🎁</button>
-          <button onClick={async () => { await leaveStream(); navigate('/live'); }} style={{ ...styles.actionBtn, background: '#ef4444' }}>🚪</button>
-        </div>
-
-        {showGifts && (
-          <div style={styles.giftPanel}>
-            {GIFTS.map((g) => (
-              <button key={g.id} onClick={() => handleSendGift(g)} style={styles.giftItem}>
-                <div style={{ fontSize: 30 }}>{g.icon}</div>
-                <div style={{ fontSize: 12, fontWeight: 700 }}>{g.name}</div>
-                <div style={{ fontSize: 11, color: '#fbbf24' }}>{g.price} 🪙</div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div style={styles.chatPane}>
-        <div ref={commentsBoxRef} style={styles.commentsBox}>
-          {comments.map((c) => (
-            <div key={c.id} style={styles.commentRow}>
-              <Avatar name={c.username || c.user} size={28} />
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 12, color: '#fbbf24' }}>@{c.username || c.user}</div>
-                <div style={{ fontSize: 14 }}>{c.content || c.text}</div>
+              {/* Bottom Right Actions */}
+              <div className="mlv-mobile-right-actions">
+                <button className="mlv-mobile-action-btn mlv-mobile-action-heart" onClick={handleSendHeart}>
+                  <span>💜</span>
+                  <span className="mlv-mobile-action-count">25.7K</span>
+                </button>
+                <button className="mlv-mobile-action-btn mlv-mobile-action-comment">
+                  <span>💬</span>
+                  <span className="mlv-mobile-action-count">1,245</span>
+                </button>
+                <button className="mlv-mobile-action-btn mlv-mobile-action-gift" onClick={() => setShowGiftPanel(!showGiftPanel)}>
+                  <span>🎁</span>
+                  <span className="mlv-mobile-action-label">هدية</span>
+                </button>
+                <button className="mlv-mobile-action-btn mlv-mobile-action-share">
+                  <span>↗</span>
+                  <span className="mlv-mobile-action-count">1,026</span>
+                </button>
               </div>
             </div>
-          ))}
-        </div>
-        <div style={styles.composer}>
-          <input
-            type="text"
-            value={commentInput}
-            onChange={(e) => setCommentInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSendComment()}
-            placeholder="اكتب تعليقاً…"
-            style={styles.commentInput}
-          />
-          <button onClick={handleSendComment} style={styles.sendBtn}>إرسال</button>
-        </div>
-      </div>
 
-      <style>{`
-        @keyframes floatUp {
-          0%   { transform: translateY(0) scale(1);   opacity: 1; }
-          100% { transform: translateY(-300px) scale(1.5); opacity: 0; }
-        }
-        @keyframes slideIn {
-          0%   { transform: translateX(100%); opacity: 0; }
-          15%  { transform: translateX(0);    opacity: 1; }
-          85%  { transform: translateX(0);    opacity: 1; }
-          100% { transform: translateX(-30%); opacity: 0; }
-        }
-      `}</style>
+            {/* Comments Section */}
+            <div className="mlv-mobile-comments-section">
+              <div className="mlv-mobile-comments-list">
+                {comments.length > 0 ? (
+                  comments.map((comment) => (
+                    <div key={comment.id} className="mlv-mobile-comment-item">
+                      <Avatar name={comment.username || comment.user} size={32} />
+                      <div className="mlv-mobile-comment-content">
+                        <div className="mlv-mobile-comment-header">
+                          <span className="mlv-mobile-comment-name">{comment.username || comment.user}</span>
+                          {comment.gift_count && (
+                            <span className="mlv-mobile-comment-gift">💜 {comment.gift_count}</span>
+                          )}
+                        </div>
+                        <p className="mlv-mobile-comment-text">{comment.text}</p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="mlv-mobile-empty-comments">
+                    <p>لا توجد تعليقات بعد</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Comment Input */}
+              <div className="mlv-mobile-comment-input-area">
+                <input
+                  type="text"
+                  placeholder="إضافة تعليق..."
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleSendComment()}
+                  className="mlv-mobile-comment-input"
+                />
+                <button className="mlv-mobile-comment-emoji-btn">😊</button>
+                <button className="mlv-mobile-comment-send-btn" onClick={handleSendComment}>
+                  ↗
+                </button>
+              </div>
+            </div>
+
+            {/* Gifts Panel */}
+            {showGiftPanel && (
+              <div className="mlv-mobile-gifts-panel">
+                <h3>اختر هدية</h3>
+                <div className="mlv-mobile-gifts-list">
+                  {GIFTS.map((gift) => (
+                    <button
+                      key={gift.id}
+                      className="mlv-mobile-gift-option"
+                      onClick={() => handleSendGift(gift)}
+                    >
+                      <span className="mlv-mobile-gift-icon">{gift.icon}</span>
+                      <span className="mlv-mobile-gift-name">{gift.name}</span>
+                      <span className="mlv-mobile-gift-price">{gift.price}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="mlv-mobile-no-stream">
+            <div className="mlv-mobile-empty-icon">📺</div>
+            <h2>لا يوجد بث نشط</h2>
+            <p>اختر بث من القائمة لمشاهدته</p>
+          </div>
+        )}
+      </main>
+
+      {/* Bottom Navigation */}
+      <nav className="mlv-mobile-bottom-nav">
+        <button className="mlv-mobile-nav-item">😊</button>
+        <button className="mlv-mobile-nav-item">👥</button>
+        <button className="mlv-mobile-nav-item">🌹</button>
+        <button className="mlv-mobile-nav-item">🎁</button>
+        <button className="mlv-mobile-nav-item">↗</button>
+      </nav>
     </div>
   );
 }
-
-const styles = {
-  viewer: {
-    minHeight: '100vh', display: 'grid', gridTemplateColumns: '1fr 340px', gap: 12,
-    background: '#0f172a', color: 'white', padding: 12,
-    fontFamily: '"Noto Sans Arabic", "Tajawal", sans-serif',
-  },
-  loading: {
-    minHeight: '100vh', display: 'flex', flexDirection: 'column', gap: 12,
-    alignItems: 'center', justifyContent: 'center', background: '#0f172a', color: 'white',
-    fontFamily: '"Noto Sans Arabic", "Tajawal", sans-serif',
-  },
-  videoPane: { position: 'relative', background: '#000', borderRadius: 16, overflow: 'hidden', minHeight: 500 },
-  video: { width: '100%', height: '100%', objectFit: 'cover', minHeight: 500 },
-  topOverlay: {
-    position: 'absolute', top: 14, left: 14, right: 14,
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-  },
-  hostInfo: {
-    display: 'flex', gap: 10, alignItems: 'center',
-    background: 'rgba(0,0,0,0.5)', padding: '6px 12px', borderRadius: 24,
-  },
-  viewerCount: {
-    background: 'rgba(0,0,0,0.5)', padding: '6px 14px', borderRadius: 20,
-    fontWeight: 700, fontSize: 13,
-  },
-  bottomActions: {
-    position: 'absolute', bottom: 18, left: '50%', transform: 'translateX(-50%)',
-    display: 'flex', gap: 12,
-  },
-  actionBtn: {
-    width: 52, height: 52, borderRadius: '50%', border: 'none',
-    background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)',
-    color: 'white', fontSize: 24, cursor: 'pointer',
-  },
-  giftPanel: {
-    position: 'absolute', bottom: 90, left: '50%', transform: 'translateX(-50%)',
-    display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, padding: 14,
-    background: 'rgba(15,23,42,0.95)', borderRadius: 14, boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
-  },
-  giftItem: {
-    background: '#1f2937', color: 'white', border: 'none', borderRadius: 10,
-    padding: 10, cursor: 'pointer', display: 'flex', flexDirection: 'column',
-    alignItems: 'center', gap: 4, minWidth: 70,
-  },
-  chatPane: { display: 'flex', flexDirection: 'column', background: '#1f2937', borderRadius: 16 },
-  commentsBox: { flex: 1, padding: 12, overflowY: 'auto', maxHeight: 'calc(100vh - 130px)' },
-  commentRow: { display: 'flex', gap: 10, padding: '6px 0', alignItems: 'flex-start' },
-  composer: { padding: 12, borderTop: '1px solid #374151', display: 'flex', gap: 8 },
-  commentInput: {
-    flex: 1, padding: '10px 14px', borderRadius: 20, border: 'none',
-    background: '#111827', color: 'white', fontSize: 14, fontFamily: 'inherit',
-  },
-  sendBtn: {
-    padding: '10px 18px', borderRadius: 20, border: 'none',
-    background: '#7c3aed', color: 'white', fontWeight: 700, cursor: 'pointer',
-  },
-};

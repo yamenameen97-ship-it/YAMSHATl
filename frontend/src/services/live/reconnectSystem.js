@@ -159,21 +159,21 @@ class ReconnectSystem {
         if (delay > 0) await wait(delay + Math.round(Math.random() * 350));
 
         try {
-          // ✅ توقيع جديد: كائن واحد فقط
-          const result = await livekitService.connect({
-            url: session.serverUrl,
-            token: session.token,
-            role: session.role || 'viewer',
-            enableCamera: !!session.mediaState?.cameraEnabled,
-            enableMicrophone: !!session.mediaState?.microphoneEnabled,
-          });
+          const result = await livekitService.connect(
+            session.serverUrl,
+            session.token,
+            session.roomName,
+            session.userName,
+            {
+              autoSubscribe: session.autoSubscribe !== false,
+              mediaState: session.mediaState,
+              reconnecting: true,
+            }
+          );
 
           if (result?.success) {
-            if (session.mediaState?.cameraEnabled) {
-              await livekitService.enableCamera().catch(() => {});
-            }
-            if (session.mediaState?.microphoneEnabled) {
-              await livekitService.enableMicrophone().catch(() => {});
+            if (session.mediaState) {
+              await livekitService.restoreState(session.mediaState).catch(() => {});
             }
             this.saveSession({
               ...session,

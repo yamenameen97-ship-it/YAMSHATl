@@ -1,41 +1,33 @@
-/**
- * 🎥 LiveKit Service — يقتصر على إدارة الاتصال والكاميرا/المايك فقط.
- * ===================================================================
- * المعمارية الجديدة (وفق متطلبات المالك):
- *   connect()              - يربط الغرفة عبر LiveKit
- *   disconnect()           - يقطع الاتصال
- *   enableCamera() / disableCamera()
- *   enableMicrophone() / disableMicrophone()
- *
- * ✅ النشر يتم عبر LiveKit نفسه (room.localParticipant.setCameraEnabled)
- *    ولا نستخدم navigator.getUserMedia() أبداً هنا — هذا هو سبب فشل البث
- *    في النسخة السابقة.
- */
-
 import * as LiveKit from 'livekit-client';
 import logger from '../utils/logger.js';
+import StreamQualityManager from './live/streamQuality.js';
 
 class LiveKitService {
   constructor() {
     this.room = null;
+    this.participants = new Map();
     this.connectionState = 'disconnected';
+    this.healthCheckInterval = null;
     this.connectionConfig = null;
     this.listeners = new Set();
-    this.remoteTracks = new Map(); // participantIdentity -> { video, audio }
+    this.qualityManager = null;
   }
 
-  // ─────────────────────────── State / subscribe ──────────────────────────
   subscribe(listener) {
     if (typeof listener !== 'function') return () => {};
     this.listeners.add(listener);
-    try { listener(this.getState()); } catch (_) {}
+    listener(this.getState());
     return () => this.listeners.delete(listener);
   }
 
   emit(extra = {}) {
     const snapshot = { ...this.getState(), ...extra };
-    this.listeners.forEach((fn) => {
-      try { fn(snapshot); } catch (e) { logger.warn?.('listener error', { msg: e?.message }); }
+    this.listeners.forEach((listener) => {
+      try {
+        listener(snapshot);
+      } catch (error) {
+        logger.warn('LiveKitService listener failed', { message: error?.message });
+      }
     });
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('yamshat:livekit-state', { detail: snapshot }));
@@ -46,47 +38,40 @@ class LiveKitService {
     return {
       room: this.room,
       connectionState: this.connectionState,
-      isConnected: this.connectionState === 'connected',
-      participants: this.getRemoteParticipants(),
-      mediaState: this.getMediaState(),
+      participantCount: this.participants.size,
+      participants: this.getParticipants(),
+      session: this.snapshotSession(),
+      quality: this.qualityManager?.getState?.() || null,
     };
   }
 
-  getRemoteParticipants() {
-    if (!this.room) return [];
-    const list = [];
-    const parts = this.room.remoteParticipants || this.room.participants;
-    if (parts && typeof parts.forEach === 'function') {
-      parts.forEach((p) => list.push(p));
-    }
-    return list;
-  }
-
-  // ─────────────────────────── connect / disconnect ───────────────────────
-  /**
-   * يتصل بغرفة LiveKit. إن كان role='host' فسيتم تفعيل الكاميرا والمايك.
-   * إن كان role='viewer' فلن نطلب الكاميرا (المشاهد لا يبث).
-   */
-  async connect({ url, token, role = 'viewer', enableCamera = false, enableMicrophone = false }) {
-    if (!url || !token) {
-      return { success: false, error: 'missing url or token' };
-    }
+  async connect(serverUrl, token, roomName, userName, options = {}) {
     try {
-      // إذا كنا متصلين سابقاً، نفصل أولاً
-      if (this.room) {
-        try { await this.room.disconnect(); } catch (_) {}
-        this.room = null;
+      const sameSession = this.connectionConfig
+        && this.connectionConfig.serverUrl === serverUrl
+        && this.connectionConfig.roomName === roomName
+        && this.room?.state === LiveKit.ConnectionState.Connected;
+      if (sameSession) {
+        return { success: true, room: this.room, reused: true, snapshot: this.snapshotSession() };
       }
-      this.remoteTracks.clear();
 
-      this.connectionConfig = { url, token, role };
-      this.connectionState = 'connecting';
-      this.emit({ event: 'connecting' });
+      await this.disconnect({ preserveConfig: true });
+
+      this.connectionConfig = {
+        serverUrl,
+        token,
+        roomName,
+        userName,
+        mediaState: options.mediaState || null,
+        autoSubscribe: options.autoSubscribe !== false,
+      };
 
       this.room = new LiveKit.Room({
         adaptiveStream: true,
         dynacast: true,
+        stopLocalTrackOnUnpublish: false,
         publishDefaults: {
+          audioPreset: options.audioPreset,
           videoSimulcastLayers: [
             LiveKit.VideoPresets.h180,
             LiveKit.VideoPresets.h360,
@@ -95,209 +80,166 @@ class LiveKitService {
         },
       });
 
+      this.qualityManager = new StreamQualityManager(this.room, {
+        initialProfile: options.mediaState?.cameraEnabled === false ? 'audioOnly' : 'hd',
+      });
+
       this.bindRoomEvents();
+      await this.room.prepareConnection?.(serverUrl, token).catch(() => {});
+      await this.room.connect(serverUrl, token, { autoSubscribe: options.autoSubscribe !== false });
 
-      // الاتصال الفعلي بـ LiveKit
-      await this.room.connect(url, token, { autoSubscribe: true });
-      this.connectionState = 'connected';
-
-      // 🔑 host فقط ينشر — LiveKit يفتح الكاميرا/المايك بنفسه (لا getUserMedia يدوي)
-      if (role === 'host') {
-        if (enableCamera) {
-          await this.room.localParticipant.setCameraEnabled(true).catch((e) => {
-            logger.warn?.('setCameraEnabled failed', { msg: e?.message });
-          });
-        }
-        if (enableMicrophone) {
-          await this.room.localParticipant.setMicrophoneEnabled(true).catch((e) => {
-            logger.warn?.('setMicrophoneEnabled failed', { msg: e?.message });
-          });
-        }
+      if (options.mediaState) {
+        await this.restoreState(options.mediaState).catch(() => {});
       }
 
-      this.emit({ event: 'connected', role });
-      return { success: true, room: this.room };
+      this.connectionState = this.room.state || 'connected';
+      this.startHealthCheck(options.healthIntervalMs || 10_000);
+      this.emit({ connectedAt: Date.now() });
+      return { success: true, room: this.room, qualityManager: this.qualityManager, snapshot: this.snapshotSession() };
     } catch (error) {
-      logger.error?.('LiveKit connect error', { msg: error?.message });
+      logger.error('LiveKit connection error', { message: error?.message });
       this.connectionState = 'disconnected';
-      this.emit({ event: 'connect_error', error: error?.message });
-      return { success: false, error: error?.message || 'connect_error' };
+      this.emit({ error: error?.message || 'livekit_connect_error' });
+      return { success: false, error: error?.message || 'livekit_connect_error' };
     }
   }
 
-  async disconnect() {
-    try {
-      if (this.room) {
-        try { await this.room.localParticipant?.setCameraEnabled(false); } catch (_) {}
-        try { await this.room.localParticipant?.setMicrophoneEnabled(false); } catch (_) {}
-        await this.room.disconnect();
-      }
-    } catch (e) {
-      logger.warn?.('disconnect error', { msg: e?.message });
-    } finally {
-      this.room = null;
-      this.remoteTracks.clear();
-      this.connectionState = 'disconnected';
-      this.connectionConfig = null;
-      this.emit({ event: 'disconnected' });
-    }
-  }
-
-  // ─────────────────────────── Room events ────────────────────────────────
   bindRoomEvents() {
-    if (!this.room) return;
+    if (!this.room?.on) return;
+
+    this.room.on(LiveKit.RoomEvent.ParticipantConnected, (participant) => {
+      this.participants.set(participant.sid || participant.identity, participant);
+      this.emit({ event: 'participant_connected', participantId: participant.identity || participant.sid });
+    });
+
+    this.room.on(LiveKit.RoomEvent.ParticipantDisconnected, (participant) => {
+      this.participants.delete(participant.sid || participant.identity);
+      this.emit({ event: 'participant_disconnected', participantId: participant.identity || participant.sid });
+    });
 
     this.room.on(LiveKit.RoomEvent.ConnectionStateChanged, (state) => {
       this.connectionState = state;
-      this.emit({ event: 'state_changed', state });
+      this.emit({ event: 'connection_state_changed', state });
     });
 
-    this.room.on(LiveKit.RoomEvent.Reconnecting, () => this.emit({ event: 'reconnecting' }));
-    this.room.on(LiveKit.RoomEvent.Reconnected, () => this.emit({ event: 'reconnected' }));
-
-    this.room.on(LiveKit.RoomEvent.ParticipantConnected, (p) => {
-      this.emit({ event: 'participant_connected', identity: p.identity });
-    });
-    this.room.on(LiveKit.RoomEvent.ParticipantDisconnected, (p) => {
-      this.remoteTracks.delete(p.identity);
-      this.emit({ event: 'participant_disconnected', identity: p.identity });
+    this.room.on(LiveKit.RoomEvent.Reconnecting, () => {
+      this.connectionState = 'reconnecting';
+      this.emit({ event: 'reconnecting' });
     });
 
-    // 🔑 عند وصول track من المضيف → نخزنه ونُطلق حدث
+    this.room.on(LiveKit.RoomEvent.Reconnected, async () => {
+      this.connectionState = 'connected';
+      await this.qualityManager?.collectStats?.().catch(() => {});
+      this.emit({ event: 'reconnected' });
+    });
+
+    this.room.on(LiveKit.RoomEvent.LocalTrackPublished, async () => {
+      await this.qualityManager?.applyProfile?.(this.qualityManager.profile).catch(() => {});
+      this.emit({ event: 'local_track_published' });
+    });
+
     this.room.on(LiveKit.RoomEvent.TrackSubscribed, (track, publication, participant) => {
-      const identity = participant?.identity || '';
-      const entry = this.remoteTracks.get(identity) || {};
-      if (track.kind === 'video') entry.video = track;
-      if (track.kind === 'audio') entry.audio = track;
-      this.remoteTracks.set(identity, entry);
       this.emit({
         event: 'track_subscribed',
-        identity,
-        kind: track.kind,
-        track,
+        trackKind: publication?.kind || track?.kind || '',
+        participantId: participant?.identity || participant?.sid || '',
       });
     });
 
     this.room.on(LiveKit.RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
-      const identity = participant?.identity || '';
-      const entry = this.remoteTracks.get(identity);
-      if (entry) {
-        if (track.kind === 'video') delete entry.video;
-        if (track.kind === 'audio') delete entry.audio;
-      }
-      this.emit({ event: 'track_unsubscribed', identity, kind: track.kind });
-    });
-
-    this.room.on(LiveKit.RoomEvent.LocalTrackPublished, (publication) => {
-      this.emit({ event: 'local_track_published', kind: publication?.kind });
-    });
-
-    this.room.on(LiveKit.RoomEvent.Disconnected, () => {
-      this.connectionState = 'disconnected';
-      this.emit({ event: 'disconnected' });
+      this.emit({
+        event: 'track_unsubscribed',
+        trackKind: publication?.kind || track?.kind || '',
+        participantId: participant?.identity || participant?.sid || '',
+      });
     });
   }
 
-  // ─────────────────────────── Camera / Mic ───────────────────────────────
-  getMediaState() {
-    const lp = this.room?.localParticipant;
-    if (!lp) return { cameraEnabled: false, microphoneEnabled: false };
+  startHealthCheck(intervalMs = 10_000) {
+    this.stopHealthCheck();
+    this.healthCheckInterval = setInterval(async () => {
+      if (!this.room) return;
+      const quality = await this.qualityManager?.collectStats?.().catch(() => this.qualityManager?.getState?.() || null);
+      this.emit({ event: 'health_check', quality });
+    }, intervalMs);
+  }
+
+  stopHealthCheck() {
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
+    }
+  }
+
+  getParticipants() {
+    return Array.from(this.participants.values());
+  }
+
+  snapshotSession() {
+    if (!this.connectionConfig) return null;
     return {
-      cameraEnabled: !!lp.isCameraEnabled,
-      microphoneEnabled: !!lp.isMicrophoneEnabled,
+      ...this.connectionConfig,
+      connectionState: this.connectionState,
+      mediaState: this.getMediaState(),
+      participantCount: this.participants.size,
+      timestamp: Date.now(),
     };
   }
 
-  async enableCamera() {
-    if (!this.room?.localParticipant) return false;
-    await this.room.localParticipant.setCameraEnabled(true);
-    this.emit({ event: 'camera_enabled' });
-    return true;
-  }
-
-  async disableCamera() {
-    if (!this.room?.localParticipant) return false;
-    await this.room.localParticipant.setCameraEnabled(false);
-    this.emit({ event: 'camera_disabled' });
-    return true;
-  }
-
-  async enableMicrophone() {
-    if (!this.room?.localParticipant) return false;
-    await this.room.localParticipant.setMicrophoneEnabled(true);
-    this.emit({ event: 'mic_enabled' });
-    return true;
-  }
-
-  async disableMicrophone() {
-    if (!this.room?.localParticipant) return false;
-    await this.room.localParticipant.setMicrophoneEnabled(false);
-    this.emit({ event: 'mic_disabled' });
-    return true;
-  }
-
-  // ─────────────────────────── Local video element (host preview) ─────────
-  /**
-   * ربط معاينة الكاميرا الخاصة بالمضيف بعنصر <video>.
-   * استدعِها بعد connect(role='host', enableCamera=true).
-   */
-  attachLocalVideo(videoElement) {
-    if (!videoElement || !this.room?.localParticipant) return false;
-    const pubs = this.room.localParticipant.videoTrackPublications;
-    if (!pubs) return false;
-    for (const pub of pubs.values()) {
-      if (pub?.track && pub.kind === 'video') {
-        pub.track.attach(videoElement);
-        videoElement.muted = true;
-        videoElement.autoplay = true;
-        videoElement.playsInline = true;
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /**
-   * ربط فيديو مشارك بعيد (المضيف من جهة المشاهد).
-   * تُستدعى عادة من معالج 'track_subscribed'.
-   */
-  attachRemoteVideo(videoElement, identity = null) {
-    if (!videoElement || !this.room) return false;
-    // إن لم يُحدد identity، نستخدم أول مشارك عنده فيديو
-    const tryAttach = (entry) => {
-      if (entry?.video) {
-        entry.video.attach(videoElement);
-        videoElement.autoplay = true;
-        videoElement.playsInline = true;
-        return true;
-      }
-      return false;
+  getMediaState() {
+    const localParticipant = this.room?.localParticipant;
+    const microphonePublication = Array.from(localParticipant?.audioTrackPublications?.values?.() || [])[0];
+    const cameraPublication = Array.from(localParticipant?.videoTrackPublications?.values?.() || [])[0];
+    return {
+      microphoneEnabled: Boolean(microphonePublication?.track && !microphonePublication?.isMuted),
+      cameraEnabled: Boolean(cameraPublication?.track && !cameraPublication?.isMuted),
     };
-
-    if (identity) {
-      return tryAttach(this.remoteTracks.get(identity));
-    }
-    for (const entry of this.remoteTracks.values()) {
-      if (tryAttach(entry)) return true;
-    }
-    return false;
   }
 
-  /** ربط الصوت البعيد (audio track). */
-  attachRemoteAudio(audioElement, identity = null) {
-    if (!audioElement || !this.room) return false;
-    const tryAttach = (entry) => {
-      if (entry?.audio) {
-        entry.audio.attach(audioElement);
-        return true;
-      }
-      return false;
-    };
-    if (identity) return tryAttach(this.remoteTracks.get(identity));
-    for (const entry of this.remoteTracks.values()) {
-      if (tryAttach(entry)) return true;
+  async restoreState(mediaState = {}) {
+    const tasks = [];
+    if (typeof mediaState.microphoneEnabled === 'boolean') {
+      tasks.push(this.setMicrophoneEnabled(mediaState.microphoneEnabled));
     }
-    return false;
+    if (typeof mediaState.cameraEnabled === 'boolean') {
+      tasks.push(this.setCameraEnabled(mediaState.cameraEnabled));
+    }
+    await Promise.all(tasks);
+    return this.getMediaState();
+  }
+
+  async setMicrophoneEnabled(enabled) {
+    if (!this.room?.localParticipant?.setMicrophoneEnabled) return false;
+    await this.room.localParticipant.setMicrophoneEnabled(Boolean(enabled));
+    this.emit({ event: 'microphone_toggled', enabled: Boolean(enabled) });
+    return true;
+  }
+
+  async setCameraEnabled(enabled) {
+    if (!this.room?.localParticipant?.setCameraEnabled) return false;
+    await this.room.localParticipant.setCameraEnabled(Boolean(enabled));
+    this.emit({ event: 'camera_toggled', enabled: Boolean(enabled) });
+    return true;
+  }
+
+  async disconnect({ preserveConfig = false } = {}) {
+    this.stopHealthCheck();
+    this.qualityManager?.destroy?.();
+    this.qualityManager = null;
+    this.participants.clear();
+
+    if (this.room) {
+      try {
+        await this.room.disconnect();
+      } catch (error) {
+        logger.warn('LiveKit disconnect failed', { message: error?.message });
+      }
+      this.room = null;
+    }
+
+    this.connectionState = 'disconnected';
+    if (!preserveConfig) this.connectionConfig = null;
+    this.emit({ event: 'disconnected' });
   }
 }
 

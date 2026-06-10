@@ -1,95 +1,255 @@
-/**
- * 🔗 advancedLiveStreamApi.js — Wrapper متوافق عكسياً.
- * ======================================================
- * المعمارية الجديدة جعلت liveStreamApi.js هو المصدر الوحيد لكل HTTP.
- * هذا الملف يبقى للحفاظ على التوافق مع الكود القديم (LiveStudio.jsx
- * يستورد منه دوال متعددة الأسماء)، لكنه الآن مجرد re-export.
- *
- * لا منطق Socket هنا. كل ما هو Socket-related يجب أن يبقى في
- * socketManager / livekitService.
- */
-
 import apiClient from './apiClient.js';
 import socketManager from '../socketManager.js';
-import liveApi from './liveStreamApi.js';
 
-// ── Lifecycle ──────────────────────────────────────────────────────────────
-export const createLiveStream = liveApi.createLiveStream;
-export const startLiveStream  = liveApi.startLiveStream;
-export const endLiveStream    = liveApi.endLiveStream;
-export const getLiveStreamDetails = liveApi.getLiveStreamDetails;
-export const getActiveLiveStreams = liveApi.getActiveLiveStreams;
-export const getActiveStreams = (limit = 50) =>
-  liveApi.getActiveLiveStreams({ limit });
+// ✅ FIX: تحسين معالجة الأخطاء والتوكين في جميع طلبات البث المباشر
 
-// ── Viewers ────────────────────────────────────────────────────────────────
-export const addViewer      = liveApi.addViewer;
-export const removeViewer   = liveApi.removeViewer;
-export const getStreamViewers = liveApi.getLiveStreamViewers;
+/**
+ * واجهات API متقدمة للبث المباشر
+ * تتضمن إدارة المشتركين والحظر والكتم والكاميرا
+ * ✅ تم إصلاح: إرسال البيانات الصحيحة، إعادة المحاولة عند الفشل، دعم Socket
+ */
 
-// ── Comments / Gifts / Hearts ──────────────────────────────────────────────
-export const sendLiveComment = liveApi.sendLiveComment;
-export const getLiveComments = liveApi.getLiveComments;
-export const sendLiveGift    = liveApi.sendLiveGift;
+// ==================== Stream Management ====================
+
+export const createLiveStream = (streamData = {}) =>
+  apiClient.post('/create_live', {
+    title: streamData.title || '',
+    description: streamData.description || '',
+    category: streamData.category || 'أخرى',
+    quality: streamData.quality || '720p',
+    is_public: streamData.isPublic !== false,
+    allow_comments: streamData.allowComments !== false,
+    allow_gifts: streamData.allowGifts !== false,
+    allow_recording: streamData.allowRecording || false,
+    // ✅ FIX: إرسال صورة الغلاف (thumbnail_url) عند إنشاء البث
+    thumbnail_url: streamData.thumbnail_url || '',
+  });
+
+export const startLiveStream = (streamId, payload = {}) =>
+  apiClient.post(`/live_room/${streamId}/token`, {
+    quality: payload.quality || '720p',
+    enable_recording: payload.enableRecording || false,
+  }, { retry: true });
+
+export const endLiveStream = (streamId) =>
+  apiClient.post(`/end_live/${streamId}`, {}, { retry: true });
+
+export const getLiveStreamDetails = (streamId) =>
+  apiClient.get(`/live_room/${streamId}`, { cache: false, forceRefresh: true, retry: true });
+
+// ==================== Viewer Management ====================
+
+export const addViewer = (streamId, viewerData = {}) =>
+  apiClient.post(`/live_room/${streamId}/add-viewer`, {
+    user_id: viewerData.userId,
+    username: viewerData.username,
+    platform: viewerData.platform || 'web',
+  }, { retry: true });
+
+export const removeViewer = (streamId, userId) =>
+  apiClient.post(`/live_room/${streamId}/remove-viewer`, { user_id: userId }, { retry: true });
+
+export const getStreamViewers = (streamId) =>
+  apiClient.get(`/live_room/${streamId}/viewers`, { cache: false, forceRefresh: true, retry: true });
+
+// ==================== Moderation ====================
+
+export const muteUser = (streamId, userId, moderatorId, reason, duration) =>
+  apiClient.post(`/live_room/${streamId}/mute`, {
+    user_id: userId,
+    moderator_id: moderatorId,
+    reason,
+    duration_minutes: duration || 5,
+  }, { retry: true });
+
+export const unmuteUser = (streamId, userId) =>
+  apiClient.post(`/live_room/${streamId}/unmute`, { user_id: userId }, { retry: true });
+
+export const banUser = (streamId, userId, moderatorId, reason, type) =>
+  apiClient.post(`/live_room/${streamId}/ban`, {
+    user_id: userId,
+    moderator_id: moderatorId,
+    reason,
+    ban_type: type || 'temporary',
+  }, { retry: true });
+
+export const unbanUser = (streamId, userId) =>
+  apiClient.post(`/live_room/${streamId}/unban`, { user_id: userId }, { retry: true });
+
+// ==================== Camera Management ====================
+
+export const updateCameraState = (streamId, cameraData = {}) =>
+  apiClient.post(`/live_room/${streamId}/settings`, {
+    camera_enabled: cameraData.cameraEnabled,
+    microphone_enabled: cameraData.microphoneEnabled,
+    video_bitrate: cameraData.videoBitrate,
+    audio_bitrate: cameraData.audioBitrate,
+  }, { retry: true });
+
+export const closeCameraStream = (streamId) =>
+  apiClient.post(`/live_room/${streamId}/settings`, { camera_enabled: false }, { retry: true });
+
+export const toggleCamera = async (streamId, enabled) => {
+  return updateCameraState(streamId, {
+    cameraEnabled: enabled,
+  });
+};
+
+export const toggleMicrophone = async (streamId, enabled) => {
+  return updateCameraState(streamId, {
+    microphoneEnabled: enabled,
+  });
+};
+
+// ==================== Statistics ====================
+
+// ✅ FIX: تعطيل إعادة المحاولة (retry) لتجنب إغراق الكونسول بـ 403 عند عدم صلاحية المشاهد
+export const getStreamStats = (streamId) =>
+  apiClient.get(`/live_room/${streamId}/analytics`, { cache: false, forceRefresh: true, retry: false });
+
+export const getLiveStreamAnalytics = (streamId) =>
+  apiClient.get(`/live_room/${streamId}/analytics`, { cache: false, forceRefresh: true, retry: false });
+
+// ==================== Comments & Gifts ====================
+
+export const sendLiveComment = (streamId, commentData = {}) =>
+  apiClient.post(`/live_room/${streamId}/comment`, {
+    text: commentData.text || '',
+  }, { retry: true });
+
+export const getLiveComments = (streamId, limit = 50) =>
+  apiClient.get(`/live_comments/${streamId}`, { params: { limit }, cache: false, forceRefresh: true, retry: true });
+
+export const sendLiveGift = (streamId, giftData = {}) =>
+  apiClient.post(`/live_room/${streamId}/gift`, {
+    gift_id: giftData.gift_id || giftData.giftId,
+    name: giftData.name,
+    price: giftData.price,
+  });
 
 export const sendLiveHeart = async (streamId) => {
-  socketManager.emit?.('send_heart', { room_id: streamId }, { queue: false });
+  // ✅ FIX: إرسال القلب عبر Socket مع التوكين والتوقيع
+  socketManager.emit('send_heart', { room_id: streamId }, { queue: false });
   return { data: { status: 'queued', room_id: streamId } };
 };
 
-// ── Stats ──────────────────────────────────────────────────────────────────
-export const getStreamStats = liveApi.getStreamStats;
-export const getLiveStreamAnalytics = liveApi.getStreamStats;
+// ==================== Recording ====================
 
-// ── Camera/Mic — يتم محلياً عبر livekitService، هذه الدوال HTTP-noop ───────
-//    تركناها للتوافق فقط — لا ترسل أي طلبات للسيرفر (السيرفر لا يعرف بحالة
-//    الكاميرا، LiveKit يديرها مباشرة).
-export const updateCameraState = async () => ({ data: { status: 'noop' } });
-export const closeCameraStream  = async () => ({ data: { status: 'noop' } });
-export const toggleCamera       = async () => ({ data: { status: 'noop' } });
-export const toggleMicrophone   = async () => ({ data: { status: 'noop' } });
-
-// ── Recording ──────────────────────────────────────────────────────────────
 export const startRecording = (streamId) =>
-  liveApi.recordLiveStream(streamId, { action: 'start' });
-export const stopRecording  = (streamId) =>
-  liveApi.recordLiveStream(streamId, { action: 'stop' });
-export const recordLiveStream = liveApi.recordLiveStream;
+  apiClient.post(`/live_room/${streamId}/recording/start`, {}, { retry: true });
 
-// ── Moderation / Co-hosts (placeholders) ──────────────────────────────────
-const noop = async (payload = {}) => ({ data: { status: 'noop', ...payload } });
-export const muteUser   = noop;
-export const unmuteUser = noop;
-export const banUser    = noop;
-export const unbanUser  = noop;
-export const addCoHost    = noop;
-export const removeCoHost = noop;
-export const applyModerationAction = async (streamId, actionData = {}) => {
-  socketManager.emit?.('moderation_action', { room_id: streamId, ...actionData }, { queue: false });
-  return { data: { status: 'queued', room_id: streamId, ...actionData } };
+export const stopRecording = (streamId) =>
+  apiClient.post(`/live_room/${streamId}/recording/stop`, {}, { retry: true });
+
+export const recordLiveStream = (streamId, recordingData = {}) => {
+  const action = recordingData.action || 'start';
+  return apiClient.post(`/live_room/${streamId}/recording/${action}`, {}, { retry: true });
 };
 
-// ── join / leave via socket (used by LiveStudio/LiveViewer) ────────────────
+// ==================== Multi-Host ====================
+
+export const addCoHost = (streamId, coHostData = {}) =>
+  apiClient.post(`/live_room/${streamId}/multi-host`, {
+    action: 'add',
+    username: coHostData.username || coHostData.coHostId,
+  }, { retry: true });
+
+export const removeCoHost = (streamId, coHostId) =>
+  apiClient.post(`/live_room/${streamId}/multi-host`, {
+    action: 'remove',
+    username: coHostId,
+  }, { retry: true });
+
+// ✅ FIX: إضافة دوال للانضمام والمغادرة من غرفة البث
 export const joinLiveRoom = (streamId, role = 'viewer') => {
-  socketManager.emit?.('join_live', { room_id: streamId, role }, { queue: false });
-  return Promise.resolve({ data: { status: 'queued', room_id: streamId, role } });
-};
-export const leaveLiveRoom = (streamId) => {
-  socketManager.emit?.('leave_live', { room_id: streamId }, { queue: false });
-  return Promise.resolve({ data: { status: 'queued', room_id: streamId } });
+  // يتم الانضمام عبر Socket في الصفحات
+  return Promise.resolve({ data: { status: 'joined', room_id: streamId, role } });
 };
 
-// ── Misc ───────────────────────────────────────────────────────────────────
-export const getUserStreamStatus = async (streamId) => ({
-  data: { stream_id: streamId, is_active: true },
-});
-export const updateStreamStats = async (streamId) => liveApi.getStreamStats(streamId);
+export const leaveLiveRoom = (streamId) => {
+  // يتم المغادرة عبر Socket في الصفحات
+  return Promise.resolve({ data: { status: 'left', room_id: streamId } });
+};
+
+// ==================== Stream List ====================
+
+export const getActiveLiveStreams = (filters = {}) =>
+  apiClient.get('/live_rooms', { params: filters, cache: false, forceRefresh: true, retry: true });
+
+export const getActiveStreams = (limit = 50) =>
+  apiClient.get('/live_rooms', { params: { limit }, cache: false, forceRefresh: true, retry: true });
+
+// ==================== Helper Functions ====================
+
+/**
+ * تطبيق إجراء اعتدال على مستخدم
+ */
+export const applyModerationAction = async (streamId, actionData = {}) => {
+  const { action, userId, moderatorId, reason, duration } = actionData;
+  switch (action) {
+    case 'mute':
+      return muteUser(streamId, userId, moderatorId, reason, duration || 5);
+    case 'unmute':
+      return unmuteUser(streamId, userId);
+    case 'ban':
+      return banUser(streamId, userId, moderatorId, reason, duration || 'temporary');
+    case 'unban':
+      return unbanUser(streamId, userId);
+    case 'close_camera':
+      return closeCameraStream(streamId);
+    case 'kick':
+      return removeViewer(streamId, userId);
+    default:
+      throw new Error(`Unknown moderation action: ${action}`);
+  }
+};
+
+/**
+ * الحصول على حالة المستخدم في البث
+ */
+export const getUserStreamStatus = async (streamId, userId) => {
+  try {
+    const viewers = await getStreamViewers(streamId);
+    const viewer = viewers?.data?.find(v => v.user_id === userId);
+    return {
+      is_banned: viewer?.is_banned || false,
+      is_muted: viewer?.is_muted || false,
+      is_active: viewer?.is_active !== false,
+    };
+  } catch (error) {
+    console.error('Error getting user stream status:', error);
+    return {
+      is_banned: false,
+      is_muted: false,
+      is_active: true,
+    };
+  }
+};
+
+/**
+ * تحديث إحصائيات البث
+ */
+export const updateStreamStats = async (streamId) => {
+  try {
+    const stats = await getStreamStats(streamId);
+    return stats?.data || {};
+  } catch (error) {
+    console.error('Error updating stream stats:', error);
+    return {};
+  }
+};
+
+// ✅ FIX: إضافة دالة للتحقق من حالة الاتصال بالبث
 export const checkStreamConnection = async (streamId) => {
   try {
-    const res = await liveApi.getLiveStreamDetails(streamId);
-    return { data: { connected: !!res?.data, stream_id: streamId } };
-  } catch {
-    return { data: { connected: false, stream_id: streamId } };
+    const response = await getLiveStreamDetails(streamId);
+    return {
+      connected: response?.data?.is_active === true,
+      data: response?.data || {},
+    };
+  } catch (error) {
+    console.error('Error checking stream connection:', error);
+    return { connected: false, data: {} };
   }
 };
 
@@ -98,34 +258,34 @@ export default {
   startLiveStream,
   endLiveStream,
   getLiveStreamDetails,
-  getActiveLiveStreams,
-  getActiveStreams,
   addViewer,
   removeViewer,
   getStreamViewers,
-  sendLiveComment,
-  getLiveComments,
-  sendLiveGift,
-  sendLiveHeart,
-  getStreamStats,
-  getLiveStreamAnalytics,
-  updateCameraState,
-  closeCameraStream,
-  toggleCamera,
-  toggleMicrophone,
-  startRecording,
-  stopRecording,
-  recordLiveStream,
   muteUser,
   unmuteUser,
   banUser,
   unbanUser,
+  updateCameraState,
+  closeCameraStream,
+  toggleCamera,
+  toggleMicrophone,
+  getStreamStats,
+  getLiveStreamAnalytics,
+  sendLiveComment,
+  getLive_comments: getLiveComments,
+  sendLiveGift,
+  sendLiveHeart,
+  startRecording,
+  stopRecording,
+  recordLiveStream,
   addCoHost,
   removeCoHost,
+  getActiveLiveStreams,
+  getActiveStreams,
   applyModerationAction,
-  joinLiveRoom,
-  leaveLiveRoom,
   getUserStreamStatus,
   updateStreamStats,
+  joinLiveRoom,
+  leaveLiveRoom,
   checkStreamConnection,
 };

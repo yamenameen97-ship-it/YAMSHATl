@@ -679,6 +679,7 @@ export default function LiveViewer() {
   }, [loadStreams]);
 
   // فتح البث من الرابط
+  // ✅ FIX (2026-06-10): إعادة محاولة ذكية لـ 404 (DB قد يحتاج لحظة بعد إنشاء البث من LiveStudio)
   useEffect(() => {
     if (!routeStreamId) return;
 
@@ -693,47 +694,74 @@ export default function LiveViewer() {
 
     if (String(activeStream?.id || '') === routeStreamId) return;
 
+    let cancelled = false;
+    const retryDelays = [0, 1500, 3500]; // إعادة محاولة 3 مرات بفواصل متزايدة
+
     (async () => {
-      try {
-        const detailsResponse = await getLiveStreamDetails(routeStreamId);
-        if (detailsResponse?.data) {
-          const data = detailsResponse.data;
-          const stub = {
-            id: data.id || routeStreamId,
-            title: data.title || 'بث مباشر',
-            host_username: data.host_username || data.host || 'مضيف',
-            host_name: data.host_name || data.host_username || 'مضيف',
-            thumbnail_url: data.thumbnail_url || data.cover_url || data.preview_url || '',
-            is_active: (data.is_active ?? data.active) !== false,
-            viewers_count: data.viewers_count ?? data.viewer_count ?? 0,
-            hearts_count: data.hearts_count ?? 0,
-          };
-          if (!stub.is_active) {
-            setActiveStream(stub);
+      let lastError = null;
+      for (let attempt = 0; attempt < retryDelays.length; attempt += 1) {
+        if (cancelled) return;
+        if (retryDelays[attempt] > 0) {
+          await new Promise((resolve) => setTimeout(resolve, retryDelays[attempt]));
+          if (cancelled) return;
+        }
+        try {
+          const detailsResponse = await getLiveStreamDetails(routeStreamId);
+          if (detailsResponse?.data) {
+            const data = detailsResponse.data;
+            const stub = {
+              id: data.id || routeStreamId,
+              title: data.title || 'بث مباشر',
+              host_username: data.host_username || data.host || 'مضيف',
+              host_name: data.host_name || data.host_username || 'مضيف',
+              thumbnail_url: data.thumbnail_url || data.cover_url || data.preview_url || '',
+              is_active: (data.is_active ?? data.active) !== false,
+              viewers_count: data.viewers_count ?? data.viewer_count ?? 0,
+              hearts_count: data.hearts_count ?? 0,
+            };
+            if (!stub.is_active) {
+              setActiveStream(stub);
+              setStreamEnded(true);
+              streamEndedRef.current = true;
+              stopAllPolling();
+              return;
+            }
+            openStream(stub, { syncUrl: false });
+            return; // نجاح → إنهاء الـ retries
+          }
+        } catch (error) {
+          lastError = error;
+          const status = error?.response?.status;
+          // 403: غير مصرح — لا فائدة من إعادة المحاولة
+          if (status === 403) {
             setStreamEnded(true);
             streamEndedRef.current = true;
             stopAllPolling();
             return;
           }
-          openStream(stub, { syncUrl: false });
-        }
-      } catch (error) {
-        const status = error?.response?.status;
-        if (status === 404) {
-          // ✅ FIX (2026-06-10): التعامل الصامت مع 404 (الstream ID غير موجود في DB)
-          setStreamNotFound(true);
-          setStreamEnded(true);
-          streamEndedRef.current = true;
-          stopAllPolling();
-        } else if (status === 403) {
-          setStreamEnded(true);
-          streamEndedRef.current = true;
-          stopAllPolling();
-        } else {
+          // 404 على المحاولات الأولى → نعيد المحاولة (قد يكون البث في طور الإنشاء)
+          if (status === 404 && attempt < retryDelays.length - 1) {
+            continue;
+          }
+          // 404 على آخر محاولة → معلن بأن البث غير موجود
+          if (status === 404) {
+            setStreamNotFound(true);
+            setStreamEnded(true);
+            streamEndedRef.current = true;
+            stopAllPolling();
+            return;
+          }
           console.warn('[LiveViewer] تعذّر تحميل تفاصيل البث:', status || error?.message);
         }
       }
+      if (lastError) {
+        console.warn('[LiveViewer] فشلت جميع محاولات تحميل البث:', lastError?.message);
+      }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [routeStreamId, streams, activeStream?.id, openStream, stopAllPolling]);
 
   // تطبيق الفلتر

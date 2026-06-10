@@ -68,7 +68,34 @@ def _get_or_create_wallet(db: Session, user_id: int) -> UserWallet:
 
 
 def _find_room_record(db: Session, room_id: str) -> LiveRoomSession | None:
-    return db.query(LiveRoomSession).filter(LiveRoomSession.id == str(room_id)).first()
+    """
+    ✅ FIX (2026-06-10): البحث عن غرفة البث بصرامة معتدلة:
+    - تنظيف الـ ID (whitespace + lower-case للـ UUID).
+    - محاولة المطابقة الدقيقة أولاً، ثم case-insensitive.
+    - السبب: بعض عملاء الموبايل يرسلون UUID بأحرف كبيرة → 404 خاطئ.
+    """
+    if not room_id:
+        return None
+    cleaned = str(room_id).strip()
+    if not cleaned:
+        return None
+    # محاولة 1: مطابقة دقيقة (الحالة العادية)
+    record = db.query(LiveRoomSession).filter(LiveRoomSession.id == cleaned).first()
+    if record:
+        return record
+    # محاولة 2: case-insensitive (للحالة التي يرسل فيها العميل UUID بأحرف مختلفة)
+    try:
+        from sqlalchemy import func as _sa_func
+        record = (
+            db.query(LiveRoomSession)
+            .filter(_sa_func.lower(LiveRoomSession.id) == cleaned.lower())
+            .first()
+        )
+        if record:
+            return record
+    except Exception:  # noqa: BLE001
+        pass
+    return None
 
 
 def _read_extra_snapshot(record: LiveRoomSession) -> dict:

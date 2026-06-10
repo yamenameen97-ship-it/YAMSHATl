@@ -284,6 +284,10 @@ export default function LiveStudio() {
           throw new Error('خدمة LiveKit غير مهيأة على الخادم. تأكد من LIVEKIT_URL/API_KEY/API_SECRET في إعدادات الخادم.');
         }
 
+        // ✅ FIX (2026-06-10) — السبب الجذري لمشكلة "refresh session" + disconnect فوري:
+        // كنا نستدعي connect() ثم setCameraEnabled() مباشرةً بدون انتظار استقرار
+        // اتصال LiveKit، فيقوم العميل بطلب refresh session ثم ينقطع.
+        // الحل: انتظار short delay بعد connect لضمان استقرار signal، ثم نشر بالتسلسل.
         const livekitResult = await livekitService.connect(
           livekitUrl,
           tokenResponse.data.token,
@@ -291,23 +295,26 @@ export default function LiveStudio() {
           currentUsername,
           {
             autoSubscribe: true,
-            mediaState: {
-              cameraEnabled: cameraState.cameraEnabled !== false,
-              microphoneEnabled: cameraState.microphoneEnabled !== false,
-            },
+            // ❌ لا تمرر mediaState هنا — هذا يجعل LiveKit يحاول publish قبل اكتمال handshake
+            // فيؤدي إلى refresh session + disconnect فوراً (هذا ما ظهر في اللوقات).
           },
         );
         if (!livekitResult?.success) {
           throw new Error(livekitResult?.error || 'فشل الاتصال بـ LiveKit. تحقق من إعدادات الخادم والشبكة.');
         }
 
-        // ✅ FIX: نشر الكاميرا والمايك فعلياً وانتظار التأكيد
+        // ✅ FIX: انتظار قصير لاستقرار signal قبل publish (يمنع refresh session storm)
+        await new Promise(resolve => setTimeout(resolve, 600));
+
+        // ✅ FIX: نشر الكاميرا والمايك بالتسلسل (وليس بالتوازي) لتفادي race conditions
         const cameraOn = cameraState.cameraEnabled !== false;
         const micOn = cameraState.microphoneEnabled !== false;
         const camResult = await livekitService.setCameraEnabled(cameraOn).catch((err) => {
           console.warn('[LiveStudio] فشل تفعيل الكاميرا:', err?.message);
           return false;
         });
+        // فاصل قصير بين publish الكاميرا والمايك
+        await new Promise(resolve => setTimeout(resolve, 200));
         const micResult = await livekitService.setMicrophoneEnabled(micOn).catch((err) => {
           console.warn('[LiveStudio] فشل تفعيل المايك:', err?.message);
           return false;

@@ -453,7 +453,15 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
       || post.image_url || post.media_url
       || (Array.isArray(post.media_urls) && post.media_urls[0])
       || (Array.isArray(post.media) && post.media[0]?.url) || '';
-    const streamId = post.live_stream_id || post.stream_id || post.live_id || post.liveStreamId;
+    // ✅ FIX (2026-06-10): تغطية كل أسماء الحقول المحتملة للـ stream_id من الباك إند
+    // المشكلة الأصلية: الباك إند يرسل أحياناً live_room_id/room_id/liveRoomId
+    // بدل live_stream_id، فيصبح streamId = undefined → الرابط يفتح صفحة فارغة.
+    const streamId = post.live_stream_id || post.stream_id || post.live_id
+      || post.liveStreamId || post.live_room_id || post.room_id
+      || post.liveRoomId || post.roomId
+      || (post.live && (post.live.id || post.live.stream_id || post.live.room_id))
+      || (post.stream && (post.stream.id || post.stream.stream_id))
+      || null;
     return (
       <Card style={{ padding: 16, border: '2px solid var(--accent)', background: 'rgba(59,130,246,0.08)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
@@ -466,7 +474,15 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
         <div style={{ fontSize: 16, marginBottom: 12 }}>{post.content || post.text || post.title}</div>
         {coverImage ? (
           <div
-            onClick={() => streamId && (window.location.href = `/live/view/${streamId}`)}
+            onClick={() => {
+              if (streamId) {
+                window.location.href = `/live/view/${streamId}`;
+              } else {
+                // ✅ FIX: تحذير المستخدم لو فقد streamId من البوست
+                console.warn('[PostCard] بوست بث بدون streamId:', post?.id);
+                window.location.href = '/live';
+              }
+            }}
             style={{
               marginBottom: 12,
               borderRadius: 16,
@@ -493,7 +509,9 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {streamId ? (
             <Button onClick={() => window.location.href = `/live/view/${streamId}`} style={{ flex: 1 }}>مشاهدة البث</Button>
-          ) : null}
+          ) : (
+            <Button onClick={() => window.location.href = '/live'} style={{ flex: 1 }}>تصفح البثوث النشطة</Button>
+          )}
           <Button variant="secondary" onClick={() => window.location.href = `/live/studio`}>التحكم بالبث</Button>
         </div>
         <div style={{ marginTop: 12, fontSize: 13, color: 'var(--muted)' }}>

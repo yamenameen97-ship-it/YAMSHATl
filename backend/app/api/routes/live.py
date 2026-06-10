@@ -58,6 +58,65 @@ def _room_name_for(username: str) -> str:
     return f"yamshat-{_slugify(username, 'host')}-{int(datetime.utcnow().timestamp())}"
 
 
+# ✅ FIX (2026-06-10) — السبب الجذري لمشكلة "المشاهد لا يرى البث":
+# كنا ننشئ صفّ غرفة في DB فقط بدون إنشاء غرفة حقيقية على سيرفر LiveKit،
+# فإذا تأخّر المضيف في النشر أو فشل publish بسبب race، يحاول المشاهد الانضمام
+# لغرفة افتراضية فارغة → لا يصله TrackPublished/TrackSubscribed → شاشة بيضاء.
+# الحل: استدعاء RoomService.create_room بشكل صريح وقت إنشاء الغرفة لضمان وجودها.
+def _ensure_livekit_room(room_name: str) -> None:
+    """إنشاء غرفة LiveKit حقيقية على السيرفر إن لم تكن موجودة. آمن للاستدعاء المتكرر."""
+    if not _is_livekit_configured() or not room_name:
+        return
+    try:
+        import asyncio
+        from livekit.api import LiveKitAPI, CreateRoomRequest
+
+        async def _do_create():
+            lkapi = LiveKitAPI(
+                settings.LIVEKIT_URL.replace('ws://', 'http://').replace('wss://', 'https://'),
+                settings.LIVEKIT_API_KEY,
+                settings.LIVEKIT_API_SECRET,
+            )
+            try:
+                await lkapi.room.create_room(CreateRoomRequest(
+                    name=room_name,
+                    empty_timeout=300,           # 5 دقائق idle قبل الإغلاق التلقائي
+                    max_participants=200,        # سقف معقول للجمهور
+                ))
+            finally:
+                try:
+                    await lkapi.aclose()
+                except Exception:
+                    pass
+
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # FastAPI sync route → نشغّله في loop جديد بثريد
+                import threading
+                err: list[Exception] = []
+                def _runner():
+                    try:
+                        asyncio.run(_do_create())
+                    except Exception as e:  # noqa: BLE001
+                        err.append(e)
+                t = threading.Thread(target=_runner, daemon=True)
+                t.start()
+                t.join(timeout=5)
+                if err:
+                    raise err[0]
+            else:
+                asyncio.run(_do_create())
+        except RuntimeError:
+            asyncio.run(_do_create())
+    except Exception as exc:  # noqa: BLE001
+        # 409 (الغرفة موجودة مسبقاً) ليس خطأً — نتجاهله بصمت
+        msg = str(exc).lower()
+        if 'already exists' in msg or '409' in msg or 'duplicate' in msg:
+            return
+        logger.warning('LiveKit ensure_room failed (will rely on lazy create): %s', exc)
+
+
 def _get_or_create_wallet(db: Session, user_id: int) -> UserWallet:
     wallet = db.query(UserWallet).filter(UserWallet.user_id == user_id).first()
     if wallet is None:
@@ -647,6 +706,10 @@ def create_live_room(
             detail=f'Failed to create live room: {exc}'
         )
 
+    # ✅ FIX (2026-06-10): إنشاء غرفة LiveKit الحقيقية الآن
+    # (قبلاً كنا نعتمد lazy-create، مما تسبب في فشل اتصال المشاهد عند سرعة الانضمام).
+    _ensure_livekit_room(lk_room_name)
+
     return _serialize_record(db, record)
 
 
@@ -684,6 +747,10 @@ def get_live_token(
 
     is_host = record.host_user_id == current_user.id
     identity_value = str(current_user.username or f"user-{current_user.id}")
+
+    # ✅ FIX (2026-06-10): ضمان وجود الغرفة على سيرفر LiveKit قبل إصدار التوكن
+    # (تكرار آمن — يتجاهل 409 إذا كانت الغرفة موجودة بالفعل).
+    _ensure_livekit_room(record.livekit_room)
 
     # ✅ FIX (يحل خطأ 500 على /token وفشل فتح كاميرا البث):
     #   livekit-api 1.x غيّر الـAPI بالكامل:

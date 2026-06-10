@@ -680,13 +680,46 @@ export default function LiveStudio() {
 
   // ✅ FIX (2026-06-10): فتح المعاينة المحلية فور دخول الصفحة، ليرى المضيف نفسه
   // قبل بدء البث (بدل ظهور placeholder فارغ).
+  // [] deps لضمان التشغيل مرة واحدة عند الـ mount — السبب الجذري لمشكلة "الكاميرا لم تفتح"
+  // كان أن deps السابقة [isStreaming, activeStream?.id] تجعل الـ hook يعيد التشغيل بشكل غير
+  // متوقع ويستوقف tracks سابقة فجأة، فيظهر placeholder "جاري تحضير الكاميرا..." بشكل دائم.
   useEffect(() => {
     let cancelled = false;
+
+    const tryGetUserMedia = async () => {
+      // محاولات متدرجة من الأكثر تفضيلاً إلى الأبسط (fallback ضد OverconstrainedError)
+      const attempts = [
+        { video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: true },
+        { video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: true },
+        { video: true, audio: true },
+        { video: true, audio: false }, // ملاذ أخير: فيديو فقط (قد يكون المايك مشغولاً)
+      ];
+      let lastErr = null;
+      for (const constraints of attempts) {
+        try {
+          return await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (e) {
+          lastErr = e;
+          // NotAllowedError = المستخدم رفض → لا فائدة من المحاولات الأخرى
+          if (e?.name === 'NotAllowedError' || e?.name === 'SecurityError') throw e;
+        }
+      }
+      throw lastErr || new Error('getUserMedia failed');
+    };
 
     const setupCamera = async () => {
       try {
         if (!navigator.mediaDevices?.getUserMedia) {
-          setCameraError('هذا المتصفح لا يدعم الكاميرا');
+          setCameraError('هذا المتصفح لا يدعم الكاميرا. استخدم Chrome/Edge/Firefox الأحدث.');
+          return;
+        }
+
+        // ⚠️ getUserMedia يتطلب HTTPS (أو localhost). نخبر المستخدم بوضوح.
+        if (typeof window !== 'undefined'
+            && window.location?.protocol === 'http:'
+            && window.location?.hostname !== 'localhost'
+            && window.location?.hostname !== '127.0.0.1') {
+          setCameraError('فتح الكاميرا يتطلب اتصالاً آمناً (HTTPS). افتح الموقع عبر https://');
           return;
         }
 
@@ -704,14 +737,7 @@ export default function LiveStudio() {
           return;
         }
 
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: 'user',
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-          audio: true,
-        });
+        const stream = await tryGetUserMedia();
 
         if (cancelled) {
           stream.getTracks().forEach(t => t.stop());
@@ -735,20 +761,28 @@ export default function LiveStudio() {
         };
 
         if (!attach()) {
-          // إعادة محاولة بعد render القادم
+          // إعادة محاولة بعد render القادم — display:none قد يمنع الإرفاق على Safari
           setTimeout(attach, 100);
           setTimeout(attach, 400);
+          setTimeout(attach, 1000);
         }
 
         setCameraReady(true);
         setCameraError('');
       } catch (error) {
-        const permissionDenied = error?.name === 'NotAllowedError';
-        setCameraError(
-          permissionDenied
-            ? 'تم رفض إذن الكاميرا. اسمح بالوصول وحاول مجدداً.'
-            : 'خطأ في تشغيل الكاميرا'
-        );
+        const name = error?.name || '';
+        let msg = 'خطأ في تشغيل الكاميرا';
+        if (name === 'NotAllowedError' || name === 'SecurityError') {
+          msg = 'تم رفض إذن الكاميرا/المايك. اضغط أيقونة القفل بجانب الرابط واسمح بالوصول، ثم أعد تحميل الصفحة.';
+        } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+          msg = 'لم يتم العثور على كاميرا/مايك. تأكد من توصيلهما.';
+        } else if (name === 'NotReadableError' || name === 'TrackStartError') {
+          msg = 'الكاميرا قيد الاستخدام من تطبيق آخر. أغلقه ثم أعد المحاولة.';
+        } else if (name === 'OverconstrainedError') {
+          msg = 'الكاميرا لا تدعم الجودة المطلوبة. سيتم استخدام إعدادات افتراضية.';
+        }
+        setCameraError(msg);
+        setCameraReady(false);
       }
     };
 
@@ -756,10 +790,9 @@ export default function LiveStudio() {
 
     return () => {
       cancelled = true;
-      if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
-      if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
     };
-  }, [isStreaming, activeStream?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // ← مرة واحدة فقط عند الـ mount
 
   // ✅ FIX: إعادة ربط srcObject عند ظهور عنصر الفيديو فعلياً في DOM
   useEffect(() => {
@@ -879,22 +912,44 @@ export default function LiveStudio() {
                 </div>
               </div>
             )}
-            <div className="mlc-video-container">
-              {/* ✅ FIX (2026-06-10): الفيديو يبقى دائماً في DOM ليبقى srcObject مرتبطاً */}
+            <div className="mlc-video-container" dir="rtl">
+              {/* ✅ FIX (2026-06-10): الفيديو يبقى دائماً في DOM (visibility بدل display)
+                  لأن display:none يمنع بعض المتصفحات (Safari iOS) من ربط srcObject بشكل صحيح. */}
               <video
                 ref={localVideoRef}
                 className="mlc-video"
                 autoPlay
                 muted
                 playsInline
-                style={{ display: cameraReady ? 'block' : 'none', width: '100%', height: '100%', objectFit: 'cover' }}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  visibility: cameraReady ? 'visible' : 'hidden',
+                  position: cameraReady ? 'relative' : 'absolute',
+                  inset: cameraReady ? 'auto' : 0,
+                  fontFamily: "'Noto Sans Arabic', system-ui, sans-serif",
+                }}
               />
               {!cameraReady && (
-                <div className="mlc-video-placeholder">
+                <div className="mlc-video-placeholder" dir="rtl" style={{ fontFamily: "'Noto Sans Arabic', system-ui, sans-serif" }}>
                   <div className="mlc-placeholder-icon">📺</div>
                   <p style={{ fontFamily: "'Noto Sans Arabic', system-ui, sans-serif" }}>
                     {cameraError || 'جاري تحضير الكاميرا...'}
                   </p>
+                  {cameraError ? (
+                    <button
+                      onClick={() => window.location.reload()}
+                      style={{
+                        marginTop: 16, padding: '10px 24px', background: '#7c3aed',
+                        color: '#fff', border: 'none', borderRadius: 20,
+                        fontFamily: "'Noto Sans Arabic', system-ui, sans-serif",
+                        fontWeight: 700, cursor: 'pointer'
+                      }}
+                    >
+                      إعادة المحاولة
+                    </button>
+                  ) : null}
                 </div>
               )}
               <div className="mlc-video-overlay">

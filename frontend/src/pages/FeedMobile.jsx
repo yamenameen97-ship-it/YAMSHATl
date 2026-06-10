@@ -66,6 +66,10 @@ function normalizePost(p, i) {
   const author = p.author_name || p.username || p.user || 'مستخدم يام شات';
   const handle = (p.username || p.user || `user${i}`).toString();
   const verified = Boolean(p.verified || p.is_verified || p.official);
+  // ✅ FIX (2026-06-10): تحديد ما إذا كان البث ما زال نشطاً أم انتهى
+  // إذا انتهى البث، نعرض المنشور كمنشور عادي (مش بطاقة بث) لكن نُبقيه ظاهراً
+  const isLivePost = Boolean(p.is_live_stream || p.has_live_stream || p.type === 'live_stream');
+  const liveStillActive = isLivePost && p.is_live !== false && p.live_ended !== true && p.type !== 'video';
   return {
     id: p.id ?? `p-${i}`,
     rawId: p.id,
@@ -82,12 +86,9 @@ function normalizePost(p, i) {
     liked: Boolean(p.is_liked ?? p.liked_by_me ?? p.liked),
     reposted: Boolean(p.reposted ?? p.is_reposted),
     saved: Boolean(p.is_saved ?? p.saved_by_me ?? p.saved),
-    // حقول البث المباشر — نصنف المنشور كبث فقط إذا لم يتم إنهاؤه صراحةً
-    isLive: (
-      Boolean(p.is_live_stream || p.has_live_stream || p.type === 'live_stream')
-      && p.is_live !== false
-      && p.type !== 'video'
-    ),
+    // ✅ بطاقة البث تظهر فقط للبثوث النشطة. بعد انتهاء البث يتحول لمنشور عادي مع شارة "بث منتهي"
+    isLive: liveStillActive,
+    wasLive: isLivePost && !liveStillActive, // كان بثاً وانتهى
     liveStreamId: p.live_stream_id || p.stream_id || p.live_id || null,
     liveStream: p.live_stream,
   };
@@ -175,32 +176,62 @@ function FeedMobile() {
   const posts = useMemo(() => {
     const normalizedPosts = (Array.isArray(rawPosts) && rawPosts.length)
       ? rawPosts.map((p, i) => normalizePost(p, i))
-      : [WELCOME_POST];
+      : [];
 
-    // تحويل البث المباشر إلى منشورات
-    const liveAsPosts = liveStreams.map((stream) => ({
-      id: `live-${stream.id}`,
-      rawId: null,
-      authorName: stream.host_username || 'مستخدم',
-      handle: `@${stream.host_username || 'مستخدم'}`,
-      timeText: 'مباشر الآن',
-      verified: true,
-      avatarUrl: resolveMediaUrl(stream.host_avatar || ''),
-      text: stream.title || 'بث مباشر جديد',
-      banner: stream.thumbnail_url ? { type: 'image', url: resolveMediaUrl(stream.thumbnail_url) } : null,
-      likes: stream.hearts_count || 0,
-      comments: stream.comments_count || 0,
-      reposts: 0,
-      liked: false,
-      reposted: false,
-      saved: false,
-      isLive: true,
-      liveStreamId: stream.id,
-      liveStream: stream,
-    }));
+    // ✅ FIX (2026-06-10): جمع كل live_stream_id الموجودة فعلياً في المنشورات
+    // كي لا نُضيف بطاقة بث مكررة لنفس البث
+    const existingStreamIds = new Set(
+      normalizedPosts
+        .map((p) => String(p.liveStreamId || ''))
+        .filter(Boolean)
+    );
 
-    // دمج البث في البداية (أو تصفية المكرر إذا كان المنشور مرتبطاً ببث)
-    const combined = [...liveAsPosts, ...normalizedPosts];
+    // ✅ FIX: تحويل البث المباشر إلى منشورات فقط إذا لم يكن له منشور موجود في الفيد
+    // وكذلك إزالة التكرار داخل قائمة liveStreams نفسها بناءً على ID
+    const seenLiveIds = new Set();
+    const liveAsPosts = liveStreams
+      .filter((stream) => {
+        const sid = String(stream?.id || '');
+        if (!sid) return false;
+        if (existingStreamIds.has(sid)) return false; // يوجد منشور بالفعل لهذا البث
+        if (seenLiveIds.has(sid)) return false; // مكرر داخل القائمة نفسها
+        seenLiveIds.add(sid);
+        return true;
+      })
+      .map((stream) => ({
+        id: `live-${stream.id}`,
+        rawId: null,
+        authorName: stream.host_name || stream.host_username || 'مستخدم',
+        handle: `@${stream.host_username || 'مستخدم'}`,
+        timeText: 'مباشر الآن',
+        verified: Boolean(stream.verified || stream.is_verified),
+        avatarUrl: resolveMediaUrl(stream.host_avatar || ''),
+        text: stream.title || 'بث مباشر جديد',
+        banner: stream.thumbnail_url ? { type: 'image', url: resolveMediaUrl(stream.thumbnail_url) } : null,
+        likes: stream.hearts_count || 0,
+        comments: stream.comments_count || 0,
+        reposts: 0,
+        liked: false,
+        reposted: false,
+        saved: false,
+        isLive: true,
+        wasLive: false,
+        liveStreamId: stream.id,
+        liveStream: stream,
+      }));
+
+    // ✅ إذا كانت كل النتائج فارغة فعلاً، نعرض البوست الترحيبي
+    const allPosts = liveAsPosts.length + normalizedPosts.length === 0
+      ? [WELCOME_POST]
+      : [...liveAsPosts, ...normalizedPosts];
+
+    // ✅ إزالة التكرار النهائية بناء على id (احتياط)
+    const dedupedMap = new Map();
+    allPosts.forEach((p) => {
+      const key = String(p.id);
+      if (!dedupedMap.has(key)) dedupedMap.set(key, p);
+    });
+    const combined = Array.from(dedupedMap.values());
 
     // دمج overlay (optimistic)
     return combined.map((p) => {

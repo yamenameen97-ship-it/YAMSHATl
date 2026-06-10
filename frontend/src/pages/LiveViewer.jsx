@@ -88,12 +88,13 @@ export default function LiveViewer() {
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(false);
 
-  // بيانات البث النشط
+  // بيانات البث النشط — ✅ FIX: كل الأرقام تبدأ بـ 0 (لا أرقام وهمية)
   const [streamDetails, setStreamDetails] = useState(null);
   const [streamStats, setStreamStats] = useState({
     viewers: 0,
     hearts: 0,
     comments: 0,
+    shares: 0,
   });
 
   // التعليقات والهدايا
@@ -276,7 +277,15 @@ export default function LiveViewer() {
     setLoading(true);
     try {
       const response = await getActiveLiveStreams({ limit: 100 });
-      const allStreams = Array.isArray(response?.data) ? response.data : [];
+      // ✅ FIX: إزالة التكرار حسب ID
+      const rawStreams = Array.isArray(response?.data) ? response.data : [];
+      const seen = new Set();
+      const allStreams = rawStreams.filter((s) => {
+        const sid = String(s?.id || '');
+        if (!sid || seen.has(sid)) return false;
+        seen.add(sid);
+        return true;
+      });
       setStreams(allStreams);
 
       let filtered = allStreams;
@@ -519,6 +528,33 @@ export default function LiveViewer() {
     }
   }, [activeStream?.id, commentText, pushToast]);
 
+  // ✅ FIX (2026-06-10): وظيفة تنسيق أرقام الإحصائيات بالعربية
+  const formatLiveNum = (n) => {
+    const num = Number(n) || 0;
+    if (num >= 1000000) return `${(num / 1000000).toFixed(1)}م`;
+    if (num >= 1000) return `${(num / 1000).toFixed(1)}ألف`;
+    return num.toLocaleString('ar-EG');
+  };
+
+  // ✅ FIX: مشاركة رابط البث
+  const handleShareStream = useCallback(() => {
+    if (!activeStream?.id) return;
+    try {
+      const url = `${window.location.origin}/#/live/view/${activeStream.id}`;
+      const shareData = {
+        title: `${hostName} في بث مباشر`,
+        text: activeStream.title || 'بث مباشر',
+        url,
+      };
+      if (navigator.share) {
+        navigator.share(shareData).catch(() => {});
+      } else if (navigator.clipboard) {
+        navigator.clipboard.writeText(url);
+        pushToast?.({ type: 'success', title: 'تم نسخ رابط البث' });
+      }
+    } catch (_) { /* noop */ }
+  }, [activeStream?.id, activeStream?.title, hostName, pushToast]);
+
   // تنظيف القلوب الطائرة
   useEffect(() => {
     if (floatingHearts.length === 0) return;
@@ -710,12 +746,15 @@ export default function LiveViewer() {
             ✕
           </button>
           <div className="mlv-mobile-header-info">
-            <h1>Yamshat Official</h1>
-            <p className="mlv-mobile-header-viewers">12.8K مشاهد</p>
+            {/* ✅ FIX (2026-06-10): عرض اسم المضيف وعدد المشاهدين الحقيقي بدل الأرقام الوهمية */}
+            <h1>{activeStream ? hostName : 'بث مباشر'}</h1>
+            <p className="mlv-mobile-header-viewers">
+              {streamStats.viewers > 0 ? `${streamStats.viewers.toLocaleString('ar-EG')} مشاهد` : 'لا يوجد مشاهدون حالياً'}
+            </p>
           </div>
           <div className="mlv-mobile-header-actions">
-            <button className="mlv-mobile-action-icon">👤</button>
-            <button className="mlv-mobile-action-icon">👥</button>
+            <button className="mlv-mobile-action-icon" aria-label="المتابعين">👤</button>
+            <button className="mlv-mobile-action-icon" aria-label="المشاهدون">👥</button>
           </div>
         </div>
       </header>
@@ -774,32 +813,33 @@ export default function LiveViewer() {
 
               {/* Top Right Badges */}
               <div className="mlv-mobile-top-badges">
+                {/* ✅ FIX: عدد المشاهدين الحقيقي */}
                 <div className="mlv-mobile-viewers-badge">
                   <span className="mlv-mobile-badge-icon">👁</span>
-                  <span className="mlv-mobile-badge-text">10K+</span>
+                  <span className="mlv-mobile-badge-text">{formatLiveNum(streamStats.viewers)}</span>
                 </div>
                 <div className="mlv-mobile-profile-badge">
                   <Avatar name={hostName} size={36} />
                 </div>
               </div>
 
-              {/* Bottom Right Actions */}
+              {/* Bottom Right Actions — ✅ أرقام حقيقية مربوطة بال backend */}
               <div className="mlv-mobile-right-actions">
-                <button className="mlv-mobile-action-btn mlv-mobile-action-heart" onClick={handleSendHeart}>
+                <button className="mlv-mobile-action-btn mlv-mobile-action-heart" onClick={handleSendHeart} aria-label="اعجاب">
                   <span>💜</span>
-                  <span className="mlv-mobile-action-count">25.7K</span>
+                  <span className="mlv-mobile-action-count">{formatLiveNum(streamStats.hearts)}</span>
                 </button>
-                <button className="mlv-mobile-action-btn mlv-mobile-action-comment">
+                <button className="mlv-mobile-action-btn mlv-mobile-action-comment" aria-label="تعليقات">
                   <span>💬</span>
-                  <span className="mlv-mobile-action-count">1,245</span>
+                  <span className="mlv-mobile-action-count">{formatLiveNum(streamStats.comments)}</span>
                 </button>
-                <button className="mlv-mobile-action-btn mlv-mobile-action-gift" onClick={() => setShowGiftPanel(!showGiftPanel)}>
+                <button className="mlv-mobile-action-btn mlv-mobile-action-gift" onClick={() => setShowGiftPanel(!showGiftPanel)} aria-label="هدية">
                   <span>🎁</span>
                   <span className="mlv-mobile-action-label">هدية</span>
                 </button>
-                <button className="mlv-mobile-action-btn mlv-mobile-action-share">
+                <button className="mlv-mobile-action-btn mlv-mobile-action-share" onClick={handleShareStream} aria-label="مشاركة">
                   <span>↗</span>
-                  <span className="mlv-mobile-action-count">1,026</span>
+                  <span className="mlv-mobile-action-count">{formatLiveNum(streamStats.shares || 0)}</span>
                 </button>
               </div>
             </div>

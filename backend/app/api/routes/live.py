@@ -456,16 +456,32 @@ def get_live_room(
 ):
     """
     الحصول على تفاصيل البث.
+
+    ✅ FIX (2026-06-10):
+    - إذا لم يوجد البث فعلاً → 404.
+    - إذا وجد ولكنه انتهى (is_active=False) → نعيد البيانات مع علم is_active=false و stream_status='ended'.
+      هذا لأن البوستات المرتبطة بالبث تبقى في الفيد بعد انتهائه،
+      ولا نريد 404 spam في polling الفرونت.
     """
     record = _find_room_record(db, room_id)
-    if not record or not record.is_active:
+    if not record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Room not found')
-    
+
     if not getattr(record, 'is_public', True):
         if not current_user or current_user.id != record.host_user_id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='This stream is private')
-            
-    return _serialize_record(db, record)
+
+    payload = _serialize_record(db, record)
+    # ✅ تأكيد علم البث المنتهي للفرونت
+    if not record.is_active:
+        try:
+            payload['is_active'] = False
+            payload['active'] = False
+            payload['stream_status'] = 'ended'
+            payload['live_ended'] = True
+        except Exception:
+            pass
+    return payload
 
 
 @router.get('/live_comments/{room_id}')
@@ -476,14 +492,20 @@ def get_live_comments(
 ):
     """
     الحصول على التعليقات في البث.
+
+    ✅ FIX (2026-06-10): إذا انتهى البث، نرجع قائمة فارغة بدل 404
+    حتى لا تتعطل صفحة عرض البث بعد انتهائه.
     """
     record = _find_room_record(db, room_id)
-    if not record or not record.is_active:
+    if not record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Room not found')
-    
+
     if not getattr(record, 'is_public', True):
         if not current_user or current_user.id != record.host_user_id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='This stream is private')
+
+    if not record.is_active:
+        return []
 
     room = _hydrate_runtime_room(record)
     return [comment.__dict__ for comment in (room.comments or [])]
@@ -496,23 +518,46 @@ def get_stream_analytics(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_optional)
 ):
-    """الحصول على إحصائيات البث"""
+    """الحصول على إحصائيات البث.
+
+    ✅ FIX (2026-06-10): إذا انتهى البث، نرجع الإحصائيات الأخيرة مع علم ended
+    بدل 404 حتى لا تتوقف polling الفرونت، وللاحتفاظ بالأرقام للعرض في البوست المحفوظ.
+    """
     record = _find_room_record(db, room_id)
-    if not record or not record.is_active:
+    if not record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Room not found')
-    
+
     if not getattr(record, 'is_public', True):
         if not current_user or current_user.id != record.host_user_id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='This stream is private')
-    
+
+    # إذا انتهى البث، نرجع الأرقام المحفوظة في السجل فقط (بدون hydrate)
+    if not record.is_active:
+        return {
+            'stream_id': record.id,
+            'viewer_count': 0,  # لا يوجد مشاهدون حالياً
+            'viewers_count': 0,
+            'unique_viewers': int(record.peak_viewer_count or 0),
+            'peak_viewer_count': int(record.peak_viewer_count or 0),
+            'hearts_count': int(record.hearts_count or 0),
+            'comments_count': 0,
+            'gifts_count': 0,
+            'is_active': False,
+            'stream_status': 'ended',
+        }
+
     room = _hydrate_runtime_room(record)
     return {
         'stream_id': room.id,
         'viewer_count': room.viewer_count or 0,
+        'viewers_count': room.viewer_count or 0,
+        'unique_viewers': room.viewer_count or 0,
         'peak_viewer_count': room.peak_viewer_count or 0,
         'hearts_count': room.hearts_count or 0,
         'comments_count': len(room.comments or []),
         'gifts_count': len(room.gifts or []),
+        'is_active': True,
+        'stream_status': 'live',
     }
 
 

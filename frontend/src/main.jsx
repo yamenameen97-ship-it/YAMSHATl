@@ -46,6 +46,8 @@ import './styles/mobile-scroll-fix.css';
 import './styles/pwa-mobile-hotfix.css';
 /* 🎯 v4 — طبقة التوحيد النهائية (أزرار، مسافات، خطوط، ألوان لكل المنصة) */
 import './styles/platform-unified-v4.css';
+/* 🧩 إصلاح بطاقة المنشور (MobilePostCard) — يحلّ التناثر ويُوحّد الشكل النهائي */
+import './styles/mobile-post-card-unified-fix.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { pwaInitializer } from './services/pwaInitializer.js';
 import { smoothTouchLayer } from './services/smoothTouchLayer.js';

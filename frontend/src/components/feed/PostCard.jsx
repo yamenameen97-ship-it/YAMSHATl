@@ -443,11 +443,28 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
     )));
   };
 
-  // عرض خاص للبثوث المباشرة النشطة فقط
-  // ملاحظة: لا نعرض بطاقة البث إلا إذا لم يتم إنهاؤه صراحة حتى لا تتحول المنشورات السابقة لبث
-  const isExplicitLivePost = (post?.is_live_stream === true || post?.type === 'live_stream');
-  const liveExplicitlyEnded = post?.is_live === false || post?.type === 'video';
-  if (isExplicitLivePost && !liveExplicitlyEnded) {
+  // ✅ FIX (2026-06-11): بطاقة البث تظهر فقط للبث الفعلي الحيّ الآن.
+  // سابقاً كان أي منشور لمستخدم عنده غرفة بث نشطة يظهر كبث (خطأ الباك إند).
+  // الآن نشترط:
+  //   - وجود رابط صريح (live_room_id / stream_id) أو type === 'live_stream'.
+  //   - is_live === true بدقة (السيريالايزر يضعها فقط لو الغرفة نشطة).
+  //   - لم يتم إنهاؤه صراحة.
+  const hasLiveLink = Boolean(post?.live_room_id || post?.live_stream_id || post?.stream_id);
+  const isExplicitLivePost = (
+    post?.is_live_stream === true ||
+    post?.type === 'live_stream' ||
+    (hasLiveLink && post?.is_live === true)
+  );
+  const liveExplicitlyEnded =
+    post?.is_live === false ||
+    post?.live_ended === true ||
+    post?.type === 'video';
+  const liveSessionStillActive =
+    isExplicitLivePost &&
+    !liveExplicitlyEnded &&
+    post?.is_live === true &&
+    (post?.live_stream ? post.live_stream.is_active !== false : true);
+  if (liveSessionStillActive) {
     // نجرب عدة حقول لصورة الغلاف لتجنب فوات الحقل
     const coverImage = post.thumbnail_url || post.preview_url || post.cover_url
       || post.image_url || post.media_url

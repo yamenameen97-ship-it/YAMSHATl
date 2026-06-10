@@ -62,7 +62,20 @@ def create(payload: dict = Body(...), db: Session = Depends(get_db), current_use
     media_urls = payload.get('media_urls') or payload.get('media') or payload.get('attachments') or ([] if not image_url else [image_url])
     
     scheduled_at = _parse_datetime(payload.get('scheduled_at'))
-    
+
+    # ✅ FIX (2026-06-11): دعم ربط صريح بالبث المباشر عبر live_room_id.
+    # لأن الفرونت يرسل عدة مسميات (stream_id / live_stream_id / live_id / live_room_id)
+    # نأخذ أول قيمة صالحة. فقط المنشورات التي تصل بـ live_room_id تُعتبر منشورات بث.
+    live_room_id = (
+        payload.get('live_room_id')
+        or payload.get('live_stream_id')
+        or payload.get('stream_id')
+        or payload.get('live_id')
+        or payload.get('liveStreamId')
+        or payload.get('roomId')
+        or None
+    )
+
     post = create_post(
         db,
         user_id=current_user.id,
@@ -75,6 +88,7 @@ def create(payload: dict = Body(...), db: Session = Depends(get_db), current_use
         is_draft=bool(payload.get('is_draft', False)),
         is_pinned=bool(payload.get('is_pinned', False)),
         allow_comments=bool(payload.get('allow_comments', True)),
+        live_room_id=live_room_id,
     )
     
     # Scheduled publishing queue & Background processing

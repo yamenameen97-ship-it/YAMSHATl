@@ -175,6 +175,9 @@ export default function LiveStudio() {
         setIsStreaming(true);
 
         try {
+          // ✅ FIX (2026-06-11): إرسال live_room_id بشكل صريح حتى يخزّنه الباك إند في عمود خاص
+          // (سابقاً كانت الحقول is_live/is_live_stream تُرسل بدون تخزين في DB → تُفقد،
+          // وبالتالي يعود السيريالايزر ليبحث عن غرفة نشطة للمستخدم فيربطها بكل منشوراته).
           const livePost = {
             type: 'live_stream',
             content: title.trim(),
@@ -185,6 +188,8 @@ export default function LiveStudio() {
             preview_url: uploadedCover || undefined,
             cover_url: uploadedCover || undefined,
             media_urls: uploadedCover ? [uploadedCover] : undefined,
+            // ⬇️ أهم حقل: به يربط الباك إند هذا المنشور بغرفة البث
+            live_room_id: streamId,
             stream_id: streamId,
             live_stream_id: streamId,
             live_id: streamId,

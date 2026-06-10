@@ -97,7 +97,9 @@ function convertLiveStreamToPost(stream) {
     id: `live_${stream.id}`,
     type: 'live_stream',
     is_live_stream: true,
+    is_live: true,            // ✅ FIX (2026-06-11): علم دقيق للبث الحي (يعتمد عليه normalizeFeedPost)
     isLive: true,
+    live_room_id: stream.id,  // ✅ رابط صريح
     liveStreamId: stream.id,
     live_stream_id: stream.id,
     title: stream.title || 'بث مباشر',
@@ -197,16 +199,30 @@ function buildFeedPosts(posts = []) {
         };
       });
 
-      // منشور يعتبر "بثّاً مباشراً نشطاً" فقط إذا:
-      // 1) تم وسمه بأنه بث (is_live_stream / has_live_stream / type === 'live_stream')
-      // 2) ولم يتم إغلاق البث (is_live ليست false بشكل صريح ولا type صار video)
-      // هذا يمنع تحول المنشورات السابقة لبث عندما يبقى أحد الأعلام في الداتابيس.
+      // ✅ FIX (2026-06-11): قواعد صارمة لتحديد "بث مباشر نشط"
+      // المنشور يُعتبر بثاً نشطاً فقط لو توفر شرطان معاً:
+      //  1) رابط صريح بالـ live_room_id (أي المنشور أُنشئ أصلاً كمنشور بث)
+      //     أو type === 'live_stream' بشكل صريح من السيريالايزر.
+      //  2) is_live === true بدقة (السيريالايزر يضع True فقط لو الغرفة is_active=True).
+      // هكذا:
+      //   • لا تظهر المنشورات العادية للمستخدم البثّاء كبث (المشكلة الأصلية).
+      //   • بمجرد إغلاق البث (is_active=False) يتحول المنشور لمنشور فيديو عادي.
+      const hasLiveLink = Boolean(post.live_room_id || post.live_stream_id || post.stream_id);
       const taggedAsLive = Boolean(
-        post.is_live_stream || post.has_live_stream || post.type === 'live_stream',
+        post.is_live_stream === true ||
+        post.type === 'live_stream' ||
+        (hasLiveLink && (post.is_live === true || post.live_stream)),
       );
-      const liveExplicitlyEnded = post.is_live === false || post.type === 'video';
-      const isActuallyLive = taggedAsLive && !liveExplicitlyEnded;
-      const liveStreamIdValue = post.live_stream_id || post.stream_id || post.live_id || null;
+      const liveExplicitlyEnded =
+        post.is_live === false || post.live_ended === true || post.type === 'video';
+      // is_live === true فقط ("truthy" قد يأتي من سلسلة، فنشترط القيمة الحرفية)
+      const isActuallyLive =
+        taggedAsLive &&
+        !liveExplicitlyEnded &&
+        post.is_live === true &&
+        (post.live_stream ? post.live_stream.is_active !== false : true);
+      const liveStreamIdValue =
+        post.live_room_id || post.live_stream_id || post.stream_id || post.live_id || null;
 
       return {
         id: post.id || `post-${index}`,

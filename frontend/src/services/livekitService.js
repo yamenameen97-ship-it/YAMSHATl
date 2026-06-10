@@ -11,7 +11,7 @@ class LiveKitService {
     this.connectionConfig = null;
     this.listeners = new Set();
     this.qualityManager = null;
-    // ✅ FIX (2026-06-10): cache آخر MediaStream مرفق لتمكين إعادة الإرفاق التلقائي
+    // ✅ FIX (2026-06-10): cache آخر MediaStream لتمكين إعادة الإرفاق
     this.remoteMediaStream = null;
   }
 
@@ -49,8 +49,7 @@ class LiveKitService {
   }
 
   /**
-   * ✅ FIX (2026-06-10): فحص ما إذا كان هناك مسارات وسائط بعيدة فعلياً
-   * يُستخدم في `LiveViewer` لمعرفة متى يجب إرفاق الـ <video>.
+   * ✅ FIX (2026-06-10): فحص وجود مسارات وسائط بعيدة فعلياً
    */
   hasRemoteTracks() {
     if (!this.room) return false;
@@ -64,8 +63,7 @@ class LiveKitService {
   }
 
   /**
-   * ✅ FIX (2026-06-10): بناء MediaStream من المسارات البعيدة
-   * تُستدعى من LiveViewer لإرفاق الفيديو والصوت معاً.
+   * ✅ FIX (2026-06-10): بناء MediaStream موحّد من المسارات البعيدة
    */
   buildRemoteMediaStream() {
     if (!this.room) return null;
@@ -150,6 +148,11 @@ class LiveKitService {
       await this.room.prepareConnection?.(serverUrl, token).catch(() => {});
       await this.room.connect(serverUrl, token, { autoSubscribe: options.autoSubscribe !== false });
 
+      // ✅ FIX (2026-06-10): التقاط المشاركين الموجودين مسبقاً
+      this.room.remoteParticipants?.forEach?.((p) => {
+        this.participants.set(p.sid || p.identity, p);
+      });
+
       if (options.mediaState) {
         await this.restoreState(options.mediaState).catch(() => {});
       }
@@ -168,12 +171,6 @@ class LiveKitService {
 
   bindRoomEvents() {
     if (!this.room?.on) return;
-
-    // ✅ FIX (2026-06-10): تسجيل المشاركين الموجودين مسبقاً في الغرفة
-    // (المشاهد ينضم بعد المضيف فيجب التقاطه)
-    this.room.remoteParticipants?.forEach?.((p) => {
-      this.participants.set(p.sid || p.identity, p);
-    });
 
     this.room.on(LiveKit.RoomEvent.ParticipantConnected, (participant) => {
       this.participants.set(participant.sid || participant.identity, participant);
@@ -206,8 +203,7 @@ class LiveKitService {
       this.emit({ event: 'local_track_published' });
     });
 
-    // ✅ FIX (2026-06-10): إصدار event عند ظهور كل مسار بعيد جديد
-    // مما يسمح لـ LiveViewer بإعادة إرفاق الفيديو فوراً
+    // ✅ FIX (2026-06-10): إصدار event عند ظهور كل مسار بعيد
     this.room.on(LiveKit.RoomEvent.TrackSubscribed, (track, publication, participant) => {
       this.buildRemoteMediaStream();
       this.emit({
@@ -227,7 +223,6 @@ class LiveKitService {
       });
     });
 
-    // ✅ FIX (2026-06-10): التقاط حدث نشر المسار البعيد قبل الاشتراك
     if (LiveKit.RoomEvent.TrackPublished) {
       this.room.on(LiveKit.RoomEvent.TrackPublished, (publication, participant) => {
         this.emit({

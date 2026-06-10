@@ -163,16 +163,32 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
         }
         for option in poll_options
     ]
-    # البحث عن بث مباشر نشط للمستخدم
-    # لا نسمح لتعطل ميزة البث المباشر أو غياب جدولها أن يكسر API المنشورات.
+    # ✅ FIX (2026-06-11): إصلاح جذري لمشكلة "كل المنشورات تظهر كبث مباشر".
+    # السابق: كنا نربط أي LiveRoomSession نشطة للمستخدم بكل منشور من منشوراته،
+    # فيصبح كل منشور عادي ظاهراً بشارة LIVE في الفيد، وحتى بعد انتهاء البث
+    # كان "is_active" مازال True أحياناً فيستمر العرض الخاطئ.
+    #
+    # الحل: لا نربط جلسة بث بمنشور إلا إذا كان المنشور نفسه يحمل
+    # `post.live_room_id` يطابق معرّف الغرفة. هكذا:
+    #   1) المنشورات العادية لا تظهر أبداً كبث.
+    #   2) منشور البث يصبح منشور فيديو عادي تلقائياً بمجرد أن تنتهي الغرفة
+    #      (is_active=False) أو يُحذف الـ session.
+    #   3) فقط البث الحي الفعلي يحمل شارة LIVE.
     live_room = None
     live_stream_data = None
+    live_ended = False
     try:
-        from app.models.live_session import LiveRoomSession
-        live_room = db.query(LiveRoomSession).filter(
-            LiveRoomSession.host_user_id == post.user_id,
-            LiveRoomSession.is_active == True
-        ).first()
+        linked_room_id = getattr(post, 'live_room_id', None)
+        if linked_room_id:
+            from app.models.live_session import LiveRoomSession
+            live_room = db.query(LiveRoomSession).filter(
+                LiveRoomSession.id == linked_room_id
+            ).first()
+            # إذا وُجدت الغرفة لكنها لم تعد نشطة → نعتبر البث منتهياً ونعرض المنشور
+            # كمنشور فيديو عادي (بدون شارة LIVE). إذا لم توجد أصلاً (محذوفة) فكذلك.
+            if live_room is None or not bool(getattr(live_room, 'is_active', False)):
+                live_ended = True
+                live_room = None
 
         if live_room:
             # جلب بيانات المضيف للحصول على صورته
@@ -244,19 +260,38 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
         'liked_by_me': liked_by_me,
         'saved_by_me': saved_by_me,
         'share_url': _share_url(post.id),
+        # ✅ FIX (2026-06-11): الحقول التالية تُحدّد بدقة هل هذا المنشور بث مباشر
+        # نشط الآن أم لا. الفرونت يعتمد فقط على هذه الحقول لتقرير شارة LIVE.
         'has_live_stream': bool(live_stream_data),
-        'live_stream_id': live_stream_data.get('id') if live_stream_data else None,
+        'is_live_stream': bool(getattr(post, 'live_room_id', None)),   # هل أُنشئ كبث؟
+        'is_live': bool(live_stream_data),                              # هل البث حيّ الآن؟
+        'live_ended': bool(live_ended),                                 # كان بث وانتهى
+        'type': (
+            'live_stream' if live_stream_data
+            else ('video' if (live_ended or (getattr(post, 'live_room_id', None) and not live_stream_data)) else 'post')
+        ),
+        'live_room_id': getattr(post, 'live_room_id', None),
+        'live_stream_id': live_stream_data.get('id') if live_stream_data else (getattr(post, 'live_room_id', None) if live_ended else None),
         'live_stream': live_stream_data
     }
 
 
-def _prepare_post_fields(content: str, content_html: str | None, media_urls, poll, hashtags=None, mentions=None) -> dict:
+def _prepare_post_fields(content: str, content_html: str | None, media_urls, poll, hashtags=None, mentions=None, live_room_id: str | None = None) -> dict:
     clean_content = sanitize_text(content or '', max_length=5000)
     clean_html = str(content_html or '').strip()[:12000] or None
     clean_media = _normalize_media(media_urls)
     clean_poll = _normalize_poll(poll)
     detected_hashtags = hashtags if isinstance(hashtags, list) else _extract_hashtags(clean_content)
     detected_mentions = mentions if isinstance(mentions, list) else _extract_mentions(clean_content)
+    # ✅ FIX (2026-06-11): تطهير وتخزين live_room_id إذا أُرسل
+    clean_room_id = None
+    if live_room_id is not None:
+        try:
+            raw = str(live_room_id).strip()
+            if raw and raw.lower() not in ('null', 'none', 'undefined'):
+                clean_room_id = raw[:64]
+        except Exception:
+            clean_room_id = None
     return {
         'content': clean_content,
         'content_html': clean_html,
@@ -266,6 +301,7 @@ def _prepare_post_fields(content: str, content_html: str | None, media_urls, pol
         'hashtags_json': _dumps(detected_hashtags),
         'mentions_json': _dumps(detected_mentions),
         'poll_options_json': _dumps(clean_poll),
+        'live_room_id': clean_room_id,
     }
 
 
@@ -282,8 +318,9 @@ def create_post(
     is_draft: bool = False,
     is_pinned: bool = False,
     allow_comments: bool = True,
+    live_room_id: str | None = None,
 ) -> dict:
-    prepared = _prepare_post_fields(content, content_html, media_urls or ([image_url] if image_url else []), poll)
+    prepared = _prepare_post_fields(content, content_html, media_urls or ([image_url] if image_url else []), poll, live_room_id=live_room_id)
     if not prepared['content'] and not prepared['image_url'] and not prepared['media'] and prepared['poll_options_json'] is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='content, media, or poll is required')
     now = utcnow_naive()

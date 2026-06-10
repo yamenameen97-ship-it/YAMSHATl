@@ -66,10 +66,21 @@ function normalizePost(p, i) {
   const author = p.author_name || p.username || p.user || 'مستخدم يام شات';
   const handle = (p.username || p.user || `user${i}`).toString();
   const verified = Boolean(p.verified || p.is_verified || p.official);
-  // ✅ FIX (2026-06-10): تحديد ما إذا كان البث ما زال نشطاً أم انتهى
-  // إذا انتهى البث، نعرض المنشور كمنشور عادي (مش بطاقة بث) لكن نُبقيه ظاهراً
-  const isLivePost = Boolean(p.is_live_stream || p.has_live_stream || p.type === 'live_stream');
-  const liveStillActive = isLivePost && p.is_live !== false && p.live_ended !== true && p.type !== 'video';
+  // ✅ FIX (2026-06-11): منشور بث = فقط إذا وجد live_room_id فعلياً في الديتا،
+  // أو إذا أتا الباك إند بـ type === 'live_stream' بشكل صريح.
+  // لا نعتمد على has_live_stream وحده (كان يُلحق بكل منشورات المستخدم المباشر).
+  const hasLiveLink = Boolean(p.live_room_id || p.live_stream_id || p.stream_id);
+  const isLivePost = Boolean(
+    (p.is_live_stream === true) ||
+    p.type === 'live_stream' ||
+    (hasLiveLink && (p.is_live === true || p.live_stream)) // ربط صريح وبث فعلياً على الهواء
+  );
+  // البث ما زال حياً: يجب أن يكون is_live === true (بدقة) وليس live_ended وليس نوع video
+  const liveStillActive = isLivePost
+    && p.is_live === true
+    && p.live_ended !== true
+    && p.type !== 'video'
+    && p.live_stream && p.live_stream.is_active !== false;
   return {
     id: p.id ?? `p-${i}`,
     rawId: p.id,
@@ -89,8 +100,8 @@ function normalizePost(p, i) {
     // ✅ بطاقة البث تظهر فقط للبثوث النشطة. بعد انتهاء البث يتحول لمنشور عادي مع شارة "بث منتهي"
     isLive: liveStillActive,
     wasLive: isLivePost && !liveStillActive, // كان بثاً وانتهى
-    liveStreamId: p.live_stream_id || p.stream_id || p.live_id || null,
-    liveStream: p.live_stream,
+    liveStreamId: liveStillActive ? (p.live_room_id || p.live_stream_id || p.stream_id || p.live_id || null) : null,
+    liveStream: liveStillActive ? p.live_stream : null,
   };
 }
 
@@ -214,7 +225,8 @@ function FeedMobile() {
         liked: false,
         reposted: false,
         saved: false,
-        isLive: true,
+        // ✅ بث حي مأخوذ مباشرة من قائمة getActiveLiveStreams → is_active=true دائماً
+        isLive: stream.is_active !== false,
         wasLive: false,
         liveStreamId: stream.id,
         liveStream: stream,

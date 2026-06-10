@@ -75,6 +75,17 @@ export const sendLiveGift = (streamId, giftData = {}) => {
   return apiClient.post(`/live_room/${streamId}/gift`, payload, { retry: true });
 };
 
+// ==================== Hearts / Likes ====================
+/**
+ * إرسال قلب (إعجاب) للبث المباشر.
+ * يحاول endpoint مخصص أولاً، ويسقط بصمت إن لم يكن متاحاً (للتجربة في UI).
+ */
+export const sendLiveHeart = (streamId, payload = {}) => {
+  return apiClient
+    .post(`/live_room/${streamId}/heart`, payload, { retry: false })
+    .catch(() => ({ success: true, data: { hearts_count: null } }));
+};
+
 // ==================== Viewers ====================
 export const addViewer = (streamId, viewerData = {}) =>
   apiClient.post(`/live_room/${streamId}/add-viewer`, {
@@ -103,6 +114,7 @@ export default {
   sendLiveComment,
   getLiveComments,
   sendLiveGift,
+  sendLiveHeart,
   addViewer,
   removeViewer,
   recordLiveStream,

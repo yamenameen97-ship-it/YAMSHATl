@@ -274,32 +274,56 @@ export default function LiveStudio() {
       });
 
       if (tokenResponse?.data?.token) {
+        // ✅ FIX (2026-06-10): نشر الكاميرا/المايك في LiveKit أولاً
+        // قبل اعتبار البث جاهزاً، حتى لا يرى المشاهدون صفحة بدون فيديو
+        const livekitUrl = tokenResponse?.data?.livekit_url || tokenResponse?.data?.url || '';
+        const livekitRoom = tokenResponse?.data?.livekit_room || tokenResponse?.data?.room || '';
+
+        // ✅ تحقق صارم من توفر LiveKit قبل المتابعة
+        if (!livekitUrl || !livekitRoom) {
+          throw new Error('خدمة LiveKit غير مهيأة على الخادم. تأكد من LIVEKIT_URL/API_KEY/API_SECRET في إعدادات الخادم.');
+        }
+
+        const livekitResult = await livekitService.connect(
+          livekitUrl,
+          tokenResponse.data.token,
+          livekitRoom,
+          currentUsername,
+          {
+            autoSubscribe: true,
+            mediaState: {
+              cameraEnabled: cameraState.cameraEnabled !== false,
+              microphoneEnabled: cameraState.microphoneEnabled !== false,
+            },
+          },
+        );
+        if (!livekitResult?.success) {
+          throw new Error(livekitResult?.error || 'فشل الاتصال بـ LiveKit. تحقق من إعدادات الخادم والشبكة.');
+        }
+
+        // ✅ FIX: نشر الكاميرا والمايك فعلياً وانتظار التأكيد
+        const cameraOn = cameraState.cameraEnabled !== false;
+        const micOn = cameraState.microphoneEnabled !== false;
+        const camResult = await livekitService.setCameraEnabled(cameraOn).catch((err) => {
+          console.warn('[LiveStudio] فشل تفعيل الكاميرا:', err?.message);
+          return false;
+        });
+        const micResult = await livekitService.setMicrophoneEnabled(micOn).catch((err) => {
+          console.warn('[LiveStudio] فشل تفعيل المايك:', err?.message);
+          return false;
+        });
+
+        // ✅ FIX: تحذير المستخدم إذا فشل نشر الكاميرا (المشاهدون لن يروا شيئاً)
+        if (cameraOn && !camResult) {
+          pushToast?.({
+            type: 'warning',
+            title: 'تحذير: الكاميرا لم تُنشر',
+            description: 'لن يتمكن المشاهدون من رؤية البث. تأكد من السماح بالوصول للكاميرا.',
+          });
+        }
+
         setCameraReady(true);
         setStreamHealth('good');
-
-        // ✅ FIX: نشر الكاميرا/المايك فعلياً في LiveKit حتى يقدر المشاهدون يفتحوا البث
-        const livekitUrl = tokenResponse?.data?.livekit_url || '';
-        const livekitRoom = tokenResponse?.data?.livekit_room || '';
-        if (livekitUrl && livekitRoom) {
-          const livekitResult = await livekitService.connect(
-            livekitUrl,
-            tokenResponse.data.token,
-            livekitRoom,
-            currentUsername,
-            {
-              autoSubscribe: true,
-              mediaState: {
-                cameraEnabled: cameraState.cameraEnabled !== false,
-                microphoneEnabled: cameraState.microphoneEnabled !== false,
-              },
-            },
-          );
-          if (!livekitResult?.success) {
-            throw new Error(livekitResult?.error || 'livekit_connect_error');
-          }
-          await livekitService.setCameraEnabled(cameraState.cameraEnabled !== false).catch(() => {});
-          await livekitService.setMicrophoneEnabled(cameraState.microphoneEnabled !== false).catch(() => {});
-        }
 
         // ✅ FIX: انضمام المضيف لغرفة البث لاستقبال اللايكات والتعليقات
         socketManager.emit('join_live', {

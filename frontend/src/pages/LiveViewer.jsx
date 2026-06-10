@@ -114,6 +114,9 @@ export default function LiveViewer() {
   const statsErrorCountRef = useRef(0);
   const commentsErrorCountRef = useRef(0);
   const streamEndedRef = useRef(false);
+  // ✅ FIX (2026-06-10): تتبع إعادة محاولة إرفاق الفيديو
+  const attachRetryRef = useRef(null);
+  const attachRetryCountRef = useRef(0);
   const routeStreamId = String(streamId || '').trim();
 
   const [streamEnded, setStreamEnded] = useState(false);
@@ -150,41 +153,69 @@ export default function LiveViewer() {
     setHasRemotePlayback(false);
   }, []);
 
+  // ✅ FIX (2026-06-10): منطق إرفاق المسار البعيد مع إعادة محاولة تلقائية
+  // حتى يصل الفيديو البعيد بعد انضمام المضيف
   const attachRemoteStream = useCallback(() => {
-    const room = livekitService.room;
     const player = playerVideoRef.current;
-    if (!room || !player) {
+    if (!player) {
       setHasRemotePlayback(false);
       return false;
     }
 
-    const mediaTracks = [];
-    room.remoteParticipants?.forEach?.((participant) => {
-      participant?.trackPublications?.forEach?.((publication) => {
-        const mediaTrack = publication?.track?.mediaStreamTrack;
-        if (!mediaTrack) return;
-        if (!mediaTracks.some((track) => track.id === mediaTrack.id)) {
-          mediaTracks.push(mediaTrack);
-        }
-      });
-    });
+    // بناء MediaStream عبر الخدمة الموحّدة (أو fallback للإصدار القديم)
+    const mediaStream = livekitService.buildRemoteMediaStream?.()
+      || (() => {
+        const room = livekitService.room;
+        if (!room) return null;
+        const tracks = [];
+        room.remoteParticipants?.forEach?.((participant) => {
+          participant?.trackPublications?.forEach?.((publication) => {
+            const mt = publication?.track?.mediaStreamTrack;
+            if (mt && !tracks.some((t) => t.id === mt.id)) tracks.push(mt);
+          });
+        });
+        return tracks.length ? new MediaStream(tracks) : null;
+      })();
 
-    if (!mediaTracks.length) {
+    if (!mediaStream) {
       setHasRemotePlayback(false);
+      // إعادة محاولة لمدة 30 ثانية (20 محاولة × 1.5ث)
+      if (attachRetryCountRef.current < 20 && livekitService.room) {
+        attachRetryCountRef.current += 1;
+        if (attachRetryRef.current) clearTimeout(attachRetryRef.current);
+        attachRetryRef.current = setTimeout(() => {
+          attachRemoteStream();
+        }, 1500);
+      }
       return false;
     }
 
     try {
-      const mediaStream = new MediaStream(mediaTracks);
       attachedStreamRef.current = mediaStream;
       player.srcObject = mediaStream;
-      player.muted = false;
       player.playsInline = true;
       player.autoplay = true;
-      player.play?.().catch(() => {});
+      // محاولة بصوت أولاً
+      player.muted = false;
+      const playPromise = player.play?.();
+      if (playPromise?.catch) {
+        playPromise.catch(() => {
+          // بعض المتصفحات ترفض autoplay بصوت — نعيد المحاولة مكتوماً
+          try {
+            player.muted = true;
+            player.play?.().catch(() => {});
+          } catch { /* ignore */ }
+        });
+      }
+      attachRetryCountRef.current = 0;
+      if (attachRetryRef.current) {
+        clearTimeout(attachRetryRef.current);
+        attachRetryRef.current = null;
+      }
       setHasRemotePlayback(true);
       return true;
-    } catch {
+    } catch (err) {
+      console.warn('[LiveViewer] attach failed:', err?.message);
       setHasRemotePlayback(false);
       return false;
     }
@@ -193,11 +224,21 @@ export default function LiveViewer() {
   const connectToLivePlayback = useCallback(async (targetStreamId) => {
     try {
       const tokenResponse = await getLiveToken(targetStreamId, { role: 'viewer' });
-      const livekitUrl = tokenResponse?.data?.livekit_url || '';
-      const livekitRoom = tokenResponse?.data?.livekit_room || '';
+      const livekitUrl = tokenResponse?.data?.livekit_url || tokenResponse?.data?.url || '';
+      const livekitRoom = tokenResponse?.data?.livekit_room || tokenResponse?.data?.room || '';
       const token = tokenResponse?.data?.token || '';
+
+      // ✅ FIX (2026-06-10): رسالة خطأ واضحة بدل الصفحة السوداء الصامتة
       if (!livekitUrl || !livekitRoom || !token) {
+        console.warn('[LiveViewer] استجابة /token ناقصة:', {
+          hasUrl: !!livekitUrl, hasRoom: !!livekitRoom, hasToken: !!token,
+        });
         setHasRemotePlayback(false);
+        pushToast?.({
+          type: 'warning',
+          title: 'البث غير متاح',
+          description: 'خدمة LiveKit غير مهيأة على الخادم (LIVEKIT_URL/API_KEY/API_SECRET).',
+        });
         return false;
       }
 
@@ -210,13 +251,16 @@ export default function LiveViewer() {
       );
 
       if (!livekitResult?.success) {
+        console.warn('[LiveViewer] فشل اتصال LiveKit:', livekitResult?.error);
         setHasRemotePlayback(false);
         return false;
       }
 
-      setTimeout(() => {
-        attachRemoteStream();
-      }, 300);
+      // ✅ FIX: إعادة محاولة الإرفاق على عدة نوافذ زمنية
+      attachRetryCountRef.current = 0;
+      setTimeout(() => attachRemoteStream(), 300);
+      setTimeout(() => attachRemoteStream(), 1200);
+      setTimeout(() => attachRemoteStream(), 3000);
       return true;
     } catch (error) {
       if (!isExpectedApiError(error)) {
@@ -225,7 +269,7 @@ export default function LiveViewer() {
       setHasRemotePlayback(false);
       return false;
     }
-  }, [attachRemoteStream, currentUsername]);
+  }, [attachRemoteStream, currentUsername, pushToast]);
 
   // تحميل البثوث النشطة
   const loadStreams = useCallback(async () => {
@@ -489,12 +533,20 @@ export default function LiveViewer() {
     };
   }, [floatingHearts]);
 
+  // ✅ FIX (2026-06-10): الاستماع لكل أحداث LiveKit وإعادة الإرفاق على نوافذ متعددة
   useEffect(() => {
     const unsubscribe = livekitService.subscribe((snapshot = {}) => {
-      if (['participant_connected', 'track_subscribed', 'reconnected', 'track_unsubscribed'].includes(snapshot?.event)) {
-        setTimeout(() => {
-          attachRemoteStream();
-        }, 120);
+      const reAttachEvents = [
+        'participant_connected',
+        'track_subscribed',
+        'track_unsubscribed',
+        'remote_track_published',
+        'reconnected',
+        'connection_state_changed',
+      ];
+      if (reAttachEvents.includes(snapshot?.event)) {
+        setTimeout(() => attachRemoteStream(), 120);
+        setTimeout(() => attachRemoteStream(), 800);
       }
       if (snapshot?.event === 'disconnected') {
         detachRemoteStream();
@@ -502,6 +554,16 @@ export default function LiveViewer() {
     });
     return () => unsubscribe?.();
   }, [attachRemoteStream, detachRemoteStream]);
+
+  // ✅ تنظيف retry timer عند الـ unmount
+  useEffect(() => {
+    return () => {
+      if (attachRetryRef.current) {
+        clearTimeout(attachRetryRef.current);
+        attachRetryRef.current = null;
+      }
+    };
+  }, []);
 
   // تحميل البثوث عند التحميل
   useEffect(() => {
@@ -692,9 +754,20 @@ export default function LiveViewer() {
                 }}
               />
               <div className="mlv-mobile-player-overlay" style={{ opacity: hasRemotePlayback || playbackUrl ? 0.15 : 1 }}>
-                <div className="mlv-mobile-player-content">
-                  <div className="mlv-mobile-player-icon">📺</div>
-                  <p>{activeStream.title || 'جارٍ تحميل البث…'}</p>
+                <div className="mlv-mobile-player-content" dir="rtl">
+                  <div className="mlv-mobile-player-icon">{streamEnded ? '⏹️' : '📺'}</div>
+                  <p style={{ fontFamily: "'Noto Sans Arabic', system-ui, sans-serif" }}>
+                    {streamEnded
+                      ? 'انتهى البث المباشر'
+                      : (hasRemotePlayback
+                          ? (activeStream.title || 'البث جارٍ…')
+                          : 'جارٍ الاتصال بالبث… انتظر قليلاً')}
+                  </p>
+                  {!hasRemotePlayback && !streamEnded ? (
+                    <p style={{ fontSize: 12, opacity: 0.85, marginTop: 8, fontFamily: "'Noto Sans Arabic', system-ui, sans-serif" }}>
+                      إن استمر الانتظار، تأكد من أن المُضيف بدأ البث فعلاً
+                    </p>
+                  ) : null}
                 </div>
               </div>
               <FloatingHearts items={floatingHearts} />

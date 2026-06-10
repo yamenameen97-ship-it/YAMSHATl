@@ -20,12 +20,43 @@ export const getActiveLiveStreams = (filters = {}) =>
 export const getLiveStreamDetails = (streamId) =>
   apiClient.get(`/live_room/${streamId}`, { cache: false, forceRefresh: true, retry: true });
 
+// ✅ FIX (2026-06-10): إرسال جميع الحقول بالتنسيق الصحيح للباك إند
+// وتعديل الاستجابة لتتضمن livekit_url/livekit_room للفرونت
 export const createLiveStream = (streamData = {}) =>
-  apiClient.post('/create_live', streamData, { retry: true });
+  apiClient.post('/create_live', {
+    title: streamData.title || streamData.Title || '',
+    description: streamData.description || '',
+    category: streamData.category || 'أخرى',
+    quality: streamData.quality || '720p',
+    is_public: streamData.isPublic !== false && streamData.is_public !== false,
+    allow_comments: streamData.allowComments !== false,
+    allow_gifts: streamData.allowGifts !== false,
+    allow_recording: streamData.allowRecording || streamData.allow_recording || false,
+    thumbnail_url: streamData.thumbnail_url || streamData.thumbnailUrl || '',
+  }, { retry: true });
 
 // ==================== Tokens / lifecycle ====================
-export const getLiveToken = (streamId, payload = {}) =>
-  apiClient.post(`/live_room/${streamId}/token`, payload, { retry: true });
+// ✅ FIX (2026-06-10): رسالة خطأ واضحة عند فشل توليد التوكن (503/500)
+export const getLiveToken = async (streamId, payload = {}) => {
+  try {
+    const res = await apiClient.post(`/live_room/${streamId}/token`, payload, { retry: true });
+    // تحقق من اكتمال الحقول المطلوبة
+    if (res?.data && (!res.data.livekit_url || !res.data.livekit_room || !res.data.token)) {
+      console.warn('[liveStreamApi] /token أرجع استجابة ناقصة:', {
+        hasUrl: !!res.data.livekit_url,
+        hasRoom: !!res.data.livekit_room,
+        hasToken: !!res.data.token,
+      });
+    }
+    return res;
+  } catch (err) {
+    const status = err?.response?.status;
+    if (status === 503) {
+      console.error('[liveStreamApi] LiveKit غير مهيأ على الخادم (503). تحقق من LIVEKIT_URL/API_KEY/API_SECRET.');
+    }
+    throw err;
+  }
+};
 
 export const startLiveStream = (streamId, payload = {}) =>
   getLiveToken(streamId, { role: 'host', ...payload });

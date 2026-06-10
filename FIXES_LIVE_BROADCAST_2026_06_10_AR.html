@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>تقرير إصلاحات البث المباشر — 2026-06-10</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Noto Sans Arabic', system-ui, -apple-system, sans-serif;
+    background: linear-gradient(135deg, #f5f7fb 0%, #eef2ff 100%);
+    color: #1f2937;
+    margin: 0;
+    padding: 24px;
+    line-height: 1.85;
+  }
+  .container {
+    max-width: 980px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 18px;
+    padding: 36px;
+    box-shadow: 0 12px 40px rgba(17, 24, 39, 0.08);
+  }
+  h1 {
+    font-weight: 800;
+    color: #4c1d95;
+    border-bottom: 3px solid #7c3aed;
+    padding-bottom: 12px;
+    margin-top: 0;
+  }
+  h2 {
+    color: #5b21b6;
+    margin-top: 32px;
+    font-weight: 700;
+  }
+  h3 { color: #6d28d9; font-weight: 600; }
+  .badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-inline-start: 8px;
+  }
+  .b-fix { background: #ecfdf5; color: #065f46; }
+  .b-cause { background: #fef2f2; color: #991b1b; }
+  .b-file { background: #eff6ff; color: #1e40af; }
+  pre, code {
+    font-family: 'Fira Code', 'Cascadia Code', monospace;
+    direction: ltr;
+    text-align: left;
+  }
+  pre {
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 14px 18px;
+    border-radius: 10px;
+    overflow-x: auto;
+    font-size: 13px;
+  }
+  code.inline {
+    background: #f1f5f9;
+    color: #be185d;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+  ul { padding-inline-start: 22px; }
+  li { margin-bottom: 6px; }
+  .card {
+    background: #faf5ff;
+    border-right: 4px solid #7c3aed;
+    padding: 16px 20px;
+    border-radius: 10px;
+    margin: 14px 0;
+  }
+  .warning {
+    background: #fffbeb;
+    border-right-color: #d97706;
+  }
+  .danger {
+    background: #fef2f2;
+    border-right-color: #dc2626;
+  }
+  .success {
+    background: #ecfdf5;
+    border-right-color: #059669;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 12px;
+  }
+  th, td {
+    padding: 10px 12px;
+    border: 1px solid #e5e7eb;
+    text-align: right;
+  }
+  th { background: #f3f4f6; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>🔧 تقرير إصلاح مشكلة البث المباشر <span class="badge b-fix">v3 — 2026-06-10</span></h1>
+
+<div class="card">
+<strong>المشكلة المبلَّغ عنها:</strong><br>
+عند الضغط على "بدء البث" لا تنشأ غرفة بث فعلية، فالمشتركون يضغطون على المنشور، تُفتح صفحة عرض البث،
+لكن <strong>بدون أي صورة/فيديو</strong> — صفحة عرض بلا محتوى.
+</div>
+
+<h2>🔍 السبب الجذري <span class="badge b-cause">root cause</span></h2>
+
+<p>بعد فحص <code class="inline">LiveStudio.jsx</code> و <code class="inline">LiveViewer.jsx</code> و <code class="inline">livekitService.js</code>
+و <code class="inline">backend/app/api/routes/live.py</code>، تبيّن أن المشكلة مركّبة من خمسة عيوب متراكمة:</p>
+
+<div class="card danger">
+<strong>١) رسائل خطأ صامتة عند فشل LiveKit:</strong><br>
+عندما لا تكون متغيرات <code class="inline">LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET</code> مهيأة على الخادم،
+يُرجع <code class="inline">/live_room/{id}/token</code> الخطأ <code class="inline">503</code> أو استجابة فارغة،
+ويتجاهلها <code class="inline">handleStartStream</code> بصمت ويُظهر للمضيف "تم بدء البث" بينما لا توجد غرفة فعلية.
+</div>
+
+<div class="card danger">
+<strong>٢) <code class="inline">setTimeout(300)</code> قصير جداً لإرفاق الفيديو البعيد:</strong><br>
+في <code class="inline">LiveViewer.jsx</code> كان الإرفاق يحدث مرة واحدة بعد 300ms فقط.
+إذا انضمّ المشاهد قبل اشتراك LiveKit في المسارات البعيدة، لا يظهر أي فيديو ولا توجد إعادة محاولة.
+</div>
+
+<div class="card danger">
+<strong>٣) عدم تتبّع حدث <code class="inline">TrackPublished</code> من المضيف:</strong><br>
+<code class="inline">livekitService.js</code> كان يستمع فقط لـ <code class="inline">TrackSubscribed</code>،
+وهذا الحدث قد يتأخر في الوصول. الفترة بين انضمام المضيف ووصول مساره للمشاهد كانت دون أي محاولة إرفاق.
+</div>
+
+<div class="card danger">
+<strong>٤) فشل نشر الكاميرا غير مُكتشف في <code class="inline">LiveStudio</code>:</strong><br>
+<code class="inline">setCameraEnabled(...).catch(() => {})</code> كان يبتلع الفشل بصمت.
+إذا رفض المتصفح إذن الكاميرا، يُعتبر البث "بدأ" لكن لا توجد مسارات وسائط منشورة → المشاهدون يرون صفحة فارغة.
+</div>
+
+<div class="card danger">
+<strong>٥) صفحة المشاهد لا تُعلم المستخدم بأي شيء:</strong><br>
+لا توجد رسالة "جارٍ الاتصال…" أو "البث لم يبدأ بعد"، فيظن المستخدم أن التطبيق معطّل.
+</div>
+
+<h2>✅ الإصلاحات المُطبَّقة <span class="badge b-fix">applied</span></h2>
+
+<h3>📄 الملف ١ — <code class="inline">frontend/src/services/livekitService.js</code> <span class="badge b-file">file 1</span></h3>
+<ul>
+<li>أُضيفت دالة <code class="inline">buildRemoteMediaStream()</code> الموحّدة لبناء <code class="inline">MediaStream</code> من المسارات البعيدة.</li>
+<li>أُضيفت دالة <code class="inline">hasRemoteTracks()</code> لفحص وجود مسارات وسائط فعلياً.</li>
+<li>تحقّق صارم من <code class="inline">serverUrl / token / roomName</code> قبل الاتصال — يرجع رسالة عربية واضحة عند النقص.</li>
+<li>الاستماع لحدث <code class="inline">TrackPublished</code> الجديد لإعلام الواجهة فور نشر المضيف مساره.</li>
+<li>التقاط المشاركين الموجودين في الغرفة قبل الانضمام.</li>
+</ul>
+
+<h3>📄 الملف ٢ — <code class="inline">frontend/src/pages/LiveViewer.jsx</code> <span class="badge b-file">file 2</span></h3>
+<ul>
+<li>إعادة محاولة إرفاق الفيديو حتى 20 مرة (كل 1.5 ثانية ⇒ 30 ثانية كحدّ أقصى) عبر <code class="inline">attachRetryRef</code>.</li>
+<li>ثلاث نوافذ زمنية للإرفاق بعد <code class="inline">livekitService.connect()</code>: عند 300ms و 1200ms و 3000ms.</li>
+<li>الاستماع لقائمة أحداث موسّعة: <code class="inline">track_subscribed، remote_track_published، participant_connected، reconnected، connection_state_changed</code>.</li>
+<li>التعامل مع رفض المتصفح <code class="inline">autoplay</code> بصوت — إعادة المحاولة مكتوماً تلقائياً.</li>
+<li>رسالة <code class="inline">toast</code> عربية واضحة عند فشل LiveKit بدل الصفحة السوداء الصامتة.</li>
+<li>تنظيف <code class="inline">retry timer</code> عند <code class="inline">unmount</code>.</li>
+</ul>
+
+<h3>📄 الملف ٣ — <code class="inline">frontend/src/pages/LiveStudio.jsx</code> <span class="badge b-file">file 3</span></h3>
+<ul>
+<li>إصدار <code class="inline">throw</code> فوري بالعربية إن كانت <code class="inline">livekit_url</code> أو <code class="inline">livekit_room</code> مفقودة، بدل المتابعة بصمت.</li>
+<li>التقاط فشل <code class="inline">setCameraEnabled</code> وإظهار <code class="inline">toast</code> تحذيري للمضيف.</li>
+<li>دعم بدائل أسماء الحقول: <code class="inline">url/room</code> إلى جانب <code class="inline">livekit_url/livekit_room</code>.</li>
+<li>تأجيل <code class="inline">setCameraReady(true)</code> لما <em>بعد</em> نجاح نشر الوسائط فعلياً.</li>
+</ul>
+
+<h3>📄 الملف ٤ — <code class="inline">frontend/src/services/api/liveStreamApi.js</code> <span class="badge b-file">file 4</span></h3>
+<ul>
+<li>إرسال جميع حقول إنشاء البث بأسماء snake_case الصحيحة للباك إند.</li>
+<li>تشخيص استجابة <code class="inline">/token</code> الناقصة بـ <code class="inline">console.warn</code> مفصّل.</li>
+<li>رسالة خطأ خاصة للحالة <code class="inline">503</code> توضح أن LiveKit غير مهيأ.</li>
+</ul>
+
+<h2>🛠️ الخطوات المطلوبة على الخادم (مهم جداً)</h2>
+
+<div class="card warning">
+حتى تعمل الإصلاحات أعلاه، يجب أن تكون متغيرات البيئة الثلاث التالية مُعرّفة على الخادم
+(في <code class="inline">.env</code> أو متغيرات <code class="inline">Render</code>):
+</div>
+
+<pre dir="ltr"># LiveKit configuration — REQUIRED
+LIVEKIT_URL=wss://your-livekit-server.livekit.cloud
+LIVEKIT_API_KEY=APIxxxxxxxxxxxx
+LIVEKIT_API_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</pre>
+
+<p>يمكنك الحصول على هذه القيم من:</p>
+<ul>
+<li><strong>LiveKit Cloud</strong> (مجاني للبدء): <a href="https://cloud.livekit.io" dir="ltr">https://cloud.livekit.io</a></li>
+<li>أو تثبيت LiveKit OSS على خادمك مع TURN/STUN.</li>
+</ul>
+
+<h2>🧪 خطة الاختبار</h2>
+
+<table>
+<thead><tr><th>الخطوة</th><th>السلوك المتوقّع</th></tr></thead>
+<tbody>
+<tr><td>١. اضغط "بدء البث" بدون تهيئة LiveKit</td><td>توست عربي: "خدمة LiveKit غير مهيأة على الخادم…"</td></tr>
+<tr><td>٢. بدء البث مع LiveKit مهيأ + رفض إذن الكاميرا</td><td>توست عربي: "تحذير: الكاميرا لم تُنشر…"</td></tr>
+<tr><td>٣. بدء البث الطبيعي + مشاهد ينضم لاحقاً</td><td>الفيديو يظهر خلال ≤ 3 ثوانٍ عبر آلية الإرفاق المتعدد</td></tr>
+<tr><td>٤. المشاهد ينضم قبل المضيف</td><td>إعادة محاولة كل 1.5ث حتى 30ث؛ يظهر فور بدء البث</td></tr>
+<tr><td>٥. انتهاء البث</td><td>رسالة "انتهى البث المباشر" واضحة</td></tr>
+</tbody>
+</table>
+
+<h2>📦 ملاحظة بشأن حجم الحزمة</h2>
+<div class="card success">
+الحزمة المُرفقة <strong>تستثني <code class="inline">node_modules</code></strong> (كما طُلب).
+لتشغيل الواجهة محلياً:
+<pre dir="ltr">cd frontend
+npm install
+npm run dev</pre>
+ولتشغيل الباك إند:
+<pre dir="ltr">cd backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload</pre>
+</div>
+
+<p style="text-align:center; margin-top:32px; color:#6b7280; font-size:13px;">
+تم إنتاج هذا التقرير بتاريخ 2026-06-10 — إصلاحات v3 لمشكلة "البث يبدأ بلا صورة للمشاهد".
+</p>
+
+</div>
+</body>
+</html>

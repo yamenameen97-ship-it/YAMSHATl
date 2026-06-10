@@ -666,14 +666,29 @@ export default function LiveStudio() {
     }
   }, [activeStream, cameraState.microphoneEnabled, pushToast]);
 
-  // تحميل الكاميرا
+  // ✅ FIX (2026-06-10): فتح المعاينة المحلية فور دخول الصفحة، ليرى المضيف نفسه
+  // قبل بدء البث (بدل ظهور placeholder فارغ).
   useEffect(() => {
-    if (!isStreaming || !activeStream?.id) return;
+    let cancelled = false;
 
     const setupCamera = async () => {
       try {
         if (!navigator.mediaDevices?.getUserMedia) {
           setCameraError('هذا المتصفح لا يدعم الكاميرا');
+          return;
+        }
+
+        // إعادة استخدام التيار الموجود إن وُجد
+        if (localStreamRef.current && localStreamRef.current.active) {
+          if (localVideoRef.current && !localVideoRef.current.srcObject) {
+            localVideoRef.current.srcObject = localStreamRef.current;
+            localVideoRef.current.muted = true;
+            await localVideoRef.current.play().catch(() => {});
+          }
+          if (!cancelled) {
+            setCameraReady(true);
+            setCameraError('');
+          }
           return;
         }
 
@@ -686,11 +701,31 @@ export default function LiveStudio() {
           audio: true,
         });
 
+        if (cancelled) {
+          stream.getTracks().forEach(t => t.stop());
+          return;
+        }
+
         localStreamRef.current = stream;
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
-          localVideoRef.current.muted = true;
-          await localVideoRef.current.play();
+
+        // ✅ FIX: محاولة الإرفاق فوراً وإعادة المحاولة لو لم يجاهز الـ ref بعد
+        const attach = () => {
+          if (localVideoRef.current) {
+            localVideoRef.current.srcObject = stream;
+            localVideoRef.current.muted = true;
+            localVideoRef.current.playsInline = true;
+            localVideoRef.current.autoplay = true;
+            const p = localVideoRef.current.play?.();
+            if (p?.catch) p.catch(() => {});
+            return true;
+          }
+          return false;
+        };
+
+        if (!attach()) {
+          // إعادة محاولة بعد render القادم
+          setTimeout(attach, 100);
+          setTimeout(attach, 400);
         }
 
         setCameraReady(true);
@@ -708,10 +743,23 @@ export default function LiveStudio() {
     setupCamera();
 
     return () => {
+      cancelled = true;
       if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
       if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
     };
   }, [isStreaming, activeStream?.id]);
+
+  // ✅ FIX: إعادة ربط srcObject عند ظهور عنصر الفيديو فعلياً في DOM
+  useEffect(() => {
+    if (cameraReady && localStreamRef.current && localVideoRef.current) {
+      if (localVideoRef.current.srcObject !== localStreamRef.current) {
+        localVideoRef.current.srcObject = localStreamRef.current;
+        localVideoRef.current.muted = true;
+        localVideoRef.current.playsInline = true;
+        localVideoRef.current.play?.().catch(() => {});
+      }
+    }
+  }, [cameraReady, isStreaming]);
 
   const formatDuration = (seconds) => {
     const hours = Math.floor(seconds / 3600);
@@ -720,7 +768,7 @@ export default function LiveStudio() {
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
-  // تنظيف المستمعين عند مغادرة الصفحة
+  // ✅ FIX (2026-06-10): تنظيف شامل عند مغادرة الصفحة + إيقاف tracks الكاميرا/المايك
   useEffect(() => {
     return () => {
       if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
@@ -729,6 +777,16 @@ export default function LiveStudio() {
         socketManager.off(event, handler);
       });
       socketListenersRef.current.clear();
+      // إيقاف تيار الكاميرا المحلي حتى لا تبقى اللمبة الحمراء تعمل
+      try {
+        if (localStreamRef.current) {
+          localStreamRef.current.getTracks().forEach(t => t.stop());
+          localStreamRef.current = null;
+        }
+      } catch { /* ignore */ }
+      try {
+        livekitService.disconnect?.().catch(() => {});
+      } catch { /* ignore */ }
     };
   }, []);
 
@@ -810,22 +868,25 @@ export default function LiveStudio() {
               </div>
             )}
             <div className="mlc-video-container">
-              {cameraReady ? (
-                <video
-                  ref={localVideoRef}
-                  className="mlc-video"
-                  autoPlay
-                  muted
-                  playsInline
-                />
-              ) : (
+              {/* ✅ FIX (2026-06-10): الفيديو يبقى دائماً في DOM ليبقى srcObject مرتبطاً */}
+              <video
+                ref={localVideoRef}
+                className="mlc-video"
+                autoPlay
+                muted
+                playsInline
+                style={{ display: cameraReady ? 'block' : 'none', width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+              {!cameraReady && (
                 <div className="mlc-video-placeholder">
                   <div className="mlc-placeholder-icon">📺</div>
-                  <p>{cameraError || 'جاري تحضير الكاميرا...'}</p>
+                  <p style={{ fontFamily: "'Noto Sans Arabic', system-ui, sans-serif" }}>
+                    {cameraError || 'جاري تحضير الكاميرا...'}
+                  </p>
                 </div>
               )}
               <div className="mlc-video-overlay">
-                <span className="mlc-viewer-count">👁 {streamStats.viewers}K</span>
+                <span className="mlc-viewer-count">👁 {streamStats.viewers}</span>
               </div>
             </div>
 

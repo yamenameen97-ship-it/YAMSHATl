@@ -1,3 +1,18 @@
+/**
+ * 🎥 LiveStudio.jsx — واجهة المضيف (Host)
+ * ============================================================
+ * المعمارية الجديدة (وفق متطلبات المالك):
+ *   createLiveStream()          ← API
+ *   startLiveStream() → token   ← API (هنا backend ينشئ غرفة LiveKit)
+ *   livekitService.connect()    ← LiveKit يفتح الكاميرا والمايك بنفسه
+ *   socket.emit("join_live")    ← Socket للتعليقات/القلوب/الهدايا
+ *   setIsStreaming(true)
+ *
+ * ❌ لا navigator.mediaDevices.getUserMedia() هنا
+ * ❌ لا localVideo.srcObject = stream يدوياً
+ * ✅ نستخدم livekitService.attachLocalVideo(videoRef.current)
+ */
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../components/admin/ToastProvider.jsx';
@@ -9,67 +24,34 @@ import {
   sendLiveComment,
   sendLiveGift,
   getStreamStats,
-  recordLiveStream,
-  updateCameraState,
-  closeCameraStream,
-  toggleCamera,
-  toggleMicrophone,
-  getStreamViewers,
-} from '../services/api/advancedLiveStreamApi.js';
-import { createPost, updatePost } from '../api/posts.js';
-import { uploadFile } from '../services/media/mediaUploadService.js';
+  getLiveStreamViewers,
+} from '../services/api/liveStreamApi.js';
 import { getCurrentUsername } from '../utils/auth.js';
 import socketManager from '../services/socketManager.js';
 import livekitService from '../services/livekitService.js';
-import ViewersManagementPanel from '../components/live/ViewersManagementPanel.jsx';
 import '../styles/modern-live-control.css';
 
-const QUALITY_OPTIONS = [
-  { value: '1080p', label: '1080p (أفضل جودة)', bitrate: 6000 },
-  { value: '720p', label: '720p (موصى به)', bitrate: 3000 },
-  { value: '480p', label: '480p (سريع)', bitrate: 1500 },
-];
-
-const STREAM_CATEGORIES = [
-  'ألعاب',
-  'موسيقى',
-  'تعليم',
-  'ترفيه',
-  'رياضة',
-  'تقنية',
-  'أخرى',
-];
+const STREAM_CATEGORIES = ['ألعاب', 'موسيقى', 'تعليم', 'ترفيه', 'رياضة', 'تقنية', 'أخرى'];
 
 const GIFTS = [
-  { id: 1, name: 'وردة', icon: '🌹', price: 10 },
-  { id: 2, name: 'قهوة', icon: '☕', price: 50 },
+  { id: 1, name: 'وردة',     icon: '🌹', price: 10 },
+  { id: 2, name: 'قهوة',     icon: '☕', price: 50 },
   { id: 3, name: 'قلب كبير', icon: '💜', price: 100 },
-  { id: 4, name: 'نجمة', icon: '⭐', price: 250 },
+  { id: 4, name: 'نجمة',     icon: '⭐', price: 250 },
   { id: 5, name: 'تاج ملكي', icon: '👑', price: 1000 },
 ];
 
 function Avatar({ name = '', size = 42 }) {
   const colors = ['#7c3aed', '#3b82f6', '#10b981', '#f97316', '#ec4899'];
-  const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const hash = name.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
   const color = colors[hash % colors.length];
-
   return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        borderRadius: '50%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: color,
-        color: 'white',
-        fontWeight: 900,
-        fontSize: size / 2.5,
-        flexShrink: 0,
-      }}
-    >
-      {name?.charAt(0).toUpperCase() || '?'}
+    <div style={{
+      width: size, height: size, borderRadius: '50%', display: 'flex',
+      alignItems: 'center', justifyContent: 'center', background: color,
+      color: 'white', fontWeight: 900, fontSize: size / 2.5, flexShrink: 0,
+    }}>
+      {(name?.charAt(0) || '?').toUpperCase()}
     </div>
   );
 }
@@ -79,889 +61,402 @@ export default function LiveStudio() {
   const currentUsername = getCurrentUsername();
   const navigate = useNavigate();
 
-  // حالة البث
-  const [streams, setStreams] = useState([]);
+  // ── حالة البث ──
   const [activeStream, setActiveStream] = useState(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // بيانات البث الجديد
+  // بيانات نموذج البث
   const [newStreamData, setNewStreamData] = useState({
-    title: '',
-    description: '',
-    category: 'ألعاب',
-    quality: '720p',
-    isPublic: true,
+    title: '', description: '', category: 'ألعاب', isPublic: true,
   });
 
-  // إحصائيات البث
-  const [streamStats, setStreamStats] = useState({
-    viewers: 0,
-    hearts: 0,
-    gifts: 0,
-    comments: 0,
-    duration: 0,
-    bitrate: 0,
-  });
-
-  // التعليقات والهدايا
+  // إحصائيات
+  const [streamStats, setStreamStats] = useState({ viewers: 0, hearts: 0, comments: 0, gifts: 0 });
   const [comments, setComments] = useState([]);
-  const [commentText, setCommentText] = useState('');
-  const [showGiftPanel, setShowGiftPanel] = useState(false);
-  const [viewers, setViewers] = useState([]);
+  const [commentInput, setCommentInput] = useState('');
 
-  // معلومات الكاميرا والبث
-  const [cameraReady, setCameraReady] = useState(false);
-  const [cameraError, setCameraError] = useState('');
-  const [recordingEnabled, setRecordingEnabled] = useState(false);
-  const [streamHealth, setStreamHealth] = useState('good');
-  const [cameraState, setCameraState] = useState({
-    cameraEnabled: true,
-    microphoneEnabled: true,
-    screenShareEnabled: false,
-  });
-
-  // صورة الغلاف
-  const [coverImage, setCoverImage] = useState(null);
-  const [coverPreview, setCoverPreview] = useState('');
-  const [activePostId, setActivePostId] = useState(null);
-
+  // ── refs ──
   const localVideoRef = useRef(null);
-  const localStreamRef = useRef(null);
-  const statsIntervalRef = useRef(null);
-  const durationIntervalRef = useRef(null);
-  const socketListenersRef = useRef(new Map());
-  const heartTimerRef = useRef(null);
+  const commentsBoxRef = useRef(null);
+  const statsPollRef = useRef(null);
 
-  // إنشاء بث جديد
-  const handleCreateStream = useCallback(async () => {
-    const { title, description, category, quality } = newStreamData;
+  // ── socket handlers (تعليقات/قلوب/هدايا فقط) ──
+  useEffect(() => {
+    if (!activeStream?.id) return;
+    const roomId = activeStream.id;
 
-    if (!title.trim()) {
-      pushToast?.({
-        type: 'info',
-        title: 'عنوان البث مطلوب',
-        description: 'أدخل عنواناً للبث المباشر',
+    const onComment = (payload) => {
+      if (!payload || (payload.room_id && payload.room_id !== roomId)) return;
+      setComments((prev) => {
+        const exists = prev.some((c) => c.id === payload.id);
+        return exists ? prev : [...prev, payload];
       });
+    };
+    const onStats = (payload) => {
+      if (!payload || payload.room_id !== roomId) return;
+      setStreamStats((s) => ({
+        ...s,
+        viewers: payload.viewer_count ?? s.viewers,
+        hearts: payload.hearts_count ?? s.hearts,
+      }));
+    };
+    const onGift = (payload) => {
+      if (!payload || payload.room_id !== roomId) return;
+      setStreamStats((s) => ({ ...s, gifts: (s.gifts || 0) + 1 }));
+    };
+
+    socketManager.on?.('new_comment', onComment);
+    socketManager.on?.('live_comment', onComment);
+    socketManager.on?.('room_stats', onStats);
+    socketManager.on?.('new_heart', onStats);
+    socketManager.on?.('new_gift', onGift);
+
+    return () => {
+      socketManager.off?.('new_comment', onComment);
+      socketManager.off?.('live_comment', onComment);
+      socketManager.off?.('room_stats', onStats);
+      socketManager.off?.('new_heart', onStats);
+      socketManager.off?.('new_gift', onGift);
+    };
+  }, [activeStream?.id]);
+
+  // ── livekit handlers (لربط الفيديو المحلي عند نشر المسار) ──
+  useEffect(() => {
+    if (!isStreaming) return;
+    const unsub = livekitService.subscribe((state) => {
+      if (state.event === 'local_track_published' && localVideoRef.current) {
+        // لحظة نشر مسار الكاميرا → نربطه بعنصر <video>
+        setTimeout(() => livekitService.attachLocalVideo(localVideoRef.current), 100);
+      }
+    });
+    return unsub;
+  }, [isStreaming]);
+
+  // ── جلب الإحصائيات دورياً ──
+  useEffect(() => {
+    if (!activeStream?.id || !isStreaming) return;
+    const tick = async () => {
+      try {
+        const res = await getStreamStats(activeStream.id);
+        const d = res?.data?.data || res?.data || {};
+        setStreamStats((s) => ({
+          ...s,
+          viewers: d.viewer_count ?? s.viewers,
+          hearts: d.hearts_count ?? s.hearts,
+          comments: d.comments_count ?? s.comments,
+          gifts: d.gifts_count ?? s.gifts,
+        }));
+      } catch (_) { /* ignore */ }
+    };
+    tick();
+    statsPollRef.current = setInterval(tick, 5000);
+    return () => clearInterval(statsPollRef.current);
+  }, [activeStream?.id, isStreaming]);
+
+  // ── auto-scroll comments ──
+  useEffect(() => {
+    if (commentsBoxRef.current) {
+      commentsBoxRef.current.scrollTop = commentsBoxRef.current.scrollHeight;
+    }
+  }, [comments]);
+
+  // ════════════════════════════ بدء البث ════════════════════════════
+  const handleStartStream = useCallback(async () => {
+    if (!newStreamData.title.trim()) {
+      pushToast?.({ type: 'error', message: 'الرجاء إدخال عنوان البث' });
       return;
     }
-
     setLoading(true);
     try {
-      let uploadedCover = '';
-      if (coverImage) {
-        const uploadRes = await uploadFile(coverImage, (p) => {
-          // ✅ FIX: إغراق الكونسول بـ 16 سطراً أثناء الرفع غير مفيد للمستخدم
-          if (import.meta?.env?.DEV) {
-            // eslint-disable-next-line no-console
-            console.debug(`Uploading cover: ${p.percent}%`);
-          }
-        });
-        uploadedCover = uploadRes?.url || '';
-      }
-
-      const response = await createLiveStream({
-        title: title.trim(),
-        description: description.trim(),
-        category,
-        quality,
-        isPublic: newStreamData.isPublic,
-        thumbnail_url: uploadedCover,
+      // (1) إنشاء سجل البث في DB
+      const createRes = await createLiveStream({
+        title: newStreamData.title.trim(),
+        description: newStreamData.description.trim(),
+        is_public: newStreamData.isPublic,
       });
+      const stream = createRes?.data?.data || createRes?.data || {};
+      if (!stream?.id) throw new Error('فشل إنشاء البث (لا يوجد id)');
 
-      if (response?.data) {
-        const streamId = response.data.id;
-        setActiveStream(response.data);
-        setIsStreaming(true);
+      // (2) طلب توكن host → backend ينشئ غرفة LiveKit فعلياً
+      const tokenRes = await startLiveStream(stream.id, { role: 'host' });
+      const tokenData = tokenRes?.data?.data || tokenRes?.data || {};
+      const lkToken = tokenData.token;
+      const lkUrl = tokenData.livekit_url;
+      const lkRoom = tokenData.livekit_room;
+      if (!lkToken || !lkUrl) throw new Error('فشل استخراج توكن LiveKit');
 
-        try {
-          const livePost = {
-            type: 'live_stream',
-            content: title.trim(),
-            title: title.trim(),
-            media_url: uploadedCover || undefined,
-            image_url: uploadedCover || undefined,
-            thumbnail_url: uploadedCover || undefined,
-            preview_url: uploadedCover || undefined,
-            cover_url: uploadedCover || undefined,
-            media_urls: uploadedCover ? [uploadedCover] : undefined,
-            stream_id: streamId,
-            live_stream_id: streamId,
-            live_id: streamId,
-            username: currentUsername,
-            is_live: true,
-            is_live_stream: true,
-            has_live_stream: true,
-            status: 'published'
-          };
-          const postRes = await createPost(livePost);
-          if (postRes?.data?.id) {
-            setActivePostId(postRes.data.id);
-          }
-        } catch (postErr) {
-          console.error('Failed to create live post:', postErr);
-        }
-
-        setNewStreamData({
-          title: '',
-          description: '',
-          category: 'ألعاب',
-          quality: '720p',
-          isPublic: true,
-        });
-        setCoverImage(null);
-        setCoverPreview('');
-
-        pushToast?.({
-          type: 'success',
-          title: 'تم إنشاء البث بنجاح',
-          description: 'جاهز لبدء البث المباشر',
-        });
-
-        // ✅ إرسال إشعار محلي للأصدقاء/المتابعين بأن البث بدأ.
-        // GlobalNotificationListener يلتقط الحدث ويعرض toast + يحدّث الجرس.
-        try {
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('yamshat:notification', {
-              detail: {
-                id: `live-start-${streamId}`,
-                type: 'live_stream_started',
-                title: `🔴 ${currentUsername || 'مستخدم'} بدأ بثاً مباشراً`,
-                body: title.trim() || 'انضم الآن إلى البث المباشر',
-                path: `/live/view/${streamId}`,
-                created_at: new Date().toISOString(),
-                payload: {
-                  stream_id: streamId,
-                  host: currentUsername,
-                  thumbnail_url: uploadedCover || '',
-                },
-              },
-            }));
-            // Toast فوري للمستخدمين النشطين
-            window.dispatchEvent(new CustomEvent('yamshat:toast', {
-              detail: {
-                type: 'info',
-                title: `🔴 بث مباشر جديد من ${currentUsername || 'مستخدم'}`,
-                description: title.trim(),
-                duration: 5000,
-              },
-            }));
-          }
-        } catch (notifErr) {
-          console.error('Failed to dispatch live notification:', notifErr);
-        }
-
-        await handleStartStream(streamId);
-      }
-    } catch (error) {
-      pushToast?.({
-        type: 'warning',
-        title: 'خطأ في إنشاء البث',
-        description: error?.response?.data?.message || 'حاول مرة أخرى',
+      // (3) الاتصال بـ LiveKit (LiveKit يفتح الكاميرا والمايك بنفسه)
+      const connectRes = await livekitService.connect({
+        url: lkUrl,
+        token: lkToken,
+        role: 'host',
+        enableCamera: true,
+        enableMicrophone: true,
       });
+      if (!connectRes.success) throw new Error(connectRes.error || 'فشل الاتصال بـ LiveKit');
+
+      // (4) socket join_live للتعليقات/القلوب
+      try {
+        const accessToken = (typeof window !== 'undefined' && window.localStorage)
+          ? window.localStorage.getItem('access_token') : '';
+        socketManager.emit?.('join_live', {
+          room_id: stream.id,
+          role: 'host',
+          token: accessToken,
+        }, { queue: false });
+      } catch (_) {}
+
+      setActiveStream({ ...stream, livekit_room: lkRoom });
+      setIsStreaming(true);
+      pushToast?.({ type: 'success', message: '🔴 بدأ البث بنجاح' });
+    } catch (err) {
+      console.error('startStream error', err);
+      pushToast?.({ type: 'error', message: err?.message || 'فشل بدء البث' });
     } finally {
       setLoading(false);
     }
-  }, [newStreamData, pushToast, coverImage, currentUsername]);
+  }, [newStreamData, pushToast]);
 
-  // بدء البث
-  const handleStartStream = useCallback(async (streamId) => {
-    if (!streamId) return;
-
-    try {
-      const tokenResponse = await startLiveStream(streamId, {
-        quality: newStreamData.quality || '720p',
-      });
-
-      if (tokenResponse?.data?.token) {
-        setCameraReady(false);
-        setStreamHealth('good');
-
-        // ✅ FIX: نشر الكاميرا/المايك فعلياً في LiveKit حتى يقدر المشاهدون يفتحوا البث
-        const livekitUrl = tokenResponse?.data?.livekit_url || '';
-        const livekitRoom = tokenResponse?.data?.livekit_room || '';
-        if (livekitUrl && livekitRoom) {
-          const livekitResult = await livekitService.connect(
-            livekitUrl,
-            tokenResponse.data.token,
-            livekitRoom,
-            currentUsername,
-            {
-              autoSubscribe: true,
-              mediaState: {
-                cameraEnabled: cameraState.cameraEnabled !== false,
-                microphoneEnabled: cameraState.microphoneEnabled !== false,
-              },
-            },
-          );
-          if (!livekitResult?.success) {
-            throw new Error(livekitResult?.error || 'livekit_connect_error');
-          }
-          await livekitService.setCameraEnabled(cameraState.cameraEnabled !== false).catch(() => {});
-          await livekitService.setMicrophoneEnabled(cameraState.microphoneEnabled !== false).catch(() => {});
-        }
-
-        // ✅ FIX: انضمام المضيف لغرفة البث لاستقبال اللايكات والتعليقات
-        socketManager.emit('join_live', {
-          room_id: streamId,
-          role: 'host',
-          platform: 'web',
-          device_type: 'browser',
-        }, { queue: false });
-
-        // ✅ FIX: الاستماع لأحداث البث المباشر
-        const handleNewHeart = (data) => {
-          setStreamStats(prev => ({
-            ...prev,
-            hearts: data?.count ?? (prev.hearts + 1),
-          }));
-        };
-
-        const handleRoomStats = (data) => {
-          setStreamStats(prev => ({
-            ...prev,
-            viewers: data?.viewer_count ?? prev.viewers,
-            hearts: data?.hearts_count ?? prev.hearts,
-          }));
-        };
-
-        const handleNewComment = (data) => {
-          setComments(prev => [...prev, data]);
-        };
-
-        socketManager.on('new_heart', handleNewHeart);
-        socketManager.on('room_stats', handleRoomStats);
-        socketManager.on('new_comment', handleNewComment);
-
-        socketListenersRef.current.set('new_heart', { handler: handleNewHeart, event: 'new_heart' });
-        socketListenersRef.current.set('room_stats', { handler: handleRoomStats, event: 'room_stats' });
-        socketListenersRef.current.set('new_comment', { handler: handleNewComment, event: 'new_comment' });
-
-        if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
-        statsIntervalRef.current = setInterval(() => {
-          updateStreamStats(streamId);
-        }, 5000);
-
-        if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
-        let duration = 0;
-        durationIntervalRef.current = setInterval(() => {
-          duration += 1;
-          setStreamStats(prev => ({ ...prev, duration }));
-        }, 1000);
-
-        pushToast?.({
-          type: 'success',
-          title: 'بدأ البث بنجاح',
-          description: 'أنت الآن مباشر!',
-        });
-      }
-    } catch (error) {
-      setCameraReady(false);
-      setCameraError('فشل في بدء البث. تحقق من الاتصال.');
-      pushToast?.({
-        type: 'warning',
-        title: 'خطأ في بدء البث',
-        description: error?.response?.data?.message || 'حاول مرة أخرى',
-      });
-    }
-  }, [newStreamData.quality, pushToast, currentUsername, cameraState.cameraEnabled, cameraState.microphoneEnabled]);
-
-  // إنهاء البث
+  // ════════════════════════════ إنهاء البث ════════════════════════════
   const handleEndStream = useCallback(async () => {
     if (!activeStream?.id) return;
-
-    if (!window.confirm('هل أنت متأكد من إنهاء البث؟')) return;
-
     setLoading(true);
     try {
-      // ✅ FIX: مغادرة غرفة البث وإيقاف الاستماع للأحداث
-      socketManager.emit('leave_live', { room_id: activeStream.id });
-      socketListenersRef.current.forEach(({ handler, event }) => {
-        socketManager.off(event, handler);
-      });
-      socketListenersRef.current.clear();
-
-      // ✅ FIX: قطع اتصال LiveKit إذا كان موجوداً
+      try { await endLiveStream(activeStream.id); } catch (_) {}
+      try {
+        socketManager.emit?.('leave_live', { room_id: activeStream.id }, { queue: false });
+      } catch (_) {}
       await livekitService.disconnect();
-
-      await endLiveStream(activeStream.id);
-
-      if (activePostId) {
-        try {
-          await updatePost(activePostId, {
-            is_live: false,
-            is_live_stream: false,
-            has_live_stream: false,
-            type: 'video',
-          });
-        } catch (updateErr) {
-          console.error('Failed to update post on end stream:', updateErr);
-        }
-      }
-
-      if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
-      if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
-
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach(track => track.stop());
-        localStreamRef.current = null;
-      }
-
-      setActiveStream(null);
       setIsStreaming(false);
-      setCameraReady(false);
-      setActivePostId(null);
-      setStreamStats({
-        viewers: 0,
-        hearts: 0,
-        gifts: 0,
-        comments: 0,
-        duration: 0,
-        bitrate: 0,
-      });
-
-      pushToast?.({
-        type: 'success',
-        title: 'تم إنهاء البث',
-        description: 'شكراً على البث!',
-      });
-    } catch (error) {
-      pushToast?.({
-        type: 'warning',
-        title: 'خطأ في إنهاء البث',
-        description: error?.response?.data?.message || 'حاول مرة أخرى',
-      });
+      setActiveStream(null);
+      setComments([]);
+      setStreamStats({ viewers: 0, hearts: 0, comments: 0, gifts: 0 });
+      pushToast?.({ type: 'success', message: 'تم إنهاء البث' });
+    } catch (err) {
+      pushToast?.({ type: 'error', message: err?.message || 'فشل إنهاء البث' });
     } finally {
       setLoading(false);
-    }
-  }, [activeStream, pushToast, activePostId]);
-
-  // تحديث إحصائيات البث
-  // ✅ FIX: إيقاف الاستطلاع بصمت عند 401/403/404 لتفادي إغراق الكونسول
-  const updateStreamStats = useCallback(async (streamId) => {
-    try {
-      const response = await getStreamStats(streamId);
-      if (response?.data) {
-        const data = response.data;
-        setStreamStats(prev => ({
-          ...prev,
-          viewers: data.total_viewers ?? data.viewers_count ?? data.viewer_count ?? prev.viewers,
-          hearts: data.total_hearts ?? data.hearts_count ?? prev.hearts,
-          gifts: data.total_gifts ?? data.gifts_count ?? prev.gifts,
-          bitrate: data.bitrate ?? prev.bitrate,
-        }));
-
-        if (data.bitrate && data.bitrate < 1000) {
-          setStreamHealth('poor');
-        } else if (data.bitrate && data.bitrate < 2000) {
-          setStreamHealth('fair');
-        } else {
-          setStreamHealth('good');
-        }
-      }
-    } catch (error) {
-      const status = error?.response?.status;
-      // 401/403/404 = صلاحيات/انتهاء/غير موجود → أوقف الاستطلاع بصمت
-      if (status === 401 || status === 403 || status === 404) {
-        if (statsIntervalRef.current) {
-          clearInterval(statsIntervalRef.current);
-          statsIntervalRef.current = null;
-        }
-        return;
-      }
-      // أخطاء أخرى: لا تطبع رسائل متكررة في الكونسول
-      // (تم استبدال console.error بصمت لتقليل الضوضاء)
-    }
-  }, []);
-
-  // تحميل التعليقات
-  const loadComments = useCallback(async (streamId) => {
-    try {
-      const response = await getLiveComments(streamId);
-      if (Array.isArray(response?.data)) {
-        setComments(response.data);
-      }
-    } catch (error) {
-      console.error('خطأ في تحميل التعليقات:', error);
-    }
-  }, []);
-
-  // ✅ FIX: تحميل التعليقات عند بدء البث
-  useEffect(() => {
-    if (activeStream?.id && isStreaming) {
-      loadComments(activeStream.id);
-    }
-  }, [activeStream?.id, isStreaming, loadComments]);
-
-  // إرسال تعليق
-  const handleSendComment = useCallback(async () => {
-    if (!commentText.trim() || !activeStream?.id) return;
-
-    try {
-      const newComment = {
-        id: Date.now(),
-        username: currentUsername,
-        text: commentText,
-        timestamp: new Date().toISOString(),
-      };
-
-      setComments(prev => [...prev, newComment]);
-      const textToSend = commentText;
-      setCommentText('');
-
-      // ✅ FIX: إرسال التعليق عبر Socket للحصول على تحديثات فورية
-      socketManager.emit('send_comment', {
-        room_id: activeStream.id,
-        text: textToSend,
-      });
-
-      await sendLiveComment(activeStream.id, {
-        text: textToSend,
-      });
-    } catch (error) {
-      pushToast?.({
-        type: 'warning',
-        title: 'خطأ في إرسال التعليق',
-        description: 'حاول مرة أخرى',
-      });
-    }
-  }, [commentText, activeStream, currentUsername, pushToast]);
-
-  // إرسال هدية
-  const handleSendGift = useCallback(async (gift) => {
-    if (!activeStream?.id || !gift) return;
-
-    try {
-      // ✅ FIX: إرسال الهدية عبر Socket للحصول على تحديثات فورية
-      socketManager.emit('send_gift', {
-        room_id: activeStream.id,
-        gift_id: gift.id,
-        name: gift.name,
-        price: gift.price,
-      });
-
-      await sendLiveGift(activeStream.id, {
-        gift_id: gift.id,
-        name: gift.name,
-        price: gift.price,
-      });
-
-      setStreamStats(prev => ({
-        ...prev,
-        gifts: prev.gifts + 1,
-      }));
-
-      pushToast?.({
-        type: 'success',
-        title: `تم إرسال ${gift.name}`,
-        description: 'شكراً على الدعم!',
-      });
-
-      setShowGiftPanel(false);
-    } catch (error) {
-      pushToast?.({
-        type: 'warning',
-        title: 'خطأ في إرسال الهدية',
-        description: 'حاول مرة أخرى',
-      });
     }
   }, [activeStream, pushToast]);
 
-  // تبديل التسجيل
-  const handleToggleRecording = useCallback(async () => {
-    if (!activeStream?.id) return;
-
+  // ════════════════════════════ إرسال تعليق ════════════════════════════
+  const handleSendComment = useCallback(async () => {
+    if (!activeStream?.id || !commentInput.trim()) return;
+    const text = commentInput.trim();
+    setCommentInput('');
     try {
-      const action = recordingEnabled ? 'stop' : 'start';
-      await recordLiveStream(activeStream.id, { action });
-
-      setRecordingEnabled(!recordingEnabled);
-      pushToast?.({
-        type: 'success',
-        title: recordingEnabled ? 'تم إيقاف التسجيل' : 'بدأ التسجيل',
-      });
-    } catch (error) {
-      pushToast?.({
-        type: 'warning',
-        title: 'خطأ في التسجيل',
-        description: 'حاول مرة أخرى',
-      });
+      await sendLiveComment(activeStream.id, { content: text });
+    } catch (err) {
+      pushToast?.({ type: 'error', message: 'فشل إرسال التعليق' });
     }
-  }, [activeStream, recordingEnabled, pushToast]);
+  }, [activeStream, commentInput, pushToast]);
 
-  // تبديل الكاميرا
-  const handleToggleCamera = useCallback(async () => {
-    if (!activeStream?.id) return;
-
-    try {
-      const newState = !cameraState.cameraEnabled;
-      await toggleCamera(activeStream.id, newState);
-      await livekitService.setCameraEnabled(newState).catch(() => {});
-      
-      setCameraState(prev => ({
-        ...prev,
-        cameraEnabled: newState,
-      }));
-
-      pushToast?.({
-        type: 'success',
-        title: newState ? 'تم تشغيل الكاميرا' : 'تم إيقاف الكاميرا',
-      });
-    } catch (error) {
-      pushToast?.({
-        type: 'warning',
-        title: 'خطأ في تبديل الكاميرا',
-        description: 'حاول مرة أخرى',
-      });
-    }
-  }, [activeStream, cameraState.cameraEnabled, pushToast]);
-
-  // تبديل الميكروفون
-  const handleToggleMicrophone = useCallback(async () => {
-    if (!activeStream?.id) return;
-
-    try {
-      const newState = !cameraState.microphoneEnabled;
-      await toggleMicrophone(activeStream.id, newState);
-      await livekitService.setMicrophoneEnabled(newState).catch(() => {});
-      
-      setCameraState(prev => ({
-        ...prev,
-        microphoneEnabled: newState,
-      }));
-
-      pushToast?.({
-        type: 'success',
-        title: newState ? 'تم تشغيل الميكروفون' : 'تم كتم الميكروفون',
-      });
-    } catch (error) {
-      pushToast?.({
-        type: 'warning',
-        title: 'خطأ في تبديل الميكروفون',
-        description: 'حاول مرة أخرى',
-      });
-    }
-  }, [activeStream, cameraState.microphoneEnabled, pushToast]);
-
-  // تحميل الكاميرا
-  useEffect(() => {
-    if (!isStreaming || !activeStream?.id) return;
-
-    const setupCamera = async () => {
-      try {
-        if (!navigator.mediaDevices?.getUserMedia) {
-          setCameraError('هذا المتصفح لا يدعم الكاميرا');
-          return;
-        }
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: 'user',
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-          audio: true,
-        });
-
-        localStreamRef.current = stream;
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
-          localVideoRef.current.muted = true;
-          await localVideoRef.current.play();
-        }
-
-        setCameraReady(true);
-        setCameraError('');
-      } catch (error) {
-        const permissionDenied = error?.name === 'NotAllowedError';
-        setCameraReady(false);
-        setCameraError(
-          permissionDenied
-            ? 'تم رفض إذن الكاميرا. اسمح بالوصول وحاول مجدداً.'
-            : 'خطأ في تشغيل الكاميرا'
-        );
-      }
-    };
-
-    setupCamera();
-
-    return () => {
-      if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
-      if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
-    };
-  }, [isStreaming, activeStream?.id]);
-
-  const formatDuration = (seconds) => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  // ════════════════════════════ التحكم بالكاميرا/المايك ════════════════════════════
+  const [cameraOn, setCameraOn] = useState(true);
+  const [micOn, setMicOn] = useState(true);
+  const toggleCam = async () => {
+    if (cameraOn) await livekitService.disableCamera();
+    else await livekitService.enableCamera();
+    setCameraOn(!cameraOn);
+  };
+  const toggleMic = async () => {
+    if (micOn) await livekitService.disableMicrophone();
+    else await livekitService.enableMicrophone();
+    setMicOn(!micOn);
   };
 
-  // تنظيف المستمعين عند مغادرة الصفحة
+  // cleanup عند إغلاق الصفحة
   useEffect(() => {
     return () => {
-      if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
-      if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
-      socketListenersRef.current.forEach(({ handler, event }) => {
-        socketManager.off(event, handler);
-      });
-      socketListenersRef.current.clear();
+      if (isStreaming) {
+        livekitService.disconnect().catch(() => {});
+      }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return (
-    <div className="modern-live-control" dir="rtl">
-      {/* Header */}
-      <header className="mlc-header">
-        <div className="mlc-header-content">
-          <button className="mlc-back-btn" onClick={() => navigate(-1)}>
-            <span>&lt;</span>
-          </button>
-          <div>
-            <h1>تحكم البث المباشر</h1>
-            <p>{isStreaming ? 'أنت الآن مباشر' : 'جاهز للبث'}</p>
-          </div>
-        </div>
-        <div className="mlc-header-actions">
-          {isStreaming && (
-            <button className="mlc-live-badge">
-              <span className="mlc-live-dot"></span>
-              مباشر
-            </button>
-          )}
-          <button className="mlc-menu-btn">⋮</button>
-        </div>
-      </header>
+  // ════════════════════════════ Render ════════════════════════════
+  if (!isStreaming) {
+    return (
+      <div dir="rtl" className="live-studio-setup" style={styles.setupContainer}>
+        <div style={styles.setupCard}>
+          <h1 style={styles.setupTitle}>🎥 بدء بث مباشر</h1>
+          <p style={styles.setupSubtitle}>أهلاً @{currentUsername}، جهّز معلومات البث ثم اضغط بدء.</p>
 
-      <div className="mlc-container">
-        {/* Main Content */}
-        <main className="mlc-main">
-          {/* Video Section */}
-          <div className="mlc-video-section">
-            {!isStreaming && (
-              <div className="mlc-pre-live-card" style={{ marginBottom: '16px' }}>
-                <h3 className="mlc-title-label">إعدادات البث</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <input
-                    type="text"
-                    placeholder="عنوان البث..."
-                    className="mlc-message-text"
-                    style={{ background: 'rgba(15, 23, 42, 0.5)', border: '1px solid rgba(124, 58, 237, 0.2)', padding: '10px', borderRadius: '8px', color: 'white' }}
-                    value={newStreamData.title}
-                    onChange={(e) => setNewStreamData(prev => ({ ...prev, title: e.target.value }))}
-                  />
-                  
-                  <div className="cover-upload-section">
-                    <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px', color: '#94a3b8' }}>صورة الغلاف</label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      style={{ display: 'none' }}
-                      id="cover-upload-input"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        setCoverImage(file);
-                        setCoverPreview(URL.createObjectURL(file));
-                      }}
-                    />
-                    <button 
-                      onClick={() => document.getElementById('cover-upload-input').click()}
-                      style={{ padding: '8px 16px', borderRadius: '8px', background: 'rgba(124, 58, 237, 0.2)', border: '1px solid rgba(124, 58, 237, 0.4)', color: 'white', cursor: 'pointer' }}
-                    >
-                      رفع صورة الغلاف
-                    </button>
-                    {coverPreview && (
-                      <div style={{ marginTop: '12px', position: 'relative', width: '100%', aspectRatio: '16/9', borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(124, 58, 237, 0.3)' }}>
-                        <img src={coverPreview} alt="Cover Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        <button 
-                          onClick={() => { setCoverImage(null); setCoverPreview(''); }}
-                          style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(0,0,0,0.6)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer' }}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-            <div className="mlc-video-container">
-              {cameraReady ? (
-                <video
-                  ref={localVideoRef}
-                  className="mlc-video"
-                  autoPlay
-                  muted
-                  playsInline
-                />
-              ) : (
-                <div className="mlc-video-placeholder">
-                  <div className="mlc-placeholder-icon">📺</div>
-                  <p>{cameraError || 'جاري تحضير الكاميرا...'}</p>
-                </div>
-              )}
-              <div className="mlc-video-overlay">
-                <span className="mlc-viewer-count">👁 {streamStats.viewers}K</span>
-              </div>
-            </div>
+          <label style={styles.label}>عنوان البث</label>
+          <input
+            type="text"
+            value={newStreamData.title}
+            onChange={(e) => setNewStreamData((d) => ({ ...d, title: e.target.value }))}
+            placeholder="مثال: نلعب سوياً 🎮"
+            style={styles.input}
+          />
 
-            {/* Stats Panel */}
-            <div className="mlc-stats-panel">
-              <h3>إحصائيات البث</h3>
-              <div className="mlc-stats-grid">
-                <div className="mlc-stat-item">
-                  <span className="mlc-stat-icon">👁</span>
-                  <span className="mlc-stat-value">{streamStats.viewers}</span>
-                  <span className="mlc-stat-label">المشاهدون</span>
-                </div>
-                <div className="mlc-stat-item">
-                  <span className="mlc-stat-icon">💜</span>
-                  <span className="mlc-stat-value">{streamStats.hearts}</span>
-                  <span className="mlc-stat-label">الإعجابات</span>
-                </div>
-                <div className="mlc-stat-item">
-                  <span className="mlc-stat-icon">🎁</span>
-                  <span className="mlc-stat-value">{streamStats.gifts}</span>
-                  <span className="mlc-stat-label">الهدايا</span>
-                </div>
-                <div className="mlc-stat-item">
-                  <span className="mlc-stat-icon">⏱</span>
-                  <span className="mlc-stat-value">{formatDuration(streamStats.duration)}</span>
-                  <span className="mlc-stat-label">المدة</span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <label style={styles.label}>وصف البث (اختياري)</label>
+          <textarea
+            value={newStreamData.description}
+            onChange={(e) => setNewStreamData((d) => ({ ...d, description: e.target.value }))}
+            placeholder="ماذا سيحدث في هذا البث؟"
+            style={{ ...styles.input, minHeight: 80, resize: 'vertical' }}
+          />
 
-          {/* Control Buttons */}
-          <div className="mlc-controls">
-            {!isStreaming ? (
-              <button
-                className="mlc-control-btn mlc-control-btn-start"
-                onClick={handleCreateStream}
-                disabled={loading}
-              >
-                <span>▶</span>
-                {loading ? 'جاري البدء...' : 'بدء البث'}
-              </button>
-            ) : (
-              <>
-                <button
-                  className="mlc-control-btn mlc-control-btn-stop"
-                  onClick={handleEndStream}
-                  disabled={loading}
-                >
-                  <span>⏹</span>
-                  إيقاف البث
-                </button>
-                <button
-                  className={`mlc-control-btn mlc-control-btn-camera ${
-                    !cameraState.cameraEnabled ? 'disabled' : ''
-                  }`}
-                  onClick={handleToggleCamera}
-                >
-                  <span>{cameraState.cameraEnabled ? '📷' : '🚫'}</span>
-                  {cameraState.cameraEnabled ? 'إيقاف الكاميرا' : 'تشغيل الكاميرا'}
-                </button>
-                <button
-                  className={`mlc-control-btn mlc-control-btn-mute ${
-                    !cameraState.microphoneEnabled ? 'disabled' : ''
-                  }`}
-                  onClick={handleToggleMicrophone}
-                >
-                  <span>{cameraState.microphoneEnabled ? '🎤' : '🔇'}</span>
-                  {cameraState.microphoneEnabled ? 'كتم الميكروفون' : 'تشغيل الميكروفون'}
-                </button>
-                <button
-                  className={`mlc-control-btn mlc-control-btn-record ${
-                    recordingEnabled ? 'active' : ''
-                  }`}
-                  onClick={handleToggleRecording}
-                >
-                  <span>{recordingEnabled ? '⏹' : '⏺'}</span>
-                  {recordingEnabled ? 'إيقاف التسجيل' : 'بدء التسجيل'}
-                </button>
-              </>
-            )}
-          </div>
+          <label style={styles.label}>التصنيف</label>
+          <select
+            value={newStreamData.category}
+            onChange={(e) => setNewStreamData((d) => ({ ...d, category: e.target.value }))}
+            style={styles.input}
+          >
+            {STREAM_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
 
-          {/* Messages Section */}
-          <div className="mlc-messages-section">
-            <div className="mlc-messages-header">
-              <h3>لوحة الرسائل</h3>
-              <div className="mlc-messages-info">
-                <span className="mlc-message-count">({comments.length}) الكل</span>
-              </div>
-            </div>
-
-            <div className="mlc-messages-list">
-              {comments.length > 0 ? (
-                comments.map((comment) => (
-                  <div key={comment.id} className="mlc-message-item">
-                    <Avatar name={comment.username || comment.user} size={36} />
-                    <div className="mlc-message-content">
-                      <div className="mlc-message-header">
-                        <span className="mlc-message-name">{comment.username || comment.user}</span>
-                      </div>
-                      <p className="mlc-message-text">{comment.text}</p>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="mlc-empty-messages">
-                  <p>لا توجد رسائل حتى الآن</p>
-                </div>
-              )}
-            </div>
-
-            <div className="mlc-comment-input">
-              <input
-                type="text"
-                placeholder="اكتب رسالة..."
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSendComment()}
-              />
-              <button onClick={handleSendComment}>إرسال</button>
-            </div>
-          </div>
-        </main>
-
-        {/* Sidebar */}
-        <aside className="mlc-sidebar">
-          {/* Viewers Management */}
-          {isStreaming && activeStream?.id && (
-            <ViewersManagementPanel
-              streamId={activeStream.id}
-              hostId={activeStream.host_id}
-              onViewerCountChange={(count) => {
-                setStreamStats(prev => ({ ...prev, viewers: count }));
-              }}
+          <label style={{ ...styles.label, display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="checkbox"
+              checked={newStreamData.isPublic}
+              onChange={(e) => setNewStreamData((d) => ({ ...d, isPublic: e.target.checked }))}
             />
-          )}
+            <span>بث عام (متاح للجميع)</span>
+          </label>
 
-          {/* Gifts Panel */}
-          <div className="mlc-gifts-section">
-            <h3>الهدايا</h3>
-            <div className="mlc-gifts-grid">
-              {GIFTS.map((gift) => (
-                <button
-                  key={gift.id}
-                  className="mlc-gift-btn"
-                  onClick={() => handleSendGift(gift)}
-                  disabled={!isStreaming}
-                  title={`${gift.name} - ${gift.price} نقطة`}
-                >
-                  <span className="mlc-gift-icon-large">{gift.icon}</span>
-                  <span className="mlc-gift-price">{gift.price}</span>
-                </button>
-              ))}
-            </div>
+          <button
+            disabled={loading}
+            onClick={handleStartStream}
+            style={{ ...styles.startBtn, opacity: loading ? 0.6 : 1 }}
+          >
+            {loading ? '⏳ جارٍ التحضير…' : '🔴 بدء البث'}
+          </button>
+          <button onClick={() => navigate(-1)} style={styles.cancelBtn}>إلغاء</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div dir="rtl" className="live-studio-active" style={styles.liveContainer}>
+      <div style={styles.videoPane}>
+        <video
+          ref={localVideoRef}
+          autoPlay
+          muted
+          playsInline
+          style={styles.video}
+        />
+        <div style={styles.liveBadge}>🔴 مباشر</div>
+        <div style={styles.statsOverlay}>
+          <span>👁 {streamStats.viewers}</span>
+          <span>❤ {streamStats.hearts}</span>
+          <span>💬 {streamStats.comments}</span>
+          <span>🎁 {streamStats.gifts}</span>
+        </div>
+
+        <div style={styles.controls}>
+          <button onClick={toggleCam} style={styles.ctlBtn}>{cameraOn ? '📹' : '🚫'}</button>
+          <button onClick={toggleMic} style={styles.ctlBtn}>{micOn ? '🎙️' : '🔇'}</button>
+          <button onClick={handleEndStream} style={{ ...styles.ctlBtn, background: '#ef4444' }}>⏹ إنهاء</button>
+        </div>
+      </div>
+
+      <div style={styles.chatPane}>
+        <div style={styles.chatHeader}>
+          <strong>{activeStream?.title}</strong>
+          <div style={{ fontSize: 12, color: '#9ca3af' }}>
+            الغرفة: {activeStream?.livekit_room}
           </div>
-        </aside>
+        </div>
+        <div ref={commentsBoxRef} style={styles.commentsBox}>
+          {comments.map((c) => (
+            <div key={c.id} style={styles.commentRow}>
+              <Avatar name={c.username || c.user} size={28} />
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>@{c.username || c.user}</div>
+                <div style={{ fontSize: 14 }}>{c.content || c.text}</div>
+              </div>
+            </div>
+          ))}
+          {comments.length === 0 && (
+            <div style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>
+              لا توجد تعليقات بعد. كن أول من يتفاعل!
+            </div>
+          )}
+        </div>
+        <div style={styles.composer}>
+          <input
+            type="text"
+            value={commentInput}
+            onChange={(e) => setCommentInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSendComment()}
+            placeholder="اكتب تعليقاً…"
+            style={styles.commentInput}
+          />
+          <button onClick={handleSendComment} style={styles.sendBtn}>إرسال</button>
+        </div>
       </div>
     </div>
   );
 }
+
+// ── styles ──
+const styles = {
+  setupContainer: {
+    minHeight: '100vh', background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+    fontFamily: '"Noto Sans Arabic", "Tajawal", sans-serif',
+  },
+  setupCard: {
+    background: '#1f2937', color: 'white', padding: 32, borderRadius: 16,
+    width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+  },
+  setupTitle: { margin: '0 0 8px', fontSize: 28, fontWeight: 900 },
+  setupSubtitle: { margin: '0 0 24px', color: '#9ca3af', fontSize: 14 },
+  label: { display: 'block', marginTop: 14, marginBottom: 6, fontSize: 14, fontWeight: 600 },
+  input: {
+    width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #374151',
+    background: '#111827', color: 'white', fontSize: 14, fontFamily: 'inherit',
+  },
+  startBtn: {
+    width: '100%', marginTop: 24, padding: '14px', borderRadius: 10, border: 'none',
+    background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: 'white',
+    fontWeight: 800, fontSize: 16, cursor: 'pointer',
+  },
+  cancelBtn: {
+    width: '100%', marginTop: 10, padding: '10px', borderRadius: 10, border: '1px solid #374151',
+    background: 'transparent', color: '#9ca3af', cursor: 'pointer',
+  },
+  liveContainer: {
+    minHeight: '100vh', display: 'grid', gridTemplateColumns: '1fr 380px', gap: 16,
+    background: '#0f172a', padding: 16, color: 'white',
+    fontFamily: '"Noto Sans Arabic", "Tajawal", sans-serif',
+  },
+  videoPane: { position: 'relative', background: '#000', borderRadius: 16, overflow: 'hidden' },
+  video: { width: '100%', height: '100%', objectFit: 'cover', minHeight: 480 },
+  liveBadge: {
+    position: 'absolute', top: 16, right: 16, background: '#ef4444', padding: '6px 12px',
+    borderRadius: 20, fontWeight: 800, fontSize: 13,
+  },
+  statsOverlay: {
+    position: 'absolute', top: 16, left: 16, display: 'flex', gap: 12,
+    background: 'rgba(0,0,0,0.5)', padding: '8px 14px', borderRadius: 20, fontSize: 14, fontWeight: 700,
+  },
+  controls: {
+    position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)',
+    display: 'flex', gap: 12, background: 'rgba(0,0,0,0.6)', padding: 10, borderRadius: 30,
+  },
+  ctlBtn: {
+    width: 50, height: 50, borderRadius: '50%', border: 'none', background: '#374151',
+    color: 'white', fontSize: 22, cursor: 'pointer',
+  },
+  chatPane: { display: 'flex', flexDirection: 'column', background: '#1f2937', borderRadius: 16 },
+  chatHeader: { padding: 16, borderBottom: '1px solid #374151' },
+  commentsBox: { flex: 1, padding: 12, overflowY: 'auto', maxHeight: 'calc(100vh - 240px)' },
+  commentRow: { display: 'flex', gap: 10, padding: '8px 0', alignItems: 'flex-start' },
+  composer: { padding: 12, borderTop: '1px solid #374151', display: 'flex', gap: 8 },
+  commentInput: {
+    flex: 1, padding: '10px 14px', borderRadius: 20, border: 'none',
+    background: '#111827', color: 'white', fontSize: 14, fontFamily: 'inherit',
+  },
+  sendBtn: {
+    padding: '10px 18px', borderRadius: 20, border: 'none',
+    background: '#7c3aed', color: 'white', fontWeight: 700, cursor: 'pointer',
+  },
+};

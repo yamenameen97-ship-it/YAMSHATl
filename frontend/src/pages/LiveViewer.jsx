@@ -123,6 +123,10 @@ export default function LiveViewer() {
   const [streamEnded, setStreamEnded] = useState(false);
   const [hasRemotePlayback, setHasRemotePlayback] = useState(false);
 
+  // ✅ FIX (2026-06-10): تعريف hostName مبكراً قبل أي useCallback يعتمد عليه
+  // لتفادي ReferenceError: Cannot access 'hostName' before initialization
+  const hostName = activeStream?.host_name || activeStream?.host_username || 'مضيف البث';
+
   const stopAllPolling = useCallback(() => {
     if (statsIntervalRef.current) {
       clearInterval(statsIntervalRef.current);
@@ -676,7 +680,6 @@ export default function LiveViewer() {
     };
   }, [stopAllPolling, activeStream?.id, detachRemoteStream]);
 
-  const hostName = activeStream?.host_name || activeStream?.host_username || 'مضيف البث';
   const rawCover = (
     streamDetails?.thumbnail_url
       || streamDetails?.cover_url

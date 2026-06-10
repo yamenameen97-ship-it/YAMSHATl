@@ -604,6 +604,7 @@ export default function LiveViewer() {
       || activeStream?.video_url
       || ''
   );
+  const shouldShowCoverImage = !hasRemotePlayback && !playbackUrl;
 
   const getFallbackCover = (seedText = '') => {
     const palette = ['#7c3aed', '#3b82f6', '#10b981', '#f97316', '#ec4899', '#06b6d4'];
@@ -674,23 +675,31 @@ export default function LiveViewer() {
                   playsInline
                   muted={false}
                   controls
+                  onLoadedData={() => {
+                    if (!hasRemotePlayback) {
+                      setHasRemotePlayback(true);
+                    }
+                  }}
                   onError={(e) => {
                     if (!hasRemotePlayback) {
+                      setHasRemotePlayback(false);
                       e.currentTarget.style.display = 'none';
                     }
                   }}
                 />
               ) : null}
-              <img
-                src={effectiveCover}
-                alt={activeStream.title || 'غلاف البث'}
-                className="mlv-mobile-player-cover"
-                onError={(e) => {
-                  if (e.currentTarget.src !== fallbackCover) {
-                    e.currentTarget.src = fallbackCover;
-                  }
-                }}
-              />
+              {shouldShowCoverImage ? (
+                <img
+                  src={effectiveCover}
+                  alt={activeStream.title || 'غلاف البث'}
+                  className="mlv-mobile-player-cover"
+                  onError={(e) => {
+                    if (e.currentTarget.src !== fallbackCover) {
+                      e.currentTarget.src = fallbackCover;
+                    }
+                  }}
+                />
+              ) : null}
               <div className="mlv-mobile-player-overlay" style={{ opacity: hasRemotePlayback || playbackUrl ? 0.15 : 1 }}>
                 <div className="mlv-mobile-player-content">
                   <div className="mlv-mobile-player-icon">📺</div>

@@ -274,7 +274,7 @@ export default function LiveStudio() {
       });
 
       if (tokenResponse?.data?.token) {
-        setCameraReady(true);
+        setCameraReady(false);
         setStreamHealth('good');
 
         // ✅ FIX: نشر الكاميرا/المايك فعلياً في LiveKit حتى يقدر المشاهدون يفتحوا البث
@@ -356,6 +356,7 @@ export default function LiveStudio() {
         });
       }
     } catch (error) {
+      setCameraReady(false);
       setCameraError('فشل في بدء البث. تحقق من الاتصال.');
       pushToast?.({
         type: 'warning',
@@ -673,6 +674,7 @@ export default function LiveStudio() {
         setCameraError('');
       } catch (error) {
         const permissionDenied = error?.name === 'NotAllowedError';
+        setCameraReady(false);
         setCameraError(
           permissionDenied
             ? 'تم رفض إذن الكاميرا. اسمح بالوصول وحاول مجدداً.'

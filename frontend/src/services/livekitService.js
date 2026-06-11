@@ -13,6 +13,10 @@ class LiveKitService {
     this.qualityManager = null;
     // ✅ FIX (2026-06-10): cache آخر MediaStream لتمكين إعادة الإرفاق
     this.remoteMediaStream = null;
+    // ✅ FIX (2026-06-11 v11): حراسة اتصال متوازٍ / متسلسل
+    // تمنع تنفيذ connect() أثناء جلسة جارٍ إنشاؤها (StrictMode double-mount)
+    this.pendingConnect = null;
+    this.lastConnectAt = 0;
   }
 
   subscribe(listener) {
@@ -92,6 +96,42 @@ class LiveKitService {
   }
 
   async connect(serverUrl, token, roomName, userName, options = {}) {
+    // ✅ FIX (2026-06-11 v11): دمج مكالمات connect() المتوازية لنفس الغرفة
+    // السيناريو: LiveViewer يستدعي connect() مرتين في tick واحد (StrictMode + useEffect double-fire)
+    // فإذا بدأ connect#1 disconnect+connect ثم دخل connect#2 وأعاد disconnect → WebSocket يُغلق
+    // قبل اكتمال المصافحة → "WebSocket is closed before the connection is established"
+    if (this.pendingConnect && this._sameConnectTarget(serverUrl, token, roomName)) {
+      return this.pendingConnect;
+    }
+
+    // حماية إضافية: إذا وصل connect() جديد خلال 250ms من السابق لنفس الغرفة ووجدت غرفة فعلاً — اعتبرها ناجحة
+    const now = Date.now();
+    if (
+      now - this.lastConnectAt < 250
+      && this.room
+      && this.connectionConfig?.serverUrl === serverUrl
+      && this.connectionConfig?.roomName === roomName
+    ) {
+      return { success: true, room: this.room, reused: true, snapshot: this.snapshotSession() };
+    }
+
+    this.pendingConnect = this._doConnect(serverUrl, token, roomName, userName, options);
+    try {
+      const result = await this.pendingConnect;
+      this.lastConnectAt = Date.now();
+      return result;
+    } finally {
+      this.pendingConnect = null;
+    }
+  }
+
+  _sameConnectTarget(serverUrl, token, roomName) {
+    const cfg = this.connectionConfig;
+    if (!cfg) return false;
+    return cfg.serverUrl === serverUrl && cfg.roomName === roomName && cfg.token === token;
+  }
+
+  async _doConnect(serverUrl, token, roomName, userName, options = {}) {
     try {
       // ✅ FIX (2026-06-10): تحقق صارم من المعطيات قبل المتابعة
       if (!serverUrl || !token || !roomName) {
@@ -125,6 +165,11 @@ class LiveKitService {
         mediaState: options.mediaState || null,
         autoSubscribe: options.autoSubscribe !== false,
       };
+
+      // ✅ FIX (2026-06-11 v11): تجديد حالة الاتصال إلى connecting بشكل صريح
+      // حتّى تعرف الواجهة أن العملية جارية ولا تستدعي disconnect() بالخطأ.
+      this.connectionState = 'connecting';
+      this.emit({ event: 'connection_state_changed', state: 'connecting' });
 
       this.room = new LiveKit.Room({
         adaptiveStream: true,
@@ -301,7 +346,15 @@ class LiveKitService {
     return true;
   }
 
-  async disconnect({ preserveConfig = false } = {}) {
+  async disconnect({ preserveConfig = false, force = false } = {}) {
+    // ✅ FIX (2026-06-11 v11): تجاهل disconnect أثناء connect() جارٍ
+    // إلا إذا طُلب بصورة صريحة (force=true).
+    // هذا يمنع أن يُغلق WebSocket داخل _doConnect أثناء مصافحة جديدة.
+    if (!force && this.pendingConnect) {
+      logger.warn('[livekitService] تجاهل disconnect() أثناء connect() قيد التنفيذ');
+      return;
+    }
+
     this.stopHealthCheck();
     this.qualityManager?.destroy?.();
     this.qualityManager = null;

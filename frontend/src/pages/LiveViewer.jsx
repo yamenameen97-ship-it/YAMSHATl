@@ -449,21 +449,40 @@ export default function LiveViewer() {
     loadCommentsRef.current = loadComments;
   }, [updateStreamStats, loadComments]);
 
+  // ✅ FIX (2026-06-11 v11): مرجع لتتبّع آخر streamId المتصل به
+  // لتفادي disconnect غير ضروري عند فتح نفس البث من useEffect (StrictMode double-invoke).
+  const connectedStreamIdRef = useRef(null);
+  const isConnectingRef = useRef(false);
+
   // فتح البث
   const openStream = useCallback(async (stream, options = {}) => {
     if (!stream?.id) return;
+
+    // ✅ FIX (2026-06-11 v11): تجاهل مكالمات openStream المكرّرة لنفس البث
+    // (StrictMode + useEffect على routeStreamId + streams كانا يستدعيان openStream مرتين
+    //  في نفس tick → ينفّذ disconnect ثم connect ثم disconnect → WebSocket closes).
+    if (isConnectingRef.current && String(connectedStreamIdRef.current) === String(stream.id)) {
+      return;
+    }
+    if (String(connectedStreamIdRef.current) === String(stream.id) && livekitService.room) {
+      // متصلون أصلاً بنفس البث — لا تفعل شيء
+      return;
+    }
+
+    isConnectingRef.current = true;
 
     if (options.syncUrl !== false) {
       navigate(`/live/view/${stream.id}`);
     }
 
-    if (activeStream?.id && String(activeStream.id) !== String(stream.id)) {
-      socketManager.emit('leave_live', { room_id: activeStream.id }, { queue: false });
+    // فصل البث السابق فقط إذا كان مختلفاً
+    if (connectedStreamIdRef.current && String(connectedStreamIdRef.current) !== String(stream.id)) {
+      socketManager.emit('leave_live', { room_id: connectedStreamIdRef.current }, { queue: false });
+      stopAllPolling();
+      detachRemoteStream();
+      await livekitService.disconnect().catch(() => {});
     }
 
-    stopAllPolling();
-    detachRemoteStream();
-    await livekitService.disconnect().catch(() => {});
     statsErrorCountRef.current = 0;
     commentsErrorCountRef.current = 0;
     streamEndedRef.current = false;
@@ -471,6 +490,7 @@ export default function LiveViewer() {
     setStreamNotFound(false);
     setHasRemotePlayback(false);
 
+    connectedStreamIdRef.current = stream.id;
     setActiveStream(stream);
 
     try {
@@ -546,8 +566,13 @@ export default function LiveViewer() {
       if (!isExpectedApiError(error)) {
         console.warn('[LiveViewer] فشل غير متوقع عند فتح البث', error?.message || error);
       }
+    } finally {
+      isConnectingRef.current = false;
     }
-  }, [navigate, pushToast, stopAllPolling, detachRemoteStream, connectToLivePlayback, currentUsername, activeStream?.id]);
+    // ✅ FIX (2026-06-11 v11): إزالة activeStream?.id من dependencies
+    // كان يسبّب إعادة إنشاء openStream عند كل تحديث للحالة → useEffect يعيد التشغيل
+    // → disconnect + connect متكرّر → WebSocket closes before established.
+  }, [navigate, pushToast, stopAllPolling, detachRemoteStream, connectToLivePlayback, currentUsername]);
 
   const handleSendHeart = useCallback(async () => {
     if (!activeStream?.id) return;
@@ -687,16 +712,18 @@ export default function LiveViewer() {
   useEffect(() => {
     if (!routeStreamId) return;
 
+    // ✅ FIX (2026-06-11 v11): استخدم connectedStreamIdRef بدل activeStream?.id
+    // لمنع إعادة التشغيل بين mount/setState في StrictMode.
+    if (String(connectedStreamIdRef.current || '') === routeStreamId) return;
+
     if (streams.length) {
       const matchedStream = streams.find((stream) => String(stream.id) === routeStreamId);
-      if (matchedStream && String(activeStream?.id || '') !== String(matchedStream.id)) {
+      if (matchedStream && String(connectedStreamIdRef.current || '') !== String(matchedStream.id)) {
         openStream(matchedStream, { syncUrl: false });
         return;
       }
       if (matchedStream) return;
     }
-
-    if (String(activeStream?.id || '') === routeStreamId) return;
 
     let cancelled = false;
     const retryDelays = [0, 1500, 3500]; // إعادة محاولة 3 مرات بفواصل متزايدة
@@ -766,7 +793,10 @@ export default function LiveViewer() {
     return () => {
       cancelled = true;
     };
-  }, [routeStreamId, streams, activeStream?.id, openStream, stopAllPolling]);
+    // ✅ FIX (2026-06-11 v11): إزالة activeStream?.id من dependencies
+    // كان يسبب re-trigger في كل setActiveStream → race condition مع WebSocket.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeStreamId, streams, openStream, stopAllPolling]);
 
   // تطبيق الفلتر
   useEffect(() => {
@@ -781,17 +811,25 @@ export default function LiveViewer() {
     setFilteredStreams(filtered);
   }, [streams, filter]);
 
-  // تنظيف عند الخروج
+  // ✅ FIX (2026-06-11 v11): تنظيف فقط عند unmount حقيقي للمكوّن
+  // كان السبب الجذري الرئيسي: dependency على activeStream?.id كان يُعيد تشغيل
+  // الـ cleanup عند كل تغيير لـ activeStream → يستدعي livekitService.disconnect()
+  // مباشرة بعد setActiveStream() داخل openStream → WebSocket يُغلق قبل أن يكتمل
+  // المصافحة → "Client initiated disconnect" في سجلات الكونسول.
+  // الحل: استخدام ref لتمرير القيمة الحالية بدون dependency.
   useEffect(() => {
     return () => {
       stopAllPolling();
-      if (activeStream?.id) {
-        socketManager.emit('leave_live', { room_id: activeStream.id }, { queue: false });
+      const lastId = connectedStreamIdRef.current;
+      if (lastId) {
+        socketManager.emit('leave_live', { room_id: lastId }, { queue: false });
       }
       detachRemoteStream();
       livekitService.disconnect().catch(() => {});
+      connectedStreamIdRef.current = null;
     };
-  }, [stopAllPolling, activeStream?.id, detachRemoteStream]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const rawCover = (
     streamDetails?.thumbnail_url

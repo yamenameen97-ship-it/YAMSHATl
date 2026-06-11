@@ -24,7 +24,7 @@ def is_placeholder_value(value: str | None) -> bool:
     placeholder_tokens = {
         'HOST', 'USER', 'USERNAME', 'PASSWORD', 'DATABASE',
         'YOUR_EMAIL@EXAMPLE.COM', 'YOUR_BACKEND', 'YOUR_FRONTEND',
-        'REPLACE_WITH_A_LONG_RANDOM_SECRET', 'YOUR_LIVEKIT_API_SECRET',
+        'REPLACE_WITH_A_LONG_RANDOM_SECRET',
     }
     if upper in placeholder_tokens:
         return True
@@ -191,9 +191,7 @@ class Settings:
     CAPTCHA_ENABLED: bool = env_bool('CAPTCHA_ENABLED', True)
     CAPTCHA_EXPIRE_MINUTES: int = int(os.getenv('CAPTCHA_EXPIRE_MINUTES', '5'))
     DEV_LOGIN_ENABLED: bool = env_bool('DEV_LOGIN_ENABLED', False)
-    LIVEKIT_URL: str = os.getenv('LIVEKIT_URL', '')
-    LIVEKIT_API_KEY: str = os.getenv('LIVEKIT_API_KEY', '')
-    LIVEKIT_API_SECRET: str = os.getenv('LIVEKIT_API_SECRET', '')
+
     DB_BOOTSTRAP_ON_START: bool = env_bool('DB_BOOTSTRAP_ON_START', False)
     DB_STATEMENT_TIMEOUT_MS: int = int(os.getenv('DB_STATEMENT_TIMEOUT_MS', '8000'))
     CORS_ORIGIN_REGEX_RAW: str = os.getenv('CORS_ORIGIN_REGEX', '').strip()

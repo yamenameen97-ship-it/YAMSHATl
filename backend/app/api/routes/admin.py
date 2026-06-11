@@ -20,7 +20,6 @@ from sqlalchemy.orm import Session
 
 from app.core.admin_access import effective_role, is_primary_admin_email, is_primary_admin_user, permissions_for_user
 from app.core.dependencies import get_current_user, get_db
-from app.core.live_store import live_store
 from app.core.threat_monitor import get_threat_monitor_snapshot
 from app.core.security import hash_password, verify_password
 from app.core.socket_server import emit_user_event_background, sio
@@ -53,7 +52,6 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
         'reports.export',
         'settings.manage',
         'notifications.manage',
-        'live.manage',
         'search.global',
     ],
     'moderator': [
@@ -70,7 +68,6 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
         'reports.view',
         'reports.export',
         'notifications.manage',
-        'live.manage',
         'search.global',
     ],
     'user': [],
@@ -89,7 +86,6 @@ DEFAULT_NOTIFICATION_SETTINGS = {
         'chat': True,
         'follow': True,
         'interaction': True,
-        'live': True,
         'system': True,
         'reports': True,
     },
@@ -151,10 +147,6 @@ class BroadcastPayload(BaseModel):
 
 class BulkDeletePayload(BaseModel):
     ids: list[int] = Field(default_factory=list)
-
-
-class LiveFeaturePayload(BaseModel):
-    featured: bool | None = None
 
 
 def _permissions_for(role: str | None) -> list[str]:
@@ -408,7 +400,6 @@ def _service_health_snapshot(db: Session) -> list[dict[str, Any]]:
         database_description = f'تعذر الوصول إلى قاعدة البيانات: {str(exc)[:120]}'
 
     secret_hardened = settings.SECRET_KEY and settings.SECRET_KEY != 'change-this-secret-key'
-    livekit_ready = bool(settings.LIVEKIT_URL and settings.LIVEKIT_API_KEY and settings.LIVEKIT_API_SECRET)
     push_ready = bool(settings.FIREBASE_CREDENTIALS_PATH)
     frontend_ready = bool(settings.FRONTEND_ORIGIN)
     backend_ready = bool(settings.BACKEND_ORIGIN)
@@ -436,13 +427,6 @@ def _service_health_snapshot(db: Session) -> list[dict[str, Any]]:
             'status': 'healthy' if frontend_ready else 'warning',
             'value': settings.FRONTEND_ORIGIN or 'نفس النطاق',
             'description': 'لوحة الأدمن والويب العام يمكن ربطهما تلقائياً عبر app-config وبيئة الإنتاج.',
-        },
-        {
-            'key': 'livekit',
-            'label': 'خدمة البث المباشر',
-            'status': 'healthy' if livekit_ready else 'warning',
-            'value': settings.LIVEKIT_URL or 'غير مفعّل',
-            'description': 'ربط البث المباشر جاهز عند وجود مفاتيح LiveKit الكاملة.',
         },
         {
             'key': 'media',
@@ -557,15 +541,7 @@ def get_overview(db: Session = Depends(get_db), current_user: User = Depends(get
     coins_spent = int(wallet_totals[1] or 0)
     coins_balance = int(wallet_totals[2] or 0)
     report_notifications = db.query(Notification).filter(Notification.type.in_(['ALERT', 'REPORT'])).all()
-    user_reports = 0
-    stream_reports = 0
-    for notification in report_notifications:
-        data = notification.data if isinstance(notification.data, dict) else {}
-        scope_text = ' '.join([str(notification.title or ''), str(notification.body or ''), str(data.get('scope') or ''), str(data.get('target') or ''), str(data.get('channel') or '')]).lower()
-        if any(keyword in scope_text for keyword in ['stream', 'live', 'broadcast', 'room']):
-            stream_reports += 1
-        else:
-            user_reports += 1
+    user_reports = len(report_notifications)
 
     today_posts = db.query(func.count(Post.id)).filter(Post.created_at >= today_start).scalar() or 0
     today_comments = db.query(func.count(Comment.id)).filter(Comment.created_at >= today_start).scalar() or 0
@@ -629,7 +605,6 @@ def get_overview(db: Session = Depends(get_db), current_user: User = Depends(get
 
     service_health = _service_health_snapshot(db)
     platform_links = _platform_links()
-    live_overview = live_store.admin_overview()
     admins_online = _room_members_count('admins')
     threat_snapshot = get_threat_monitor_snapshot()
     average_daily = round(sum(item['value'] for item in daily_activity) / max(len(daily_activity), 1), 1)
@@ -649,11 +624,6 @@ def get_overview(db: Session = Depends(get_db), current_user: User = Depends(get
             'level': 'success' if admins_online >= 0 else 'info',
             'title': 'التحديث اللحظي',
             'description': f'القنوات الحية نشطة، وعدد جلسات الأدمن المتصلة الآن: {admins_online}.',
-        },
-        {
-            'level': 'info' if live_overview['stats']['active_rooms'] else 'warning',
-            'title': 'البث المباشر',
-            'description': f"يوجد {live_overview['stats']['active_rooms']} بث نشط و{live_overview['stats']['current_viewers']} مشاهد حالياً.",
         },
     ]
 
@@ -694,18 +664,11 @@ def get_overview(db: Session = Depends(get_db), current_user: User = Depends(get
             'value': int(today_operations),
             'description': 'إجمالي منشورات وتعليقات ورسائل اليوم بشكل لحظي.',
         },
-        {
-            'key': 'live',
-            'label': 'بثوث مباشرة',
-            'value': int(live_overview['stats']['active_rooms']),
-            'description': 'عدد غرف البث النشطة المتاحة حالياً داخل المنصة.',
-        },
     ]
 
     report_management = {
         'open_reports': int(alert_reports),
         'user_reports': int(user_reports),
-        'stream_reports': int(stream_reports),
         'unread_notifications': int(unread_system),
         'shadow_banned_users': int(shadow_banned_count),
     }
@@ -743,8 +706,6 @@ def get_overview(db: Session = Depends(get_db), current_user: User = Depends(get
     ]
     realtime_monitoring = [
         {'key': 'admins_online', 'label': 'Realtime Monitoring', 'value': int(admins_online), 'description': 'جلسات الأدمن المتصلة حالياً.'},
-        {'key': 'active_live_rooms', 'label': 'Live Rooms', 'value': int(live_overview['stats']['active_rooms']), 'description': 'غرف البث النشطة الآن.'},
-        {'key': 'current_viewers', 'label': 'Current Viewers', 'value': int(live_overview['stats']['current_viewers']), 'description': 'إجمالي المشاهدين اللحظيين عبر غرف البث.'},
         {'key': 'today_messages', 'label': 'Realtime Messages', 'value': int(today_messages), 'description': 'رسائل اليوم التي دخلت النظام.'},
         {'key': 'blocked_ips', 'label': 'Blocked IPs', 'value': int(threat_snapshot.get('blocked_ip_count', 0)), 'description': 'حالة درع الحماية ضد DDoS والبوتات.'},
     ]
@@ -771,7 +732,6 @@ def get_overview(db: Session = Depends(get_db), current_user: User = Depends(get
             'comments_count': int(comments_count),
             'messages_count': int(messages_count),
             'daily_activity': daily_activity,
-            'live_overview': live_overview,
             'today_posts': int(today_posts),
             'today_comments': int(today_comments),
             'today_messages': int(today_messages),
@@ -1206,88 +1166,6 @@ def change_password(
     return {'message': 'Password updated successfully'}
 
 
-@router.get('/live/overview')
-def get_live_admin_overview(current_user: User = Depends(get_current_user)):
-    _require_permission(current_user, 'live.manage')
-    overview = live_store.admin_overview()
-    rooms = overview['rooms']
-    summary_cards = [
-        {'key': 'active_rooms', 'label': 'الغرف النشطة', 'value': overview['stats']['active_rooms']},
-        {'key': 'featured_rooms', 'label': 'الغرف المميزة', 'value': overview['stats']['featured_rooms']},
-        {'key': 'current_viewers', 'label': 'المشاهدون الآن', 'value': overview['stats']['current_viewers']},
-        {'key': 'comments_count', 'label': 'تعليقات البث', 'value': overview['stats']['comments_count']},
-        {'key': 'hearts_count', 'label': 'القلوب', 'value': overview['stats']['hearts_count']},
-        {'key': 'top_peak_viewers', 'label': 'أعلى ذروة مشاهدة', 'value': overview['stats']['top_peak_viewers']},
-    ]
-    attention_queue = [
-        {
-            'key': room['id'],
-            'title': room['title'],
-            'description': (
-                f"{room['viewer_count']} مشاهد الآن • {room['comments_count']} تعليق • آخر نشاط "
-                f"{room['last_activity_at'] or room['created_at']}"
-            ),
-            'featured': room['featured'],
-            'has_pinned_comment': bool(room.get('pinned_comment')),
-        }
-        for room in rooms[:8]
-    ]
-    return {
-        'stats': overview['stats'],
-        'summary_cards': summary_cards,
-        'attention_queue': attention_queue,
-        'rooms': rooms,
-        'generated_at': datetime.utcnow().isoformat(),
-    }
-
-
-@router.post('/live/{room_id}/feature')
-def feature_live_room(
-    room_id: str,
-    payload: LiveFeaturePayload,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    _require_permission(current_user, 'live.manage')
-    try:
-        room = live_store.toggle_featured(room_id, payload.featured)
-    except KeyError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Live room not found')
-    _add_audit_log(db, current_user, 'live_featured', 'live_room', room_id, 'تم تحديث حالة تمييز البث المباشر.', {'featured': room['featured']})
-    _emit_admin_event('admin:live_updated', {'room': room})
-    return room
-
-
-@router.post('/live/{room_id}/pin-latest')
-def pin_latest_live_comment(
-    room_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    _require_permission(current_user, 'live.manage')
-    try:
-        room = live_store.pin_latest_comment(room_id)
-    except KeyError as exc:
-        detail = 'Live room not found' if 'Room' in str(exc) else 'No comments available to pin'
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
-    _add_audit_log(db, current_user, 'live_comment_pinned', 'live_room', room_id, 'تم تثبيت آخر تعليق داخل غرفة البث.', {'pinned_comment': room.get('pinned_comment')})
-    _emit_admin_event('admin:live_updated', {'room': room})
-    return room
-
-
-@router.post('/live/{room_id}/end')
-def end_live_room_admin(
-    room_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    _require_permission(current_user, 'live.manage')
-    room = live_store.end_room(room_id)
-    if room is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Live room not found')
-    _add_audit_log(db, current_user, 'live_ended_admin', 'live_room', room_id, 'تم إنهاء البث المباشر من لوحة التحكم.', {})
-    _emit_admin_event('admin:live_updated', {'room': room})
-    return room
 
 
 @router.get('/notifications')
@@ -1487,15 +1365,7 @@ def get_report_summary(db: Session = Depends(get_db), current_user: User = Depen
     messages = db.query(func.count(Message.id)).scalar() or 0
     per_role = db.query(User.role, func.count(User.id)).group_by(User.role).all()
     report_notifications = db.query(Notification).filter(Notification.type.in_(['ALERT', 'REPORT'])).all()
-    user_reports = 0
-    stream_reports = 0
-    for notification in report_notifications:
-        data = notification.data if isinstance(notification.data, dict) else {}
-        scope_text = ' '.join([str(notification.title or ''), str(notification.body or ''), str(data.get('scope') or ''), str(data.get('target') or ''), str(data.get('channel') or '')]).lower()
-        if any(keyword in scope_text for keyword in ['stream', 'live', 'broadcast', 'room']):
-            stream_reports += 1
-        else:
-            user_reports += 1
+    user_reports = len(report_notifications)
     moderation_registry = _get_setting(db, 'moderation_registry', DEFAULT_MODERATION_REGISTRY)
     shadow_banned_count = len(_coerce_int_set(moderation_registry.get('shadow_banned_user_ids')))
     wallet_totals = db.query(
@@ -1520,7 +1390,6 @@ def get_report_summary(db: Session = Depends(get_db), current_user: User = Depen
         'report_management': {
             'open_reports': int(len(report_notifications)),
             'user_reports': int(user_reports),
-            'stream_reports': int(stream_reports),
             'shadow_banned_users': int(shadow_banned_count),
         },
         'revenue_dashboard': {
@@ -1533,7 +1402,6 @@ def get_report_summary(db: Session = Depends(get_db), current_user: User = Depen
         'admin_activity': [
             {'label': 'Audit Logs', 'value': len(recent_logs), 'description': 'آخر عمليات الإدارة المسجلة.'},
             {'label': 'User Reports', 'value': int(user_reports), 'description': 'بلاغات مرتبطة بالمستخدمين.'},
-            {'label': 'Stream Reports', 'value': int(stream_reports), 'description': 'بلاغات مرتبطة بالبث والغرف الحية.'},
             {'label': 'Revenue Dashboard', 'value': round(coins_spent / 100, 2), 'description': 'تقدير مبسط لإجمالي الصرف داخل المنصة.'},
         ],
     }

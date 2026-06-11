@@ -2,7 +2,6 @@ import { Link } from 'react-router-dom';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getNotifications } from '../../api/notifications.js';
-import { getLiveRooms } from '../../api/live.js';
 import { BACKEND_ORIGIN } from '../../api/config.js';
 import { resolveMediaUrl } from '../../config/mediaConfig.js';
 import { clearStoredUser, getAuthToken, getCurrentUsername, getStoredUserSnapshot } from '../../utils/auth.js';
@@ -16,7 +15,6 @@ import TopBarUI, { TopBarAccount } from '../ui/TopBar.jsx';
 const PRIMARY_ITEMS = Object.freeze([
   { to: '/', label: 'الرئيسية', icon: '⌂', match: (path) => path === '/' },
   { to: '/search', label: 'البحث', icon: '⌕', match: (path) => path.startsWith('/search') },
-  { to: '/live', label: 'البث', icon: '◉', match: (path) => path.startsWith('/live') },
   { to: '/inbox', label: 'الدردشة', icon: '✉', match: (path) => path.startsWith('/inbox') || path.startsWith('/chat') },
   { to: '/notifications', label: 'الإشعارات', icon: '🔔', match: (path) => path.startsWith('/notifications') },
   { to: '/settings', label: 'الإعدادات', icon: '⚙', match: (path) => path.startsWith('/settings') },
@@ -57,27 +55,9 @@ function Topbar() {
     refetchInterval: 20_000,
   });
 
-  const { data: liveRooms = [] } = useQuery({
-    queryKey: ['topbar-live-rooms'],
-    queryFn: async () => {
-      try {
-        return (await getLiveRooms()).data || [];
-      } catch {
-        return [];
-      }
-    },
-    staleTime: 30_000,
-    refetchInterval: 30_000,
-  });
-
   const unreadNotificationCount = useMemo(
     () => (Array.isArray(notifications) ? notifications.filter((item) => !item.is_read).length : 0),
     [notifications],
-  );
-
-  const activeLiveCount = useMemo(
-    () => (Array.isArray(liveRooms) ? liveRooms.filter((room) => room.is_active).length : 0),
-    [liveRooms],
   );
 
   const navItems = useMemo(
@@ -87,11 +67,9 @@ function Topbar() {
         ? unreadNotificationCount || null
         : item.to === '/inbox'
           ? unreadInboxCount || null
-          : item.to === '/live'
-            ? activeLiveCount || null
-            : null,
+          : null,
     })),
-    [activeLiveCount, unreadInboxCount, unreadNotificationCount],
+    [unreadInboxCount, unreadNotificationCount],
   );
 
   const username = currentUsername || session?.username || 'Yamshat';

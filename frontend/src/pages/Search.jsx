@@ -10,7 +10,6 @@ import { ListSkeleton } from '../components/feedback/Skeleton.jsx';
 import useDebounce from '../hooks/useDebounce';
 import { getPosts } from '../api/posts.js';
 import { getUsers } from '../api/users.js';
-import { getLiveRooms } from '../api/live.js';
 import { getSearchSuggestions, getTrendingSearches, liveSearch } from '../api/search.js';
 import { groupSearchResults } from '../utils/fuzzySearch.js';
 import {
@@ -172,27 +171,25 @@ export default function Search() {
     try {
       setLoading((prev) => prev && !(collections.users?.length || collections.posts?.length || collections.live?.length));
       setError('');
-      const [usersResponse, postsResponse, liveResponse] = await Promise.allSettled([
+      const [usersResponse, postsResponse] = await Promise.allSettled([
         getUsers({ limit: 80, page: 1 }),
         getPosts({ limit: 120, page: 1 }),
-        getLiveRooms(),
       ]);
 
       const usersData = usersResponse.status === 'fulfilled' ? usersResponse.value?.data : [];
       const postsData = postsResponse.status === 'fulfilled' ? postsResponse.value?.data : [];
-      const liveData = liveResponse.status === 'fulfilled' ? liveResponse.value?.data : [];
 
       const users = Array.isArray(usersData) ? usersData : usersData?.items || [];
       const posts = Array.isArray(postsData) ? postsData : postsData?.items || [];
-      const liveRooms = Array.isArray(liveData) ? liveData : liveData?.items || [];
+      const liveRooms = [];
       const mergedUsers = users.length ? users : buildSessionUserFallback();
       const nextCollections = buildSearchCollections(mergedUsers, posts, liveRooms);
       setCollections(nextCollections);
       persistCollectionsCache(nextCollections);
 
-      const nothingLoaded = !users.length && !posts.length && !liveRooms.length;
-      if (nothingLoaded && !(collections.users?.length || collections.posts?.length || collections.live?.length || collections.hashtags?.length)) {
-        const firstError = [usersResponse, postsResponse, liveResponse].find((response) => response.status === 'rejected');
+      const nothingLoaded = !users.length && !posts.length;
+      if (nothingLoaded && !(collections.users?.length || collections.posts?.length || collections.hashtags?.length)) {
+        const firstError = [usersResponse, postsResponse].find((response) => response.status === 'rejected');
         if (firstError?.reason) {
           throw firstError.reason;
         }
@@ -330,10 +327,6 @@ export default function Search() {
       setQuery(item.title.replace(/^#/, ''));
       setRequiredHashtag(item.title);
       setFilterKey('hashtags');
-      return;
-    }
-    if (item.type === 'live') {
-      navigate('/live');
       return;
     }
     navigate(item.route || '/search');

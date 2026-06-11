@@ -14,7 +14,6 @@ export function resolveNotificationPath(notification) {
     return peer ? `/chat/${encodeURIComponent(peer)}` : '/inbox';
   }
   if (screen === 'notifications') return '/notifications';
-  if (screen === 'live') return '/live';
   if (screen === 'groups') return '/groups';
   if (screen === 'users') return '/users';
   if (screen === 'profile') {

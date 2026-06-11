@@ -125,15 +125,6 @@ interface ApiService {
     @POST("create_group")
     fun createGroup(@Body body: Map<String, String>): Call<ApiMessage>
 
-    @POST("create_live")
-    fun createLive(@Body body: Map<String, String>): Call<com.socialapp.models.LiveRoomInfo>
-
-    @POST("end_live/{roomId}")
-    fun endLive(@Path("roomId") roomId: String): Call<ApiMessage>
-
-    @POST("live/{roomId}/token")
-    fun getLiveToken(@Path("roomId") roomId: String, @Body body: Map<String, String>): Call<Map<String, String>>
-
     @POST("track")
     fun track(@Body body: Map<String, String>): Call<ApiMessage>
 

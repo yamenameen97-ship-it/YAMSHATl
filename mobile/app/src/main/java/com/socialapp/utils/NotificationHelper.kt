@@ -39,7 +39,6 @@ object NotificationHelper {
             "chat" -> "/inbox"
             "notifications" -> "/notifications"
             "profile" -> data["username"]?.takeIf { it.isNotBlank() }?.let { "/profile/$it" } ?: "/profile"
-            "live" -> "/live"
             "groups" -> "/groups"
             "users" -> "/users"
             else -> "/notifications"

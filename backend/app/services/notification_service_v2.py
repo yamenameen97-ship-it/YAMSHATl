@@ -20,7 +20,6 @@ NOTIFICATION_TYPES = {
     "new_comment": "تعليق جديد",
     "new_share": "مشاركة جديدة",
     "gift_received": "هدية جديدة",
-    "live_started": "بث مباشر جديد",
     "mention": "إشارة جديدة",
     "system_alert": "تنبيه نظام",
     "admin_action": "إجراء إداري",
@@ -48,7 +47,6 @@ def create_notification(
         pref = db.query(UserPreference).filter(UserPreference.user_id == user_id).first()
         if pref:
             if notif_type == "new_message" and not pref.notify_messages: return None
-            if notif_type == "live_started" and not pref.notify_live: return None
             if notif_type in ["new_like", "new_comment", "new_share", "mention"] and not pref.notify_posts: return None
             # يمكن إضافة المزيد من التحققات هنا للمجموعات والريلز والستوري حسب نوع الإشعار
     except Exception as e:
@@ -202,32 +200,6 @@ def create_gift_notification(
             "sender_username": sender.username,
             "gift_name": gift_name,
             "amount": amount,
-        },
-    )
-
-
-def create_live_notification(
-    db: Session,
-    user_id: int,
-    host_id: int,
-    room_id: str,
-) -> Dict[str, Any]:
-    """إنشاء إشعار بث مباشر جديد"""
-    
-    host = db.query(User).filter(User.id == host_id).first()
-    if not host:
-        raise ValueError("المضيف غير موجود")
-    
-    return create_notification(
-        db,
-        user_id,
-        "live_started",
-        f"{host.username} بدأ بث مباشر",
-        "اضغط للانضمام",
-        {
-            "host_id": host_id,
-            "host_username": host.username,
-            "room_id": room_id,
         },
     )
 
@@ -401,7 +373,6 @@ def get_notification_preferences(db: Session, user_id: int) -> Dict[str, Any]:
             "new_like": True,
             "new_comment": True,
             "gift_received": True,
-            "live_started": True,
         },
     }
 

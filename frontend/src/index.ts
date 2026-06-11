@@ -81,20 +81,6 @@ export interface Transaction {
   createdAt: Date;
 }
 
-export interface LiveStream {
-  id: number;
-  hostId: number;
-  title: string;
-  description: string | null;
-  thumbnail: string | null;
-  status: "online" | "offline" | "ended";
-  viewerCount: number;
-  totalGiftsValue: number;
-  startedAt: Date | null;
-  endedAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
 
 export interface Gift {
   id: number;

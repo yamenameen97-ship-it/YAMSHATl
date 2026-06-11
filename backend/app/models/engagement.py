@@ -4,7 +4,6 @@ Yamshat Engagement & Gamification Models
 يحتوي على جميع نماذج الميزات الإضافية:
 - المهام اليومية (DailyTask + UserDailyTask)
 - مستويات المستخدم (UserLevel)
-- مستويات المضيف (HostLevel)
 - شارات الإنجازات (Achievement + UserAchievement)
 - عجلة الحظ (LuckyWheelSpin)
 - نظام الإحالة (Referral + ReferralCode)
@@ -75,25 +74,7 @@ class UserLevel(Base):
 
 
 # ============================================================
-# 3) مستويات المضيف (Host Levels for live streamers)
-# ============================================================
-class HostLevel(Base):
-    __tablename__ = "host_levels"
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"),
-                     primary_key=True, index=True)
-    level = Column(Integer, default=1, nullable=False, index=True)
-    host_xp = Column(Integer, default=0, nullable=False)
-    total_diamonds_received = Column(Integer, default=0, nullable=False)
-    total_live_minutes = Column(Integer, default=0, nullable=False)
-    total_viewers = Column(Integer, default=0, nullable=False)
-    title = Column(String(80), default="مضيف جديد", nullable=False)
-    badge_icon = Column(String(255), nullable=True)
-    next_level_xp = Column(Integer, default=500, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-
-
-# ============================================================
-# 4) شارات الإنجازات
+# 3) شارات الإنجازات
 # ============================================================
 class Achievement(Base):
     __tablename__ = "achievements"

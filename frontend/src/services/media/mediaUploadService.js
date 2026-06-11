@@ -596,7 +596,7 @@ class MediaUploadService {
 
 export const mediaUploadService = new MediaUploadService();
 
-// تصدير دالة uploadFile بشكل مستقل لدعم التوافق مع المكونات القديمة (مثل LiveStudio.jsx)
+// تصدير دالة uploadFile بشكل مستقل لدعم التوافق مع المكونات القديمة
 export const uploadFile = (file, optionsOrOnProgress) => {
   // دعم كل من (file, onProgress) و (file, { onProgress, ...options })
   const options = typeof optionsOrOnProgress === 'function'

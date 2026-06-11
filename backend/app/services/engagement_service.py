@@ -12,7 +12,7 @@ from sqlalchemy import select, and_
 
 from app.models.engagement import (
     DailyTask, UserDailyTask,
-    UserLevel, HostLevel,
+    UserLevel,
     Achievement, UserAchievement,
     LuckyWheelPrize, LuckyWheelSpin,
     ReferralCode, Referral,
@@ -76,54 +76,6 @@ def add_user_xp(db: Session, user_id: int, amount: int) -> dict:
     return {
         "level": ul.level, "xp": ul.xp, "next_level_xp": ul.next_level_xp,
         "title": ul.title, "badge_color": ul.badge_color, "leveled_up": leveled_up
-    }
-
-
-# ===================== مستويات المضيف =====================
-HOST_TITLES = [
-    (1, "مضيف جديد"),
-    (5, "مضيف نشيط"),
-    (10, "مضيف محترف"),
-    (25, "نجم البث"),
-    (50, "أيقونة البث"),
-    (100, "أسطورة البث"),
-]
-
-
-def get_or_create_host_level(db: Session, user_id: int) -> HostLevel:
-    hl = db.get(HostLevel, user_id)
-    if not hl:
-        hl = HostLevel(user_id=user_id, level=1, host_xp=0, title="مضيف جديد",
-                       next_level_xp=500)
-        db.add(hl)
-        db.commit()
-        db.refresh(hl)
-    return hl
-
-
-def add_host_xp(db: Session, user_id: int,
-                xp_amount: int = 0, diamonds: int = 0,
-                minutes: int = 0, viewers: int = 0) -> dict:
-    hl = get_or_create_host_level(db, user_id)
-    hl.host_xp += xp_amount
-    hl.total_diamonds_received += diamonds
-    hl.total_live_minutes += minutes
-    hl.total_viewers += viewers
-    leveled_up = False
-    # كل مستوى يحتاج level * 500 XP
-    while hl.host_xp >= hl.level * 500:
-        hl.host_xp -= hl.level * 500
-        hl.level += 1
-        leveled_up = True
-    for min_lvl, t in HOST_TITLES:
-        if hl.level >= min_lvl:
-            hl.title = t
-    hl.next_level_xp = hl.level * 500
-    hl.updated_at = datetime.utcnow()
-    db.commit()
-    return {
-        "level": hl.level, "host_xp": hl.host_xp, "title": hl.title,
-        "next_level_xp": hl.next_level_xp, "leveled_up": leveled_up
     }
 
 

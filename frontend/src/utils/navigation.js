@@ -7,7 +7,6 @@ const routePrefetchers = {
   '/stories': () => import('../pages/Stories.jsx'),
   '/reels': () => import('../pages/Reels.jsx'),
   '/groups': () => import('../pages/GroupsHome.jsx'),
-  '/live': () => import('../pages/LiveViewer.jsx'),
   '/inbox': () => import('../pages/Inbox.jsx'),
   '/users': () => import('../pages/Users.jsx'),
   '/profile': () => import('../pages/Profile.jsx'),
@@ -75,7 +74,7 @@ export function prefetchCriticalRoutes(currentPathname = '/') {
   const current = normalizePath(currentPathname);
   const neighbors = {
     '/': ['/reels', '/stories', '/inbox'],
-    '/reels': ['/', '/stories', '/live'],
+    '/reels': ['/', '/stories', '/inbox'],
     '/stories': ['/', '/reels', '/profile'],
     '/inbox': ['/chat', '/notifications', '/'],
     '/chat': ['/inbox', '/profile'],

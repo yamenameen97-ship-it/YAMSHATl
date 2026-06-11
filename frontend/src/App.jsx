@@ -25,7 +25,6 @@ const AdminDashboard = lazy(() => import('./features/admin/index.js').then((mod)
 const AdminUsers = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminUsers })));
 const AdminPosts = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminPosts })));
 const AdminNotifications = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminNotifications })));
-const AdminLive = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminLive })));
 const AdminReports = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminReports })));
 const AdminAudit = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminAudit })));
 const AdminSettings = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminSettings })));
@@ -53,8 +52,6 @@ function GroupChatPage() {
   const { groupId } = useParams();
   return <GroupChatPageInner key={`group-chat-${groupId}`} />;
 }
-const LiveViewer = lazy(() => import('./pages/LiveViewer.jsx'));
-const LiveStudio = lazy(() => import('./pages/LiveStudio.jsx'));
 const Inbox = lazy(() => import('./features/chat/index.js').then((mod) => ({ default: mod.Inbox })));
 const Users = lazy(() => import('./pages/Users.jsx'));
 const Profile = lazy(() => import('./pages/Profile.jsx'));
@@ -193,25 +190,19 @@ export default function App() {
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/terms" element={<StaticContentPage title="شروط الاستخدام" subtitle="هذه الصفحة تضيف مساراً فعلياً لروابط الشروط داخل الواجهة حتى لا ينكسر التنقل أثناء النشر أو التسجيل." sections={[{ heading: 'الاستخدام المقبول', items: ['يُمنع نشر المحتوى المخالف أو المسيء أو المنتحل للهوية.', 'يجب احترام خصوصية المستخدمين وعدم مشاركة بياناتهم دون إذن.', 'يمكن تعليق الحسابات التي تكرر إساءة الاستخدام أو السبام.'] }, { heading: 'المحتوى والوسائط', items: ['أنت مسؤول عن الصور والفيديوهات والريلز والستوري التي ترفعها.', 'يجب أن تملك حق استخدام المحتوى قبل نشره.', 'قد تتم إزالة المحتويات التي تخالف السياسات أو القوانين المحلية.'] }]} ctaLabel="العودة للتسجيل" ctaTo="/register" />} />
             <Route path="/privacy" element={<StaticContentPage title="سياسة الخصوصية" subtitle="تمت إضافة هذه الصفحة لربط زر سياسة الخصوصية داخل الواجهة بشكل صحيح وتحسين الجاهزية قبل النشر." sections={[{ heading: 'البيانات التي قد تُستخدم', items: ['بيانات الحساب الأساسية مثل الاسم واسم المستخدم والبريد الإلكتروني.', 'بيانات التفاعل مثل الإعجابات والتعليقات والمشاركات والمشاهدات.', 'بيانات تقنية لتحسين الأمان والأداء مثل نوع الجهاز وسجلات الجلسة.'] }, { heading: 'كيفية الاستخدام', items: ['تحسين تجربة العرض والتوصيات والتنبيهات.', 'تأمين الحسابات ومنع إساءة الاستخدام.', 'تشغيل مزايا التواصل مثل الرسائل والبث والتعليقات.'] }]} ctaLabel="العودة للتسجيل" ctaTo="/register" />} />
-            <Route path="/support" element={<StaticContentPage title="الدعم الفني" subtitle="تم تفعيل مسار الدعم الفني داخل الفرونت إند حتى لا تظهر صفحة فارغة عند الضغط على الرابط." sections={[{ heading: 'طرق المساعدة', items: ['راجع صفحة الإعدادات لتحديث بيانات الحساب والأمان.', 'تأكد من إعداد عنوان الـ API الصحيح في بيئة النشر.', 'إذا تعطل الرفع أو البث فتأكد من أذونات الكاميرا والمايك والاتصال بالخادم.'] }, { heading: 'مشكلات شائعة', items: ['تعذر رفع ملف: افحص حجم الملف وصيغة الوسائط.', 'تعذر إنشاء بث: تأكد من توفر توكنات وخدمة LiveKit في الخادم.', 'تعذر تسجيل الدخول: افحص الجلسة وملفات الكوكيز وCSRF.'] }]} ctaLabel="العودة لتسجيل الدخول" ctaTo="/login" />} />
+            <Route path="/support" element={<StaticContentPage title="الدعم الفني" subtitle="تم تفعيل مسار الدعم الفني داخل الفرونت إند حتى لا تظهر صفحة فارغة عند الضغط على الرابط." sections={[{ heading: 'طرق المساعدة', items: ['راجع صفحة الإعدادات لتحديث بيانات الحساب والأمان.', 'تأكد من إعداد عنوان الـ API الصحيح في بيئة النشر.', 'إذا تعطل الرفع فتأكد من أذونات الكاميرا والمايك والاتصال بالخادم.'] }, { heading: 'مشكلات شائعة', items: ['تعذر رفع ملف: افحص حجم الملف وصيغة الوسائط.', 'تعذر تسجيل الدخول: افحص الجلسة وملفات الكوكيز وCSRF.'] }]} ctaLabel="العودة لتسجيل الدخول" ctaTo="/login" />} />
             <Route path="/admin" element={<Navigate to="/admin/login" replace />} />
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/admin/register" element={<Navigate to="/register" replace />} />
 
             <Route path="/" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-            {/* Legacy alias — the LiveStream-style dashboard is now the official admin home. */}
-            <Route path="/livestream-dashboard" element={<Navigate to="/admin/dashboard" replace />} />
             <Route path="/stories" element={<ProtectedRoute><Stories /></ProtectedRoute>} />
             <Route path="/reels" element={<ProtectedRoute><Reels /></ProtectedRoute>} />
             <Route path="/groups" element={<ProtectedRoute><Groups /></ProtectedRoute>} />
             <Route path="/groups/create" element={<ProtectedRoute><CreateGroup /></ProtectedRoute>} />
             <Route path="/groups/:groupId/chat" element={<ProtectedRoute><GroupChatPage /></ProtectedRoute>} />
             <Route path="/groups/:groupId/settings" element={<ProtectedRoute><GroupSettings /></ProtectedRoute>} />
-            <Route path="/live" element={<Navigate to="/live/control" replace />} />
-            <Route path="/live/view/:streamId" element={<ProtectedRoute><LiveViewer /></ProtectedRoute>} />
-            <Route path="/live/control" element={<ProtectedRoute><LiveStudio /></ProtectedRoute>} />
-            <Route path="/live/studio" element={<ProtectedRoute><LiveStudio /></ProtectedRoute>} />
             <Route path="/messages" element={<Navigate to="/inbox" replace />} />
             <Route path="/inbox" element={<ProtectedRoute><Inbox /></ProtectedRoute>} />
             <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
@@ -240,7 +231,6 @@ export default function App() {
             <Route path="/admin/posts" element={<ProtectedRoute requiredPermission="posts.view"><AdminPosts /></ProtectedRoute>} />
             <Route path="/admin/content" element={<Navigate to="/admin/posts" replace />} />
             <Route path="/admin/notifications" element={<ProtectedRoute requiredPermission="notifications.manage"><AdminNotifications /></ProtectedRoute>} />
-            <Route path="/admin/live" element={<ProtectedRoute requiredPermission="live.manage"><AdminLive /></ProtectedRoute>} />
             <Route path="/admin/reports" element={<ProtectedRoute requiredPermission="reports.view"><AdminReports /></ProtectedRoute>} />
             <Route path="/admin/audit" element={<ProtectedRoute requiredPermission="dashboard.view"><AdminAudit /></ProtectedRoute>} />
             <Route path="/admin/settings" element={<ProtectedRoute requiredPermission="settings.manage"><AdminSettings /></ProtectedRoute>} />

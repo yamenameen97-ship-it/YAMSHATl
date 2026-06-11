@@ -118,12 +118,12 @@ API.interceptors.response.use(
   async (error) => {
     const { config, response } = error;
 
-    // معالجة خاصة لأخطاء 403 Forbidden في البث المباشر
+    // معالجة خاصة لأخطاء 403 Forbidden على المسارات الصامتة
     if (response?.status === 403 && config && !config._retried_without_token) {
       const url = String(config.url || '');
-      const isLivePath = SILENT_404_403_PATTERNS.some(re => re.test(url)) || url.includes('/live_rooms');
+      const isSilentPath = SILENT_404_403_PATTERNS.some(re => re.test(url));
       
-      if (isLivePath) {
+      if (isSilentPath) {
         config._retried_without_token = true;
         config._skip_auth = true;
         return API(config);

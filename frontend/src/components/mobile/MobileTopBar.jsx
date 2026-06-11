@@ -83,18 +83,6 @@ function MobileTopBar({ onMenuClick }) {
               </svg>
             </button>
 
-            <button
-              type="button"
-              className="ym-topbar-btn"
-              aria-label="البث المباشر"
-              onClick={() => navigate('/live/control')}
-            >
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="2" />
-                <path d="M16.24 7.76a6 6 0 0 1 0 8.48m-8.48 0a6 6 0 0 1 0-8.48m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14" />
-              </svg>
-            </button>
-
             <Link to="/profile" className="ym-topbar-profile-link" aria-label="الملف الشخصي">
               <div className="ym-topbar-avatar">
                 {user?.avatar ? (

@@ -27,13 +27,7 @@ data class Post(
     @SerializedName("saved_by_me")
     val savedByMe: Boolean = false,
     @SerializedName("created_at")
-    val createdAt: String = "",
-    @SerializedName("has_live_stream")
-    val hasLiveStream: Boolean = false,
-    @SerializedName("live_stream_id")
-    val liveStreamId: String? = null,
-    @SerializedName("live_stream")
-    val liveStream: LiveRoomInfo? = null
+    val createdAt: String = ""
 )
 
 data class PostsResponse(
@@ -49,16 +43,4 @@ data class Pagination(
     val pages: Int = 1,
     @SerializedName("has_next")
     val hasNext: Boolean = false
-)
-
-data class LiveRoomInfo(
-    val id: String = "",
-    val host: String = "",
-    val title: String = "",
-    @SerializedName("stream_status")
-    val streamStatus: String = "",
-    @SerializedName("viewer_count")
-    val viewerCount: Int = 0,
-    @SerializedName("is_active")
-    val isActive: Boolean = false
 )

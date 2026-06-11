@@ -4,7 +4,7 @@ Append the following to backend/app/models/__init__.py:
 
 from .engagement import (
     DailyTask, UserDailyTask,
-    UserLevel, HostLevel,
+    UserLevel,
     Achievement, UserAchievement,
     LuckyWheelPrize, LuckyWheelSpin,
     ReferralCode, Referral,

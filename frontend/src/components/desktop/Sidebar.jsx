@@ -9,7 +9,6 @@ export default function Sidebar() {
     { path: '/stories', icon: '📱', label: 'القصص' },
     { path: '/reels', icon: '🎬', label: 'الريلز' },
     { path: '/groups', icon: '👥', label: 'المجموعات' },
-    { path: '/live/control', icon: '🔴', label: 'بث مباشر' },
     { path: '/chat', icon: '💬', label: 'الرسائل' },
     { path: '/notifications', icon: '🔔', label: 'التنبيهات' },
     { path: '/profile', icon: '👤', label: 'الملف الشخصي' },

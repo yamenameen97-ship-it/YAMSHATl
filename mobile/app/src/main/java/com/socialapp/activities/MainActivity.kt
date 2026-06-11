@@ -57,7 +57,6 @@ class MainActivity : AppCompatActivity() {
 
     private val quickActionTargets = mapOf(
         R.id.actionNotifications to "/notifications",
-        R.id.actionLive to "/live",
         R.id.actionGroups to "/groups",
         R.id.actionUsers to "/users",
     )
@@ -315,7 +314,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun subtitleForPath(path: String): String = when {
         path.contains("/notifications", ignoreCase = true) -> "مركز الإشعارات والتنبيهات اللحظية بنفس هوية يام شات"
-        path.contains("/live", ignoreCase = true) -> "البث المباشر بنفس الهوية الداكنة والبنفسجية"
         path.contains("/groups", ignoreCase = true) -> "المجموعات وخدمات المجتمع موحدة داخل الجوال والويب"
         path.contains("/users", ignoreCase = true) -> "الأصدقاء والمتابعة وبدء المحادثات بنفس الستايل"
         path.contains("/dashboard", ignoreCase = true) -> "لوحة النشاط السريعة والخدمات المرتبطة"

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Text
 
 from app.db.base import Base
 
@@ -31,9 +31,3 @@ class Post(Base):
     share_count = Column(Integer, default=0, nullable=False)
     save_count = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
-
-    # ✅ FIX (2026-06-11): ربط صريح بين المنشور وغرفة البث الخاصة به.
-    # سابقاً كان السيريالايزر يربط جلسة البث النشطة بكل منشور للمستخدم،
-    # مما أدى لظهور كل المنشورات العادية كأنها بث مباشر.
-    # الآن: فقط المنشور الذي يحمل live_room_id يُعتبر منشور بث.
-    live_room_id = Column(String(64), nullable=True, index=True)

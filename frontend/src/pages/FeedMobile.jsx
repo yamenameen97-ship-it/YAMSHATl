@@ -3,7 +3,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import MobileComposer from '../components/mobile/MobileComposer.jsx';
 import MobileFilterPills from '../components/mobile/MobileFilterPills.jsx';
 import MobilePostCard from '../components/mobile/MobilePostCard.jsx';
-import MobileLiveStreamCard from '../components/mobile/MobileLiveStreamCard.jsx';
 import MobileComposeModal from '../components/mobile/MobileComposeModal.jsx';
 import MobileCommentsSheet from '../components/mobile/MobileCommentsSheet.jsx';
 import Modal from '../components/ui/Modal.jsx';
@@ -21,7 +20,6 @@ import { useAppStore } from '../store/appStore.js';
  * - تربط كل أزرار التفاعل (إعجاب، تعليق، مشاركة، حفظ، إعادة نشر، المزيد) بـ API الحقيقي
  * - تعرض MobileComposeModal لإنشاء منشور جديد + MobileCommentsSheet للتعليقات
  * - تستمع لحدث 'yamshat:open-composer' لفتح المنشئ من BottomNav
- * - تدعم عرض منشورات البث المباشر عبر MobileLiveStreamCard
  */
 
 function timeAgoAr(dateLike) {
@@ -66,21 +64,6 @@ function normalizePost(p, i) {
   const author = p.author_name || p.username || p.user || 'مستخدم يام شات';
   const handle = (p.username || p.user || `user${i}`).toString();
   const verified = Boolean(p.verified || p.is_verified || p.official);
-  // ✅ FIX (2026-06-11): منشور بث = فقط إذا وجد live_room_id فعلياً في الديتا،
-  // أو إذا أتا الباك إند بـ type === 'live_stream' بشكل صريح.
-  // لا نعتمد على has_live_stream وحده (كان يُلحق بكل منشورات المستخدم المباشر).
-  const hasLiveLink = Boolean(p.live_room_id || p.live_stream_id || p.stream_id);
-  const isLivePost = Boolean(
-    (p.is_live_stream === true) ||
-    p.type === 'live_stream' ||
-    (hasLiveLink && (p.is_live === true || p.live_stream)) // ربط صريح وبث فعلياً على الهواء
-  );
-  // البث ما زال حياً: يجب أن يكون is_live === true (بدقة) وليس live_ended وليس نوع video
-  const liveStillActive = isLivePost
-    && p.is_live === true
-    && p.live_ended !== true
-    && p.type !== 'video'
-    && p.live_stream && p.live_stream.is_active !== false;
   return {
     id: p.id ?? `p-${i}`,
     rawId: p.id,
@@ -97,11 +80,6 @@ function normalizePost(p, i) {
     liked: Boolean(p.is_liked ?? p.liked_by_me ?? p.liked),
     reposted: Boolean(p.reposted ?? p.is_reposted),
     saved: Boolean(p.is_saved ?? p.saved_by_me ?? p.saved),
-    // ✅ بطاقة البث تظهر فقط للبثوث النشطة. بعد انتهاء البث يتحول لمنشور عادي مع شارة "بث منتهي"
-    isLive: liveStillActive,
-    wasLive: isLivePost && !liveStillActive, // كان بثاً وانتهى
-    liveStreamId: liveStillActive ? (p.live_room_id || p.live_stream_id || p.stream_id || p.live_id || null) : null,
-    liveStream: liveStillActive ? p.live_stream : null,
   };
 }
 
@@ -121,9 +99,6 @@ const WELCOME_POST = {
   liked: false,
   reposted: false,
   saved: false,
-  isLive: false,
-  liveStreamId: null,
-  liveStream: null,
 };
 
 function FeedMobile() {
@@ -146,23 +121,6 @@ function FeedMobile() {
   const rawPosts = smart?.posts || smart?.data || smart?.items || [];
   const loading = smart?.isLoading || smart?.loading;
   const error = smart?.error;
-
-  // جلب البث المباشر النشط
-  const [liveStreams, setLiveStreams] = useState([]);
-  useEffect(() => {
-    const fetchLives = async () => {
-      try {
-        const { getActiveLiveStreams } = await import('../services/api/liveStreamApi.js');
-        const res = await getActiveLiveStreams({ limit: 5 });
-        if (res?.data) setLiveStreams(res.data);
-      } catch (err) {
-        console.warn('Failed to fetch live streams for mobile feed', err);
-      }
-    };
-    fetchLives();
-    const timer = setInterval(fetchLives, 30000);
-    return () => clearInterval(timer);
-  }, []);
 
   // فتح المُنشئ عبر حدث (من BottomNav أو composer slot)
   useEffect(() => {
@@ -189,55 +147,12 @@ function FeedMobile() {
       ? rawPosts.map((p, i) => normalizePost(p, i))
       : [];
 
-    // ✅ FIX (2026-06-10): جمع كل live_stream_id الموجودة فعلياً في المنشورات
-    // كي لا نُضيف بطاقة بث مكررة لنفس البث
-    const existingStreamIds = new Set(
-      normalizedPosts
-        .map((p) => String(p.liveStreamId || ''))
-        .filter(Boolean)
-    );
-
-    // ✅ FIX: تحويل البث المباشر إلى منشورات فقط إذا لم يكن له منشور موجود في الفيد
-    // وكذلك إزالة التكرار داخل قائمة liveStreams نفسها بناءً على ID
-    const seenLiveIds = new Set();
-    const liveAsPosts = liveStreams
-      .filter((stream) => {
-        const sid = String(stream?.id || '');
-        if (!sid) return false;
-        if (existingStreamIds.has(sid)) return false; // يوجد منشور بالفعل لهذا البث
-        if (seenLiveIds.has(sid)) return false; // مكرر داخل القائمة نفسها
-        seenLiveIds.add(sid);
-        return true;
-      })
-      .map((stream) => ({
-        id: `live-${stream.id}`,
-        rawId: null,
-        authorName: stream.host_name || stream.host_username || 'مستخدم',
-        handle: `@${stream.host_username || 'مستخدم'}`,
-        timeText: 'مباشر الآن',
-        verified: Boolean(stream.verified || stream.is_verified),
-        avatarUrl: resolveMediaUrl(stream.host_avatar || ''),
-        text: stream.title || 'بث مباشر جديد',
-        banner: stream.thumbnail_url ? { type: 'image', url: resolveMediaUrl(stream.thumbnail_url) } : null,
-        likes: stream.hearts_count || 0,
-        comments: stream.comments_count || 0,
-        reposts: 0,
-        liked: false,
-        reposted: false,
-        saved: false,
-        // ✅ بث حي مأخوذ مباشرة من قائمة getActiveLiveStreams → is_active=true دائماً
-        isLive: stream.is_active !== false,
-        wasLive: false,
-        liveStreamId: stream.id,
-        liveStream: stream,
-      }));
-
-    // ✅ إذا كانت كل النتائج فارغة فعلاً، نعرض البوست الترحيبي
-    const allPosts = liveAsPosts.length + normalizedPosts.length === 0
+    // إذا لم توجد منشورات فعلاً، نعرض البوست الترحيبي
+    const allPosts = normalizedPosts.length === 0
       ? [WELCOME_POST]
-      : [...liveAsPosts, ...normalizedPosts];
+      : normalizedPosts;
 
-    // ✅ إزالة التكرار النهائية بناء على id (احتياط)
+    // إزالة التكرار النهائية بناء على id (احتياط)
     const dedupedMap = new Map();
     allPosts.forEach((p) => {
       const key = String(p.id);
@@ -250,7 +165,7 @@ function FeedMobile() {
       const o = overlay[p.id];
       return o ? { ...p, ...o } : p;
     });
-  }, [rawPosts, liveStreams, overlay]);
+  }, [rawPosts, overlay]);
 
   // فلترة محلية بسيطة (الفلترة الحقيقية تتم في backend عبر filterType)
   // ✅ FIX: دعم أزرار الفلتر الجديدة الكل / التحديثات / الستوري / البث
@@ -261,9 +176,6 @@ function FeedMobile() {
     }
     if (activeFilter === 'stories' || activeFilter === 'story') {
       return posts.filter((p) => p.isStory || p.type === 'story' || /#story|ستوري/i.test(p.text || ''));
-    }
-    if (activeFilter === 'live' || activeFilter === 'broadcast') {
-      return posts.filter((p) => p.isLive || p.type === 'live_stream' || p.liveStreamId);
     }
     if (activeFilter === 'ads') return posts.filter((p) => /إعلان|عرض|خصم/.test(p.text || ''));
     if (activeFilter === 'community') return posts.filter((p) => /مجتمع|عائلة|أعضاء|#/.test(p.text || ''));
@@ -501,38 +413,7 @@ function FeedMobile() {
       {/* Posts Feed */}
       <div className="ym-feed">
         {filtered.map((post) => {
-          // عرض منشورات البث المباشر
-          if (post.isLive) {
-            return (
-              <MobileLiveStreamCard
-                key={post.id}
-                post={post}
-                liveStream={{
-                  // نبدأ من قيم البوست الأساسية كـ fallback ثم نطبق قيم liveStream فوقها
-                  id: post.liveStreamId,
-                  host_username: (post.handle || '').replace(/^@/, '') || 'مستخدم',
-                  host_name: post.authorName || 'مستخدم',
-                  title: post.text || 'بث مباشر',
-                  viewer_count: post.views || 0,
-                  hearts_count: post.likes || 0,
-                  comments_count: post.comments || 0,
-                  verified: post.verified,
-                  // ادمج بيانات البث الحية (تعطي الأولوية للحقول الحقيقية إن وُجدت)
-                  ...(post.liveStream || {}),
-                  // تأكيد إن thumbnail_url يأخذ أول قيمة متوفرة (مهم: الـ banner من post يبقى fallback نهائي)
-                  thumbnail_url:
-                    post.liveStream?.thumbnail_url ||
-                    post.liveStream?.cover_url ||
-                    post.liveStream?.preview_url ||
-                    post.banner?.url ||
-                    '',
-                  host_avatar: post.liveStream?.host_avatar || post.avatarUrl || '',
-                }}
-                onStreamEnd={() => queryClient.invalidateQueries({ queryKey: ['feed-data'] })}
-              />
-            );
-          }
-          // عرض المنشورات العادية
+          // عرض المنشورات العادية فقط (تمت إزالة بطاقة البث المباشر)
           return (
             <MobilePostCard
               key={post.id}

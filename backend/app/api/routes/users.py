@@ -595,7 +595,6 @@ def get_preferences(db: Session = Depends(get_db), current_user: User = Depends(
         'notify_posts': bool(preference.notify_posts),
         'notify_reels': bool(preference.notify_reels),
         'notify_stories': bool(preference.notify_stories),
-        'notify_live': bool(preference.notify_live),
     }
 
 
@@ -614,7 +613,6 @@ def update_preferences(payload: dict = Body(...), db: Session = Depends(get_db),
     if 'notify_posts' in payload: preference.notify_posts = bool(payload['notify_posts'])
     if 'notify_reels' in payload: preference.notify_reels = bool(payload['notify_reels'])
     if 'notify_stories' in payload: preference.notify_stories = bool(payload['notify_stories'])
-    if 'notify_live' in payload: preference.notify_live = bool(payload['notify_live'])
     
     db.commit()
     db.refresh(preference)
@@ -626,7 +624,6 @@ def update_preferences(payload: dict = Body(...), db: Session = Depends(get_db),
         'notify_posts': bool(preference.notify_posts),
         'notify_reels': bool(preference.notify_reels),
         'notify_stories': bool(preference.notify_stories),
-        'notify_live': bool(preference.notify_live),
     }
 
 

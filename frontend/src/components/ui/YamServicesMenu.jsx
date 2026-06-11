@@ -18,7 +18,6 @@ const SERVICE_ITEMS = [
   { to: '/groups', label: 'المجموعات', icon: '👥' },
   { to: '/search', label: 'الأخبار', icon: '📰' },
   { to: '/profile?panel=themes', label: 'الثيمات المميزة', icon: '🖼' },
-  { to: '/live/control', label: 'البث المباشر', icon: '📺' },
 ];
 
 export default function YamServicesMenu({ open = false, onClose, onLogout, brandLabel = 'Yamshat' }) {

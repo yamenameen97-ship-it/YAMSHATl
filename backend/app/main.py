@@ -268,7 +268,6 @@ _include("app.api.routes.follow.router", prefix="/api/follow")
 _include("app.api.routes.chat.router", prefix="/api/chat")
 _include("app.api.routes.stories.router", prefix="/api/stories")
 _include("app.api.routes.reels.router", prefix="/api/reels")
-_include("app.api.routes.live.router", prefix="/api/live")
 _include("app.api.routes.groups.router", prefix="/api/groups")
 _include("app.api.routes.inbox.router", prefix="/api/inbox")
 _include("app.api.routes.recommendations.router", prefix="/api/recommendations")
@@ -281,11 +280,10 @@ _include("app.api.routes.voice_rooms.router", prefix="/api/voice")
 
 # ============================================================
 # ♻️ Legacy compatibility aliases
-# بعض شاشات الواجهة القديمة كانت تستدعي /api مباشرة بدون مقاطع /chat أو /live أو /voice
+# بعض شاشات الواجهة القديمة كانت تستدعي /api مباشرة بدون مقاطع /chat أو /voice
 # فنضيف aliases حتى لا ترجع 404 أثناء التشغيل على النسخ القديمة أو الكاش القديم.
 # ============================================================
 _include("app.api.routes.chat.router", prefix="/api")
-_include("app.api.routes.live.router", prefix="/api")
 _include("app.api.routes.voice_rooms.router", prefix="/api")
 
 

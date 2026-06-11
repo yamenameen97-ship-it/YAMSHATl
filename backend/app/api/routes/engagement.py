@@ -55,21 +55,6 @@ def my_level(db: Session = Depends(get_db), user: User = Depends(get_current_use
     }
 
 
-# ============== مستوى المضيف ==============
-@router.get("/host-level")
-def my_host_level(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    hl = svc.get_or_create_host_level(db, user.id)
-    return {
-        "level": hl.level, "host_xp": hl.host_xp,
-        "next_level_xp": hl.next_level_xp,
-        "title": hl.title, "badge_icon": hl.badge_icon,
-        "total_diamonds_received": hl.total_diamonds_received,
-        "total_live_minutes": hl.total_live_minutes,
-        "total_viewers": hl.total_viewers,
-        "progress_pct": round((hl.host_xp / max(1, hl.next_level_xp)) * 100, 1),
-    }
-
-
 # ============== شارات الإنجازات ==============
 @router.get("/achievements")
 def get_achievements(db: Session = Depends(get_db), user: User = Depends(get_current_user)):

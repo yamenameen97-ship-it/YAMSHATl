@@ -20,9 +20,7 @@ import { redirectToAppPath } from '../utils/router.js';
 import { followUser, muteUser, unmuteUser } from '../api/users.js';
 import { blockUserApi, unblockUserApi } from '../api/chat.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
-import { getActiveLiveStreams } from '../services/api/liveStreamApi.js';
 import PostCardComponent from '../components/feed/PostCard.jsx';
-import FeedLiveStreamWidget from '../components/feed/FeedLiveStreamWidget.jsx';
 import {
   likePost as apiLikePost,
   savePost as apiSavePost,
@@ -44,7 +42,6 @@ const FEED_TABS = [
 const NAV_ITEMS = [
   { to: '/', label: 'الرئيسية', icon: 'home', exact: true },
   { to: '/reels', label: 'الريلز', icon: 'clips' },
-  { to: '/live/control', label: 'البث', icon: 'live' },
   { to: '/groups', label: 'المجموعات', icon: 'groups' },
   { to: '/stories', label: 'الستوري', icon: 'bookmark' },
   { to: '/inbox', label: 'الدردشة', icon: 'message' },
@@ -80,56 +77,6 @@ function timeAgoAr(dateLike) {
   return `منذ ${Math.floor(months / 12)} سنة`;
 }
 
-// دالة لتحويل البث المباشر إلى منشور
-function convertLiveStreamToPost(stream) {
-  if (!stream || !stream.id) return null;
-  // نجرب عدة أسماء محتملة لحقل صورة الغلاف حتى لا نفوت أيّاً منها
-  const mediaUrl =
-    stream.thumbnail_url ||
-    stream.cover_url ||
-    stream.preview_url ||
-    stream.image_url ||
-    stream.media_url ||
-    '';
-  const resolvedMedia = mediaUrl ? resolveMediaUrl(mediaUrl) : '';
-  return {
-    // بادئة live_ لضمان عدم التصادم مع معرفات المنشورات
-    id: `live_${stream.id}`,
-    type: 'live_stream',
-    is_live_stream: true,
-    is_live: true,            // ✅ FIX (2026-06-11): علم دقيق للبث الحي (يعتمد عليه normalizeFeedPost)
-    isLive: true,
-    live_room_id: stream.id,  // ✅ رابط صريح
-    liveStreamId: stream.id,
-    live_stream_id: stream.id,
-    title: stream.title || 'بث مباشر',
-    content: stream.title || 'بث مباشر',
-    text: stream.title || 'بث مباشر جديد',
-    author: stream.host_username || 'مستخدم',
-    username: stream.host_username || 'مستخدم',
-    handle: `@${stream.host_username || 'مستخدم'}`,
-    avatar: stream.host_avatar || '',
-    user_avatar: stream.host_avatar || '',
-    created_at: stream.started_at || new Date().toISOString(),
-    media_type: 'live',
-    media_url: resolvedMedia,
-    thumbnail_url: resolvedMedia,
-    preview_url: resolvedMedia,
-    cover_url: resolvedMedia,
-    viewers_count: stream.viewers_count || 0,
-    likes_count: stream.hearts_count || 0,
-    comments_count: stream.comments_count || 0,
-    is_liked: false,
-    is_saved: false,
-    is_verified: false,
-    is_reel: false,
-    has_video: false,
-    has_live_stream: true,
-    live_stream: stream,
-    media: resolvedMedia ? [{ type: 'image-primary', kind: 'image', url: resolvedMedia }] : []
-  };
-}
-
 const MOCK_POSTS = [];
 
 
@@ -144,24 +91,8 @@ function isVideoMediaUrl(value = '', options = {}) {
   return /\.(mp4|webm|mov|m4v|m3u8)(\?.*)?$/i.test(candidate) || /\b(video|reel|stream)\b/i.test(candidate);
 }
 
-function extractFirstUrl(value = '') {
-  const match = String(value || '').match(/https?:\/\/[^\s]+/i);
-  return match ? match[0] : '';
-}
-
 function stripFirstUrl(value = '') {
   return String(value || '').replace(/\s*https?:\/\/[^\s]+/i, '').trim();
-}
-
-function resolveLiveViewerUrl(post = {}) {
-  if (post?.live_id) {
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    return `${origin}/#/live/view/${post.live_id}`;
-  }
-
-  const directUrl = extractFirstUrl(post.content || post.text || '');
-  if (!directUrl) return '';
-  return /#\/live\/(watch|view)\//.test(directUrl) ? directUrl : '';
 }
 
 function buildFeedPosts(posts = []) {
@@ -199,45 +130,16 @@ function buildFeedPosts(posts = []) {
         };
       });
 
-      // ✅ FIX (2026-06-11): قواعد صارمة لتحديد "بث مباشر نشط"
-      // المنشور يُعتبر بثاً نشطاً فقط لو توفر شرطان معاً:
-      //  1) رابط صريح بالـ live_room_id (أي المنشور أُنشئ أصلاً كمنشور بث)
-      //     أو type === 'live_stream' بشكل صريح من السيريالايزر.
-      //  2) is_live === true بدقة (السيريالايزر يضع True فقط لو الغرفة is_active=True).
-      // هكذا:
-      //   • لا تظهر المنشورات العادية للمستخدم البثّاء كبث (المشكلة الأصلية).
-      //   • بمجرد إغلاق البث (is_active=False) يتحول المنشور لمنشور فيديو عادي.
-      const hasLiveLink = Boolean(post.live_room_id || post.live_stream_id || post.stream_id);
-      const taggedAsLive = Boolean(
-        post.is_live_stream === true ||
-        post.type === 'live_stream' ||
-        (hasLiveLink && (post.is_live === true || post.live_stream)),
-      );
-      const liveExplicitlyEnded =
-        post.is_live === false || post.live_ended === true || post.type === 'video';
-      // is_live === true فقط ("truthy" قد يأتي من سلسلة، فنشترط القيمة الحرفية)
-      const isActuallyLive =
-        taggedAsLive &&
-        !liveExplicitlyEnded &&
-        post.is_live === true &&
-        (post.live_stream ? post.live_stream.is_active !== false : true);
-      const liveStreamIdValue =
-        post.live_room_id || post.live_stream_id || post.stream_id || post.live_id || null;
-
       return {
         id: post.id || `post-${index}`,
         rawId: post.id || null, // المعرف الحقيقي للمنشور من الـ backend (null للمنشورات الترحيبية)
         userId: post.user_id || null,
         rawUsername: post.username || post.user || '',
-        isLive: isActuallyLive,
-        liveStreamId: isActuallyLive ? liveStreamIdValue : null,
-        live_stream: post.live_stream || null,
         authorName: post.author_name || post.username || post.user || 'مستخدم يام شات',
         authorAvatar: resolveMediaUrl(post.user_avatar || post.avatar || post.author_avatar || ''),
         handle: normalizeHandle(post.username || post.user || `user.${index + 1}`),
         time: timeAgoAr(post.created_at || post.published_at),
         text: stripFirstUrl(post.content || post.text || ''),
-        liveUrl: resolveLiveViewerUrl(post),
         rawText: post.content || post.text || '',
         likes: Number(post.likes_count || post.like_count || post.likes || 0),
         comments: Number(post.comments_count || post.comment_count || 0),
@@ -329,25 +231,11 @@ function PostCard({ post }) {
   const authorUsername = String(post.rawUsername || post.handle || '').replace(/^@/, '');
   const currentUsername = getCurrentUsername();
   const isOwnPost = Boolean(authorUsername && currentUsername && authorUsername === currentUsername);
-  // المنشورات الترحيبية أو منشورات البث المباشر لا تملك rawId صحيحًا
-  const canCallBackend = Boolean(post.rawId) && !post.isLive;
+  // المنشورات الترحيبية لا تملك rawId صحيحًا
+  const canCallBackend = Boolean(post.rawId);
   const invalidateFeed = useCallback(() => {
     try { queryClient.invalidateQueries({ queryKey: ['feed-data'] }); } catch (_) { /* ignore */ }
   }, [queryClient]);
-
-  const handleOpenLiveAnnouncement = () => {
-    if (post.isLive && post.liveStreamId) {
-      navigate(`/live/view/${post.liveStreamId}`);
-      return;
-    }
-    if (!post.liveUrl) return;
-    const hashRoute = post.liveUrl.includes('/#/') ? post.liveUrl.split('/#/')[1] : '';
-    if (hashRoute) {
-      navigate(`/${hashRoute.replace(/^\/+/, '')}`);
-      return;
-    }
-    window.location.href = post.liveUrl;
-  };
 
   // ===== ربط الإعجاب بـ backend =====
   const handleLike = async () => {
@@ -636,82 +524,15 @@ function PostCard({ post }) {
         </div>
       </div>
 
-      {post.isLive ? (
-        <div 
-          className="live-stream-card-special" 
-          onClick={handleOpenLiveAnnouncement}
-          style={{ 
-            cursor: 'pointer', 
-            borderRadius: '12px', 
-            overflow: 'hidden', 
-            position: 'relative',
-            border: '2px solid #0047ff',
-            background: '#000',
-            margin: '12px 0'
-          }}
-        >
-          {mediaItems[0]?.url ? (
-            <img src={mediaItems[0].url} alt="Cover" style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover' }} />
-          ) : (
-            <div style={{ width: '100%', aspectRatio: '16/9', background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ fontSize: '48px' }}>📺</span>
-            </div>
-          )}
-          
-          <div style={{ position: 'absolute', top: '12px', left: '12px' }}>
-            <span className="live-badge" style={{ 
-              background: '#0047ff', 
-              color: 'white', 
-              padding: '4px 12px', 
-              borderRadius: '20px', 
-              fontSize: '12px', 
-              fontWeight: 'bold',
-              boxShadow: '0 0 15px #0047ff',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}>
-              <span style={{ width: '8px', height: '8px', background: 'white', borderRadius: '50%', display: 'inline-block' }}></span>
-              مباشر
-            </span>
-          </div>
-          
-          <div style={{ 
-            position: 'absolute', 
-            bottom: 0, 
-            left: 0, 
-            right: 0, 
-            padding: '16px', 
-            background: 'linear-gradient(transparent, rgba(0,0,0,0.8))',
-            color: 'white'
-          }}>
-            <h3 style={{ margin: 0, fontSize: '16px' }}>{post.authorName} بدأ البث</h3>
-            <p style={{ margin: '4px 0 0', fontSize: '13px', opacity: 0.8 }}>👁 {post.viewers || 0} مشاهد</p>
-          </div>
+      <p className="yam-post-copy-v2">{post.text}</p>
+
+      {mediaItems.length ? (
+        <div className={`yam-post-media-grid-v2 media-count-${mediaItems.length}`}>
+          {mediaItems.map((item, index) => (
+            <MediaTile key={`${post.id}-media-${index}`} item={item} index={index} />
+          ))}
         </div>
-      ) : (
-        <>
-          <p className="yam-post-copy-v2">{post.text}</p>
-
-          {post.liveUrl ? (
-            <button
-              type="button"
-              className="yam-post-live-cta"
-              onClick={handleOpenLiveAnnouncement}
-            >
-              🎥 متابعة البث المباشر
-            </button>
-          ) : null}
-
-          {mediaItems.length ? (
-            <div className={`yam-post-media-grid-v2 media-count-${mediaItems.length}`}>
-              {mediaItems.map((item, index) => (
-                <MediaTile key={`${post.id}-media-${index}`} item={item} index={index} />
-              ))}
-            </div>
-          ) : null}
-        </>
-      )}
+      ) : null}
 
       <div className="yam-post-actions-v2">
         <button type="button" className={liked ? 'active' : ''} onClick={handleLike} disabled={busyAction === 'like'} aria-label="إعجاب">
@@ -788,8 +609,6 @@ function FeedDesktopInner() {
   const [activeTab, setActiveTab] = useState('all');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
-  const [liveStreams, setLiveStreams] = useState([]);
-  const [loadingLiveStreams, setLoadingLiveStreams] = useState(false);
   const profile = getStoredUserSnapshot();
   const profileDetails = profile?.profile || {};
   const username = getCurrentUsername() || profile?.username || profile?.user || '';
@@ -838,52 +657,8 @@ function FeedDesktopInner() {
     pollingInterval: 25_000,
   });
 
-  // جلب البثوث المباشرة النشطة وإضافتها إلى المنشورات
-  useEffect(() => {
-    const fetchActiveLiveStreams = async () => {
-      try {
-        setLoadingLiveStreams(true);
-        const response = await getActiveLiveStreams({ limit: 10 });
-        const streams = Array.isArray(response?.data) ? response.data : [];
-        setLiveStreams(streams);
-      } catch (error) {
-        console.error('Error fetching live streams:', error);
-        setLiveStreams([]);
-      } finally {
-        setLoadingLiveStreams(false);
-      }
-    };
-
-    fetchActiveLiveStreams();
-    const interval = setInterval(fetchActiveLiveStreams, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // تحويل البثوث النشطة إلى منشورات للعرض
-  const liveStreamPosts = useMemo(
-    () => (Array.isArray(liveStreams) ? liveStreams.map(convertLiveStreamToPost).filter(Boolean) : []),
-    [liveStreams],
-  );
-
-  // جمع المنشورات + البثوث مع إزالة التكرار:
-  // 1) أحياناً يوجد منشور في التغذية يمثل نفس البث الموجود في liveStreams
-  // فنستخدم stream_id / live_stream_id / live_id لتحديد وإزالة التكرار.
-  const feedPosts = useMemo(() => {
-    const allPosts = buildFeedPosts(posts);
-    const activeStreamIds = new Set(
-      (Array.isArray(liveStreams) ? liveStreams : [])
-        .map((s) => (s && s.id != null ? String(s.id) : null))
-        .filter(Boolean),
-    );
-    // نفلتر منشورات التغذية التي تشير لبث موجود في الويدجت المباشر
-    const dedupedPosts = allPosts.filter((p) => {
-      const sid = p?.liveStreamId != null ? String(p.liveStreamId) : null;
-      // إذا كان المنشور مرتبطاً ببث نشط موجود بالفعل في liveStreams حذفه لمنع التكرار
-      if (sid && activeStreamIds.has(sid)) return false;
-      return true;
-    });
-    return [...liveStreamPosts, ...dedupedPosts];
-  }, [posts, liveStreamPosts, liveStreams]);
+  // تغذية المنشورات (بدون بث مباشر)
+  const feedPosts = useMemo(() => buildFeedPosts(posts), [posts]);
 
   const totalPosts = feedPosts.length;
   const profilePostsCount = Number(profile?.posts_count || profileDetails.posts_count || profileDetails.posts || profile?.posts || totalPosts || 0);
@@ -1054,23 +829,9 @@ function FeedDesktopInner() {
             </section>
 
             <div className="yam-post-stack-v2" ref={postStackRef}>
-              {feedPosts.map((post) => {
-                // التأكد من عرض ويدجت البث المباشر إذا كان المنشور يمثل بثاً نشطاً
-                if (post.isLive && post.liveStreamId) {
-                  return (
-                    <FeedLiveStreamWidget
-                      key={post.id}
-                      post={post}
-                      liveStream={post.live_stream || { id: post.liveStreamId }}
-                      onStreamEnd={() => {
-                        // تحديث الحالة محلياً عند انتهاء البث إذا لزم الأمر
-                      }}
-                      onStreamUpdate={() => {}}
-                    />
-                  );
-                }
-                return <PostCard key={post.id} post={post} />;
-              })}
+              {feedPosts.map((post) => (
+                <PostCard key={post.id} post={post} />
+              ))}
               <div className="yam-feed-status-row">
                 {isFetchingNextPage
                   ? 'جارٍ تحميل المنشورات الأقدم...'

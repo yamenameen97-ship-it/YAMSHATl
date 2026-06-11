@@ -5,7 +5,7 @@ import { Link, useLocation } from 'react-router-dom';
  * BottomNav - شريط التنقل السفلي المحدث بناءً على الصورة
  * العناصر: الرئيسية، الدردشة، إنشاء (+)، الريلز، البث، حسابي
  */
-// يدعم matching للمسارات الفرعية مثل /live/control و /chat/:id
+// يدعم matching للمسارات الفرعية مثل /chat/:id
 const NAV_ITEMS = [
   {
     id: 'home',
@@ -51,18 +51,6 @@ const NAV_ITEMS = [
       <svg viewBox="0 0 24 24" width="24" height="24" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
         <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
         <path d="M10 9l5 3-5 3z" />
-      </svg>
-    )
-  },
-  {
-    id: 'live',
-    label: 'البث',
-    to: '/live/control',
-    match: (p) => p.startsWith('/live'),
-    icon: (active) => (
-      <svg viewBox="0 0 24 24" width="24" height="24" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
-        <circle cx="12" cy="12" r="2" />
-        <path d="M16.24 7.76a6 6 0 0 1 0 8.48m-8.48 0a6 6 0 0 1 0-8.48m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14" />
       </svg>
     )
   },

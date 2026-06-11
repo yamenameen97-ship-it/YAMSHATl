@@ -50,8 +50,6 @@ export default function AnalyticsDashboard() {
     totalPosts: 45678,
     totalComments: 123456,
     totalLikes: 456789,
-    liveStreams: 12,
-    activeStreams: 3,
     averageSessionDuration: 18.5, // minutes
     engagementRate: 42.3, // percentage
     retentionRate: 78.5, // percentage
@@ -65,7 +63,6 @@ export default function AnalyticsDashboard() {
     { id: 'posts', label: 'المنشورات', value: analyticsData.totalPosts, icon: '📝', change: '+8%' },
     { id: 'engagement', label: 'معدل التفاعل', value: `${analyticsData.engagementRate}%`, icon: '📈', change: '+2.5%' },
     { id: 'retention', label: 'معدل الاحتفاظ', value: `${analyticsData.retentionRate}%`, icon: '📊', change: '+1.2%' },
-    { id: 'streams', label: 'البث المباشر', value: analyticsData.activeStreams, icon: '🔴', change: `من ${analyticsData.liveStreams}` },
   ];
 
   const getServerHealthColor = (value, thresholds) => {

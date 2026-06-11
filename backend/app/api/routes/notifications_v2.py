@@ -16,7 +16,6 @@ from app.services.notification_service_v2 import (
     create_like_notification,
     create_comment_notification,
     create_gift_notification,
-    create_live_notification,
     get_notifications,
     mark_as_read,
     mark_all_as_read,
@@ -337,13 +336,3 @@ def create_gift_notification_endpoint(
     return result
 
 
-@router.post("/live")
-def create_live_notification_endpoint(
-    host_id: int,
-    room_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """إنشاء إشعار بث مباشر جديد"""
-    result = create_live_notification(db, current_user.id, host_id, room_id)
-    return result

@@ -70,9 +70,7 @@ function buildEntry(type, item = {}) {
       ? `/search?q=${encodeURIComponent(String(title).replace(/^#/, ''))}`
       : type === 'reels'
         ? '/reels'
-        : type === 'live'
-          ? '/live'
-          : '/';
+        : '/';
   const searchText = [
     title,
     username,

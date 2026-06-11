@@ -19,7 +19,6 @@ class UserPreference(Base):
     notify_posts = Column(Boolean, default=True, nullable=False)
     notify_reels = Column(Boolean, default=True, nullable=False)
     notify_stories = Column(Boolean, default=True, nullable=False)
-    notify_live = Column(Boolean, default=True, nullable=False)
     
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False, onupdate=datetime.utcnow)

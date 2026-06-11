@@ -20,7 +20,7 @@ export const AdminDashboardEnhanced = () => {
           <div className="flex items-center gap-3 mb-10">
             <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-fuchsia-500 to-violet-700 flex items-center justify-center text-2xl">🔴</div>
             <div>
-              <h1 className="text-2xl font-bold">LiveStream</h1>
+              <h1 className="text-2xl font-bold">Yamshat Admin</h1>
               <p className="text-sm text-zinc-400">Super Admin</p>
             </div>
           </div>

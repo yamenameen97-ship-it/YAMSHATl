@@ -1,7 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getUsers } from '../../api/users.js';
-import { getLiveRooms } from '../../api/live.js';
 import BrandLogo from '../ui/BrandLogo.jsx';
 import { useAppStore } from '../../store/appStore.js';
 import { selectUnreadTotal, useChatStore } from '../../store/appStore.js';
@@ -58,14 +57,7 @@ export default function Sidebar() {
     staleTime: 60_000,
   });
 
-  const { data: liveData = [] } = useQuery({
-    queryKey: ['sidebar-live-rooms'],
-    queryFn: async () => (await getLiveRooms()).data || [],
-    staleTime: 20_000,
-    refetchInterval: 25_000,
-  });
-
-  const liveUsers = Array.isArray(liveData) ? liveData.slice(0, 5) : [];
+  const liveUsers = [];
   const suggestedUsers = Array.isArray(usersData) ? usersData.slice(0, 3) : [];
   const suggestedGroups = [
     { name: 'Gamers Hub', members: '12.5K عضو' },

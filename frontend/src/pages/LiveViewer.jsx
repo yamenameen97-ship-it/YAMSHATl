@@ -144,6 +144,10 @@ export default function LiveViewer() {
   const [comments, setComments] = useState([]);
   const [commentText, setCommentText] = useState('');
   const [showGiftPanel, setShowGiftPanel] = useState(false);
+  // ✅ FIX (2026-06-11): إضافة state لفتح/طي قسم التعليقات في فورم عرض البث.
+  // قبلاً: زر التعليق بلا onClick → الضغط لا يفعل شيئاً.
+  // افتراضياً مفتوح في وضع الموبايل (تجربة TikTok/Instagram Live).
+  const [showComments, setShowComments] = useState(true);
 
   // الحالات الأخرى
   const [floatingHearts, setFloatingHearts] = useState([]);
@@ -956,7 +960,12 @@ export default function LiveViewer() {
                     <span>💜</span>
                     <span className="mlv-mobile-action-count">{formatLiveNum(streamStats.hearts)}</span>
                   </button>
-                  <button className="mlv-mobile-action-btn mlv-mobile-action-comment" aria-label="تعليقات">
+                  <button
+                    className={`mlv-mobile-action-btn mlv-mobile-action-comment${showComments ? ' is-active' : ''}`}
+                    onClick={() => setShowComments((v) => !v)}
+                    aria-label="تعليقات"
+                    aria-expanded={showComments}
+                  >
                     <span>💬</span>
                     <span className="mlv-mobile-action-count">{formatLiveNum(streamStats.comments)}</span>
                   </button>
@@ -973,7 +982,7 @@ export default function LiveViewer() {
             </div>
 
             {/* Comments Section */}
-            {!streamEnded ? (
+            {!streamEnded && showComments ? (
               <div className="mlv-mobile-comments-section">
                 <div className="mlv-mobile-comments-list">
                   {comments.length > 0 ? (

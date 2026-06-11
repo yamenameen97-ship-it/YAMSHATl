@@ -114,7 +114,12 @@ def _ensure_livekit_room(room_name: str) -> None:
         msg = str(exc).lower()
         if 'already exists' in msg or '409' in msg or 'duplicate' in msg:
             return
-        logger.warning('LiveKit ensure_room failed (will rely on lazy create): %s', exc)
+        # ✅ FIX (2026-06-11): رفع مستوى اللوغ إلى ERROR مع تفاصيل كافية
+        # لأن فشل إنشاء الغرفة يؤدي مباشرة إلى "المشاهد يرى صفحة بلا صورة".
+        logger.error(
+            'LiveKit ensure_room FAILED for room=%s (viewers will see blank screen!): %s',
+            room_name, exc,
+        )
 
 
 def _get_or_create_wallet(db: Session, user_id: int) -> UserWallet:
@@ -706,9 +711,25 @@ def create_live_room(
             detail=f'Failed to create live room: {exc}'
         )
 
-    # ✅ FIX (2026-06-10): إنشاء غرفة LiveKit الحقيقية الآن
+    # ✅ FIX (2026-06-10/11): إنشاء غرفة LiveKit الحقيقية الآن
     # (قبلاً كنا نعتمد lazy-create، مما تسبب في فشل اتصال المشاهد عند سرعة الانضمام).
-    _ensure_livekit_room(lk_room_name)
+    # تحديث 2026-06-11: إذا فشل إنشاء الغرفة نجعل stream_status='setup_required'
+    # حتى لا يظهر البث كـactive للمشاهدين.
+    ensure_ok = True
+    try:
+        _ensure_livekit_room(lk_room_name)
+    except Exception as room_exc:  # noqa: BLE001
+        ensure_ok = False
+        logger.error('Failed to ensure LiveKit room for %s: %s', lk_room_name, room_exc)
+
+    if not ensure_ok:
+        try:
+            record.stream_status = 'setup_required'
+            db.add(record)
+            db.commit()
+            db.refresh(record)
+        except Exception:
+            db.rollback()
 
     return _serialize_record(db, record)
 
@@ -836,10 +857,37 @@ def get_live_token(
             detail=f'Failed to generate LiveKit token: {exc}',
         )
 
+    # ✅ FIX (2026-06-11): ضمان إرجاع livekit_url و livekit_room غير فارغين
+    # على الإطلاق — وإلاّ الفرونت يعرض "جارٍ الاتصال بالبث..." بلا فيديو.
+    # كما نستخدم فرصة أخيرة لتصحيح أي سجل قديم حفظ NULL
+    # قبل إصلاح الباك-إند.
+    effective_url = (record.livekit_url or settings.LIVEKIT_URL or '').strip()
+    effective_room = (record.livekit_room or '').strip()
+    if not effective_url or not effective_room:
+        logger.error(
+            '[live/token] empty url/room for room_id=%s url=%r room=%r',
+            room_id, effective_url, effective_room,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail='LiveKit URL is not configured on the server. Set LIVEKIT_URL.',
+        )
+
+    # تحديث السجل إن كان livekit_url فارغاً (باك-فيل)
+    if not record.livekit_url and settings.LIVEKIT_URL:
+        try:
+            record.livekit_url = settings.LIVEKIT_URL
+            db.add(record)
+            db.commit()
+        except Exception:
+            db.rollback()
+
     return {
         'token': jwt_token,
-        'livekit_url': record.livekit_url or settings.LIVEKIT_URL or '',
-        'livekit_room': record.livekit_room,
+        'livekit_url': effective_url,
+        'livekit_room': effective_room,
+        'url': effective_url,           # alias لتوافق عميل الموبايل
+        'room': effective_room,         # alias لتوافق عميل الموبايل
         'role': 'host' if is_host else 'viewer',
         'identity': str(current_user.username or f"user-{current_user.id}"),
         'room_id': record.id,

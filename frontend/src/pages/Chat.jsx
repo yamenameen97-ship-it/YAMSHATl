@@ -800,9 +800,15 @@ export default function Chat() {
           }
           .yam-chat-input-wrap {
             flex-shrink: 0;
-            position: relative;
-            z-index: 20;
-            box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            bottom: 0;
+            z-index: 50;
+            border-radius: 26px 26px 0 0;
+            border-bottom: none !important;
+            padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px));
+            box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.32);
+            transform: translateZ(0);
+            will-change: transform;
           }
           .yam-stage-top-search {
             min-height: 60px;
@@ -1347,13 +1353,18 @@ export default function Chat() {
             50% { transform: translateY(-4px); opacity: 1; }
           }
           .yam-chat-input-wrap {
-            padding: 10px;
+            padding: 12px;
             position: sticky;
             bottom: 0;
-            z-index: 6;
-            background: linear-gradient(180deg, rgba(4,7,18,0.74), rgba(4,7,18,0.97));
-            backdrop-filter: blur(12px);
-            padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+            z-index: 50;
+            background: linear-gradient(180deg, rgba(4,7,18,0.86), rgba(4,7,18,0.99));
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+            border-radius: 26px 26px 0 0;
+            box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.34), 0 -2px 0 rgba(167, 139, 250, 0.08);
+            padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px));
+            transform: translateZ(0);
+            will-change: transform;
           }
           .yam-scroll-jump {
             position: sticky;
@@ -1599,9 +1610,9 @@ export default function Chat() {
             .yam-messages-area {
               border-radius: 0;
               border: none;
-              padding: 14px 12px calc(118px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px));
+              padding: 14px 12px calc(150px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px));
               scroll-padding-top: 72px;
-              scroll-padding-bottom: 136px;
+              scroll-padding-bottom: 170px;
               background:
                 radial-gradient(circle at top right, rgba(124,58,237,0.05), transparent 30%),
                 radial-gradient(circle at bottom left, rgba(59,130,246,0.04), transparent 30%),
@@ -1610,16 +1621,19 @@ export default function Chat() {
             .yam-chat-input-wrap {
               position: sticky;
               bottom: 0;
-              z-index: 24;
-              border-radius: 0;
+              z-index: 60;
+              border-radius: 22px 22px 0 0;
               border-left: none;
               border-right: none;
               border-bottom: none;
-              padding: 8px 8px;
-              padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
-              background: linear-gradient(180deg, rgba(7,10,24,0.88), rgba(5,8,18,0.98));
-              backdrop-filter: blur(16px);
-              box-shadow: 0 -14px 32px rgba(0,0,0,0.28);
+              padding: 10px 10px;
+              padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px));
+              background: linear-gradient(180deg, rgba(7,10,24,0.94), rgba(5,8,18,0.99));
+              backdrop-filter: blur(20px);
+              -webkit-backdrop-filter: blur(20px);
+              box-shadow: 0 -16px 36px rgba(0,0,0,0.42), 0 -2px 0 rgba(167, 139, 250, 0.1);
+              transform: translateZ(0);
+              will-change: transform;
             }
             .yam-message-stack {
               max-width: 82%;

@@ -115,15 +115,25 @@
   background: rgba(139, 92, 246, 0.8);
 }
 
-/* تثبيت منطقة الكتابة في الأسفل */
+/* تثبيت منطقة الكتابة في الأسفل - مرفوع وثابت ولا يختفي */
 .yam-chat-input-wrap {
   flex-shrink: 0;
-  border-radius: 26px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: linear-gradient(180deg, rgba(7, 10, 24, 0.95), rgba(4, 7, 18, 0.98));
-  position: relative;
-  z-index: 20;
-  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1);
+  border-radius: 26px 26px 0 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: none;
+  background: linear-gradient(180deg, rgba(7, 10, 24, 0.97), rgba(4, 7, 18, 0.99));
+  position: sticky;
+  bottom: 0;
+  inset-inline-start: 0;
+  inset-inline-end: 0;
+  z-index: 50;
+  /* رفع الهيدر السفلي وزيادة المسافة عن الأسفل لمنع الاختفاء خلف شريط النظام */
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px));
+  box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.32), 0 -2px 0 rgba(167, 139, 250, 0.08);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  transform: translateZ(0); /* تفعيل GPU layer لمنع الاختفاء */
+  will-change: transform;
 }
 
 /* تحسين الرسائل */
@@ -269,12 +279,12 @@
 @media (max-width: 768px) {
   .yam-chat-stage {
     gap: 10px;
-    padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+    padding: 12px 12px 0;
   }
   
   .yam-messages-area {
-    padding: 12px 12px calc(12px + var(--yam-keyboard-offset, 0px));
-    scroll-padding-bottom: 100px;
+    padding: 12px 12px calc(140px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px));
+    scroll-padding-bottom: 160px;
   }
   
   .yam-stage-top-search {
@@ -284,6 +294,18 @@
   
   .yam-chat-stage-header {
     padding: 12px 12px;
+  }
+
+  /* تثبيت قوي على الموبايل: رفع الهيدر السفلي وضمان عدم اختفائه */
+  .yam-chat-input-wrap {
+    position: sticky;
+    bottom: 0;
+    z-index: 60;
+    border-radius: 22px 22px 0 0;
+    margin-inline: -12px;
+    margin-bottom: 0;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px));
+    box-shadow: 0 -14px 32px rgba(0, 0, 0, 0.42);
   }
 }
 

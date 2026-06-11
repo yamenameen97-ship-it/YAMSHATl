@@ -488,10 +488,23 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
           border-radius: inherit;
           background: linear-gradient(90deg, #8b5cf6, #4f46e5);
         }
+        .yam-composer-textrow {
+          display: flex;
+          align-items: stretch;
+          width: 100%;
+          min-width: 0;
+        }
+        .yam-composer-textrow .yam-input-frame {
+          flex: 1 1 100%;
+          width: 100%;
+        }
         .yam-composer-row {
-          align-items: flex-end;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
           flex-wrap: nowrap;
           min-width: 0;
+          gap: 8px;
         }
         .yam-composer-actions {
           display: inline-flex;
@@ -499,6 +512,7 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
           gap: 8px;
           position: relative;
           flex-shrink: 0;
+          flex-wrap: wrap;
         }
         .yam-action-btn,
         .yam-emoji-btn,
@@ -620,20 +634,29 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
             gap: 6px;
             flex-wrap: nowrap !important;
             align-items: center;
+            justify-content: space-between;
             min-width: 0;
             width: 100%;
           }
           .yam-composer-actions {
             width: auto;
-            justify-content: flex-end;
+            justify-content: flex-start;
             flex-shrink: 0;
             gap: 4px;
           }
+          .yam-composer-textrow {
+            width: 100%;
+            margin-bottom: 6px;
+          }
+          .yam-composer-textrow .yam-input-frame {
+            width: 100%;
+            flex: 1 1 100%;
+          }
           .yam-input-frame {
-            width: auto;
-            flex: 1 1 0%;
+            width: 100%;
+            flex: 1 1 100%;
             min-width: 0;
-            padding: 4px 10px;
+            padding: 6px 12px;
             border-radius: 22px;
             align-items: center;
           }
@@ -770,6 +793,27 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
         />
       ) : null}
 
+      {/* صف النص: textarea مستقل أعلى الأزرار (طلب المستخدم) */}
+      <div className="yam-composer-textrow">
+        <div className="yam-input-frame">
+          <textarea
+            ref={textareaRef}
+            disabled={composerDisabled}
+            placeholder={disabled ? 'المحادثة معطلة حالياً' : peer ? `اكتب رسالة إلى ${peer}...` : 'اكتب رسالة...'}
+            value={text}
+            rows={1}
+            onChange={(event) => handleTyping(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                handleSend();
+              }
+            }}
+          />
+        </div>
+      </div>
+
+      {/* صف الأزرار: الإيموجي + المرفق + المايك + الإرسال */}
       <div className="yam-composer-row">
         <div className="yam-composer-actions" ref={emojiPickerRef}>
           <button
@@ -812,31 +856,14 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
           </button>
         </div>
 
-        <div className="yam-input-frame">
-          <textarea
-            ref={textareaRef}
-            disabled={composerDisabled}
-            placeholder={disabled ? 'المحادثة معطلة حالياً' : peer ? `اكتب رسالة إلى ${peer}...` : 'اكتب رسالة...'}
-            value={text}
-            rows={1}
-            onChange={(event) => handleTyping(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                handleSend();
-              }
-            }}
-          />
-
-          <button
-            type="button"
-            className="yam-send-btn"
-            onClick={handleSend}
-            disabled={composerDisabled || sending || (!text.trim() && attachments.length === 0)}
-          >
-            {sending ? '...' : compact ? '➤' : 'إرسال'}
-          </button>
-        </div>
+        <button
+          type="button"
+          className="yam-send-btn"
+          onClick={handleSend}
+          disabled={composerDisabled || sending || (!text.trim() && attachments.length === 0)}
+        >
+          {sending ? '...' : compact ? '➤' : 'إرسال'}
+        </button>
       </div>
 
       <div className="yam-composer-footer">

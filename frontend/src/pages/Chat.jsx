@@ -609,7 +609,7 @@ export default function Chat() {
 
   return (
     <MainLayout hideNav lockScroll>
-      <section className="yam-conversation-screen" dir="rtl">
+      <section className="yam-conversation-screen" dir="rtl" style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
         <style>{`
           .yam-conversation-screen {
             min-height: 100%;
@@ -840,11 +840,17 @@ export default function Chat() {
             align-items: center;
             justify-content: space-between;
             gap: 14px;
-            padding: 16px 18px;
+            padding: 14px 18px;
             flex-shrink: 0;
-            position: relative;
-            z-index: 20;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            top: 0;
+            z-index: 60;
+            background: linear-gradient(180deg, rgba(7,10,24,0.97), rgba(4,7,18,0.95));
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            min-height: 64px;
           }
           .yam-chat-stage-peer {
             display: flex;
@@ -885,7 +891,26 @@ export default function Chat() {
             display: flex;
             align-items: center;
             gap: 8px;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
+          }
+          .yam-chat-stage-actions .yam-stage-icon {
+            width: 40px;
+            height: 40px;
+            min-width: 40px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.08);
+            background: rgba(15,23,42,0.6);
+            color: #e5e7eb;
+            font-size: 18px;
+            cursor: pointer;
+            transition: transform .15s ease, background .15s ease;
+          }
+          .yam-chat-stage-actions .yam-stage-icon:hover {
+            background: rgba(124,58,237,0.18);
+            transform: translateY(-1px);
           }
           .yam-chat-details-drawer {
             padding: 16px;
@@ -933,11 +958,11 @@ export default function Chat() {
             overscroll-behavior-y: contain;
             -webkit-overflow-scrolling: touch;
             scroll-behavior: smooth;
-            scroll-padding-bottom: 132px;
+            scroll-padding-bottom: 140px;
             scrollbar-gutter: stable both-edges;
             scrollbar-width: thin;
             scrollbar-color: rgba(139, 92, 246, 0.5) rgba(255,255,255,0.04);
-            padding: 18px 18px calc(26px + var(--yam-keyboard-offset, 0px));
+            padding: 18px 18px calc(96px + var(--yam-keyboard-offset, 0px));
             display: flex;
             flex-direction: column;
             gap: 6px;
@@ -947,6 +972,7 @@ export default function Chat() {
               radial-gradient(circle at bottom left, rgba(59,130,246,0.05), transparent 22%),
               linear-gradient(180deg, rgba(7,10,24,0.95), rgba(4,7,18,0.98));
             contain: layout style paint;
+            direction: rtl;
           }
           .yam-day-divider {
             align-self: center;
@@ -1353,18 +1379,33 @@ export default function Chat() {
             50% { transform: translateY(-4px); opacity: 1; }
           }
           .yam-chat-input-wrap {
-            padding: 12px;
+            padding: 12px 14px;
             position: sticky;
             bottom: 0;
-            z-index: 50;
-            background: linear-gradient(180deg, rgba(4,7,18,0.86), rgba(4,7,18,0.99));
-            backdrop-filter: blur(18px);
-            -webkit-backdrop-filter: blur(18px);
+            inset-inline: 0;
+            z-index: 70;
+            background: linear-gradient(180deg, rgba(4,7,18,0.92), rgba(4,7,18,1));
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             border-radius: 26px 26px 0 0;
-            box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.34), 0 -2px 0 rgba(167, 139, 250, 0.08);
+            border-top: 1px solid rgba(167,139,250,0.14);
+            box-shadow: 0 -14px 34px rgba(0, 0, 0, 0.42), 0 -2px 0 rgba(167, 139, 250, 0.10);
             padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px));
             transform: translateZ(0);
             will-change: transform;
+            min-height: 72px;
+            display: flex;
+            align-items: center;
+          }
+          .yam-chat-input-wrap > * {
+            width: 100%;
+            min-width: 0;
+          }
+          .yam-chat-input-wrap textarea,
+          .yam-chat-input-wrap input[type="text"] {
+            min-height: 44px;
+            font-size: 16px;
+            line-height: 1.5;
           }
           .yam-scroll-jump {
             position: sticky;
@@ -1498,18 +1539,9 @@ export default function Chat() {
             .yam-chat-sidebar {
               display: none;
             }
-            /* show mobile topbar */
+            /* hide duplicate mobile topbar — using yam-chat-stage-header as the unified fixed header */
             .yam-mobile-topbar {
-              display: flex;
-              align-items: center;
-              gap: 10px;
-              padding: 10px 14px;
-              padding-top: calc(10px + env(safe-area-inset-top, 0px));
-              background: linear-gradient(180deg, rgba(7,10,24,0.98), rgba(5,8,18,0.96));
-              border-bottom: 1px solid rgba(255,255,255,0.06);
-              position: sticky;
-              top: 0;
-              z-index: 20;
+              display: none !important;
             }
             .yam-mobile-back-btn {
               width: 38px;
@@ -1565,29 +1597,61 @@ export default function Chat() {
               flex-shrink: 0;
             }
             .yam-mobile-action-btn {
-              width: 38px;
-              height: 38px;
+              width: 40px;
+              height: 40px;
+              min-width: 40px;
+              min-height: 40px;
               border-radius: 12px;
-              border: none;
-              background: transparent;
+              border: 1px solid rgba(255,255,255,0.06);
+              background: rgba(15,23,42,0.55);
               color: #a78bfa;
               font-size: 18px;
               display: grid;
               place-items: center;
               cursor: pointer;
+              transition: transform .15s ease, background .15s ease;
             }
             .yam-mobile-action-btn:hover {
               background: rgba(124,58,237,0.12);
             }
-            /* hide desktop header & top search on mobile */
-            .yam-stage-top-search,
-            .yam-chat-stage-header {
+            /* keep header visible & fixed on mobile */
+            .yam-stage-top-search {
               display: none !important;
+            }
+            .yam-chat-stage-header {
+              display: flex !important;
+              position: sticky !important;
+              top: 0;
+              inset-inline: 0;
+              z-index: 70;
+              padding: 12px 14px;
+              min-height: 60px;
+              border-radius: 0;
+              border-left: none;
+              border-right: none;
+              border-top: none;
+              border-bottom: 1px solid rgba(255,255,255,0.08);
+              background: linear-gradient(180deg, rgba(7,10,24,0.98), rgba(4,7,18,0.96));
+              backdrop-filter: blur(20px);
+              -webkit-backdrop-filter: blur(20px);
+              box-shadow: 0 6px 18px rgba(0,0,0,0.34);
+            }
+            .yam-chat-stage-header .yam-chat-stage-peer-copy strong {
+              font-size: 17px;
+            }
+            .yam-chat-stage-header .yam-chat-stage-peer-copy span {
+              font-size: 12px;
+            }
+            .yam-chat-stage-actions .yam-stage-icon {
+              width: 38px;
+              height: 38px;
+              min-width: 38px;
+              font-size: 16px;
             }
             .yam-chat-stage {
               padding: 0;
               gap: 0;
-              grid-template-rows: auto auto minmax(0, 1fr) auto;
+              grid-template-rows: auto minmax(0, 1fr) auto;
               height: 100%;
               min-height: 0;
             }
@@ -1621,19 +1685,39 @@ export default function Chat() {
             .yam-chat-input-wrap {
               position: sticky;
               bottom: 0;
-              z-index: 60;
-              border-radius: 22px 22px 0 0;
+              inset-inline: 0;
+              z-index: 80;
+              border-radius: 18px 18px 0 0;
               border-left: none;
               border-right: none;
               border-bottom: none;
-              padding: 10px 10px;
+              border-top: 1px solid rgba(167,139,250,0.14);
+              padding: 10px 12px;
               padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px));
-              background: linear-gradient(180deg, rgba(7,10,24,0.94), rgba(5,8,18,0.99));
-              backdrop-filter: blur(20px);
-              -webkit-backdrop-filter: blur(20px);
-              box-shadow: 0 -16px 36px rgba(0,0,0,0.42), 0 -2px 0 rgba(167, 139, 250, 0.1);
+              background: linear-gradient(180deg, rgba(7,10,24,0.96), rgba(4,7,18,1));
+              backdrop-filter: blur(22px);
+              -webkit-backdrop-filter: blur(22px);
+              box-shadow: 0 -16px 36px rgba(0,0,0,0.5), 0 -2px 0 rgba(167, 139, 250, 0.12);
               transform: translateZ(0);
               will-change: transform;
+              min-height: 64px;
+              display: flex;
+              align-items: center;
+            }
+            .yam-chat-input-wrap textarea,
+            .yam-chat-input-wrap input[type="text"] {
+              min-height: 44px;
+              max-height: 120px;
+              font-size: 16px; /* prevent iOS zoom */
+            }
+            .yam-chat-input-wrap button {
+              min-width: 40px;
+              min-height: 40px;
+              border-radius: 12px;
+            }
+            .yam-messages-area {
+              padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px)) !important;
+              scroll-padding-bottom: 120px !important;
             }
             .yam-message-stack {
               max-width: 82%;
@@ -1720,29 +1804,8 @@ export default function Chat() {
           </div>
         </aside>
 
-        <main className="yam-chat-stage">
-          {/* Mobile-only topbar (matches reference mobile design) */}
-          <div className="yam-mobile-topbar">
-            <button type="button" className="yam-mobile-back-btn" onClick={() => navigate('/inbox')} aria-label="رجوع">←</button>
-            <button type="button" className="yam-mobile-peer-button" onClick={openChatSettings} aria-label="إعدادات المحادثة">
-              <div className="yam-mobile-peer-info">
-                <div className="yam-avatar-wrap">
-                  <Avatar name={peer} src={peerDetails.avatar} size={40} showStatus status={isOnline ? 'online' : 'offline'} />
-                </div>
-                <div className="yam-mobile-peer-copy">
-                  <strong>{peer}</strong>
-                  <span className={isOnline ? 'online' : ''}>
-                    {isTyping ? 'يكتب الآن...' : formatLastSeen(lastSeen, isOnline)}
-                  </span>
-                </div>
-              </div>
-            </button>
-            <div className="yam-mobile-actions">
-              <button type="button" className="yam-mobile-action-btn" onClick={() => setCallMode('voice')} aria-label="اتصال">📞</button>
-              <button type="button" className="yam-mobile-action-btn" onClick={() => setCallMode('video')} aria-label="فيديو">🎥</button>
-              <button type="button" className="yam-mobile-action-btn" onClick={() => setShowDetailsDrawer((prev) => !prev)} aria-label="المزيد">⋮</button>
-            </div>
-          </div>
+        <main className="yam-chat-stage" dir="rtl">
+          {/* Mobile topbar disabled — using unified yam-chat-stage-header (fixed on top) */}
 
           <div className="yam-stage-top-search">
             <span>⌕</span>

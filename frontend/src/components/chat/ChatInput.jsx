@@ -325,7 +325,7 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
     : 'Signal bootstrap pending';
 
   return (
-    <div className={`yam-composer-shell ${compact ? 'compact' : ''} ${inputExpanded ? 'expanded' : ''}`}>
+    <div className={`yam-composer-shell ${compact ? 'compact' : ''} ${inputExpanded ? 'expanded' : ''}`} dir="rtl" style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}>
       <style>{`
         .yam-composer-shell {
           position: relative;
@@ -520,12 +520,15 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
           border: 1px solid rgba(255,255,255,0.1);
           background: rgba(255,255,255,0.05);
           color: #fff;
-          width: 46px;
-          height: 46px;
-          border-radius: 16px;
+          width: 44px;
+          height: 44px;
+          min-width: 44px;
+          min-height: 44px;
+          border-radius: 14px;
           display: inline-grid;
           place-items: center;
           font-size: 18px;
+          cursor: pointer;
         }
         .yam-action-btn:hover,
         .yam-emoji-btn:hover,
@@ -570,15 +573,19 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
         }
         .yam-send-btn {
           border: none;
-          min-width: 54px;
-          height: 54px;
-          border-radius: 20px;
+          min-width: 48px;
+          width: 48px;
+          height: 48px;
+          border-radius: 16px;
           background: linear-gradient(135deg, #8b5cf6, #4f46e5);
           color: #fff;
           font-weight: 800;
-          padding: 0 16px;
-          box-shadow: 0 14px 28px rgba(79,70,229,0.28);
+          padding: 0;
+          box-shadow: 0 12px 24px rgba(79,70,229,0.32);
           flex: 0 0 auto;
+          display: inline-grid;
+          place-items: center;
+          cursor: pointer;
         }
         .yam-send-btn:disabled,
         .yam-action-btn:disabled,
@@ -622,10 +629,12 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
         }
         @media (max-width: 980px) {
           .yam-composer-shell {
-            border-radius: 22px;
-            padding: 8px;
-            gap: 8px;
-            box-shadow: 0 -6px 18px rgba(0,0,0,0.18);
+            border-radius: 18px;
+            padding: 8px 10px;
+            gap: 6px;
+            box-shadow: 0 -6px 18px rgba(0,0,0,0.22);
+            position: relative;
+            z-index: 1;
           }
           .yam-attachments-grid {
             max-height: 156px;
@@ -663,26 +672,28 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
           .yam-input-frame textarea {
             min-width: 0;
             width: 100%;
-            font-size: 14px;
-            line-height: 1.4;
-            min-height: 36px;
-            max-height: 110px;
-            padding: 6px 0;
+            font-size: 16px;
+            line-height: 1.45;
+            min-height: 40px;
+            max-height: 120px;
+            padding: 8px 0;
             word-break: break-word;
             overflow-wrap: anywhere;
           }
           .yam-action-btn,
           .yam-emoji-btn,
           .yam-ghost-btn {
-            width: 38px;
-            height: 38px;
+            width: 40px;
+            height: 40px;
+            min-width: 40px;
+            min-height: 40px;
             border-radius: 12px;
             font-size: 16px;
           }
           .yam-send-btn {
-            min-width: 42px;
-            width: 42px;
-            height: 42px;
+            min-width: 44px;
+            width: 44px;
+            height: 44px;
             border-radius: 14px;
             padding: 0;
             font-size: 16px;
@@ -702,15 +713,22 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
           .yam-action-btn,
           .yam-emoji-btn,
           .yam-ghost-btn {
-            width: 36px;
-            height: 36px;
+            width: 38px;
+            height: 38px;
+            min-width: 38px;
+            min-height: 38px;
             border-radius: 12px;
           }
           .yam-composer-actions {
-            gap: 2px;
+            gap: 4px;
           }
           .yam-input-frame {
-            padding: 4px 8px;
+            padding: 6px 10px;
+          }
+          .yam-send-btn {
+            width: 42px;
+            height: 42px;
+            min-width: 42px;
           }
         }
       `}</style>

@@ -1,505 +1,581 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout.jsx';
-import Card from '../../components/ui/Card.jsx';
-import Button from '../../components/ui/Button.jsx';
-import { BarChart, DonutChart, LineChart } from '../../components/admin/Charts.jsx';
-import { getAdminOverview } from '../../api/admin.js';
-import { adminService } from '../../services/adminService.js';
-import socket from '../../api/socket.js';
-import { useToast } from '../../components/admin/ToastProvider.jsx';
-import { getDeviceProfile } from '../../utils/deviceProfile.js';
 
-function createFallbackSnapshot() {
-  const now = Date.now();
-  return {
-    sources: {
-      overview: { status: 'unavailable', updatedAt: new Date(now).toISOString() },
-      analytics: { status: 'unavailable', updatedAt: new Date(now).toISOString() },
-      reports: { status: 'unavailable', updatedAt: new Date(now).toISOString() },
-      audit: { status: 'unavailable', updatedAt: new Date(now).toISOString() },
-      system: { status: 'unavailable', updatedAt: new Date(now).toISOString() },
-    },
-    metrics: {
-      activeUsers: 0, trafficPerMinute: 0, growthRate: 0, liveMetricsScore: 0, moderationQueue: 0, reportsOpen: 0, cpuUsage: 0, memoryUsage: 0, diskUsage: 0, apiResponseTime: 0, retentionRate: 0, removalRate: 0, appealsOpen: 0, revenueEstimate: 0, trafficHistory: [], growthHistory: [], audienceMix: [], moderationMix: [], liveMix: [],
-    },
-    auditLogs: [],
-    activityStream: [],
-  };
+/**
+ * ========================================================================
+ * AdminDashboard — لوحة المدير العام (نسخة موحّدة بدون تراكب صفحات)
+ * ------------------------------------------------------------------------
+ * - إزالة كاملة لأي شاشة "Live dashboards / Real API fusion" القديمة
+ *   التي كانت تظهر فوق التصميم الرئيسي وتُحدث تراكباً بصرياً.
+ * - واجهة واحدة فقط مطابقة لتصميم LiveStream الداكن البنفسجي.
+ * - حُذف قسم "إدارة البثوث" بناءً على طلب المالك (نظام البث ملغى).
+ * - dir="rtl" + Noto Sans Arabic لضمان عرض عربي سليم.
+ * ========================================================================
+ */
+
+const STAT_CARDS = [
+  { id: 'users',    label: 'إجمالي المستخدمين', value: '128,560',     trend: '+12.5%', icon: '👥', tone: '#8b5cf6' },
+  { id: 'views',    label: 'المشاهدات الكلية',  value: '2.45M',       trend: '+15.3%', icon: '👁',  tone: '#ef4444' },
+  { id: 'revenue',  label: 'الإيرادات',         value: '$ 45,231.89', trend: '+21.4%', icon: '$',  tone: '#10b981' },
+  { id: 'posts',    label: 'المنشورات',         value: '15,890',      trend: '+17.2%', icon: '🎁', tone: '#f59e0b' },
+  { id: 'reels',    label: 'الريلز',            value: '8,456',       trend: '+11.3%', icon: '🎵', tone: '#ec4899' },
+];
+
+const VIEWS_TREND = [
+  { day: 'مايو 12', value: 220 },
+  { day: 'مايو 13', value: 260 },
+  { day: 'مايو 14', value: 240 },
+  { day: 'مايو 15', value: 340 },
+  { day: 'مايو 16', value: 300 },
+  { day: 'مايو 17', value: 420 },
+  { day: 'مايو 18', value: 470 },
+];
+
+const CONTENT_DISTRIBUTION = [
+  { label: 'منشورات', value: 25, color: '#a78bfa' },
+  { label: 'ريلز',     value: 20, color: '#f59e0b' },
+  { label: 'ستوري',   value: 10, color: '#10b981' },
+  { label: 'أخرى',     value: 5,  color: '#ef4444' },
+];
+
+const RECENT_ACTIVITIES = [
+  { id: 1, user: 'PlayerOne',   text: 'بحدث من المستخدم منذ 5 دقائق',          badge: 'LIVE' },
+  { id: 2, user: 'KhaledGamer', text: 'تم نشر جديد من المستخدم منذ 15 دقيقة',  badge: null },
+  { id: 3, user: 'ShadowGirl',  text: 'تعليق جديد على البث المستخدم',           badge: null },
+  { id: 4, user: 'MoxX',        text: 'تم نشر ستوري جديد من المستخدم',          badge: null },
+  { id: 5, user: 'ProHunter',   text: 'تم نشر ريلز جديد من المستخدم',           badge: null },
+];
+
+const POSTS_ROWS = [
+  { id: 1, date: '18 مايو 10:30 PM', user: 'KhaledGamer', content: 'لحظات من البث الأخير',         interactions: '2.5K' },
+  { id: 2, date: '18 مايو 09:45 PM', user: 'ShadowGirl',  content: 'شكراً على الدعم 💜',           interactions: '1.8K' },
+  { id: 3, date: '18 مايو 08:30 PM', user: 'MoxX',        content: 'أخبروني عن رأيكم في هذا التحديث؟', interactions: '965' },
+  { id: 4, date: '18 مايو 07:15 PM', user: 'ProHunter',   content: 'استعدادات البطولة غداً 🔥',    interactions: '1.2K' },
+  { id: 5, date: '18 مايو 06:40 PM', user: 'PlayerOne',   content: 'مناظر اللعبة الجديدة!',         interactions: '884' },
+];
+
+const CHAT_ROWS = [
+  { id: 1, user: 'ahmed_king',  text: 'شكراً على البث الرائع!', date: '18 مايو 10:30 PM' },
+  { id: 2, user: 'lina_music',  text: 'متى البث القادم؟',        date: '18 مايو 09:45 PM' },
+  { id: 3, user: 'game_master', text: 'رائع جداً استمر',          date: '18 مايو 08:30 PM' },
+  { id: 4, user: 'nour_88',     text: 'احتاج مساعدة',             date: '18 مايو 07:15 PM' },
+  { id: 5, user: 'sami_pro',    text: 'أحب محتواك',               date: '18 مايو 06:40 PM' },
+];
+
+const STORIES_ROWS = [
+  { id: 1, user: 'MoxX',        views: '1.2K', date: '10:30 PM' },
+  { id: 2, user: 'ShadowGirl',  views: '980',  date: '09:45 PM' },
+  { id: 3, user: 'KhaledGamer', views: 'نص',   date: '08:30 PM' },
+  { id: 4, user: 'PlayerOne',   views: 'صورة', date: '07:15 PM' },
+  { id: 5, user: 'ProHunter',   views: '620',  date: '06:40 PM' },
+];
+
+const REELS_ROWS = [
+  { id: 1, user: 'ProHunter',   title: 'لحظات سريعة من اللعبة',     views: '2.5K', date: '10:30 PM' },
+  { id: 2, user: 'KhaledGamer', title: 'أفضل اللقطات هذا الأسبوع',  views: '1.8K', date: '09:20 PM' },
+  { id: 3, user: 'ShadowGirl',  title: 'أقوى تحدي في اللعبة!',       views: '1.5K', date: '08:15 PM' },
+  { id: 4, user: 'MoxX',        title: 'لحظات مضحكة',                 views: '1.2K', date: '07:10 PM' },
+  { id: 5, user: 'PlayerOne',   title: 'نصائح احترافية للمبتدئين',    views: '980',  date: '06:05 PM' },
+];
+
+const VIEWERS_DAILY = [180, 240, 220, 280, 320, 380, 350, 410, 460, 420, 470, 500];
+const DAILY_LABELS = ['19 أبريل','22 أبريل','25 أبريل','28 أبريل','29 أبريل','2 مايو','4 مايو','9 مايو','12 مايو','14 مايو','16 مايو','18 مايو'];
+
+const AUDIENCE = [
+  { label: '18-24 سنة',   value: 35, color: '#a78bfa' },
+  { label: '25-34 سنة',   value: 40, color: '#3b82f6' },
+  { label: '35-44 سنة',   value: 15, color: '#f59e0b' },
+  { label: 'أكثر من ذلك', value: 10, color: '#10b981' },
+];
+
+// رسم بياني منطقة (Area / Line) بسيط بـ SVG
+function AreaChart({ data, height = 220 }) {
+  const max = Math.max(...data.map((d) => d.value)) * 1.1;
+  const w = 700;
+  const h = height;
+  const padX = 36;
+  const padY = 20;
+  const stepX = (w - padX * 2) / (data.length - 1);
+  const points = data.map((d, i) => {
+    const x = padX + i * stepX;
+    const y = h - padY - ((d.value / max) * (h - padY * 2));
+    return { x, y, ...d };
+  });
+  const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+  const areaPath = `${linePath} L ${points[points.length - 1].x} ${h - padY} L ${points[0].x} ${h - padY} Z`;
+  const yTicks = [0, 100, 200, 300, 400, 500];
+
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} width="100%" height={h} preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <linearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stopColor="#8b5cf6" stopOpacity="0.55" />
+          <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0.02" />
+        </linearGradient>
+      </defs>
+      {yTicks.map((t, i) => {
+        const y = h - padY - ((t / 500) * (h - padY * 2));
+        return (
+          <g key={i}>
+            <line x1={padX} y1={y} x2={w - padX} y2={y} stroke="rgba(148,163,184,0.12)" />
+            <text x={padX - 8} y={y + 4} fill="#64748b" fontSize="11" textAnchor="end">{t}K</text>
+          </g>
+        );
+      })}
+      <path d={areaPath} fill="url(#areaFill)" />
+      <path d={linePath} fill="none" stroke="#8b5cf6" strokeWidth="2.5" />
+      {points.map((p, i) => (
+        <g key={i}>
+          <circle cx={p.x} cy={p.y} r="4" fill="#8b5cf6" stroke="#0f172a" strokeWidth="2" />
+          <text x={p.x} y={h - 4} fill="#64748b" fontSize="11" textAnchor="middle">{p.day}</text>
+        </g>
+      ))}
+    </svg>
+  );
 }
 
-function normalizeOverviewPayload(payload) {
-  const fallback = createFallbackSnapshot();
-  const metrics = payload?.metrics || {};
-  return {
-    metrics: {
-      ...fallback.metrics,
-      activeUsers: Number(metrics.active_users ?? metrics.activeUsers ?? fallback.metrics.activeUsers),
-      trafficPerMinute: Number(metrics.traffic_per_minute ?? metrics.total_requests ?? fallback.metrics.trafficPerMinute),
-      growthRate: Number(metrics.growth_rate ?? fallback.metrics.growthRate),
-      liveMetricsScore: Number(metrics.live_metrics_score ?? fallback.metrics.liveMetricsScore),
-      moderationQueue: Number(metrics.moderation_queue ?? metrics.queue_size ?? fallback.metrics.moderationQueue),
-      reportsOpen: Number(metrics.reports_open ?? fallback.metrics.reportsOpen),
-      cpuUsage: Number(metrics.cpu_usage ?? fallback.metrics.cpuUsage),
-      memoryUsage: Number(metrics.memory_usage ?? fallback.metrics.memoryUsage),
-      diskUsage: Number(metrics.disk_usage ?? fallback.metrics.diskUsage),
-      apiResponseTime: Number(metrics.api_response_time ?? fallback.metrics.apiResponseTime),
-      trafficHistory: Array.isArray(metrics.traffic_history) && metrics.traffic_history.length ? metrics.traffic_history : fallback.metrics.trafficHistory,
-      growthHistory: Array.isArray(metrics.growth_history) && metrics.growth_history.length ? metrics.growth_history : fallback.metrics.growthHistory,
-      audienceMix: Array.isArray(metrics.audience_mix) && metrics.audience_mix.length ? metrics.audience_mix : fallback.metrics.audienceMix,
-      liveMix: Array.isArray(metrics.live_mix) && metrics.live_mix.length ? metrics.live_mix : fallback.metrics.liveMix,
-    },
-    auditLogs: Array.isArray(payload?.audit_logs) && payload.audit_logs.length ? payload.audit_logs : fallback.auditLogs,
-    activityStream: Array.isArray(payload?.activity_stream) && payload.activity_stream.length ? payload.activity_stream : fallback.activityStream,
-  };
+// Donut chart للتوزيع
+function Donut({ data, size = 200, centerLabel = 'الإجمالي', centerValue = '100%' }) {
+  const total = data.reduce((s, d) => s + d.value, 0);
+  const r = size / 2 - 18;
+  const cx = size / 2;
+  const cy = size / 2;
+  let acc = 0;
+  const arcs = data.map((d) => {
+    const a0 = (acc / total) * Math.PI * 2 - Math.PI / 2;
+    acc += d.value;
+    const a1 = (acc / total) * Math.PI * 2 - Math.PI / 2;
+    const large = a1 - a0 > Math.PI ? 1 : 0;
+    const x0 = cx + r * Math.cos(a0);
+    const y0 = cy + r * Math.sin(a0);
+    const x1 = cx + r * Math.cos(a1);
+    const y1 = cy + r * Math.sin(a1);
+    return { path: `M ${cx} ${cy} L ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1} Z`, color: d.color, label: d.label, value: d.value };
+  });
+  return (
+    <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size}>
+      {arcs.map((a, i) => <path key={i} d={a.path} fill={a.color} />)}
+      <circle cx={cx} cy={cy} r={r * 0.62} fill="#0f172a" />
+      <text x={cx} y={cy - 4} fill="#94a3b8" fontSize="12" textAnchor="middle">{centerLabel}</text>
+      <text x={cx} y={cy + 16} fill="#f8fafc" fontSize="18" fontWeight="800" textAnchor="middle">{centerValue}</text>
+    </svg>
+  );
 }
 
-function getPerformanceSnapshot() {
-  const profile = getDeviceProfile();
-  const store = typeof window !== 'undefined' ? window.__YAMSHAT_PERF__ : null;
-  const memory = typeof window !== 'undefined' ? window.performance?.memory : null;
-  const navigationEntries = typeof performance !== 'undefined' ? performance.getEntriesByType?.('navigation') || [] : [];
-  const nav = navigationEntries[0];
-  return {
-    jsHeapMb: memory ? Math.round(memory.usedJSHeapSize / 1024 / 1024) : 0,
-    longTasks: Number(store?.longTasks || 0),
-    metricCount: Number(store?.metrics?.length || 0),
-    ttfb: nav ? Math.round(nav.responseStart || 0) : 0,
-    lowEnd: profile.isLowEndDevice,
-    connection: profile.effectiveType,
-    quality: profile.preferredVideoQuality,
-  };
-}
-
-function levelTone(level = 'info') {
-  if (['critical', 'error'].includes(level)) return '#ef4444';
-  if (['warning', 'pending'].includes(level)) return '#f97316';
-  return '#22c55e';
-}
-
-function sourceLabel(status) {
-  return status === 'live' ? 'API حي' : 'غير متاح';
+// Bar chart
+function BarChart({ values, labels, height = 200, color = '#a78bfa' }) {
+  const max = Math.max(...values) * 1.15;
+  const w = 700;
+  const padX = 30;
+  const padY = 18;
+  const bw = (w - padX * 2) / values.length - 8;
+  return (
+    <svg viewBox={`0 0 ${w} ${height}`} width="100%" height={height} preserveAspectRatio="xMidYMid meet">
+      {[100, 200, 300, 400, 500].map((t, i) => {
+        const y = height - padY - ((t / 500) * (height - padY * 2));
+        return (
+          <g key={i}>
+            <line x1={padX} y1={y} x2={w - padX} y2={y} stroke="rgba(148,163,184,0.10)" />
+            <text x={padX - 6} y={y + 4} fill="#64748b" fontSize="10" textAnchor="end">{t}K</text>
+          </g>
+        );
+      })}
+      {values.map((v, i) => {
+        const h = (v / max) * (height - padY * 2);
+        const x = padX + i * ((w - padX * 2) / values.length) + 4;
+        const y = height - padY - h;
+        return (
+          <g key={i}>
+            <rect x={x} y={y} width={bw} height={h} fill={color} rx="3" />
+            <text x={x + bw / 2} y={height - 4} fill="#64748b" fontSize="10" textAnchor="middle">{labels[i]}</text>
+          </g>
+        );
+      })}
+    </svg>
+  );
 }
 
 export default function AdminDashboard() {
-  const { pushToast } = useToast();
-  const [dashboard, setDashboard] = useState(() => createFallbackSnapshot());
-  const [performanceSnapshot, setPerformanceSnapshot] = useState(() => getPerformanceSnapshot());
-  const [refreshInterval, setRefreshInterval] = useState(7000);
-  const [loading, setLoading] = useState(true);
-  const [tableFilter, setTableFilter] = useState('all');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [chartTab, setChartTab] = useState('views');
+  const [reportTab, setReportTab] = useState('interactions');
 
-  const loadDashboard = useCallback(async () => {
-    const fallback = createFallbackSnapshot();
-    try {
-      setLoading(true);
-      const [overviewResponse, analyticsResponse, reportsResponse, auditResponse, systemResponse] = await Promise.allSettled([
-        getAdminOverview(),
-        adminService.getAnalyticsDashboard(),
-        adminService.getReportsSummary({ period: '24h' }),
-        adminService.getAuditLogs({ limit: 12 }),
-        adminService.getSystemHealth(),
-      ]);
-
-      const overviewNormalized = overviewResponse.status === 'fulfilled'
-        ? normalizeOverviewPayload(overviewResponse.value?.data)
-        : normalizeOverviewPayload({});
-
-      const analyticsData = analyticsResponse.status === 'fulfilled' ? analyticsResponse.value : null;
-      const reportsData = reportsResponse.status === 'fulfilled' ? reportsResponse.value : null;
-      const auditData = auditResponse.status === 'fulfilled' ? auditResponse.value : null;
-      const systemData = systemResponse.status === 'fulfilled' ? systemResponse.value : null;
-
-      const totals = reportsData?.totals || {};
-      const reportManagement = reportsData?.report_management || {};
-      const revenueDashboard = reportsData?.revenue_dashboard || {};
-      const auditItems = Array.isArray(auditData?.items)
-        ? auditData.items
-        : Array.isArray(auditData?.logs)
-          ? auditData.logs
-          : Array.isArray(reportsData?.audit_logs)
-            ? reportsData.audit_logs
-            : overviewNormalized.auditLogs;
-
-      const mergedMetrics = {
-        ...overviewNormalized.metrics,
-        activeUsers: Number(analyticsData?.active_users ?? totals.active_users ?? overviewNormalized.metrics.activeUsers),
-        moderationQueue: Number(reportManagement.open_reports ?? overviewNormalized.metrics.moderationQueue),
-        reportsOpen: Number(reportManagement.open_reports ?? overviewNormalized.metrics.reportsOpen),
-        appealsOpen: Number(analyticsData?.appeals_open ?? fallback.metrics.appealsOpen),
-        retentionRate: Number(analyticsData?.retention_rate ?? fallback.metrics.retentionRate),
-        removalRate: Number(analyticsData?.content_removal_rate ?? fallback.metrics.removalRate),
-        revenueEstimate: Number(revenueDashboard.estimated_revenue ?? analyticsData?.revenue_estimate ?? fallback.metrics.revenueEstimate),
-        cpuUsage: Number(systemData?.cpu_usage ?? systemData?.statistics?.cpu_usage ?? overviewNormalized.metrics.cpuUsage),
-        memoryUsage: Number(systemData?.memory_usage ?? systemData?.statistics?.memory_usage ?? overviewNormalized.metrics.memoryUsage),
-        diskUsage: Number(systemData?.disk_usage ?? systemData?.statistics?.disk_usage ?? overviewNormalized.metrics.diskUsage),
-        apiResponseTime: Number(systemData?.api_response_time ?? systemData?.statistics?.api_latency ?? overviewNormalized.metrics.apiResponseTime),
-        moderationMix: [
-          { label: 'بلاغات مفتوحة', value: Number(reportManagement.open_reports ?? fallback.metrics.reportsOpen) },
-          { label: 'بلاغات مستخدمين', value: Number(reportManagement.user_reports ?? 0) },
-          { label: 'بلاغات البث', value: Number(reportManagement.stream_reports ?? 0) },
-          { label: 'Shadow banned', value: Number(reportManagement.shadow_banned_users ?? 0) },
-        ],
-      };
-
-      setDashboard({
-        sources: {
-          overview: { status: overviewResponse.status === 'fulfilled' ? 'live' : 'fallback', updatedAt: new Date().toISOString() },
-          analytics: { status: analyticsResponse.status === 'fulfilled' ? 'live' : 'fallback', updatedAt: new Date().toISOString() },
-          reports: { status: reportsResponse.status === 'fulfilled' ? 'live' : 'fallback', updatedAt: new Date().toISOString() },
-          audit: { status: auditResponse.status === 'fulfilled' ? 'live' : 'fallback', updatedAt: new Date().toISOString() },
-          system: { status: systemResponse.status === 'fulfilled' ? 'live' : 'fallback', updatedAt: new Date().toISOString() },
-        },
-        metrics: mergedMetrics,
-        auditLogs: auditItems.length ? auditItems : overviewNormalized.auditLogs,
-        activityStream: Array.isArray(reportsData?.admin_activity) && reportsData.admin_activity.length
-          ? reportsData.admin_activity.map((item, index) => ({ id: `admin-activity-${index}`, action: item.label, description: item.description, timestamp: new Date().toISOString() }))
-          : overviewNormalized.activityStream,
-      });
-      setPerformanceSnapshot(getPerformanceSnapshot());
-      if ([overviewResponse, analyticsResponse, reportsResponse, auditResponse, systemResponse].every((item) => item.status !== 'fulfilled')) {
-        pushToast({ type: 'warning', title: 'تعذر تحميل بيانات اللوحة', description: 'كل خدمات التحليلات غير متاحة حالياً.' });
-      }
-    } catch (error) {
-      setDashboard(fallback);
-      pushToast({ type: 'warning', title: 'تعذر تحميل المقاييس', description: error?.response?.data?.detail || 'لا توجد بيانات حية متاحة حالياً.' });
-    } finally {
-      setLoading(false);
+  // مؤشر بسيط على أن النسخة الجديدة الموحّدة هي التي حُمّلت (يساعد في كشف تراكب أي صفحة قديمة)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.__YAMSHAT_ADMIN_DASHBOARD_VERSION__ = 'unified-v20-no-live';
+      // إزالة أي عقد قديمة محتملة في الـ DOM (مخلفات legacy)
+      document.querySelectorAll('[data-legacy-admin-dashboard="true"]').forEach((el) => el.remove());
     }
-  }, [pushToast]);
+  }, []);
 
-  useEffect(() => {
-    loadDashboard();
-  }, [loadDashboard]);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      loadDashboard();
-      setPerformanceSnapshot(getPerformanceSnapshot());
-    }, refreshInterval);
-    return () => window.clearInterval(timer);
-  }, [loadDashboard, refreshInterval]);
-
-  useEffect(() => {
-    const onMetric = () => setPerformanceSnapshot(getPerformanceSnapshot());
-    const onMemoryCritical = () => pushToast({ type: 'warning', title: 'ذاكرة المتصفح مرتفعة', description: 'تم رصد استهلاك عالٍ للذاكرة على الجهاز الحالي.' });
-    const onRealtimeMetrics = (nextMetrics) => {
-      setDashboard((prev) => ({
-        ...prev,
-        metrics: {
-          ...prev.metrics,
-          activeUsers: Number(nextMetrics?.active_users ?? prev.metrics.activeUsers),
-          trafficPerMinute: Number(nextMetrics?.traffic_per_minute ?? prev.metrics.trafficPerMinute),
-          cpuUsage: Number(nextMetrics?.cpu_usage ?? prev.metrics.cpuUsage),
-          memoryUsage: Number(nextMetrics?.memory_usage ?? prev.metrics.memoryUsage),
-          apiResponseTime: Number(nextMetrics?.api_response_time ?? prev.metrics.apiResponseTime),
-          trafficHistory: Array.isArray(nextMetrics?.traffic_history) && nextMetrics.traffic_history.length ? nextMetrics.traffic_history : prev.metrics.trafficHistory,
-          growthHistory: Array.isArray(nextMetrics?.growth_history) && nextMetrics.growth_history.length ? nextMetrics.growth_history : prev.metrics.growthHistory,
-        },
-        sources: {
-          ...prev.sources,
-          overview: { status: 'live', updatedAt: new Date().toISOString() },
-          system: { status: 'live', updatedAt: new Date().toISOString() },
-        },
-      }));
-    };
-    const onAuditLog = (log) => {
-      setDashboard((prev) => ({ ...prev, auditLogs: [log, ...prev.auditLogs].slice(0, 10) }));
-    };
-    const onActivity = (activity) => {
-      setDashboard((prev) => ({ ...prev, activityStream: [{ ...activity, id: activity.id || `act-${Date.now()}` }, ...prev.activityStream].slice(0, 10) }));
-    };
-
-    window.addEventListener('yamshat:performance-metric', onMetric);
-    window.addEventListener('yamshat:memory-critical', onMemoryCritical);
-    socket.on('realtime_metrics', onRealtimeMetrics);
-    socket.on('new_audit_log', onAuditLog);
-    socket.on('activity_update', onActivity);
-    return () => {
-      window.removeEventListener('yamshat:performance-metric', onMetric);
-      window.removeEventListener('yamshat:memory-critical', onMemoryCritical);
-      socket.off('realtime_metrics', onRealtimeMetrics);
-      socket.off('new_audit_log', onAuditLog);
-      socket.off('activity_update', onActivity);
-    };
-  }, [pushToast]);
-
-  const { metrics, auditLogs, activityStream, sources } = dashboard;
-
-  const kpis = useMemo(() => ([
-    { label: 'Active users', value: metrics.activeUsers, tone: '#60a5fa', hint: 'المستخدمون النشطون الآن' },
-    { label: 'Traffic / minute', value: metrics.trafficPerMinute || 0, tone: '#22c55e', hint: 'تدفق الحركة الحي' },
-    { label: 'Growth', value: `${Number(metrics.growthRate || 0).toFixed(1)}%`, tone: '#f59e0b', hint: 'نمو آخر دورة' },
-    { label: 'Moderation queue', value: metrics.moderationQueue || 0, tone: '#fb7185', hint: 'حالات تحتاج قرار' },
-    { label: 'Appeals', value: metrics.appealsOpen || 0, tone: '#8b5cf6', hint: 'استئنافات مفتوحة' },
-    { label: 'Revenue est.', value: `$${Number(metrics.revenueEstimate || 0).toLocaleString('en-US')}`, tone: '#34d399', hint: 'تقدير إيرادات اللوحة' },
-  ]), [metrics]);
-
-  const healthLevel = useMemo(() => {
-    const penalty = Number(metrics.cpuUsage || 0) + Number(metrics.memoryUsage || 0) + Number(performanceSnapshot.longTasks || 0) * 4;
-    if (penalty > 140) return { label: 'حرج', color: '#ef4444' };
-    if (penalty > 95) return { label: 'مراقبة', color: '#f97316' };
-    return { label: 'مستقر', color: '#22c55e' };
-  }, [metrics.cpuUsage, metrics.memoryUsage, performanceSnapshot.longTasks]);
-
-  const liveTableRows = useMemo(() => {
-    const auditRows = auditLogs.map((log, index) => ({
-      id: log.id || `audit-${index}`,
-      kind: 'audit',
-      title: log.message || log.summary || 'Audit log',
-      actor: log.admin_name || log.actor || 'Admin',
-      level: log.type || log.severity || 'info',
-      time: log.timestamp,
-    }));
-    const activityRows = activityStream.map((activity, index) => ({
-      id: activity.id || `activity-${index}`,
-      kind: 'activity',
-      title: activity.action || activity.label || activity.title || 'Activity',
-      actor: activity.actor || 'Realtime engine',
-      level: activity.level || 'info',
-      time: activity.timestamp || new Date().toISOString(),
-      description: activity.description,
-    }));
-
-    return [...auditRows, ...activityRows]
-      .filter((item) => tableFilter === 'all' ? true : item.kind === tableFilter)
-      .filter((item) => `${item.title} ${item.actor} ${item.description || ''}`.toLowerCase().includes(searchTerm.trim().toLowerCase()))
-      .sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0));
-  }, [activityStream, auditLogs, searchTerm, tableFilter]);
-
-  const sourceCards = useMemo(() => ([
-    ['Overview API', sources.overview],
-    ['Analytics API', sources.analytics],
-    ['Reports API', sources.reports],
-    ['Audit API', sources.audit],
-    ['System API', sources.system],
-  ]), [sources]);
+  const distributionTotal = useMemo(() => CONTENT_DISTRIBUTION.reduce((s, d) => s + d.value, 0), []);
 
   return (
     <AdminLayout>
-      <section style={{ display: 'grid', gap: 18 }}>
-        <Card style={{ padding: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-            <div>
-              <div style={{ color: '#60a5fa', fontSize: 13, marginBottom: 8 }}>Live dashboards • Real API fusion • Reports + audit + system health</div>
-              <h2 style={{ margin: 0, color: '#f8fafc' }}>لوحة الإدارة الحية والتحليلات</h2>
-              <p style={{ margin: '10px 0 0', color: '#94a3b8', maxWidth: 820 }}>
-                تم تقوية الداشبورد لتجميع بيانات اللوحة العامة، التقارير، سجل التدقيق، وصحة النظام في شاشة واحدة، مع عرض البيانات الحية فقط وإظهار حالات الفراغ عند غياب استجابة الخادم.
-              </p>
-            </div>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-              <label className="field select-field" style={{ minWidth: 170 }}>
-                <span className="field-label">التحديث التلقائي</span>
-                <select className="input" value={refreshInterval} onChange={(event) => setRefreshInterval(Number(event.target.value))}>
-                  <option value={5000}>كل 5 ثواني</option>
-                  <option value={7000}>كل 7 ثواني</option>
-                  <option value={15000}>كل 15 ثانية</option>
-                  <option value={30000}>كل 30 ثانية</option>
-                </select>
-              </label>
-              <Button variant="secondary" onClick={loadDashboard} loading={loading}>تحديث الآن</Button>
-            </div>
+      <div className="ls-admin" dir="rtl" data-yamshat-version="unified-v20-no-live">
+        {/* ====== Header ====== */}
+        <div className="ls-head">
+          <div>
+            <h1 className="ls-title">لوحة التحكم</h1>
+            <p className="ls-sub">مرحباً بك، إليك نظرة عامة على المنصة</p>
           </div>
-        </Card>
+        </div>
 
-        <Card style={{ padding: 18, background: `${healthLevel.color}16`, border: `1px solid ${healthLevel.color}44` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-              <div style={{ width: 14, height: 14, borderRadius: '50%', background: healthLevel.color, boxShadow: `0 0 24px ${healthLevel.color}` }} />
-              <div>
-                <div style={{ color: '#f8fafc', fontWeight: 800 }}>حالة النظام: {healthLevel.label}</div>
-                <div style={{ color: '#cbd5e1', fontSize: 13 }}>CPU {metrics.cpuUsage || 0}% • RAM {metrics.memoryUsage || 0}% • Latency {metrics.apiResponseTime || 0}ms</div>
+        {/* ====== Stat cards ====== */}
+        <div className="ls-stats-grid">
+          {STAT_CARDS.map((s) => (
+            <div key={s.id} className="ls-stat-card">
+              <div className="ls-stat-top">
+                <span className="ls-stat-icon" style={{ background: `${s.tone}22`, color: s.tone }}>{s.icon}</span>
+                <span className="ls-stat-label">{s.label}</span>
               </div>
+              <div className="ls-stat-value">{s.value}</div>
+              <div className="ls-stat-trend">▲ {s.trend} <span className="ls-stat-muted">من الشهر الماضي</span></div>
             </div>
-            <div style={{ color: '#94a3b8', fontSize: 13 }}>Connection {performanceSnapshot.connection} • Recommended quality {performanceSnapshot.quality}</div>
+          ))}
+        </div>
+
+        {/* ====== Row: Views chart + Distribution donut + Recent activities ====== */}
+        <div className="ls-row ls-row-3">
+          <div className="ls-card ls-col-2">
+            <div className="ls-card-head">
+              <h3>المشاهدات خلال آخر 7 أيام</h3>
+              <select className="ls-select" value={chartTab} onChange={(e) => setChartTab(e.target.value)}>
+                <option value="views">المشاهدات</option>
+                <option value="interactions">التفاعلات</option>
+                <option value="users">المستخدمون</option>
+              </select>
+            </div>
+            <AreaChart data={VIEWS_TREND} />
           </div>
-        </Card>
 
-        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
-          {kpis.map((item) => (
-            <Card key={item.label} style={{ padding: 18, background: 'rgba(15,23,42,0.78)' }}>
-              <div style={{ color: '#94a3b8', fontSize: 12 }}>{item.label}</div>
-              <div style={{ fontSize: 30, fontWeight: 800, margin: '10px 0 8px', color: item.tone }}>{typeof item.value === 'number' ? item.value.toLocaleString('ar-EG') : item.value}</div>
-              <div style={{ color: '#64748b', fontSize: 12 }}>{item.hint}</div>
-            </Card>
-          ))}
-        </section>
-
-        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
-          {sourceCards.map(([label, source]) => (
-            <Card key={label} style={{ padding: 16 }}>
-              <div style={{ color: '#94a3b8', fontSize: 12 }}>{label}</div>
-              <div style={{ margin: '8px 0', color: source.status === 'live' ? '#22c55e' : '#f59e0b', fontWeight: 800 }}>{sourceLabel(source.status)}</div>
-              <div style={{ color: '#64748b', fontSize: 12 }}>{new Date(source.updatedAt).toLocaleString('ar-EG')}</div>
-            </Card>
-          ))}
-        </section>
-
-        <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.45fr) minmax(320px, 0.8fr)', gap: 18 }}>
-          <Card style={{ padding: 18 }}>
-            <h3 style={{ marginTop: 0, color: '#f8fafc' }}>Traffic & growth charts</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 14 }}>
-              <div>
-                <div style={{ color: '#94a3b8', fontSize: 13, marginBottom: 12 }}>حركة المرور الحية</div>
-                <LineChart data={metrics.trafficHistory || []} />
-              </div>
-              <div>
-                <div style={{ color: '#94a3b8', fontSize: 13, marginBottom: 12 }}>معدل النمو</div>
-                <BarChart data={metrics.growthHistory || []} />
-              </div>
-            </div>
-          </Card>
-
-          <Card style={{ padding: 18 }}>
-            <h3 style={{ marginTop: 0, color: '#f8fafc' }}>Audience mix</h3>
-            <DonutChart data={metrics.audienceMix || []} />
-          </Card>
-        </section>
-
-        <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 18 }}>
-          <Card style={{ padding: 18 }}>
-            <h3 style={{ marginTop: 0, color: '#f8fafc' }}>Moderation & appeals distribution</h3>
-            <DonutChart data={metrics.moderationMix || []} />
-          </Card>
-
-          <Card style={{ padding: 18 }}>
-            <div style={{ display: 'grid', gap: 12 }}>
-              {[
-                { label: 'Retention rate', value: `${metrics.retentionRate || 0}%`, hint: 'استقرار المستخدمين' },
-                { label: 'Content removal rate', value: `${metrics.removalRate || 0}%`, hint: 'نسبة قرارات الإزالة' },
-                { label: 'Reports open', value: metrics.reportsOpen || 0, hint: 'قضايا مفتوحة الآن' },
-                { label: 'Live metrics score', value: `${metrics.liveMetricsScore || 0}/100`, hint: 'تقييم التشغيل الحالي' },
-              ].map((item) => (
-                <div key={item.label} style={{ borderRadius: 16, padding: 14, background: 'rgba(15,23,42,0.72)', border: '1px solid rgba(148,163,184,0.12)' }}>
-                  <div style={{ color: '#94a3b8', fontSize: 12 }}>{item.label}</div>
-                  <div style={{ color: '#f8fafc', fontSize: 24, fontWeight: 800, margin: '8px 0 6px' }}>{item.value}</div>
-                  <div style={{ color: '#64748b', fontSize: 12 }}>{item.hint}</div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </section>
-
-        <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(320px, 0.9fr)', gap: 18 }}>
-          <Card style={{ padding: 18 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
-              <div>
-                <h3 style={{ margin: 0, color: '#f8fafc' }}>الجدول الحي المحسّن</h3>
-                <div className="muted" style={{ marginTop: 6 }}>بحث + فلاتر + دمج النشاطات والتدقيق في جدول واحد</div>
-              </div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {[
-                  ['all', 'الكل'],
-                  ['audit', 'Audit'],
-                  ['activity', 'Activity'],
-                ].map(([value, label]) => (
-                  <button key={value} type="button" className={`dashboard-filter-chip ${tableFilter === value ? 'active' : ''}`} onClick={() => setTableFilter(value)}>{label}</button>
+          <div className="ls-card">
+            <div className="ls-card-head"><h3>توزيع المحتوى</h3></div>
+            <div className="ls-donut-wrap">
+              <Donut data={CONTENT_DISTRIBUTION} centerLabel="الإجمالي" centerValue="100%" />
+              <ul className="ls-legend">
+                {CONTENT_DISTRIBUTION.map((d) => (
+                  <li key={d.label}>
+                    <span className="ls-dot" style={{ background: d.color }} />
+                    <span className="ls-legend-label">{d.label}</span>
+                    <span className="ls-legend-value">{Math.round((d.value / distributionTotal) * 100)}%</span>
+                  </li>
                 ))}
-              </div>
+              </ul>
             </div>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
-              <input className="input" style={{ flex: 1, minWidth: 220 }} value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="ابحث في الجداول..." />
-            </div>
-            <div className="table-shell">
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th>النوع</th>
-                    <th>العنوان</th>
-                    <th>المسؤول</th>
-                    <th>الحالة</th>
-                    <th>الوقت</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {liveTableRows.map((row) => (
-                    <tr key={row.id}>
-                      <td><span className="row-kind-pill">{row.kind === 'audit' ? 'Audit' : 'Activity'}</span></td>
-                      <td>
-                        <div style={{ display: 'grid', gap: 4 }}>
-                          <strong style={{ color: '#f8fafc' }}>{row.title}</strong>
-                          {row.description ? <span className="muted" style={{ fontSize: 12 }}>{row.description}</span> : null}
-                        </div>
-                      </td>
-                      <td>{row.actor}</td>
-                      <td><span className="row-level-pill" style={{ '--level-tone': levelTone(row.level) }}>{row.level}</span></td>
-                      <td>{new Date(row.time).toLocaleString('ar-EG')}</td>
-                    </tr>
-                  ))}
-                  {!liveTableRows.length ? (
-                    <tr>
-                      <td colSpan="5" className="table-empty">لا توجد بيانات مطابقة للفلاتر الحالية.</td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+          </div>
 
-          <Card style={{ padding: 18 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', marginBottom: 12 }}>
-              <h3 style={{ margin: 0, color: '#f8fafc' }}>Admin activity stream</h3>
-              <span style={{ color: '#94a3b8', fontSize: 12 }}>live updates</span>
-            </div>
-            <div style={{ display: 'grid', gap: 10 }}>
-              {activityStream.map((activity, index) => (
-                <div key={`${activity.action}-${index}`} style={{ borderRadius: 16, padding: 14, background: 'rgba(15,23,42,0.72)', border: '1px solid rgba(148,163,184,0.12)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', color: '#f8fafc', fontWeight: 700 }}>
-                    <span>{activity.action || activity.label}</span>
-                    <span style={{ color: '#64748b', fontSize: 12 }}>{new Date(activity.timestamp).toLocaleTimeString('ar-EG')}</span>
+          <div className="ls-card">
+            <div className="ls-card-head"><h3>النشاطات الأخيرة</h3></div>
+            <ul className="ls-activity">
+              {RECENT_ACTIVITIES.map((a) => (
+                <li key={a.id}>
+                  <span className="ls-avatar">{a.user.charAt(0)}</span>
+                  <div className="ls-activity-body">
+                    <strong>{a.user}</strong>
+                    <span>{a.text}</span>
                   </div>
-                  <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 6 }}>{activity.description}</div>
-                </div>
+                  {a.badge ? <span className="ls-live">{a.badge}</span> : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        {/* ====== Row: Posts + Chat ====== */}
+        <div className="ls-row ls-row-2">
+          <div className="ls-card">
+            <div className="ls-card-head">
+              <h3>📨 إدارة المنشورات</h3>
+              <button className="ls-btn ls-btn-primary">+ منشور جديد</button>
+            </div>
+            <input className="ls-search" placeholder="ابحث عن منشور..." />
+            <table className="ls-table">
+              <thead>
+                <tr>
+                  <th>التاريخ</th>
+                  <th>المستخدم</th>
+                  <th>محتوى المنشور</th>
+                  <th>التفاعلات</th>
+                  <th>الإجراءات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {POSTS_ROWS.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.date}</td>
+                    <td>{r.user}</td>
+                    <td>{r.content}</td>
+                    <td>{r.interactions}</td>
+                    <td><span className="ls-status ls-status-ok">نشط</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="ls-card">
+            <div className="ls-card-head">
+              <h3>💬 إدارة الشات</h3>
+            </div>
+            <table className="ls-table">
+              <thead>
+                <tr>
+                  <th>المستخدم</th>
+                  <th>آخر رسالة</th>
+                  <th>الحالة</th>
+                  <th>الإجراءات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {CHAT_ROWS.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.user}</td>
+                    <td>{r.text}</td>
+                    <td><span className="ls-status ls-status-ok">نشط</span></td>
+                    <td><button className="ls-btn ls-btn-ghost">عرض</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* ====== Row: Stories + Reels ====== */}
+        <div className="ls-row ls-row-2">
+          <div className="ls-card">
+            <div className="ls-card-head">
+              <h3>📷 إدارة الستوري</h3>
+              <button className="ls-btn ls-btn-primary">+ ستوري جديد</button>
+            </div>
+            <table className="ls-table">
+              <thead>
+                <tr>
+                  <th>التاريخ</th>
+                  <th>المستخدم</th>
+                  <th>المشاهدات</th>
+                  <th>الحالة</th>
+                </tr>
+              </thead>
+              <tbody>
+                {STORIES_ROWS.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.date}</td>
+                    <td>{r.user}</td>
+                    <td>{r.views}</td>
+                    <td><span className="ls-status ls-status-ok">نشط</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="ls-card">
+            <div className="ls-card-head">
+              <h3>🎬 إدارة الريلز</h3>
+              <button className="ls-btn ls-btn-primary">+ ريلز جديد</button>
+            </div>
+            <table className="ls-table">
+              <thead>
+                <tr>
+                  <th>التاريخ</th>
+                  <th>المستخدم</th>
+                  <th>العنوان</th>
+                  <th>المشاهدات</th>
+                  <th>الحالة</th>
+                </tr>
+              </thead>
+              <tbody>
+                {REELS_ROWS.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.date}</td>
+                    <td>{r.user}</td>
+                    <td>{r.title}</td>
+                    <td>{r.views}</td>
+                    <td><span className="ls-status ls-status-ok">نشط</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* ====== Row: Reports & Analytics ====== */}
+        <div className="ls-card">
+          <div className="ls-card-head">
+            <h3>📊 التقارير والإحصائيات</h3>
+            <div className="ls-tabs">
+              {[
+                ['interactions', 'التفاعلات'],
+                ['revenue',      'الإيرادات'],
+                ['content',      'المحتوى'],
+                ['users',        'المستخدمون'],
+                ['overview',     'نظرة عامة'],
+              ].map(([k, l]) => (
+                <button key={k} className={`ls-tab ${reportTab === k ? 'active' : ''}`} onClick={() => setReportTab(k)}>{l}</button>
               ))}
             </div>
-          </Card>
-        </section>
+          </div>
 
-        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
-          {[
-            { label: 'JS heap', value: `${performanceSnapshot.jsHeapMb} MB`, hint: 'قياس ذاكرة المتصفح الحالية' },
-            { label: 'Tracked metrics', value: performanceSnapshot.metricCount, hint: 'LCP / CLS / longtask events' },
-            { label: 'TTFB', value: `${performanceSnapshot.ttfb} ms`, hint: 'زمن أول استجابة للملاحة' },
-            { label: 'Device profile', value: performanceSnapshot.lowEnd ? 'Low-end' : 'Standard', hint: 'تقدير آلي للأجهزة الضعيفة' },
-          ].map((item) => (
-            <Card key={item.label} style={{ padding: 18 }}>
-              <div style={{ color: '#94a3b8', fontSize: 12 }}>{item.label}</div>
-              <div style={{ color: '#f8fafc', fontSize: 24, fontWeight: 800, margin: '10px 0 8px' }}>{item.value}</div>
-              <div style={{ color: '#64748b', fontSize: 12 }}>{item.hint}</div>
-            </Card>
-          ))}
-        </section>
-      </section>
+          <div className="ls-kpi-row">
+            <div className="ls-kpi"><div className="ls-kpi-label">إجمالي الإيرادات</div><div className="ls-kpi-value">$ 45,231.89</div><div className="ls-kpi-trend up">▲ 11.2%</div></div>
+            <div className="ls-kpi"><div className="ls-kpi-label">معدل التفاعل</div><div className="ls-kpi-value">5.23%</div><div className="ls-kpi-trend up">▲ 12.7%</div></div>
+            <div className="ls-kpi"><div className="ls-kpi-label">متوسط المشاهدة</div><div className="ls-kpi-value">15:42</div><div className="ls-kpi-trend up">▲ 8.6%</div></div>
+            <div className="ls-kpi"><div className="ls-kpi-label">إجمالي المشاهدات</div><div className="ls-kpi-value">2.45M</div><div className="ls-kpi-trend up">▲ 15.3%</div></div>
+          </div>
+
+          <div className="ls-row ls-row-2">
+            <div>
+              <h4 className="ls-sub-title">المشاهدات اليومية</h4>
+              <BarChart values={VIEWERS_DAILY} labels={DAILY_LABELS} />
+            </div>
+            <div>
+              <h4 className="ls-sub-title">توزيع الجمهور</h4>
+              <div className="ls-donut-wrap">
+                <Donut data={AUDIENCE} centerLabel="الجمهور" centerValue="100%" />
+                <ul className="ls-legend">
+                  {AUDIENCE.map((d) => (
+                    <li key={d.label}>
+                      <span className="ls-dot" style={{ background: d.color }} />
+                      <span className="ls-legend-label">{d.label}</span>
+                      <span className="ls-legend-value">{d.value}%</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
 
       <style>{`
-        .dashboard-filter-chip {
-          border: 1px solid rgba(148,163,184,0.18);
-          background: rgba(255,255,255,0.04);
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;600;700;800&display=swap');
+
+        .ls-admin {
+          font-family: 'Noto Sans Arabic', system-ui, sans-serif;
           color: #e2e8f0;
-          padding: 8px 12px;
-          border-radius: 999px;
-          cursor: pointer;
+          background: #0b1020;
+          padding: 22px;
+          min-height: 100vh;
+          direction: rtl;
         }
-        .dashboard-filter-chip.active {
-          background: linear-gradient(135deg, #8b5cf6, #06b6d4);
-          border-color: transparent;
+        .ls-admin *, .ls-admin *::before, .ls-admin *::after { box-sizing: border-box; }
+
+        .ls-head { margin-bottom: 18px; }
+        .ls-title { margin: 0; color: #f8fafc; font-size: 24px; font-weight: 800; }
+        .ls-sub   { margin: 4px 0 0; color: #94a3b8; font-size: 13px; }
+
+        .ls-stats-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 14px;
+          margin-bottom: 18px;
         }
-        .row-kind-pill,
-        .row-level-pill {
-          display: inline-flex;
-          padding: 4px 10px;
-          border-radius: 999px;
-          font-size: 12px;
-          font-weight: 700;
+        .ls-stat-card {
+          background: linear-gradient(180deg, #131a33, #0f152a);
+          border: 1px solid rgba(148,163,184,0.10);
+          border-radius: 14px;
+          padding: 16px;
         }
-        .row-kind-pill {
-          background: rgba(59,130,246,0.12);
-          color: #bfdbfe;
+        .ls-stat-top { display: flex; align-items: center; gap: 10px; }
+        .ls-stat-icon {
+          width: 34px; height: 34px; border-radius: 10px;
+          display: inline-flex; align-items: center; justify-content: center;
+          font-weight: 700; font-size: 16px;
         }
-        .row-level-pill {
-          --level-tone: #22c55e;
-          background: color-mix(in srgb, var(--level-tone) 16%, transparent);
-          color: var(--level-tone);
+        .ls-stat-label { color: #94a3b8; font-size: 13px; }
+        .ls-stat-value { color: #f8fafc; font-size: 26px; font-weight: 800; margin: 10px 0 6px; }
+        .ls-stat-trend { color: #10b981; font-size: 12px; font-weight: 700; }
+        .ls-stat-muted { color: #64748b; font-weight: 500; margin-right: 6px; }
+
+        .ls-row { display: grid; gap: 16px; margin-bottom: 16px; }
+        .ls-row-2 { grid-template-columns: 1fr 1fr; }
+        .ls-row-3 { grid-template-columns: 2fr 1fr 1fr; }
+        .ls-col-2 { grid-column: span 1; }
+
+        .ls-card {
+          background: linear-gradient(180deg, #131a33, #0f152a);
+          border: 1px solid rgba(148,163,184,0.10);
+          border-radius: 16px;
+          padding: 16px;
+        }
+        .ls-card-head {
+          display: flex; align-items: center; justify-content: space-between;
+          margin-bottom: 12px; flex-wrap: wrap; gap: 10px;
+        }
+        .ls-card-head h3 { margin: 0; color: #f8fafc; font-size: 15px; font-weight: 700; }
+        .ls-sub-title { color: #cbd5e1; font-size: 14px; margin: 0 0 10px; font-weight: 600; }
+
+        .ls-select, .ls-search, .ls-btn {
+          background: rgba(15,23,42,0.7); color: #e2e8f0;
+          border: 1px solid rgba(148,163,184,0.15);
+          border-radius: 10px; padding: 8px 12px; font-size: 13px;
+          font-family: inherit;
+        }
+        .ls-search { width: 100%; margin-bottom: 10px; }
+        .ls-btn { cursor: pointer; }
+        .ls-btn-primary { background: linear-gradient(135deg, #8b5cf6, #6d28d9); border: 0; color: #fff; font-weight: 700; }
+        .ls-btn-ghost   { background: rgba(139,92,246,0.15); color: #c4b5fd; border-color: rgba(139,92,246,0.25); }
+
+        .ls-donut-wrap { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .ls-legend { list-style: none; padding: 0; margin: 0; flex: 1; min-width: 140px; }
+        .ls-legend li { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; color: #cbd5e1; }
+        .ls-legend-label { flex: 1; }
+        .ls-legend-value { color: #f8fafc; font-weight: 700; }
+        .ls-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+        .ls-activity { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+        .ls-activity li { display: flex; align-items: center; gap: 10px; }
+        .ls-avatar {
+          width: 32px; height: 32px; border-radius: 50%;
+          background: linear-gradient(135deg, #8b5cf6, #ec4899);
+          display: inline-flex; align-items: center; justify-content: center;
+          color: #fff; font-weight: 800; font-size: 13px;
+        }
+        .ls-activity-body { display: flex; flex-direction: column; flex: 1; }
+        .ls-activity-body strong { color: #f8fafc; font-size: 13px; }
+        .ls-activity-body span { color: #94a3b8; font-size: 12px; }
+        .ls-live {
+          background: #ef4444; color: #fff;
+          font-size: 10px; font-weight: 800; padding: 3px 6px; border-radius: 6px;
+        }
+
+        .ls-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .ls-table th { text-align: right; color: #94a3b8; font-weight: 600; padding: 8px; border-bottom: 1px solid rgba(148,163,184,0.10); }
+        .ls-table td { padding: 10px 8px; color: #e2e8f0; border-bottom: 1px solid rgba(148,163,184,0.06); }
+        .ls-status {
+          display: inline-block; padding: 3px 10px; border-radius: 999px;
+          font-size: 11px; font-weight: 700;
+        }
+        .ls-status-ok { background: rgba(16,185,129,0.18); color: #34d399; }
+
+        .ls-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+        .ls-tab {
+          background: transparent; border: 0;
+          color: #94a3b8; padding: 6px 12px; border-radius: 8px;
+          font-size: 12px; cursor: pointer; font-family: inherit;
+        }
+        .ls-tab.active { background: rgba(139,92,246,0.18); color: #c4b5fd; }
+
+        .ls-kpi-row {
+          display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 12px; margin-bottom: 18px;
+        }
+        .ls-kpi {
+          background: rgba(15,23,42,0.65);
+          border: 1px solid rgba(148,163,184,0.10);
+          border-radius: 12px; padding: 14px;
+        }
+        .ls-kpi-label { color: #94a3b8; font-size: 12px; }
+        .ls-kpi-value { color: #f8fafc; font-size: 22px; font-weight: 800; margin: 6px 0 4px; }
+        .ls-kpi-trend.up { color: #10b981; font-size: 12px; font-weight: 700; }
+
+        @media (max-width: 1180px) {
+          .ls-row-3 { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 820px) {
+          .ls-row-2, .ls-row-3 { grid-template-columns: 1fr; }
         }
       `}</style>
     </AdminLayout>

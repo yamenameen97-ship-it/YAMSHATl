@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>تقرير تنظيف بقايا البث المباشر — yamshat_fixed_v16</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Noto Sans Arabic', system-ui, -apple-system, 'Segoe UI', Tahoma, sans-serif;
+    direction: rtl;
+    text-align: right;
+    background: #0b1020;
+    color: #e6e8ef;
+    margin: 0;
+    padding: 32px 20px;
+    line-height: 1.8;
+  }
+  .container { max-width: 980px; margin: 0 auto; }
+  h1 { color: #a78bfa; font-size: 28px; border-bottom: 2px solid #7c3aed; padding-bottom: 12px; }
+  h2 { color: #c4b5fd; margin-top: 32px; font-size: 22px; }
+  h3 { color: #e0e7ff; font-size: 17px; margin-top: 22px; }
+  .meta { background: #121932; padding: 14px 18px; border-radius: 12px; border: 1px solid #2a3458; margin-bottom: 24px; }
+  .meta strong { color: #a78bfa; }
+  ul, ol { padding-right: 22px; }
+  li { margin: 6px 0; }
+  code {
+    background: #1a2244;
+    color: #fbbf24;
+    padding: 2px 7px;
+    border-radius: 5px;
+    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    font-size: 14px;
+    direction: ltr;
+    unicode-bidi: embed;
+    display: inline-block;
+  }
+  .ok { color: #34d399; font-weight: 700; }
+  .warn { color: #fbbf24; }
+  .section { background: #0f1530; border: 1px solid #2a3458; border-radius: 14px; padding: 18px 22px; margin: 16px 0; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+  th, td { border: 1px solid #2a3458; padding: 9px 12px; text-align: right; }
+  th { background: #1a2244; color: #c4b5fd; }
+  .footer { margin-top: 36px; padding-top: 18px; border-top: 1px solid #2a3458; color: #94a3b8; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>🧹 تقرير تنظيف بقايا البث المباشر</h1>
+
+<div class="meta">
+  <div><strong>الإصدار:</strong> yamshat_fixed_v16</div>
+  <div><strong>التاريخ:</strong> 2026-06-11</div>
+  <div><strong>المهمة:</strong> تنظيف كل بقايا ملفات البث المباشر المحذوفة من كافة أجزاء المشروع (frontend + mobile + docs)</div>
+  <div><strong>قاعدة الإبقاء:</strong> تم الإبقاء على <code>LiveKit SDK</code> الخاص بالمكالمات الصوتية/المرئية، وعلى migrations <code>0010/0011</code> التي تُسقط الجداول من قاعدة البيانات.</div>
+</div>
+
+<h2>1) الملفات المحذوفة كاملةً</h2>
+
+<div class="section">
+<h3>أصول الفرونت إند (Frontend Assets)</h3>
+<ul>
+  <li><code>frontend/public/yamshat_live_desktop.html</code></li>
+  <li><code>frontend/public/sounds/calls/live_start.mp3</code></li>
+  <li><code>frontend/public/sounds/calls/live_end.mp3</code></li>
+  <li><code>frontend/src/styles/livestream-dashboard.css</code></li>
+  <li><code>frontend/src/styles/modern-live-control.css</code></li>
+  <li><code>frontend/src/styles/modern-live-viewer.css</code></li>
+  <li><code>frontend/src/styles/modern-live-viewer-override.css</code></li>
+</ul>
+
+<h3>النسخة اليتيمة yamshat/</h3>
+<ul>
+  <li>المجلد الكامل <code>yamshat/frontend/src/services/livekitService.js</code> ومجلداته الأم.</li>
+</ul>
+
+<h3>ملفات الموبايل (Android)</h3>
+<ul>
+  <li><code>mobile/app/src/main/java/com/socialapp/activities/LiveActivity.kt</code></li>
+  <li><code>mobile/app/src/main/java/com/yamshat/LiveActivity.java</code> + مجلد <code>com/yamshat/</code></li>
+  <li><code>mobile/app/src/main/res/layout/activity_live.xml</code></li>
+  <li><code>mobile/app/src/main/res/layout/activity_live_old.xml</code></li>
+  <li><code>mobile/livekit_android_ios_notes.md</code></li>
+</ul>
+
+<h3>تقارير قديمة</h3>
+<ul>
+  <li><code>FIXES_LIVE_BROADCAST_AR.md</code></li>
+  <li><code>FIXES_LIVE_BROADCAST_2026_06_10_AR.html</code></li>
+  <li><code>FIXES_2026_06_10_LIVE_POST_FIXES_AR.md</code></li>
+  <li><code>FIX_REPORT_LIVE_BROADCAST_2026_06_10_AR.html</code></li>
+  <li><code>FIX_REPORT_LIVE_BROADCAST_VIEWER_2026_06_11_v11_AR.html</code></li>
+  <li><code>FIX_REPORT_LIVE_VS_POSTS_2026_06_11_AR.md</code></li>
+  <li><code>FIXES_2026_06_11_v13_REMOVE_LIVE_AR.md</code></li>
+  <li><code>FIXES_2026_06_11_FINAL_AR.html</code></li>
+  <li><code>frontend/src/FIXES_LIVE_2026_06_AR.md</code></li>
+</ul>
+</div>
+
+<h2>2) الملفات المُعدّلة (إزالة الإشارات/البلوكات)</h2>
+
+<div class="section">
+<table>
+<thead>
+<tr><th>الملف</th><th>التعديل</th></tr>
+</thead>
+<tbody>
+<tr><td><code>frontend/src/App.jsx</code></td><td>حذف <code>&lt;Route path="/livestream-dashboard"&gt;</code> + تنظيف نصوص الدعم</td></tr>
+<tr><td><code>frontend/src/index.ts</code></td><td>حذف <code>export interface LiveStream</code></td></tr>
+<tr><td><code>frontend/src/components/feed/PostCard.jsx</code></td><td>حذف بطاقة البث (<code>liveSessionStillActive</code>) كاملةً ~80 سطر</td></tr>
+<tr><td><code>frontend/src/admin/components/AnalyticsDashboard.jsx</code></td><td>حذف الحقول <code>liveStreams</code>، <code>activeStreams</code>، و metric "البث المباشر"</td></tr>
+<tr><td><code>frontend/src/components/AdminDashboardEnhanced.jsx</code></td><td>استبدال العنوان <code>LiveStream</code> ← <code>Yamshat Admin</code></td></tr>
+<tr><td><code>frontend/src/components/desktop/Sidebar.jsx</code></td><td>حذف عنصر <code>/live/control</code></td></tr>
+<tr><td><code>frontend/src/components/layout/DiscoverySidebar.jsx</code></td><td>حذف عنصر "البث المباشر"</td></tr>
+<tr><td><code>frontend/src/components/layout/MobileDock.jsx</code></td><td>حذف عنصر "بث"</td></tr>
+<tr><td><code>frontend/src/components/mobile/BottomNav.jsx</code></td><td>حذف عنصر <code>id: 'live'</code> + تحديث التعليق</td></tr>
+<tr><td><code>frontend/src/components/mobile/MobileTopBar.jsx</code></td><td>حذف زر "البث المباشر" بالكامل (12 سطر)</td></tr>
+<tr><td><code>frontend/src/components/ui/YamServicesMenu.jsx</code></td><td>حذف عنصر "البث المباشر"</td></tr>
+<tr><td><code>frontend/src/pages/Search.jsx</code></td><td>حذف فرع <code>item.type === 'live'</code></td></tr>
+<tr><td><code>frontend/src/services/media/mediaUploadService.js</code></td><td>حذف ذكر <code>LiveStudio.jsx</code> من التعليق</td></tr>
+<tr><td><code>frontend/src/services/search/searchEngine.js</code></td><td>حذف فرع <code>type === 'live'</code></td></tr>
+<tr><td><code>frontend/src/utils/i18n.js</code></td><td>حذف مدخلات <code>/live</code> من ar + en</td></tr>
+<tr><td><code>frontend/src/utils/notificationCenter.js</code></td><td>حذف فرع <code>screen === 'live'</code></td></tr>
+<tr><td><code>frontend/src/api/axios.js</code></td><td>تبسيط شرط 403 (إزالة <code>/live_rooms</code> وإعادة تسمية المتغير)</td></tr>
+<tr><td><code>mobile/.../activities/MainActivity.kt</code></td><td>حذف <code>actionLive</code> + سطر <code>subtitleForPath</code> للبث</td></tr>
+<tr><td><code>mobile/.../utils/NotificationHelper.kt</code></td><td>حذف فرع <code>"live"</code></td></tr>
+<tr><td><code>mobile/.../models/Post.kt</code></td><td>حذف الحقول <code>hasLiveStream</code>، <code>liveStreamId</code>، <code>liveStream</code>، و <code>data class LiveRoomInfo</code></td></tr>
+<tr><td><code>mobile/.../network/ApiService.kt</code></td><td>حذف endpoints: <code>create_live</code>، <code>end_live</code>، <code>live/{roomId}/token</code></td></tr>
+</tbody>
+</table>
+</div>
+
+<h2>3) ما تمّ الإبقاء عليه عمداً</h2>
+
+<div class="section">
+<ul>
+  <li><strong>migrations الباك إند</strong>: <code>0007/0008/0009</code> (تاريخية) و <code>0010_drop_live_artifacts.py</code> و <code>0011_drop_live_engagement_artifacts.py</code> — هذه الـ migrations هي التي <em>تحذف</em> الجداول من قاعدة البيانات الحيّة، فيجب أن تبقى لتعمل على البيئات المنشورة.</li>
+  <li><strong>LiveKit SDK للمكالمات الخاصة</strong>: <code>CallActivity.kt</code>, <code>ChatActivity.kt</code>, <code>ApiMessage.kt</code> (<code>livekit_url</code>/<code>livekit_room</code>)، <code>ApiClient.kt</code> (SSL pinning لدومين livekit.cloud)، <code>activity_call.xml</code>، <code>network_security_config.xml</code> — هذه تخص ميزة المكالمات الصوتية/المرئية بين مستخدمَين (Voice/Video Call) وهي ميزة منفصلة عن البث المباشر العام.</li>
+  <li><strong>الباك إند Python</strong>: <code>backend/app/services/gift_service.py</code> (<code>LiveStreamRecording</code> للتسجيلات القديمة)، <code>backend/app/core/observability.py</code> (gauges Prometheus)، <code>backend/app/core/socket_server.py</code> (<code>live_store</code> presence) — لمسها يكسر نظام الهدايا/Socket.IO ويحتاج طلباً صريحاً.</li>
+</ul>
+</div>
+
+<h2>4) التحقق النحوي (Syntax Validation)</h2>
+
+<div class="section">
+<p>تم التحقق من جميع ملفات <code>.js</code> / <code>.jsx</code> / <code>.ts</code> المُعدّلة عبر <code>acorn + acorn-jsx</code> ecmaVersion=latest, sourceType=module:</p>
+<p class="ok">✅ كل الملفات صحيحة نحوياً بدون أي أخطاء.</p>
+</div>
+
+<h2>5) فحص نهائي للإشارات المتبقية</h2>
+
+<div class="section">
+<p>أمر البحث:</p>
+<p><code>grep -rnE "'/live|/live/control|FeedLiveStream|MobileLiveStream|liveStreamId|LiveRoomInfo|liveViewer|liveStudio|createLive|endLive|getLiveToken" --include="*.{js,jsx,ts,tsx,html,css,kt,java,xml}" .</code></p>
+<p class="ok">✅ النتيجة: لا توجد أي إشارة متبقية للبث المباشر العام في الكود الفعّال.</p>
+</div>
+
+<div class="footer">
+  أُعدّ هذا التقرير تلقائياً بعد تنظيف <code>yamshat_fixed_v15.zip</code> وإنتاج <code>yamshat_fixed_v16.zip</code> الخالي من مجلدات <code>node_modules</code>.
+</div>
+
+</div>
+</body>
+</html>

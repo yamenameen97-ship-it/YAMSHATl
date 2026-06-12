@@ -17,7 +17,6 @@ const routeMeta = {
   '/admin/stories': { title: 'إدارة الستوري', breadcrumb: ['الإدارة', 'الستوري'] },
   '/admin/reels': { title: 'إدارة الريلز', breadcrumb: ['الإدارة', 'الريلز'] },
   '/admin/groups': { title: 'إدارة المجموعات', breadcrumb: ['الإدارة', 'المجموعات'] },
-  '/admin/live': { title: 'إدارة البث المباشر', breadcrumb: ['الإدارة', 'البث'] },
   '/admin/users': { title: 'إدارة المستخدمين', breadcrumb: ['الإدارة', 'المستخدمون'] },
   '/admin/rbac': { title: 'الأدوار والصلاحيات', breadcrumb: ['الإدارة', 'الصلاحيات'] },
   '/admin/notifications': { title: 'الإشعارات', breadcrumb: ['الإدارة', 'الإشعارات'] },

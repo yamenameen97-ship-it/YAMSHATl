@@ -8,7 +8,7 @@ export const ADMIN_NAV_GROUPS = [
   {
     title: 'إدارة المحتوى',
     items: [
-      { to: '/admin/live', label: 'إدارة البثوث', icon: '◉', permission: 'live.manage', badge: 'LIVE' },
+      // ⛔ تم حذف "إدارة البثوث" بناءً على طلب المالك (نظام البث ملغى).
       { to: '/admin/posts', label: 'إدارة المنشورات', icon: '✦', permission: 'posts.view' },
       { to: '/admin/chat', label: 'إدارة الشات', icon: '✉', permission: 'dashboard.view' },
       { to: '/admin/stories', label: 'إدارة الستوري', icon: '◎', permission: 'dashboard.view' },

@@ -630,11 +630,14 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
         @media (max-width: 980px) {
           .yam-composer-shell {
             border-radius: 18px;
-            padding: 8px 10px;
-            gap: 6px;
+            padding: 6px 8px;
+            gap: 4px;
             box-shadow: 0 -6px 18px rgba(0,0,0,0.22);
             position: relative;
             z-index: 1;
+            width: 100%;
+            box-sizing: border-box;
+            min-width: 0;
           }
           .yam-attachments-grid {
             max-height: 156px;
@@ -652,10 +655,11 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
             justify-content: flex-start;
             flex-shrink: 0;
             gap: 4px;
+            flex-wrap: nowrap !important;
           }
           .yam-composer-textrow {
             width: 100%;
-            margin-bottom: 6px;
+            margin-bottom: 4px;
           }
           .yam-composer-textrow .yam-input-frame {
             width: 100%;
@@ -665,30 +669,31 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
             width: 100%;
             flex: 1 1 100%;
             min-width: 0;
-            padding: 6px 12px;
-            border-radius: 22px;
+            padding: 4px 10px;
+            border-radius: 20px;
             align-items: center;
           }
           .yam-input-frame textarea {
             min-width: 0;
             width: 100%;
             font-size: 16px;
-            line-height: 1.45;
-            min-height: 40px;
-            max-height: 120px;
-            padding: 8px 0;
+            line-height: 1.4;
+            min-height: 36px;
+            max-height: 110px;
+            padding: 6px 0;
             word-break: break-word;
             overflow-wrap: anywhere;
           }
           .yam-action-btn,
           .yam-emoji-btn,
           .yam-ghost-btn {
-            width: 40px;
-            height: 40px;
-            min-width: 40px;
-            min-height: 40px;
-            border-radius: 12px;
-            font-size: 16px;
+            width: 36px;
+            height: 36px;
+            min-width: 36px;
+            min-height: 36px;
+            border-radius: 10px;
+            font-size: 15px;
+            flex-shrink: 0;
           }
           .yam-send-btn {
             min-width: 44px;
@@ -697,7 +702,9 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
             border-radius: 14px;
             padding: 0;
             font-size: 16px;
-            flex-shrink: 0;
+            flex-shrink: 0 !important;
+            display: inline-grid !important;
+            place-items: center;
           }
           .yam-emoji-grid {
             grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -713,22 +720,47 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
           .yam-action-btn,
           .yam-emoji-btn,
           .yam-ghost-btn {
-            width: 38px;
-            height: 38px;
-            min-width: 38px;
-            min-height: 38px;
-            border-radius: 12px;
+            width: 34px;
+            height: 34px;
+            min-width: 34px;
+            min-height: 34px;
+            border-radius: 10px;
+            font-size: 14px;
           }
           .yam-composer-actions {
-            gap: 4px;
+            gap: 3px;
           }
           .yam-input-frame {
-            padding: 6px 10px;
+            padding: 4px 8px;
           }
           .yam-send-btn {
             width: 42px;
             height: 42px;
             min-width: 42px;
+            flex-shrink: 0 !important;
+          }
+          .yam-composer-row {
+            gap: 4px !important;
+          }
+        }
+        @media (max-width: 360px) {
+          /* أصغر الأحجام للهواتف الضيقة جداً حتى يظهر زر الإرسال بجانب بقية الأزرار */
+          .yam-action-btn,
+          .yam-emoji-btn,
+          .yam-ghost-btn {
+            width: 32px;
+            height: 32px;
+            min-width: 32px;
+            min-height: 32px;
+            font-size: 13px;
+          }
+          .yam-send-btn {
+            width: 40px;
+            height: 40px;
+            min-width: 40px;
+          }
+          .yam-composer-actions {
+            gap: 2px;
           }
         }
       `}</style>
@@ -879,8 +911,20 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
           className="yam-send-btn"
           onClick={handleSend}
           disabled={composerDisabled || sending || (!text.trim() && attachments.length === 0)}
+          aria-label="إرسال الرسالة"
+          title="إرسال"
         >
-          {sending ? '...' : compact ? '➤' : 'إرسال'}
+          {sending ? (
+            '…'
+          ) : compact ? (
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              {/* سهم إرسال واضح يشير إلى اليسار الأعلى (توجيه RTL) */}
+              <path d="M22 2 11 13" />
+              <path d="M22 2 15 22l-4-9-9-4z" />
+            </svg>
+          ) : (
+            'إرسال'
+          )}
         </button>
       </div>
 

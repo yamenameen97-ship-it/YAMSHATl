@@ -15,6 +15,9 @@ import NotificationPermissionPrompt from '../notifications/NotificationPermissio
  *   الويب/اللابتوب — تنفيذًا لمتطلب التثبيت الموحّد.
  * - يُسمح بإخفائهما فقط داخل شاشات المحادثة الفردية (/chat/:id) أو
  *   عند تمرير hideNav=true (مثل صفحات البث الكامل) لتجنب تضارب الـ UI.
+ * - وضع الريلز (/reels): الهيدر السفلي يبقى مثبّتاً، أما الهيدر العلوي
+ *   فيظهر شفافاً Overlay فوق المحتوى كي يملأ المحتوى الشاشة بالكامل
+ *   (TikTok-style) كما طُلب.
  */
 export default function MainLayout({ children, hideNav = false, lockScroll = false }) {
   const nativeShell = isNativeShell();
@@ -24,6 +27,8 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
   const [isTransitioning, setIsTransitioning] = useState(false);
 
   const isConversationRoute = /^\/chat\/[^/]+/.test(location.pathname);
+  // وضع الريلز: الهيدر العلوي شفّاف Overlay، والمحتوى يملأ كامل الشاشة
+  const isReelsRoute = location.pathname === '/reels' || location.pathname.startsWith('/reels/');
   const showChrome = !hideNav && !isConversationRoute; // إظهار الهيدر/الفوتر الموحّدين
   const showNotificationPrompt = !isConversationRoute;
 
@@ -67,22 +72,22 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
   }, [isConversationRoute, location.pathname]);
 
   return (
-    <div className={`app-shell yamshat-shell yamshat-unified ${nativeShell ? 'native-shell' : ''} ${isConversationRoute ? 'conversation-shell' : ''}`}>
-      {/* الهيدر العلوي الموحّد — مثبّت في كل الصفحات */}
-      {showChrome ? <MobileTopBar /> : null}
+    <div className={`app-shell yamshat-shell yamshat-unified ${nativeShell ? 'native-shell' : ''} ${isConversationRoute ? 'conversation-shell' : ''} ${isReelsRoute ? 'reels-shell' : ''}`}>
+      {/* الهيدر العلوي الموحّد — مثبّت في كل الصفحات (شفّاف داخل الريلز) */}
+      {showChrome ? <MobileTopBar transparent={isReelsRoute} /> : null}
 
       <div className={`main-shell ${nativeShell ? 'native-shell' : ''}`}>
         <main
-          className={`page-content ${nativeShell ? 'native-shell' : ''} ${isTransitioning ? 'is-transitioning' : ''} ${isConversationRoute ? 'conversation-mode' : ''} ${lockScroll ? 'lock-scroll' : ''} ${showChrome ? 'with-fixed-chrome' : ''}`}
+          className={`page-content ${nativeShell ? 'native-shell' : ''} ${isTransitioning ? 'is-transitioning' : ''} ${isConversationRoute ? 'conversation-mode' : ''} ${lockScroll ? 'lock-scroll' : ''} ${showChrome ? 'with-fixed-chrome' : ''} ${isReelsRoute ? 'reels-mode' : ''}`}
           ref={mainRef}
         >
-          <div className={`page-shell-glow ${isConversationRoute ? 'conversation-mode' : ''}`} key={location.pathname}>
+          <div className={`page-shell-glow ${isConversationRoute ? 'conversation-mode' : ''} ${isReelsRoute ? 'reels-mode' : ''}`} key={location.pathname}>
             {children}
           </div>
         </main>
       </div>
 
-      {/* الشريط السفلي الموحّد — مثبّت في كل الصفحات */}
+      {/* الشريط السفلي الموحّد — مثبّت في كل الصفحات (بما فيها الريلز) */}
       {showChrome ? <BottomNav /> : null}
       {showNotificationPrompt ? <NotificationPermissionPrompt /> : null}
 
@@ -106,6 +111,12 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
             --yam-bottom-chrome-height: 0px;
           }
 
+          /* داخل الريلز: نُلغي بادينج المحتوى من الأعلى لأن الهيدر العلوي شفّاف فوق المحتوى */
+          .app-shell.yamshat-unified.reels-shell {
+            --yam-top-chrome-height: 0px;
+            background: #000;
+          }
+
           .main-shell {
             display: flex;
             flex-direction: column;
@@ -123,8 +134,8 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
             scroll-behavior: smooth;
             overscroll-behavior: contain;
             -webkit-overflow-scrolling: touch;
-            transition: opacity var(--motion-fast, 180ms), transform var(--motion-fast, 180ms), filter var(--motion-fast, 180ms);
-            will-change: transform, opacity;
+            transition: opacity var(--motion-fast, 180ms);
+            /* تمّ إزالة will-change/transform لأنها تصنع containing block جديد وتكسر position:fixed للعناصر الداخلية (الهيدر/الفوتر) */
           }
 
           /* عند وجود هيدر/فوتر مثبّتين أضف هوامش حتى لا يختفي المحتوى تحتهما */
@@ -133,10 +144,19 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
             padding-bottom: var(--yam-bottom-chrome-height);
           }
 
+          /* وضع الريلز: لا بادينج علوي (الهيدر شفّاف فوق المحتوى) لكن نُبقي البادينج السفلي حتى لا يحجب الفوتر الفيديو */
+          .page-content.reels-mode {
+            padding-top: 0 !important;
+          }
+
           .page-content.conversation-mode {
             overflow: hidden;
             padding-bottom: 0;
             padding-top: 0;
+            /* داخل المحادثة أيضاً لا نريد أي transform حتى يعمل position:fixed للهيدر/الإدخال بشكل صحيح */
+            transform: none !important;
+            filter: none !important;
+            will-change: auto !important;
           }
 
           .page-content.lock-scroll {
@@ -145,8 +165,6 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
 
           .page-content.is-transitioning {
             opacity: 0.985;
-            transform: translate3d(0, 4px, 0);
-            filter: saturate(0.98);
           }
 
           .page-shell-glow {
@@ -156,8 +174,10 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
             contain-intrinsic-size: 900px;
           }
 
-          .page-shell-glow.conversation-mode {
+          .page-shell-glow.conversation-mode,
+          .page-shell-glow.reels-mode {
             min-height: 100vh;
+            min-height: 100dvh;
           }
 
           .page-content::-webkit-scrollbar { width: 8px; }
@@ -180,6 +200,10 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
               max-width: 1200px;
               margin: 0 auto;
               width: 100%;
+            }
+            /* في الريلز اجعل المسرح يأخذ كامل العرض */
+            .app-shell.yamshat-unified.reels-shell .page-content.with-fixed-chrome {
+              max-width: 100%;
             }
           }
 

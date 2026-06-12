@@ -29,10 +29,15 @@ export const reactToGroupMessage = (groupId, messageId, emoji) =>
   API.post(`/groups/${groupId}/messages/${messageId}/reactions`, { emoji });
 
 // =================== رفع الملفات ===================
+// ملاحظة: لا نعيّن Content-Type يدويًا — المتصفح يضيف boundary تلقائيًا.
+// تعيينه يدويًا يكسر رفع الملفات على بعض متصفحات الجوال (Safari iOS / Chrome Android).
 export const uploadGroupMedia = (formData, onUploadProgress) =>
   API.post('/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
     onUploadProgress,
+    // timeout أعلى للرفع على شبكات الجوال البطيئة
+    timeout: 120000,
+    // اسمح بـ retry على 502/503/504 من Render cold start
+    retryable: true,
   });
 
 // =================== الإعدادات والصلاحيات ===================

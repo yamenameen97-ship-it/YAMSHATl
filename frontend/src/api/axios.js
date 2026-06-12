@@ -31,6 +31,10 @@ function shouldRetryRequest(config = {}, responseStatus) {
   return true;
 }
 
+// v22: كشف الجوال لإعطائه timeout أعلى على الشبكات البطيئة
+const IS_MOBILE_UA = typeof navigator !== 'undefined' &&
+  /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+
 // Smart Cache Layer
 const cache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -61,13 +65,14 @@ function getCacheOptions(config = {}) {
 
 const API = axios.create({
   baseURL: API_BASE,
-  timeout: DEFAULT_TIMEOUT_MS,
+  // v22: timeout أعلى على الجوال لتحمل الشبكات الضعيفة (3G/4G)
+  timeout: IS_MOBILE_UA ? 60_000 : DEFAULT_TIMEOUT_MS,
   withCredentials: true,
   headers: {
     // مهم: تعريف الطلب كـ XMLHttpRequest عشان يعدي CSRF protection
     'X-Requested-With': 'XMLHttpRequest',
-    // تعريف نوع العميل للـ backend
-    'X-Yamshat-Client': 'web',
+    // تعريف نوع العميل للـ backend (يفرق بين web/web-mobile)
+    'X-Yamshat-Client': IS_MOBILE_UA ? 'web-mobile' : 'web',
     'Accept': 'application/json',
   },
 });

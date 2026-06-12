@@ -24,6 +24,7 @@ import './styles/mobile-first.css';
 import './styles/design-system.css';
 import './styles/chat-premium.css';
 import './styles/reels-premium.css';
+import './styles/reels-fixes.css';
 import './styles/design-system-enforce.css';
 /* ⚠️ يجب أن يكون آخر استيراد CSS حتى يفوز في cascade ويصلح مشاكل الموبايل */
 import './styles/mobile-fixes.css';

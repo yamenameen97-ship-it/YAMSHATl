@@ -149,7 +149,7 @@ function ReelItem({ index, style, data }) {
           playsInline
           muted
           autoPlay={isActive}
-          preload="metadata"
+          preload={isActive ? 'auto' : 'metadata'}
           poster={reel.poster_url}
           onClick={() => {
             if (!videoRef.current) return;
@@ -209,12 +209,6 @@ function ReelItem({ index, style, data }) {
             <span className="reel-chip ghost">👁 {Number(reel.views_count || 0)}</span>
             <span className="reel-chip ghost">⏱ متوسط المشاهدة {Math.round(Number(insights?.avgWatchMs || 0) / 1000)}ث</span>
           </div>
-        </div>
-
-        <div className="reel-swipe-indicator" aria-hidden="true">
-          <span>︿</span>
-          <small>اسحب</small>
-          <span>﹀</span>
         </div>
 
         <div className="reel-actions-stack absolute right-4 bottom-24 flex flex-col gap-4 items-center z-20">
@@ -310,11 +304,18 @@ export default function ReelsPage() {
   }, []);
 
   const hydrateFromCache = useCallback(() => {
-    const cached = getReelsCache();
-    if (Array.isArray(cached?.items) && cached.items.length) {
-      setReels(cached.items.map(normalizeReel));
-      setIsLoading(false);
+    // تسريع الظهور على الجوال: عرض الريلز من الكاش فورًا إذا كانت متاحة
+    try {
+      const cached = getReelsCache();
+      if (Array.isArray(cached?.items) && cached.items.length) {
+        setReels(cached.items.map(normalizeReel));
+        setIsLoading(false);
+        return true;
+      }
+    } catch (e) {
+      console.warn('hydrate cache failed', e);
     }
+    return false;
   }, []);
 
   const finalizeWatchSession = useCallback((reason = 'switch') => {
@@ -741,14 +742,32 @@ export default function ReelsPage() {
     }
 
     const originalReels = [...reels];
+    const nextLiked = !reel.is_liked;
+    const nextCount = reel.is_liked
+      ? Math.max(0, Number(reel.likes_count || 0) - 1)
+      : Number(reel.likes_count || 0) + 1;
+
+    // تحديث تفاؤلي فوري
     setReels((prev) => prev.map((item) => item.id === reel.id ? {
       ...item,
-      is_liked: !item.is_liked,
-      likes_count: item.is_liked ? Math.max(0, Number(item.likes_count || 0) - 1) : Number(item.likes_count || 0) + 1,
+      is_liked: nextLiked,
+      likes_count: nextCount,
     } : item));
+
+    // تحديث الكاش لضمان التخزين
+    try {
+      const cached = getReelsCache();
+      if (cached?.items) {
+        const updated = cached.items.map((item) => item.id === reel.id ? {
+          ...item, is_liked: nextLiked, likes_count: nextCount,
+        } : item);
+        saveReelsCache(updated);
+      }
+    } catch (e) {}
 
     try {
       await API.post(`/reels/${encodeURIComponent(reel.id)}/like`);
+      trackReelAnalytics(nextLiked ? 'like' : 'unlike', { reelId: reel.id, username: reel.username });
     } catch {
       setReels(originalReels);
       pushToast({ type: 'error', title: 'تعذر تحديث الإعجاب' });
@@ -757,9 +776,21 @@ export default function ReelsPage() {
 
   const handleSave = async (reel) => {
     const originalReels = [...reels];
-    setReels((prev) => prev.map((item) => item.id === reel.id ? { ...item, is_saved: !item.is_saved } : item));
+    const nextSaved = !reel.is_saved;
+    setReels((prev) => prev.map((item) => item.id === reel.id ? { ...item, is_saved: nextSaved } : item));
+
+    try {
+      const cached = getReelsCache();
+      if (cached?.items) {
+        const updated = cached.items.map((item) => item.id === reel.id ? { ...item, is_saved: nextSaved } : item);
+        saveReelsCache(updated);
+      }
+    } catch (e) {}
+
     try {
       await API.post(`/reels/${encodeURIComponent(reel.id)}/save`);
+      trackReelAnalytics(nextSaved ? 'save' : 'unsave', { reelId: reel.id, username: reel.username });
+      pushToast({ type: 'success', title: nextSaved ? 'تم حفظ الريل' : 'تم إلغاء الحفظ' });
     } catch {
       setReels(originalReels);
       pushToast({ type: 'error', title: 'تعذر حفظ الريل' });
@@ -948,22 +979,7 @@ export default function ReelsPage() {
             <h1>الريلز</h1>
             <p>{isDesktop ? 'سوايب سريع بالمفاتيح أو عجلة الماوس مع جودة تلقائية ومؤشرات Buffer' : 'مرر بين الفيديوهات مع تحميل مسبق وتخزين ذكي وسجل مشاهدة'}</p>
           </div>
-          <div className="reels-toolbar">
-            <select className="quality-select" value={selectedQuality} onChange={(event) => {
-              const value = event.target.value;
-              setSelectedQuality(value);
-              trackReelAnalytics('manual_quality_change', {
-                reelId: activeReelItem?.id,
-                content: activeReelItem?.content,
-                username: activeReelItem?.username,
-                thumbnail_url: activeReelItem?.poster_url,
-                quality: value,
-              });
-            }}>
-              {QUALITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
-            <button type="button" className="upload-reel-button" onClick={() => setShowUploadModal(true)}>⬆ رفع ريل</button>
-          </div>
+          {/* تمت إزالة شريط الأدوات: مربع "تلقائي" وزر "رفع ريل" — يكفي زر الإنشاء (+) في الهيدر السفلي */}
         </div>
 
         <div className="reels-stage-shell">

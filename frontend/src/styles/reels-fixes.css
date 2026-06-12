@@ -1,0 +1,80 @@
+/* ==========================================================================
+   Yamshat — Reels Fixes (إصلاحات نهائية v21)
+   - إخفاء سهوم/مؤشر "اسحب" التي تغطي أزرار التفاعل في كل الصفحات
+   - إخفاء مربع الجودة "تلقائي" من شريط أدوات الريلز (ويب جوال + ديسكتوب + لابتوب)
+   - إخفاء زر "رفع ريل" نهائيًا (يكفي زر + في الهيدر السفلي)
+   - تسريع ظهور الريلز على الجوال
+   ========================================================================== */
+
+/* (1) إخفاء مؤشر السحب والأسهم في كل الأجهزة */
+.reel-swipe-indicator,
+[data-ds='reel-swipe-indicator'],
+.reel-swipe-hint,
+.swipe-indicator,
+.reel-drag-arrows,
+.reel-hint-arrows {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* (2) إخفاء قائمة اختيار الجودة "تلقائي" في كل صفحات الريلز */
+.reels-toolbar .quality-select,
+.reels-header-bar .quality-select,
+.reels-page-shell .quality-select,
+select.quality-select,
+.reels-status-ribbon .quality-pill,
+[data-ds='reels-quality-select'] {
+  display: none !important;
+}
+
+/* (3) إخفاء زر "رفع ريل" من الهيدر العلوي في كل الصفحات */
+.upload-reel-button,
+.reels-toolbar .upload-reel-button,
+.reels-header-bar .upload-reel-button,
+button.upload-reel-button,
+[data-ds='reels-upload-button'] {
+  display: none !important;
+}
+
+/* (4) لو الشريط بأكمله أصبح فارغًا، أخفِه أيضًا حتى لا يأخذ مساحة فوق الأزرار */
+.reels-toolbar:empty {
+  display: none !important;
+}
+
+/* (5) ضمان أن أزرار التفاعل (إعجاب/تعليق/حفظ/مشاركة) فوق أي عنصر آخر */
+.reel-actions-stack {
+  z-index: 40 !important;
+  pointer-events: auto !important;
+}
+.reel-actions-stack .reel-action-btn {
+  pointer-events: auto !important;
+  cursor: pointer;
+}
+
+/* (6) تسريع ظهور الريلز على الجوال — إخفاء حالة التحميل الطويلة */
+@media (max-width: 768px) {
+  .reels-loading-state {
+    animation: reels-loading-fade 250ms ease-out forwards;
+  }
+  .reel-video {
+    content-visibility: auto;
+    contain-intrinsic-size: 100vw 100vh;
+  }
+  /* Buffer banner أكثر هدوءًا على الجوال */
+  .reel-buffer-banner {
+    opacity: 0.85;
+  }
+}
+
+@keyframes reels-loading-fade {
+  from { opacity: 1; }
+  to { opacity: 1; }
+}
+
+/* (7) في حال وُجدت بقايا أسهم قديمة كصور SVG داخل البطاقة، أخفِها */
+.reel-card .reel-arrow-hint,
+.reel-card .reel-vertical-arrows,
+.reel-card-shell .swipe-arrows {
+  display: none !important;
+}

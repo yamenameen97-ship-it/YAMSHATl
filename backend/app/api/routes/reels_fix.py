@@ -116,7 +116,7 @@ def _serialize_reel(db: Session, reel: Reel, current_user: User | None = None) -
     return payload
 
 
-@router.get('/reels')
+@router.get('')
 def get_reels(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -139,7 +139,7 @@ def get_reels(
     return _build_reels_response(items, limit=limit, offset=offset)
 
 
-@router.get('/reels/feed')
+@router.get('/feed')
 def get_reels_feed(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -151,7 +151,7 @@ def get_reels_feed(
     return get_reels(limit=limit, offset=offset, category=category, db=db, current_user=current_user)
 
 
-@router.post('/reels', status_code=status.HTTP_201_CREATED)
+@router.post('', status_code=status.HTTP_201_CREATED)
 async def create_reel(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     إنشاء ريل جديد مع معالجة شاملة للأخطاء والتحقق من البيانات.
@@ -258,7 +258,7 @@ async def create_reel(request: Request, db: Session = Depends(get_db), current_u
             ) from retry_exc
 
 
-@router.post('/reels/{reel_id}/like')
+@router.post('/{reel_id}/like')
 def like_reel(reel_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """إضافة أو إزالة إعجاب على ريل."""
     reel = db.query(Reel).filter(Reel.id == reel_id, Reel.is_deleted.is_(False)).first()
@@ -285,7 +285,7 @@ def like_reel(reel_id: int, db: Session = Depends(get_db), current_user: User = 
     }
 
 
-@router.post('/reels/{reel_id}/view')
+@router.post('/{reel_id}/view')
 def record_reel_view(reel_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """تسجيل مشاهدة الريل."""
     reel = db.query(Reel).filter(Reel.id == reel_id, Reel.is_deleted.is_(False)).first()
@@ -307,7 +307,7 @@ def record_reel_view(reel_id: int, db: Session = Depends(get_db), current_user: 
     }
 
 
-@router.get('/reels/trending')
+@router.get('/trending')
 def get_trending_reels(
     limit: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
@@ -323,7 +323,7 @@ def get_trending_reels(
     }
 
 
-@router.post('/reels/{reel_id}/save')
+@router.post('/{reel_id}/save')
 def save_reel(reel_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """حفظ أو إزالة حفظ ريل."""
     reel = db.query(Reel).filter(Reel.id == reel_id, Reel.is_deleted.is_(False)).first()

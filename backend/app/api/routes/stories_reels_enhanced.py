@@ -404,7 +404,7 @@ async def reply_to_story(
 
 # ============ نظام الريلز ============
 
-@router.post('/reels')
+@router.post('')
 async def create_reel(
     file: UploadFile = File(...),
     thumbnail: UploadFile = File(...),
@@ -455,7 +455,7 @@ async def create_reel(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get('/reels/feed')
+@router.get('/feed')
 async def get_reels_feed(
     limit: int = Query(10, ge=1, le=50),
     offset: int = Query(0, ge=0),
@@ -549,7 +549,7 @@ async def get_reels_feed(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post('/reels/{reel_id}/like')
+@router.post('/{reel_id}/like')
 async def like_reel(
     reel_id: int,
     db: Session = Depends(get_db),
@@ -598,7 +598,7 @@ async def like_reel(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post('/reels/{reel_id}/view')
+@router.post('/{reel_id}/view')
 async def record_reel_view(
     reel_id: int,
     db: Session = Depends(get_db),
@@ -648,7 +648,7 @@ async def record_reel_view(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get('/reels/trending')
+@router.get('/trending')
 async def get_trending_reels(
     limit: int = Query(10, ge=1, le=50),
     db: Session = Depends(get_db),

@@ -15,13 +15,13 @@ router = APIRouter()
 
 # ============ مسارات المجموعات الأساسية ============
 
-@router.get('/groups')
+@router.get('')
 def list_groups(current_user: User = Depends(get_current_user)):
     """جلب قائمة المجموعات"""
     return group_store.list_groups()
 
 
-@router.post('/groups')
+@router.post('')
 def create_group(
     payload: dict = Body(...),
     current_user: User = Depends(get_current_user)
@@ -57,7 +57,7 @@ def create_group_legacy(
     return create_group(payload, current_user)
 
 
-@router.get('/groups/{group_id}')
+@router.get('/{group_id}')
 def get_group_details(group_id: str, current_user: User = Depends(get_current_user)):
     """جلب تفاصيل مجموعة"""
     group = group_store.get_group(group_id)
@@ -72,7 +72,7 @@ def get_group_info_legacy(groupId: int, current_user: User = Depends(get_current
     return get_group_details(str(groupId), current_user)
 
 
-@router.put('/groups/{group_id}')
+@router.put('/{group_id}')
 def update_group(
     group_id: str,
     payload: dict = Body(...),
@@ -96,7 +96,7 @@ def update_group(
     return group_store.serialize_group(group)
 
 
-@router.delete('/groups/{group_id}')
+@router.delete('/{group_id}')
 def delete_group(group_id: str, current_user: User = Depends(get_current_user)):
     """حذف مجموعة"""
     success = group_store.delete_group(group_id, current_user.username)
@@ -109,7 +109,7 @@ def delete_group(group_id: str, current_user: User = Depends(get_current_user)):
 
 # ============ مسارات الأعضاء ============
 
-@router.post('/groups/{group_id}/join')
+@router.post('/{group_id}/join')
 def join_group(group_id: str, current_user: User = Depends(get_current_user)):
     """الانضمام للمجموعة"""
     result = group_store.join_group(group_id, current_user.username)
@@ -124,7 +124,7 @@ def join_group_legacy(groupId: int, current_user: User = Depends(get_current_use
     return join_group(str(groupId), current_user)
 
 
-@router.post('/groups/{group_id}/leave')
+@router.post('/{group_id}/leave')
 def leave_group(group_id: str, current_user: User = Depends(get_current_user)):
     """مغادرة المجموعة"""
     success = group_store.leave_group(group_id, current_user.username)
@@ -141,7 +141,7 @@ def leave_group_legacy(groupId: int, current_user: User = Depends(get_current_us
     return leave_group(str(groupId), current_user)
 
 
-@router.get('/groups/{group_id}/members')
+@router.get('/{group_id}/members')
 def get_group_members(group_id: str, current_user: User = Depends(get_current_user)):
     """جلب أعضاء المجموعة"""
     group = group_store.get_group(group_id)
@@ -157,7 +157,7 @@ def get_group_members_legacy(groupId: int, current_user: User = Depends(get_curr
     return get_group_members(str(groupId), current_user)
 
 
-@router.post('/groups/{group_id}/members/{target_username}/role')
+@router.post('/{group_id}/members/{target_username}/role')
 def update_member_role(
     group_id: str,
     target_username: str,
@@ -186,7 +186,7 @@ def promote_member_legacy(
     return update_member_role(str(groupId), username, {"role": "admin"}, current_user)
 
 
-@router.post('/groups/{group_id}/members/{target_username}/remove')
+@router.post('/{group_id}/members/{target_username}/remove')
 def remove_group_member(
     group_id: str,
     target_username: str,
@@ -212,7 +212,7 @@ def remove_member_legacy(
 
 # ============ مسارات الرسائل ============
 
-@router.post('/groups/{group_id}/messages')
+@router.post('/{group_id}/messages')
 def send_message(
     group_id: str,
     payload: dict = Body(...),
@@ -259,7 +259,7 @@ def send_group_message_legacy(
     return send_message(str(group_id), payload, current_user)
 
 
-@router.get('/groups/{group_id}/messages')
+@router.get('/{group_id}/messages')
 def get_group_messages(
     group_id: str,
     limit: int = Query(50, ge=1, le=100),
@@ -284,7 +284,7 @@ def get_group_messages_legacy(
     return get_group_messages(str(groupId), limit, 0, current_user)
 
 
-@router.delete('/groups/{group_id}/messages/{message_id}')
+@router.delete('/{group_id}/messages/{message_id}')
 def delete_message(
     group_id: str,
     message_id: str,
@@ -309,7 +309,7 @@ def delete_group_message_legacy(
     return delete_message(str(groupId), str(messageId), current_user)
 
 
-@router.put('/groups/{group_id}/messages/{message_id}')
+@router.put('/{group_id}/messages/{message_id}')
 def edit_message(
     group_id: str,
     message_id: str,
@@ -332,7 +332,7 @@ def edit_message(
 
 # ============ مسارات التفاعلات ============
 
-@router.post('/groups/{group_id}/messages/{message_id}/reactions')
+@router.post('/{group_id}/messages/{message_id}/reactions')
 def add_reaction(
     group_id: str,
     message_id: str,
@@ -364,7 +364,7 @@ def add_group_message_reaction_legacy(
     return add_reaction(str(groupId), str(messageId), payload, current_user)
 
 
-@router.delete('/groups/{group_id}/messages/{message_id}/reactions')
+@router.delete('/{group_id}/messages/{message_id}/reactions')
 def remove_reaction(
     group_id: str,
     message_id: str,
@@ -387,7 +387,7 @@ def remove_reaction(
 
 # ============ مسارات حالة القراءة ============
 
-@router.post('/groups/{group_id}/messages/{message_id}/seen')
+@router.post('/{group_id}/messages/{message_id}/seen')
 def mark_message_seen(
     group_id: str,
     message_id: str,
@@ -414,7 +414,7 @@ def mark_group_message_seen_legacy(
 
 # ============ مسارات الدعوات والإدارة ============
 
-@router.post('/groups/{group_id}/invite')
+@router.post('/{group_id}/invite')
 def invite_to_group(
     group_id: str,
     payload: dict = Body(...),
@@ -432,7 +432,7 @@ def invite_to_group(
     return result
 
 
-@router.post('/groups/{group_id}/moderate')
+@router.post('/{group_id}/moderate')
 def moderate_group_user(
     group_id: str,
     payload: dict = Body(...),
@@ -453,7 +453,7 @@ def moderate_group_user(
     return {"status": "success", "message": f"User {target} {action}ed"}
 
 
-@router.get('/groups/{group_id}/audit-logs')
+@router.get('/{group_id}/audit-logs')
 def get_group_audit_logs(group_id: str, current_user: User = Depends(get_current_user)):
     """جلب سجلات التدقيق للمجموعة"""
     group = group_store.get_group(group_id)
@@ -470,7 +470,7 @@ def get_group_audit_logs(group_id: str, current_user: User = Depends(get_current
 
 # ============ مسارات الحالة ============
 
-@router.post('/groups/{group_id}/typing')
+@router.post('/{group_id}/typing')
 def group_typing(
     group_id: str,
     payload: dict = Body(...),
@@ -499,7 +499,7 @@ def group_typing_legacy(
 
 # ============ مسارات الصحة ============
 
-@router.get('/groups/health')
+@router.get('/health')
 async def health_check():
     """فحص صحة خدمة المجموعات"""
     return {

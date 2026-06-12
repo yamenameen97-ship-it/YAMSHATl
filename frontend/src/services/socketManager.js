@@ -54,16 +54,24 @@ function isVolatileEvent(eventName = '') {
   ].includes(String(eventName || ''));
 }
 
+// v22: كشف الجوال لتفعيل polling fallback
+const IS_MOBILE_UA = typeof navigator !== 'undefined' &&
+  /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+
 class SocketManager {
   constructor() {
     this.socket = io(SOCKET_URL, {
       autoConnect: false,
-      transports: ['websocket', 'polling'],
+      // v22: على الجوال نبدأ بـ polling لأن بعض شبكات 4G/الوايفاي تحجب WebSocket
+      transports: IS_MOBILE_UA ? ['polling', 'websocket'] : ['websocket', 'polling'],
+      upgrade: true,
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 30000,
-      timeout: 20000,
+      // v22: timeout أعلى على الجوال
+      timeout: IS_MOBILE_UA ? 30000 : 20000,
+      withCredentials: true,
       auth: this.buildAuthPayload(),
     });
 

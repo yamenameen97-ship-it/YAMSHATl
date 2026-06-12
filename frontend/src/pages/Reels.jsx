@@ -974,13 +974,12 @@ export default function ReelsPage() {
   return (
     <MainLayout>
       <div className="reels-page-shell" onWheelCapture={handleWheelNavigation} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-        <div className="reels-header-bar">
-          <div>
-            <h1>الريلز</h1>
-            <p>{isDesktop ? 'سوايب سريع بالمفاتيح أو عجلة الماوس مع جودة تلقائية ومؤشرات Buffer' : 'مرر بين الفيديوهات مع تحميل مسبق وتخزين ذكي وسجل مشاهدة'}</p>
-          </div>
-          {/* تمت إزالة شريط الأدوات: مربع "تلقائي" وزر "رفع ريل" — يكفي زر الإنشاء (+) في الهيدر السفلي */}
-        </div>
+        {/*
+          🎬 تمت إزالة شريط العنوان الداخلي (reels-header-bar) عمدًا.
+          الهيدر العلوي الموحّد في MainLayout يظهر الآن بوضع شفّاف Overlay
+          فوق الفيديو (TikTok-style)، لذا لا حاجة لشريط عنوان داخلي ثاني.
+          المحتوى يملأ الشاشة بالكامل من الأعلى للأسفل (حتى الفوتر السفلي).
+        */}
 
         <div className="reels-stage-shell">
           {isLoading ? (

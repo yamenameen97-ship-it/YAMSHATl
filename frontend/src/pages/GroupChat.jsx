@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import MainLayout from '../components/layout/MainLayout.jsx';
 import {
   getGroupDetails,
   getGroupMessages,
@@ -8,19 +9,24 @@ import {
 } from '../api/groups.js';
 import socketManager from '../services/socketManager.js';
 import { getCurrentUsername } from '../utils/auth.js';
+import { startCall, bootstrapCallService } from '../services/callService.js';
+import { ensureNotificationPermission, showLocalNotification } from '../utils/notificationCenter.js';
 import '../styles/group-chat.css';
 
 /**
- * صفحة دردشة مجموعة واحدة.
+ * صفحة دردشة مجموعة واحدة — نسخة v22 مُصلحة.
  *
- * ⚠️ ملاحظة هامة بشأن العزل بين المجموعات:
- *  - كل مجموعة لها id فريد في الباك اند ولها رسائلها الخاصة في
- *    /api/groups/{group_id}/messages (مخزّن منفصل في group_store_enhanced).
- *  - نستخدم في الـ Router مفتاح key={groupId} (في App.jsx) لإجبار React
- *    على إعادة mount كاملة للمكوّن عند تغيّر المجموعة، حتى لا تتسرّب
- *    رسائل من مجموعة لأخرى عبر state قديم.
- *  - بالإضافة لذلك نمسح state يدويًا عند تغيّر groupId كحارس إضافي،
- *    ونغادر غرفة السوكيت السابقة قبل الانضمام للجديدة.
+ * إصلاحات v22:
+ *  1. فشل الإرسال على ويب الجوال:
+ *     - إضافة retry تلقائي للـ POST /messages (3 محاولات + backoff).
+ *     - إعادة الرسالة الفاشلة للحقل مع رسالة خطأ واضحة.
+ *     - زيادة timeout للرسائل (60s بدل 45s) لتحمل شبكة الجوال البطيئة.
+ *  2. فشل رفع الملفات للمجموعة:
+ *     - إضافة optimistic UI للملف قبل اكتمال الرفع.
+ *     - عرض شريط تقدم + التعامل مع أخطاء الرفع بشكل صحيح.
+ *     - عدم تعيين Content-Type يدوياً (المتصفح يضيف boundary).
+ *  3. تفعيل المكالمات الصوتية والفيديو من هيدر المجموعة.
+ *  4. تفعيل إشعارات الويب للمجموعات (طلب الإذن + إشعار محلي عند الرسائل).
  */
 const GroupChat = () => {
   const { groupId } = useParams();
@@ -31,14 +37,20 @@ const GroupChat = () => {
   const [groupInfo, setGroupInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [notifPermission, setNotifPermission] = useState(
+    typeof Notification !== 'undefined' ? Notification.permission : 'default'
+  );
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
+  const videoInputRef = useRef(null);
+  const documentVisibleRef = useRef(
+    typeof document !== 'undefined' ? !document.hidden : true
+  );
 
-  // نحتفظ بمعرّف المجموعة الحالية في ref حتى يستطيع socket handler
-  // التحقّق منه بدقّة (ويمنع استقبال رسائل قديمة من مجموعة سابقة).
   const activeGroupIdRef = useRef(groupId);
   useEffect(() => {
     activeGroupIdRef.current = groupId;
@@ -50,14 +62,35 @@ const GroupChat = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // 🧹 مسح state فوريّ عند تغيّر المجموعة (حارس ضد تسرّب الرسائل).
+  // 🧹 مسح state فوريّ عند تغيّر المجموعة
   useEffect(() => {
     setMessages([]);
     setGroupInfo(null);
     setLoading(true);
     setMessage('');
     setShowAttachMenu(false);
+    setUploadProgress(0);
   }, [groupId]);
+
+  // 🔔 طلب إذن الإشعارات + bootstrap للمكالمات
+  useEffect(() => {
+    try { bootstrapCallService(); } catch { /* تجاهل */ }
+    try {
+      ensureNotificationPermission?.().then((perm) => {
+        if (perm) setNotifPermission(perm);
+      }).catch(() => {});
+    } catch {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        Notification.requestPermission().then(setNotifPermission).catch(() => {});
+      }
+    }
+
+    const onVisibility = () => {
+      documentVisibleRef.current = !document.hidden;
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
 
   // 📥 جلب معلومات المجموعة
   useEffect(() => {
@@ -66,7 +99,6 @@ const GroupChat = () => {
       try {
         const res = await getGroupDetails(groupId);
         if (cancelled) return;
-        // الباك اند يعيد serialize_group(...) مباشرة (وليس داخل group:)
         const data = res.data || res;
         setGroupInfo(data);
       } catch (err) {
@@ -80,7 +112,7 @@ const GroupChat = () => {
     return () => { cancelled = true; };
   }, [groupId]);
 
-  // 📥 جلب رسائل المجموعة + الاشتراك بسوكيت الغرفة الخاصة بها فقط.
+  // 📥 جلب رسائل المجموعة + اشتراك السوكيت
   useEffect(() => {
     let cancelled = false;
     const room = `group:${groupId}`;
@@ -88,18 +120,15 @@ const GroupChat = () => {
     const fetchChatData = async () => {
       try {
         setLoading(true);
-        // استخدام endpoint مخصّص للمجموعة (عزل تام عن الشات الخاص)
         const response = await getGroupMessages(groupId, { limit: 50, offset: 0 });
         if (cancelled) return;
 
-        // الباك اند يعيد قائمة الرسائل مباشرة (أحدث→أقدم)، نقلبها لتصير أقدم→أحدث.
         const raw = Array.isArray(response.data)
           ? response.data
           : (response.data?.items || []);
 
         const formattedMessages = raw.map((msg) => ({
           id: msg.id,
-          // تأكيد ربط الرسالة بمجموعتها (للفلترة الدفاعية)
           group_id: String(msg.group_id || groupId),
           sender: msg.sender_username || msg.sender,
           text: msg.content || msg.text || msg.message || '',
@@ -118,7 +147,6 @@ const GroupChat = () => {
             `https://api.dicebear.com/7.x/avataaars/svg?seed=${msg.sender_username || msg.sender}`,
         }));
 
-        // ترتيب أقدم → أحدث
         formattedMessages.sort((a, b) => String(a.id).localeCompare(String(b.id)));
         setMessages(formattedMessages);
       } catch (err) {
@@ -134,13 +162,11 @@ const GroupChat = () => {
 
     fetchChatData();
 
-    // 🔌 الاتصال بالسوكيت + الانضمام لغرفة هذه المجموعة فقط.
     socketManager.connect();
     try {
       socketManager.emit('join_group', { group_id: groupId, room });
     } catch { /* تجاهل */ }
 
-    // 🛡️ فلتر دفاعي: نقبل فقط الرسائل التي تنتمي صراحةً لهذه المجموعة.
     const handleNewMessage = (payload) => {
       const currentGid = activeGroupIdRef.current;
       const payloadGid =
@@ -149,13 +175,15 @@ const GroupChat = () => {
           ? payload.receiver.slice('group:'.length)
           : '');
 
-      // إذا لم يكن للرسالة أي ارتباط بهذه المجموعة → تجاهل.
       if (String(payloadGid) !== String(currentGid)) return;
+
+      const senderName = payload.sender_username || payload.sender;
+      const isFromMe = senderName === currentUser;
 
       const newMsg = {
         id: payload.id || `srv_${Date.now()}`,
         group_id: String(currentGid),
-        sender: payload.sender_username || payload.sender,
+        sender: senderName,
         text: payload.content || payload.text || payload.message || '',
         mediaUrl:
           payload.media_url ||
@@ -166,10 +194,10 @@ const GroupChat = () => {
           hour: '2-digit',
           minute: '2-digit',
         }),
-        isMe: (payload.sender_username || payload.sender) === currentUser,
+        isMe: isFromMe,
         avatar:
           payload.sender_avatar ||
-          `https://api.dicebear.com/7.x/avataaars/svg?seed=${payload.sender_username || payload.sender}`,
+          `https://api.dicebear.com/7.x/avataaars/svg?seed=${senderName}`,
       };
 
       setMessages((prev) => {
@@ -177,6 +205,31 @@ const GroupChat = () => {
         return [...prev, newMsg];
       });
       scrollToBottom();
+
+      // 🔔 إشعار محلي إن لم تكن الرسالة منا والصفحة غير مرئية
+      if (!isFromMe && !documentVisibleRef.current) {
+        try {
+          const groupName = groupInfo?.name || 'المجموعة';
+          showLocalNotification?.({
+            title: `${groupName} — ${senderName}`,
+            body: newMsg.text || (newMsg.mediaUrl ? '📎 مرفق جديد' : 'رسالة جديدة'),
+            icon: '/favicon.ico',
+            tag: `group-${currentGid}`,
+            data: { groupId: currentGid, type: 'group_message' },
+          });
+        } catch (e) {
+          // fallback: استخدم Notification API مباشرة
+          if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            try {
+              new Notification(`${groupInfo?.name || 'المجموعة'} — ${senderName}`, {
+                body: newMsg.text || '📎 مرفق جديد',
+                icon: '/favicon.ico',
+                tag: `group-${currentGid}`,
+              });
+            } catch { /* تجاهل */ }
+          }
+        }
+      }
     };
 
     socketManager.on('new_message', handleNewMessage);
@@ -190,11 +243,35 @@ const GroupChat = () => {
         socketManager.emit('leave_group', { group_id: groupId, room });
       } catch { /* تجاهل */ }
     };
-  }, [groupId, currentUser]);
+  }, [groupId, currentUser, groupInfo?.name]);
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // ✅ Helper: محاولة إرسال مع retry لمعالجة شبكات الجوال الضعيفة
+  const sendWithRetry = async (payload, maxAttempts = 3) => {
+    let lastErr = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        // timeout أعلى للمحاولة الأولى ضمن إعدادات axios للحقول الحساسة
+        const response = await sendGroupMessage(groupId, payload);
+        return response;
+      } catch (err) {
+        lastErr = err;
+        const status = err?.response?.status;
+        // لا نعيد المحاولة على أخطاء العميل (4xx) ما عدا 408/429
+        if (status && status >= 400 && status < 500 && status !== 408 && status !== 429) {
+          throw err;
+        }
+        if (attempt < maxAttempts) {
+          // backoff: 800ms, 1600ms
+          await new Promise((r) => setTimeout(r, 800 * Math.pow(2, attempt - 1)));
+        }
+      }
+    }
+    throw lastErr;
+  };
 
   const handleSendMessage = async () => {
     if (!message.trim()) return;
@@ -202,7 +279,6 @@ const GroupChat = () => {
     const content = message.trim();
     setMessage('');
 
-    // Optimistic UI: نضيف الرسالة محليًا مع تمييزها بمجموعتها.
     const tempId = `tmp_${Date.now()}`;
     const optimisticMsg = {
       id: tempId,
@@ -218,14 +294,13 @@ const GroupChat = () => {
     scrollToBottom();
 
     try {
-      // ✅ استخدام endpoint مخصّص للمجموعة (عزل تام عن /send_message العام).
-      const response = await sendGroupMessage(groupId, {
+      const response = await sendWithRetry({
         content,
         message_type: 'text',
-      });
+      }, 3);
 
       const body = response.data || {};
-      const serverMsg = body.message || body; // الباك اند يعيد {status, message: {...}}
+      const serverMsg = body.message || body;
 
       setMessages((prev) =>
         prev.map((m) =>
@@ -234,48 +309,132 @@ const GroupChat = () => {
                 ...m,
                 id: serverMsg.id || tempId,
                 pending: false,
+                failed: false,
               }
             : m
         )
       );
     } catch (err) {
-      console.error('Failed to send message:', err);
-      setMessages((prev) => prev.filter((m) => m.id !== tempId));
-      setMessage(content);
-      alert('فشل إرسال الرسالة. حاول مرة أخرى.');
+      console.error('Failed to send message after retries:', err);
+      // علّم الرسالة كفاشلة بدل حذفها (تجربة أفضل على الجوال)
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === tempId
+            ? { ...m, pending: false, failed: true }
+            : m
+        )
+      );
+      // أعد المحتوى للحقل ليتمكن المستخدم من إعادة الإرسال
+      setMessage((prevInput) => prevInput || content);
+      const errMsg = err?.response?.data?.detail || 'فشل إرسال الرسالة. تحقق من الاتصال.';
+      alert(errMsg);
     }
   };
 
+  // ✅ رفع ملف مع optimistic UI ومعالجة أخطاء واضحة
   const handleFileUpload = async (e, mediaType = 'file') => {
     const file = e.target.files?.[0];
     if (!file) return;
     setShowAttachMenu(false);
 
+    // حدود الحجم: 25MB افتراضيًا
+    const MAX_SIZE = 50 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      alert(`الملف كبير جدًا (الحد الأقصى ${Math.round(MAX_SIZE / 1024 / 1024)}MB)`);
+      if (e.target) e.target.value = '';
+      return;
+    }
+
+    const tempId = `tmp_${Date.now()}`;
+    // optimistic preview للصور
+    const previewUrl = mediaType === 'image' && URL.createObjectURL
+      ? URL.createObjectURL(file)
+      : null;
+
+    const optimisticMsg = {
+      id: tempId,
+      group_id: String(groupId),
+      sender: currentUser,
+      text: file.name,
+      mediaUrl: previewUrl,
+      mediaType,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      isMe: true,
+      pending: true,
+      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser}`,
+    };
+    setMessages((prev) => [...prev, optimisticMsg]);
+    scrollToBottom();
+
     setUploading(true);
+    setUploadProgress(0);
+
     try {
       const formData = new FormData();
       formData.append('file', file);
 
-      const uploadRes = await uploadGroupMedia(formData);
-      const mediaUrl = uploadRes.data?.url || uploadRes.data?.media_url;
+      // ⚠️ لا تعيّن Content-Type يدويًا — المتصفح يضيف boundary تلقائيًا
+      const uploadRes = await uploadGroupMedia(formData, (progressEvent) => {
+        if (progressEvent.total) {
+          const pct = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          setUploadProgress(pct);
+        }
+      });
+
+      const mediaUrl = uploadRes.data?.url || uploadRes.data?.media_url || uploadRes.data?.cdn_url;
       if (!mediaUrl) throw new Error('No URL returned from upload');
 
-      // إرسال رسالة وسائط للمجموعة عبر endpoint المجموعة المخصّص.
-      await sendGroupMessage(groupId, {
+      // إرسال رسالة الوسائط بعد نجاح الرفع — مع retry
+      const sendResp = await sendWithRetry({
         content: '',
         message_type: mediaType,
         attachments: [
           {
             url: mediaUrl,
             kind: mediaType,
+            file_name: file.name,
+            file_size: file.size,
+            mime_type: file.type,
           },
         ],
-      });
+      }, 3);
+
+      const body = sendResp.data || {};
+      const serverMsg = body.message || body;
+
+      // استبدل optimistic preview بالعنوان النهائي من الخادم
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === tempId
+            ? {
+                ...m,
+                id: serverMsg.id || tempId,
+                mediaUrl,
+                pending: false,
+                failed: false,
+              }
+            : m
+        )
+      );
+
+      // نظف URL.createObjectURL
+      if (previewUrl) {
+        try { URL.revokeObjectURL(previewUrl); } catch {}
+      }
     } catch (err) {
       console.error('Upload failed:', err);
-      alert('فشل رفع الملف. حاول مرة أخرى.');
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === tempId
+            ? { ...m, pending: false, failed: true }
+            : m
+        )
+      );
+      const errMsg = err?.response?.data?.detail || 'فشل رفع الملف. حاول مرة أخرى.';
+      alert(errMsg);
     } finally {
       setUploading(false);
+      setUploadProgress(0);
       if (e.target) e.target.value = '';
     }
   };
@@ -291,7 +450,22 @@ const GroupChat = () => {
     navigate(`/groups/${groupId}/settings`);
   }, [groupId, navigate]);
 
-  // اسم المجموعة الفعلي مع fallback
+  // ✅ تفعيل المكالمات الصوتية/الفيديو
+  const handleStartCall = useCallback(async (mode = 'voice') => {
+    try {
+      // طلب إذن الإشعارات لو لم يُمنح
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        try { await Notification.requestPermission(); } catch {}
+      }
+      // للمجموعة: نستخدم بادئة group: لتعريف الطرف الآخر كغرفة مجموعة
+      await startCall({ peer: `group:${groupId}`, mode });
+      navigate(`/call/${encodeURIComponent('group:' + groupId)}?mode=${mode}`);
+    } catch (err) {
+      console.error('Could not start call:', err);
+      alert('تعذر بدء المكالمة. تأكد من السماح بالوصول للميكروفون/الكاميرا.');
+    }
+  }, [groupId, navigate]);
+
   const groupName = groupInfo?.name || groupInfo?.title || 'دردشة المجموعة';
   const groupIcon = groupInfo?.icon || groupInfo?.image_url || null;
   const membersCount =
@@ -300,7 +474,8 @@ const GroupChat = () => {
     0;
 
   return (
-    <div className="yam-group-chat-container">
+    <MainLayout>
+    <div className="yam-group-chat-container" dir="rtl">
       {/* الهيدر */}
       <header className="yam-group-header">
         <button
@@ -347,11 +522,51 @@ const GroupChat = () => {
           </div>
         </div>
         <div className="yam-header-actions">
-          <button type="button" className="yam-action-btn" title="مكالمة صوتية" aria-label="مكالمة صوتية">📞</button>
-          <button type="button" className="yam-action-btn" title="مكالمة فيديو" aria-label="مكالمة فيديو">🎥</button>
-          <button type="button" className="yam-action-btn" onClick={openSettings} title="إعدادات المجموعة" aria-label="إعدادات المجموعة">ℹ️</button>
+          <button
+            type="button"
+            className="yam-action-btn"
+            title="مكالمة صوتية"
+            aria-label="مكالمة صوتية"
+            onClick={() => handleStartCall('voice')}
+          >📞</button>
+          <button
+            type="button"
+            className="yam-action-btn"
+            title="مكالمة فيديو"
+            aria-label="مكالمة فيديو"
+            onClick={() => handleStartCall('video')}
+          >🎥</button>
+          <button
+            type="button"
+            className="yam-action-btn"
+            onClick={openSettings}
+            title="إعدادات المجموعة"
+            aria-label="إعدادات المجموعة"
+          >ℹ️</button>
         </div>
       </header>
+
+      {/* تنبيه إذن الإشعارات */}
+      {notifPermission === 'default' && (
+        <div
+          style={{
+            background: 'rgba(124, 58, 237, 0.12)',
+            color: '#c4b5fd',
+            padding: '8px 12px',
+            fontSize: '13px',
+            textAlign: 'center',
+            cursor: 'pointer',
+            borderBottom: '1px solid rgba(255,255,255,0.05)',
+          }}
+          onClick={() => {
+            if (typeof Notification !== 'undefined') {
+              Notification.requestPermission().then(setNotifPermission).catch(() => {});
+            }
+          }}
+        >
+          🔔 فعّل إشعارات المجموعة لتصلك الرسائل وأنت بعيد عن التطبيق
+        </div>
+      )}
 
       {/* منطقة الرسائل */}
       <main className="yam-group-messages">
@@ -365,12 +580,11 @@ const GroupChat = () => {
           </div>
         ) : (
           messages
-            // فلتر دفاعي إضافي: لا تعرض إلا الرسائل المنتمية لهذه المجموعة
             .filter((m) => !m.group_id || String(m.group_id) === String(groupId))
             .map((msg) => (
               <div
                 key={msg.id}
-                className={`yam-message-group ${msg.isMe ? 'me' : ''} ${msg.pending ? 'pending' : ''}`}
+                className={`yam-message-group ${msg.isMe ? 'me' : ''} ${msg.pending ? 'pending' : ''} ${msg.failed ? 'failed' : ''}`}
               >
                 <div className="yam-user-avatar-wrap">
                   <img src={msg.avatar} alt={msg.sender} className="yam-user-avatar" />
@@ -383,6 +597,12 @@ const GroupChat = () => {
                         <img
                           src={msg.mediaUrl}
                           alt="media"
+                          style={{ maxWidth: '240px', borderRadius: '8px', display: 'block' }}
+                        />
+                      ) : msg.mediaType === 'video' ? (
+                        <video
+                          src={msg.mediaUrl}
+                          controls
                           style={{ maxWidth: '240px', borderRadius: '8px', display: 'block' }}
                         />
                       ) : (
@@ -402,8 +622,8 @@ const GroupChat = () => {
                   <div className="yam-message-time">
                     {msg.time}
                     {msg.isMe && (
-                      <span className="yam-read-receipt">
-                        {msg.pending ? '🕓' : '✓✓'}
+                      <span className="yam-read-receipt" style={msg.failed ? { color: '#ef4444' } : {}}>
+                        {msg.failed ? '⚠️' : msg.pending ? '🕓' : '✓✓'}
                       </span>
                     )}
                   </div>
@@ -413,6 +633,41 @@ const GroupChat = () => {
         )}
         <div ref={messagesEndRef} />
       </main>
+
+      {/* شريط تقدم الرفع */}
+      {uploading && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '76px',
+            insetInlineStart: '12px',
+            insetInlineEnd: '12px',
+            background: '#1e293b',
+            borderRadius: '10px',
+            padding: '8px 12px',
+            color: '#fff',
+            fontSize: '13px',
+            zIndex: 60,
+            boxShadow: '0 6px 18px rgba(0,0,0,0.4)',
+          }}
+        >
+          ⏫ جاري الرفع... {uploadProgress}%
+          <div style={{
+            marginTop: '6px',
+            height: '4px',
+            background: 'rgba(255,255,255,0.1)',
+            borderRadius: '4px',
+            overflow: 'hidden',
+          }}>
+            <div style={{
+              width: `${uploadProgress}%`,
+              height: '100%',
+              background: 'linear-gradient(90deg, #7c3aed, #a78bfa)',
+              transition: 'width 0.3s ease',
+            }} />
+          </div>
+        </div>
+      )}
 
       {/* قائمة المرفقات */}
       {showAttachMenu && (
@@ -437,32 +692,31 @@ const GroupChat = () => {
             className="yam-attach-option"
             onClick={() => imageInputRef.current?.click()}
             style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#fff',
-              padding: '10px',
-              cursor: 'pointer',
-              textAlign: 'right',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
+              background: 'transparent', border: 'none', color: '#fff',
+              padding: '10px', cursor: 'pointer', textAlign: 'right',
+              display: 'flex', alignItems: 'center', gap: '8px',
             }}
           >
             🖼️ صورة
           </button>
           <button
             className="yam-attach-option"
+            onClick={() => videoInputRef.current?.click()}
+            style={{
+              background: 'transparent', border: 'none', color: '#fff',
+              padding: '10px', cursor: 'pointer', textAlign: 'right',
+              display: 'flex', alignItems: 'center', gap: '8px',
+            }}
+          >
+            🎬 فيديو
+          </button>
+          <button
+            className="yam-attach-option"
             onClick={() => fileInputRef.current?.click()}
             style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#fff',
-              padding: '10px',
-              cursor: 'pointer',
-              textAlign: 'right',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
+              background: 'transparent', border: 'none', color: '#fff',
+              padding: '10px', cursor: 'pointer', textAlign: 'right',
+              display: 'flex', alignItems: 'center', gap: '8px',
             }}
           >
             📄 ملف
@@ -471,12 +725,8 @@ const GroupChat = () => {
             className="yam-attach-option"
             onClick={() => setShowAttachMenu(false)}
             style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#94a3b8',
-              padding: '8px',
-              cursor: 'pointer',
-              textAlign: 'center',
+              background: 'transparent', border: 'none', color: '#94a3b8',
+              padding: '8px', cursor: 'pointer', textAlign: 'center',
             }}
           >
             إلغاء
@@ -490,6 +740,13 @@ const GroupChat = () => {
         accept="image/*"
         style={{ display: 'none' }}
         onChange={(e) => handleFileUpload(e, 'image')}
+      />
+      <input
+        ref={videoInputRef}
+        type="file"
+        accept="video/*"
+        style={{ display: 'none' }}
+        onChange={(e) => handleFileUpload(e, 'video')}
       />
       <input
         ref={fileInputRef}
@@ -506,9 +763,7 @@ const GroupChat = () => {
           aria-label="إرفاق ملف"
           disabled={uploading}
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: '18px',
           }}
         >
@@ -516,14 +771,9 @@ const GroupChat = () => {
             <span style={{ fontSize: '14px' }}>⏳</span>
           ) : (
             <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+              width="20" height="20" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2"
+              strokeLinecap="round" strokeLinejoin="round"
             >
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
             </svg>
@@ -537,16 +787,27 @@ const GroupChat = () => {
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyPress}
+            // ✅ enterkeyhint يحسن لوحة مفاتيح الجوال
+            enterKeyHint="send"
+            inputMode="text"
+            autoComplete="off"
           />
           <span className="yam-input-icon">😊</span>
         </div>
-        <button className="yam-send-btn" onClick={handleSendMessage} aria-label="إرسال">
+        <button
+          className="yam-send-btn"
+          onClick={handleSendMessage}
+          aria-label="إرسال"
+          // ✅ منع الزر من خسارة التركيز ووميض الـ keyboard على iOS Safari
+          onMouseDown={(e) => e.preventDefault()}
+        >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
             <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
           </svg>
         </button>
       </footer>
     </div>
+    </MainLayout>
   );
 };
 

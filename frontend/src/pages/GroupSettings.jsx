@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useToast } from '../components/admin/ToastProvider.jsx';
+import MainLayout from '../components/layout/MainLayout.jsx';
 import {
   getGroupDetails,
   getGroupMembers,
@@ -256,13 +257,16 @@ const GroupSettings = () => {
 
   if (loading) {
     return (
-      <div className="yam-group-settings-page" style={{display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '50vh'}}>
-        <div style={{color: '#94a3b8'}}>جاري تحميل الإعدادات...</div>
-      </div>
+      <MainLayout>
+        <div className="yam-group-settings-page" style={{display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '50vh'}}>
+          <div style={{color: '#94a3b8'}}>جاري تحميل الإعدادات...</div>
+        </div>
+      </MainLayout>
     );
   }
 
   return (
+    <MainLayout>
     <div className="yam-group-settings-page">
       {/* الهيدر */}
       <header className="yam-settings-header">
@@ -488,6 +492,7 @@ const GroupSettings = () => {
 
       <div style={{height: '40px'}}></div>
     </div>
+    </MainLayout>
   );
 };
 

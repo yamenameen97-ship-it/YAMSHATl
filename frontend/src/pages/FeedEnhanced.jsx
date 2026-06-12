@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-// تم التبديل إلى layouts/MainLayout (الجديد) الذي يستخدم MobileLayout
-// (MobileTopBar + BottomNav الجديدين) لتجنب التعارض مع Topbar و MobileDock القديمين.
-import MainLayout from '../layouts/MainLayout.jsx';
-import MainLayoutDesktop from '../components/layout/MainLayout.jsx';
+// ✅ توحيد كامل: يستخدم MainLayout الموحّد لتثبيت الهيدر العلوي والفوتر السفلي
+// في جميع الصفحات (جوال + ويب/لابتوب) بتجربة واحدة متسقة.
+import MainLayout from '../components/layout/MainLayout.jsx';
 import useIsMobile from '../hooks/useIsMobile.js';
 import FeedMobile from './FeedMobile.jsx';
 import PostComposer from '../components/feed/PostComposer.jsx';
@@ -581,21 +580,13 @@ function PostCard({ post }) {
 }
 
 export default function FeedEnhanced() {
-  // التحويل إلى تصميم الموبايل الجديد (مطابق للنموذج المرجعي)
-  // الموبايل: استخدام layouts/MainLayout (الجديد) الذي يلفّ MobileLayout (TopBar + BottomNav الجديدين)
-  // الديسكتوب: استخدام MainLayoutDesktop القديم (Topbar) - لم يـمس.
+  // ✅ MainLayout الموحّد يثبّت الهيدر العلوي والفوتر السفلي
+  // في كل صفحة سواء على الجوال أو الويب/اللابتوب لتجربة موحّدة.
   const isMobile = useIsMobile();
-  if (isMobile) {
-    return (
-      <MainLayout>
-        <FeedMobile />
-      </MainLayout>
-    );
-  }
   return (
-    <MainLayoutDesktop>
-      <FeedDesktopInner />
-    </MainLayoutDesktop>
+    <MainLayout>
+      {isMobile ? <FeedMobile /> : <FeedDesktopInner />}
+    </MainLayout>
   );
 }
 

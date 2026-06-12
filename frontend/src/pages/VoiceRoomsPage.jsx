@@ -3,6 +3,7 @@
  * RTL + Noto Sans Arabic. تتنقل بين القائمة وإنشاء غرفة وعرض غرفة inline (لا مدوالس).
  */
 import React, { useState } from "react";
+import MainLayout from "../components/layout/MainLayout.jsx";
 import VoiceRoomsList from "@/features/voice-rooms/components/VoiceRoomsList";
 import VoiceRoomView from "@/features/voice-rooms/components/VoiceRoomView";
 import { voiceRoomsApi } from "@/features/engagement/api/engagementApi";
@@ -16,26 +17,34 @@ export default function VoiceRoomsPage() {
 
   if (mode === "room" && activeRoomId) {
     return (
-      <VoiceRoomView
-        roomId={activeRoomId}
-        currentUserId={currentUserId}
-        onLeave={() => { setMode("list"); setActiveRoomId(null); }}
-      />
+      <MainLayout>
+        <VoiceRoomView
+          roomId={activeRoomId}
+          currentUserId={currentUserId}
+          onLeave={() => { setMode("list"); setActiveRoomId(null); }}
+        />
+      </MainLayout>
     );
   }
 
   if (mode === "create") {
-    return <CreateRoomInline
-      onCancel={() => setMode("list")}
-      onCreated={(id) => { setActiveRoomId(id); setMode("room"); }}
-    />;
+    return (
+      <MainLayout>
+        <CreateRoomInline
+          onCancel={() => setMode("list")}
+          onCreated={(id) => { setActiveRoomId(id); setMode("room"); }}
+        />
+      </MainLayout>
+    );
   }
 
   return (
-    <VoiceRoomsList
-      onOpen={(id) => { setActiveRoomId(id); setMode("room"); }}
-      onCreate={() => setMode("create")}
-    />
+    <MainLayout>
+      <VoiceRoomsList
+        onOpen={(id) => { setActiveRoomId(id); setMode("room"); }}
+        onCreate={() => setMode("create")}
+      />
+    </MainLayout>
   );
 }
 

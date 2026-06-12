@@ -3,6 +3,7 @@
  * RTL + Noto Sans Arabic
  */
 import React, { useState } from "react";
+import MainLayout from "../components/layout/MainLayout.jsx";
 import DailyTasksCenter from "@/features/engagement/components/DailyTasksCenter";
 import UserLevelBadge, { HostLevelBadge } from "@/features/engagement/components/UserLevelBadge";
 import AchievementsGrid from "@/features/engagement/components/AchievementsGrid";
@@ -23,9 +24,10 @@ export default function EngagementHub() {
   const [tab, setTab] = useState("overview");
 
   return (
+    <MainLayout>
     <div dir="rtl" style={{
       fontFamily: "'Noto Sans Arabic', system-ui, sans-serif",
-      minHeight: "100vh", background: "#0F172A", color: "#fff",
+      minHeight: "100%", background: "#0F172A", color: "#fff",
     }}>
       <div style={{
         padding: "14px 16px",
@@ -64,5 +66,6 @@ export default function EngagementHub() {
         {tab === "shop"         && <ShopPage />}
       </div>
     </div>
+    </MainLayout>
   );
 }

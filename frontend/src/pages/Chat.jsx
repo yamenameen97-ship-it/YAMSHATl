@@ -1614,18 +1614,21 @@ export default function Chat() {
             .yam-mobile-action-btn:hover {
               background: rgba(124,58,237,0.12);
             }
-            /* keep header visible & fixed on mobile */
+            /* keep header visible & fixed on mobile (تثبيت حقيقي لا يتحرك مع سحب الشاشة) */
             .yam-stage-top-search {
               display: none !important;
             }
             .yam-chat-stage-header {
               display: flex !important;
-              position: sticky !important;
+              position: fixed !important;
               top: 0;
+              left: 0;
+              right: 0;
               inset-inline: 0;
-              z-index: 70;
-              padding: 12px 14px;
-              min-height: 60px;
+              z-index: 1000;
+              padding: 10px 14px;
+              padding-top: calc(10px + env(safe-area-inset-top, 0px));
+              min-height: 56px;
               border-radius: 0;
               border-left: none;
               border-right: none;
@@ -1635,6 +1638,8 @@ export default function Chat() {
               backdrop-filter: blur(20px);
               -webkit-backdrop-filter: blur(20px);
               box-shadow: 0 6px 18px rgba(0,0,0,0.34);
+              transform: translateZ(0);
+              will-change: transform;
             }
             .yam-chat-stage-header .yam-chat-stage-peer-copy strong {
               font-size: 17px;
@@ -1652,8 +1657,10 @@ export default function Chat() {
               padding: 0;
               gap: 0;
               grid-template-rows: auto minmax(0, 1fr) auto;
-              height: 100%;
+              height: 100dvh;
               min-height: 0;
+              /* مساحة علوية تعوّض الهيدر المثبّت (fixed) حتى لا تختفي أول رسالة تحته */
+              padding-top: calc(56px + env(safe-area-inset-top, 0px));
             }
             .yam-chat-details-drawer {
               border-radius: 0;
@@ -1674,50 +1681,54 @@ export default function Chat() {
             .yam-messages-area {
               border-radius: 0;
               border: none;
-              padding: 14px 12px calc(150px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px));
-              scroll-padding-top: 72px;
-              scroll-padding-bottom: 170px;
+              /* مساحة علوية وسفلية كبيرة تضمن ألاّ تختفي الرسائل خلف الهيدر أو صندوق الإدخال */
+              padding: 18px 12px calc(180px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px));
+              scroll-padding-top: 80px;
+              scroll-padding-bottom: 200px;
               background:
                 radial-gradient(circle at top right, rgba(124,58,237,0.05), transparent 30%),
                 radial-gradient(circle at bottom left, rgba(59,130,246,0.04), transparent 30%),
                 #040714;
             }
             .yam-chat-input-wrap {
-              position: sticky;
+              position: fixed;
               bottom: 0;
+              left: 0;
+              right: 0;
               inset-inline: 0;
-              z-index: 80;
+              z-index: 1000;
               border-radius: 18px 18px 0 0;
               border-left: none;
               border-right: none;
               border-bottom: none;
               border-top: 1px solid rgba(167,139,250,0.14);
-              padding: 10px 12px;
-              padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px));
+              padding: 8px 10px;
+              padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px));
               background: linear-gradient(180deg, rgba(7,10,24,0.96), rgba(4,7,18,1));
               backdrop-filter: blur(22px);
               -webkit-backdrop-filter: blur(22px);
               box-shadow: 0 -16px 36px rgba(0,0,0,0.5), 0 -2px 0 rgba(167, 139, 250, 0.12);
               transform: translateZ(0);
               will-change: transform;
-              min-height: 64px;
+              min-height: 60px;
               display: flex;
               align-items: center;
             }
             .yam-chat-input-wrap textarea,
             .yam-chat-input-wrap input[type="text"] {
-              min-height: 44px;
-              max-height: 120px;
+              min-height: 40px;
+              max-height: 110px;
               font-size: 16px; /* prevent iOS zoom */
             }
             .yam-chat-input-wrap button {
-              min-width: 40px;
-              min-height: 40px;
+              min-width: 38px;
+              min-height: 38px;
               border-radius: 12px;
             }
             .yam-messages-area {
-              padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px)) !important;
-              scroll-padding-bottom: 120px !important;
+              /* مساحة سفلية أكبر حتى لا تختفي آخر رسالة خلف صندوق الإدخال المثبّت */
+              padding-bottom: calc(160px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px)) !important;
+              scroll-padding-bottom: 180px !important;
             }
             .yam-message-stack {
               max-width: 82%;

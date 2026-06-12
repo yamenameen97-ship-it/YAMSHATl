@@ -119,11 +119,15 @@ function BottomNav() {
           padding-bottom: env(safe-area-inset-bottom, 0px);
           background-color: #0A0D1A;
           border-top: 1px solid #1F2937;
-          z-index: 1000;
+          z-index: 1001;
           display: flex;
           align-items: center;
           justify-content: center;
           box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+          /* ضمان عدم تحرّك الشريط مع سحب الصفحة في أي صفحة */
+          transform: none;
+          will-change: auto;
+          backface-visibility: hidden;
         }
         .ym-bottomnav-inner {
           display: flex;

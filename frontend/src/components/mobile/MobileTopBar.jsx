@@ -11,7 +11,7 @@ import YamServicesMenu from '../ui/YamServicesMenu.jsx';
  * الهيدر العلوي الموحّد. تم إضافة قائمة خدمات منسدلة/جانبية تظهر
  * عند الضغط على زر القائمة أو على شعار المنصة، كما هو مطلوب.
  */
-function MobileTopBar({ onMenuClick }) {
+function MobileTopBar({ onMenuClick, transparent = false }) {
   const navigate = useNavigate();
   const user = useAppStore((state) => state.user);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -39,7 +39,7 @@ function MobileTopBar({ onMenuClick }) {
 
   return (
     <>
-      <header className="ym-topbar fixed-top" role="banner">
+      <header className={`ym-topbar fixed-top ${transparent ? 'ym-topbar-transparent' : ''}`} role="banner">
         <div className="ym-topbar-inner">
           <div className="ym-topbar-left">
             <button
@@ -112,6 +112,26 @@ function MobileTopBar({ onMenuClick }) {
           align-items: center;
           padding: 0 16px;
           box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+          /* ضمان الثبات أثناء تمرير المحتوى في كل الصفحات */
+          transform: none;
+          will-change: auto;
+          backface-visibility: hidden;
+        }
+        /* وضع شفّاف للهيدر العلوي (يستخدم في الريلز كي يطفو فوق المحتوى) */
+        .ym-topbar.ym-topbar-transparent {
+          background: linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.25) 60%, rgba(0,0,0,0) 100%);
+          border-bottom: none;
+          box-shadow: none;
+          backdrop-filter: blur(2px);
+          -webkit-backdrop-filter: blur(2px);
+        }
+        .ym-topbar.ym-topbar-transparent .ym-topbar-btn,
+        .ym-topbar.ym-topbar-transparent .ym-wordmark {
+          color: #FFFFFF;
+          text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+        }
+        .ym-topbar.ym-topbar-transparent .ym-topbar-avatar {
+          box-shadow: 0 0 0 1px rgba(255,255,255,0.35), 0 0 10px rgba(0,0,0,0.55);
         }
         .ym-topbar-inner {
           display: flex;

@@ -935,7 +935,7 @@ export default function Inbox() {
                   return (
                     <button key={item.id} type="button" className="yam-list-row" onClick={() => handleOpenThread(item)}>
                       <div className="yam-avatar-slot">
-                        <AvatarCircle name={item.title} avatar={item.avatar} size={58} online={item.isOnline} />
+                        <AvatarCircle name={item.title} avatar={item.avatar} size={46} online={item.isOnline} />
                       </div>
                       <div className="yam-row-copy">
                         <div className="yam-row-main-line">
@@ -996,7 +996,8 @@ export default function Inbox() {
             min-height: 100dvh;
             max-width: 520px;
             margin: 0 auto;
-            padding: calc(14px + env(safe-area-inset-top, 0px)) 14px calc(104px + env(safe-area-inset-bottom, 0px));
+            /* مسافة كافية في الأسفل كي لا تختفي آخر بطاقة محادثة خلف الـ BottomNav */
+            padding: calc(14px + env(safe-area-inset-top, 0px)) 14px calc(140px + env(safe-area-inset-bottom, 0px));
           }
 
           .yam-mobile-header {
@@ -1282,14 +1283,15 @@ export default function Inbox() {
           .yam-list-row {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
             width: 100%;
             text-align: right;
-            border-radius: 22px;
-            padding: 12px;
+            border-radius: 18px;
+            padding: 10px 12px;
             background: rgba(7, 12, 27, 0.84);
             box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
             transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+            min-height: 0;
           }
 
           .yam-list-row:hover,
@@ -1309,9 +1311,9 @@ export default function Inbox() {
           }
 
           .yam-leading-icon {
-            width: 58px;
-            height: 58px;
-            border-radius: 22px;
+            width: 46px;
+            height: 46px;
+            border-radius: 16px;
             display: grid;
             place-items: center;
             flex-shrink: 0;
@@ -1343,15 +1345,20 @@ export default function Inbox() {
           }
 
           .yam-row-main-line strong {
-            font-size: 18px;
-            line-height: 1.2;
+            font-size: 15px;
+            line-height: 1.25;
             color: #fff;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1 1 auto;
           }
 
           .yam-row-main-line span {
             flex-shrink: 0;
             color: #98a0c8;
-            font-size: 12px;
+            font-size: 11px;
             padding-top: 2px;
           }
 
@@ -1394,17 +1401,17 @@ export default function Inbox() {
           }
 
           .yam-count-badge {
-            min-width: 28px;
-            height: 28px;
+            min-width: 22px;
+            height: 22px;
             border-radius: 999px;
             display: grid;
             place-items: center;
-            padding: 0 8px;
+            padding: 0 6px;
             background: linear-gradient(135deg, #8b5cf6, #6d28d9);
             color: #fff;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 800;
-            box-shadow: 0 10px 18px rgba(109, 40, 217, 0.28);
+            box-shadow: 0 6px 14px rgba(109, 40, 217, 0.28);
           }
 
           .yam-loading-state,
@@ -1443,33 +1450,40 @@ export default function Inbox() {
             bottom: 0;
             transform: translateX(50%);
             width: min(520px, 100%);
-            padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+            padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
             display: grid;
             grid-template-columns: repeat(5, 1fr);
-            gap: 10px;
+            gap: 6px;
             background: linear-gradient(180deg, rgba(4,7,19,0), rgba(4,7,19,0.92) 30%, rgba(4,7,19,0.98));
             backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            z-index: 1000;
+            /* تثبيت الشريط بحيث لا يتحرك مع سحب الصفحة */
+            will-change: transform;
+            transform-style: preserve-3d;
           }
 
           .yam-bottom-nav-item {
             position: relative;
-            min-height: 62px;
-            border-radius: 20px;
+            min-height: 56px;
+            border-radius: 16px;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 6px;
+            gap: 4px;
             color: #8f97c2;
             background: rgba(9, 15, 32, 0.88);
             box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+            padding: 4px 2px;
+            min-width: 0;
           }
 
           .yam-bottom-nav-item.center {
             background: linear-gradient(135deg, #8b5cf6, #6d28d9);
             color: #fff;
-            transform: translateY(-12px);
-            box-shadow: 0 18px 32px rgba(109,40,217,0.34);
+            transform: translateY(-10px);
+            box-shadow: 0 14px 28px rgba(109,40,217,0.34);
           }
 
           .yam-bottom-nav-item.active:not(.center) {
@@ -1484,8 +1498,14 @@ export default function Inbox() {
           }
 
           .yam-bottom-nav-label {
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 700;
+            line-height: 1.1;
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100%;
           }
 
           .yam-bottom-nav-badge {
@@ -1521,11 +1541,29 @@ export default function Inbox() {
             }
 
             .yam-row-main-line strong {
-              font-size: 16px;
+              font-size: 14px;
+            }
+
+            .yam-row-sub-line p {
+              font-size: 12px;
             }
 
             .yam-content-head h1 {
-              font-size: 22px;
+              font-size: 20px;
+            }
+
+            .yam-bottom-nav-label {
+              font-size: 9px;
+            }
+
+            .yam-bottom-nav-item {
+              min-height: 52px;
+            }
+
+            .yam-leading-icon {
+              width: 42px;
+              height: 42px;
+              border-radius: 14px;
             }
           }
         `}</style>

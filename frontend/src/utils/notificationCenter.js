@@ -104,3 +104,52 @@ export async function maybeShowBrowserNotification(item) {
     return true;
   }
 }
+
+// ============================================================
+// 🔔 إضافات v22: helpers لطلب الإذن وعرض إشعار محلي للمجموعات
+// ============================================================
+
+export async function ensureNotificationPermission() {
+  if (typeof Notification === 'undefined') return 'unsupported';
+  if (Notification.permission === 'granted') return 'granted';
+  if (Notification.permission === 'denied') return 'denied';
+  try {
+    const result = await Notification.requestPermission();
+    return result;
+  } catch {
+    return 'default';
+  }
+}
+
+export function showLocalNotification({ title, body, icon, tag, data } = {}) {
+  if (typeof Notification === 'undefined') return null;
+  if (Notification.permission !== 'granted') return null;
+  // إزالة التكرار خلال 3 ثواني لنفس الـ tag
+  const dedupeKey = `${tag || title}:${body}`;
+  if (shownNotificationIds.has(dedupeKey)) return null;
+  shownNotificationIds.add(dedupeKey);
+  setTimeout(() => shownNotificationIds.delete(dedupeKey), 3000);
+
+  try {
+    const n = new Notification(title || 'يام شات', {
+      body: body || '',
+      icon: icon || '/favicon.ico',
+      tag: tag || 'yamshat',
+      data: data || {},
+      dir: 'rtl',
+      lang: 'ar',
+    });
+    n.onclick = () => {
+      try {
+        window.focus();
+        if (data?.groupId) {
+          redirectToAppPath(`/groups/${data.groupId}`);
+        }
+        n.close();
+      } catch { /* noop */ }
+    };
+    return n;
+  } catch {
+    return null;
+  }
+}

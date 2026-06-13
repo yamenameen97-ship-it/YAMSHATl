@@ -13,6 +13,7 @@ import { followUser, muteUser, unmuteUser } from '../api/users.js';
 import { blockUserApi, unblockUserApi } from '../api/chat.js';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import { useAppStore } from '../store/appStore.js';
+import { timeAgoAr as fmtTimeAgoAr, formatLocalDateTimeAr } from '../utils/timeFormat.js';
 
 /**
  * FeedMobile — صفحة الخلاصة للموبايل (مطابقة للتصميم المرجعي)
@@ -22,21 +23,9 @@ import { useAppStore } from '../store/appStore.js';
  * - تستمع لحدث 'yamshat:open-composer' لفتح المنشئ من BottomNav
  */
 
+// ✅ توحيد تنسيق الوقت عبر التطبيق — يعالج تواريخ UTC بدون لاحقة TZ بدقة
 function timeAgoAr(dateLike) {
-  if (!dateLike) return 'الآن';
-  const d = new Date(dateLike);
-  if (Number.isNaN(d.getTime())) return 'الآن';
-  const diffSec = Math.max(1, Math.floor((Date.now() - d.getTime()) / 1000));
-  if (diffSec < 60) return 'منذ لحظات';
-  const m = Math.floor(diffSec / 60);
-  if (m < 60) return `منذ ${m} دقيقة`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `منذ ${h} ساعة`;
-  const days = Math.floor(h / 24);
-  if (days < 30) return `منذ ${days} يوم`;
-  const months = Math.floor(days / 30);
-  if (months < 12) return `منذ ${months} شهر`;
-  return `منذ ${Math.floor(months / 12)} سنة`;
+  return fmtTimeAgoAr(dateLike);
 }
 
 function isVideoMediaUrl(value = '', post = {}) {
@@ -64,12 +53,15 @@ function normalizePost(p, i) {
   const author = p.author_name || p.username || p.user || 'مستخدم يام شات';
   const handle = (p.username || p.user || `user${i}`).toString();
   const verified = Boolean(p.verified || p.is_verified || p.official);
+  const rawTime = p.created_at || p.published_at || null;
   return {
     id: p.id ?? `p-${i}`,
     rawId: p.id,
     authorName: author,
     handle: `@${handle.replace(/^@/, '')}`,
-    timeText: timeAgoAr(p.created_at || p.published_at),
+    timeText: timeAgoAr(rawTime),
+    rawTime, // ✅ لإعادة حساب الوقت لحظياً في بطاقة المنشور
+    timeTitle: formatLocalDateTimeAr(rawTime),
     verified,
     avatarUrl: resolveMediaUrl(p.user_avatar || p.avatar || p.author_avatar || ''),
     text: p.content || p.text || '',

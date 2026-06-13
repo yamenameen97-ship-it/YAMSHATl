@@ -1,4 +1,5 @@
-import { memo } from 'react';
+import { memo, useEffect, useState } from 'react';
+import { timeAgoAr as fmtTimeAgoAr } from '../../utils/timeFormat.js';
 
 /**
  * MobilePostCard - بطاقة منشور محدثة بناءً على الصورة
@@ -24,6 +25,8 @@ function MobilePostCard({
     authorName = 'مستخدم',
     handle = '@user',
     timeText = 'منذ قليل',
+    rawTime = null,
+    timeTitle = '',
     verified = true,
     avatarUrl = '',
     text = '',
@@ -34,6 +37,15 @@ function MobilePostCard({
     liked = false,
     isLive = false,
   } = post;
+
+  // ✅ تحديث لحظي للوقت على بطاقة المنشور (كل 30 ثانية)
+  const [liveTime, setLiveTime] = useState(() => (rawTime ? fmtTimeAgoAr(rawTime) : timeText));
+  useEffect(() => {
+    setLiveTime(rawTime ? fmtTimeAgoAr(rawTime) : timeText);
+    if (!rawTime) return undefined;
+    const id = setInterval(() => setLiveTime(fmtTimeAgoAr(rawTime)), 30 * 1000);
+    return () => clearInterval(id);
+  }, [rawTime, timeText]);
 
   const formatCount = (n) => {
     if (n >= 1000) return (n / 1000).toFixed(1) + ' ألف';
@@ -55,7 +67,7 @@ function MobilePostCard({
             <div className="ym-post-subtext">
               <span className="ym-handle">{handle}</span>
               <span className="ym-dot">•</span>
-              <span className="ym-time">{timeText}</span>
+              <span className="ym-time" title={timeTitle || ''}>{liveTime}</span>
               {isLive && <span className="ym-live-badge-inline">البث المباشر</span>}
             </div>
           </div>

@@ -1,7 +1,6 @@
-import { useState, useCallback, useMemo } from 'react';
-import { formatDistanceToNow } from 'date-fns';
-import { ar } from 'date-fns/locale';
+import { useEffect, useState, useCallback } from 'react';
 import logger from '../../utils/logger.js';
+import { timeAgoAr as fmtTimeAgoAr, formatLocalDateTimeAr } from '../../utils/timeFormat.js';
 
 /**
  * PostCardAdvanced Component
@@ -74,17 +73,16 @@ export default function PostCardAdvanced({
     }
   }, [post, onShare]);
 
-  // حساب الوقت المنقضي
-  const timeAgo = useMemo(() => {
-    try {
-      return formatDistanceToNow(new Date(post.created_at), {
-        locale: ar,
-        addSuffix: true,
-      });
-    } catch {
-      return 'منذ قليل';
-    }
-  }, [post.created_at]);
+  // ✅ حساب الوقت المنقضي بدقة (UTC → توقيت جهاز المستخدم) + تحديث لحظي كل 30 ثانية
+  const sourceTime = post?.created_at || post?.published_at || null;
+  const [timeAgo, setTimeAgo] = useState(() => fmtTimeAgoAr(sourceTime));
+  useEffect(() => {
+    setTimeAgo(fmtTimeAgoAr(sourceTime));
+    if (!sourceTime) return undefined;
+    const id = setInterval(() => setTimeAgo(fmtTimeAgoAr(sourceTime)), 30 * 1000);
+    return () => clearInterval(id);
+  }, [sourceTime]);
+  const timeTitle = formatLocalDateTimeAr(sourceTime);
 
   // التحقق من ملكية المنشور
   const isOwner = post.user_id === currentUser?.id || post.username === currentUser?.username;
@@ -120,7 +118,7 @@ export default function PostCardAdvanced({
             <div style={{ fontWeight: 'bold', fontSize: '14px' }}>
               {post.username}
             </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)' }} title={timeTitle}>
               {timeAgo}
             </div>
           </div>

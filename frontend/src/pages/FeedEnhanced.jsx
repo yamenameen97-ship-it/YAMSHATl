@@ -20,6 +20,8 @@ import { followUser, muteUser, unmuteUser } from '../api/users.js';
 import { blockUserApi, unblockUserApi } from '../api/chat.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
 import PostCardComponent from '../components/feed/PostCard.jsx';
+import ScrollToTopFab from '../components/feed/ScrollToTopFab.jsx';
+import { timeAgoAr as fmtTimeAgoAr, formatLocalDateTimeAr } from '../utils/timeFormat.js';
 import {
   likePost as apiLikePost,
   savePost as apiSavePost,
@@ -59,21 +61,10 @@ const DEFAULT_PROFILE_HIGHLIGHTS = [
   { label: 'جديد', kind: 'add' },
 ];
 
+// ✅ توحيد منطق «منذ كم» في مرفق واحد يفسّر تواريخ الـ backend (UTC) بدقة
+// ويعتمد على توقيت جهاز المستخدم لحظياً (Date.now). راجع utils/timeFormat.js.
 function timeAgoAr(dateLike) {
-  if (!dateLike) return 'الآن';
-  const date = new Date(dateLike);
-  if (Number.isNaN(date.getTime())) return 'الآن';
-  const diffSeconds = Math.max(1, Math.floor((Date.now() - date.getTime()) / 1000));
-  if (diffSeconds < 60) return 'الآن';
-  const minutes = Math.floor(diffSeconds / 60);
-  if (minutes < 60) return `منذ ${minutes} دقيقة`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `منذ ${hours} ساعة`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `منذ ${days} يوم`;
-  const months = Math.floor(days / 30);
-  if (months < 12) return `منذ ${months} شهر`;
-  return `منذ ${Math.floor(months / 12)} سنة`;
+  return fmtTimeAgoAr(dateLike);
 }
 
 const MOCK_POSTS = [];
@@ -129,6 +120,8 @@ function buildFeedPosts(posts = []) {
         };
       });
 
+      const sourceTime = post.created_at || post.published_at || null;
+
       return {
         id: post.id || `post-${index}`,
         rawId: post.id || null, // المعرف الحقيقي للمنشور من الـ backend (null للمنشورات الترحيبية)
@@ -137,7 +130,9 @@ function buildFeedPosts(posts = []) {
         authorName: post.author_name || post.username || post.user || 'مستخدم يام شات',
         authorAvatar: resolveMediaUrl(post.user_avatar || post.avatar || post.author_avatar || ''),
         handle: normalizeHandle(post.username || post.user || `user.${index + 1}`),
-        time: timeAgoAr(post.created_at || post.published_at),
+        time: timeAgoAr(sourceTime),
+        rawTime: sourceTime, // ✅ نحتفظ بالقيمة الخام لإعادة الحساب لحظياً كل 30 ثانية
+        timeTitle: formatLocalDateTimeAr(sourceTime), // ✅ تاريخ كامل بتوقيت الجهاز للـ tooltip
         text: stripFirstUrl(post.content || post.text || ''),
         rawText: post.content || post.text || '',
         likes: Number(post.likes_count || post.like_count || post.likes || 0),
@@ -227,6 +222,20 @@ function PostCard({ post }) {
   const [isMuted, setIsMuted] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
   const [isDeleted, setIsDeleted] = useState(false);
+
+  // ✅ إصلاح تاريخ النشر: نعيد حساب «منذ كم» لحظياً بناءً على توقيت الجهاز
+  // مع إعادة تحديث دوري كل 30 ثانية حتى تتحدث القيمة دون إعادة تحميل.
+  const [liveTimeAgo, setLiveTimeAgo] = useState(() => fmtTimeAgoAr(post.rawTime || post.time));
+  useEffect(() => {
+    // تحديث فوري عند تغيّر المنشور أو دخول جديد
+    setLiveTimeAgo(fmtTimeAgoAr(post.rawTime || post.time));
+    if (!post.rawTime) return undefined;
+    const id = setInterval(() => {
+      setLiveTimeAgo(fmtTimeAgoAr(post.rawTime));
+    }, 30 * 1000);
+    return () => clearInterval(id);
+  }, [post.rawTime, post.time]);
+
   const authorUsername = String(post.rawUsername || post.handle || '').replace(/^@/, '');
   const currentUsername = getCurrentUsername();
   const isOwnPost = Boolean(authorUsername && currentUsername && authorUsername === currentUsername);
@@ -500,7 +509,8 @@ function PostCard({ post }) {
           </div>
         </div>
         <div className="yam-post-meta-v2">
-          <span>{post.time}</span>
+          {/* ✅ تحديث لحظي للوقت المنقضي + tooltip بتوقيت الجهاز */}
+          <span title={post.timeTitle || ''}>{liveTimeAgo}</span>
           <div className="yam-settings-menu-wrap">
             <button type="button" className="yam-ghost-icon-btn" aria-label="خيارات المنشور" onClick={handleMoreOptions} title="خيارات المنشور">
               <YamshatIcon name="more" size={18} />
@@ -586,6 +596,8 @@ export default function FeedEnhanced() {
   return (
     <MainLayout>
       {isMobile ? <FeedMobile /> : <FeedDesktopInner />}
+      {/* ✨ ميزة فرونت-إند فقط للشاشة الرئيسية: زر «العودة للأعلى» — بدون أي اتصال بـ backend أو جداول */}
+      <ScrollToTopFab threshold={500} />
     </MainLayout>
   );
 }

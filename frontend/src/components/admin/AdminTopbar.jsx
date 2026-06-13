@@ -6,7 +6,7 @@ import { clearStoredUser, getStoredUser } from '../../utils/auth.js';
 import useDebouncedValue from '../../hooks/useDebouncedValue.js';
 import { getFlattenedAdminItems } from './adminNavigation.js';
 
-export default function AdminTopbar({ title, onToggleSidebar, notifications = [] }) {
+export default function AdminTopbar({ title, subtitle, onToggleSidebar, notifications = [] }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState({ users: [], posts: [] });
   const [openNotifications, setOpenNotifications] = useState(false);
@@ -70,8 +70,15 @@ export default function AdminTopbar({ title, onToggleSidebar, notifications = []
       <div className="admin-topbar-leading">
         <button type="button" className="ghost-btn icon-btn admin-menu-toggle" onClick={onToggleSidebar}>☰</button>
         <div className="admin-search-box admin-reference-search-box">
-          <span>⌕</span>
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="بحث عن مستخدم، بث، منشور..." />
+          <div className="admin-search-input-wrap">
+            <span className="admin-search-icon">⌕</span>
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="بحث عن مستخدم، بث، منشور..." />
+          </div>
+          {/* Inline page heading next to search to save vertical space */}
+          <div className="admin-topbar-inline-heading">
+            <strong className="admin-topbar-inline-title">{title}</strong>
+            {subtitle ? <span className="admin-topbar-inline-sub">{subtitle}</span> : null}
+          </div>
           {(results.users.length || results.posts.length) ? (
             <div className="search-results-panel">
               {results.users.length ? (
@@ -98,19 +105,6 @@ export default function AdminTopbar({ title, onToggleSidebar, notifications = []
               ) : null}
             </div>
           ) : null}
-        </div>
-      </div>
-
-      <div className="admin-topbar-meta-block admin-topbar-heading-block">
-        <div className="page-eyebrow-row">
-          <span className="page-eyebrow">لوحة التحكم</span>
-          <span className="live-pill"><span className="status-dot live-dot" />عرض موحّد</span>
-        </div>
-        <h1 className="page-title admin-reference-title">{title}</h1>
-        <div className="topbar-meta-row compact">
-          <span className="deploy-pill">تنقّل سريع</span>
-          <span className="deploy-pill">RTL</span>
-          <span className="deploy-pill">واجهة داكنة مضغوطة</span>
         </div>
       </div>
 

@@ -10,7 +10,7 @@ import AdminTopbar from './AdminTopbar.jsx';
 import { useToast } from './ToastProvider.jsx';
 
 const routeMeta = {
-  '/admin/dashboard': { title: 'لوحة التحكم', breadcrumb: ['الإدارة', 'الرئيسية'] },
+  '/admin/dashboard': { title: 'لوحة التحكم', subtitle: 'مرحباً بك، إليك نظرة عامة على المنصة', breadcrumb: ['الإدارة', 'الرئيسية'] },
   '/admin/posts': { title: 'إدارة المنشورات', breadcrumb: ['الإدارة', 'المنشورات'] },
   '/admin/content': { title: 'إدارة المنشورات', breadcrumb: ['الإدارة', 'المنشورات'] },
   '/admin/chat': { title: 'إدارة الشات', breadcrumb: ['الإدارة', 'الشات'] },
@@ -75,7 +75,7 @@ export default function AdminLayout({ children }) {
     <div className="admin-app-shell admin-reference-shell admin-shell-modern">
       <AdminSidebar collapsed={collapsed} permissions={user?.permissions || []} role={user?.role || 'user'} />
       <div className="admin-main-shell admin-main-shell-modern">
-        <AdminTopbar title={meta.title} onToggleSidebar={() => setCollapsed((prev) => !prev)} notifications={notifications} />
+        <AdminTopbar title={meta.title} subtitle={meta.subtitle} onToggleSidebar={() => setCollapsed((prev) => !prev)} notifications={notifications} />
         <main className="admin-page-shell admin-reference-page-shell admin-page-shell-modern">
           {children}
         </main>

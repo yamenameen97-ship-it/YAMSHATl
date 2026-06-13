@@ -212,15 +212,8 @@ export default function AdminDashboard() {
 
   return (
     <AdminLayout>
-      <div className="ls-admin" dir="rtl" data-yamshat-version="unified-v20-no-live">
-        {/* ====== Header ====== */}
-        <div className="ls-head">
-          <div>
-            <h1 className="ls-title">لوحة التحكم</h1>
-            <p className="ls-sub">مرحباً بك، إليك نظرة عامة على المنصة</p>
-          </div>
-        </div>
-
+      <div className="ls-admin" dir="rtl" data-yamshat-version="unified-v24-compact">
+        {/* Header moved to topbar (next to search) to save vertical space */}
         {/* ====== Stat cards ====== */}
         <div className="ls-stats-grid">
           {STAT_CARDS.map((s) => (
@@ -290,6 +283,7 @@ export default function AdminDashboard() {
               <button className="ls-btn ls-btn-primary">+ منشور جديد</button>
             </div>
             <input className="ls-search" placeholder="ابحث عن منشور..." />
+            <div className="ls-table-wrap">
             <table className="ls-table">
               <thead>
                 <tr>
@@ -312,12 +306,14 @@ export default function AdminDashboard() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
 
           <div className="ls-card">
             <div className="ls-card-head">
               <h3>💬 إدارة الشات</h3>
             </div>
+            <div className="ls-table-wrap">
             <table className="ls-table">
               <thead>
                 <tr>
@@ -338,6 +334,7 @@ export default function AdminDashboard() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
 
@@ -348,6 +345,7 @@ export default function AdminDashboard() {
               <h3>📷 إدارة الستوري</h3>
               <button className="ls-btn ls-btn-primary">+ ستوري جديد</button>
             </div>
+            <div className="ls-table-wrap">
             <table className="ls-table">
               <thead>
                 <tr>
@@ -368,6 +366,7 @@ export default function AdminDashboard() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
 
           <div className="ls-card">
@@ -375,6 +374,7 @@ export default function AdminDashboard() {
               <h3>🎬 إدارة الريلز</h3>
               <button className="ls-btn ls-btn-primary">+ ريلز جديد</button>
             </div>
+            <div className="ls-table-wrap">
             <table className="ls-table">
               <thead>
                 <tr>
@@ -397,11 +397,12 @@ export default function AdminDashboard() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
 
         {/* ====== Row: Reports & Analytics ====== */}
-        <div className="ls-card">
+        <div className="ls-card ls-card-full">
           <div className="ls-card-head">
             <h3>📊 التقارير والإحصائيات</h3>
             <div className="ls-tabs">
@@ -456,40 +457,41 @@ export default function AdminDashboard() {
           font-family: 'Noto Sans Arabic', system-ui, sans-serif;
           color: #e2e8f0;
           background: #0b1020;
-          padding: 22px;
-          min-height: 100vh;
+          padding: 10px 12px 14px;
+          min-height: 100%;
           direction: rtl;
         }
         .ls-admin *, .ls-admin *::before, .ls-admin *::after { box-sizing: border-box; }
 
-        .ls-head { margin-bottom: 18px; }
-        .ls-title { margin: 0; color: #f8fafc; font-size: 24px; font-weight: 800; }
-        .ls-sub   { margin: 4px 0 0; color: #94a3b8; font-size: 13px; }
+        /* Legacy in-page header (now hidden — moved to topbar) */
+        .ls-head { display: none; }
+        .ls-title { margin: 0; color: #f8fafc; font-size: 18px; font-weight: 800; }
+        .ls-sub   { margin: 2px 0 0; color: #94a3b8; font-size: 11px; }
 
         .ls-stats-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-          gap: 14px;
-          margin-bottom: 18px;
+          grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+          gap: 10px;
+          margin-bottom: 10px;
         }
         .ls-stat-card {
           background: linear-gradient(180deg, #131a33, #0f152a);
           border: 1px solid rgba(148,163,184,0.10);
-          border-radius: 14px;
-          padding: 16px;
+          border-radius: 12px;
+          padding: 10px 12px;
         }
-        .ls-stat-top { display: flex; align-items: center; gap: 10px; }
+        .ls-stat-top { display: flex; align-items: center; gap: 8px; }
         .ls-stat-icon {
-          width: 34px; height: 34px; border-radius: 10px;
+          width: 28px; height: 28px; border-radius: 8px;
           display: inline-flex; align-items: center; justify-content: center;
-          font-weight: 700; font-size: 16px;
+          font-weight: 700; font-size: 13px;
         }
-        .ls-stat-label { color: #94a3b8; font-size: 13px; }
-        .ls-stat-value { color: #f8fafc; font-size: 26px; font-weight: 800; margin: 10px 0 6px; }
-        .ls-stat-trend { color: #10b981; font-size: 12px; font-weight: 700; }
-        .ls-stat-muted { color: #64748b; font-weight: 500; margin-right: 6px; }
+        .ls-stat-label { color: #94a3b8; font-size: 11px; }
+        .ls-stat-value { color: #f8fafc; font-size: 20px; font-weight: 800; margin: 6px 0 3px; }
+        .ls-stat-trend { color: #10b981; font-size: 11px; font-weight: 700; }
+        .ls-stat-muted { color: #64748b; font-weight: 500; margin-right: 6px; font-size: 10px; }
 
-        .ls-row { display: grid; gap: 16px; margin-bottom: 16px; }
+        .ls-row { display: grid; gap: 10px; margin-bottom: 10px; }
         .ls-row-2 { grid-template-columns: 1fr 1fr; }
         .ls-row-3 { grid-template-columns: 2fr 1fr 1fr; }
         .ls-col-2 { grid-column: span 1; }
@@ -497,23 +499,29 @@ export default function AdminDashboard() {
         .ls-card {
           background: linear-gradient(180deg, #131a33, #0f152a);
           border: 1px solid rgba(148,163,184,0.10);
-          border-radius: 16px;
-          padding: 16px;
+          border-radius: 12px;
+          padding: 10px 12px;
+          /* fix max height → inner scrollbar for data-heavy cards */
+          max-height: 360px;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
         }
         .ls-card-head {
           display: flex; align-items: center; justify-content: space-between;
-          margin-bottom: 12px; flex-wrap: wrap; gap: 10px;
+          margin-bottom: 8px; flex-wrap: wrap; gap: 8px;
+          flex-shrink: 0;
         }
-        .ls-card-head h3 { margin: 0; color: #f8fafc; font-size: 15px; font-weight: 700; }
-        .ls-sub-title { color: #cbd5e1; font-size: 14px; margin: 0 0 10px; font-weight: 600; }
+        .ls-card-head h3 { margin: 0; color: #f8fafc; font-size: 13px; font-weight: 700; }
+        .ls-sub-title { color: #cbd5e1; font-size: 12px; margin: 0 0 8px; font-weight: 600; }
 
         .ls-select, .ls-search, .ls-btn {
           background: rgba(15,23,42,0.7); color: #e2e8f0;
           border: 1px solid rgba(148,163,184,0.15);
-          border-radius: 10px; padding: 8px 12px; font-size: 13px;
+          border-radius: 8px; padding: 6px 10px; font-size: 12px;
           font-family: inherit;
         }
-        .ls-search { width: 100%; margin-bottom: 10px; }
+        .ls-search { width: 100%; margin-bottom: 8px; flex-shrink: 0; }
         .ls-btn { cursor: pointer; }
         .ls-btn-primary { background: linear-gradient(135deg, #8b5cf6, #6d28d9); border: 0; color: #fff; font-weight: 700; }
         .ls-btn-ghost   { background: rgba(139,92,246,0.15); color: #c4b5fd; border-color: rgba(139,92,246,0.25); }
@@ -525,8 +533,8 @@ export default function AdminDashboard() {
         .ls-legend-value { color: #f8fafc; font-weight: 700; }
         .ls-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 
-        .ls-activity { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
-        .ls-activity li { display: flex; align-items: center; gap: 10px; }
+        .ls-activity { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+        .ls-activity li { display: flex; align-items: center; gap: 8px; }
         .ls-avatar {
           width: 32px; height: 32px; border-radius: 50%;
           background: linear-gradient(135deg, #8b5cf6, #ec4899);
@@ -541,9 +549,40 @@ export default function AdminDashboard() {
           font-size: 10px; font-weight: 800; padding: 3px 6px; border-radius: 6px;
         }
 
-        .ls-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        .ls-table th { text-align: right; color: #94a3b8; font-weight: 600; padding: 8px; border-bottom: 1px solid rgba(148,163,184,0.10); }
-        .ls-table td { padding: 10px 8px; color: #e2e8f0; border-bottom: 1px solid rgba(148,163,184,0.06); }
+        /* Custom scrollbar for data-heavy lists/tables inside cards */
+        .ls-table-wrap {
+          flex: 1;
+          min-height: 0;
+          overflow-y: auto;
+          overflow-x: auto;
+          scrollbar-width: thin;
+          scrollbar-color: rgba(139,92,246,0.55) rgba(15,23,42,0.4);
+        }
+        .ls-table-wrap::-webkit-scrollbar { width: 8px; height: 8px; }
+        .ls-table-wrap::-webkit-scrollbar-thumb {
+          background: linear-gradient(180deg, rgba(139,92,246,0.65), rgba(99,102,241,0.65));
+          border-radius: 8px;
+        }
+        .ls-table-wrap::-webkit-scrollbar-track {
+          background: rgba(15,23,42,0.4); border-radius: 8px;
+        }
+        /* Activity list scroll */
+        .ls-activity {
+          flex: 1; min-height: 0; overflow-y: auto;
+          scrollbar-width: thin;
+          scrollbar-color: rgba(139,92,246,0.55) transparent;
+          padding-inline-end: 4px;
+        }
+        .ls-activity::-webkit-scrollbar { width: 6px; }
+        .ls-activity::-webkit-scrollbar-thumb {
+          background: linear-gradient(180deg, rgba(139,92,246,0.65), rgba(99,102,241,0.65));
+          border-radius: 6px;
+        }
+
+        .ls-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .ls-table thead th { position: sticky; top: 0; background: linear-gradient(180deg, #131a33, #0f152a); z-index: 2; }
+        .ls-table th { text-align: right; color: #94a3b8; font-weight: 600; padding: 6px 6px; border-bottom: 1px solid rgba(148,163,184,0.10); font-size: 11px; }
+        .ls-table td { padding: 7px 6px; color: #e2e8f0; border-bottom: 1px solid rgba(148,163,184,0.06); }
         .ls-status {
           display: inline-block; padding: 3px 10px; border-radius: 999px;
           font-size: 11px; font-weight: 700;
@@ -559,17 +598,20 @@ export default function AdminDashboard() {
         .ls-tab.active { background: rgba(139,92,246,0.18); color: #c4b5fd; }
 
         .ls-kpi-row {
-          display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-          gap: 12px; margin-bottom: 18px;
+          display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+          gap: 8px; margin-bottom: 10px;
         }
         .ls-kpi {
           background: rgba(15,23,42,0.65);
           border: 1px solid rgba(148,163,184,0.10);
-          border-radius: 12px; padding: 14px;
+          border-radius: 10px; padding: 9px 11px;
         }
-        .ls-kpi-label { color: #94a3b8; font-size: 12px; }
-        .ls-kpi-value { color: #f8fafc; font-size: 22px; font-weight: 800; margin: 6px 0 4px; }
-        .ls-kpi-trend.up { color: #10b981; font-size: 12px; font-weight: 700; }
+        .ls-kpi-label { color: #94a3b8; font-size: 11px; }
+        .ls-kpi-value { color: #f8fafc; font-size: 17px; font-weight: 800; margin: 4px 0 3px; }
+        .ls-kpi-trend.up { color: #10b981; font-size: 11px; font-weight: 700; }
+
+        /* Reports & analytics card: no max-height (it has its own layout) */
+        .ls-card.ls-card-full { max-height: none; overflow: visible; display: block; }
 
         @media (max-width: 1180px) {
           .ls-row-3 { grid-template-columns: 1fr 1fr; }

@@ -10,6 +10,7 @@ import InstallPrompt from './components/feedback/InstallPrompt.jsx';
 import OfflineExperience from './components/feedback/OfflineExperience.jsx';
 import AppUpdatePrompt from './components/feedback/AppUpdatePrompt.jsx';
 import IncomingCallOverlay from './components/chat/IncomingCallOverlay.jsx';
+import NewChatDialog from './components/chat/NewChatDialog.jsx';
 import GlobalNotificationListener from './components/notifications/GlobalNotificationListener.jsx';
 import { RoutePageSkeleton } from './components/feedback/Skeleton.jsx';
 import useNetworkStatus from './hooks/useNetworkStatus.js';
@@ -166,6 +167,7 @@ function AppGuards() {
       <AppUpdatePrompt />
       <GlobalNotificationListener />
       <IncomingCallOverlay />
+      <NewChatDialog />
       {activeRequests > 0 ? <div className="global-progress-bar" /> : null}
     </>
   );

@@ -72,7 +72,11 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
   }, [isConversationRoute, location.pathname]);
 
   return (
-    <div className={`app-shell yamshat-shell yamshat-unified ${nativeShell ? 'native-shell' : ''} ${isConversationRoute ? 'conversation-shell' : ''} ${isReelsRoute ? 'reels-shell' : ''}`}>
+    <div
+      dir="rtl"
+      style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}
+      className={`app-shell yamshat-shell yamshat-unified ${nativeShell ? 'native-shell' : ''} ${isConversationRoute ? 'conversation-shell' : ''} ${isReelsRoute ? 'reels-shell' : ''}`}
+    >
       {/* الهيدر العلوي الموحّد — مثبّت في كل الصفحات (شفّاف داخل الريلز) */}
       {showChrome ? <MobileTopBar transparent={isReelsRoute} /> : null}
 
@@ -104,6 +108,16 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
             overflow-y: visible;
             --yam-top-chrome-height: 60px;
             --yam-bottom-chrome-height: calc(70px + env(safe-area-inset-bottom, 0px));
+            font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+          }
+          /* أي filter/transform على الجذر يكسر position:fixed لأبنائه */
+          .app-shell.yamshat-unified,
+          .app-shell.yamshat-unified .main-shell,
+          .app-shell.yamshat-unified .page-content,
+          .app-shell.yamshat-unified .page-shell-glow {
+            transform: none !important;
+            filter: none !important;
+            perspective: none !important;
           }
 
           .app-shell.yamshat-unified.conversation-shell {

@@ -138,7 +138,6 @@
         "src/components/AdvancedReactions.jsx",
         "src/components/social/FollowButton.jsx",
         "src/components/social/FollowersListModal.jsx",
-        "src/components/feed/ScrollToTopFab.jsx",
         "src/components/yamshat/YamshatIcon.jsx"
     ]
 }

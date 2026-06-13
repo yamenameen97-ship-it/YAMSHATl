@@ -1,11 +1,19 @@
-import { memo } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { memo, useCallback } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 /**
- * BottomNav - شريط التنقل السفلي المحدث بناءً على الصورة
- * العناصر: الرئيسية، الدردشة، إنشاء (+)، الريلز، البث، حسابي
+ * BottomNav (v28) — شريط التنقل السفلي الموحّد
+ * --------------------------------------------
+ * - مثبّت بالكامل (position: fixed) ولا يتحرك مع تمرير الصفحة في أي مكان.
+ * - زر "إنشاء (+)" أصبح ذكياً يتغير سلوكه حسب الصفحة الحالية:
+ *     • الرئيسية (/)          → إنشاء منشور جديد (yamshat:open-composer)
+ *     • المجموعات (/groups)   → إنشاء مجموعة جديدة (/groups/create)
+ *     • الدردشة (/inbox|/chat)→ فتح حوار "دردشة جديدة" (yamshat:open-new-chat)
+ *     • الريلز (/reels)       → إنشاء ريل/فيديو جديد (yamshat:open-reel-composer)
+ *     • أي صفحة أخرى          → إنشاء منشور افتراضياً
+ * - dir=rtl وخط Noto Sans Arabic مطبّقان.
  */
-// يدعم matching للمسارات الفرعية مثل /chat/:id
+
 const NAV_ITEMS = [
   {
     id: 'home',
@@ -13,11 +21,11 @@ const NAV_ITEMS = [
     to: '/',
     match: (p) => p === '/',
     icon: (active) => (
-      <svg viewBox="0 0 24 24" width="24" height="24" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
         <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
         <polyline points="9 22 9 12 15 12 15 22" />
       </svg>
-    )
+    ),
   },
   {
     id: 'chat',
@@ -25,22 +33,21 @@ const NAV_ITEMS = [
     to: '/inbox',
     match: (p) => p.startsWith('/inbox') || p.startsWith('/chat'),
     icon: (active) => (
-      <svg viewBox="0 0 24 24" width="24" height="24" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
       </svg>
-    )
+    ),
   },
   {
     id: 'create',
     label: 'إنشاء',
     isCenter: true,
-    to: '/create',
     icon: () => (
       <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="white" strokeWidth="3">
         <line x1="12" y1="5" x2="12" y2="19" />
         <line x1="5" y1="12" x2="19" y2="12" />
       </svg>
-    )
+    ),
   },
   {
     id: 'reels',
@@ -48,11 +55,11 @@ const NAV_ITEMS = [
     to: '/reels',
     match: (p) => p.startsWith('/reels'),
     icon: (active) => (
-      <svg viewBox="0 0 24 24" width="24" height="24" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
         <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
         <path d="M10 9l5 3-5 3z" />
       </svg>
-    )
+    ),
   },
   {
     id: 'profile',
@@ -60,19 +67,87 @@ const NAV_ITEMS = [
     to: '/profile',
     match: (p) => p.startsWith('/profile'),
     icon: (active) => (
-      <svg viewBox="0 0 24 24" width="24" height="24" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
         <circle cx="12" cy="7" r="4" />
       </svg>
-    )
-  }
+    ),
+  },
 ];
+
+/**
+ * يحدد سياق زر "+" الذكي بناءً على المسار الحالي.
+ * يُرجع كائناً يحتوي على label للسياق وحدث/مسار التنفيذ.
+ */
+function resolveCreateAction(pathname) {
+  if (pathname.startsWith('/groups')) {
+    return {
+      label: 'إنشاء مجموعة',
+      kind: 'navigate',
+      target: '/groups/create',
+    };
+  }
+  if (pathname.startsWith('/inbox') || pathname.startsWith('/chat')) {
+    return {
+      label: 'دردشة جديدة',
+      kind: 'event',
+      event: 'yamshat:open-new-chat',
+      fallback: '/inbox',
+    };
+  }
+  if (pathname.startsWith('/reels')) {
+    return {
+      label: 'ريل جديد',
+      kind: 'event',
+      event: 'yamshat:open-reel-composer',
+      fallback: '/reels',
+    };
+  }
+  if (pathname.startsWith('/stories')) {
+    return {
+      label: 'ستوري جديد',
+      kind: 'event',
+      event: 'yamshat:open-story-composer',
+      fallback: '/stories',
+    };
+  }
+  // الافتراضي (الرئيسية وأي صفحة أخرى): إنشاء منشور
+  return {
+    label: 'منشور جديد',
+    kind: 'event',
+    event: 'yamshat:open-composer',
+    fallback: '/',
+  };
+}
 
 function BottomNav() {
   const location = useLocation();
+  const navigate = useNavigate();
+
+  const handleCreateClick = useCallback(() => {
+    const action = resolveCreateAction(location.pathname);
+    if (action.kind === 'navigate') {
+      navigate(action.target);
+      return;
+    }
+    // إطلاق حدث عام يلتقطه المكوّن المختص بالصفحة الحالية
+    try {
+      window.dispatchEvent(new CustomEvent(action.event, { detail: { from: location.pathname } }));
+    } catch {
+      // تجاهل
+    }
+  }, [location.pathname, navigate]);
+
+  const createAction = resolveCreateAction(location.pathname);
 
   return (
-    <nav className="ym-bottomnav" role="navigation" aria-label="التنقل الرئيسي">
+    <nav
+      className="ym-bottomnav"
+      role="navigation"
+      aria-label="التنقل الرئيسي"
+      dir="rtl"
+      style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}
+    >
       <div className="ym-bottomnav-inner">
         {NAV_ITEMS.map((item) => {
           const isActive = item.match ? item.match(location.pathname) : location.pathname === item.to;
@@ -83,12 +158,13 @@ function BottomNav() {
                 <button
                   type="button"
                   className="ym-nav-plus-btn"
-                  aria-label="إنشاء منشور جديد"
-                  onClick={() => window.dispatchEvent(new CustomEvent('yamshat:open-composer'))}
+                  aria-label={createAction.label}
+                  title={createAction.label}
+                  onClick={handleCreateClick}
                 >
                   {item.icon()}
                 </button>
-                <span className="ym-nav-label">{item.label}</span>
+                <span className="ym-nav-label">{createAction.label}</span>
               </div>
             );
           }
@@ -100,9 +176,7 @@ function BottomNav() {
               className={`ym-nav-item ${isActive ? 'active' : ''}`}
               aria-current={isActive ? 'page' : undefined}
             >
-              <div className="ym-nav-icon">
-                {item.icon(isActive)}
-              </div>
+              <div className="ym-nav-icon">{item.icon(isActive)}</div>
               <span className="ym-nav-label">{item.label}</span>
             </Link>
           );
@@ -124,10 +198,11 @@ function BottomNav() {
           align-items: center;
           justify-content: center;
           box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
-          /* ضمان عدم تحرّك الشريط مع سحب الصفحة في أي صفحة */
-          transform: none;
+          /* تثبيت كامل: لا transform ولا will-change حتى لا يكسر position:fixed */
+          transform: none !important;
           will-change: auto;
           backface-visibility: hidden;
+          font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
         }
         .ym-bottomnav-inner {
           display: flex;
@@ -179,7 +254,15 @@ function BottomNav() {
           box-shadow: 0 6px 18px rgba(139, 92, 246, 0.6);
         }
         .ym-nav-plus-btn:active { transform: scale(0.95); }
-        .ym-nav-label { font-size: 0.7rem; line-height: 1.2; }
+        .ym-nav-label {
+          font-size: 0.7rem;
+          line-height: 1.2;
+          max-width: 80px;
+          text-align: center;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
         @media (min-width: 1024px) {
           .ym-nav-label { font-size: 0.85rem; }
         }

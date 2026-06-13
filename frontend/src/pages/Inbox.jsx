@@ -779,25 +779,11 @@ export default function Inbox() {
   }, [pushToast, requestCount]);
 
   return (
-    <MainLayout hideNav lockScroll>
-      <section className="yam-mobile-page" dir="rtl">
+    <MainLayout>
+      <section className="yam-mobile-page" dir="rtl" style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}>
         <div className="yam-mobile-screen">
-          <header className="yam-mobile-header">
-            <button type="button" className="yam-icon-btn" onClick={() => navigate('/settings')} aria-label="القائمة">
-              <MenuIcon />
-            </button>
-
-            <button type="button" className="yam-brand" onClick={() => navigate('/')} aria-label="YAMSHAT">
-              <span className="yam-brand-mark">
-                <BrandLogo size={28} alt="Yamshat" className="yam-brand-mark-image" />
-              </span>
-              <span className="yam-brand-text">YAMSHAT</span>
-            </button>
-
-            <button type="button" className="yam-icon-btn" onClick={() => setComposeOpen(true)} aria-label="إنشاء محادثة">
-              <ComposeIcon />
-            </button>
-          </header>
+          {/* v28: تم حذف الهيدر المخصّص للإنبوكس لأن الهيدر العلوي الموحّد أصبح مثبّتاً عبر MainLayout */}
+          {/* والمودال الأصلي للإنشاء لا يفتح تلقائياً، حلّ محلّه NewChatDialog العالمي */}
 
           <ComposeModal
             open={composeOpen}
@@ -805,6 +791,7 @@ export default function Inbox() {
             navigate={navigate}
             pushToast={pushToast}
           />
+          {/* v28: دعم فتح المودال عبر الحدث العام إذا أحب الباحث استخدامه محلياً */}
 
           <div className="yam-search-box">
             <SearchIcon />
@@ -820,30 +807,7 @@ export default function Inbox() {
             </button>
           </div>
 
-          <div className="yam-story-rail" role="list" aria-label="القصص والنشاط السريع">
-            <button type="button" className="yam-story-card create" onClick={() => navigate('/stories')}>
-              <span className="yam-story-create-badge"><PlusIcon /></span>
-              <span className="yam-story-label">إنشاء قصة</span>
-            </button>
-
-            {storyRail.map((item) => (
-              <button
-                key={`${item.username || 'me'}:${item.mine ? 'mine' : 'story'}`}
-                type="button"
-                className="yam-story-card"
-                onClick={() => handleOpenStory(item)}
-              >
-                <AvatarCircle
-                  name={item.mine ? (item.username || 'أنت') : item.username}
-                  avatar={item.avatar}
-                  size={58}
-                  ring={!item.mine && item.stories?.length > 0}
-                  online={!item.mine && item.stories?.length > 0}
-                />
-                <span className="yam-story-label">{item.mine ? 'أنت' : item.username}</span>
-              </button>
-            ))}
-          </div>
+          {/* تم إزالة شريط "إنشاء قصة" والقصص من خلفية صفحة الشات لأنه لا يخصّها (v28) */}
 
           <div className="yam-tabs-wrap">
             {TABS.map((tab) => {
@@ -978,7 +942,7 @@ export default function Inbox() {
           </div>
         </div>
 
-        <MobileNav unreadCount={unreadMessagesCount} requestCount={requestCount} />
+        {/* v28: تمّ حذف شريط التنقل السفلي الداخلي لأن BottomNav الموحّد في MainLayout أصبح مثبّتاً في كل الصفحات */}
 
         <style>{`
           .yam-mobile-page {

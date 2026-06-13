@@ -170,26 +170,15 @@ function ReelItem({ index, style, data }) {
           onDoubleClick={() => handleLike(reel, { burst: true })}
         />
 
-        <div className="reel-top-overlay absolute inset-x-0 top-0 z-20 px-4 pt-4 pb-10 text-white pointer-events-none">
-          <div className="flex items-center justify-between gap-3 pointer-events-auto">
-            <div>
-              <div className="reel-chip">الريلز</div>
-              <p className="reel-hint">{isDesktop ? 'تنقل بالأسهم ↑ ↓' : 'مرر عموديًا أو اسحب للأعلى والأسفل'}</p>
-            </div>
-            <div className="reel-count-pill">{index + 1} / {reels.length}</div>
-          </div>
-          <div className="reel-meta-row pointer-events-auto">
-            <span className="reel-chip ghost">الجودة: {isActive ? QUALITY_OPTIONS.find((item) => item.value === activeQuality)?.label || activeQuality : 'جاهز'}</span>
-            <span className="reel-chip ghost">الوضع: {QUALITY_OPTIONS.find((item) => item.value === selectedQuality)?.label || selectedQuality}</span>
-            {watchEntry ? <span className="reel-chip ghost">آخر مشاهدة {formatWatchPercentage(watchEntry.progress || 0)}</span> : null}
-          </div>
-          {isActive && isBuffering ? (
+        {/* ✅ تم إخفاء شارات الجودة وتنبيه التمرير لأنها كانت تغطي المحتوى. أزرار البحث/الرجوع موجودة الآن في reels-floating-top-bar على مستوى الصفحة. */}
+        {isActive && isBuffering ? (
+          <div className="reel-top-overlay absolute inset-x-0 top-0 z-20 px-4 pt-20 pb-4 text-white pointer-events-none">
             <div className="reel-buffer-banner pointer-events-auto">
               <span>جارٍ التحميل الذكي…</span>
               <span>{bufferPercent}%</span>
             </div>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
 
         <div className="reel-bottom-overlay absolute bottom-0 left-0 right-0 p-4 text-white pointer-events-none">
           <div className="flex items-center gap-3 mb-2 pointer-events-auto">
@@ -211,29 +200,30 @@ function ReelItem({ index, style, data }) {
           </div>
         </div>
 
-        <div className="reel-actions-stack absolute right-4 bottom-24 flex flex-col gap-4 items-center z-20">
+        {/* ✅ تم رفع كومة أزرار التفاعل للأعلى (bottom-36 بدلًا من bottom-24) لتجنب تغطية الفوتر، وتم التأكد من ربط جميع الأحداث. */}
+        <div className="reel-actions-stack absolute right-3 bottom-36 flex flex-col gap-3 items-center z-30 pointer-events-auto">
           <div className="flex flex-col items-center gap-1">
-            <button onClick={() => handleLike(reel)} className={`reel-action-btn ${reel.is_liked ? 'liked' : ''}`}>❤️</button>
+            <button type="button" aria-label="إعجاب" onClick={(e) => { e.stopPropagation(); handleLike(reel); }} className={`reel-action-btn ${reel.is_liked ? 'liked' : ''}`}>❤️</button>
             <span className="reel-action-label">{reel.likes_count || 0}</span>
           </div>
 
           <div className="flex flex-col items-center gap-1">
-            <button onClick={() => openComments(reel)} className="reel-action-btn">💬</button>
+            <button type="button" aria-label="تعليقات" onClick={(e) => { e.stopPropagation(); openComments(reel); }} className="reel-action-btn">💬</button>
             <span className="reel-action-label">{reel.comments_count || 0}</span>
           </div>
 
           <div className="flex flex-col items-center gap-1">
-            <button onClick={() => handleSave(reel)} className={`reel-action-btn ${reel.is_saved ? 'saved' : ''}`}>🔖</button>
+            <button type="button" aria-label="حفظ" onClick={(e) => { e.stopPropagation(); handleSave(reel); }} className={`reel-action-btn ${reel.is_saved ? 'saved' : ''}`}>🔖</button>
             <span className="reel-action-label">حفظ</span>
           </div>
 
           <div className="flex flex-col items-center gap-1">
-            <button onClick={() => handleShare(reel)} className="reel-action-btn">↗</button>
+            <button type="button" aria-label="مشاركة" onClick={(e) => { e.stopPropagation(); handleShare(reel); }} className="reel-action-btn">↗</button>
             <span className="reel-action-label">مشاركة</span>
           </div>
 
           <div className="flex flex-col items-center gap-1">
-            <button onClick={() => handleReport(reel)} className="reel-action-btn warn">⚑</button>
+            <button type="button" aria-label="بلاغ" onClick={(e) => { e.stopPropagation(); handleReport(reel); }} className="reel-action-btn warn">⚑</button>
             <span className="reel-action-label">بلاغ</span>
           </div>
         </div>
@@ -974,12 +964,34 @@ export default function ReelsPage() {
   return (
     <MainLayout>
       <div className="reels-page-shell" onWheelCapture={handleWheelNavigation} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-        {/*
-          🎬 تمت إزالة شريط العنوان الداخلي (reels-header-bar) عمدًا.
-          الهيدر العلوي الموحّد في MainLayout يظهر الآن بوضع شفّاف Overlay
-          فوق الفيديو (TikTok-style)، لذا لا حاجة لشريط عنوان داخلي ثاني.
-          المحتوى يملأ الشاشة بالكامل من الأعلى للأسفل (حتى الفوتر السفلي).
-        */}
+        {/* ✅ شريط علوي عائم شفاف: زر رجوع + زر بحث (نفس ستايل YAMSHAT) */}
+        <div className="reels-floating-top-bar" dir="rtl">
+          <button
+            type="button"
+            className="reels-floating-btn reels-back-btn"
+            aria-label="رجوع"
+            onClick={() => {
+              if (window.history.length > 1) navigate(-1);
+              else navigate('/');
+            }}
+          >
+            {/* سهم رجوع يشير يسارًا بصريًا ليتوافق مع تصميم YAMSHAT */}
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="reels-floating-btn reels-search-btn"
+            aria-label="بحث"
+            onClick={() => navigate('/search')}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="7" />
+              <path d="M21 21l-4.3-4.3" />
+            </svg>
+          </button>
+        </div>
 
         <div className="reels-stage-shell">
           {isLoading ? (
@@ -989,11 +1001,7 @@ export default function ReelsPage() {
             </div>
           ) : reels.length ? (
             <>
-              <div className="reels-status-ribbon">
-                <span>الجودة الفعلية: <strong>{QUALITY_OPTIONS.find((item) => item.value === activeQuality)?.label || activeQuality}</strong></span>
-                <span>الشبكة: <strong>{deviceProfile.effectiveType}</strong></span>
-                <span>Buffer events: <strong>{Number(activeInsights?.bufferEvents || 0)}</strong></span>
-              </div>
+              {/* ✅ تم إخفاء شريط معلومات الجودة/الشبكة لأنه كان يغطي محتوى الريل */}
               <AutoSizer>
                 {({ height, width }) => (
                   <List
@@ -1088,9 +1096,45 @@ export default function ReelsPage() {
           <div className="comments-modal-shell">
             <NestedComments
               comments={activeComments}
-              onAddComment={async (content) => {
-                const { data } = await addComment(activeReel.id, content);
-                setActiveComments((prev) => [data, ...prev]);
+              onAddComment={async (payload) => {
+                // ✅ إصلاح: NestedComments يرسل كائن { content } وليس نصًا مجردًا.
+                // كنا نمرّر الكائن كاملًا إلى addComment فلا يصل النص للخادم وبالتالي لا يُحفظ التعليق.
+                const text = typeof payload === 'string'
+                  ? payload
+                  : String(payload?.content || payload?.text || '').trim();
+                if (!text || !activeReel?.id) return;
+                try {
+                  const { data } = await addComment(activeReel.id, text);
+                  const saved = data?.comment || data?.data || data;
+                  if (saved) {
+                    setActiveComments((prev) => [saved, ...prev]);
+                  }
+                  // تحديث عداد التعليقات على الريل نفسه
+                  setReels((prev) => prev.map((item) =>
+                    String(item.id) === String(activeReel.id)
+                      ? { ...item, comments_count: Number(item.comments_count || 0) + 1 }
+                      : item
+                  ));
+                  pushToast({ type: 'success', title: 'تم نشر التعليق' });
+                } catch (error) {
+                  pushToast({ type: 'error', title: 'تعذر نشر التعليق', description: error?.message });
+                }
+              }}
+              onReply={async (parentId, text) => {
+                if (!text || !activeReel?.id) return;
+                try {
+                  const { data } = await addComment(activeReel.id, text, parentId);
+                  const saved = data?.comment || data?.data || data;
+                  if (saved) {
+                    setActiveComments((prev) => prev.map((c) =>
+                      String(c.id) === String(parentId)
+                        ? { ...c, replies: [saved, ...(c.replies || [])] }
+                        : c
+                    ));
+                  }
+                } catch (error) {
+                  pushToast({ type: 'error', title: 'تعذر إرسال الرد', description: error?.message });
+                }
               }}
             />
           </div>
@@ -1181,22 +1225,47 @@ export default function ReelsPage() {
             height: 100%;
           }
           .reels-status-ribbon {
-            position: absolute;
-            top: 84px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 25;
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            justify-content: center;
-            padding: 8px 14px;
-            border-radius: 999px;
-            background: rgba(2,6,23,0.58);
-            border: 1px solid rgba(255,255,255,0.08);
-            backdrop-filter: blur(16px);
-            font-size: 12px;
+            /* ✅ تم إخفاؤه بالكامل لأنه كان يغطي محتوى الفيديو */
+            display: none !important;
           }
+          /* ✅ شريط علوي عائم شفاف: رجوع + بحث */
+          .reels-floating-top-bar {
+            position: absolute;
+            top: calc(env(safe-area-inset-top, 0px) + 12px);
+            inset-inline: 12px;
+            z-index: 40;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            pointer-events: none;
+          }
+          .reels-floating-btn {
+            pointer-events: auto;
+            width: 42px;
+            height: 42px;
+            border-radius: 999px;
+            display: grid;
+            place-items: center;
+            border: 1px solid rgba(255,255,255,0.18);
+            background: rgba(15,23,42,0.32);
+            backdrop-filter: blur(14px) saturate(140%);
+            -webkit-backdrop-filter: blur(14px) saturate(140%);
+            color: #fff;
+            cursor: pointer;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.28);
+            transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
+          }
+          .reels-floating-btn:hover,
+          .reels-floating-btn:active {
+            transform: scale(1.05);
+            background: rgba(15,23,42,0.55);
+            border-color: rgba(255,255,255,0.32);
+          }
+          .reels-floating-btn svg {
+            display: block;
+          }
+          /* في RTL: سهم الرجوع (chevron right) يبدو طبيعيًا بدون تدوير لأن الصورة تظهر سهمًا للرجوع */
           .reels-loading-state,
           .reels-empty-state {
             height: 100%;

@@ -25,143 +25,141 @@
   --pink:#ec4899;
 }
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'Noto Sans Arabic',system-ui,Arial,sans-serif;min-height:100vh}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'Noto Sans Arabic',system-ui,Arial,sans-serif;min-height:100vh;direction:rtl}
 a{color:inherit;text-decoration:none}
 
-/* Layout */
-.app{display:grid;grid-template-columns:200px 1fr;min-height:100vh}
-.sidebar{background:#0c1024;border-left:1px solid var(--line);padding:10px 12px;position:sticky;top:0;height:100vh;overflow-y:auto}
+/* Layout — sidebar أصغر */
+.app{display:grid;grid-template-columns:172px 1fr;min-height:100vh}
+.sidebar{background:#0c1024;border-left:1px solid var(--line);padding:8px 9px;position:sticky;top:0;height:100vh;overflow-y:auto}
 .main{display:flex;flex-direction:column;min-width:0}
-.topbar{display:flex;align-items:center;gap:10px;padding:8px 16px;border-bottom:1px solid var(--line);background:#0a0d18;position:sticky;top:0;z-index:10}
-.content{padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.topbar{display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--line);background:#0a0d18;position:sticky;top:0;z-index:10}
+.content{padding:8px 10px 10px;display:flex;flex-direction:column;gap:7px}
 
 /* Sidebar */
-.brand{display:flex;align-items:center;gap:8px;padding:4px 2px 10px;border-bottom:1px solid var(--line);margin-bottom:8px}
-.brand .logo{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--primary),var(--primary-2));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px}
-.brand .name{font-weight:700;font-size:14px}
-.profile{display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--panel);border-radius:10px;margin-bottom:10px}
-.profile .ava{width:32px;height:32px;border-radius:50%;background:#222a4d;display:flex;align-items:center;justify-content:center;overflow:hidden;font-weight:700;position:relative;font-size:12px}
-.profile .ava .dot{position:absolute;bottom:0;left:0;width:8px;height:8px;border-radius:50%;background:var(--green);border:2px solid var(--panel)}
-.profile .meta .n{font-weight:700;font-size:11.5px}
-.profile .meta .r{color:var(--muted);font-size:9.5px}
-.profile .meta .s{color:var(--green);font-size:9px;margin-top:1px}
+.brand{display:flex;align-items:center;gap:7px;padding:2px 2px 7px;border-bottom:1px solid var(--line);margin-bottom:6px}
+.brand .logo{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,var(--primary),var(--primary-2));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:10px}
+.brand .name{font-weight:700;font-size:12px}
+.profile{display:flex;align-items:center;gap:7px;padding:5px 7px;background:var(--panel);border-radius:9px;margin-bottom:8px}
+.profile .ava{width:28px;height:28px;border-radius:50%;background:#222a4d;display:flex;align-items:center;justify-content:center;overflow:hidden;font-weight:700;position:relative;font-size:11px}
+.profile .ava .dot{position:absolute;bottom:0;left:0;width:7px;height:7px;border-radius:50%;background:var(--green);border:2px solid var(--panel)}
+.profile .meta .n{font-weight:700;font-size:10.5px}
+.profile .meta .r{color:var(--muted);font-size:8.5px}
+.profile .meta .s{color:var(--green);font-size:8px;margin-top:1px}
 
-.nav-section{font-size:9px;color:var(--muted);margin:8px 2px 3px;letter-spacing:.5px;font-weight:600}
-.nav a{display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:7px;color:#c9cde6;font-size:11px;margin-bottom:1px;transition:all .15s}
+.nav-section{font-size:8.5px;color:var(--muted);margin:6px 2px 2px;letter-spacing:.5px;font-weight:600}
+.nav a{display:flex;align-items:center;gap:6px;padding:4px 7px;border-radius:6px;color:#c9cde6;font-size:10px;margin-bottom:1px;transition:all .15s}
 .nav a:hover{background:var(--panel);color:#fff}
 .nav a.active{background:linear-gradient(135deg,rgba(124,58,237,.25),rgba(168,85,247,.15));color:#fff;font-weight:600}
-.nav a .ico{width:18px;display:inline-flex;justify-content:center}
-.nav a .pill{margin-inline-start:auto;background:var(--red);font-size:8px;padding:1px 4px;border-radius:6px;color:#fff;font-weight:700;display:none}
+.nav a .ico{width:15px;display:inline-flex;justify-content:center;font-size:11px}
+.nav a .pill{margin-inline-start:auto;background:var(--red);font-size:7.5px;padding:1px 4px;border-radius:5px;color:#fff;font-weight:700;display:none}
 
-.nav-divider{height:1px;background:var(--line);margin:7px 0}
+.nav-divider{height:1px;background:var(--line);margin:6px 0}
 
 /* Topbar */
-.search{flex:1;max-width:420px;display:flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:5px 10px;font-size:11px}
-.search input{flex:1;background:transparent;border:0;color:var(--text);outline:none;font-family:inherit;font-size:11px}
+.search{flex:1;max-width:380px;display:flex;align-items:center;gap:5px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:4px 9px;font-size:10px}
+.search input{flex:1;background:transparent;border:0;color:var(--text);outline:none;font-family:inherit;font-size:10px}
 .search input::placeholder{color:var(--muted)}
 .topbar .spacer{flex:1}
-.icon-btn{width:32px;height:32px;border-radius:50%;background:var(--panel);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;font-size:13px}
-.icon-btn .badge{position:absolute;top:-2px;left:-2px;background:var(--red);color:#fff;font-size:9px;width:15px;height:15px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700}
-.topuser{display:flex;align-items:center;gap:10px}
-.topuser .ava{width:32px;height:32px;border-radius:50%;background:#222a4d;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
-.topuser .label{font-size:11px;color:#cbd0ee}
+.icon-btn{width:28px;height:28px;border-radius:50%;background:var(--panel);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;font-size:11px}
+.icon-btn .badge{position:absolute;top:-2px;left:-2px;background:var(--red);color:#fff;font-size:8px;width:13px;height:13px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700}
+.topuser{display:flex;align-items:center;gap:8px}
+.topuser .ava{width:28px;height:28px;border-radius:50%;background:#222a4d;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px}
+.topuser .label{font-size:10px;color:#cbd0ee}
 
 /* Headings */
-.page-title{font-size:16px;font-weight:700;margin:0}
-.page-sub{color:var(--muted);font-size:11px;margin-top:2px}
+.page-title{font-size:13px;font-weight:700;margin:0}
+.page-sub{color:var(--muted);font-size:9.5px;margin-top:1px}
 
-/* KPI cards */
-.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
-.kpi{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;position:relative;overflow:hidden}
-.kpi .row{display:flex;align-items:center;gap:8px}
-.kpi .ico{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
-.kpi .lbl{color:var(--muted);font-size:10px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.kpi .val{font-size:15px;font-weight:800;letter-spacing:-.3px;line-height:1.1}
-.kpi .tag{position:absolute;top:8px;left:8px;background:#1e2444;color:var(--muted);font-size:8px;padding:2px 5px;border-radius:6px;font-weight:600}
-.kpi .tag.live{background:rgba(239,68,68,.15);color:#ff6f7a}
-.kpi .delta{margin-top:6px;font-size:10px;color:var(--green);display:flex;align-items:center;gap:3px}
-.kpi .delta .arrow{font-size:8px}
+/* KPI cards — 5 صناديق (بدون البيوت المباشرة) — مضغوطة */
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:7px 9px;position:relative;overflow:hidden}
+.kpi .row{display:flex;align-items:center;gap:6px}
+.kpi .ico{width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
+.kpi .lbl{color:var(--muted);font-size:9px;margin-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi .val{font-size:13px;font-weight:800;letter-spacing:-.3px;line-height:1.1}
+.kpi .tag{position:absolute;top:6px;left:6px;background:#1e2444;color:var(--muted);font-size:7.5px;padding:1px 4px;border-radius:5px;font-weight:600}
+.kpi .delta{margin-top:4px;font-size:9px;color:var(--green);display:flex;align-items:center;gap:3px}
+.kpi .delta .arrow{font-size:7.5px}
 .kpi.purple .ico{background:rgba(124,58,237,.18);color:#a78bfa}
-.kpi.blue .ico{background:rgba(59,130,246,.18);color:#60a5fa}
 .kpi.red .ico{background:rgba(239,68,68,.18);color:#fca5a5}
 .kpi.green .ico{background:rgba(16,185,129,.18);color:#34d399}
 .kpi.pink .ico{background:rgba(236,72,153,.18);color:#f9a8d4}
 .kpi.yellow .ico{background:rgba(245,158,11,.18);color:#fbbf24}
 
 /* Panels */
-.row-2{display:grid;grid-template-columns:2fr 1fr 1.2fr;gap:10px}
-.row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-.row-bottom{display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:10px}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
-.panel h3{margin:0 0 8px;font-size:13px;display:flex;align-items:center;gap:6px}
+.row-2{display:grid;grid-template-columns:2fr 1fr 1.2fr;gap:8px}
+.row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.row-bottom{display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:8px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.panel h3{margin:0 0 6px;font-size:11px;display:flex;align-items:center;gap:5px;font-weight:700}
 .panel h3 .ico{color:#a78bfa}
-.panel .head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-.panel .head .actions{display:flex;align-items:center;gap:8px}
-.select{background:#0e1330;border:1px solid var(--line);color:#cbd0ee;border-radius:8px;padding:3px 7px;font-size:10px;font-family:inherit}
-.btn{background:linear-gradient(135deg,var(--primary),var(--primary-2));border:0;color:#fff;font-family:inherit;font-weight:600;padding:5px 10px;border-radius:8px;cursor:pointer;font-size:11px;display:inline-flex;align-items:center;gap:4px}
+.panel .head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.panel .head .actions{display:flex;align-items:center;gap:6px}
+.select{background:#0e1330;border:1px solid var(--line);color:#cbd0ee;border-radius:7px;padding:2px 6px;font-size:9.5px;font-family:inherit}
+.btn{background:linear-gradient(135deg,var(--primary),var(--primary-2));border:0;color:#fff;font-family:inherit;font-weight:600;padding:4px 9px;border-radius:7px;cursor:pointer;font-size:10px;display:inline-flex;align-items:center;gap:4px}
 .btn-ghost{background:var(--panel-2);border:1px solid var(--line);color:#cbd0ee}
 
-/* Charts */
-.chart-wrap{height:170px;position:relative}
-.donut-wrap{height:150px;position:relative;display:flex;align-items:center;justify-content:center}
-.donut-legend{display:flex;flex-direction:column;gap:4px;margin-top:6px}
-.donut-legend .item{display:flex;align-items:center;gap:6px;font-size:10px;color:#cbd0ee}
-.donut-legend .dot{width:8px;height:8px;border-radius:50%}
+/* Charts — أصغر */
+.chart-wrap{height:135px;position:relative}
+.donut-wrap{height:115px;position:relative;display:flex;align-items:center;justify-content:center}
+.donut-legend{display:flex;flex-direction:column;gap:3px;margin-top:5px}
+.donut-legend .item{display:flex;align-items:center;gap:5px;font-size:9.5px;color:#cbd0ee}
+.donut-legend .dot{width:7px;height:7px;border-radius:50%}
 .donut-legend .pct{margin-inline-start:auto;color:var(--muted)}
 
 /* Activity feed */
-.activity{display:flex;flex-direction:column;gap:5px;max-height:200px;overflow-y:auto}
-.act{display:flex;align-items:center;gap:8px;padding:5px 7px;border-radius:8px;background:var(--panel-2)}
-.act .ava{width:26px;height:26px;border-radius:50%;background:#222a4d;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:10px}
-.act .txt{font-size:10.5px;color:#cbd0ee;flex:1;line-height:1.3}
-.act .live{background:rgba(239,68,68,.15);color:#ff6f7a;font-size:9px;padding:2px 5px;border-radius:5px;font-weight:700}
+.activity{display:flex;flex-direction:column;gap:4px;max-height:170px;overflow-y:auto}
+.act{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:7px;background:var(--panel-2)}
+.act .ava{width:22px;height:22px;border-radius:50%;background:#222a4d;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:9px}
+.act .txt{font-size:9.5px;color:#cbd0ee;flex:1;line-height:1.3}
+.act .live{background:rgba(239,68,68,.15);color:#ff6f7a;font-size:8px;padding:1px 5px;border-radius:4px;font-weight:700}
 
-/* Tables */
-table{width:100%;border-collapse:collapse;font-size:11px}
-table th{color:var(--muted);font-weight:500;font-size:10px;text-align:right;padding:5px 4px;border-bottom:1px solid var(--line)}
-table td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:right}
+/* Tables — مضغوطة */
+table{width:100%;border-collapse:collapse;font-size:10px}
+table th{color:var(--muted);font-weight:500;font-size:9px;text-align:right;padding:4px 3px;border-bottom:1px solid var(--line)}
+table td{padding:4px 3px;border-bottom:1px solid var(--line);text-align:right;font-size:9.5px}
 table tr:last-child td{border-bottom:0}
-.user-cell{display:flex;align-items:center;gap:8px}
-.user-cell .ava{width:22px;height:22px;border-radius:50%;background:#222a4d;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700}
-.status{padding:2px 7px;border-radius:6px;font-size:9.5px;font-weight:600;display:inline-block}
+.user-cell{display:flex;align-items:center;gap:6px}
+.user-cell .ava{width:19px;height:19px;border-radius:50%;background:#222a4d;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700}
+.status{padding:1px 6px;border-radius:5px;font-size:8.5px;font-weight:600;display:inline-block}
 .status.active{background:rgba(16,185,129,.18);color:#34d399}
 .status.warn{background:rgba(245,158,11,.18);color:#fbbf24}
-.act-btn{background:var(--panel-2);border:1px solid var(--line);color:#cbd0ee;padding:2px 7px;border-radius:6px;font-size:9.5px;cursor:pointer;font-family:inherit}
+.act-btn{background:var(--panel-2);border:1px solid var(--line);color:#cbd0ee;padding:1px 6px;border-radius:5px;font-size:8.5px;cursor:pointer;font-family:inherit}
 .act-btn.danger{background:rgba(239,68,68,.15);color:#fca5a5;border-color:rgba(239,68,68,.3)}
 .act-btn.primary{background:rgba(124,58,237,.2);color:#c4b5fd;border-color:rgba(124,58,237,.3)}
 
-.search-mini{background:#0e1330;border:1px solid var(--line);color:#cbd0ee;border-radius:8px;padding:3px 7px;font-size:10px;width:130px;font-family:inherit}
+.search-mini{background:#0e1330;border:1px solid var(--line);color:#cbd0ee;border-radius:7px;padding:2px 6px;font-size:9.5px;width:120px;font-family:inherit}
 
 /* Chat detail box */
-.chat-detail{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:8px}
-.chat-detail .row{display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px;color:#cbd0ee}
+.chat-detail{background:var(--panel-2);border:1px solid var(--line);border-radius:9px;padding:6px 8px;margin-top:6px}
+.chat-detail .row{display:flex;justify-content:space-between;font-size:9.5px;margin-bottom:2px;color:#cbd0ee}
 .chat-detail .row .k{color:var(--muted)}
-.chat-stats{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:6px}
-.chat-stats .b{background:#0e1330;border-radius:8px;padding:5px;text-align:center}
-.chat-stats .b .k{color:var(--muted);font-size:9.5px}
-.chat-stats .b .v{font-weight:700;font-size:12px}
-.block-btn{background:var(--red);color:#fff;border:0;border-radius:8px;padding:5px;font-weight:700;width:100%;margin-top:6px;cursor:pointer;font-family:inherit;font-size:11px}
+.chat-stats{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:5px}
+.chat-stats .b{background:#0e1330;border-radius:7px;padding:4px;text-align:center}
+.chat-stats .b .k{color:var(--muted);font-size:8.5px}
+.chat-stats .b .v{font-weight:700;font-size:11px}
+.block-btn{background:var(--red);color:#fff;border:0;border-radius:7px;padding:4px;font-weight:700;width:100%;margin-top:5px;cursor:pointer;font-family:inherit;font-size:10px}
 
 /* Mini stats */
-.mini-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
-.mini{background:var(--panel-2);border:1px solid var(--line);border-radius:9px;padding:6px 8px}
-.mini .k{color:var(--muted);font-size:9.5px}
-.mini .v{font-weight:800;font-size:13px;margin-top:2px}
-.mini .d{font-size:9.5px;color:var(--green);margin-top:1px}
+.mini-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:7px}
+.mini{background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:5px 7px}
+.mini .k{color:var(--muted);font-size:8.5px}
+.mini .v{font-weight:800;font-size:11.5px;margin-top:1px}
+.mini .d{font-size:8.5px;color:var(--green);margin-top:1px}
 
-.tabs{display:flex;gap:4px;background:#0e1330;padding:3px;border-radius:8px}
-.tab{padding:3px 8px;font-size:10px;color:var(--muted);cursor:pointer;border-radius:6px}
+.tabs{display:flex;gap:3px;background:#0e1330;padding:2px;border-radius:7px}
+.tab{padding:2px 7px;font-size:9px;color:var(--muted);cursor:pointer;border-radius:5px}
 .tab.active{background:var(--primary);color:#fff;font-weight:600}
 
-.thumb{width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,#3a2a6e,#5b3aa8);display:flex;align-items:center;justify-content:center;font-size:12px}
+.thumb{width:24px;height:24px;border-radius:5px;background:linear-gradient(135deg,#3a2a6e,#5b3aa8);display:flex;align-items:center;justify-content:center;font-size:11px}
 
 /* Scrollbar */
-::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar{width:7px;height:7px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:#22284a;border-radius:4px}
 
 @media (max-width:1400px){
-  .kpis{grid-template-columns:repeat(6,1fr)}
+  .kpis{grid-template-columns:repeat(5,1fr)}
 }
 @media (max-width:1200px){
   .kpis{grid-template-columns:repeat(3,1fr)}
@@ -177,7 +175,7 @@ table tr:last-child td{border-bottom:0}
 <body>
 <div class="app">
 
-  <!-- Sidebar -->
+  <!-- Sidebar — بدون البث -->
   <aside class="sidebar">
     <div class="brand">
       <div class="logo">YS</div>
@@ -197,6 +195,7 @@ table tr:last-child td{border-bottom:0}
       <a href="#" class="active"><span class="ico">▦</span> لوحة التحكم</a>
 
       <div class="nav-section">إدارة المحتوى</div>
+      <!-- ⛔ تم حذف "إدارة البثوث" — نظام البث ملغى -->
       <a href="#"><span class="ico">📝</span> إدارة المنشورات</a>
       <a href="#"><span class="ico">💬</span> إدارة الشات</a>
       <a href="#"><span class="ico">🎬</span> إدارة الستوري</a>
@@ -244,7 +243,7 @@ table tr:last-child td{border-bottom:0}
         <div class="page-sub">مرحباً بك، إليك نظرة عامة على المنصة</div>
       </div>
 
-      <!-- KPIs -->
+      <!-- KPIs — 5 صناديق فقط (بدون البيوت المباشرة) -->
       <div class="kpis">
         <div class="kpi purple">
           <div class="tag">●</div>
@@ -256,18 +255,6 @@ table tr:last-child td{border-bottom:0}
             </div>
           </div>
           <div class="delta"><span class="arrow">▲</span> 12.5% من الشهر الماضي</div>
-        </div>
-
-        <div class="kpi blue">
-          <div class="tag">●</div>
-          <div class="row">
-            <div class="ico">💬</div>
-            <div>
-              <div class="lbl">الشاتات النشطة</div>
-              <div class="val" id="kpiChats">1,245</div>
-            </div>
-          </div>
-          <div class="delta"><span class="arrow">▲</span> 18.7% من الشهر الماضي</div>
         </div>
 
         <div class="kpi red">
@@ -336,8 +323,8 @@ table tr:last-child td{border-bottom:0}
           <h3>توزيع المحتوى</h3>
           <div class="donut-wrap"><canvas id="contentDonut"></canvas></div>
           <div class="donut-legend">
-            <div class="item"><span class="dot" style="background:#a855f7"></span> منشورات <span class="pct">35%</span></div>
-            <div class="item"><span class="dot" style="background:#3b82f6"></span> شاتات <span class="pct">30%</span></div>
+            <div class="item"><span class="dot" style="background:#a855f7"></span> منشورات <span class="pct">40%</span></div>
+            <div class="item"><span class="dot" style="background:#3b82f6"></span> شاتات <span class="pct">25%</span></div>
             <div class="item"><span class="dot" style="background:#10b981"></span> ريلز <span class="pct">20%</span></div>
             <div class="item"><span class="dot" style="background:#f59e0b"></span> ستوري <span class="pct">10%</span></div>
             <div class="item"><span class="dot" style="background:#ef4444"></span> أخرى <span class="pct">5%</span></div>
@@ -356,25 +343,25 @@ table tr:last-child td{border-bottom:0}
         </div>
       </div>
 
-      <!-- Row: Posts + Chats -->
+      <!-- Row: Posts + Chats (بدلاً من إدارة البثوث) -->
       <div class="row-3">
         <div class="panel">
           <div class="head">
             <h3><span class="ico">📝</span> إدارة المنشورات</h3>
             <button class="btn">+ منشور جديد</button>
           </div>
-          <div style="display:flex;gap:6px;margin-bottom:10px">
+          <div style="display:flex;gap:5px;margin-bottom:7px">
             <select class="select"><option>كل</option></select>
             <input class="search-mini" placeholder="بحث عن منشور...">
           </div>
           <table>
             <thead><tr><th>التاريخ</th><th>المستخدم</th><th>المحتوى</th><th>التفاعلات</th><th>الحالة</th><th></th></tr></thead>
             <tbody>
-              <tr><td>18 مايو<br><span style="color:var(--muted);font-size:10px">10:30 PM</span></td><td class="user-cell"><div class="ava">K</div>KhaledGamer</td><td>لحظات من البث الأخير 🔥</td><td>2.5K</td><td><span class="status active">نشط</span></td><td><button class="act-btn">⋯</button></td></tr>
-              <tr><td>18 مايو<br><span style="color:var(--muted);font-size:10px">09:45 PM</span></td><td class="user-cell"><div class="ava">S</div>ShadowGirl</td><td>شكراً على الدعم 🎉</td><td>1.8K</td><td><span class="status active">نشط</span></td><td><button class="act-btn">⋯</button></td></tr>
-              <tr><td>18 مايو<br><span style="color:var(--muted);font-size:10px">08:30 PM</span></td><td class="user-cell"><div class="ava">M</div>MoxX</td><td>أخبروني عن رأيكم في هذا التحديث؟</td><td>965</td><td><span class="status active">نشط</span></td><td><button class="act-btn">⋯</button></td></tr>
-              <tr><td>18 مايو<br><span style="color:var(--muted);font-size:10px">07:15 PM</span></td><td class="user-cell"><div class="ava">P</div>ProHunter</td><td>استعدادات البطولة غداً ⚡</td><td>1.2K</td><td><span class="status active">نشط</span></td><td><button class="act-btn">⋯</button></td></tr>
-              <tr><td>18 مايو<br><span style="color:var(--muted);font-size:10px">06:40 PM</span></td><td class="user-cell"><div class="ava">P</div>PlayerOne</td><td>منظر من اللعبة الجديدة!</td><td>884</td><td><span class="status active">نشط</span></td><td><button class="act-btn">⋯</button></td></tr>
+              <tr><td>18 مايو<br><span style="color:var(--muted);font-size:9px">10:30 PM</span></td><td class="user-cell"><div class="ava">K</div>KhaledGamer</td><td>لحظات من البث الأخير 🔥</td><td>2.5K</td><td><span class="status active">نشط</span></td><td><button class="act-btn">⋯</button></td></tr>
+              <tr><td>18 مايو<br><span style="color:var(--muted);font-size:9px">09:45 PM</span></td><td class="user-cell"><div class="ava">S</div>ShadowGirl</td><td>شكراً على الدعم 🎉</td><td>1.8K</td><td><span class="status active">نشط</span></td><td><button class="act-btn">⋯</button></td></tr>
+              <tr><td>18 مايو<br><span style="color:var(--muted);font-size:9px">08:30 PM</span></td><td class="user-cell"><div class="ava">M</div>MoxX</td><td>أخبروني عن رأيكم في هذا التحديث؟</td><td>965</td><td><span class="status active">نشط</span></td><td><button class="act-btn">⋯</button></td></tr>
+              <tr><td>18 مايو<br><span style="color:var(--muted);font-size:9px">07:15 PM</span></td><td class="user-cell"><div class="ava">P</div>ProHunter</td><td>استعدادات البطولة غداً ⚡</td><td>1.2K</td><td><span class="status active">نشط</span></td><td><button class="act-btn">⋯</button></td></tr>
+              <tr><td>18 مايو<br><span style="color:var(--muted);font-size:9px">06:40 PM</span></td><td class="user-cell"><div class="ava">P</div>PlayerOne</td><td>منظر من اللعبة الجديدة!</td><td>884</td><td><span class="status active">نشط</span></td><td><button class="act-btn">⋯</button></td></tr>
             </tbody>
           </table>
         </div>
@@ -394,7 +381,7 @@ table tr:last-child td{border-bottom:0}
             </tbody>
           </table>
           <div class="chat-detail">
-            <div style="font-weight:600;margin-bottom:8px">تفاصيل المحادثة</div>
+            <div style="font-weight:600;margin-bottom:5px;font-size:10px">تفاصيل المحادثة</div>
             <div class="row"><span class="k">المستخدم</span><span>ahmed_king</span></div>
             <div class="row"><span class="k">البريد الإلكتروني</span><span>ahmed@example.com</span></div>
             <div class="row"><span class="k">تاريخ الانضمام</span><span>2024-01-15</span></div>
@@ -411,7 +398,7 @@ table tr:last-child td{border-bottom:0}
             <h3><span class="ico">🎬</span> إدارة الستوري</h3>
             <button class="btn">+ ستوري جديد</button>
           </div>
-          <div style="display:flex;gap:6px;margin-bottom:10px">
+          <div style="display:flex;gap:5px;margin-bottom:7px">
             <select class="select"><option>كل</option></select>
             <input class="search-mini" placeholder="بحث عن ستوري...">
           </div>
@@ -435,7 +422,7 @@ table tr:last-child td{border-bottom:0}
             <h3><span class="ico">🎵</span> إدارة الريلز</h3>
             <button class="btn">+ ريلز جديد</button>
           </div>
-          <div style="display:flex;gap:6px;margin-bottom:10px">
+          <div style="display:flex;gap:5px;margin-bottom:7px">
             <select class="select"><option>كل</option></select>
             <input class="search-mini" placeholder="بحث عن ريلز...">
           </div>
@@ -473,14 +460,14 @@ table tr:last-child td{border-bottom:0}
             <div class="mini"><div class="k">إجمالي المشاهدات</div><div class="v">2.45M</div><div class="d">▲ 15.3%</div></div>
           </div>
 
-          <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px" dir="rtl">
+          <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px" dir="rtl">
             <div>
-              <div style="font-size:11px;margin-bottom:5px">المشاهدات اليومية</div>
-              <div style="height:130px"><canvas id="dailyBars"></canvas></div>
+              <div style="font-size:10px;margin-bottom:4px">المشاهدات اليومية</div>
+              <div style="height:115px"><canvas id="dailyBars"></canvas></div>
             </div>
             <div>
-              <div style="font-size:11px;margin-bottom:5px">توزيع الجمهور</div>
-              <div style="height:115px"><canvas id="audienceDonut"></canvas></div>
+              <div style="font-size:10px;margin-bottom:4px">توزيع الجمهور</div>
+              <div style="height:100px"><canvas id="audienceDonut"></canvas></div>
               <div class="donut-legend">
                 <div class="item"><span class="dot" style="background:#a855f7"></span> 18-24 سنة <span class="pct">35%</span></div>
                 <div class="item"><span class="dot" style="background:#3b82f6"></span> 25-34 سنة <span class="pct">40%</span></div>
@@ -515,7 +502,6 @@ async function loadDashboard(){
     const d = await res.json();
     if(d.total_users)  document.getElementById('kpiUsers').innerText  = Number(d.total_users).toLocaleString('ar-EG');
     if(d.total_posts)  document.getElementById('kpiPosts').innerText  = Number(d.total_posts).toLocaleString('ar-EG');
-    if(d.total_chats)  document.getElementById('kpiChats').innerText  = Number(d.total_chats).toLocaleString('ar-EG');
     if(d.total_reels)  document.getElementById('kpiReels').innerText  = Number(d.total_reels).toLocaleString('ar-EG');
     if(d.total_views)  document.getElementById('kpiViews').innerText  = Number(d.total_views).toLocaleString('ar-EG');
     if(d.revenue)      document.getElementById('kpiRevenue').innerText= '$ ' + Number(d.revenue).toLocaleString('ar-EG');
@@ -545,15 +531,15 @@ new Chart(document.getElementById('viewsChart'),{
       pointBackgroundColor:'#a855f7',
       pointBorderColor:'#fff',
       pointBorderWidth:2,
-      pointRadius:4
+      pointRadius:3
     }]
   },
   options:{
     responsive:true,maintainAspectRatio:false,
     plugins:{legend:{display:false}},
     scales:{
-      x:{grid:{display:false},ticks:{color:'#8a90b4'}},
-      y:{grid:{color:'rgba(255,255,255,.05)'},ticks:{color:'#8a90b4',callback:v=>(v/1000)+'K'}}
+      x:{grid:{display:false},ticks:{color:'#8a90b4',font:{size:9}}},
+      y:{grid:{color:'rgba(255,255,255,.05)'},ticks:{color:'#8a90b4',font:{size:9},callback:v=>(v/1000)+'K'}}
     }
   }
 });
@@ -562,7 +548,7 @@ new Chart(document.getElementById('contentDonut'),{
   type:'doughnut',
   data:{
     labels:['منشورات','شاتات','ريلز','ستوري','أخرى'],
-    datasets:[{data:[35,30,20,10,5],backgroundColor:['#a855f7','#3b82f6','#10b981','#f59e0b','#ef4444'],borderWidth:0}]
+    datasets:[{data:[40,25,20,10,5],backgroundColor:['#a855f7','#3b82f6','#10b981','#f59e0b','#ef4444'],borderWidth:0}]
   },
   options:{responsive:true,maintainAspectRatio:false,cutout:'70%',plugins:{legend:{display:false}}}
 });
@@ -571,9 +557,9 @@ new Chart(document.getElementById('dailyBars'),{
   type:'bar',
   data:{
     labels:['19 أبريل','24 أبريل','29 أبريل','4 مايو','9 مايو','14 مايو','18 مايو'],
-    datasets:[{data:[300,420,380,300,260,500,460],backgroundColor:'#a855f7',borderRadius:6}]
+    datasets:[{data:[300,420,380,300,260,500,460],backgroundColor:'#a855f7',borderRadius:5}]
   },
-  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:'#8a90b4'}},y:{grid:{color:'rgba(255,255,255,.05)'},ticks:{color:'#8a90b4',callback:v=>v+'K'}}}}
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:'#8a90b4',font:{size:9}}},y:{grid:{color:'rgba(255,255,255,.05)'},ticks:{color:'#8a90b4',font:{size:9},callback:v=>v+'K'}}}}
 });
 
 new Chart(document.getElementById('audienceDonut'),{

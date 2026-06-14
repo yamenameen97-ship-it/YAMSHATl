@@ -12,6 +12,7 @@ import AdminLayout from '../../components/admin/AdminLayout.jsx';
  * ========================================================================
  */
 
+// ⛔ تم حذف بطاقة "البيوت المباشرة / البث" — نظام البث ملغى نهائياً
 const STAT_CARDS = [
   { id: 'users',    label: 'إجمالي المستخدمين', value: '128,560',     trend: '+12.5%', icon: '👥', tone: '#8b5cf6' },
   { id: 'views',    label: 'المشاهدات الكلية',  value: '2.45M',       trend: '+15.3%', icon: '👁',  tone: '#ef4444' },
@@ -460,10 +461,10 @@ export default function AdminDashboard() {
           font-family: 'Noto Sans Arabic', system-ui, sans-serif;
           color: #e2e8f0;
           background: #0b1020;
-          padding: 6px 10px 8px;
+          padding: 5px 8px 6px;
           min-height: 100%;
           direction: rtl;
-          font-size: 12px;
+          font-size: 11px;
         }
         .ls-admin *, .ls-admin *::before, .ls-admin *::after { box-sizing: border-box; }
 
@@ -475,12 +476,12 @@ export default function AdminDashboard() {
         /* === Stat cards (الإحصائيات العلوية) === */
         .ls-stats-grid {
           display: grid;
-          grid-template-columns: repeat(6, minmax(0, 1fr));
-          gap: 8px;
-          margin-bottom: 8px;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 7px;
+          margin-bottom: 7px;
         }
         @media (max-width: 1400px) {
-          .ls-stats-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+          .ls-stats-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
         }
         @media (max-width: 720px) {
           .ls-stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -488,22 +489,22 @@ export default function AdminDashboard() {
         .ls-stat-card {
           background: linear-gradient(180deg, #131a33, #0f152a);
           border: 1px solid rgba(148,163,184,0.10);
-          border-radius: 10px;
-          padding: 7px 9px;
+          border-radius: 9px;
+          padding: 6px 8px;
         }
-        .ls-stat-top { display: flex; align-items: center; gap: 6px; }
+        .ls-stat-top { display: flex; align-items: center; gap: 5px; }
         .ls-stat-icon {
-          width: 22px; height: 22px; border-radius: 6px;
+          width: 20px; height: 20px; border-radius: 6px;
           display: inline-flex; align-items: center; justify-content: center;
-          font-weight: 700; font-size: 11px;
+          font-weight: 700; font-size: 10px;
         }
-        .ls-stat-label { color: #94a3b8; font-size: 10px; }
-        .ls-stat-value { color: #f8fafc; font-size: 15px; font-weight: 800; margin: 4px 0 2px; letter-spacing: -0.2px; }
-        .ls-stat-trend { color: #10b981; font-size: 9px; font-weight: 700; }
-        .ls-stat-muted { color: #64748b; font-weight: 500; margin-right: 4px; font-size: 9px; }
+        .ls-stat-label { color: #94a3b8; font-size: 9px; }
+        .ls-stat-value { color: #f8fafc; font-size: 13px; font-weight: 800; margin: 3px 0 1px; letter-spacing: -0.2px; }
+        .ls-stat-trend { color: #10b981; font-size: 8.5px; font-weight: 700; }
+        .ls-stat-muted { color: #64748b; font-weight: 500; margin-right: 3px; font-size: 8.5px; }
 
         /* === Rows === */
-        .ls-row { display: grid; gap: 8px; margin-bottom: 8px; }
+        .ls-row { display: grid; gap: 7px; margin-bottom: 7px; }
         .ls-row-2 { grid-template-columns: 1fr 1fr; }
         .ls-row-3 { grid-template-columns: 2fr 1fr 1fr; }
         .ls-col-2 { grid-column: span 1; }
@@ -512,29 +513,29 @@ export default function AdminDashboard() {
         .ls-card {
           background: linear-gradient(180deg, #131a33, #0f152a);
           border: 1px solid rgba(148,163,184,0.10);
-          border-radius: 10px;
-          padding: 7px 9px;
-          max-height: 215px;
+          border-radius: 9px;
+          padding: 6px 8px;
+          max-height: 185px;
           overflow: hidden;
           display: flex;
           flex-direction: column;
         }
         .ls-card-head {
           display: flex; align-items: center; justify-content: space-between;
-          margin-bottom: 5px; flex-wrap: wrap; gap: 6px;
+          margin-bottom: 4px; flex-wrap: wrap; gap: 5px;
           flex-shrink: 0;
         }
-        .ls-card-head h3 { margin: 0; color: #f8fafc; font-size: 11px; font-weight: 700; }
-        .ls-sub-title { color: #cbd5e1; font-size: 10px; margin: 0 0 4px; font-weight: 600; }
+        .ls-card-head h3 { margin: 0; color: #f8fafc; font-size: 10.5px; font-weight: 700; }
+        .ls-sub-title { color: #cbd5e1; font-size: 9.5px; margin: 0 0 3px; font-weight: 600; }
 
         /* === Inputs & buttons === */
         .ls-select, .ls-search, .ls-btn {
           background: rgba(15,23,42,0.7); color: #e2e8f0;
           border: 1px solid rgba(148,163,184,0.15);
-          border-radius: 6px; padding: 4px 8px; font-size: 10px;
+          border-radius: 6px; padding: 3px 7px; font-size: 9.5px;
           font-family: inherit;
         }
-        .ls-search { width: 100%; margin-bottom: 5px; flex-shrink: 0; }
+        .ls-search { width: 100%; margin-bottom: 4px; flex-shrink: 0; }
         .ls-btn { cursor: pointer; }
         .ls-btn-primary { background: linear-gradient(135deg, #8b5cf6, #6d28d9); border: 0; color: #fff; font-weight: 700; }
         .ls-btn-ghost   { background: rgba(139,92,246,0.15); color: #c4b5fd; border-color: rgba(139,92,246,0.25); }
@@ -595,13 +596,13 @@ export default function AdminDashboard() {
         }
 
         /* === Tables === */
-        .ls-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+        .ls-table { width: 100%; border-collapse: collapse; font-size: 9.5px; }
         .ls-table thead th { position: sticky; top: 0; background: linear-gradient(180deg, #131a33, #0f152a); z-index: 2; }
-        .ls-table th { text-align: right; color: #94a3b8; font-weight: 600; padding: 4px 4px; border-bottom: 1px solid rgba(148,163,184,0.10); font-size: 9px; }
-        .ls-table td { padding: 4px 4px; color: #e2e8f0; border-bottom: 1px solid rgba(148,163,184,0.06); font-size: 10px; }
+        .ls-table th { text-align: right; color: #94a3b8; font-weight: 600; padding: 3px 3px; border-bottom: 1px solid rgba(148,163,184,0.10); font-size: 8.5px; }
+        .ls-table td { padding: 3px 3px; color: #e2e8f0; border-bottom: 1px solid rgba(148,163,184,0.06); font-size: 9.5px; }
         .ls-status {
-          display: inline-block; padding: 2px 7px; border-radius: 999px;
-          font-size: 9px; font-weight: 700;
+          display: inline-block; padding: 1px 6px; border-radius: 999px;
+          font-size: 8.5px; font-weight: 700;
         }
         .ls-status-ok { background: rgba(16,185,129,0.18); color: #34d399; }
 
@@ -617,7 +618,7 @@ export default function AdminDashboard() {
         /* === KPI row === */
         .ls-kpi-row {
           display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 6px; margin-bottom: 6px;
+          gap: 5px; margin-bottom: 5px;
         }
         @media (max-width: 900px) {
           .ls-kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -625,11 +626,11 @@ export default function AdminDashboard() {
         .ls-kpi {
           background: rgba(15,23,42,0.65);
           border: 1px solid rgba(148,163,184,0.10);
-          border-radius: 8px; padding: 6px 8px;
+          border-radius: 7px; padding: 5px 7px;
         }
-        .ls-kpi-label { color: #94a3b8; font-size: 9px; }
-        .ls-kpi-value { color: #f8fafc; font-size: 13px; font-weight: 800; margin: 3px 0 2px; letter-spacing: -0.2px; }
-        .ls-kpi-trend.up { color: #10b981; font-size: 9px; font-weight: 700; }
+        .ls-kpi-label { color: #94a3b8; font-size: 8.5px; }
+        .ls-kpi-value { color: #f8fafc; font-size: 11.5px; font-weight: 800; margin: 2px 0 1px; letter-spacing: -0.2px; }
+        .ls-kpi-trend.up { color: #10b981; font-size: 8.5px; font-weight: 700; }
 
         /* === Reports card (لها قياسات داخلية مختلفة) === */
         .ls-card.ls-card-full {

@@ -19,10 +19,12 @@ export const getAdminRbac = () => API.get('/admin/rbac', { cache: true, cacheTtl
 export const getAdminNotifications = (limit = 40) => API.get('/admin/notifications', { params: { limit }, cache: true, cacheTtlMs: 10_000 });
 export const markAdminNotificationRead = (notificationId) => API.post(`/admin/notifications/${notificationId}/read`);
 export const broadcastAdminNotification = (data) => API.post('/admin/notifications/broadcast', data);
-export const getAdminLiveOverview = () => API.get('/admin/live_room/overview', { cache: true, cacheTtlMs: 10_000 });
-export const featureAdminLiveRoom = (roomId, featured) => API.post(`/admin/live_room/${roomId}/feature`, { featured });
-export const pinLatestAdminLiveComment = (roomId) => API.post(`/admin/live_room/${roomId}/pin-latest`);
-export const endAdminLiveRoom = (roomId) => API.post(`/admin/live_room/${roomId}/end`);
+// ⛔ تم حذف جميع دوال إدارة غرف البث (live_room) — نظام البث ملغى نهائياً.
+// إذا احتاجت أي مكوّنة قديمة لهذه الدوال ترجع بمصفوفات/كائنات فارغة تجنّباً للأخطاء.
+export const getAdminLiveOverview = () => Promise.resolve({ data: { rooms: [], total: 0 } });
+export const featureAdminLiveRoom = () => Promise.resolve({ data: { ok: true } });
+export const pinLatestAdminLiveComment = () => Promise.resolve({ data: { ok: true } });
+export const endAdminLiveRoom = () => Promise.resolve({ data: { ok: true } });
 export const getAdminReportsSummary = () => API.get('/admin/reports/summary', { cache: true, cacheTtlMs: 20_000 });
 export const exportAdminReport = (format) => API.get('/admin/reports/export', { params: { format }, responseType: 'blob' });
 export const getAdminSettings = () => API.get('/admin/settings', { cache: true, cacheTtlMs: 30_000 });

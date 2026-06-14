@@ -11,13 +11,13 @@ function authHeaders() {
 }
 
 export async function fetchReportReasons() {
-  const { data } = await axios.get(`${API_BASE}/api/reports/reasons`);
+  const { data } = await axios.get(`${API_BASE}/reports/reasons`);
   return data;
 }
 
 export async function submitReport({ targetType, targetId, reason, details, context }) {
   const { data } = await axios.post(
-    `${API_BASE}/api/reports`,
+    `${API_BASE}/reports`,
     {
       target_type: targetType,
       target_id: String(targetId),
@@ -32,7 +32,7 @@ export async function submitReport({ targetType, targetId, reason, details, cont
 
 export async function fetchMyReports(page = 1, pageSize = 20) {
   const { data } = await axios.get(
-    `${API_BASE}/api/reports/my?page=${page}&page_size=${pageSize}`,
+    `${API_BASE}/reports/my?page=${page}&page_size=${pageSize}`,
     { headers: authHeaders() },
   );
   return data;
@@ -45,7 +45,7 @@ export async function adminListReports(filters = {}) {
     if (v && v !== 'all') params.set(k, v);
   });
   const { data } = await axios.get(
-    `${API_BASE}/api/reports/admin?${params.toString()}`,
+    `${API_BASE}/reports/admin?${params.toString()}`,
     { headers: authHeaders() },
   );
   return data;
@@ -53,7 +53,7 @@ export async function adminListReports(filters = {}) {
 
 export async function adminFetchReportStats() {
   const { data } = await axios.get(
-    `${API_BASE}/api/reports/admin/stats`,
+    `${API_BASE}/reports/admin/stats`,
     { headers: authHeaders() },
   );
   return data;
@@ -61,7 +61,7 @@ export async function adminFetchReportStats() {
 
 export async function adminGetReport(reportId) {
   const { data } = await axios.get(
-    `${API_BASE}/api/reports/admin/${reportId}`,
+    `${API_BASE}/reports/admin/${reportId}`,
     { headers: authHeaders() },
   );
   return data;
@@ -69,7 +69,7 @@ export async function adminGetReport(reportId) {
 
 export async function adminUpdateReport(reportId, payload) {
   const { data } = await axios.patch(
-    `${API_BASE}/api/reports/admin/${reportId}`,
+    `${API_BASE}/reports/admin/${reportId}`,
     payload,
     { headers: authHeaders() },
   );
@@ -78,7 +78,7 @@ export async function adminUpdateReport(reportId, payload) {
 
 export async function adminActionReport(reportId, action, notes, durationHours) {
   const { data } = await axios.post(
-    `${API_BASE}/api/reports/admin/${reportId}/action`,
+    `${API_BASE}/reports/admin/${reportId}/action`,
     { action, notes: notes || null, duration_hours: durationHours || null },
     { headers: authHeaders() },
   );
@@ -87,7 +87,7 @@ export async function adminActionReport(reportId, action, notes, durationHours) 
 
 export async function adminBulkAction(ids, action, notes) {
   const { data } = await axios.post(
-    `${API_BASE}/api/reports/admin/bulk`,
+    `${API_BASE}/reports/admin/bulk`,
     { ids, action, notes: notes || null },
     { headers: authHeaders() },
   );

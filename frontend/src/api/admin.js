@@ -33,5 +33,8 @@ export const changeAdminPassword = (data) => API.post('/admin/settings/change-pa
 export const moderatePostAI = (postId) => API.post(`/admin/posts/${postId}/moderate-ai`);
 export const bulkUpdatePostStatus = (ids, status) => API.post('/admin/posts/bulk-update-status', { ids, status });
 export const toggleShadowBan = (userId, enabled = true) => API.post(`/admin/users/${userId}/shadow-ban`, null, { params: { enabled } });
-export const updateReportStatus = (reportId, status) => API.post(`/admin/reports/${reportId}/status`, { status });
-export const escalateReport = (reportId) => API.post(`/admin/reports/${reportId}/escalate`);
+// 🔗 ربط مع نظام البلاغات الموحّد (backend: routes/reports.py)
+// PATCH /api/reports/admin/{id}  → تحديث الحالة
+// POST  /api/reports/admin/{id}/action  → تنفيذ إجراء (escalate / dismiss / warn ...)
+export const updateReportStatus = (reportId, status) => API.patch(`/reports/admin/${reportId}`, { status });
+export const escalateReport = (reportId) => API.post(`/reports/admin/${reportId}/action`, { action: 'escalate' });

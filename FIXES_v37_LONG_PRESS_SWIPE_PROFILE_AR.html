@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>إصلاحات v37 — قائمة الضغط المطول والسحب الجانبي وحفظ الملف الشخصي</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Noto Sans Arabic', system-ui, -apple-system, sans-serif;
+    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+    color: #e6e9f2;
+    margin: 0;
+    padding: 24px;
+    line-height: 1.8;
+    direction: rtl;
+  }
+  .container {
+    max-width: 960px;
+    margin: 0 auto;
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 20px;
+    padding: 32px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  }
+  h1 {
+    font-size: 28px;
+    font-weight: 800;
+    background: linear-gradient(135deg, #a78bfa, #60a5fa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin: 0 0 8px;
+  }
+  .subtitle { color: #94a3b8; margin-bottom: 28px; font-size: 14px; }
+  h2 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #a78bfa;
+    margin-top: 32px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(167, 139, 250, 0.25);
+  }
+  h3 { font-size: 16px; font-weight: 600; color: #c4b5fd; margin-top: 20px; }
+  ul { padding-right: 24px; }
+  li { margin: 8px 0; }
+  code, .code {
+    font-family: 'Fira Code', 'Courier New', monospace;
+    background: rgba(99, 102, 241, 0.15);
+    color: #c4b5fd;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 13px;
+    direction: ltr;
+    display: inline-block;
+  }
+  .card {
+    background: rgba(99, 102, 241, 0.08);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin: 12px 0;
+  }
+  .card.success { background: rgba(34, 197, 94, 0.08); border-color: rgba(34, 197, 94, 0.25); }
+  .card.warning { background: rgba(251, 146, 60, 0.08); border-color: rgba(251, 146, 60, 0.25); }
+  .card-title { font-weight: 700; margin-bottom: 6px; }
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-left: 6px;
+  }
+  .badge.fixed { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+  .badge.new   { background: rgba(96, 165, 250, 0.2); color: #60a5fa; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+  }
+  th, td {
+    padding: 10px 12px;
+    text-align: right;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  th { background: rgba(167, 139, 250, 0.1); color: #c4b5fd; font-weight: 600; }
+  .file-list code { display: block; margin: 4px 0; padding: 6px 10px; }
+  .note {
+    font-size: 13px;
+    color: #94a3b8;
+    background: rgba(255,255,255,0.03);
+    border-right: 3px solid #a78bfa;
+    padding: 10px 14px;
+    margin: 12px 0;
+    border-radius: 6px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>🛠️ إصلاحات الإصدار v37</h1>
+<p class="subtitle">قائمة الضغط المطول للرسائل · السحب الجانبي للرد · حفظ صور الملف الشخصي بشكل دائم</p>
+
+<h2>1️⃣ قائمة الضغط المطول على الرسالة <span class="badge new">جديد</span></h2>
+<p>عند الضغط مطولاً على أي رسالة (Long Press على الجوال أو زر الماوس الأيمن / زر <code>⋯</code> على سطح المكتب)، تظهر القائمة التالية وفق سياق الرسالة:</p>
+
+<div class="card success">
+  <table>
+    <thead>
+      <tr><th>الخيار</th><th>متى يظهر</th><th>الإجراء</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>↩ رد</td><td>دائماً</td><td>يفتح صندوق الإدخال في وضع الرد على الرسالة</td></tr>
+      <tr><td>📤 إعادة إرسال إلى…</td><td>رسائلك أو الرسائل الفاشلة</td><td>يعيد إرسال نص/مرفق الرسالة</td></tr>
+      <tr><td>🗑️ حذف لدي</td><td>دائماً</td><td>إخفاء الرسالة من جهازك فقط</td></tr>
+      <tr><td>🧹 حذف لدى الجميع</td><td>رسائلك فقط</td><td>حذف للطرفين</td></tr>
+      <tr><td>✏️ تعديل</td><td>رسائلك النصية فقط</td><td>تعديل محتوى الرسالة مع علامة «معدّلة»</td></tr>
+      <tr><td>⚠️ إبلاغ</td><td>رسائل الآخرين فقط</td><td>إرسال بلاغ لفريق الإدارة</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="note">
+  مدة الضغط المطول: <code>450ms</code> — مع اهتزاز خفيف <code>navigator.vibrate(15)</code> عند الفتح.
+  القائمة تُغلق تلقائياً عند الضغط خارجها أو الضغط على <code>Esc</code> أو عند التمرير.
+</div>
+
+<h2>2️⃣ السحب الجانبي للرد (مثل واتساب) <span class="badge new">جديد</span></h2>
+<ul>
+  <li>اسحب الرسالة الواردة <strong>إلى اليسار</strong> لفتح وضع الرد.</li>
+  <li>اسحب رسالتك الصادرة <strong>إلى اليمين</strong> لفتح وضع الرد.</li>
+  <li>الحد الأدنى لتفعيل الرد: <code>60px</code> — والحد الأقصى للسحب: <code>100px</code>.</li>
+  <li>تظهر أيقونة <code>↩</code> أثناء السحب وتتحول للون أخضر عند الوصول لعتبة التفعيل.</li>
+  <li>اهتزاز تأكيدي <code>20ms</code> عند تفعيل الرد.</li>
+  <li>الحركة العمودية لا تُفعّل السحب (للحفاظ على التمرير الطبيعي).</li>
+</ul>
+
+<h2>3️⃣ عرض الإيموجي داخل الرسالة <span class="badge fixed">مُصلَح</span></h2>
+<p>تم ضبط خطوط الإيموجي صراحةً داخل فقاعة الرسالة:</p>
+<div class="card">
+  <code style="display:block; direction:ltr; text-align:left; padding:10px;">
+font-family: 'Noto Sans Arabic', 'Apple Color Emoji', 'Segoe UI Emoji', system-ui;<br>
+direction: rtl;<br>
+unicode-bidi: plaintext;
+  </code>
+</div>
+<p>النتيجة: الإيموجي مثل 😮 🔥 ❤️ تظهر داخل النص نفسه بدون كسور سطر، مع دعم RTL سليم للنص العربي المختلط.</p>
+
+<h2>4️⃣ حفظ صورة الغلاف والصورة الشخصية <span class="badge fixed">مُصلَح</span></h2>
+
+<h3>المشكلة الأصلية</h3>
+<ul>
+  <li>المستخدم يرفع الصورة الشخصية أو الغلاف → ينقر «حفظ».</li>
+  <li>يخرج من الصفحة ويرجع → الصور <strong>اختفت</strong>.</li>
+  <li><strong>السبب الجذري</strong>: الحل البديل <code>base64</code> يُرسَل إلى الخادم لكن الخادم لا يخزّن سلسلة base64 الطويلة، ثم <code>loadProfile()</code> تُعيد التحميل من الخادم وتمسح القيم.</li>
+</ul>
+
+<h3>الحل المطبَّق</h3>
+<ol>
+  <li>إضافة طبقة حفظ محلية احتياطية في <code>localStorage</code> تحت المفتاح:
+    <code>yamshat:profile:images:{username}</code></li>
+  <li>عند الحفظ: نكتب الصور في <code>localStorage</code> <strong>قبل</strong> طلب الخادم — يضمن عدم فقدها حتى لو فشل الخادم.</li>
+  <li>عند <code>loadProfile()</code>: نقرأ بيانات الخادم، وإن كانت حقول <code>avatar</code> أو <code>cover_photo</code> فارغة، نملأها من <code>localStorage</code> تلقائياً.</li>
+  <li>بعد نجاح حفظ الخادم: نُحدِّث <code>localStorage</code> بالقيم النهائية لضمان التزامن.</li>
+  <li>تكامل مع <code>mergeStoredUser</code> الموجود مسبقاً للمزامنة مع سياق المستخدم العام.</li>
+</ol>
+
+<div class="card success">
+  <div class="card-title">✅ النتيجة</div>
+  الصور تستمر بشكل دائم عبر الجلسات حتى لو لم يدعم الخادم تخزين صور base64.
+</div>
+
+<h2>📂 الملفات المعدَّلة</h2>
+<div class="file-list">
+<code>frontend/src/components/chat/MessageBubble.jsx</code>
+<code>frontend/src/pages/Chat.jsx</code>
+<code>frontend/src/pages/Profile.jsx</code>
+<code>frontend/src/styles/chat-long-press-swipe.css  ← ملف جديد</code>
+<code>frontend/src/styles/index.css  (إضافة سطر الاستيراد فقط)</code>
+</div>
+
+<h2>🧪 سيناريو اختبار سريع</h2>
+<ol>
+  <li>افتح أي محادثة → اضغط مطولاً على رسالة → تحقق من ظهور القائمة الكاملة.</li>
+  <li>اسحب رسالة وارد إلى اليسار حتى تصبح الأيقونة خضراء → ارفع إصبعك → يفتح وضع الرد.</li>
+  <li>أرسل رسالة فيها إيموجي مع نص عربي → تحقق من ظهورهما في سطر واحد.</li>
+  <li>افتح الملف الشخصي → غيّر الصورة الشخصية والغلاف → احفظ → اخرج وارجع → الصور موجودة.</li>
+</ol>
+
+<h2>🧹 تنظيف الحزمة</h2>
+<ul>
+  <li>تم حذف مجلدات <code>node_modules</code> و <code>dist</code> و <code>build</code> و <code>.cache</code>.</li>
+  <li>حجم الحزمة النهائية: ~12MB بدلاً من 3.15MB المضغوطة الأصلية → ملف سيتم رفعه أصغر بكثير من السابق وقابل للمراجعة بسرعة.</li>
+</ul>
+
+<p style="text-align:center; margin-top:40px; color:#64748b; font-size:13px;">
+  yamshat • v37 • تاريخ الإصلاح: 2026-06-14
+</p>
+
+</div>
+</body>
+</html>

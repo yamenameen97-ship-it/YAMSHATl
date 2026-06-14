@@ -1,10 +1,17 @@
-import React, { memo, useMemo, useState } from 'react';
+import React, { memo, useMemo, useState, useRef, useCallback, useEffect } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import Avatar from '../ui/Avatar.jsx';
 import { statusColor, statusTicks } from '../yamshat/YamshatDesign.js';
 import VoiceMessagePlayer from '../ui/VoiceMessagePlayer.jsx';
 
 const QUICK_REACTIONS = ['❤️', '🔥', '😂', '👏', '👍', '😮'];
+
+// مدة الضغط المطول بالملي ثانية
+const LONG_PRESS_MS = 450;
+// الحد الأدنى للسحب لتفعيل الرد (بالبيكسل)
+const SWIPE_REPLY_THRESHOLD = 60;
+// الحد الأقصى للسحب
+const SWIPE_REPLY_MAX = 100;
 
 function formatMessageTime(value) {
   if (!value) return '';
@@ -56,13 +63,27 @@ function MessageBubble({
   reactionState,
   onReply,
   onDelete,
+  onDeleteForMe,
+  onDeleteForEveryone,
+  onEdit,
+  onResend,
+  onReport,
   onReact,
   onJumpToReply,
   registerMessageNode,
   onOpenMedia,
 }) {
   const [showToolbar, setShowToolbar] = useState(false);
+  const [contextMenu, setContextMenu] = useState(null); // {x, y}
+  const [swipeOffset, setSwipeOffset] = useState(0);
   const reduceMotion = useReducedMotion();
+
+  // مراجع للضغط المطول والسحب
+  const longPressTimerRef = useRef(null);
+  const touchStartRef = useRef({ x: 0, y: 0, time: 0 });
+  const isSwipingRef = useRef(false);
+  const isLongPressFiredRef = useRef(false);
+  const bubbleRef = useRef(null);
 
   const hasMedia = Boolean(message?.media_url);
   const isVoice = message?.type === 'voice';
@@ -76,6 +97,7 @@ function MessageBubble({
   const groupedWithNext = areGrouped(message, nextMessage);
   const showAvatar = !isMe && !groupedWithNext;
   const replyTarget = message?.reply_to || message?.replyTo || null;
+  const isFailed = message?.status === 'failed' || message?.failed;
 
   const topReactions = useMemo(() => (
     Object.entries(reactionState?.counts || {})
@@ -83,6 +105,8 @@ function MessageBubble({
       .sort((left, right) => Number(right[1]) - Number(left[1]))
       .slice(0, 3)
   ), [reactionState]);
+
+  const messageId = message?.id || message?.client_id;
 
   const rowMotion = reduceMotion
     ? { initial: false, animate: { opacity: 1 } }
@@ -101,26 +125,192 @@ function MessageBubble({
         transition: { duration: 0.18, ease: [0.22, 1, 0.36, 1] },
       };
 
-  const messageId = message?.id || message?.client_id;
-
   const openCurrentMedia = () => {
     if (!message?.media_url) return;
     onOpenMedia?.(message);
   };
 
-  // الرسائل الصوتية الخالصة (بدون نص مرافق ولا رد) تُعرض كـ pill بدون صندوق الفقاعة (نمط واتساب)
   const isVoiceOnly = isVoice && !content && !replyTarget && !message?.deleted;
+
+  // === القائمة السياقية: فتح + إغلاق ===
+  const openContextMenu = useCallback((x, y) => {
+    // ضبط الموقع داخل حدود الشاشة
+    const maxX = window.innerWidth - 200;
+    const maxY = window.innerHeight - 280;
+    setContextMenu({
+      x: Math.min(Math.max(8, x), maxX),
+      y: Math.min(Math.max(8, y), maxY),
+    });
+    // إغلاق توولبار التفاعلات لو كان مفتوحاً
+    setShowToolbar(false);
+    // اهتزاز خفيف للجوال (إن دُعم)
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate(15); } catch { /* ignore */ }
+    }
+  }, []);
+
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  useEffect(() => {
+    if (!contextMenu) return undefined;
+    const onClickAway = () => closeContextMenu();
+    const onEsc = (e) => { if (e.key === 'Escape') closeContextMenu(); };
+    window.addEventListener('click', onClickAway);
+    window.addEventListener('scroll', onClickAway, true);
+    window.addEventListener('keydown', onEsc);
+    return () => {
+      window.removeEventListener('click', onClickAway);
+      window.removeEventListener('scroll', onClickAway, true);
+      window.removeEventListener('keydown', onEsc);
+    };
+  }, [contextMenu, closeContextMenu]);
+
+  // === الضغط المطول (touch + mouse) ===
+  const startLongPress = useCallback((x, y) => {
+    isLongPressFiredRef.current = false;
+    clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = setTimeout(() => {
+      isLongPressFiredRef.current = true;
+      openContextMenu(x, y);
+    }, LONG_PRESS_MS);
+  }, [openContextMenu]);
+
+  const cancelLongPress = useCallback(() => {
+    clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
+  }, []);
+
+  // === دعم السحب الجانبي للرد ===
+  // اتجاه السحب: في RTL، الرسائل الواردة (them) تُسحب من اليمين لليسار،
+  // والصادرة (me) تُسحب من اليسار لليمين لتفعيل الرد.
+  // نستخدم القيمة المطلقة للإزاحة للحفاظ على بساطة المنطق.
+  const handleTouchStart = useCallback((e) => {
+    const touch = e.touches?.[0];
+    if (!touch) return;
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+    isSwipingRef.current = false;
+    startLongPress(touch.clientX, touch.clientY);
+  }, [startLongPress]);
+
+  const handleTouchMove = useCallback((e) => {
+    const touch = e.touches?.[0];
+    if (!touch) return;
+    const dx = touch.clientX - touchStartRef.current.x;
+    const dy = touch.clientY - touchStartRef.current.y;
+    // لو الحركة عمودية أكبر من الأفقية، لا نتعامل كسحب
+    if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8) {
+      cancelLongPress();
+      return;
+    }
+    if (Math.abs(dx) > 10) {
+      cancelLongPress();
+      isSwipingRef.current = true;
+      // اتجاه السحب المسموح حسب الطرف
+      // الواردة (them): يسار (dx < 0)؛ الصادرة (me): يمين (dx > 0)
+      const allowed = isMe ? Math.max(0, dx) : Math.min(0, dx);
+      const clamped = Math.sign(allowed) * Math.min(Math.abs(allowed), SWIPE_REPLY_MAX);
+      setSwipeOffset(clamped);
+    }
+  }, [cancelLongPress, isMe]);
+
+  const handleTouchEnd = useCallback(() => {
+    cancelLongPress();
+    if (isSwipingRef.current && Math.abs(swipeOffset) >= SWIPE_REPLY_THRESHOLD) {
+      onReply?.(message);
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try { navigator.vibrate(20); } catch { /* ignore */ }
+      }
+    }
+    isSwipingRef.current = false;
+    setSwipeOffset(0);
+  }, [cancelLongPress, swipeOffset, onReply, message]);
+
+  // دعم الماوس (سطح المكتب): ضغط مطول
+  const handleMouseDown = useCallback((e) => {
+    if (e.button !== 0) return;
+    startLongPress(e.clientX, e.clientY);
+  }, [startLongPress]);
+
+  const handleMouseUp = useCallback(() => cancelLongPress(), [cancelLongPress]);
+  const handleMouseLeave = useCallback(() => cancelLongPress(), [cancelLongPress]);
+
+  // قائمة سياق على الماوس اليمين (سطح المكتب)
+  const handleContextMenu = useCallback((e) => {
+    e.preventDefault();
+    openContextMenu(e.clientX, e.clientY);
+  }, [openContextMenu]);
+
+  // منع click عند تنفيذ ضغط مطول
+  const handleClickCapture = useCallback((e) => {
+    if (isLongPressFiredRef.current || isSwipingRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      isLongPressFiredRef.current = false;
+    }
+  }, []);
+
+  // === أكشنات القائمة السياقية ===
+  const doReply = () => { onReply?.(message); closeContextMenu(); };
+  const doResend = () => {
+    if (onResend) onResend(message);
+    else onReply?.(message); // fallback
+    closeContextMenu();
+  };
+  const doDeleteForMe = () => {
+    if (onDeleteForMe) onDeleteForMe(messageId);
+    else onDelete?.(messageId, false);
+    closeContextMenu();
+  };
+  const doDeleteForEveryone = () => {
+    if (onDeleteForEveryone) onDeleteForEveryone(messageId);
+    else onDelete?.(messageId, true);
+    closeContextMenu();
+  };
+  const doEdit = () => { onEdit?.(message); closeContextMenu(); };
+  const doReport = () => { onReport?.(message); closeContextMenu(); };
+
+  // حساب اتجاه أيقونة الرد أثناء السحب
+  const swipeIndicatorVisible = Math.abs(swipeOffset) > 12;
+  const swipeIndicatorActive = Math.abs(swipeOffset) >= SWIPE_REPLY_THRESHOLD;
 
   return (
     <motion.div
-      ref={(node) => registerMessageNode?.(String(messageId), node)}
+      ref={(node) => { bubbleRef.current = node; registerMessageNode?.(String(messageId), node); }}
       className={`yam-message-row ${isMe ? 'me' : 'them'} ${groupedWithPrev ? 'grouped-prev' : ''} ${groupedWithNext ? 'grouped-next' : ''} ${isVoiceOnly ? 'voice-only' : ''}`}
       data-msg-id={messageId}
       layout={!reduceMotion}
       onMouseEnter={() => setShowToolbar(true)}
-      onMouseLeave={() => setShowToolbar(false)}
+      onMouseLeave={() => { setShowToolbar(false); handleMouseLeave(); }}
+      onContextMenu={handleContextMenu}
+      onClickCapture={handleClickCapture}
+      dir="rtl"
       {...rowMotion}
     >
+      {/* مؤشر السحب للرد */}
+      <AnimatePresence>
+        {swipeIndicatorVisible && (
+          <motion.div
+            className={`yam-swipe-reply-indicator ${swipeIndicatorActive ? 'active' : ''} ${isMe ? 'me' : 'them'}`}
+            initial={{ opacity: 0, scale: 0.7 }}
+            animate={{ opacity: 1, scale: swipeIndicatorActive ? 1.1 : 1 }}
+            exit={{ opacity: 0, scale: 0.7 }}
+            style={{
+              position: 'absolute',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              [isMe ? 'left' : 'right']: 12,
+              pointerEvents: 'none',
+              fontSize: 20,
+              color: swipeIndicatorActive ? '#22c55e' : '#94a3b8',
+              fontFamily: "'Noto Sans Arabic', system-ui, sans-serif",
+            }}
+            aria-hidden="true"
+          >
+            ↩
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className={`yam-message-avatar ${showAvatar ? 'visible' : ''}`}>
         {showAvatar ? (
           <Avatar
@@ -133,7 +323,20 @@ function MessageBubble({
         ) : null}
       </div>
 
-      <div className="yam-message-stack">
+      <div
+        className="yam-message-stack"
+        style={{
+          transform: `translateX(${swipeOffset}px)`,
+          transition: isSwipingRef.current ? 'none' : 'transform 0.2s cubic-bezier(0.22, 1, 0.36, 1)',
+          touchAction: 'pan-y',
+        }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+      >
         <motion.div
           className={`yam-bubble ${isMe ? 'bubble-me' : 'bubble-them'} ${shouldGlow ? 'search-hit' : ''} ${showToolbar ? 'toolbar-open' : ''} ${isVoiceOnly ? 'is-voice-only' : ''}`}
           layout={!reduceMotion}
@@ -142,7 +345,12 @@ function MessageBubble({
             type="button"
             className="yam-bubble-more"
             aria-label="خيارات الرسالة"
-            onClick={() => setShowToolbar((current) => !current)}
+            onClick={(e) => {
+              e.stopPropagation();
+              const rect = e.currentTarget.getBoundingClientRect();
+              openContextMenu(rect.left, rect.bottom + 4);
+            }}
+            style={{ fontFamily: "'Noto Sans Arabic', system-ui, sans-serif" }}
           >
             ⋯
           </button>
@@ -154,7 +362,8 @@ function MessageBubble({
                   <button
                     key={emoji}
                     type="button"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       onReact?.(message, emoji);
                       setShowToolbar(false);
                     }}
@@ -163,9 +372,7 @@ function MessageBubble({
                     {emoji}
                   </button>
                 ))}
-                <button type="button" onClick={() => { onReply?.(message); setShowToolbar(false); }}>↩</button>
-                {isMe && !message?.deleted ? <button type="button" onClick={() => { onDelete?.(messageId, false); setShowToolbar(false); }}>🗑</button> : null}
-                {isMe && !message?.deleted ? <button type="button" onClick={() => { onDelete?.(messageId, true); setShowToolbar(false); }}>🧹</button> : null}
+                <button type="button" onClick={(e) => { e.stopPropagation(); onReply?.(message); setShowToolbar(false); }}>↩</button>
               </motion.div>
             ) : null}
           </AnimatePresence>
@@ -175,7 +382,7 @@ function MessageBubble({
               <motion.button
                 type="button"
                 className="yam-reply-preview"
-                onClick={() => onJumpToReply?.(replyTarget?.id)}
+                onClick={(e) => { e.stopPropagation(); onJumpToReply?.(replyTarget?.id); }}
                 layout={!reduceMotion}
                 {...popMotion}
               >
@@ -219,11 +426,24 @@ function MessageBubble({
             </a>
           ) : null}
 
-          {content && !message?.deleted ? <div className="bubble-text">{content}</div> : null}
+          {/* محتوى الرسالة - الإيموجي يظهر تلقائياً داخل النص */}
+          {content && !message?.deleted ? (
+            <div
+              className="bubble-text"
+              style={{
+                fontFamily: "'Noto Sans Arabic', 'Apple Color Emoji', 'Segoe UI Emoji', system-ui, sans-serif",
+                direction: 'rtl',
+                unicodeBidi: 'plaintext',
+              }}
+            >
+              {content}
+            </div>
+          ) : null}
           {message?.deleted ? <div className="bubble-deleted">تم حذف الرسالة</div> : null}
 
           <div className="bubble-meta">
             <span className="bubble-time">{formatMessageTime(message?.created_at)}</span>
+            {message?.edited ? <span className="bubble-edited" title="تم التعديل">معدّلة</span> : null}
             {isMe ? (
               <span
                 className="bubble-status"
@@ -245,7 +465,7 @@ function MessageBubble({
                   type="button"
                   layout={!reduceMotion}
                   className={`yam-reaction-chip ${reactionState?.myReaction === emoji ? 'active' : ''}`}
-                  onClick={() => onReact?.(message, emoji)}
+                  onClick={(e) => { e.stopPropagation(); onReact?.(message, emoji); }}
                   whileTap={reduceMotion ? undefined : { scale: 0.94 }}
                 >
                   <span>{emoji}</span>
@@ -256,6 +476,96 @@ function MessageBubble({
           ) : null}
         </AnimatePresence>
       </div>
+
+      {/* القائمة السياقية الموحّدة (الضغط المطول / كليك يمين / زر ⋯) */}
+      <AnimatePresence>
+        {contextMenu && (
+          <motion.div
+            className="yam-context-menu"
+            role="menu"
+            aria-label="خيارات الرسالة"
+            dir="rtl"
+            style={{
+              position: 'fixed',
+              top: contextMenu.y,
+              left: contextMenu.x,
+              zIndex: 9999,
+              background: 'rgba(20, 24, 36, 0.98)',
+              backdropFilter: 'blur(14px)',
+              WebkitBackdropFilter: 'blur(14px)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: 14,
+              boxShadow: '0 18px 60px rgba(0,0,0,0.55)',
+              minWidth: 200,
+              padding: 6,
+              fontFamily: "'Noto Sans Arabic', system-ui, sans-serif",
+              color: '#e6e9f2',
+            }}
+            initial={{ opacity: 0, scale: 0.92, y: -6 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.92, y: -6 }}
+            transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button type="button" role="menuitem" className="yam-ctx-item" onClick={doReply}>
+              <span>↩</span><span>رد</span>
+            </button>
+
+            {(isFailed || isMe) ? (
+              <button type="button" role="menuitem" className="yam-ctx-item" onClick={doResend}>
+                <span>📤</span><span>إعادة إرسال إلى…</span>
+              </button>
+            ) : null}
+
+            <button type="button" role="menuitem" className="yam-ctx-item" onClick={doDeleteForMe}>
+              <span>🗑️</span><span>حذف لدي</span>
+            </button>
+
+            {isMe ? (
+              <button type="button" role="menuitem" className="yam-ctx-item danger" onClick={doDeleteForEveryone}>
+                <span>🧹</span><span>حذف لدى الجميع</span>
+              </button>
+            ) : null}
+
+            {isMe && !message?.deleted && !hasMedia ? (
+              <button type="button" role="menuitem" className="yam-ctx-item" onClick={doEdit}>
+                <span>✏️</span><span>تعديل</span>
+              </button>
+            ) : null}
+
+            {!isMe ? (
+              <button type="button" role="menuitem" className="yam-ctx-item danger" onClick={doReport}>
+                <span>⚠️</span><span>إبلاغ</span>
+              </button>
+            ) : null}
+
+            <style>{`
+              .yam-ctx-item {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                width: 100%;
+                padding: 10px 12px;
+                background: transparent;
+                border: 0;
+                border-radius: 10px;
+                color: inherit;
+                font: inherit;
+                text-align: right;
+                cursor: pointer;
+                transition: background 0.15s ease;
+              }
+              .yam-ctx-item:hover, .yam-ctx-item:focus-visible {
+                background: rgba(255,255,255,0.08);
+                outline: none;
+              }
+              .yam-ctx-item.danger { color: #f87171; }
+              .yam-ctx-item.danger:hover { background: rgba(248, 113, 113, 0.12); }
+              .yam-ctx-item > span:first-child { font-size: 16px; width: 22px; text-align: center; }
+            `}</style>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

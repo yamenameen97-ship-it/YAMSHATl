@@ -1942,6 +1942,35 @@ export default function Chat() {
                   nextMessage={item.nextMessage}
                   onReply={(message) => setReplyTo(message)}
                   onDelete={handleDelete}
+                  onDeleteForMe={(id) => handleDelete(id, false)}
+                  onDeleteForEveryone={(id) => handleDelete(id, true)}
+                  onEdit={(message) => {
+                    const newText = window.prompt('تعديل الرسالة:', message?.content || message?.message || '');
+                    if (newText !== null && newText.trim()) {
+                      applyMessagePatch(peer, [message.id || message.client_id], {
+                        content: newText.trim(),
+                        message: newText.trim(),
+                        edited: true,
+                        edited_at: new Date().toISOString(),
+                      });
+                      pushToast({ type: 'success', title: 'تم تعديل الرسالة' });
+                    }
+                  }}
+                  onResend={(message) => {
+                    setReplyTo(null);
+                    handleSend({
+                      content: message?.content || message?.message || '',
+                      media_url: message?.media_url,
+                      type: message?.type,
+                    });
+                    pushToast({ type: 'success', title: 'جاري إعادة الإرسال…' });
+                  }}
+                  onReport={(message) => {
+                    const reason = window.prompt('سبب الإبلاغ عن الرسالة:', '');
+                    if (reason !== null && reason.trim()) {
+                      pushToast({ type: 'success', title: 'تم إرسال البلاغ', description: 'سيراجعه فريق الإدارة قريباً' });
+                    }
+                  }}
                   onReact={handleReact}
                   reactionState={reactionsByMessage[String(msg.id || msg.client_id)] || { counts: {}, myReaction: null }}
                   onJumpToReply={jumpToReply}

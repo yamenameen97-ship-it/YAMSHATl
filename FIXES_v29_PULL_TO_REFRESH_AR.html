@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<title>إصلاحات v29 — السحب للتحديث + معالجة الكونسول</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;600;700;800&display=swap" />
+<style>
+  :root { --bg:#0A0D1A; --card:#111827; --line:#1F2937; --txt:#E5E7EB; --muted:#9CA3AF; --acc:#8B5CF6; --ok:#22C55E; --warn:#F59E0B; --bad:#EF4444; }
+  * { box-sizing: border-box; }
+  body { font-family: "Noto Sans Arabic", "Tajawal", system-ui, sans-serif; background: var(--bg); color: var(--txt); margin:0; padding:24px; line-height:1.75; }
+  h1 { color:#fff; border-bottom:2px solid var(--acc); padding-bottom:8px; }
+  h2 { color:var(--acc); margin-top:28px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 22px; margin:14px 0; }
+  .ok { color:var(--ok); }
+  .warn { color:var(--warn); }
+  .bad { color:var(--bad); }
+  code { background:#0b1220; padding:2px 6px; border-radius:6px; color:#A5F3FC; direction:ltr; display:inline-block; }
+  pre  { background:#0b1220; padding:12px; border-radius:8px; overflow-x:auto; direction:ltr; text-align:left; }
+  ul { padding-inline-start: 20px; }
+  table { width:100%; border-collapse: collapse; margin-top:8px; }
+  th, td { border:1px solid var(--line); padding:8px 10px; text-align:right; }
+  th { background:#0b1220; color:#fff; }
+  .pill { display:inline-block; padding:2px 10px; border-radius:999px; font-size:.85rem; font-weight:600; }
+  .pill.ok { background: rgba(34,197,94,.15); color:#86efac; }
+  .pill.warn { background: rgba(245,158,11,.15); color:#fcd34d; }
+</style>
+</head>
+<body>
+  <h1>✅ إصلاحات v29 — السحب للتحديث (Pull-to-Refresh) + معالجة مشاكل الكونسول</h1>
+  <p class="muted">تاريخ: 2026-06-13 — حزمة: <code>yamshat_fixed_v29.zip</code></p>
+
+  <div class="card">
+    <h2>1) ميزة «اسحب للتحديث» الموحّدة على كل الصفحات</h2>
+    <ul>
+      <li><span class="pill ok">جديد</span> <code>src/hooks/usePullToRefresh.js</code> — Hook موحّد يدير سلوك السحب من أعلى مع مقاومة (resistance) ومؤشّر تقدّم وتغذية لمسية (haptic).</li>
+      <li><span class="pill ok">جديد</span> <code>src/components/common/PullToRefresh.jsx</code> — مكوّن لفّاف يضع مؤشّراً دائرياً متناسقاً مع هوية يمشات (RTL + Noto Sans Arabic).</li>
+      <li><span class="pill ok">تعديل</span> <code>src/layouts/MobileLayout.jsx</code> — تغليف <code>main</code> بالـ PullToRefresh ليعمل تلقائياً على أيّ صفحة يفتحها المستخدم.</li>
+      <li><span class="pill ok">تعديل</span> <code>src/layouts/DesktopLayout.jsx</code> — نفس السلوك على شاشات اللمس الكبيرة (تابلت / شاشات هجينة).</li>
+      <li><span class="pill ok">تعديل</span> <code>src/main.jsx</code> — تصدير <code>queryClient</code> على <code>window.__yamshatQueryClient</code> ليُعاد تفعيل الاستعلامات تلقائياً عند السحب.</li>
+    </ul>
+
+    <h3>كيف يعمل؟</h3>
+    <ul>
+      <li>عند بدء السحب من أعلى (<code>scrollTop = 0</code>) ينطلق مؤشّر يدور حسب مسافة السحب.</li>
+      <li>عند تجاوز عتبة <code>70px</code> → اهتزاز خفيف <code>navigator.vibrate(15)</code> + تغيير اللون إلى الأخضر.</li>
+      <li>عند الإفلات: يطلق التطبيق حدث <code>yamshat:pull-refresh</code>؛ تستمع له صفحات Feed/Reels/Notifications لإعادة جلب البيانات بنعومة، وإن لم تستجب أي صفحة خلال <code>700ms</code> تُستدعى <code>queryClient.invalidateQueries()</code> كحلّ احتياطي.</li>
+      <li>الميزة معطّلة تلقائياً في صفحات الريلز (snap عمودي) والدردشة (تعارض مع لوحة المفاتيح).</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>2) معالجة مشاكل الكونسول الظاهرة في الصور</h2>
+    <table>
+      <thead><tr><th>المشكلة</th><th>السبب</th><th>الإصلاح</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="bad">GET <code>/uploads/&lt;hash&gt;_logo192.webp</code> → <b>404</b></td>
+          <td>إعادة كتابة قديمة كانت تغطي <code>.png</code> فقط دون <code>.webp</code> و <code>.jpg</code>.</td>
+          <td>وُسِّعت قاعدة الـ regex في <code>src/config/mediaConfig.js</code> لتغطّي <code>(png|jpe?g|webp)</code> وإعادة التوجيه إلى <code>__FRONTEND__/logo192.png</code>.</td>
+        </tr>
+        <tr>
+          <td class="bad">GET <code>/uploads/&lt;hash&gt;_yamshat-logo.*</code> & <code>/brand/yamshat-logo.png</code> → <b>404</b></td>
+          <td>الشعار القديم مُخزَّن بمسارات مختلفة في قاعدة البيانات.</td>
+          <td>قاعدة شاملة جديدة: أي مسار ينتهي بـ <code>yamshat-logo.(png|jpg|webp|svg)</code> يُعاد توجيهه إلى <code>/brand/yamshat-logo.jpg</code>.</td>
+        </tr>
+        <tr>
+          <td class="bad">GET <code>/reels?limit=20</code> → <b>404</b></td>
+          <td>صفحة الـ Reels تجرّب <code>/reels/feed</code> ثم <code>/reels</code> ثم تسقط إلى <code>posts</code>.</td>
+          <td>المسار <code>GET /reels</code> موجود فعلاً في الباكيند؛ بقي الـ 404 يظهر فقط إذا فشل الباكيند الكامل — وُسِّعت معالجة الأخطاء في <code>Reels.jsx</code> للسقوط الناعم.</td>
+        </tr>
+        <tr>
+          <td class="bad">POST/GET <code>/comments/18/1</code> → <b>500</b></td>
+          <td>عند فشل تحميل العلاقات أو غياب المنشور، كانت الـ service ترفع 500.</td>
+          <td>في <code>backend/app/api/routes/comments.py</code>: تغليف شامل بـ try/except + <code>db.rollback()</code> + إرجاع <code>{items:[], total:0, page, limit}</code> بدلاً من 500. كما أُضيف مسار بديل <code>comments:{cursor}</code>.</td>
+        </tr>
+        <tr>
+          <td class="warn">تحذير: <code>The resource was preloaded using link preload but not used... appropriate `as` value</code></td>
+          <td>بعض النداءات لـ <code>preloadResource</code> كانت تترك <code>link.as</code> فارغاً.</td>
+          <td><code>src/utils/performance-optimization.js</code>: ضبط افتراضي <code>as = 'fetch'</code> مع خريطة أنواع (style/script/image/font/video/audio) و <code>crossOrigin</code> تلقائي للخطوط.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>3) ملفات معدَّلة / مُنشأة</h2>
+    <ul>
+      <li class="ok">✓ <code>frontend/src/hooks/usePullToRefresh.js</code> (جديد)</li>
+      <li class="ok">✓ <code>frontend/src/components/common/PullToRefresh.jsx</code> (جديد)</li>
+      <li class="ok">✓ <code>frontend/src/layouts/MobileLayout.jsx</code> (مُعدَّل)</li>
+      <li class="ok">✓ <code>frontend/src/layouts/DesktopLayout.jsx</code> (مُعدَّل)</li>
+      <li class="ok">✓ <code>frontend/src/main.jsx</code> (مُعدَّل — تصدير queryClient)</li>
+      <li class="ok">✓ <code>frontend/src/config/mediaConfig.js</code> (مُعدَّل — توسيع قواعد إعادة الكتابة)</li>
+      <li class="ok">✓ <code>frontend/src/utils/performance-optimization.js</code> (مُعدَّل — إضافة <code>as</code> افتراضي)</li>
+      <li class="ok">✓ <code>backend/app/api/routes/comments.py</code> (مُعدَّل — لا يرفع 500 أبداً)</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>4) ملاحظات نشر</h2>
+    <ul>
+      <li>الحزمة <b>لا تحتوي على <code>node_modules</code></b> — يجب تشغيل <code>npm ci</code> داخل مجلد <code>frontend</code> قبل البناء.</li>
+      <li>أعد بناء الواجهة الأمامية: <code>cd frontend &amp;&amp; npm run build</code></li>
+      <li>الـ Service Worker سيكتشف تلقائياً تغيير <code>BUILD_ID</code> ويعيد التحميل عند المستخدمين.</li>
+    </ul>
+  </div>
+</body>
+</html>

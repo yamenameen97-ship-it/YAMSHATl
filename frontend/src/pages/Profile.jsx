@@ -94,15 +94,54 @@ export default function Profile() {
     }
   }, [isOwnProfile, location.hash, location.search]);
 
+  // مفتاح تخزين محلي للصور الشخصية (بديل احتياطي عند فشل حفظ الخادم)
+  const getLocalProfileKey = (uname) => `yamshat:profile:images:${uname || ''}`;
+
+  const readLocalProfileImages = (uname) => {
+    try {
+      const raw = window.localStorage.getItem(getLocalProfileKey(uname));
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const writeLocalProfileImages = (uname, payload) => {
+    try {
+      const existing = readLocalProfileImages(uname) || {};
+      const merged = { ...existing, ...payload };
+      window.localStorage.setItem(getLocalProfileKey(uname), JSON.stringify(merged));
+    } catch (err) {
+      console.warn('تعذر حفظ صور الملف الشخصي محلياً', err);
+    }
+  };
+
   const loadProfile = async () => {
     try {
       const { data } = await getProfileBundle(username);
+      // دمج بيانات الصور المحفوظة محلياً إذا لم تأتٍ من الخادم
+      const local = readLocalProfileImages(username);
+      if (local && data?.user) {
+        if (!data.user.avatar && local.avatar) {
+          data.user.avatar = local.avatar;
+        }
+        if (!data.user.profile) data.user.profile = {};
+        if (!data.user.profile.cover_photo && local.cover_photo) {
+          data.user.profile.cover_photo = local.cover_photo;
+        }
+      }
       setProfile(data);
       setTheme(data?.profile_insights?.theme || data?.user?.profile?.profile_theme || 'midnight');
     } catch (error) {
       console.error('Failed to load profile', error);
+      // عند فشل تحميل الخادم، استخدم النسخة المحلية إن وجدت
+      const local = readLocalProfileImages(username) || {};
       setProfile({
-        user: { username, avatar: '', profile: { bio: '' } },
+        user: {
+          username,
+          avatar: local.avatar || '',
+          profile: { bio: '', cover_photo: local.cover_photo || '' },
+        },
         counts: { posts: 0, followers: 0, following: 0 },
         posts: [],
         archived_posts: [],
@@ -179,6 +218,12 @@ export default function Profile() {
       return;
     }
     setSavingProfile(true);
+    // حفظ محلي فوري للصور قبل التجارب الشبكية
+    // (يضمن عدم فقدانها عند فشل الخادم أو تجاهله للحقول)
+    writeLocalProfileImages(currentUser, {
+      avatar: editForm.avatar || '',
+      cover_photo: editForm.cover_photo || '',
+    });
     try {
       const payload = {
         username: cleanedUsername,
@@ -190,36 +235,44 @@ export default function Profile() {
       const response = await updateMyProfile(payload);
       const nextUser = response?.data || {};
       const nextProfile = nextUser?.profile || {};
+      // القيم النهائية: الخادم أولاً، ثم payload، ثم السابق — ولكن لا ندع الخادم يمسح الصورة إذا أرسلناها
+      const finalAvatar = nextUser?.avatar || payload.avatar || '';
+      const finalCover = nextProfile?.cover_photo || payload.cover_photo || '';
       setProfile((prev) => ({
         ...(prev || {}),
         user: {
           ...(prev?.user || {}),
           ...nextUser,
           username: nextUser?.username || cleanedUsername,
-          avatar: nextUser?.avatar || payload.avatar || prev?.user?.avatar || '',
+          avatar: finalAvatar,
           profile: {
             ...(prev?.user?.profile || {}),
             ...nextProfile,
             bio: nextProfile?.bio ?? payload.bio ?? prev?.user?.profile?.bio ?? '',
-            cover_photo: nextProfile?.cover_photo || payload.cover_photo || prev?.user?.profile?.cover_photo || '',
+            cover_photo: finalCover,
             activity_tagline: nextProfile?.activity_tagline ?? payload.activity_tagline ?? prev?.user?.profile?.activity_tagline ?? '',
           },
         },
       }));
+      // تحديث التخزين المحلي بالقيم النهائية لضمان الاستمرارية
+      writeLocalProfileImages(cleanedUsername, {
+        avatar: finalAvatar,
+        cover_photo: finalCover,
+      });
       mergeStoredUser({
         username: nextUser?.username || cleanedUsername,
         user: nextUser?.username || cleanedUsername,
-        avatar: nextUser?.avatar || payload.avatar || '',
+        avatar: finalAvatar,
         profile: {
-          avatar: nextUser?.avatar || payload.avatar || '',
-          cover_photo: nextProfile?.cover_photo || payload.cover_photo || '',
+          avatar: finalAvatar,
+          cover_photo: finalCover,
           bio: nextProfile?.bio ?? payload.bio ?? '',
           activity_tagline: nextProfile?.activity_tagline ?? payload.activity_tagline ?? '',
         },
       });
       pushToast({ type: 'success', title: 'تم حفظ التعديلات' });
       setShowEditProfile(false);
-      // إعادة تحميل البيانات بعد الحفظ للتأكد من مزامنة الغلاف والصورة من الخادم
+      // إعادة تحميل البيانات بعد الحفظ — و loadProfile ستدمج البدائل المحلية تلقائياً
       await loadProfile();
     } catch (error) {
       pushToast({

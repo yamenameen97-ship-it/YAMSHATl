@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>تقرير إصلاحات yamshat_fixed_v33+1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0b1020;
+    --card: #11172a;
+    --line: rgba(255,255,255,0.08);
+    --text: #e5e7eb;
+    --muted: #94a3b8;
+    --accent: #8b5cf6;
+    --ok: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px 18px;
+    font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, -apple-system, Segoe UI, sans-serif;
+    background: radial-gradient(circle at top right, rgba(139,92,246,0.18), transparent 30%), var(--bg);
+    color: var(--text);
+    line-height: 1.85;
+  }
+  .container { max-width: 980px; margin: 0 auto; }
+  h1 {
+    font-size: 28px;
+    background: linear-gradient(135deg, #a78bfa, #38bdf8);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin-bottom: 6px;
+  }
+  h2 { font-size: 20px; margin-top: 28px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 22px;
+    margin-bottom: 18px;
+  }
+  .badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 800;
+    background: rgba(34,197,94,0.16);
+    color: #86efac;
+    border: 1px solid rgba(34,197,94,0.3);
+    margin-inline-start: 8px;
+  }
+  ul { padding-inline-start: 22px; }
+  li { margin: 6px 0; }
+  code {
+    background: rgba(255,255,255,0.06);
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+    color: #fde68a;
+  }
+  .muted { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>إصلاحات إصدار yamshat_fixed_v33+1</h1>
+  <p class="muted">ملخّص الإصلاحات الأربعة المطبّقة على المشروع.</p>
+
+  <div class="card">
+    <h2>1) فلاتر وتحسينات للريلز <span class="badge">تم</span></h2>
+    <ul>
+      <li>إضافة <code>ReelFilters.js</code> يحتوي 10 فلاتر CSS جاهزة (تحسين ذكي، سينمائي، دافئ، بارد، حيوي، أبيض وأسود، كلاسيكي، ناعم، حاد).</li>
+      <li>زر فلاتر عائم ✨ في صفحة <code>/reels</code> (إلى جوار زر البحث) + لوحة اختيار شفافة بـ <code>dir="rtl"</code> وخط Noto Sans Arabic.</li>
+      <li>معاينة مصغّرة لكل فلتر باستخدام poster الريل الحالي.</li>
+      <li>حفظ الفلتر المختار في <code>localStorage</code> ليبقى مفعّلًا في الجلسات القادمة.</li>
+      <li>تطبيق الفلتر فوريًا على عنصر <code>&lt;video&gt;</code> عبر CSS filter (بدون إعادة معالجة).</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>2) إصلاح حفظ تعليق الريلز على ويب الجوال <span class="badge">تم</span></h2>
+    <ul>
+      <li>إضافة <strong>تحديث تفاؤلي فوري</strong>: التعليق يظهر فورًا قبل وصول استجابة الخادم (أساسي على شبكات الجوال البطيئة).</li>
+      <li>مسار احتياطي: عند فشل <code>/posts/:id/comment</code> يجرّب تلقائيًا <code>/reels/:id/comment</code>.</li>
+      <li>تحديث <code>getReelsCache/saveReelsCache</code> ليبقى التعليق محفوظًا بعد إعادة فتح الصفحة.</li>
+      <li>التراجع التلقائي مع إنقاص العدّاد إذا فشل الإرسال بالكامل.</li>
+      <li>رسالة خطأ تفصيلية تعرض <code>response.data.detail</code> بدلًا من رسالة عامة.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>3) إضافة سهم رجوع للنوافذ التي لا يوجد بها <span class="badge">تم</span></h2>
+    <ul>
+      <li>إعادة كتابة <code>GlobalPageBackButton.jsx</code> ليظهر الزر <strong>على جميع الأحجام</strong> (دسكتوب + لاب توب + جوال) بدلًا من الجوال فقط.</li>
+      <li>إزالة الشات على الويب من قائمة الاستثناءات → <code>/chat/:peer</code> صار يعرض سهم رجوع.</li>
+      <li>تموضع ذكي داخل الشات على الدسكتوب: الزر يقع بعد سايدبار الشات (start: 326px)، وعلى الجوال يعود لمكانه الافتراضي (start: 14px).</li>
+      <li>سهم SVG يحترم اتجاه RTL مع تأثير hover ناعم.</li>
+      <li>استثناءات منطقية: الصفحة الرئيسية، صناديق الوارد، التسجيل/الدخول، صفحة الريلز (لأن لها زر رجوع خاص).</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>4) إصلاح فشل نشر فيديو كمنشور في الصفحة الرئيسية <span class="badge">تم</span></h2>
+    <ul>
+      <li>في <code>PostComposer.jsx</code>: استبدال <code>purpose: 'post-video'</code> غير المدعوم بـ <code>'post-attachment'</code> الموثّق.</li>
+      <li>إضافة <code>processingProfile: 'balanced'</code> و <code>useCdn: true</code> لاستخدام مسار الرفع المستأنف للفيديو.</li>
+      <li>التقاط <code>thumbnailUrl</code> من استجابة الرفع وإرساله مع طلب إنشاء المنشور.</li>
+      <li>تمرير حقول إضافية واضحة: <code>video_url</code> و <code>media_type:'video'</code> و <code>has_video:true</code>.</li>
+      <li><strong>مسار احتياطي تلقائي</strong>: عند فشل الرفع الذكي، يجرّب <code>uploadPostMedia</code> (multipart مباشر) ثم ينشئ المنشور.</li>
+      <li>تحديث <code>createPost</code> في <code>api/posts.js</code> ليتعرّف تلقائيًا على الفيديو ويملأ الحقول الضرورية في الـ payload.</li>
+      <li>رسالة خطأ تعرض السبب الفعلي من الخادم بدل رسالة عامة.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>الملفات المعدّلة / المُضافة</h2>
+    <ul>
+      <li><code>frontend/src/components/reels/ReelFilters.js</code> — جديد</li>
+      <li><code>frontend/src/components/reels/ReelPlayer.jsx</code> — معدّل (فلاتر + لوحة)</li>
+      <li><code>frontend/src/styles/reels-premium.css</code> — معدّل (CSS الفلاتر)</li>
+      <li><code>frontend/src/pages/Reels.jsx</code> — معدّل (زر فلاتر + إصلاح التعليق)</li>
+      <li><code>frontend/src/components/ui/GlobalPageBackButton.jsx</code> — معدّل (دسكتوب + شات)</li>
+      <li><code>frontend/src/components/feed/PostComposer.jsx</code> — معدّل (نشر فيديو)</li>
+      <li><code>frontend/src/api/posts.js</code> — معدّل (تعرّف الفيديو في createPost)</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>

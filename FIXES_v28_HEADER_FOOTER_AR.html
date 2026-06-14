@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<title>تقرير إصلاحات v28 — تثبيت الهيدر والفوتر وذكاء زر الإنشاء</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  body {
+    font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+    background: #0A0D1A;
+    color: #E8ECF8;
+    margin: 0;
+    padding: 24px;
+    line-height: 1.9;
+    direction: rtl;
+  }
+  .card {
+    max-width: 880px;
+    margin: 0 auto;
+    background: #131826;
+    border: 1px solid #2a2f44;
+    border-radius: 16px;
+    padding: 22px 28px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+  }
+  h1 { color: #C4B5FD; font-size: 22px; margin: 0 0 8px; }
+  h2 { color: #A78BFA; font-size: 17px; margin: 22px 0 8px; border-right: 4px solid #8B5CF6; padding-right: 10px; }
+  h3 { color: #D8C8FF; font-size: 15px; margin: 16px 0 6px; }
+  code, pre {
+    background: #0e1220; color: #efe6ff;
+    border: 1px solid #2a2f44; border-radius: 8px;
+    padding: 2px 6px; font-family: 'Courier New', monospace; direction: ltr;
+  }
+  pre { padding: 12px; overflow-x: auto; }
+  ul { padding-right: 22px; }
+  li { margin: 4px 0; }
+  .ok { color: #86efac; font-weight: 700; }
+  .warn { color: #fcd34d; font-weight: 700; }
+  .tag {
+    display: inline-block; padding: 2px 10px; border-radius: 999px;
+    background: rgba(139,92,246,0.18); color: #efe6ff;
+    font-size: 12px; font-weight: 700; margin-inline-start: 6px;
+  }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+  th, td { text-align: right; padding: 8px 10px; border-bottom: 1px solid #2a2f44; font-size: 14px; }
+  th { color: #C4B5FD; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>تقرير إصلاحات v28 <span class="tag">YAMSHAT</span></h1>
+  <p>هذا التقرير يلخّص التعديلات المُنفّذة على المشروع بناءً على طلباتك، مع الإشارة إلى الملفات المعنية.</p>
+
+  <h2>1) تثبيت الهيدر العلوي والسفلي للشات</h2>
+  <ul>
+    <li><span class="ok">✓</span> أُضيفت قواعد <code>transform: none !important; filter: none !important; perspective: none !important;</code> على <code>.app-shell.yamshat-unified</code> وأبنائه لمنع كسر <code>position: fixed</code>.</li>
+    <li><span class="ok">✓</span> أُلغي <code>will-change/transform</code> من <code>.ym-topbar</code> و<code>.ym-bottomnav</code>.</li>
+    <li><span class="ok">✓</span> صفحة <code>Inbox</code> أصبحت تستخدم <code>&lt;MainLayout&gt;</code> الموحّد (دون <code>hideNav</code>) فلا تتحرّك الأشرطة مع تمرير الصفحة.</li>
+  </ul>
+  <p>الملفات: <code>components/layout/MainLayout.jsx</code>, <code>components/mobile/MobileTopBar.jsx</code>, <code>components/mobile/BottomNav.jsx</code>, <code>pages/Inbox.jsx</code></p>
+
+  <h2>2) تصغير "YAMSHAT" وإزاحتها لليمين + أزرار الستوري والمجموعات</h2>
+  <ul>
+    <li><span class="ok">✓</span> تم تصغير الكلمة من <code>1.15rem → 0.78rem</code> وتقليل المسافة بين الحروف.</li>
+    <li><span class="ok">✓</span> أصبح الشعار في مجموعة <code>.ym-topbar-right-cluster</code> بأقصى اليمين بجوار زر القائمة (الترتيب الطبيعي في RTL).</li>
+    <li><span class="ok">✓</span> أُضيف زرّان جديدان بمنتصف الهيدر العلوي يظهران في كل الصفحات:
+      <ul>
+        <li>زر <strong>ستوري</strong> → <code>/stories</code></li>
+        <li>زر <strong>مجموعات</strong> → <code>/groups</code></li>
+      </ul>
+    </li>
+  </ul>
+  <p>الملف: <code>components/mobile/MobileTopBar.jsx</code></p>
+
+  <h2>3) حذف زر إنشاء الستوري من خلفية صفحة الشات</h2>
+  <ul>
+    <li><span class="ok">✓</span> أُزيل شريط <code>.yam-story-rail</code> بما فيه زر "إنشاء قصة" + قائمة القصص من واجهة <code>Inbox.jsx</code> لأنه لا يخصّها.</li>
+    <li><span class="ok">✓</span> يمكن إنشاء الستوري من الهيدر العلوي (زر "ستوري") أو من شريط التنقل الموحّد.</li>
+  </ul>
+  <p>الملف: <code>pages/Inbox.jsx</code></p>
+
+  <h2>4) زر إنشاء (+) ذكي حسب الصفحة الحالية</h2>
+  <table>
+    <thead>
+      <tr><th>الصفحة الحالية</th><th>إجراء زر "+"</th><th>الآلية</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>الرئيسية <code>/</code></td><td>إنشاء منشور</td><td>حدث <code>yamshat:open-composer</code></td></tr>
+      <tr><td>المجموعات <code>/groups</code></td><td>إنشاء مجموعة</td><td>توجيه إلى <code>/groups/create</code></td></tr>
+      <tr><td>الدردشة <code>/inbox</code> أو <code>/chat</code></td><td>دردشة جديدة</td><td>حدث <code>yamshat:open-new-chat</code> → يفتح <code>NewChatDialog</code></td></tr>
+      <tr><td>الريلز <code>/reels</code></td><td>ريل جديد</td><td>حدث <code>yamshat:open-reel-composer</code></td></tr>
+      <tr><td>الستوري <code>/stories</code></td><td>ستوري جديد</td><td>حدث <code>yamshat:open-story-composer</code></td></tr>
+    </tbody>
+  </table>
+  <p>الملف: <code>components/mobile/BottomNav.jsx</code></p>
+
+  <h2>5) مودال "دردشة جديدة" الكامل</h2>
+  <ul>
+    <li><span class="ok">✓</span> قسم <strong>"سبق التحدث معهم"</strong> يعرض آخر المحادثات من <code>getChatThreads()</code>.</li>
+    <li><span class="ok">✓</span> زر <strong>"من جهات الاتصال"</strong> يستخدم <code>navigator.contacts.select()</code> (Contact Picker API — Chrome Android). يفشل بأمان مع رسالة واضحة على المتصفحات غير المدعومة.</li>
+    <li><span class="ok">✓</span> حقل بحث لحظي عن مشترك بالاسم عبر <code>getUsers({ q, limit: 20 })</code>.</li>
+    <li><span class="ok">✓</span> الضغط على أي نتيجة ينتقل مباشرةً إلى <code>/chat/:username</code>.</li>
+    <li><span class="ok">✓</span> مودال عام مُسجّل في <code>App.jsx</code> ويستجيب لحدث <code>yamshat:open-new-chat</code> من أي صفحة.</li>
+  </ul>
+  <p>الملفات الجديدة: <code>components/chat/NewChatDialog.jsx</code>, التعديل في: <code>App.jsx</code></p>
+
+  <h2>ملاحظات تقنية</h2>
+  <ul>
+    <li>كل الواجهات الجديدة <code>dir="rtl"</code> وتستخدم خط <strong>Noto Sans Arabic</strong> (بديل: Tajawal).</li>
+    <li>كل عناصر <code>position: fixed</code> محميّة من تأثير transforms الأبوية.</li>
+    <li>التحديثات متوافقة مع الموبايل والديسكتوب (responsive).</li>
+    <li class="warn">⚠ ميزة "جهات الاتصال" تعمل فقط على المتصفحات الداعمة لـ Contact Picker API (Chrome على Android بشكل رئيسي).</li>
+  </ul>
+
+  <h2>كيفية التشغيل محلياً</h2>
+  <pre>cd frontend
+npm install
+npm run dev</pre>
+
+  <p style="margin-top:20px;color:#8b90b7;font-size:13px;">© YAMSHAT — تقرير v28 — تثبيت الهيدر/الفوتر، تصغير العلامة، إضافة أزرار الستوري/المجموعات، زر إنشاء ذكي، ومودال دردشة جديدة.</p>
+</div>
+</body>
+</html>

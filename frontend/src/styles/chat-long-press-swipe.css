@@ -1,0 +1,65 @@
+/* ============================================
+   ضغط مطول + سحب جانبي للرد + قائمة سياقية
+   v36+ - إصلاحات yamshat
+   ============================================ */
+
+/* مؤشر السحب للرد */
+.yam-swipe-reply-indicator {
+  font-family: 'Noto Sans Arabic', system-ui, sans-serif;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.18s ease;
+}
+.yam-swipe-reply-indicator.active {
+  background: rgba(34, 197, 94, 0.18);
+  border-color: rgba(34, 197, 94, 0.45);
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+}
+
+/* قائمة سياقية للضغط المطول */
+.yam-context-menu {
+  font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+  direction: rtl;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.yam-context-menu button {
+  font-family: inherit;
+}
+
+/* منع تحديد النص أثناء الضغط المطول */
+.yam-message-stack {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* النص داخل الفقاعة يبقى قابلاً للنسخ عند الضغط الطويل المخصص */
+.yam-bubble .bubble-text {
+  user-select: text;
+  -webkit-user-select: text;
+  font-family: 'Noto Sans Arabic', 'Apple Color Emoji', 'Segoe UI Emoji', system-ui, sans-serif;
+  direction: rtl;
+  unicode-bidi: plaintext;
+}
+
+/* علامة "معدّلة" */
+.bubble-edited {
+  font-size: 11px;
+  opacity: 0.65;
+  margin-inline-start: 6px;
+  font-family: 'Noto Sans Arabic', system-ui, sans-serif;
+}
+
+/* تحسين عرض الإيموجي داخل الرسائل */
+.bubble-text {
+  font-feature-settings: "kern" 1;
+  text-rendering: optimizeLegibility;
+}

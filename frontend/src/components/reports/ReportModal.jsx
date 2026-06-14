@@ -66,7 +66,7 @@ export default function ReportModal({
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       await axios.post(
-        `${API_BASE}/api/reports`,
+        `${API_BASE}/reports`,
         {
           target_type: targetType,
           target_id: String(targetId),

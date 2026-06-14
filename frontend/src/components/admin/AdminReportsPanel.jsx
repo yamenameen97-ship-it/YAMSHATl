@@ -86,7 +86,7 @@ export default function AdminReportsPanel() {
         if (v && v !== 'all') params.set(k === 'status' ? 'status' : k, v);
       });
       const { data } = await axios.get(
-        `${API_BASE}/api/reports/admin?${params.toString()}`,
+        `${API_BASE}/reports/admin?${params.toString()}`,
         { headers: authHeaders() },
       );
       setItems(data.items || []);
@@ -101,7 +101,7 @@ export default function AdminReportsPanel() {
   const loadStats = useCallback(async () => {
     try {
       const { data } = await axios.get(
-        `${API_BASE}/api/reports/admin/stats`,
+        `${API_BASE}/reports/admin/stats`,
         { headers: authHeaders() },
       );
       setStats(data);
@@ -119,7 +119,7 @@ export default function AdminReportsPanel() {
     setActionNotes('');
     try {
       const { data } = await axios.get(
-        `${API_BASE}/api/reports/admin/${report.id}`,
+        `${API_BASE}/reports/admin/${report.id}`,
         { headers: authHeaders() },
       );
       setSelected(data.report);
@@ -134,7 +134,7 @@ export default function AdminReportsPanel() {
     if (!window.confirm(`تأكيد تنفيذ الإجراء: ${ACTIONS.find(a => a.id === actionId)?.label}؟`)) return;
     try {
       const { data } = await axios.post(
-        `${API_BASE}/api/reports/admin/${selected.id}/action`,
+        `${API_BASE}/reports/admin/${selected.id}/action`,
         { action: actionId, notes: actionNotes || null },
         { headers: authHeaders() },
       );

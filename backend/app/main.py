@@ -266,11 +266,15 @@ _include("app.api.routes.upload.router", prefix="/api/upload")
 _include("app.api.routes.admin.router", prefix="/api/admin")
 _include("app.api.routes.follow.router", prefix="/api/follow")
 _include("app.api.routes.chat.router", prefix="/api/chat")
-_include("app.api.routes.stories.router", prefix="/api/stories")
+# ⚠️ stories.py داخلياً يعرّف مساراته بـ /stories/... و /add_story
+# لذلك نحمله تحت /api فقط لتجنب /api/stories/stories/...
+_include("app.api.routes.stories.router", prefix="/api")
 _include("app.api.routes.reels.router", prefix="/api/reels")
 _include("app.api.routes.groups.router", prefix="/api/groups")
 _include("app.api.routes.inbox.router", prefix="/api/inbox")
-_include("app.api.routes.recommendations.router", prefix="/api/recommendations")
+# ⚠️ recommendations.py داخلياً يعرّف مساراته بـ /recommendations/...
+# لذلك نحمله تحت /api فقط لتجنب /api/recommendations/recommendations/...
+_include("app.api.routes.recommendations.router", prefix="/api")
 _include("app.api.routes.analytics.router", prefix="/api/analytics")
 
 # 🚨 نظام البلاغات (Reports & Moderation)

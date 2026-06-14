@@ -16,6 +16,7 @@
 
 /* ====== Stage 5 — Premium Polish Layers (must be last) ====== */
 @import './chat-premium.css';
+@import './chat-long-press-swipe.css';
 @import './reels-premium.css';
 @import './design-system-enforce.css';
 

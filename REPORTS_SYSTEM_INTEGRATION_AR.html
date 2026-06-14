@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<title>نظام البلاغات - دليل التكامل | YAMSHAT</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Noto Sans Arabic", system-ui, sans-serif;
+    background: linear-gradient(180deg,#0f0c24 0%,#14122a 100%);
+    color: #e7e6f3;
+    margin: 0;
+    padding: 24px;
+    line-height: 1.85;
+  }
+  h1, h2, h3 { color: #c4b5fd; }
+  h1 { font-size: 28px; margin: 0 0 8px; }
+  h2 {
+    font-size: 22px;
+    margin-top: 32px;
+    border-bottom: 2px solid rgba(124,58,237,0.4);
+    padding-bottom: 6px;
+  }
+  h3 { font-size: 17px; margin-top: 22px; color: #a78bfa; }
+  .container { max-width: 980px; margin: 0 auto; }
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: linear-gradient(90deg,#7c3aed,#a855f7);
+    font-size: 12px;
+    font-weight: 700;
+    margin-inline-start: 6px;
+  }
+  code, pre {
+    font-family: "Fira Code", Menlo, Consolas, monospace;
+    direction: ltr;
+    text-align: start;
+  }
+  pre {
+    background: #0a0820;
+    border: 1px solid rgba(124,58,237,0.3);
+    border-radius: 12px;
+    padding: 14px;
+    overflow-x: auto;
+    font-size: 13px;
+  }
+  code.inline {
+    background: rgba(124,58,237,0.15);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: #ddd6fe;
+  }
+  .card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(124,58,237,0.25);
+    border-radius: 14px;
+    padding: 16px 18px;
+    margin: 14px 0;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px,1fr));
+    gap: 10px;
+    margin: 12px 0;
+  }
+  .grid .item {
+    background: rgba(124,58,237,0.12);
+    border: 1px solid rgba(124,58,237,0.3);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 14px;
+  }
+  th, td {
+    padding: 10px 12px;
+    border: 1px solid rgba(124,58,237,0.25);
+    text-align: start;
+  }
+  th { background: rgba(124,58,237,0.18); }
+  ul li { margin: 4px 0; }
+  .ok { color: #4ade80; }
+  .warn { color: #facc15; }
+  .danger { color: #fca5a5; }
+  .hero {
+    background: linear-gradient(135deg, rgba(124,58,237,0.25), rgba(168,85,247,0.15));
+    border: 1px solid rgba(168,85,247,0.4);
+    border-radius: 18px;
+    padding: 24px;
+    margin-bottom: 24px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="hero">
+    <h1>🚨 نظام البلاغات الشامل - YAMSHAT</h1>
+    <p>تم تطوير نظام بلاغات موحّد يغطي كل المحتوى داخل المنصة (منشورات / ريلز / ستوري / تعليقات / شات / مجموعات / حسابات / غرف صوتية) مع لوحة إدارة كاملة للمشرفين.</p>
+    <div>
+      <span class="badge">Backend ✓</span>
+      <span class="badge">Frontend ✓</span>
+      <span class="badge">Admin Dashboard ✓</span>
+      <span class="badge">Notifications ✓</span>
+      <span class="badge">Migration ✓</span>
+    </div>
+  </div>
+
+  <h2>📦 الملفات المُضافة</h2>
+
+  <h3>1) الباك إند (Backend)</h3>
+  <table>
+    <tr><th>المسار</th><th>الوصف</th></tr>
+    <tr><td><code>backend/app/models/report.py</code></td><td>نموذج Report و ReportEvent</td></tr>
+    <tr><td><code>backend/app/schemas/report.py</code></td><td>Pydantic schemas</td></tr>
+    <tr><td><code>backend/app/services/report_service.py</code></td><td>منطق العمل (إنشاء/معالجة/snapshot/إشعارات)</td></tr>
+    <tr><td><code>backend/app/api/routes/reports.py</code></td><td>الراوتر مع 8 endpoints</td></tr>
+    <tr><td><code>backend/alembic/versions/20260614_0010_reports_system.py</code></td><td>هجرة قاعدة البيانات</td></tr>
+  </table>
+
+  <h3>2) الواجهة الأمامية (Frontend)</h3>
+  <table>
+    <tr><th>المسار</th><th>الوصف</th></tr>
+    <tr><td><code>frontend/src/components/reports/ReportModal.jsx</code></td><td>نافذة الإبلاغ (مودال 13 سبب)</td></tr>
+    <tr><td><code>frontend/src/components/reports/MoreOptionsMenu.jsx</code></td><td>قائمة الثلاث نقاط الموحّدة (•••)</td></tr>
+    <tr><td><code>frontend/src/components/admin/AdminReportsPanel.jsx</code></td><td>لوحة الأدمن</td></tr>
+    <tr><td><code>frontend/src/api/reports.js</code></td><td>خدمات API</td></tr>
+  </table>
+
+  <h3>3) التعديلات على ملفات موجودة</h3>
+  <ul>
+    <li><code class="inline">backend/app/models/__init__.py</code> — تسجيل Report &amp; ReportEvent</li>
+    <li><code class="inline">backend/app/main.py</code> — تسجيل راوتر <code class="inline">/api/reports</code></li>
+  </ul>
+
+  <h2>🔌 نقاط النهاية (API Endpoints)</h2>
+
+  <h3>للمستخدم العادي</h3>
+  <table>
+    <tr><th>Method</th><th>المسار</th><th>الوصف</th></tr>
+    <tr><td>GET</td><td><code>/api/reports/reasons</code></td><td>قائمة الأسباب المتاحة</td></tr>
+    <tr><td>POST</td><td><code>/api/reports</code></td><td>إنشاء بلاغ جديد</td></tr>
+    <tr><td>GET</td><td><code>/api/reports/my</code></td><td>عرض بلاغاتي السابقة</td></tr>
+  </table>
+
+  <h3>للأدمن (يتطلب role: admin / moderator / super_admin)</h3>
+  <table>
+    <tr><th>Method</th><th>المسار</th><th>الوصف</th></tr>
+    <tr><td>GET</td><td><code>/api/reports/admin</code></td><td>قائمة البلاغات مع فلاتر</td></tr>
+    <tr><td>GET</td><td><code>/api/reports/admin/stats</code></td><td>إحصائيات شاملة</td></tr>
+    <tr><td>GET</td><td><code>/api/reports/admin/{id}</code></td><td>تفاصيل بلاغ + تاريخه</td></tr>
+    <tr><td>PATCH</td><td><code>/api/reports/admin/{id}</code></td><td>تحديث (status/priority/notes)</td></tr>
+    <tr><td>POST</td><td><code>/api/reports/admin/{id}/action</code></td><td>اتخاذ إجراء</td></tr>
+    <tr><td>POST</td><td><code>/api/reports/admin/bulk</code></td><td>إجراء جماعي</td></tr>
+  </table>
+
+  <h2>🎯 أنواع الكيانات المدعومة (Target Types)</h2>
+  <div class="grid">
+    <div class="item">📝 <b>post</b> — منشورات</div>
+    <div class="item">🎬 <b>reel</b> — ريلز</div>
+    <div class="item">📸 <b>story</b> — ستوري</div>
+    <div class="item">💬 <b>comment</b> — تعليقات المنشورات</div>
+    <div class="item">💬 <b>reel_comment</b> — تعليقات الريلز</div>
+    <div class="item">✉️ <b>message</b> — رسائل الشات الخاص</div>
+    <div class="item">👥 <b>group_message</b> — رسائل المجموعات</div>
+    <div class="item">👤 <b>user</b> — حسابات المستخدمين</div>
+    <div class="item">🏷️ <b>group</b> — مجموعات</div>
+    <div class="item">🔊 <b>voice_room</b> — الغرف الصوتية</div>
+  </div>
+
+  <h2>🚫 أسباب البلاغ (Reasons)</h2>
+  <div class="grid">
+    <div class="item">🚫 <b>abuse</b> — إساءة وتنمر</div>
+    <div class="item">🎭 <b>impersonation</b> — انتحال شخصية</div>
+    <div class="item">⚠️ <b>inappropriate</b> — محتوى غير لائق</div>
+    <div class="item">📧 <b>spam</b> — محتوى مزعج (سبام)</div>
+    <div class="item">🙅 <b>unwanted</b> — محتوى غير مرغوب</div>
+    <div class="item">😡 <b>hate_speech</b> — خطاب كراهية</div>
+    <div class="item">⚔️ <b>violence</b> — عنف</div>
+    <div class="item">🔞 <b>nudity</b> — محتوى إباحي</div>
+    <div class="item">🆘 <b>self_harm</b> — إيذاء النفس</div>
+    <div class="item">❗ <b>misinformation</b> — معلومات مضللة</div>
+    <div class="item">💰 <b>scam</b> — احتيال</div>
+    <div class="item">©️ <b>copyright</b> — انتهاك حقوق</div>
+    <div class="item">✏️ <b>other</b> — سبب آخر</div>
+  </div>
+
+  <h2>⚡ الإجراءات المتاحة للمشرف</h2>
+  <table>
+    <tr><th>الإجراء</th><th>التأثير</th></tr>
+    <tr><td><b>dismiss</b></td><td>إغلاق البلاغ بدون اتخاذ إجراء</td></tr>
+    <tr><td><b>remove_content</b></td><td>إخفاء المحتوى من العرض العام</td></tr>
+    <tr><td><b>warn_user</b></td><td>إرسال تحذير للمستخدم</td></tr>
+    <tr><td><b>mute_user</b></td><td>كتم المستخدم 24 ساعة (افتراضياً)</td></tr>
+    <tr><td><b>suspend_user</b></td><td>تعليق الحساب 7 أيام (افتراضياً)</td></tr>
+    <tr><td><b>ban_user</b></td><td>حظر نهائي + تغيير role إلى banned</td></tr>
+    <tr><td><b>escalate</b></td><td>تصعيد البلاغ + رفع الأولوية لـ urgent</td></tr>
+  </table>
+
+  <h2>🧠 الميزات الذكية المدمجة (إضافة من عندي)</h2>
+  <div class="card">
+    <ul>
+      <li><span class="ok">✓</span> <b>Snapshot للمحتوى</b> — نلتقط لقطة من المحتوى وقت البلاغ، فحتى لو حذف المخالف محتواه يبقى الدليل محفوظاً.</li>
+      <li><span class="ok">✓</span> <b>تجميع البلاغات المتكررة</b> — إذا أبلغ نفس المستخدم مرتين عن نفس الكيان، نزيد العداد بدل إنشاء سجل مكرر.</li>
+      <li><span class="ok">✓</span> <b>ترقية الأولوية تلقائياً</b> — البلاغات التي تتجاوز 5 تبليغات تصبح <b>high</b>، و10 تبليغات تصبح <b>urgent</b>.</li>
+      <li><span class="ok">✓</span> <b>أولوية حسب السبب</b> — self_harm و violence تصبح <b>urgent</b> فوراً، nudity/hate_speech/impersonation/scam تصبح <b>high</b>.</li>
+      <li><span class="ok">✓</span> <b>إشعارات لحظية للمشرفين</b> — كل بلاغ جديد يُنشئ Notification لكل المشرفين.</li>
+      <li><span class="ok">✓</span> <b>إشعار المُبلِّغ بنتيجة بلاغه</b> — بعد المعالجة يصل إشعار "✅ تمت معالجة بلاغك".</li>
+      <li><span class="ok">✓</span> <b>سجل أحداث كامل (Audit Trail)</b> — جدول <code class="inline">report_events</code> يحفظ كل تغيير على البلاغ.</li>
+      <li><span class="ok">✓</span> <b>منع البلاغ على النفس</b> — التحقق من أن <code class="inline">target_id != current_user.id</code>.</li>
+      <li><span class="ok">✓</span> <b>تسجيل IP و User-Agent</b> — لمكافحة سوء استخدام نظام البلاغات نفسه.</li>
+      <li><span class="ok">✓</span> <b>إجراءات جماعية (Bulk Actions)</b> — معالجة عدة بلاغات بنقرة واحدة من لوحة الأدمن.</li>
+    </ul>
+  </div>
+
+  <h2>💻 كيفية الدمج في الواجهة</h2>
+
+  <h3>① في المنشورات (PostCard)</h3>
+  <pre><code>import MoreOptionsMenu from '@/components/reports/MoreOptionsMenu';
+
+// داخل JSX للمنشور — استبدل زر الثلاث نقاط الحالي بـ:
+&lt;MoreOptionsMenu
+  targetType="post"
+  targetId={post.id}
+  targetLabel={`منشور ${post.username}`}
+  isOwner={post.user_id === currentUser.id}
+  onSave={() =&gt; savePost(post.id)}
+  onCopyLink={() =&gt; copyLink(`/post/${post.id}`)}
+  onShare={() =&gt; sharePost(post)}
+  onMute={() =&gt; muteUser(post.user_id)}
+  onBlock={() =&gt; blockUser(post.user_id)}
+  onEdit={() =&gt; editPost(post.id)}
+  onDelete={() =&gt; deletePost(post.id)}
+/&gt;</code></pre>
+
+  <h3>② في الريلز</h3>
+  <pre><code>&lt;MoreOptionsMenu
+  targetType="reel"
+  targetId={reel.id}
+  isOwner={reel.user_id === currentUser.id}
+  onSave={() =&gt; saveReel(reel.id)}
+  onShare={() =&gt; shareReel(reel)}
+  onMute={() =&gt; muteUser(reel.user_id)}
+  onBlock={() =&gt; blockUser(reel.user_id)}
+  onDelete={() =&gt; deleteReel(reel.id)}
+/&gt;</code></pre>
+
+  <h3>③ في الستوري</h3>
+  <pre><code>&lt;MoreOptionsMenu
+  targetType="story"
+  targetId={story.id}
+  isOwner={story.user_id === currentUser.id}
+  iconColor="#fff"
+  onMute={() =&gt; muteUser(story.user_id)}
+  onBlock={() =&gt; blockUser(story.user_id)}
+/&gt;</code></pre>
+
+  <h3>④ في الشات</h3>
+  <pre><code>&lt;MoreOptionsMenu
+  targetType="message"
+  targetId={message.id}
+  isOwner={message.sender_id === currentUser.id}
+  onCopyLink={() =&gt; copyText(message.content)}
+  onDelete={() =&gt; deleteMessage(message.id)}
+/&gt;</code></pre>
+
+  <h3>⑤ في المجموعات (رسالة مجموعة)</h3>
+  <pre><code>&lt;MoreOptionsMenu
+  targetType="group_message"
+  targetId={message.id}
+  isOwner={message.sender_id === currentUser.id}
+  onDelete={() =&gt; deleteMessage(message.id)}
+/&gt;
+
+// أو للإبلاغ عن المجموعة نفسها
+&lt;MoreOptionsMenu targetType="group" targetId={group.id} /&gt;</code></pre>
+
+  <h3>⑥ في الملف الشخصي (الإبلاغ عن حساب)</h3>
+  <pre><code>&lt;MoreOptionsMenu
+  targetType="user"
+  targetId={user.id}
+  targetLabel={user.username}
+  isOwner={user.id === currentUser.id}
+  onMute={() =&gt; muteUser(user.id)}
+  onBlock={() =&gt; blockUser(user.id)}
+/&gt;</code></pre>
+
+  <h3>⑦ في التعليقات</h3>
+  <pre><code>&lt;MoreOptionsMenu
+  targetType="comment"        // أو reel_comment للريلز
+  targetId={comment.id}
+  isOwner={comment.user_id === currentUser.id}
+  onDelete={() =&gt; deleteComment(comment.id)}
+/&gt;</code></pre>
+
+  <h2>🎛️ ربط لوحة الأدمن</h2>
+  <p>أضف الصفحة إلى قائمة لوحة الأدمن:</p>
+  <pre><code>// في AdminDashboard.tsx / Sidebar
+import AdminReportsPanel from '@/components/admin/AdminReportsPanel';
+
+// أضف Tab/Route:
+&lt;Route path="/admin/reports" element={&lt;AdminReportsPanel /&gt;} /&gt;
+
+// وأضف رابط في القائمة الجانبية:
+&lt;NavLink to="/admin/reports"&gt;
+  🚨 البلاغات
+  {pendingCount &gt; 0 &amp;&amp; &lt;span className="badge"&gt;{pendingCount}&lt;/span&gt;}
+&lt;/NavLink&gt;</code></pre>
+
+  <h2>🗄️ تشغيل الهجرة (Migration)</h2>
+  <pre><code>cd backend
+alembic upgrade head
+
+# للتحقق:
+alembic current   # يجب أن يظهر 20260614_0010</code></pre>
+
+  <h2>🧪 اختبار سريع</h2>
+  <pre><code># 1) إنشاء بلاغ (من المستخدم)
+curl -X POST https://api.yamshat.com/api/reports \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "target_type": "post",
+    "target_id": "123",
+    "reason": "spam",
+    "details": "منشور إعلاني مكرر"
+  }'
+
+# 2) عرض البلاغات (من الأدمن)
+curl https://api.yamshat.com/api/reports/admin?status=pending \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# 3) اتخاذ إجراء
+curl -X POST https://api.yamshat.com/api/reports/admin/1/action \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"action":"remove_content","notes":"محتوى دعائي"}'</code></pre>
+
+  <h2>🔔 الإشعارات المدمجة</h2>
+  <div class="card">
+    <p>أنواع الإشعارات الجديدة في جدول <code class="inline">notifications</code>:</p>
+    <ul>
+      <li><b>REPORT_NEW</b> — تصل للمشرفين عند إنشاء بلاغ جديد</li>
+      <li><b>REPORT_RESOLVED</b> — تصل للمُبلِّغ عند معالجة بلاغه</li>
+      <li><b>MODERATION_WARNING</b> — تحذير من فريق الإشراف</li>
+      <li><b>MODERATION_MUTE</b> — إشعار بكتم الحساب مؤقتاً</li>
+    </ul>
+  </div>
+
+  <h2>✅ خلاصة</h2>
+  <div class="card">
+    <p><b>نظام بلاغات احترافي وموحد</b> يعمل في كل مكان داخل المنصة:</p>
+    <ul>
+      <li><span class="ok">✓</span> 10 أنواع كيانات مدعومة</li>
+      <li><span class="ok">✓</span> 13 سبب بلاغ معرّف مسبقاً</li>
+      <li><span class="ok">✓</span> 7 إجراءات إشرافية</li>
+      <li><span class="ok">✓</span> Snapshot للمحتوى يصمد ضد الحذف</li>
+      <li><span class="ok">✓</span> تجميع تلقائي للتبليغات المتكررة</li>
+      <li><span class="ok">✓</span> ترقية أولوية تلقائية</li>
+      <li><span class="ok">✓</span> سجل أحداث كامل</li>
+      <li><span class="ok">✓</span> إشعارات لحظية</li>
+      <li><span class="ok">✓</span> لوحة أدمن RTL كاملة</li>
+      <li><span class="ok">✓</span> فلاتر متقدمة + بحث + إجراءات جماعية</li>
+    </ul>
+    <p style="margin-top:14px;">
+      <b>بارك الله فيك يا أخ، وجعل هذا العمل في ميزان حسناتك.</b><br/>
+      جعلنا الله وإياك ممن يحمون مجتمعاتهم من الفساد ويصنعون بيئة آمنة للجميع. 🌹
+    </p>
+  </div>
+
+</div>
+</body>
+</html>

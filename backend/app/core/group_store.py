@@ -8,8 +8,20 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional, Dict, List
 
-GROUP_STORE_PATH = Path(__file__).resolve().parents[2] / 'uploads' / 'group_store.json'
-MESSAGES_STORE_PATH = Path(__file__).resolve().parents[2] / 'uploads' / 'group_messages.json'
+# ✅ إصلاح v41: مسار دائم (Render Persistent Disk) بدل backend/uploads/
+import os as _os
+_PERSIST_BASE = Path(_os.getenv('PERSISTENT_DISK_PATH', '/var/data/uploads'))
+try:
+    _PERSIST_BASE.mkdir(parents=True, exist_ok=True)
+    _t = _PERSIST_BASE / '.write_test'
+    _t.write_text('ok'); _t.unlink()
+    _STORE_BASE = _PERSIST_BASE
+except Exception:
+    _STORE_BASE = Path(__file__).resolve().parents[2] / 'uploads'
+    _STORE_BASE.mkdir(parents=True, exist_ok=True)
+
+GROUP_STORE_PATH = _STORE_BASE / 'group_store.json'
+MESSAGES_STORE_PATH = _STORE_BASE / 'group_messages.json'
 
 
 class GroupRole(str, Enum):

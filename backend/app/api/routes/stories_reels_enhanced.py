@@ -205,15 +205,21 @@ async def create_story(
     """
     try:
         from app.models.story import Story
-        
-        # حفظ الملف
-        file_path = f"uploads/stories/{current_user.id}/{datetime.utcnow().timestamp()}_{file.filename}"
-        # يمكن استخدام خدمة التحميل المتقدمة هنا
-        
-        # إنشاء الستوري
+        from app.services.media_storage_service import save_media_permanently
+
+        # ✅ إصلاح v41: حفظ دائم بدلاً من filesystem المؤقت
+        is_video = (file.content_type or "").startswith("video")
+        media_result = await save_media_permanently(
+            file=file,
+            folder="stories",
+            user_id=current_user.id,
+            is_video=is_video,
+        )
+
+        # إنشاء الستوري برابط دائم
         story = Story(
             user_id=current_user.id,
-            media_url=file_path,
+            media_url=media_result["url"],
             caption=caption,
             duration=duration,
             created_at=datetime.utcnow(),
@@ -420,22 +426,37 @@ async def create_reel(
     """
     try:
         from app.models.reel import Reel
-        
-        # حفظ الملفات
-        video_path = f"uploads/reels/{current_user.id}/{datetime.utcnow().timestamp()}_{file.filename}"
-        thumbnail_path = f"uploads/reels/thumbnails/{current_user.id}/{datetime.utcnow().timestamp()}_{thumbnail.filename}"
-        
-        # إنشاء الريل
+        from app.services.media_storage_service import save_media_permanently
+
+        # ✅ إصلاح v41: حفظ دائم (Cloudinary أو Persistent Disk) بدل filesystem المؤقت
+        video_result = await save_media_permanently(
+            file=file,
+            folder="reels/videos",
+            user_id=current_user.id,
+            is_video=True,
+        )
+        thumb_result = await save_media_permanently(
+            file=thumbnail,
+            folder="reels/thumbnails",
+            user_id=current_user.id,
+            is_video=False,
+        )
+
+        # إنشاء الريل — الرابط الآن دائم ولن يختفي عند إعادة النشر
         reel = Reel(
             user_id=current_user.id,
-            video_url=video_path,
-            thumbnail_url=thumbnail_path,
+            video_url=video_result["url"],
+            thumbnail_url=thumb_result["url"],
             caption=caption,
             category=category,
             created_at=datetime.utcnow()
         )
         db.add(reel)
         db.commit()
+        logger.info(
+            "✅ Reel saved permanently. storage=%s url=%s",
+            video_result["storage"], video_result["url"],
+        )
 
         return {
             "success": True,

@@ -32,6 +32,7 @@ from app.models.post import Post
 from app.models.user import User
 from app.models.user_wallet import UserWallet
 from app.services.auth_service import register_user
+from app.services.dashboard_live_service import get_live_dashboard
 
 router = APIRouter()
 
@@ -512,6 +513,17 @@ def get_rbac(current_user: User = Depends(get_current_user)):
             for role, permissions in ROLE_PERMISSIONS.items()
         ],
     }
+
+
+@router.get('/dashboard/live')
+def get_dashboard_live(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """الإحصائيات الحية المرتبطة بلوحة المدير العام (frontend AdminDashboard.jsx).
+
+    تستبدل القيم التجريبية الثابتة بأرقام حقيقية من قاعدة البيانات:
+    المستخدمون، المشاهدات، الإيرادات، المنشورات، الريلز، الستوري والشات.
+    """
+    _require_permission(current_user, 'dashboard.view')
+    return get_live_dashboard(db)
 
 
 @router.get('/overview')

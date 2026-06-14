@@ -27,8 +27,19 @@ router = APIRouter()
 # producing 404 after a seemingly successful upload.
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
-UPLOAD_DIR = PROJECT_ROOT / 'uploads'
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# ✅ إصلاح v41: الأولوية لـ Persistent Disk على Render
+# إذا لم يتوفر، استخدم المسار المحلي (التطوير فقط)
+_PERSISTENT_PATH = Path(os.getenv('PERSISTENT_DISK_PATH', '/var/data/uploads'))
+try:
+    _PERSISTENT_PATH.mkdir(parents=True, exist_ok=True)
+    _t = _PERSISTENT_PATH / '.write_test'
+    _t.write_text('ok'); _t.unlink()
+    UPLOAD_DIR = _PERSISTENT_PATH
+except Exception:
+    UPLOAD_DIR = PROJECT_ROOT / 'uploads'
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
 LEGACY_UPLOAD_DIR = BACKEND_ROOT / 'uploads'
 LEGACY_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 CHUNKS_DIR = UPLOAD_DIR / 'chunks'

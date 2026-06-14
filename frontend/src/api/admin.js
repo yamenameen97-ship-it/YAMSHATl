@@ -1,6 +1,8 @@
 import API from './axios.js';
 
 export const getAdminOverview = () => API.get('/admin/overview', { cache: true, cacheTtlMs: 15_000 });
+// 📊 إحصائيات حية للوحة المدير العام (AdminDashboard.jsx) — أرقام حقيقية من DB
+export const getAdminDashboardLive = () => API.get('/admin/dashboard/live', { cache: true, cacheTtlMs: 12_000 });
 export const searchAdmin = (q) => API.get('/admin/search', { params: { q } });
 export const getAdminUsers = (params) => API.get('/admin/users', { params });
 export const getAdminUser = (userId) => API.get(`/admin/users/${userId}`, { cache: false, forceRefresh: true });

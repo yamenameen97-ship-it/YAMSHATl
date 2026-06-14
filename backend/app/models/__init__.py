@@ -22,6 +22,7 @@ from app.models.user_preference import UserPreference  # noqa: F401
 from app.models.user_profile import UserProfile  # noqa: F401
 from app.models.user_session import UserSession  # noqa: F401
 from app.models.user_wallet import UserWallet  # noqa: F401
+from app.models.platform_metrics import PlatformMetricsDaily, PostView, RevenueTransaction  # noqa: F401
 from app.models.report import Report, ReportEvent  # noqa: F401
 from app.models.search_history import SearchCategoryEnum, SearchHistory  # noqa: F401
 from app.models.stories_reels import Reel, ReelComment, ReelLike, ReelView, SavedReel, Story, StoryReply, StoryView  # noqa: F401

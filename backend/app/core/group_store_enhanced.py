@@ -8,8 +8,22 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional, Dict, List
 
-GROUP_STORE_PATH = Path(__file__).resolve().parents[2] / 'uploads' / 'group_store.json'
-MESSAGES_STORE_PATH = Path(__file__).resolve().parents[2] / 'uploads' / 'group_messages.json'
+# ✅ إصلاح v41: استخدام مسار دائم (Render Persistent Disk) بدل backend/uploads/
+# السبب: backend/uploads يُمسح عند كل إعادة نشر على Render
+import os as _os
+_PERSIST_BASE = Path(_os.getenv('PERSISTENT_DISK_PATH', '/var/data/uploads'))
+try:
+    _PERSIST_BASE.mkdir(parents=True, exist_ok=True)
+    _test = _PERSIST_BASE / '.write_test'
+    _test.write_text('ok')
+    _test.unlink()
+    _STORE_BASE = _PERSIST_BASE
+except Exception:
+    _STORE_BASE = Path(__file__).resolve().parents[2] / 'uploads'
+    _STORE_BASE.mkdir(parents=True, exist_ok=True)
+
+GROUP_STORE_PATH = _STORE_BASE / 'group_store.json'
+MESSAGES_STORE_PATH = _STORE_BASE / 'group_messages.json'
 
 
 class GroupRole(str, Enum):
@@ -614,9 +628,32 @@ class GroupStore:
         }
 
     def _load(self) -> None:
-        """تحميل البيانات من الملف"""
+        """تحميل البيانات — أولوية: ملف دائم، ثم backup من PostgreSQL"""
         try:
             GROUP_STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+            # ✅ إصلاح v41: إذا لم يوجد الملف (بعد إعادة نشر)، استعد من PostgreSQL
+            if not GROUP_STORE_PATH.exists():
+                try:
+                    from app.db.session import SessionLocal
+                    from sqlalchemy import text
+                    db = SessionLocal()
+                    try:
+                        row = db.execute(text(
+                            "SELECT snapshot FROM group_store_backup WHERE id = 1"
+                        )).fetchone()
+                        if row and row[0]:
+                            snapshot_data = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+                            GROUP_STORE_PATH.write_text(
+                                json.dumps(snapshot_data, ensure_ascii=False, indent=2),
+                                encoding='utf-8'
+                            )
+                            print("✅ Groups restored from PostgreSQL backup")
+                    finally:
+                        db.close()
+                except Exception as e:
+                    print(f"⚠️ No DB backup available for groups: {e}")
+
             if not GROUP_STORE_PATH.exists():
                 return
             payload = json.loads(GROUP_STORE_PATH.read_text(encoding='utf-8') or '{}')
@@ -717,7 +754,8 @@ class GroupStore:
             self._next_id = 1
 
     def _save(self) -> None:
-        """حفظ البيانات إلى الملف"""
+        """حفظ البيانات إلى الملف + نسخة احتياطية إلى PostgreSQL"""
+        # 1) الحفظ إلى المسار الدائم
         try:
             GROUP_STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
             GROUP_STORE_PATH.write_text(
@@ -725,7 +763,33 @@ class GroupStore:
                 encoding='utf-8'
             )
         except Exception as e:
-            print(f"Error saving groups: {e}")
+            print(f"Error saving groups to disk: {e}")
+
+        # 2) ✅ إصلاح v41: نسخة احتياطية دائمة إلى PostgreSQL
+        # حتى لو مُسح Persistent Disk، البيانات تبقى في قاعدة البيانات
+        try:
+            from app.db.session import SessionLocal
+            from sqlalchemy import text
+            db = SessionLocal()
+            try:
+                db.execute(text(
+                    """CREATE TABLE IF NOT EXISTS group_store_backup (
+                        id INTEGER PRIMARY KEY DEFAULT 1,
+                        snapshot JSONB NOT NULL,
+                        updated_at TIMESTAMP DEFAULT NOW()
+                    )"""
+                ))
+                db.execute(text(
+                    """INSERT INTO group_store_backup (id, snapshot, updated_at)
+                       VALUES (1, CAST(:s AS JSONB), NOW())
+                       ON CONFLICT (id) DO UPDATE
+                       SET snapshot = EXCLUDED.snapshot, updated_at = NOW()"""
+                ), {"s": json.dumps(self._serialize_store(), ensure_ascii=False)})
+                db.commit()
+            finally:
+                db.close()
+        except Exception as e:
+            print(f"⚠️ DB backup of groups skipped: {e}")
 
 
 group_store = GroupStore()

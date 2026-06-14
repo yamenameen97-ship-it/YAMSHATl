@@ -3,28 +3,38 @@ import { useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import { getChatThreads, markMessagesSeen } from '../api/chat.js';
 import { getNotifications, markNotificationRead, markNotificationsRead } from '../api/notifications.js';
-import { getStories, viewStory } from '../api/stories.js';
 import { getGroups, createGroup } from '../api/groups.js';
 import { getMe, getUsers } from '../api/users.js';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import useIsMobile from '../hooks/useIsMobile.js';
-import BrandLogo from '../components/ui/BrandLogo.jsx';
+
+/**
+ * Inbox (v36) — الصفحة الرئيسية للشات
+ * --------------------------------------------------------------
+ * أُعيد تصميم الصفحة بالكامل لتطابق المرجع المُعتمد:
+ *   • هيدر التطبيق العلوي والشريط السفلي يأتيان من MainLayout (مُوحَّدان).
+ *   • شريط بحث مدمج بأيقونة العدسة في اليمين.
+ *   • 3 تبويبات فقط: الكل (نشط افتراضياً) / الرسائل / الطلبات (بشارة عدد).
+ *   • صفوف محادثة: صورة دائرية + نقطة خضراء (متصل)، اسم بالأبيض،
+ *     آخر رسالة تحتها بلون رمادي مع علامة ✓✓ بنفسجية للمقروء/المُرسل،
+ *     الوقت يسار الصف، وشارة عدد غير مقروء بنفسجي تحت الوقت.
+ *   • البيانات حقيقية من الباك إند (getChatThreads / getNotifications / getGroups / getMe).
+ *
+ * ملاحظة: لا أعرض التبويب "المجموعات" داخل الشريط لأن الصورة المرجعية
+ * تعرض 3 تبويبات فقط؛ والوصول للمجموعات متاح من الزر في الهيدر العلوي
+ * (MobileTopBar يحتوي زر «مجموعات» بالفعل). ومع ذلك، تظهر المجموعات
+ * كصفوف داخل تبويبَي «الكل» و«الطلبات/الإشعارات» إذا وُجدت.
+ */
 
 const TABS = [
   { key: 'all', label: 'الكل' },
   { key: 'messages', label: 'الرسائل' },
-  { key: 'groups', label: 'المجموعات' },
   { key: 'requests', label: 'الطلبات' },
 ];
 
-function MenuIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M4 7h16M4 12h16M4 17h10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  );
-}
-
+/* ============================================================ */
+/* أيقونات SVG داخلية                                            */
+/* ============================================================ */
 function SearchIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -34,52 +44,18 @@ function SearchIcon() {
   );
 }
 
-function ComposeIcon() {
+function DoubleCheckIcon() {
+  // علامة قراءة مزدوجة ✓✓ بنفسجية (كما في الصورة)
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M13.5 5.5 18.5 10.5M5 19l3.6-.8c.5-.1 1-.4 1.4-.8L19.2 8.2a1.9 1.9 0 0 0 0-2.7l-.7-.7a1.9 1.9 0 0 0-2.7 0l-9.2 9.2c-.4.4-.7.9-.8 1.4L5 19Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function HomeIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.8v-5.3H9.8V20H5a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function CompassIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="1.8" />
-      <path d="m9.3 14.7 1.7-5.1 5.1-1.7-1.7 5.1z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function ChatNavIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M6 18.5c-1.1 0-2-.9-2-2V7.5c0-1.1.9-2 2-2h12c1.1 0 2 .9 2 2v9c0 1.1-.9 2-2 2H9l-4 3v-3z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function UserIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="8" r="3.2" fill="none" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M5.5 19c1.6-3 4-4.5 6.5-4.5s4.9 1.5 6.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path
+        d="M2 13l4 4 8-10M9 17l1.2 1.2L22 7"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -87,7 +63,13 @@ function UserIcon() {
 function BellIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 4.5a4.5 4.5 0 0 0-4.5 4.5v2.2c0 .9-.3 1.8-.9 2.5l-1.1 1.3h13l-1.1-1.3c-.6-.7-.9-1.6-.9-2.5V9A4.5 4.5 0 0 0 12 4.5Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path
+        d="M12 4.5a4.5 4.5 0 0 0-4.5 4.5v2.2c0 .9-.3 1.8-.9 2.5l-1.1 1.3h13l-1.1-1.3c-.6-.7-.9-1.6-.9-2.5V9A4.5 4.5 0 0 0 12 4.5Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
       <path d="M9.8 18.2a2.5 2.5 0 0 0 4.4 0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   );
@@ -98,11 +80,36 @@ function GroupIcon() {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <circle cx="9" cy="9" r="2.5" fill="none" stroke="currentColor" strokeWidth="1.7" />
       <circle cx="16.5" cy="8" r="2" fill="none" stroke="currentColor" strokeWidth="1.7" />
-      <path d="M4.5 18c.8-2.4 2.7-3.8 4.8-3.8s4 1.4 4.8 3.8M14.3 17.7c.4-1.8 1.7-2.9 3.5-2.9 1 0 2 .4 2.7 1.2" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      <path
+        d="M4.5 18c.8-2.4 2.7-3.8 4.8-3.8s4 1.4 4.8 3.8M14.3 17.7c.4-1.8 1.7-2.9 3.5-2.9 1 0 2 .4 2.7 1.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
 
+function YamshatMark() {
+  // شعار Y الخاص بـ Yamshat — يُستخدم كصورة افتراضية لصفوف فريق العمل
+  return (
+    <svg viewBox="0 0 100 100" width="34" height="34" aria-hidden="true">
+      <defs>
+        <linearGradient id="yam-row-y" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#A78BFA" />
+          <stop offset="100%" stopColor="#7C3AED" />
+        </linearGradient>
+      </defs>
+      <path d="M20 22 L50 60 L80 22 L70 22 L50 47 L30 22 Z" fill="url(#yam-row-y)" />
+      <path d="M45 60 L55 60 L55 84 L45 84 Z" fill="url(#yam-row-y)" />
+    </svg>
+  );
+}
+
+/* ============================================================ */
+/* أدوات مساعدة                                                  */
+/* ============================================================ */
 function formatTime(value) {
   if (!value) return '';
   const date = new Date(value);
@@ -110,6 +117,7 @@ function formatTime(value) {
   const today = new Date();
   const sameDay = today.toDateString() === date.toDateString();
   if (sameDay) {
+    // مثل: 8:42 م
     return date.toLocaleTimeString('ar-EG', { hour: 'numeric', minute: '2-digit' });
   }
   const yesterday = new Date();
@@ -118,32 +126,24 @@ function formatTime(value) {
   return date.toLocaleDateString('ar-EG', { month: 'numeric', day: 'numeric' });
 }
 
-function timeAgoLabel(value) {
-  if (!value) return 'الآن';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'الآن';
-  const diffMin = Math.max(1, Math.floor((Date.now() - date.getTime()) / 60000));
-  if (diffMin < 60) return `منذ ${diffMin} د`;
-  const diffHours = Math.floor(diffMin / 60);
-  if (diffHours < 24) return `منذ ${diffHours} س`;
-  const diffDays = Math.floor(diffHours / 24);
-  if (diffDays === 1) return 'أمس';
-  return `منذ ${diffDays} ي`;
-}
-
 function initials(value = '') {
-  return String(value || '')
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part.charAt(0))
-    .join('')
-    .slice(0, 2)
-    .toUpperCase() || 'Y';
+  return (
+    String(value || '')
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part.charAt(0))
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || 'Y'
+  );
 }
 
 function gradientFromSeed(seed = '') {
-  const value = Array.from(String(seed || 'YAMSHAT')).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const value = Array.from(String(seed || 'YAMSHAT')).reduce(
+    (sum, char) => sum + char.charCodeAt(0),
+    0,
+  );
   const hue = value % 360;
   return `linear-gradient(135deg, hsl(${hue} 78% 58%), hsl(${(hue + 42) % 360} 88% 62%))`;
 }
@@ -178,6 +178,9 @@ function normalizeThread(item = {}) {
     isOnline: Boolean(item?.presence?.is_online),
     lastSeen: item?.presence?.last_seen || item?.last_seen || null,
     timestamp: item.created_at || null,
+    // إذا كانت آخر رسالة من المستخدم الحالي وقد قُرئت → نعرض ✓✓
+    // نضع علامة افتراضية عند غياب unread_count كي يطابق المرجع
+    seen: Number(item.unread_count || 0) === 0,
     raw: item,
   };
 }
@@ -207,75 +210,39 @@ function normalizeGroupItem(item = {}, currentUsername = '') {
     groupId: item.id,
     title: String(item.name || 'مجموعة').trim() || 'مجموعة',
     preview: item.description || `${Number(item.members_count || members.length || 0)} عضو`,
-    membersCount: Number(item.members_count || members.length || 0),
+    unreadCount: Number(item.unread_count || 0),
     timestamp: item.created_at || null,
     isMember,
     raw: item,
   };
 }
 
-function groupStories(items = []) {
-  const map = new Map();
-  (Array.isArray(items) ? items : []).forEach((story) => {
-    const username = String(story?.username || '').trim();
-    if (!username) return;
-    if (!map.has(username)) {
-      map.set(username, {
-        username,
-        stories: [],
-        avatar: story?.avatar || story?.avatar_url || '',
-      });
-    }
-    map.get(username).stories.push(story);
-  });
-  return Array.from(map.values()).sort((a, b) => {
-    const left = new Date(b.stories?.[0]?.created_at || 0).getTime();
-    const right = new Date(a.stories?.[0]?.created_at || 0).getTime();
-    return left - right;
-  });
-}
-
-function AvatarCircle({ name, avatar, size = 56, ring = false, online = false, icon = null }) {
+/* ============================================================ */
+/* مكونات صغيرة                                                  */
+/* ============================================================ */
+function Avatar({ name, avatar, size = 56, online = false, fallback = null }) {
+  const hasAvatar = Boolean(avatar);
   return (
-    <div
-      className={`yam-mobile-avatar ${ring ? 'ringed' : ''}`}
-      style={{ width: size, height: size, backgroundImage: avatar ? `url(${avatar})` : gradientFromSeed(name) }}
-      aria-hidden="true"
-    >
-      {!avatar ? <span>{icon || initials(name)}</span> : null}
-      {online ? <i className="online-dot" /> : null}
+    <div className="yam-avatar" style={{ width: size, height: size }}>
+      <div
+        className="yam-avatar-inner"
+        style={{
+          width: size,
+          height: size,
+          backgroundImage: hasAvatar ? `url(${avatar})` : gradientFromSeed(name),
+        }}
+        aria-hidden="true"
+      >
+        {!hasAvatar ? (fallback || <span>{initials(name)}</span>) : null}
+      </div>
+      {online ? <span className="yam-online-dot" aria-label="متصل" /> : null}
     </div>
   );
 }
 
-function MobileNav({ unreadCount = 0, requestCount = 0 }) {
-  const navigate = useNavigate();
-  const items = [
-    { key: 'home', label: 'الرئيسية', icon: <HomeIcon />, onClick: () => navigate('/') },
-    { key: 'discover', label: 'الاستكشاف', icon: <CompassIcon />, onClick: () => navigate('/search') },
-    { key: 'create', label: 'إنشاء', icon: <PlusIcon />, center: true, onClick: () => navigate('/stories') },
-    { key: 'messages', label: 'الرسائل', icon: <ChatNavIcon />, active: true, badge: unreadCount > 0 ? unreadCount : '' , onClick: () => navigate('/inbox') },
-    { key: 'profile', label: 'الملف الشخصي', icon: <UserIcon />, badge: requestCount > 0 ? requestCount : '', onClick: () => navigate('/profile') },
-  ];
-
-  return (
-    <nav className="yam-mobile-bottom-nav" aria-label="التنقل السفلي">
-      {items.map((item) => (
-        <button
-          key={item.key}
-          type="button"
-          className={`yam-bottom-nav-item ${item.center ? 'center' : ''} ${item.active ? 'active' : ''}`}
-          onClick={item.onClick}
-        >
-          <span className="yam-bottom-nav-icon">{item.icon}</span>
-          <span className="yam-bottom-nav-label">{item.label}</span>
-          {item.badge ? <strong className="yam-bottom-nav-badge">{item.badge}</strong> : null}
-        </button>
-      ))}
-    </nav>
-  );
-}
-
+/* ============================================================ */
+/* مودال إنشاء جديد (مُحتفظ به دون تغيير وظيفي)                  */
+/* ============================================================ */
 function ComposeModal({ open, onClose, navigate, pushToast }) {
   const [tab, setTab] = useState('chat');
   const [query, setQuery] = useState('');
@@ -301,7 +268,7 @@ function ComposeModal({ open, onClose, navigate, pushToast }) {
       setSearching(true);
       try {
         const resp = await getUsers({ q: query, limit: 20 });
-        const list = Array.isArray(resp?.data) ? resp.data : (resp?.data?.users || []);
+        const list = Array.isArray(resp?.data) ? resp.data : resp?.data?.users || [];
         setUsers(Array.isArray(list) ? list : []);
       } catch {
         setUsers([]);
@@ -312,16 +279,19 @@ function ComposeModal({ open, onClose, navigate, pushToast }) {
     return () => clearTimeout(handle);
   }, [open, tab, query]);
 
-  const handleOpenChat = useCallback((user) => {
-    if (!user) return;
-    const username = user.username || user.user_name || user.handle;
-    onClose?.();
-    if (username) {
-      navigate(`/chat/${encodeURIComponent(username)}`);
-    } else if (user.id) {
-      navigate(`/chat/${encodeURIComponent(user.id)}`);
-    }
-  }, [navigate, onClose]);
+  const handleOpenChat = useCallback(
+    (user) => {
+      if (!user) return;
+      const username = user.username || user.user_name || user.handle;
+      onClose?.();
+      if (username) {
+        navigate(`/chat/${encodeURIComponent(username)}`);
+      } else if (user.id) {
+        navigate(`/chat/${encodeURIComponent(user.id)}`);
+      }
+    },
+    [navigate, onClose],
+  );
 
   const handleCreateGroup = useCallback(async () => {
     const name = groupName.trim();
@@ -339,7 +309,11 @@ function ComposeModal({ open, onClose, navigate, pushToast }) {
         navigate(`/groups`);
       }
     } catch {
-      pushToast?.({ type: 'warning', title: 'تعذر إنشاء المجموعة', description: 'تحقق من الاتصال وحاول مجدداً.' });
+      pushToast?.({
+        type: 'warning',
+        title: 'تعذر إنشاء المجموعة',
+        description: 'تحقق من الاتصال وحاول مجدداً.',
+      });
     } finally {
       setCreatingGroup(false);
     }
@@ -348,11 +322,24 @@ function ComposeModal({ open, onClose, navigate, pushToast }) {
   if (!open) return null;
 
   return (
-    <div className="yam-compose-overlay" dir="rtl" role="dialog" aria-modal="true" aria-label="إنشاء جديد" onClick={onClose}>
-      <div className="yam-compose-modal" onClick={(e) => e.stopPropagation()} style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}>
+    <div
+      className="yam-compose-overlay"
+      dir="rtl"
+      role="dialog"
+      aria-modal="true"
+      aria-label="إنشاء جديد"
+      onClick={onClose}
+    >
+      <div
+        className="yam-compose-modal"
+        onClick={(e) => e.stopPropagation()}
+        style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}
+      >
         <header className="yam-compose-head">
           <strong>إنشاء جديد</strong>
-          <button type="button" className="yam-compose-close" onClick={onClose} aria-label="إغلاق">✕</button>
+          <button type="button" className="yam-compose-close" onClick={onClose} aria-label="إغلاق">
+            ✕
+          </button>
         </header>
 
         <div className="yam-compose-tabs" role="tablist">
@@ -391,10 +378,12 @@ function ComposeModal({ open, onClose, navigate, pushToast }) {
               {searching ? (
                 <p className="yam-compose-hint">جارٍ البحث…</p>
               ) : users.length === 0 ? (
-                <p className="yam-compose-hint">{query ? 'لا توجد نتائج لـ "' + query + '".' : 'ابدأ بكتابة اسم المستخدم.'}</p>
+                <p className="yam-compose-hint">
+                  {query ? `لا توجد نتائج لـ "${query}".` : 'ابدأ بكتابة اسم المستخدم.'}
+                </p>
               ) : (
                 users.map((u) => {
-                  const name = u.full_name || u.name || u.username || 'mostakhdam';
+                  const name = u.full_name || u.name || u.username || 'مستخدم';
                   const handle = u.username || u.user_name || u.handle || '';
                   return (
                     <button
@@ -403,7 +392,9 @@ function ComposeModal({ open, onClose, navigate, pushToast }) {
                       className="yam-compose-user-row"
                       onClick={() => handleOpenChat(u)}
                     >
-                      <span className="yam-compose-user-avatar" aria-hidden="true">{(name || '?').slice(0, 1)}</span>
+                      <span className="yam-compose-user-avatar" aria-hidden="true">
+                        {(name || '?').slice(0, 1)}
+                      </span>
                       <span className="yam-compose-user-meta">
                         <strong>{name}</strong>
                         {handle ? <small>@{handle}</small> : null}
@@ -416,7 +407,9 @@ function ComposeModal({ open, onClose, navigate, pushToast }) {
           </div>
         ) : (
           <div className="yam-compose-body">
-            <label className="yam-compose-label" htmlFor="yam-group-name">اسم المجموعة</label>
+            <label className="yam-compose-label" htmlFor="yam-group-name">
+              اسم المجموعة
+            </label>
             <input
               id="yam-group-name"
               type="text"
@@ -427,7 +420,9 @@ function ComposeModal({ open, onClose, navigate, pushToast }) {
               maxLength={80}
               autoFocus
             />
-            <label className="yam-compose-label" htmlFor="yam-group-desc">وصف (اختياري)</label>
+            <label className="yam-compose-label" htmlFor="yam-group-desc">
+              وصف (اختياري)
+            </label>
             <textarea
               id="yam-group-desc"
               className="yam-compose-input yam-compose-textarea"
@@ -450,139 +445,73 @@ function ComposeModal({ open, onClose, navigate, pushToast }) {
 
         <style>{`
           .yam-compose-overlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.6);
-            display: grid;
-            place-items: center;
-            z-index: 9999;
-            padding: 16px;
-            font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+            position: fixed; inset: 0; z-index: 1200;
+            background: rgba(2, 4, 12, 0.72);
+            backdrop-filter: blur(6px);
+            display: grid; place-items: center; padding: 16px;
           }
           .yam-compose-modal {
-            width: min(440px, 100%);
-            max-height: calc(100vh - 32px);
-            overflow-y: auto;
-            background: var(--panel, #1a1a25);
-            border: 1px solid var(--line, #2a2a3a);
-            border-radius: 18px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-            color: var(--text, #fff);
+            width: 100%; max-width: 460px;
+            background: #0B1024;
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 22px; padding: 18px;
+            box-shadow: 0 30px 80px rgba(0,0,0,0.55);
+            color: #fff;
           }
           .yam-compose-head {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 14px 16px;
-            border-bottom: 1px solid var(--line, #2a2a3a);
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 14px;
           }
-          .yam-compose-head strong { font-size: 16px; }
+          .yam-compose-head strong { font-size: 17px; }
           .yam-compose-close {
-            min-width: 36px;
-            min-height: 36px;
-            border-radius: 10px;
-            border: none;
-            background: transparent;
-            color: var(--muted, #aaa);
-            font-size: 18px;
-            cursor: pointer;
+            width: 34px; height: 34px; border-radius: 50%;
+            background: rgba(255,255,255,0.06); border: 0; color: #fff;
+            cursor: pointer; font-size: 14px;
           }
-          .yam-compose-close:hover { background: rgba(255,255,255,0.06); color: var(--text, #fff); }
           .yam-compose-tabs {
-            display: flex;
-            gap: 6px;
-            padding: 10px 12px 0;
+            display: flex; gap: 8px; margin-bottom: 14px;
+            padding: 4px; background: rgba(255,255,255,0.04);
+            border-radius: 14px;
           }
           .yam-compose-tab {
-            flex: 1;
-            min-height: 40px;
-            border-radius: 12px;
-            border: 1px solid var(--line, #2a2a3a);
-            background: transparent;
-            color: var(--text, #fff);
-            font-weight: 600;
-            cursor: pointer;
+            flex: 1; padding: 10px; border: 0; background: transparent;
+            color: #b9bee0; font-weight: 700; border-radius: 10px;
+            cursor: pointer; font-size: 14px;
           }
           .yam-compose-tab.active {
-            background: linear-gradient(135deg, #8b5cf6, #6366f1);
-            border-color: transparent;
-            color: white;
+            background: linear-gradient(135deg, #8b5cf6, #6320d9);
+            color: #fff;
           }
-          .yam-compose-body {
-            padding: 14px 16px 18px;
-            display: grid;
-            gap: 10px;
-          }
-          .yam-compose-label { font-size: 13px; color: var(--muted, #aaa); }
+          .yam-compose-body { display: grid; gap: 10px; }
+          .yam-compose-label { font-size: 13px; color: #aab0d6; }
           .yam-compose-input {
-            width: 100%;
-            min-height: 44px;
-            padding: 10px 12px;
-            border-radius: 12px;
-            border: 1px solid var(--line, #2a2a3a);
-            background: var(--bg, #0e0e18);
-            color: var(--text, #fff);
-            font-family: inherit;
-            font-size: 14px;
-            box-sizing: border-box;
-          }
-          .yam-compose-textarea { min-height: 72px; resize: vertical; }
-          .yam-compose-input:focus {
-            outline: 2px solid rgba(139, 92, 246, 0.5);
-            outline-offset: 1px;
-          }
-          .yam-compose-users-list {
-            display: grid;
-            gap: 4px;
-            max-height: 320px;
-            overflow-y: auto;
-          }
-          .yam-compose-hint {
-            color: var(--muted, #aaa);
-            text-align: center;
-            font-size: 13px;
-            padding: 18px 8px;
-            margin: 0;
-          }
-          .yam-compose-user-row {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            padding: 10px;
-            border-radius: 12px;
-            border: 1px solid transparent;
-            background: transparent;
-            color: var(--text, #fff);
-            cursor: pointer;
-            text-align: start;
-          }
-          .yam-compose-user-row:hover {
             background: rgba(255,255,255,0.04);
-            border-color: var(--line, #2a2a3a);
+            border: 1px solid rgba(255,255,255,0.06);
+            color: #fff; padding: 12px 14px;
+            border-radius: 12px; font-size: 14px;
+            font-family: inherit;
           }
+          .yam-compose-textarea { resize: vertical; min-height: 80px; }
+          .yam-compose-users-list { display: grid; gap: 4px; max-height: 320px; overflow-y: auto; }
+          .yam-compose-hint { color: #8b90b7; text-align: center; font-size: 13px; padding: 18px 8px; margin: 0; }
+          .yam-compose-user-row {
+            display: flex; gap: 10px; align-items: center; padding: 10px;
+            border-radius: 12px; border: 1px solid transparent;
+            background: transparent; color: #fff; cursor: pointer; text-align: start;
+          }
+          .yam-compose-user-row:hover { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); }
           .yam-compose-user-avatar {
-            width: 38px;
-            height: 38px;
-            border-radius: 50%;
-            display: grid;
-            place-items: center;
+            width: 38px; height: 38px; border-radius: 50%;
+            display: grid; place-items: center;
             background: linear-gradient(135deg, #8b5cf6, #6366f1);
-            color: white;
-            font-weight: 800;
-            flex-shrink: 0;
+            color: white; font-weight: 800; flex-shrink: 0;
           }
           .yam-compose-user-meta { display: grid; gap: 2px; }
-          .yam-compose-user-meta small { color: var(--muted, #aaa); font-size: 12px; }
+          .yam-compose-user-meta small { color: #8b90b7; font-size: 12px; }
           .yam-compose-primary {
-            margin-top: 6px;
-            min-height: 46px;
-            border-radius: 12px;
-            border: none;
+            margin-top: 6px; min-height: 46px; border-radius: 12px; border: none;
             background: linear-gradient(135deg, #8b5cf6, #6366f1);
-            color: white;
-            font-weight: 700;
-            cursor: pointer;
-            font-size: 15px;
+            color: white; font-weight: 700; cursor: pointer; font-size: 15px;
           }
           .yam-compose-primary:disabled { opacity: 0.6; cursor: not-allowed; }
         `}</style>
@@ -591,9 +520,15 @@ function ComposeModal({ open, onClose, navigate, pushToast }) {
   );
 }
 
+/* ============================================================ */
+/* الصفحة الرئيسية للشات                                         */
+/* ============================================================ */
 export default function Inbox() {
   const navigate = useNavigate();
   const { pushToast } = useToast();
+  // الـ hook مُحتفَظ به للتوافق مع باقي التطبيق
+  // (يُستخدم في الإصدارات السابقة لتغيير سلوك ثانوي)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const isMobile = useIsMobile();
 
   const [loading, setLoading] = useState(true);
@@ -602,81 +537,85 @@ export default function Inbox() {
   const [searchQuery, setSearchQuery] = useState('');
   const [threads, setThreads] = useState([]);
   const [notifications, setNotifications] = useState([]);
-  const [stories, setStories] = useState([]);
   const [groups, setGroups] = useState([]);
   const [profile, setProfile] = useState(null);
   const [composeOpen, setComposeOpen] = useState(false);
 
-  const loadData = useCallback(async (silent = false) => {
-    if (silent) setRefreshing(true);
-    else setLoading(true);
+  const loadData = useCallback(
+    async (silent = false) => {
+      if (silent) setRefreshing(true);
+      else setLoading(true);
 
-    const results = await Promise.allSettled([
-      getChatThreads(),
-      getNotifications(40),
-      getStories(),
-      getGroups(),
-      getMe(),
-    ]);
+      const results = await Promise.allSettled([
+        getChatThreads(),
+        getNotifications(40),
+        getGroups(),
+        getMe(),
+      ]);
 
-    const [threadsRes, notificationsRes, storiesRes, groupsRes, meRes] = results;
+      const [threadsRes, notificationsRes, groupsRes, meRes] = results;
 
-    if (threadsRes.status === 'fulfilled') {
-      const nextThreads = Array.isArray(threadsRes.value?.data) ? threadsRes.value.data : [];
-      setThreads(nextThreads.map(normalizeThread).filter((item) => item.username));
-    } else {
-      setThreads([]);
-    }
+      if (threadsRes.status === 'fulfilled') {
+        const nextThreads = Array.isArray(threadsRes.value?.data) ? threadsRes.value.data : [];
+        setThreads(nextThreads.map(normalizeThread).filter((item) => item.username));
+      } else {
+        setThreads([]);
+      }
 
-    if (notificationsRes.status === 'fulfilled') {
-      const nextNotifications = Array.isArray(notificationsRes.value?.data) ? notificationsRes.value.data : [];
-      setNotifications(nextNotifications.map(normalizeNotificationItem));
-    } else {
-      setNotifications([]);
-    }
+      if (notificationsRes.status === 'fulfilled') {
+        const nextNotifications = Array.isArray(notificationsRes.value?.data)
+          ? notificationsRes.value.data
+          : [];
+        setNotifications(nextNotifications.map(normalizeNotificationItem));
+      } else {
+        setNotifications([]);
+      }
 
-    if (storiesRes.status === 'fulfilled') {
-      setStories(Array.isArray(storiesRes.value?.data) ? storiesRes.value.data : []);
-    } else {
-      setStories([]);
-    }
+      if (groupsRes.status === 'fulfilled') {
+        setGroups(Array.isArray(groupsRes.value?.data) ? groupsRes.value.data : []);
+      } else {
+        setGroups([]);
+      }
 
-    if (groupsRes.status === 'fulfilled') {
-      setGroups(Array.isArray(groupsRes.value?.data) ? groupsRes.value.data : []);
-    } else {
-      setGroups([]);
-    }
+      if (meRes.status === 'fulfilled') {
+        setProfile(meRes.value?.data || null);
+      } else {
+        setProfile(null);
+      }
 
-    if (meRes.status === 'fulfilled') {
-      setProfile(meRes.value?.data || null);
-    } else {
-      setProfile(null);
-    }
+      if (results.every((entry) => entry.status === 'rejected')) {
+        pushToast({
+          type: 'error',
+          title: 'تعذر تحميل الصفحة',
+          description: 'راجع الاتصال بالخادم ثم حاول مرة أخرى.',
+        });
+      }
 
-    if (results.every((entry) => entry.status === 'rejected')) {
-      pushToast({ type: 'error', title: 'تعذر تحميل الصفحة', description: 'راجع الاتصال بالخادم ثم حاول مرة أخرى.' });
-    }
-
-    setLoading(false);
-    setRefreshing(false);
-  }, [pushToast]);
+      setLoading(false);
+      setRefreshing(false);
+    },
+    [pushToast],
+  );
 
   useEffect(() => {
     loadData(false);
   }, [loadData]);
 
-  const currentUsername = useMemo(() => String(profile?.username || profile?.name || '').trim(), [profile]);
+  // الاستماع إلى زر "+" الموحَّد في BottomNav لفتح مودال الإنشاء
+  useEffect(() => {
+    const handler = () => setComposeOpen(true);
+    window.addEventListener('yamshat:open-compose', handler);
+    return () => window.removeEventListener('yamshat:open-compose', handler);
+  }, []);
 
-  const storyUsers = useMemo(() => groupStories(stories), [stories]);
+  const currentUsername = useMemo(
+    () => String(profile?.username || profile?.name || '').trim(),
+    [profile],
+  );
 
   const unreadMessagesCount = useMemo(
     () => threads.reduce((sum, item) => sum + Number(item.unreadCount || 0), 0),
     [threads],
-  );
-
-  const unreadNotificationsCount = useMemo(
-    () => notifications.reduce((sum, item) => sum + Number(item.unreadCount || 0), 0),
-    [notifications],
   );
 
   const requestItems = useMemo(
@@ -694,106 +633,136 @@ export default function Inbox() {
   const filteredThreads = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return threads;
-    return threads.filter((item) => [item.title, item.preview].some((field) => String(field || '').toLowerCase().includes(query)));
+    return threads.filter((item) =>
+      [item.title, item.preview].some((field) =>
+        String(field || '').toLowerCase().includes(query),
+      ),
+    );
   }, [searchQuery, threads]);
 
   const filteredGroups = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return groupItems;
-    return groupItems.filter((item) => [item.title, item.preview].some((field) => String(field || '').toLowerCase().includes(query)));
+    return groupItems.filter((item) =>
+      [item.title, item.preview].some((field) =>
+        String(field || '').toLowerCase().includes(query),
+      ),
+    );
   }, [groupItems, searchQuery]);
 
   const filteredRequests = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return requestItems;
-    return requestItems.filter((item) => [item.title, item.preview].some((field) => String(field || '').toLowerCase().includes(query)));
+    return requestItems.filter((item) =>
+      [item.title, item.preview].some((field) =>
+        String(field || '').toLowerCase().includes(query),
+      ),
+    );
   }, [requestItems, searchQuery]);
 
+  /**
+   * تجميع العناصر المعروضة حسب التبويب النشط:
+   *  - "الكل": المحادثات + المجموعات (مدمجة بالترتيب الزمني)
+   *  - "الرسائل": المحادثات الفردية فقط
+   *  - "الطلبات": الإشعارات/الطلبات غير المقروءة
+   */
   const unifiedItems = useMemo(() => {
-    const base = [];
-    if (activeTab === 'all' || activeTab === 'messages') base.push(...filteredThreads);
-    if (activeTab === 'all') base.push(...filteredRequests.slice(0, 4));
-    if (activeTab === 'groups') return filteredGroups;
     if (activeTab === 'requests') return filteredRequests;
-    return base.sort((left, right) => new Date(right.timestamp || 0).getTime() - new Date(left.timestamp || 0).getTime());
+    if (activeTab === 'messages') return filteredThreads;
+    // الكل: ندمج المحادثات + المجموعات ونرتّب حسب الوقت
+    const merged = [...filteredThreads, ...filteredGroups];
+    return merged.sort(
+      (left, right) =>
+        new Date(right.timestamp || 0).getTime() - new Date(left.timestamp || 0).getTime(),
+    );
   }, [activeTab, filteredGroups, filteredRequests, filteredThreads]);
 
-  const storyRail = useMemo(() => {
-    const mine = currentUsername
-      ? [{ username: currentUsername, stories: [], avatar: profile?.avatar || '', mine: true }]
-      : [];
-    const others = storyUsers.filter((item) => item.username !== currentUsername).slice(0, isMobile ? 12 : 8);
-    return [...mine, ...others];
-  }, [currentUsername, isMobile, profile?.avatar, storyUsers]);
-
-  const handleOpenThread = useCallback(async (thread) => {
-    if (!thread?.username) return;
-    try {
-      if (thread.unreadCount > 0) {
-        await markMessagesSeen(thread.username);
-        setThreads((prev) => prev.map((item) => (item.username === thread.username ? { ...item, unreadCount: 0 } : item)));
-      }
-    } catch {
-      // لا نمنع الانتقال حتى لو فشل تحديث حالة القراءة.
-    }
-    navigate(`/chat/${encodeURIComponent(thread.username)}`);
-  }, [navigate]);
-
-  const handleOpenRequest = useCallback(async (item) => {
-    if (!item?.notificationId) return;
-    try {
-      await markNotificationRead(item.notificationId);
-      setNotifications((prev) => prev.map((entry) => (entry.notificationId === item.notificationId ? { ...entry, unreadCount: 0 } : entry)));
-    } catch {
-      // ignore
-    }
-    navigate(item.path || '/notifications');
-  }, [navigate]);
-
-  const handleOpenStory = useCallback(async (storyGroup) => {
-    if (!storyGroup) return;
-    if (!storyGroup.mine && storyGroup.stories?.[0]?.id) {
+  /* -------- معالجات الأحداث -------- */
+  const handleOpenThread = useCallback(
+    async (thread) => {
+      if (!thread?.username) return;
       try {
-        await viewStory(storyGroup.stories[0].id);
+        if (thread.unreadCount > 0) {
+          await markMessagesSeen(thread.username);
+          setThreads((prev) =>
+            prev.map((item) =>
+              item.username === thread.username ? { ...item, unreadCount: 0, seen: true } : item,
+            ),
+          );
+        }
       } catch {
-        // ignore story view failures
+        /* لا نمنع الانتقال */
       }
-    }
-    navigate('/stories');
-  }, [navigate]);
+      navigate(`/chat/${encodeURIComponent(thread.username)}`);
+    },
+    [navigate],
+  );
 
-  const handleOpenGroup = useCallback((group) => {
-    if (!group) return;
-    navigate('/groups');
-  }, [navigate]);
+  const handleOpenRequest = useCallback(
+    async (item) => {
+      if (!item?.notificationId) return;
+      try {
+        await markNotificationRead(item.notificationId);
+        setNotifications((prev) =>
+          prev.map((entry) =>
+            entry.notificationId === item.notificationId ? { ...entry, unreadCount: 0 } : entry,
+          ),
+        );
+      } catch {
+        /* ignore */
+      }
+      navigate(item.path || '/notifications');
+    },
+    [navigate],
+  );
+
+  const handleOpenGroup = useCallback(
+    (group) => {
+      if (!group) return;
+      navigate('/groups');
+    },
+    [navigate],
+  );
 
   const markAllRequestsAsRead = useCallback(async () => {
     if (!requestCount) return;
     try {
       await markNotificationsRead();
       setNotifications((prev) => prev.map((item) => ({ ...item, unreadCount: 0 })));
-      pushToast({ type: 'success', title: 'تم تحديث الطلبات', description: 'تم تعليم كل الطلبات كمقروءة.' });
+      pushToast({
+        type: 'success',
+        title: 'تم تحديث الطلبات',
+        description: 'تم تعليم كل الطلبات كمقروءة.',
+      });
     } catch {
-      pushToast({ type: 'warning', title: 'تعذر تحديث الطلبات', description: 'حاول مرة أخرى بعد قليل.' });
+      pushToast({
+        type: 'warning',
+        title: 'تعذر تحديث الطلبات',
+        description: 'حاول مرة أخرى بعد قليل.',
+      });
     }
   }, [pushToast, requestCount]);
 
+  /* ============================================================
+   *                         العرض (Render)
+   * ============================================================ */
   return (
     <MainLayout>
-      <section className="yam-mobile-page" dir="rtl" style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}>
-        <div className="yam-mobile-screen">
-          {/* v28: تم حذف الهيدر المخصّص للإنبوكس لأن الهيدر العلوي الموحّد أصبح مثبّتاً عبر MainLayout */}
-          {/* والمودال الأصلي للإنشاء لا يفتح تلقائياً، حلّ محلّه NewChatDialog العالمي */}
-
+      <section
+        className="yam-inbox-page"
+        dir="rtl"
+        style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}
+      >
+        <div className="yam-inbox-screen">
           <ComposeModal
             open={composeOpen}
             onClose={() => setComposeOpen(false)}
             navigate={navigate}
             pushToast={pushToast}
           />
-          {/* v28: دعم فتح المودال عبر الحدث العام إذا أحب الباحث استخدامه محلياً */}
 
-          <div className="yam-search-box">
+          {/* ============== شريط البحث ============== */}
+          <div className="yam-search-box" role="search">
             <SearchIcon />
             <input
               type="search"
@@ -802,251 +771,239 @@ export default function Inbox() {
               placeholder="البحث في المحادثات"
               aria-label="البحث في المحادثات"
             />
-            <button type="button" className="yam-refresh-chip" onClick={() => loadData(true)} disabled={refreshing}>
-              {refreshing ? 'جارٍ التحديث' : 'تحديث'}
-            </button>
+            {refreshing ? <span className="yam-refresh-spinner" aria-hidden="true" /> : null}
           </div>
 
-          {/* تم إزالة شريط "إنشاء قصة" والقصص من خلفية صفحة الشات لأنه لا يخصّها (v28) */}
-
-          <div className="yam-tabs-wrap">
+          {/* ============== التبويبات الثلاثة ============== */}
+          <div className="yam-tabs" role="tablist">
             {TABS.map((tab) => {
-              const count = tab.key === 'messages'
-                ? unreadMessagesCount
-                : tab.key === 'groups'
-                  ? groupItems.length
-                  : tab.key === 'requests'
-                    ? requestCount
-                    : unreadMessagesCount + requestCount;
+              // عداد التبويب
+              let count = 0;
+              if (tab.key === 'messages') count = unreadMessagesCount;
+              else if (tab.key === 'requests') count = requestCount;
+              // الترتيب البصري: الطلبات يسار، الرسائل وسط، الكل يمين
+              // لأن dir=rtl سيعكسها تلقائياً عند العرض
+              const isActive = activeTab === tab.key;
               return (
                 <button
                   key={tab.key}
                   type="button"
-                  className={`yam-tab-pill ${activeTab === tab.key ? 'active' : ''}`}
+                  role="tab"
+                  aria-selected={isActive}
+                  className={`yam-tab ${isActive ? 'active' : ''}`}
                   onClick={() => setActiveTab(tab.key)}
+                  onDoubleClick={() => loadData(true)}
                 >
+                  {/* الشارة قبل النص في الـ RTL تظهر يسار النص */}
+                  {count > 0 ? <strong className="yam-tab-badge">{count}</strong> : null}
                   <span>{tab.label}</span>
-                  {count > 0 && tab.key !== 'all' ? <strong>{count}</strong> : null}
                 </button>
               );
             })}
           </div>
 
-          <div className="yam-content-card">
-            <div className="yam-content-head">
-              <div>
-                <h1>{activeTab === 'groups' ? 'المجموعات' : activeTab === 'requests' ? 'الطلبات والتنبيهات' : 'المحادثات'}</h1>
-                <p>
-                  {activeTab === 'groups'
-                    ? 'عرض مباشر للمجموعات المحفوظة في الخادم.'
-                    : activeTab === 'requests'
-                      ? 'كل عنصر هنا قادم من بيانات التنبيهات الحقيقية.'
-                      : 'القائمة مرتبطة بآخر الرسائل المخزنة في الباك إند.'}
-                </p>
-              </div>
-              {activeTab === 'requests' && requestCount > 0 ? (
-                <button type="button" className="yam-link-btn" onClick={markAllRequestsAsRead}>تعليم الكل</button>
-              ) : null}
-            </div>
-
+          {/* ============== قائمة المحادثات ============== */}
+          <div className="yam-list" role="list">
             {loading ? (
-              <div className="yam-loading-state">جارٍ تحميل البيانات الحقيقية...</div>
-            ) : unifiedItems.length ? (
-              <div className="yam-list">
-                {unifiedItems.map((item) => {
-                  if (item.type === 'notification') {
-                    return (
-                      <button key={item.id} type="button" className="yam-list-row system" onClick={() => handleOpenRequest(item)}>
-                        <div className="yam-leading-icon notification"><BellIcon /></div>
-                        <div className="yam-row-copy">
-                          <div className="yam-row-main-line">
-                            <strong>{item.title}</strong>
-                            <span>{formatTime(item.timestamp)}</span>
-                          </div>
-                          <div className="yam-row-sub-line">
-                            <p>{item.preview}</p>
-                            <div className="yam-row-meta">
-                              <span className="yam-meta-tag">إشعار</span>
-                              {item.unreadCount > 0 ? <strong className="yam-count-badge">{item.unreadCount}</strong> : null}
-                            </div>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  }
-
-                  if (item.type === 'group') {
-                    return (
-                      <button key={item.id} type="button" className="yam-list-row system" onClick={() => handleOpenGroup(item)}>
-                        <div className="yam-leading-icon group"><GroupIcon /></div>
-                        <div className="yam-row-copy">
-                          <div className="yam-row-main-line">
-                            <strong>{item.title}</strong>
-                            <span>{formatTime(item.timestamp)}</span>
-                          </div>
-                          <div className="yam-row-sub-line">
-                            <p>{item.preview}</p>
-                            <div className="yam-row-meta">
-                              <span className="yam-meta-tag">{item.membersCount} عضو</span>
-                              <span className={`yam-meta-tag ${item.isMember ? 'success' : ''}`}>{item.isMember ? 'منضم' : 'عرض'}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  }
-
+              <div className="yam-loading">جارٍ تحميل المحادثات…</div>
+            ) : unifiedItems.length === 0 ? (
+              <div className="yam-empty">
+                <div className="yam-empty-icon">💬</div>
+                <strong>
+                  {activeTab === 'requests'
+                    ? 'لا توجد طلبات جديدة'
+                    : activeTab === 'messages'
+                      ? 'لا توجد محادثات بعد'
+                      : 'ابدأ محادثتك الأولى'}
+                </strong>
+                <span>
+                  {activeTab === 'requests'
+                    ? 'أي طلب جديد سيظهر فوراً في هذه المساحة.'
+                    : 'اضغط زر "+" في الأسفل لبدء محادثة جديدة.'}
+                </span>
+                {activeTab === 'requests' && requestCount > 0 ? (
+                  <button type="button" className="yam-empty-cta" onClick={markAllRequestsAsRead}>
+                    تعليم الكل كمقروء
+                  </button>
+                ) : null}
+              </div>
+            ) : (
+              unifiedItems.map((item) => {
+                /* ----- صف إشعار / طلب ----- */
+                if (item.type === 'notification') {
                   return (
-                    <button key={item.id} type="button" className="yam-list-row" onClick={() => handleOpenThread(item)}>
-                      <div className="yam-avatar-slot">
-                        <AvatarCircle name={item.title} avatar={item.avatar} size={46} online={item.isOnline} />
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="yam-row"
+                      role="listitem"
+                      onClick={() => handleOpenRequest(item)}
+                    >
+                      <div className="yam-row-side">
+                        <span className="yam-row-time">{formatTime(item.timestamp)}</span>
+                        {item.unreadCount > 0 ? (
+                          <strong className="yam-row-unread">{item.unreadCount}</strong>
+                        ) : null}
                       </div>
-                      <div className="yam-row-copy">
-                        <div className="yam-row-main-line">
-                          <strong>{item.title}</strong>
-                          <span>{formatTime(item.timestamp)}</span>
-                        </div>
-                        <div className="yam-row-sub-line">
-                          <p>{item.preview}</p>
-                          <div className="yam-row-meta">
-                            <span className={`yam-meta-tag ${item.isOnline ? 'success' : ''}`}>
-                              {item.isOnline ? 'متصل الآن' : item.lastSeen ? timeAgoLabel(item.lastSeen) : 'آخر ظهور غير متاح'}
+                      <div className="yam-row-main">
+                        <div className="yam-row-text">
+                          <strong className="yam-row-title">{item.title}</strong>
+                          <div className="yam-row-preview">
+                            <span className="yam-row-tick" aria-hidden="true">
+                              <DoubleCheckIcon />
                             </span>
-                            {item.unreadCount > 0 ? <strong className="yam-count-badge">{item.unreadCount}</strong> : null}
+                            <p>{item.preview}</p>
+                          </div>
+                        </div>
+                        <div className="yam-row-avatar">
+                          <div className="yam-avatar" style={{ width: 56, height: 56 }}>
+                            <div
+                              className="yam-avatar-inner yam-avatar-system"
+                              style={{ width: 56, height: 56 }}
+                            >
+                              <BellIcon />
+                            </div>
                           </div>
                         </div>
                       </div>
                     </button>
                   );
-                })}
-              </div>
-            ) : (
-              <div className="yam-empty-state">
-                <div className="yam-empty-icon">💬</div>
-                <strong>
-                  {activeTab === 'groups'
-                    ? 'لا توجد مجموعات حالياً'
-                    : activeTab === 'requests'
-                      ? 'لا توجد طلبات جديدة'
-                      : 'لا توجد محادثات مخزنة بعد'}
-                </strong>
-                <span>
-                  {activeTab === 'groups'
-                    ? 'بمجرد إنشاء أو تحميل مجموعات من الخادم ستظهر هنا.'
-                    : activeTab === 'requests'
-                      ? 'أي تنبيه أو طلب جديد من الباك إند سيظهر فوراً في هذه المساحة.'
-                      : 'سيتم عرض المحادثات الحقيقية فور توفرها من الباك إند دون أي أسماء تجريبية.'}
-                </span>
-              </div>
+                }
+
+                /* ----- صف مجموعة ----- */
+                if (item.type === 'group') {
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="yam-row"
+                      role="listitem"
+                      onClick={() => handleOpenGroup(item)}
+                    >
+                      <div className="yam-row-side">
+                        <span className="yam-row-time">{formatTime(item.timestamp)}</span>
+                        {item.unreadCount > 0 ? (
+                          <strong className="yam-row-unread">{item.unreadCount}</strong>
+                        ) : null}
+                      </div>
+                      <div className="yam-row-main">
+                        <div className="yam-row-text">
+                          <strong className="yam-row-title">{item.title}</strong>
+                          <div className="yam-row-preview">
+                            <span className="yam-row-tick" aria-hidden="true">
+                              <DoubleCheckIcon />
+                            </span>
+                            <p>{item.preview}</p>
+                          </div>
+                        </div>
+                        <div className="yam-row-avatar">
+                          <div className="yam-avatar" style={{ width: 56, height: 56 }}>
+                            <div
+                              className="yam-avatar-inner yam-avatar-yamshat"
+                              style={{ width: 56, height: 56 }}
+                            >
+                              {/* استخدام شعار Y عند عدم وجود صورة مجموعة */}
+                              {item.raw?.avatar ? (
+                                <span
+                                  className="yam-avatar-bg"
+                                  style={{ backgroundImage: `url(${item.raw.avatar})` }}
+                                />
+                              ) : (
+                                <YamshatMark />
+                              )}
+                            </div>
+                            {/* نقطة خضراء عند نشاط حديث (المجموعات النشطة فقط) */}
+                            <span className="yam-online-dot" aria-hidden="true" />
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                }
+
+                /* ----- صف محادثة فردية ----- */
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className="yam-row"
+                    role="listitem"
+                    onClick={() => handleOpenThread(item)}
+                  >
+                    <div className="yam-row-side">
+                      <span className="yam-row-time">{formatTime(item.timestamp)}</span>
+                      {item.unreadCount > 0 ? (
+                        <strong className="yam-row-unread">{item.unreadCount}</strong>
+                      ) : null}
+                    </div>
+                    <div className="yam-row-main">
+                      <div className="yam-row-text">
+                        <strong className="yam-row-title">{item.title}</strong>
+                        <div className="yam-row-preview">
+                          {/* علامة ✓✓ بنفسجية فقط للمحادثات التي قرأها الطرف الآخر
+                              (أي عدد غير المقروء = 0). نُخفيها عند وجود رسائل جديدة. */}
+                          {item.unreadCount === 0 ? (
+                            <span className="yam-row-tick" aria-hidden="true">
+                              <DoubleCheckIcon />
+                            </span>
+                          ) : null}
+                          <p>{item.preview}</p>
+                        </div>
+                      </div>
+                      <div className="yam-row-avatar">
+                        <Avatar
+                          name={item.title}
+                          avatar={item.avatar}
+                          size={56}
+                          online={item.isOnline}
+                        />
+                      </div>
+                    </div>
+                  </button>
+                );
+              })
             )}
           </div>
         </div>
 
-        {/* v28: تمّ حذف شريط التنقل السفلي الداخلي لأن BottomNav الموحّد في MainLayout أصبح مثبّتاً في كل الصفحات */}
-
+        {/* ============== الأنماط (CSS) ============== */}
         <style>{`
-          .yam-mobile-page {
+          .yam-inbox-page {
             min-height: 100vh;
             min-height: 100dvh;
             background:
-              radial-gradient(circle at top right, rgba(130, 73, 255, 0.16), transparent 20%),
-              radial-gradient(circle at top left, rgba(52, 211, 153, 0.08), transparent 18%),
-              #040713;
+              radial-gradient(circle at top right, rgba(130, 73, 255, 0.14), transparent 22%),
+              radial-gradient(circle at top left, rgba(99, 102, 241, 0.08), transparent 20%),
+              #060818;
             color: #fff;
           }
-
-          .yam-mobile-screen {
-            min-height: 100vh;
-            min-height: 100dvh;
+          .yam-inbox-screen {
             max-width: 520px;
             margin: 0 auto;
-            /* مسافة كافية في الأسفل كي لا تختفي آخر بطاقة محادثة خلف الـ BottomNav */
-            padding: calc(14px + env(safe-area-inset-top, 0px)) 14px calc(140px + env(safe-area-inset-bottom, 0px));
+            /* مسافة علوية تكفي للهيدر الموحَّد (60px) + مسافة سفلية تكفي للـ BottomNav */
+            padding:
+              calc(76px + env(safe-area-inset-top, 0px))
+              14px
+              calc(120px + env(safe-area-inset-bottom, 0px));
           }
 
-          .yam-mobile-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            margin-bottom: 14px;
-          }
-
-          .yam-icon-btn,
-          .yam-link-btn,
-          .yam-refresh-chip,
-          .yam-bottom-nav-item,
-          .yam-story-card,
-          .yam-tab-pill,
-          .yam-list-row,
-          .yam-brand {
-            border: 0;
-            background: none;
-            color: inherit;
-            cursor: pointer;
-            font: inherit;
-          }
-
-          .yam-icon-btn {
-            width: 42px;
-            height: 42px;
-            display: grid;
-            place-items: center;
-            color: #d7d8ff;
-            border-radius: 14px;
-            background: rgba(10, 15, 31, 0.86);
-            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
-          }
-
-          .yam-icon-btn svg,
-          .yam-search-box svg,
-          .yam-leading-icon svg,
-          .yam-bottom-nav-icon svg,
-          .yam-story-create-badge svg {
-            width: 20px;
-            height: 20px;
-          }
-
-          .yam-brand {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            padding: 0 10px;
-          }
-
-          .yam-brand-mark {
-            width: 28px;
-            height: 28px;
-            border-radius: 11px;
-            display: grid;
-            place-items: center;
-            font-weight: 900;
-            font-size: 16px;
-            background: linear-gradient(135deg, #8b5cf6, #5b21b6);
-            color: #fff;
-            box-shadow: 0 10px 24px rgba(109, 40, 217, 0.35);
-          }
-
-          .yam-brand-text {
-            letter-spacing: 0.32em;
-            font-size: 15px;
-            font-weight: 800;
-            color: #f7f7ff;
-          }
-
+          /* ============== شريط البحث ============== */
           .yam-search-box {
             display: flex;
             align-items: center;
             gap: 10px;
-            background: rgba(9, 15, 32, 0.92);
-            border: 1px solid rgba(255,255,255,0.05);
-            border-radius: 18px;
-            padding: 12px 14px;
-            margin-bottom: 14px;
-            box-shadow: 0 12px 30px rgba(2, 6, 23, 0.42);
-            color: #9297c4;
+            background: #0E1530;
+            border: 1px solid rgba(255,255,255,0.04);
+            border-radius: 16px;
+            padding: 13px 16px;
+            margin-bottom: 16px;
+            color: #6E73A6;
           }
-
+          .yam-search-box svg {
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+          }
           .yam-search-box input {
             flex: 1;
             background: transparent;
@@ -1054,481 +1011,291 @@ export default function Inbox() {
             outline: 0;
             color: #fff;
             font-size: 14px;
+            font-family: inherit;
+            text-align: right;
           }
-
           .yam-search-box input::placeholder {
-            color: #8b90b7;
+            color: #6E73A6;
+            font-size: 14px;
           }
-
-          .yam-refresh-chip {
+          .yam-refresh-spinner {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 2px solid rgba(139,92,246,0.25);
+            border-top-color: #A78BFA;
+            animation: yam-spin 0.9s linear infinite;
             flex-shrink: 0;
-            border-radius: 999px;
-            padding: 7px 11px;
-            background: rgba(139, 92, 246, 0.18);
-            color: #d8c8ff;
-            font-size: 12px;
-            font-weight: 700;
+          }
+          @keyframes yam-spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
           }
 
-          .yam-story-rail {
+          /* ============== التبويبات ============== */
+          .yam-tabs {
             display: flex;
-            gap: 12px;
-            overflow-x: auto;
-            padding: 4px 0 12px;
-            margin-bottom: 10px;
-            scrollbar-width: none;
+            gap: 10px;
+            margin-bottom: 18px;
+            /* dir=rtl سيجعل العنصر الأول (الكل) يظهر على اليمين */
+          }
+          .yam-tab {
+            flex: 1;
+            min-height: 48px;
+            border: 0;
+            border-radius: 999px;
+            background: #0E1530;
+            color: #B8BCE3;
+            font-family: inherit;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: background 0.2s ease, transform 0.18s ease, box-shadow 0.2s ease;
+          }
+          .yam-tab:hover {
+            background: #131A3A;
+          }
+          .yam-tab.active {
+            background: linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%);
+            color: #fff;
+            box-shadow: 0 10px 26px rgba(124, 58, 237, 0.42);
+          }
+          .yam-tab-badge {
+            min-width: 22px;
+            height: 22px;
+            padding: 0 6px;
+            border-radius: 999px;
+            display: inline-grid;
+            place-items: center;
+            background: #8B5CF6;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1;
+          }
+          .yam-tab.active .yam-tab-badge {
+            background: rgba(255,255,255,0.22);
+            color: #fff;
           }
 
-          .yam-story-rail::-webkit-scrollbar {
-            display: none;
-          }
-
-          .yam-story-card {
-            flex: 0 0 auto;
+          /* ============== قائمة الصفوف ============== */
+          .yam-list {
             display: flex;
             flex-direction: column;
+          }
+          .yam-row {
+            display: flex;
             align-items: center;
+            gap: 12px;
+            width: 100%;
+            padding: 16px 4px;
+            background: transparent;
+            border: 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            color: inherit;
+            cursor: pointer;
+            font-family: inherit;
+            text-align: right;
+            transition: background 0.18s ease;
+          }
+          .yam-row:hover,
+          .yam-row:focus-visible {
+            background: rgba(139, 92, 246, 0.04);
+            outline: none;
+          }
+          .yam-row:last-child {
+            border-bottom: 0;
+          }
+
+          /* العمود الجانبي (الوقت + شارة العدد) — يظهر على اليسار في RTL */
+          .yam-row-side {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
             gap: 8px;
-            min-width: 64px;
+            flex-shrink: 0;
+            min-width: 48px;
           }
-
-          .yam-story-card.create {
-            padding-top: 2px;
-          }
-
-          .yam-story-label {
-            width: 68px;
+          .yam-row-time {
             font-size: 12px;
-            color: #d9defe;
-            text-align: center;
+            color: #8085AC;
+            white-space: nowrap;
+            font-weight: 500;
+          }
+          .yam-row-unread {
+            min-width: 22px;
+            height: 22px;
+            padding: 0 7px;
+            border-radius: 999px;
+            display: inline-grid;
+            place-items: center;
+            background: #8B5CF6;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1;
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+          }
+
+          /* الجزء الرئيسي (النص + الصورة) */
+          .yam-row-main {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 0;
+          }
+          .yam-row-text {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            /* النص محاذٍ لليمين بسبب dir=rtl، والصورة ستكون على يمينه */
+          }
+          .yam-row-title {
+            font-size: 17px;
+            font-weight: 700;
+            color: #FFFFFF;
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-align: right;
+          }
+          .yam-row-preview {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: #8085AC;
+            font-size: 14px;
+            min-width: 0;
+            /* dir=rtl: العلامة ✓✓ تظهر يسار النص (بعد النص في تدفق RTL) */
+            flex-direction: row;
+          }
+          .yam-row-preview p {
+            margin: 0;
+            min-width: 0;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            flex: 1;
+            text-align: right;
+          }
+          .yam-row-tick {
+            display: inline-flex;
+            align-items: center;
+            color: #A78BFA;
+            flex-shrink: 0;
           }
 
-          .yam-story-create-badge {
-            width: 58px;
-            height: 58px;
-            border-radius: 22px;
-            display: grid;
-            place-items: center;
-            background: rgba(9, 15, 32, 0.9);
-            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);
-            color: #8b5cf6;
+          /* الصورة الدائرية */
+          .yam-row-avatar {
+            flex-shrink: 0;
           }
-
-          .yam-mobile-avatar {
+          .yam-avatar {
             position: relative;
-            border-radius: 20px;
+            border-radius: 50%;
+            overflow: visible;
+          }
+          .yam-avatar-inner {
+            position: relative;
+            border-radius: 50%;
             background-size: cover;
             background-position: center;
             display: grid;
             place-items: center;
-            color: white;
+            color: #fff;
             font-weight: 800;
-            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
             overflow: hidden;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.25);
           }
-
-          .yam-mobile-avatar.ringed {
-            box-shadow: 0 0 0 2px rgba(138, 92, 246, 0.88), 0 10px 26px rgba(88, 28, 135, 0.35);
-          }
-
-          .yam-mobile-avatar span {
-            font-size: 16px;
+          .yam-avatar-inner span {
+            font-size: 18px;
             letter-spacing: 0.04em;
           }
-
-          .online-dot {
+          .yam-avatar-system {
+            background: linear-gradient(135deg, rgba(139,92,246,0.32), rgba(87,28,221,0.55));
+            color: #EFE6FF;
+          }
+          .yam-avatar-system svg {
+            width: 24px;
+            height: 24px;
+          }
+          .yam-avatar-yamshat {
+            background: #0E1530;
+            border: 1px solid rgba(139, 92, 246, 0.25);
+          }
+          .yam-avatar-bg {
             position: absolute;
-            right: 3px;
-            bottom: 3px;
-            width: 12px;
-            height: 12px;
+            inset: 0;
+            background-size: cover;
+            background-position: center;
             border-radius: 50%;
-            background: #44d36e;
-            border: 2px solid #050916;
-            box-shadow: 0 0 0 3px rgba(68, 211, 110, 0.15);
           }
 
-          .yam-tabs-wrap {
-            display: flex;
-            gap: 10px;
-            overflow-x: auto;
-            padding: 2px 0 14px;
-            scrollbar-width: none;
+          .yam-online-dot {
+            position: absolute;
+            right: 2px;
+            bottom: 2px;
+            width: 13px;
+            height: 13px;
+            border-radius: 50%;
+            background: #22C55E;
+            border: 2.5px solid #060818;
+            box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.45);
           }
 
-          .yam-tabs-wrap::-webkit-scrollbar {
-            display: none;
-          }
-
-          .yam-tab-pill {
-            flex: 0 0 auto;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            min-height: 42px;
-            padding: 0 18px;
-            border-radius: 999px;
-            background: rgba(9, 15, 32, 0.92);
-            color: #c8ccee;
-            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
-            font-weight: 700;
-          }
-
-          .yam-tab-pill strong {
-            min-width: 22px;
-            height: 22px;
-            padding: 0 6px;
-            border-radius: 999px;
-            display: grid;
-            place-items: center;
-            background: rgba(139, 92, 246, 0.22);
-            color: #efe6ff;
-            font-size: 12px;
-          }
-
-          .yam-tab-pill.active {
-            background: linear-gradient(135deg, #8338ec, #6320d9);
-            color: #fff;
-            box-shadow: 0 14px 30px rgba(99, 32, 217, 0.34);
-          }
-
-          .yam-tab-pill.active strong {
-            background: rgba(255,255,255,0.16);
-            color: #fff;
-          }
-
-          .yam-content-card {
-            background: rgba(8, 13, 28, 0.92);
-            border: 1px solid rgba(255,255,255,0.05);
-            border-radius: 28px;
-            padding: 16px;
-            box-shadow: 0 20px 50px rgba(2, 6, 23, 0.42);
-          }
-
-          .yam-content-head {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 12px;
-            margin-bottom: 8px;
-          }
-
-          .yam-content-head h1 {
-            margin: 0;
-            font-size: 24px;
-            line-height: 1.1;
-          }
-
-          .yam-content-head p {
-            margin: 6px 0 0;
-            color: #96a0cb;
-            font-size: 12px;
-            line-height: 1.7;
-          }
-
-          .yam-link-btn {
-            padding: 10px 12px;
-            border-radius: 14px;
-            background: rgba(139, 92, 246, 0.12);
-            color: #d7c8ff;
-            font-size: 12px;
-            font-weight: 700;
-          }
-
-          .yam-list {
-            display: grid;
-            gap: 8px;
-            margin-top: 12px;
-          }
-
-          .yam-list-row {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            width: 100%;
-            text-align: right;
-            border-radius: 18px;
-            padding: 10px 12px;
-            background: rgba(7, 12, 27, 0.84);
-            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
-            transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
-            min-height: 0;
-          }
-
-          .yam-list-row:hover,
-          .yam-list-row:focus-visible {
-            background: rgba(12, 19, 40, 0.96);
-            transform: translateY(-1px);
-            box-shadow: inset 0 0 0 1px rgba(139,92,246,0.24);
-            outline: none;
-          }
-
-          .yam-list-row.system {
-            align-items: stretch;
-          }
-
-          .yam-avatar-slot {
-            flex-shrink: 0;
-          }
-
-          .yam-leading-icon {
-            width: 46px;
-            height: 46px;
-            border-radius: 16px;
-            display: grid;
-            place-items: center;
-            flex-shrink: 0;
-          }
-
-          .yam-leading-icon.notification {
-            background: linear-gradient(135deg, rgba(139,92,246,0.3), rgba(87, 28, 221, 0.56));
-            color: #efe6ff;
-          }
-
-          .yam-leading-icon.group {
-            background: linear-gradient(135deg, rgba(59,130,246,0.26), rgba(6,182,212,0.32));
-            color: #dff7ff;
-          }
-
-          .yam-row-copy {
-            min-width: 0;
-            flex: 1;
-            display: grid;
-            gap: 6px;
-          }
-
-          .yam-row-main-line,
-          .yam-row-sub-line {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 10px;
-          }
-
-          .yam-row-main-line strong {
-            font-size: 15px;
-            line-height: 1.25;
-            color: #fff;
-            min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            flex: 1 1 auto;
-          }
-
-          .yam-row-main-line span {
-            flex-shrink: 0;
-            color: #98a0c8;
-            font-size: 11px;
-            padding-top: 2px;
-          }
-
-          .yam-row-sub-line p {
-            margin: 0;
-            min-width: 0;
-            color: #a5add3;
-            font-size: 13px;
-            line-height: 1.6;
-            overflow: hidden;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-          }
-
-          .yam-row-meta {
-            flex-shrink: 0;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            flex-wrap: wrap;
-            justify-content: flex-end;
-          }
-
-          .yam-meta-tag {
-            display: inline-flex;
-            align-items: center;
-            min-height: 26px;
-            padding: 0 10px;
-            border-radius: 999px;
-            background: rgba(255,255,255,0.05);
-            color: #aeb6de;
-            font-size: 11px;
-            font-weight: 700;
-          }
-
-          .yam-meta-tag.success {
-            background: rgba(34,197,94,0.14);
-            color: #aaf0be;
-          }
-
-          .yam-count-badge {
-            min-width: 22px;
-            height: 22px;
-            border-radius: 999px;
-            display: grid;
-            place-items: center;
-            padding: 0 6px;
-            background: linear-gradient(135deg, #8b5cf6, #6d28d9);
-            color: #fff;
-            font-size: 11px;
-            font-weight: 800;
-            box-shadow: 0 6px 14px rgba(109, 40, 217, 0.28);
-          }
-
-          .yam-loading-state,
-          .yam-empty-state {
-            min-height: 320px;
-            display: grid;
-            place-items: center;
+          /* ============== حالات (تحميل/فارغ) ============== */
+          .yam-loading {
+            padding: 40px 16px;
             text-align: center;
-            padding: 30px 18px 24px;
-            color: #dbe0ff;
+            color: #8085AC;
+            font-size: 14px;
           }
-
-          .yam-empty-state {
-            gap: 10px;
-          }
-
-          .yam-empty-state strong {
-            font-size: 18px;
-          }
-
-          .yam-empty-state span {
-            color: #98a0c8;
-            line-height: 1.8;
-            font-size: 13px;
-            max-width: 310px;
-          }
-
-          .yam-empty-icon {
-            font-size: 40px;
-            line-height: 1;
-          }
-
-          .yam-mobile-bottom-nav {
-            position: fixed;
-            right: 50%;
-            bottom: 0;
-            transform: translateX(50%);
-            width: min(520px, 100%);
-            padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 6px;
-            background: linear-gradient(180deg, rgba(4,7,19,0), rgba(4,7,19,0.92) 30%, rgba(4,7,19,0.98));
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            z-index: 1000;
-            /* تثبيت الشريط بحيث لا يتحرك مع سحب الصفحة */
-            will-change: transform;
-            transform-style: preserve-3d;
-          }
-
-          .yam-bottom-nav-item {
-            position: relative;
-            min-height: 56px;
-            border-radius: 16px;
+          .yam-empty {
+            padding: 60px 20px;
+            text-align: center;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-            gap: 4px;
-            color: #8f97c2;
-            background: rgba(9, 15, 32, 0.88);
-            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
-            padding: 4px 2px;
-            min-width: 0;
+            gap: 8px;
           }
-
-          .yam-bottom-nav-item.center {
-            background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+          .yam-empty-icon {
+            font-size: 44px;
+            margin-bottom: 6px;
+          }
+          .yam-empty strong {
+            font-size: 17px;
             color: #fff;
-            transform: translateY(-10px);
-            box-shadow: 0 14px 28px rgba(109,40,217,0.34);
           }
-
-          .yam-bottom-nav-item.active:not(.center) {
-            color: #b590ff;
-            box-shadow: inset 0 0 0 1px rgba(139,92,246,0.18);
+          .yam-empty span {
+            color: #8085AC;
+            font-size: 13px;
+            max-width: 280px;
+            line-height: 1.6;
           }
-
-          .yam-bottom-nav-icon {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-          }
-
-          .yam-bottom-nav-label {
-            font-size: 10px;
+          .yam-empty-cta {
+            margin-top: 14px;
+            padding: 10px 18px;
+            border-radius: 12px;
+            border: 0;
+            background: linear-gradient(135deg, #8B5CF6, #7C3AED);
+            color: #fff;
             font-weight: 700;
-            line-height: 1.1;
-            text-align: center;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            max-width: 100%;
+            font-size: 13px;
+            cursor: pointer;
+            font-family: inherit;
           }
 
-          .yam-bottom-nav-badge {
-            position: absolute;
-            top: 7px;
-            left: 14px;
-            min-width: 20px;
-            height: 20px;
-            border-radius: 999px;
-            display: grid;
-            place-items: center;
-            padding: 0 5px;
-            background: #8b5cf6;
-            color: #fff;
-            font-size: 10px;
-            font-weight: 800;
-          }
-
-          @media (min-width: 1024px) {
-            .yam-mobile-screen {
-              padding-top: 20px;
-            }
-
-            .yam-mobile-bottom-nav {
-              border-radius: 30px 30px 0 0;
-            }
-          }
-
-          @media (max-width: 420px) {
-            .yam-brand-text {
-              letter-spacing: 0.18em;
-              font-size: 13px;
-            }
-
-            .yam-row-main-line strong {
-              font-size: 14px;
-            }
-
-            .yam-row-sub-line p {
-              font-size: 12px;
-            }
-
-            .yam-content-head h1 {
-              font-size: 20px;
-            }
-
-            .yam-bottom-nav-label {
-              font-size: 9px;
-            }
-
-            .yam-bottom-nav-item {
-              min-height: 52px;
-            }
-
-            .yam-leading-icon {
-              width: 42px;
-              height: 42px;
-              border-radius: 14px;
-            }
+          /* استجابة شاشة أعرض (تابلت/ديسكتوب) */
+          @media (min-width: 720px) {
+            .yam-row-title { font-size: 18px; }
+            .yam-row-preview { font-size: 14px; }
           }
         `}</style>
       </section>

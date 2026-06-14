@@ -164,29 +164,81 @@ function Avatar({ name, size = 46, accent = false, image = false, src = '' }) {
 
 function MediaTile({ item, index }) {
   const [renderAsVideo, setRenderAsVideo] = useState(item?.kind === 'video');
+  const videoRef = useRef(null);
+  const tileRef = useRef(null);
+  const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
     setRenderAsVideo(item?.kind === 'video');
   }, [item?.kind, item?.url]);
 
+  // ✅ تشغيل / إيقاف الفيديو حسب الظهور الفعلي في viewport
+  // يبدأ التشغيل فقط عندما يكون 60% من الفيديو ظاهراً
+  // ويتوقف فوراً عند السحب لأسفل أو أعلى
+  useEffect(() => {
+    if (!renderAsVideo) return undefined;
+    const node = tileRef.current;
+    if (!node || typeof IntersectionObserver === 'undefined') return undefined;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          setIsVisible(entry.isIntersecting && entry.intersectionRatio >= 0.6);
+        });
+      },
+      { threshold: [0, 0.6, 1] }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [renderAsVideo, item?.url]);
+
+  // تحكم فعلي في play/pause + إيقاف عند إخفاء الصفحة
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return undefined;
+
+    if (isVisible) {
+      const playPromise = video.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(() => {
+          // تجاهل أخطاء التشغيل التلقائي (بعض المتصفحات ترفض autoplay)
+        });
+      }
+    } else {
+      video.pause();
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        video.pause();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      try { video.pause(); } catch (_) { /* noop */ }
+    };
+  }, [isVisible, item?.url]);
+
   if (item?.url) {
     return (
-      <div className={`yam-post-media-tile tile-${index}`}>
+      <div ref={tileRef} className={`yam-post-media-tile tile-${index}`}>
         {renderAsVideo ? (
           <video
+            ref={videoRef}
             src={item.url}
             className="yam-post-media-video"
             muted
             loop
-            autoPlay
             playsInline
             preload="metadata"
             controls
+            /* ❌ تمت إزالة autoPlay — التشغيل يتحكم به IntersectionObserver أعلاه */
           />
         ) : (
           <img src={item.url} alt="post media" className="yam-post-media-image" onError={() => setRenderAsVideo(true)} />
         )}
-        {index === 0 && renderAsVideo ? (
+        {index === 0 && renderAsVideo && !isVisible ? (
           <div className="yam-post-play-overlay">
             <YamshatIcon name="play" size={24} filled />
           </div>
@@ -543,18 +595,49 @@ function PostCard({ post }) {
         </div>
       ) : null}
 
-      <div className="yam-post-actions-v2">
-        <button type="button" className={liked ? 'active' : ''} onClick={handleLike} disabled={busyAction === 'like'} aria-label="إعجاب">
-          <YamshatIcon name="heart" size={17} />{liked ? `تم الإعجاب${likesCount ? ` (${likesCount})` : ''}` : `أعجبني${likesCount ? ` (${likesCount})` : ''}`}
+      {/* ✅ أزرار التفاعل: أيقونة فقط + عداد رقمي (بدون نص ثابت) لمنع إزاحة زر الحفظ */}
+      <div className="yam-post-actions-v2 yam-post-actions-compact">
+        <button
+          type="button"
+          className={`yam-action-btn${liked ? ' active' : ''}`}
+          onClick={handleLike}
+          disabled={busyAction === 'like'}
+          aria-label={liked ? `تم الإعجاب (${likesCount})` : `أعجبني (${likesCount})`}
+          title={liked ? 'تم الإعجاب' : 'أعجبني'}
+        >
+          <YamshatIcon name="heart" size={18} />
+          {likesCount > 0 ? <span className="yam-action-count">{likesCount}</span> : null}
         </button>
-        <button type="button" className={showComments ? 'active' : ''} onClick={() => setShowComments((prev) => !prev)} aria-label="تعليق">
-          <YamshatIcon name="comment" size={17} />تعليق{commentsCount ? ` (${commentsCount})` : ''}
+        <button
+          type="button"
+          className={`yam-action-btn${showComments ? ' active' : ''}`}
+          onClick={() => setShowComments((prev) => !prev)}
+          aria-label={`تعليق (${commentsCount})`}
+          title="تعليق"
+        >
+          <YamshatIcon name="comment" size={18} />
+          {commentsCount > 0 ? <span className="yam-action-count">{commentsCount}</span> : null}
         </button>
-        <button type="button" onClick={handleShare} disabled={busyAction === 'share'} aria-label="مشاركة">
-          <YamshatIcon name="repeat" size={17} />مشاركة{sharesCount ? ` (${sharesCount})` : ''}
+        <button
+          type="button"
+          className="yam-action-btn"
+          onClick={handleShare}
+          disabled={busyAction === 'share'}
+          aria-label={`مشاركة (${sharesCount})`}
+          title="مشاركة"
+        >
+          <YamshatIcon name="repeat" size={18} />
+          {sharesCount > 0 ? <span className="yam-action-count">{sharesCount}</span> : null}
         </button>
-        <button type="button" className={saved ? 'active' : ''} onClick={handleSave} disabled={busyAction === 'save'} aria-label="حفظ">
-          <YamshatIcon name="bookmark" size={17} />{saved ? 'محفوظ' : 'حفظ'}
+        <button
+          type="button"
+          className={`yam-action-btn${saved ? ' active' : ''}`}
+          onClick={handleSave}
+          disabled={busyAction === 'save'}
+          aria-label={saved ? 'محفوظ' : 'حفظ'}
+          title={saved ? 'محفوظ' : 'حفظ'}
+        >
+          <YamshatIcon name="bookmark" size={18} />
         </button>
       </div>
 

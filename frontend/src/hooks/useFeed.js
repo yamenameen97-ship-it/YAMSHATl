@@ -1,7 +1,8 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { getPosts } from '../api/posts.js';
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { sortPostsNewestFirst } from '../utils/feedCache.js';
+import { getAuthToken } from '../utils/auth.js';
 
 /**
  * Advanced Feed Hook with backend-aware filtering, sorting, and pagination.
@@ -23,6 +24,31 @@ export function useFeed(options = {}) {
   const effectiveSort = String(sortBy || sort || (filter === 'latest' ? 'recent' : 'recent')).trim().toLowerCase();
   const pageSize = Math.max(Number(limit) || 10, 1);
   const lastFetchRef = useRef(Date.now());
+
+  // ✅ تتبع توفر التوكن: إذا لم يكن موجوداً في المرة الأولى، ننتظر ثم نجلب
+  const [authReady, setAuthReady] = useState(() => Boolean(getAuthToken()));
+  useEffect(() => {
+    if (authReady) return undefined;
+    let cancelled = false;
+    const interval = setInterval(() => {
+      if (cancelled) return;
+      if (getAuthToken()) {
+        setAuthReady(true);
+        clearInterval(interval);
+      }
+    }, 300);
+    // حد أقصى 5 ثواني ثم نتوقف عن الانتظار (لو مفيش توكن نجرب الطلب على أي حال)
+    const timeout = setTimeout(() => {
+      cancelled = true;
+      clearInterval(interval);
+      setAuthReady(true);
+    }, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [authReady]);
 
   const query = useInfiniteQuery({
     queryKey: ['feed-data', effectiveFilter, effectiveSort, pageSize, Boolean(includeDrafts)],
@@ -48,10 +74,17 @@ export function useFeed(options = {}) {
       );
       return hasMore ? allPages.length + 1 : undefined;
     },
-    staleTime: 5 * 60 * 1000,
+    enabled: authReady,
+    // ✅ يجبر إعادة الجلب دائماً عند دخول الصفحة، حتى لو كان هناك كاش
+    refetchOnMount: 'always',
+    // تقليل staleTime لضمان رؤية المنشورات الجديدة بسرعة
+    staleTime: 30 * 1000,
     cacheTime: 30 * 60 * 1000,
     refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
     initialData,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
     refetchInterval: (data) => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return false;
       return data?.pages?.length === 1 ? pollingInterval : false;

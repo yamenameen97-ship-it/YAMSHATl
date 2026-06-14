@@ -78,10 +78,16 @@ export class PWAInstallPrompt {
       e.preventDefault();
       this.state.deferredPrompt = e;
       this.log('beforeinstallprompt event captured');
-      
-      // عرض الرسالة تلقائياً بعد التأخير
+
+      // ❗ مهم: لا يمكن استدعاء prompt() تلقائياً بدون user gesture.
+      // نعرض فقط رسالة مخصصة (UI) بعد تأخير، والـ prompt() الفعلي
+      // يُستدعى لاحقاً داخل onClick في handleInstallClick (user gesture حقيقي).
       if (!this.state.isInstalled && !this.state.hasBeenDismissed) {
-        setTimeout(() => this.showInstallPrompt(), this.config.autoShowDelay);
+        setTimeout(() => {
+          if (!this.state.isInstalled && !this.state.hasBeenDismissed) {
+            this.showCustomInstallPrompt();
+          }
+        }, this.config.autoShowDelay);
       }
     });
 
@@ -180,26 +186,23 @@ export class PWAInstallPrompt {
   /**
    * عرض رسالة التثبيت
    */
-  async showInstallPrompt() {
+  async showInstallPrompt(fromUserGesture = false) {
     if (this.state.isInstalled || this.state.isInstalling) {
       return;
     }
 
-    // التحقق من وقت التفاعل
-    if (this.state.isUserInteracting) {
-      const interactionDuration = Date.now() - this.state.userInteractionTime;
-      if (interactionDuration < this.config.minInteractionTime) {
-        this.log('وقت التفاعل غير كافي، تأجيل العرض');
-        return;
-      }
+    // ❗ prompt() الأصلي يجب أن يُستدعى فقط من user gesture مباشر.
+    // إذا لم يكن هناك user gesture، نعرض UI المخصص بدلاً منه.
+    if (!fromUserGesture) {
+      this.showCustomInstallPrompt();
+      return;
     }
 
-    // محاولة عرض الرسالة الأصلية
     if (this.state.deferredPrompt) {
       try {
-        this.state.deferredPrompt.prompt();
+        await this.state.deferredPrompt.prompt();
         const { outcome } = await this.state.deferredPrompt.userChoice;
-        
+
         if (outcome === 'accepted') {
           this.log('المستخدم قبل التثبيت');
           this.emit('install-accepted');
@@ -207,15 +210,13 @@ export class PWAInstallPrompt {
           this.log('المستخدم رفض التثبيت');
           this.handleDismiss();
         }
-        
+
         this.state.deferredPrompt = null;
       } catch (error) {
         this.log('خطأ في عرض رسالة التثبيت الأصلية:', error);
-        // عرض رسالة مخصصة كبديل
         this.showCustomInstallPrompt();
       }
     } else {
-      // عرض رسالة مخصصة للمتصفحات الأخرى
       this.showCustomInstallPrompt();
     }
   }
@@ -430,7 +431,8 @@ export class PWAInstallPrompt {
     if (this.state.deferredPrompt) {
       this.state.isInstalling = true;
       try {
-        this.state.deferredPrompt.prompt();
+        // ✅ هذا الاستدعاء داخل click handler => user gesture صحيح
+        await this.state.deferredPrompt.prompt();
         const { outcome } = await this.state.deferredPrompt.userChoice;
         
         if (outcome === 'accepted') {

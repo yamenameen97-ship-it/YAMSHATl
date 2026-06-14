@@ -1,25 +1,63 @@
-import { memo } from 'react';
+import { memo, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import MobileTopBar from '../components/mobile/MobileTopBar';
 import BottomNav from '../components/mobile/BottomNav';
+import PullToRefresh from '../components/common/PullToRefresh.jsx';
 
 /**
  * DesktopLayout - التخطيط الموحد للابتوب
- * بناءً على طلب المستخدم، سنستخدم نفس الهيدر والفوتر الموحدين لتسهيل التنقل
- * مع الحفاظ على عرض مناسب للمحتوى في المنتصف
+ * + ميزة "اسحب للتحديث" تعمل أيضاً على شاشات اللمس الكبيرة (تابلت/شاشات هجينة)
  */
 function DesktopLayout({ children }) {
+  const location = useLocation();
+  const isReelsRoute = location.pathname === '/reels' || location.pathname.startsWith('/reels/');
+  const isChatRoute = location.pathname.startsWith('/chat') || location.pathname.startsWith('/inbox');
+  const disablePullToRefresh = isReelsRoute || isChatRoute;
+
+  const onRefresh = useCallback(async () => {
+    let handled = false;
+    const ack = () => { handled = true; };
+    window.addEventListener('yamshat:pull-refresh-ack', ack, { once: true });
+    try {
+      window.dispatchEvent(new CustomEvent('yamshat:pull-refresh', {
+        detail: { path: location.pathname },
+      }));
+    } catch {
+      /* ignore */
+    }
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    window.removeEventListener('yamshat:pull-refresh-ack', ack);
+    if (!handled) {
+      try {
+        const qc = window.__yamshatQueryClient;
+        if (qc && typeof qc.invalidateQueries === 'function') {
+          await qc.invalidateQueries();
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [location.pathname]);
+
   return (
-    <div className="desktop-layout-container">
-      {/* استخدام نفس الهيدر العلوي لتوحيد التجربة */}
+    <div className="desktop-layout-container" dir="rtl">
       <MobileTopBar />
-      
+
       <main className="desktop-main-content">
-        <div className="content-wrapper">
-          {children}
-        </div>
+        <PullToRefresh
+          onRefresh={onRefresh}
+          disabled={disablePullToRefresh}
+          pullText="اسحب للتحديث"
+          releaseText="اترك للتحديث"
+          loadingText="جارٍ التحديث…"
+          className="desktop-ptr"
+        >
+          <div className="content-wrapper">
+            {children}
+          </div>
+        </PullToRefresh>
       </main>
 
-      {/* استخدام نفس الفوتر السفلي لتوحيد التجربة كما طلب المستخدم */}
       <BottomNav />
 
       <style>{`
@@ -31,6 +69,7 @@ function DesktopLayout({ children }) {
           color: white;
           padding-top: 60px;
           padding-bottom: 70px;
+          font-family: "Noto Sans Arabic", "Cairo", system-ui, -apple-system, sans-serif;
         }
 
         .desktop-main-content {
@@ -38,29 +77,28 @@ function DesktopLayout({ children }) {
           width: 100%;
           display: flex;
           justify-content: center;
-          overflow-y: auto;
+          overflow: hidden;
+        }
+
+        .desktop-main-content > .ym-ptr-container.desktop-ptr {
+          width: 100%;
+          height: 100%;
         }
 
         .content-wrapper {
           width: 100%;
-          max-width: 1200px; /* عرض أكبر للابتوب */
+          max-width: 1200px;
           padding: 20px;
+          margin: 0 auto;
         }
 
-        /* تعديلات للهيدر والفوتر في اللابتوب */
         @media (min-width: 1024px) {
           .ym-topbar-inner, .ym-bottomnav-inner {
             max-width: 1200px;
             margin: 0 auto;
           }
-          
-          .ym-nav-label {
-            font-size: 0.85rem;
-          }
-          
-          .ym-wordmark {
-            font-size: 1.5rem;
-          }
+          .ym-nav-label { font-size: 0.85rem; }
+          .ym-wordmark { font-size: 1.5rem; }
         }
       `}</style>
     </div>

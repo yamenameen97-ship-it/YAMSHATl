@@ -152,14 +152,16 @@ export function prefetchResource(url, type = 'script') {
  * تحميل فوري للموارد
  */
 export function preloadResource(url, type = 'script') {
-  if (typeof document === 'undefined') return;
+  if (typeof document === 'undefined' || !url) return;
 
   const link = document.createElement('link');
   link.rel = 'preload';
   link.href = url;
-  if (type === 'style') link.as = 'style';
-  if (type === 'script') link.as = 'script';
-  if (type === 'image') link.as = 'image';
+  // ✅ FIX (2026-06-13): تحديد as دائماً لتجنب تحذير:
+  //  "The resource was preloaded using link preload but not used... Please make sure it has an appropriate `as` value"
+  const map = { style: 'style', script: 'script', image: 'image', font: 'font', fetch: 'fetch', video: 'video', audio: 'audio' };
+  link.as = map[type] || 'fetch';
+  if (link.as === 'font') link.crossOrigin = 'anonymous';
 
   document.head.appendChild(link);
 }

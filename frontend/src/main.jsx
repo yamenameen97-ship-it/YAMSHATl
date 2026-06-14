@@ -197,6 +197,11 @@ if (typeof window !== 'undefined') {
   }
 }
 
+// 🔄 إتاحة queryClient عالمياً لاستخدامه في ميزة "اسحب للتحديث" من الـ Layouts
+if (typeof window !== 'undefined') {
+  window.__yamshatQueryClient = queryClient;
+}
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>

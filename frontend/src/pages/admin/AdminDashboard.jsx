@@ -3,13 +3,12 @@ import AdminLayout from '../../components/admin/AdminLayout.jsx';
 
 /**
  * ========================================================================
- * AdminDashboard — لوحة المدير العام (نسخة موحّدة بدون تراكب صفحات)
+ * AdminDashboard — لوحة المدير العام (نسخة مضغوطة v30 — صفحة واحدة)
  * ------------------------------------------------------------------------
- * - إزالة كاملة لأي شاشة "Live dashboards / Real API fusion" القديمة
- *   التي كانت تظهر فوق التصميم الرئيسي وتُحدث تراكباً بصرياً.
- * - واجهة واحدة فقط مطابقة لتصميم LiveStream الداكن البنفسجي.
- * - حُذف قسم "إدارة البثوث" بناءً على طلب المالك (نظام البث ملغى).
- * - dir="rtl" + Noto Sans Arabic لضمان عرض عربي سليم.
+ * - إعادة ضبط جميع الأحجام لتجعل كامل لوحة التحكم تظهر بصفحة واحدة.
+ * - تصغير الأرقام والصناديق و padding و الجداول.
+ * - الإبقاء على الهوية البصرية (LiveStream Dark / Purple).
+ * - dir="rtl" + Noto Sans Arabic كما هو مطلوب.
  * ========================================================================
  */
 
@@ -88,13 +87,13 @@ const AUDIENCE = [
   { label: 'أكثر من ذلك', value: 10, color: '#10b981' },
 ];
 
-// رسم بياني منطقة (Area / Line) بسيط بـ SVG
-function AreaChart({ data, height = 220 }) {
+// رسم بياني منطقة (Area / Line) بسيط بـ SVG — مضغوط
+function AreaChart({ data, height = 150 }) {
   const max = Math.max(...data.map((d) => d.value)) * 1.1;
   const w = 700;
   const h = height;
-  const padX = 36;
-  const padY = 20;
+  const padX = 30;
+  const padY = 16;
   const stepX = (w - padX * 2) / (data.length - 1);
   const points = data.map((d, i) => {
     const x = padX + i * stepX;
@@ -118,26 +117,26 @@ function AreaChart({ data, height = 220 }) {
         return (
           <g key={i}>
             <line x1={padX} y1={y} x2={w - padX} y2={y} stroke="rgba(148,163,184,0.12)" />
-            <text x={padX - 8} y={y + 4} fill="#64748b" fontSize="11" textAnchor="end">{t}K</text>
+            <text x={padX - 6} y={y + 3} fill="#64748b" fontSize="9" textAnchor="end">{t}K</text>
           </g>
         );
       })}
       <path d={areaPath} fill="url(#areaFill)" />
-      <path d={linePath} fill="none" stroke="#8b5cf6" strokeWidth="2.5" />
+      <path d={linePath} fill="none" stroke="#8b5cf6" strokeWidth="2" />
       {points.map((p, i) => (
         <g key={i}>
-          <circle cx={p.x} cy={p.y} r="4" fill="#8b5cf6" stroke="#0f172a" strokeWidth="2" />
-          <text x={p.x} y={h - 4} fill="#64748b" fontSize="11" textAnchor="middle">{p.day}</text>
+          <circle cx={p.x} cy={p.y} r="3" fill="#8b5cf6" stroke="#0f172a" strokeWidth="2" />
+          <text x={p.x} y={h - 3} fill="#64748b" fontSize="9" textAnchor="middle">{p.day}</text>
         </g>
       ))}
     </svg>
   );
 }
 
-// Donut chart للتوزيع
-function Donut({ data, size = 200, centerLabel = 'الإجمالي', centerValue = '100%' }) {
+// Donut chart للتوزيع — مضغوط
+function Donut({ data, size = 130, centerLabel = 'الإجمالي', centerValue = '100%' }) {
   const total = data.reduce((s, d) => s + d.value, 0);
-  const r = size / 2 - 18;
+  const r = size / 2 - 12;
   const cx = size / 2;
   const cy = size / 2;
   let acc = 0;
@@ -156,18 +155,18 @@ function Donut({ data, size = 200, centerLabel = 'الإجمالي', centerValue
     <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size}>
       {arcs.map((a, i) => <path key={i} d={a.path} fill={a.color} />)}
       <circle cx={cx} cy={cy} r={r * 0.62} fill="#0f172a" />
-      <text x={cx} y={cy - 4} fill="#94a3b8" fontSize="12" textAnchor="middle">{centerLabel}</text>
-      <text x={cx} y={cy + 16} fill="#f8fafc" fontSize="18" fontWeight="800" textAnchor="middle">{centerValue}</text>
+      <text x={cx} y={cy - 2} fill="#94a3b8" fontSize="9" textAnchor="middle">{centerLabel}</text>
+      <text x={cx} y={cy + 12} fill="#f8fafc" fontSize="14" fontWeight="800" textAnchor="middle">{centerValue}</text>
     </svg>
   );
 }
 
-// Bar chart
-function BarChart({ values, labels, height = 200, color = '#a78bfa' }) {
+// Bar chart — مضغوط
+function BarChart({ values, labels, height = 130, color = '#a78bfa' }) {
   const max = Math.max(...values) * 1.15;
   const w = 700;
-  const padX = 30;
-  const padY = 18;
+  const padX = 26;
+  const padY = 14;
   const bw = (w - padX * 2) / values.length - 8;
   return (
     <svg viewBox={`0 0 ${w} ${height}`} width="100%" height={height} preserveAspectRatio="xMidYMid meet">
@@ -176,7 +175,7 @@ function BarChart({ values, labels, height = 200, color = '#a78bfa' }) {
         return (
           <g key={i}>
             <line x1={padX} y1={y} x2={w - padX} y2={y} stroke="rgba(148,163,184,0.10)" />
-            <text x={padX - 6} y={y + 4} fill="#64748b" fontSize="10" textAnchor="end">{t}K</text>
+            <text x={padX - 4} y={y + 3} fill="#64748b" fontSize="9" textAnchor="end">{t}K</text>
           </g>
         );
       })}
@@ -186,8 +185,8 @@ function BarChart({ values, labels, height = 200, color = '#a78bfa' }) {
         const y = height - padY - h;
         return (
           <g key={i}>
-            <rect x={x} y={y} width={bw} height={h} fill={color} rx="3" />
-            <text x={x + bw / 2} y={height - 4} fill="#64748b" fontSize="10" textAnchor="middle">{labels[i]}</text>
+            <rect x={x} y={y} width={bw} height={h} fill={color} rx="2.5" />
+            <text x={x + bw / 2} y={height - 3} fill="#64748b" fontSize="8" textAnchor="middle">{labels[i]}</text>
           </g>
         );
       })}
@@ -202,7 +201,7 @@ export default function AdminDashboard() {
   // مؤشر بسيط على أن النسخة الجديدة الموحّدة هي التي حُمّلت (يساعد في كشف تراكب أي صفحة قديمة)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      window.__YAMSHAT_ADMIN_DASHBOARD_VERSION__ = 'unified-v20-no-live';
+      window.__YAMSHAT_ADMIN_DASHBOARD_VERSION__ = 'unified-v30-single-page';
       // إزالة أي عقد قديمة محتملة في الـ DOM (مخلفات legacy)
       document.querySelectorAll('[data-legacy-admin-dashboard="true"]').forEach((el) => el.remove());
     }
@@ -212,8 +211,7 @@ export default function AdminDashboard() {
 
   return (
     <AdminLayout>
-      <div className="ls-admin" dir="rtl" data-yamshat-version="unified-v24-compact">
-        {/* Header moved to topbar (next to search) to save vertical space */}
+      <div className="ls-admin" dir="rtl" data-yamshat-version="unified-v30-single-page">
         {/* ====== Stat cards ====== */}
         <div className="ls-stats-grid">
           {STAT_CARDS.map((s) => (
@@ -453,103 +451,121 @@ export default function AdminDashboard() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;600;700;800&display=swap');
 
+        /* ============================================================
+         * v30 — تصميم مضغوط لصفحة واحدة
+         * كل القيم خُفّضت لجعل اللوحة مرئية بالكامل بدون scroll عمودي طويل
+         * ============================================================ */
+
         .ls-admin {
           font-family: 'Noto Sans Arabic', system-ui, sans-serif;
           color: #e2e8f0;
           background: #0b1020;
-          padding: 10px 12px 14px;
+          padding: 6px 10px 8px;
           min-height: 100%;
           direction: rtl;
+          font-size: 12px;
         }
         .ls-admin *, .ls-admin *::before, .ls-admin *::after { box-sizing: border-box; }
 
-        /* Legacy in-page header (now hidden — moved to topbar) */
+        /* Legacy in-page header (hidden — العنوان موجود في الـ topbar) */
         .ls-head { display: none; }
-        .ls-title { margin: 0; color: #f8fafc; font-size: 18px; font-weight: 800; }
-        .ls-sub   { margin: 2px 0 0; color: #94a3b8; font-size: 11px; }
+        .ls-title { margin: 0; color: #f8fafc; font-size: 15px; font-weight: 800; }
+        .ls-sub   { margin: 1px 0 0; color: #94a3b8; font-size: 10px; }
 
+        /* === Stat cards (الإحصائيات العلوية) === */
         .ls-stats-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-          gap: 10px;
-          margin-bottom: 10px;
+          grid-template-columns: repeat(6, minmax(0, 1fr));
+          gap: 8px;
+          margin-bottom: 8px;
+        }
+        @media (max-width: 1400px) {
+          .ls-stats-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        }
+        @media (max-width: 720px) {
+          .ls-stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
         .ls-stat-card {
           background: linear-gradient(180deg, #131a33, #0f152a);
           border: 1px solid rgba(148,163,184,0.10);
-          border-radius: 12px;
-          padding: 10px 12px;
+          border-radius: 10px;
+          padding: 7px 9px;
         }
-        .ls-stat-top { display: flex; align-items: center; gap: 8px; }
+        .ls-stat-top { display: flex; align-items: center; gap: 6px; }
         .ls-stat-icon {
-          width: 28px; height: 28px; border-radius: 8px;
+          width: 22px; height: 22px; border-radius: 6px;
           display: inline-flex; align-items: center; justify-content: center;
-          font-weight: 700; font-size: 13px;
+          font-weight: 700; font-size: 11px;
         }
-        .ls-stat-label { color: #94a3b8; font-size: 11px; }
-        .ls-stat-value { color: #f8fafc; font-size: 20px; font-weight: 800; margin: 6px 0 3px; }
-        .ls-stat-trend { color: #10b981; font-size: 11px; font-weight: 700; }
-        .ls-stat-muted { color: #64748b; font-weight: 500; margin-right: 6px; font-size: 10px; }
+        .ls-stat-label { color: #94a3b8; font-size: 10px; }
+        .ls-stat-value { color: #f8fafc; font-size: 15px; font-weight: 800; margin: 4px 0 2px; letter-spacing: -0.2px; }
+        .ls-stat-trend { color: #10b981; font-size: 9px; font-weight: 700; }
+        .ls-stat-muted { color: #64748b; font-weight: 500; margin-right: 4px; font-size: 9px; }
 
-        .ls-row { display: grid; gap: 10px; margin-bottom: 10px; }
+        /* === Rows === */
+        .ls-row { display: grid; gap: 8px; margin-bottom: 8px; }
         .ls-row-2 { grid-template-columns: 1fr 1fr; }
         .ls-row-3 { grid-template-columns: 2fr 1fr 1fr; }
         .ls-col-2 { grid-column: span 1; }
 
+        /* === Cards === */
         .ls-card {
           background: linear-gradient(180deg, #131a33, #0f152a);
           border: 1px solid rgba(148,163,184,0.10);
-          border-radius: 12px;
-          padding: 10px 12px;
-          /* fix max height → inner scrollbar for data-heavy cards */
-          max-height: 360px;
+          border-radius: 10px;
+          padding: 7px 9px;
+          max-height: 215px;
           overflow: hidden;
           display: flex;
           flex-direction: column;
         }
         .ls-card-head {
           display: flex; align-items: center; justify-content: space-between;
-          margin-bottom: 8px; flex-wrap: wrap; gap: 8px;
+          margin-bottom: 5px; flex-wrap: wrap; gap: 6px;
           flex-shrink: 0;
         }
-        .ls-card-head h3 { margin: 0; color: #f8fafc; font-size: 13px; font-weight: 700; }
-        .ls-sub-title { color: #cbd5e1; font-size: 12px; margin: 0 0 8px; font-weight: 600; }
+        .ls-card-head h3 { margin: 0; color: #f8fafc; font-size: 11px; font-weight: 700; }
+        .ls-sub-title { color: #cbd5e1; font-size: 10px; margin: 0 0 4px; font-weight: 600; }
 
+        /* === Inputs & buttons === */
         .ls-select, .ls-search, .ls-btn {
           background: rgba(15,23,42,0.7); color: #e2e8f0;
           border: 1px solid rgba(148,163,184,0.15);
-          border-radius: 8px; padding: 6px 10px; font-size: 12px;
+          border-radius: 6px; padding: 4px 8px; font-size: 10px;
           font-family: inherit;
         }
-        .ls-search { width: 100%; margin-bottom: 8px; flex-shrink: 0; }
+        .ls-search { width: 100%; margin-bottom: 5px; flex-shrink: 0; }
         .ls-btn { cursor: pointer; }
         .ls-btn-primary { background: linear-gradient(135deg, #8b5cf6, #6d28d9); border: 0; color: #fff; font-weight: 700; }
         .ls-btn-ghost   { background: rgba(139,92,246,0.15); color: #c4b5fd; border-color: rgba(139,92,246,0.25); }
 
-        .ls-donut-wrap { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-        .ls-legend { list-style: none; padding: 0; margin: 0; flex: 1; min-width: 140px; }
-        .ls-legend li { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; color: #cbd5e1; }
+        /* === Donut + legend === */
+        .ls-donut-wrap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .ls-legend { list-style: none; padding: 0; margin: 0; flex: 1; min-width: 110px; }
+        .ls-legend li { display: flex; align-items: center; gap: 5px; padding: 2px 0; font-size: 10px; color: #cbd5e1; }
         .ls-legend-label { flex: 1; }
         .ls-legend-value { color: #f8fafc; font-weight: 700; }
-        .ls-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+        .ls-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
 
-        .ls-activity { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
-        .ls-activity li { display: flex; align-items: center; gap: 8px; }
+        /* === Activity list === */
+        .ls-activity { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+        .ls-activity li { display: flex; align-items: center; gap: 6px; }
         .ls-avatar {
-          width: 32px; height: 32px; border-radius: 50%;
+          width: 22px; height: 22px; border-radius: 50%;
           background: linear-gradient(135deg, #8b5cf6, #ec4899);
           display: inline-flex; align-items: center; justify-content: center;
-          color: #fff; font-weight: 800; font-size: 13px;
+          color: #fff; font-weight: 800; font-size: 10px;
+          flex-shrink: 0;
         }
-        .ls-activity-body { display: flex; flex-direction: column; flex: 1; }
-        .ls-activity-body strong { color: #f8fafc; font-size: 13px; }
-        .ls-activity-body span { color: #94a3b8; font-size: 12px; }
+        .ls-activity-body { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+        .ls-activity-body strong { color: #f8fafc; font-size: 10px; }
+        .ls-activity-body span { color: #94a3b8; font-size: 9px; line-height: 1.3; }
         .ls-live {
           background: #ef4444; color: #fff;
-          font-size: 10px; font-weight: 800; padding: 3px 6px; border-radius: 6px;
+          font-size: 8px; font-weight: 800; padding: 2px 5px; border-radius: 4px;
         }
 
-        /* Custom scrollbar for data-heavy lists/tables inside cards */
+        /* === Scrollable inner areas === */
         .ls-table-wrap {
           flex: 1;
           min-height: 0;
@@ -558,66 +574,78 @@ export default function AdminDashboard() {
           scrollbar-width: thin;
           scrollbar-color: rgba(139,92,246,0.55) rgba(15,23,42,0.4);
         }
-        .ls-table-wrap::-webkit-scrollbar { width: 8px; height: 8px; }
+        .ls-table-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
         .ls-table-wrap::-webkit-scrollbar-thumb {
           background: linear-gradient(180deg, rgba(139,92,246,0.65), rgba(99,102,241,0.65));
-          border-radius: 8px;
+          border-radius: 6px;
         }
         .ls-table-wrap::-webkit-scrollbar-track {
-          background: rgba(15,23,42,0.4); border-radius: 8px;
+          background: rgba(15,23,42,0.4); border-radius: 6px;
         }
-        /* Activity list scroll */
         .ls-activity {
           flex: 1; min-height: 0; overflow-y: auto;
           scrollbar-width: thin;
           scrollbar-color: rgba(139,92,246,0.55) transparent;
-          padding-inline-end: 4px;
+          padding-inline-end: 3px;
         }
-        .ls-activity::-webkit-scrollbar { width: 6px; }
+        .ls-activity::-webkit-scrollbar { width: 5px; }
         .ls-activity::-webkit-scrollbar-thumb {
           background: linear-gradient(180deg, rgba(139,92,246,0.65), rgba(99,102,241,0.65));
-          border-radius: 6px;
+          border-radius: 5px;
         }
 
-        .ls-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        /* === Tables === */
+        .ls-table { width: 100%; border-collapse: collapse; font-size: 10px; }
         .ls-table thead th { position: sticky; top: 0; background: linear-gradient(180deg, #131a33, #0f152a); z-index: 2; }
-        .ls-table th { text-align: right; color: #94a3b8; font-weight: 600; padding: 6px 6px; border-bottom: 1px solid rgba(148,163,184,0.10); font-size: 11px; }
-        .ls-table td { padding: 7px 6px; color: #e2e8f0; border-bottom: 1px solid rgba(148,163,184,0.06); }
+        .ls-table th { text-align: right; color: #94a3b8; font-weight: 600; padding: 4px 4px; border-bottom: 1px solid rgba(148,163,184,0.10); font-size: 9px; }
+        .ls-table td { padding: 4px 4px; color: #e2e8f0; border-bottom: 1px solid rgba(148,163,184,0.06); font-size: 10px; }
         .ls-status {
-          display: inline-block; padding: 3px 10px; border-radius: 999px;
-          font-size: 11px; font-weight: 700;
+          display: inline-block; padding: 2px 7px; border-radius: 999px;
+          font-size: 9px; font-weight: 700;
         }
         .ls-status-ok { background: rgba(16,185,129,0.18); color: #34d399; }
 
-        .ls-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+        /* === Tabs === */
+        .ls-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
         .ls-tab {
           background: transparent; border: 0;
-          color: #94a3b8; padding: 6px 12px; border-radius: 8px;
-          font-size: 12px; cursor: pointer; font-family: inherit;
+          color: #94a3b8; padding: 4px 9px; border-radius: 6px;
+          font-size: 10px; cursor: pointer; font-family: inherit;
         }
         .ls-tab.active { background: rgba(139,92,246,0.18); color: #c4b5fd; }
 
+        /* === KPI row === */
         .ls-kpi-row {
-          display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-          gap: 8px; margin-bottom: 10px;
+          display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 6px; margin-bottom: 6px;
+        }
+        @media (max-width: 900px) {
+          .ls-kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
         .ls-kpi {
           background: rgba(15,23,42,0.65);
           border: 1px solid rgba(148,163,184,0.10);
-          border-radius: 10px; padding: 9px 11px;
+          border-radius: 8px; padding: 6px 8px;
         }
-        .ls-kpi-label { color: #94a3b8; font-size: 11px; }
-        .ls-kpi-value { color: #f8fafc; font-size: 17px; font-weight: 800; margin: 4px 0 3px; }
-        .ls-kpi-trend.up { color: #10b981; font-size: 11px; font-weight: 700; }
+        .ls-kpi-label { color: #94a3b8; font-size: 9px; }
+        .ls-kpi-value { color: #f8fafc; font-size: 13px; font-weight: 800; margin: 3px 0 2px; letter-spacing: -0.2px; }
+        .ls-kpi-trend.up { color: #10b981; font-size: 9px; font-weight: 700; }
 
-        /* Reports & analytics card: no max-height (it has its own layout) */
-        .ls-card.ls-card-full { max-height: none; overflow: visible; display: block; }
+        /* === Reports card (لها قياسات داخلية مختلفة) === */
+        .ls-card.ls-card-full {
+          max-height: none;
+          overflow: visible;
+          display: block;
+          padding: 8px 10px;
+        }
 
+        /* === Responsive breakpoints === */
         @media (max-width: 1180px) {
           .ls-row-3 { grid-template-columns: 1fr 1fr; }
         }
         @media (max-width: 820px) {
           .ls-row-2, .ls-row-3 { grid-template-columns: 1fr; }
+          .ls-card { max-height: 260px; }
         }
       `}</style>
     </AdminLayout>

@@ -1,18 +1,78 @@
-import { memo } from 'react';
+import { memo, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import BottomNav from '../components/mobile/BottomNav';
 import MobileTopBar from '../components/mobile/MobileTopBar';
+import PullToRefresh from '../components/common/PullToRefresh.jsx';
 
 /**
  * MobileLayout - التخطيط الموحد للجوال
  * يضمن بقاء الهيدر والفوتر ثابتين في جميع صفحات الموقع
+ * + ميزة "اسحب للتحديث" (Pull-to-Refresh) موحدة على كل الصفحات
  */
 function MobileLayout({ children }) {
+  const location = useLocation();
+
+  // تعطيل ميزة السحب في صفحات يكون فيها التمرير العمودي جزءاً من تجربة الصفحة الأساسية
+  // (مثل الريلز التي تستخدم snap عمودي، أو الدردشة التي قد تتعارض مع keyboard)
+  const isReelsRoute = location.pathname === '/reels' || location.pathname.startsWith('/reels/');
+  const isChatRoute = location.pathname.startsWith('/chat') || location.pathname.startsWith('/inbox');
+  const disablePullToRefresh = isReelsRoute || isChatRoute;
+
+  /**
+   * onRefresh — سلوك التحديث الموحد:
+   * 1) إطلاق حدث 'yamshat:pull-refresh' لتلتقطه الصفحة الحالية وتُعيد تحميل بياناتها بسلاسة
+   * 2) كحلّ احتياطي: في حال لم تستجب أي صفحة خلال ~700ms، نُعيد جلب الـ router الحالي
+   */
+  const onRefresh = useCallback(async () => {
+    let handled = false;
+    const ack = () => { handled = true; };
+    window.addEventListener('yamshat:pull-refresh-ack', ack, { once: true });
+
+    try {
+      window.dispatchEvent(new CustomEvent('yamshat:pull-refresh', {
+        detail: { path: location.pathname },
+      }));
+    } catch {
+      // ignore
+    }
+
+    // ننتظر مهلة قصيرة لمنح الصفحات التي تستمع للحدث فرصة لإعادة جلب بياناتها
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    window.removeEventListener('yamshat:pull-refresh-ack', ack);
+
+    // إن لم تتعامل أي صفحة مع الحدث → نُعيد تحميل الصفحة بشكل آمن (soft refresh)
+    if (!handled) {
+      try {
+        // إعادة تحميل المسار الحالي عبر hash لتجنّب فقدان حالة التطبيق بالكامل
+        const currentHash = window.location.hash;
+        if (currentHash) {
+          window.location.hash = currentHash;
+        }
+        // إعادة جلب أي query keys مرتبطة بالـ React Query (إن وجدت عبر window.__yamshatQueryClient)
+        const qc = window.__yamshatQueryClient;
+        if (qc && typeof qc.invalidateQueries === 'function') {
+          await qc.invalidateQueries();
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, [location.pathname]);
+
   return (
-    <div className="mobile-layout-container">
+    <div className="mobile-layout-container" dir="rtl">
       <MobileTopBar />
-      
+
       <main className="mobile-main-content">
-        {children}
+        <PullToRefresh
+          onRefresh={onRefresh}
+          disabled={disablePullToRefresh}
+          pullText="اسحب للتحديث"
+          releaseText="اترك للتحديث"
+          loadingText="جارٍ التحديث…"
+        >
+          {children}
+        </PullToRefresh>
       </main>
 
       <BottomNav />
@@ -22,10 +82,11 @@ function MobileLayout({ children }) {
           display: flex;
           flex-direction: column;
           min-height: 100vh;
-          background-color: #0A0D1A; /* لون الخلفية الداكن كما في الصورة */
+          background-color: #0A0D1A;
           color: white;
-          padding-top: 60px; /* مساحة للهيدر العلوي */
-          padding-bottom: 70px; /* مساحة للفوتر السفلي */
+          padding-top: 60px;
+          padding-bottom: 70px;
+          font-family: "Noto Sans Arabic", "Cairo", system-ui, -apple-system, sans-serif;
         }
 
         .mobile-main-content {
@@ -33,7 +94,14 @@ function MobileLayout({ children }) {
           width: 100%;
           max-width: 600px;
           margin: 0 auto;
-          overflow-y: auto;
+          overflow: hidden; /* السماح لـ PullToRefresh بإدارة التمرير الداخلي */
+          display: flex;
+          flex-direction: column;
+        }
+
+        .mobile-main-content > .ym-ptr-container {
+          flex: 1;
+          min-height: 0;
         }
 
         .ym-topbar {
@@ -147,7 +215,7 @@ function MobileLayout({ children }) {
           display: flex;
           flex-direction: column;
           align-items: center;
-          margin-top: -30px; /* جعل زر الإضافة يبرز للأعلى */
+          margin-top: -30px;
         }
 
         .ym-nav-plus-btn {

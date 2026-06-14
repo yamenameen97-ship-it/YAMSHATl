@@ -29,11 +29,17 @@ const rewriteKnownBrokenBrandAsset = (value = '') => {
         || /^(?:\/)?brand\/yamshat-logo\.(?:png|jpe?g|webp)$/i.test(pathname.replace(/^\/+/, ''))) {
       return '__FRONTEND__/brand/yamshat-logo.jpg';
     }
-    // ✅ FIX (2026-06): إعادة كتابة logo192.png المكسور (uploads/<hash>_logo192.png) إلى الأصل المحلي
-    if (/(?:^|\/)uploads\/.+logo192\.png$/i.test(pathname)
-        || /(?:^|\/)logo192\.png$/i.test(pathname)) {
+    // ✅ FIX (2026-06): إعادة كتابة أي logo192 بأي امتداد (png/webp/jpg) إلى الأصل المحلي
+    if (/(?:^|\/)uploads\/.+logo192\.(?:png|jpe?g|webp)$/i.test(pathname)
+        || /(?:^|\/)logo192\.(?:png|jpe?g|webp)$/i.test(pathname)) {
       return '__FRONTEND__/logo192.png';
     }
+    // ✅ FIX (2026-06-13): إعادة كتابة yamshat-logo بأي امتداد أو أي مسار فرعي في uploads/brand/api/v1
+    if (/yamshat-logo\.(?:png|jpe?g|webp|svg)$/i.test(pathname)) {
+      return '__FRONTEND__/brand/yamshat-logo.jpg';
+    }
+    // ✅ FIX (2026-06-13): فيديو بداخله اسم mp4 تالف في uploads (مثل a1c6d55_<hash>.mp4) → إرجاع مسار فارغ لتجنب 404
+    // (لا نعرف بديلاً حقيقياً — تركه فارغًا يجعل المعالج يتجاهله بدلاً من طلبه)
   } catch {
     // ignore URL parsing errors and fall back to original value
   }

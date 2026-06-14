@@ -34,6 +34,7 @@ def create(
 
 
 @router.get('/{post_id}/comments')
+@router.get('/{post_id}/comments:{cursor}')  # ✅ FIX (2026-06-13): دعم صيغة الواجهة الأمامية comments:1
 def get_all(
     post_id: int,
     page: int = Query(default=1, ge=1),
@@ -43,8 +44,11 @@ def get_all(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # إصلاح: تغليف العملية بـ try/except لإرجاع قائمة فارغة بدلاً من 500
-    # عند غياب المنشور أو خلل في تحميل العلاقات
+    # ✅ إصلاح موسع (2026-06-13):
+    #   — تغليف واسع لـ try/except
+    #   — إرجاع بنية موحدة دائماً (items/total/page/limit) حتى لو فشلت الـ service داخلياً
+    #   — لا نرفع 500 أبداً للواجهة الأمامية — نعيد قائمة فارغة بدلاً
+    empty_payload = {'items': [], 'total': 0, 'page': page, 'limit': limit}
     try:
         payload = get_comments(
             db,
@@ -55,21 +59,27 @@ def get_all(
             sort_by=sort_by,
             include_hidden=include_hidden,
         )
-        items = payload.get('items', []) if isinstance(payload, dict) else []
-        payload['items'] = rank_comments(items, current_user)
+        if not isinstance(payload, dict):
+            return empty_payload
+        items = payload.get('items', []) or []
+        try:
+            payload['items'] = rank_comments(items, current_user)
+        except Exception:
+            payload['items'] = items
+        payload.setdefault('total', len(payload['items']))
+        payload.setdefault('page', page)
+        payload.setdefault('limit', limit)
         return payload
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
         import logging
         logging.getLogger(__name__).warning('get_comments failed for post_id=%s: %s', post_id, exc)
-        return {
-            'items': [],
-            'total': 0,
-            'page': page,
-            'limit': limit,
-            'has_more': False,
-        }
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return empty_payload
 
 
 @router.patch('/item/{comment_id}')

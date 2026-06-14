@@ -55,6 +55,8 @@ function GroupChatPage() {
 }
 const Inbox = lazy(() => import('./features/chat/index.js').then((mod) => ({ default: mod.Inbox })));
 const Users = lazy(() => import('./pages/Users.jsx'));
+const Friends = lazy(() => import('./pages/Friends.jsx'));
+const FriendsAll = lazy(() => import('./pages/FriendsAll.jsx'));
 const Profile = lazy(() => import('./pages/Profile.jsx'));
 const Chat = lazy(() => import('./features/chat/index.js').then((mod) => ({ default: mod.Chat })));
 const Notifications = lazy(() => import('./features/notifications/index.js').then((mod) => ({ default: mod.Notifications })));
@@ -218,6 +220,8 @@ export default function App() {
             <Route path="/messages" element={<Navigate to="/inbox" replace />} />
             <Route path="/inbox" element={<ProtectedRoute><Inbox /></ProtectedRoute>} />
             <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
+            <Route path="/friends" element={<ProtectedRoute><Friends /></ProtectedRoute>} />
+            <Route path="/friends/all" element={<ProtectedRoute><FriendsAll /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
             <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
             <Route path="/search" element={<ProtectedRoute><Search /></ProtectedRoute>} />

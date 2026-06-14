@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 
 const PRIMARY_ITEMS = [
   { to: '/', label: 'الرئيسية', icon: '⌂' },
-  { to: '/users', label: 'الأصدقاء', icon: '👥' },
+  { to: '/friends', label: 'الأصدقاء', icon: '👥' },
   { to: '/groups', label: 'المجموعات', icon: '👨‍👩‍👧‍👦' },
   { to: '/inbox', label: 'الرسائل', icon: '✉' },
   { to: '/notifications', label: 'الإشعارات', icon: '🔔' },

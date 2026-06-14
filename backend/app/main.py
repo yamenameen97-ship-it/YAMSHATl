@@ -265,6 +265,7 @@ _include("app.api.routes.search.router", prefix="/api/search")
 _include("app.api.routes.upload.router", prefix="/api/upload")
 _include("app.api.routes.admin.router", prefix="/api/admin")
 _include("app.api.routes.follow.router", prefix="/api/follow")
+_include("app.api.routes.friends.router", prefix="/api/friends")
 _include("app.api.routes.chat.router", prefix="/api/chat")
 # ⚠️ stories.py داخلياً يعرّف مساراته بـ /stories/... و /add_story
 # لذلك نحمله تحت /api فقط لتجنب /api/stories/stories/...

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>إصلاحات YAMSHAT v32 — تقرير عربي</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  body {
+    font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+    background: #0A0D1A; color: #e2e8f0; line-height: 1.8; padding: 28px; max-width: 920px; margin: 0 auto;
+  }
+  h1 { color: #a78bfa; }
+  h2 { color: #c4b5fd; border-bottom: 1px solid #1f2937; padding-bottom: 6px; }
+  code { background: #1f2937; color: #fbbf24; padding: 2px 6px; border-radius: 4px; }
+  .ok { color: #4ade80; font-weight: 700; }
+  ul li { margin: 6px 0; }
+</style>
+</head>
+<body>
+<h1>تقرير إصلاحات YAMSHAT — v32</h1>
+
+<h2>1) صفحة الملف الشخصي بنفس ستايل المشروع</h2>
+<ul>
+  <li><span class="ok">✓</span> ملف <code>components/profile/ProfileHeader.jsx</code> أُعيد بناؤه كاملًا.</li>
+  <li><span class="ok">✓</span> ترتيب الأزرار مطابق للصورة المرجعية: <strong>مراسلة</strong> + <strong>متابعة</strong> (الزائر) / <strong>تعديل الملف</strong> + <strong>التحليلات</strong> (المالك).</li>
+  <li><span class="ok">✓</span> غلاف + أفاتار دائري + اسم + شارة توثيق + إحصائيات (متابعون / يتابع / منشورات).</li>
+  <li><span class="ok">✓</span> تبويبات: <strong>الكل / ريلز / الصور</strong>.</li>
+  <li><span class="ok">✓</span> قسم «التفاصيل الشخصية» (الموقع، الجنس) أسفل التبويبات.</li>
+  <li><span class="ok">✓</span> <code>dir="rtl"</code> + خط <code>Noto Sans Arabic, Tajawal</code>.</li>
+  <li><span class="ok">✓</span> <code>pages/Profile.jsx</code> أُضيف لها <code>dir="rtl"</code> وخط عربي + زر «مراسلة» و«متابعة» للزائر.</li>
+</ul>
+
+<h2>2) فصل شعار YAMSHAT عن أزرار ستوري/مجموعات</h2>
+<ul>
+  <li><span class="ok">✓</span> أضيف <code>border-inline-end</code> + <code>padding/margin-inline</code> على <code>.ym-brand-container</code>.</li>
+  <li><span class="ok">✓</span> زيادة <code>gap</code> بين أزرار الستوري/المجموعات وبين الشعار.</li>
+  <li><span class="ok">✓</span> الشعار مُزاح إلى أقصى اليمين بمسافة <code>margin-inline-start: 14px</code>.</li>
+</ul>
+
+<h2>3) إخفاء المنشور الترحيبي في الصفحة الرئيسية (ويب جوال)</h2>
+<ul>
+  <li><span class="ok">✓</span> في <code>pages/FeedMobile.jsx</code>: لم يعد <code>WELCOME_POST</code> يُحقن عند فراغ القائمة.</li>
+  <li><span class="ok">✓</span> المنشورات الحقيقية تظهر مباشرة بدون أي بوست افتراضي يحجبها.</li>
+</ul>
+
+<h2>4) ثبات الهيدر العلوي والسفلي في شات الويب جوال</h2>
+<ul>
+  <li><span class="ok">✓</span> أُزيلت <code>translateZ(0)</code> و <code>will-change: transform</code> من <code>.yam-chat-stage-header</code> و <code>.yam-chat-input-wrap</code> (كانت تكسر <code>position:fixed</code> على Mobile WebView).</li>
+  <li><span class="ok">✓</span> فُرض <code>position: fixed !important</code> + <code>transform: none !important</code> على الهيدر والفوتر.</li>
+  <li><span class="ok">✓</span> فُرض <code>transform/filter: none</code> على <code>.yam-chat-stage</code> و <code>html, body</code> لمنع إنشاء containing block جديد.</li>
+  <li><span class="ok">✓</span> ملف CSS عام <code>yamshat-rtl-fix-v32.css</code> يفرض الثبات لكل صفحات الموبايل.</li>
+</ul>
+
+<h2>5) RTL + الخطوط على مستوى التطبيق</h2>
+<ul>
+  <li><span class="ok">✓</span> ملف <code>styles/yamshat-rtl-fix-v32.css</code> يحقن <code>Noto Sans Arabic</code> و <code>Tajawal</code> على كل html/body.</li>
+  <li><span class="ok">✓</span> مستورد من <code>main.jsx</code> ليُطبَّق على التطبيق بأكمله.</li>
+</ul>
+
+<p style="margin-top:32px;color:#94a3b8">
+  جزاكم الله خيرًا — جميع الإصلاحات المذكورة طُبِّقت في حدود الملفات المعنية فقط، دون أي تعديل على وظائف أو ستايل أخرى خارج النطاق.
+</p>
+</body>
+</html>

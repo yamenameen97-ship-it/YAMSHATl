@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { REEL_FILTERS, getSavedFilter, saveFilter, getFilterById } from './ReelFilters.js';
 
 /**
- * ReelPlayer — Stage 6 Premium Polish (مُحسّن)
+ * ReelPlayer — Stage 6 Premium Polish (مُحسّن + فلاتر ريلز v33+1)
  * ------------------------------------------
  * تحسينات النسخة الجديدة:
  *  ✓ إصلاح مشكلة AudioContext (start بعد user gesture بدل autoplay مباشر)
@@ -40,6 +41,15 @@ export default function ReelPlayer({
   const [muted, setMuted] = useState(true);
   const [immersive, setImmersive] = useState(false);
   const [hasError, setHasError] = useState(false);
+  /* ✅ v33+1: فلاتر الريلز — حالة الفلتر الحالي + لوحة الاختيار */
+  const [filterId, setFilterId] = useState(() => getSavedFilter());
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const currentFilter = useMemo(() => getFilterById(filterId), [filterId]);
+  const videoFilterStyle = useMemo(() => ({
+    filter: currentFilter?.filter && currentFilter.filter !== 'none' ? currentFilter.filter : 'none',
+    WebkitFilter: currentFilter?.filter && currentFilter.filter !== 'none' ? currentFilter.filter : 'none',
+    transition: 'filter 220ms ease',
+  }), [currentFilter]);
 
   /* ---------- 0) connection-aware preload value ---------- */
   const preloadValue = useMemo(() => {
@@ -258,6 +268,7 @@ export default function ReelPlayer({
         ref={videoRef}
         data-ds="reel-video"
         className="reel-video"
+        style={videoFilterStyle}
         src={reel?.videoUrl}
         poster={reel?.poster}
         loop
@@ -322,6 +333,63 @@ export default function ReelPlayer({
         <span aria-hidden="true">{muted ? '🔇' : '🔊'}</span>
         <span>{muted ? 'صامت' : 'مفعّل'}</span>
       </button>
+
+      {/* ✅ v33+1: زر فلاتر الريل + لوحة الاختيار */}
+      <button
+        type="button"
+        className="reel-filter-btn"
+        onClick={(e) => { e.stopPropagation(); setShowFilterPanel((s) => !s); wakeImmersion(); }}
+        aria-label="فلاتر الفيديو"
+        aria-expanded={showFilterPanel}
+        title="فلاتر وتحسينات"
+      >
+        <span aria-hidden="true">✨</span>
+        <span>{currentFilter?.label || 'فلاتر'}</span>
+      </button>
+
+      {showFilterPanel ? (
+        <div
+          className="reel-filter-panel"
+          dir="rtl"
+          onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-label="اختيار فلتر الفيديو"
+        >
+          <div className="reel-filter-panel-head">
+            <strong>فلاتر وتحسينات</strong>
+            <button
+              type="button"
+              className="reel-filter-close"
+              onClick={() => setShowFilterPanel(false)}
+              aria-label="إغلاق"
+            >✕</button>
+          </div>
+          <div className="reel-filter-grid">
+            {REEL_FILTERS.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                className={`reel-filter-chip ${filterId === f.id ? 'active' : ''}`}
+                onClick={() => {
+                  setFilterId(f.id);
+                  saveFilter(f.id);
+                }}
+              >
+                <span
+                  className="reel-filter-thumb"
+                  style={{
+                    filter: f.filter !== 'none' ? f.filter : 'none',
+                    WebkitFilter: f.filter !== 'none' ? f.filter : 'none',
+                    backgroundImage: reel?.poster ? `url(${reel.poster})` : undefined,
+                  }}
+                  aria-hidden="true"
+                />
+                <span className="reel-filter-label">{f.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {/* Caption + author */}
       <div className="reel-caption">

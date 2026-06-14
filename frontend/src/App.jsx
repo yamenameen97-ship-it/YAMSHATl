@@ -66,6 +66,16 @@ const ShareTargetLanding = lazy(() => import('./pages/ShareTargetLanding.jsx'));
 // 🎮 ميزات التفاعل والتلعيب + الغرف الصوتية
 const EngagementHub = lazy(() => import('./pages/EngagementHub.jsx'));
 const VoiceRoomsPage = lazy(() => import('./pages/VoiceRoomsPage.jsx'));
+// ⚙️ صفحات الإعدادات الفرعية الجديدة
+const ProfileSettingsPage = lazy(() => import('./pages/settings/ProfileSettingsPage.jsx'));
+const ReelsSettingsPage = lazy(() => import('./pages/settings/ReelsSettingsPage.jsx'));
+const StoriesSettingsPage = lazy(() => import('./pages/settings/StoriesSettingsPage.jsx'));
+const FeedSettingsPage = lazy(() => import('./pages/settings/FeedSettingsPage.jsx'));
+const NotificationsSettingsPage = lazy(() => import('./pages/settings/NotificationsSettingsPage.jsx'));
+const WalletSettingsPage = lazy(() => import('./pages/settings/WalletSettingsPage.jsx'));
+const VoiceRoomsSettingsPage = lazy(() => import('./pages/settings/VoiceRoomsSettingsPage.jsx'));
+const EngagementSettingsPage = lazy(() => import('./pages/settings/EngagementSettingsPage.jsx'));
+const InboxSettingsPage = lazy(() => import('./pages/settings/InboxSettingsPage.jsx'));
 
 function AppGuards() {
   useNetworkStatus();
@@ -212,6 +222,15 @@ export default function App() {
             <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
             <Route path="/search" element={<ProtectedRoute><Search /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            <Route path="/settings/profile" element={<ProtectedRoute><ProfileSettingsPage /></ProtectedRoute>} />
+            <Route path="/settings/reels" element={<ProtectedRoute><ReelsSettingsPage /></ProtectedRoute>} />
+            <Route path="/settings/stories" element={<ProtectedRoute><StoriesSettingsPage /></ProtectedRoute>} />
+            <Route path="/settings/feed" element={<ProtectedRoute><FeedSettingsPage /></ProtectedRoute>} />
+            <Route path="/settings/notifications" element={<ProtectedRoute><NotificationsSettingsPage /></ProtectedRoute>} />
+            <Route path="/settings/wallet" element={<ProtectedRoute><WalletSettingsPage /></ProtectedRoute>} />
+            <Route path="/settings/voice" element={<ProtectedRoute><VoiceRoomsSettingsPage /></ProtectedRoute>} />
+            <Route path="/settings/engagement" element={<ProtectedRoute><EngagementSettingsPage /></ProtectedRoute>} />
+            <Route path="/settings/inbox" element={<ProtectedRoute><InboxSettingsPage /></ProtectedRoute>} />
             <Route path="/groups/settings" element={<ProtectedRoute><GroupSettings /></ProtectedRoute>} />
             <Route path="/groups/settings/:groupId" element={<ProtectedRoute><GroupSettings /></ProtectedRoute>} />
             <Route path="/share-target" element={<ShareTargetLanding />} />

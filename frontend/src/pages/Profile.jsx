@@ -262,7 +262,7 @@ export default function Profile() {
 
   return (
     <MainLayout>
-      <section className="profile-page desktop-post mobile-post">
+      <section className="profile-page desktop-post mobile-post" dir="rtl" style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}>
         <Card className="profile-hero-card">
           {coverPhoto ? (
             <div className="profile-cover-banner" style={{ backgroundImage: `url(${coverPhoto})` }} />
@@ -282,8 +282,17 @@ export default function Profile() {
             <div className="profile-summary-block">
               <div className="profile-header-row">
                 <div>
-                  <p className="page-eyebrow no-margin">Profile</p>
-                  <h2 className="page-title">{profile.user.username}</h2>
+                  <h2 className="page-title" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <span>{profile.user.display_name || profile.user.username}</span>
+                    {(profile.user.is_verified || profile.user.verified) ? (
+                      <span title="حساب موثّق" aria-label="حساب موثّق" style={{ display: 'inline-flex' }}>
+                        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                          <path fill="#3b82f6" d="M12 2l2.39 2.06L17.5 4l.94 3.06L21 8l-.94 3.06L21 14l-3.06.94L17.5 18l-3.11-.06L12 20l-2.39-2.06L6.5 18l-.94-3.06L3 14l.94-3.06L3 8l3.06-.94L6.5 4l3.11.06L12 2z" />
+                          <path fill="#fff" d="M10.7 14.4l-2.4-2.4 1.06-1.06 1.34 1.34 3.94-3.94 1.06 1.07z" />
+                        </svg>
+                      </span>
+                    ) : null}
+                  </h2>
                   {tagline ? <p className="profile-tagline">{tagline}</p> : null}
                 </div>
 
@@ -295,7 +304,16 @@ export default function Profile() {
                       <Button variant="secondary" size="small" onClick={() => setShowAnalytics(true)}>التحليلات</Button>
                     </>
                   ) : (
-                    <Button size="small">متابعة</Button>
+                    <>
+                      <Button
+                        variant="secondary"
+                        size="small"
+                        onClick={() => { window.location.href = `/chat/${encodeURIComponent(profile.user.username)}`; }}
+                      >
+                        💬 مراسلة
+                      </Button>
+                      <Button size="small">╋ متابعة</Button>
+                    </>
                   )}
                 </div>
               </div>

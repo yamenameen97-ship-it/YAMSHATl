@@ -143,12 +143,19 @@ export const getPosts = async (params = {}) => {
 };
 export const getDraftPosts = () => API.get('/posts/drafts', { cache: false, forceRefresh: true });
 export const createPost = (data = {}) => {
-  const mediaUrl = data.media_url || data.image_url || data.media || '';
+  const mediaUrl = data.media_url || data.image_url || data.media || data.video_url || '';
   const status = data.status || 'published';
+  // ✅ v33+1: تعرف أوضح على الفيديو لحل مشكلة فشل نشر الفيديو كمنشور
+  const isVideo = Boolean(data.has_video || data.video_url || String(data.media_type || '').toLowerCase() === 'video' || /\.(mp4|webm|mov|m4v|m3u8|mkv|avi)(\?.*)?$/i.test(String(mediaUrl).toLowerCase()));
   const payload = {
     ...data,
-    image_url: data.image_url || mediaUrl || undefined,
+    image_url: data.image_url || (isVideo ? (data.thumbnail_url || '') : mediaUrl) || undefined,
     media: mediaUrl || undefined,
+    media_url: mediaUrl || undefined,
+    video_url: isVideo ? mediaUrl : undefined,
+    media_type: data.media_type || (isVideo ? 'video' : (mediaUrl ? 'image' : undefined)),
+    has_video: isVideo || undefined,
+    thumbnail_url: data.thumbnail_url || undefined,
     media_urls: Array.isArray(data.media_urls) ? data.media_urls : mediaUrl ? [mediaUrl] : undefined,
     is_draft: data.is_draft ?? status === 'draft',
   };

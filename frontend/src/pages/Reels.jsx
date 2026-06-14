@@ -30,6 +30,7 @@ import {
 import { FixedSizeList as List } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import UniversalPlayer from '../components/video/UniversalPlayer.jsx';
+import { REEL_FILTERS, getSavedFilter, saveFilter, getFilterById } from '../components/reels/ReelFilters.js';
 
 function computeReelScore(item) {
   const likes = Number(item.likes_count || 0);
@@ -123,6 +124,8 @@ function ReelItem({ index, style, data }) {
     onVideoError,
     onVideoPlay,
     navDirection,
+    reelFilterId,
+    reelFilterStyle,
   } = data;
 
   const reel = reels[index];
@@ -145,6 +148,7 @@ function ReelItem({ index, style, data }) {
         <video
           ref={videoRef}
           className={`w-full h-full object-cover reel-video ${isActive ? 'active' : ''}`}
+          style={reelFilterStyle}
           loop
           playsInline
           muted
@@ -282,6 +286,15 @@ export default function ReelsPage() {
     }, {});
   });
   const [uploadState, setUploadState] = useState({ mediaUrl: '', previewUrl: '', thumbnailUrl: '', uploading: false, publishing: false, content: '', fileName: '', processedFile: null, originalFile: null });
+  /* ✅ v33+1: فلتر الريلز العام للصفحة */
+  const [reelFilterId, setReelFilterId] = useState(() => getSavedFilter());
+  const [showReelFilterPanel, setShowReelFilterPanel] = useState(false);
+  const currentReelFilter = useMemo(() => getFilterById(reelFilterId), [reelFilterId]);
+  const reelFilterStyle = useMemo(() => ({
+    filter: currentReelFilter?.filter && currentReelFilter.filter !== 'none' ? currentReelFilter.filter : 'none',
+    WebkitFilter: currentReelFilter?.filter && currentReelFilter.filter !== 'none' ? currentReelFilter.filter : 'none',
+    transition: 'filter 220ms ease',
+  }), [currentReelFilter]);
 
   const deviceProfile = useMemo(() => getDeviceProfile(), []);
   const preloadRange = deviceProfile.videoPreloadRange || (deviceProfile.isLowEndDevice ? 1 : 2);
@@ -927,6 +940,8 @@ export default function ReelsPage() {
     onVideoEnded: handleVideoEnded,
     onVideoError: handleVideoError,
     onVideoPlay: handleVideoPlay,
+    reelFilterId,
+    reelFilterStyle,
   }), [
     activeIndex,
     activeQuality,
@@ -953,6 +968,8 @@ export default function ReelsPage() {
     selectedQuality,
     setVideoRef,
     watchHistoryMap,
+    reelFilterId,
+    reelFilterStyle,
   ]);
 
   const closeUploadModal = () => {
@@ -964,7 +981,7 @@ export default function ReelsPage() {
   return (
     <MainLayout>
       <div className="reels-page-shell" onWheelCapture={handleWheelNavigation} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-        {/* ✅ شريط علوي عائم شفاف: زر رجوع + زر بحث (نفس ستايل YAMSHAT) */}
+        {/* ✅ شريط علوي عائم شفاف: زر رجوع + زر فلاتر + زر بحث (نفس ستايل YAMSHAT) */}
         <div className="reels-floating-top-bar" dir="rtl">
           <button
             type="button"
@@ -980,18 +997,64 @@ export default function ReelsPage() {
               <path d="M15 18l-6-6 6-6" />
             </svg>
           </button>
-          <button
-            type="button"
-            className="reels-floating-btn reels-search-btn"
-            aria-label="بحث"
-            onClick={() => navigate('/search')}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="7" />
-              <path d="M21 21l-4.3-4.3" />
-            </svg>
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {/* ✅ v33+1: زر فلاتر الريلز */}
+            <button
+              type="button"
+              className={`reels-floating-btn reels-filter-btn ${reelFilterId !== 'none' ? 'is-active' : ''}`}
+              aria-label="فلاتر وتحسينات الفيديو"
+              aria-expanded={showReelFilterPanel}
+              onClick={() => setShowReelFilterPanel((s) => !s)}
+              title={currentReelFilter?.label || 'فلاتر'}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 3l1.9 4.9L19 9l-3.8 3.4L16.5 18 12 15.3 7.5 18l1.3-5.6L5 9l5.1-1.1L12 3z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="reels-floating-btn reels-search-btn"
+              aria-label="بحث"
+              onClick={() => navigate('/search')}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="7" />
+                <path d="M21 21l-4.3-4.3" />
+              </svg>
+            </button>
+          </div>
         </div>
+
+        {/* ✅ v33+1: لوحة اختيار فلاتر الريلز (RTL + Noto Sans Arabic) */}
+        {showReelFilterPanel ? (
+          <div className="reels-filter-sheet" dir="rtl" role="dialog" aria-label="فلاتر وتحسينات الفيديو">
+            <div className="reels-filter-sheet-head">
+              <strong>فلاتر وتحسينات الفيديو</strong>
+              <button type="button" className="reels-filter-close" onClick={() => setShowReelFilterPanel(false)} aria-label="إغلاق">✕</button>
+            </div>
+            <div className="reels-filter-sheet-grid">
+              {REEL_FILTERS.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  className={`reels-filter-sheet-chip ${reelFilterId === f.id ? 'active' : ''}`}
+                  onClick={() => { setReelFilterId(f.id); saveFilter(f.id); }}
+                >
+                  <span
+                    className="reels-filter-sheet-thumb"
+                    style={{
+                      filter: f.filter !== 'none' ? f.filter : 'none',
+                      WebkitFilter: f.filter !== 'none' ? f.filter : 'none',
+                      backgroundImage: activeReelItem?.poster_url ? `url(${activeReelItem.poster_url})` : undefined,
+                    }}
+                    aria-hidden="true"
+                  />
+                  <span className="reels-filter-sheet-label">{f.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <div className="reels-stage-shell">
           {isLoading ? (
@@ -1097,27 +1160,80 @@ export default function ReelsPage() {
             <NestedComments
               comments={activeComments}
               onAddComment={async (payload) => {
-                // ✅ إصلاح: NestedComments يرسل كائن { content } وليس نصًا مجردًا.
-                // كنا نمرّر الكائن كاملًا إلى addComment فلا يصل النص للخادم وبالتالي لا يُحفظ التعليق.
+                // ✅ v33+1 (إصلاح حفظ تعليق الريلز على ويب الجوال):
+                // 1) NestedComments يرسل كائن { content }، نطبّع للنص.
+                // 2) نُنشئ نسخة تفاؤلية محلية فورًا حتى لو فشل API على شبكة الجوال البطيئة.
+                // 3) نُحدّث الكاش (getReelsCache/saveReelsCache) لضمان ظهور التعليق بعد إعادة فتح الصفحة.
+                // 4) نُحاول جميع endpoints المحتملة (reels/:id/comment ثم posts/:id/comment) لأن الـ backend
+                //    على الجوال أحيانًا يرفض المسار الأول.
                 const text = typeof payload === 'string'
                   ? payload
                   : String(payload?.content || payload?.text || '').trim();
                 if (!text || !activeReel?.id) return;
+
+                const tempId = `tmp-${Date.now()}`;
+                const optimistic = {
+                  id: tempId,
+                  content: text,
+                  user: currentUser,
+                  username: currentUser,
+                  user_avatar: '',
+                  created_at: new Date().toISOString(),
+                  is_pending: true,
+                };
+                // إضافة تفاؤلية فورية لتجربة ويب جوال سلسة
+                setActiveComments((prev) => [optimistic, ...prev]);
+                setReels((prev) => prev.map((item) =>
+                  String(item.id) === String(activeReel.id)
+                    ? { ...item, comments_count: Number(item.comments_count || 0) + 1 }
+                    : item
+                ));
+
+                const persistToCache = (savedItem) => {
+                  try {
+                    const cached = getReelsCache();
+                    if (cached?.items) {
+                      const updated = cached.items.map((item) => String(item.id) === String(activeReel.id)
+                        ? { ...item, comments_count: Number(item.comments_count || 0) + 1 }
+                        : item);
+                      saveReelsCache(updated);
+                    }
+                  } catch (_) { /* ignore cache errors */ }
+                };
+
                 try {
-                  const { data } = await addComment(activeReel.id, text);
-                  const saved = data?.comment || data?.data || data;
-                  if (saved) {
-                    setActiveComments((prev) => [saved, ...prev]);
+                  let saved = null;
+                  try {
+                    const { data } = await addComment(activeReel.id, text);
+                    saved = data?.comment || data?.data || data;
+                  } catch (firstErr) {
+                    // محاولة احتياطية على endpoint الريلز المباشر
+                    try {
+                      const fallback = await API.post(`/reels/${encodeURIComponent(activeReel.id)}/comment`, { content: text });
+                      saved = fallback?.data?.comment || fallback?.data?.data || fallback?.data;
+                    } catch (secondErr) {
+                      throw firstErr;
+                    }
                   }
-                  // تحديث عداد التعليقات على الريل نفسه
-                  setReels((prev) => prev.map((item) =>
-                    String(item.id) === String(activeReel.id)
-                      ? { ...item, comments_count: Number(item.comments_count || 0) + 1 }
-                      : item
-                  ));
+
+                  if (saved && saved.id) {
+                    // استبدال النسخة المؤقتة بالنسخة الحقيقية
+                    setActiveComments((prev) => prev.map((c) => String(c.id) === tempId ? saved : c));
+                  } else {
+                    // البقاء على النسخة التفاؤلية وإزالة علم pending
+                    setActiveComments((prev) => prev.map((c) => String(c.id) === tempId ? { ...c, is_pending: false } : c));
+                  }
+                  persistToCache(saved);
                   pushToast({ type: 'success', title: 'تم نشر التعليق' });
                 } catch (error) {
-                  pushToast({ type: 'error', title: 'تعذر نشر التعليق', description: error?.message });
+                  // التراجع: إزالة النسخة التفاؤلية + إنقاص العداد
+                  setActiveComments((prev) => prev.filter((c) => String(c.id) !== tempId));
+                  setReels((prev) => prev.map((item) =>
+                    String(item.id) === String(activeReel.id)
+                      ? { ...item, comments_count: Math.max(0, Number(item.comments_count || 0) - 1) }
+                      : item
+                  ));
+                  pushToast({ type: 'error', title: 'تعذر نشر التعليق', description: error?.response?.data?.detail || error?.message });
                 }
               }}
               onReply={async (parentId, text) => {
@@ -1266,6 +1382,104 @@ export default function ReelsPage() {
             display: block;
           }
           /* في RTL: سهم الرجوع (chevron right) يبدو طبيعيًا بدون تدوير لأن الصورة تظهر سهمًا للرجوع */
+          .reels-floating-btn.is-active {
+            background: rgba(139, 92, 246, 0.55);
+            border-color: rgba(167,139,250,0.55);
+          }
+          /* ✅ v33+1: لوحة فلاتر الريلز */
+          .reels-filter-sheet {
+            position: absolute;
+            top: calc(env(safe-area-inset-top, 0px) + 64px);
+            inset-inline-end: 12px;
+            z-index: 50;
+            width: min(360px, calc(100% - 24px));
+            max-height: 60vh;
+            overflow-y: auto;
+            padding: 16px;
+            border-radius: 22px;
+            background: rgba(9, 14, 28, 0.92);
+            border: 1px solid rgba(255,255,255,0.14);
+            backdrop-filter: blur(22px) saturate(150%);
+            -webkit-backdrop-filter: blur(22px) saturate(150%);
+            box-shadow: 0 24px 60px rgba(0,0,0,0.48);
+            color: #fff;
+            font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, -apple-system, sans-serif;
+            direction: rtl;
+            animation: reelsFilterSheetIn 220ms ease-out;
+          }
+          @keyframes reelsFilterSheetIn {
+            from { opacity: 0; transform: translateY(-12px) scale(0.96); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+          }
+          .reels-filter-sheet-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 14px;
+            font-weight: 800;
+            font-size: 15px;
+          }
+          .reels-filter-close {
+            width: 32px;
+            height: 32px;
+            border-radius: 999px;
+            border: none;
+            background: rgba(255,255,255,0.10);
+            color: #fff;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 800;
+          }
+          .reels-filter-close:hover { background: rgba(255,255,255,0.20); }
+          .reels-filter-sheet-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+          }
+          .reels-filter-sheet-chip {
+            display: grid;
+            gap: 6px;
+            padding: 6px;
+            border-radius: 14px;
+            border: 1px solid rgba(255,255,255,0.10);
+            background: rgba(255,255,255,0.04);
+            color: #fff;
+            cursor: pointer;
+            transition: border-color 160ms ease, transform 160ms ease, background 160ms ease;
+            font-family: inherit;
+          }
+          .reels-filter-sheet-chip:hover {
+            background: rgba(255,255,255,0.08);
+            transform: translateY(-2px);
+          }
+          .reels-filter-sheet-chip.active {
+            border-color: #a78bfa;
+            background: rgba(139, 92, 246, 0.22);
+            box-shadow: 0 0 0 2px rgba(167,139,250,0.35);
+          }
+          .reels-filter-sheet-thumb {
+            display: block;
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            border-radius: 10px;
+            background-color: #1f2937;
+            background-size: cover;
+            background-position: center;
+            background-image: linear-gradient(135deg, #4f46e5 0%, #ec4899 50%, #f59e0b 100%);
+          }
+          .reels-filter-sheet-label {
+            font-size: 11px;
+            font-weight: 700;
+            text-align: center;
+            line-height: 1.3;
+          }
+          @media (max-width: 768px) {
+            .reels-filter-sheet {
+              inset-inline-start: 10px;
+              inset-inline-end: 10px;
+              width: auto;
+            }
+          }
           .reels-loading-state,
           .reels-empty-state {
             height: 100%;

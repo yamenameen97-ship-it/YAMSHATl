@@ -139,10 +139,9 @@ function FeedMobile() {
       ? rawPosts.map((p, i) => normalizePost(p, i))
       : [];
 
-    // إذا لم توجد منشورات فعلاً، نعرض البوست الترحيبي
-    const allPosts = normalizedPosts.length === 0
-      ? [WELCOME_POST]
-      : normalizedPosts;
+    // ✅ v31: عدم عرض المنشور الترحيبي مطلقاً في الصفحة الرئيسية للويب جوال
+    // كان البوست الترحيبي يحجب ظهور المنشورات الفعلية ويُعاد كل مرة
+    const allPosts = normalizedPosts;
 
     // إزالة التكرار النهائية بناء على id (احتياط)
     const dedupedMap = new Map();

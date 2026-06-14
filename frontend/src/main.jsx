@@ -5,6 +5,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import App from './App.jsx';
 import { LanguageProvider } from './i18n/LanguageProvider.jsx';
 import './styles/index.css';
+import './styles/yamshat-rtl-fix-v32.css';
 import './styles/smooth-touch-experience.css';
 import { queryClient } from './lib/queryClient.js';
 import { useAppStore } from './store/appStore.js';

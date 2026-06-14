@@ -185,21 +185,27 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
           width: 100%;
           max-width: 1200px;
           margin: 0 auto;
-          gap: 6px;
+          gap: 10px;
         }
         .ym-topbar-right-cluster {
           display: flex;
           align-items: center;
-          gap: 4px;
+          gap: 6px;
           flex-shrink: 0;
+          /* إزاحة الشعار إلى أقصى الزاوية اليمنى في وضع RTL لإعطاء مسافة
+             واضحة بين كلمة YAMSHAT وأزرار «ستوري / مجموعات» */
+          padding-inline-end: 0;
+          margin-inline-start: 14px;
         }
         .ym-topbar-center {
           display: flex;
           align-items: center;
-          gap: 6px;
+          gap: 8px;
           flex: 1;
           justify-content: center;
           min-width: 0;
+          margin-inline-start: 6px;
+          margin-inline-end: 6px;
         }
         .ym-topbar-left {
           display: flex;
@@ -236,6 +242,10 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
           display: flex;
           align-items: center;
           gap: 5px;
+          /* مسافة إضافية بعد الشعار حتى لا يلتصق بأزرار الستوري/المجموعات */
+          padding-inline-end: 8px;
+          margin-inline-end: 4px;
+          border-inline-end: 1px solid rgba(139, 92, 246, 0.18);
         }
         .ym-wordmark {
           color: #FFFFFF;
@@ -245,6 +255,11 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
         }
         @media (min-width: 1024px) {
           .ym-wordmark { font-size: 0.9rem; }
+        }
+        @media (max-width: 480px) {
+          .ym-topbar-right-cluster { margin-inline-start: 8px; }
+          .ym-brand-container { padding-inline-end: 6px; margin-inline-end: 2px; }
+          .ym-wordmark { font-size: 0.72rem; letter-spacing: 0.8px; }
         }
         /* أزرار الوصول السريع (ستوري + مجموعات) */
         .ym-quick-btn {

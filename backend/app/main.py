@@ -273,6 +273,9 @@ _include("app.api.routes.inbox.router", prefix="/api/inbox")
 _include("app.api.routes.recommendations.router", prefix="/api/recommendations")
 _include("app.api.routes.analytics.router", prefix="/api/analytics")
 
+# 🚨 نظام البلاغات (Reports & Moderation)
+_include("app.api.routes.reports.router", prefix="/api/reports")
+
 # 🎮 Engagement & Gamification
 _include("app.api.routes.engagement.router", prefix="/api/engagement")
 # 🔊 Voice Rooms

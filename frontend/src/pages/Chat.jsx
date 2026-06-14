@@ -1614,18 +1614,18 @@ export default function Chat() {
             .yam-mobile-action-btn:hover {
               background: rgba(124,58,237,0.12);
             }
-            /* keep header visible & fixed on mobile (تثبيت حقيقي لا يتحرك مع سحب الشاشة) */
+            /* keep header visible & fixed on mobile (تثبيت حقيقي لا يتحرك مع سحب الشاشة) — v31 */
             .yam-stage-top-search {
               display: none !important;
             }
             .yam-chat-stage-header {
               display: flex !important;
               position: fixed !important;
-              top: 0;
-              left: 0;
-              right: 0;
-              inset-inline: 0;
-              z-index: 1000;
+              top: 0 !important;
+              left: 0 !important;
+              right: 0 !important;
+              inset-inline: 0 !important;
+              z-index: 1000 !important;
               padding: 10px 14px;
               padding-top: calc(10px + env(safe-area-inset-top, 0px));
               min-height: 56px;
@@ -1638,8 +1638,12 @@ export default function Chat() {
               backdrop-filter: blur(20px);
               -webkit-backdrop-filter: blur(20px);
               box-shadow: 0 6px 18px rgba(0,0,0,0.34);
-              transform: translateZ(0);
-              will-change: transform;
+              /* ❌ أزلنا translateZ و will-change لأنهما يكسران position:fixed على Mobile WebView
+                 ويسببان تحرك الهيدر مع سحب الصفحة (containing block issue). */
+              transform: none !important;
+              will-change: auto !important;
+              backface-visibility: hidden;
+              -webkit-transform: none !important;
             }
             .yam-chat-stage-header .yam-chat-stage-peer-copy strong {
               font-size: 17px;
@@ -1661,6 +1665,19 @@ export default function Chat() {
               min-height: 0;
               /* مساحة علوية تعوّض الهيدر المثبّت (fixed) حتى لا تختفي أول رسالة تحته */
               padding-top: calc(56px + env(safe-area-inset-top, 0px));
+              /* ✅ منع إنشاء containing block جديد للأبناء الموضوعين position:fixed
+                 (transform/will-change/filter على .yam-chat-stage كانت تكسر التثبيت) */
+              transform: none !important;
+              will-change: auto !important;
+              filter: none !important;
+              perspective: none !important;
+              contain: none !important;
+            }
+            /* ضمان أن body/html لا يحتويان transform يكسر position:fixed */
+            html, body {
+              transform: none !important;
+              -webkit-transform: none !important;
+              overflow-anchor: none;
             }
             .yam-chat-details-drawer {
               border-radius: 0;
@@ -1691,12 +1708,12 @@ export default function Chat() {
                 #040714;
             }
             .yam-chat-input-wrap {
-              position: fixed;
-              bottom: 0;
-              left: 0;
-              right: 0;
-              inset-inline: 0;
-              z-index: 1000;
+              position: fixed !important;
+              bottom: 0 !important;
+              left: 0 !important;
+              right: 0 !important;
+              inset-inline: 0 !important;
+              z-index: 1000 !important;
               border-radius: 18px 18px 0 0;
               border-left: none;
               border-right: none;
@@ -1708,8 +1725,12 @@ export default function Chat() {
               backdrop-filter: blur(22px);
               -webkit-backdrop-filter: blur(22px);
               box-shadow: 0 -16px 36px rgba(0,0,0,0.5), 0 -2px 0 rgba(167, 139, 250, 0.12);
-              transform: translateZ(0);
-              will-change: transform;
+              /* ❌ أزلنا translateZ/will-change حتى لا يتحرك الفوتر مع سحب الصفحة
+                 على بعض متصفحات الموبايل (Chrome Android / iOS Safari) */
+              transform: none !important;
+              -webkit-transform: none !important;
+              will-change: auto !important;
+              backface-visibility: hidden;
               min-height: 60px;
               display: flex;
               align-items: center;

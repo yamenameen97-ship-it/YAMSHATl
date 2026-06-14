@@ -162,15 +162,29 @@ export default function PostComposer() {
     setIsUploading(true);
     try {
       let mediaUrl = '';
+      let thumbnailUrl = '';
+      let isVideoMedia = false;
       if (media) {
+        isVideoMedia = Boolean(media?.type?.startsWith('video/'));
+        // ✅ v33+1: إصلاح فشل نشر فيديو كمنشور
+                // 1) نستخدم purpose مدعوم من الـ backend (post-attachment) بدل post-video/post-image
+                //    لتجنب رفض الرفع لأسباب صلاحيات/whitelist.
+                // 2) نفصل useCdn = true للفيديو حتى يُستخدم مسار الرفع المستأنف (resumable).
+                // 3) نلتقط thumbnail من الرد لو توفر.
         const uploadRes = await mediaUploadService.uploadFile(media, {
-          purpose: media?.type?.startsWith('video/') ? 'post-video' : 'post-image',
+          purpose: isVideoMedia ? 'post-attachment' : 'post-image',
+          processingProfile: isVideoMedia ? 'balanced' : '',
+          useCdn: true,
           onProgress: (payload) => {
             const percent = typeof payload === 'number' ? Number(payload || 0) : Number(payload?.percent || 0);
             setUploadProgress(percent);
           },
         });
-        mediaUrl = uploadRes?.mediaUrl || uploadRes?.url || uploadRes?.file_url || '';
+        mediaUrl = uploadRes?.mediaUrl || uploadRes?.url || uploadRes?.file_url || uploadRes?.media_url || '';
+        thumbnailUrl = uploadRes?.thumbnailUrl || uploadRes?.thumbnail_url || uploadRes?.poster_url || '';
+        if (!mediaUrl) {
+          throw new Error('فشل الحصول على رابط الفيديو بعد الرفع. حاول مرة أخرى.');
+        }
       }
 
       const { hashtags, mentions } = extractTags(content);
@@ -181,6 +195,11 @@ export default function PostComposer() {
       const createdPostResponse = await createPost({
         content: pollQuestion.trim() ? `${pollQuestion.trim()}\n${content}`.trim() : content,
         media_url: mediaUrl,
+        // ✅ v33+1: تمرير حقول إضافية تجعل الـ backend/frontend يتعرف على الفيديو بوضوح
+        video_url: isVideoMedia ? mediaUrl : undefined,
+        media_type: isVideoMedia ? 'video' : (media ? 'image' : undefined),
+        thumbnail_url: thumbnailUrl || undefined,
+        has_video: isVideoMedia || undefined,
         status,
         scheduled_at: status === 'scheduled' ? scheduledDate : null,
         is_pinned: isPinned,
@@ -205,7 +224,52 @@ export default function PostComposer() {
       clearComposer();
       queryClient.invalidateQueries({ queryKey: ['feed-data'] });
     } catch (error) {
-      pushToast({ type: 'error', title: 'فشل نشر المنشور', description: error?.response?.data?.detail || error?.message || 'حاول مرة تانية.' });
+      // ✅ v33+1: رسالة فشل واضحة + محاولة احتياطية عبر multipart للفيديو
+      const detail = error?.response?.data?.detail || error?.message || '';
+      const isVideoMedia = Boolean(media?.type?.startsWith('video/'));
+      if (isVideoMedia && media) {
+        try {
+          const { uploadPostMedia } = await import('../../api/posts.js');
+          const uploadResp = await uploadPostMedia(media, (event) => {
+            if (event?.total) setUploadProgress(Math.round((event.loaded / event.total) * 100));
+          });
+          const fallbackUrl = uploadResp?.data?.url || uploadResp?.data?.media_url || uploadResp?.data?.file_url || '';
+          if (fallbackUrl) {
+            const { hashtags: hh, mentions: mm } = extractTags(content);
+            const createdPostResponse = await createPost({
+              content: pollQuestion.trim() ? `${pollQuestion.trim()}\n${content}`.trim() : content,
+              media_url: fallbackUrl,
+              video_url: fallbackUrl,
+              media_type: 'video',
+              has_video: true,
+              status,
+              scheduled_at: status === 'scheduled' ? scheduledDate : null,
+              is_pinned: isPinned,
+              hashtags: hh,
+              mentions: mm,
+              quote_source_id: quoteDraft?.id || null,
+            });
+            const createdPost = createdPostResponse?.data || null;
+            if (status === 'published' && createdPost) {
+              injectPostIntoFeedCache(queryClient, createdPost);
+            } else {
+              clearLocalFeedCaches();
+            }
+            pushToast({ type: 'success', title: 'تم نشر الفيديو عبر مسار احتياطي' });
+            clearComposer();
+            queryClient.invalidateQueries({ queryKey: ['feed-data'] });
+            return;
+          }
+        } catch (fallbackError) {
+          pushToast({
+            type: 'error',
+            title: 'فشل نشر الفيديو',
+            description: fallbackError?.response?.data?.detail || fallbackError?.message || detail || 'تعذر رفع الفيديو، افحص الإنترنت وحاول مرة أخرى.',
+          });
+          return;
+        }
+      }
+      pushToast({ type: 'error', title: 'فشل نشر المنشور', description: detail || 'حاول مرة تانية.' });
     } finally {
       setIsUploading(false);
     }

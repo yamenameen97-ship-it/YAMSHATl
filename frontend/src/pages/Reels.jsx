@@ -184,51 +184,63 @@ function ReelItem({ index, style, data }) {
           </div>
         ) : null}
 
-        <div className="reel-bottom-overlay absolute bottom-0 left-0 right-0 p-4 text-white pointer-events-none">
-          <div className="flex items-center gap-3 mb-2 pointer-events-auto">
-            <div className="w-10 h-10 rounded-full bg-gray-600 overflow-hidden border border-white/20">
-              <img src={getOptimizedImageUrl(reel.user_avatar, 80)} alt="" className="w-full h-full object-cover" />
-            </div>
-            <span className="font-bold text-sm">@{reel.username || 'user'}</span>
-            {reel.username !== currentUser ? (
-              <button type="button" className="text-xs bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full transition-colors" onClick={() => handleFollow(reel.username)}>
-                {followingUsers.has(String(reel.username || '')) ? 'تمت المتابعة' : 'متابعة'}
-              </button>
-            ) : null}
+        {/* ✅ v42+: وصف الفيديو شفاف تمامًا، نص عائم فوق الفيديو بدون أي تدرّج داكن يغطّيه */}
+        <div className="reel-bottom-overlay reel-bottom-overlay-clear absolute bottom-0 left-0 right-0 p-4 text-white pointer-events-none">
+          <div className="flex items-center gap-2 mb-2 pointer-events-auto reel-username-row">
+            <span className="font-bold text-sm reel-floating-text">@{reel.username || 'user'}</span>
           </div>
-          <p className="text-sm leading-6 line-clamp-3 mb-2 pointer-events-auto">{reel.content || 'ريل جديد'}</p>
+          <p className="text-sm leading-6 line-clamp-3 mb-2 pointer-events-auto reel-floating-text">{reel.content || 'ريل جديد'}</p>
           <div className="reel-meta-row pointer-events-auto">
-            {reel.duration_label ? <span className="reel-chip ghost">{reel.duration_label}</span> : null}
-            <span className="reel-chip ghost">👁 {Number(reel.views_count || 0)}</span>
-            <span className="reel-chip ghost">⏱ متوسط المشاهدة {Math.round(Number(insights?.avgWatchMs || 0) / 1000)}ث</span>
+            {reel.duration_label ? <span className="reel-chip-floating">{reel.duration_label}</span> : null}
+            <span className="reel-chip-floating">👁 {Number(reel.views_count || 0)}</span>
           </div>
         </div>
 
-        {/* ✅ تم رفع كومة أزرار التفاعل للأعلى (bottom-36 بدلًا من bottom-24) لتجنب تغطية الفوتر، وتم التأكد من ربط جميع الأحداث. */}
-        <div className="reel-actions-stack absolute right-3 bottom-36 flex flex-col gap-3 items-center z-30 pointer-events-auto">
+        {/* ✅ v42+: كومة أزرار التفاعل بنفس ترتيب TikTok — الصورة الشخصية+متابعة في الأعلى ثم الإعجاب/التعليق/الحفظ/المشاركة */}
+        <div className="reel-actions-stack absolute right-3 bottom-36 flex flex-col gap-4 items-center z-30 pointer-events-auto">
+          {/* صورة الناشر + زر متابعة (+) */}
+          <div className="reel-avatar-wrap">
+            <div className="reel-avatar-ring">
+              <img src={getOptimizedImageUrl(reel.user_avatar, 120)} alt={reel.username || 'user'} className="reel-avatar-img" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+            </div>
+            {reel.username !== currentUser && !followingUsers.has(String(reel.username || '')) ? (
+              <button type="button" aria-label="متابعة" className="reel-avatar-plus" onClick={(e) => { e.stopPropagation(); handleFollow(reel.username); }}>+</button>
+            ) : null}
+            {reel.username !== currentUser && followingUsers.has(String(reel.username || '')) ? (
+              <span className="reel-avatar-check" aria-label="متابَع">✓</span>
+            ) : null}
+          </div>
+
           <div className="flex flex-col items-center gap-1">
-            <button type="button" aria-label="إعجاب" onClick={(e) => { e.stopPropagation(); handleLike(reel); }} className={`reel-action-btn ${reel.is_liked ? 'liked' : ''}`}>❤️</button>
+            <button type="button" aria-label="إعجاب" onClick={(e) => { e.stopPropagation(); handleLike(reel); }} className={`reel-action-btn reel-action-btn--icon ${reel.is_liked ? 'liked' : ''}`}>
+              <svg width="30" height="30" viewBox="0 0 24 24" fill={reel.is_liked ? '#ef4444' : 'currentColor'} stroke="#fff" strokeWidth="1.4"><path d="M12 21s-7-4.5-9.5-9C.7 8.4 2.6 4 6.5 4c2 0 3.6 1.1 4.5 2.6C11.9 5.1 13.5 4 15.5 4 19.4 4 21.3 8.4 19.5 12c-2.5 4.5-9.5 9-9.5 9z"/></svg>
+            </button>
             <span className="reel-action-label">{reel.likes_count || 0}</span>
           </div>
 
           <div className="flex flex-col items-center gap-1">
-            <button type="button" aria-label="تعليقات" onClick={(e) => { e.stopPropagation(); openComments(reel); }} className="reel-action-btn">💬</button>
+            <button type="button" aria-label="تعليقات" onClick={(e) => { e.stopPropagation(); openComments(reel); }} className="reel-action-btn reel-action-btn--icon">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="#fff"><path d="M12 2C6.48 2 2 6 2 11c0 2.6 1.3 4.9 3.4 6.6L4 22l4.9-1.6c1 .3 2 .4 3.1.4 5.5 0 10-4 10-9.4S17.5 2 12 2z"/></svg>
+            </button>
             <span className="reel-action-label">{reel.comments_count || 0}</span>
           </div>
 
           <div className="flex flex-col items-center gap-1">
-            <button type="button" aria-label="حفظ" onClick={(e) => { e.stopPropagation(); handleSave(reel); }} className={`reel-action-btn ${reel.is_saved ? 'saved' : ''}`}>🔖</button>
-            <span className="reel-action-label">حفظ</span>
+            <button type="button" aria-label="حفظ" onClick={(e) => { e.stopPropagation(); handleSave(reel); }} className={`reel-action-btn reel-action-btn--icon ${reel.is_saved ? 'saved' : ''}`}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill={reel.is_saved ? '#fbbf24' : '#fff'}><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg>
+            </button>
+            <span className="reel-action-label">{reel.saved_count || 0}</span>
           </div>
 
           <div className="flex flex-col items-center gap-1">
-            <button type="button" aria-label="مشاركة" onClick={(e) => { e.stopPropagation(); handleShare(reel); }} className="reel-action-btn">↗</button>
-            <span className="reel-action-label">مشاركة</span>
+            <button type="button" aria-label="مشاركة" onClick={(e) => { e.stopPropagation(); handleShare(reel); }} className="reel-action-btn reel-action-btn--icon">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="#fff"><path d="M3 12l18-9-4 9 4 9z"/></svg>
+            </button>
+            <span className="reel-action-label">{reel.share_count || 0}</span>
           </div>
 
           <div className="flex flex-col items-center gap-1">
-            <button type="button" aria-label="بلاغ" onClick={(e) => { e.stopPropagation(); handleReport(reel); }} className="reel-action-btn warn">⚑</button>
-            <span className="reel-action-label">بلاغ</span>
+            <button type="button" aria-label="بلاغ" onClick={(e) => { e.stopPropagation(); handleReport(reel); }} className="reel-action-btn reel-action-btn--icon warn">⚑</button>
           </div>
         </div>
 
@@ -270,6 +282,9 @@ export default function ReelsPage() {
   const [heartBurstId, setHeartBurstId] = useState('');
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showCommentsModal, setShowCommentsModal] = useState(false);
+  // ✅ v42+: تبويبات علوية على نمط TikTok: استكشاف / أتابعه / لك
+  // القيم المتاحة: 'explore' | 'following' | 'foryou'
+  const [topTab, setTopTab] = useState('foryou');
   const [activeReel, setActiveReel] = useState(null);
   const [activeComments, setActiveComments] = useState([]);
   const [selectedQuality, setSelectedQuality] = useState('auto');
@@ -913,8 +928,50 @@ export default function ReelsPage() {
     pushToast({ type: 'success', title: 'تم نشر الريل بنجاح' });
   };
 
+  /* ✅ v42+: ترتيب الريلز حسب التبويب العلوي:
+     - استكشف: الأشخاص الذين تتابعهم أولاً، ثم الأقرب للأقرب (أصدقاء الأصدقاء / نفس الدولة / نتائج بحثي السابقة).
+     - أتابعه: فقط فيديوهات الأشخاص الذين تتابعهم.
+     - لك: الترتيب الافتراضي (توصيات). */
+  const visibleReels = useMemo(() => {
+    if (!Array.isArray(reels) || reels.length === 0) return [];
+    const followed = followingUsers || new Set();
+    let searchHistoryKeywords = [];
+    try {
+      const raw = localStorage.getItem('yamshat_search_history') || localStorage.getItem('search_history') || '[]';
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) searchHistoryKeywords = parsed.map((x) => String(x?.q || x).toLowerCase()).slice(0, 12);
+    } catch (_) { /* ignore */ }
+    let userCountry = '';
+    try { userCountry = (localStorage.getItem('user_country') || '').toLowerCase(); } catch (_) {}
+
+    if (topTab === 'following') {
+      return reels.filter((r) => followed.has(String(r.username || '')));
+    }
+
+    if (topTab === 'explore') {
+      // ترتيب: متابَعون > أصدقاء الأصدقاء > نفس الدولة > نتائج البحث السابقة > الباقي
+      const rank = (r) => {
+        const uname = String(r.username || '');
+        if (followed.has(uname)) return 0;
+        if (Array.isArray(r.mutual_followers) && r.mutual_followers.length > 0) return 1;
+        if (userCountry && String(r.user_country || r.country || '').toLowerCase() === userCountry) return 2;
+        const text = `${r.content || ''} ${uname}`.toLowerCase();
+        if (searchHistoryKeywords.some((kw) => kw && text.includes(kw))) return 3;
+        return 4;
+      };
+      return [...reels].sort((a, b) => {
+        const ra = rank(a); const rb = rank(b);
+        if (ra !== rb) return ra - rb;
+        return (Number(b.recommendation_score) || 0) - (Number(a.recommendation_score) || 0);
+      });
+    }
+
+    // لك: الترتيب الافتراضي بعد التوصيات
+    return reels;
+  }, [reels, topTab, followingUsers]);
+
   const listData = useMemo(() => ({
-    reels,
+    reels: visibleReels,
     activeIndex,
     setVideoRef,
     handleLike,
@@ -963,7 +1020,7 @@ export default function ReelsPage() {
     handleVideoWaiting,
     isDesktop,
     navDirection,
-    reels,
+    visibleReels,
     scrollToIndex,
     selectedQuality,
     setVideoRef,
@@ -981,24 +1038,60 @@ export default function ReelsPage() {
   return (
     <MainLayout>
       <div className="reels-page-shell" onWheelCapture={handleWheelNavigation} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-        {/* ✅ شريط علوي عائم شفاف: زر رجوع + زر فلاتر + زر بحث (نفس ستايل YAMSHAT) */}
-        <div className="reels-floating-top-bar" dir="rtl">
+        {/* ✅ v42+: شريط علوي عائم شفاف بتبويبات TikTok */}
+        <div className="reels-top-tabs-bar" dir="rtl">
           <button
             type="button"
-            className="reels-floating-btn reels-back-btn"
-            aria-label="رجوع"
-            onClick={() => {
-              if (window.history.length > 1) navigate(-1);
-              else navigate('/');
-            }}
+            className="reels-floating-btn reels-search-btn"
+            aria-label="بحث"
+            onClick={() => navigate('/search')}
           >
-            {/* سهم رجوع يشير يسارًا بصريًا ليتوافق مع تصميم YAMSHAT */}
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M15 18l-6-6 6-6" />
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="7" />
+              <path d="M21 21l-4.3-4.3" />
             </svg>
           </button>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {/* ✅ v33+1: زر فلاتر الريلز */}
+
+          <div className="reels-tabs-center" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              className={`reels-tab-btn ${topTab === 'explore' ? 'active' : ''}`}
+              aria-selected={topTab === 'explore'}
+              onClick={() => setTopTab('explore')}
+            >استكشف</button>
+            <button
+              type="button"
+              role="tab"
+              className={`reels-tab-btn ${topTab === 'following' ? 'active' : ''}`}
+              aria-selected={topTab === 'following'}
+              onClick={() => setTopTab('following')}
+            >أتابعه</button>
+            <button
+              type="button"
+              role="tab"
+              className={`reels-tab-btn ${topTab === 'foryou' ? 'active' : ''}`}
+              aria-selected={topTab === 'foryou'}
+              onClick={() => setTopTab('foryou')}
+            >لك</button>
+          </div>
+
+          <button
+            type="button"
+            className="reels-floating-btn reels-live-btn"
+            aria-label="بث مباشر"
+            onClick={() => navigate('/live')}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="6" width="14" height="12" rx="2"/>
+              <path d="M17 10l4-2v8l-4-2z"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* ✅ v42+: أدوات إضافية عائمة (فلتر) تظهر فقط في وضع الفيديو الواحد */}
+        {topTab !== 'explore' ? (
+          <div className="reels-floating-sub-bar" dir="rtl">
             <button
               type="button"
               className={`reels-floating-btn reels-filter-btn ${reelFilterId !== 'none' ? 'is-active' : ''}`}
@@ -1011,19 +1104,8 @@ export default function ReelsPage() {
                 <path d="M12 3l1.9 4.9L19 9l-3.8 3.4L16.5 18 12 15.3 7.5 18l1.3-5.6L5 9l5.1-1.1L12 3z" />
               </svg>
             </button>
-            <button
-              type="button"
-              className="reels-floating-btn reels-search-btn"
-              aria-label="بحث"
-              onClick={() => navigate('/search')}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="11" cy="11" r="7" />
-                <path d="M21 21l-4.3-4.3" />
-              </svg>
-            </button>
           </div>
-        </div>
+        ) : null}
 
         {/* ✅ v33+1: لوحة اختيار فلاتر الريلز (RTL + Noto Sans Arabic) */}
         {showReelFilterPanel ? (
@@ -1062,33 +1144,72 @@ export default function ReelsPage() {
               <div className="reel-loader" />
               <p>جارٍ تحميل الريلز...</p>
             </div>
-          ) : reels.length ? (
-            <>
-              {/* ✅ تم إخفاء شريط معلومات الجودة/الشبكة لأنه كان يغطي محتوى الريل */}
-              <AutoSizer>
-                {({ height, width }) => (
-                  <List
-                    ref={listRef}
-                    height={height}
-                    width={width}
-                    itemCount={reels.length}
-                    itemSize={height}
-                    overscanCount={deviceProfile.maxVisibleReels || 2}
-                    onItemsRendered={({ visibleStartIndex }) => handleScroll({ startIndex: visibleStartIndex })}
-                    itemData={listData}
-                    className="no-scrollbar reel-viewport"
+          ) : visibleReels.length ? (
+            topTab === 'explore' ? (
+              /* ✅ v42+: وضع الاستكشاف على شكل شبكة صور مصغّرة مثل TikTok */
+              <div className="reels-explore-grid no-scrollbar" dir="rtl">
+                {visibleReels.map((reel, idx) => (
+                  <button
+                    key={reel.id || idx}
+                    type="button"
+                    className="reels-explore-card"
+                    onClick={() => {
+                      // عند الضغط على أي فيديو في الاستكشاف: افتحه في وضع التمرير العمودي (لك)
+                      const fullIdx = reels.findIndex((r) => String(r.id) === String(reel.id));
+                      setTopTab('foryou');
+                      requestAnimationFrame(() => {
+                        if (fullIdx >= 0) {
+                          setActiveIndex(fullIdx);
+                          listRef.current?.scrollToItem?.(fullIdx, 'start');
+                        }
+                      });
+                    }}
                   >
-                    {ReelItem}
-                  </List>
-                )}
-              </AutoSizer>
-            </>
+                    <div className="reels-explore-thumb">
+                      {reel.poster_url ? (
+                        <img src={reel.poster_url} alt="" loading="lazy" />
+                      ) : (
+                        <div className="reels-explore-thumb-fallback">🎥</div>
+                      )}
+                      {reel.username === currentUser ? null : followingUsers.has(String(reel.username || '')) ? (
+                        <span className="reels-explore-badge follow">متابَع</span>
+                      ) : null}
+                    </div>
+                    <div className="reels-explore-meta">
+                      <span className="reels-explore-likes">♥ {Number(reel.likes_count || 0)}</span>
+                      <span className="reels-explore-user">{reel.username || 'user'}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <>
+                {/* ✅ وضع الفيديو الواحد بالتمرير العمودي */}
+                <AutoSizer>
+                  {({ height, width }) => (
+                    <List
+                      ref={listRef}
+                      height={height}
+                      width={width}
+                      itemCount={visibleReels.length}
+                      itemSize={height}
+                      overscanCount={deviceProfile.maxVisibleReels || 2}
+                      onItemsRendered={({ visibleStartIndex }) => handleScroll({ startIndex: visibleStartIndex })}
+                      itemData={listData}
+                      className="no-scrollbar reel-viewport"
+                    >
+                      {ReelItem}
+                    </List>
+                  )}
+                </AutoSizer>
+              </>
+            )
           ) : (
             <div className="reels-empty-state">
               <div className="empty-icon">🎬</div>
-              <h2>مافيش ريلز لسه</h2>
-              <p>اضغط على زر رفع ريل وأضف أول فيديو بشكل واضح ومباشر.</p>
-              <Button onClick={() => setShowUploadModal(true)}>رفع أول ريل</Button>
+              <h2>{topTab === 'following' ? 'لا توجد فيديوهات من متابعيك' : 'مافيش ريلز لسه'}</h2>
+              <p>{topTab === 'following' ? 'تابِع بعض الأشخاص لتظهر فيديواتهم هنا.' : 'اضغط على زر رفع ريل وأضف أول فيديو بشكل واضح ومباشر.'}</p>
+              {topTab !== 'following' ? <Button onClick={() => setShowUploadModal(true)}>رفع أول ريل</Button> : null}
             </div>
           )}
         </div>
@@ -1155,9 +1276,18 @@ export default function ReelsPage() {
           </div>
         </Modal>
 
-        <Modal isOpen={showCommentsModal} onClose={() => setShowCommentsModal(false)} title="التعليقات">
-          <div className="comments-modal-shell">
-            <NestedComments
+        {/* ✅ v42+: ورقة سفلية للتعليقات تغطي نصف الشاشة فقط — فيديو الريل يبقى ظاهرًا في الأعلى */}
+        {showCommentsModal ? (
+          <div className="reels-comments-overlay" role="presentation" onClick={() => setShowCommentsModal(false)}>
+            <div className="reels-comments-sheet" role="dialog" aria-label="التعليقات" dir="rtl" onClick={(e) => e.stopPropagation()}>
+              <div className="reels-comments-sheet-handle" />
+              <div className="reels-comments-sheet-head">
+                <button type="button" className="reels-comments-close" aria-label="إغلاق" onClick={() => setShowCommentsModal(false)}>✕</button>
+                <strong>{Number(activeReel?.comments_count || activeComments?.length || 0)} تعليقاً</strong>
+                <span style={{ width: 28 }} />
+              </div>
+              <div className="reels-comments-sheet-body">
+                <NestedComments
               comments={activeComments}
               onAddComment={async (payload) => {
                 // ✅ v33+1 (إصلاح حفظ تعليق الريلز على ويب الجوال):
@@ -1252,9 +1382,11 @@ export default function ReelsPage() {
                   pushToast({ type: 'error', title: 'تعذر إرسال الرد', description: error?.message });
                 }
               }}
-            />
+                />
+              </div>
+            </div>
           </div>
-        </Modal>
+        ) : null}
 
         <Modal isOpen={reportState.open} onClose={() => setReportState({ open: false, reel: null, reason: 'spam', note: '' })} title="بلاغ على ريل">
           <div className="upload-modal-layout">
@@ -1385,6 +1517,344 @@ export default function ReelsPage() {
           .reels-floating-btn.is-active {
             background: rgba(139, 92, 246, 0.55);
             border-color: rgba(167,139,250,0.55);
+          }
+
+          /* ✅ v42+: شريط التبويبات العلوي على نمط TikTok (استكشف | أتابعه | لك) */
+          .reels-top-tabs-bar {
+            position: absolute;
+            top: calc(env(safe-area-inset-top, 0px) + 10px);
+            inset-inline: 0;
+            z-index: 45;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 14px;
+            gap: 8px;
+            pointer-events: none;
+          }
+          .reels-top-tabs-bar > button,
+          .reels-top-tabs-bar .reels-tabs-center { pointer-events: auto; }
+          .reels-tabs-center {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            justify-content: center;
+            flex: 1;
+          }
+          .reels-tab-btn {
+            border: none;
+            background: transparent;
+            color: rgba(255,255,255,0.72);
+            font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+            font-size: 16px;
+            font-weight: 700;
+            padding: 8px 4px;
+            cursor: pointer;
+            position: relative;
+            text-shadow: 0 2px 6px rgba(0,0,0,0.6);
+            transition: color 160ms ease, transform 160ms ease;
+          }
+          .reels-tab-btn:hover { color: #fff; }
+          .reels-tab-btn.active {
+            color: #fff;
+            font-weight: 900;
+            transform: scale(1.04);
+          }
+          .reels-tab-btn.active::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            bottom: -2px;
+            width: 22px;
+            height: 3px;
+            border-radius: 999px;
+            background: #fff;
+            box-shadow: 0 0 8px rgba(255,255,255,0.55);
+          }
+          .reels-floating-sub-bar {
+            position: absolute;
+            top: calc(env(safe-area-inset-top, 0px) + 60px);
+            inset-inline-end: 12px;
+            z-index: 40;
+            display: flex;
+            gap: 8px;
+            pointer-events: none;
+          }
+          .reels-floating-sub-bar > * { pointer-events: auto; }
+
+          /* ✅ v42+: شبكة الاستكشاف (نمط TikTok Discover) */
+          .reels-explore-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 6px;
+            padding: 64px 8px 16px 8px;
+            height: 100%;
+            overflow-y: auto;
+            background: #000;
+            -webkit-overflow-scrolling: touch;
+          }
+          @media (min-width: 768px) {
+            .reels-explore-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+          }
+          @media (min-width: 1200px) {
+            .reels-explore-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+          }
+          .reels-explore-card {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            background: transparent;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+            color: #fff;
+            font-family: inherit;
+            text-align: start;
+          }
+          .reels-explore-thumb {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 9 / 14;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #1a1a1a;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+          }
+          .reels-explore-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            transition: transform 300ms ease;
+          }
+          .reels-explore-card:hover .reels-explore-thumb img { transform: scale(1.04); }
+          .reels-explore-thumb-fallback {
+            width: 100%;
+            height: 100%;
+            display: grid;
+            place-items: center;
+            font-size: 32px;
+            background: linear-gradient(135deg, #4f46e5, #ec4899);
+          }
+          .reels-explore-badge {
+            position: absolute;
+            top: 6px;
+            inset-inline-start: 6px;
+            padding: 3px 8px;
+            border-radius: 8px;
+            font-size: 10px;
+            font-weight: 800;
+            background: rgba(0,0,0,0.65);
+            backdrop-filter: blur(8px);
+            color: #fff;
+          }
+          .reels-explore-badge.follow {
+            background: rgba(139,92,246,0.85);
+          }
+          .reels-explore-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+            padding: 0 4px;
+            font-size: 11px;
+            color: rgba(255,255,255,0.85);
+          }
+          .reels-explore-likes { font-weight: 800; }
+          .reels-explore-user {
+            font-size: 11px;
+            color: rgba(255,255,255,0.7);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 70%;
+          }
+
+          /* ✅ v42+: نص الوصف العائم الشفاف فوق الفيديو (بدون أي تدرّج داكن) */
+          .reel-bottom-overlay-clear {
+            background: transparent !important;
+          }
+          .reel-floating-text {
+            text-shadow: 0 1px 2px rgba(0,0,0,0.95), 0 2px 8px rgba(0,0,0,0.7);
+          }
+          .reel-username-row .reel-floating-text { font-size: 15px; }
+          .reel-chip-floating {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            border-radius: 8px;
+            background: rgba(0,0,0,0.32);
+            backdrop-filter: blur(4px);
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+          }
+
+          /* ✅ v42+: صورة الناشر + زر متابعة (+) على نمط TikTok */
+          .reel-avatar-wrap {
+            position: relative;
+            width: 48px;
+            height: 48px;
+            margin-bottom: 6px;
+          }
+          .reel-avatar-ring {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            overflow: hidden;
+            background: linear-gradient(135deg, #4f46e5, #ec4899);
+            box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+          }
+          .reel-avatar-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+          }
+          .reel-avatar-plus {
+            position: absolute;
+            bottom: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            background: #ef4444;
+            color: #fff;
+            font-size: 16px;
+            font-weight: 900;
+            line-height: 1;
+            padding: 0;
+            display: grid;
+            place-items: center;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(239,68,68,0.6);
+            animation: reelPlusPop 280ms ease-out;
+          }
+          @keyframes reelPlusPop {
+            from { transform: translateX(-50%) scale(0.4); opacity: 0; }
+            to   { transform: translateX(-50%) scale(1); opacity: 1; }
+          }
+          .reel-avatar-check {
+            position: absolute;
+            bottom: -6px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            background: #22c55e;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 900;
+            display: grid;
+            place-items: center;
+            box-shadow: 0 4px 10px rgba(34,197,94,0.6);
+          }
+
+          /* ✅ v42+: تكييف أزرار التفاعل لتبدو شفافة على نمط TikTok */
+          .reel-action-btn--icon {
+            width: 46px !important;
+            height: 46px !important;
+            border-radius: 999px !important;
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            backdrop-filter: none !important;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.7));
+            padding: 0;
+            color: #fff;
+          }
+          .reel-action-btn--icon:hover {
+            transform: scale(1.08);
+            background: rgba(255,255,255,0.08) !important;
+          }
+          .reel-action-btn--icon svg { display: block; }
+          .reel-action-label {
+            text-shadow: 0 1px 3px rgba(0,0,0,0.85);
+          }
+
+          /* ✅ v42+: ورقة سفلية للتعليقات (نصف الشاشة) */
+          .reels-comments-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            background: rgba(0,0,0,0.35);
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            animation: reelsOverlayIn 180ms ease-out;
+          }
+          @keyframes reelsOverlayIn {
+            from { opacity: 0; }
+            to   { opacity: 1; }
+          }
+          .reels-comments-sheet {
+            width: 100%;
+            max-width: 720px;
+            height: 62vh;
+            max-height: 62dvh;
+            background: #0f1115;
+            color: #fff;
+            border-top-left-radius: 22px;
+            border-top-right-radius: 22px;
+            box-shadow: 0 -16px 50px rgba(0,0,0,0.6);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+            animation: reelsSheetUp 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+          }
+          @keyframes reelsSheetUp {
+            from { transform: translateY(100%); }
+            to   { transform: translateY(0); }
+          }
+          .reels-comments-sheet-handle {
+            width: 44px;
+            height: 4px;
+            background: rgba(255,255,255,0.25);
+            border-radius: 999px;
+            margin: 8px auto 6px;
+          }
+          .reels-comments-sheet-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 16px 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            font-size: 14px;
+            font-weight: 700;
+          }
+          .reels-comments-close {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(255,255,255,0.08);
+            color: #fff;
+            cursor: pointer;
+            font-size: 14px;
+            display: grid;
+            place-items: center;
+          }
+          .reels-comments-close:hover { background: rgba(255,255,255,0.16); }
+          .reels-comments-sheet-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 4px 12px 12px;
+            -webkit-overflow-scrolling: touch;
+          }
+          @media (max-width: 480px) {
+            .reels-comments-sheet {
+              height: 60vh;
+              max-height: 60dvh;
+            }
           }
           /* ✅ v33+1: لوحة فلاتر الريلز */
           .reels-filter-sheet {
@@ -1539,7 +2009,8 @@ export default function ReelsPage() {
             background: linear-gradient(180deg, rgba(0,0,0,0.72), rgba(0,0,0,0.18), transparent);
           }
           .reel-bottom-overlay {
-            background: linear-gradient(180deg, transparent, rgba(0,0,0,0.18), rgba(0,0,0,0.86));
+            /* ✅ v42+: أزلنا التدرج الداكن، النص يعوم فوق الفيديو بظلّ نصّ فقط */
+            background: transparent;
           }
           .reel-actions-stack {
             right: 18px;

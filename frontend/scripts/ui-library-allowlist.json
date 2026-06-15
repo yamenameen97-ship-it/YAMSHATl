@@ -147,6 +147,11 @@
         "src/components/reports/MoreOptionsMenu.jsx",
         "src/components/reports/ReportModal.jsx",
         "src/components/settings/SettingsShell.jsx",
+        "src/components/chat/CallBubble.jsx",
+        "src/components/chat/MediaPreviewModal.jsx",
+        "src/components/chat/MessageActionsToolbar.jsx",
+        "src/components/chat/MessageReactionPicker.jsx",
+        "src/components/chat/SafeImage.jsx",
         "src/components/yamshat/YamshatIcon.jsx"
     ]
 }

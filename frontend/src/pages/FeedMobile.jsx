@@ -379,24 +379,21 @@ function FeedMobile() {
 
   const isOwnMoreMenuPost = moreMenuPost?.authorName === session?.username;
 
+  // ✅ v47: فتح المُنشئ بحالة محددة (صورة / GIF / إيموجي) مباشرةً
+  const openComposerWithAction = useCallback((action = null) => {
+    setComposerAction(action || null);
+    setComposerOpen(true);
+  }, []);
+
   return (
     <>
-      <div className="ym-feed-header" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <img src="/logo192.png" alt="Y" style={{ width: '32px', height: '32px', objectFit: 'contain' }} onError={(e) => e.target.style.display = 'none'} />
-        <h1>المنشورات</h1>
-      </div>
-
-      {/* Composer Slot */}
-      <div className="ym-composer-slot">
-        <button
-          type="button"
-          className="ym-composer-trigger"
-          onClick={() => { setComposerAction(null); setComposerOpen(true); }}
-        >
-          <span className="icon">✏️</span>
-          <span>ما بالك؟</span>
-        </button>
-      </div>
+      {/* === صندوق المُنشئ "بماذا تفكر؟" === */}
+      <MobileComposer
+        onFocus={(action) => openComposerWithAction(action)}
+        onMedia={() => openComposerWithAction('image')}
+        onGif={() => openComposerWithAction('gif')}
+        onEmoji={() => openComposerWithAction('emoji')}
+      />
 
       {/* Filter Pills */}
       <MobileFilterPills activeFilter={activeFilter} onFilterChange={setActiveFilter} />

@@ -113,19 +113,22 @@ function MobilePostCard({
 
       <footer className="ym-post-footer">
         <div className="ym-footer-actions">
-          <button className="ym-footer-btn" onClick={() => onComment?.(post)}>
+          {/* v47: تم تبديل مواقع زري التعليق والحفظ */}
+          {/* زر الحفظ (في موضع التعليق السابق) */}
+          <button className="ym-footer-btn" aria-label="تعليق" onClick={() => onComment?.(post)}>
              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
              <span>{formatCount(comments)}</span>
           </button>
-          <button className="ym-footer-btn" onClick={() => onShare?.(post)}>
-             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+          <button className="ym-footer-btn" aria-label="إعادة نشر" onClick={() => onShare?.(post)}>
+             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
              <span>{formatCount(reposts)}</span>
           </button>
-          <button className={`ym-footer-btn ${liked ? 'liked' : ''}`} onClick={() => onLike?.(post)}>
+          <button className={`ym-footer-btn ${liked ? 'liked' : ''}`} aria-label="إعجاب" onClick={() => onLike?.(post)}>
              <svg viewBox="0 0 24 24" width="20" height="20" fill={liked ? "#8B5CF6" : "none"} stroke={liked ? "#8B5CF6" : "currentColor"} strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
              <span className={liked ? 'text-purple' : ''}>{formatCount(likes)}</span>
           </button>
-          <button className="ym-footer-btn" onClick={() => onSave?.(post)}>
+          {/* v47: زر الحفظ/المشاركة (في موضع الحفظ السابق) — أيقونة سهم للأعلى تطابق الصورة */}
+          <button className="ym-footer-btn" aria-label="حفظ/مشاركة" onClick={() => onSave?.(post)}>
              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
           </button>
         </div>
@@ -135,8 +138,16 @@ function MobilePostCard({
         .ym-post-card {
           background-color: #0A0D1A;
           border-bottom: 1px solid #1F2937;
-          padding: 16px;
+          padding: 14px 14px 12px;
           color: white;
+          max-width: 100%;
+          box-sizing: border-box;
+          overflow: hidden;
+          word-wrap: break-word;
+          overflow-wrap: break-word;
+        }
+        @media (max-width: 400px) {
+          .ym-post-card { padding: 12px 10px 10px; }
         }
         .ym-post-header {
           display: flex;
@@ -170,15 +181,21 @@ function MobilePostCard({
           font-size: 1.2rem;
         }
         .ym-author-name {
-          font-weight: bold;
-          font-size: 1rem;
+          font-weight: 700;
+          font-size: 0.95rem;
+          color: #fff;
         }
         .ym-post-subtext {
           display: flex;
           align-items: center;
           gap: 4px;
           color: #9CA3AF;
-          font-size: 0.8rem;
+          font-size: 0.78rem;
+          flex-wrap: wrap;
+        }
+        @media (max-width: 400px) {
+          .ym-author-name { font-size: 0.88rem; }
+          .ym-post-subtext { font-size: 0.72rem; }
         }
         .ym-live-badge-inline {
           color: #8B5CF6;
@@ -188,7 +205,17 @@ function MobilePostCard({
         .ym-post-content {
           margin-bottom: 12px;
           font-size: 0.95rem;
-          line-height: 1.5;
+          line-height: 1.55;
+          color: #E5E7EB;
+          word-wrap: break-word;
+          overflow-wrap: break-word;
+        }
+        .ym-post-content p { margin: 0; }
+        @media (max-width: 400px) {
+          .ym-post-content { font-size: 0.9rem; line-height: 1.5; margin-bottom: 10px; }
+        }
+        @media (max-width: 340px) {
+          .ym-post-content { font-size: 0.85rem; }
         }
         .ym-post-banner-new {
           border-radius: 12px;
@@ -254,11 +281,12 @@ function MobilePostCard({
         }
         .ym-post-footer {
           border-top: 1px solid #1F2937;
-          padding-top: 12px;
+          padding-top: 10px;
         }
         .ym-footer-actions {
           display: flex;
           justify-content: space-between;
+          gap: 4px;
         }
         .ym-footer-btn {
           background: none;
@@ -266,9 +294,24 @@ function MobilePostCard({
           color: #9CA3AF;
           display: flex;
           align-items: center;
-          gap: 6px;
+          gap: 5px;
           cursor: pointer;
-          font-size: 0.85rem;
+          font-size: 0.82rem;
+          padding: 4px 6px;
+          border-radius: 6px;
+          transition: background 0.15s;
+          min-width: 0;
+        }
+        .ym-footer-btn:hover { background: rgba(139, 92, 246, 0.08); }
+        .ym-footer-btn:active { transform: scale(0.95); }
+        @media (max-width: 400px) {
+          .ym-footer-btn { font-size: 0.78rem; gap: 4px; padding: 3px 4px; }
+          .ym-footer-btn svg { width: 18px; height: 18px; }
+          .ym-footer-actions { gap: 2px; }
+        }
+        @media (max-width: 340px) {
+          .ym-footer-btn span { font-size: 0.74rem; }
+          .ym-footer-btn svg { width: 17px; height: 17px; }
         }
         .ym-footer-btn.liked {
           color: #8B5CF6;

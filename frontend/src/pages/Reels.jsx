@@ -495,6 +495,14 @@ export default function ReelsPage() {
     }
   }, [location.search, reels]);
 
+  // ✅ v47: استماع لزر "+" (إنشاء ريل) في شريط التنقل السفلي
+  // الحدث يُطلَق من BottomNav عند الضغط على زر الإنشاء أثناء وجود المستخدم في /reels
+  useEffect(() => {
+    const openReelComposer = () => setShowUploadModal(true);
+    window.addEventListener('yamshat:open-reel-composer', openReelComposer);
+    return () => window.removeEventListener('yamshat:open-reel-composer', openReelComposer);
+  }, []);
+
   useEffect(() => {
     const start = Math.max(0, activeIndex - (navDirection < 0 ? preloadRange : 1));
     const end = Math.min(reels.length, activeIndex + 1 + preloadRange + (navDirection > 0 ? 1 : 0));

@@ -16,8 +16,14 @@ import {
 } from '../../config/mediaConfig.js';
 
 const SESSION_PREFIX = 'yamshat-media-upload';
-const DEFAULT_CHUNK_SIZE = VIDEO_PRESET.chunkSizeBytes || 5 * 1024 * 1024;
+const DEFAULT_CHUNK_SIZE = VIDEO_PRESET.chunkSizeBytes || 2 * 1024 * 1024;
 const DEFAULT_MAX_CHUNK_RETRIES = 3;
+// ✅ v47: رفع متوازٍ للأجزاء لتسريع رفع الريلز/الفيديو
+const DEFAULT_CHUNK_CONCURRENCY = Number(
+  (typeof window !== 'undefined' && window.__YAMSHAT_RUNTIME__?.APP_UPLOAD_CONCURRENCY)
+  || (typeof import.meta !== 'undefined' && import.meta?.env?.VITE_UPLOAD_CONCURRENCY)
+  || 4
+);
 
 const stagePercent = {
   validating: 5,
@@ -419,21 +425,36 @@ async function uploadResumable(file, fingerprint, manifest, onProgress, extraFie
   }
 
   const uploadedSet = new Set(uploadedChunks);
-  for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
-    throwIfAborted(signal);
-    if (uploadedSet.has(chunkIndex)) {
+
+  // ✅ v47: رفع متوازٍ للأجزاء (parallel chunks) لتسريع رفع الفيديو/الريل حتى 4×
+  const concurrency = Math.max(1, Math.min(
+    8,
+    Number(options?.concurrency || DEFAULT_CHUNK_CONCURRENCY) || 4
+  ));
+
+  // تجميع الأجزاء غير المرفوعة في طابور انتظار
+  const pending = [];
+  for (let i = 0; i < totalChunks; i += 1) {
+    if (uploadedSet.has(i)) {
+      // الجزء مرفوع سابقاً — أبلِغ فقط
       emitProgress(onProgress, {
         stage: 'uploading',
-        percent: Math.round(((chunkIndex + 1) / totalChunks) * 100),
-        chunkIndex,
+        percent: Math.round((uploadedSet.size / totalChunks) * 100),
+        chunkIndex: i,
         totalChunks,
         resumed: true,
-        loadedBytes: Math.min(file.size, (chunkIndex + 1) * chunkSize),
+        loadedBytes: Math.min(file.size, (i + 1) * chunkSize),
         totalBytes: file.size,
       });
       continue;
     }
+    pending.push(i);
+  }
 
+  let completedCount = uploadedSet.size;
+
+  async function uploadSingleChunk(chunkIndex) {
+    throwIfAborted(signal);
     const start = chunkIndex * chunkSize;
     const end = Math.min(file.size, start + chunkSize);
     const chunk = file.slice(start, end);
@@ -450,36 +471,67 @@ async function uploadResumable(file, fingerprint, manifest, onProgress, extraFie
       retries: options?.chunkRetries ?? DEFAULT_MAX_CHUNK_RETRIES,
       onRetry: ({ attempt, delayMs }) => emitProgress(onProgress, {
         stage: 'retrying',
-        percent: Math.round((chunkIndex / totalChunks) * 100),
+        percent: Math.round((completedCount / totalChunks) * 100),
         chunkIndex,
         totalChunks,
         retryAttempt: attempt,
         retryDelayMs: delayMs,
-        loadedBytes: start,
+        loadedBytes: completedCount * chunkSize,
         totalBytes: file.size,
       }),
       context: { type: 'resumable-chunk', chunkIndex, fileName: file.name },
     });
 
     uploadedSet.add(chunkIndex);
-    persistSession(fingerprint, {
-      sessionId,
-      uploadedChunks: Array.from(uploadedSet),
-      fileName: file.name,
-      totalChunks,
-      updatedAt: Date.now(),
-    });
+    completedCount = uploadedSet.size;
+    // حفظ السيشن دورياً (ليس بعد كل جزء — لتقليل الضغط على localStorage)
+    if (completedCount % 4 === 0 || completedCount === totalChunks) {
+      persistSession(fingerprint, {
+        sessionId,
+        uploadedChunks: Array.from(uploadedSet),
+        fileName: file.name,
+        totalChunks,
+        updatedAt: Date.now(),
+      });
+    }
 
     emitProgress(onProgress, {
       stage: 'uploading',
-      percent: Math.round(((chunkIndex + 1) / totalChunks) * 100),
+      percent: Math.round((completedCount / totalChunks) * 100),
       chunkIndex,
       totalChunks,
       resumed: Boolean(cached?.sessionId),
-      loadedBytes: end,
+      loadedBytes: Math.min(file.size, completedCount * chunkSize),
       totalBytes: file.size,
     });
   }
+
+  // تشغيل N عمّال متوازين يسحبون من طابور pending
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < pending.length) {
+      throwIfAborted(signal);
+      const idx = pending[cursor];
+      cursor += 1;
+      if (idx === undefined) break;
+      await uploadSingleChunk(idx);
+    }
+  };
+
+  const workers = [];
+  for (let w = 0; w < Math.min(concurrency, pending.length); w += 1) {
+    workers.push(worker());
+  }
+  await Promise.all(workers);
+
+  // تأكيد حفظ السيشن بعد إتمام كل الأجزاء
+  persistSession(fingerprint, {
+    sessionId,
+    uploadedChunks: Array.from(uploadedSet),
+    fileName: file.name,
+    totalChunks,
+    updatedAt: Date.now(),
+  });
 
   throwIfAborted(signal);
   emitProgress(onProgress, { stage: 'finalizing', percent: stagePercent.finalizing, loadedBytes: file.size, totalBytes: file.size });

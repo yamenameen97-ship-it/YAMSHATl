@@ -84,9 +84,12 @@ function MobileLayout({ children }) {
           min-height: 100vh;
           background-color: #0A0D1A;
           color: white;
-          padding-top: 60px;
-          padding-bottom: 70px;
+          padding-top: 56px;
+          padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px));
           font-family: "Noto Sans Arabic", "Cairo", system-ui, -apple-system, sans-serif;
+          box-sizing: border-box;
+          overflow-x: hidden;
+          max-width: 100vw;
         }
 
         .mobile-main-content {
@@ -94,9 +97,16 @@ function MobileLayout({ children }) {
           width: 100%;
           max-width: 600px;
           margin: 0 auto;
-          overflow: hidden; /* السماح لـ PullToRefresh بإدارة التمرير الداخلي */
+          overflow: hidden;
           display: flex;
           flex-direction: column;
+          box-sizing: border-box;
+        }
+
+        /* ✅ v47: ضمان عدم خروج أي عنصر عن حدود الشاشة على الأجهزة القديمة */
+        @media (max-width: 400px) {
+          .mobile-layout-container { padding-top: 54px; }
+          .mobile-main-content { max-width: 100%; }
         }
 
         .mobile-main-content > .ym-ptr-container {

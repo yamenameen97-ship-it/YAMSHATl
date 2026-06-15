@@ -133,7 +133,8 @@ export const IMAGE_PRESET = {
 };
 
 export const VIDEO_PRESET = {
-  chunkSizeBytes: Number(readRuntime('APP_VIDEO_CHUNK_SIZE') || readEnv('VITE_VIDEO_CHUNK_SIZE') || 5 * 1024 * 1024),
+  // ✅ v47: تصغير حجم الجزء إلى 2MB لبدء أسرع للرفع وإتاحة رفع متوازٍ فعال
+  chunkSizeBytes: Number(readRuntime('APP_VIDEO_CHUNK_SIZE') || readEnv('VITE_VIDEO_CHUNK_SIZE') || 2 * 1024 * 1024),
   qualities: (readRuntime('APP_VIDEO_QUALITIES') || readEnv('VITE_VIDEO_QUALITIES') || '1080,720,480')
     .split(',')
     .map((item) => Number(item.trim()))

@@ -1038,6 +1038,21 @@ export default function ReelsPage() {
   return (
     <MainLayout>
       <div className="reels-page-shell" onWheelCapture={handleWheelNavigation} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+        {/* ✅ v44: شعار YAMSHAT في الزاوية العلوية اليسرى (عائم فوق الفيديو) */}
+        <div className="reels-corner-brand" dir="rtl" aria-label="YAMSHAT">
+          <svg viewBox="0 0 100 100" width="22" height="22" aria-hidden="true">
+            <defs>
+              <linearGradient id="reels-y-grad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#A78BFA" />
+                <stop offset="100%" stopColor="#7C3AED" />
+              </linearGradient>
+            </defs>
+            <path d="M20 20 L50 60 L80 20 L70 20 L50 45 L30 20 Z" fill="url(#reels-y-grad)" />
+            <path d="M45 60 L55 60 L55 85 L45 85 Z" fill="url(#reels-y-grad)" />
+          </svg>
+          <span className="reels-corner-brand-text">YAMSHAT</span>
+        </div>
+
         {/* ✅ v42+: شريط علوي عائم شفاف بتبويبات TikTok */}
         <div className="reels-top-tabs-bar" dir="rtl">
           <button
@@ -1495,20 +1510,17 @@ export default function ReelsPage() {
             border-radius: 999px;
             display: grid;
             place-items: center;
-            border: 1px solid rgba(255,255,255,0.18);
-            background: rgba(15,23,42,0.32);
-            backdrop-filter: blur(14px) saturate(140%);
-            -webkit-backdrop-filter: blur(14px) saturate(140%);
+            border: none;
+            background: transparent;
             color: #fff;
             cursor: pointer;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.28);
-            transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
+            filter: drop-shadow(0 2px 6px rgba(0,0,0,0.7));
+            transition: transform 140ms ease, opacity 140ms ease;
           }
           .reels-floating-btn:hover,
           .reels-floating-btn:active {
-            transform: scale(1.05);
-            background: rgba(15,23,42,0.55);
-            border-color: rgba(255,255,255,0.32);
+            transform: scale(1.08);
+            opacity: 0.9;
           }
           .reels-floating-btn svg {
             display: block;
@@ -1517,6 +1529,32 @@ export default function ReelsPage() {
           .reels-floating-btn.is-active {
             background: rgba(139, 92, 246, 0.55);
             border-color: rgba(167,139,250,0.55);
+          }
+
+          /* ✅ v44: شعار YAMSHAT في الزاوية العلوية اليسرى (داخل الريلز فقط) */
+          .reels-corner-brand {
+            position: absolute;
+            top: calc(env(safe-area-inset-top, 0px) + 8px);
+            inset-inline-start: 12px; /* RTL → الزاوية اليسرى */
+            z-index: 50;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            border-radius: 999px;
+            background: rgba(0,0,0,0.28);
+            backdrop-filter: blur(8px) saturate(140%);
+            -webkit-backdrop-filter: blur(8px) saturate(140%);
+            pointer-events: none;
+            user-select: none;
+            font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+          }
+          .reels-corner-brand-text {
+            color: #fff;
+            font-weight: 900;
+            font-size: 11px;
+            letter-spacing: 1px;
+            text-shadow: 0 2px 6px rgba(0,0,0,0.7);
           }
 
           /* ✅ v42+: شريط التبويبات العلوي على نمط TikTok (استكشف | أتابعه | لك) */
@@ -1531,6 +1569,7 @@ export default function ReelsPage() {
             padding: 0 14px;
             gap: 8px;
             pointer-events: none;
+            background: transparent !important; /* v44: بدون أي خلفية */
           }
           .reels-top-tabs-bar > button,
           .reels-top-tabs-bar .reels-tabs-center { pointer-events: auto; }

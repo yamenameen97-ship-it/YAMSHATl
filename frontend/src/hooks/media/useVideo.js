@@ -80,6 +80,9 @@ export default function useVideo({
   }, [isVisible, smartPause]);
 
   // Wire events
+  // ✅ FIX (الفيديو لا يظهر على ويب الجوال): أضفنا [src] إلى الـ deps
+  // لأن videoRef.current ربما لم يكن جاهزاً عند أول mount على الجوال البطيء،
+  // وأضفنا حدثي canplay و error لضمان عرض الفيديو على الأجهزة القديمة.
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return undefined;
@@ -92,17 +95,35 @@ export default function useVideo({
       }
     };
     const onMeta = () => setDuration(el.duration || 0);
+    const onCanPlay = () => {
+      // وصول تأكيد جاهزية الفيديو — مفيد خصوصاً على Chrome الجوال القديم
+      if (el.duration && !duration) setDuration(el.duration);
+    };
+    const onErr = () => {
+      // على خطأ تحميل على الجوال، حاول إعادة التحميل بعد فترة قصيرة
+      try {
+        const currentSrc = el.currentSrc || el.src;
+        if (currentSrc) {
+          setTimeout(() => { try { el.load(); } catch { /* ignore */ } }, 600);
+        }
+      } catch { /* ignore */ }
+    };
     el.addEventListener('play', onPlay);
     el.addEventListener('pause', onPause);
     el.addEventListener('timeupdate', onTime);
     el.addEventListener('loadedmetadata', onMeta);
+    el.addEventListener('canplay', onCanPlay);
+    el.addEventListener('error', onErr);
     return () => {
       el.removeEventListener('play', onPlay);
       el.removeEventListener('pause', onPause);
       el.removeEventListener('timeupdate', onTime);
       el.removeEventListener('loadedmetadata', onMeta);
+      el.removeEventListener('canplay', onCanPlay);
+      el.removeEventListener('error', onErr);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src]);
 
   const play = useCallback(() => {
     const el = videoRef.current;

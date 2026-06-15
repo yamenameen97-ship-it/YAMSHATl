@@ -220,14 +220,22 @@ export default function UniversalPlayer({
         src={currentSrc !== src ? currentSrc : undefined}
         poster={poster}
         playsInline
+        webkit-playsinline="true"
+        x5-playsinline="true"
+        x-webkit-airplay="allow"
+        crossOrigin="anonymous"
         loop={computedLoop}
         muted={isMuted}
-        preload="metadata"
+        preload="auto"
+        controls={false}
         onError={onError}
         style={{
           width: '100%',
           height: '100%',
+          minHeight: variant === 'reel' ? '100%' : 220,
           objectFit: variant === 'reel' ? 'cover' : 'contain',
+          display: 'block',
+          background: '#000',
         }}
       />
 

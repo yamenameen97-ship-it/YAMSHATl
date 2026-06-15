@@ -27,9 +27,13 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
   const [isTransitioning, setIsTransitioning] = useState(false);
 
   const isConversationRoute = /^\/chat\/[^/]+/.test(location.pathname);
-  // وضع الريلز: الهيدر العلوي شفّاف Overlay، والمحتوى يملأ كامل الشاشة
+  // وضع الريلز: الهيدر العلوي مُخفي تمامًا (v44 — TikTok pure mode)
+  // المحتوى يملأ كامل الشاشة، ويتم الاكتفاء بالشريط العائم الداخلي (استكشف/أتابعه/لك + بحث + LIVE)
   const isReelsRoute = location.pathname === '/reels' || location.pathname.startsWith('/reels/');
   const showChrome = !hideNav && !isConversationRoute; // إظهار الهيدر/الفوتر الموحّدين
+  // v44: في الريلز نُخفي الهيدر العلوي بالكامل ونُبقي الفوتر فقط
+  const showTopBar = showChrome && !isReelsRoute;
+  const showBottomNav = showChrome;
   const showNotificationPrompt = !isConversationRoute;
 
   useEffect(() => {
@@ -77,8 +81,8 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
       style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}
       className={`app-shell yamshat-shell yamshat-unified ${nativeShell ? 'native-shell' : ''} ${isConversationRoute ? 'conversation-shell' : ''} ${isReelsRoute ? 'reels-shell' : ''}`}
     >
-      {/* الهيدر العلوي الموحّد — مثبّت في كل الصفحات (شفّاف داخل الريلز) */}
-      {showChrome ? <MobileTopBar transparent={isReelsRoute} /> : null}
+      {/* v44: الهيدر العلوي الموحّد مخفي بالكامل داخل الريلز (TikTok pure mode) */}
+      {showTopBar ? <MobileTopBar transparent={false} /> : null}
 
       <div className={`main-shell ${nativeShell ? 'native-shell' : ''}`}>
         <main
@@ -92,7 +96,7 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
       </div>
 
       {/* الشريط السفلي الموحّد — مثبّت في كل الصفحات (بما فيها الريلز) */}
-      {showChrome ? <BottomNav /> : null}
+      {showBottomNav ? <BottomNav /> : null}
       {showNotificationPrompt ? <NotificationPermissionPrompt /> : null}
 
       <style dangerouslySetInnerHTML={{

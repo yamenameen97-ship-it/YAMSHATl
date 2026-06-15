@@ -73,7 +73,12 @@ function Topbar() {
   );
 
   const username = currentUsername || session?.username || 'Yamshat';
-  const displayName = session?.profile?.full_name || session?.name || session?.full_name || username;
+  // ✅ FIX v45 (الاسم لا يُحفظ): قراءة الاسم مع fallback للتخزين المحلي
+  const localFullName = (() => {
+    try { return username ? (window.localStorage.getItem(`yamshat:profile:fullname:${username}`) || '') : ''; }
+    catch { return ''; }
+  })();
+  const displayName = session?.profile?.full_name || session?.name || session?.full_name || localFullName || username;
   const avatarSrc = resolveMediaUrl(session?.profile?.avatar || session?.avatar || session?.profile?.avatar_url || session?.avatar_url || '');
 
   useEffect(() => {
@@ -113,10 +118,10 @@ function Topbar() {
     }
   }, [loggingOut]);
 
-  // الأزرار السريعة — تظهر فقط على الديسكتوب (>= 768px)
-  // على الجوال يتم إخفاؤها بالكامل لأنها متوفرة في الـ BottomNav والـ Header المخصص
+  // ✅ FIX v45: الأزرار السريعة (المجموعات/الريلز/الستوري) تظهر الآن على الجوال أيضاً
+  // مع تباعد واضح بينها (لإصلاح تشابك الستوري مع المجموعات)
   const mobileQuickLinks = (
-    <div className="topbar-mobile-quick-links topbar-desktop-only">
+    <div className="topbar-mobile-quick-links" dir="rtl">
       {MOBILE_QUICK_LINKS.map((item) => (
         <Link
           key={item.to}
@@ -125,7 +130,8 @@ function Topbar() {
           aria-label={item.ariaLabel}
           title={item.label}
         >
-          <span className="topbar-quick-link-icon">{item.icon}</span>
+          <span className="topbar-quick-link-icon" aria-hidden="true">{item.icon}</span>
+          <span className="topbar-quick-link-label">{item.label}</span>
         </Link>
       ))}
     </div>

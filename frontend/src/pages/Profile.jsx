@@ -64,8 +64,10 @@ export default function Profile() {
   const [theme, setTheme] = useState('midnight');
 
   // حالات تعديل الملف الشخصي
+  // ✅ FIX (الاسم لا يُحفظ): أضفنا full_name إلى نموذج التعديل
   const [editForm, setEditForm] = useState({
     username: '',
+    full_name: '',
     activity_tagline: '',
     bio: '',
     avatar: '',
@@ -153,6 +155,8 @@ export default function Profile() {
   const openEditModal = () => {
     setEditForm({
       username: profile?.user?.username || '',
+      // ✅ FIX (الاسم لا يُحفظ): قراءة full_name من جميع المصادر المحتملة في الـ backend
+      full_name: profile?.user?.profile?.full_name || profile?.user?.full_name || profile?.user?.name || '',
       activity_tagline: profile?.user?.profile?.activity_tagline || '',
       bio: profile?.user?.profile?.bio || '',
       avatar: profile?.user?.avatar || '',
@@ -225,8 +229,11 @@ export default function Profile() {
       cover_photo: editForm.cover_photo || '',
     });
     try {
+      // ✅ FIX (الاسم لا يُحفظ): إرسال full_name في الـ payload للـ backend
+      // (الـ backend يقبل: username, full_name, bio, avatar, cover_photo, activity_tagline)
       const payload = {
         username: cleanedUsername,
+        full_name: String(editForm.full_name || '').trim(),
         avatar: editForm.avatar || '',
         bio: editForm.bio || '',
         cover_photo: editForm.cover_photo || '',
@@ -238,16 +245,20 @@ export default function Profile() {
       // القيم النهائية: الخادم أولاً، ثم payload، ثم السابق — ولكن لا ندع الخادم يمسح الصورة إذا أرسلناها
       const finalAvatar = nextUser?.avatar || payload.avatar || '';
       const finalCover = nextProfile?.cover_photo || payload.cover_photo || '';
+      // ✅ FIX (الاسم لا يُحفظ): الاسم الحقيقي قد يأتي من user.full_name أو من profile.full_name
+      const finalFullName = nextUser?.full_name ?? nextProfile?.full_name ?? payload.full_name ?? '';
       setProfile((prev) => ({
         ...(prev || {}),
         user: {
           ...(prev?.user || {}),
           ...nextUser,
           username: nextUser?.username || cleanedUsername,
+          full_name: finalFullName,
           avatar: finalAvatar,
           profile: {
             ...(prev?.user?.profile || {}),
             ...nextProfile,
+            full_name: finalFullName,
             bio: nextProfile?.bio ?? payload.bio ?? prev?.user?.profile?.bio ?? '',
             cover_photo: finalCover,
             activity_tagline: nextProfile?.activity_tagline ?? payload.activity_tagline ?? prev?.user?.profile?.activity_tagline ?? '',
@@ -262,14 +273,24 @@ export default function Profile() {
       mergeStoredUser({
         username: nextUser?.username || cleanedUsername,
         user: nextUser?.username || cleanedUsername,
+        full_name: finalFullName,
         avatar: finalAvatar,
         profile: {
           avatar: finalAvatar,
+          full_name: finalFullName,
           cover_photo: finalCover,
           bio: nextProfile?.bio ?? payload.bio ?? '',
           activity_tagline: nextProfile?.activity_tagline ?? payload.activity_tagline ?? '',
         },
       });
+      // ✅ FIX (الاسم لا يُحفظ على الويب للجوال): حفظ نسخة محلية احتياطية للاسم
+      // لضمان البقاء حتى لو لم يحفظه الـ backend بشكل صحيح
+      try {
+        window.localStorage.setItem(
+          `yamshat:profile:fullname:${cleanedUsername}`,
+          finalFullName,
+        );
+      } catch { /* ignore */ }
       pushToast({ type: 'success', title: 'تم حفظ التعديلات' });
       setShowEditProfile(false);
       // إعادة تحميل البيانات بعد الحفظ — و loadProfile ستدمج البدائل المحلية تلقائياً
@@ -491,8 +512,26 @@ export default function Profile() {
             </div>
           </div>
 
-          {/* قسم الاسم */}
-          <div className="profile-edit-section">
+          {/* قسم الاسم الكامل (الاسم الظاهر) — ✅ FIX: حقل مستقل لحفظ الاسم */}
+          <div className="profile-edit-section" dir="rtl">
+            <label className="profile-edit-label" htmlFor="profile-edit-fullname">الاسم الكامل</label>
+            <input
+              id="profile-edit-fullname"
+              type="text"
+              className="profile-edit-input"
+              value={editForm.full_name}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, full_name: e.target.value }))}
+              data-modal-autofocus="true"
+              placeholder="الاسم الذي يظهر للجميع"
+              maxLength={80}
+              dir="rtl"
+              style={{ textAlign: 'right' }}
+            />
+            <small className="profile-edit-hint">هذا هو الاسم الذي يظهر للآخرين على ملفك</small>
+          </div>
+
+          {/* قسم اسم المستخدم */}
+          <div className="profile-edit-section" dir="rtl">
             <label className="profile-edit-label" htmlFor="profile-edit-username">اسم المستخدم</label>
             <input
               id="profile-edit-username"
@@ -500,11 +539,12 @@ export default function Profile() {
               className="profile-edit-input"
               value={editForm.username}
               onChange={(e) => setEditForm((prev) => ({ ...prev, username: e.target.value }))}
-              data-modal-autofocus="true"
               placeholder="اسم المستخدم"
               maxLength={50}
+              dir="ltr"
+              style={{ textAlign: 'left' }}
             />
-            <small className="profile-edit-hint">يتم استخدامه في الرابط واسم الظهور (بدون مسافات)</small>
+            <small className="profile-edit-hint">يتم استخدامه في الرابط (بدون مسافات)</small>
           </div>
 
           {/* قسم اللقب / Tagline */}

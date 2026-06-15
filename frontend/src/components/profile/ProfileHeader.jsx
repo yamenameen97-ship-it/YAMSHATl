@@ -125,7 +125,19 @@ export default function ProfileHeader({
     { key: 'photos', label: 'الصور' },
   ], []);
 
-  const fullName = profile?.user?.display_name || profile?.user?.full_name || profile?.user?.username || 'مستخدم';
+  // ✅ FIX v45 (الاسم لا يُحفظ): قراءة full_name من جميع المصادر المحتملة + النسخة المحلية الاحتياطية
+  const localFullName = (() => {
+    try {
+      const uname = profile?.user?.username;
+      return uname ? window.localStorage.getItem(`yamshat:profile:fullname:${uname}`) || '' : '';
+    } catch { return ''; }
+  })();
+  const fullName = profile?.user?.display_name
+    || profile?.user?.full_name
+    || profile?.user?.profile?.full_name
+    || localFullName
+    || profile?.user?.username
+    || 'مستخدم';
   const username = profile?.user?.username || 'مستخدم';
   const postsCount = profile?.posts_count || 0;
   const followersCount = profile?.followers_count || 0;

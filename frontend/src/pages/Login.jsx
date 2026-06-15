@@ -32,7 +32,7 @@ export default function LoginEnhanced() {
   const [form, setForm] = useState({
     identifier: '',
     password: '',
-    rememberMe: true,
+    rememberMe: true, // محفوظ افتراضياً (تم إخفاء الـ checkbox من الواجهة بناءً على طلب المستخدم)
     captchaAnswer: '',
   });
   const [loading, setLoading] = useState(false);
@@ -74,14 +74,12 @@ export default function LoginEnhanced() {
   };
 
   useEffect(() => {
-    // تأجيل تحميل الكابتشا قليلاً لضمان ظهور الصفحة أولاً
     const timer = setTimeout(() => {
       loadCaptcha(true);
     }, 500);
     return () => clearTimeout(timer);
   }, []);
 
-  // إعادة تحميل الكابتشا تلقائياً قبل انتهاء صلاحيتها (مع هامش أمان 30s)
   useEffect(() => {
     if (!captcha?.expires_in_seconds) return undefined;
     const ms = Math.max((Number(captcha.expires_in_seconds) - 30) * 1000, 30 * 1000);
@@ -212,7 +210,6 @@ export default function LoginEnhanced() {
       const message = localizeAuthMessage(apiError?.message || err?.message, 'فشل تسجيل الدخول. يرجى التأكد من البيانات والمحاولة مرة أخرى.');
       setError(message);
 
-      // لو الخطأ متعلق بالكابتشا، اعمل ريفريش فوري وامسح الإجابة القديمة
       const captchaRelated = apiError?.field === 'captcha'
         || message.includes('كابتشا')
         || message.toLowerCase?.().includes('captcha');
@@ -229,10 +226,10 @@ export default function LoginEnhanced() {
     <AuthShell
       badge="YAMSHAT"
       title="تسجيل الدخول"
-      description="مرحباً بك مجدداً في يام شات. سجل دخولك للمتابعة."
+      description="سجل دخولك للمتابعة"
     >
-      <form className="auth-form auth-form-enhanced" onSubmit={handleSubmit} noValidate>
-        <div className="auth-form-head">
+      <form className="auth-form auth-form-fb" onSubmit={handleSubmit} noValidate dir="rtl">
+        <div className="auth-form-head-fb">
           <h2>تسجيل الدخول</h2>
           <p className="muted">أدخل بيانات حسابك للوصول إلى لوحة التحكم.</p>
         </div>
@@ -261,7 +258,7 @@ export default function LoginEnhanced() {
           <Link
             to="/forgot-password"
             className="auth-inline-link"
-            style={{ position: 'absolute', top: 0, left: 0, fontSize: 12 }}
+            style={{ position: 'absolute', top: 0, left: 0, fontSize: 11 }}
           >
             نسيت كلمة المرور؟
           </Link>
@@ -278,29 +275,20 @@ export default function LoginEnhanced() {
           refreshCooldown={captchaCooldown}
         />
 
-        <div style={{ margin: '16px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
-            <input
-              type="checkbox"
-              checked={form.rememberMe}
-              onChange={handleChange('rememberMe')}
-              disabled={loading}
-            />
-            <span style={{ fontSize: 14 }}>تذكرني على هذا الجهاز</span>
-          </label>
-        </div>
+        {/* ملاحظة: تم حذف checkbox "تذكرني على هذا الجهاز" من الواجهة بناءً على طلب المستخدم.
+            القيمة لا تزال true افتراضياً في state وتُرسل مع الطلب. */}
 
         {error && (
-          <div className="alert error" style={{ display: 'flex', alignItems: 'center', gap: 10, animation: 'shake 0.4s ease' }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <div className="alert error alert-fb" style={{ display: 'flex', alignItems: 'center', gap: 8, animation: 'shake 0.4s ease' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, fontSize: 12 }}>
               <div>{error}</div>
-              {retryCount > 2 && <div style={{ fontSize: 11, marginTop: 4, opacity: 0.8 }}>إذا كنت تواجه مشكلة مستمرة، يرجى إعادة تعيين كلمة المرور.</div>}
+              {retryCount > 2 && <div style={{ fontSize: 10, marginTop: 2, opacity: 0.8 }}>إذا كنت تواجه مشكلة مستمرة، يرجى إعادة تعيين كلمة المرور.</div>}
             </div>
             {retryCount > 1 && (
-              <button type="button" onClick={handleSubmit} disabled={loading} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', textDecoration: 'underline', fontSize: 12 }}>
+              <button type="button" onClick={handleSubmit} disabled={loading} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', textDecoration: 'underline', fontSize: 11 }}>
                 إعادة المحاولة
               </button>
             )}
@@ -311,7 +299,7 @@ export default function LoginEnhanced() {
           type="submit"
           loading={loading}
           disabled={loading || !form.identifier || !form.password || !form.captchaAnswer}
-          style={{ height: 50, fontSize: 16, fontWeight: 'bold' }}
+          style={{ height: 42, fontSize: 14, fontWeight: 700 }}
         >
           {loading ? 'جاري التحقق...' : 'تسجيل الدخول'}
         </Button>
@@ -321,7 +309,7 @@ export default function LoginEnhanced() {
           onSuccess={(payload) => completeLogin(payload)}
         />
 
-        <div className="auth-form-footer">
+        <div className="auth-form-footer auth-form-footer-fb">
           <span>ليس لديك حساب؟</span>
           <Link to="/register" className="link-btn">إنشاء حساب جديد</Link>
         </div>
@@ -344,17 +332,64 @@ export default function LoginEnhanced() {
           25% { transform: translateX(-5px); }
           75% { transform: translateX(5px); }
         }
-        .auth-form-enhanced {
+        /* نموذج مدمج بنمط فيسبوك — مسافات صغيرة وخط مقروء في صفحة واحدة */
+        .auth-form-fb {
           display: flex;
           flex-direction: column;
-          gap: 16px;
+          gap: 10px;
+          font-family: 'Noto Sans Arabic','Cairo',system-ui,sans-serif;
+        }
+        .auth-form-fb .auth-form-head-fb {
+          text-align: center;
+          margin-bottom: 2px;
+        }
+        .auth-form-fb .auth-form-head-fb h2 {
+          margin: 0;
+          font-size: 17px;
+          font-weight: 700;
+          color: #e2e8f0;
+        }
+        .auth-form-fb .auth-form-head-fb p {
+          margin: 2px 0 0;
+          font-size: 11.5px;
+          color: #94a3b8;
+        }
+        .auth-form-fb label,
+        .auth-form-fb .input-label {
+          font-size: 11.5px !important;
+        }
+        .auth-form-fb input,
+        .auth-form-fb .input {
+          font-size: 13px !important;
+          padding: 9px 11px !important;
+          height: 38px !important;
+        }
+        .auth-form-fb .captcha-box {
+          padding: 8px 10px !important;
+          font-size: 12px !important;
+        }
+        .auth-form-fb .captcha-box .captcha-question {
+          font-size: 15px !important;
+        }
+        .alert-fb {
+          padding: 8px 10px !important;
+          border-radius: 10px !important;
+        }
+        .auth-form-footer-fb {
+          display: flex;
+          justify-content: center;
+          gap: 6px;
+          font-size: 12px;
+          margin-top: 4px;
+          padding-top: 8px;
+          border-top: 1px solid rgba(148,163,184,0.08);
         }
         .social-login-divider {
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 8px;
           color: var(--muted);
-          font-size: 12px;
+          font-size: 11px;
         }
         .social-login-divider span {
           flex: 1;
@@ -363,7 +398,12 @@ export default function LoginEnhanced() {
         }
         .social-login-grid {
           display: grid;
-          gap: 10px;
+          gap: 8px;
+        }
+        @media (max-width: 480px) {
+          .auth-form-fb { gap: 9px; }
+          .auth-form-fb input,
+          .auth-form-fb .input { height: 36px !important; font-size: 12.5px !important; }
         }
       `}</style>
     </AuthShell>

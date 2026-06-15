@@ -2,3 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+@import './styles/chat-mobile-fixes.css';
+
+/* Global RTL + Noto Sans Arabic on the entire app shell */
+html { direction: rtl; }
+body {
+  font-family: 'Noto Sans Arabic', 'Cairo', 'Tahoma', sans-serif;
+}
+

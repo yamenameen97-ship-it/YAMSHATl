@@ -13,9 +13,16 @@ function TopBar({
   const location = useLocation();
 
   return (
-    <header className={`ui-topbar ${className}`.trim()} dir="rtl">
-      <div className="ui-topbar-track">
-        <Link to={brand.to} className="ui-topbar-brand" aria-label={brand.label}>
+    <header className={`ui-topbar ${className}`.trim()} dir="rtl" style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', sans-serif" }}>
+      <div className="ui-topbar-track" dir="rtl">
+        {/* v46: الشعار + اسم المنصة في الزاوية اليمنى وهو المُفعّل للقائمة الجانبية */}
+        <Link
+          to={brand.to}
+          className="ui-topbar-brand"
+          aria-label={brand.label}
+          dir="rtl"
+          style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', sans-serif" }}
+        >
           <span className="ui-topbar-brand-mark" aria-hidden="true">{brand.icon}</span>
           <span className="ui-topbar-brand-copy">{brand.label}</span>
         </Link>

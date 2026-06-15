@@ -50,14 +50,16 @@ import './styles/pwa-mobile-hotfix.css';
 import './styles/platform-unified-v4.css';
 /* 🧩 إصلاح بطاقة المنشور (MobilePostCard) — يحلّ التناثر ويُوحّد الشكل النهائي */
 import './styles/mobile-post-card-unified-fix.css';
-/* 🎯 v45 — إصلاحات ويب الجوال الحرجة (الفيديو + الهيدر + التخطيط) — يجب أن يكون الأخير */
+/* 🎯 v45 — إصلاحات ويب الجوال الحرجة (الفيديو + الهيدر + التخطيط) */
 import './styles/mobile-fixes-v45.css';
+/* 🎯 v46 — إصلاحات ويب الجوال (الإحصائيات + أيقونات المنشور + الهيدر + ضبط العرض) — يجب أن يكون الأخير */
+import './styles/mobile-fixes-v46.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { pwaInitializer } from './services/pwaInitializer.js';
 import { smoothTouchLayer } from './services/smoothTouchLayer.js';
 import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 
-const BUILD_ID = 'yamshat-mobile-web-fixes-v45';
+const BUILD_ID = 'yamshat-mobile-web-fixes-v46';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

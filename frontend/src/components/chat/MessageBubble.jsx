@@ -3,6 +3,8 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import Avatar from '../ui/Avatar.jsx';
 import { statusColor, statusTicks } from '../yamshat/YamshatDesign.js';
 import VoiceMessagePlayer from '../ui/VoiceMessagePlayer.jsx';
+import SafeImage from './SafeImage.jsx';
+import CallBubble from './CallBubble.jsx';
 
 const QUICK_REACTIONS = ['❤️', '🔥', '😂', '👏', '👍', '😮'];
 
@@ -392,9 +394,25 @@ function MessageBubble({
             ) : null}
           </AnimatePresence>
 
+          {message?.type === 'call' || message?.call ? (
+            <CallBubble
+              call={{
+                ...(message?.call || {}),
+                mode: message?.call?.mode || message?.callMode || 'voice',
+                direction: (message?.isMe || message?.sender === message?.currentUser) ? 'outgoing' : 'incoming',
+                status: message?.call?.status || message?.callStatus || 'missed',
+                duration_sec: message?.call?.duration_sec || message?.callDuration || 0,
+                time: message?.time,
+                isMe: message?.isMe,
+              }}
+              onCallBack={() => {
+                window.dispatchEvent(new CustomEvent('yamshat:callback', { detail: message }));
+              }}
+            />
+          ) : null}
           {isImage && message?.media_url ? (
             <button type="button" className="yam-media-button" onClick={openCurrentMedia}>
-              <img src={message.media_url} alt={fileName} className="yam-bubble-media" loading="lazy" decoding="async" />
+              <SafeImage src={message.media_url} alt={fileName} onOpen={openCurrentMedia} maxHeight={320} />
               <span className="yam-bubble-media-overlay">تكبير</span>
             </button>
           ) : null}

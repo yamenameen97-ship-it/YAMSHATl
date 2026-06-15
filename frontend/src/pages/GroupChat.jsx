@@ -11,7 +11,13 @@ import socketManager from '../services/socketManager.js';
 import { getCurrentUsername } from '../utils/auth.js';
 import { startCall, bootstrapCallService } from '../services/callService.js';
 import { ensureNotificationPermission, showLocalNotification } from '../utils/notificationCenter.js';
+import MediaPreviewModal from '../components/chat/MediaPreviewModal.jsx';
+import MessageActionsToolbar from '../components/chat/MessageActionsToolbar.jsx';
+import MessageReactionPicker from '../components/chat/MessageReactionPicker.jsx';
+import SafeImage from '../components/chat/SafeImage.jsx';
+import CallBubble from '../components/chat/CallBubble.jsx';
 import '../styles/group-chat.css';
+import '../styles/chat-mobile-fixes.css';
 
 /**
  * صفحة دردشة مجموعة واحدة — نسخة v22 مُصلحة.
@@ -47,6 +53,14 @@ const GroupChat = () => {
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
   const videoInputRef = useRef(null);
+
+  // حالة معاينة الوسائط قبل الإرسال
+  const [previewFiles, setPreviewFiles] = useState([]);          // File[]
+  const [previewMediaType, setPreviewMediaType] = useState('image');
+
+  // حالة تحديد رسالة (Long-Press)
+  const [selectedMessage, setSelectedMessage] = useState(null);
+  const [reactionAnchor, setReactionAnchor] = useState(null);    // DOMRect
   const documentVisibleRef = useRef(
     typeof document !== 'undefined' ? !document.hidden : true
   );
@@ -331,17 +345,44 @@ const GroupChat = () => {
     }
   };
 
-  // ✅ رفع ملف مع optimistic UI ومعالجة أخطاء واضحة
-  const handleFileUpload = async (e, mediaType = 'file') => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // ✅ المرحلة 1: عند اختيار الملف، نفتح Preview Modal بدلاً من الإرسال المباشر
+  const handleFileSelect = (e, mediaType = 'file') => {
+    const filesList = Array.from(e.target.files || []);
+    if (!filesList.length) return;
     setShowAttachMenu(false);
 
-    // حدود الحجم: 25MB افتراضيًا
+    const MAX_SIZE = 50 * 1024 * 1024;
+    const accepted = [];
+    for (const f of filesList) {
+      if (f.size > MAX_SIZE) {
+        alert(`الملف "${f.name}" كبير جدًا (الحد الأقصى ${Math.round(MAX_SIZE / 1024 / 1024)}MB)`);
+        continue;
+      }
+      accepted.push(f);
+    }
+    if (e.target) e.target.value = '';
+    if (!accepted.length) return;
+
+    // افتح المعاينة قبل الإرسال
+    setPreviewMediaType(mediaType);
+    setPreviewFiles((prev) => [...prev, ...accepted]);
+  };
+
+  // إرسال الملفات بعد تأكيد المعاينة
+  const handleConfirmPreviewSend = async (filesToSend, caption) => {
+    const list = filesToSend && filesToSend.length ? filesToSend : previewFiles;
+    setPreviewFiles([]);
+    for (const f of list) {
+      await uploadAndSendGroupFile(f, previewMediaType, caption);
+    }
+  };
+
+  // ✅ رفع ملف مع optimistic UI ومعالجة أخطاء واضحة (يستدعى من Preview Modal)
+  const uploadAndSendGroupFile = async (file, mediaType = 'file', caption = '') => {
+    if (!file) return;
     const MAX_SIZE = 50 * 1024 * 1024;
     if (file.size > MAX_SIZE) {
       alert(`الملف كبير جدًا (الحد الأقصى ${Math.round(MAX_SIZE / 1024 / 1024)}MB)`);
-      if (e.target) e.target.value = '';
       return;
     }
 
@@ -384,9 +425,9 @@ const GroupChat = () => {
       const mediaUrl = uploadRes.data?.url || uploadRes.data?.media_url || uploadRes.data?.cdn_url;
       if (!mediaUrl) throw new Error('No URL returned from upload');
 
-      // إرسال رسالة الوسائط بعد نجاح الرفع — مع retry
+      // إرسال رسالة الوسائط بعد نجاح الرفع — مع retry + caption إن وُجد
       const sendResp = await sendWithRetry({
-        content: '',
+        content: caption || '',
         message_type: mediaType,
         attachments: [
           {
@@ -435,7 +476,6 @@ const GroupChat = () => {
     } finally {
       setUploading(false);
       setUploadProgress(0);
-      if (e.target) e.target.value = '';
     }
   };
 
@@ -473,9 +513,70 @@ const GroupChat = () => {
     (Array.isArray(groupInfo?.members) ? groupInfo.members.length : 0) ||
     0;
 
+  // دوال إجراءات الرسالة (Long-Press Toolbar)
+  const handleMsgLongPress = (msg, rect) => {
+    setSelectedMessage(msg);
+    setReactionAnchor(rect || null);
+    try { document.body.classList.add('yam-long-press-active'); } catch {}
+  };
+  const closeMsgSelection = () => {
+    setSelectedMessage(null);
+    setReactionAnchor(null);
+    try { document.body.classList.remove('yam-long-press-active'); } catch {}
+  };
+  const onMsgReply    = (m) => setMessage((p) => (p ? p + ' ' : '') + `رد، على «${(m?.text || '').slice(0,40)}»: `);
+  const onMsgCopy     = (m) => { try { navigator.clipboard.writeText(m?.text || ''); } catch {} };
+  const onMsgDelete   = (m) => setMessages((prev) => prev.filter((x) => x.id !== m.id));
+  const onMsgStar     = (m) => setMessages((prev) => prev.map((x) => x.id === m.id ? { ...x, starred: !x.starred } : x));
+  const onMsgPin      = (m) => alert('تم تثبيت الرسالة');
+  const onMsgInfo     = (m) => alert(`المرسل: ${m?.sender}\nالوقت: ${m?.time}`);
+  const onMsgForward  = (m) => alert('اختر جهة لإعادة التوجيه');
+  const onMsgReport   = (m) => alert('تم إرسال البلاغ');
+  const onMsgReact    = (m, emoji) => setMessages((prev) => prev.map((x) => x.id === m.id ? { ...x, reaction: emoji } : x));
+
   return (
     <MainLayout>
-    <div className="yam-group-chat-container" dir="rtl">
+    <div className="yam-group-chat-container" dir="rtl" data-yam-group-root="true" style={{ fontFamily: "'Noto Sans Arabic','Cairo','Tahoma',sans-serif" }}>
+      {/* Long-Press Toolbar (فوق الهيدر) */}
+      {selectedMessage ? (
+        <MessageActionsToolbar
+          selectedMessage={selectedMessage}
+          onClose={closeMsgSelection}
+          onForward={onMsgForward}
+          onDelete={onMsgDelete}
+          onStar={onMsgStar}
+          onReply={onMsgReply}
+          onCopy={onMsgCopy}
+          onPin={onMsgPin}
+          onInfo={onMsgInfo}
+          onReport={onMsgReport}
+        />
+      ) : null}
+
+      {/* Reaction Picker */}
+      {selectedMessage && reactionAnchor ? (
+        <MessageReactionPicker
+          anchorRect={reactionAnchor}
+          onPick={(emoji) => onMsgReact(selectedMessage, emoji)}
+          onClose={() => { /* keep selection for toolbar */ }}
+        />
+      ) : null}
+
+      {/* Media Preview Modal (قبل الإرسال) */}
+      {previewFiles.length > 0 ? (
+        <MediaPreviewModal
+          files={previewFiles}
+          onCancel={() => setPreviewFiles([])}
+          onSend={(files, caption) => handleConfirmPreviewSend(files, caption)}
+          onRemove={(idx) => setPreviewFiles((p) => p.filter((_, i) => i !== idx))}
+          onAddMore={() => {
+            if (previewMediaType === 'image') imageInputRef.current?.click();
+            else if (previewMediaType === 'video') videoInputRef.current?.click();
+            else fileInputRef.current?.click();
+          }}
+        />
+      ) : null}
+
       {/* الهيدر */}
       <header className="yam-group-header">
         <button
@@ -739,20 +840,23 @@ const GroupChat = () => {
         type="file"
         accept="image/*"
         style={{ display: 'none' }}
-        onChange={(e) => handleFileUpload(e, 'image')}
+        multiple
+        onChange={(e) => handleFileSelect(e, 'image')}
       />
       <input
         ref={videoInputRef}
         type="file"
         accept="video/*"
         style={{ display: 'none' }}
-        onChange={(e) => handleFileUpload(e, 'video')}
+        multiple
+        onChange={(e) => handleFileSelect(e, 'video')}
       />
       <input
         ref={fileInputRef}
         type="file"
         style={{ display: 'none' }}
-        onChange={(e) => handleFileUpload(e, 'file')}
+        multiple
+        onChange={(e) => handleFileSelect(e, 'file')}
       />
 
       <footer className="yam-group-input-area">

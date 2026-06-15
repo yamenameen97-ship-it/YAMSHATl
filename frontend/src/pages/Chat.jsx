@@ -4,6 +4,11 @@ import MainLayout from '../components/layout/MainLayout.jsx';
 import ChatInput from '../components/chat/ChatInput.jsx';
 import CallExperience from '../components/chat/CallExperience.jsx';
 import MediaViewerModal from '../components/chat/MediaViewerModal.jsx';
+import MediaPreviewModal from '../components/chat/MediaPreviewModal.jsx';
+import MessageActionsToolbar from '../components/chat/MessageActionsToolbar.jsx';
+import MessageReactionPicker from '../components/chat/MessageReactionPicker.jsx';
+import CallBubble from '../components/chat/CallBubble.jsx';
+import '../styles/chat-mobile-fixes.css';
 import { Avatar, ChatBubble } from '../components/ui/index.js';
 import useViewportHeight from '../hooks/useViewportHeight.js';
 import { useToast } from '../components/admin/ToastProvider.jsx';
@@ -171,6 +176,11 @@ export default function Chat() {
   const [msgLoading, setMsgLoading] = useState(false);
   const [blockStatus, setBlockStatus] = useState({ can_chat: true, blocked_by_me: false, blocked_me: false });
   const [replyTo, setReplyTo] = useState(null);
+
+  // ✅ حالات Long-Press Toolbar + Reaction Picker + Media Preview
+  const [chatSelectedMessage, setChatSelectedMessage] = useState(null);
+  const [chatReactionAnchor, setChatReactionAnchor] = useState(null);
+  const [chatPreviewFiles, setChatPreviewFiles] = useState([]);
   const [callMode, setCallMode] = useState(null);
   const [flyingHearts, setFlyingHearts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -609,7 +619,45 @@ export default function Chat() {
 
   return (
     <MainLayout hideNav lockScroll>
-      <section className="yam-conversation-screen" dir="rtl" style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+      {/* ✅ Long-Press Toolbar (فوق الهيدر) */}
+      {chatSelectedMessage ? (
+        <MessageActionsToolbar
+          selectedMessage={chatSelectedMessage}
+          onClose={() => { setChatSelectedMessage(null); setChatReactionAnchor(null); try { document.body.classList.remove('yam-long-press-active'); } catch {} }}
+          onForward={(m) => alert('اختر جهة لإعادة التوجيه')}
+          onDelete={(m) => setMessages((prev) => prev.filter((x) => (x.id || x.client_id) !== (m.id || m.client_id)))}
+          onStar={(m) => setMessages((prev) => prev.map((x) => (x.id||x.client_id)===(m.id||m.client_id) ? { ...x, starred: !x.starred } : x))}
+          onReply={(m) => setReplyTo(m)}
+          onCopy={(m) => { try { navigator.clipboard.writeText(m?.text || m?.content || ''); } catch {} }}
+          onPin={(m) => alert('تم تثبيت الرسالة')}
+          onInfo={(m) => alert(`المرسل: ${m?.sender}\nالوقت: ${m?.time || m?.created_at}`)}
+          onReport={(m) => alert('تم إرسال البلاغ')}
+        />
+      ) : null}
+
+      {/* ✅ Reaction Picker */}
+      {chatSelectedMessage && chatReactionAnchor ? (
+        <MessageReactionPicker
+          anchorRect={chatReactionAnchor}
+          onPick={(emoji) => setMessages((prev) => prev.map((x) => (x.id||x.client_id)===(chatSelectedMessage.id||chatSelectedMessage.client_id) ? { ...x, reaction: emoji } : x))}
+          onClose={() => setChatReactionAnchor(null)}
+        />
+      ) : null}
+
+      {/* ✅ Media Preview Modal (قبل الإرسال في الدردشة الخاصة — تتلقى ملفات عبر event) */}
+      {chatPreviewFiles.length > 0 ? (
+        <MediaPreviewModal
+          files={chatPreviewFiles}
+          onCancel={() => setChatPreviewFiles([])}
+          onSend={(files, caption) => {
+            window.dispatchEvent(new CustomEvent('yamshat:chat-send-files', { detail: { files, caption } }));
+            setChatPreviewFiles([]);
+          }}
+          onRemove={(idx) => setChatPreviewFiles((p) => p.filter((_, i) => i !== idx))}
+        />
+      ) : null}
+
+      <section className="yam-conversation-screen" dir="rtl" data-yam-chat-root="true" style={{ fontFamily: "'Noto Sans Arabic', 'Cairo', 'Tajawal', 'Tahoma', system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
         <style>{`
           .yam-conversation-screen {
             min-height: 100%;
@@ -1836,7 +1884,7 @@ export default function Chat() {
           </div>
         </aside>
 
-        <main className="yam-chat-stage" dir="rtl">
+        <main className="yam-chat-stage" dir="rtl" data-yam-chat-root="true" style={{ fontFamily: "'Noto Sans Arabic','Cairo','Tahoma',sans-serif" }}>
           {/* Mobile topbar disabled — using unified yam-chat-stage-header (fixed on top) */}
 
           <div className="yam-stage-top-search">

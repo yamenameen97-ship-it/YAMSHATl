@@ -20,12 +20,12 @@ const PRIMARY_ITEMS = Object.freeze([
   { to: '/settings', label: 'الإعدادات', icon: '⚙', match: (path) => path.startsWith('/settings') },
 ]);
 
-// الأزرار السريعة في الهيدر العلوي
-// ملاحظة: على الموبايل تُخفى عبر CSS (mobile-fixes.css) — تظهر فقط على الديسكتوب
+// الأزرار السريعة في الهيدر العلوي (الستوري + المجموعات + الإشعارات)
+// v46: زر الإشعارات يظهر رمز فقط بدون نص
 const MOBILE_QUICK_LINKS = Object.freeze([
-  { to: '/groups', label: 'المجموعات', icon: '👫', ariaLabel: 'المجموعات' },
-  { to: '/reels', label: 'الريلز', icon: '🎬', ariaLabel: 'الريلز' },
   { to: '/stories', label: 'القصص', icon: '📖', ariaLabel: 'القصص' },
+  { to: '/groups', label: 'المجموعات', icon: '👫', ariaLabel: 'المجموعات' },
+  { to: '/notifications', label: 'الإشعارات', icon: '🔔', ariaLabel: 'الإشعارات', isNotifications: true },
 ]);
 
 const ACCOUNT_MENU_ITEMS = Object.freeze([
@@ -118,22 +118,33 @@ function Topbar() {
     }
   }, [loggingOut]);
 
-  // ✅ FIX v45: الأزرار السريعة (المجموعات/الريلز/الستوري) تظهر الآن على الجوال أيضاً
-  // مع تباعد واضح بينها (لإصلاح تشابك الستوري مع المجموعات)
+  // ✅ FIX v46: الأزرار السريعة (الستوري/المجموعات/الإشعارات) منسّقة بدون تراكب
+  // زر الإشعارات يظهر برمز فقط بدون نص + شارة العداد
   const mobileQuickLinks = (
     <div className="topbar-mobile-quick-links" dir="rtl">
-      {MOBILE_QUICK_LINKS.map((item) => (
-        <Link
-          key={item.to}
-          to={item.to}
-          className="topbar-quick-link"
-          aria-label={item.ariaLabel}
-          title={item.label}
-        >
-          <span className="topbar-quick-link-icon" aria-hidden="true">{item.icon}</span>
-          <span className="topbar-quick-link-label">{item.label}</span>
-        </Link>
-      ))}
+      {MOBILE_QUICK_LINKS.map((item) => {
+        const badge = item.isNotifications && unreadNotificationCount > 0 ? unreadNotificationCount : null;
+        const extraClass = item.isNotifications ? 'topbar-quick-link--notifications' : '';
+        return (
+          <Link
+            key={item.to}
+            to={item.to}
+            className={`topbar-quick-link ${extraClass}`.trim()}
+            aria-label={item.ariaLabel}
+            title={item.label}
+          >
+            <span className="topbar-quick-link-icon" aria-hidden="true">{item.icon}</span>
+            {!item.isNotifications ? (
+              <span className="topbar-quick-link-label">{item.label}</span>
+            ) : null}
+            {badge ? (
+              <span className="topbar-quick-link-badge" aria-label={`${badge} إشعارات جديدة`}>
+                {badge > 99 ? '99+' : badge}
+              </span>
+            ) : null}
+          </Link>
+        );
+      })}
     </div>
   );
 

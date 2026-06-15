@@ -1,0 +1,479 @@
+/* ============================================================
+   YAMSHAT v46 — Mobile Web Critical Fixes (RTL)
+   ============================================================
+   إصلاحات وفق طلب المستخدم على ويب الجوال:
+   1) صفحة الملف الشخصي: تقسيم الإحصائيات (منشور/متابع/يتابع)
+      في صف واحد ضمن صفحة واحدة بدل التمدد لعدة صفحات
+   2) صندوق كتابة المنشور: تكبير وتوضيح أيقونات رفع الوسائط
+      والإيموجي (على الجوال والديسكتوب)
+   3) الهيدر العلوي:
+      - إلغاء النقطة الجانبية وجعل اسم المنصة هو المُفعِّل للقائمة
+      - سحب الشعار + اسم المنصة إلى الزاوية اليمنى
+      - ترتيب أزرار "الستوري" و"المجموعات" بشكل منسّق
+      - إضافة زر "الإشعارات" بجانبها (رمز فقط بدون نص)
+   4) صفحة المنشورات: ضبط العرض داخل نطاق شاشة الجوال
+   ⚠️ يجب أن يُحمَّل بعد كل CSS الأخرى ليفوز في cascade
+   جميع المكونات تستخدم dir="rtl" وخط Noto Sans Arabic
+   ============================================================ */
+
+html, body, #root, * {
+  font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+html, body { direction: rtl; }
+
+/* ============================================================
+   FIX 1: صفحة الملف الشخصي — تقسيم الإحصائيات في صف واحد
+   ============================================================
+   المطلوب: 64 منشور | 0 متابع | 0 يتابع — كلها في صف واحد
+   بدل أن يتمدد كل بلوك ليأخذ صفحة كاملة على الجوال.
+   ============================================================ */
+@media (max-width: 1023.98px) {
+  /* صف الإحصائيات الرئيسي في ProfileHeader */
+  .ymp-stats-row {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 6px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 8px 6px !important;
+    margin: 0 auto 10px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-wrap: nowrap !important;
+    box-sizing: border-box !important;
+  }
+
+  .ymp-stats-row .ymp-stat,
+  .ymp-stats-row > .ymp-stat {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    padding: 10px 4px !important;
+    background: rgba(255,255,255,0.04) !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    border-radius: 12px !important;
+    min-width: 0 !important;
+    flex: 1 1 0 !important;
+    line-height: 1.3 !important;
+  }
+
+  .ymp-stats-row .ymp-stat strong {
+    font-size: 1.05rem !important;
+    color: #fff !important;
+    font-weight: 800 !important;
+    margin-bottom: 2px !important;
+  }
+
+  .ymp-stats-row .ymp-stat span {
+    font-size: 0.72rem !important;
+    color: #94a3b8 !important;
+    white-space: nowrap !important;
+  }
+
+  /* إخفاء الفواصل النقطية بين الإحصائيات (نستبدلها بـ grid) */
+  .ymp-stats-row .ymp-dot {
+    display: none !important;
+  }
+
+  /* أي صناديق إحصاء أخرى مرتّبة في الصفحة */
+  .profile-stats-grid,
+  .yam-profile-stats,
+  [data-profile-stats] {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 8px !important;
+    width: 100% !important;
+    margin: 0 0 10px !important;
+    padding: 0 8px !important;
+    box-sizing: border-box !important;
+  }
+}
+
+/* للأجهزة الصغيرة جداً (≤ 360px) */
+@media (max-width: 360px) {
+  .ymp-stats-row .ymp-stat {
+    padding: 8px 2px !important;
+  }
+  .ymp-stats-row .ymp-stat strong { font-size: 0.95rem !important; }
+  .ymp-stats-row .ymp-stat span { font-size: 0.65rem !important; }
+}
+
+/* ============================================================
+   FIX 2: صندوق كتابة المنشور — تكبير وتوضيح أيقونات
+   الوسائط والإيموجي (ويب الجوال + ديسكتوب)
+   ============================================================ */
+.composer-action-btn {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  padding: 12px 16px !important;
+  border-radius: 14px !important;
+  background: rgba(139, 92, 246, 0.10) !important;
+  border: 1px solid rgba(167, 139, 250, 0.28) !important;
+  transition: all 0.2s ease !important;
+}
+
+.composer-action-btn:hover,
+.composer-action-btn:active,
+.composer-action-btn.active {
+  background: rgba(139, 92, 246, 0.20) !important;
+  border-color: rgba(167, 139, 250, 0.5) !important;
+  transform: translateY(-1px);
+}
+
+/* الأيقونة (span:first-child) — أكبر وأوضح */
+.composer-action-btn > span:first-child {
+  font-size: 22px !important;
+  line-height: 1 !important;
+  filter: drop-shadow(0 1px 2px rgba(139,92,246,0.4));
+}
+
+/* ويب الجوال — أزرار أكبر وأوضح */
+@media (max-width: 1023.98px) {
+  .composer-actions-row {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+    width: 100% !important;
+    margin-bottom: 12px !important;
+  }
+
+  .composer-action-btn,
+  .composer-actions-row > button {
+    width: 100% !important;
+    min-height: 58px !important;
+    padding: 12px 14px !important;
+    font-size: 15px !important;
+    border-radius: 14px !important;
+    justify-content: center !important;
+  }
+
+  .composer-action-btn > span:first-child {
+    font-size: 24px !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .composer-action-btn,
+  .composer-actions-row > button {
+    min-height: 52px !important;
+    font-size: 13px !important;
+    padding: 10px 8px !important;
+  }
+  .composer-action-btn > span:first-child { font-size: 20px !important; }
+}
+
+/* ============================================================
+   FIX 3: الهيدر العلوي
+   --------------------------------------------
+   - إلغاء النقطة الجانبية (zone فارغة كانت تفتح القائمة)
+   - جعل اسم المنصة (YAMSHAT + الشعار) هو زر فتح القائمة
+   - سحبه إلى الزاوية اليمنى (RTL)
+   - ترتيب الستوري والمجموعات بشكل منسّق غير متراكب
+   - إضافة زر إشعارات برمز فقط بدون نص بجانبها
+   ============================================================ */
+
+/* إلغاء/إخفاء أي نقطة سايدبار قديمة في الزاوية */
+.topbar-sidebar-dot,
+.ui-topbar-sidebar-trigger,
+[data-sidebar-trigger="corner-dot"],
+.yam-topbar-corner-dot,
+.yam-corner-toggle {
+  display: none !important;
+}
+
+@media (max-width: 1023.98px) {
+  /* جعل العلامة التجارية (شعار + اسم) قابلة للنقر كزر قائمة */
+  .ui-topbar-brand {
+    order: 0 !important;
+    flex: 0 0 auto !important;
+    margin-inline-end: auto !important;
+    padding-inline: 8px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    cursor: pointer !important;
+    background: rgba(139, 92, 246, 0.10);
+    border-radius: 12px;
+    padding: 6px 10px !important;
+    border: 1px solid rgba(167, 139, 250, 0.20);
+    text-decoration: none !important;
+    transition: background 0.15s ease;
+  }
+  .ui-topbar-brand:hover,
+  .ui-topbar-brand:active {
+    background: rgba(139, 92, 246, 0.18);
+  }
+
+  .ui-topbar-brand-mark {
+    font-size: 1.2rem !important;
+    flex-shrink: 0;
+  }
+
+  .ui-topbar-brand-copy {
+    font-size: 0.95rem !important;
+    font-weight: 800 !important;
+    color: #fff !important;
+    white-space: nowrap;
+    max-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* قسم الأزرار السريعة — منسّق بدون تراكب */
+  .ui-topbar-mobile-section,
+  .topbar-mobile-quick-links {
+    order: 1 !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    flex: 1 1 auto !important;
+    padding: 2px 4px !important;
+    overflow: visible !important;
+    flex-wrap: nowrap !important;
+  }
+
+  .topbar-quick-link {
+    flex: 0 0 auto !important;
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    padding: 0 !important;
+    border-radius: 12px !important;
+    background: rgba(255,255,255,0.05) !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 0 !important;
+    color: #cbd5e1 !important;
+    text-decoration: none !important;
+    transition: all 0.15s ease;
+  }
+
+  .topbar-quick-link:hover,
+  .topbar-quick-link:active,
+  .topbar-quick-link.is-active {
+    background: rgba(139, 92, 246, 0.20) !important;
+    color: #fff !important;
+    border-color: rgba(167, 139, 250, 0.35) !important;
+  }
+
+  /* إخفاء النص داخل أزرار الهيدر السريعة على ويب الجوال */
+  .topbar-quick-link-label {
+    display: none !important;
+  }
+
+  .topbar-quick-link-icon {
+    font-size: 1.2rem !important;
+    line-height: 1 !important;
+  }
+
+  /* زر الإشعارات الجديد بجانب الستوري والمجموعات (رمز فقط) */
+  .topbar-quick-link.topbar-quick-link--notifications {
+    position: relative;
+    background: rgba(139, 92, 246, 0.12) !important;
+    border-color: rgba(167, 139, 250, 0.25) !important;
+  }
+
+  .topbar-quick-link--notifications .topbar-quick-link-badge {
+    position: absolute;
+    top: -4px;
+    left: -4px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 0 2px #0A0D1A;
+  }
+
+  /* nav الديسكتوب مخفي على الجوال (كما كان) */
+  .ui-topbar-nav { display: none !important; }
+
+  /* الأكشنز (تبديل المظهر) */
+  .ui-topbar-actions {
+    order: 2 !important;
+    flex: 0 0 auto !important;
+    margin-inline-start: 4px !important;
+  }
+  .ui-topbar-actions .btn-small {
+    padding: 6px 8px !important;
+    font-size: 0.75rem !important;
+  }
+  .ui-topbar-actions .btn-small span:nth-child(2) {
+    display: none !important; /* أيقونة فقط */
+  }
+
+  /* حساب المستخدم */
+  .ui-topbar-account {
+    order: 3 !important;
+    flex: 0 0 auto !important;
+  }
+
+  /* ترتيب الـ track العام */
+  .ui-topbar-track,
+  .yam-topbar-shell .ui-topbar-track {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 10px !important;
+    flex-wrap: nowrap !important;
+    direction: rtl !important;
+    width: 100% !important;
+    padding: 0 10px !important;
+    box-sizing: border-box !important;
+  }
+}
+
+/* أجهزة صغيرة جداً */
+@media (max-width: 360px) {
+  .ui-topbar-brand-copy {
+    max-width: 70px !important;
+    font-size: 0.82rem !important;
+  }
+  .topbar-quick-link {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+  }
+  .topbar-quick-link-icon { font-size: 1.05rem !important; }
+  .ui-topbar-mobile-section,
+  .topbar-mobile-quick-links { gap: 5px !important; }
+}
+
+/* ============================================================
+   FIX 4: صفحة المنشورات — ضبط العرض داخل نطاق شاشة الجوال
+   ============================================================
+   كانت البطاقات/الصور/الفيديوهات تخرج خارج الشاشة
+   ============================================================ */
+@media (max-width: 1023.98px) {
+  html, body, #root {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
+    box-sizing: border-box !important;
+  }
+
+  /* الحاويات الرئيسية لصفحة المنشورات */
+  .yam-laptop-shell,
+  .yam-laptop-page,
+  .page-content,
+  .yam-center-stage,
+  .feed-page,
+  .feed-container,
+  .yam-feed-container,
+  main,
+  [role="main"] {
+    width: 100% !important;
+    max-width: 100vw !important;
+    margin-inline: 0 !important;
+    padding-inline: 10px !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden !important;
+  }
+
+  /* بطاقات المنشورات */
+  .yam-post-card-v2,
+  .yam-feed-header-card,
+  .post-card,
+  .post-card-advanced,
+  .pro-feed-post-card,
+  .card {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-inline: 0 !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+
+  /* وسائط داخل البطاقات */
+  .post-card img,
+  .post-card video,
+  .yam-post-card-v2 img,
+  .yam-post-card-v2 video,
+  .post-media-player,
+  .yamshat-universal-player {
+    max-width: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* صندوق إنشاء المنشور أيضاً */
+  .composer-shell,
+  [data-composer="root"],
+  .composer-editor-shell {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* منع أي تجاوز أفقي عام */
+  body * {
+    max-width: 100% !important;
+  }
+}
+
+/* ============================================================
+   FIX 5: حقول الإدخال — RTL + خط Noto Sans Arabic
+   ============================================================ */
+input, textarea, select, button {
+  font-family: 'Noto Sans Arabic', 'Tajawal', sans-serif;
+}
+
+.profile-edit-input,
+.profile-edit-textarea {
+  direction: rtl;
+  text-align: right;
+}
+
+/* username يبقى LTR */
+#profile-edit-username {
+  direction: ltr !important;
+  text-align: left !important;
+}
+
+/* ============================================================
+   FIX 6: قابلية التمرير + touch targets
+   ============================================================ */
+@media (max-width: 1023.98px) {
+  html, body {
+    height: auto !important;
+    min-height: 100vh !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  #root {
+    min-height: 100vh;
+    min-height: 100dvh;
+    height: auto !important;
+    overflow: visible !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .topbar-quick-link,
+  .ui-topbar-link,
+  .ui-bottom-nav-item,
+  .composer-action-btn {
+    min-height: 40px;
+    -webkit-tap-highlight-color: rgba(142, 61, 255, 0.15);
+  }
+}
+
+img, video, iframe {
+  max-width: 100% !important;
+  height: auto;
+}

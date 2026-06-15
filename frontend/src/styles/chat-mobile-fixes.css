@@ -1,0 +1,139 @@
+/* =========================================================================
+ * Chat & Groups Mobile Fixes — v46.1
+ * RTL + Noto Sans Arabic enforced globally for chat surface.
+ *
+ * Goals:
+ *  - Fix broken / squashed images in mobile web (Chat + Groups)
+ *  - Unify font to Noto Sans Arabic
+ *  - WhatsApp-like media bubble proportions
+ *  - Safe-area padding for iOS notch
+ * ========================================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;600;700&display=swap');
+
+/* -- Force RTL + Arabic font on chat / group surfaces ------------------- */
+.yam-chat-stage,
+.yam-chat-input-wrap,
+.yam-chat-stage-header,
+.yam-chat-messages,
+.yam-msg-actions-toolbar,
+.yam-reaction-picker,
+.yam-media-preview-overlay,
+.yam-call-bubble,
+.yam-safe-image,
+[data-yam-chat-root="true"],
+[data-yam-group-root="true"] {
+  direction: rtl !important;
+  font-family: 'Noto Sans Arabic', 'Cairo', 'Tahoma', sans-serif !important;
+}
+
+/* -- Image bubble fixes — WhatsApp style ------------------------------- */
+.yam-bubble-media,
+.yam-media-button img,
+.yam-media-button video {
+  display: block !important;
+  width: 100% !important;
+  max-width: 320px !important;
+  height: auto !important;
+  max-height: 340px !important;
+  object-fit: cover !important;
+  object-position: center !important;
+  border-radius: 12px !important;
+  background: rgba(255, 255, 255, 0.04);
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+.yam-media-button {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.yam-media-button .yam-bubble-media-overlay {
+  position: absolute;
+  inset-inline-end: 8px;
+  bottom: 8px;
+  font-size: 11px;
+  padding: 4px 9px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border-radius: 12px;
+  pointer-events: none;
+  font-family: 'Noto Sans Arabic', 'Cairo', 'Tahoma', sans-serif;
+}
+
+/* -- Mobile-specific (small screens) ----------------------------------- */
+@media (max-width: 720px) {
+  .yam-bubble-media,
+  .yam-media-button img,
+  .yam-media-button video {
+    max-width: 78vw !important;
+    max-height: 60vh !important;
+  }
+
+  .yam-media-button {
+    max-width: 78vw;
+  }
+
+  /* WhatsApp-like spacing */
+  .yam-message-bubble {
+    padding: 6px 8px 8px !important;
+  }
+
+  /* Chat input safe area for iOS notch / Android nav */
+  .yam-chat-input-wrap {
+    padding-bottom: env(safe-area-inset-bottom, 0) !important;
+  }
+
+  /* Ensure message list scrolls smoothly */
+  .yam-chat-messages {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+}
+
+/* -- Call bubbles inside chat (WhatsApp parity) ------------------------ */
+.yam-call-bubble-row {
+  display: flex;
+  width: 100%;
+  margin: 4px 0;
+}
+.yam-call-bubble-row.me {
+  justify-content: flex-start; /* RTL: المرسل = البداية */
+}
+.yam-call-bubble-row.them {
+  justify-content: flex-end;
+}
+
+/* -- Selected message highlight (when long-pressed) -------------------- */
+.yam-message-bubble.selected,
+.yam-bubble-wrap.selected {
+  background: rgba(34, 197, 94, 0.10) !important;
+  border-radius: 10px;
+  transition: background 0.18s ease;
+}
+
+/* -- Long-press body lock (prevent text-selection during press) -------- */
+body.yam-long-press-active {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+/* -- Make sure RTL applies to inputs & textareas inside chat ---------- */
+.yam-chat-stage input,
+.yam-chat-stage textarea,
+.yam-chat-input-wrap input,
+.yam-chat-input-wrap textarea {
+  direction: rtl;
+  text-align: right;
+  font-family: 'Noto Sans Arabic', 'Cairo', 'Tahoma', sans-serif;
+}

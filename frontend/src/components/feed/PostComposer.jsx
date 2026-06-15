@@ -321,10 +321,44 @@ export default function PostComposer() {
         </button>
       </div>
 
-      <div className="composer-actions-row">
-        <button type="button" className="composer-action-btn" onClick={() => fileInputRef.current?.click()} title="رفع صورة أو فيديو">
-          <span>🖼️</span>
-          <span>رفع الصورة</span>
+      <div className="composer-actions-row" dir="rtl">
+        <button
+          type="button"
+          className="composer-action-btn composer-action-btn--media"
+          onClick={() => fileInputRef.current?.click()}
+          title="رفع صورة أو فيديو"
+          aria-label="رفع صورة أو فيديو"
+        >
+          <span className="composer-action-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="5" width="18" height="14" rx="2" />
+              <circle cx="8.5" cy="10" r="1.6" fill="currentColor" />
+              <path d="M21 17l-5-5-9 9" />
+            </svg>
+          </span>
+          <span className="composer-action-label">رفع وسائط</span>
+        </button>
+
+        <button
+          type="button"
+          className="composer-action-btn composer-action-btn--emoji"
+          onClick={() => {
+            const emoji = '😊';
+            setContent((prev) => `${prev}${emoji}`);
+            window.setTimeout(() => textareaRef.current?.focus(), 30);
+          }}
+          title="إضافة إيموجي"
+          aria-label="إضافة إيموجي"
+        >
+          <span className="composer-action-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <circle cx="9" cy="10" r="1" fill="currentColor" />
+              <circle cx="15" cy="10" r="1" fill="currentColor" />
+              <path d="M8.5 14.5c1 1.5 2.4 2.2 3.5 2.2s2.5-.7 3.5-2.2" />
+            </svg>
+          </span>
+          <span className="composer-action-label">إيموجي</span>
         </button>
 
         <button
@@ -332,9 +366,15 @@ export default function PostComposer() {
           className={`composer-action-btn ${showScheduler ? 'active' : ''}`}
           onClick={() => setShowScheduler((prev) => !prev)}
           title="جدولة"
+          aria-label="جدولة"
         >
-          <span>📅</span>
-          <span>جدولة</span>
+          <span className="composer-action-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="5" width="18" height="16" rx="2" />
+              <path d="M3 9h18M8 3v4M16 3v4" />
+            </svg>
+          </span>
+          <span className="composer-action-label">جدولة</span>
         </button>
 
         <button
@@ -342,9 +382,14 @@ export default function PostComposer() {
           className={`composer-action-btn ${showPollBuilder ? 'active' : ''}`}
           onClick={() => setShowPollBuilder((prev) => !prev)}
           title="استطلاع"
+          aria-label="استطلاع"
         >
-          <span>🗳️</span>
-          <span>استطلاع</span>
+          <span className="composer-action-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 20V10M10 20V4M16 20v-8M22 20H2" />
+            </svg>
+          </span>
+          <span className="composer-action-label">استطلاع</span>
         </button>
 
         <Button
@@ -552,24 +597,46 @@ export default function PostComposer() {
           flex-wrap: wrap;
           margin-bottom: 12px;
         }
+        /* v46: أزرار أكبر وأوضح مع أيقونات SVG واضحة */
         .composer-action-btn {
           display: inline-flex;
           align-items: center;
-          gap: 8px;
-          border-radius: 12px;
-          border: 1px solid rgba(255,255,255,0.08);
-          background: rgba(255,255,255,0.04);
+          gap: 10px;
+          border-radius: 14px;
+          border: 1px solid rgba(167, 139, 250, 0.28);
+          background: rgba(139, 92, 246, 0.10);
           color: var(--text);
-          padding: 10px 14px;
+          padding: 12px 16px;
           cursor: pointer;
-          font-size: 13px;
+          font-size: 14px;
           font-weight: 700;
+          font-family: 'Noto Sans Arabic', 'Tajawal', sans-serif;
           transition: all 0.2s ease;
         }
         .composer-action-btn:hover,
+        .composer-action-btn:active,
         .composer-action-btn.active {
-          background: rgba(139, 92, 246, 0.12);
-          border-color: rgba(167, 139, 250, 0.3);
+          background: rgba(139, 92, 246, 0.20);
+          border-color: rgba(167, 139, 250, 0.50);
+          transform: translateY(-1px);
+        }
+        .composer-action-icon {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 28px;
+          height: 28px;
+          border-radius: 8px;
+          background: rgba(167, 139, 250, 0.18);
+          color: #c4b5fd;
+          flex-shrink: 0;
+        }
+        .composer-action-btn--media .composer-action-icon { color: #93c5fd; background: rgba(59,130,246,0.18); }
+        .composer-action-btn--emoji .composer-action-icon { color: #fcd34d; background: rgba(251,191,36,0.18); }
+        .composer-action-label {
+          font-weight: 700;
+          font-size: 14px;
+          white-space: nowrap;
         }
         .composer-scheduler-box {
           margin-bottom: 12px;
@@ -723,15 +790,21 @@ export default function PostComposer() {
           .composer-actions-row > button {
             width: 100%;
             min-width: 0;
-            min-height: 54px;
+            min-height: 58px;
             justify-content: center;
-            padding-inline: 16px;
+            padding-inline: 14px;
             font-size: 15px;
             font-weight: 700;
             border-radius: 14px;
+            direction: rtl;
           }
-          .composer-action-btn span:first-child {
-            font-size: 20px;
+          .composer-action-btn .composer-action-icon {
+            width: 32px;
+            height: 32px;
+          }
+          .composer-action-btn .composer-action-icon svg {
+            width: 24px;
+            height: 24px;
           }
           .composer-status-badge {
             align-self: flex-start;

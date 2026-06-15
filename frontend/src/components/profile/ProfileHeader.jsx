@@ -458,18 +458,37 @@ export default function ProfileHeader({
           display: inline-flex;
           align-items: center;
         }
+        /* v46: تقسيم الإحصائيات في صف واحد بدل التمدد */
         .ymp-stats-row {
-          display: flex;
-          align-items: center;
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          align-items: stretch;
           justify-content: center;
           gap: 8px;
-          flex-wrap: wrap;
           color: #cbd5e1;
           font-size: 13px;
-          margin-bottom: 10px;
+          margin: 0 auto 12px;
+          max-width: 560px;
+          padding: 0 12px;
+          width: 100%;
+          box-sizing: border-box;
+          direction: rtl;
         }
-        .ymp-stats-row strong { color: #fff; font-weight: 800; }
-        .ymp-dot { color: #475569; }
+        .ymp-stats-row .ymp-stat {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 10px 6px;
+          background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(255,255,255,0.06);
+          border-radius: 12px;
+          min-width: 0;
+          font-family: 'Noto Sans Arabic', 'Tajawal', sans-serif;
+        }
+        .ymp-stats-row strong { color: #fff; font-weight: 800; font-size: 18px; margin-bottom: 2px; }
+        .ymp-stats-row .ymp-stat span { font-size: 12px; color: #94a3b8; white-space: nowrap; }
+        .ymp-dot { display: none; }
         .ymp-tagline {
           display: inline-flex;
           align-items: center;
@@ -597,6 +616,16 @@ export default function ProfileHeader({
           .ymp-identity { margin-top: 66px; }
           .ymp-fullname { font-size: 19px; }
           .ymp-btn { min-width: 130px; padding: 10px 16px; }
+          .ymp-stats-row { gap: 6px; padding: 0 8px; }
+          .ymp-stats-row .ymp-stat { padding: 8px 4px; }
+          .ymp-stats-row strong { font-size: 16px; }
+          .ymp-stats-row .ymp-stat span { font-size: 11px; }
+        }
+        @media (max-width: 360px) {
+          .ymp-stats-row { gap: 4px; }
+          .ymp-stats-row .ymp-stat { padding: 6px 2px; }
+          .ymp-stats-row strong { font-size: 14px; }
+          .ymp-stats-row .ymp-stat span { font-size: 10px; }
         }
       `}</style>
     </div>

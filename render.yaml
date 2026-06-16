@@ -92,6 +92,11 @@ services:
     buildCommand: cd backend && python -m pip install --upgrade pip setuptools wheel && pip install -r requirements.txt
     startCommand: cd backend && uvicorn app.main:application --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
+    # ✅ إصلاح v41: Persistent Disk لمنع مسح الفيديوهات والمجموعات عند إعادة النشر
+    disk:
+      name: yamshat-uploads
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.10
@@ -112,6 +117,16 @@ services:
         generateValue: true
       - key: JWT_SECRET_KEY
         generateValue: true
+      # ✅ مسار التخزين الدائم — يستخدمه media_storage_service
+      - key: PERSISTENT_DISK_PATH
+        value: /var/data/uploads
+      # ✅ Cloudinary (الأولوية) — أضف القيم من لوحة Render السرية
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
 
   # ----------------------------------------------------------
   # Auth Service

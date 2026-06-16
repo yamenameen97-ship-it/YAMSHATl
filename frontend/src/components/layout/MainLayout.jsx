@@ -110,9 +110,24 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
             background: #0A0D1A;
             overflow-x: hidden;
             overflow-y: visible;
-            --yam-top-chrome-height: 60px;
-            --yam-bottom-chrome-height: calc(70px + env(safe-area-inset-bottom, 0px));
+            --yam-top-chrome-height: 54px;
+            --yam-bottom-chrome-height: calc(64px + env(safe-area-inset-bottom, 0px));
             font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+            width: 100%;
+            max-width: 100vw;
+          }
+          /* ✅ v47.4: ضمان عدم خروج أي عنصر عن حدود الشاشة */
+          @media (max-width: 400px) {
+            .app-shell.yamshat-unified {
+              --yam-top-chrome-height: 52px;
+              --yam-bottom-chrome-height: calc(60px + env(safe-area-inset-bottom, 0px));
+            }
+          }
+          @media (max-width: 360px) {
+            .app-shell.yamshat-unified {
+              --yam-top-chrome-height: 50px;
+              --yam-bottom-chrome-height: calc(58px + env(safe-area-inset-bottom, 0px));
+            }
           }
           /* أي filter/transform على الجذر يكسر position:fixed لأبنائه */
           .app-shell.yamshat-unified,

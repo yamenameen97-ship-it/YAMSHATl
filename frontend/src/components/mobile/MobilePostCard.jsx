@@ -2,18 +2,28 @@ import { memo, useEffect, useState } from 'react';
 import { timeAgoAr as fmtTimeAgoAr } from '../../utils/timeFormat.js';
 
 /**
- * MobilePostCard (v47.3 — pixel-perfect post card)
+ * MobilePostCard (v47.4 — pixel-perfect post card)
  * ------------------------------------------------
  * مطابقة كاملة للصورة المرجعية (RTL):
- *  - الهيدر: ثلاث نقاط (يسار) | اسم المستخدم + @handle • منذ 4 دقيقة (وسط) | Avatar Y بنفسجي (يمين)
- *  - بطاقة الصورة: مربع كبير أسود مع شعار Y بنفسجي ضخم بالوسط
- *    + أيقونة دائرية صغيرة ملوّنة (شعار قوس قزح Y) في أسفل يسار الصورة
- *  - الفوتر (RTL): إعجاب 1.2 ألف بنفسجي (يمين) | تعليق 128 | مشاركة 356 | حفظ (يسار)
- *  - استجابة كاملة للجوالات القديمة (320–360px)
+ *
+ * الهيدر:
+ *   |  ⋯               yamenameen97 ✓        Y(avatar) |
+ *   |               yamenameen97@ • منذ 4 د           |
+ *
+ * الصورة: مربع أسود بنسبة 1:1 مع شعار Y بنفسجي ضخم في الوسط،
+ *         وأيقونة دائرية ملونة في الزاوية السفلية اليسرى.
+ *
+ * الفوتر (RTL — من اليمين):
+ *   🏷️ حفظ   ✈️ مشاركات   💬 تعليقات   ❤️ إعجابات
+ *   (يسار)                                       (يمين)
+ *
+ * ✅ زر الحفظ مضمون الظهور دائماً (flex-shrink:0).
+ * ✅ استجابة كاملة: 320 / 360 / 400 / 480 / 768+.
+ * ✅ لا يخرج أي عنصر عن حدود الشاشة.
  */
 function VerifiedBadge() {
   return (
-    <svg viewBox="0 0 24 24" width="14" height="14" fill="#8B5CF6" style={{ marginInlineStart: 3 }} aria-hidden="true">
+    <svg viewBox="0 0 24 24" width="13" height="13" fill="#8B5CF6" style={{ marginInlineStart: 3, flexShrink: 0 }} aria-hidden="true">
       <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
     </svg>
   );
@@ -54,6 +64,7 @@ function MobilePostCard({
     comments = 0,
     reposts = 0,
     liked = false,
+    saved = false,
     isLive = false,
   } = post;
 
@@ -159,23 +170,18 @@ function MobilePostCard({
         </div>
       </div>
 
-      {/* === الفوتر (RTL): إعجاب | تعليق | مشاركة | حفظ === */}
+      {/* === الفوتر (RTL): حفظ (يسار) | مشاركة | تعليق | إعجاب (يمين) === */}
       <footer className="ym-post-footer">
         <div className="ym-footer-actions">
-          {/* إعجاب (أقصى اليمين) — بنفسجي مع العدد */}
-          <button className={`ym-footer-btn ym-footer-btn-like ${liked ? 'liked' : ''}`} aria-label="إعجاب" onClick={() => onLike?.(post)}>
-            <svg viewBox="0 0 24 24" fill="#8B5CF6" stroke="#8B5CF6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+          {/* زر الحفظ (أقصى اليسار في RTL) — مضمون الظهور */}
+          <button
+            className={`ym-footer-btn ym-footer-btn-save ${saved ? 'is-saved' : ''}`}
+            aria-label="حفظ"
+            onClick={() => onSave?.(post)}
+          >
+            <svg viewBox="0 0 24 24" fill={saved ? '#8B5CF6' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
             </svg>
-            <span className="text-purple">{formatCount(likes || 1200)}</span>
-          </button>
-
-          {/* تعليق */}
-          <button className="ym-footer-btn" aria-label="تعليق" onClick={() => onComment?.(post)}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
-            <span>{formatCount(comments || 128)}</span>
           </button>
 
           {/* مشاركة (طائرة ورقية) */}
@@ -184,14 +190,23 @@ function MobilePostCard({
               <line x1="22" y1="2" x2="11" y2="13" />
               <polygon points="22 2 15 22 11 13 2 9 22 2" />
             </svg>
-            <span>{formatCount(reposts || 356)}</span>
+            <span>{formatCount(Number(reposts) || 0)}</span>
           </button>
 
-          {/* حفظ (أقصى اليسار في RTL) */}
-          <button className="ym-footer-btn ym-footer-btn-save" aria-label="حفظ" onClick={() => onSave?.(post)}>
+          {/* تعليق */}
+          <button className="ym-footer-btn" aria-label="تعليق" onClick={() => onComment?.(post)}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
+            <span>{formatCount(Number(comments) || 0)}</span>
+          </button>
+
+          {/* إعجاب (أقصى اليمين) — يصبح بنفسجي ممتلئ عند الإعجاب فقط */}
+          <button className={`ym-footer-btn ym-footer-btn-like ${liked ? 'liked' : ''}`} aria-label="إعجاب" onClick={() => onLike?.(post)}>
+            <svg viewBox="0 0 24 24" fill={liked ? '#8B5CF6' : 'none'} stroke={liked ? '#8B5CF6' : 'currentColor'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+            </svg>
+            <span className={liked ? 'text-purple' : ''}>{formatCount(Number(likes) || 0)}</span>
           </button>
         </div>
       </footer>
@@ -200,8 +215,9 @@ function MobilePostCard({
         .ym-post-card {
           background-color: #0A0D1A;
           border-bottom: 1px solid #1F2937;
-          padding: 14px 14px 14px;
+          padding: 12px 12px;
           color: white;
+          width: 100%;
           max-width: 100%;
           box-sizing: border-box;
           overflow: hidden;
@@ -210,21 +226,24 @@ function MobilePostCard({
         }
         .ym-post-header {
           display: flex;
+          flex-direction: row;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 12px;
+          margin-bottom: 10px;
           gap: 8px;
         }
         .ym-post-user-info {
           display: flex;
           flex-direction: row;
-          gap: 10px;
+          gap: 8px;
           align-items: center;
           min-width: 0;
+          flex: 1 1 auto;
+          justify-content: flex-start;
         }
         .ym-post-avatar {
-          width: 38px;
-          height: 38px;
+          width: 36px;
+          height: 36px;
           border-radius: 50%;
           background: #14172a;
           overflow: hidden;
@@ -234,6 +253,7 @@ function MobilePostCard({
           border: 1.5px solid #8B5CF6;
           flex-shrink: 0;
           box-shadow: 0 0 8px rgba(139, 92, 246, 0.35);
+          order: 2; /* في RTL → يظهر يميناً */
         }
         .ym-post-avatar img { width: 100%; height: 100%; object-fit: cover; }
         .ym-post-title-area {
@@ -242,24 +262,28 @@ function MobilePostCard({
           align-items: flex-end;
           text-align: right;
           min-width: 0;
+          flex: 1 1 auto;
+          order: 1;
         }
         .ym-author-row {
           display: flex;
+          flex-direction: row;
           align-items: center;
           gap: 2px;
         }
         .ym-author-name {
           font-weight: 700;
-          font-size: 0.92rem;
+          font-size: 0.88rem;
           color: #fff;
           line-height: 1.2;
         }
         .ym-post-subtext {
           display: flex;
+          flex-direction: row;
           align-items: center;
           gap: 4px;
           color: #9CA3AF;
-          font-size: 0.74rem;
+          font-size: 0.7rem;
           margin-top: 2px;
           flex-wrap: wrap;
           justify-content: flex-end;
@@ -285,9 +309,9 @@ function MobilePostCard({
         .ym-more-btn:hover { color: #C4B5FD; background: rgba(139,92,246,0.08); }
 
         .ym-post-content {
-          margin-bottom: 10px;
-          font-size: 0.92rem;
-          line-height: 1.55;
+          margin-bottom: 9px;
+          font-size: 0.88rem;
+          line-height: 1.5;
           color: #E5E7EB;
           word-wrap: break-word;
           overflow-wrap: break-word;
@@ -298,13 +322,15 @@ function MobilePostCard({
         .ym-post-banner-new {
           border-radius: 14px;
           overflow: hidden;
-          margin-bottom: 12px;
+          margin-bottom: 10px;
           position: relative;
           background: #000000;
           aspect-ratio: 1 / 1;
           display: flex;
           align-items: center;
           justify-content: center;
+          width: 100%;
+          max-width: 100%;
         }
         .banner-image-container {
           position: relative;
@@ -335,8 +361,8 @@ function MobilePostCard({
           position: absolute;
           bottom: 10px;
           left: 10px;
-          width: 32px;
-          height: 32px;
+          width: 30px;
+          height: 30px;
           border-radius: 50%;
           overflow: hidden;
           box-shadow: 0 2px 8px rgba(0,0,0,0.5);
@@ -370,7 +396,7 @@ function MobilePostCard({
 
         /* === الفوتر === */
         .ym-post-footer {
-          padding-top: 4px;
+          padding-top: 2px;
         }
         .ym-footer-actions {
           display: flex;
@@ -378,62 +404,68 @@ function MobilePostCard({
           justify-content: space-between;
           align-items: center;
           gap: 4px;
+          width: 100%;
         }
         .ym-footer-btn {
           background: none;
           border: none;
           color: #9CA3AF;
-          display: flex;
+          display: inline-flex;
+          flex-direction: row;
           align-items: center;
-          gap: 6px;
+          gap: 5px;
           cursor: pointer;
-          font-size: 0.82rem;
-          padding: 4px 6px;
+          font-size: 0.78rem;
+          padding: 4px 5px;
           border-radius: 6px;
           transition: background 0.15s, color 0.15s;
           font-family: inherit;
           min-width: 0;
+          flex-shrink: 0;
+          line-height: 1;
         }
         .ym-footer-btn svg {
           width: 20px;
           height: 20px;
           flex-shrink: 0;
+          display: block;
         }
         .ym-footer-btn:hover { background: rgba(139, 92, 246, 0.08); }
         .ym-footer-btn:active { transform: scale(0.95); }
         .ym-footer-btn-like { color: #8B5CF6; }
-        .ym-footer-btn-save { margin-inline-start: auto; }
+        .ym-footer-btn-save { color: #9CA3AF; flex-shrink: 0; }
+        .ym-footer-btn-save.is-saved { color: #8B5CF6; }
         .text-purple { color: #8B5CF6; font-weight: 600; }
 
         /* === استجابة الشاشات === */
         @media (max-width: 400px) {
-          .ym-post-card { padding: 12px 10px 12px; }
-          .ym-post-avatar { width: 36px; height: 36px; }
-          .ym-author-name { font-size: 0.86rem; }
-          .ym-post-subtext { font-size: 0.7rem; }
-          .ym-post-content { font-size: 0.88rem; line-height: 1.5; margin-bottom: 9px; }
-          .ym-post-banner-new { border-radius: 12px; margin-bottom: 10px; }
-          .ym-footer-btn { font-size: 0.76rem; gap: 4px; padding: 3px 4px; }
-          .ym-footer-btn svg { width: 18px; height: 18px; }
+          .ym-post-card { padding: 11px 10px; }
+          .ym-post-avatar { width: 34px; height: 34px; }
+          .ym-author-name { font-size: 0.84rem; }
+          .ym-post-subtext { font-size: 0.66rem; }
+          .ym-post-content { font-size: 0.84rem; line-height: 1.5; margin-bottom: 8px; }
+          .ym-post-banner-new { border-radius: 12px; margin-bottom: 9px; }
+          .ym-footer-btn { font-size: 0.74rem; gap: 4px; padding: 3px 4px; }
+          .ym-footer-btn svg { width: 19px; height: 19px; }
           .banner-corner-icon { width: 28px; height: 28px; bottom: 8px; left: 8px; }
         }
         @media (max-width: 360px) {
-          .ym-post-card { padding: 10px 8px 10px; }
-          .ym-post-avatar { width: 34px; height: 34px; }
-          .ym-author-name { font-size: 0.82rem; }
-          .ym-post-subtext { font-size: 0.66rem; gap: 3px; }
-          .ym-post-content { font-size: 0.82rem; }
+          .ym-post-card { padding: 9px 7px; }
+          .ym-post-avatar { width: 32px; height: 32px; }
+          .ym-author-name { font-size: 0.78rem; }
+          .ym-post-subtext { font-size: 0.62rem; gap: 3px; }
+          .ym-post-content { font-size: 0.78rem; }
           .ym-post-banner-new { border-radius: 10px; }
-          .ym-footer-btn { font-size: 0.72rem; padding: 2px 3px; gap: 3px; }
+          .ym-footer-btn { font-size: 0.68rem; padding: 2px 3px; gap: 3px; }
           .ym-footer-btn svg { width: 17px; height: 17px; }
           .banner-corner-icon { width: 26px; height: 26px; bottom: 7px; left: 7px; }
           .ym-more-btn svg { width: 16px; height: 16px; }
         }
         @media (max-width: 320px) {
-          .ym-post-card { padding: 9px 6px; }
-          .ym-author-name { font-size: 0.78rem; }
-          .ym-post-subtext { font-size: 0.62rem; }
-          .ym-footer-btn { font-size: 0.68rem; padding: 2px; }
+          .ym-post-card { padding: 8px 6px; }
+          .ym-author-name { font-size: 0.74rem; }
+          .ym-post-subtext { font-size: 0.58rem; }
+          .ym-footer-btn { font-size: 0.62rem; padding: 2px; gap: 2px; }
           .ym-footer-btn svg { width: 16px; height: 16px; }
           .ym-footer-btn-like svg { width: 17px; height: 17px; }
           .banner-corner-icon { width: 24px; height: 24px; }

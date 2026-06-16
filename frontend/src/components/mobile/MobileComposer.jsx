@@ -1,15 +1,18 @@
 import { memo } from 'react';
 
 /**
- * MobileComposer (v47.3 — pixel-perfect "بماذا تفكر؟")
+ * MobileComposer (v47.4 — pixel-perfect "بماذا تفكر؟")
  * ---------------------------------------------------
- * مطابقة كاملة للصورة المرجعية (RTL):
- *  - يمين: Avatar دائري داكن مع شعار Y بنفسجي بحافة بنفسجية خفيفة
- *  - وسط: نص "بماذا تفكر؟" بلون رمادي ناعم
- *  - يسار: أزرار (صورة | GIF | إيموجي)
+ * مطابقة كاملة للصورة المرجعية:
  *
- * - حاوية مستطيلة بزوايا 12px (وليست pill كاملة) لمطابقة الصورة
- * - استجابة كاملة للجوالات القديمة (320–360px)
+ *   |  Y    بماذا تفكر؟                   🖼️  GIF  😊  |
+ *   |(يمين)  (وسط — نص رمادي)             (يسار — أزرار)|
+ *
+ * ✅ ترتيب RTL: Avatar شعار Y على اليمين، نص "بماذا تفكر؟" في الوسط،
+ *    أزرار (صورة | GIF | إيموجي) على اليسار.
+ * ✅ حاوية مستطيلة بزوايا 14px (وليست pill كاملة).
+ * ✅ أزرار الوسائط مضمونة الظهور — لا تختفي على الشاشات الضيقة.
+ * ✅ استجابة كاملة: 320 / 360 / 400 / 480 / 768+.
  */
 function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
   const open = (action) => {
@@ -29,6 +32,7 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
         onClick={() => open(null)}
         onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && open(null)}
       >
+        {/* === Avatar شعار Y (يمين في RTL) === */}
         <span className="ym-composer-avatar" aria-hidden="true">
           <svg viewBox="0 0 100 100" width="100%" height="100%">
             <defs>
@@ -42,23 +46,28 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           </svg>
         </span>
 
-        <input
+        {/* === نص الـ placeholder (وسط) === */}
+        <span
           className="ym-composer-input"
-          placeholder="بماذا تفكر؟"
-          readOnly
           aria-label="بماذا تفكر؟"
-          onFocus={(e) => { e.target.blur(); open(null); }}
-        />
+          onClick={(e) => { e.stopPropagation(); open(null); }}
+        >
+          بماذا تفكر؟
+        </span>
 
-        <div className="ym-composer-actions" onClick={(e) => e.stopPropagation()}>
+        {/* === أزرار الأكشن (يسار) === */}
+        <div
+          className="ym-composer-actions"
+          onClick={(e) => e.stopPropagation()}
+        >
           <button
             type="button"
-            className="ym-composer-action"
+            className="ym-composer-action ym-composer-action-media"
             aria-label="إضافة صورة"
             title="صورة"
             onClick={() => (onMedia ? onMedia() : open('image'))}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <rect x="3" y="5" width="18" height="14" rx="2" />
               <circle cx="8.5" cy="10" r="1.4" fill="currentColor" stroke="none" />
               <path d="M21 17 L15 11 L5 19" />
@@ -66,7 +75,7 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           </button>
           <button
             type="button"
-            className="ym-composer-action"
+            className="ym-composer-action ym-composer-action-gif"
             aria-label="إضافة GIF"
             title="GIF"
             onClick={() => (onGif ? onGif() : open('gif'))}
@@ -75,12 +84,12 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           </button>
           <button
             type="button"
-            className="ym-composer-action"
+            className="ym-composer-action ym-composer-action-emoji"
             aria-label="إضافة إيموجي"
             title="إيموجي"
             onClick={() => (onEmoji ? onEmoji() : open('emoji'))}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <circle cx="12" cy="12" r="9" />
               <circle cx="9" cy="10" r="1" fill="currentColor" stroke="none" />
               <circle cx="15" cy="10" r="1" fill="currentColor" stroke="none" />
@@ -92,56 +101,66 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
 
       <style>{`
         .ym-composer-wrap {
-          padding: 10px 12px 6px;
+          padding: 10px 12px 4px;
           background-color: #0A0D1A;
           box-sizing: border-box;
+          width: 100%;
           max-width: 100%;
         }
         .ym-composer {
           display: flex;
+          flex-direction: row;
           align-items: center;
-          gap: 10px;
+          gap: 8px;
           background: #14172a;
           border: 1px solid #1F2937;
           border-radius: 14px;
-          padding: 8px 12px;
+          padding: 7px 10px;
           cursor: pointer;
           transition: border-color 0.15s, background 0.15s;
           box-sizing: border-box;
+          width: 100%;
           max-width: 100%;
+          overflow: hidden;
         }
         .ym-composer:hover { border-color: rgba(139,92,246,0.45); }
         .ym-composer-avatar {
-          width: 34px;
-          height: 34px;
+          width: 32px;
+          height: 32px;
           border-radius: 50%;
           background: #1F2937;
           display: inline-flex;
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
+          flex-grow: 0;
           border: 1px solid rgba(139,92,246,0.4);
           padding: 4px;
           box-sizing: border-box;
         }
         .ym-composer-input {
-          flex: 1;
+          flex: 1 1 auto;
           background: transparent;
           border: none;
           outline: none;
-          color: #D1D5DB;
-          font-size: 0.92rem;
+          color: #6B7280;
+          font-size: 0.86rem;
           font-family: inherit;
           min-width: 0;
           padding: 4px 0;
           cursor: pointer;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          text-align: right;
         }
-        .ym-composer-input::placeholder { color: #6B7280; }
         .ym-composer-actions {
-          display: flex;
+          display: inline-flex;
+          flex-direction: row;
           align-items: center;
-          gap: 4px;
+          gap: 2px;
           flex-shrink: 0;
+          flex-grow: 0;
         }
         .ym-composer-action {
           background: none;
@@ -154,10 +173,14 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           justify-content: center;
           border-radius: 6px;
           transition: background 0.15s, color 0.15s;
+          flex-shrink: 0;
+          min-width: 28px;
+          min-height: 28px;
         }
         .ym-composer-action svg {
-          width: 19px;
-          height: 19px;
+          width: 18px;
+          height: 18px;
+          display: block;
         }
         .ym-composer-action:hover {
           background: rgba(139, 92, 246, 0.12);
@@ -166,39 +189,43 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
         .ym-composer-action:active { transform: scale(0.93); }
         .ym-gif-pill {
           font-weight: 700;
-          font-size: 0.7rem;
+          font-size: 0.66rem;
           letter-spacing: 0.5px;
-          padding: 2px 5px;
+          padding: 1.5px 4px;
           border: 1.5px solid currentColor;
           border-radius: 4px;
           line-height: 1;
+          display: inline-block;
         }
+
         /* === الأجهزة المتوسطة === */
         @media (max-width: 400px) {
-          .ym-composer-wrap { padding: 8px 10px 6px; }
-          .ym-composer { gap: 7px; padding: 7px 10px; border-radius: 12px; }
+          .ym-composer-wrap { padding: 8px 10px 4px; }
+          .ym-composer { gap: 6px; padding: 6px 8px; border-radius: 12px; }
           .ym-composer-avatar { width: 30px; height: 30px; padding: 3px; }
-          .ym-composer-input { font-size: 0.86rem; }
-          .ym-composer-actions { gap: 2px; }
-          .ym-composer-action { padding: 4px; }
+          .ym-composer-input { font-size: 0.82rem; }
+          .ym-composer-actions { gap: 1px; }
+          .ym-composer-action { padding: 4px; min-width: 26px; min-height: 26px; }
           .ym-composer-action svg { width: 17px; height: 17px; }
-          .ym-gif-pill { font-size: 0.64rem; padding: 1.5px 4px; }
+          .ym-gif-pill { font-size: 0.62rem; padding: 1px 3px; }
         }
         /* === الجوالات القديمة === */
         @media (max-width: 360px) {
-          .ym-composer-wrap { padding: 7px 8px 5px; }
-          .ym-composer { gap: 5px; padding: 6px 8px; }
+          .ym-composer-wrap { padding: 7px 8px 4px; }
+          .ym-composer { gap: 4px; padding: 5px 7px; }
           .ym-composer-avatar { width: 28px; height: 28px; padding: 3px; }
-          .ym-composer-input { font-size: 0.8rem; padding: 3px 0; }
-          .ym-composer-action { padding: 3px; }
-          .ym-composer-action svg { width: 16px; height: 16px; }
-          .ym-gif-pill { font-size: 0.6rem; padding: 1px 3px; }
+          .ym-composer-input { font-size: 0.76rem; padding: 3px 0; }
+          .ym-composer-action { padding: 3px; min-width: 24px; min-height: 24px; }
+          .ym-composer-action svg { width: 15px; height: 15px; }
+          .ym-gif-pill { font-size: 0.58rem; padding: 1px 3px; }
         }
         @media (max-width: 320px) {
-          .ym-composer { gap: 4px; padding: 5px 6px; }
+          .ym-composer { gap: 3px; padding: 4px 5px; }
           .ym-composer-avatar { width: 26px; height: 26px; }
-          .ym-composer-input { font-size: 0.75rem; }
-          .ym-composer-action svg { width: 15px; height: 15px; }
+          .ym-composer-input { font-size: 0.7rem; }
+          .ym-composer-action { padding: 2px; min-width: 22px; min-height: 22px; }
+          .ym-composer-action svg { width: 14px; height: 14px; }
+          .ym-gif-pill { font-size: 0.54rem; padding: 1px 2px; }
         }
       `}</style>
     </div>

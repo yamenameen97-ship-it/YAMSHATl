@@ -1,14 +1,14 @@
 import React, { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
-import { createGroup } from '../api/groups.js';
+import { createGroup, uploadGroupImage } from '../api/groups.js';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import '../styles/create-group.css';
 
 const CreateGroup = () => {
   const navigate = useNavigate();
   const { pushToast } = useToast();
-  
+
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -16,7 +16,7 @@ const CreateGroup = () => {
     isPublic: true,
     image: null
   });
-  
+
   const [loading, setLoading] = useState(false);
   const [imagePreview, setImagePreview] = useState(null);
 
@@ -31,7 +31,7 @@ const CreateGroup = () => {
 
   const handleInputChange = useCallback((e) => {
     const { name, value, type, checked } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }));
@@ -39,19 +39,22 @@ const CreateGroup = () => {
 
   const handleImageChange = useCallback((e) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setFormData(prev => ({ ...prev, image: file }));
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+    // حد أقصى 5MB للصورة
+    const MAX = 5 * 1024 * 1024;
+    if (file.size > MAX) {
+      pushToast?.({ type: 'warning', title: 'الصورة كبيرة', description: 'الحد الأقصى 5 ميجابايت' });
+      return;
     }
-  }, []);
+    setFormData((prev) => ({ ...prev, image: file }));
+    const reader = new FileReader();
+    reader.onloadend = () => setImagePreview(reader.result);
+    reader.readAsDataURL(file);
+  }, [pushToast]);
 
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
-    
+
     if (!formData.name.trim()) {
       pushToast?.({ type: 'warning', title: 'خطأ', description: 'أدخل اسم المجموعة' });
       return;
@@ -66,10 +69,22 @@ const CreateGroup = () => {
         is_public: formData.isPublic
       });
 
-      // الباك اند (group_store_enhanced.serialize_group) يرجّع كائن المجموعة
-      // مباشرة في data، ويحتوي على id فريد لهذه المجموعة بالذات.
       const body = response?.data || response || {};
       const newGroupId = body.id || body.group_id || body.group?.id;
+
+      // ✅ رفع صورة المجموعة فعلياً بعد إنشائها
+      if (newGroupId && formData.image) {
+        try {
+          await uploadGroupImage(newGroupId, formData.image, 'avatar');
+        } catch (imgErr) {
+          console.warn('Group created but image upload failed:', imgErr);
+          pushToast?.({
+            type: 'warning',
+            title: 'تنبيه',
+            description: 'تم إنشاء المجموعة لكن فشل رفع الصورة. يمكنك رفعها لاحقاً من الإعدادات.',
+          });
+        }
+      }
 
       if (newGroupId) {
         pushToast?.({
@@ -77,11 +92,8 @@ const CreateGroup = () => {
           title: 'تم',
           description: 'تم إنشاء المجموعة بنجاح',
         });
-        // 🎯 الانتقال مباشرة لشات المجموعة الجديدة وليس لقائمة المجموعات،
-        // مع replace حتى لا يعود زر الرجوع لصفحة الإنشاء.
         navigate(`/groups/${newGroupId}/chat`, { replace: true });
       } else {
-        // fallback: لو لم نستلم id، نعود للقائمة بدل ما نعلق
         pushToast?.({
           type: 'warning',
           title: 'تنبيه',
@@ -91,10 +103,10 @@ const CreateGroup = () => {
       }
     } catch (error) {
       console.error('Error creating group:', error);
-      pushToast?.({ 
-        type: 'error', 
-        title: 'خطأ', 
-        description: error?.message || 'فشل إنشاء المجموعة' 
+      pushToast?.({
+        type: 'error',
+        title: 'خطأ',
+        description: error?.message || 'فشل إنشاء المجموعة'
       });
     } finally {
       setLoading(false);
@@ -103,9 +115,13 @@ const CreateGroup = () => {
 
   return (
     <MainLayout>
-    <div className="yam-create-group-page">
+    <div
+      className="yam-create-group-page"
+      dir="rtl"
+      style={{ fontFamily: "'Noto Sans Arabic','Cairo','Tahoma',sans-serif" }}
+    >
       <header className="yam-create-header">
-        <button className="yam-back-btn" onClick={() => navigate(-1)}>
+        <button className="yam-back-btn" onClick={() => navigate(-1)} aria-label="رجوع">
           <span>❮</span>
         </button>
         <h1>إنشاء مجموعة جديدة</h1>
@@ -120,21 +136,22 @@ const CreateGroup = () => {
             {imagePreview ? (
               <div className="yam-image-preview">
                 <img src={imagePreview} alt="معاينة" />
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   className="yam-remove-image-btn"
                   onClick={() => {
                     setImagePreview(null);
-                    setFormData(prev => ({ ...prev, image: null }));
+                    setFormData((prev) => ({ ...prev, image: null }));
                   }}
+                  aria-label="حذف الصورة"
                 >
                   ✕
                 </button>
               </div>
             ) : (
               <label className="yam-upload-label">
-                <input 
-                  type="file" 
+                <input
+                  type="file"
                   accept="image/*"
                   onChange={handleImageChange}
                   style={{ display: 'none' }}
@@ -149,7 +166,7 @@ const CreateGroup = () => {
         {/* اسم المجموعة */}
         <section className="yam-form-section">
           <label className="yam-form-label">اسم المجموعة *</label>
-          <input 
+          <input
             type="text"
             name="name"
             value={formData.name}
@@ -158,6 +175,7 @@ const CreateGroup = () => {
             className="yam-form-input"
             maxLength={100}
             required
+            dir="rtl"
           />
           <span className="yam-char-count">{formData.name.length}/100</span>
         </section>
@@ -165,7 +183,7 @@ const CreateGroup = () => {
         {/* وصف المجموعة */}
         <section className="yam-form-section">
           <label className="yam-form-label">وصف المجموعة</label>
-          <textarea 
+          <textarea
             name="description"
             value={formData.description}
             onChange={handleInputChange}
@@ -173,6 +191,7 @@ const CreateGroup = () => {
             className="yam-form-textarea"
             maxLength={500}
             rows={4}
+            dir="rtl"
           />
           <span className="yam-char-count">{formData.description.length}/500</span>
         </section>
@@ -180,13 +199,14 @@ const CreateGroup = () => {
         {/* التصنيف */}
         <section className="yam-form-section">
           <label className="yam-form-label">التصنيف</label>
-          <select 
+          <select
             name="category"
             value={formData.category}
             onChange={handleInputChange}
             className="yam-form-select"
+            dir="rtl"
           >
-            {categories.map(cat => (
+            {categories.map((cat) => (
               <option key={cat.id} value={cat.name}>{cat.name}</option>
             ))}
           </select>
@@ -197,22 +217,22 @@ const CreateGroup = () => {
           <label className="yam-form-label">الخصوصية</label>
           <div className="yam-privacy-options">
             <label className="yam-privacy-option">
-              <input 
+              <input
                 type="radio"
                 name="isPublic"
-                value={true}
+                value="true"
                 checked={formData.isPublic === true}
-                onChange={() => setFormData(prev => ({ ...prev, isPublic: true }))}
+                onChange={() => setFormData((prev) => ({ ...prev, isPublic: true }))}
               />
               <span>عامة - يمكن لأي شخص الانضمام</span>
             </label>
             <label className="yam-privacy-option">
-              <input 
+              <input
                 type="radio"
                 name="isPublic"
-                value={false}
+                value="false"
                 checked={formData.isPublic === false}
-                onChange={() => setFormData(prev => ({ ...prev, isPublic: false }))}
+                onChange={() => setFormData((prev) => ({ ...prev, isPublic: false }))}
               />
               <span>خاصة - بالدعوة فقط</span>
             </label>
@@ -221,7 +241,7 @@ const CreateGroup = () => {
 
         {/* الأزرار */}
         <section className="yam-form-actions">
-          <button 
+          <button
             type="button"
             className="yam-btn-secondary"
             onClick={() => navigate(-1)}
@@ -229,7 +249,7 @@ const CreateGroup = () => {
           >
             إلغاء
           </button>
-          <button 
+          <button
             type="submit"
             className="yam-btn-primary"
             disabled={loading}

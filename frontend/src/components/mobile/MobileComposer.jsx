@@ -1,17 +1,18 @@
 import { memo } from 'react';
 
 /**
- * MobileComposer (v47.4 — pixel-perfect "بماذا تفكر؟")
- * ---------------------------------------------------
- * مطابقة كاملة للصورة المرجعية:
+ * MobileComposer (v47.7 — pixel-perfect "بماذا تفكر؟" — مطابق تماماً للصورة)
+ * --------------------------------------------------------------------------
+ * الترتيب البصري كما في الصورة (من اليسار→اليمين على الشاشة):
  *
- *   |  Y    بماذا تفكر؟                   🖼️  GIF  😊  |
- *   |(يمين)  (وسط — نص رمادي)             (يسار — أزرار)|
+ *   |  Y   بماذا تفكر؟                       🖼️  GIF  ☺  |
+ *   |(يسار: أفاتار+نص)              (يمين: أيقونات الوسائط) |
  *
- * ✅ ترتيب RTL: Avatar شعار Y على اليمين، نص "بماذا تفكر؟" في الوسط،
- *    أزرار (صورة | GIF | إيموجي) على اليسار.
- * ✅ حاوية مستطيلة بزوايا 14px (وليست pill كاملة).
- * ✅ أزرار الوسائط مضمونة الظهور — لا تختفي على الشاشات الضيقة.
+ * ✅ شعار Y (الأفاتار) في **يسار** الصندوق على الشاشة.
+ * ✅ نص "بماذا تفكر؟" بجواره مباشرة (وسط/يسار).
+ * ✅ أيقونات الوسائط (صورة، GIF، إيموجي) في **يمين** الصندوق على الشاشة.
+ * ✅ ترتيب الأيقونات من اليسار→اليمين: 🖼️ ← GIF ← ☺
+ * ✅ حاوية مستطيلة بزوايا 14px.
  * ✅ استجابة كاملة: 320 / 360 / 400 / 480 / 768+.
  */
 function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
@@ -29,10 +30,11 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
         className="ym-composer"
         role="button"
         tabIndex={0}
+        dir="ltr"
         onClick={() => open(null)}
         onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && open(null)}
       >
-        {/* === Avatar شعار Y (يمين في RTL) === */}
+        {/* === Avatar شعار Y (في يسار الصندوق على الشاشة) === */}
         <span className="ym-composer-avatar" aria-hidden="true">
           <svg viewBox="0 0 100 100" width="100%" height="100%">
             <defs>
@@ -46,16 +48,18 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           </svg>
         </span>
 
-        {/* === نص الـ placeholder (وسط) === */}
+        {/* === نص الـ placeholder === */}
         <span
           className="ym-composer-input"
           aria-label="بماذا تفكر؟"
+          dir="rtl"
           onClick={(e) => { e.stopPropagation(); open(null); }}
         >
           بماذا تفكر؟
         </span>
 
-        {/* === أزرار الأكشن (يسار) === */}
+        {/* === أزرار الأكشن (في يمين الصندوق على الشاشة) === */}
+        {/* الترتيب على الشاشة من اليسار→اليمين: 🖼️ ← GIF ← ☺ */}
         <div
           className="ym-composer-actions"
           onClick={(e) => e.stopPropagation()}
@@ -122,6 +126,7 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           width: 100%;
           max-width: 100%;
           overflow: hidden;
+          direction: ltr;
         }
         .ym-composer:hover { border-color: rgba(139,92,246,0.45); }
         .ym-composer-avatar {
@@ -147,18 +152,19 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           font-size: 0.86rem;
           font-family: inherit;
           min-width: 0;
-          padding: 4px 0;
+          padding: 4px 6px;
           cursor: pointer;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
           text-align: right;
+          direction: rtl;
         }
         .ym-composer-actions {
           display: inline-flex;
           flex-direction: row;
           align-items: center;
-          gap: 2px;
+          gap: 4px;
           flex-shrink: 0;
           flex-grow: 0;
         }
@@ -178,8 +184,8 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           min-height: 28px;
         }
         .ym-composer-action svg {
-          width: 18px;
-          height: 18px;
+          width: 19px;
+          height: 19px;
           display: block;
         }
         .ym-composer-action:hover {
@@ -198,25 +204,24 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           display: inline-block;
         }
 
-        /* === الأجهزة المتوسطة === */
         @media (max-width: 400px) {
           .ym-composer-wrap { padding: 8px 10px 4px; }
           .ym-composer { gap: 6px; padding: 6px 8px; border-radius: 12px; }
           .ym-composer-avatar { width: 30px; height: 30px; padding: 3px; }
-          .ym-composer-input { font-size: 0.82rem; }
-          .ym-composer-actions { gap: 1px; }
+          .ym-composer-input { font-size: 0.82rem; padding: 3px 5px; }
+          .ym-composer-actions { gap: 3px; }
           .ym-composer-action { padding: 4px; min-width: 26px; min-height: 26px; }
-          .ym-composer-action svg { width: 17px; height: 17px; }
+          .ym-composer-action svg { width: 18px; height: 18px; }
           .ym-gif-pill { font-size: 0.62rem; padding: 1px 3px; }
         }
-        /* === الجوالات القديمة === */
         @media (max-width: 360px) {
           .ym-composer-wrap { padding: 7px 8px 4px; }
-          .ym-composer { gap: 4px; padding: 5px 7px; }
+          .ym-composer { gap: 5px; padding: 5px 7px; }
           .ym-composer-avatar { width: 28px; height: 28px; padding: 3px; }
-          .ym-composer-input { font-size: 0.76rem; padding: 3px 0; }
+          .ym-composer-input { font-size: 0.76rem; padding: 3px 4px; }
+          .ym-composer-actions { gap: 2px; }
           .ym-composer-action { padding: 3px; min-width: 24px; min-height: 24px; }
-          .ym-composer-action svg { width: 15px; height: 15px; }
+          .ym-composer-action svg { width: 16px; height: 16px; }
           .ym-gif-pill { font-size: 0.58rem; padding: 1px 3px; }
         }
         @media (max-width: 320px) {

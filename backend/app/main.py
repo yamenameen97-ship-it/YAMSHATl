@@ -261,6 +261,10 @@ _include("app.api.routes.users.router", prefix="/api/users")
 _include("app.api.routes.posts.router", prefix="/api/posts")
 _include("app.api.routes.comments.router", prefix="/api/comments")
 _include("app.api.routes.notifications.router", prefix="/api/notifications")
+# v47.6: إشعارات لحظية حقيقية (WebSocket + FCM/APNS/WebPush) + إدارة أجهزة المستخدمين
+_include("app.api.routes.notifications_v2.router", prefix="/api/v2")
+_include("app.api.routes.devices.router", prefix="/api")
+_include("app.api.routes.ws_notifications.router", prefix="")
 _include("app.api.routes.search.router", prefix="/api/search")
 _include("app.api.routes.upload.router", prefix="/api/upload")
 _include("app.api.routes.admin.router", prefix="/api/admin")
@@ -317,6 +321,24 @@ async def on_startup():
         logger.warning(f"   ⚠️  Failed routers ({len(failed)}): {failed}")
     else:
         logger.info(f"   ✅ All {len(_ROUTER_STATUS)} routers mounted successfully")
+
+    # v47.6: تشغيل مركز الإشعارات اللحظية (Realtime Hub) - Redis Pub/Sub
+    try:
+        from app.services.realtime_hub import realtime_hub
+        redis_url = getattr(settings, "REDIS_URL", None) or getattr(settings, "redis_url", None)
+        await realtime_hub.startup(redis_url)
+        logger.info("   🔔 Realtime notifications hub initialized")
+    except Exception as exc:
+        logger.warning(f"   ⚠️  Realtime hub startup soft-fail: {exc}")
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    try:
+        from app.services.realtime_hub import realtime_hub
+        await realtime_hub.shutdown()
+    except Exception:
+        pass
 
 
 # ============================================================

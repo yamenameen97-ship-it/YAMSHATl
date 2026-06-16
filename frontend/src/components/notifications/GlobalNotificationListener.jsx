@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import socketManager from '../../services/socketManager.js';
+import { realtimeNotifications, registerWebPush } from '../../services/realtimeNotifications.js';
 import { useNotificationStore } from '../../store/notificationStore.js';
 import { normalizeNotification } from '../../utils/notificationCenter.js';
 
@@ -95,6 +96,15 @@ export default function GlobalNotificationListener() {
 
     const unsubscribe = socketManager.on('new_notification', handleIncoming);
 
+    // v47.6: عميل WebSocket اللحظي المخصّص للإشعارات (مثل Instagram/Twitter).
+    realtimeNotifications.start();
+    const unsubscribeRT = realtimeNotifications.onNotification(handleIncoming);
+
+    // تسجيل Web Push للإشعارات عندما يكون التبويب مغلقاً.
+    if (typeof window !== 'undefined' && Notification.permission === 'granted') {
+      registerWebPush().catch(() => {});
+    }
+
     // ✅ دعم إشعارات محلية (تطلقها ويدجتات داخلية مثل بدء بث مباشر)
     // تستخدم نفس دورة حياة socket لتحديث الجرس + إصدار بيب + إظهار توست.
     const handleLocal = (event) => {
@@ -106,6 +116,8 @@ export default function GlobalNotificationListener() {
 
     return () => {
       try { unsubscribe?.(); } catch (_) {}
+      try { unsubscribeRT?.(); } catch (_) {}
+      try { realtimeNotifications.stop(); } catch (_) {}
       try {
         if (typeof window !== 'undefined') {
           window.removeEventListener('yamshat:notification', handleLocal);

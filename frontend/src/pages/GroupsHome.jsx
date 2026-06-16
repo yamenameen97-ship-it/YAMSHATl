@@ -1,15 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
-import { getGroups } from '../api/groups.js';
+import { getGroups, searchGroups } from '../api/groups.js';
 import '../styles/groups-list.css';
 
 /**
- * GroupsHome
- * ----------
- * تم لفّ الصفحة بـ MainLayout الموحّد ليظهر الهيدر العلوي (MobileTopBar)
- * والشريط السفلي (BottomNav) المطابقَين للتصميم في كل صفحات التطبيق،
- * مع إزالة الـ navbar السفلي القديم الخاص بهذه الصفحة لتجنّب التكرار.
+ * GroupsHome — v2 مُصلحة
+ * --------------------
+ * إصلاحات:
+ *  - حقل البحث أصبح فعّالاً (مرتبط بـ state ويفلتر القائمة + يستدعي searchGroups عند الكتابة).
+ *  - زر الفلتر/الإعدادات لم يعد يذهب لمسار خاطئ (يفتح فلاتر التصنيفات بدل /groups/settings بدون id).
+ *  - زر "⋮" داخل البطاقة يذهب لإعدادات المجموعة الخاصة بها فقط (آمن).
+ *  - حالة "لا نتائج للبحث" منفصلة عن "لا توجد مجموعات".
  */
 const GroupsHome = () => {
   const navigate = useNavigate();
@@ -17,6 +19,8 @@ const GroupsHome = () => {
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showFilters, setShowFilters] = useState(true);
 
   const categories = [
     { id: 1, name: 'الكل', icon: '📱' },
@@ -45,14 +49,40 @@ const GroupsHome = () => {
     fetchGroups();
   }, []);
 
-  const filteredGroups = activeCategory === 'الكل'
-    ? groups
-    : groups.filter(g => g.category === activeCategory);
+  // بحث ذكي مع debounce + fallback للبحث المحلي
+  useEffect(() => {
+    if (!searchQuery.trim()) return;
+    const handle = setTimeout(async () => {
+      try {
+        const res = await searchGroups(searchQuery.trim(), 50);
+        const data = res?.data?.groups || res?.data || [];
+        if (Array.isArray(data) && data.length) {
+          setGroups((prev) => {
+            const map = new Map(prev.map((g) => [String(g.id), g]));
+            for (const g of data) map.set(String(g.id), { ...map.get(String(g.id)), ...g });
+            return Array.from(map.values());
+          });
+        }
+      } catch { /* fallback للبحث المحلي فقط */ }
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [searchQuery]);
+
+  const filteredGroups = useMemo(() => {
+    const byCategory = activeCategory === 'الكل'
+      ? groups
+      : groups.filter((g) => g.category === activeCategory);
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return byCategory;
+    return byCategory.filter((g) =>
+      String(g.name || '').toLowerCase().includes(q) ||
+      String(g.description || g.desc || '').toLowerCase().includes(q)
+    );
+  }, [groups, activeCategory, searchQuery]);
 
   return (
     <MainLayout>
-      <div className="yam-groups-page">
-        {/* الهيدر الداخلي للصفحة (تحت الهيدر الموحّد) */}
+      <div className="yam-groups-page" dir="rtl" style={{ fontFamily: "'Noto Sans Arabic','Cairo','Tahoma',sans-serif" }}>
         <header className="yam-groups-header">
           <div className="yam-groups-title-section">
             <h1>المجموعات</h1>
@@ -66,26 +96,41 @@ const GroupsHome = () => {
 
         {/* البحث */}
         <section className="yam-search-filter-section" style={{ marginTop: '24px' }}>
-          <div className="yam-filter-btn" onClick={() => navigate('/groups/settings')}>⚙️</div>
+          <div
+            className="yam-filter-btn"
+            onClick={() => setShowFilters((v) => !v)}
+            title="إظهار/إخفاء التصنيفات"
+            aria-label="إظهار/إخفاء التصنيفات"
+          >⚙️</div>
           <div className="yam-search-bar-wrap">
-            <input type="text" className="yam-search-input" placeholder="ابحث عن مجموعة..." />
+            <input
+              type="text"
+              className="yam-search-input"
+              placeholder="ابحث عن مجموعة..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              dir="rtl"
+              enterKeyHint="search"
+            />
             <span className="yam-search-icon">🔍</span>
           </div>
         </section>
 
         {/* التصنيفات */}
-        <section className="yam-categories-scroll">
-          {categories.map(cat => (
-            <div
-              key={cat.id}
-              className={`yam-category-pill ${activeCategory === cat.name ? 'active' : ''}`}
-              onClick={() => setActiveCategory(cat.name)}
-            >
-              <span>{cat.icon}</span>
-              {cat.name}
-            </div>
-          ))}
-        </section>
+        {showFilters && (
+          <section className="yam-categories-scroll">
+            {categories.map((cat) => (
+              <div
+                key={cat.id}
+                className={`yam-category-pill ${activeCategory === cat.name ? 'active' : ''}`}
+                onClick={() => setActiveCategory(cat.name)}
+              >
+                <span>{cat.icon}</span>
+                {cat.name}
+              </div>
+            ))}
+          </section>
+        )}
 
         {/* قائمة المجموعات */}
         <section className="yam-groups-list">
@@ -94,10 +139,17 @@ const GroupsHome = () => {
           ) : error ? (
             <div style={{ textAlign: 'center', padding: '40px', color: '#ef4444' }}>{error}</div>
           ) : filteredGroups.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>لا توجد مجموعات حالياً.</div>
+            <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
+              {searchQuery.trim() ? 'لا توجد نتائج مطابقة لبحثك.' : 'لا توجد مجموعات حالياً.'}
+            </div>
           ) : (
-            filteredGroups.map(group => (
-              <div key={group.id} className="yam-group-card" onClick={() => navigate(`/groups/${group.id}/chat`)} style={{ cursor: 'pointer' }}>
+            filteredGroups.map((group) => (
+              <div
+                key={group.id}
+                className="yam-group-card"
+                onClick={() => navigate(`/groups/${group.id}/chat`)}
+                style={{ cursor: 'pointer' }}
+              >
                 <div className="yam-group-main-info">
                   <div className="yam-group-neon-icon" style={{ '--neon-color': group.color || '#8b5cf6' }}>
                     <span style={{ color: group.color || '#8b5cf6' }}>{group.icon || '👥'}</span>
@@ -117,16 +169,18 @@ const GroupsHome = () => {
                     {group.last_active_human || 'نشط'}
                   </span>
                   {group.unread_count > 0 && <div className="yam-unread-badge">{group.unread_count}</div>}
-                  <div className="yam-more-btn" onClick={(e) => {
-                    e.stopPropagation();
-                    navigate(`/groups/${group.id}/settings`);
-                  }}>⋮</div>
+                  <div
+                    className="yam-more-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/groups/${group.id}/settings`);
+                    }}
+                  >⋮</div>
                 </div>
               </div>
             ))
           )}
         </section>
-        {/* ⬇ تمت إزالة الـ yam-bottom-nav القديم لتجنّب تكرار الـ BottomNav الموحّد */}
       </div>
     </MainLayout>
   );

@@ -1,6 +1,12 @@
 """
-خدمة الإشعارات المحسّنة مع دعم Push Notifications والإشعارات المتقدمة
+خدمة الإشعارات المحسّنة مع دعم Push Notifications والإشعارات اللحظية.
+
+محدّث (v47.6): كل إنشاء إشعار يمرّ عبر notification_dispatcher
+ليبثّه فوراً عبر WebSocket + FCM/APNS/WebPush معاً، تماماً
+مثل المنصات العالمية (Instagram/Twitter/WhatsApp).
 """
+import asyncio
+import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 
@@ -9,6 +15,48 @@ from sqlalchemy.orm import Session
 
 from app.models.notification import Notification
 from app.models.user import User
+
+logger = logging.getLogger(__name__)
+
+
+def _dispatch_realtime(
+    db: Session,
+    *,
+    user_id: int,
+    notif_type: str,
+    title: str,
+    body: str,
+    actor: Optional[User] = None,
+    target_id: Optional[int] = None,
+    target_type: Optional[str] = None,
+    extra_data: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    """تمرير الإشعار لموزّع البث اللحظي + Push بطريقة آمنة."""
+    try:
+        from app.services.notification_dispatcher import dispatch_notification
+        coro = dispatch_notification(
+            db,
+            user_id=user_id,
+            notif_type=notif_type,
+            title=title,
+            body=body,
+            actor=actor,
+            target_id=target_id,
+            target_type=target_type,
+            extra_data=extra_data,
+            send_push=True,
+        )
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.ensure_future(coro)
+                return {"queued": True}
+            return loop.run_until_complete(coro)
+        except RuntimeError:
+            return asyncio.run(coro)
+    except Exception as exc:
+        logger.warning("realtime_dispatch_failed user_id=%s err=%s", user_id, exc)
+        return None
 
 
 # ============ أنواع الإشعارات ============
@@ -83,19 +131,21 @@ def create_message_notification(
     sender = db.query(User).filter(User.id == sender_id).first()
     if not sender:
         raise ValueError("المرسل غير موجود")
-    
-    return create_notification(
+
+    title = f"رسالة جديدة من {sender.username}"
+    body = message_preview[:100]
+    _dispatch_realtime(
         db,
-        user_id,
-        "new_message",
-        f"رسالة جديدة من {sender.username}",
-        message_preview[:100],
-        {
-            "sender_id": sender_id,
-            "sender_username": sender.username,
-            "message_preview": message_preview,
-        },
+        user_id=user_id,
+        notif_type="new_message",
+        title=title,
+        body=body,
+        actor=sender,
+        target_id=sender_id,
+        target_type="chat",
+        extra_data={"message_preview": message_preview},
     )
+    return {"status": "dispatched", "type": "new_message"}
 
 
 def create_follow_notification(
@@ -108,18 +158,18 @@ def create_follow_notification(
     follower = db.query(User).filter(User.id == follower_id).first()
     if not follower:
         raise ValueError("المتابع غير موجود")
-    
-    return create_notification(
+
+    _dispatch_realtime(
         db,
-        user_id,
-        "new_follow",
-        f"{follower.username} يتابعك الآن",
-        "اضغط لعرض الملف الشخصي",
-        {
-            "follower_id": follower_id,
-            "follower_username": follower.username,
-        },
+        user_id=user_id,
+        notif_type="new_follow",
+        title=f"{follower.username} يتابعك الآن",
+        body="اضغط لعرض الملف الشخصي",
+        actor=follower,
+        target_id=follower_id,
+        target_type="user",
     )
+    return {"status": "dispatched", "type": "new_follow"}
 
 
 def create_like_notification(
@@ -133,19 +183,18 @@ def create_like_notification(
     liker = db.query(User).filter(User.id == liker_id).first()
     if not liker:
         raise ValueError("المعجب غير موجود")
-    
-    return create_notification(
+
+    _dispatch_realtime(
         db,
-        user_id,
-        "new_like",
-        f"{liker.username} أعجب بمنشورك",
-        "اضغط لعرض المنشور",
-        {
-            "liker_id": liker_id,
-            "liker_username": liker.username,
-            "post_id": post_id,
-        },
+        user_id=user_id,
+        notif_type="new_like",
+        title=f"{liker.username} أعجب بمنشورك",
+        body="اضغط لعرض المنشور",
+        actor=liker,
+        target_id=post_id,
+        target_type="post",
     )
+    return {"status": "dispatched", "type": "new_like"}
 
 
 def create_comment_notification(
@@ -160,20 +209,19 @@ def create_comment_notification(
     commenter = db.query(User).filter(User.id == commenter_id).first()
     if not commenter:
         raise ValueError("المعلق غير موجود")
-    
-    return create_notification(
+
+    _dispatch_realtime(
         db,
-        user_id,
-        "new_comment",
-        f"{commenter.username} علق على منشورك",
-        comment_preview[:100],
-        {
-            "commenter_id": commenter_id,
-            "commenter_username": commenter.username,
-            "post_id": post_id,
-            "comment_preview": comment_preview,
-        },
+        user_id=user_id,
+        notif_type="new_comment",
+        title=f"{commenter.username} علق على منشورك",
+        body=comment_preview[:100],
+        actor=commenter,
+        target_id=post_id,
+        target_type="post",
+        extra_data={"comment_preview": comment_preview},
     )
+    return {"status": "dispatched", "type": "new_comment"}
 
 
 def create_gift_notification(
@@ -188,20 +236,26 @@ def create_gift_notification(
     sender = db.query(User).filter(User.id == sender_id).first()
     if not sender:
         raise ValueError("المرسل غير موجود")
-    
-    return create_notification(
+
+    _dispatch_realtime(
         db,
-        user_id,
-        "gift_received",
-        f"تلقيت {amount} {gift_name} من {sender.username}",
-        "شكراً على الدعم!",
-        {
-            "sender_id": sender_id,
-            "sender_username": sender.username,
+        user_id=user_id,
+        notif_type="gift_received",
+        title=f"تلقيت {amount} {gift_name} من {sender.username}",
+        body="شكراً على الدعم!",
+        actor=sender,
+        target_id=sender_id,
+        target_type="gift",
+        extra_data={"gift_name": gift_name, "amount": amount},
+    )
+    return {
+        "status": "dispatched",
+        "type": "gift_received",
+        "_legacy": {
             "gift_name": gift_name,
             "amount": amount,
         },
-    )
+    }
 
 
 # ============ إدارة الإشعارات ============

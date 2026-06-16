@@ -2,48 +2,28 @@ import { memo, useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 /**
- * BottomNav (v47.3 — pixel-perfect bottom navigation)
- * ---------------------------------------------------
- * مطابقة كاملة للصورة المرجعية للويب الجوال (RTL):
- *  من اليمين: الرئيسية (نشط) | الدردشات | (+) منشور جديد | الريلز | حسابي
- *  - زر (+) مربع بحواف دائرية باللون البنفسجي (وليس دائري) كما في الصورة
- *  - مع نص "منشور جديد" تحته
- *  - الأيقونات بأنماط outline والأيقونة النشطة باللون البنفسجي
- *  - استجابة كاملة للجوالات القديمة (320–360px)
+ * BottomNav (v47.7 — pixel-perfect — مطابق تماماً للصورة المرجعية)
+ * ----------------------------------------------------------------
+ * الترتيب البصري كما في الصورة (من اليسار→اليمين على الشاشة):
+ *   حسابي | الريلز | (+) منشور جديد | الدردشات | الرئيسية (نشط)
+ *  (يسار)                                                  (يمين)
+ *
+ * - زر (+) في المنتصف: مربع بحواف دائرية باللون البنفسجي الممتلئ.
+ * - "الرئيسية" نشط (لون بنفسجي) في أقصى اليمين على الشاشة.
+ * - الأيقونات بأنماط outline.
  */
 
-const NAV_ITEMS = [
+const NAV_ITEMS_LTR_ORDER = [
+  // الترتيب أدناه يطابق ترتيب الظهور البصري من اليسار إلى اليمين على الشاشة
   {
-    id: 'home',
-    label: 'الرئيسية',
-    to: '/',
-    match: (p) => p === '/',
+    id: 'profile',
+    label: 'حسابي',
+    to: '/profile',
+    match: (p) => p.startsWith('/profile'),
     icon: (active) => (
       <svg viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-        <polyline points="9 22 9 12 15 12 15 22" />
-      </svg>
-    ),
-  },
-  {
-    id: 'chat',
-    label: 'الدردشات',
-    to: '/inbox',
-    match: (p) => p.startsWith('/inbox') || p.startsWith('/chat'),
-    icon: (active) => (
-      <svg viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-      </svg>
-    ),
-  },
-  {
-    id: 'create',
-    label: 'منشور جديد',
-    isCenter: true,
-    icon: () => (
-      <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.6" strokeLinecap="round">
-        <line x1="12" y1="5" x2="12" y2="19" />
-        <line x1="5" y1="12" x2="19" y2="12" />
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+        <circle cx="12" cy="7" r="4" />
       </svg>
     ),
   },
@@ -60,14 +40,36 @@ const NAV_ITEMS = [
     ),
   },
   {
-    id: 'profile',
-    label: 'حسابي',
-    to: '/profile',
-    match: (p) => p.startsWith('/profile'),
+    id: 'create',
+    label: 'منشور جديد',
+    isCenter: true,
+    icon: () => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.8" strokeLinecap="round">
+        <line x1="12" y1="5" x2="12" y2="19" />
+        <line x1="5" y1="12" x2="19" y2="12" />
+      </svg>
+    ),
+  },
+  {
+    id: 'chat',
+    label: 'الدردشات',
+    to: '/inbox',
+    match: (p) => p.startsWith('/inbox') || p.startsWith('/chat'),
     icon: (active) => (
       <svg viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-        <circle cx="12" cy="7" r="4" />
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      </svg>
+    ),
+  },
+  {
+    id: 'home',
+    label: 'الرئيسية',
+    to: '/',
+    match: (p) => p === '/',
+    icon: (active) => (
+      <svg viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+        <polyline points="9 22 9 12 15 12 15 22" />
       </svg>
     ),
   },
@@ -113,11 +115,11 @@ function BottomNav() {
       className="ym-bottomnav"
       role="navigation"
       aria-label="التنقل الرئيسي"
-      dir="rtl"
+      dir="ltr"
       style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}
     >
       <div className="ym-bottomnav-inner">
-        {NAV_ITEMS.map((item) => {
+        {NAV_ITEMS_LTR_ORDER.map((item) => {
           const isActive = item.match ? item.match(location.pathname) : location.pathname === item.to;
 
           if (item.isCenter) {
@@ -133,7 +135,7 @@ function BottomNav() {
                 <span className="ym-nav-plus-btn">
                   {item.icon()}
                 </span>
-                <span className="ym-nav-label ym-nav-label-center">{createAction.label}</span>
+                <span className="ym-nav-label ym-nav-label-center" dir="rtl">{createAction.label}</span>
               </button>
             );
           }
@@ -146,7 +148,7 @@ function BottomNav() {
               aria-current={isActive ? 'page' : undefined}
             >
               <div className="ym-nav-icon">{item.icon(isActive)}</div>
-              <span className="ym-nav-label">{item.label}</span>
+              <span className="ym-nav-label" dir="rtl">{item.label}</span>
             </Link>
           );
         })}
@@ -172,9 +174,11 @@ function BottomNav() {
           backface-visibility: hidden;
           font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
           box-sizing: border-box;
+          direction: ltr;
         }
         .ym-bottomnav-inner {
           display: flex;
+          flex-direction: row;
           justify-content: space-around;
           align-items: center;
           width: 100%;
@@ -192,7 +196,7 @@ function BottomNav() {
           justify-content: center;
           text-decoration: none;
           color: #9CA3AF;
-          font-size: 0.7rem;
+          font-size: 0.72rem;
           gap: 3px;
           padding: 4px 6px;
           transition: color 0.2s;
@@ -211,7 +215,7 @@ function BottomNav() {
         .ym-nav-item.active { color: #8B5CF6; }
         .ym-nav-item:hover { color: #C4B5FD; }
 
-        /* زر المنتصف (+) — مربع بحواف دائرية كما في الصورة */
+        /* زر المنتصف (+) — مربع بحواف دائرية */
         .ym-nav-center-item {
           display: flex;
           flex-direction: column;
@@ -227,14 +231,14 @@ function BottomNav() {
           font-family: inherit;
         }
         .ym-nav-plus-btn {
-          width: 44px;
-          height: 36px;
+          width: 46px;
+          height: 38px;
           background-color: #8B5CF6;
           border-radius: 12px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 4px 12px rgba(139, 92, 246, 0.45);
+          box-shadow: 0 4px 14px rgba(139, 92, 246, 0.5);
           color: #fff;
           transition: transform 0.15s, box-shadow 0.15s;
         }
@@ -244,48 +248,48 @@ function BottomNav() {
         }
         .ym-nav-center-item:hover .ym-nav-plus-btn {
           transform: translateY(-1px);
-          box-shadow: 0 6px 16px rgba(139, 92, 246, 0.6);
+          box-shadow: 0 6px 18px rgba(139, 92, 246, 0.65);
         }
         .ym-nav-center-item:active .ym-nav-plus-btn { transform: scale(0.95); }
         .ym-nav-label {
-          font-size: 0.7rem;
+          font-size: 0.72rem;
           line-height: 1.1;
-          max-width: 72px;
+          max-width: 76px;
           text-align: center;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
           color: inherit;
+          direction: rtl;
         }
         .ym-nav-label-center {
           color: #E5E7EB;
         }
 
-        /* === استجابة الشاشات === */
         @media (max-width: 400px) {
           .ym-bottomnav { height: calc(60px + env(safe-area-inset-bottom, 0px)); }
           .ym-bottomnav-inner { padding: 4px 2px; }
-          .ym-nav-item { padding: 3px 3px; font-size: 0.66rem; gap: 2px; }
+          .ym-nav-item { padding: 3px 3px; font-size: 0.68rem; gap: 2px; }
           .ym-nav-icon svg { width: 22px; height: 22px; }
-          .ym-nav-plus-btn { width: 40px; height: 32px; border-radius: 10px; }
+          .ym-nav-plus-btn { width: 42px; height: 34px; border-radius: 10px; }
           .ym-nav-plus-btn svg { width: 20px; height: 20px; }
-          .ym-nav-label { font-size: 0.66rem; max-width: 64px; }
+          .ym-nav-label { font-size: 0.68rem; max-width: 68px; }
         }
         @media (max-width: 360px) {
           .ym-bottomnav { height: calc(58px + env(safe-area-inset-bottom, 0px)); }
           .ym-bottomnav-inner { padding: 3px 2px; }
-          .ym-nav-item { padding: 2px 2px; font-size: 0.62rem; }
+          .ym-nav-item { padding: 2px 2px; font-size: 0.64rem; }
           .ym-nav-icon svg { width: 21px; height: 21px; }
           .ym-nav-plus-btn { width: 38px; height: 30px; border-radius: 9px; }
           .ym-nav-plus-btn svg { width: 19px; height: 19px; }
-          .ym-nav-label { font-size: 0.62rem; max-width: 60px; }
+          .ym-nav-label { font-size: 0.64rem; max-width: 62px; }
         }
         @media (max-width: 320px) {
           .ym-nav-item { padding: 2px 1px; }
           .ym-nav-icon svg { width: 20px; height: 20px; }
           .ym-nav-plus-btn { width: 36px; height: 28px; border-radius: 8px; }
           .ym-nav-plus-btn svg { width: 18px; height: 18px; }
-          .ym-nav-label { font-size: 0.58rem; max-width: 54px; }
+          .ym-nav-label { font-size: 0.6rem; max-width: 56px; }
         }
         @media (min-width: 1024px) {
           .ym-nav-label { font-size: 0.85rem; }

@@ -6,8 +6,14 @@ import {
   getGroupMessages,
   sendGroupMessage,
   uploadGroupMedia,
+  deleteGroupMessage,
+  pinGroupMessage,
+  forwardGroupMessage,
+  reportGroupMessage,
+  reactToGroupMessage,
 } from '../api/groups.js';
 import socketManager from '../services/socketManager.js';
+import { useToast } from '../components/admin/ToastProvider.jsx';
 import { getCurrentUsername } from '../utils/auth.js';
 import { startCall, bootstrapCallService } from '../services/callService.js';
 import { ensureNotificationPermission, showLocalNotification } from '../utils/notificationCenter.js';
@@ -37,6 +43,7 @@ import '../styles/chat-mobile-fixes.css';
 const GroupChat = () => {
   const { groupId } = useParams();
   const navigate = useNavigate();
+  const { pushToast } = useToast();
 
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState([]);
@@ -341,7 +348,7 @@ const GroupChat = () => {
       // أعد المحتوى للحقل ليتمكن المستخدم من إعادة الإرسال
       setMessage((prevInput) => prevInput || content);
       const errMsg = err?.response?.data?.detail || 'فشل إرسال الرسالة. تحقق من الاتصال.';
-      alert(errMsg);
+      pushToast?.({ type: 'error', title: 'فشل الإرسال', description: errMsg });
     }
   };
 
@@ -355,7 +362,11 @@ const GroupChat = () => {
     const accepted = [];
     for (const f of filesList) {
       if (f.size > MAX_SIZE) {
-        alert(`الملف "${f.name}" كبير جدًا (الحد الأقصى ${Math.round(MAX_SIZE / 1024 / 1024)}MB)`);
+        pushToast?.({
+          type: 'warning',
+          title: 'الملف كبير',
+          description: `"${f.name}" يتجاوز ${Math.round(MAX_SIZE / 1024 / 1024)}MB`,
+        });
         continue;
       }
       accepted.push(f);
@@ -382,7 +393,7 @@ const GroupChat = () => {
     if (!file) return;
     const MAX_SIZE = 50 * 1024 * 1024;
     if (file.size > MAX_SIZE) {
-      alert(`الملف كبير جدًا (الحد الأقصى ${Math.round(MAX_SIZE / 1024 / 1024)}MB)`);
+      pushToast?.({ type: 'warning', title: 'الملف كبير', description: `الحد الأقصى ${Math.round(MAX_SIZE / 1024 / 1024)}MB` });
       return;
     }
 
@@ -472,7 +483,7 @@ const GroupChat = () => {
         )
       );
       const errMsg = err?.response?.data?.detail || 'فشل رفع الملف. حاول مرة أخرى.';
-      alert(errMsg);
+      pushToast?.({ type: 'error', title: 'فشل الرفع', description: errMsg });
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -502,9 +513,13 @@ const GroupChat = () => {
       navigate(`/call/${encodeURIComponent('group:' + groupId)}?mode=${mode}`);
     } catch (err) {
       console.error('Could not start call:', err);
-      alert('تعذر بدء المكالمة. تأكد من السماح بالوصول للميكروفون/الكاميرا.');
+      pushToast?.({
+        type: 'error',
+        title: 'تعذر بدء المكالمة',
+        description: 'تأكد من السماح بالوصول للميكروفون/الكاميرا.',
+      });
     }
-  }, [groupId, navigate]);
+  }, [groupId, navigate, pushToast]);
 
   const groupName = groupInfo?.name || groupInfo?.title || 'دردشة المجموعة';
   const groupIcon = groupInfo?.icon || groupInfo?.image_url || null;
@@ -525,14 +540,70 @@ const GroupChat = () => {
     try { document.body.classList.remove('yam-long-press-active'); } catch {}
   };
   const onMsgReply    = (m) => setMessage((p) => (p ? p + ' ' : '') + `رد، على «${(m?.text || '').slice(0,40)}»: `);
-  const onMsgCopy     = (m) => { try { navigator.clipboard.writeText(m?.text || ''); } catch {} };
-  const onMsgDelete   = (m) => setMessages((prev) => prev.filter((x) => x.id !== m.id));
-  const onMsgStar     = (m) => setMessages((prev) => prev.map((x) => x.id === m.id ? { ...x, starred: !x.starred } : x));
-  const onMsgPin      = (m) => alert('تم تثبيت الرسالة');
-  const onMsgInfo     = (m) => alert(`المرسل: ${m?.sender}\nالوقت: ${m?.time}`);
-  const onMsgForward  = (m) => alert('اختر جهة لإعادة التوجيه');
-  const onMsgReport   = (m) => alert('تم إرسال البلاغ');
-  const onMsgReact    = (m, emoji) => setMessages((prev) => prev.map((x) => x.id === m.id ? { ...x, reaction: emoji } : x));
+  const onMsgCopy     = (m) => {
+    try {
+      navigator.clipboard.writeText(m?.text || '');
+      pushToast?.({ type: 'success', title: 'تم', description: 'تم نسخ النص' });
+    } catch {
+      pushToast?.({ type: 'error', title: 'خطأ', description: 'تعذر النسخ' });
+    }
+  };
+  const onMsgDelete   = async (m) => {
+    const prev = messages;
+    setMessages((p) => p.filter((x) => x.id !== m.id));
+    try {
+      await deleteGroupMessage(groupId, m.id);
+      pushToast?.({ type: 'success', title: 'تم', description: 'تم حذف الرسالة' });
+    } catch {
+      setMessages(prev); // rollback
+      pushToast?.({ type: 'error', title: 'خطأ', description: 'فشل حذف الرسالة' });
+    }
+  };
+  const onMsgStar     = (m) => {
+    setMessages((prev) => prev.map((x) => x.id === m.id ? { ...x, starred: !x.starred } : x));
+    pushToast?.({ type: 'info', title: 'مفضلة', description: m.starred ? 'تمت إزالة الرسالة من المفضلة' : 'تمت إضافة الرسالة للمفضلة' });
+  };
+  const onMsgPin      = async (m) => {
+    try {
+      await pinGroupMessage(groupId, m.id, !m.pinned);
+      setMessages((prev) => prev.map((x) => x.id === m.id ? { ...x, pinned: !m.pinned } : x));
+      pushToast?.({ type: 'success', title: 'تم', description: m.pinned ? 'تم فك تثبيت الرسالة' : 'تم تثبيت الرسالة' });
+    } catch {
+      pushToast?.({ type: 'error', title: 'خطأ', description: 'فشل تثبيت الرسالة' });
+    }
+  };
+  const onMsgInfo     = (m) => {
+    pushToast?.({
+      type: 'info',
+      title: `معلومات الرسالة`,
+      description: `المرسل: ${m?.sender || '—'} • الوقت: ${m?.time || '—'}`,
+    });
+  };
+  const onMsgForward  = async (m) => {
+    const target = window.prompt('اسم المستخدم أو معرّف المجموعة لإعادة التوجيه:');
+    if (!target || !target.trim()) return;
+    try {
+      await forwardGroupMessage(groupId, m.id, [target.trim()]);
+      pushToast?.({ type: 'success', title: 'تم', description: 'تم إعادة توجيه الرسالة' });
+    } catch {
+      pushToast?.({ type: 'error', title: 'خطأ', description: 'فشل إعادة التوجيه' });
+    }
+  };
+  const onMsgReport   = async (m) => {
+    const reason = window.prompt('سبب البلاغ (اختياري):', '');
+    try {
+      await reportGroupMessage(groupId, m.id, reason || '');
+      pushToast?.({ type: 'success', title: 'تم', description: 'تم إرسال البلاغ' });
+    } catch {
+      pushToast?.({ type: 'error', title: 'خطأ', description: 'فشل إرسال البلاغ' });
+    }
+  };
+  const onMsgReact    = async (m, emoji) => {
+    setMessages((prev) => prev.map((x) => x.id === m.id ? { ...x, reaction: emoji } : x));
+    try {
+      await reactToGroupMessage(groupId, m.id, emoji);
+    } catch { /* تجاهل — الـ optimistic UI يكفي */ }
+  };
 
   return (
     <MainLayout>

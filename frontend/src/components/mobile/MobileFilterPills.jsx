@@ -1,29 +1,24 @@
 import { memo } from 'react';
 
 /**
- * MobileFilterPills (v47)
- * -----------------------
- * أزرار فلاتر مستديرة:
- *   الكل / المجموعات / الستوري / التحديثات / التصفيات
+ * MobileFilterPills (v47.3 — pixel-perfect filter tabs)
+ * -----------------------------------------------------
+ * مطابقة كاملة للصورة المرجعية (RTL من اليمين لليسار):
+ *   الكل (نشط — بنفسجي ممتلئ) | المجموعات | الستوري | الوسائط | التعليقات
  *
- * - الزر النشط (الكل افتراضياً) باللون البنفسجي الممتلئ
- * - باقي الأزرار بإطار رمادي خفيف
- * - النقطة الصغيرة تظهر فوق "الستوري" للإشارة إلى تحديثات جديدة
- * - المقاسات والمسافات مضبوطة لتعمل على الأجهزة القديمة (Redmi Note 8 ≈ 360px)
- *   بدون أن تخرج عن حدود الشاشة.
+ * - الزر النشط ممتلئ بنفسجي (#7C3AED) بدون حواف
+ * - الأزرار غير النشطة بخلفية داكنة جداً قريبة من خلفية الصفحة بدون حواف ظاهرة
+ * - استجابة كاملة للجوالات القديمة (320–360px)
  */
-// ترتيب جديد (v47.2): زر "الكل" أصبح أول زر من جهة اليمين (RTL start)
-// كما هو معلّم بالسهم في صورة التصميم المرجعية للويب الجوال.
 const FILTERS = [
   { id: 'all', label: 'الكل' },
   { id: 'community', label: 'المجموعات' },
-  { id: 'stories', label: 'الستوري', hasDot: true },
+  { id: 'stories', label: 'الستوري' },
   { id: 'updates', label: 'الوسائط' },
   { id: 'ads', label: 'التعليقات' },
 ];
 
 function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange }) {
-  // قبول الاسمين معاً للحفاظ على التوافق مع كل صفحات الاستخدام
   const currentActive = activeFilter ?? activeId ?? 'all';
   const handleChange = (id) => {
     if (typeof onFilterChange === 'function') onFilterChange(id);
@@ -44,10 +39,7 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
               className={`ym-filter-pill-new ${f.id} ${isActive ? 'is-active' : ''}`}
               onClick={() => handleChange(f.id)}
             >
-              <div className="pill-content">
-                {f.hasDot && <span className="pill-dot" aria-hidden="true"></span>}
-                {f.label}
-              </div>
+              <span className="pill-content">{f.label}</span>
             </button>
           );
         })}
@@ -55,14 +47,14 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
 
       <style>{`
         .ym-filters-container {
-          padding: 8px 12px 10px;
+          padding: 6px 12px 10px;
           background-color: #0A0D1A;
           box-sizing: border-box;
           max-width: 100%;
         }
         .ym-filters {
           display: flex;
-          gap: 6px;
+          gap: 8px;
           overflow-x: auto;
           scrollbar-width: none;
           -ms-overflow-style: none;
@@ -71,21 +63,20 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
         .ym-filters::-webkit-scrollbar { display: none; }
 
         .ym-filter-pill-new {
-          flex: 1 0 auto;
-          min-width: 64px;
-          height: 32px;
-          padding: 0 12px;
+          flex: 0 0 auto;
+          height: 34px;
+          padding: 0 16px;
           border-radius: 999px;
-          border: 1px solid #1F2937;
-          background: #111827;
+          border: none;
+          background: #1A1F2E;
           color: #9CA3AF;
-          font-size: 0.78rem;
+          font-size: 0.82rem;
           font-weight: 600;
           font-family: inherit;
           cursor: pointer;
           white-space: nowrap;
           transition: all 0.18s ease;
-          display: flex;
+          display: inline-flex;
           align-items: center;
           justify-content: center;
         }
@@ -94,42 +85,41 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
         /* الزر النشط "الكل" — تعبئة بنفسجية */
         .ym-filter-pill-new.is-active {
           background-color: #7C3AED;
-          border-color: #7C3AED;
           color: #FFFFFF;
-          box-shadow: 0 2px 8px rgba(124, 58, 237, 0.35);
+          box-shadow: 0 2px 10px rgba(124, 58, 237, 0.4);
         }
 
         .pill-content {
           display: inline-flex;
           align-items: center;
-          gap: 5px;
           line-height: 1;
         }
-        .pill-dot {
-          width: 5px;
-          height: 5px;
-          background-color: #8B5CF6;
-          border-radius: 50%;
-          flex-shrink: 0;
-        }
-        .ym-filter-pill-new.is-active .pill-dot { background-color: #FFFFFF; }
 
-        /* === الأجهزة الصغيرة === */
+        /* === الأجهزة المتوسطة === */
         @media (max-width: 400px) {
           .ym-filters-container { padding: 6px 10px 8px; }
-          .ym-filters { gap: 5px; }
+          .ym-filters { gap: 6px; }
           .ym-filter-pill-new {
-            min-width: auto;
-            height: 30px;
-            padding: 0 10px;
-            font-size: 0.72rem;
+            height: 32px;
+            padding: 0 14px;
+            font-size: 0.78rem;
           }
         }
-        @media (max-width: 340px) {
+        /* === الجوالات القديمة الصغيرة === */
+        @media (max-width: 360px) {
+          .ym-filters-container { padding: 5px 8px 7px; }
+          .ym-filters { gap: 5px; }
+          .ym-filter-pill-new {
+            height: 30px;
+            padding: 0 12px;
+            font-size: 0.74rem;
+          }
+        }
+        @media (max-width: 320px) {
           .ym-filter-pill-new {
             height: 28px;
-            padding: 0 8px;
-            font-size: 0.68rem;
+            padding: 0 10px;
+            font-size: 0.7rem;
           }
         }
       `}</style>

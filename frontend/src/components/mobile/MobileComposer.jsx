@@ -1,15 +1,15 @@
 import { memo } from 'react';
 
 /**
- * MobileComposer (v47)
- * --------------------
- * صندوق "بماذا تفكر؟" — يطابق الصورة المرجعية:
- *   - أيقونة Y بنفسجية على اليمين
- *   - حقل نص للمكان المخصص لكتابة المنشور (يفتح المُنشئ الكامل عند الضغط)
- *   - أزرار: صورة، GIF، إيموجي على اليسار
+ * MobileComposer (v47.3 — pixel-perfect "بماذا تفكر؟")
+ * ---------------------------------------------------
+ * مطابقة كاملة للصورة المرجعية (RTL):
+ *  - يمين: Avatar دائري داكن مع شعار Y بنفسجي بحافة بنفسجية خفيفة
+ *  - وسط: نص "بماذا تفكر؟" بلون رمادي ناعم
+ *  - يسار: أزرار (صورة | GIF | إيموجي)
  *
- * الأبعاد والمسافات مُحسّنة للأجهزة القديمة (Redmi Note 8 ≈ 360px)
- * بحيث يبقى الصندوق متوسطاً وغير خارج عن حدود الشاشة.
+ * - حاوية مستطيلة بزوايا 12px (وليست pill كاملة) لمطابقة الصورة
+ * - استجابة كاملة للجوالات القديمة (320–360px)
  */
 function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
   const open = (action) => {
@@ -17,7 +17,6 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
       onFocus(action);
       return;
     }
-    // fallback: حدث عام يستمع له FeedMobile
     window.dispatchEvent(new CustomEvent('yamshat:open-composer', { detail: { action } }));
   };
 
@@ -31,7 +30,7 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
         onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && open(null)}
       >
         <span className="ym-composer-avatar" aria-hidden="true">
-          <svg viewBox="0 0 100 100" width="22" height="22">
+          <svg viewBox="0 0 100 100" width="100%" height="100%">
             <defs>
               <linearGradient id="ym-cmp-grad" x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0%" stopColor="#A78BFA" />
@@ -59,10 +58,10 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
             title="صورة"
             onClick={() => (onMedia ? onMedia() : open('image'))}
           >
-            <svg viewBox="0 0 24 24" width="18" height="18">
-              <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" fill="none" strokeWidth="1.8" />
-              <circle cx="8.5" cy="10" r="1.5" fill="currentColor" />
-              <path d="M21 17 L15 11 L5 19" stroke="currentColor" fill="none" strokeWidth="1.8" strokeLinejoin="round" />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="5" width="18" height="14" rx="2" />
+              <circle cx="8.5" cy="10" r="1.4" fill="currentColor" stroke="none" />
+              <path d="M21 17 L15 11 L5 19" />
             </svg>
           </button>
           <button
@@ -81,11 +80,11 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
             title="إيموجي"
             onClick={() => (onEmoji ? onEmoji() : open('emoji'))}
           >
-            <svg viewBox="0 0 24 24" width="18" height="18">
-              <circle cx="12" cy="12" r="9" stroke="currentColor" fill="none" strokeWidth="1.8" />
-              <circle cx="9" cy="10" r="1.2" fill="currentColor" />
-              <circle cx="15" cy="10" r="1.2" fill="currentColor" />
-              <path d="M8 14.5 C9.5 16.5, 14.5 16.5, 16 14.5" stroke="currentColor" fill="none" strokeWidth="1.8" strokeLinecap="round" />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <circle cx="9" cy="10" r="1" fill="currentColor" stroke="none" />
+              <circle cx="15" cy="10" r="1" fill="currentColor" stroke="none" />
+              <path d="M8 14.5 C9.5 16.5, 14.5 16.5, 16 14.5" />
             </svg>
           </button>
         </div>
@@ -93,7 +92,7 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
 
       <style>{`
         .ym-composer-wrap {
-          padding: 12px 14px 6px;
+          padding: 10px 12px 6px;
           background-color: #0A0D1A;
           box-sizing: border-box;
           max-width: 100%;
@@ -104,8 +103,8 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           gap: 10px;
           background: #14172a;
           border: 1px solid #1F2937;
-          border-radius: 999px;
-          padding: 8px 12px 8px 10px;
+          border-radius: 14px;
+          padding: 8px 12px;
           cursor: pointer;
           transition: border-color 0.15s, background 0.15s;
           box-sizing: border-box;
@@ -121,7 +120,9 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
-          border: 1px solid rgba(139,92,246,0.35);
+          border: 1px solid rgba(139,92,246,0.4);
+          padding: 4px;
+          box-sizing: border-box;
         }
         .ym-composer-input {
           flex: 1;
@@ -146,7 +147,7 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           background: none;
           border: none;
           color: #9CA3AF;
-          padding: 6px;
+          padding: 5px;
           cursor: pointer;
           display: inline-flex;
           align-items: center;
@@ -154,34 +155,50 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           border-radius: 6px;
           transition: background 0.15s, color 0.15s;
         }
+        .ym-composer-action svg {
+          width: 19px;
+          height: 19px;
+        }
         .ym-composer-action:hover {
           background: rgba(139, 92, 246, 0.12);
           color: #C4B5FD;
         }
         .ym-composer-action:active { transform: scale(0.93); }
         .ym-gif-pill {
-          font-weight: 800;
-          font-size: 0.72rem;
+          font-weight: 700;
+          font-size: 0.7rem;
           letter-spacing: 0.5px;
-          padding: 2px 6px;
+          padding: 2px 5px;
           border: 1.5px solid currentColor;
           border-radius: 4px;
           line-height: 1;
         }
-        /* === الأجهزة الصغيرة (Redmi Note 8 ≈ 360px) === */
+        /* === الأجهزة المتوسطة === */
         @media (max-width: 400px) {
-          .ym-composer-wrap { padding: 10px 10px 6px; }
-          .ym-composer { gap: 6px; padding: 6px 10px 6px 6px; }
-          .ym-composer-avatar { width: 30px; height: 30px; }
-          .ym-composer-input { font-size: 0.85rem; }
+          .ym-composer-wrap { padding: 8px 10px 6px; }
+          .ym-composer { gap: 7px; padding: 7px 10px; border-radius: 12px; }
+          .ym-composer-avatar { width: 30px; height: 30px; padding: 3px; }
+          .ym-composer-input { font-size: 0.86rem; }
           .ym-composer-actions { gap: 2px; }
-          .ym-composer-action { padding: 5px; }
+          .ym-composer-action { padding: 4px; }
           .ym-composer-action svg { width: 17px; height: 17px; }
-          .ym-gif-pill { font-size: 0.66rem; padding: 1.5px 4px; }
+          .ym-gif-pill { font-size: 0.64rem; padding: 1.5px 4px; }
         }
-        @media (max-width: 340px) {
-          .ym-composer-input { font-size: 0.8rem; }
+        /* === الجوالات القديمة === */
+        @media (max-width: 360px) {
+          .ym-composer-wrap { padding: 7px 8px 5px; }
+          .ym-composer { gap: 5px; padding: 6px 8px; }
+          .ym-composer-avatar { width: 28px; height: 28px; padding: 3px; }
+          .ym-composer-input { font-size: 0.8rem; padding: 3px 0; }
+          .ym-composer-action { padding: 3px; }
           .ym-composer-action svg { width: 16px; height: 16px; }
+          .ym-gif-pill { font-size: 0.6rem; padding: 1px 3px; }
+        }
+        @media (max-width: 320px) {
+          .ym-composer { gap: 4px; padding: 5px 6px; }
+          .ym-composer-avatar { width: 26px; height: 26px; }
+          .ym-composer-input { font-size: 0.75rem; }
+          .ym-composer-action svg { width: 15px; height: 15px; }
         }
       `}</style>
     </div>

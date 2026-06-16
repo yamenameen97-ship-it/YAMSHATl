@@ -6,15 +6,14 @@ import { clearStoredUser } from '../../utils/auth.js';
 import YamServicesMenu from '../ui/YamServicesMenu.jsx';
 
 /**
- * MobileTopBar (v47)
- * ------------------
- * إعادة تصميم الهيدر العلوي ليطابق الصورة المرجعية:
- * - زر القائمة (☰) على أقصى اليمين (RTL start)
- * - شعار Y + كلمة YAMSHAT في الوسط
- * - على أقصى اليسار (RTL end): جرس الإشعارات + رمز الستوري + رمز المجموعات + الصورة الشخصية
- * - تمت إزالة زر "البث المباشر" بناءً على طلب المستخدم
- * - أحجام النصوص والمسافات مضبوطة لتعمل بشكل صحيح على الأجهزة القديمة (Redmi Note 8 وما شابه)
- *   بحيث تبقى الصفحة متوسطة وغير خارجة عن حدود الشاشة.
+ * MobileTopBar (v47.2 — mobile web layout swap)
+ * ---------------------------------------------
+ * إعادة ترتيب الهيدر للويب الجوال ليطابق التصميم المعلّم بالأسهم:
+ * - أقصى اليمين (RTL start): شعار Y + كلمة YAMSHAT (مكان زر القائمة سابقاً)
+ * - المنتصف: جرس الإشعارات + رمز الستوري + رمز المجموعات
+ * - أقصى اليسار (RTL end): الصورة الشخصية + زر القائمة (☰)
+ * - تم الحفاظ على كل المنطق الأصلي (RTL، خطوط Noto Sans Arabic، استجابة الشاشات
+ *   الصغيرة Redmi Note 8 ≈ 360px) دون أي تعديل على الصفحات الأخرى.
  */
 function MobileTopBar({ onMenuClick, transparent = false }) {
   const navigate = useNavigate();
@@ -51,42 +50,30 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
         style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}
       >
         <div className="ym-topbar-inner">
-          {/* === أقصى اليمين (RTL start): زر القائمة فقط === */}
+          {/* === أقصى اليمين (RTL start): شعار Y + كلمة YAMSHAT === */}
           <div className="ym-topbar-side ym-topbar-side-start">
             <button
               type="button"
-              className="ym-topbar-btn ym-topbar-menu-btn"
-              aria-label="القائمة"
-              onClick={openMenu}
+              className="ym-topbar-brand"
+              aria-label="الصفحة الرئيسية"
+              onClick={() => navigate('/')}
             >
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
+              <svg className="ym-logo-v" viewBox="0 0 100 100" width="22" height="22" aria-hidden="true">
+                <defs>
+                  <linearGradient id="ym-y-grad" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#A78BFA" />
+                    <stop offset="100%" stopColor="#7C3AED" />
+                  </linearGradient>
+                </defs>
+                <path d="M20 20 L50 60 L80 20 L70 20 L50 45 L30 20 Z" fill="url(#ym-y-grad)" />
+                <path d="M45 60 L55 60 L55 85 L45 85 Z" fill="url(#ym-y-grad)" />
               </svg>
+              <span className="ym-wordmark">YAMSHAT</span>
             </button>
           </div>
 
-          {/* === المنتصف: شعار Y + كلمة YAMSHAT === */}
-          <button
-            type="button"
-            className="ym-topbar-brand"
-            aria-label="الصفحة الرئيسية"
-            onClick={() => navigate('/')}
-          >
-            <svg className="ym-logo-v" viewBox="0 0 100 100" width="22" height="22" aria-hidden="true">
-              <defs>
-                <linearGradient id="ym-y-grad" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="#A78BFA" />
-                  <stop offset="100%" stopColor="#7C3AED" />
-                </linearGradient>
-              </defs>
-              <path d="M20 20 L50 60 L80 20 L70 20 L50 45 L30 20 Z" fill="url(#ym-y-grad)" />
-              <path d="M45 60 L55 60 L55 85 L45 85 Z" fill="url(#ym-y-grad)" />
-            </svg>
-            <span className="ym-wordmark">YAMSHAT</span>
-          </button>
-
-          {/* === أقصى اليسار (RTL end): جرس + ستوري + مجموعات + صورة شخصية === */}
-          <div className="ym-topbar-side ym-topbar-side-end">
+          {/* === المنتصف: جرس + ستوري + مجموعات === */}
+          <div className="ym-topbar-center">
             {/* جرس الإشعارات */}
             <button
               type="button"
@@ -130,7 +117,10 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
                 <path d="M15 19c.4-2 2-3.2 3.7-3.2 1 0 2 .35 2.7 1" strokeLinecap="round" />
               </svg>
             </button>
+          </div>
 
+          {/* === أقصى اليسار (RTL end): الصورة الشخصية + زر القائمة (☰) === */}
+          <div className="ym-topbar-side ym-topbar-side-end">
             {/* الصورة الشخصية */}
             <Link to="/profile" className="ym-topbar-profile-link" aria-label="الملف الشخصي">
               <div className="ym-topbar-avatar">
@@ -144,6 +134,18 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
                 )}
               </div>
             </Link>
+
+            {/* زر القائمة (☰) — أصبح في الجهة المقابلة */}
+            <button
+              type="button"
+              className="ym-topbar-btn ym-topbar-menu-btn"
+              aria-label="القائمة"
+              onClick={openMenu}
+            >
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
+              </svg>
+            </button>
           </div>
         </div>
       </header>
@@ -201,6 +203,14 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
         }
         .ym-topbar-side-end {
           gap: 4px;
+        }
+        .ym-topbar-center {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 4px;
+          flex: 1 1 auto;
+          min-width: 0;
         }
         .ym-topbar-btn {
           background: none;
@@ -266,6 +276,7 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
           .ym-topbar { padding: 0 6px; height: 54px; }
           .ym-topbar-inner { gap: 2px; }
           .ym-topbar-side-end { gap: 2px; }
+          .ym-topbar-center { gap: 2px; }
           .ym-topbar-btn { padding: 5px; }
           .ym-topbar-btn svg { width: 18px; height: 18px; }
           .ym-wordmark { font-size: 0.78rem; letter-spacing: 1.1px; }

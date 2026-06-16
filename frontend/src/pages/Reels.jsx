@@ -1046,22 +1046,9 @@ export default function ReelsPage() {
   return (
     <MainLayout>
       <div className="reels-page-shell" onWheelCapture={handleWheelNavigation} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-        {/* ✅ v44: شعار YAMSHAT في الزاوية العلوية اليسرى (عائم فوق الفيديو) */}
-        <div className="reels-corner-brand" dir="rtl" aria-label="YAMSHAT">
-          <svg viewBox="0 0 100 100" width="22" height="22" aria-hidden="true">
-            <defs>
-              <linearGradient id="reels-y-grad" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#A78BFA" />
-                <stop offset="100%" stopColor="#7C3AED" />
-              </linearGradient>
-            </defs>
-            <path d="M20 20 L50 60 L80 20 L70 20 L50 45 L30 20 Z" fill="url(#reels-y-grad)" />
-            <path d="M45 60 L55 60 L55 85 L45 85 Z" fill="url(#reels-y-grad)" />
-          </svg>
-          <span className="reels-corner-brand-text">YAMSHAT</span>
-        </div>
-
-        {/* ✅ v42+: شريط علوي عائم شفاف بتبويبات TikTok */}
+        {/* ✅ v47.1: شريط علوي عائم — أيقونة البحث + تبويبات (استكشف / أتابعه / لك)
+            تم حذف شعار YAMSHAT العائم وزر البث المباشر العائم من هذه الصفحة
+            بناءً على طلب المستخدم لأنها كانت تخفي أو تزاحم تبويب "استكشف" على شاشات الجوال الصغيرة. */}
         <div className="reels-top-tabs-bar" dir="rtl">
           <button
             type="button"
@@ -1099,17 +1086,8 @@ export default function ReelsPage() {
             >لك</button>
           </div>
 
-          <button
-            type="button"
-            className="reels-floating-btn reels-live-btn"
-            aria-label="بث مباشر"
-            onClick={() => navigate('/live')}
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="6" width="14" height="12" rx="2"/>
-              <path d="M17 10l4-2v8l-4-2z"/>
-            </svg>
-          </button>
+          {/* ✅ v47.1: عنصر فارغ على اليسار لموازنة شريط التبويبات (يبقى "استكشف/أتابعه/لك" في المنتصف تمامًا) */}
+          <div className="reels-top-tabs-spacer" aria-hidden="true" />
         </div>
 
         {/* ✅ v42+: أدوات إضافية عائمة (فلتر) تظهر فقط في وضع الفيديو الواحد */}
@@ -1539,31 +1517,11 @@ export default function ReelsPage() {
             border-color: rgba(167,139,250,0.55);
           }
 
-          /* ✅ v44: شعار YAMSHAT في الزاوية العلوية اليسرى (داخل الريلز فقط) */
-          .reels-corner-brand {
-            position: absolute;
-            top: calc(env(safe-area-inset-top, 0px) + 8px);
-            inset-inline-start: 12px; /* RTL → الزاوية اليسرى */
-            z-index: 50;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 4px 8px;
-            border-radius: 999px;
-            background: rgba(0,0,0,0.28);
-            backdrop-filter: blur(8px) saturate(140%);
-            -webkit-backdrop-filter: blur(8px) saturate(140%);
-            pointer-events: none;
-            user-select: none;
-            font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
-          }
-          .reels-corner-brand-text {
-            color: #fff;
-            font-weight: 900;
-            font-size: 11px;
-            letter-spacing: 1px;
-            text-shadow: 0 2px 6px rgba(0,0,0,0.7);
-          }
+          /* ✅ v47.1: حُذف شعار YAMSHAT العائم بالكامل من صفحة الريلز
+             (كان يزاحم زر "استكشف" على شاشات الجوال الصغيرة).
+             نتركه مخفياً للحفاظ على التوافق إن استُخدم في أي مكان آخر. */
+          .reels-corner-brand { display: none !important; }
+          .reels-corner-brand-text { display: none !important; }
 
           /* ✅ v42+: شريط التبويبات العلوي على نمط TikTok (استكشف | أتابعه | لك) */
           .reels-top-tabs-bar {
@@ -1581,6 +1539,17 @@ export default function ReelsPage() {
           }
           .reels-top-tabs-bar > button,
           .reels-top-tabs-bar .reels-tabs-center { pointer-events: auto; }
+          /* ✅ v47.1: عنصر موازن (spacer) بنفس عرض زر البحث ليبقى شريط التبويبات في المنتصف بصرياً */
+          .reels-top-tabs-spacer {
+            width: 42px;
+            height: 42px;
+            flex: 0 0 auto;
+            pointer-events: none;
+          }
+          @media (max-width: 400px) {
+            .reels-top-tabs-spacer { width: 38px; height: 38px; }
+            .reels-top-tabs-bar { padding: 0 10px; }
+          }
           .reels-tabs-center {
             display: flex;
             align-items: center;

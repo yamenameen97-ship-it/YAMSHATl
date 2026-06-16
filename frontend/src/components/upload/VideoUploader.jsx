@@ -15,7 +15,25 @@ import {
 } from '../../services/upload/uploadHelpers.js';
 
 const MAX_VIDEO_SIZE = 500 * 1024 * 1024;
+// ✅ v47.1: أصل الأنواع المدعومة (العرض في UI فقط)
 const ALLOWED_TYPES = ['video/mp4', 'video/webm', 'video/quicktime'];
+// ✅ v47.1: امتدادات الفيديو المقبولة (على ويب الجوال، بعض المتصفحات ترجع file.type فارغًا أو غير قياسي)
+const ALLOWED_EXTENSIONS = ['mp4', 'webm', 'mov', 'm4v', 'mkv', '3gp', 'hevc'];
+// ✅ v47.1: فحص مرن للتحقق من أن الملف فيديو على جميع المتصفحات (خصوصاً ويب الجوال)
+function isAcceptableVideoFile(file) {
+  if (!file) return false;
+  const type = String(file.type || '').toLowerCase();
+  const name = String(file.name || '').toLowerCase();
+  const ext = name.includes('.') ? name.split('.').pop() : '';
+  // 1) MIME يبدأ بـ video/  → مقبول
+  if (type.startsWith('video/')) return true;
+  // 2) بعض متصفحات الجوال (وخاصة عند التقاط فيديو من الكاميرا) ترجع type فارغًا أو application/octet-stream
+  if (!type || type === 'application/octet-stream') {
+    return ALLOWED_EXTENSIONS.includes(ext);
+  }
+  // 3) حالات أخرى: تحقق من الامتداد كاحتياط
+  return ALLOWED_EXTENSIONS.includes(ext);
+}
 const DEFAULT_ADJUSTMENTS = {
   brightness: 100,
   contrast: 100,
@@ -192,10 +210,13 @@ export default function VideoUploader({ onUploadComplete, onError, label = 'رف
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!ALLOWED_TYPES.includes(file.type)) {
-      const message = 'نوع الملف غير مدعوم. استخدم MP4 أو WebM أو MOV';
+    // ✅ v47.1: فحص مرن توافقاً مع متصفحات الجوال التي قد لا تعيد MIME type دقيقًا (خاصة على iOS Safari / Android Chrome)
+    if (!isAcceptableVideoFile(file)) {
+      const message = 'نوع الملف غير مدعوم. استخدم فيديو MP4 أو WebM أو MOV';
       setErrorMessage(message);
       onError?.(message);
+      // ✅ إعادة ضبط قيمة input حتى يستطيع المستخدم إعادة تجربة نفس الملف إن أراد
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 
@@ -370,10 +391,11 @@ export default function VideoUploader({ onUploadComplete, onError, label = 'رف
         </div>
       )}
 
+      {/* ✅ v47.1: على ويب الجوال نستخدم accept="video/*" لتوسيع دائرة التوافق (بعض المتصفحات تتجاهل الاختيار إذا استخدمنا أنواعاً محددة). */}
       <input
         ref={fileInputRef}
         type="file"
-        accept={ALLOWED_TYPES.join(',')}
+        accept="video/*,video/mp4,video/webm,video/quicktime,video/x-m4v,video/x-matroska,.mp4,.webm,.mov,.m4v,.mkv,.3gp"
         onChange={handleFileSelect}
         style={{ display: 'none' }}
       />

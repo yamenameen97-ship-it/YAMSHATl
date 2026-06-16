@@ -12,12 +12,14 @@ import { memo } from 'react';
  * - المقاسات والمسافات مضبوطة لتعمل على الأجهزة القديمة (Redmi Note 8 ≈ 360px)
  *   بدون أن تخرج عن حدود الشاشة.
  */
+// ترتيب جديد (v47.2): زر "الكل" أصبح أول زر من جهة اليمين (RTL start)
+// كما هو معلّم بالسهم في صورة التصميم المرجعية للويب الجوال.
 const FILTERS = [
   { id: 'all', label: 'الكل' },
   { id: 'community', label: 'المجموعات' },
   { id: 'stories', label: 'الستوري', hasDot: true },
-  { id: 'updates', label: 'التحديثات' },
-  { id: 'ads', label: 'التصفيات' },
+  { id: 'updates', label: 'الوسائط' },
+  { id: 'ads', label: 'التعليقات' },
 ];
 
 function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange }) {

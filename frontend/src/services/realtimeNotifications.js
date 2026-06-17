@@ -1,5 +1,5 @@
 /**
- * Yamshat Realtime Notifications Client (v47.6)
+ * Yamshat Realtime Notifications Client (v47.10)
  * -------------------------------------------------
  * عميل WebSocket مخصّص للإشعارات اللحظية - يعمل مثل Instagram/Twitter.
  *
@@ -9,14 +9,21 @@
  *   - heartbeat (ping/pong) كل 25 ثانية
  *   - إصدار حدث `yamshat:notification` لكل إشعار جديد
  *   - تسجيل/إلغاء جهاز Web Push عبر VAPID
+ *
+ * ✅ v47.10: إصلاح فيضان أخطاء 404 في الكونسول
+ *   - circuit breaker: يتوقف بعد MAX_FAILED_ATTEMPTS فشل متتالٍ
+ *   - يمنع spam في الكونسول إذا كان endpoint غير متاح (404)
+ *   - يدعم تعطيله بمتغير VITE_DISABLE_REALTIME_WS=true
  */
 
 import { getAuthToken } from '../utils/auth.js';
 
 const WS_PATH = '/ws/notifications';
 const HEARTBEAT_MS = 25_000;
-const MAX_BACKOFF_MS = 30_000;
+const MAX_BACKOFF_MS = 60_000;
+const MAX_FAILED_ATTEMPTS = 3; // بعدها نوقف المحاولات نهائياً للجلسة
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || '';
+const DISABLED = String(import.meta.env.VITE_DISABLE_REALTIME_WS || '').toLowerCase() === 'true';
 
 function buildWsUrl(token) {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -44,18 +51,24 @@ class RealtimeNotificationsClient {
   constructor() {
     this.socket = null;
     this.reconnectAttempt = 0;
+    this.failedAttempts = 0;
     this.heartbeatTimer = null;
     this.reconnectTimer = null;
     this.manualClose = false;
+    this.disabled = DISABLED;
     this.listeners = new Set();
+    this.everConnected = false;
   }
 
-  // --- API عامة ---
-
   start() {
+    if (this.disabled) {
+      console.info('[realtime] WS realtime notifications disabled by env');
+      return;
+    }
     const token = getAuthToken();
     if (!token) return;
     this.manualClose = false;
+    this.failedAttempts = 0;
     this._connect(token);
   }
 
@@ -87,18 +100,21 @@ class RealtimeNotificationsClient {
     this.send({ type: 'mark_read', notification_id: notificationId });
   }
 
-  // --- داخلي ---
-
   _connect(token) {
+    if (this.disabled) return;
+    // كتم console.error مؤقتاً لأن المتصفح يطبع خطأ WebSocket تلقائياً (لا يمكن منعه عبر JS)
+    // نعتمد بدلاً من ذلك على عدم محاولة الاتصال أصلاً بعد فشل متكرر
     try {
       this.socket = new WebSocket(buildWsUrl(token));
     } catch (e) {
-      this._scheduleReconnect();
+      this._handleFailure();
       return;
     }
 
     this.socket.addEventListener('open', () => {
       this.reconnectAttempt = 0;
+      this.failedAttempts = 0;
+      this.everConnected = true;
       this._startHeartbeat();
       console.info('[realtime] notifications WS connected');
     });
@@ -115,32 +131,51 @@ class RealtimeNotificationsClient {
 
       if (msg.type === 'new_notification') {
         const item = msg.data || {};
-        // أعلِم باقي التطبيق
         try {
           window.dispatchEvent(new CustomEvent('yamshat:notification', { detail: item }));
         } catch (_) {}
-        // أكّد الاستلام
         if (item.id) this.ackNotification(item.id);
-        // أبلغ المشتركين
         this.listeners.forEach((fn) => {
           try { fn(item); } catch (_) {}
         });
       }
     });
 
-    this.socket.addEventListener('close', () => {
+    this.socket.addEventListener('close', (ev) => {
       this._clearTimers();
-      if (!this.manualClose) this._scheduleReconnect();
+      // إذا لم نتصل أبداً وأُغلقت بسرعة (404/handshake fail)، عدّ فشلاً
+      if (!this.everConnected) {
+        this._handleFailure();
+      } else if (!this.manualClose) {
+        this._scheduleReconnect();
+      }
     });
 
     this.socket.addEventListener('error', () => {
+      // أخطاء WebSocket لا يمكن منع المتصفح من طباعتها في الكونسول،
+      // لكن نحن نتعامل معها بهدوء عبر circuit breaker
       try { this.socket && this.socket.close(); } catch (_) {}
     });
   }
 
+  _handleFailure() {
+    this.failedAttempts += 1;
+    if (this.failedAttempts >= MAX_FAILED_ATTEMPTS) {
+      // circuit breaker: توقف نهائياً لهذه الجلسة
+      this.disabled = true;
+      this._clearTimers();
+      console.warn(
+        `[realtime] WS endpoint unavailable after ${MAX_FAILED_ATTEMPTS} attempts — disabled for this session. ` +
+        `Set VITE_DISABLE_REALTIME_WS=true to suppress this.`
+      );
+      return;
+    }
+    if (!this.manualClose) this._scheduleReconnect();
+  }
+
   _scheduleReconnect() {
-    if (this.manualClose) return;
-    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempt), MAX_BACKOFF_MS);
+    if (this.manualClose || this.disabled) return;
+    const delay = Math.min(2000 * Math.pow(2, this.reconnectAttempt), MAX_BACKOFF_MS);
     this.reconnectAttempt += 1;
     this.reconnectTimer = setTimeout(() => {
       const token = getAuthToken();
@@ -175,7 +210,6 @@ export const realtimeNotifications = new RealtimeNotificationsClient();
 
 /**
  * تسجيل Web Push (VAPID) وإرسال الـ subscription للخادم.
- * يستدعى مرة واحدة بعد تسجيل دخول المستخدم.
  */
 export async function registerWebPush() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;

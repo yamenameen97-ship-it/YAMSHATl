@@ -701,6 +701,33 @@ async def resend_verification(request: Request, payload: dict = Body(...), db: S
 
 @router.post('/login')
 async def login(request: Request, response: Response, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """
+    🔧 إصلاح v53: مسار تسجيل الدخول مع تغليف دفاعي تفاديًا لعودة 500.
+    - HTTPException تمرّ بدون تغيير لتحتفظ بستاتس كودها الأصلي (400/401/403/429).
+    - أي خطأ غير متوقع (DB/IO) يتم تسجيله + إرجاع رسالة واضحة
+      بستاتس 503 بدلاً من الغامض 500.
+    """
+    try:
+        return await _login_impl(request, response, payload, db)
+    except HTTPException:
+        # مهم: HTTPException تمر بدون تغيير
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.exception('[login] Unexpected error during login: %s', exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                'message': 'Authentication service is temporarily unavailable. Please try again.',
+                'error_type': type(exc).__name__,
+            },
+        ) from exc
+
+
+async def _login_impl(request: Request, response: Response, payload: dict, db: Session):
     identifier = payload.get('identifier') or payload.get('email') or payload.get('username')
     password = payload.get('password')
     remember_me = bool(payload.get('remember_me', True))
@@ -712,10 +739,16 @@ async def login(request: Request, response: Response, payload: dict = Body(...),
     normalized_identifier = _normalize_rate_key_part(identifier, 'anonymous')
     attempt_key = f"{binding['ip_address']}:{normalized_identifier}"
 
-    if not await enforce_rate_limit(f'login:{attempt_key}', settings.LOGIN_RATE_LIMIT_PER_MINUTE, 60):
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='Too many login attempts')
-    if await is_ip_locked(attempt_key):
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='Too many attempts, try again later')
+    # rate-limit / lockout (دفاعيًا: أي فشل في Redis لا يلغي تسجيل الدخول)
+    try:
+        if not await enforce_rate_limit(f'login:{attempt_key}', settings.LOGIN_RATE_LIMIT_PER_MINUTE, 60):
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='Too many login attempts')
+        if await is_ip_locked(attempt_key):
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='Too many attempts, try again later')
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('[login] rate-limit check soft-failed: %s', exc)
 
     if not _trusted_native_client(request):
         _require_captcha(payload, context='login')
@@ -728,17 +761,25 @@ async def login(request: Request, response: Response, payload: dict = Body(...),
             if pending_user is None:
                 pending_user = db.query(User).filter(User.username == str(identifier).strip()).first()
             if pending_user is not None:
-                code = issue_email_verification_code(db, pending_user)
-                delivery = _send_verification_message(pending_user, code)
+                try:
+                    code = issue_email_verification_code(db, pending_user)
+                    delivery = _send_verification_message(pending_user, code)
+                except Exception as inner_exc:  # noqa: BLE001
+                    logger.warning('[login] verification code issue soft-failed: %s', inner_exc)
+                    code = ''
+                    delivery = {'sent': False, 'error': str(inner_exc)}
                 detail = {
                     'message': VERIFICATION_REQUIRED_DETAIL,
                     'email': pending_user.email,
                     'delivery': delivery,
                 }
-                if settings.DEBUG and not delivery['sent']:
+                if settings.DEBUG and code and not delivery.get('sent'):
                     detail['dev_verification_code'] = code
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail) from exc
-        await register_failed_login(attempt_key)
+        try:
+            await register_failed_login(attempt_key)
+        except Exception:
+            pass
         record_audit_log(
             db,
             actor_user_id=None,
@@ -752,15 +793,25 @@ async def login(request: Request, response: Response, payload: dict = Body(...),
 
     _enforce_admin_ip_policy(request, user)
     _enforce_admin_mfa(user, payload)
-    suspicious, suspicious_meta = is_suspicious_login(user, binding)
+
+    # تقييم الخطورة لا يجب أن يفشل تسجيل الدخول
+    try:
+        suspicious, suspicious_meta = is_suspicious_login(user, binding)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('[login] suspicious-login check soft-failed: %s', exc)
+        suspicious, suspicious_meta = False, {'indicators': []}
+
     bypass_additional_verification = _should_bypass_additional_verification(user)
 
     if not bypass_additional_verification and (bool(getattr(user, 'two_factor_enabled', False)) or suspicious):
         challenge_type = 'suspicious_login' if suspicious else 'two_factor_login'
         challenge_payload, code = issue_login_challenge(db, user, challenge_type=challenge_type, meta=suspicious_meta)
         if suspicious:
-            user.suspicious_login_count = int(getattr(user, 'suspicious_login_count', 0) or 0) + 1
-            db.commit()
+            try:
+                user.suspicious_login_count = int(getattr(user, 'suspicious_login_count', 0) or 0) + 1
+                db.commit()
+            except Exception:
+                db.rollback()
         response.status_code = status.HTTP_202_ACCEPTED
         challenge_payload['remember_me'] = remember_me
         challenge_payload['identifier'] = identifier
@@ -786,13 +837,24 @@ async def login(request: Request, response: Response, payload: dict = Body(...),
         return challenge_payload
 
     user.last_login_at = utcnow_naive()
-    mark_successful_login(db, user, binding)
+    try:
+        mark_successful_login(db, user, binding)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('[login] mark_successful_login soft-failed: %s', exc)
+        db.rollback()
     if effective_role(user) == 'admin':
         user.last_admin_ip_hash = binding['ip_hash']
         user.last_admin_user_agent_hash = binding['user_agent_hash']
-    db.commit()
-    db.refresh(user)
-    await clear_failed_logins(attempt_key)
+    try:
+        db.commit()
+        db.refresh(user)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('[login] post-login commit soft-failed: %s', exc)
+        db.rollback()
+    try:
+        await clear_failed_logins(attempt_key)
+    except Exception:
+        pass
     record_audit_log(
         db,
         actor_user_id=user.id,

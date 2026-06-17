@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 from app.models.comment import Comment
 from app.models.like import Like
 from app.models.message import Message
+from app.models.notification import Notification
 from app.models.platform_metrics import (  # noqa: F401
     PlatformMetricsDaily,
     PostView,
@@ -36,6 +37,13 @@ from app.models.platform_metrics import (  # noqa: F401
 from app.models.post import Post
 from app.models.stories_reels import Reel, Story
 from app.models.user import User
+
+try:
+    from app.models.report import Report
+    _REPORTS_MODEL_AVAILABLE = True
+except Exception:  # pragma: no cover - defensive
+    Report = None  # type: ignore
+    _REPORTS_MODEL_AVAILABLE = False
 
 
 # ============ Helpers ============
@@ -192,6 +200,60 @@ def _stat_cards(db: Session, now: datetime) -> List[Dict[str, Any]]:
         .scalar() or 0
     )
 
+    # === Reports ===
+    pending_reports = 0
+    reports_this_month = 0
+    reports_last_month = 0
+    if _REPORTS_MODEL_AVAILABLE and Report is not None:
+        try:
+            pending_reports = (
+                db.query(func.count(Report.id))
+                .filter(Report.status.in_(['pending', 'reviewing', 'escalated']))
+                .scalar() or 0
+            )
+            reports_this_month = (
+                db.query(func.count(Report.id))
+                .filter(Report.created_at >= month_start)
+                .scalar() or 0
+            )
+            reports_last_month = (
+                db.query(func.count(Report.id))
+                .filter(
+                    Report.created_at >= last_month_start,
+                    Report.created_at < last_month_end,
+                )
+                .scalar() or 0
+            )
+        except Exception:
+            pending_reports = 0
+            reports_this_month = 0
+            reports_last_month = 0
+
+    # === Notifications ===
+    try:
+        unread_notifications = (
+            db.query(func.count(Notification.id))
+            .filter(Notification.is_read.is_(False))
+            .scalar() or 0
+        )
+        notifs_this_month = (
+            db.query(func.count(Notification.id))
+            .filter(Notification.created_at >= month_start)
+            .scalar() or 0
+        )
+        notifs_last_month = (
+            db.query(func.count(Notification.id))
+            .filter(
+                Notification.created_at >= last_month_start,
+                Notification.created_at < last_month_end,
+            )
+            .scalar() or 0
+        )
+    except Exception:
+        unread_notifications = 0
+        notifs_this_month = 0
+        notifs_last_month = 0
+
     return [
         {
             'id': 'users',
@@ -234,6 +296,22 @@ def _stat_cards(db: Session, now: datetime) -> List[Dict[str, Any]]:
             'trend': _percent_change(reels_this_month, reels_last_month),
             'icon': '🎵',
             'tone': '#ec4899',
+        },
+        {
+            'id': 'reports',
+            'label': 'البلاغات المفتوحة',
+            'value': _fmt_int(pending_reports),
+            'trend': _percent_change(reports_this_month, reports_last_month),
+            'icon': '⚠',
+            'tone': '#f97316',
+        },
+        {
+            'id': 'notifications',
+            'label': 'الإشعارات غير المقروءة',
+            'value': _fmt_int(unread_notifications),
+            'trend': _percent_change(notifs_this_month, notifs_last_month),
+            'icon': '🔔',
+            'tone': '#0ea5e9',
         },
     ]
 
@@ -286,31 +364,133 @@ def _content_distribution(db: Session) -> List[Dict[str, Any]]:
     ]
 
 
-# ============ Recent Activities ============
+# ============ Recent Activities (مصادر متعددة) ============
 
-def _recent_activities(db: Session, limit: int = 5) -> List[Dict[str, Any]]:
+def _humanize_minutes(delta_seconds: float) -> str:
+    minutes = max(int(delta_seconds // 60), 1)
+    if minutes < 60:
+        return f"منذ {minutes} دقيقة"
+    if minutes < 60 * 24:
+        return f"منذ {minutes // 60} ساعة"
+    return f"منذ {minutes // (60 * 24)} يوم"
+
+
+def _recent_activities(db: Session, limit: int = 8) -> List[Dict[str, Any]]:
+    """تجميع للأنشطة من: منشورات جديدة / مستخدمين جدد / بلاغات جديدة / إشعارات نظام."""
     activities: List[Dict[str, Any]] = []
+    now = datetime.utcnow()
 
-    posts = (
-        db.query(Post, User.username)
-        .join(User, User.id == Post.user_id)
-        .order_by(Post.created_at.desc())
-        .limit(limit)
-        .all()
-    )
-    for idx, (post, username) in enumerate(posts):
-        delta = datetime.utcnow() - (post.created_at or datetime.utcnow())
-        minutes = max(int(delta.total_seconds() // 60), 1)
-        if minutes < 60:
-            text = f"تم نشر منشور جديد منذ {minutes} دقيقة"
-        else:
-            text = f"تم نشر منشور جديد منذ {minutes // 60} ساعة"
-        activities.append({
-            'id': f'post-{post.id}',
-            'user': username or 'مستخدم',
-            'text': text,
-            'badge': 'NEW' if minutes < 10 and idx == 0 else None,
-        })
+    # === منشورات جديدة ===
+    try:
+        posts = (
+            db.query(Post, User.username)
+            .join(User, User.id == Post.user_id)
+            .order_by(Post.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        for post, username in posts:
+            ts = post.created_at or now
+            activities.append({
+                'id': f'post-{post.id}',
+                'user': username or 'مستخدم',
+                'text': f"نشر منشوراً جديداً · {_humanize_minutes((now - ts).total_seconds())}",
+                'kind': 'post',
+                'target': f'/admin/posts',
+                'ts': ts,
+                'badge': None,
+            })
+    except Exception:
+        pass
+
+    # === مستخدمون جدد ===
+    try:
+        new_users = (
+            db.query(User)
+            .order_by(User.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        for u in new_users:
+            ts = u.created_at or now
+            activities.append({
+                'id': f'user-{u.id}',
+                'user': u.username or 'مستخدم جديد',
+                'text': f"انضم إلى المنصة · {_humanize_minutes((now - ts).total_seconds())}",
+                'kind': 'user',
+                'target': f'/admin/users',
+                'ts': ts,
+                'badge': 'NEW',
+            })
+    except Exception:
+        pass
+
+    # === بلاغات جديدة ===
+    if _REPORTS_MODEL_AVAILABLE and Report is not None:
+        try:
+            reports = (
+                db.query(Report)
+                .order_by(Report.created_at.desc())
+                .limit(limit)
+                .all()
+            )
+            for r in reports:
+                ts = r.created_at or now
+                # جلب اسم المُبلِغ
+                reporter_name = 'مستخدم'
+                try:
+                    reporter = db.query(User.username).filter(User.id == r.reporter_id).first()
+                    if reporter and reporter[0]:
+                        reporter_name = reporter[0]
+                except Exception:
+                    pass
+                activities.append({
+                    'id': f'report-{r.id}',
+                    'user': reporter_name,
+                    'text': f"بلاغ جديد على ({r.target_type}) · {_humanize_minutes((now - ts).total_seconds())}",
+                    'kind': 'report',
+                    'target': f'/admin/reports',
+                    'ts': ts,
+                    'badge': 'BLAGH' if getattr(r, 'status', '') == 'pending' else None,
+                })
+        except Exception:
+            pass
+
+    # === إشعارات عامة ===
+    try:
+        notifs = (
+            db.query(Notification, User.username)
+            .join(User, User.id == Notification.user_id, isouter=True)
+            .order_by(Notification.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        for n, username in notifs:
+            ts = n.created_at or now
+            activities.append({
+                'id': f'notif-{n.id}',
+                'user': username or 'النظام',
+                'text': f"{(n.title or 'إشعار')} · {_humanize_minutes((now - ts).total_seconds())}",
+                'kind': 'notification',
+                'target': '/admin/notifications',
+                'ts': ts,
+                'badge': None,
+            })
+    except Exception:
+        pass
+
+    # === ترتيب حسب الوقت + إرجاع الحد الأعلى ===
+    activities.sort(key=lambda a: a.get('ts') or now, reverse=True)
+    activities = activities[:limit]
+    # إزالة ts لأنه غير قابل للتجزئة للـJSON بدون تحويل
+    for a in activities:
+        ts = a.pop('ts', None)
+        a['created_at'] = ts.isoformat() if ts else None
+    # أول عنصر حديث جداً يحصل على شارة LIVE
+    if activities:
+        first = activities[0]
+        if not first.get('badge'):
+            first['badge'] = 'LIVE'
     return activities
 
 
@@ -496,6 +676,75 @@ def _audience(db: Session) -> List[Dict[str, Any]]:
     ]
 
 
+# ============ Notifications & Reports Summary ============
+
+def _notifications_summary(db: Session) -> Dict[str, Any]:
+    try:
+        total = db.query(func.count(Notification.id)).scalar() or 0
+        unread = (
+            db.query(func.count(Notification.id))
+            .filter(Notification.is_read.is_(False))
+            .scalar() or 0
+        )
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        today = (
+            db.query(func.count(Notification.id))
+            .filter(Notification.created_at >= today_start)
+            .scalar() or 0
+        )
+        by_type_rows = (
+            db.query(Notification.type, func.count(Notification.id))
+            .group_by(Notification.type)
+            .all()
+        )
+        by_type = [{'type': (t or 'UNKNOWN'), 'count': int(c)} for t, c in by_type_rows]
+    except Exception:
+        return {'total': 0, 'unread': 0, 'today': 0, 'by_type': []}
+    return {
+        'total': int(total),
+        'unread': int(unread),
+        'today': int(today),
+        'by_type': by_type,
+    }
+
+
+def _reports_summary(db: Session) -> Dict[str, Any]:
+    if not (_REPORTS_MODEL_AVAILABLE and Report is not None):
+        return {'total': 0, 'pending': 0, 'reviewing': 0, 'resolved': 0, 'dismissed': 0, 'escalated': 0, 'today': 0, 'by_target': []}
+    try:
+        total = db.query(func.count(Report.id)).scalar() or 0
+        by_status_rows = (
+            db.query(Report.status, func.count(Report.id))
+            .group_by(Report.status)
+            .all()
+        )
+        by_status = {s or 'unknown': int(c) for s, c in by_status_rows}
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        today = (
+            db.query(func.count(Report.id))
+            .filter(Report.created_at >= today_start)
+            .scalar() or 0
+        )
+        by_target_rows = (
+            db.query(Report.target_type, func.count(Report.id))
+            .group_by(Report.target_type)
+            .all()
+        )
+        by_target = [{'target_type': (t or 'unknown'), 'count': int(c)} for t, c in by_target_rows]
+    except Exception:
+        return {'total': 0, 'pending': 0, 'reviewing': 0, 'resolved': 0, 'dismissed': 0, 'escalated': 0, 'today': 0, 'by_target': []}
+    return {
+        'total': int(total),
+        'pending': by_status.get('pending', 0),
+        'reviewing': by_status.get('reviewing', 0),
+        'resolved': by_status.get('resolved', 0),
+        'dismissed': by_status.get('dismissed', 0),
+        'escalated': by_status.get('escalated', 0),
+        'today': int(today),
+        'by_target': by_target,
+    }
+
+
 # ============ Entry Point ============
 
 def get_live_dashboard(db: Session) -> Dict[str, Any]:
@@ -515,5 +764,7 @@ def get_live_dashboard(db: Session) -> Dict[str, Any]:
         'daily_views_values': daily['values'],
         'daily_views_labels': daily['labels'],
         'audience': _audience(db),
+        'notifications_summary': _notifications_summary(db),
+        'reports_summary': _reports_summary(db),
         'generated_at': now.isoformat(),
     }

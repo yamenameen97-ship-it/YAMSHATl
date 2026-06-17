@@ -58,22 +58,54 @@ app.add_middleware(
 
 
 # ============================================================
-# 🛡️ معالج أخطاء يضمن وصول CORS headers حتى عند 500/503
-# هذا يحل الخطأ الذي يظهر للمستخدم كـ "CORS blocked"
-# بينما السبب الحقيقي هو 503 (cold start)
+# 🛡️ معالجات الأخطاء — تضمن وصول CORS headers حتى عند 4xx / 5xx
+# هذا يحل الخطأ الذي يظهر للمستخدم كـ "CORS blocked" أو
+# "Internal server error" بينما السبب الحقيقي 401/400/503 ... إلخ.
+#
+# 🔧 إصلاح حاسم (v53):
+# - HTTPException يجب أن يحتفظ بستاتس الكود الأصلي (401/400/403)
+#   بدلاً من تحويله إلى 500.
+# - النسخة السابقة كانت تبتلع كل الأخطاء وتعيد "Internal server error"
+#   مما أخفى السبب الحقيقي لفشل تسجيل الدخول.
 # ============================================================
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+
+def _cors_headers(request: Request) -> dict:
+    origin = request.headers.get("origin", "*")
+    return {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Credentials": "true",
+        "Vary": "Origin",
+    }
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    # نحافظ على الستاتس الكود الأصلي (401/400/403/404/429 ...) ولا نحوّله إلى 500
+    detail = exc.detail if exc.detail is not None else "HTTP error"
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": detail},
+        headers={**_cors_headers(request), **(exc.headers or {})},
+    )
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    # HTTPException يُعالَج بواسطة المعالج المخصص أعلاه — لكن نتأكد هنا أيضاً
+    if isinstance(exc, StarletteHTTPException):
+        return await http_exception_handler(request, exc)
+
     logger.exception(f"Unhandled error on {request.url.path}: {exc}")
-    origin = request.headers.get("origin", "*")
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal server error", "path": request.url.path},
-        headers={
-            "Access-Control-Allow-Origin": origin,
-            "Access-Control-Allow-Credentials": "true",
-            "Vary": "Origin",
+        content={
+            "detail": "Internal server error",
+            "path": request.url.path,
+            "error_type": type(exc).__name__,
         },
+        headers=_cors_headers(request),
     )
 
 

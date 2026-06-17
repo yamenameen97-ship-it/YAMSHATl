@@ -40,3 +40,13 @@ export const toggleShadowBan = (userId, enabled = true) => API.post(`/admin/user
 // POST  /api/reports/admin/{id}/action  → تنفيذ إجراء (escalate / dismiss / warn ...)
 export const updateReportStatus = (reportId, status) => API.patch(`/reports/admin/${reportId}`, { status });
 export const escalateReport = (reportId) => API.post(`/reports/admin/${reportId}/action`, { action: 'escalate' });
+
+// 📊 إحصائيات البلاغات الحية (تستخدم في Dashboard / Reports badges)
+export const getAdminReportsStats = () => API.get('/reports/admin/stats', { cache: true, cacheTtlMs: 10_000 });
+
+// 🔔 عدّاد سريع للإشعارات غير المقروءة (يستخدم في الـSidebar/Topbar)
+export const getAdminUnreadNotificationCount = async () => {
+  const { data } = await API.get('/admin/notifications', { params: { limit: 100 }, cache: true, cacheTtlMs: 8_000 });
+  const items = Array.isArray(data?.items) ? data.items : [];
+  return items.filter((n) => !n?.is_read).length;
+};

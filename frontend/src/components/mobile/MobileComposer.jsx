@@ -225,12 +225,20 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           .ym-gif-pill { font-size: 0.58rem; padding: 1px 3px; }
         }
         @media (max-width: 320px) {
-          .ym-composer { gap: 3px; padding: 4px 5px; }
-          .ym-composer-avatar { width: 26px; height: 26px; }
-          .ym-composer-input { font-size: 0.7rem; }
-          .ym-composer-action { padding: 2px; min-width: 22px; min-height: 22px; }
-          .ym-composer-action svg { width: 14px; height: 14px; }
-          .ym-gif-pill { font-size: 0.54rem; padding: 1px 2px; }
+          .ym-composer-wrap { padding: 6px 6px 3px; }
+          .ym-composer { gap: 3px; padding: 4px 5px; border-radius: 10px; }
+          .ym-composer-avatar { width: 24px; height: 24px; padding: 2px; }
+          .ym-composer-input { font-size: 0.66rem; padding: 2px 3px; }
+          .ym-composer-actions { gap: 1px; }
+          .ym-composer-action { padding: 2px; min-width: 20px; min-height: 20px; }
+          .ym-composer-action svg { width: 13px; height: 13px; }
+          .ym-gif-pill { font-size: 0.5rem; padding: 1px 2px; border-width: 1px; }
+        }
+        /* دعم Redmi Note 8 (عرض افتراضي 393px) */
+        @media (max-width: 393px) and (min-width: 361px) {
+          .ym-composer-wrap { padding: 9px 11px 4px; }
+          .ym-composer { padding: 6px 9px; }
+          .ym-composer-input { font-size: 0.84rem; }
         }
       `}</style>
     </div>

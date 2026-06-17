@@ -124,13 +124,22 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
           }
         }
         @media (max-width: 320px) {
-          .ym-filters-container { padding: 3px 5px 5px; }
-          .ym-filters { gap: 3px; }
+          .ym-filters-container { padding: 3px 4px 5px; }
+          .ym-filters { gap: 2px; }
           .ym-filter-pill-new {
-            height: 26px;
-            padding: 0 8px;
-            font-size: 0.64rem;
+            height: 24px;
+            padding: 0 7px;
+            font-size: 0.6rem;
           }
+        }
+        /* دعم Redmi Note 8 والأجهزة المتوسطة */
+        @media (max-width: 393px) and (min-width: 361px) {
+          .ym-filter-pill-new { height: 31px; padding: 0 13px; font-size: 0.76rem; }
+        }
+        /* إصلاح تمرير أفقي على المتصفحات القديمة */
+        .ym-filters {
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior-x: contain;
         }
       `}</style>
     </div>

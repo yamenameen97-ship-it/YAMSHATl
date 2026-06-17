@@ -312,9 +312,27 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
           .ym-topbar-center { gap: 5px; }
         }
         @media (max-width: 320px) {
-          .ym-wordmark { font-size: 0.66rem; letter-spacing: 0.6px; }
+          .ym-topbar { padding: 0 4px; height: 48px; }
+          .ym-wordmark { font-size: 0.64rem; letter-spacing: 0.4px; }
+          .ym-topbar-btn { padding: 3px; }
           .ym-topbar-btn svg { width: 17px; height: 17px; }
           .ym-topbar-link svg { width: 15px; height: 15px; }
+          .ym-logo-v { width: 16px; height: 16px; }
+          .ym-topbar-brand { gap: 2px; padding: 2px 1px; }
+          .ym-topbar-inner { gap: 1px; }
+          .ym-topbar-center { gap: 3px; }
+        }
+        /* دعم أجهزة Redmi Note 8 وما شابهها (393x873 @ DPR 2.75) */
+        @media (max-width: 393px) and (min-width: 361px) {
+          .ym-topbar { padding: 0 7px; height: 53px; }
+          .ym-topbar-center { gap: 8px; }
+          .ym-topbar-link-text { font-size: 0.74rem; }
+        }
+        /* دعم الأجهزة القديمة بدون backdrop-filter */
+        @supports not (backdrop-filter: blur(2px)) {
+          .ym-topbar.ym-topbar-transparent {
+            background: linear-gradient(180deg, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 100%);
+          }
         }
         @media (min-width: 1024px) {
           .ym-wordmark { font-size: 0.95rem; }

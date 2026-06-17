@@ -285,11 +285,29 @@ function BottomNav() {
           .ym-nav-label { font-size: 0.64rem; max-width: 62px; }
         }
         @media (max-width: 320px) {
-          .ym-nav-item { padding: 2px 1px; }
-          .ym-nav-icon svg { width: 20px; height: 20px; }
-          .ym-nav-plus-btn { width: 36px; height: 28px; border-radius: 8px; }
-          .ym-nav-plus-btn svg { width: 18px; height: 18px; }
-          .ym-nav-label { font-size: 0.6rem; max-width: 56px; }
+          .ym-bottomnav { height: calc(54px + env(safe-area-inset-bottom, 0px)); }
+          .ym-bottomnav-inner { padding: 2px 1px; }
+          .ym-nav-item { padding: 2px 1px; font-size: 0.58rem; gap: 1px; }
+          .ym-nav-icon svg { width: 19px; height: 19px; }
+          .ym-nav-plus-btn { width: 34px; height: 26px; border-radius: 7px; box-shadow: 0 2px 8px rgba(139, 92, 246, 0.45); }
+          .ym-nav-plus-btn svg { width: 16px; height: 16px; }
+          .ym-nav-label { font-size: 0.56rem; max-width: 52px; }
+        }
+        /* دعم Redmi Note 8 (393px) */
+        @media (max-width: 393px) and (min-width: 361px) {
+          .ym-bottomnav { height: calc(62px + env(safe-area-inset-bottom, 0px)); }
+          .ym-nav-plus-btn { width: 44px; height: 36px; }
+          .ym-nav-label { font-size: 0.7rem; }
+        }
+        /* دعم الأجهزة القديمة بدون env(safe-area-inset-bottom) */
+        @supports not (padding: env(safe-area-inset-bottom)) {
+          .ym-bottomnav {
+            height: 64px;
+            padding-bottom: 0;
+          }
+          @media (max-width: 400px) { .ym-bottomnav { height: 60px; } }
+          @media (max-width: 360px) { .ym-bottomnav { height: 58px; } }
+          @media (max-width: 320px) { .ym-bottomnav { height: 54px; } }
         }
         @media (min-width: 1024px) {
           .ym-nav-label { font-size: 0.85rem; }

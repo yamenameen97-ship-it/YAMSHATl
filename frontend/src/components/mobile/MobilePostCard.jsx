@@ -147,15 +147,30 @@ function MobilePostCard({
           </div>
         ) : (
           <div className="banner-logo-container">
-            <svg className="ym-logo-large" viewBox="0 0 100 100" aria-hidden="true">
+            {/* شعار Y كبير مطابق للصورة المرجعية — خطوط سميكة بشكل حرف Y */}
+            <svg className="ym-logo-large" viewBox="0 0 200 200" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
               <defs>
                 <linearGradient id="ym-banner-grad" x1="0" y1="0" x2="1" y2="1">
                   <stop offset="0%" stopColor="#A78BFA" />
+                  <stop offset="50%" stopColor="#8B5CF6" />
                   <stop offset="100%" stopColor="#7C3AED" />
                 </linearGradient>
               </defs>
-              <path d="M20 20 L50 60 L80 20 L70 20 L50 45 L30 20 Z" fill="url(#ym-banner-grad)" />
-              <path d="M45 60 L55 60 L55 85 L45 85 Z" fill="url(#ym-banner-grad)" />
+              {/* الفرع الأيسر السميك */}
+              <path
+                d="M40 35 Q42 30 50 32 L102 105 Q105 110 102 115 L100 118 Q95 122 90 117 L38 45 Q34 38 40 35 Z"
+                fill="url(#ym-banner-grad)"
+              />
+              {/* الفرع الأيمن السميك */}
+              <path
+                d="M160 35 Q166 30 168 38 L116 110 Q113 115 108 113 L106 111 Q102 107 105 102 L156 32 Q158 30 160 35 Z"
+                fill="url(#ym-banner-grad)"
+              />
+              {/* الساق العمودية السميكة */}
+              <path
+                d="M92 105 Q96 100 104 100 L108 100 Q114 102 114 110 L114 168 Q112 174 104 174 L98 174 Q92 172 92 165 L92 110 Z"
+                fill="url(#ym-banner-grad)"
+              />
             </svg>
           </div>
         )}
@@ -349,10 +364,16 @@ function MobilePostCard({
           background: #000000;
         }
         .ym-logo-large {
-          width: 52%;
+          width: 58%;
           height: auto;
-          max-width: 240px;
-          filter: drop-shadow(0 4px 20px rgba(139, 92, 246, 0.5));
+          max-width: 260px;
+          filter: drop-shadow(0 6px 24px rgba(139, 92, 246, 0.55));
+        }
+        @media (max-width: 360px) {
+          .ym-logo-large { width: 62%; }
+        }
+        @media (max-width: 320px) {
+          .ym-logo-large { width: 66%; }
         }
         .banner-corner-icon {
           position: absolute;
@@ -463,13 +484,43 @@ function MobilePostCard({
           .ym-more-btn svg { width: 16px; height: 16px; }
         }
         @media (max-width: 320px) {
-          .ym-post-card { padding: 8px 6px; }
-          .ym-author-name { font-size: 0.76rem; }
-          .ym-post-subtext { font-size: 0.6rem; }
-          .ym-footer-btn { font-size: 0.64rem; padding: 2px 3px; gap: 3px; }
-          .ym-footer-btn svg { width: 17px; height: 17px; }
+          .ym-post-card { padding: 7px 5px; }
+          .ym-post-avatar { width: 30px; height: 30px; }
+          .ym-author-name { font-size: 0.74rem; }
+          .ym-post-subtext { font-size: 0.58rem; gap: 2px; }
+          .ym-post-content { font-size: 0.74rem; line-height: 1.45; }
+          .ym-post-banner-new { border-radius: 9px; margin-bottom: 7px; }
+          .ym-footer-btn { font-size: 0.62rem; padding: 2px 3px; gap: 3px; }
+          .ym-footer-btn svg { width: 16px; height: 16px; }
           .ym-footer-btn-like svg { width: 18px; height: 18px; }
-          .banner-corner-icon { width: 24px; height: 24px; }
+          .banner-corner-icon { width: 22px; height: 22px; bottom: 6px; left: 6px; }
+          .ym-more-btn svg { width: 15px; height: 15px; }
+          .ym-more-btn { padding: 2px; }
+        }
+        /* دعم Redmi Note 8 (393px) والأجهزة المشابهة */
+        @media (max-width: 393px) and (min-width: 361px) {
+          .ym-post-card { padding: 11px 9px; }
+          .ym-post-avatar { width: 37px; height: 37px; }
+          .ym-author-name { font-size: 0.88rem; }
+          .ym-post-subtext { font-size: 0.7rem; }
+          .ym-footer-btn { font-size: 0.78rem; }
+          .ym-footer-btn svg { width: 20px; height: 20px; }
+        }
+        /* دعم المتصفحات القديمة التي لا تدعم aspect-ratio */
+        @supports not (aspect-ratio: 1 / 1) {
+          .ym-post-banner-new {
+            height: 0;
+            padding-bottom: 100%;
+            position: relative;
+          }
+          .banner-image-container,
+          .banner-logo-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+          }
         }
         @media (min-width: 1024px) {
           .ym-footer-btn { font-size: 0.92rem; }

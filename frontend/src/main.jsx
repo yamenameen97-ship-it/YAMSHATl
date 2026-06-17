@@ -54,6 +54,8 @@ import './styles/mobile-post-card-unified-fix.css';
 import './styles/mobile-fixes-v45.css';
 /* 🎯 v46 — إصلاحات ويب الجوال (الإحصائيات + أيقونات المنشور + الهيدر + ضبط العرض) — يجب أن يكون الأخير */
 import './styles/mobile-fixes-v46.css';
+/* 🎯 v47.8 — pixel-perfect لمطابقة الصورة المرجعية + دعم الشاشات الصغيرة (Redmi Note 8 / 320px) */
+import './styles/mobile-pixel-perfect-v47-8.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { pwaInitializer } from './services/pwaInitializer.js';
 import { smoothTouchLayer } from './services/smoothTouchLayer.js';

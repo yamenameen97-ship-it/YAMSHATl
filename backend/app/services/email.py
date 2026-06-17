@@ -6,9 +6,39 @@ from email.mime.text import MIMEText
 import httpx
 from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 
-from app.celery_app import celery_app
+# 🔧 إصلاح v55 (حاسم): استيراد celery دفاعي حتى لا يفشل تحميل
+# روتر /auth بالكامل عند غياب حزمة celery أو فشل تهيئتها.
+# لو celery_app غير متاح -> نوفّر decorator وهمي لـ .task بحيث
+# تبقى الدوال قابلة للاستيراد والاستدعاء مباشرة بدون طابور.
+try:
+    from app.celery_app import celery_app  # type: ignore
+    _CELERY_AVAILABLE = True
+except Exception as _celery_import_error:  # noqa: BLE001
+    _CELERY_AVAILABLE = False
+    celery_app = None  # type: ignore
+
+    class _NoopCeleryApp:
+        """Fallback خفيف يحاكي واجهة celery الضرورية فقط."""
+
+        def task(self, *dargs, **dkwargs):  # noqa: D401, ANN001
+            def decorator(func):
+                # نضع علامة لكي تعرف الدوال أنها بلا طابور حقيقي
+                func.delay = lambda *a, **kw: func(*a, **kw)  # type: ignore[attr-defined]
+                func.apply_async = lambda args=None, kwargs=None, **_: func(*(args or []), **(kwargs or {}))  # type: ignore[attr-defined]
+                return func
+
+            # دعم @celery_app.task و @celery_app.task(bind=True, ...)
+            if len(dargs) == 1 and callable(dargs[0]) and not dkwargs:
+                return decorator(dargs[0])
+            return decorator
+
+    celery_app = _NoopCeleryApp()  # type: ignore
 
 logger = logging.getLogger(__name__)
+if not _CELERY_AVAILABLE:
+    logger.warning(
+        '[email] celery not available -> using inline fallback; email tasks will run synchronously.'
+    )
 
 APP_NAME = os.getenv('PROJECT_NAME', 'YAMSHAT')
 
@@ -163,7 +193,7 @@ def send_email_via_smtp(to_email: str, subject: str, body: str, html_body: str |
 
 
 @celery_app.task(bind=True, retry_backoff=True, max_retries=5)
-def send_email_task(self, to_email: str, subject: str, body: str, html_body: str | None = None):
+def send_email_task(self=None, to_email: str = '', subject: str = '', body: str = '', html_body: str | None = None):
     providers = []
     if resend_configured():
         providers.append('resend')

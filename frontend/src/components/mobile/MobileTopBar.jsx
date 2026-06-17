@@ -6,21 +6,22 @@ import { clearStoredUser } from '../../utils/auth.js';
 import YamServicesMenu from '../ui/YamServicesMenu.jsx';
 
 /**
- * MobileTopBar (v47.10 — pixel-perfect — مطابق 1:1 للصورة المرجعية)
+ * MobileTopBar (v47.11 — مطابق 1:1 للصورة المرجعية الأولى)
  * ----------------------------------------------------------------------------------
- * الترتيب البصري المطلوب (مطابق للصورة المرجعية):
+ * الترتيب البصري المطلوب (من اليسار لليمين كما في الصورة الأولى):
  *
- *   |  Y YAMSHAT ▼      👥 المجموعات       ⊕ ي   |
- *   |  (يسار)            (وسط)            (يمين) |
+ *  | Y YAMSHAT  🔔  👥 المجموعات   ⊕  ستوري   ☰ |
  *
- * - الشعار + كلمة YAMSHAT + سهم ▼ في **أقصى اليسار**.
- * - "المجموعات" + أيقونة في **الوسط**.
- * - زر الإضافة (دائرة +) + حرف "ي" (المستخدم) في **أقصى اليمين** — هو زر القائمة.
+ * - أقصى اليسار: شعار Y + كلمة YAMSHAT
+ * - بعده: جرس الإشعارات 🔔
+ * - بعده: أيقونة المجموعات 👥 + كلمة "المجموعات"
+ * - بعده: زر الإضافة ⊕
+ * - بعده: كلمة "ستوري"
+ * - أقصى اليمين: زر القائمة ☰
  *
- * ✅ تم إزالة: زر الجرس، زر "ستوري"، أيقونة ☰ القديمة — لمطابقة الصورة بدقة.
- * ✅ direction: ltr للحاوية لحماية ترتيب flex من الانعكاس.
- * ✅ استجابة كاملة لشاشات: 320 / 360 / 393 / 400 / 480px.
- * ✅ كل العناصر داخل حدود الشاشة (لا توجد عناصر تخرج خارج الحاوية).
+ * ✅ كل الأزرار تظهر على جميع الشاشات (320px ↑ → 1920px ↑)
+ * ✅ زر القائمة ☰ + "ستوري" يظهران بوضوح على الشاشات الكبيرة والصغيرة
+ * ✅ direction: ltr لحماية ترتيب flex من الانعكاس بالـ RTL
  */
 function MobileTopBar({ onMenuClick, transparent = false }) {
   const navigate = useNavigate();
@@ -48,9 +49,6 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
     navigate('/login', { replace: true });
   }, [closeMenu, navigate]);
 
-  // الحرف الأول من اسم المستخدم أو "ي" افتراضياً
-  const userInitial = (user?.username || user?.name || 'ي').toString().trim().charAt(0) || 'ي';
-
   return (
     <>
       <header
@@ -60,7 +58,7 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
         style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}
       >
         <div className="ym-topbar-inner">
-          {/* === أقصى اليسار: شعار Y + كلمة YAMSHAT + سهم لأسفل === */}
+          {/* === 1) أقصى اليسار: شعار Y + كلمة YAMSHAT === */}
           <button
             type="button"
             className="ym-topbar-brand"
@@ -79,54 +77,72 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
               <line x1="50" y1="55" x2="50" y2="85" stroke="url(#ym-y-grad)" strokeWidth="12" strokeLinecap="round" />
             </svg>
             <span className="ym-wordmark">YAMSHAT</span>
-            <svg className="ym-chevron" viewBox="0 0 24 24" fill="none" stroke="#A78BFA" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
           </button>
 
-          {/* === الوسط: المجموعات === */}
-          <button
-            type="button"
-            className="ym-topbar-link ym-topbar-link-groups"
-            aria-label="المجموعات"
-            onClick={() => navigate('/groups')}
-            dir="rtl"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <circle cx="9" cy="8.5" r="3" />
-              <circle cx="17" cy="9.5" r="2.2" />
-              <path d="M3 19c1-3.2 3.5-4.8 6-4.8s5 1.6 6 4.8" />
-              <path d="M15 19c.5-2 2-3.2 3.6-3.2 1 0 1.9.3 2.6.9" />
-            </svg>
-            <span className="ym-topbar-link-text">المجموعات</span>
-          </button>
-
-          {/* === أقصى اليمين: زر دائرة (+) + حرف ي (مستخدم/قائمة) === */}
-          <div className="ym-topbar-right">
+          {/* === العناصر الوسطى/اليمنى === */}
+          <div className="ym-topbar-actions">
+            {/* 2) جرس الإشعارات */}
             <button
               type="button"
-              className="ym-topbar-plus"
-              aria-label="إنشاء جديد"
+              className="ym-topbar-icon ym-topbar-bell"
+              aria-label="الإشعارات"
+              onClick={() => navigate('/notifications')}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+                <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+              </svg>
+            </button>
+
+            {/* 3) المجموعات */}
+            <button
+              type="button"
+              className="ym-topbar-link"
+              aria-label="المجموعات"
+              onClick={() => navigate('/groups')}
+              dir="rtl"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="9" cy="8.5" r="3" />
+                <circle cx="17" cy="9.5" r="2.2" />
+                <path d="M3 19c1-3.2 3.5-4.8 6-4.8s5 1.6 6 4.8" />
+                <path d="M15 19c.5-2 2-3.2 3.6-3.2 1 0 1.9.3 2.6.9" />
+              </svg>
+              <span className="ym-topbar-link-text">المجموعات</span>
+            </button>
+
+            {/* 4) زر الإضافة + ستوري (مجمعان كما في الصورة) */}
+            <button
+              type="button"
+              className="ym-topbar-link ym-topbar-story"
+              aria-label="إنشاء ستوري"
               onClick={() => {
                 try {
-                  window.dispatchEvent(new CustomEvent('yamshat:open-composer'));
+                  window.dispatchEvent(new CustomEvent('yamshat:open-composer', { detail: { type: 'story' } }));
                 } catch { /* ignore */ }
               }}
+              dir="rtl"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <svg className="ym-story-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <circle cx="12" cy="12" r="10" />
                 <line x1="12" y1="8" x2="12" y2="16" />
                 <line x1="8" y1="12" x2="16" y2="12" />
               </svg>
+              <span className="ym-topbar-link-text">ستوري</span>
             </button>
 
+            {/* 5) زر القائمة ☰ — مهم: يظهر دائماً على كل المقاسات */}
             <button
               type="button"
-              className="ym-topbar-user"
+              className="ym-topbar-menu"
               aria-label="القائمة"
               onClick={openMenu}
             >
-              <span className="ym-topbar-user-letter">{userInitial}</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <line x1="4" y1="7" x2="20" y2="7" />
+                <line x1="4" y1="12" x2="20" y2="12" />
+                <line x1="4" y1="17" x2="20" y2="17" />
+              </svg>
             </button>
           </div>
         </div>
@@ -140,7 +156,7 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
           top: 0;
           left: 0;
           right: 0;
-          height: 54px;
+          height: 56px;
           background-color: #0A0D1A;
           border-bottom: 1px solid #1F2937;
           z-index: 1000;
@@ -154,7 +170,6 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
           font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
           box-sizing: border-box;
           direction: ltr;
-          overflow: hidden;
         }
         .ym-topbar.ym-topbar-transparent {
           background: linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.25) 60%, rgba(0,0,0,0) 100%);
@@ -164,7 +179,9 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
           -webkit-backdrop-filter: blur(2px);
         }
         .ym-topbar.ym-topbar-transparent .ym-topbar-link,
-        .ym-topbar.ym-topbar-transparent .ym-wordmark {
+        .ym-topbar.ym-topbar-transparent .ym-wordmark,
+        .ym-topbar.ym-topbar-transparent .ym-topbar-icon,
+        .ym-topbar.ym-topbar-transparent .ym-topbar-menu {
           color: #FFFFFF;
           text-shadow: 0 1px 2px rgba(0,0,0,0.6);
         }
@@ -174,9 +191,9 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
           justify-content: space-between;
           align-items: center;
           width: 100%;
-          max-width: 600px;
+          max-width: 1200px;
           margin: 0 auto;
-          gap: 4px;
+          gap: 6px;
           height: 100%;
           box-sizing: border-box;
           padding: 0;
@@ -188,7 +205,7 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
           display: inline-flex;
           flex-direction: row;
           align-items: center;
-          gap: 5px;
+          gap: 6px;
           border: none;
           background: transparent;
           cursor: pointer;
@@ -198,32 +215,59 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
           min-width: 0;
         }
         .ym-logo-v {
-          width: 22px;
-          height: 22px;
+          width: 24px;
+          height: 24px;
           flex-shrink: 0;
           display: block;
         }
         .ym-wordmark {
           color: #FFFFFF;
           font-weight: 800;
-          font-size: 0.86rem;
+          font-size: 0.9rem;
           letter-spacing: 1.2px;
           white-space: nowrap;
           line-height: 1;
         }
-        .ym-chevron {
-          width: 14px;
-          height: 14px;
-          flex-shrink: 0;
-          display: block;
+
+        /* === مجموعة الأزرار اليمنى === */
+        .ym-topbar-actions {
+          display: inline-flex;
+          flex-direction: row;
+          align-items: center;
+          gap: 4px;
+          flex-shrink: 1;
+          flex-wrap: nowrap;
+          min-width: 0;
         }
 
-        /* === الرابط الأوسط (المجموعات) === */
+        /* === الجرس + أيقونات منفردة === */
+        .ym-topbar-icon {
+          background: none;
+          border: none;
+          color: #A78BFA;
+          padding: 6px;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 8px;
+          flex-shrink: 0;
+          transition: background 0.15s;
+        }
+        .ym-topbar-icon svg {
+          width: 22px;
+          height: 22px;
+          display: block;
+        }
+        .ym-topbar-icon:hover { background: rgba(139, 92, 246, 0.12); }
+        .ym-topbar-icon:active { transform: scale(0.94); }
+
+        /* === الروابط (المجموعات + ستوري) === */
         .ym-topbar-link {
           background: none;
           border: none;
           color: #E5E7EB;
-          padding: 4px 6px;
+          padding: 5px 6px;
           cursor: pointer;
           display: inline-flex;
           flex-direction: row;
@@ -251,117 +295,103 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
         }
         .ym-topbar-link:hover { background: rgba(139, 92, 246, 0.12); }
         .ym-topbar-link:active { transform: scale(0.96); }
+        .ym-topbar-story .ym-story-plus { width: 20px; height: 20px; }
 
-        /* === الجانب الأيمن: زر + + حرف المستخدم === */
-        .ym-topbar-right {
-          display: inline-flex;
-          flex-direction: row;
-          align-items: center;
-          gap: 6px;
-          flex-shrink: 0;
-        }
-        .ym-topbar-plus {
+        /* === زر القائمة ☰ (أقصى اليمين) === */
+        .ym-topbar-menu {
           background: none;
           border: none;
           color: #A78BFA;
-          padding: 0;
+          padding: 6px;
           cursor: pointer;
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          border-radius: 50%;
-          width: 28px;
-          height: 28px;
+          border-radius: 8px;
           flex-shrink: 0;
           transition: background 0.15s;
         }
-        .ym-topbar-plus svg {
-          width: 22px;
-          height: 22px;
+        .ym-topbar-menu svg {
+          width: 24px;
+          height: 24px;
           display: block;
         }
-        .ym-topbar-plus:hover { background: rgba(139, 92, 246, 0.12); }
-        .ym-topbar-plus:active { transform: scale(0.94); }
+        .ym-topbar-menu:hover { background: rgba(139, 92, 246, 0.12); }
+        .ym-topbar-menu:active { transform: scale(0.94); }
 
-        .ym-topbar-user {
-          background: transparent;
-          border: 1.5px solid #A78BFA;
-          color: #A78BFA;
-          width: 28px;
-          height: 28px;
-          border-radius: 50%;
-          cursor: pointer;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          padding: 0;
-          flex-shrink: 0;
-          transition: background 0.15s;
-          font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+        /* ====== استجابة الشاشات الكبيرة (تابلت + ديسكتوب + وضع الويب على الموبايل) ====== */
+        @media (min-width: 768px) {
+          .ym-topbar { height: 60px; padding: 0 20px; }
+          .ym-wordmark { font-size: 1rem; letter-spacing: 1.4px; }
+          .ym-logo-v { width: 26px; height: 26px; }
+          .ym-topbar-actions { gap: 8px; }
+          .ym-topbar-icon svg { width: 24px; height: 24px; }
+          .ym-topbar-link { padding: 6px 10px; gap: 6px; }
+          .ym-topbar-link svg { width: 22px; height: 22px; }
+          .ym-topbar-link-text { font-size: 0.92rem; }
+          .ym-topbar-menu svg { width: 26px; height: 26px; }
         }
-        .ym-topbar-user-letter {
-          font-size: 0.85rem;
-          font-weight: 700;
-          line-height: 1;
-          direction: rtl;
+        @media (min-width: 1024px) {
+          .ym-topbar { height: 64px; }
+          .ym-wordmark { font-size: 1.05rem; }
+          .ym-topbar-actions { gap: 10px; }
+          .ym-topbar-link-text { font-size: 0.95rem; }
         }
-        .ym-topbar-user:hover { background: rgba(139, 92, 246, 0.12); }
-        .ym-topbar-user:active { transform: scale(0.94); }
 
         /* ====== استجابة الشاشات الصغيرة ====== */
-        @media (max-width: 400px) {
-          .ym-topbar { padding: 0 10px; height: 52px; }
-          .ym-topbar-inner { gap: 2px; }
-          .ym-wordmark { font-size: 0.8rem; letter-spacing: 1px; }
-          .ym-logo-v { width: 20px; height: 20px; }
-          .ym-chevron { width: 12px; height: 12px; }
-          .ym-topbar-link { padding: 3px 4px; gap: 4px; }
+        @media (max-width: 480px) {
+          .ym-topbar { padding: 0 10px; height: 54px; }
+          .ym-topbar-inner { gap: 3px; }
+          .ym-wordmark { font-size: 0.82rem; letter-spacing: 1px; }
+          .ym-logo-v { width: 22px; height: 22px; }
+          .ym-topbar-icon { padding: 5px; }
+          .ym-topbar-icon svg { width: 20px; height: 20px; }
+          .ym-topbar-link { padding: 4px 5px; gap: 4px; }
           .ym-topbar-link svg { width: 18px; height: 18px; }
-          .ym-topbar-link-text { font-size: 0.76rem; }
-          .ym-topbar-plus, .ym-topbar-user { width: 26px; height: 26px; }
-          .ym-topbar-plus svg { width: 20px; height: 20px; }
-          .ym-topbar-user-letter { font-size: 0.78rem; }
-          .ym-topbar-right { gap: 5px; }
+          .ym-topbar-link-text { font-size: 0.78rem; }
+          .ym-topbar-menu { padding: 5px; }
+          .ym-topbar-menu svg { width: 22px; height: 22px; }
+          .ym-topbar-actions { gap: 2px; }
+        }
+        @media (max-width: 400px) {
+          .ym-topbar { padding: 0 8px; height: 52px; }
+          .ym-wordmark { font-size: 0.78rem; }
+          .ym-logo-v { width: 20px; height: 20px; }
+          .ym-topbar-icon svg { width: 19px; height: 19px; }
+          .ym-topbar-link svg { width: 17px; height: 17px; }
+          .ym-topbar-link-text { font-size: 0.72rem; }
+          .ym-topbar-link { padding: 3px 4px; gap: 3px; }
+          .ym-topbar-menu svg { width: 21px; height: 21px; }
         }
         @media (max-width: 360px) {
-          .ym-topbar { padding: 0 8px; height: 50px; }
-          .ym-wordmark { font-size: 0.74rem; letter-spacing: 0.8px; }
+          .ym-topbar { padding: 0 6px; height: 50px; }
+          .ym-wordmark { font-size: 0.72rem; letter-spacing: 0.6px; }
           .ym-logo-v { width: 18px; height: 18px; }
-          .ym-chevron { width: 11px; height: 11px; }
-          .ym-topbar-link { padding: 2px 3px; gap: 3px; }
+          .ym-topbar-icon { padding: 4px; }
+          .ym-topbar-icon svg { width: 18px; height: 18px; }
           .ym-topbar-link svg { width: 16px; height: 16px; }
-          .ym-topbar-link-text { font-size: 0.7rem; }
-          .ym-topbar-plus, .ym-topbar-user { width: 24px; height: 24px; }
-          .ym-topbar-plus svg { width: 18px; height: 18px; }
-          .ym-topbar-user-letter { font-size: 0.72rem; }
-          .ym-topbar-brand { gap: 3px; padding: 3px 2px; }
-          .ym-topbar-right { gap: 4px; }
+          .ym-topbar-link-text { font-size: 0.68rem; }
+          .ym-topbar-link { padding: 2px 3px; gap: 2px; }
+          .ym-topbar-menu { padding: 4px; }
+          .ym-topbar-menu svg { width: 20px; height: 20px; }
+          .ym-topbar-brand { gap: 3px; padding: 2px; }
         }
-        @media (max-width: 320px) {
-          .ym-topbar { padding: 0 6px; height: 48px; }
-          .ym-wordmark { font-size: 0.66rem; letter-spacing: 0.5px; }
+        /* للشاشات الصغيرة جداً 320px — نُخفي نص "ستوري" فقط لتوفير المساحة، لكن الأيقونة + باقي الأزرار تظل ظاهرة */
+        @media (max-width: 340px) {
+          .ym-topbar { padding: 0 5px; height: 48px; }
+          .ym-wordmark { font-size: 0.66rem; letter-spacing: 0.4px; }
           .ym-logo-v { width: 16px; height: 16px; }
-          .ym-chevron { width: 10px; height: 10px; }
+          .ym-topbar-icon svg { width: 16px; height: 16px; }
           .ym-topbar-link svg { width: 15px; height: 15px; }
-          .ym-topbar-link-text { font-size: 0.64rem; }
-          .ym-topbar-plus, .ym-topbar-user { width: 22px; height: 22px; }
-          .ym-topbar-plus svg { width: 16px; height: 16px; }
-          .ym-topbar-user-letter { font-size: 0.68rem; }
-          .ym-topbar-brand { gap: 2px; padding: 2px 1px; }
-          .ym-topbar-right { gap: 3px; }
+          .ym-topbar-link-text { font-size: 0.62rem; }
+          .ym-topbar-story .ym-topbar-link-text { display: none; } /* نُخفي نص ستوري فقط */
+          .ym-topbar-menu svg { width: 18px; height: 18px; }
         }
-        @media (max-width: 393px) and (min-width: 361px) {
-          .ym-topbar { padding: 0 9px; height: 53px; }
-          .ym-wordmark { font-size: 0.78rem; }
-          .ym-topbar-link-text { font-size: 0.74rem; }
-        }
+
         @supports not (backdrop-filter: blur(2px)) {
           .ym-topbar.ym-topbar-transparent {
             background: linear-gradient(180deg, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 100%);
           }
-        }
-        @media (min-width: 1024px) {
-          .ym-wordmark { font-size: 0.95rem; }
         }
       `}</style>
     </>

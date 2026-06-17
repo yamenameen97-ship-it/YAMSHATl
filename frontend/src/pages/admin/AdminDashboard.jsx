@@ -20,11 +20,13 @@ import { getAdminDashboardLive } from '../../api/admin.js';
 
 // ============ Fallback (يظهر فقط أثناء التحميل أو إذا فشل الاتصال) ============
 const FALLBACK_STAT_CARDS = [
-  { id: 'users',   label: 'إجمالي المستخدمين', value: '—', trend: '+0.0%', icon: '👥', tone: '#8b5cf6' },
-  { id: 'views',   label: 'المشاهدات الكلية',  value: '—', trend: '+0.0%', icon: '👁', tone: '#ef4444' },
-  { id: 'revenue', label: 'الإيرادات',         value: '—', trend: '+0.0%', icon: '$',  tone: '#10b981' },
-  { id: 'posts',   label: 'المنشورات',         value: '—', trend: '+0.0%', icon: '🎁', tone: '#f59e0b' },
-  { id: 'reels',   label: 'الريلز',            value: '—', trend: '+0.0%', icon: '🎵', tone: '#ec4899' },
+  { id: 'users',         label: 'إجمالي المستخدمين',  value: '—', trend: '+0.0%', icon: '👥', tone: '#8b5cf6' },
+  { id: 'views',         label: 'المشاهدات الكلية',   value: '—', trend: '+0.0%', icon: '👁', tone: '#ef4444' },
+  { id: 'revenue',       label: 'الإيرادات',          value: '—', trend: '+0.0%', icon: '$',  tone: '#10b981' },
+  { id: 'posts',         label: 'المنشورات',          value: '—', trend: '+0.0%', icon: '🎁', tone: '#f59e0b' },
+  { id: 'reels',         label: 'الريلز',             value: '—', trend: '+0.0%', icon: '🎵', tone: '#ec4899' },
+  { id: 'reports',       label: 'البلاغات المفتوحة', value: '—', trend: '+0.0%', icon: '⚠',  tone: '#f97316' },
+  { id: 'notifications', label: 'إشعارات غير مقروءة', value: '—', trend: '+0.0%', icon: '🔔', tone: '#0ea5e9' },
 ];
 
 const FALLBACK_VIEWS_TREND = [
@@ -58,6 +60,23 @@ const STAT_TARGETS = {
   live:     '/admin/dashboard',
   reports:  '/admin/reports',
   notifications: '/admin/notifications',
+};
+
+// ربط أنواع النشاط بصفحاتها
+const ACTIVITY_TARGETS = {
+  post:         '/admin/posts',
+  user:         '/admin/users',
+  report:       '/admin/reports',
+  notification: '/admin/notifications',
+  story:        '/admin/stories',
+  reel:         '/admin/reels',
+  chat:         '/admin/chat',
+};
+
+const ACTIVITY_BADGE_TONE = {
+  LIVE:  { bg: '#10b981', fg: '#ffffff' },
+  NEW:   { bg: '#8b5cf6', fg: '#ffffff' },
+  BLAGH: { bg: '#ef4444', fg: '#ffffff' },
 };
 
 // رسم بياني منطقة (Area / Line) بـ SVG — مدمج
@@ -347,16 +366,32 @@ export default function AdminDashboard() {
             <ul className="ls-activity">
               {recentActivities.length === 0 ? (
                 <li className="ls-empty">لا يوجد نشاط حديث</li>
-              ) : recentActivities.slice(0, 5).map((a) => (
-                <li key={a.id}>
-                  <span className="ls-avatar">{(a.user || '?').charAt(0)}</span>
-                  <div className="ls-activity-body">
-                    <strong>{a.user}</strong>
-                    <span>{a.text}</span>
-                  </div>
-                  {a.badge ? <span className="ls-live">{a.badge}</span> : null}
-                </li>
-              ))}
+              ) : recentActivities.slice(0, 6).map((a) => {
+                const target = a.target || ACTIVITY_TARGETS[a.kind] || '/admin/notifications';
+                const tone = ACTIVITY_BADGE_TONE[a.badge] || { bg: '#ef4444', fg: '#ffffff' };
+                return (
+                  <li
+                    key={a.id}
+                    className="ls-activity-item"
+                    role="button"
+                    tabIndex={0}
+                    title={`فتح ${target}`}
+                    onClick={(e) => { e.stopPropagation(); navigate(target); }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); navigate(target); }
+                    }}
+                  >
+                    <span className="ls-avatar">{(a.user || '?').charAt(0)}</span>
+                    <div className="ls-activity-body">
+                      <strong>{a.user}</strong>
+                      <span>{a.text}</span>
+                    </div>
+                    {a.badge ? (
+                      <span className="ls-live" style={{ background: tone.bg, color: tone.fg }}>{a.badge}</span>
+                    ) : null}
+                  </li>
+                );
+              })}
             </ul>
           </ClickableCard>
         </div>
@@ -646,9 +681,12 @@ export default function AdminDashboard() {
         /* === Stat cards (مدمجة) === */
         .ls-stats-grid {
           display: grid;
-          grid-template-columns: repeat(6, minmax(0, 1fr));
+          grid-template-columns: repeat(7, minmax(0, 1fr));
           gap: 8px;
           margin: 0;
+        }
+        @media (max-width: 1440px) {
+          .ls-stats-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
         }
         @media (max-width: 1180px) {
           .ls-stats-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -737,6 +775,9 @@ export default function AdminDashboard() {
         /* === Activity list === */
         .ls-activity { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
         .ls-activity li { display: flex; align-items: center; gap: 5px; }
+        .ls-activity-item { cursor: pointer; padding: 2px 4px; border-radius: 5px; transition: background 0.12s ease; }
+        .ls-activity-item:hover { background: rgba(139, 92, 246, 0.10); }
+        .ls-activity-item:focus-visible { outline: 2px solid #8b5cf6; outline-offset: 1px; }
         .ls-avatar {
           width: 21px; height: 21px; border-radius: 50%;
           background: linear-gradient(135deg, #8b5cf6, #ec4899);

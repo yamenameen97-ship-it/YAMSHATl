@@ -1419,18 +1419,22 @@ function FeedDesktopInner() {
             font-weight: 600;
           }
 
+          /* v50 — أزرار التصفية تجمع في أقصى اليمين (مكان السهم) */
           .yam-feed-tabs {
-            display: flex;
-            flex-direction: row;
+            display: flex !important;
+            flex-direction: row-reverse !important;
             align-items: center;
-            justify-content: flex-start;
-            gap: 18px;
+            justify-content: flex-start !important;
+            gap: 12px;
             overflow-x: auto;
-            padding-bottom: 2px;
-            direction: rtl;
+            padding: 2px 8px 4px 8px;
+            direction: rtl !important;
             scrollbar-width: none;
             -ms-overflow-style: none;
             -webkit-overflow-scrolling: touch;
+            margin-inline-start: auto;
+            width: 100%;
+            font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
           }
 
           .yam-feed-tabs::-webkit-scrollbar { display: none; }

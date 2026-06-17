@@ -6,17 +6,15 @@ import { getAdminDashboardLive } from '../../api/admin.js';
 /**
  * ========================================================================
  * AdminDashboard — لوحة المدير العام
- * (v32 — Single-Viewport Compact Layout + Clickable Section Navigation)
+ * (v51 — Square Cards Uniform Grid + Top-Aligned Layout)
  * ------------------------------------------------------------------------
- * أهداف هذه النسخة:
- *  1) كامل اللوحة تظهر في صفحة واحدة بدون تمرير عمودي
- *     (تصغير ارتفاعات الصناديق، إحكام الـ paddings، خطوط مدمجة).
- *  2) كل صندوق (Stat / إدارة المنشورات / إدارة الشات / الستوري / الريلز /
- *     التقارير) أصبح *مختصراً* فقط، وعند الضغط عليه يفتح الصفحة الكاملة
- *     الخاصة به للتحكم والتفاصيل.
- *  3) الإبقاء على نفس الهوية البصرية (LiveStream Dark / Purple)
- *     وعلى ربط البيانات الحية بـ /api/admin/dashboard/live.
- *  4) dir="rtl" + Noto Sans Arabic.
+ * أهداف هذه النسخة (v51):
+ *  1) إزالة المساحة الفارغة في الأعلى ورفع المحتوى لأقصى الأعلى.
+ *  2) جميع البطاقات بنفس الحجم (مربعة) - تطابق صندوق "توزيع المحتوى".
+ *  3) تقصير ارتفاع البطاقات (aspect-ratio: 1) لتظهر مربعة وليست مستطيلة.
+ *  4) شبكة موحّدة 3 أعمدة لجميع الصناديق - بنفس النسب والمظهر.
+ *  5) الحفاظ على ربط البيانات الحية بـ /api/admin/dashboard/live.
+ *  6) dir="rtl" + Noto Sans Arabic.
  * ========================================================================
  */
 
@@ -212,7 +210,7 @@ export default function AdminDashboard() {
   // مؤشر بسيط على أن النسخة الجديدة الموحّدة هي التي حُمّلت
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      window.__YAMSHAT_ADMIN_DASHBOARD_VERSION__ = 'unified-v32-compact-clickable';
+      window.__YAMSHAT_ADMIN_DASHBOARD_VERSION__ = 'unified-v51-square-cards';
       document.querySelectorAll('[data-legacy-admin-dashboard="true"]').forEach((el) => el.remove());
     }
   }, []);
@@ -269,7 +267,7 @@ export default function AdminDashboard() {
 
   return (
     <AdminLayout>
-      <div className="ls-admin" dir="rtl" data-yamshat-version="unified-v32-compact-clickable">
+      <div className="ls-admin" dir="rtl" data-yamshat-version="unified-v51-square-cards">
         {loading && !data ? (
           <div className="ls-loading">جاري تحميل البيانات الحية...</div>
         ) : null}
@@ -585,7 +583,10 @@ export default function AdminDashboard() {
           font-size: 11px;
           display: flex;
           flex-direction: column;
-          gap: 6px;
+          gap: 8px;
+          /* v51: ارفع المحتوى للأعلى — لا مساحة فارغة فوق */
+          justify-content: flex-start;
+          align-items: stretch;
         }
         .ls-admin *, .ls-admin *::before, .ls-admin *::after { box-sizing: border-box; }
 
@@ -645,12 +646,12 @@ export default function AdminDashboard() {
         /* === Stat cards (مدمجة) === */
         .ls-stats-grid {
           display: grid;
-          grid-template-columns: repeat(5, minmax(0, 1fr));
-          gap: 6px;
+          grid-template-columns: repeat(6, minmax(0, 1fr));
+          gap: 8px;
           margin: 0;
         }
         @media (max-width: 1180px) {
-          .ls-stats-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+          .ls-stats-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
         }
         @media (max-width: 720px) {
           .ls-stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -680,19 +681,24 @@ export default function AdminDashboard() {
         .ls-stat-trend { color: #10b981; font-size: 9px; font-weight: 700; }
         .ls-stat-muted { color: #64748b; font-weight: 500; margin-right: 3px; font-size: 9px; }
 
-        /* === Rows === */
-        .ls-row { display: grid; gap: 6px; margin: 0; }
-        .ls-row-2 { grid-template-columns: 1fr 1fr; }
-        .ls-row-3 { grid-template-columns: 2fr 1fr 1fr; }
+        /* === Rows (v51: شبكة موحّدة بنفس الحجم لجميع البطاقات) === */
+        .ls-row { display: grid; gap: 8px; margin: 0; }
+        /* صفّ 3 أعمدة متساوية — كل بطاقة 1fr */
+        .ls-row-2 { grid-template-columns: repeat(3, 1fr); }
+        .ls-row-3 { grid-template-columns: repeat(3, 1fr); }
+        /* صندوق "المشاهدات خلال آخر 7 أيام" يبقى 1fr مثل البقية */
         .ls-col-2 { grid-column: span 1; }
 
-        /* === Cards (مدمجة لتدخل في صفحة واحدة) === */
+        /* === Cards (v51: مربعة بنفس حجم بطاقة "توزيع المحتوى") === */
         .ls-card {
           background: linear-gradient(180deg, #131a33, #0f152a);
           border: 1px solid rgba(148,163,184,0.10);
-          border-radius: 9px;
-          padding: 7px 9px;
-          max-height: 150px;
+          border-radius: 12px;
+          padding: 10px 12px;
+          /* النسبة المربعة — البطاقة بنفس عرضها تقريباً = مربع */
+          aspect-ratio: 1 / 1;
+          min-height: 220px;
+          max-height: 280px;
           overflow: hidden;
           display: flex;
           flex-direction: column;
@@ -833,13 +839,16 @@ export default function AdminDashboard() {
         }
         .ls-kpi-trend.up { color: #10b981; font-size: 9px; font-weight: 700; }
 
-        /* === Reports card (مدمج) === */
+        /* === Reports card (يأخذ كامل العرض كصف مستقل لكنه أقصر) === */
         .ls-card.ls-card-full {
-          max-height: 200px;
+          aspect-ratio: auto;
+          min-height: 220px;
+          max-height: 280px;
           overflow: hidden;
           display: flex;
           flex-direction: column;
-          padding: 7px 9px;
+          padding: 10px 12px;
+          grid-column: 1 / -1;
         }
         .ls-reports-inner {
           flex: 1; min-height: 0;
@@ -851,26 +860,32 @@ export default function AdminDashboard() {
 
         /* === Responsive breakpoints === */
         @media (max-width: 1180px) {
-          .ls-row-3 { grid-template-columns: 1fr 1fr; }
+          .ls-row-2, .ls-row-3 { grid-template-columns: repeat(2, 1fr); }
         }
         @media (max-width: 820px) {
           .ls-row-2, .ls-row-3 { grid-template-columns: 1fr; }
-          .ls-card { max-height: 220px; }
-          .ls-card.ls-card-full { max-height: none; }
+          .ls-card { aspect-ratio: auto; min-height: 200px; max-height: 240px; }
+          .ls-card.ls-card-full { max-height: none; aspect-ratio: auto; }
         }
 
-        /* === رفع البطاقات للأعلى وإزالة الفراغات (Override للـ AdminLayout) === */
+        /* === v51: رفع المحتوى لأقصى الأعلى وإزالة كل مساحة بيضاء (Override للـ AdminLayout) === */
         .admin-page-shell-modern {
-          padding: 5px 9px 6px !important;
-          gap: 5px !important;
+          padding: 4px 10px 8px !important;
+          gap: 8px !important;
+          justify-content: flex-start !important;
+          align-content: flex-start !important;
         }
         .admin-page-shell-modern .breadcrumbs {
-          margin-bottom: 1px !important;
+          margin-bottom: 0 !important;
           font-size: 10.5px !important;
         }
         .admin-topbar-modern {
-          min-height: 40px !important;
-          padding: 3px 12px !important;
+          min-height: 44px !important;
+          padding: 4px 12px !important;
+        }
+        /* تأكيد إزالة أي margin-top على أول عنصر داخل اللوحة */
+        .ls-admin > *:first-child {
+          margin-top: 0 !important;
         }
       `}</style>
     </AdminLayout>

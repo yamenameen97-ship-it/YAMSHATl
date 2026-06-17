@@ -48,6 +48,8 @@ import './styles/mobile-scroll-fix.css';
 import './styles/pwa-mobile-hotfix.css';
 /* 🎯 v4 — طبقة التوحيد النهائية (أزرار، مسافات، خطوط، ألوان لكل المنصة) */
 import './styles/platform-unified-v4.css';
+/* ✅ v50 — إصلاحات نهائية (شريط التصفية + الهيدر السفلي + خط Noto Arabic) — يجب أن تكون الأخيرة */
+import './styles/v50-fixes.css';
 /* 🧩 إصلاح بطاقة المنشور (MobilePostCard) — يحلّ التناثر ويُوحّد الشكل النهائي */
 import './styles/mobile-post-card-unified-fix.css';
 /* 🎯 v45 — إصلاحات ويب الجوال الحرجة (الفيديو + الهيدر + التخطيط) */

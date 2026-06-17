@@ -1,15 +1,14 @@
 import { memo } from 'react';
 
 /**
- * MobileFilterPills (v47.10 — pixel-perfect — مطابق 1:1 للصورة المرجعية)
+ * MobileFilterPills (v47.11 — RTL Arabic order)
  * ----------------------------------------------------------------
- * الترتيب البصري المطلوب (من اليسار→اليمين على الشاشة):
+ * الترتيب البصري المطلوب (بالطريقة العربية — من اليمين→اليسار على الشاشة):
  *   [الكل (نشط)] [المجموعات] [الستوري] [الوسائط]
  *
- * - "الكل" في **أقصى اليسار** على الشاشة وهو الزر النشط (بنفسجي ممتلئ).
- * - "الوسائط" في **أقصى اليمين** على الشاشة.
- * - الأزرار غير النشطة بخلفية رمادية داكنة #1A1F2E.
- * - تم إزالة "التعليقات" — لمطابقة الصورة بدقة.
+ * - "الكل" في **أقصى اليمين** على الشاشة وهو الزر النشط (بنفسجي ممتلئ).
+ * - "الوسائط" في **أقصى اليسار** على الشاشة.
+ * - تم تبديل الاتجاه إلى RTL لمطابقة قراءة العربية الطبيعية.
  */
 const FILTERS = [
   { id: 'all', label: 'الكل' },
@@ -27,7 +26,7 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
 
   return (
     <div className="ym-filters-container" dir="rtl">
-      <div className="ym-filters" role="tablist" dir="ltr">
+      <div className="ym-filters" role="tablist" dir="rtl">
         {FILTERS.map((f) => {
           const isActive = f.id === currentActive;
           return (
@@ -65,7 +64,7 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
           -ms-overflow-style: none;
           padding-bottom: 2px;
           width: 100%;
-          direction: ltr;
+          direction: rtl;
           justify-content: flex-start;
         }
         .ym-filters::-webkit-scrollbar { display: none; }

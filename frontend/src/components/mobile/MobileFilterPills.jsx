@@ -1,14 +1,15 @@
 import { memo } from 'react';
 
 /**
- * MobileFilterPills (v47.11 — RTL Arabic order)
+ * MobileFilterPills (v47.12 — RTL Arabic order — مطابقة الصورة المرجعية الأولى)
  * ----------------------------------------------------------------
- * الترتيب البصري المطلوب (بالطريقة العربية — من اليمين→اليسار على الشاشة):
+ * الترتيب البصري المطلوب على الشاشة من اليمين → اليسار:
  *   [الكل (نشط)] [المجموعات] [الستوري] [الوسائط]
  *
  * - "الكل" في **أقصى اليمين** على الشاشة وهو الزر النشط (بنفسجي ممتلئ).
  * - "الوسائط" في **أقصى اليسار** على الشاشة.
- * - تم تبديل الاتجاه إلى RTL لمطابقة قراءة العربية الطبيعية.
+ * - الحاوية RTL — لذلك ترتيب المصفوفة المنطقي يجب أن يبدأ بـ "الكل"،
+ *   ثم "المجموعات"، ثم "الستوري"، ثم "الوسائط".
  */
 const FILTERS = [
   { id: 'all', label: 'الكل' },
@@ -37,6 +38,11 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
               aria-selected={isActive}
               className={`ym-filter-pill-new ${f.id} ${isActive ? 'is-active' : ''}`}
               onClick={() => handleChange(f.id)}
+              onTouchEnd={(e) => {
+                /* تحسين الاستجابة على الجوال — يمنع تأخير 300ms في كروم/سفاري */
+                e.preventDefault();
+                handleChange(f.id);
+              }}
               dir="rtl"
             >
               <span className="pill-content">{f.label}</span>
@@ -54,6 +60,9 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
           max-width: 100%;
           overflow: hidden;
           font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+          /* تحسينات اللمس للجوال */
+          touch-action: pan-y;
+          -webkit-tap-highlight-color: transparent;
         }
         .ym-filters {
           display: flex;
@@ -66,6 +75,10 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
           width: 100%;
           direction: rtl;
           justify-content: flex-start;
+          /* تمكين السحب الأفقي السلس على الجوال */
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior-x: contain;
+          touch-action: pan-x;
         }
         .ym-filters::-webkit-scrollbar { display: none; }
 
@@ -88,6 +101,15 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
           justify-content: center;
           line-height: 1;
           direction: rtl;
+          /* استجابة لمس فورية على PWA / Chrome Mobile */
+          touch-action: manipulation;
+          -webkit-tap-highlight-color: transparent;
+          -webkit-user-select: none;
+          user-select: none;
+          /* ضمان قابلية اللمس */
+          min-width: 44px;
+          position: relative;
+          z-index: 1;
         }
         .ym-filter-pill-new:active { transform: scale(0.96); }
 
@@ -103,6 +125,7 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
           align-items: center;
           line-height: 1;
           font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+          pointer-events: none; /* يضمن تلقي الزر للنقرة وليس النص الداخلي */
         }
 
         @media (max-width: 400px) {
@@ -134,10 +157,6 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
         }
         @media (max-width: 393px) and (min-width: 361px) {
           .ym-filter-pill-new { height: 35px; padding: 0 17px; font-size: 0.8rem; }
-        }
-        .ym-filters {
-          -webkit-overflow-scrolling: touch;
-          overscroll-behavior-x: contain;
         }
       `}</style>
     </div>

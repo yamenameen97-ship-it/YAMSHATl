@@ -2,13 +2,18 @@ import { memo, useEffect, useState } from 'react';
 import { timeAgoAr as fmtTimeAgoAr } from '../../utils/timeFormat.js';
 
 /**
- * MobilePostCard (v47.7 — pixel-perfect — مطابق تماماً للصورة المرجعية)
+ * MobilePostCard (v47.8 — pixel-perfect — مطابق للصورة المرجعية الجديدة)
  * ----------------------------------------------------------------------
- * الترتيب البصري كما في الصورة (من اليسار→اليمين على الشاشة):
+ * الترتيب البصري الجديد كما في الصورة المرجعية الأخيرة
+ * (من اليسار→اليمين على الشاشة):
  *
  * الهيدر:
- *   |  ⋯               yamenameen97 ✓        Y(avatar) |
- *   | (يسار)        @yamenameen97 • منذ 4 دقيقة  (يمين) |
+ *   | ⋯       yamenameen97       Y(avatar) |
+ *   |       @yamenameen97 • منذ 4 دقيقة      |
+ *   (أقصى اليسار: ⋯)   (وسط: النص)   (أقصى اليمين: شعار Y)
+ *
+ * أي: اسم المستخدم يظهر بين زر ⋯ وبين شعار Y الدائري.
+ * الاتجاه للنص: RTL طبيعي بمحاذاة اليمين (نحو الشعار).
  *
  * الصورة: مربع أسود بنسبة 1:1 مع شعار Y بنفسجي ضخم في الوسط،
  *         وأيقونة دائرية ملونة في الزاوية السفلية اليسرى.
@@ -90,21 +95,22 @@ function MobilePostCard({
           </svg>
         </button>
 
-        {/* أقصى اليمين: معلومات المستخدم + Avatar */}
-        <div className="ym-post-user-info" dir="rtl">
-          <div className="ym-post-title-area">
-            <div className="ym-author-row">
-              <span className="ym-author-name">{authorName}</span>
-              {verified && <VerifiedBadge />}
-            </div>
-            <div className="ym-post-subtext" dir="rtl">
-              <span className="ym-time" title={timeTitle || ''}>{liveTime}</span>
-              <span className="ym-dot">•</span>
-              <span className="ym-handle">{handle}</span>
-              {isLive && <span className="ym-live-badge-inline">البث المباشر</span>}
-            </div>
+        {/* الوسط: معلومات المستخدم — يمتد ليملأ المسافة بين ⋯ والـ Avatar */}
+        <div className="ym-post-title-area" dir="rtl">
+          <div className="ym-author-row">
+            <span className="ym-author-name">{authorName}</span>
+            {verified && <VerifiedBadge />}
           </div>
-          <div className="ym-post-avatar">
+          <div className="ym-post-subtext" dir="rtl">
+            <span className="ym-time" title={timeTitle || ''}>{liveTime}</span>
+            <span className="ym-dot">•</span>
+            <span className="ym-handle">{handle}</span>
+            {isLive && <span className="ym-live-badge-inline">البث المباشر</span>}
+          </div>
+        </div>
+
+        {/* أقصى اليمين: Avatar (الشعار الدائري) */}
+        <div className="ym-post-avatar">
             {avatarUrl ? (
               <img src={avatarUrl} alt="" loading="lazy" decoding="async" />
             ) : (
@@ -120,7 +126,6 @@ function MobilePostCard({
                 <line x1="50" y1="55" x2="50" y2="86" stroke="url(#ym-post-avatar-grad)" strokeWidth="12" strokeLinecap="round" />
               </svg>
             )}
-          </div>
         </div>
       </header>
 
@@ -250,16 +255,9 @@ function MobilePostCard({
           margin-bottom: 10px;
           gap: 8px;
           direction: ltr;
-        }
-        .ym-post-user-info {
-          display: flex;
-          flex-direction: row;
-          gap: 8px;
-          align-items: center;
-          min-width: 0;
-          flex: 1 1 auto;
-          justify-content: flex-end;
-          direction: rtl;
+          /* تحسينات اللمس على الجوال */
+          touch-action: manipulation;
+          -webkit-tap-highlight-color: transparent;
         }
         .ym-post-avatar {
           width: 38px;
@@ -282,6 +280,8 @@ function MobilePostCard({
           text-align: right;
           min-width: 0;
           flex: 1 1 auto;
+          padding-inline-end: 4px;
+          direction: rtl;
         }
         .ym-author-row {
           display: flex;
@@ -317,12 +317,17 @@ function MobilePostCard({
           border: none;
           color: #6B7280;
           cursor: pointer;
-          padding: 4px;
+          padding: 8px;
           border-radius: 6px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
+          /* تحسين الاستجابة على الجوال */
+          touch-action: manipulation;
+          -webkit-tap-highlight-color: transparent;
+          min-width: 36px;
+          min-height: 36px;
         }
         .ym-more-btn:hover { color: #C4B5FD; background: rgba(139,92,246,0.08); }
 
@@ -442,13 +447,19 @@ function MobilePostCard({
           gap: 6px;
           cursor: pointer;
           font-size: 0.8rem;
-          padding: 4px 6px;
+          padding: 8px 10px;
           border-radius: 6px;
           transition: background 0.15s, color 0.15s;
           font-family: inherit;
-          min-width: 0;
+          min-width: 44px;
+          min-height: 36px;
           flex-shrink: 0;
           line-height: 1;
+          /* استجابة لمس فورية على PWA/Chrome Mobile */
+          touch-action: manipulation;
+          -webkit-tap-highlight-color: transparent;
+          -webkit-user-select: none;
+          user-select: none;
         }
         .ym-footer-btn svg {
           width: 21px;

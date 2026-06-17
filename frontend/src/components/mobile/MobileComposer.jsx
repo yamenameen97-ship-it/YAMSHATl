@@ -38,13 +38,14 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
         <span className="ym-composer-avatar" aria-hidden="true">
           <svg viewBox="0 0 100 100" width="100%" height="100%">
             <defs>
-              <linearGradient id="ym-cmp-grad" x1="0" y1="0" x2="1" y2="1">
+              <linearGradient id="ym-cmp-grad" x1="0" y1="0" x2="0.5" y2="1">
                 <stop offset="0%" stopColor="#A78BFA" />
-                <stop offset="100%" stopColor="#7C3AED" />
+                <stop offset="100%" stopColor="#6D28D9" />
               </linearGradient>
             </defs>
-            <path d="M20 20 L50 60 L80 20 L70 20 L50 45 L30 20 Z" fill="url(#ym-cmp-grad)" />
-            <path d="M45 60 L55 60 L55 85 L45 85 Z" fill="url(#ym-cmp-grad)" />
+            <line x1="22" y1="20" x2="50" y2="55" stroke="url(#ym-cmp-grad)" strokeWidth="12" strokeLinecap="round" />
+            <line x1="78" y1="20" x2="50" y2="55" stroke="url(#ym-cmp-grad)" strokeWidth="12" strokeLinecap="round" />
+            <line x1="50" y1="55" x2="50" y2="85" stroke="url(#ym-cmp-grad)" strokeWidth="12" strokeLinecap="round" />
           </svg>
         </span>
 
@@ -110,6 +111,8 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           box-sizing: border-box;
           width: 100%;
           max-width: 100%;
+          font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+          direction: rtl;
         }
         .ym-composer {
           display: flex;
@@ -150,7 +153,7 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           outline: none;
           color: #6B7280;
           font-size: 0.86rem;
-          font-family: inherit;
+          font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
           min-width: 0;
           padding: 4px 6px;
           cursor: pointer;

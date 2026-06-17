@@ -1,0 +1,162 @@
+/**
+ * mobile-pixel-perfect-v47-9.css
+ * ================================
+ * v47.9 — تحسينات نهائية لمطابقة الصورة المرجعية + دعم الأجهزة الضعيفة (Redmi Note 8)
+ *
+ * ✅ dir="rtl" مع خط Noto Sans Arabic كخط أساسي
+ * ✅ إصلاح ترتيب الـ subtext: الزمن قبل @handle (مطابق للصورة)
+ * ✅ شعار Y بسيط بخطوط سميكة مطابق للصورة
+ * ✅ دعم PWA Install Banner أعلى الصفحة على كل المتصفحات
+ * ✅ توافق Chrome 70+ / Safari 12+ / Samsung Internet / MIUI Browser
+ */
+
+/* ============ تطبيق خط Noto Sans Arabic بقوة ============ */
+html, body, * {
+  font-family: 'Noto Sans Arabic', 'Tajawal', 'Cairo', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif !important;
+}
+html[dir="rtl"], body[dir="rtl"], [dir="rtl"] {
+  font-family: 'Noto Sans Arabic', 'Tajawal', 'Cairo', system-ui, -apple-system, sans-serif !important;
+}
+
+/* ============ منع أي عنصر من الخروج عن حدود الشاشة ============ */
+html, body {
+  max-width: 100vw !important;
+  overflow-x: hidden !important;
+  -webkit-text-size-adjust: 100%;
+  -moz-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* ============ ترتيب subtext في PostCard: الزمن • @handle ============ */
+.ym-post-subtext {
+  flex-direction: row !important;
+  direction: rtl !important;
+}
+
+/* ============ شريط PWA يبقى أعلى الـ feed ============ */
+.ym-pwa-banner { position: sticky; top: 0; z-index: 999; }
+
+/* ============ دعم Redmi Note 8 (393x873 @ DPR 2.75) ============ */
+@media (max-width: 393px) and (min-width: 361px) {
+  .ym-topbar { padding: 0 7px !important; height: 53px !important; }
+  .ym-topbar-center { gap: 8px !important; }
+  .ym-post-card { padding: 11px 9px !important; }
+  .ym-bottomnav { height: calc(62px + env(safe-area-inset-bottom, 0px)) !important; }
+  .ym-pwa-banner-inner { padding: 7px 11px !important; }
+}
+
+/* ============ دعم الأجهزة الضعيفة جداً (<= 320px) ============ */
+@media (max-width: 320px) {
+  .ym-pwa-desc { display: none !important; }
+  .ym-topbar-link-text { font-size: 0.6rem !important; }
+}
+
+/* ============ Fallbacks للمتصفحات القديمة ============ */
+/* MIUI Browser / Chrome قديم - لا يدعم gap في flex بشكل كامل */
+@supports not (gap: 8px) {
+  .ym-topbar-inner > * + * { margin-inline-start: 4px; }
+  .ym-topbar-center > * + * { margin-inline-start: 8px; }
+  .ym-footer-actions > * + * { margin-inline-start: 4px; }
+  .ym-filters > * + * { margin-inline-start: 6px; }
+}
+
+/* لا يدعم aspect-ratio (Chrome < 88) */
+@supports not (aspect-ratio: 1 / 1) {
+  .ym-post-banner-new {
+    height: 0;
+    padding-bottom: 100%;
+    position: relative;
+  }
+  .ym-post-banner-new > * {
+    position: absolute !important;
+    inset: 0 !important;
+  }
+}
+
+/* لا يدعم env() - الأجهزة القديمة */
+@supports not (padding: env(safe-area-inset-bottom)) {
+  .ym-bottomnav { padding-bottom: 0 !important; height: 64px !important; }
+}
+
+/* لا يدعم backdrop-filter - الأجهزة القديمة */
+@supports not (backdrop-filter: blur(2px)) {
+  .ym-topbar.ym-topbar-transparent {
+    background: rgba(10, 13, 26, 0.92) !important;
+  }
+}
+
+/* لا يدعم CSS custom properties - متصفحات قديمة جداً (نادر) */
+.ym-topbar { background-color: #0A0D1A; }
+.ym-bottomnav { background-color: #0A0D1A; }
+.ym-post-card { background-color: #0A0D1A; }
+
+/* ============ تحسين أداء الانيميشن على الأجهزة الضعيفة ============ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* تعطيل الانيميشن على الأجهزة منخفضة الأداء */
+@media (max-width: 360px) {
+  .ym-nav-plus-btn,
+  .ym-pwa-banner,
+  .ym-post-card {
+    will-change: auto !important;
+  }
+}
+
+/* ============ تأكيد ظهور أيقونات الـ topbar في الترتيب الصحيح ============ */
+.ym-topbar-inner { direction: ltr !important; }
+.ym-topbar-center { direction: ltr !important; }
+.ym-footer-actions { direction: ltr !important; }
+.ym-post-header { direction: ltr !important; }
+.ym-filters { direction: ltr !important; }
+.ym-bottomnav-inner { direction: ltr !important; }
+
+/* لكن النصوص العربية تبقى rtl */
+.ym-topbar-link-text,
+.ym-nav-label,
+.ym-author-name,
+.ym-post-subtext,
+.ym-composer-input,
+.ym-pwa-title,
+.ym-pwa-desc,
+.ym-pwa-help,
+.ym-filter-pill-new {
+  direction: rtl !important;
+}
+
+/* ============ تحسين تباين الألوان للقراءة على الشاشات الضعيفة ============ */
+.ym-author-name { color: #FFFFFF !important; font-weight: 700 !important; }
+.ym-post-subtext { color: #9CA3AF !important; }
+.ym-count.text-purple { color: #8B5CF6 !important; font-weight: 700 !important; }
+
+/* ============ ضمان لمس مريح (touch target >= 44x44 px على iOS) ============ */
+.ym-topbar-btn,
+.ym-topbar-link,
+.ym-footer-btn,
+.ym-nav-item,
+.ym-nav-center-item,
+.ym-composer-action,
+.ym-pwa-btn-install,
+.ym-pwa-btn-close {
+  min-height: 32px;
+  min-width: 32px;
+}
+
+/* ============ تأكيد توهج شعار Y الكبير ============ */
+.ym-logo-large {
+  filter: drop-shadow(0 6px 24px rgba(139, 92, 246, 0.55));
+}
+@media (max-width: 360px) {
+  .ym-logo-large { filter: drop-shadow(0 4px 16px rgba(139, 92, 246, 0.45)); }
+}
+
+/* ============ خط واحد فقط للأرقام (للحصول على شكل نظيف كما في الصورة) ============ */
+.ym-count {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}

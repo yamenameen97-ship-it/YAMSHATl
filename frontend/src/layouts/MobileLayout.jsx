@@ -2,6 +2,7 @@ import { memo, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import BottomNav from '../components/mobile/BottomNav';
 import MobileTopBar from '../components/mobile/MobileTopBar';
+import PWAInstallBanner from '../components/mobile/PWAInstallBanner.jsx';
 import PullToRefresh from '../components/common/PullToRefresh.jsx';
 
 /**
@@ -60,10 +61,11 @@ function MobileLayout({ children }) {
   }, [location.pathname]);
 
   return (
-    <div className="mobile-layout-container" dir="rtl">
+    <div className="mobile-layout-container" dir="rtl" style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, -apple-system, sans-serif" }}>
       <MobileTopBar />
 
       <main className="mobile-main-content">
+        <PWAInstallBanner />
         <PullToRefresh
           onRefresh={onRefresh}
           disabled={disablePullToRefresh}

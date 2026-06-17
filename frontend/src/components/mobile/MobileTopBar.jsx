@@ -67,13 +67,14 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
           >
             <svg className="ym-logo-v" viewBox="0 0 100 100" aria-hidden="true">
               <defs>
-                <linearGradient id="ym-y-grad" x1="0" y1="0" x2="1" y2="1">
+                <linearGradient id="ym-y-grad" x1="0" y1="0" x2="0.5" y2="1">
                   <stop offset="0%" stopColor="#A78BFA" />
-                  <stop offset="100%" stopColor="#7C3AED" />
+                  <stop offset="100%" stopColor="#6D28D9" />
                 </linearGradient>
               </defs>
-              <path d="M20 20 L50 60 L80 20 L70 20 L50 45 L30 20 Z" fill="url(#ym-y-grad)" />
-              <path d="M45 60 L55 60 L55 85 L45 85 Z" fill="url(#ym-y-grad)" />
+              <line x1="22" y1="20" x2="50" y2="55" stroke="url(#ym-y-grad)" strokeWidth="12" strokeLinecap="round" />
+              <line x1="78" y1="20" x2="50" y2="55" stroke="url(#ym-y-grad)" strokeWidth="12" strokeLinecap="round" />
+              <line x1="50" y1="55" x2="50" y2="85" stroke="url(#ym-y-grad)" strokeWidth="12" strokeLinecap="round" />
             </svg>
             <span className="ym-wordmark">YAMSHAT</span>
           </button>

@@ -103,10 +103,15 @@ def _profile_completion(user: User, profile: UserProfile | None) -> int:
 def _user_payload(db: Session, user: User, following: bool | None = None) -> dict:
     profile = _get_or_create_profile(db, user.id)
     wallet = _get_or_create_wallet(db, user.id)
+    # ✅ FIX (v48): إعادة الاسم المعروض الحقيقي للعميل من حقل display_name
+    display_name = (getattr(user, 'display_name', None) or '').strip() or user.username
     payload = {
         'id': user.id,
         'name': user.username,
         'username': user.username,
+        'full_name': display_name,
+        'display_name': display_name,
+        'author_name': display_name,
         'email': user.email,
         'avatar': user.avatar,
         'role': user.role,
@@ -117,6 +122,8 @@ def _user_payload(db: Session, user: User, following: bool | None = None) -> dic
         'last_login_at': user.last_login_at.isoformat() if user.last_login_at else None,
         'profile': {
             'bio': profile.bio or '',
+            'full_name': display_name,
+            'display_name': display_name,
             'cover_photo': profile.cover_photo,
             'badges': _loads_list(profile.badges_json),
             'is_verified': bool(profile.is_verified),
@@ -259,9 +266,19 @@ def _serialize_post_card(db: Session, post: Post, current_user: User | None = No
         liked_by_me = db.query(Like.id).filter(Like.post_id == post.id, Like.user_id == current_user.id).first() is not None
         saved_by_me = db.query(PostSave.id).filter(PostSave.post_id == post.id, PostSave.user_id == current_user.id).first() is not None
     media_urls = _loads_list(post.media_json, [post.image_url] if post.image_url else [])
+    # ✅ FIX (v48): تضمين الاسم المعروض الحديث للصاحب ديناميكياً
+    _owner_display = ''
+    if owner is not None:
+        _owner_display = (getattr(owner, 'display_name', None) or '').strip() or (owner.username or '')
+    if not _owner_display:
+        _owner_display = 'unknown'
     return {
         'id': post.id,
         'username': owner.username if owner else 'unknown',
+        'author_name': _owner_display,
+        'display_name': _owner_display,
+        'full_name': _owner_display,
+        'user_avatar': owner.avatar if owner else None,
         'avatar': owner.avatar if owner else None,
         'content': post.content or '',
         'image_url': media_urls[0] if media_urls else (post.image_url or ''),
@@ -636,6 +653,18 @@ def update_me(payload: dict = Body(...), db: Session = Depends(get_db), current_
     if existing is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Username already exists')
     current_user.username = requested_username
+    # ✅ FIX (v48): حفظ الاسم المعروض في عمود display_name الحقيقي
+    # هذا يضمن انعكاس التغيير في كل المنشورات فوراً بعد إعادة جلب الخلاصة.
+    incoming_full_name = payload.get('full_name')
+    if incoming_full_name is None:
+        incoming_full_name = payload.get('display_name')
+    if incoming_full_name is not None:
+        cleaned_full_name = str(incoming_full_name).strip()[:120]
+        try:
+            current_user.display_name = cleaned_full_name or None
+        except Exception:
+            # العمود قد لا يكون موجوداً في قواعد بيانات قديمة — لا نُفشل العملية
+            pass
     avatar_value = str(payload.get('avatar') or payload.get('avatar_url') or current_user.avatar or '').strip() or None
     if avatar_value:
         current_user.avatar = avatar_value

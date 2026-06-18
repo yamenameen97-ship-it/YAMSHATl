@@ -32,11 +32,14 @@ import {
 } from '../api/posts.js';
 
 
+// v47.13 — عكس ترتيب التبويبات (الكل تصبح في أقصى اليسار بدلاً من اليمين)
+// الترتيب المنطقي الجديد (في حاوية RTL يظهر بصرياً من اليمين → اليسار):
+// [متابعين] [الأصدقاء] [المجموعات] [المفضلة] [الكل]
 const FEED_TABS = [
-  { id: 'favorites', label: 'المفضلة' },
-  { id: 'groups', label: 'المجموعات' },
-  { id: 'friends', label: 'الأصدقاء' },
   { id: 'following', label: 'متابعين' },
+  { id: 'friends', label: 'الأصدقاء' },
+  { id: 'groups', label: 'المجموعات' },
+  { id: 'favorites', label: 'المفضلة' },
   { id: 'all', label: 'الكل' },
 ];
 
@@ -900,11 +903,14 @@ function FeedDesktopInner() {
                 <PostComposer />
               </div>
 
-              <div className="yam-feed-tabs">
+              {/* v47.13 — تم عكس اتجاه التبويبات (الكل إلى أقصى اليسار) */}
+              <div className="yam-feed-tabs" dir="rtl" role="tablist">
                 {FEED_TABS.map((tab) => (
                   <button
                     key={tab.id}
                     type="button"
+                    role="tab"
+                    aria-selected={activeTab === tab.id}
                     className={`yam-feed-tab ${activeTab === tab.id ? 'active' : ''}`}
                     onClick={() => setActiveTab(tab.id)}
                   >
@@ -1411,10 +1417,16 @@ function FeedDesktopInner() {
 
           .yam-feed-tabs {
             display: flex;
+            flex-direction: row;
             align-items: center;
+            justify-content: flex-start;
             gap: 18px;
             overflow-x: auto;
             padding-bottom: 2px;
+            direction: rtl;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+            -webkit-overflow-scrolling: touch;
           }
 
           .yam-feed-tabs::-webkit-scrollbar { display: none; }

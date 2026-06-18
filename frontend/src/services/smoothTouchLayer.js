@@ -18,25 +18,26 @@ export class SmoothTouchLayer {
       swipeVelocityThreshold: 0.3,
       doubleTapDelay: 300,
       longPressDelay: 500,
-      
+
       // معايير السلاسة
       smoothingFactor: 0.15, // تقليل لسلاسة أكثر
       animationDuration: 300,
       useRAF: true, // استخدام requestAnimationFrame
-      
+
       // دعم الأجهزة القديمة
       legacyDeviceOptimization: true,
       reduceMotion: this.prefersReducedMotion(),
-      
-      // تأثيرات اللمس
-      enableHaptic: this.checkHapticSupport(),
-      enableTouchFeedback: true,
-      enableVisualFeedback: true,
-      
+
+      // 🚀 v48.0 — تعطيل التأثيرات الثقيلة على المستوى الجذري لتسريع اللمس على Chrome Mobile / PWA
+      // (كانت تسبب "اللمس الثقيل" وعدم استجابة السحب لأنها تُطبَّق على كل عنصر يُلمس)
+      enableHaptic: false,
+      enableTouchFeedback: false,
+      enableVisualFeedback: false,
+
       // الأداء
       throttleDelay: 8, // ~120fps
       maxTouchPoints: 1, // إصبع واحدة فقط
-      
+
       ...options
     };
 
@@ -171,9 +172,15 @@ export class SmoothTouchLayer {
     this.state.touches.set(touchId, touchData);
     this.state.isActive = true;
 
-    // تأثيرات اللمس الناعمة
-    this.triggerVisualFeedback(event.target, 'light');
-    this.triggerHaptic(5);
+    // 🚀 v48.0 — تم تعطيل visual feedback و haptic على كل لمسة
+    // لأنها كانت تسبب تأخيراً ملموساً على Chrome Mobile / PWA.
+    // يتم تطبيق feedback بصري بسيط الآن عبر CSS :active فقط.
+    if (this.config.enableVisualFeedback) {
+      this.triggerVisualFeedback(event.target, 'light');
+    }
+    if (this.config.enableHaptic) {
+      this.triggerHaptic(5);
+    }
 
     // إعداد مؤقت الضغط الطويل
     touchData.longPressTimer = setTimeout(() => {
@@ -185,7 +192,9 @@ export class SmoothTouchLayer {
           element: event.target,
           touchId
         });
-        this.triggerHaptic([10, 5, 10]);
+        if (this.config.enableHaptic) {
+          this.triggerHaptic([10, 5, 10]);
+        }
       }
     }, this.config.longPressDelay);
 
@@ -374,7 +383,7 @@ export class SmoothTouchLayer {
     if (absDeltaX > this.config.swipeThreshold && absDeltaX > absDeltaY * 1.5) {
       if (absVelocityX > this.config.swipeVelocityThreshold) {
         const direction = deltaX > 0 ? 'right' : 'left';
-        
+
         this.emit('swipe', {
           direction,
           distance: absDeltaX,
@@ -383,7 +392,7 @@ export class SmoothTouchLayer {
           touchId: touchData.id
         });
 
-        this.triggerHaptic([8, 3, 8]);
+        if (this.config.enableHaptic) this.triggerHaptic([8, 3, 8]);
       }
     }
 
@@ -391,7 +400,7 @@ export class SmoothTouchLayer {
     if (absDeltaY > this.config.swipeThreshold && absDeltaY > absDeltaX * 1.5) {
       if (absVelocityY > this.config.swipeVelocityThreshold) {
         const direction = deltaY > 0 ? 'down' : 'up';
-        
+
         this.emit('swipeVertical', {
           direction,
           distance: absDeltaY,
@@ -400,7 +409,7 @@ export class SmoothTouchLayer {
           touchId: touchData.id
         });
 
-        this.triggerHaptic([8, 3, 8]);
+        if (this.config.enableHaptic) this.triggerHaptic([8, 3, 8]);
       }
     }
 
@@ -419,7 +428,7 @@ export class SmoothTouchLayer {
           touchId: touchData.id
         });
 
-        this.triggerHaptic([5, 2, 5, 2, 5]);
+        if (this.config.enableHaptic) this.triggerHaptic([5, 2, 5, 2, 5]);
       }
 
       this.state.lastTapTime = now;

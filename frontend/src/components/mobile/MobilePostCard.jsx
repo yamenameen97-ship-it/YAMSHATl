@@ -97,26 +97,27 @@ function MobilePostCard({
               <span className="ym-author-name">{authorName}</span>
               {verified && <VerifiedBadge />}
             </div>
-            <div className="ym-post-subtext">
-              <span className="ym-handle">{handle}</span>
-              <span className="ym-dot">•</span>
+            <div className="ym-post-subtext" dir="rtl">
               <span className="ym-time" title={timeTitle || ''}>{liveTime}</span>
+              <span className="ym-dot">•</span>
+              <span className="ym-handle">{handle}</span>
               {isLive && <span className="ym-live-badge-inline">البث المباشر</span>}
             </div>
           </div>
           <div className="ym-post-avatar">
             {avatarUrl ? (
-              <img src={avatarUrl} alt="" />
+              <img src={avatarUrl} alt="" loading="lazy" decoding="async" />
             ) : (
-              <svg viewBox="0 0 100 100" width="60%" height="60%" aria-hidden="true">
+              <svg viewBox="0 0 100 100" width="66%" height="66%" aria-hidden="true">
                 <defs>
-                  <linearGradient id="ym-post-avatar-grad" x1="0" y1="0" x2="1" y2="1">
+                  <linearGradient id="ym-post-avatar-grad" x1="0" y1="0" x2="0.5" y2="1">
                     <stop offset="0%" stopColor="#A78BFA" />
-                    <stop offset="100%" stopColor="#7C3AED" />
+                    <stop offset="100%" stopColor="#6D28D9" />
                   </linearGradient>
                 </defs>
-                <path d="M20 20 L50 60 L80 20 L70 20 L50 45 L30 20 Z" fill="url(#ym-post-avatar-grad)" />
-                <path d="M45 60 L55 60 L55 85 L45 85 Z" fill="url(#ym-post-avatar-grad)" />
+                <line x1="22" y1="18" x2="50" y2="55" stroke="url(#ym-post-avatar-grad)" strokeWidth="12" strokeLinecap="round" />
+                <line x1="78" y1="18" x2="50" y2="55" stroke="url(#ym-post-avatar-grad)" strokeWidth="12" strokeLinecap="round" />
+                <line x1="50" y1="55" x2="50" y2="86" stroke="url(#ym-post-avatar-grad)" strokeWidth="12" strokeLinecap="round" />
               </svg>
             )}
           </div>
@@ -135,7 +136,7 @@ function MobilePostCard({
         {isLive && <div className="ym-live-overlay-label">مباشر الآن LIVE</div>}
         {banner && banner.type === 'image' ? (
           <div className="banner-image-container">
-            <img src={banner.url} alt="" />
+            <img src={banner.url} alt="" loading="lazy" decoding="async" />
             {isLive && (
               <div className="banner-live-info">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="white" aria-hidden="true">
@@ -147,29 +148,35 @@ function MobilePostCard({
           </div>
         ) : (
           <div className="banner-logo-container">
-            {/* شعار Y كبير مطابق للصورة المرجعية — خطوط سميكة بشكل حرف Y */}
+            {/* شعار Y كبير بسيط بخطوط سميكة — مطابق تماماً للصورة المرجعية */}
             <svg className="ym-logo-large" viewBox="0 0 200 200" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
               <defs>
-                <linearGradient id="ym-banner-grad" x1="0" y1="0" x2="1" y2="1">
+                <linearGradient id="ym-banner-grad" x1="0" y1="0" x2="0.5" y2="1">
                   <stop offset="0%" stopColor="#A78BFA" />
-                  <stop offset="50%" stopColor="#8B5CF6" />
-                  <stop offset="100%" stopColor="#7C3AED" />
+                  <stop offset="60%" stopColor="#8B5CF6" />
+                  <stop offset="100%" stopColor="#6D28D9" />
                 </linearGradient>
               </defs>
-              {/* الفرع الأيسر السميك */}
-              <path
-                d="M40 35 Q42 30 50 32 L102 105 Q105 110 102 115 L100 118 Q95 122 90 117 L38 45 Q34 38 40 35 Z"
-                fill="url(#ym-banner-grad)"
+              {/* الفرع الأيسر */}
+              <line
+                x1="45" y1="35" x2="100" y2="110"
+                stroke="url(#ym-banner-grad)"
+                strokeWidth="24"
+                strokeLinecap="round"
               />
-              {/* الفرع الأيمن السميك */}
-              <path
-                d="M160 35 Q166 30 168 38 L116 110 Q113 115 108 113 L106 111 Q102 107 105 102 L156 32 Q158 30 160 35 Z"
-                fill="url(#ym-banner-grad)"
+              {/* الفرع الأيمن */}
+              <line
+                x1="155" y1="35" x2="100" y2="110"
+                stroke="url(#ym-banner-grad)"
+                strokeWidth="24"
+                strokeLinecap="round"
               />
-              {/* الساق العمودية السميكة */}
-              <path
-                d="M92 105 Q96 100 104 100 L108 100 Q114 102 114 110 L114 168 Q112 174 104 174 L98 174 Q92 172 92 165 L92 110 Z"
-                fill="url(#ym-banner-grad)"
+              {/* الساق العمودية */}
+              <line
+                x1="100" y1="110" x2="100" y2="172"
+                stroke="url(#ym-banner-grad)"
+                strokeWidth="24"
+                strokeLinecap="round"
               />
             </svg>
           </div>

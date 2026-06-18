@@ -56,12 +56,14 @@ import './styles/mobile-fixes-v45.css';
 import './styles/mobile-fixes-v46.css';
 /* 🎯 v47.8 — pixel-perfect لمطابقة الصورة المرجعية + دعم الشاشات الصغيرة (Redmi Note 8 / 320px) */
 import './styles/mobile-pixel-perfect-v47-8.css';
+/* 🎯 v47.9 — تحسينات نهائية: PWA Banner + إصلاح subtext + شعار Y بسيط + توافق متصفحات قديمة */
+import './styles/mobile-pixel-perfect-v47-9.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { pwaInitializer } from './services/pwaInitializer.js';
 import { smoothTouchLayer } from './services/smoothTouchLayer.js';
 import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 
-const BUILD_ID = 'yamshat-mobile-web-fixes-v46';
+const BUILD_ID = 'yamshat-mobile-web-pixel-perfect-v47-9';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

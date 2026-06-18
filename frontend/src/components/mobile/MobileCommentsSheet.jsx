@@ -73,8 +73,8 @@ function MobileCommentsSheet({ open, postId, onClose }) {
   if (!open) return null;
 
   return (
-    <div className="ym-sheet-overlay" role="dialog" aria-modal="true" aria-label="التعليقات" dir="rtl" onClick={onClose}>
-      <div className="ym-sheet" dir="rtl" onClick={(e) => e.stopPropagation()}>
+    <div className="ym-sheet-overlay" role="dialog" aria-modal="true" aria-label="التعليقات" onClick={onClose}>
+      <div className="ym-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="ym-sheet-handle" aria-hidden="true" />
         <header className="ym-sheet-head">
           <h3>التعليقات</h3>

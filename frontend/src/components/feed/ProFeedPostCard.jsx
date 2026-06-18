@@ -346,11 +346,11 @@ export default function ProFeedPostCard({ post, onRefresh }) {
   return (
     <>
       <Card className="feed-pro-card" style={{ padding: 18, borderRadius: 24, border: isPinned ? '1px solid rgba(168,85,247,0.58)' : '1px solid rgba(148,163,184,0.14)', background: 'linear-gradient(180deg, rgba(15,23,42,0.96), rgba(15,23,42,0.9))' }}>
-        <div dir="rtl" style={{ display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap', fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}>
-          <div style={{ display: 'flex', flexDirection: 'row-reverse', gap: 12, alignItems: 'center', minWidth: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 }}>
             <Avatar username={post.username || 'Yamshat'} src={post.avatar || post.user_avatar} size={48} />
-            <div style={{ minWidth: 0, textAlign: 'right' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <strong style={{ fontSize: 16 }}>{post.username || 'Yamshat'}</strong>
                 {post.is_verified ? <span title="موثق">✅</span> : null}
                 {isPinned ? <span className="feed-pill">📌 مثبت</span> : null}

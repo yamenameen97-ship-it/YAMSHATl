@@ -773,8 +773,6 @@ body {
   animation: ym-slide-up 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
   padding-bottom: env(safe-area-inset-bottom, 0px);
   border-top: 1px solid rgba(255,255,255,0.06);
-  font-family: 'Noto Sans Arabic', 'Tajawal', 'Almarai', system-ui, sans-serif;
-  direction: rtl;
 }
 @media (min-width: 640px) {
   .ym-modal-overlay { align-items: center }
@@ -846,83 +844,41 @@ body {
 }
 
 .ym-modal-actions {
-  display: flex; align-items: center; gap: 10px;
-  padding: 12px 16px 14px;
-  border-top: 1px solid rgba(255,255,255,0.08);
-  flex-wrap: wrap;
-  background: rgba(124, 58, 237, 0.04);
-  font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid rgba(255,255,255,0.06);
 }
 .ym-modal-action {
-  background: rgba(124, 58, 237, 0.12);
-  border: 1px solid rgba(124, 58, 237, 0.35);
-  color: var(--ym-purple-light, #A78BFA);
-  min-height: 42px;
-  padding: 8px 14px;
-  border-radius: 12px;
+  background: transparent; border: none;
+  color: var(--ym-purple-light, #8B5CF6);
+  width: 44px; height: 44px; border-radius: 12px;
   display: inline-flex; align-items: center; justify-content: center;
-  gap: 8px;
   cursor: pointer;
-  font-size: 14px; font-weight: 600;
-  font-family: inherit;
-  transition: background 0.15s, transform 0.1s, border-color 0.15s;
-  white-space: nowrap;
+  transition: background 0.15s;
 }
-.ym-modal-action svg { width: 20px; height: 20px; flex-shrink: 0 }
-.ym-modal-action .ym-action-label {
-  font-size: 13.5px; font-weight: 600;
-  color: var(--ym-text, #fff);
-  letter-spacing: 0;
-}
-.ym-modal-action:hover {
-  background: rgba(124, 58, 237, 0.22);
-  border-color: rgba(124, 58, 237, 0.6);
-}
-.ym-modal-action:active { transform: scale(0.97) }
+.ym-modal-action:hover { background: rgba(124, 58, 237, 0.12) }
 
 /* ============================================================
    Comments Sheet — بوتوم شيت للتعليقات
    ============================================================ */
 .ym-sheet-overlay {
   position: fixed; inset: 0;
-  background: rgba(5, 8, 15, 0.55);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: rgba(5, 8, 15, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   z-index: 9998;
   display: flex; align-items: flex-end; justify-content: center;
   animation: ym-fade-in 0.18s ease;
 }
 .ym-sheet {
   width: 100%; max-width: 540px;
-  height: 55dvh; max-height: 55dvh;
+  height: 78dvh; max-height: 78dvh;
   background: var(--ym-card, #141A29);
   border-radius: 20px 20px 0 0;
   display: flex; flex-direction: column;
   animation: ym-slide-up 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  border-top: 1px solid rgba(255,255,255,0.08);
-  box-shadow: 0 -8px 28px rgba(0,0,0,0.4);
-  font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
-}
-/* في الشاشات الأكبر (تابلت/لابتوب) يُعرض كنافذة عائمة صغيرة جانبية */
-@media (min-width: 768px) {
-  .ym-sheet-overlay {
-    align-items: flex-end;
-    justify-content: flex-end;
-    padding: 0 24px 24px 0;
-    background: rgba(5, 8, 15, 0.25);
-  }
-  .ym-sheet {
-    max-width: 380px;
-    width: 380px;
-    height: auto;
-    max-height: 70vh;
-    min-height: 380px;
-    border-radius: 18px;
-    border: 1px solid rgba(255,255,255,0.08);
-    animation: ym-fade-in 0.18s ease;
-  }
-  .ym-sheet-handle { display: none }
+  border-top: 1px solid rgba(255,255,255,0.06);
 }
 .ym-sheet-handle {
   width: 40px; height: 4px;

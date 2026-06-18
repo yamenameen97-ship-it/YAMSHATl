@@ -95,16 +95,15 @@ export default function PostCardAdvanced({
       overflow: 'hidden',
       marginBottom: '16px',
     }}>
-      {/* رأس المنشور — اتجاه عربي RTL */}
-      <div dir="rtl" style={{
+      {/* رأس المنشور */}
+      <div style={{
         padding: '16px',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
         borderBottom: '1px solid var(--line)',
-        fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif",
       }}>
-        <div style={{ display: 'flex', flexDirection: 'row-reverse', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <img
             src={post.avatar || '/default-avatar.png'}
             alt={post.username}
@@ -115,7 +114,7 @@ export default function PostCardAdvanced({
               objectFit: 'cover',
             }}
           />
-          <div style={{ textAlign: 'right' }}>
+          <div>
             <div style={{ fontWeight: 'bold', fontSize: '14px' }}>
               {post.username}
             </div>

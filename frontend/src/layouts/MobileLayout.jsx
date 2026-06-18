@@ -2,7 +2,6 @@ import { memo, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import BottomNav from '../components/mobile/BottomNav';
 import MobileTopBar from '../components/mobile/MobileTopBar';
-import PWAInstallBanner from '../components/mobile/PWAInstallBanner.jsx';
 import PullToRefresh from '../components/common/PullToRefresh.jsx';
 
 /**
@@ -61,11 +60,10 @@ function MobileLayout({ children }) {
   }, [location.pathname]);
 
   return (
-    <div className="mobile-layout-container" dir="rtl" style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, -apple-system, sans-serif" }}>
+    <div className="mobile-layout-container" dir="rtl">
       <MobileTopBar />
 
       <main className="mobile-main-content">
-        <PWAInstallBanner />
         <PullToRefresh
           onRefresh={onRefresh}
           disabled={disablePullToRefresh}
@@ -84,36 +82,25 @@ function MobileLayout({ children }) {
           display: flex;
           flex-direction: column;
           min-height: 100vh;
-          min-height: 100dvh;
           background-color: #0A0D1A;
           color: white;
           padding-top: 56px;
           padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px));
           font-family: "Noto Sans Arabic", "Cairo", system-ui, -apple-system, sans-serif;
           box-sizing: border-box;
-          /* أفقي فقط — لا نقفل العمودي حتى يبقى السحب يعمل */
           overflow-x: hidden;
-          overflow-y: visible;
           max-width: 100vw;
-          /* تمكين تمرير عمودي سلس على iOS و Android */
-          -webkit-overflow-scrolling: touch;
-          touch-action: pan-x pan-y;
         }
 
         .mobile-main-content {
-          flex: 1 1 auto;
+          flex: 1;
           width: 100%;
           max-width: 600px;
           margin: 0 auto;
-          /* 🔧 إصلاح حرج: السماح بالتمرير العمودي — كان overflow:hidden يقفل السحب */
-          overflow-x: hidden;
-          overflow-y: visible;
+          overflow: hidden;
           display: flex;
           flex-direction: column;
           box-sizing: border-box;
-          min-height: 0;
-          touch-action: pan-x pan-y;
-          -webkit-overflow-scrolling: touch;
         }
 
         /* ✅ v47: ضمان عدم خروج أي عنصر عن حدود الشاشة على الأجهزة القديمة */

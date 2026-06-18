@@ -2,20 +2,13 @@ import { memo, useEffect, useState } from 'react';
 import { timeAgoAr as fmtTimeAgoAr } from '../../utils/timeFormat.js';
 
 /**
- * MobilePostCard (v47.9 — إصلاح الاسم المعكوس في صفحة الجوال)
+ * MobilePostCard (v47.7 — pixel-perfect — مطابق تماماً للصورة المرجعية)
  * ----------------------------------------------------------------------
- * الترتيب البصري الصحيح كما في الصورة المرجعية الثانية
- * (من اليسار→اليمين على الشاشة):
+ * الترتيب البصري كما في الصورة (من اليسار→اليمين على الشاشة):
  *
  * الهيدر:
- *   | ⋯       yamenameen97       Y(avatar) |
- *   |       منذ 4 دقيقة • @yamenameen97          |
- *   (أقصى اليسار: ⋯)   (وسط: النص)   (أقصى اليمين: شعار Y)
- *
- * أي: اسم المستخدم يظهر بين زر ⋯ وبين شعار Y الدائري.
- * الاتجاه للنص: RTL طبيعي بمحاذاة اليمين (نحو الشعار).
- * ✅ إصلاح: عكس ترتيب الوقت و@handle ليصبح "منذ 4 دقيقة • @yamenameen97"
- * بدلاً من "@yamenameen97 • منذ 4 دقيقة" وفقاً للصورة المرجعية الثانية.
+ *   |  ⋯               yamenameen97 ✓        Y(avatar) |
+ *   | (يسار)        @yamenameen97 • منذ 4 دقيقة  (يمين) |
  *
  * الصورة: مربع أسود بنسبة 1:1 مع شعار Y بنفسجي ضخم في الوسط،
  *         وأيقونة دائرية ملونة في الزاوية السفلية اليسرى.
@@ -97,38 +90,36 @@ function MobilePostCard({
           </svg>
         </button>
 
-        {/* الوسط: معلومات المستخدم — يمتد ليملأ المسافة بين ⋯ والـ Avatar */}
-        <div className="ym-post-title-area" dir="rtl">
-          <div className="ym-author-row">
-            <span className="ym-author-name">{authorName}</span>
-            {verified && <VerifiedBadge />}
+        {/* أقصى اليمين: معلومات المستخدم + Avatar */}
+        <div className="ym-post-user-info" dir="rtl">
+          <div className="ym-post-title-area">
+            <div className="ym-author-row">
+              <span className="ym-author-name">{authorName}</span>
+              {verified && <VerifiedBadge />}
+            </div>
+            <div className="ym-post-subtext">
+              <span className="ym-handle">{handle}</span>
+              <span className="ym-dot">•</span>
+              <span className="ym-time" title={timeTitle || ''}>{liveTime}</span>
+              {isLive && <span className="ym-live-badge-inline">البث المباشر</span>}
+            </div>
           </div>
-          {/* ✅ إصلاح الاسم المعكوس: الوقت يأتي أولاً ثم @handle ليطابق الصورة المرجعية الثانية */}
-          <div className="ym-post-subtext" dir="rtl">
-            <span className="ym-time" title={timeTitle || ''}>{liveTime}</span>
-            <span className="ym-dot">•</span>
-            <bdi className="ym-handle">{handle}</bdi>
-            {isLive && <span className="ym-live-badge-inline">البث المباشر</span>}
-          </div>
-        </div>
-
-        {/* أقصى اليمين: Avatar (الشعار الدائري) */}
-        <div className="ym-post-avatar">
+          <div className="ym-post-avatar">
             {avatarUrl ? (
-              <img src={avatarUrl} alt="" loading="lazy" decoding="async" />
+              <img src={avatarUrl} alt="" />
             ) : (
-              <svg viewBox="0 0 100 100" width="66%" height="66%" aria-hidden="true">
+              <svg viewBox="0 0 100 100" width="60%" height="60%" aria-hidden="true">
                 <defs>
-                  <linearGradient id="ym-post-avatar-grad" x1="0" y1="0" x2="0.5" y2="1">
+                  <linearGradient id="ym-post-avatar-grad" x1="0" y1="0" x2="1" y2="1">
                     <stop offset="0%" stopColor="#A78BFA" />
-                    <stop offset="100%" stopColor="#6D28D9" />
+                    <stop offset="100%" stopColor="#7C3AED" />
                   </linearGradient>
                 </defs>
-                <line x1="22" y1="18" x2="50" y2="55" stroke="url(#ym-post-avatar-grad)" strokeWidth="12" strokeLinecap="round" />
-                <line x1="78" y1="18" x2="50" y2="55" stroke="url(#ym-post-avatar-grad)" strokeWidth="12" strokeLinecap="round" />
-                <line x1="50" y1="55" x2="50" y2="86" stroke="url(#ym-post-avatar-grad)" strokeWidth="12" strokeLinecap="round" />
+                <path d="M20 20 L50 60 L80 20 L70 20 L50 45 L30 20 Z" fill="url(#ym-post-avatar-grad)" />
+                <path d="M45 60 L55 60 L55 85 L45 85 Z" fill="url(#ym-post-avatar-grad)" />
               </svg>
             )}
+          </div>
         </div>
       </header>
 
@@ -144,7 +135,7 @@ function MobilePostCard({
         {isLive && <div className="ym-live-overlay-label">مباشر الآن LIVE</div>}
         {banner && banner.type === 'image' ? (
           <div className="banner-image-container">
-            <img src={banner.url} alt="" loading="lazy" decoding="async" />
+            <img src={banner.url} alt="" />
             {isLive && (
               <div className="banner-live-info">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="white" aria-hidden="true">
@@ -156,35 +147,29 @@ function MobilePostCard({
           </div>
         ) : (
           <div className="banner-logo-container">
-            {/* شعار Y كبير بسيط بخطوط سميكة — مطابق تماماً للصورة المرجعية */}
+            {/* شعار Y كبير مطابق للصورة المرجعية — خطوط سميكة بشكل حرف Y */}
             <svg className="ym-logo-large" viewBox="0 0 200 200" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
               <defs>
-                <linearGradient id="ym-banner-grad" x1="0" y1="0" x2="0.5" y2="1">
+                <linearGradient id="ym-banner-grad" x1="0" y1="0" x2="1" y2="1">
                   <stop offset="0%" stopColor="#A78BFA" />
-                  <stop offset="60%" stopColor="#8B5CF6" />
-                  <stop offset="100%" stopColor="#6D28D9" />
+                  <stop offset="50%" stopColor="#8B5CF6" />
+                  <stop offset="100%" stopColor="#7C3AED" />
                 </linearGradient>
               </defs>
-              {/* الفرع الأيسر */}
-              <line
-                x1="45" y1="35" x2="100" y2="110"
-                stroke="url(#ym-banner-grad)"
-                strokeWidth="24"
-                strokeLinecap="round"
+              {/* الفرع الأيسر السميك */}
+              <path
+                d="M40 35 Q42 30 50 32 L102 105 Q105 110 102 115 L100 118 Q95 122 90 117 L38 45 Q34 38 40 35 Z"
+                fill="url(#ym-banner-grad)"
               />
-              {/* الفرع الأيمن */}
-              <line
-                x1="155" y1="35" x2="100" y2="110"
-                stroke="url(#ym-banner-grad)"
-                strokeWidth="24"
-                strokeLinecap="round"
+              {/* الفرع الأيمن السميك */}
+              <path
+                d="M160 35 Q166 30 168 38 L116 110 Q113 115 108 113 L106 111 Q102 107 105 102 L156 32 Q158 30 160 35 Z"
+                fill="url(#ym-banner-grad)"
               />
-              {/* الساق العمودية */}
-              <line
-                x1="100" y1="110" x2="100" y2="172"
-                stroke="url(#ym-banner-grad)"
-                strokeWidth="24"
-                strokeLinecap="round"
+              {/* الساق العمودية السميكة */}
+              <path
+                d="M92 105 Q96 100 104 100 L108 100 Q114 102 114 110 L114 168 Q112 174 104 174 L98 174 Q92 172 92 165 L92 110 Z"
+                fill="url(#ym-banner-grad)"
               />
             </svg>
           </div>
@@ -258,9 +243,16 @@ function MobilePostCard({
           margin-bottom: 10px;
           gap: 8px;
           direction: ltr;
-          /* تحسينات اللمس على الجوال */
-          touch-action: manipulation;
-          -webkit-tap-highlight-color: transparent;
+        }
+        .ym-post-user-info {
+          display: flex;
+          flex-direction: row;
+          gap: 8px;
+          align-items: center;
+          min-width: 0;
+          flex: 1 1 auto;
+          justify-content: flex-end;
+          direction: rtl;
         }
         .ym-post-avatar {
           width: 38px;
@@ -283,23 +275,18 @@ function MobilePostCard({
           text-align: right;
           min-width: 0;
           flex: 1 1 auto;
-          padding-inline-end: 4px;
-          direction: rtl;
         }
         .ym-author-row {
           display: flex;
           flex-direction: row;
           align-items: center;
           gap: 2px;
-          direction: rtl;
-          unicode-bidi: isolate;
         }
         .ym-author-name {
           font-weight: 700;
           font-size: 0.9rem;
           color: #fff;
           line-height: 1.2;
-          unicode-bidi: plaintext;
         }
         .ym-post-subtext {
           display: flex;
@@ -311,19 +298,8 @@ function MobilePostCard({
           margin-top: 2px;
           flex-wrap: wrap;
           justify-content: flex-end;
-          direction: rtl;
-          unicode-bidi: isolate;
         }
         .ym-dot { color: #6B7280; }
-        .ym-handle {
-          /* عزل اتجاه @handle حتى لا ينعكس داخل الحاوية RTL */
-          direction: ltr;
-          unicode-bidi: isolate;
-          display: inline-block;
-        }
-        .ym-author-name {
-          unicode-bidi: plaintext;
-        }
         .ym-live-badge-inline {
           color: #8B5CF6;
           margin-inline-start: 4px;
@@ -334,17 +310,12 @@ function MobilePostCard({
           border: none;
           color: #6B7280;
           cursor: pointer;
-          padding: 8px;
+          padding: 4px;
           border-radius: 6px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
-          /* تحسين الاستجابة على الجوال */
-          touch-action: manipulation;
-          -webkit-tap-highlight-color: transparent;
-          min-width: 36px;
-          min-height: 36px;
         }
         .ym-more-btn:hover { color: #C4B5FD; background: rgba(139,92,246,0.08); }
 
@@ -464,19 +435,13 @@ function MobilePostCard({
           gap: 6px;
           cursor: pointer;
           font-size: 0.8rem;
-          padding: 8px 10px;
+          padding: 4px 6px;
           border-radius: 6px;
           transition: background 0.15s, color 0.15s;
           font-family: inherit;
-          min-width: 44px;
-          min-height: 36px;
+          min-width: 0;
           flex-shrink: 0;
           line-height: 1;
-          /* استجابة لمس فورية على PWA/Chrome Mobile */
-          touch-action: manipulation;
-          -webkit-tap-highlight-color: transparent;
-          -webkit-user-select: none;
-          user-select: none;
         }
         .ym-footer-btn svg {
           width: 21px;

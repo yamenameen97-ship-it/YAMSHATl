@@ -56,20 +56,12 @@ import './styles/mobile-fixes-v45.css';
 import './styles/mobile-fixes-v46.css';
 /* 🎯 v47.8 — pixel-perfect لمطابقة الصورة المرجعية + دعم الشاشات الصغيرة (Redmi Note 8 / 320px) */
 import './styles/mobile-pixel-perfect-v47-8.css';
-/* 🎯 v47.9 — تحسينات نهائية: PWA Banner + إصلاح subtext + شعار Y بسيط + توافق متصفحات قديمة */
-import './styles/mobile-pixel-perfect-v47-9.css';
-/* 🚀 v48.0 — إصلاح شامل لمشكلة اللمس الثقيل وعدم الاستجابة للسحب على Chrome Mobile / PWA */
-import './styles/touch-responsiveness-fix.css';
-/* 📱 v48.1 — تصغير الخطوط في صفحات الويب للجوال لتناسب الجوالات القديمة + منع تجاوز حدود الأزرار والصفحات */
-import './styles/mobile-compact-fonts-v48.css';
-/* 🎯 v49 — إصلاح نهائي وحازم لمشكلة السحب لا يعمل على ويب الجوال (يجب أن يكون آخر CSS) */
-import './styles/mobile-touch-scroll-final-v49.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { pwaInitializer } from './services/pwaInitializer.js';
 import { smoothTouchLayer } from './services/smoothTouchLayer.js';
 import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 
-const BUILD_ID = 'yamshat-mobile-touch-scroll-fix-v49-0';
+const BUILD_ID = 'yamshat-mobile-web-fixes-v46';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {
@@ -152,11 +144,9 @@ if (typeof window !== 'undefined') {
   // تفعيل تحسينات PWA وتجربة المستخدم بشكل مؤجل لضمان سرعة ظهور الصفحة الأولى
   const initializeEnhancements = () => {
     try {
-      // 🔧 v49: تعطيل smoothTouchLayer على document.documentElement لأنه
-      // كان يُلصق 4 معالجات touch على <html> وتتسبب في تعليق السحب على بعض أجهزة
-      // Android القديمة (Redmi/Honor/Galaxy A). نستخدمه فقط عند الحاجة عبر عناصر محددة.
-      // smoothTouchLayer.attachToElement(document.documentElement);
-      console.log('[Yamshat] Smooth touch layer deferred (v49 fix: avoid global touch listeners)');
+      // تفعيل طبقة اللمس السلس
+      smoothTouchLayer.attachToElement(document.documentElement);
+      console.log('[Yamshat] Smooth touch layer activated');
 
       // تفعيل محسّن الأجهزة القديمة
       const deviceState = legacyDeviceOptimizer.getState();

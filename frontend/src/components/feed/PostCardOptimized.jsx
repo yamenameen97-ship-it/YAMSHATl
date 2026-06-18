@@ -152,9 +152,9 @@ const PostCardOptimized = memo(function PostCard({ post, onShowAnalytics, onLike
         </div>
       )}
 
-      {/* Header — RTL Arabic */}
-      <div dir="rtl" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}>
-        <div style={{ display: 'flex', flexDirection: 'row-reverse', alignItems: 'center', gap: 10 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ 
             width: 44, 
             height: 44, 
@@ -178,8 +178,8 @@ const PostCardOptimized = memo(function PostCard({ post, onShowAnalytics, onLike
               <strong>{post.username?.[0]?.toUpperCase()}</strong>
             )}
           </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+          <div>
+            <div style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 4 }}>
               {post.username}
               {post.is_verified && <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--accent)"><path d="M12,2L4.5,20.29L5.21,21L12,18L18.79,21L19.5,20.29L12,2Z" /></svg>}
             </div>

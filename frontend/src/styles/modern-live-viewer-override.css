@@ -1,0 +1,6 @@
+/* ✅ FIX 2026-06: تحديث صفحة عرض البث الحديثة لضمان ظهور النسخة المحسنة دائماً */
+/* الاتجاه RTL وخط Noto Sans Arabic */
+.mlv-viewer, .mlv-shell, .mlv-stage, .mlv-comments, .mlv-overlay {
+  direction: rtl;
+  font-family: 'Noto Sans Arabic', 'Cairo', 'Tajawal', system-ui, sans-serif;
+}

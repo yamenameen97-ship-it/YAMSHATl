@@ -1,0 +1,140 @@
+/* ==========================================================================
+   Yamshat — Reels Fixes (إصلاحات نهائية v44 — TikTok Pure Mode)
+   - إخفاء سهوم/مؤشر "اسحب" التي تغطي أزرار التفاعل في كل الصفحات
+   - إخفاء مربع الجودة "تلقائي" من شريط أدوات الريلز (ويب جوال + ديسكتوب + لابتوب)
+   - إخفاء زر "رفع ريل" نهائيًا (يكفي زر + في الهيدر السفلي)
+   - تسريع ظهور الريلز على الجوال
+   - v44: إخفاء الهيدر العلوي الموحّد (ستوري/مجموعات/Y...) داخل الريلز
+   - v44: ضمان شفافية كاملة لزر البحث + أزرار التبويبات (استكشف/أتابعه/لك) + LIVE
+   - الخط الافتراضي: Noto Sans Arabic (dir=rtl)
+   ========================================================================== */
+
+/* (1) إخفاء مؤشر السحب والأسهم في كل الأجهزة */
+.reel-swipe-indicator,
+[data-ds='reel-swipe-indicator'],
+.reel-swipe-hint,
+.swipe-indicator,
+.reel-drag-arrows,
+.reel-hint-arrows {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* (2) إخفاء قائمة اختيار الجودة "تلقائي" في كل صفحات الريلز */
+.reels-toolbar .quality-select,
+.reels-header-bar .quality-select,
+.reels-page-shell .quality-select,
+select.quality-select,
+.reels-status-ribbon .quality-pill,
+[data-ds='reels-quality-select'] {
+  display: none !important;
+}
+
+/* (3) إخفاء زر "رفع ريل" من الهيدر العلوي في كل الصفحات */
+.upload-reel-button,
+.reels-toolbar .upload-reel-button,
+.reels-header-bar .upload-reel-button,
+button.upload-reel-button,
+[data-ds='reels-upload-button'] {
+  display: none !important;
+}
+
+/* (4) لو الشريط بأكمله أصبح فارغًا، أخفِه أيضًا حتى لا يأخذ مساحة فوق الأزرار */
+.reels-toolbar:empty {
+  display: none !important;
+}
+
+/* (5) ضمان أن أزرار التفاعل (إعجاب/تعليق/حفظ/مشاركة) فوق أي عنصر آخر */
+.reel-actions-stack {
+  z-index: 40 !important;
+  pointer-events: auto !important;
+}
+.reel-actions-stack .reel-action-btn {
+  pointer-events: auto !important;
+  cursor: pointer;
+}
+
+/* (6) تسريع ظهور الريلز على الجوال — إخفاء حالة التحميل الطويلة */
+@media (max-width: 768px) {
+  .reels-loading-state {
+    animation: reels-loading-fade 250ms ease-out forwards;
+  }
+  .reel-video {
+    content-visibility: auto;
+    contain-intrinsic-size: 100vw 100vh;
+  }
+  /* Buffer banner أكثر هدوءًا على الجوال */
+  .reel-buffer-banner {
+    opacity: 0.85;
+  }
+}
+
+@keyframes reels-loading-fade {
+  from { opacity: 1; }
+  to { opacity: 1; }
+}
+
+/* (7) في حال وُجدت بقايا أسهم قديمة كصور SVG داخل البطاقة، أخفِها */
+.reel-card .reel-arrow-hint,
+.reel-card .reel-vertical-arrows,
+.reel-card-shell .swipe-arrows {
+  display: none !important;
+}
+
+/* ==========================================================================
+   v44 — TikTok Pure Mode: إخفاء الهيدر العلوي الموحّد داخل الريلز فقط
+   ========================================================================== */
+
+/* (8) إخفاء MobileTopBar (الذي يحوي ستوري/مجموعات/شعار Y/الإشعارات) داخل الريلز */
+.app-shell.yamshat-unified.reels-shell .ym-topbar,
+.reels-shell .ym-topbar,
+.reels-shell header.ym-topbar,
+.reels-shell .ym-topbar-inner,
+.reels-shell .ym-topbar-center,
+.reels-shell .ym-topbar-right-cluster,
+.reels-shell .ym-topbar-left {
+  display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  pointer-events: none !important;
+}
+
+/* (9) إخفاء أي بقايا للهيدر القديم (مجموعات/ستوري) داخل صفحة الريلز */
+.reels-shell .reels-header-bar,
+.reels-page-shell .reels-header-bar,
+.reels-shell .reels-status-ribbon,
+.reels-page-shell .reels-status-ribbon {
+  display: none !important;
+}
+
+/* (10) ضمان أن الفيديو يملأ كامل الشاشة من الأعلى */
+.reels-shell .page-content.reels-mode,
+.reels-shell .page-content {
+  padding-top: 0 !important;
+  margin-top: 0 !important;
+}
+
+/* (11) زر البحث + LIVE: شفافية كاملة بدون أي خلفية أو حواف (مطابق للصورة الثانية) */
+.reels-top-tabs-bar .reels-floating-btn,
+.reels-top-tabs-bar .reels-search-btn,
+.reels-top-tabs-bar .reels-live-btn {
+  background: transparent !important;
+  border: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.75)) !important;
+}
+
+/* (12) إزالة أي خلفية على شريط التبويبات نفسه */
+.reels-top-tabs-bar {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* (13) شعار YAMSHAT في الزاوية: بسيط وخفيف */
+.reels-corner-brand {
+  font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif !important;
+}

@@ -1,0 +1,215 @@
+/* ============================================================
+   Yamshat — Touch Responsiveness Fix (v48.0)
+   إصلاح شامل لمشكلة "اللمس الثقيل" وعدم استجابة السحب
+   على Chrome Mobile / PWA / Safari Mobile.
+   ============================================================
+   المشكلة:
+   - تأخير 300ms عند النقر على الجوال (click delay).
+   - عدم استجابة السحب الأفقي/العمودي في القوائم.
+   - بعض العناصر لا تقبل أحداث اللمس بسبب pointer-events / overlay.
+   - وميض أزرق عند النقر (-webkit-tap-highlight).
+   ============================================================ */
+
+/* === 1) تفعيل اللمس الفوري على كامل التطبيق === */
+html {
+  /* تعطيل تأخير اللمس وتمكين اللمس السلس */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  /* السماح بالتمرير العمودي ومنع الإيماءات غير المرغوبة */
+  touch-action: pan-x pan-y;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
+#root {
+  /* تأمين أن الجذر يقبل اللمس */
+  touch-action: pan-x pan-y;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* === 2) أزرار وعناصر تفاعلية — استجابة فورية === */
+button,
+a,
+[role="button"],
+[role="tab"],
+[role="link"],
+[role="menuitem"],
+input[type="button"],
+input[type="submit"],
+.ym-btn,
+.ym-filter-pill-new,
+.ym-footer-btn,
+.ym-more-btn,
+.yam-bottom-nav-item,
+.yam-action-btn,
+.yam-emoji-btn,
+.yam-send-btn,
+.yam-ghost-btn,
+.yam-list-row,
+.yam-row-main-line,
+.story-circle,
+.tab-pill {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: pointer;
+}
+
+/* === 3) حقول الإدخال — السماح بالتحديد === */
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+  touch-action: manipulation;
+  /* منع تكبير iOS التلقائي عند التركيز */
+  font-size: 16px;
+}
+
+/* === 4) إصلاح السحب الأفقي للقوائم (filter pills, stories, tabs) === */
+.ym-filters,
+.yam-stories-rail,
+.yam-tabs-rail,
+.horizontal-scroll,
+.scroll-x,
+.story-rail,
+.tab-strip {
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.ym-filters::-webkit-scrollbar,
+.yam-stories-rail::-webkit-scrollbar,
+.yam-tabs-rail::-webkit-scrollbar,
+.horizontal-scroll::-webkit-scrollbar,
+.scroll-x::-webkit-scrollbar {
+  display: none;
+}
+
+/* === 5) إصلاح السحب العمودي للقوائم === */
+.ym-messages-area,
+.feed-scroll,
+.yam-list,
+.page-content,
+.virtualized-list,
+.infinite-scroll,
+.posts-feed {
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
+/* === 6) منع تعطيل اللمس بواسطة طبقات overlay شفافة === */
+.ym-post-card *,
+.yam-list-row *,
+.story-circle * {
+  pointer-events: auto;
+}
+
+/* العناصر الزخرفية فقط لا تعترض اللمس */
+.ym-post-card .pill-content,
+.ym-post-card svg[aria-hidden="true"],
+.yam-list-row svg[aria-hidden="true"],
+.decorative-overlay,
+.background-glow,
+.gradient-overlay {
+  pointer-events: none;
+}
+
+/* === 7) ضمان حد أدنى لمساحة اللمس (44×44) — معايير WCAG === */
+button,
+[role="button"],
+a {
+  min-width: 36px;
+  min-height: 36px;
+}
+
+@media (max-width: 1023.98px) {
+  button,
+  [role="button"],
+  a {
+    min-width: 40px;
+    min-height: 40px;
+  }
+}
+
+/* === 8) منع اختيار النص العشوائي عند اللمس المطوّل على الأزرار === */
+.ym-post-card button,
+.yam-list-row button,
+.yam-bottom-nav button,
+.ym-filter-pill-new,
+.ym-footer-btn {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* === 9) إصلاح خاص لـ PWA المثبتة (display-mode: standalone) === */
+@media (display-mode: standalone),
+       (display-mode: fullscreen),
+       (display-mode: minimal-ui) {
+  html, body {
+    /* في PWA المثبتة، iOS يميل لقفل التمرير */
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* تأكيد أن جميع المناطق القابلة للتمرير تعمل */
+  .scrollable,
+  .ym-messages-area,
+  .feed-scroll,
+  .page-content {
+    -webkit-overflow-scrolling: touch !important;
+    overflow-y: auto !important;
+    touch-action: pan-y !important;
+  }
+}
+
+/* === 10) feedback بصري سريع عند اللمس (بديل عن tap-highlight) === */
+@media (hover: none) and (pointer: coarse) {
+  button:active,
+  [role="button"]:active,
+  a:active,
+  .ym-filter-pill-new:active,
+  .ym-footer-btn:active,
+  .yam-list-row:active {
+    opacity: 0.85;
+    transition: opacity 0.05s ease;
+  }
+}
+
+/* === 11) منع iOS من إعادة تحميل الصفحة عند السحب للأسفل (pull-to-refresh) === */
+html, body {
+  overscroll-behavior-y: none;
+}
+
+/* === 12) إصلاح Chrome Mobile — تأخير اللمس بسبب touch-action: auto === */
+@media (max-width: 1023.98px) {
+  * {
+    /* لا نريد تطبيق ذلك على كل العناصر بشكل مطلق،
+       فقط نعطّل أي تأخير لمس افتراضي */
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* === 13) إصلاح خاص لمشاكل touchstart المُلغاة بواسطة passive listeners === */
+.ym-filter-pill-new,
+.ym-footer-btn,
+.ym-more-btn,
+.yam-bottom-nav-item,
+.yam-action-btn {
+  /* ضمان أن touch events تصل للزر مباشرة */
+  position: relative;
+  z-index: 1;
+  isolation: isolate;
+}

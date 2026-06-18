@@ -1,0 +1,184 @@
+/* ============================================================
+   إصلاح أزرار التفاعل في بطاقات المنشورات للجوال
+   Mobile Post Actions Fix
+   ============================================================ */
+
+/* تصحيح شبكة الأزرار من 4 أعمدة إلى 5 أعمدة متساوية */
+.ym-post-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr 1fr !important;
+  align-items: center;
+  gap: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--ym-border-soft);
+  margin-top: 2px;
+}
+
+/* ضمان توزيع متساوي للأزرار */
+.ym-post-action {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+
+/* تحسين الحجم والمسافات للأجهزة الصغيرة جداً */
+@media (max-width: 360px) {
+  .ym-post-actions {
+    grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+    gap: 2px;
+    padding-top: 2px;
+  }
+
+  .ym-post-action {
+    padding: 4px 2px;
+  }
+
+  .ym-post-action svg {
+    width: 16px !important;
+    height: 16px !important;
+  }
+
+  .ym-post-action-label {
+    font-size: 10px;
+    display: none;
+  }
+}
+
+/* تحسين للأجهزة المتوسطة */
+@media (min-width: 361px) and (max-width: 480px) {
+  .ym-post-actions {
+    grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+    gap: 3px;
+  }
+
+  .ym-post-action {
+    padding: 6px 3px;
+  }
+
+  .ym-post-action svg {
+    width: 18px !important;
+    height: 18px !important;
+  }
+
+  .ym-post-action-label {
+    font-size: 11px;
+    margin-top: 2px;
+  }
+}
+
+/* تحسين للأجهزة الأكبر */
+@media (min-width: 481px) {
+  .ym-post-actions {
+    grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+    gap: 4px;
+  }
+
+  .ym-post-action {
+    padding: 8px 4px;
+  }
+
+  .ym-post-action svg {
+    width: 20px !important;
+    height: 20px !important;
+  }
+
+  .ym-post-action-label {
+    font-size: 12px;
+    margin-top: 3px;
+  }
+}
+
+/* دعم الوصول (Accessibility) */
+.ym-post-action:focus-visible {
+  outline: 2px solid var(--ym-violet);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* تحسين التفاعل (Hover/Active) */
+.ym-post-action:hover {
+  background: rgba(124, 58, 237, 0.1);
+  border-radius: 6px;
+  transition: background 0.2s ease;
+}
+
+.ym-post-action:active {
+  background: rgba(124, 58, 237, 0.2);
+}
+
+/* ضمان عدم تجاوز الأزرار للحدود */
+.ym-post-actions {
+  overflow: hidden;
+}
+
+/* تحسين النصوص المرافقة للأزرار */
+.ym-post-action-text {
+  font-size: 12px;
+  color: var(--ym-text-muted);
+  font-weight: 500;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* تحسين الأيقونات */
+.ym-post-action-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* تحسين الأزرار ذات الحالات المختلفة */
+.ym-post-action.is-liked .ym-post-action-icon {
+  color: var(--ym-pink);
+}
+
+.ym-post-action.is-liked .ym-post-action-text {
+  color: var(--ym-pink);
+}
+
+.ym-post-action.is-shared .ym-post-action-icon {
+  color: var(--ym-violet);
+}
+
+.ym-post-action.is-shared .ym-post-action-text {
+  color: var(--ym-violet);
+}
+
+/* تحسين الأداء والسلاسة */
+.ym-post-action {
+  transition: all 0.15s ease;
+  will-change: transform;
+}
+
+.ym-post-action:active {
+  transform: scale(0.95);
+}
+
+/* دعم الوضع الليلي والنهاري */
+@media (prefers-color-scheme: dark) {
+  .ym-post-action:hover {
+    background: rgba(124, 58, 237, 0.15);
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  .ym-post-action:hover {
+    background: rgba(124, 58, 237, 0.08);
+  }
+}
+
+/* دعم الأجهزة ذات شاشات اللمس */
+@media (hover: none) and (pointer: coarse) {
+  .ym-post-action {
+    padding: 10px 6px;
+  }
+
+  .ym-post-action:active {
+    background: rgba(124, 58, 237, 0.2);
+  }
+}

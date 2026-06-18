@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>يام شات - بدون إنترنت</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: Inter, system-ui, sans-serif;
+        background: linear-gradient(160deg, #07101d 0%, #091321 55%, #060c17 100%);
+        color: #e2e8f0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+      .card {
+        width: min(720px, 100%);
+        border-radius: 28px;
+        padding: 28px;
+        background: rgba(11,18,32,0.88);
+        border: 1px solid rgba(148,163,184,0.14);
+        box-shadow: 0 30px 80px rgba(2,6,23,0.55);
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(245,158,11,0.14);
+        color: #fcd34d;
+      }
+      .actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 24px;
+      }
+      a {
+        color: #fff;
+        text-decoration: none;
+        padding: 12px 16px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #8b5cf6, #06b6d4);
+      }
+      .ghost {
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.08);
+      }
+      ul { line-height: 1.9; }
+    </style>
+  
+<!-- 📱 v48.1 — تصغير الخطوط في الجوال (يام شات) -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;600;700&display=swap" />
+<style>
+/* === Mobile Compact Fonts v48.1 === */
+@media (max-width: 768px) {
+  html, body { font-family: 'Noto Sans Arabic','Tajawal','Cairo',system-ui,-apple-system,sans-serif !important; direction: rtl; -webkit-text-size-adjust: 100%; overflow-x: hidden; max-width: 100vw; }
+  html { font-size: 87.5% !important; }
+  body { font-size: 13px !important; line-height: 1.45 !important; word-break: break-word; overflow-wrap: anywhere; }
+  h1,.h1 { font-size: 18px !important; line-height: 1.3 !important; }
+  h2,.h2 { font-size: 16px !important; line-height: 1.3 !important; }
+  h3,.h3 { font-size: 14.5px !important; line-height: 1.3 !important; }
+  h4,.h4 { font-size: 13.5px !important; line-height: 1.3 !important; }
+  h5,.h5 { font-size: 12.5px !important; line-height: 1.3 !important; }
+  h6,.h6 { font-size: 12px !important; line-height: 1.3 !important; }
+  p, span, div, li, td, th, label, .text, .caption, .desc { font-size: 12.5px !important; line-height: 1.45 !important; }
+  small, .small, .meta, .timestamp, .time { font-size: 10.5px !important; }
+  button, .btn, .button, [role="button"], input[type="button"], input[type="submit"], a.btn {
+    font-size: 12.5px !important; line-height: 1.2 !important; padding: 6px 10px !important; min-height: 32px !important;
+    border-radius: 8px !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important;
+    max-width: 100% !important; box-sizing: border-box !important;
+  }
+  input, textarea, select { font-size: 13px !important; padding: 6px 9px !important; min-height: 34px !important; max-width: 100% !important; box-sizing: border-box !important; border-radius: 8px !important; }
+  ::placeholder { font-size: 12px !important; opacity: 0.7; }
+  *, *::before, *::after { box-sizing: border-box !important; }
+  img, video, iframe, canvas { max-width: 100% !important; height: auto; }
+  table { max-width: 100% !important; font-size: 12px !important; table-layout: fixed; }
+  table td, table th { word-break: break-word; padding: 4px 6px !important; }
+  .container, .wrapper, main, section, article { max-width: 100% !important; overflow-x: hidden !important; padding-inline: 10px !important; }
+  .card, [class*="Card"] { padding: 10px !important; border-radius: 10px !important; }
+}
+@media (max-width: 480px) {
+  html { font-size: 81.25% !important; }
+  body { font-size: 12.5px !important; line-height: 1.42 !important; }
+  h1,.h1 { font-size: 16px !important; }
+  h2,.h2 { font-size: 14.5px !important; }
+  h3,.h3 { font-size: 13.5px !important; }
+  h4,.h4 { font-size: 12.5px !important; }
+  h5,.h5 { font-size: 12px !important; }
+  h6,.h6 { font-size: 11.5px !important; }
+  p, span, div, li, td, th, label, .text { font-size: 12px !important; }
+  small, .small, .meta, .timestamp { font-size: 10px !important; }
+  button, .btn, .button, [role="button"], input[type="submit"] { font-size: 11.5px !important; padding: 5px 8px !important; min-height: 30px !important; }
+  input, textarea, select { font-size: 12.5px !important; padding: 5px 8px !important; min-height: 32px !important; }
+  ::placeholder { font-size: 11.5px !important; }
+  .container, .wrapper, main, section { padding-inline: 8px !important; }
+}
+@media (max-width: 360px) {
+  html { font-size: 75% !important; }
+  body { font-size: 12px !important; line-height: 1.4 !important; }
+  h1,.h1 { font-size: 15px !important; }
+  h2,.h2 { font-size: 13.5px !important; }
+  h3,.h3 { font-size: 12.5px !important; }
+  h4,.h4 { font-size: 12px !important; }
+  h5,.h5 { font-size: 11.5px !important; }
+  h6,.h6 { font-size: 11px !important; }
+  p, span, div, li, td, th, label { font-size: 11.5px !important; }
+  small, .small, .meta { font-size: 9.5px !important; }
+  button, .btn, .button, [role="button"], input[type="submit"] { font-size: 11px !important; padding: 4px 7px !important; min-height: 28px !important; }
+  input, textarea, select { font-size: 12px !important; padding: 4px 7px !important; min-height: 30px !important; }
+  ::placeholder { font-size: 11px !important; }
+  .container, .wrapper, main, section { padding-inline: 6px !important; }
+}
+</style>
+<!-- /📱 v48.1 -->
+
+</head>
+  <body>
+    <main class="card">
+      <div class="badge">⚡ Offline Page جاهزة</div>
+      <h1>أنت حالياً بدون اتصال</h1>
+      <p>يمكنك العودة إلى الصفحات التي تم تخزينها محلياً، ومتابعة بعض المهام، وسيتم إرسال الطلبات المؤجلة تلقائياً عند رجوع الإنترنت.</p>
+      <ul>
+        <li>الإشعارات والرسائل الأخيرة تظل متاحة محلياً إن كانت محمّلة مسبقاً.</li>
+        <li>الطلبات المؤجلة سيتم تمريرها عبر Background Sync عند عودة الشبكة.</li>
+        <li>تثبيت التطبيق يعطي تجربة أسرع وأكثر ثباتاً.</li>
+      </ul>
+      <div class="actions">
+        <a href="/">العودة للتطبيق</a>
+        <a href="/" class="ghost" onclick="window.location.reload()">إعادة المحاولة</a>
+      </div>
+    </main>
+  </body>
+</html>

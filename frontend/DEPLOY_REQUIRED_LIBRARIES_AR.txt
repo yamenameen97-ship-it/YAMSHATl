@@ -1,0 +1,41 @@
+Yamshat Frontend — المكتبات المطلوبة وقت النشر
+================================================
+
+مهم:
+- تمت إضافة esbuild فقط لدعم build production بعد تفعيل minify في Vite.
+- يكفي تشغيل: npm install
+- أو الأفضل: npm ci
+- لا يوجد node_modules داخل الملف المضغوط النهائي.
+
+أوامر النشر:
+1) npm ci
+2) npm run build
+
+المكتبات الأساسية (dependencies):
+- react
+- react-dom
+- react-router-dom
+- @tanstack/react-query
+- axios
+- zustand
+- framer-motion
+- socket.io-client
+- livekit-client
+- dompurify
+- browser-image-compression
+- spark-md5
+- @signalapp/libsignal-client
+- vite-plugin-pwa
+
+مكتبات التطوير والبناء (devDependencies):
+- vite
+- @vitejs/plugin-react
+- rollup-plugin-visualizer
+- vite-plugin-compression
+- @playwright/test
+- esbuild
+
+ملاحظات خاصة بالتحديث الحالي:
+- تم تنفيذ تحسينات الأداء والريلز بدون إضافة dependency جديدة.
+- تم تحسين Vite build لتقليل الـ JS bundle أثناء build.
+- تم إضافة صفحات جديدة للإدارة داخل السورس فقط.

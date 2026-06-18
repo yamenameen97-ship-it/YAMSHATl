@@ -1,0 +1,296 @@
+/* ===================================================================
+   📱 YAMSHAT — Responsive & Mobile UX v2
+   - إخفاء عناصر Desktop على الجوال
+   - تكبير الأزرار والبطاقات على الشاشات الصغيرة
+   - تحسين Touch targets (44px+ أدنى حد)
+   - تحسين التنقل والقوائم
+=================================================================== */
+
+/* ===== Helpers ===== */
+.desktop-only { display: initial; }
+.mobile-only { display: none; }
+
+@media (max-width: 768px) {
+  .desktop-only { display: none !important; }
+  .mobile-only { display: initial !important; }
+}
+
+/* ===== Tablets & Mobile (≤ 1024px) ===== */
+@media (max-width: 1024px) {
+
+  /* Hide desktop-specific sidebars on smaller screens */
+  .desktop-sidebar,
+  .desktop-only-nav,
+  [class*='desktopSidebar'],
+  [class*='DesktopLayout'] aside.desktop-aside {
+    display: none !important;
+  }
+}
+
+/* ===== Mobile breakpoint (≤ 768px) ===== */
+@media (max-width: 768px) {
+
+  /* === Hide all desktop-only elements === */
+  .desktop-nav,
+  .desktop-header,
+  .desktop-footer,
+  [class*='desktopHeader'],
+  [class*='desktopFooter'] {
+    display: none !important;
+  }
+
+  /* === Touch targets — min 44x44px (Apple HIG) === */
+  button,
+  .btn,
+  a.button,
+  [role='button'],
+  .clickable {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 10px 16px;
+    font-size: 0.95rem;
+  }
+
+  /* Icon-only buttons */
+  .icon-btn,
+  .btn-icon,
+  [class*='iconButton'] {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* === Cards larger on mobile === */
+  .card,
+  .post-card,
+  .group-card,
+  .admin-card,
+  [class*='Card'] {
+    padding: 16px !important;
+    border-radius: 14px !important;
+    margin-bottom: 12px;
+  }
+
+  /* === Chat input area === */
+  .chat-input,
+  .message-input-container,
+  [class*='chatInput'] {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .chat-input input,
+  .chat-input textarea,
+  [class*='chatInput'] input,
+  [class*='chatInput'] textarea {
+    font-size: 16px !important; /* Prevent iOS zoom */
+    padding: 12px 16px;
+    border-radius: 22px;
+  }
+
+  /* === Message bubbles wider on mobile === */
+  .message-bubble,
+  [class*='messageBubble'] {
+    max-width: 85% !important;
+    font-size: 0.95rem;
+    padding: 10px 14px;
+    line-height: 1.5;
+  }
+
+  /* === Conversation list items === */
+  .conversation-item,
+  .chat-list-item,
+  [class*='conversationItem'] {
+    padding: 14px 12px !important;
+    min-height: 64px;
+  }
+
+  .conversation-item .avatar,
+  .chat-list-item .avatar,
+  [class*='conversationItem'] [class*='avatar'] {
+    width: 48px !important;
+    height: 48px !important;
+  }
+
+  /* === Group cards mobile === */
+  .group-card,
+  [class*='groupCard'] {
+    padding: 14px !important;
+  }
+
+  .group-card .group-avatar,
+  [class*='groupCard'] [class*='groupAvatar'] {
+    width: 52px !important;
+    height: 52px !important;
+  }
+
+  /* === Headers compact === */
+  .page-header,
+  .chat-header,
+  .group-header,
+  [class*='pageHeader'] {
+    padding: 10px 14px !important;
+    min-height: 56px;
+  }
+
+  .page-header h1,
+  .page-header h2,
+  [class*='pageHeader'] h1 {
+    font-size: 1.15rem !important;
+    margin: 0;
+  }
+
+  /* === Bottom navigation === */
+  .bottom-nav,
+  .mobile-nav-bottom,
+  [class*='bottomNav'],
+  [class*='mobileNavBottom'] {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(20, 16, 42, 0.95);
+    border-top: 1px solid var(--neon-border, rgba(177, 75, 255, 0.32));
+    padding: 8px 4px calc(8px + env(safe-area-inset-bottom));
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    z-index: 100;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.45);
+  }
+
+  .bottom-nav a,
+  .bottom-nav button,
+  [class*='bottomNav'] a,
+  [class*='bottomNav'] button {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    color: var(--neon-text-soft, #c9b8ee);
+    font-size: 0.7rem;
+    padding: 8px 4px;
+    border-radius: 10px;
+    min-height: 52px;
+    transition: all 0.2s ease;
+  }
+
+  .bottom-nav a.active,
+  .bottom-nav button.active,
+  [class*='bottomNav'] a[class*='active'] {
+    color: #fff;
+    background: linear-gradient(135deg, rgba(177, 75, 255, 0.28), rgba(124, 58, 237, 0.14));
+    box-shadow: 0 0 12px rgba(177, 75, 255, 0.45);
+  }
+
+  /* === Modals fullscreen on mobile === */
+  .modal,
+  .dialog,
+  [class*='modalContent'] {
+    border-radius: 16px 16px 0 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    margin-top: auto !important;
+    max-height: 92vh;
+  }
+
+  /* === Forms === */
+  input,
+  textarea,
+  select {
+    font-size: 16px !important; /* Prevent iOS zoom */
+    padding: 12px 14px !important;
+    border-radius: 12px !important;
+  }
+
+  /* === Reels / Stories fullscreen === */
+  .reels-container,
+  .stories-viewer,
+  [class*='reelsView'],
+  [class*='storyViewer'] {
+    height: 100vh;
+    height: 100dvh;
+    width: 100vw;
+  }
+
+  /* === Hide secondary content === */
+  .right-panel,
+  .secondary-sidebar,
+  [class*='rightPanel'],
+  [class*='secondarySidebar'] {
+    display: none !important;
+  }
+
+  /* === Tables become cards on mobile === */
+  .admin-table,
+  [class*='adminTable'] {
+    font-size: 0.85rem;
+  }
+
+  .admin-table th,
+  .admin-table td,
+  [class*='adminTable'] th,
+  [class*='adminTable'] td {
+    padding: 10px 8px !important;
+  }
+
+  /* Stack admin sidebar on top as a slide-over drawer */
+  .admin-sidebar,
+  [class*='adminSidebar'] {
+    position: fixed;
+    top: 0; left: 0;
+    height: 100vh;
+    width: 280px;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    z-index: 200;
+  }
+
+  .admin-sidebar.open,
+  [class*='adminSidebar'][class*='open'] {
+    transform: translateX(0);
+    box-shadow: 0 0 60px rgba(0, 0, 0, 0.7);
+  }
+}
+
+/* ===== Very small mobile (≤ 380px) ===== */
+@media (max-width: 380px) {
+  .message-bubble {
+    max-width: 92% !important;
+    font-size: 0.9rem;
+  }
+
+  .conversation-item .avatar,
+  [class*='conversationItem'] [class*='avatar'] {
+    width: 42px !important;
+    height: 42px !important;
+  }
+
+  .page-header h1 { font-size: 1.05rem !important; }
+}
+
+/* ===== Landscape mobile ===== */
+@media (max-width: 900px) and (orientation: landscape) {
+  .bottom-nav,
+  [class*='bottomNav'] {
+    padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
+  }
+  .bottom-nav a,
+  [class*='bottomNav'] a {
+    min-height: 44px;
+    font-size: 0.65rem;
+  }
+}
+
+/* ===== Safe area insets (notch / home indicator) ===== */
+.safe-top    { padding-top: env(safe-area-inset-top); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+.safe-left   { padding-left: env(safe-area-inset-left); }
+.safe-right  { padding-right: env(safe-area-inset-right); }

@@ -1,0 +1,425 @@
+/* ==================== Viewers Management Panel ==================== */
+
+.viewers-management-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+/* ==================== Header ==================== */
+
+.vmp-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.vmp-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.vmp-header-stats {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.vmp-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+  font-size: 0.875rem;
+  color: #e0e0e0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.vmp-stat strong {
+  color: #00d4ff;
+  font-weight: 600;
+}
+
+.vmp-stat-muted {
+  background: rgba(255, 193, 7, 0.1);
+  border-color: rgba(255, 193, 7, 0.3);
+}
+
+.vmp-stat-muted strong {
+  color: #ffc107;
+}
+
+.vmp-stat-banned {
+  background: rgba(244, 67, 54, 0.1);
+  border-color: rgba(244, 67, 54, 0.3);
+}
+
+.vmp-stat-banned strong {
+  color: #f44336;
+}
+
+/* ==================== Filters ==================== */
+
+.vmp-filters {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.vmp-filter-btn {
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  color: #b0b0b0;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.vmp-filter-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.vmp-filter-btn.active {
+  background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+  border-color: #00d4ff;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* ==================== Viewers List ==================== */
+
+.vmp-viewers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.vmp-viewers-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.vmp-viewers-list::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+}
+
+.vmp-viewers-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+}
+
+.vmp-viewers-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* ==================== Viewer Item ==================== */
+
+.vmp-viewer-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.vmp-viewer-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.vmp-viewer-item.muted {
+  border-color: rgba(255, 193, 7, 0.3);
+  background: rgba(255, 193, 7, 0.05);
+}
+
+.vmp-viewer-item.banned {
+  border-color: rgba(244, 67, 54, 0.3);
+  background: rgba(244, 67, 54, 0.05);
+  opacity: 0.7;
+}
+
+/* ==================== Viewer Info ==================== */
+
+.vmp-viewer-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.vmp-viewer-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.vmp-viewer-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: #ffffff;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vmp-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.vmp-badge.muted {
+  background: rgba(255, 193, 7, 0.2);
+  color: #ffc107;
+}
+
+.vmp-badge.banned {
+  background: rgba(244, 67, 54, 0.2);
+  color: #f44336;
+}
+
+.vmp-viewer-stats {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.8rem;
+  color: #a0a0a0;
+}
+
+/* ==================== Viewer Actions ==================== */
+
+.vmp-viewer-actions {
+  display: flex;
+  gap: 0.5rem;
+  position: relative;
+}
+
+.vmp-action-btn {
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #b0b0b0;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.3s ease;
+  min-width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vmp-action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.vmp-action-menu {
+  cursor: pointer;
+}
+
+/* ==================== Action Menu Dropdown ==================== */
+
+.vmp-action-menu-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: #1a1a2e;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  min-width: 150px;
+  overflow: hidden;
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.vmp-menu-item {
+  display: block;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: none;
+  border: none;
+  color: #e0e0e0;
+  text-align: right;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.vmp-menu-item:last-child {
+  border-bottom: none;
+}
+
+.vmp-menu-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.vmp-menu-mute:hover {
+  background: rgba(255, 193, 7, 0.2);
+  color: #ffc107;
+}
+
+.vmp-menu-unmute:hover {
+  background: rgba(76, 175, 80, 0.2);
+  color: #4caf50;
+}
+
+.vmp-menu-ban:hover {
+  background: rgba(244, 67, 54, 0.2);
+  color: #f44336;
+}
+
+.vmp-menu-unban:hover {
+  background: rgba(76, 175, 80, 0.2);
+  color: #4caf50;
+}
+
+.vmp-menu-remove:hover {
+  background: rgba(244, 67, 54, 0.2);
+  color: #f44336;
+}
+
+/* ==================== Loading & Empty States ==================== */
+
+.vmp-loading,
+.vmp-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  color: #808080;
+  font-size: 0.95rem;
+  text-align: center;
+}
+
+.vmp-loading {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* ==================== Responsive Design ==================== */
+
+@media (max-width: 768px) {
+  .viewers-management-panel {
+    max-height: 400px;
+    padding: 0.75rem;
+  }
+
+  .vmp-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .vmp-header-stats {
+    width: 100%;
+  }
+
+  .vmp-viewer-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .vmp-viewer-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .vmp-action-menu-dropdown {
+    left: auto;
+    right: 0;
+  }
+
+  .vmp-viewer-stats {
+    gap: 0.75rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .viewers-management-panel {
+    max-height: 300px;
+  }
+
+  .vmp-header h3 {
+    font-size: 1rem;
+  }
+
+  .vmp-stat {
+    font-size: 0.75rem;
+    padding: 0.4rem 0.75rem;
+  }
+
+  .vmp-filter-btn {
+    font-size: 0.75rem;
+    padding: 0.4rem 0.75rem;
+  }
+
+  .vmp-viewer-item {
+    padding: 0.5rem;
+  }
+
+  .vmp-viewer-name {
+    font-size: 0.85rem;
+  }
+
+  .vmp-viewer-stats {
+    font-size: 0.7rem;
+  }
+}

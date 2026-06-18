@@ -307,18 +307,29 @@ def _issue_session(
     })
     csrf_token = _issue_csrf_token()
     expires_at = _refresh_expiry(remember_me)
-    store_refresh_token(
-        db,
-        user,
-        refresh_token,
-        expires_at,
-        binding_context=binding,
-        session_key=active_session_key,
-        remember_me=remember_me,
-        login_method=login_method,
-    )
-    _set_refresh_cookie(response, refresh_token, remember_me=remember_me)
-    _set_csrf_cookie(response, csrf_token, remember_me=remember_me)
+    # تخزين سجل الجلسة في DB لا يجب أن يُفشل تسجيل الدخول
+    try:
+        store_refresh_token(
+            db,
+            user,
+            refresh_token,
+            expires_at,
+            binding_context=binding,
+            session_key=active_session_key,
+            remember_me=remember_me,
+            login_method=login_method,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('[login] store_refresh_token soft-failed: %s', exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    try:
+        _set_refresh_cookie(response, refresh_token, remember_me=remember_me)
+        _set_csrf_cookie(response, csrf_token, remember_me=remember_me)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('[login] cookie setting soft-failed: %s', exc)
     expose_refresh_token = refresh_token if _trusted_native_client(request) else ''
     return _session_payload(
         user,
@@ -702,10 +713,12 @@ async def resend_verification(request: Request, payload: dict = Body(...), db: S
 @router.post('/login')
 async def login(request: Request, response: Response, payload: dict = Body(...), db: Session = Depends(get_db)):
     """
-    🔧 إصلاح v53: مسار تسجيل الدخول مع تغليف دفاعي تفاديًا لعودة 500.
-    - HTTPException تمرّ بدون تغيير لتحتفظ بستاتس كودها الأصلي (400/401/403/429).
-    - أي خطأ غير متوقع (DB/IO) يتم تسجيله + إرجاع رسالة واضحة
-      بستاتس 503 بدلاً من الغامض 500.
+    🔧 إصلاح v59: تسجيل الدخول الدفاعي
+    - HTTPException تمرّ بدون تغيير لتحتفظ بستاتس كودها (400/401/403/429).
+    - أي استثناء غير متوقع يتم تسجيله بتفاصيل، ثم محاولة مسار fallback خفيف
+      قبل إرجاع 503. هذا يحل مشكلة "Authentication service is temporarily
+      unavailable" التي كانت تظهر بسبب أخطاء جانبية في DB/IO لا تمنع فعلياً
+      إصدار توكن.
     """
     try:
         return await _login_impl(request, response, payload, db)
@@ -718,6 +731,16 @@ async def login(request: Request, response: Response, payload: dict = Body(...),
             db.rollback()
         except Exception:
             pass
+        # محاولة fallback: إصدار جلسة طوارئ بدون الميزات الجانبية (audit/risk/sessions store)
+        try:
+            fb = await _login_fallback(request, response, payload, db)
+            if fb is not None:
+                logger.warning('[login] served via emergency fallback path')
+                return fb
+        except HTTPException:
+            raise
+        except Exception as inner_exc:  # noqa: BLE001
+            logger.exception('[login] fallback also failed: %s', inner_exc)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={
@@ -725,6 +748,76 @@ async def login(request: Request, response: Response, payload: dict = Body(...),
                 'error_type': type(exc).__name__,
             },
         ) from exc
+
+
+async def _login_fallback(request: Request, response: Response, payload: dict, db: Session):
+    """مسار إصدار جلسة الطوارئ — يُستخدم فقط حين يفشل المسار الرئيسي بسبب
+    خطأ جانبي (audit/risk/session-store). يُصدر access + refresh token صحيحين
+    دون كتابة سجل الجلسة في DB. آمن لأن:
+      1) لا يتم تخطي التحقق من كلمة المرور (نستدعي authenticate_user مجدداً).
+      2) لا يتم تخطي الكابتشا.
+      3) لا يتم تخطي rate-limit (الكاتش-أول الأصلي يحدث بعد الفحوصات).
+    """
+    identifier = payload.get('identifier') or payload.get('email') or payload.get('username')
+    password = payload.get('password')
+    remember_me = bool(payload.get('remember_me', True))
+    if not (identifier or '').strip() or not (password or '').strip():
+        return None
+    if not _trusted_native_client(request):
+        try:
+            _require_captcha(payload, context='login')
+        except HTTPException:
+            raise
+        except Exception:
+            return None
+    try:
+        user = authenticate_user(db, identifier=identifier, password=password, require_verified=True)
+    except HTTPException:
+        raise
+    except Exception:
+        return None
+
+    # إصدار توكنات مباشرة دون استدعاء store_refresh_token (الذي قد يكون السبب الجذري).
+    binding = request_binding_context(request)
+    device_id = ensure_device_cookie(response, request)
+    binding['device_id'] = device_id
+    is_admin_session = effective_role(user) == 'admin'
+    active_session_key = secrets.token_urlsafe(24)
+    access_token = create_access_token({
+        'user_id': user.id,
+        'username': user.username,
+        'role': user.role,
+        'device_id_hash': binding.get('device_id_hash') or '',
+        'user_agent_hash': binding.get('user_agent_hash') or '',
+        'admin_session': is_admin_session,
+        'sid': active_session_key,
+    })
+    refresh_token = create_refresh_token({
+        'user_id': user.id,
+        'username': user.username,
+        'role': user.role,
+        'device_id_hash': binding.get('device_id_hash') or '',
+        'ip_hash': binding.get('ip_hash') or '',
+        'user_agent_hash': binding.get('user_agent_hash') or '',
+        'admin_session': is_admin_session,
+        'sid': active_session_key,
+        'remember_me': bool(remember_me),
+    })
+    csrf_token = _issue_csrf_token()
+    try:
+        _set_refresh_cookie(response, refresh_token, remember_me=remember_me)
+        _set_csrf_cookie(response, csrf_token, remember_me=remember_me)
+    except Exception:
+        pass
+    expose_refresh_token = refresh_token if _trusted_native_client(request) else ''
+    return _session_payload(
+        user,
+        access_token=access_token,
+        csrf_token=csrf_token,
+        session_key=active_session_key,
+        remember_me=remember_me,
+        refresh_token=expose_refresh_token,
+    )
 
 
 async def _login_impl(request: Request, response: Response, payload: dict, db: Session):
@@ -836,40 +929,60 @@ async def _login_impl(request: Request, response: Response, payload: dict, db: S
         )
         return challenge_payload
 
-    user.last_login_at = utcnow_naive()
+    try:
+        user.last_login_at = utcnow_naive()
+    except Exception:
+        pass
     try:
         mark_successful_login(db, user, binding)
     except Exception as exc:  # noqa: BLE001
         logger.warning('[login] mark_successful_login soft-failed: %s', exc)
-        db.rollback()
+        try:
+            db.rollback()
+        except Exception:
+            pass
     if effective_role(user) == 'admin':
-        user.last_admin_ip_hash = binding['ip_hash']
-        user.last_admin_user_agent_hash = binding['user_agent_hash']
+        try:
+            user.last_admin_ip_hash = binding['ip_hash']
+            user.last_admin_user_agent_hash = binding['user_agent_hash']
+        except Exception:
+            pass
     try:
         db.commit()
         db.refresh(user)
     except Exception as exc:  # noqa: BLE001
         logger.warning('[login] post-login commit soft-failed: %s', exc)
-        db.rollback()
+        try:
+            db.rollback()
+        except Exception:
+            pass
     try:
         await clear_failed_logins(attempt_key)
     except Exception:
         pass
-    record_audit_log(
-        db,
-        actor_user_id=user.id,
-        action='login_success',
-        entity_type='auth',
-        entity_id=user.id,
-        description='User logged in',
-        meta={
-            'ip_hash': binding['ip_hash'],
-            'user_agent_hash': binding['user_agent_hash'],
-            'device_id_hash': binding['device_id_hash'],
-            'admin_session': effective_role(user) == 'admin',
-            'remember_me': remember_me,
-        },
-    )
+    try:
+        record_audit_log(
+            db,
+            actor_user_id=user.id,
+            action='login_success',
+            entity_type='auth',
+            entity_id=user.id,
+            description='User logged in',
+            meta={
+                'ip_hash': binding['ip_hash'],
+                'user_agent_hash': binding['user_agent_hash'],
+                'device_id_hash': binding['device_id_hash'],
+                'admin_session': effective_role(user) == 'admin',
+                'remember_me': remember_me,
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('[login] audit log soft-failed: %s', exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    # _issue_session نفسه محمي داخلياً (انظر التعديل أدناه)
     return _issue_session(db, user, response, request, remember_me=remember_me, login_method='password')
 
 

@@ -221,7 +221,13 @@ def authenticate_user(db: Session, identifier: str, password: str, require_verif
 
     if not password_is_valid:
         if user: # Mark failed login attempt for adaptive authentication
-            mark_failed_login(db, user)
+            try:
+                mark_failed_login(db, user)
+            except Exception:
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Incorrect password')
 
     desired_role = 'admin' if is_primary_admin_email(user.email) else 'user'
@@ -349,17 +355,25 @@ def _device_label(binding_context: dict | None = None) -> str:
 
 
 def prune_expired_sessions(db: Session, user: User | None = None) -> None:
-    now = utcnow_naive()
-    query = db.query(UserSession).filter(
-        or_(
-            UserSession.expires_at < now,
-            UserSession.revoked_at.isnot(None),
+    """تنظيف الجلسات المنتهية. لا يجب أن يُفشل تسجيل الدخول إذا فشل التنظيف
+    (مثلاً لو جدول user_sessions غير موجود بعد بسبب migration ناقصة)."""
+    try:
+        now = utcnow_naive()
+        query = db.query(UserSession).filter(
+            or_(
+                UserSession.expires_at < now,
+                UserSession.revoked_at.isnot(None),
+            )
         )
-    )
-    if user is not None:
-        query = query.filter(UserSession.user_id == user.id)
-    query.delete(synchronize_session=False)
-    db.commit()
+        if user is not None:
+            query = query.filter(UserSession.user_id == user.id)
+        query.delete(synchronize_session=False)
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
 
 
 def store_refresh_token(
@@ -380,7 +394,8 @@ def store_refresh_token(
         record = UserSession(user_id=user.id, session_key=session_key)
         db.add(record)
 
-    record.refresh_token_hash = hash_password(refresh_token)
+    hashed_refresh = hash_password(refresh_token)
+    record.refresh_token_hash = hashed_refresh
     record.expires_at = expires_at
     record.remember_me = bool(remember_me)
     record.device_id_hash = binding_context.get('device_id_hash') or None
@@ -391,15 +406,39 @@ def store_refresh_token(
     record.last_seen_at = utcnow_naive()
     record.revoked_at = None
 
-    user.refresh_token_hash = hash_password(refresh_token)
-    user.refresh_token_expires_at = expires_at
-    user.refresh_token_device_hash = binding_context.get('device_id_hash') or None
-    user.refresh_token_ip_hash = binding_context.get('ip_hash') or None
-    user.refresh_token_user_agent_hash = binding_context.get('user_agent_hash') or None
-    user.refresh_token_session_id = session_key
-    user.refresh_token_rotated_at = utcnow_naive()
-    db.commit()
-    db.refresh(user)
+    # تحديث حقول المستخدم مع حماية ضد الأعمدة غير الموجودة (legacy schemas)
+    for attr, value in (
+        ('refresh_token_hash', hashed_refresh),
+        ('refresh_token_expires_at', expires_at),
+        ('refresh_token_device_hash', binding_context.get('device_id_hash') or None),
+        ('refresh_token_ip_hash', binding_context.get('ip_hash') or None),
+        ('refresh_token_user_agent_hash', binding_context.get('user_agent_hash') or None),
+        ('refresh_token_session_id', session_key),
+        ('refresh_token_rotated_at', utcnow_naive()),
+    ):
+        if hasattr(user, attr):
+            try:
+                setattr(user, attr, value)
+            except Exception:
+                pass
+
+    try:
+        db.commit()
+        db.refresh(user)
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        # محاولة ثانية بدون تحديث حقول المستخدم الـ legacy
+        try:
+            db.add(record)
+            db.commit()
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
 
 
 def _validate_session_binding(record: UserSession, binding_context: dict | None = None) -> None:

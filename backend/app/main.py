@@ -362,6 +362,18 @@ async def on_startup():
     else:
         logger.info(f"   ✅ All {len(_ROUTER_STATUS)} routers mounted successfully")
 
+    # ✅ v61 FIX: تأكد من أن سكيمة قاعدة البيانات محدّثة قبل قبول أي طلب
+    # السبب: نموذج User يضم أعمدة phone_* لكن قاعدة البيانات على Render قد لا تحتويها بعد،
+    # مما يُولّد SQLAlchemy ProgrammingError (f405) و 503 على /api/auth/login.
+    # initialize_database فيه idempotent _add_column_if_missing لكل الأعمدة المطلوبة.
+    try:
+        from app.db.bootstrap import initialize_database
+        from app.db.session import engine
+        initialize_database(engine)
+        logger.info("   🗄️  Database schema bootstrap completed (phone_* columns ensured)")
+    except Exception as exc:
+        logger.warning(f"   ⚠️  Database bootstrap soft-fail (will fall back to lazy migration): {exc}")
+
     # v47.6: تشغيل مركز الإشعارات اللحظية (Realtime Hub) - Redis Pub/Sub
     try:
         from app.services.realtime_hub import realtime_hub

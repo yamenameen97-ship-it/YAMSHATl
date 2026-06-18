@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.security import hash_password, verify_password
 from app.db.base import Base
 
-CURRENT_ALEMBIC_REVISION = '20260605_0005'
+CURRENT_ALEMBIC_REVISION = '20260618_0013'
 LEGACY_USER_TABLE_NAMES = ('suser', 'user')
 DEFAULT_SUBSCRIBER = {
     'username': ((settings.DEMO_ACCOUNT_EMAIL or 'yasryameen21@gmail.com').split('@')[0] or 'yasryameen21').strip().lower(),

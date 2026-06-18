@@ -192,6 +192,40 @@ def register_user(db: Session, username: str, email: str, password: str, avatar:
     return user
 
 
+# ✅ v61 FIX: حارس للتأكد من مزامنة سكيمة users مرة واحدة فقط في دورة حياة التطبيق
+_USERS_SCHEMA_GUARDED = False
+
+
+def _ensure_users_schema(db: Session) -> None:
+    """يضمن وجود أعمدة phone_* في جدول users.
+
+    هذه دفاع ثانوي ضد حالة أن startup بوتستراب لم يتم (مثلاً حين تفشل دورة startup
+    على Render بسبب cold-start). يستخدم عملية idempotent لإضافة الأعمدة فقط إن لم توجد.
+
+    تعمل مرة واحدة فقط في العملية (process-level cache) لتجنب تكرار الفحص على كل طلب.
+    """
+    global _USERS_SCHEMA_GUARDED
+    if _USERS_SCHEMA_GUARDED:
+        return
+    try:
+        from app.db.bootstrap import _add_column_if_missing
+        engine = db.get_bind()
+        # أعمدة الهاتف التي أضيفت في v60 ولم تصل لـ DB بعد
+        _add_column_if_missing(engine, 'users', 'phone_number', 'phone_number VARCHAR(20)')
+        _add_column_if_missing(engine, 'users', 'phone_verified', 'phone_verified BOOLEAN NOT NULL DEFAULT FALSE')
+        _add_column_if_missing(engine, 'users', 'phone_verification_code', 'phone_verification_code VARCHAR(128)')
+        _add_column_if_missing(engine, 'users', 'phone_verification_expires_at', 'phone_verification_expires_at TIMESTAMP NULL')
+        _add_column_if_missing(engine, 'users', 'phone_verification_attempts', 'phone_verification_attempts INTEGER NOT NULL DEFAULT 0')
+        _add_column_if_missing(engine, 'users', 'phone_verification_locked_until', 'phone_verification_locked_until TIMESTAMP NULL')
+        _USERS_SCHEMA_GUARDED = True
+    except Exception:
+        # فشل صامت: لا نوقف التطبيق إن لم نستطع إضافة الأعمدة أثناء الطلب
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
 def authenticate_user(db: Session, identifier: str, password: str, require_verified: bool = True) -> User:
     normalized_identifier = (identifier or '').strip()
     lowered_identifier = normalized_identifier.lower()
@@ -199,15 +233,44 @@ def authenticate_user(db: Session, identifier: str, password: str, require_verif
     if looks_like_email(lowered_identifier) and not is_valid_email(lowered_identifier):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid email address')
 
-    user = db.query(User).filter(
-        and_(
-            User.is_active.is_(True),
-            or_(
-                func.lower(User.email) == lowered_identifier,
-                func.lower(User.username) == lowered_identifier,
-            ),
-        )
-    ).first()
+    # ✅ v61 FIX: تأكد من محاذاة السكيمة قبل أول استعلام (دفاعي، idempotent، يعمل مرة واحدة)
+    _ensure_users_schema(db)
+
+    try:
+        user = db.query(User).filter(
+            and_(
+                User.is_active.is_(True),
+                or_(
+                    func.lower(User.email) == lowered_identifier,
+                    func.lower(User.username) == lowered_identifier,
+                ),
+            )
+        ).first()
+    except Exception as query_exc:
+        # حالة حافة: إذا فشل الاستعلام بسبب عمود مفقود (رغم الحارس)، أعد المحاولة مرة واحدة
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        global _USERS_SCHEMA_GUARDED
+        _USERS_SCHEMA_GUARDED = False
+        _ensure_users_schema(db)
+        try:
+            user = db.query(User).filter(
+                and_(
+                    User.is_active.is_(True),
+                    or_(
+                        func.lower(User.email) == lowered_identifier,
+                        func.lower(User.username) == lowered_identifier,
+                    ),
+                )
+            ).first()
+        except Exception:
+            # إن فشل مرة ثانية، ارفع الخطأ الأصلي برسالة واضحة
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail='Login service temporarily unavailable. Please try again in a moment.',
+            ) from query_exc
 
     if user is None:
         user = _provision_reserved_demo_user(db, lowered_identifier, password or '')

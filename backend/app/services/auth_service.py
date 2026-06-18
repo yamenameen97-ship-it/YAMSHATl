@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.admin_access import is_primary_admin_email
 from app.core.config import settings
 from app.core.request_security import stable_hash
+from app.core.retry import db_retry  # v61: retry على الاتصالات الميتة
 from app.core.security import generate_numeric_code, hash_password, verify_password
 from app.models.audit_log import AuditLog
 from app.models.user import User
@@ -226,6 +227,20 @@ def _ensure_users_schema(db: Session) -> None:
             pass
 
 
+@db_retry(max_attempts=3, initial_delay=0.3)
+def _query_user_by_identifier(db: Session, lowered_identifier: str) -> User | None:
+    """v61: استعلام محمي بـ retry — يعالج انقطاع اتصال Render اللحظي."""
+    return db.query(User).filter(
+        and_(
+            User.is_active.is_(True),
+            or_(
+                func.lower(User.email) == lowered_identifier,
+                func.lower(User.username) == lowered_identifier,
+            ),
+        )
+    ).first()
+
+
 def authenticate_user(db: Session, identifier: str, password: str, require_verified: bool = True) -> User:
     normalized_identifier = (identifier or '').strip()
     lowered_identifier = normalized_identifier.lower()
@@ -237,15 +252,8 @@ def authenticate_user(db: Session, identifier: str, password: str, require_verif
     _ensure_users_schema(db)
 
     try:
-        user = db.query(User).filter(
-            and_(
-                User.is_active.is_(True),
-                or_(
-                    func.lower(User.email) == lowered_identifier,
-                    func.lower(User.username) == lowered_identifier,
-                ),
-            )
-        ).first()
+        # v61: استعلام محمي بـ retry decorator — يحل 503 على Render
+        user = _query_user_by_identifier(db, lowered_identifier)
     except Exception as query_exc:
         # حالة حافة: إذا فشل الاستعلام بسبب عمود مفقود (رغم الحارس)، أعد المحاولة مرة واحدة
         try:
@@ -256,15 +264,7 @@ def authenticate_user(db: Session, identifier: str, password: str, require_verif
         _USERS_SCHEMA_GUARDED = False
         _ensure_users_schema(db)
         try:
-            user = db.query(User).filter(
-                and_(
-                    User.is_active.is_(True),
-                    or_(
-                        func.lower(User.email) == lowered_identifier,
-                        func.lower(User.username) == lowered_identifier,
-                    ),
-                )
-            ).first()
+            user = _query_user_by_identifier(db, lowered_identifier)
         except Exception:
             # إن فشل مرة ثانية، ارفع الخطأ الأصلي برسالة واضحة
             raise HTTPException(

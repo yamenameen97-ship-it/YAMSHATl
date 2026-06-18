@@ -24,6 +24,9 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 
+# v61: معالجات أخطاء DB العالمية لمنع تسريب 503 خام للواجهة
+from app.middleware.db_error_handler import register_db_exception_handlers
+
 logger = logging.getLogger("yamshat.main")
 logging.basicConfig(level=logging.INFO)
 
@@ -110,12 +113,31 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # ============================================================
+# 🛡️ v61: تسجيل معالجات أخطاء DB العالمية
+# يحول أخطاء SQLAlchemy (DisconnectionError, OperationalError, DBAPIError)
+# إلى استجابة 503 منظمة مع CORS headers صحيحة
+# ============================================================
+try:
+    register_db_exception_handlers(app)
+    logger.info('[v61] DB exception handlers registered')
+except Exception as _exc:  # noqa: BLE001
+    logger.warning('[v61] Failed to register DB handlers: %s', _exc)
+
+
+# ============================================================
 # 🔥 Health & Warmup endpoints (لحل cold-start على Render Free)
 # ============================================================
 @app.get("/health")
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "service": "yamshat-backend"}
+    # v61: فحص صحة DB أيضاً عبر db_healthcheck إن أمكن
+    payload = {"status": "ok", "service": "yamshat-backend"}
+    try:
+        from app.db.session import db_healthcheck
+        payload.update(db_healthcheck())
+    except Exception:
+        pass
+    return payload
 
 
 @app.get("/api/warmup")

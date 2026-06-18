@@ -73,7 +73,7 @@
 
   /* مساحة آمنة أسفل الصفحة كي لا يختفي المحتوى خلف الـ BottomNav */
   .page-content:not(.conversation-mode):not(.lock-scroll) {
-    padding-bottom: calc(110px + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)) !important;
   }
 
   /* الـ shell الرئيسي لا يُقيِّد ارتفاع المحتوى */
@@ -283,7 +283,6 @@
     font-weight: 800;
   }
 
-  /* v50 — سحب أزرار التصفية إلى أقصى اليمين (مكان السهم في الصورة المرجعية) */
   .yam-feed-tabs {
     display: flex;
     gap: 8px;
@@ -292,11 +291,6 @@
     scrollbar-width: none;
     margin-top: 12px;
     padding-bottom: 2px;
-    /* محاذاة الأزرار لليمين في RTL */
-    justify-content: flex-start;
-    padding-inline-start: 0;
-    padding-inline-end: 4px;
-    direction: rtl;
   }
 
   .yam-feed-tabs::-webkit-scrollbar {

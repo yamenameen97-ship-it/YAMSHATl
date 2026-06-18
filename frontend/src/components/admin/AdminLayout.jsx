@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { getAdminNotifications, getAdminReportsStats } from '../../api/admin.js';
+import { getAdminNotifications } from '../../api/admin.js';
 import socket from '../../api/socket.js';
 import { getAuthToken, getStoredUser } from '../../utils/auth.js';
 import '../../styles/admin-modern.css';
@@ -29,7 +29,6 @@ export default function AdminLayout({ children }) {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [notifications, setNotifications] = useState([]);
-  const [reportsCount, setReportsCount] = useState(0);
   const { pushToast } = useToast();
   const user = getStoredUser();
   const token = getAuthToken();
@@ -38,12 +37,6 @@ export default function AdminLayout({ children }) {
   const breadcrumbs = useMemo(
     () => meta.breadcrumb.map((label, index) => ({ label, to: index === meta.breadcrumb.length - 1 ? '' : '/admin/dashboard' })),
     [meta]
-  );
-
-  // عدّاد الإشعارات غير المقروءة (يُعدّ بصورة عابرة)
-  const unreadNotifsCount = useMemo(
-    () => notifications.filter((n) => !n?.is_read).length,
-    [notifications]
   );
 
   useEffect(() => {
@@ -57,22 +50,7 @@ export default function AdminLayout({ children }) {
       }
     };
 
-    const loadReportsStats = async () => {
-      try {
-        const { data } = await getAdminReportsStats();
-        if (active) {
-          // دعم أشكال متعددة للاستجابة (مرونة)
-          const pending = data?.pending ?? data?.by_status?.pending ?? 0;
-          const reviewing = data?.reviewing ?? data?.by_status?.reviewing ?? 0;
-          setReportsCount(Number(pending) + Number(reviewing));
-        }
-      } catch {
-        if (active) setReportsCount(0);
-      }
-    };
-
     loadNotifications();
-    loadReportsStats();
 
     if (!socket.connected) socket.connect();
     socket.emit('register_user', { token, user: user?.username });
@@ -82,43 +60,20 @@ export default function AdminLayout({ children }) {
       setNotifications((prev) => [{ id: `${Date.now()}`, ...payload, is_read: false }, ...prev].slice(0, 20));
     };
 
-    const onReportEvent = () => {
-      loadReportsStats();
-      loadNotifications();
-    };
-
     const syncEvents = ['admin:user_updated', 'admin:user_status_changed', 'admin:user_deleted', 'admin:post_created', 'admin:post_updated', 'admin:post_deleted', 'admin:posts_bulk_deleted', 'admin:live_updated'];
-    const reportEvents = ['admin:report_created', 'admin:report_updated', 'admin:report_resolved', 'reports:new'];
     socket.on('admin:notification', onAdminNotification);
     syncEvents.forEach((eventName) => socket.on(eventName, loadNotifications));
-    reportEvents.forEach((eventName) => socket.on(eventName, onReportEvent));
-
-    // تحديث دوري (60 ثانية) كـfallback إذا فشل الـsocket
-    const interval = setInterval(() => {
-      loadNotifications();
-      loadReportsStats();
-    }, 60_000);
 
     return () => {
       active = false;
-      clearInterval(interval);
       socket.off('admin:notification', onAdminNotification);
       syncEvents.forEach((eventName) => socket.off(eventName, loadNotifications));
-      reportEvents.forEach((eventName) => socket.off(eventName, onReportEvent));
     };
   }, [pushToast, token, user?.username]);
 
   return (
     <div className="admin-app-shell admin-reference-shell admin-shell-modern">
-      <AdminSidebar
-        collapsed={collapsed}
-        permissions={user?.permissions || []}
-        role={user?.role || 'user'}
-        badges={{
-          '/admin/reports': reportsCount,
-          '/admin/notifications': unreadNotifsCount,
-        }}
-      />
+      <AdminSidebar collapsed={collapsed} permissions={user?.permissions || []} role={user?.role || 'user'} />
       <div className="admin-main-shell admin-main-shell-modern">
         <AdminTopbar title={meta.title} subtitle={meta.subtitle} onToggleSidebar={() => setCollapsed((prev) => !prev)} notifications={notifications} />
         <main className="admin-page-shell admin-reference-page-shell admin-page-shell-modern">

@@ -83,8 +83,7 @@ function resolveCreateAction(pathname) {
     return { label: 'دردشة جديدة', kind: 'event', event: 'yamshat:open-new-chat', fallback: '/inbox' };
   }
   if (pathname.startsWith('/reels')) {
-    // v56: رفع الريلز المعتمد — صفحة الملحّن الجديدة /reels/new
-    return { label: 'ريل جديد', kind: 'navigate', target: '/reels/new' };
+    return { label: 'ريل جديد', kind: 'event', event: 'yamshat:open-reel-composer', fallback: '/reels' };
   }
   if (pathname.startsWith('/stories')) {
     return { label: 'ستوري جديد', kind: 'event', event: 'yamshat:open-story-composer', fallback: '/stories' };
@@ -156,22 +155,20 @@ function BottomNav() {
       </div>
 
       <style>{`
-        /* v50 — رفع الهيدر السفلي فوق شريط النظام لضمان ظهور زر (+) بوضوح */
         .ym-bottomnav {
           position: fixed;
-          bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+          bottom: 0;
           left: 0;
           right: 0;
-          height: 68px;
-          padding-bottom: 0;
+          height: calc(64px + env(safe-area-inset-bottom, 0px));
+          padding-bottom: env(safe-area-inset-bottom, 0px);
           background-color: #0A0D1A;
           border-top: 1px solid #1F2937;
-          border-radius: 16px 16px 0 0;
           z-index: 1001;
           display: flex;
           align-items: stretch;
           justify-content: center;
-          box-shadow: 0 -6px 24px rgba(0,0,0,0.55);
+          box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
           transform: none !important;
           will-change: auto;
           backface-visibility: hidden;
@@ -233,25 +230,21 @@ function BottomNav() {
           min-width: 0;
           font-family: inherit;
         }
-        /* v50 — زر (+) المركزي مرفوع للأعلى ليبرز فوق الهيدر */
-        .ym-nav-center-item {
-          margin-top: -22px;
-        }
         .ym-nav-plus-btn {
-          width: 58px;
-          height: 58px;
-          background: linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%);
-          border-radius: 50%;
+          width: 46px;
+          height: 38px;
+          background-color: #8B5CF6;
+          border-radius: 12px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 8px 22px rgba(139, 92, 246, 0.65), 0 0 0 4px #0A0D1A;
+          box-shadow: 0 4px 14px rgba(139, 92, 246, 0.5);
           color: #fff;
           transition: transform 0.15s, box-shadow 0.15s;
         }
         .ym-nav-plus-btn svg {
-          width: 28px;
-          height: 28px;
+          width: 22px;
+          height: 22px;
         }
         .ym-nav-center-item:hover .ym-nav-plus-btn {
           transform: translateY(-1px);
@@ -274,43 +267,47 @@ function BottomNav() {
         }
 
         @media (max-width: 400px) {
-          .ym-bottomnav { height: 66px; }
+          .ym-bottomnav { height: calc(60px + env(safe-area-inset-bottom, 0px)); }
           .ym-bottomnav-inner { padding: 4px 2px; }
           .ym-nav-item { padding: 3px 3px; font-size: 0.68rem; gap: 2px; }
           .ym-nav-icon svg { width: 22px; height: 22px; }
-          .ym-nav-plus-btn { width: 54px; height: 54px; border-radius: 50%; }
-          .ym-nav-plus-btn svg { width: 26px; height: 26px; }
+          .ym-nav-plus-btn { width: 42px; height: 34px; border-radius: 10px; }
+          .ym-nav-plus-btn svg { width: 20px; height: 20px; }
           .ym-nav-label { font-size: 0.68rem; max-width: 68px; }
-          .ym-nav-center-item { margin-top: -20px; }
         }
         @media (max-width: 360px) {
-          .ym-bottomnav { height: 64px; }
+          .ym-bottomnav { height: calc(58px + env(safe-area-inset-bottom, 0px)); }
           .ym-bottomnav-inner { padding: 3px 2px; }
           .ym-nav-item { padding: 2px 2px; font-size: 0.64rem; }
           .ym-nav-icon svg { width: 21px; height: 21px; }
-          .ym-nav-plus-btn { width: 50px; height: 50px; }
-          .ym-nav-plus-btn svg { width: 24px; height: 24px; }
+          .ym-nav-plus-btn { width: 38px; height: 30px; border-radius: 9px; }
+          .ym-nav-plus-btn svg { width: 19px; height: 19px; }
           .ym-nav-label { font-size: 0.64rem; max-width: 62px; }
-          .ym-nav-center-item { margin-top: -18px; }
         }
         @media (max-width: 320px) {
-          .ym-bottomnav { height: 60px; }
+          .ym-bottomnav { height: calc(54px + env(safe-area-inset-bottom, 0px)); }
           .ym-bottomnav-inner { padding: 2px 1px; }
           .ym-nav-item { padding: 2px 1px; font-size: 0.58rem; gap: 1px; }
           .ym-nav-icon svg { width: 19px; height: 19px; }
-          .ym-nav-plus-btn { width: 46px; height: 46px; }
-          .ym-nav-plus-btn svg { width: 22px; height: 22px; }
+          .ym-nav-plus-btn { width: 34px; height: 26px; border-radius: 7px; box-shadow: 0 2px 8px rgba(139, 92, 246, 0.45); }
+          .ym-nav-plus-btn svg { width: 16px; height: 16px; }
           .ym-nav-label { font-size: 0.56rem; max-width: 52px; }
-          .ym-nav-center-item { margin-top: -16px; }
         }
+        /* دعم Redmi Note 8 (393px) */
         @media (max-width: 393px) and (min-width: 361px) {
-          .ym-bottomnav { height: 66px; }
-          .ym-nav-plus-btn { width: 56px; height: 56px; }
+          .ym-bottomnav { height: calc(62px + env(safe-area-inset-bottom, 0px)); }
+          .ym-nav-plus-btn { width: 44px; height: 36px; }
           .ym-nav-label { font-size: 0.7rem; }
-          .ym-nav-center-item { margin-top: -20px; }
         }
+        /* دعم الأجهزة القديمة بدون env(safe-area-inset-bottom) */
         @supports not (padding: env(safe-area-inset-bottom)) {
-          .ym-bottomnav { bottom: 8px; height: 68px; }
+          .ym-bottomnav {
+            height: 64px;
+            padding-bottom: 0;
+          }
+          @media (max-width: 400px) { .ym-bottomnav { height: 60px; } }
+          @media (max-width: 360px) { .ym-bottomnav { height: 58px; } }
+          @media (max-width: 320px) { .ym-bottomnav { height: 54px; } }
         }
         @media (min-width: 1024px) {
           .ym-nav-label { font-size: 0.85rem; }

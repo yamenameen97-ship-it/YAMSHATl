@@ -213,20 +213,8 @@ export const realtimeNotifications = new RealtimeNotificationsClient();
  */
 export async function registerWebPush() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
-  // تحقق صارم من مفتاح VAPID لتجنب InvalidAccessError في الكونسول
-  if (!VAPID_PUBLIC_KEY || typeof VAPID_PUBLIC_KEY !== 'string' || VAPID_PUBLIC_KEY.length < 80) {
-    console.info('[realtime] VAPID key missing or invalid - web push disabled');
-    return false;
-  }
-  let serverKey;
-  try {
-    serverKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
-    if (!serverKey || serverKey.length !== 65) {
-      console.info('[realtime] VAPID key wrong length - web push disabled');
-      return false;
-    }
-  } catch (keyErr) {
-    console.info('[realtime] VAPID key decode failed - web push disabled', keyErr?.message || keyErr);
+  if (!VAPID_PUBLIC_KEY) {
+    console.info('[realtime] VAPID key missing - web push disabled');
     return false;
   }
   try {
@@ -240,7 +228,7 @@ export async function registerWebPush() {
     if (!subscription) {
       subscription = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: serverKey,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
     }
 

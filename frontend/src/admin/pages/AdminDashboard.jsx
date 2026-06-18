@@ -3,8 +3,6 @@ import Card from '../../components/ui/Card.jsx';
 import Button from '../../components/ui/Button.jsx';
 import { useRealtime } from '../../hooks/realtime/useRealtime.js';
 
-// NOTE: this legacy /admin/AdminDashboard is NOT the rendered dashboard.
-// The active one is in src/pages/admin/AdminDashboard.jsx (v51 square layout).
 // Enterprise Monitoring Widget
 const MonitoringWidget = ({ title, value, status, trend }) => (
   <Card className={`monitoring-widget ${status}`}>

@@ -4984,10 +4984,8 @@ img {
     background:rgba(5,8,22,.88)!important;
   }
 
-  /* v50 — تعويض مساحة للهيدر السفلي المرفوع + زر (+) البارز */
   .main-content{
-    padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px))!important;
-    font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+    padding-bottom:110px!important;
   }
 
   .bottom-mobile-nav{

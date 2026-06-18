@@ -1,16 +1,7 @@
 import { useEffect, useState } from 'react';
 
-/**
- * 🔧 إصلاح v53:
- * - تم تعطيل الشريط الأخضر السفلي (الذي كان يظهر بنمط "تنشيط Windows") نهائياً.
- * - بدلاً منه: إشعار صغير في الزاوية العلوية بنفس استايل نظام إشعارات
- *   التطبيق (دائرة صغيرة + شارة نقطة خضراء) يستجيب للضغط لتطبيق التحديث.
- * - عند الضغط: ينفّذ التحديث مباشرة (SKIP_WAITING + reload).
- * - عند الإغلاق: يختفي تماماً للجلسة الحالية (لا شريط، لا تذكير مزعج).
- */
-
 const DISMISS_STORAGE_KEY = 'yamshat_update_dismissed_at';
-const DISMISS_COOLDOWN_MS = 12 * 60 * 60 * 1000; // 12 ساعة هدوء بعد الإغلاق
+const DISMISS_COOLDOWN_MS = 6 * 60 * 60 * 1000; // 6 ساعات هدوء بعد "لاحقاً"
 
 function wasRecentlyDismissed() {
   try {
@@ -26,14 +17,21 @@ export default function AppUpdatePrompt() {
   const [registration, setRegistration] = useState(null);
   const [visible, setVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
     const handleReady = (event) => {
       const nextRegistration = event.detail?.registration || null;
       if (!nextRegistration) return;
-      if (wasRecentlyDismissed()) return; // أُغلق مؤخراً، لا تُظهر شيئاً
       setRegistration(nextRegistration);
-      setVisible(true);
+      if (wasRecentlyDismissed()) {
+        // يظهر بشكل مصغّر (شارة صغيرة فقط) بدلاً من شريط كامل يغطي الأزرار
+        setCollapsed(true);
+        setVisible(true);
+      } else {
+        setCollapsed(false);
+        setVisible(true);
+      }
     };
 
     window.addEventListener('yamshat:update-ready', handleReady);
@@ -43,188 +41,250 @@ export default function AppUpdatePrompt() {
   if (!visible || !registration) return null;
 
   const handleUpdateNow = async () => {
-    if (refreshing) return;
     setRefreshing(true);
     try {
       if (registration.waiting) {
         registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-        // controllerchange listener في main.jsx سيتولى إعادة التحميل
         return;
       }
       await registration.update();
-      // إذا لم يكن هناك waiting، نُجبر إعادة التحميل
-      setTimeout(() => window.location.reload(), 300);
     } catch {
       setRefreshing(false);
     }
   };
 
-  const handleDismiss = (event) => {
-    event.stopPropagation();
+  const handleDismiss = () => {
     try {
       localStorage.setItem(DISMISS_STORAGE_KEY, String(Date.now()));
     } catch {
       /* noop */
     }
-    setVisible(false);
+    // ندخل في وضع مصغّر بدلاً من الاختفاء الكامل (للمستخدمين الذين يرغبون بالعودة لاحقاً)
+    setCollapsed(true);
   };
 
-  // إشعار صغير في الزاوية العلوية اليسرى — بنفس استايل نظام إشعارات التطبيق
-  // (دائرة صغيرة + شارة نقطة) — يستجيب للضغط لتطبيق التحديث فوراً.
-  return (
-    <div
-      className="yam-update-badge-wrap"
-      dir="rtl"
-      role="status"
-      aria-live="polite"
-    >
+  // الوضع المصغّر: زر دائري صغير في الزاوية لا يغطي محتوى الصفحة
+  if (collapsed) {
+    return (
       <button
         type="button"
-        className="yam-update-badge"
+        className="yam-update-mini"
+        dir="rtl"
         title="إصدار جديد متاح — اضغط للتحديث"
-        aria-label="إصدار جديد متاح، اضغط للتحديث الآن"
-        onClick={handleUpdateNow}
-        disabled={refreshing}
+        aria-label="إصدار جديد متاح"
+        onClick={() => setCollapsed(false)}
       >
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
+        <span className="yam-update-mini-dot" aria-hidden="true" />
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M21 12a9 9 0 11-3.5-7.1" />
           <path d="M21 4v5h-5" />
         </svg>
-        <span className="yam-update-badge-dot" aria-hidden="true" />
+        <style>{`
+          .yam-update-mini {
+            position: fixed;
+            inset-inline-start: 14px;
+            bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+            z-index: 9998;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: 1px solid rgba(168, 130, 255, 0.35);
+            background: linear-gradient(135deg, rgba(142, 61, 255, 0.92), rgba(91, 33, 182, 0.92));
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 8px 24px rgba(91, 33, 182, 0.45);
+            cursor: pointer;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            transition: transform 180ms ease;
+          }
+          .yam-update-mini:active { transform: scale(0.94); }
+          .yam-update-mini-dot {
+            position: absolute;
+            top: 6px;
+            inset-inline-end: 6px;
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: #34d399;
+            box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.9);
+            animation: yamUpdatePulse 1.6s ease-in-out infinite;
+          }
+          @keyframes yamUpdatePulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.25); opacity: 0.7; }
+          }
+        `}</style>
       </button>
+    );
+  }
 
-      <button
-        type="button"
-        className="yam-update-badge-close"
-        title="إخفاء إشعار التحديث"
-        aria-label="إخفاء إشعار التحديث"
-        onClick={handleDismiss}
-      >
-        <svg
-          width="10"
-          height="10"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M18 6L6 18M6 6l12 12" />
-        </svg>
-      </button>
+  // الوضع الكامل: شريط أنيق بألوان البراند البنفسجية، مع زر إغلاق واضح
+  return (
+    <div className="yam-update-toast" dir="rtl" role="status" aria-live="polite">
+      <div className="yam-update-toast-inner">
+        <div className="yam-update-icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 12a9 9 0 11-3.5-7.1" />
+            <path d="M21 4v5h-5" />
+          </svg>
+        </div>
+        <div className="yam-update-copy">
+          <strong>إصدار جديد متاح</strong>
+          <span>تحسينات وأداء أفضل</span>
+        </div>
+        <div className="yam-update-actions">
+          <button
+            type="button"
+            className="yam-update-btn primary"
+            onClick={handleUpdateNow}
+            disabled={refreshing}
+          >
+            {refreshing ? '…' : 'تحديث'}
+          </button>
+          <button
+            type="button"
+            className="yam-update-btn ghost"
+            onClick={handleDismiss}
+            aria-label="إخفاء"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
 
       <style>{`
-        .yam-update-badge-wrap {
+        .yam-update-toast {
           position: fixed;
-          top: calc(env(safe-area-inset-top, 0px) + 10px);
-          inset-inline-start: 10px;
+          inset-inline: 12px;
+          bottom: calc(12px + env(safe-area-inset-bottom, 0px));
           z-index: 9998;
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
+          display: flex;
+          justify-content: center;
           pointer-events: none;
         }
 
-        .yam-update-badge,
-        .yam-update-badge-close {
+        .yam-update-toast-inner {
           pointer-events: auto;
-          border: none;
-          cursor: pointer;
-          font-family: inherit;
+          display: inline-flex;
+          align-items: center;
+          gap: 12px;
+          max-width: 520px;
+          width: 100%;
+          padding: 10px 12px;
+          border-radius: 18px;
+          background: linear-gradient(135deg, rgba(20, 14, 38, 0.92), rgba(30, 18, 56, 0.94));
+          border: 1px solid rgba(168, 130, 255, 0.28);
+          box-shadow:
+            0 14px 36px rgba(91, 33, 182, 0.32),
+            0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+          color: #f5f3ff;
+          backdrop-filter: blur(14px);
+          -webkit-backdrop-filter: blur(14px);
+          animation: yamUpdateSlide 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
         }
 
-        .yam-update-badge {
-          position: relative;
-          width: 38px;
-          height: 38px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, rgba(20, 14, 38, 0.92), rgba(30, 18, 56, 0.94));
-          border: 1px solid rgba(168, 130, 255, 0.32);
-          color: #e9d5ff;
+        @keyframes yamUpdateSlide {
+          from { transform: translateY(14px); opacity: 0; }
+          to   { transform: translateY(0);     opacity: 1; }
+        }
+
+        .yam-update-icon {
+          flex-shrink: 0;
+          width: 34px;
+          height: 34px;
+          border-radius: 12px;
+          background: linear-gradient(135deg, #8e3dff, #5b21b6);
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 6px 18px rgba(91, 33, 182, 0.32);
-          backdrop-filter: blur(10px);
-          -webkit-backdrop-filter: blur(10px);
-          transition: transform 160ms ease, background 200ms ease, box-shadow 200ms ease;
-          animation: yamUpdateFadeIn 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+          color: #fff;
+          box-shadow: 0 6px 16px rgba(91, 33, 182, 0.45);
         }
 
-        .yam-update-badge:hover {
-          background: linear-gradient(135deg, rgba(30, 22, 56, 0.95), rgba(45, 28, 80, 0.96));
-          box-shadow: 0 8px 22px rgba(91, 33, 182, 0.42);
+        .yam-update-copy {
+          display: grid;
+          flex: 1;
+          min-width: 0;
+          line-height: 1.25;
         }
 
-        .yam-update-badge:active {
-          transform: scale(0.92);
+        .yam-update-copy strong {
+          font-size: 0.9rem;
+          font-weight: 700;
+          color: #fff;
         }
 
-        .yam-update-badge:disabled {
-          opacity: 0.7;
-          cursor: default;
+        .yam-update-copy span {
+          color: #c4b5fd;
+          font-size: 0.78rem;
+          opacity: 0.9;
         }
 
-        .yam-update-badge-dot {
-          position: absolute;
-          top: 4px;
-          inset-inline-end: 4px;
-          width: 9px;
-          height: 9px;
-          border-radius: 50%;
-          background: #a78bfa;
-          box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.9);
-          animation: yamUpdatePulse 1.8s ease-in-out infinite;
+        .yam-update-actions {
+          display: inline-flex;
+          gap: 6px;
+          align-items: center;
+          flex-shrink: 0;
         }
 
-        .yam-update-badge-close {
-          width: 18px;
-          height: 18px;
-          border-radius: 50%;
-          background: rgba(20, 14, 38, 0.86);
-          color: #cbd5e1;
+        .yam-update-btn {
+          min-height: 36px;
+          padding: 0 14px;
+          border-radius: 12px;
+          font-weight: 700;
+          font-size: 0.85rem;
+          cursor: pointer;
+          transition: transform 120ms ease, background 200ms ease, opacity 200ms ease;
+        }
+
+        .yam-update-btn.primary {
+          background: linear-gradient(135deg, #8e3dff, #5b21b6);
+          color: #fff;
+          border: 1px solid rgba(168, 130, 255, 0.45);
+          box-shadow: 0 4px 14px rgba(91, 33, 182, 0.35);
+        }
+
+        .yam-update-btn.primary:active {
+          transform: scale(0.96);
+        }
+
+        .yam-update-btn.ghost {
+          width: 36px;
+          padding: 0;
+          background: rgba(255, 255, 255, 0.06);
+          color: #e9d5ff;
           border: 1px solid rgba(255, 255, 255, 0.08);
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          opacity: 0.85;
-          transition: opacity 160ms ease, transform 160ms ease;
         }
 
-        .yam-update-badge-close:hover {
-          opacity: 1;
+        .yam-update-btn.ghost:active {
+          transform: scale(0.94);
+          background: rgba(255, 255, 255, 0.1);
         }
 
-        .yam-update-badge-close:active {
-          transform: scale(0.9);
+        .yam-update-btn:disabled {
+          opacity: 0.6;
+          cursor: default;
         }
 
-        @keyframes yamUpdateFadeIn {
-          from { transform: translateY(-6px) scale(0.9); opacity: 0; }
-          to   { transform: translateY(0) scale(1); opacity: 1; }
+        /* على الشاشات الصغيرة جداً، نخفّض الحشو قليلاً */
+        @media (max-width: 380px) {
+          .yam-update-copy span { display: none; }
+          .yam-update-toast-inner { padding: 8px 10px; gap: 8px; }
         }
 
-        @keyframes yamUpdatePulse {
-          0%, 100% { transform: scale(1); opacity: 1; }
-          50%      { transform: scale(1.3); opacity: 0.65; }
-        }
-
-        /* تجنّب التداخل مع شريط الحالة في وضع PWA standalone */
-        @media (display-mode: standalone) {
-          .yam-update-badge-wrap {
-            top: calc(env(safe-area-inset-top, 0px) + 14px);
+        /* على سطح المكتب، نلصقه يمين الأسفل بدلاً من ملء العرض */
+        @media (min-width: 900px) {
+          .yam-update-toast {
+            justify-content: flex-end;
+            inset-inline: auto 20px;
           }
         }
       `}</style>

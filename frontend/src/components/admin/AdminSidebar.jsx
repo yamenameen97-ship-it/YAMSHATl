@@ -5,7 +5,7 @@ import BrandLogo from '../ui/BrandLogo.jsx';
 import { clearStoredUser, getStoredUser } from '../../utils/auth.js';
 import { getAdminNavItems } from './adminNavigation.js';
 
-export default function AdminSidebar({ collapsed, permissions = [], role = 'user', badges = {} }) {
+export default function AdminSidebar({ collapsed, permissions = [], role = 'user' }) {
   const navigate = useNavigate();
   const currentUser = getStoredUser();
   const navGroups = useMemo(() => getAdminNavItems(role, permissions), [permissions, role]);
@@ -50,26 +50,18 @@ export default function AdminSidebar({ collapsed, permissions = [], role = 'user
           <div key={group.title} className="admin-sidebar-group">
             {!collapsed ? <div className="admin-sidebar-group-title">{group.title}</div> : null}
             <nav className="admin-nav admin-reference-nav">
-              {group.items.map((item) => {
-                const dynamicBadge = badges[item.to];
-                const showDynamic = typeof dynamicBadge === 'number' && dynamicBadge > 0;
-                return (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    end={Boolean(item.exact)}
-                    className={({ isActive }) => `admin-nav-link admin-reference-link ${isActive ? 'active' : ''}`}
-                  >
-                    <span className="admin-nav-icon admin-reference-icon">{item.icon}</span>
-                    {!collapsed ? <span>{item.label}</span> : null}
-                    {!collapsed && showDynamic ? (
-                      <em className="admin-nav-badge admin-nav-badge-live" title={`${dynamicBadge} عنصر بحاجة متابعة`}>
-                        {dynamicBadge > 99 ? '99+' : dynamicBadge}
-                      </em>
-                    ) : (!collapsed && item.badge ? <em className="admin-nav-badge">{item.badge}</em> : null)}
-                  </NavLink>
-                );
-              })}
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={Boolean(item.exact)}
+                  className={({ isActive }) => `admin-nav-link admin-reference-link ${isActive ? 'active' : ''}`}
+                >
+                  <span className="admin-nav-icon admin-reference-icon">{item.icon}</span>
+                  {!collapsed ? <span>{item.label}</span> : null}
+                  {!collapsed && item.badge ? <em className="admin-nav-badge">{item.badge}</em> : null}
+                </NavLink>
+              ))}
             </nav>
           </div>
         ))}

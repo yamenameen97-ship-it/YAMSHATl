@@ -11,7 +11,7 @@
  *  6) Background sync بدون رمي استثناءات غير مُعالجة
  */
 
-const SW_VERSION = '1.0.4-pwa-v60-login-fix';
+const SW_VERSION = '1.0.3-pwa-enhanced-fixed';
 
 const CACHE_NAMES = {
   STATIC: `yamshat-static-${SW_VERSION}`,

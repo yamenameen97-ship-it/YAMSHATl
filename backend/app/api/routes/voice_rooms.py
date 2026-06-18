@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import select, and_, func
 
-from app.core.dependencies import get_db
+from app.db.session import get_db
 from app.core.security import get_current_user
 from app.models.user import User
 from app.models.engagement import (

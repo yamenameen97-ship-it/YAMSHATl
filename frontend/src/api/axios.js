@@ -48,23 +48,6 @@ const SILENT_404_403_PATTERNS = [
   /\/live\/[^/]+\/viewers$/i,
 ];
 
-// v50 — مسارات تُرجع 500 مؤقتاً (cold start / DB)، نعيد بيانات فارغة بدلاً من كسر الواجهة
-const SAFE_FALLBACK_500_PATTERNS = [
-  /\/chat_threads(\?|$)/i,
-  /\/posts(\?|$)/i,
-  /\/notifications(\?|$)/i,
-  /\/groups(\?|$)/i,
-];
-
-const getSafeFallbackData = (url) => {
-  const u = String(url || '');
-  if (/\/posts/i.test(u)) return { items: [], data: [], page: 1, hasMore: false };
-  if (/\/chat_threads/i.test(u)) return { data: [], threads: [] };
-  if (/\/notifications/i.test(u)) return { data: [], notifications: [] };
-  if (/\/groups/i.test(u)) return { data: [], groups: [] };
-  return { data: [] };
-};
-
 const shouldSilenceError = (config = {}, status) => {
   if (status !== 403 && status !== 404) return false;
   if (config.silent === true) return true;
@@ -174,28 +157,6 @@ API.interceptors.response.use(
       const delay = Math.pow(2, retryCount) * 1000 + Math.random() * 1000;
       await new Promise((resolve) => setTimeout(resolve, delay));
       return API(config);
-    }
-
-    // v50 — fallback آمن لأخطاء 500 على مسارات القراءة الشائعة بعد فشل المحاولات
-    if (
-      config &&
-      response?.status === 500 &&
-      String(config.method || 'get').toLowerCase() === 'get' &&
-      SAFE_FALLBACK_500_PATTERNS.some((re) => re.test(String(config.url || '')))
-    ) {
-      error.isSilent = true;
-      error.silent = true;
-      // eslint-disable-next-line no-console
-      console.warn('[yamshat] API 500 fallback for', config.url);
-      return Promise.resolve({
-        data: getSafeFallbackData(config.url),
-        status: 200,
-        statusText: 'OK (fallback)',
-        headers: {},
-        config,
-        request: {},
-        _fallback: true,
-      });
     }
 
     // ✅ FIX: وسم الخطأ بأنه "صامت" حتى يعرف المستخدمون أنه لا داعي للسجل في الكونسول

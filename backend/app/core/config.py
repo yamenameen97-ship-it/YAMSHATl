@@ -194,11 +194,6 @@ class Settings:
 
     DB_BOOTSTRAP_ON_START: bool = env_bool('DB_BOOTSTRAP_ON_START', False)
     DB_STATEMENT_TIMEOUT_MS: int = int(os.getenv('DB_STATEMENT_TIMEOUT_MS', '8000'))
-    # v61: إعدادات Pool لمقاومة انقطاع Render
-    DB_POOL_SIZE: int = int(os.getenv('DB_POOL_SIZE', '5'))
-    DB_MAX_OVERFLOW: int = int(os.getenv('DB_MAX_OVERFLOW', '10'))
-    DB_POOL_TIMEOUT: int = int(os.getenv('DB_POOL_TIMEOUT', '20'))
-    DB_POOL_RECYCLE: int = int(os.getenv('DB_POOL_RECYCLE', '280'))
     CORS_ORIGIN_REGEX_RAW: str = os.getenv('CORS_ORIGIN_REGEX', '').strip()
     CLOUDINARY_CLOUD_NAME: str = (os.getenv('CLOUDINARY_CLOUD_NAME') or os.getenv('CLOUD_NAME') or '').strip()
     CLOUDINARY_API_KEY: str = (os.getenv('CLOUDINARY_API_KEY') or os.getenv('CLOUD_API_KEY') or '').strip()

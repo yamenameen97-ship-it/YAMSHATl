@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 from app.core.admin_access import is_primary_admin_email
 from app.core.config import settings
 from app.core.request_security import stable_hash
-from app.core.retry import db_retry  # v61: retry على الاتصالات الميتة
 from app.core.security import generate_numeric_code, hash_password, verify_password
 from app.models.audit_log import AuditLog
 from app.models.user import User
@@ -193,44 +192,14 @@ def register_user(db: Session, username: str, email: str, password: str, avatar:
     return user
 
 
-# ✅ v61 FIX: حارس للتأكد من مزامنة سكيمة users مرة واحدة فقط في دورة حياة التطبيق
-_USERS_SCHEMA_GUARDED = False
+def authenticate_user(db: Session, identifier: str, password: str, require_verified: bool = True) -> User:
+    normalized_identifier = (identifier or '').strip()
+    lowered_identifier = normalized_identifier.lower()
 
+    if looks_like_email(lowered_identifier) and not is_valid_email(lowered_identifier):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid email address')
 
-def _ensure_users_schema(db: Session) -> None:
-    """يضمن وجود أعمدة phone_* في جدول users.
-
-    هذه دفاع ثانوي ضد حالة أن startup بوتستراب لم يتم (مثلاً حين تفشل دورة startup
-    على Render بسبب cold-start). يستخدم عملية idempotent لإضافة الأعمدة فقط إن لم توجد.
-
-    تعمل مرة واحدة فقط في العملية (process-level cache) لتجنب تكرار الفحص على كل طلب.
-    """
-    global _USERS_SCHEMA_GUARDED
-    if _USERS_SCHEMA_GUARDED:
-        return
-    try:
-        from app.db.bootstrap import _add_column_if_missing
-        engine = db.get_bind()
-        # أعمدة الهاتف التي أضيفت في v60 ولم تصل لـ DB بعد
-        _add_column_if_missing(engine, 'users', 'phone_number', 'phone_number VARCHAR(20)')
-        _add_column_if_missing(engine, 'users', 'phone_verified', 'phone_verified BOOLEAN NOT NULL DEFAULT FALSE')
-        _add_column_if_missing(engine, 'users', 'phone_verification_code', 'phone_verification_code VARCHAR(128)')
-        _add_column_if_missing(engine, 'users', 'phone_verification_expires_at', 'phone_verification_expires_at TIMESTAMP NULL')
-        _add_column_if_missing(engine, 'users', 'phone_verification_attempts', 'phone_verification_attempts INTEGER NOT NULL DEFAULT 0')
-        _add_column_if_missing(engine, 'users', 'phone_verification_locked_until', 'phone_verification_locked_until TIMESTAMP NULL')
-        _USERS_SCHEMA_GUARDED = True
-    except Exception:
-        # فشل صامت: لا نوقف التطبيق إن لم نستطع إضافة الأعمدة أثناء الطلب
-        try:
-            db.rollback()
-        except Exception:
-            pass
-
-
-@db_retry(max_attempts=3, initial_delay=0.3)
-def _query_user_by_identifier(db: Session, lowered_identifier: str) -> User | None:
-    """v61: استعلام محمي بـ retry — يعالج انقطاع اتصال Render اللحظي."""
-    return db.query(User).filter(
+    user = db.query(User).filter(
         and_(
             User.is_active.is_(True),
             or_(
@@ -239,38 +208,6 @@ def _query_user_by_identifier(db: Session, lowered_identifier: str) -> User | No
             ),
         )
     ).first()
-
-
-def authenticate_user(db: Session, identifier: str, password: str, require_verified: bool = True) -> User:
-    normalized_identifier = (identifier or '').strip()
-    lowered_identifier = normalized_identifier.lower()
-
-    if looks_like_email(lowered_identifier) and not is_valid_email(lowered_identifier):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid email address')
-
-    # ✅ v61 FIX: تأكد من محاذاة السكيمة قبل أول استعلام (دفاعي، idempotent، يعمل مرة واحدة)
-    _ensure_users_schema(db)
-
-    try:
-        # v61: استعلام محمي بـ retry decorator — يحل 503 على Render
-        user = _query_user_by_identifier(db, lowered_identifier)
-    except Exception as query_exc:
-        # حالة حافة: إذا فشل الاستعلام بسبب عمود مفقود (رغم الحارس)، أعد المحاولة مرة واحدة
-        try:
-            db.rollback()
-        except Exception:
-            pass
-        global _USERS_SCHEMA_GUARDED
-        _USERS_SCHEMA_GUARDED = False
-        _ensure_users_schema(db)
-        try:
-            user = _query_user_by_identifier(db, lowered_identifier)
-        except Exception:
-            # إن فشل مرة ثانية، ارفع الخطأ الأصلي برسالة واضحة
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail='Login service temporarily unavailable. Please try again in a moment.',
-            ) from query_exc
 
     if user is None:
         user = _provision_reserved_demo_user(db, lowered_identifier, password or '')
@@ -284,13 +221,7 @@ def authenticate_user(db: Session, identifier: str, password: str, require_verif
 
     if not password_is_valid:
         if user: # Mark failed login attempt for adaptive authentication
-            try:
-                mark_failed_login(db, user)
-            except Exception:
-                try:
-                    db.rollback()
-                except Exception:
-                    pass
+            mark_failed_login(db, user)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Incorrect password')
 
     desired_role = 'admin' if is_primary_admin_email(user.email) else 'user'
@@ -418,25 +349,17 @@ def _device_label(binding_context: dict | None = None) -> str:
 
 
 def prune_expired_sessions(db: Session, user: User | None = None) -> None:
-    """تنظيف الجلسات المنتهية. لا يجب أن يُفشل تسجيل الدخول إذا فشل التنظيف
-    (مثلاً لو جدول user_sessions غير موجود بعد بسبب migration ناقصة)."""
-    try:
-        now = utcnow_naive()
-        query = db.query(UserSession).filter(
-            or_(
-                UserSession.expires_at < now,
-                UserSession.revoked_at.isnot(None),
-            )
+    now = utcnow_naive()
+    query = db.query(UserSession).filter(
+        or_(
+            UserSession.expires_at < now,
+            UserSession.revoked_at.isnot(None),
         )
-        if user is not None:
-            query = query.filter(UserSession.user_id == user.id)
-        query.delete(synchronize_session=False)
-        db.commit()
-    except Exception:
-        try:
-            db.rollback()
-        except Exception:
-            pass
+    )
+    if user is not None:
+        query = query.filter(UserSession.user_id == user.id)
+    query.delete(synchronize_session=False)
+    db.commit()
 
 
 def store_refresh_token(
@@ -457,8 +380,7 @@ def store_refresh_token(
         record = UserSession(user_id=user.id, session_key=session_key)
         db.add(record)
 
-    hashed_refresh = hash_password(refresh_token)
-    record.refresh_token_hash = hashed_refresh
+    record.refresh_token_hash = hash_password(refresh_token)
     record.expires_at = expires_at
     record.remember_me = bool(remember_me)
     record.device_id_hash = binding_context.get('device_id_hash') or None
@@ -469,39 +391,15 @@ def store_refresh_token(
     record.last_seen_at = utcnow_naive()
     record.revoked_at = None
 
-    # تحديث حقول المستخدم مع حماية ضد الأعمدة غير الموجودة (legacy schemas)
-    for attr, value in (
-        ('refresh_token_hash', hashed_refresh),
-        ('refresh_token_expires_at', expires_at),
-        ('refresh_token_device_hash', binding_context.get('device_id_hash') or None),
-        ('refresh_token_ip_hash', binding_context.get('ip_hash') or None),
-        ('refresh_token_user_agent_hash', binding_context.get('user_agent_hash') or None),
-        ('refresh_token_session_id', session_key),
-        ('refresh_token_rotated_at', utcnow_naive()),
-    ):
-        if hasattr(user, attr):
-            try:
-                setattr(user, attr, value)
-            except Exception:
-                pass
-
-    try:
-        db.commit()
-        db.refresh(user)
-    except Exception:
-        try:
-            db.rollback()
-        except Exception:
-            pass
-        # محاولة ثانية بدون تحديث حقول المستخدم الـ legacy
-        try:
-            db.add(record)
-            db.commit()
-        except Exception:
-            try:
-                db.rollback()
-            except Exception:
-                pass
+    user.refresh_token_hash = hash_password(refresh_token)
+    user.refresh_token_expires_at = expires_at
+    user.refresh_token_device_hash = binding_context.get('device_id_hash') or None
+    user.refresh_token_ip_hash = binding_context.get('ip_hash') or None
+    user.refresh_token_user_agent_hash = binding_context.get('user_agent_hash') or None
+    user.refresh_token_session_id = session_key
+    user.refresh_token_rotated_at = utcnow_naive()
+    db.commit()
+    db.refresh(user)
 
 
 def _validate_session_binding(record: UserSession, binding_context: dict | None = None) -> None:

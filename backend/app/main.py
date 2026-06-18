@@ -24,9 +24,6 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 
-# v61: معالجات أخطاء DB العالمية لمنع تسريب 503 خام للواجهة
-from app.middleware.db_error_handler import register_db_exception_handlers
-
 logger = logging.getLogger("yamshat.main")
 logging.basicConfig(level=logging.INFO)
 
@@ -61,67 +58,23 @@ app.add_middleware(
 
 
 # ============================================================
-# 🛡️ معالجات الأخطاء — تضمن وصول CORS headers حتى عند 4xx / 5xx
-# هذا يحل الخطأ الذي يظهر للمستخدم كـ "CORS blocked" أو
-# "Internal server error" بينما السبب الحقيقي 401/400/503 ... إلخ.
-#
-# 🔧 إصلاح حاسم (v53):
-# - HTTPException يجب أن يحتفظ بستاتس الكود الأصلي (401/400/403)
-#   بدلاً من تحويله إلى 500.
-# - النسخة السابقة كانت تبتلع كل الأخطاء وتعيد "Internal server error"
-#   مما أخفى السبب الحقيقي لفشل تسجيل الدخول.
+# 🛡️ معالج أخطاء يضمن وصول CORS headers حتى عند 500/503
+# هذا يحل الخطأ الذي يظهر للمستخدم كـ "CORS blocked"
+# بينما السبب الحقيقي هو 503 (cold start)
 # ============================================================
-from starlette.exceptions import HTTPException as StarletteHTTPException
-
-
-def _cors_headers(request: Request) -> dict:
-    origin = request.headers.get("origin", "*")
-    return {
-        "Access-Control-Allow-Origin": origin,
-        "Access-Control-Allow-Credentials": "true",
-        "Vary": "Origin",
-    }
-
-
-@app.exception_handler(StarletteHTTPException)
-async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-    # نحافظ على الستاتس الكود الأصلي (401/400/403/404/429 ...) ولا نحوّله إلى 500
-    detail = exc.detail if exc.detail is not None else "HTTP error"
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": detail},
-        headers={**_cors_headers(request), **(exc.headers or {})},
-    )
-
-
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    # HTTPException يُعالَج بواسطة المعالج المخصص أعلاه — لكن نتأكد هنا أيضاً
-    if isinstance(exc, StarletteHTTPException):
-        return await http_exception_handler(request, exc)
-
     logger.exception(f"Unhandled error on {request.url.path}: {exc}")
+    origin = request.headers.get("origin", "*")
     return JSONResponse(
         status_code=500,
-        content={
-            "detail": "Internal server error",
-            "path": request.url.path,
-            "error_type": type(exc).__name__,
+        content={"detail": "Internal server error", "path": request.url.path},
+        headers={
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+            "Vary": "Origin",
         },
-        headers=_cors_headers(request),
     )
-
-
-# ============================================================
-# 🛡️ v61: تسجيل معالجات أخطاء DB العالمية
-# يحول أخطاء SQLAlchemy (DisconnectionError, OperationalError, DBAPIError)
-# إلى استجابة 503 منظمة مع CORS headers صحيحة
-# ============================================================
-try:
-    register_db_exception_handlers(app)
-    logger.info('[v61] DB exception handlers registered')
-except Exception as _exc:  # noqa: BLE001
-    logger.warning('[v61] Failed to register DB handlers: %s', _exc)
 
 
 # ============================================================
@@ -130,14 +83,7 @@ except Exception as _exc:  # noqa: BLE001
 @app.get("/health")
 @app.get("/api/health")
 async def health():
-    # v61: فحص صحة DB أيضاً عبر db_healthcheck إن أمكن
-    payload = {"status": "ok", "service": "yamshat-backend"}
-    try:
-        from app.db.session import db_healthcheck
-        payload.update(db_healthcheck())
-    except Exception:
-        pass
-    return payload
+    return {"status": "ok", "service": "yamshat-backend"}
 
 
 @app.get("/api/warmup")
@@ -245,25 +191,17 @@ def _issue_simple_captcha() -> dict:
         question = f"{a} - {b} = ?"
 
     now = int(time.time())
-    # v60 🔧 إصلاح مهم: استخدام نفس أسماء الحقول (e/n) التي يتوقعها
-    # auth.router verifier (_verify_captcha_token في auth.py).
-    # النسخة السابقة كانت تستخدم exp/nonce والـ verifier يبحث عن e/n
-        # بالتالي أي كابتشا تصدر من هنا كانت تموت فوراً
-    # (مع إبقاء exp/nonce للتوافق مع أي عميل قديم).
     token_payload = {
         "a": str(answer),
-        "e": now + _CAPTCHA_TTL_SECONDS,
-        "exp": now + _CAPTCHA_TTL_SECONDS,  # back-compat
         "iat": now,
-        "n": secrets.token_urlsafe(12),
-        "v": 1,
+        "exp": now + _CAPTCHA_TTL_SECONDS,
+        "nonce": secrets.token_urlsafe(8),
     }
     captcha_id = _sign_captcha_token(token_payload)
     return {
         "captcha_id": captcha_id,
         "question": question,
         "expires_in": _CAPTCHA_TTL_SECONDS,
-        "expires_in_seconds": _CAPTCHA_TTL_SECONDS,  # توافق مع frontend
     }
 
 
@@ -383,18 +321,6 @@ async def on_startup():
         logger.warning(f"   ⚠️  Failed routers ({len(failed)}): {failed}")
     else:
         logger.info(f"   ✅ All {len(_ROUTER_STATUS)} routers mounted successfully")
-
-    # ✅ v61 FIX: تأكد من أن سكيمة قاعدة البيانات محدّثة قبل قبول أي طلب
-    # السبب: نموذج User يضم أعمدة phone_* لكن قاعدة البيانات على Render قد لا تحتويها بعد،
-    # مما يُولّد SQLAlchemy ProgrammingError (f405) و 503 على /api/auth/login.
-    # initialize_database فيه idempotent _add_column_if_missing لكل الأعمدة المطلوبة.
-    try:
-        from app.db.bootstrap import initialize_database
-        from app.db.session import engine
-        initialize_database(engine)
-        logger.info("   🗄️  Database schema bootstrap completed (phone_* columns ensured)")
-    except Exception as exc:
-        logger.warning(f"   ⚠️  Database bootstrap soft-fail (will fall back to lazy migration): {exc}")
 
     # v47.6: تشغيل مركز الإشعارات اللحظية (Realtime Hub) - Redis Pub/Sub
     try:

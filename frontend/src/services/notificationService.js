@@ -179,18 +179,7 @@ export const notificationService = {
     const subscribeOptions = {
       userVisibleOnly: true,
     };
-    // تحقق من صلاحية مفتاح VAPID قبل استخدامه (يجب أن يكون 65 حرفاً مبنياً base64url-encoded)
-    if (VAPID_PUBLIC_KEY && typeof VAPID_PUBLIC_KEY === 'string' && VAPID_PUBLIC_KEY.length >= 80) {
-      try {
-        subscribeOptions.applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
-      } catch (keyErr) {
-        console.info('[notifications] VAPID key invalid - web push disabled', keyErr?.message || keyErr);
-        return null;
-      }
-    } else {
-      console.info('[notifications] VAPID key missing or invalid - web push disabled');
-      return null;
-    }
+    if (VAPID_PUBLIC_KEY) subscribeOptions.applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
 
     const subscription = await registration.pushManager.subscribe(subscribeOptions);
     localStorage.setItem('yamshat_push_subscription', JSON.stringify(subscription.toJSON()));

@@ -207,21 +207,14 @@ export default function LoginEnhanced() {
     } catch (err) {
       setRetryCount((prev) => prev + 1);
       const apiError = parseApiDetail(err?.response?.data?.detail);
-      const status = err?.response?.status;
       const message = localizeAuthMessage(apiError?.message || err?.message, 'فشل تسجيل الدخول. يرجى التأكد من البيانات والمحاولة مرة أخرى.');
       setError(message);
 
-      // v60 🔧 إصلاح جذري: أي 4xx يعني أن الـ nonce قد تم استهلاكه أو الكابتشا انتهت،
-      // لذلك نجبر تحديث الكابتشا دائماً لتجنب فشل المحاولة التالية.
-      // هذا يحل سيناريو "الكابتشا انتهت" عند إعادة المحاولة.
       const captchaRelated = apiError?.field === 'captcha'
         || message.includes('كابتشا')
         || message.toLowerCase?.().includes('captcha');
-      const shouldRefreshCaptcha = captchaRelated
-        || (typeof status === 'number' && status >= 400 && status < 500 && status !== 403);
-      if (shouldRefreshCaptcha) {
+      if (captchaRelated) {
         setForm((prev) => ({ ...prev, captchaAnswer: '' }));
-        // forceLoad=true لتجاوز الـ cooldown عند فشل login
         loadCaptcha(true);
       }
     } finally {

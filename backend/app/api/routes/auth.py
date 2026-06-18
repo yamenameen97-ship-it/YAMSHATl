@@ -65,13 +65,8 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 _CAPTCHA_STORE: dict[str, dict] = {}  # legacy fallback
 _CAPTCHA_LOCK = Lock()
-# v60: التغيير من single-use إلى محدود الاستخدام (max 5 uses per nonce)
-# السبب: المستخدم قد يحتاج لإعادة المحاولة عدة مرات بسبب خطأ كلمة المرور
-# أو 2FA challenge، ولا يجب أن يطلب منه حل كابتشا جديدة في كل محاولة.
-# الأمان محفوظ لأن: الكابتشا تنتهي بعد 5 دقائق، وعدد المحاولات محدود برتب-ليمت.
-_CAPTCHA_NONCE_USAGE: dict[str, dict] = {}  # nonce -> {expiry: ts, count: int}
+_CAPTCHA_USED_NONCES: dict[str, float] = {}  # nonce -> expiry ts (single-use)
 _CAPTCHA_NONCE_LOCK = Lock()
-_CAPTCHA_NONCE_MAX_USES = 5
 
 
 class _CaptchaError(HTTPException):
@@ -123,31 +118,17 @@ def _verify_captcha_token(token: str) -> dict | None:
 def _prune_used_nonces() -> None:
     now_ts = utcnow_naive().timestamp()
     with _CAPTCHA_NONCE_LOCK:
-        expired = [n for n, meta in _CAPTCHA_NONCE_USAGE.items() if (meta.get('expiry') or 0) <= now_ts]
+        expired = [n for n, exp in _CAPTCHA_USED_NONCES.items() if exp <= now_ts]
         for n in expired:
-            _CAPTCHA_NONCE_USAGE.pop(n, None)
+            _CAPTCHA_USED_NONCES.pop(n, None)
 
 
 def _consume_nonce(nonce: str, expires_ts: float) -> bool:
-    """v60: السماح حتى _CAPTCHA_NONCE_MAX_USES استخدامات للـ nonce قبل رفضه.
-    هذا يحل مشكلة "الكابتشا انتهت" عند إعادة محاولة تسجيل الدخول بعد خطأ
-    كلمة المرور أو 2FA. الكابتشا تظل صالحة لمدتها الأصلية (5د) أو حتى يصل
-    عدد المحاولات للحد الأقصى — أيهما أسبق.
-    """
     _prune_used_nonces()
     with _CAPTCHA_NONCE_LOCK:
-        meta = _CAPTCHA_NONCE_USAGE.get(nonce)
-        if meta is None:
-            _CAPTCHA_NONCE_USAGE[nonce] = {'expiry': expires_ts, 'count': 1}
-            return True
-        # إذا الـ entry قديم (انتهى) أنشئ جديد
-        if (meta.get('expiry') or 0) <= utcnow_naive().timestamp():
-            _CAPTCHA_NONCE_USAGE[nonce] = {'expiry': expires_ts, 'count': 1}
-            return True
-        current = int(meta.get('count') or 0)
-        if current >= _CAPTCHA_NONCE_MAX_USES:
+        if nonce in _CAPTCHA_USED_NONCES:
             return False
-        meta['count'] = current + 1
+        _CAPTCHA_USED_NONCES[nonce] = expires_ts
         return True
 
 
@@ -326,29 +307,18 @@ def _issue_session(
     })
     csrf_token = _issue_csrf_token()
     expires_at = _refresh_expiry(remember_me)
-    # تخزين سجل الجلسة في DB لا يجب أن يُفشل تسجيل الدخول
-    try:
-        store_refresh_token(
-            db,
-            user,
-            refresh_token,
-            expires_at,
-            binding_context=binding,
-            session_key=active_session_key,
-            remember_me=remember_me,
-            login_method=login_method,
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning('[login] store_refresh_token soft-failed: %s', exc)
-        try:
-            db.rollback()
-        except Exception:
-            pass
-    try:
-        _set_refresh_cookie(response, refresh_token, remember_me=remember_me)
-        _set_csrf_cookie(response, csrf_token, remember_me=remember_me)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning('[login] cookie setting soft-failed: %s', exc)
+    store_refresh_token(
+        db,
+        user,
+        refresh_token,
+        expires_at,
+        binding_context=binding,
+        session_key=active_session_key,
+        remember_me=remember_me,
+        login_method=login_method,
+    )
+    _set_refresh_cookie(response, refresh_token, remember_me=remember_me)
+    _set_csrf_cookie(response, csrf_token, remember_me=remember_me)
     expose_refresh_token = refresh_token if _trusted_native_client(request) else ''
     return _session_payload(
         user,
@@ -540,31 +510,20 @@ def _require_captcha(payload: dict, *, context: str) -> None:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail='Captcha expired or missing',
             )
-        # v60: دعم كلا التنسيقين — الجديد (e/a/n) والقديم/الـ inline-fallback (exp/a/nonce)
-        # حتى لا يحدث mismatch بين main.py captcha-fallback و auth.py verifier.
-        expires_ts = float(
-            token_payload.get('e')
-            or token_payload.get('exp')
-            or 0
-        )
+        expires_ts = float(token_payload.get('e') or 0)
         if expires_ts <= utcnow_naive().timestamp():
             raise _CaptchaError(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail='Captcha expired or missing',
             )
-        expected_answer = str(token_payload.get('a') or '').strip()
-        if str(captcha_answer).strip() != expected_answer:
+        if str(captcha_answer).strip() != str(token_payload.get('a') or ''):
             raise _CaptchaError(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail='Captcha answer is incorrect',
             )
-        nonce = str(
-            token_payload.get('n')
-            or token_payload.get('nonce')
-            or ''
-        )
+        nonce = str(token_payload.get('n') or '')
         if nonce and not _consume_nonce(nonce, expires_ts):
-            # تجاوز عدد المحاولات المسموح بنفس الكابتشا
+            # إعادة استخدام نفس الكابتشا غير مسموحة
             raise _CaptchaError(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail='Captcha expired or missing',
@@ -742,115 +701,6 @@ async def resend_verification(request: Request, payload: dict = Body(...), db: S
 
 @router.post('/login')
 async def login(request: Request, response: Response, payload: dict = Body(...), db: Session = Depends(get_db)):
-    """
-    🔧 إصلاح v59: تسجيل الدخول الدفاعي
-    - HTTPException تمرّ بدون تغيير لتحتفظ بستاتس كودها (400/401/403/429).
-    - أي استثناء غير متوقع يتم تسجيله بتفاصيل، ثم محاولة مسار fallback خفيف
-      قبل إرجاع 503. هذا يحل مشكلة "Authentication service is temporarily
-      unavailable" التي كانت تظهر بسبب أخطاء جانبية في DB/IO لا تمنع فعلياً
-      إصدار توكن.
-    """
-    try:
-        return await _login_impl(request, response, payload, db)
-    except HTTPException:
-        # مهم: HTTPException تمر بدون تغيير
-        raise
-    except Exception as exc:  # noqa: BLE001
-        logger.exception('[login] Unexpected error during login: %s', exc)
-        try:
-            db.rollback()
-        except Exception:
-            pass
-        # محاولة fallback: إصدار جلسة طوارئ بدون الميزات الجانبية (audit/risk/sessions store)
-        try:
-            fb = await _login_fallback(request, response, payload, db)
-            if fb is not None:
-                logger.warning('[login] served via emergency fallback path')
-                return fb
-        except HTTPException:
-            raise
-        except Exception as inner_exc:  # noqa: BLE001
-            logger.exception('[login] fallback also failed: %s', inner_exc)
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={
-                'message': 'Authentication service is temporarily unavailable. Please try again.',
-                'error_type': type(exc).__name__,
-            },
-        ) from exc
-
-
-async def _login_fallback(request: Request, response: Response, payload: dict, db: Session):
-    """مسار إصدار جلسة الطوارئ — يُستخدم فقط حين يفشل المسار الرئيسي بسبب
-    خطأ جانبي (audit/risk/session-store). يُصدر access + refresh token صحيحين
-    دون كتابة سجل الجلسة في DB. آمن لأن:
-      1) لا يتم تخطي التحقق من كلمة المرور (نستدعي authenticate_user مجدداً).
-      2) لا يتم تخطي الكابتشا.
-      3) لا يتم تخطي rate-limit (الكاتش-أول الأصلي يحدث بعد الفحوصات).
-    """
-    identifier = payload.get('identifier') or payload.get('email') or payload.get('username')
-    password = payload.get('password')
-    remember_me = bool(payload.get('remember_me', True))
-    if not (identifier or '').strip() or not (password or '').strip():
-        return None
-    if not _trusted_native_client(request):
-        try:
-            _require_captcha(payload, context='login')
-        except HTTPException:
-            raise
-        except Exception:
-            return None
-    try:
-        user = authenticate_user(db, identifier=identifier, password=password, require_verified=True)
-    except HTTPException:
-        raise
-    except Exception:
-        return None
-
-    # إصدار توكنات مباشرة دون استدعاء store_refresh_token (الذي قد يكون السبب الجذري).
-    binding = request_binding_context(request)
-    device_id = ensure_device_cookie(response, request)
-    binding['device_id'] = device_id
-    is_admin_session = effective_role(user) == 'admin'
-    active_session_key = secrets.token_urlsafe(24)
-    access_token = create_access_token({
-        'user_id': user.id,
-        'username': user.username,
-        'role': user.role,
-        'device_id_hash': binding.get('device_id_hash') or '',
-        'user_agent_hash': binding.get('user_agent_hash') or '',
-        'admin_session': is_admin_session,
-        'sid': active_session_key,
-    })
-    refresh_token = create_refresh_token({
-        'user_id': user.id,
-        'username': user.username,
-        'role': user.role,
-        'device_id_hash': binding.get('device_id_hash') or '',
-        'ip_hash': binding.get('ip_hash') or '',
-        'user_agent_hash': binding.get('user_agent_hash') or '',
-        'admin_session': is_admin_session,
-        'sid': active_session_key,
-        'remember_me': bool(remember_me),
-    })
-    csrf_token = _issue_csrf_token()
-    try:
-        _set_refresh_cookie(response, refresh_token, remember_me=remember_me)
-        _set_csrf_cookie(response, csrf_token, remember_me=remember_me)
-    except Exception:
-        pass
-    expose_refresh_token = refresh_token if _trusted_native_client(request) else ''
-    return _session_payload(
-        user,
-        access_token=access_token,
-        csrf_token=csrf_token,
-        session_key=active_session_key,
-        remember_me=remember_me,
-        refresh_token=expose_refresh_token,
-    )
-
-
-async def _login_impl(request: Request, response: Response, payload: dict, db: Session):
     identifier = payload.get('identifier') or payload.get('email') or payload.get('username')
     password = payload.get('password')
     remember_me = bool(payload.get('remember_me', True))
@@ -862,16 +712,10 @@ async def _login_impl(request: Request, response: Response, payload: dict, db: S
     normalized_identifier = _normalize_rate_key_part(identifier, 'anonymous')
     attempt_key = f"{binding['ip_address']}:{normalized_identifier}"
 
-    # rate-limit / lockout (دفاعيًا: أي فشل في Redis لا يلغي تسجيل الدخول)
-    try:
-        if not await enforce_rate_limit(f'login:{attempt_key}', settings.LOGIN_RATE_LIMIT_PER_MINUTE, 60):
-            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='Too many login attempts')
-        if await is_ip_locked(attempt_key):
-            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='Too many attempts, try again later')
-    except HTTPException:
-        raise
-    except Exception as exc:  # noqa: BLE001
-        logger.warning('[login] rate-limit check soft-failed: %s', exc)
+    if not await enforce_rate_limit(f'login:{attempt_key}', settings.LOGIN_RATE_LIMIT_PER_MINUTE, 60):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='Too many login attempts')
+    if await is_ip_locked(attempt_key):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='Too many attempts, try again later')
 
     if not _trusted_native_client(request):
         _require_captcha(payload, context='login')
@@ -884,25 +728,17 @@ async def _login_impl(request: Request, response: Response, payload: dict, db: S
             if pending_user is None:
                 pending_user = db.query(User).filter(User.username == str(identifier).strip()).first()
             if pending_user is not None:
-                try:
-                    code = issue_email_verification_code(db, pending_user)
-                    delivery = _send_verification_message(pending_user, code)
-                except Exception as inner_exc:  # noqa: BLE001
-                    logger.warning('[login] verification code issue soft-failed: %s', inner_exc)
-                    code = ''
-                    delivery = {'sent': False, 'error': str(inner_exc)}
+                code = issue_email_verification_code(db, pending_user)
+                delivery = _send_verification_message(pending_user, code)
                 detail = {
                     'message': VERIFICATION_REQUIRED_DETAIL,
                     'email': pending_user.email,
                     'delivery': delivery,
                 }
-                if settings.DEBUG and code and not delivery.get('sent'):
+                if settings.DEBUG and not delivery['sent']:
                     detail['dev_verification_code'] = code
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail) from exc
-        try:
-            await register_failed_login(attempt_key)
-        except Exception:
-            pass
+        await register_failed_login(attempt_key)
         record_audit_log(
             db,
             actor_user_id=None,
@@ -916,25 +752,15 @@ async def _login_impl(request: Request, response: Response, payload: dict, db: S
 
     _enforce_admin_ip_policy(request, user)
     _enforce_admin_mfa(user, payload)
-
-    # تقييم الخطورة لا يجب أن يفشل تسجيل الدخول
-    try:
-        suspicious, suspicious_meta = is_suspicious_login(user, binding)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning('[login] suspicious-login check soft-failed: %s', exc)
-        suspicious, suspicious_meta = False, {'indicators': []}
-
+    suspicious, suspicious_meta = is_suspicious_login(user, binding)
     bypass_additional_verification = _should_bypass_additional_verification(user)
 
     if not bypass_additional_verification and (bool(getattr(user, 'two_factor_enabled', False)) or suspicious):
         challenge_type = 'suspicious_login' if suspicious else 'two_factor_login'
         challenge_payload, code = issue_login_challenge(db, user, challenge_type=challenge_type, meta=suspicious_meta)
         if suspicious:
-            try:
-                user.suspicious_login_count = int(getattr(user, 'suspicious_login_count', 0) or 0) + 1
-                db.commit()
-            except Exception:
-                db.rollback()
+            user.suspicious_login_count = int(getattr(user, 'suspicious_login_count', 0) or 0) + 1
+            db.commit()
         response.status_code = status.HTTP_202_ACCEPTED
         challenge_payload['remember_me'] = remember_me
         challenge_payload['identifier'] = identifier
@@ -959,60 +785,29 @@ async def _login_impl(request: Request, response: Response, payload: dict, db: S
         )
         return challenge_payload
 
-    try:
-        user.last_login_at = utcnow_naive()
-    except Exception:
-        pass
-    try:
-        mark_successful_login(db, user, binding)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning('[login] mark_successful_login soft-failed: %s', exc)
-        try:
-            db.rollback()
-        except Exception:
-            pass
+    user.last_login_at = utcnow_naive()
+    mark_successful_login(db, user, binding)
     if effective_role(user) == 'admin':
-        try:
-            user.last_admin_ip_hash = binding['ip_hash']
-            user.last_admin_user_agent_hash = binding['user_agent_hash']
-        except Exception:
-            pass
-    try:
-        db.commit()
-        db.refresh(user)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning('[login] post-login commit soft-failed: %s', exc)
-        try:
-            db.rollback()
-        except Exception:
-            pass
-    try:
-        await clear_failed_logins(attempt_key)
-    except Exception:
-        pass
-    try:
-        record_audit_log(
-            db,
-            actor_user_id=user.id,
-            action='login_success',
-            entity_type='auth',
-            entity_id=user.id,
-            description='User logged in',
-            meta={
-                'ip_hash': binding['ip_hash'],
-                'user_agent_hash': binding['user_agent_hash'],
-                'device_id_hash': binding['device_id_hash'],
-                'admin_session': effective_role(user) == 'admin',
-                'remember_me': remember_me,
-            },
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning('[login] audit log soft-failed: %s', exc)
-        try:
-            db.rollback()
-        except Exception:
-            pass
-    # _issue_session نفسه محمي داخلياً (انظر التعديل أدناه)
+        user.last_admin_ip_hash = binding['ip_hash']
+        user.last_admin_user_agent_hash = binding['user_agent_hash']
+    db.commit()
+    db.refresh(user)
+    await clear_failed_logins(attempt_key)
+    record_audit_log(
+        db,
+        actor_user_id=user.id,
+        action='login_success',
+        entity_type='auth',
+        entity_id=user.id,
+        description='User logged in',
+        meta={
+            'ip_hash': binding['ip_hash'],
+            'user_agent_hash': binding['user_agent_hash'],
+            'device_id_hash': binding['device_id_hash'],
+            'admin_session': effective_role(user) == 'admin',
+            'remember_me': remember_me,
+        },
+    )
     return _issue_session(db, user, response, request, remember_me=remember_me, login_method='password')
 
 

@@ -65,8 +65,13 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 _CAPTCHA_STORE: dict[str, dict] = {}  # legacy fallback
 _CAPTCHA_LOCK = Lock()
-_CAPTCHA_USED_NONCES: dict[str, float] = {}  # nonce -> expiry ts (single-use)
+# v60: التغيير من single-use إلى محدود الاستخدام (max 5 uses per nonce)
+# السبب: المستخدم قد يحتاج لإعادة المحاولة عدة مرات بسبب خطأ كلمة المرور
+# أو 2FA challenge، ولا يجب أن يطلب منه حل كابتشا جديدة في كل محاولة.
+# الأمان محفوظ لأن: الكابتشا تنتهي بعد 5 دقائق، وعدد المحاولات محدود برتب-ليمت.
+_CAPTCHA_NONCE_USAGE: dict[str, dict] = {}  # nonce -> {expiry: ts, count: int}
 _CAPTCHA_NONCE_LOCK = Lock()
+_CAPTCHA_NONCE_MAX_USES = 5
 
 
 class _CaptchaError(HTTPException):
@@ -118,17 +123,31 @@ def _verify_captcha_token(token: str) -> dict | None:
 def _prune_used_nonces() -> None:
     now_ts = utcnow_naive().timestamp()
     with _CAPTCHA_NONCE_LOCK:
-        expired = [n for n, exp in _CAPTCHA_USED_NONCES.items() if exp <= now_ts]
+        expired = [n for n, meta in _CAPTCHA_NONCE_USAGE.items() if (meta.get('expiry') or 0) <= now_ts]
         for n in expired:
-            _CAPTCHA_USED_NONCES.pop(n, None)
+            _CAPTCHA_NONCE_USAGE.pop(n, None)
 
 
 def _consume_nonce(nonce: str, expires_ts: float) -> bool:
+    """v60: السماح حتى _CAPTCHA_NONCE_MAX_USES استخدامات للـ nonce قبل رفضه.
+    هذا يحل مشكلة "الكابتشا انتهت" عند إعادة محاولة تسجيل الدخول بعد خطأ
+    كلمة المرور أو 2FA. الكابتشا تظل صالحة لمدتها الأصلية (5د) أو حتى يصل
+    عدد المحاولات للحد الأقصى — أيهما أسبق.
+    """
     _prune_used_nonces()
     with _CAPTCHA_NONCE_LOCK:
-        if nonce in _CAPTCHA_USED_NONCES:
+        meta = _CAPTCHA_NONCE_USAGE.get(nonce)
+        if meta is None:
+            _CAPTCHA_NONCE_USAGE[nonce] = {'expiry': expires_ts, 'count': 1}
+            return True
+        # إذا الـ entry قديم (انتهى) أنشئ جديد
+        if (meta.get('expiry') or 0) <= utcnow_naive().timestamp():
+            _CAPTCHA_NONCE_USAGE[nonce] = {'expiry': expires_ts, 'count': 1}
+            return True
+        current = int(meta.get('count') or 0)
+        if current >= _CAPTCHA_NONCE_MAX_USES:
             return False
-        _CAPTCHA_USED_NONCES[nonce] = expires_ts
+        meta['count'] = current + 1
         return True
 
 
@@ -521,20 +540,31 @@ def _require_captcha(payload: dict, *, context: str) -> None:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail='Captcha expired or missing',
             )
-        expires_ts = float(token_payload.get('e') or 0)
+        # v60: دعم كلا التنسيقين — الجديد (e/a/n) والقديم/الـ inline-fallback (exp/a/nonce)
+        # حتى لا يحدث mismatch بين main.py captcha-fallback و auth.py verifier.
+        expires_ts = float(
+            token_payload.get('e')
+            or token_payload.get('exp')
+            or 0
+        )
         if expires_ts <= utcnow_naive().timestamp():
             raise _CaptchaError(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail='Captcha expired or missing',
             )
-        if str(captcha_answer).strip() != str(token_payload.get('a') or ''):
+        expected_answer = str(token_payload.get('a') or '').strip()
+        if str(captcha_answer).strip() != expected_answer:
             raise _CaptchaError(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail='Captcha answer is incorrect',
             )
-        nonce = str(token_payload.get('n') or '')
+        nonce = str(
+            token_payload.get('n')
+            or token_payload.get('nonce')
+            or ''
+        )
         if nonce and not _consume_nonce(nonce, expires_ts):
-            # إعادة استخدام نفس الكابتشا غير مسموحة
+            # تجاوز عدد المحاولات المسموح بنفس الكابتشا
             raise _CaptchaError(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail='Captcha expired or missing',

@@ -223,17 +223,25 @@ def _issue_simple_captcha() -> dict:
         question = f"{a} - {b} = ?"
 
     now = int(time.time())
+    # v60 🔧 إصلاح مهم: استخدام نفس أسماء الحقول (e/n) التي يتوقعها
+    # auth.router verifier (_verify_captcha_token في auth.py).
+    # النسخة السابقة كانت تستخدم exp/nonce والـ verifier يبحث عن e/n
+        # بالتالي أي كابتشا تصدر من هنا كانت تموت فوراً
+    # (مع إبقاء exp/nonce للتوافق مع أي عميل قديم).
     token_payload = {
         "a": str(answer),
+        "e": now + _CAPTCHA_TTL_SECONDS,
+        "exp": now + _CAPTCHA_TTL_SECONDS,  # back-compat
         "iat": now,
-        "exp": now + _CAPTCHA_TTL_SECONDS,
-        "nonce": secrets.token_urlsafe(8),
+        "n": secrets.token_urlsafe(12),
+        "v": 1,
     }
     captcha_id = _sign_captcha_token(token_payload)
     return {
         "captcha_id": captcha_id,
         "question": question,
         "expires_in": _CAPTCHA_TTL_SECONDS,
+        "expires_in_seconds": _CAPTCHA_TTL_SECONDS,  # توافق مع frontend
     }
 
 

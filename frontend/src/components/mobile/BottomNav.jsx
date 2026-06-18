@@ -83,7 +83,8 @@ function resolveCreateAction(pathname) {
     return { label: 'دردشة جديدة', kind: 'event', event: 'yamshat:open-new-chat', fallback: '/inbox' };
   }
   if (pathname.startsWith('/reels')) {
-    return { label: 'ريل جديد', kind: 'event', event: 'yamshat:open-reel-composer', fallback: '/reels' };
+    // v56: رفع الريلز المعتمد — صفحة الملحّن الجديدة /reels/new
+    return { label: 'ريل جديد', kind: 'navigate', target: '/reels/new' };
   }
   if (pathname.startsWith('/stories')) {
     return { label: 'ستوري جديد', kind: 'event', event: 'yamshat:open-story-composer', fallback: '/stories' };

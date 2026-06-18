@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>yamenameen97 — YAM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    background: #0a0612;
+    color: #fff;
+    font-family: 'Noto Sans Arabic', system-ui, -apple-system, sans-serif;
+    direction: rtl;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  .phone {
+    max-width: 500px;
+    margin: 0 auto;
+    background: linear-gradient(180deg, #0d0818 0%, #0a0612 100%);
+    min-height: 100vh;
+    position: relative;
+    padding-bottom: 80px;
+  }
+
+  /* Status bar */
+  .status-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 22px 4px;
+    direction: ltr;
+    font-size: 16px;
+    font-weight: 600;
+    color: #fff;
+  }
+  .status-bar .icons { display: flex; gap: 6px; align-items: center; font-size: 14px; }
+
+  /* Top header */
+  .top-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px 8px;
+  }
+  .top-header .back { font-size: 22px; color: #fff; cursor: pointer; }
+  .top-header .username-title {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 17px; font-weight: 600; color: #fff;
+  }
+  .check-badge {
+    width: 16px; height: 16px;
+    background: #7c4dff;
+    border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 10px; color: #fff;
+  }
+  .top-header .right-icons { display: flex; gap: 16px; align-items: center; font-size: 20px; }
+
+  /* Profile section */
+  .profile-section { display: flex; flex-direction: column; align-items: center; padding: 18px 18px 8px; }
+  .avatar-wrap { position: relative; width: 110px; height: 110px; }
+  .avatar {
+    width: 110px; height: 110px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #1a0f2e 0%, #0a0612 70%);
+    border: 2.5px solid #7c4dff;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 30px rgba(124,77,255,.45), inset 0 0 25px rgba(124,77,255,.2);
+    position: relative;
+  }
+  .avatar .Y {
+    font-family: 'Noto Sans Arabic', sans-serif;
+    font-size: 64px;
+    font-weight: 900;
+    color: #a78bff;
+    text-shadow: 0 0 18px rgba(167,139,255,.8);
+    line-height: 1;
+    transform: translateY(2px);
+  }
+  .add-btn {
+    position: absolute; bottom: 4px; left: 4px;
+    width: 28px; height: 28px;
+    background: #7c4dff;
+    border-radius: 50%;
+    border: 3px solid #0a0612;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 18px; font-weight: 700;
+    box-shadow: 0 4px 12px rgba(124,77,255,.5);
+  }
+  .display-name {
+    margin-top: 14px;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 6px;
+    color: #fff;
+  }
+  .handle {
+    margin-top: 2px;
+    font-size: 13px;
+    color: #8b7fa8;
+    direction: ltr;
+  }
+
+  /* Stats */
+  .stats {
+    display: flex;
+    justify-content: space-around;
+    width: 100%;
+    margin-top: 18px;
+    padding: 0 8px;
+  }
+  .stat { text-align: center; flex: 1; }
+  .stat .num { font-size: 20px; font-weight: 700; color: #fff; }
+  .stat .lbl { font-size: 13px; color: #9a8fb8; margin-top: 4px; }
+
+  /* Action buttons */
+  .actions {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+    margin-top: 18px;
+    padding: 0 16px;
+  }
+  .btn {
+    height: 38px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 600;
+    background: #1c1430;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    gap: 6px;
+  }
+  .btn-arrow { flex: 0 0 44px; }
+  .btn-msg { flex: 1; }
+  .btn-follow {
+    flex: 1;
+    background: linear-gradient(135deg, #7c4dff 0%, #6a3df5 100%);
+    box-shadow: 0 4px 14px rgba(124,77,255,.35);
+  }
+
+  /* Bio */
+  .bio {
+    padding: 16px 22px 4px;
+    text-align: right;
+    line-height: 1.9;
+  }
+  .bio .line1 { color: #cfc4e8; font-size: 13.5px; }
+  .bio .line2 { color: #cfc4e8; font-size: 13.5px; }
+  .bio .meta { display: flex; align-items: center; gap: 6px; color: #9a8fb8; font-size: 13px; margin-top: 4px; }
+  .bio .link { color: #a78bff; font-size: 13.5px; }
+  .heart { color: #b794ff; }
+
+  /* Top tabs (icons) */
+  .top-tabs {
+    display: flex;
+    justify-content: space-around;
+    border-top: 1px solid #1a1230;
+    margin-top: 16px;
+    padding-top: 10px;
+  }
+  .top-tab {
+    flex: 1;
+    display: flex; align-items: center; justify-content: center;
+    padding: 12px 0;
+    color: #6b5c8a;
+    font-size: 22px;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+  }
+  .top-tab.active { color: #fff; border-bottom-color: #fff; }
+
+  /* Sub tabs (text) */
+  .sub-tabs {
+    display: flex;
+    justify-content: space-around;
+    padding: 12px 0;
+    border-bottom: 1px solid #1a1230;
+  }
+  .sub-tab {
+    font-size: 14px;
+    font-weight: 500;
+    color: #7a6c9a;
+    padding: 4px 8px;
+    cursor: pointer;
+    position: relative;
+  }
+  .sub-tab.active { color: #fff; font-weight: 700; }
+  .sub-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: -12px;
+    right: 50%;
+    transform: translateX(50%);
+    width: 32px; height: 2px;
+    background: #a78bff;
+    border-radius: 2px;
+  }
+
+  /* Grid */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 4px;
+  }
+  .cell {
+    position: relative;
+    aspect-ratio: 9/16;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #150c28;
+  }
+  .cell .views {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    display: flex; align-items: center; gap: 4px;
+    text-shadow: 0 1px 4px rgba(0,0,0,.6);
+    direction: ltr;
+  }
+  .play-tri {
+    width: 0; height: 0;
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+    border-right: 7px solid #fff;
+  }
+
+  /* Thumbnails (CSS art) */
+  .th-car {
+    background:
+      radial-gradient(ellipse at 50% 90%, rgba(180,120,255,.55) 0%, transparent 55%),
+      linear-gradient(180deg, #1a0a3a 0%, #2a0f5a 40%, #0a0420 100%);
+    position: relative;
+  }
+  .th-car::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(90deg, transparent 25%, rgba(167,139,255,.25) 30%, transparent 35%),
+      linear-gradient(90deg, transparent 60%, rgba(255,80,200,.2) 65%, transparent 70%);
+  }
+  .th-car::after {
+    content: '';
+    position: absolute;
+    bottom: 18%;
+    left: 30%;
+    width: 45%;
+    height: 18%;
+    background: linear-gradient(180deg, #1a0a2a 0%, #000 100%);
+    border-radius: 30% 30% 8px 8px;
+    box-shadow: 0 0 25px rgba(255,80,200,.5), -10px 0 15px rgba(124,77,255,.4);
+  }
+
+  .th-city {
+    background:
+      linear-gradient(0deg, rgba(167,139,255,.25) 0%, transparent 60%),
+      linear-gradient(180deg, #1a0838 0%, #0a0420 100%);
+    position: relative;
+  }
+  .th-city::before {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0; height: 55%;
+    background:
+      repeating-linear-gradient(90deg,
+        #2a1050 0px, #2a1050 14px,
+        #1a0838 14px, #1a0838 18px,
+        #3a1870 18px, #3a1870 32px,
+        #1a0838 32px, #1a0838 36px);
+  }
+  .th-city::after {
+    content: '';
+    position: absolute;
+    bottom: 5%; left: 10%; right: 10%; height: 45%;
+    background:
+      radial-gradient(circle at 20% 30%, rgba(167,139,255,.6) 1px, transparent 2px),
+      radial-gradient(circle at 50% 20%, rgba(255,100,200,.5) 1px, transparent 2px),
+      radial-gradient(circle at 70% 40%, rgba(167,139,255,.5) 1px, transparent 2px),
+      radial-gradient(circle at 35% 50%, rgba(255,100,200,.4) 1px, transparent 2px),
+      radial-gradient(circle at 80% 25%, rgba(167,139,255,.6) 1px, transparent 2px);
+    background-size: 8px 8px;
+  }
+
+  .th-y {
+    background:
+      radial-gradient(ellipse at 50% 60%, rgba(167,139,255,.4) 0%, transparent 60%),
+      linear-gradient(180deg, #2a0f5a 0%, #0a0420 100%);
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .th-y::before {
+    content: 'Y';
+    font-size: 70px;
+    font-weight: 900;
+    color: #a78bff;
+    text-shadow: 0 0 30px rgba(167,139,255,.9);
+  }
+  .th-y::after {
+    content: '';
+    position: absolute;
+    bottom: 15%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 10px;
+    height: 22px;
+    background: linear-gradient(180deg, #2a1050 0%, #000 100%);
+    border-radius: 6px 6px 0 0;
+  }
+
+  .th-rain {
+    background:
+      linear-gradient(180deg, rgba(167,139,255,.25) 0%, transparent 40%),
+      linear-gradient(180deg, #1a0838 0%, #0a0420 100%);
+    position: relative;
+  }
+  .th-rain::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(115deg, transparent 49%, rgba(167,139,255,.4) 50%, transparent 51%),
+      linear-gradient(115deg, transparent 49%, rgba(167,139,255,.3) 50%, transparent 51%);
+    background-size: 14px 14px, 22px 22px;
+  }
+  .th-rain::after {
+    content: '';
+    position: absolute;
+    bottom: 22%;
+    right: 45%;
+    width: 30px;
+    height: 50px;
+    background: #000;
+    clip-path: polygon(20% 100%, 80% 100%, 70% 40%, 90% 30%, 50% 0%, 10% 30%, 30% 40%);
+  }
+
+  .th-cam {
+    background:
+      radial-gradient(circle at 50% 50%, rgba(167,139,255,.3) 0%, transparent 60%),
+      linear-gradient(180deg, #1a0838 0%, #0a0420 100%);
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .th-cam::before {
+    content: '';
+    width: 65%; height: 45%;
+    background: linear-gradient(180deg, #2a1c4a 0%, #0a0420 100%);
+    border-radius: 8px;
+    box-shadow: 0 0 20px rgba(167,139,255,.4);
+  }
+  .th-cam::after {
+    content: 'Y';
+    position: absolute;
+    font-size: 32px;
+    font-weight: 900;
+    color: #a78bff;
+    text-shadow: 0 0 12px rgba(167,139,255,.9);
+  }
+
+  .th-pc {
+    background:
+      linear-gradient(180deg, rgba(167,139,255,.3) 0%, transparent 50%),
+      linear-gradient(180deg, #2a0f5a 0%, #0a0420 100%);
+    position: relative;
+  }
+  .th-pc::before {
+    content: '';
+    position: absolute;
+    top: 15%; bottom: 10%; left: 30%; right: 30%;
+    background: linear-gradient(180deg, #1a0a3a 0%, #000 100%);
+    border-radius: 4px;
+    box-shadow:
+      inset 0 0 15px rgba(167,139,255,.5),
+      0 0 25px rgba(167,139,255,.4);
+  }
+  .th-pc::after {
+    content: '';
+    position: absolute;
+    top: 25%; bottom: 25%; left: 38%; right: 38%;
+    background:
+      linear-gradient(180deg, rgba(167,139,255,.6) 0%, transparent 30%),
+      repeating-linear-gradient(0deg,
+        rgba(255,100,200,.3) 0px, rgba(255,100,200,.3) 2px,
+        transparent 2px, transparent 6px);
+    border-radius: 2px;
+  }
+
+  /* Bottom nav */
+  .bottom-nav {
+    position: fixed;
+    bottom: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 500px;
+    background: rgba(10,6,18,.96);
+    backdrop-filter: blur(20px);
+    border-top: 1px solid #1a1230;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding: 10px 0 14px;
+    z-index: 100;
+  }
+  .nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    color: #7a6c9a;
+    font-size: 11px;
+    cursor: pointer;
+    flex: 1;
+  }
+  .nav-item.active { color: #fff; }
+  .nav-icon {
+    width: 38px; height: 38px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    border-radius: 10px;
+  }
+  .nav-item.active .nav-icon {
+    background: #7c4dff;
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(124,77,255,.45);
+  }
+
+  /* Icons via SVG inline replacements */
+  .ic { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+</style>
+</head>
+<body>
+<div class="phone">
+
+  <!-- Status bar -->
+  <div class="status-bar">
+    <div class="time">9:41</div>
+    <div class="icons">
+      <span>📶</span><span>📶</span><span>🔋</span>
+    </div>
+  </div>
+
+  <!-- Top header -->
+  <div class="top-header">
+    <div class="back">
+      <svg class="ic" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+    </div>
+    <div class="username-title">
+      yamenameen97
+      <span class="check-badge">✓</span>
+    </div>
+    <div class="right-icons">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+    </div>
+  </div>
+
+  <!-- Profile -->
+  <div class="profile-section">
+    <div class="avatar-wrap">
+      <div class="avatar">
+        <span class="Y">Y</span>
+      </div>
+      <div class="add-btn">+</div>
+    </div>
+    <div class="display-name">YAMEN</div>
+    <div class="handle">@yamenameen97</div>
+
+    <!-- Stats -->
+    <div class="stats">
+      <div class="stat">
+        <div class="num">78</div>
+        <div class="lbl">يتابع</div>
+      </div>
+      <div class="stat">
+        <div class="num">1.2M</div>
+        <div class="lbl">متابع</div>
+      </div>
+      <div class="stat">
+        <div class="num">32.4M</div>
+        <div class="lbl">إعجابات</div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="actions">
+      <button class="btn btn-arrow">
+        <svg class="ic" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <button class="btn btn-msg">
+        رسالة
+        <svg class="ic" viewBox="0 0 24 24" style="width:16px;height:16px"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+      <button class="btn btn-follow">متابعة</button>
+    </div>
+  </div>
+
+  <!-- Bio -->
+  <div class="bio">
+    <div class="line1">صانع محتوى تقني | عاشق للتصميم والمونتاج <span class="heart">💜</span></div>
+    <div class="line2">شارك شغفي واستمتع بالمحتوى</div>
+    <div class="meta">
+      <svg class="ic" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+      للتواصل والإعلانات
+    </div>
+    <div class="meta">
+      <svg class="ic" viewBox="0 0 24 24" style="width:14px;height:14px;color:#a78bff"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+      <span class="link">yamshat.com</span>
+    </div>
+  </div>
+
+  <!-- Top tabs -->
+  <div class="top-tabs">
+    <div class="top-tab">
+      <svg class="ic" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+    </div>
+    <div class="top-tab active">
+      <svg class="ic" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+    </div>
+    <div class="top-tab">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+    </div>
+  </div>
+
+  <!-- Sub tabs -->
+  <div class="sub-tabs">
+    <div class="sub-tab">ثم الإعجاب</div>
+    <div class="sub-tab active">الريلز</div>
+    <div class="sub-tab">المنشورات</div>
+  </div>
+
+  <!-- Grid -->
+  <div class="grid">
+    <div class="cell"><div class="th-car"></div><div class="views"><div class="play-tri"></div>1.2M</div></div>
+    <div class="cell"><div class="th-city"></div><div class="views"><div class="play-tri"></div>850K</div></div>
+    <div class="cell"><div class="th-y"></div><div class="views"><div class="play-tri"></div>2.3M</div></div>
+    <div class="cell"><div class="th-rain"></div><div class="views"><div class="play-tri"></div>950K</div></div>
+    <div class="cell"><div class="th-cam"></div><div class="views"><div class="play-tri"></div>670K</div></div>
+    <div class="cell"><div class="th-pc"></div><div class="views"><div class="play-tri"></div>1.1M</div></div>
+  </div>
+
+</div>
+
+<!-- Bottom nav -->
+<div class="bottom-nav">
+  <div class="nav-item">
+    <div class="nav-icon">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    </div>
+    <div>حسابي</div>
+  </div>
+  <div class="nav-item">
+    <div class="nav-icon">
+      <svg class="ic" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+    </div>
+    <div>الريلز</div>
+  </div>
+  <div class="nav-item active">
+    <div class="nav-icon">
+      <svg class="ic" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+    </div>
+    <div>ريلز جديد</div>
+  </div>
+  <div class="nav-item">
+    <div class="nav-icon">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    </div>
+    <div>الدردشات</div>
+  </div>
+  <div class="nav-item">
+    <div class="nav-icon">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    </div>
+    <div>الرئيسية</div>
+  </div>
+</div>
+
+</body>
+</html>

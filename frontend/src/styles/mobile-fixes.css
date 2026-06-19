@@ -498,3 +498,75 @@ video.yam-post-media-image,
     -webkit-tap-highlight-color: transparent;
   }
 }
+
+/* ==========================================================================
+   ✅ FIX v48 — رأس المنشور (الويب العادي + ويب الجوال)
+   عكس الترتيب: الاسم بجوار الصورة الشخصية مباشرة كما في الصورة المرجعية
+   ========================================================================== */
+.yam-post-card-v2 {
+  direction: rtl;
+  font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, -apple-system, sans-serif;
+}
+
+.yam-post-head-v2 {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  direction: rtl;
+  width: 100%;
+}
+
+/* الحاوية المعكوسة: الصورة في أقصى اليمين (RTL) ثم الاسم بجوارها مباشرة */
+.yam-post-author-v2.yam-post-author-v2-reversed {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 auto;
+  direction: rtl;
+}
+
+.yam-post-author-v2.yam-post-author-v2-reversed .yam-post-author-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  min-width: 0;
+  order: 1; /* الاسم على يسار الصورة في RTL */
+}
+
+.yam-post-author-v2.yam-post-author-v2-reversed > :last-child {
+  order: 0; /* الصورة في أقصى اليمين */
+  flex-shrink: 0;
+}
+
+.yam-post-author-v2.yam-post-author-v2-reversed .yam-post-author-line {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  direction: rtl;
+  unicode-bidi: isolate;
+}
+
+.yam-post-author-v2.yam-post-author-v2-reversed .yam-post-author-line strong {
+  font-weight: 700;
+  color: #fff;
+  unicode-bidi: plaintext;
+  line-height: 1.2;
+}
+
+.yam-post-author-v2.yam-post-author-v2-reversed .yam-post-handle {
+  direction: ltr;
+  unicode-bidi: isolate;
+  display: inline-block;
+  color: #9CA3AF;
+  font-size: 0.78rem;
+  margin-top: 2px;
+  text-align: right;
+  align-self: flex-end;
+}
+

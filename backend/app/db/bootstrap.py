@@ -228,6 +228,9 @@ def _migrate_users_table(engine: Engine) -> None:
         return
 
     _add_column_if_missing(engine, 'users', 'username', 'username VARCHAR(50)')
+    # ✅ FIX (v48): تخزين الاسم المعروض كعمود حقيقي (display_name)
+    # لحل مشكلة عدم تحديث الاسم في المنشورات بعد تغييره بالملف الشخصي.
+    _add_column_if_missing(engine, 'users', 'display_name', 'display_name VARCHAR(120) NULL')
     _add_column_if_missing(engine, 'users', 'avatar', 'avatar VARCHAR(500)')
     _add_column_if_missing(engine, 'users', 'hashed_password', 'hashed_password VARCHAR(255)')
     _add_column_if_missing(engine, 'users', 'role', "role VARCHAR(20) DEFAULT 'user'")

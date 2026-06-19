@@ -50,7 +50,9 @@ function buildBanner(post = {}) {
 }
 
 function normalizePost(p, i) {
-  const author = p.author_name || p.username || p.user || 'مستخدم يام شات';
+  // ✅ FIX (v48): الأولوية للاسم المعروض الديناميكي (display_name/full_name/author_name)
+  // ليتحدث الاسم في المنشورات فور تعديله بالملف الشخصي.
+  const author = p.display_name || p.full_name || p.author_name || p.username || p.user || 'مستخدم يام شات';
   const handle = (p.username || p.user || `user${i}`).toString();
   const verified = Boolean(p.verified || p.is_verified || p.official);
   const rawTime = p.created_at || p.published_at || null;

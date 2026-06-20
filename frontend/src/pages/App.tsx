@@ -1,13 +1,15 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
+import { Route, Switch, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import LiveStream from "./pages/LiveStream";
 import Wallet from "./pages/Wallet";
 import Profile from "./pages/Profile";
+import ProfileYamshat from "./pages/ProfileYamshat";
+import ReelsYamshat from "./pages/ReelsYamshat";
 import Notifications from "./pages/Notifications";
 import AdminDashboard from "./pages/AdminDashboard";
 import PKBattle from "./pages/PKBattle";
@@ -82,14 +84,19 @@ function Navigation() {
 }
 
 function Router() {
+  const [location] = useLocation();
+  // إخفاء الـ Navigation الافتراضي في صفحات Yamshat المخصصة (Profile + Reels)
+  const hideNav = location === "/profile" || location.startsWith("/reels");
   return (
     <>
-      <Navigation />
+      {!hideNav && <Navigation />}
       <Switch>
         <Route path={"/"} component={Home} />
         <Route path={"/live"} component={LiveStream} />
         <Route path={"/wallet"} component={Wallet} />
-        <Route path={"/profile"} component={Profile} />
+        <Route path={"/profile"} component={ProfileYamshat} />
+        <Route path={"/profile/classic"} component={Profile} />
+        <Route path={"/reels"} component={ReelsYamshat} />
         <Route path={"/notifications"} component={Notifications} />
         <Route path={"/admin"} component={AdminDashboard} />
         <Route path={"/pk-battle"} component={PKBattle} />

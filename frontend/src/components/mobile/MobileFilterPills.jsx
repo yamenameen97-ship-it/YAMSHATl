@@ -1,21 +1,20 @@
 import { memo } from 'react';
 
 /**
- * MobileFilterPills (v47.7 — pixel-perfect — مطابق تماماً للصورة)
+ * MobileFilterPills (v47.13 — اتجاه معكوس بناءً على طلب المستخدم)
  * ----------------------------------------------------------------
- * الترتيب البصري كما في الصورة (من اليسار→اليمين على الشاشة):
- *   [الكل (نشط)] [المجموعات] [الستوري] [الوسائط] [التعليقات]
+ * الترتيب البصري الجديد على الشاشة من اليمين → اليسار:
+ *   [الوسائط] [الستوري] [المجموعات] [الكل (نشط)]
  *
+ * - "الوسائط" في **أقصى اليمين** على الشاشة.
  * - "الكل" في **أقصى اليسار** على الشاشة وهو الزر النشط (بنفسجي ممتلئ).
- * - "التعليقات" في **أقصى اليمين** على الشاشة.
- * - الأزرار غير النشطة بخلفية رمادية داكنة #1A1F2E.
+ * - تم عكس الترتيب بالكامل مقارنة بالنسخة السابقة.
  */
 const FILTERS = [
-  { id: 'all', label: 'الكل' },
-  { id: 'community', label: 'المجموعات' },
-  { id: 'stories', label: 'الستوري' },
   { id: 'updates', label: 'الوسائط' },
-  { id: 'ads', label: 'التعليقات' },
+  { id: 'stories', label: 'الستوري' },
+  { id: 'community', label: 'المجموعات' },
+  { id: 'all', label: 'الكل' },
 ];
 
 function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange }) {
@@ -27,7 +26,7 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
 
   return (
     <div className="ym-filters-container" dir="rtl">
-      <div className="ym-filters" role="tablist" dir="ltr">
+      <div className="ym-filters" role="tablist" dir="rtl">
         {FILTERS.map((f) => {
           const isActive = f.id === currentActive;
           return (
@@ -38,6 +37,11 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
               aria-selected={isActive}
               className={`ym-filter-pill-new ${f.id} ${isActive ? 'is-active' : ''}`}
               onClick={() => handleChange(f.id)}
+              onTouchEnd={(e) => {
+                /* تحسين الاستجابة على الجوال — يمنع تأخير 300ms في كروم/سفاري */
+                e.preventDefault();
+                handleChange(f.id);
+              }}
               dir="rtl"
             >
               <span className="pill-content">{f.label}</span>
@@ -48,38 +52,46 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
 
       <style>{`
         .ym-filters-container {
-          padding: 6px 10px 10px;
+          padding: 8px 12px 10px;
           background-color: #0A0D1A;
           box-sizing: border-box;
           width: 100%;
           max-width: 100%;
           overflow: hidden;
+          font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+          /* تحسينات اللمس للجوال */
+          touch-action: pan-y;
+          -webkit-tap-highlight-color: transparent;
         }
         .ym-filters {
           display: flex;
           flex-direction: row;
-          gap: 6px;
+          gap: 8px;
           overflow-x: auto;
           scrollbar-width: none;
           -ms-overflow-style: none;
           padding-bottom: 2px;
           width: 100%;
-          direction: ltr;
+          direction: rtl;
           justify-content: flex-start;
+          /* تمكين السحب الأفقي السلس على الجوال */
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior-x: contain;
+          touch-action: pan-x;
         }
         .ym-filters::-webkit-scrollbar { display: none; }
 
         .ym-filter-pill-new {
           flex: 0 0 auto;
-          height: 32px;
-          padding: 0 14px;
+          height: 36px;
+          padding: 0 18px;
           border-radius: 999px;
           border: none;
           background: #1A1F2E;
           color: #9CA3AF;
-          font-size: 0.78rem;
+          font-size: 0.82rem;
           font-weight: 600;
-          font-family: inherit;
+          font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
           cursor: pointer;
           white-space: nowrap;
           transition: all 0.18s ease;
@@ -88,6 +100,15 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
           justify-content: center;
           line-height: 1;
           direction: rtl;
+          /* استجابة لمس فورية على PWA / Chrome Mobile */
+          touch-action: manipulation;
+          -webkit-tap-highlight-color: transparent;
+          -webkit-user-select: none;
+          user-select: none;
+          /* ضمان قابلية اللمس */
+          min-width: 44px;
+          position: relative;
+          z-index: 1;
         }
         .ym-filter-pill-new:active { transform: scale(0.96); }
 
@@ -95,7 +116,7 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
         .ym-filter-pill-new.is-active {
           background-color: #7C3AED;
           color: #FFFFFF;
-          box-shadow: 0 2px 8px rgba(124, 58, 237, 0.4);
+          box-shadow: 0 2px 10px rgba(124, 58, 237, 0.45);
         }
 
         .pill-content {
@@ -103,43 +124,38 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
           align-items: center;
           line-height: 1;
           font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+          pointer-events: none; /* يضمن تلقي الزر للنقرة وليس النص الداخلي */
         }
 
         @media (max-width: 400px) {
-          .ym-filters-container { padding: 5px 8px 8px; }
-          .ym-filters { gap: 5px; }
+          .ym-filters-container { padding: 7px 10px 9px; }
+          .ym-filters { gap: 7px; }
           .ym-filter-pill-new {
-            height: 30px;
-            padding: 0 12px;
-            font-size: 0.74rem;
+            height: 34px;
+            padding: 0 16px;
+            font-size: 0.78rem;
           }
         }
         @media (max-width: 360px) {
-          .ym-filters-container { padding: 4px 6px 7px; }
+          .ym-filters-container { padding: 6px 8px 8px; }
+          .ym-filters { gap: 6px; }
+          .ym-filter-pill-new {
+            height: 32px;
+            padding: 0 14px;
+            font-size: 0.74rem;
+          }
+        }
+        @media (max-width: 320px) {
+          .ym-filters-container { padding: 5px 6px 6px; }
           .ym-filters { gap: 4px; }
           .ym-filter-pill-new {
             height: 28px;
             padding: 0 10px;
-            font-size: 0.7rem;
+            font-size: 0.66rem;
           }
         }
-        @media (max-width: 320px) {
-          .ym-filters-container { padding: 3px 4px 5px; }
-          .ym-filters { gap: 2px; }
-          .ym-filter-pill-new {
-            height: 24px;
-            padding: 0 7px;
-            font-size: 0.6rem;
-          }
-        }
-        /* دعم Redmi Note 8 والأجهزة المتوسطة */
         @media (max-width: 393px) and (min-width: 361px) {
-          .ym-filter-pill-new { height: 31px; padding: 0 13px; font-size: 0.76rem; }
-        }
-        /* إصلاح تمرير أفقي على المتصفحات القديمة */
-        .ym-filters {
-          -webkit-overflow-scrolling: touch;
-          overscroll-behavior-x: contain;
+          .ym-filter-pill-new { height: 35px; padding: 0 17px; font-size: 0.8rem; }
         }
       `}</style>
     </div>

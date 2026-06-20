@@ -145,8 +145,8 @@ function MobileComposeModal({ open, onClose, initialAction = null }) {
   if (!open) return null;
 
   return (
-    <div className="ym-modal-overlay" role="dialog" aria-modal="true" aria-label="إنشاء منشور" onClick={handleClose}>
-      <div className="ym-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="ym-modal-overlay" role="dialog" aria-modal="true" aria-label="إنشاء منشور" dir="rtl" onClick={handleClose}>
+      <div className="ym-modal" dir="rtl" onClick={(e) => e.stopPropagation()}>
         <header className="ym-modal-head">
           <button type="button" className="ym-modal-close" onClick={handleClose} aria-label="إغلاق">
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
@@ -200,30 +200,33 @@ function MobileComposeModal({ open, onClose, initialAction = null }) {
           <div className="ym-modal-counter">{text.length} / 2000</div>
         </div>
 
-        <footer className="ym-modal-actions">
-          <button type="button" className="ym-modal-action" onClick={() => handlePickFile('image/*')} aria-label="إضافة صورة">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
+        <footer className="ym-modal-actions" dir="rtl">
+          <button type="button" className="ym-modal-action" onClick={() => handlePickFile('image/*')} aria-label="إضافة صورة" title="إضافة صورة">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true">
               <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.8" />
               <circle cx="8.5" cy="10" r="1.5" fill="currentColor" />
               <path d="M21 17 L15 11 L5 19" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
             </svg>
+            <span className="ym-action-label">صورة</span>
           </button>
-          <button type="button" className="ym-modal-action" onClick={() => handlePickFile('video/*')} aria-label="إضافة فيديو">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
+          <button type="button" className="ym-modal-action" onClick={() => handlePickFile('video/*')} aria-label="إضافة فيديو" title="إضافة فيديو">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true">
               <rect x="3" y="6" width="14" height="12" rx="2" stroke="currentColor" strokeWidth="1.8" />
               <path d="M17 10 L22 7 V17 L17 14 Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
             </svg>
+            <span className="ym-action-label">فيديو</span>
           </button>
-          <button type="button" className="ym-modal-action" aria-label="إيموجي" onClick={() => {
+          <button type="button" className="ym-modal-action" aria-label="إضافة إيموجي" title="إضافة إيموجي" onClick={() => {
             setText((t) => t + '😊');
             textareaRef.current?.focus();
           }}>
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true">
               <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
               <circle cx="9" cy="10" r="1.2" fill="currentColor" />
               <circle cx="15" cy="10" r="1.2" fill="currentColor" />
               <path d="M8 14.5 C9.5 16.5, 14.5 16.5, 16 14.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
             </svg>
+            <span className="ym-action-label">إيموجي</span>
           </button>
           <input
             ref={fileInputRef}

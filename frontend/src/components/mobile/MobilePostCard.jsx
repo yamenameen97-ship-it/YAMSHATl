@@ -2,20 +2,18 @@ import { memo, useEffect, useState } from 'react';
 import { timeAgoAr as fmtTimeAgoAr } from '../../utils/timeFormat.js';
 
 /**
- * MobilePostCard (v47.9 — إصلاح الاسم المعكوس في صفحة الجوال)
+ * MobilePostCard (v47.8 — pixel-perfect — مطابق للصورة المرجعية الجديدة)
  * ----------------------------------------------------------------------
- * الترتيب البصري الصحيح كما في الصورة المرجعية الثانية
+ * الترتيب البصري الجديد كما في الصورة المرجعية الأخيرة
  * (من اليسار→اليمين على الشاشة):
  *
  * الهيدر:
  *   | ⋯       yamenameen97       Y(avatar) |
- *   |       منذ 4 دقيقة • @yamenameen97          |
+ *   |       @yamenameen97 • منذ 4 دقيقة      |
  *   (أقصى اليسار: ⋯)   (وسط: النص)   (أقصى اليمين: شعار Y)
  *
  * أي: اسم المستخدم يظهر بين زر ⋯ وبين شعار Y الدائري.
  * الاتجاه للنص: RTL طبيعي بمحاذاة اليمين (نحو الشعار).
- * ✅ إصلاح: عكس ترتيب الوقت و@handle ليصبح "منذ 4 دقيقة • @yamenameen97"
- * بدلاً من "@yamenameen97 • منذ 4 دقيقة" وفقاً للصورة المرجعية الثانية.
  *
  * الصورة: مربع أسود بنسبة 1:1 مع شعار Y بنفسجي ضخم في الوسط،
  *         وأيقونة دائرية ملونة في الزاوية السفلية اليسرى.
@@ -103,11 +101,10 @@ function MobilePostCard({
             <span className="ym-author-name">{authorName}</span>
             {verified && <VerifiedBadge />}
           </div>
-          {/* ✅ إصلاح الاسم المعكوس: الوقت يأتي أولاً ثم @handle ليطابق الصورة المرجعية الثانية */}
           <div className="ym-post-subtext" dir="rtl">
             <span className="ym-time" title={timeTitle || ''}>{liveTime}</span>
             <span className="ym-dot">•</span>
-            <bdi className="ym-handle">{handle}</bdi>
+            <span className="ym-handle">{handle}</span>
             {isLive && <span className="ym-live-badge-inline">البث المباشر</span>}
           </div>
         </div>
@@ -291,15 +288,12 @@ function MobilePostCard({
           flex-direction: row;
           align-items: center;
           gap: 2px;
-          direction: rtl;
-          unicode-bidi: isolate;
         }
         .ym-author-name {
           font-weight: 700;
           font-size: 0.9rem;
           color: #fff;
           line-height: 1.2;
-          unicode-bidi: plaintext;
         }
         .ym-post-subtext {
           display: flex;
@@ -311,19 +305,8 @@ function MobilePostCard({
           margin-top: 2px;
           flex-wrap: wrap;
           justify-content: flex-end;
-          direction: rtl;
-          unicode-bidi: isolate;
         }
         .ym-dot { color: #6B7280; }
-        .ym-handle {
-          /* عزل اتجاه @handle حتى لا ينعكس داخل الحاوية RTL */
-          direction: ltr;
-          unicode-bidi: isolate;
-          display: inline-block;
-        }
-        .ym-author-name {
-          unicode-bidi: plaintext;
-        }
         .ym-live-badge-inline {
           color: #8B5CF6;
           margin-inline-start: 4px;

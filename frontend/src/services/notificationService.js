@@ -79,11 +79,23 @@ function getPlatform() {
   return 'web';
 }
 
+// ✅ v47.11: تحويل Base64URL إلى Uint8Array مع تحقق صلاحية
+// يرجع null إذا لم يكن المفتاح 65 بايت P-256 صالح (uncompressed)
 function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
-  const rawData = window.atob(base64);
-  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
+  try {
+    if (!base64String || typeof base64String !== 'string') return null;
+    const cleaned = base64String.trim();
+    if (cleaned.length < 80) return null;
+    const padding = '='.repeat((4 - (cleaned.length % 4)) % 4);
+    const base64 = (cleaned + padding).replace(/\-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const arr = Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
+    // مفتاح VAPID صالح = 65 بايت ويبدأ بـ 0x04
+    if (arr.length !== 65 || arr[0] !== 0x04) return null;
+    return arr;
+  } catch (_) {
+    return null;
+  }
 }
 
 export const notificationService = {
@@ -179,9 +191,24 @@ export const notificationService = {
     const subscribeOptions = {
       userVisibleOnly: true,
     };
-    if (VAPID_PUBLIC_KEY) subscribeOptions.applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+    // ✅ v47.11: لا نمرر applicationServerKey إلا إذا كان صالحاً (لتجنب InvalidAccessError)
+    if (VAPID_PUBLIC_KEY) {
+      const appServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+      if (appServerKey) {
+        subscribeOptions.applicationServerKey = appServerKey;
+      } else {
+        console.info('[notificationService] VAPID key invalid format - push disabled');
+        return null;
+      }
+    }
 
-    const subscription = await registration.pushManager.subscribe(subscribeOptions);
+    let subscription;
+    try {
+      subscription = await registration.pushManager.subscribe(subscribeOptions);
+    } catch (err) {
+      console.info('[notificationService] push subscribe failed:', err?.name || err?.message);
+      return null;
+    }
     localStorage.setItem('yamshat_push_subscription', JSON.stringify(subscription.toJSON()));
 
     try {

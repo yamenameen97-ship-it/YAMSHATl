@@ -60,6 +60,8 @@ import './styles/mobile-pixel-perfect-v47-8.css';
 import './styles/mobile-pixel-perfect-v47-9.css';
 /* 🚀 v48.0 — إصلاح شامل لمشكلة اللمس الثقيل وعدم الاستجابة للسحب على Chrome Mobile / PWA */
 import './styles/touch-responsiveness-fix.css';
+/* 📱 v48.1 — تصغير الخطوط في صفحات الويب للجوال لتناسب الجوالات القديمة + منع تجاوز حدود الأزرار والصفحات */
+import './styles/mobile-compact-fonts-v48.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { pwaInitializer } from './services/pwaInitializer.js';
 import { smoothTouchLayer } from './services/smoothTouchLayer.js';

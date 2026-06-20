@@ -163,10 +163,23 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
         }
         for option in poll_options
     ]
+    # ✅ FIX (v48): حساب الاسم المعروض ديناميكياً من المستخدم الحالي
+    # بحيث تتحدث كل المنشورات فوراً عند تغيير الاسم في الملف الشخصي.
+    _author_display = ''
+    if user is not None:
+        _author_display = (getattr(user, 'display_name', None) or '').strip()
+        if not _author_display:
+            _author_display = user.username or ''
+    if not _author_display:
+        _author_display = getattr(post, 'username', None) or 'unknown'
     return {
         'id': post.id,
         'user_id': post.user_id,
         'username': user.username if user else (getattr(post, 'username', None) or 'unknown'),
+        'author_name': _author_display,
+        'display_name': _author_display,
+        'full_name': _author_display,
+        'user_avatar': user.avatar if user else (getattr(post, 'user_avatar', None) or None),
         'avatar': user.avatar if user else (getattr(post, 'user_avatar', None) or None),
         'content': post.content,
         'content_html': post.content_html or '',

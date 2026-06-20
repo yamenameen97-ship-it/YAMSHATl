@@ -4,11 +4,18 @@
 
 .gesture-container {
   position: relative;
-  touch-action: none;
+  /* v49 fix: كان touch-action: none يمنع التمرير العمودي، نسمح بـ pan-y بشكل افتراضي */
+  touch-action: pan-y;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
   will-change: transform;
+}
+
+/* أثناء السحب الفعلي فقط نقفل التمرير */
+.gesture-container[data-gesture-active="true"],
+.gesture-container.gesture-active {
+  touch-action: none;
 }
 
 .gesture-container.dragging {

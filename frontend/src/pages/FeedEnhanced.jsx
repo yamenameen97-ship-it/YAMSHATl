@@ -32,11 +32,14 @@ import {
 } from '../api/posts.js';
 
 
+// v47.13 — عكس ترتيب التبويبات (الكل تصبح في أقصى اليسار بدلاً من اليمين)
+// الترتيب المنطقي الجديد (في حاوية RTL يظهر بصرياً من اليمين → اليسار):
+// [متابعين] [الأصدقاء] [المجموعات] [المفضلة] [الكل]
 const FEED_TABS = [
-  { id: 'favorites', label: 'المفضلة' },
-  { id: 'groups', label: 'المجموعات' },
-  { id: 'friends', label: 'الأصدقاء' },
   { id: 'following', label: 'متابعين' },
+  { id: 'friends', label: 'الأصدقاء' },
+  { id: 'groups', label: 'المجموعات' },
+  { id: 'favorites', label: 'المفضلة' },
   { id: 'all', label: 'الكل' },
 ];
 
@@ -127,7 +130,9 @@ function buildFeedPosts(posts = []) {
         rawId: post.id || null, // المعرف الحقيقي للمنشور من الـ backend (null للمنشورات الترحيبية)
         userId: post.user_id || null,
         rawUsername: post.username || post.user || '',
-        authorName: post.author_name || post.username || post.user || 'مستخدم يام شات',
+        // ✅ FIX (v48): الأولوية للاسم المعروض الديناميكي من الـ backend (display_name/full_name/author_name)
+        // حتى يتحدث الاسم في كل المنشورات فور تغييره في الملف الشخصي.
+        authorName: post.display_name || post.full_name || post.author_name || post.username || post.user || 'مستخدم يام شات',
         authorAvatar: resolveMediaUrl(post.user_avatar || post.avatar || post.author_avatar || ''),
         handle: normalizeHandle(post.username || post.user || `user.${index + 1}`),
         time: timeAgoAr(sourceTime),
@@ -549,9 +554,10 @@ function PostCard({ post }) {
 
   return (
     <article className="yam-post-card-v2">
-      <div className="yam-post-head-v2">
-        <div className="yam-post-author-v2">
-          <Avatar name={post.authorName} size={48} accent={Boolean(post.brandRing)} image src={post.authorAvatar} />
+      {/* ✅ FIX (v48): عكس ترتيب الرأس ليكون الاسم بجوار الصورة الشخصية مباشرة
+          مطابقاً للصورة المرجعية الثانية: على RTL الصورة في أقصى اليمين والاسم على يسارها. */}
+      <div className="yam-post-head-v2" dir="rtl">
+        <div className="yam-post-author-v2 yam-post-author-v2-reversed" dir="rtl">
           <div className="yam-post-author-copy">
             <div className="yam-post-author-line">
               <strong>{post.authorName}</strong>
@@ -559,6 +565,7 @@ function PostCard({ post }) {
             </div>
             <div className="yam-post-handle">{post.handle}</div>
           </div>
+          <Avatar name={post.authorName} size={48} accent={Boolean(post.brandRing)} image src={post.authorAvatar} />
         </div>
         <div className="yam-post-meta-v2">
           {/* ✅ تحديث لحظي للوقت المنقضي + tooltip بتوقيت الجهاز */}
@@ -900,11 +907,14 @@ function FeedDesktopInner() {
                 <PostComposer />
               </div>
 
-              <div className="yam-feed-tabs">
+              {/* v47.13 — تم عكس اتجاه التبويبات (الكل إلى أقصى اليسار) */}
+              <div className="yam-feed-tabs" dir="rtl" role="tablist">
                 {FEED_TABS.map((tab) => (
                   <button
                     key={tab.id}
                     type="button"
+                    role="tab"
+                    aria-selected={activeTab === tab.id}
                     className={`yam-feed-tab ${activeTab === tab.id ? 'active' : ''}`}
                     onClick={() => setActiveTab(tab.id)}
                   >
@@ -1411,10 +1421,16 @@ function FeedDesktopInner() {
 
           .yam-feed-tabs {
             display: flex;
+            flex-direction: row;
             align-items: center;
+            justify-content: flex-start;
             gap: 18px;
             overflow-x: auto;
             padding-bottom: 2px;
+            direction: rtl;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+            -webkit-overflow-scrolling: touch;
           }
 
           .yam-feed-tabs::-webkit-scrollbar { display: none; }

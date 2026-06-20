@@ -1,0 +1,355 @@
+/* ==========================================================================
+   Yamshat Platform Unified Layer v4
+   توحيد شامل: أزرار، مسافات، مقاسات، خطوط، ألوان
+   يغطّي: ويب سطح المكتب، ويب اللابتوب، ويب الجوال
+   آخر طبقة قبل التشغيل — يلغي التضارب بين 43 ملف CSS سابق.
+   Direction-aware: يدعم RTL/LTR تلقائياً
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+/* ---------- 1) توحيد الجذر: الألوان + الخطوط + المسافات + المقاسات ---------- */
+:root,
+:root[data-theme='dark'],
+:root[data-theme='light'] {
+  /* Fonts — Noto Sans Arabic أولاً ثم Inter للأرقام والإنجليزية */
+  --font-sans: 'Noto Sans Arabic', 'Inter', 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+  --font-display: 'Noto Sans Arabic', 'Inter', 'Cairo', system-ui, sans-serif !important;
+  --font-arabic: 'Noto Sans Arabic', 'Cairo', system-ui, sans-serif;
+  --font-latin: 'Inter', system-ui, sans-serif;
+
+  /* ألوان موحّدة — مصدر واحد للحقيقة */
+  --primary: #7C3AED;
+  --primary-hover: #6D28D9;
+  --primary-soft: rgba(124, 58, 237, 0.12);
+  --secondary: #06B6D4;
+  --secondary-hover: #0891B2;
+  --success: #10B981;
+  --warning: #F59E0B;
+  --danger: #EF4444;
+  --info: #3B82F6;
+
+  /* مقاسات الأزرار الموحّدة */
+  --btn-height-xs: 32px;
+  --btn-height-sm: 40px;
+  --btn-height-md: 44px;
+  --btn-height-lg: 52px;
+  --btn-height-xl: 60px;
+  --btn-padding-x-sm: 14px;
+  --btn-padding-x-md: 20px;
+  --btn-padding-x-lg: 28px;
+  --btn-radius: 12px;
+  --btn-radius-pill: 999px;
+
+  /* المسافات الموحّدة (مقياس 4px) */
+  --gap-1: 4px;
+  --gap-2: 8px;
+  --gap-3: 12px;
+  --gap-4: 16px;
+  --gap-5: 20px;
+  --gap-6: 24px;
+  --gap-7: 32px;
+  --gap-8: 40px;
+  --gap-9: 48px;
+  --gap-10: 64px;
+
+  /* مقاسات الخطوط الموحّدة */
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-base: 15px;
+  --fs-md: 16px;
+  --fs-lg: 18px;
+  --fs-xl: 20px;
+  --fs-2xl: 24px;
+  --fs-3xl: 30px;
+  --fs-4xl: 36px;
+
+  /* مقاسات الأيقونات الموحّدة */
+  --icon-xs: 14px;
+  --icon-sm: 18px;
+  --icon-md: 22px;
+  --icon-lg: 26px;
+  --icon-xl: 32px;
+
+  /* ارتفاعات شريط التنقل الموحّدة */
+  --topbar-height: 60px;
+  --bottombar-height: 64px;
+  --sidebar-width: 260px;
+  --sidebar-collapsed: 72px;
+
+  /* حاويات */
+  --container-mobile: 100%;
+  --container-tablet: 720px;
+  --container-laptop: 1024px;
+  --container-desktop: 1280px;
+  --container-wide: 1440px;
+}
+
+/* ---------- 2) تطبيق الخطوط على جميع العناصر ---------- */
+html, body, #root {
+  font-family: var(--font-sans) !important;
+  font-size: var(--fs-base);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+html[dir='rtl'] body,
+html[dir='rtl'] #root {
+  font-family: var(--font-arabic), var(--font-latin), system-ui, sans-serif !important;
+}
+
+html[dir='ltr'] body,
+html[dir='ltr'] #root {
+  font-family: var(--font-latin), var(--font-arabic), system-ui, sans-serif !important;
+}
+
+button, input, select, textarea, label, a, span, div, p,
+h1, h2, h3, h4, h5, h6 {
+  font-family: inherit !important;
+}
+
+/* الأرقام بخط Inter دائماً للوضوح */
+.num, [data-numeric], .price, .count, .badge-count, .timestamp {
+  font-family: 'Inter', var(--font-arabic) !important;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* ---------- 3) توحيد الأزرار في كل المنصة ---------- */
+.btn,
+button.btn,
+.button,
+button:not([class*='ant-']):not([class*='unstyled']) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap-2);
+  height: var(--btn-height-md);
+  padding: 0 var(--btn-padding-x-md);
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  font-weight: 600;
+  line-height: 1;
+  border-radius: var(--btn-radius);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+              background-color 180ms,
+              box-shadow 180ms,
+              border-color 180ms;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn:hover,
+.button:hover {
+  transform: translateY(-1px);
+}
+
+.btn:active,
+.button:active {
+  transform: translateY(0);
+}
+
+.btn:focus-visible,
+.button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.btn:disabled,
+.button:disabled,
+.btn[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* أحجام الأزرار */
+.btn-xs, .btn[data-size='xs'] { height: var(--btn-height-xs); padding: 0 var(--btn-padding-x-sm); font-size: var(--fs-xs); }
+.btn-sm, .btn[data-size='sm'] { height: var(--btn-height-sm); padding: 0 var(--btn-padding-x-sm); font-size: var(--fs-sm); }
+.btn-md, .btn[data-size='md'] { height: var(--btn-height-md); padding: 0 var(--btn-padding-x-md); font-size: var(--fs-base); }
+.btn-lg, .btn[data-size='lg'] { height: var(--btn-height-lg); padding: 0 var(--btn-padding-x-lg); font-size: var(--fs-md); }
+.btn-xl, .btn[data-size='xl'] { height: var(--btn-height-xl); padding: 0 var(--btn-padding-x-lg); font-size: var(--fs-lg); }
+
+/* ألوان الأزرار */
+.btn-primary, .btn[data-variant='primary'] {
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(124, 58, 237, 0.32);
+}
+.btn-primary:hover, .btn[data-variant='primary']:hover { background: var(--primary-hover); }
+
+.btn-secondary, .btn[data-variant='secondary'] {
+  background: var(--secondary);
+  color: #fff;
+}
+.btn-secondary:hover { background: var(--secondary-hover); }
+
+.btn-ghost, .btn[data-variant='ghost'] {
+  background: transparent;
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+}
+.btn-ghost:hover { background: var(--primary-soft); }
+
+.btn-danger, .btn[data-variant='danger'] {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* زر دائري للأيقونات */
+.btn-icon {
+  width: var(--btn-height-md);
+  height: var(--btn-height-md);
+  padding: 0;
+  border-radius: 50%;
+}
+.btn-icon.btn-sm { width: var(--btn-height-sm); height: var(--btn-height-sm); }
+.btn-icon.btn-lg { width: var(--btn-height-lg); height: var(--btn-height-lg); }
+
+/* ---------- 4) توحيد حقول الإدخال ---------- */
+input:not([type='checkbox']):not([type='radio']):not([type='range']),
+select,
+textarea {
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  height: var(--btn-height-md);
+  padding: 0 var(--gap-4);
+  border-radius: var(--btn-radius);
+  border: 1px solid var(--line, #2a2a3a);
+  background: var(--panel, #1a1a2e);
+  color: var(--text, #fff);
+  transition: border-color 180ms, box-shadow 180ms;
+}
+
+textarea {
+  height: auto;
+  min-height: 96px;
+  padding: var(--gap-3) var(--gap-4);
+  line-height: 1.6;
+  resize: vertical;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+/* ---------- 5) توحيد البطاقات ---------- */
+.card, [data-card] {
+  background: var(--panel, #1a1a2e);
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  border-radius: 16px;
+  padding: var(--gap-5);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+}
+
+/* ---------- 6) توحيد العناوين ---------- */
+h1 { font-size: var(--fs-4xl); font-weight: 800; line-height: 1.2; letter-spacing: -0.02em; }
+h2 { font-size: var(--fs-3xl); font-weight: 700; line-height: 1.25; letter-spacing: -0.015em; }
+h3 { font-size: var(--fs-2xl); font-weight: 700; line-height: 1.3; }
+h4 { font-size: var(--fs-xl); font-weight: 600; line-height: 1.35; }
+h5 { font-size: var(--fs-lg); font-weight: 600; line-height: 1.4; }
+h6 { font-size: var(--fs-md); font-weight: 600; line-height: 1.45; }
+
+/* ---------- 7) Responsive Breakpoints الموحّدة ---------- */
+/* Mobile First — كل شيء افتراضياً للجوال */
+
+/* جوال صغير (< 480px) */
+@media (max-width: 479px) {
+  :root {
+    --fs-base: 14px;
+    --btn-height-md: 42px;
+    --topbar-height: 56px;
+    --bottombar-height: 60px;
+  }
+  .container { padding-left: var(--gap-3); padding-right: var(--gap-3); }
+  h1 { font-size: 26px; }
+  h2 { font-size: 22px; }
+  .hide-on-mobile { display: none !important; }
+}
+
+/* جوال كبير (480px - 767px) */
+@media (min-width: 480px) and (max-width: 767px) {
+  :root { --fs-base: 14px; }
+  .container { padding-left: var(--gap-4); padding-right: var(--gap-4); }
+  .hide-on-mobile { display: none !important; }
+}
+
+/* تابلت (768px - 1023px) */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .container { max-width: var(--container-tablet); margin: 0 auto; padding: 0 var(--gap-5); }
+  .show-on-mobile { display: none !important; }
+}
+
+/* لابتوب (1024px - 1279px) */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  :root {
+    --fs-base: 15px;
+    --topbar-height: 64px;
+  }
+  .container { max-width: var(--container-laptop); margin: 0 auto; padding: 0 var(--gap-6); }
+  .show-on-mobile, .show-on-tablet { display: none !important; }
+}
+
+/* سطح المكتب (1280px+) */
+@media (min-width: 1280px) {
+  :root {
+    --fs-base: 16px;
+    --topbar-height: 68px;
+  }
+  .container { max-width: var(--container-desktop); margin: 0 auto; padding: 0 var(--gap-7); }
+  .show-on-mobile, .show-on-tablet, .show-on-laptop { display: none !important; }
+}
+
+/* شاشات عريضة جداً (1440px+) */
+@media (min-width: 1440px) {
+  .container.container-wide { max-width: var(--container-wide); }
+}
+
+/* ---------- 8) دعم RTL/LTR مع منطق متناسق ---------- */
+[dir='rtl'] .btn,
+[dir='rtl'] .card {
+  text-align: right;
+}
+
+[dir='ltr'] .btn,
+[dir='ltr'] .card {
+  text-align: left;
+}
+
+/* عكس الأيقونات الاتجاهية في RTL */
+[dir='rtl'] .icon-arrow-right { transform: scaleX(-1); }
+[dir='rtl'] .icon-arrow-left { transform: scaleX(-1); }
+
+/* ---------- 9) Touch Targets Accessibility (WCAG 2.5.5) ---------- */
+@media (pointer: coarse) {
+  .btn, .button, button, a.nav-link, .clickable {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* ---------- 10) Safe Area للجوال الحديث (iOS notch) ---------- */
+.safe-top { padding-top: env(safe-area-inset-top); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+.safe-start { padding-inline-start: env(safe-area-inset-left); }
+.safe-end { padding-inline-end: env(safe-area-inset-right); }
+
+/* ---------- 11) تنعيم التمرير على iOS ---------- */
+* {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ---------- 12) Prefers Reduced Motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,192 @@
+/**
+ * إصلاح شريط التمرير في منطقة المنشورات
+ * - إضافة شريط تمرير محسّن مع الحفاظ على ثبات الهيدرات الجانبية
+ * - تحسين تجربة المستخدم على سطح المكتب
+ */
+
+/* تحسين شريط التمرير الرئيسي لمنطقة المنشورات */
+.yam-post-stack-v2 {
+  /* تأكد من أن المنطقة قابلة للتمرير */
+  overflow-y: scroll !important;
+  overflow-x: hidden;
+  
+  /* تحسين سلوك التمرير */
+  scroll-behavior: smooth;
+  overscroll-behavior-y: contain;
+  
+  /* ضمان ظهور شريط التمرير دائماً */
+  scrollbar-gutter: stable both-edges;
+  scrollbar-width: auto;
+  scrollbar-color: rgba(139, 92, 246, 0.92) rgba(255, 255, 255, 0.04);
+}
+
+/* تحسين شريط التمرير في متصفحات WebKit (Chrome, Safari, Edge) */
+.yam-post-stack-v2::-webkit-scrollbar {
+  width: 14px;
+  -webkit-appearance: none;
+}
+
+.yam-post-stack-v2::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.18);
+}
+
+.yam-post-stack-v2::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(139, 92, 246, 0.92), rgba(99, 102, 241, 0.88));
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background 0.3s ease;
+}
+
+.yam-post-stack-v2::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(167, 139, 250, 1), rgba(129, 140, 248, 1));
+}
+
+.yam-post-stack-v2::-webkit-scrollbar-thumb:active {
+  background: linear-gradient(180deg, rgba(167, 139, 250, 1), rgba(99, 102, 241, 1));
+}
+
+/* تحسين الأشرطة الجانبية - تبقى ثابتة أثناء التمرير */
+.yam-left-rail,
+.yam-right-rail {
+  position: sticky !important;
+  top: 18px;
+  align-self: start;
+  max-height: calc(100vh - 36px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(139, 92, 246, 0.5) transparent;
+  z-index: 10;
+}
+
+/* تحسين شريط التمرير للأشرطة الجانبية */
+.yam-left-rail::-webkit-scrollbar,
+.yam-right-rail::-webkit-scrollbar {
+  width: 6px;
+}
+
+.yam-left-rail::-webkit-scrollbar-track,
+.yam-right-rail::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.yam-left-rail::-webkit-scrollbar-thumb,
+.yam-right-rail::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.5);
+  border-radius: 999px;
+  transition: background 0.3s ease;
+}
+
+.yam-left-rail::-webkit-scrollbar-thumb:hover,
+.yam-right-rail::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 92, 246, 0.8);
+}
+
+/* تحسين منطقة المرحلة المركزية */
+.yam-center-stage {
+  position: sticky;
+  top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 0;
+  height: calc(100vh - 36px);
+  max-height: calc(100vh - 36px);
+  overflow: hidden;
+  align-self: start;
+}
+
+/* تحسين رأس التغذية ليبقى ثابتاً */
+.yam-feed-header-card {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  flex-shrink: 0;
+  padding: 18px 20px 14px;
+  background: linear-gradient(180deg, rgba(7, 12, 25, 0.96), rgba(6, 10, 20, 0.92));
+  border-bottom: 1px solid rgba(139, 92, 246, 0.14);
+}
+
+/* تحسين حالة التغذية */
+.yam-feed-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 54px;
+  padding: 0 16px;
+  border-radius: 18px;
+  border: 1px dashed rgba(167, 139, 250, 0.22);
+  background: rgba(139, 92, 246, 0.06);
+  color: #c4b5fd;
+  font-size: 13px;
+  font-weight: 700;
+  margin-top: 12px;
+}
+
+/* تحسين بطاقات المنشورات */
+.yam-post-card-v2 {
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: linear-gradient(180deg, rgba(7, 12, 25, 0.96), rgba(6, 10, 20, 0.92));
+  transition: all 0.2s ease;
+}
+
+.yam-post-card-v2:hover {
+  border-color: rgba(139, 92, 246, 0.24);
+  box-shadow: 0 8px 24px rgba(139, 92, 246, 0.12);
+}
+
+/* تحسين الاستجابة على الأجهزة الصغيرة */
+@media (max-width: 1440px) {
+  .yam-post-stack-v2::-webkit-scrollbar {
+    width: 12px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .yam-left-rail,
+  .yam-right-rail {
+    position: relative;
+    top: auto;
+    max-height: none;
+    overflow: visible;
+  }
+  
+  .yam-center-stage {
+    position: relative;
+    top: auto;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+  
+  .yam-post-stack-v2 {
+    overflow-y: auto;
+  }
+}
+
+/* تحسين الأداء */
+.yam-post-stack-v2 {
+  contain: layout style paint;
+}
+
+.yam-left-rail,
+.yam-right-rail {
+  contain: layout style paint;
+}
+
+/* تحسين الظلال والانعكاسات */
+.yam-post-stack-v2::-webkit-scrollbar-track {
+  box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.18);
+}
+
+/* تحسين سلاسة التمرير */
+.yam-post-stack-v2 {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}

@@ -1,0 +1,145 @@
+/**
+ * mobile-pixel-perfect-v47-8.css
+ * ================================
+ * تحسينات شاملة لمطابقة الصورة المرجعية بدقة + دعم الشاشات الصغيرة جداً
+ *  - Redmi Note 8 (393px width @ DPR 2.75)
+ *  - الأجهزة القديمة (320px - 360px)
+ *  - شاشات بدون env(safe-area-inset-*)
+ *  - متصفحات لا تدعم aspect-ratio و backdrop-filter
+ *
+ * ✅ dir="rtl" مع خط Noto Sans Arabic كخط أساسي
+ * ✅ مطابق تماماً للصورة المرجعية v47.8
+ */
+
+/* ============ خط أساسي عربي ============ */
+:root {
+  --ym-font-ar: 'Noto Sans Arabic', 'Tajawal', 'Cairo', system-ui, -apple-system, sans-serif;
+  --ym-bg: #0A0D1A;
+  --ym-bg-elev: #14172a;
+  --ym-border: #1F2937;
+  --ym-purple: #8B5CF6;
+  --ym-purple-light: #A78BFA;
+  --ym-purple-dark: #7C3AED;
+  --ym-text: #FFFFFF;
+  --ym-text-muted: #9CA3AF;
+  --ym-text-faint: #6B7280;
+}
+
+html[dir="rtl"], body[dir="rtl"], [dir="rtl"] {
+  font-family: var(--ym-font-ar);
+}
+
+/* ============ خلفية الصفحة الرئيسية للجوال ============ */
+body.ym-mobile,
+.ym-mobile-page {
+  background-color: var(--ym-bg);
+  color: var(--ym-text);
+  font-family: var(--ym-font-ar);
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* ============ حاوية الفيد ============ */
+.ym-feed {
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+  padding-top: 54px;   /* للـ TopBar */
+  padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); /* للـ BottomNav */
+  background-color: var(--ym-bg);
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+.ym-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--ym-text-muted);
+  font-size: 0.9rem;
+  font-family: var(--ym-font-ar);
+}
+.ym-empty .icon {
+  font-size: 2.4rem;
+  margin-bottom: 8px;
+}
+
+/* ============ منع الانتقال الأفقي على الشاشات الصغيرة ============ */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* ============ دعم الشاشات المتوسطة (Redmi Note 8 ~ 393px) ============ */
+@media (max-width: 393px) and (min-width: 361px) {
+  .ym-feed {
+    padding-top: 53px;
+    padding-bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* ============ دعم الشاشات الصغيرة (360px فأقل) ============ */
+@media (max-width: 360px) {
+  .ym-feed {
+    padding-top: 50px;
+    padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+  }
+  .ym-empty {
+    padding: 30px 14px;
+    font-size: 0.82rem;
+  }
+}
+
+/* ============ دعم الشاشات الصغيرة جداً (320px فأقل) ============ */
+@media (max-width: 320px) {
+  .ym-feed {
+    padding-top: 48px;
+    padding-bottom: calc(54px + env(safe-area-inset-bottom, 0px));
+  }
+  .ym-empty {
+    padding: 24px 10px;
+    font-size: 0.76rem;
+  }
+}
+
+/* ============ دعم الأجهزة القديمة بدون safe-area-inset ============ */
+@supports not (padding: env(safe-area-inset-bottom)) {
+  .ym-feed {
+    padding-bottom: 64px;
+  }
+  @media (max-width: 400px) { .ym-feed { padding-bottom: 60px; } }
+  @media (max-width: 360px) { .ym-feed { padding-bottom: 58px; } }
+  @media (max-width: 320px) { .ym-feed { padding-bottom: 54px; } }
+}
+
+/* ============ تحسين الأداء على المتصفحات القديمة ============ */
+@supports not (overflow-anchor: auto) {
+  .ym-feed {
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+  }
+}
+
+/* ============ منع التكبير غير المرغوب على iOS ============ */
+input, textarea, select, button {
+  font-size: 16px;
+}
+@media (max-width: 360px) {
+  input, textarea, select {
+    font-size: 16px; /* الحد الأدنى لمنع التكبير */
+  }
+}
+
+/* ============ تحسينات RTL ============ */
+[dir="rtl"] .ym-feed,
+[dir="rtl"] .ym-empty {
+  direction: rtl;
+  text-align: right;
+}

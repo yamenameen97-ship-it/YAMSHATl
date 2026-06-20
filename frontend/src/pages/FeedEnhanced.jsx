@@ -130,9 +130,7 @@ function buildFeedPosts(posts = []) {
         rawId: post.id || null, // المعرف الحقيقي للمنشور من الـ backend (null للمنشورات الترحيبية)
         userId: post.user_id || null,
         rawUsername: post.username || post.user || '',
-        // ✅ FIX (v48): الأولوية للاسم المعروض الديناميكي من الـ backend (display_name/full_name/author_name)
-        // حتى يتحدث الاسم في كل المنشورات فور تغييره في الملف الشخصي.
-        authorName: post.display_name || post.full_name || post.author_name || post.username || post.user || 'مستخدم يام شات',
+        authorName: post.author_name || post.username || post.user || 'مستخدم يام شات',
         authorAvatar: resolveMediaUrl(post.user_avatar || post.avatar || post.author_avatar || ''),
         handle: normalizeHandle(post.username || post.user || `user.${index + 1}`),
         time: timeAgoAr(sourceTime),
@@ -554,10 +552,9 @@ function PostCard({ post }) {
 
   return (
     <article className="yam-post-card-v2">
-      {/* ✅ FIX (v48): عكس ترتيب الرأس ليكون الاسم بجوار الصورة الشخصية مباشرة
-          مطابقاً للصورة المرجعية الثانية: على RTL الصورة في أقصى اليمين والاسم على يسارها. */}
-      <div className="yam-post-head-v2" dir="rtl">
-        <div className="yam-post-author-v2 yam-post-author-v2-reversed" dir="rtl">
+      <div className="yam-post-head-v2">
+        <div className="yam-post-author-v2">
+          <Avatar name={post.authorName} size={48} accent={Boolean(post.brandRing)} image src={post.authorAvatar} />
           <div className="yam-post-author-copy">
             <div className="yam-post-author-line">
               <strong>{post.authorName}</strong>
@@ -565,7 +562,6 @@ function PostCard({ post }) {
             </div>
             <div className="yam-post-handle">{post.handle}</div>
           </div>
-          <Avatar name={post.authorName} size={48} accent={Boolean(post.brandRing)} image src={post.authorAvatar} />
         </div>
         <div className="yam-post-meta-v2">
           {/* ✅ تحديث لحظي للوقت المنقضي + tooltip بتوقيت الجهاز */}

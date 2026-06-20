@@ -11,9 +11,6 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, nullable=False, index=True)
-    # ✅ FIX (v48): تخزين الاسم المعروض كعمود حقيقي بدل property يعيد username
-    # هذا يحل مشكلة عدم تحديث الاسم في المنشورات عند تغييره بالملف الشخصي.
-    display_name = Column(String(120), nullable=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
     avatar = Column(String(500), nullable=True)
     hashed_password = Column(String(255), nullable=False)
@@ -61,8 +58,7 @@ class User(Base):
 
     @property
     def full_name(self) -> str:
-        # ✅ FIX (v48): يعيد display_name الحقيقي إن وُجد، وإلا يرجع username
-        return (self.display_name or '').strip() or self.username
+        return self.username
 
     @property
     def avatar_url(self) -> str:

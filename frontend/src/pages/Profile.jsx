@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
@@ -53,8 +52,6 @@ export default function Profile() {
   const { username: routeUsername } = useParams();
   const location = useLocation();
   const { pushToast } = useToast();
-  // ✅ FIX (v48): لإبطال كاش الخلاصة بعد تعديل الملف الشخصي ليظهر الاسم الجديد في المنشورات
-  const queryClient = useQueryClient();
   const currentUser = getCurrentUsername();
   const username = routeUsername || currentUser;
   const isOwnProfile = username === currentUser;
@@ -296,13 +293,6 @@ export default function Profile() {
       } catch { /* ignore */ }
       pushToast({ type: 'success', title: 'تم حفظ التعديلات' });
       setShowEditProfile(false);
-      // ✅ FIX (v48): إبطال كاش الخلاصة حتى تظهر المنشورات بالاسم الجديد فوراً
-      try {
-        queryClient.invalidateQueries({ queryKey: ['feed-data'] });
-        queryClient.invalidateQueries({ queryKey: ['feed'] });
-        queryClient.invalidateQueries({ queryKey: ['posts'] });
-        queryClient.invalidateQueries({ queryKey: ['user-posts'] });
-      } catch (_) { /* ignore */ }
       // إعادة تحميل البيانات بعد الحفظ — و loadProfile ستدمج البدائل المحلية تلقائياً
       await loadProfile();
     } catch (error) {

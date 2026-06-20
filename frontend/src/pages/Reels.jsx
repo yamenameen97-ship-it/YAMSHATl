@@ -5,8 +5,6 @@ import Button from '../components/ui/Button.jsx';
 import Modal from '../components/ui/Modal.jsx';
 import VideoUploader from '../components/upload/VideoUploader.jsx';
 import NestedComments from '../components/feed/NestedComments.jsx';
-import ReelComposerYamshat from '../components/reels/ReelComposerYamshat.jsx';
-import CommentsSheetYamshat from '../components/feed/CommentsSheetYamshat.jsx';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import { addComment, getComments, getPosts } from '../api/posts.js';
 import API from '../api/axios.js';
@@ -1219,157 +1217,177 @@ export default function ReelsPage() {
 
         {heartBurstId ? <div className="reel-heart-burst">❤️</div> : null}
 
-        {/* ✅ منشئ الريل بتصميم Yamshat — يطابق الصورة الأولى تماماً */}
-        <ReelComposerYamshat
-          open={showUploadModal}
-          onClose={closeUploadModal}
-          onPickFile={async (file) => {
-            try {
-              // إعداد معاينة فورية وتخزين الملف الأصلي
-              const previewUrl = URL.createObjectURL(file);
-              setUploadState((prev) => ({
-                ...prev,
-                originalFile: file,
-                processedFile: file,
-                fileName: file.name || 'reel.mp4',
-                previewUrl,
-                uploading: true,
-                content: prev.content || '',
-              }));
-              pushToast({ type: 'info', title: 'جاري تجهيز الفيديو…' });
+        <Modal isOpen={showUploadModal} onClose={closeUploadModal} title="إضافة ريل جديد">
+          <div className="upload-modal-layout">
+            <div className="upload-modal-help">
+              <strong>الخطوة 1</strong>
+              <p>اختر فيديو واضح للريل</p>
+              <strong>الخطوة 2</strong>
+              <p>بعد اكتمال الرفع سيظهر لك مشغل فيديو للمعاينة</p>
+              <strong>الخطوة 3</strong>
+              <p>اضغط زر نشر الريل</p>
+            </div>
 
-              // نشر مباشر عبر multipart بأقرب طريقة ممكنة
-              const formData = new FormData();
-              formData.append('file', file);
-              formData.append('caption', 'ريل جديد');
-              formData.append('category', 'general');
+            <textarea
+              value={uploadState.content}
+              onChange={(event) => setUploadState((prev) => ({ ...prev, content: event.target.value }))}
+              rows={4}
+              placeholder="اكتب وصف الريل أو الكابشن"
+              className="upload-caption-field"
+            />
 
-              try {
-                await API.post('/reels', formData, {
-                  headers: { 'Content-Type': 'multipart/form-data' },
-                });
-                setUploadState((prev) => ({ ...prev, uploading: false, publishing: false }));
-                setShowUploadModal(false);
-                resetUploadState();
-                navigate('/reels', { replace: true });
-                await loadReels();
-                pushToast({ type: 'success', title: 'تم نشر الريل بنجاح' });
-              } catch (uploadErr) {
-                setUploadState((prev) => ({ ...prev, uploading: false }));
-                pushToast({
-                  type: 'error',
-                  title: 'فشل رفع الفيديو',
-                  description: uploadErr?.response?.data?.detail || uploadErr?.message,
-                });
-              }
-            } catch (err) {
-              pushToast({ type: 'error', title: 'تعذر قراءة الملف', description: err?.message });
-            }
-          }}
-          onPublishMockTap={() => {
-            // الضغط على زر التسجيل الأرجواني — نفتح حوار اختيار الفيديو
-            pushToast({ type: 'info', title: 'اختر فيديو من المعرض للتسجيل' });
-          }}
-        />
+            <VideoUploader
+              label="رفع فيديو الريل"
+              onUploadComplete={({ url, previewUrl, file, originalFile, thumbnailUrl, payload }) => {
+                setUploadState((prev) => ({
+                  ...prev,
+                  mediaUrl: url || payload?.mediaUrl || payload?.url || '',
+                  previewUrl: previewUrl || url || payload?.mediaUrl || '',
+                  thumbnailUrl: thumbnailUrl || payload?.thumbnailUrl || '',
+                  fileName: file?.name || originalFile?.name || '',
+                  processedFile: file || null,
+                  originalFile: originalFile || null,
+                  uploading: false,
+                }));
+                pushToast({ type: 'success', title: 'تم رفع الفيديو', description: 'راجع المشغل ثم اضغط نشر الريل.' });
+              }}
+              onError={(message) => pushToast({ type: 'error', title: 'فشل رفع الفيديو', description: message })}
+            />
+
+            {(uploadState.mediaUrl || uploadState.previewUrl) ? (
+              <div className="uploaded-preview-shell">
+                <div className="uploaded-preview-head">
+                  <strong>معاينة الريل</strong>
+                  <span>{uploadState.fileName || 'video.mp4'}</span>
+                </div>
+                <UniversalPlayer
+                  src={resolveMediaUrl(uploadState.mediaUrl || uploadState.previewUrl)}
+                  poster={uploadState.thumbnailUrl || ''}
+                  variant="post"
+                  muted
+                  className="uploaded-preview-player"
+                />
+              </div>
+            ) : null}
+
+            <div className="upload-modal-actions">
+              <Button variant="secondary" onClick={closeUploadModal}>إغلاق</Button>
+              <Button onClick={publishReel} loading={uploadState.publishing} disabled={(!uploadState.mediaUrl && !uploadState.processedFile && !uploadState.originalFile) || uploadState.publishing}>نشر الريل الآن</Button>
+            </div>
+          </div>
+        </Modal>
 
         {/* ✅ v42+: ورقة سفلية للتعليقات تغطي نصف الشاشة فقط — فيديو الريل يبقى ظاهرًا في الأعلى */}
-        {/* ✅ شيت التعليقات بتصميم Yamshat — يطابق الصورة الثانية تماماً */}
-        <CommentsSheetYamshat
-          open={showCommentsModal}
-          onClose={() => setShowCommentsModal(false)}
-          postOwner={{
-            username: activeReel?.username || activeReel?.user || 'yamenameen97',
-            verified: activeReel?.is_verified ?? true,
-            bio: activeReel?.user_bio || 'صانع محتوى تقني | عاشق للتصميم والمونتاج 💜\nشارك شغفي واستمتع بالمحتوى',
-            dateLabel: activeReel?.created_at
-              ? new Date(activeReel.created_at).toLocaleDateString('ar-EG', { day: 'numeric', month: 'long' })
-              : '12 مايو',
-            avatarUrl: activeReel?.user_avatar || activeReel?.avatar_url || '',
-          }}
-          comments={(activeComments || []).map((c) => ({
-            id: c.id,
-            username: c.username || c.user || 'مستخدم',
-            content: c.content || c.text || c.comment || '',
-            created_at: c.created_at,
-            likes_count: c.likes_count || c.reactions_count || 0,
-            replies_count: Array.isArray(c.replies) ? c.replies.length : (c.replies_count || 0),
-            avatarUrl: c.user_avatar || c.avatar_url || '',
-            verified: c.is_verified || false,
-            isOwner: (c.username || c.user) === (activeReel?.username || activeReel?.user),
-            liked: c.liked || false,
-          }))}
-          totalCount={Number(activeReel?.comments_count || activeComments?.length || 0)}
-          currentUserAvatar={''}
-          sort={'newest'}
-          onLike={async (commentId) => {
-            // تحديث تفاؤلي للإعجاب
-            setActiveComments((prev) => prev.map((c) =>
-              String(c.id) === String(commentId)
-                ? { ...c, liked: !c.liked, likes_count: (Number(c.likes_count || 0) + (c.liked ? -1 : 1)) }
-                : c
-            ));
-            try {
-              await API.post(`/comments/${encodeURIComponent(commentId)}/like`).catch(() => {});
-            } catch (_) { /* ignore */ }
-          }}
-          onSubmit={async (text) => {
-            if (!text || !activeReel?.id) return;
-            const tempId = `tmp-${Date.now()}`;
-            const optimistic = {
-              id: tempId,
-              content: text,
-              user: currentUser,
-              username: currentUser,
-              user_avatar: '',
-              created_at: new Date().toISOString(),
-              is_pending: true,
-              likes_count: 0,
-            };
-            setActiveComments((prev) => [optimistic, ...prev]);
-            setReels((prev) => prev.map((item) =>
-              String(item.id) === String(activeReel.id)
-                ? { ...item, comments_count: Number(item.comments_count || 0) + 1 }
-                : item
-            ));
-            try {
-              let saved = null;
-              try {
-                const { data } = await addComment(activeReel.id, text);
-                saved = data?.comment || data?.data || data;
-              } catch (firstErr) {
-                try {
-                  const fallback = await API.post(`/reels/${encodeURIComponent(activeReel.id)}/comment`, { content: text });
-                  saved = fallback?.data?.comment || fallback?.data?.data || fallback?.data;
-                } catch (secondErr) {
-                  throw firstErr;
-                }
-              }
-              if (saved && saved.id) {
-                setActiveComments((prev) => prev.map((c) => String(c.id) === tempId ? saved : c));
-              } else {
-                setActiveComments((prev) => prev.map((c) => String(c.id) === tempId ? { ...c, is_pending: false } : c));
-              }
-              try {
-                const cached = getReelsCache();
-                if (cached?.items) {
-                  const updated = cached.items.map((item) => String(item.id) === String(activeReel.id)
+        {showCommentsModal ? (
+          <div className="reels-comments-overlay" role="presentation" onClick={() => setShowCommentsModal(false)}>
+            <div className="reels-comments-sheet" role="dialog" aria-label="التعليقات" dir="rtl" onClick={(e) => e.stopPropagation()}>
+              <div className="reels-comments-sheet-handle" />
+              <div className="reels-comments-sheet-head">
+                <button type="button" className="reels-comments-close" aria-label="إغلاق" onClick={() => setShowCommentsModal(false)}>✕</button>
+                <strong>{Number(activeReel?.comments_count || activeComments?.length || 0)} تعليقاً</strong>
+                <span style={{ width: 28 }} />
+              </div>
+              <div className="reels-comments-sheet-body">
+                <NestedComments
+              comments={activeComments}
+              onAddComment={async (payload) => {
+                // ✅ v33+1 (إصلاح حفظ تعليق الريلز على ويب الجوال):
+                // 1) NestedComments يرسل كائن { content }، نطبّع للنص.
+                // 2) نُنشئ نسخة تفاؤلية محلية فورًا حتى لو فشل API على شبكة الجوال البطيئة.
+                // 3) نُحدّث الكاش (getReelsCache/saveReelsCache) لضمان ظهور التعليق بعد إعادة فتح الصفحة.
+                // 4) نُحاول جميع endpoints المحتملة (reels/:id/comment ثم posts/:id/comment) لأن الـ backend
+                //    على الجوال أحيانًا يرفض المسار الأول.
+                const text = typeof payload === 'string'
+                  ? payload
+                  : String(payload?.content || payload?.text || '').trim();
+                if (!text || !activeReel?.id) return;
+
+                const tempId = `tmp-${Date.now()}`;
+                const optimistic = {
+                  id: tempId,
+                  content: text,
+                  user: currentUser,
+                  username: currentUser,
+                  user_avatar: '',
+                  created_at: new Date().toISOString(),
+                  is_pending: true,
+                };
+                // إضافة تفاؤلية فورية لتجربة ويب جوال سلسة
+                setActiveComments((prev) => [optimistic, ...prev]);
+                setReels((prev) => prev.map((item) =>
+                  String(item.id) === String(activeReel.id)
                     ? { ...item, comments_count: Number(item.comments_count || 0) + 1 }
-                    : item);
-                  saveReelsCache(updated);
+                    : item
+                ));
+
+                const persistToCache = (savedItem) => {
+                  try {
+                    const cached = getReelsCache();
+                    if (cached?.items) {
+                      const updated = cached.items.map((item) => String(item.id) === String(activeReel.id)
+                        ? { ...item, comments_count: Number(item.comments_count || 0) + 1 }
+                        : item);
+                      saveReelsCache(updated);
+                    }
+                  } catch (_) { /* ignore cache errors */ }
+                };
+
+                try {
+                  let saved = null;
+                  try {
+                    const { data } = await addComment(activeReel.id, text);
+                    saved = data?.comment || data?.data || data;
+                  } catch (firstErr) {
+                    // محاولة احتياطية على endpoint الريلز المباشر
+                    try {
+                      const fallback = await API.post(`/reels/${encodeURIComponent(activeReel.id)}/comment`, { content: text });
+                      saved = fallback?.data?.comment || fallback?.data?.data || fallback?.data;
+                    } catch (secondErr) {
+                      throw firstErr;
+                    }
+                  }
+
+                  if (saved && saved.id) {
+                    // استبدال النسخة المؤقتة بالنسخة الحقيقية
+                    setActiveComments((prev) => prev.map((c) => String(c.id) === tempId ? saved : c));
+                  } else {
+                    // البقاء على النسخة التفاؤلية وإزالة علم pending
+                    setActiveComments((prev) => prev.map((c) => String(c.id) === tempId ? { ...c, is_pending: false } : c));
+                  }
+                  persistToCache(saved);
+                  pushToast({ type: 'success', title: 'تم نشر التعليق' });
+                } catch (error) {
+                  // التراجع: إزالة النسخة التفاؤلية + إنقاص العداد
+                  setActiveComments((prev) => prev.filter((c) => String(c.id) !== tempId));
+                  setReels((prev) => prev.map((item) =>
+                    String(item.id) === String(activeReel.id)
+                      ? { ...item, comments_count: Math.max(0, Number(item.comments_count || 0) - 1) }
+                      : item
+                  ));
+                  pushToast({ type: 'error', title: 'تعذر نشر التعليق', description: error?.response?.data?.detail || error?.message });
                 }
-              } catch (_) { /* ignore cache errors */ }
-              pushToast({ type: 'success', title: 'تم نشر التعليق' });
-            } catch (error) {
-              setActiveComments((prev) => prev.filter((c) => String(c.id) !== tempId));
-              setReels((prev) => prev.map((item) =>
-                String(item.id) === String(activeReel.id)
-                  ? { ...item, comments_count: Math.max(0, Number(item.comments_count || 0) - 1) }
-                  : item
-              ));
-              pushToast({ type: 'error', title: 'تعذر نشر التعليق', description: error?.response?.data?.detail || error?.message });
-            }
-          }}
-        />
+              }}
+              onReply={async (parentId, text) => {
+                if (!text || !activeReel?.id) return;
+                try {
+                  const { data } = await addComment(activeReel.id, text, parentId);
+                  const saved = data?.comment || data?.data || data;
+                  if (saved) {
+                    setActiveComments((prev) => prev.map((c) =>
+                      String(c.id) === String(parentId)
+                        ? { ...c, replies: [saved, ...(c.replies || [])] }
+                        : c
+                    ));
+                  }
+                } catch (error) {
+                  pushToast({ type: 'error', title: 'تعذر إرسال الرد', description: error?.message });
+                }
+              }}
+                />
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <Modal isOpen={reportState.open} onClose={() => setReportState({ open: false, reel: null, reason: 'spam', note: '' })} title="بلاغ على ريل">
           <div className="upload-modal-layout">

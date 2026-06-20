@@ -48,41 +48,11 @@ const SILENT_404_403_PATTERNS = [
   /\/live\/[^/]+\/viewers$/i,
 ];
 
-// ✅ v47.11: عداد للأخطاء 500 لكل endpoint - بعد عتبة معينة نُسكتها لمنع spam في الكونسول
-// الأخطاء 500 تأتي عادة من الباك إند (Render cold start, DB issues) ولا فائدة من إغراق
-// الكونسول بنفس الخطأ عشرات المرات
-const serverErrorCounters = new Map();
-const SILENT_5XX_AFTER = 2; // بعد محاولتين من نفس endpoint بنفس الخطأ، اسكت الباقي
-
-const getEndpointKey = (config = {}) => {
-  // نتجاهل query params لتجميع نفس الـ endpoint
-  const url = String(config.url || '').split('?')[0];
-  return `${String(config.method || 'get').toLowerCase()}:${url}`;
-};
-
 const shouldSilenceError = (config = {}, status) => {
+  if (status !== 403 && status !== 404) return false;
   if (config.silent === true) return true;
-
-  if (status === 403 || status === 404) {
-    const url = String(config.url || '');
-    return SILENT_404_403_PATTERNS.some((re) => re.test(url));
-  }
-
-  // ✅ إسكات أخطاء 5xx المتكررة من نفس endpoint
-  if (status >= 500 && status < 600) {
-    const key = getEndpointKey(config);
-    const count = serverErrorCounters.get(key) || 0;
-    return count >= SILENT_5XX_AFTER;
-  }
-
-  return false;
-};
-
-const trackServerError = (config, status) => {
-  if (status >= 500 && status < 600 && config) {
-    const key = getEndpointKey(config);
-    serverErrorCounters.set(key, (serverErrorCounters.get(key) || 0) + 1);
-  }
+  const url = String(config.url || '');
+  return SILENT_404_403_PATTERNS.some((re) => re.test(url));
 };
 
 function getCacheOptions(config = {}) {
@@ -188,9 +158,6 @@ API.interceptors.response.use(
       await new Promise((resolve) => setTimeout(resolve, delay));
       return API(config);
     }
-
-    // ✅ FIX: تتبع أخطاء 5xx لإسكات المتكرر منها
-    trackServerError(config, response?.status);
 
     // ✅ FIX: وسم الخطأ بأنه "صامت" حتى يعرف المستخدمون أنه لا داعي للسجل في الكونسول
     if (config && shouldSilenceError(config, response?.status)) {

@@ -138,15 +138,7 @@ export default function Profile() {
       setProfile(data);
       setTheme(data?.profile_insights?.theme || data?.user?.profile?.profile_theme || 'midnight');
     } catch (error) {
-      // ✅ v47.11: أخطاء الباك إند المتكررة (Render cold start أو 500) لا تسجل في الكونسول
-      if (!error?.isSilent && !error?.silent) {
-        const status = error?.response?.status;
-        if (status >= 500) {
-          console.warn('[profile] backend unavailable - showing local fallback');
-        } else {
-          console.error('Failed to load profile', error);
-        }
-      }
+      console.error('Failed to load profile', error);
       // عند فشل تحميل الخادم، استخدم النسخة المحلية إن وجدت
       const local = readLocalProfileImages(username) || {};
       setProfile({

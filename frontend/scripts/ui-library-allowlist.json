@@ -153,8 +153,6 @@
         "src/components/chat/MessageReactionPicker.jsx",
         "src/components/chat/SafeImage.jsx",
         "src/components/mobile/PWAInstallBanner.jsx",
-        "src/components/feed/CommentsSheetYamshat.jsx",
-        "src/components/reels/ReelComposerYamshat.jsx",
         "src/components/yamshat/YamshatIcon.jsx"
     ]
 }

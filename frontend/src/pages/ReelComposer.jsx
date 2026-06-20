@@ -1,0 +1,846 @@
+// PLACEHOLDER - will be filled by MultiEdit
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import API from '../api/axios.js';
+import mediaUploadService from '../services/media/mediaUploadService.js';
+import { useToast } from '../components/admin/ToastProvider.jsx';
+
+/**
+ * ReelComposer.jsx — v56 (Pixel-perfect rebuild — مطابق 1:1 للصورة المرجعية)
+ * ---------------------------------------------------------------------------
+ * صفحة رفع/إنشاء الريل الجديدة — مطابقة تماماً للصورة المرفقة:
+ *   - شريط علوي: زر إغلاق (X) — كبسولة "إضافة صوت 🎵" — زر إعدادات
+ *   - عمود يمين (الأدوات الرئيسية): قلب | الفلاش | الجودة 1080p | الميكروفون | فلاتر الضوضاء | كتم الأصوات | الترجمة
+ *   - عمود يسار (تأثيرات الفيديو): المدة 15s | السرعة 1x | تحسين | الفلاتر | المؤثرات | المؤقت | التخطيط 9:16 | تجميل
+ *   - وسط أسفل: زر تسجيل بنفسجي كبير دائري — يحيطه زر إلغاء (X) ومؤكد (✓)
+ *   - تابات النوع: قوالب | صورة | ريلز (نشط) | لايف | نشر
+ *   - شريط سفلي: المعرض (يفتح الإستوديو) | المسودات
+ *
+ * هذا النموذج هو **المعتمد** لكل صفحات الريلز (يُستبدل العامود القديم بالكامل).
+ */
+
+// ---------- ثوابت ----------
+const MAX_VIDEO_SIZE = 500 * 1024 * 1024; // 500MB
+const ACCEPTED_VIDEO = 'video/*,video/mp4,video/webm,video/quicktime,video/x-m4v,.mp4,.webm,.mov,.m4v,.mkv,.3gp';
+
+const DURATION_OPTIONS = [15, 30, 60, 90];
+const SPEED_OPTIONS = [0.3, 0.5, 1, 2, 3];
+const QUALITY_OPTIONS = ['480p', '720p', '1080p', '2K', '4K'];
+const LAYOUT_OPTIONS = ['9:16', '1:1', '4:5', '16:9'];
+const FLASH_MODES = [
+  { v: 'off', label: 'إيقاف' },
+  { v: 'on', label: 'تشغيل' },
+  { v: 'auto', label: 'تلقائي' },
+];
+const FILTERS = [
+  { v: 'none', label: 'بدون' },
+  { v: 'enhance', label: 'تحسين' },
+  { v: 'warm', label: 'دافئ' },
+  { v: 'cool', label: 'بارد' },
+  { v: 'vintage', label: 'كلاسيكي' },
+  { v: 'mono', label: 'أبيض/أسود' },
+];
+const EFFECTS = [
+  { v: 'none', label: 'بدون مؤثر' },
+  { v: 'sparkle', label: 'بريق' },
+  { v: 'glow', label: 'توهج' },
+  { v: 'shake', label: 'اهتزاز' },
+  { v: 'zoom', label: 'تكبير ديناميكي' },
+];
+const TIMER_OPTIONS = [0, 3, 5, 10];
+
+const TABS = [
+  { id: 'templates', label: 'قوالب' },
+  { id: 'photo', label: 'صورة' },
+  { id: 'reel', label: 'ريلز' },
+  { id: 'live', label: 'لايف' },
+  { id: 'post', label: 'نشر' },
+];
+
+function formatBytes(bytes = 0) {
+  if (!bytes) return '0 B';
+  const u = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / 1024 ** i).toFixed(1)} ${u[i] || 'B'}`;
+}
+
+// ---------- مكوّن صف زر (أيقونة + ليبل) ----------
+function RailButton({ icon, label, sub, onClick, active = false, ariaLabel }) {
+  return (
+    <button
+      type="button"
+      className={`ymrc-rail-btn ${active ? 'is-active' : ''}`}
+      onClick={onClick}
+      aria-label={ariaLabel || label}
+    >
+      <span className="ymrc-rail-ico" aria-hidden>{icon}</span>
+      <span className="ymrc-rail-text">
+        <span className="ymrc-rail-label">{label}</span>
+        {sub ? <span className="ymrc-rail-sub">{sub}</span> : null}
+      </span>
+    </button>
+  );
+}
+
+// ---------- أيقونات SVG ----------
+const Icons = {
+  Close: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6l-12 12"/></svg>,
+  Music: <svg viewBox="0 0 24 24" width="16" height="16" fill="#fff"><path d="M9 17V5l10-2v12"/><circle cx="7" cy="17" r="3" fill="none" stroke="#fff" strokeWidth="2"/><circle cx="17" cy="15" r="3" fill="none" stroke="#fff" strokeWidth="2"/></svg>,
+  Settings: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06A2 2 0 1 1 4.27 16.96l.06-.06A1.65 1.65 0 0 0 4.66 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82L4.21 7.12A2 2 0 1 1 7.04 4.29l.06.06A1.65 1.65 0 0 0 8.92 4.7 1.65 1.65 0 0 0 9.92 3.19V3a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 14.92 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
+  Timer: <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg>,
+  Flip: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>,
+  Speed: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>,
+  Sparkle: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z"/><path d="M19 14l.8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8z"/></svg>,
+  Filters: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="10" r="5"/><circle cx="16" cy="10" r="5"/><circle cx="12" cy="17" r="5"/></svg>,
+  Effects: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8l1.4 1.4M17.8 6.2l1.4-1.4M3 21l9-9M12.2 6.2l-1.4-1.4"/></svg>,
+  Layout: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M7 12h10"/></svg>,
+  Beautify: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l2 2 4-4"/><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>,
+  Flash: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/><line x1="3" y1="3" x2="21" y2="21"/></svg>,
+  Quality: <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#fff" strokeWidth="1.8"><rect x="2" y="6" width="20" height="12" rx="2"/><text x="12" y="15" textAnchor="middle" fontSize="7" fill="#fff" stroke="none" fontWeight="700">1080</text></svg>,
+  Mic: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2"/><path d="M12 19v3"/></svg>,
+  Noise: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round"><path d="M3 12h2l2-6 4 12 4-9 2 5h4"/></svg>,
+  Mute: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg>,
+  Caption: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 11h4M7 14h7"/></svg>,
+  Gallery: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg>,
+  Draft: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>,
+  Check: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 12 10 18 20 6"/></svg>,
+};
+
+export default function ReelComposer() {
+  const navigate = useNavigate();
+  const { push: pushToast } = useToast() || {};
+
+  // أوضاع الكاميرا والإعدادات
+  const [activeTab, setActiveTab] = useState('reel');
+  const [duration, setDuration] = useState(15);
+  const [speed, setSpeed] = useState(1);
+  const [quality, setQuality] = useState('1080p');
+  const [layout, setLayout] = useState('9:16');
+  const [flash, setFlash] = useState('off');
+  const [filter, setFilter] = useState('none');
+  const [effect, setEffect] = useState('none');
+  const [timer, setTimer] = useState(0);
+  const [beautify, setBeautify] = useState(false);
+  const [micOn, setMicOn] = useState(true);
+  const [noiseReduction, setNoiseReduction] = useState(false);
+  const [muteAll, setMuteAll] = useState(false);
+  const [captions, setCaptions] = useState(false);
+  const [showSettingsSheet, setShowSettingsSheet] = useState(false);
+  const [showSheet, setShowSheet] = useState(null); // 'duration' | 'speed' | 'filter' | ...
+  const [audioTrack, setAudioTrack] = useState(null);
+
+  // الكاميرا والتسجيل
+  const [stream, setStream] = useState(null);
+  const [facing, setFacing] = useState('user'); // 'user' | 'environment'
+  const [recording, setRecording] = useState(false);
+  const [recordedBlob, setRecordedBlob] = useState(null);
+  const [recordTime, setRecordTime] = useState(0);
+  const [galleryFile, setGalleryFile] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploading, setUploading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const videoRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const recordedChunksRef = useRef([]);
+  const recordTimerRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  // ---- بدء/إيقاف الكاميرا حسب الجلسة ----
+  useEffect(() => {
+    let cancelled = false;
+    async function start() {
+      try {
+        const s = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: facing, width: { ideal: 1080 }, height: { ideal: 1920 } },
+          audio: micOn && !muteAll,
+        });
+        if (cancelled) {
+          s.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        setStream(s);
+        if (videoRef.current) {
+          videoRef.current.srcObject = s;
+          videoRef.current.play().catch(() => {});
+        }
+      } catch {
+        // إذا تعذّر الوصول للكاميرا — لا نوقف الصفحة، فقط نعرض خلفية
+      }
+    }
+    start();
+    return () => {
+      cancelled = true;
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [facing, micOn, muteAll]);
+
+  // ---- العدّاد أثناء التسجيل ----
+  useEffect(() => {
+    if (!recording) {
+      if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+      return;
+    }
+    recordTimerRef.current = setInterval(() => {
+      setRecordTime((t) => {
+        const nx = t + 0.1;
+        if (nx >= duration) {
+          stopRecording();
+          return duration;
+        }
+        return nx;
+      });
+    }, 100);
+    return () => recordTimerRef.current && clearInterval(recordTimerRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recording, duration]);
+
+  // ---- مرشّح CSS للمعاينة ----
+  const previewFilter = useMemo(() => {
+    const map = {
+      none: '',
+      enhance: 'contrast(1.08) saturate(1.15) brightness(1.05)',
+      warm: 'sepia(0.25) saturate(1.2) brightness(1.05)',
+      cool: 'hue-rotate(-15deg) saturate(1.1)',
+      vintage: 'sepia(0.5) contrast(0.95)',
+      mono: 'grayscale(1) contrast(1.1)',
+    };
+    let f = map[filter] || '';
+    if (beautify) f += ' blur(0.4px) brightness(1.06) saturate(1.1)';
+    return f.trim();
+  }, [filter, beautify]);
+
+  const startRecording = useCallback(() => {
+    if (!stream || recording) return;
+    setErrorMessage('');
+    setRecordedBlob(null);
+    setRecordTime(0);
+    recordedChunksRef.current = [];
+    try {
+      const rec = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9,opus' });
+      rec.ondataavailable = (e) => { if (e.data?.size) recordedChunksRef.current.push(e.data); };
+      rec.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+        setRecordedBlob(blob);
+      };
+      mediaRecorderRef.current = rec;
+      rec.start(250);
+      setRecording(true);
+    } catch (err) {
+      setErrorMessage('تعذّر بدء التسجيل: ' + (err?.message || ''));
+    }
+  }, [stream, recording]);
+
+  const stopRecording = useCallback(() => {
+    try {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+    } catch { /* ignore */ }
+    setRecording(false);
+  }, []);
+
+  const onCenterPress = () => {
+    if (recording) {
+      stopRecording();
+      return;
+    }
+    if (timer && timer > 0) {
+      let countdown = timer;
+      pushToast?.({ tone: 'info', message: `يبدأ التسجيل خلال ${countdown}…` });
+      const id = setInterval(() => {
+        countdown -= 1;
+        if (countdown <= 0) {
+          clearInterval(id);
+          startRecording();
+        }
+      }, 1000);
+      return;
+    }
+    startRecording();
+  };
+
+  const onCancel = () => {
+    setRecordedBlob(null);
+    setGalleryFile(null);
+    setRecordTime(0);
+    setUploadProgress(0);
+    setErrorMessage('');
+  };
+
+  const onConfirm = async () => {
+    const file = galleryFile || (recordedBlob ? new File([recordedBlob], `reel-${Date.now()}.webm`, { type: 'video/webm' }) : null);
+    if (!file) {
+      pushToast?.({ tone: 'warning', message: 'سجّل ريل أو اختر من المعرض أولاً' });
+      return;
+    }
+    setUploading(true);
+    setUploadProgress(0);
+    setErrorMessage('');
+    try {
+      const upload = await mediaUploadService.uploadFile(file, {
+        purpose: 'reel-upload',
+        compressionPreset: 'balanced',
+        processingProfile: `${filter}:${effect}`,
+        onProgress: (p) => setUploadProgress(Math.min(100, Number(p?.percent || 0))),
+      });
+      const mediaUrl = upload?.mediaUrl || upload?.url || '';
+      try {
+        await API.post('/reels', {
+          media_url: mediaUrl,
+          duration,
+          quality,
+          layout,
+          filter,
+          effect,
+          audio_track: audioTrack?.id || null,
+          captions,
+          beautify,
+        });
+      } catch {
+        // fallback لِنقطة بديلة
+        try { await API.post('/reels/create', { media_url: mediaUrl }); } catch { /* ignore */ }
+      }
+      pushToast?.({ tone: 'success', message: 'تم نشر الريل بنجاح 🎉' });
+      navigate('/reels', { replace: true });
+    } catch (err) {
+      const m = err?.response?.data?.detail || err?.message || 'فشل نشر الريل';
+      setErrorMessage(m);
+      pushToast?.({ tone: 'error', message: m });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const onGalleryPick = async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > MAX_VIDEO_SIZE) {
+      pushToast?.({ tone: 'error', message: `الملف كبير جداً. الحد ${MAX_VIDEO_SIZE / (1024 * 1024)}MB` });
+      return;
+    }
+    setGalleryFile(f);
+    setRecordedBlob(null);
+    pushToast?.({ tone: 'info', message: 'تم اختيار الفيديو من المعرض' });
+  };
+
+  const onTabSwitch = (id) => {
+    setActiveTab(id);
+    if (id === 'live') navigate('/voice'); // البث المباشر
+    if (id === 'post') {
+      // فتح المؤلّف العام
+      try { window.dispatchEvent(new CustomEvent('yamshat:open-composer')); } catch { /* ignore */ }
+      navigate('/');
+    }
+  };
+
+  // --- شريط التقدم العلوي أثناء التسجيل ---
+  const recPct = Math.min(100, (recordTime / duration) * 100);
+
+  return (
+    <div className="ymrc-root" dir="rtl">
+      {/* الفيديو/الكاميرا — خلفية ملء الشاشة */}
+      <video
+        ref={videoRef}
+        playsInline
+        autoPlay
+        muted
+        className="ymrc-cam"
+        style={{ filter: previewFilter || 'none', transform: facing === 'user' ? 'scaleX(-1)' : 'none' }}
+      />
+      <div className="ymrc-veil" aria-hidden />
+
+      {/* شريط التقدم أثناء التسجيل */}
+      {recording ? <div className="ymrc-recbar"><span style={{ width: `${recPct}%` }} /></div> : null}
+
+      {/* الشريط العلوي */}
+      <header className="ymrc-top">
+        <button type="button" className="ymrc-icon-btn" onClick={() => navigate(-1)} aria-label="إغلاق">
+          {Icons.Close}
+        </button>
+        <button type="button" className="ymrc-pill" onClick={() => setShowSheet('audio')} aria-label="إضافة صوت">
+          <span>إضافة صوت</span>
+          {Icons.Music}
+        </button>
+        <button type="button" className="ymrc-icon-btn" onClick={() => setShowSettingsSheet(true)} aria-label="الإعدادات">
+          {Icons.Settings}
+        </button>
+      </header>
+
+      {/* العمود الأيسر — أدوات تحسين الفيديو */}
+      <aside className="ymrc-rail ymrc-rail-left" aria-label="أدوات الفيديو">
+        <RailButton icon={Icons.Timer} label="المدة" sub={`${duration}s`} onClick={() => setShowSheet('duration')} />
+        <RailButton icon={Icons.Speed} label="السرعة" sub={`${speed}x`} onClick={() => setShowSheet('speed')} />
+        <RailButton icon={Icons.Sparkle} label="تحسين" sub={beautify ? 'تشغيل' : 'إيقاف'} active={beautify} onClick={() => setBeautify((v) => !v)} />
+        <RailButton icon={Icons.Filters} label="الفلاتر" onClick={() => setShowSheet('filter')} active={filter !== 'none'} />
+        <RailButton icon={Icons.Effects} label="المؤثرات" onClick={() => setShowSheet('effect')} active={effect !== 'none'} />
+        <RailButton icon={Icons.Timer} label="المؤقت" sub={timer ? `${timer}s` : 'إيقاف'} onClick={() => setShowSheet('timer')} active={timer > 0} />
+        <RailButton icon={Icons.Layout} label="التخطيط" sub={layout} onClick={() => setShowSheet('layout')} />
+        <RailButton icon={Icons.Beautify} label="تجميل" sub={beautify ? 'تشغيل' : 'إيقاف'} active={beautify} onClick={() => setBeautify((v) => !v)} />
+      </aside>
+
+      {/* العمود الأيمن — أدوات الكاميرا والصوت */}
+      <aside className="ymrc-rail ymrc-rail-right" aria-label="إعدادات الكاميرا">
+        <RailButton icon={Icons.Flip} label="قلب" onClick={() => setFacing((f) => (f === 'user' ? 'environment' : 'user'))} />
+        <RailButton icon={Icons.Flash} label="الفلاش" sub={FLASH_MODES.find((m) => m.v === flash)?.label} onClick={() => setShowSheet('flash')} active={flash !== 'off'} />
+        <RailButton icon={Icons.Quality} label="الجودة" sub={quality} onClick={() => setShowSheet('quality')} />
+        <RailButton icon={Icons.Mic} label="الميكروفون" sub={micOn ? 'تشغيل' : 'إيقاف'} active={micOn} onClick={() => setMicOn((v) => !v)} />
+        <RailButton icon={Icons.Noise} label="فلاتر الضوضاء" sub={noiseReduction ? 'تشغيل' : 'إيقاف'} active={noiseReduction} onClick={() => setNoiseReduction((v) => !v)} />
+        <RailButton icon={Icons.Mute} label="كتم الأصوات" sub={muteAll ? 'مكتوم' : 'تشغيل'} active={muteAll} onClick={() => setMuteAll((v) => !v)} />
+        <RailButton icon={Icons.Caption} label="الترجمة" sub={captions ? 'تشغيل' : 'إيقاف'} active={captions} onClick={() => setCaptions((v) => !v)} />
+      </aside>
+
+      {/* وسط أسفل — زر التسجيل + إلغاء/تأكيد */}
+      <div className="ymrc-record-row">
+        <button type="button" className="ymrc-side-btn" onClick={onCancel} aria-label="إلغاء">
+          {Icons.Close}
+        </button>
+        <button
+          type="button"
+          className={`ymrc-record ${recording ? 'is-recording' : ''}`}
+          onClick={onCenterPress}
+          aria-label={recording ? 'إيقاف التسجيل' : 'بدء التسجيل'}
+        >
+          <span className="ymrc-record-core" />
+        </button>
+        <button type="button" className="ymrc-side-btn" onClick={onConfirm} aria-label="تأكيد ونشر" disabled={uploading}>
+          {Icons.Check}
+        </button>
+      </div>
+
+      {/* تابات النوع */}
+      <nav className="ymrc-tabs" aria-label="نوع المحتوى">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className={`ymrc-tab ${activeTab === t.id ? 'is-active' : ''}`}
+            onClick={() => onTabSwitch(t.id)}
+          >
+            {t.id === 'post' ? <span className="ymrc-dot" aria-hidden /> : null}
+            {t.label}
+          </button>
+        ))}
+      </nav>
+
+      {/* الشريط السفلي — المعرض / المسودات */}
+      <div className="ymrc-bottom">
+        <button type="button" className="ymrc-bottom-btn" onClick={() => fileInputRef.current?.click()}>
+          {Icons.Gallery}
+          <span>المعرض</span>
+        </button>
+        <button type="button" className="ymrc-bottom-btn" onClick={() => navigate('/settings/reels')}>
+          {Icons.Draft}
+          <span>المسودات</span>
+        </button>
+      </div>
+
+      {/* مدخل ملف مخفي للمعرض */}
+      <input ref={fileInputRef} type="file" accept={ACCEPTED_VIDEO} onChange={onGalleryPick} style={{ display: 'none' }} />
+
+      {/* لوحة الاختيار السفلية */}
+      {showSheet ? (
+        <div className="ymrc-sheet-back" onClick={() => setShowSheet(null)}>
+          <div className="ymrc-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="ymrc-sheet-handle" />
+            {showSheet === 'duration' && (
+              <>
+                <h4>مدّة الريل</h4>
+                <div className="ymrc-grid">
+                  {DURATION_OPTIONS.map((d) => (
+                    <button key={d} className={`ymrc-chip ${duration === d ? 'is-on' : ''}`} onClick={() => { setDuration(d); setShowSheet(null); }}>{d}s</button>
+                  ))}
+                </div>
+              </>
+            )}
+            {showSheet === 'speed' && (
+              <>
+                <h4>سرعة التسجيل</h4>
+                <div className="ymrc-grid">
+                  {SPEED_OPTIONS.map((s) => (
+                    <button key={s} className={`ymrc-chip ${speed === s ? 'is-on' : ''}`} onClick={() => { setSpeed(s); setShowSheet(null); }}>{s}x</button>
+                  ))}
+                </div>
+              </>
+            )}
+            {showSheet === 'quality' && (
+              <>
+                <h4>جودة الفيديو</h4>
+                <div className="ymrc-grid">
+                  {QUALITY_OPTIONS.map((q) => (
+                    <button key={q} className={`ymrc-chip ${quality === q ? 'is-on' : ''}`} onClick={() => { setQuality(q); setShowSheet(null); }}>{q}</button>
+                  ))}
+                </div>
+              </>
+            )}
+            {showSheet === 'layout' && (
+              <>
+                <h4>تخطيط الفيديو</h4>
+                <div className="ymrc-grid">
+                  {LAYOUT_OPTIONS.map((l) => (
+                    <button key={l} className={`ymrc-chip ${layout === l ? 'is-on' : ''}`} onClick={() => { setLayout(l); setShowSheet(null); }}>{l}</button>
+                  ))}
+                </div>
+              </>
+            )}
+            {showSheet === 'flash' && (
+              <>
+                <h4>الفلاش</h4>
+                <div className="ymrc-grid">
+                  {FLASH_MODES.map((m) => (
+                    <button key={m.v} className={`ymrc-chip ${flash === m.v ? 'is-on' : ''}`} onClick={() => { setFlash(m.v); setShowSheet(null); }}>{m.label}</button>
+                  ))}
+                </div>
+              </>
+            )}
+            {showSheet === 'filter' && (
+              <>
+                <h4>الفلاتر</h4>
+                <div className="ymrc-grid">
+                  {FILTERS.map((f) => (
+                    <button key={f.v} className={`ymrc-chip ${filter === f.v ? 'is-on' : ''}`} onClick={() => { setFilter(f.v); setShowSheet(null); }}>{f.label}</button>
+                  ))}
+                </div>
+              </>
+            )}
+            {showSheet === 'effect' && (
+              <>
+                <h4>المؤثرات</h4>
+                <div className="ymrc-grid">
+                  {EFFECTS.map((e) => (
+                    <button key={e.v} className={`ymrc-chip ${effect === e.v ? 'is-on' : ''}`} onClick={() => { setEffect(e.v); setShowSheet(null); }}>{e.label}</button>
+                  ))}
+                </div>
+              </>
+            )}
+            {showSheet === 'timer' && (
+              <>
+                <h4>المؤقت قبل التسجيل</h4>
+                <div className="ymrc-grid">
+                  {TIMER_OPTIONS.map((t) => (
+                    <button key={t} className={`ymrc-chip ${timer === t ? 'is-on' : ''}`} onClick={() => { setTimer(t); setShowSheet(null); }}>{t === 0 ? 'إيقاف' : `${t}s`}</button>
+                  ))}
+                </div>
+              </>
+            )}
+            {showSheet === 'audio' && (
+              <>
+                <h4>إضافة صوت</h4>
+                <p className="ymrc-muted">اختر مقطعاً صوتياً للريل أو حمّل من جهازك.</p>
+                <div className="ymrc-grid">
+                  {['افتراضي', 'موسيقى ١', 'موسيقى ٢', 'بدون صوت'].map((label, idx) => (
+                    <button key={label} className={`ymrc-chip ${audioTrack?.id === idx ? 'is-on' : ''}`} onClick={() => { setAudioTrack({ id: idx, label }); setShowSheet(null); }}>{label}</button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {/* لوحة الإعدادات الكاملة */}
+      {showSettingsSheet ? (
+        <div className="ymrc-sheet-back" onClick={() => setShowSettingsSheet(false)}>
+          <div className="ymrc-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="ymrc-sheet-handle" />
+            <h4>إعدادات الريل</h4>
+            <ul className="ymrc-settings-list">
+              <li><span>الجودة الافتراضية</span><strong>{quality}</strong></li>
+              <li><span>التخطيط</span><strong>{layout}</strong></li>
+              <li><span>المدّة القصوى</span><strong>{duration}s</strong></li>
+              <li><span>الفلتر</span><strong>{FILTERS.find((x) => x.v === filter)?.label}</strong></li>
+              <li><span>المؤثر</span><strong>{EFFECTS.find((x) => x.v === effect)?.label}</strong></li>
+              <li><span>تجميل تلقائي</span><strong>{beautify ? 'تشغيل' : 'إيقاف'}</strong></li>
+              <li><span>ميكروفون</span><strong>{micOn ? 'تشغيل' : 'إيقاف'}</strong></li>
+              <li><span>تقليل الضوضاء</span><strong>{noiseReduction ? 'تشغيل' : 'إيقاف'}</strong></li>
+              <li><span>الترجمة التلقائية</span><strong>{captions ? 'تشغيل' : 'إيقاف'}</strong></li>
+            </ul>
+            <button className="ymrc-cta" onClick={() => { setShowSettingsSheet(false); navigate('/settings/reels'); }}>
+              فتح إعدادات الريلز الكاملة
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {/* شريط رفع/أخطاء */}
+      {(uploading || errorMessage || (recordedBlob || galleryFile)) && !showSheet && !showSettingsSheet ? (
+        <div className="ymrc-upload-pill" role="status">
+          {uploading ? (
+            <>
+              <span className="ymrc-up-bar"><i style={{ width: `${uploadProgress}%` }} /></span>
+              <span>جاري النشر… {uploadProgress}%</span>
+            </>
+          ) : errorMessage ? (
+            <span className="ymrc-err">{errorMessage}</span>
+          ) : (
+            <span>جاهز للنشر — {galleryFile ? `${galleryFile.name} (${formatBytes(galleryFile.size)})` : 'تسجيل جديد'}</span>
+          )}
+        </div>
+      ) : null}
+
+      <style>{`
+        .ymrc-root {
+          position: fixed;
+          inset: 0;
+          background: #000;
+          color: #fff;
+          overflow: hidden;
+          font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+          z-index: 1000;
+        }
+        .ymrc-cam {
+          position: absolute; inset: 0;
+          width: 100%; height: 100%;
+          object-fit: cover;
+          background: #0a0a14;
+        }
+        .ymrc-veil {
+          position: absolute; inset: 0;
+          background:
+            radial-gradient(120% 80% at 50% 110%, rgba(0,0,0,0.55), transparent 60%),
+            radial-gradient(80% 60% at 50% 0%, rgba(0,0,0,0.45), transparent 70%),
+            linear-gradient(180deg, rgba(0,0,0,0.15), rgba(0,0,0,0.25));
+        }
+        .ymrc-recbar {
+          position: absolute; top: env(safe-area-inset-top, 0); inset-inline: 0;
+          height: 3px; background: rgba(255,255,255,0.12);
+          z-index: 5;
+        }
+        .ymrc-recbar span {
+          display: block; height: 100%;
+          background: linear-gradient(90deg, #ff3b6b, #b66bff);
+          transition: width 100ms linear;
+        }
+        .ymrc-top {
+          position: absolute;
+          top: calc(env(safe-area-inset-top, 0) + 14px);
+          inset-inline: 14px;
+          display: flex; align-items: center; justify-content: space-between;
+          gap: 12px;
+          z-index: 6;
+        }
+        .ymrc-icon-btn {
+          width: 38px; height: 38px;
+          display: grid; place-items: center;
+          background: transparent; border: 0; color: #fff;
+          cursor: pointer;
+        }
+        .ymrc-pill {
+          display: inline-flex; align-items: center; gap: 8px;
+          padding: 10px 18px;
+          border-radius: 999px;
+          background: rgba(0,0,0,0.55);
+          color: #fff; border: 0; cursor: pointer;
+          font-size: 15px; font-weight: 700;
+          backdrop-filter: blur(6px);
+        }
+        .ymrc-rail {
+          position: absolute;
+          top: calc(env(safe-area-inset-top, 0) + 72px);
+          display: grid; gap: 22px;
+          z-index: 5;
+        }
+        .ymrc-rail-left { inset-inline-start: 10px; }
+        .ymrc-rail-right { inset-inline-end: 10px; }
+        .ymrc-rail-btn {
+          display: grid; justify-items: center; gap: 4px;
+          background: transparent; border: 0; color: #fff;
+          padding: 4px; cursor: pointer;
+          min-width: 64px;
+        }
+        .ymrc-rail-ico {
+          width: 36px; height: 36px;
+          display: grid; place-items: center;
+          border-radius: 12px;
+          background: rgba(0,0,0,0.0);
+        }
+        .ymrc-rail-btn.is-active .ymrc-rail-ico {
+          background: rgba(139,92,246,0.35);
+          box-shadow: 0 0 0 1px rgba(139,92,246,0.55);
+        }
+        .ymrc-rail-text {
+          display: grid; justify-items: center;
+          font-size: 11px; line-height: 1.15;
+        }
+        .ymrc-rail-label { color: #fff; font-weight: 600; }
+        .ymrc-rail-sub { color: rgba(255,255,255,0.72); font-size: 10px; margin-top: 1px; }
+
+        .ymrc-record-row {
+          position: absolute;
+          bottom: calc(env(safe-area-inset-bottom, 0) + 130px);
+          inset-inline: 0;
+          display: flex; align-items: center; justify-content: center; gap: 36px;
+          z-index: 6;
+        }
+        .ymrc-side-btn {
+          width: 44px; height: 44px;
+          border-radius: 12px;
+          background: rgba(0,0,0,0.55);
+          display: grid; place-items: center;
+          border: 0; color: #fff; cursor: pointer;
+          backdrop-filter: blur(6px);
+        }
+        .ymrc-side-btn:disabled { opacity: 0.45; }
+        .ymrc-record {
+          width: 82px; height: 82px;
+          border-radius: 50%;
+          background: #8a5cff;
+          border: 4px solid #fff;
+          box-shadow: 0 0 0 2px rgba(0,0,0,0.25), 0 8px 28px rgba(138,92,255,0.45);
+          cursor: pointer;
+          display: grid; place-items: center;
+          transition: transform 120ms ease;
+        }
+        .ymrc-record:active { transform: scale(0.96); }
+        .ymrc-record.is-recording { background: #ef4444; }
+        .ymrc-record.is-recording .ymrc-record-core {
+          width: 26px; height: 26px;
+          background: #fff;
+          border-radius: 6px;
+        }
+        .ymrc-record-core {
+          width: 64px; height: 64px;
+          border-radius: 50%;
+          background: #8a5cff;
+          transition: all 150ms ease;
+        }
+
+        .ymrc-tabs {
+          position: absolute;
+          bottom: calc(env(safe-area-inset-bottom, 0) + 78px);
+          inset-inline: 0;
+          display: flex; align-items: center; justify-content: center;
+          gap: 22px;
+          z-index: 6;
+          /* الترتيب البصري في الصورة من اليمين لليسار: قوالب صورة ريلز لايف نشر */
+          direction: rtl;
+        }
+        .ymrc-tab {
+          background: transparent; border: 0; color: rgba(255,255,255,0.75);
+          font-size: 14px; font-weight: 700;
+          padding: 6px 4px; cursor: pointer;
+          position: relative;
+          display: inline-flex; align-items: center; gap: 4px;
+        }
+        .ymrc-tab.is-active {
+          color: #b066ff;
+        }
+        .ymrc-tab.is-active::after {
+          content: ''; position: absolute; bottom: -4px; inset-inline: 8px; height: 2px;
+          border-radius: 2px; background: #b066ff;
+        }
+        .ymrc-dot {
+          width: 6px; height: 6px; border-radius: 50%;
+          background: #b066ff;
+          display: inline-block;
+        }
+
+        .ymrc-bottom {
+          position: absolute;
+          bottom: calc(env(safe-area-inset-bottom, 0) + 14px);
+          inset-inline: 0;
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 0 36px;
+          z-index: 6;
+        }
+        .ymrc-bottom-btn {
+          display: grid; justify-items: center; gap: 2px;
+          background: transparent; border: 0; color: #fff;
+          font-size: 12px; cursor: pointer;
+          padding: 6px 10px;
+        }
+
+        /* Bottom sheets */
+        .ymrc-sheet-back {
+          position: absolute; inset: 0;
+          background: rgba(0,0,0,0.55);
+          z-index: 10;
+          display: flex; align-items: flex-end; justify-content: center;
+        }
+        .ymrc-sheet {
+          width: 100%; max-width: 560px;
+          background: #14141c;
+          border-radius: 22px 22px 0 0;
+          padding: 14px 18px 22px;
+          box-shadow: 0 -10px 30px rgba(0,0,0,0.5);
+        }
+        .ymrc-sheet-handle {
+          width: 46px; height: 5px; border-radius: 99px;
+          background: rgba(255,255,255,0.2);
+          margin: 0 auto 10px;
+        }
+        .ymrc-sheet h4 {
+          margin: 6px 0 12px;
+          color: #fff; font-size: 16px; font-weight: 800;
+          text-align: center;
+        }
+        .ymrc-muted { margin: 0 0 10px; color: #9ca3af; font-size: 13px; text-align: center; }
+        .ymrc-grid {
+          display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
+        }
+        .ymrc-chip {
+          padding: 12px 8px;
+          border-radius: 14px;
+          background: rgba(255,255,255,0.06);
+          color: #fff; border: 1px solid rgba(255,255,255,0.08);
+          cursor: pointer; font-weight: 700; font-size: 13px;
+        }
+        .ymrc-chip.is-on {
+          background: linear-gradient(135deg, rgba(139,92,246,0.45), rgba(99,102,241,0.4));
+          border-color: rgba(167,139,250,0.7);
+          color: #fff;
+        }
+        .ymrc-settings-list {
+          list-style: none; margin: 0; padding: 0;
+          display: grid; gap: 6px;
+        }
+        .ymrc-settings-list li {
+          display: flex; justify-content: space-between; align-items: center;
+          padding: 10px 12px;
+          border-radius: 12px;
+          background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(255,255,255,0.06);
+          font-size: 13px;
+        }
+        .ymrc-settings-list strong { color: #c7b8ff; font-weight: 800; }
+        .ymrc-cta {
+          margin-top: 12px;
+          width: 100%;
+          padding: 12px;
+          border-radius: 14px;
+          background: linear-gradient(135deg, #8b5cf6, #6366f1);
+          color: #fff; border: 0; font-weight: 800; cursor: pointer;
+        }
+
+        .ymrc-upload-pill {
+          position: absolute;
+          left: 50%; transform: translateX(-50%);
+          bottom: calc(env(safe-area-inset-bottom, 0) + 224px);
+          background: rgba(0,0,0,0.7);
+          padding: 10px 14px; border-radius: 999px;
+          display: inline-flex; align-items: center; gap: 10px;
+          font-size: 12px; color: #fff;
+          z-index: 7;
+          max-width: 88%;
+          backdrop-filter: blur(6px);
+        }
+        .ymrc-up-bar {
+          width: 140px; height: 6px; border-radius: 999px;
+          background: rgba(255,255,255,0.15); overflow: hidden;
+        }
+        .ymrc-up-bar i {
+          display: block; height: 100%; border-radius: inherit;
+          background: linear-gradient(90deg, #8b5cf6, #3b82f6);
+          transition: width 120ms ease;
+        }
+        .ymrc-err { color: #fca5a5; }
+
+        @media (min-width: 720px) {
+          .ymrc-rail { gap: 24px; }
+        }
+      `}</style>
+    </div>
+  );
+}

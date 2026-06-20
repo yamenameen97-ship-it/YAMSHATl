@@ -1,21 +1,21 @@
 import { memo } from 'react';
 
 /**
- * MobileFilterPills (v47.10 — pixel-perfect — مطابق 1:1 للصورة المرجعية)
+ * MobileFilterPills (v47.7 — pixel-perfect — مطابق تماماً للصورة)
  * ----------------------------------------------------------------
- * الترتيب البصري المطلوب (من اليسار→اليمين على الشاشة):
- *   [الكل (نشط)] [المجموعات] [الستوري] [الوسائط]
+ * الترتيب البصري كما في الصورة (من اليسار→اليمين على الشاشة):
+ *   [الكل (نشط)] [المجموعات] [الستوري] [الوسائط] [التعليقات]
  *
  * - "الكل" في **أقصى اليسار** على الشاشة وهو الزر النشط (بنفسجي ممتلئ).
- * - "الوسائط" في **أقصى اليمين** على الشاشة.
+ * - "التعليقات" في **أقصى اليمين** على الشاشة.
  * - الأزرار غير النشطة بخلفية رمادية داكنة #1A1F2E.
- * - تم إزالة "التعليقات" — لمطابقة الصورة بدقة.
  */
 const FILTERS = [
   { id: 'all', label: 'الكل' },
   { id: 'community', label: 'المجموعات' },
   { id: 'stories', label: 'الستوري' },
   { id: 'updates', label: 'الوسائط' },
+  { id: 'ads', label: 'التعليقات' },
 ];
 
 function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange }) {
@@ -48,18 +48,17 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
 
       <style>{`
         .ym-filters-container {
-          padding: 8px 12px 10px;
+          padding: 6px 10px 10px;
           background-color: #0A0D1A;
           box-sizing: border-box;
           width: 100%;
           max-width: 100%;
           overflow: hidden;
-          font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
         }
         .ym-filters {
           display: flex;
           flex-direction: row;
-          gap: 8px;
+          gap: 6px;
           overflow-x: auto;
           scrollbar-width: none;
           -ms-overflow-style: none;
@@ -72,15 +71,15 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
 
         .ym-filter-pill-new {
           flex: 0 0 auto;
-          height: 36px;
-          padding: 0 18px;
+          height: 32px;
+          padding: 0 14px;
           border-radius: 999px;
           border: none;
           background: #1A1F2E;
           color: #9CA3AF;
-          font-size: 0.82rem;
+          font-size: 0.78rem;
           font-weight: 600;
-          font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+          font-family: inherit;
           cursor: pointer;
           white-space: nowrap;
           transition: all 0.18s ease;
@@ -96,7 +95,7 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
         .ym-filter-pill-new.is-active {
           background-color: #7C3AED;
           color: #FFFFFF;
-          box-shadow: 0 2px 10px rgba(124, 58, 237, 0.45);
+          box-shadow: 0 2px 8px rgba(124, 58, 237, 0.4);
         }
 
         .pill-content {
@@ -107,35 +106,37 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
         }
 
         @media (max-width: 400px) {
-          .ym-filters-container { padding: 7px 10px 9px; }
-          .ym-filters { gap: 7px; }
+          .ym-filters-container { padding: 5px 8px 8px; }
+          .ym-filters { gap: 5px; }
           .ym-filter-pill-new {
-            height: 34px;
-            padding: 0 16px;
-            font-size: 0.78rem;
-          }
-        }
-        @media (max-width: 360px) {
-          .ym-filters-container { padding: 6px 8px 8px; }
-          .ym-filters { gap: 6px; }
-          .ym-filter-pill-new {
-            height: 32px;
-            padding: 0 14px;
+            height: 30px;
+            padding: 0 12px;
             font-size: 0.74rem;
           }
         }
-        @media (max-width: 320px) {
-          .ym-filters-container { padding: 5px 6px 6px; }
+        @media (max-width: 360px) {
+          .ym-filters-container { padding: 4px 6px 7px; }
           .ym-filters { gap: 4px; }
           .ym-filter-pill-new {
             height: 28px;
             padding: 0 10px;
-            font-size: 0.66rem;
+            font-size: 0.7rem;
           }
         }
-        @media (max-width: 393px) and (min-width: 361px) {
-          .ym-filter-pill-new { height: 35px; padding: 0 17px; font-size: 0.8rem; }
+        @media (max-width: 320px) {
+          .ym-filters-container { padding: 3px 4px 5px; }
+          .ym-filters { gap: 2px; }
+          .ym-filter-pill-new {
+            height: 24px;
+            padding: 0 7px;
+            font-size: 0.6rem;
+          }
         }
+        /* دعم Redmi Note 8 والأجهزة المتوسطة */
+        @media (max-width: 393px) and (min-width: 361px) {
+          .ym-filter-pill-new { height: 31px; padding: 0 13px; font-size: 0.76rem; }
+        }
+        /* إصلاح تمرير أفقي على المتصفحات القديمة */
         .ym-filters {
           -webkit-overflow-scrolling: touch;
           overscroll-behavior-x: contain;

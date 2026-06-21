@@ -68,13 +68,15 @@ import './styles/mobile-touch-scroll-final-v49.css';
 import './styles/mobile-touch-app-feel-v52.css';
 /* 🏆 v57 — Master Touch Fix: إصلاح نهائي للسحب واللمس على كل الصفحات والمتصفحات (آخر CSS مطلقاً) */
 import './styles/mobile-touch-master-fix-v57.css';
+import './styles/mobile-touch-paw-v58.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { pwaInitializer } from './services/pwaInitializer.js';
 import { smoothTouchLayer } from './services/smoothTouchLayer.js';
 import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
+import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-master-touch-fix-v57-0';
+const BUILD_ID = 'yamshat-paw-touch-v58-0';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {
@@ -163,12 +165,20 @@ if (typeof window !== 'undefined') {
       // smoothTouchLayer.attachToElement(document.documentElement);
 
       // 🚀 v52: تفعيل طبقة الاستجابة الفورية للمس (FastClick-like + scroll detection)
-      // هذه الطبقة تجعل التطبيق يشعر كتطبيق أصلي وليس صفحة ويب.
       try {
         instantTouchFeedback.init();
         console.log('[Yamshat] Instant Touch Feedback v52 activated');
       } catch (err) {
         console.warn('[Yamshat] Instant touch init failed', err);
+      }
+
+      // 🐾 v58: تفعيل PAW Touch Enhancer — يصلح مشكلة عدم استجابة المس في صفحة المنشورات
+      // ويعمل على كل أنواع الجوالات/الشاشات (Redmi/Huawei/Honor/Samsung/iPhone)
+      try {
+        pawTouchEnhancer.init();
+        console.log('[Yamshat] PAW Touch Enhancer v58 activated');
+      } catch (err) {
+        console.warn('[Yamshat] PAW touch enhancer init failed', err);
       }
 
       // تفعيل محسّن الأجهزة القديمة

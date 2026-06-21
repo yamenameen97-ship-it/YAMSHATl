@@ -45,6 +45,8 @@ const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
 const Feed = lazy(() => import('./pages/FeedEnhanced.jsx'));
 const Stories = lazy(() => import('./pages/Stories.jsx'));
 const Reels = lazy(() => import('./pages/Reels.jsx'));
+// v50 — صفحة الرفع/الإنشاء الموحّدة (ReelComposer) المعتمدة لكل سياقات الإنشاء
+const ReelComposer = lazy(() => import('./pages/ReelComposer.jsx'));
 const Groups = lazy(() => import('./pages/GroupsHome.jsx'));
 const CreateGroup = lazy(() => import('./pages/CreateGroup.jsx'));
 const GroupChatPageInner = lazy(() => import('./pages/GroupChat.jsx'));
@@ -214,6 +216,12 @@ export default function App() {
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/stories" element={<ProtectedRoute><Stories /></ProtectedRoute>} />
             <Route path="/reels" element={<ProtectedRoute><Reels /></ProtectedRoute>} />
+            {/* v50 — صفحة الإنشاء الموحّدة (تستبدل MobileComposeModal القديمة) */}
+            <Route path="/compose" element={<ProtectedRoute><ReelComposer /></ProtectedRoute>} />
+            <Route path="/reels/compose" element={<ProtectedRoute><ReelComposer /></ProtectedRoute>} />
+            <Route path="/reels/new" element={<ProtectedRoute><ReelComposer /></ProtectedRoute>} />
+            <Route path="/post/compose" element={<ProtectedRoute><ReelComposer /></ProtectedRoute>} />
+            <Route path="/post/new" element={<ProtectedRoute><ReelComposer /></ProtectedRoute>} />
             <Route path="/groups" element={<ProtectedRoute><Groups /></ProtectedRoute>} />
             <Route path="/groups/create" element={<ProtectedRoute><CreateGroup /></ProtectedRoute>} />
             <Route path="/groups/:groupId/chat" element={<ProtectedRoute><GroupChatPage /></ProtectedRoute>} />

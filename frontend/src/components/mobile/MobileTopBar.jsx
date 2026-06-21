@@ -111,14 +111,14 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
               <span className="ym-topbar-link-text">المجموعات</span>
             </button>
 
-            {/* 4) زر الإضافة + ستوري (مجمعان كما في الصورة) */}
+            {/* 4) زر الستوري — v51: ينقل لصفحة الستوري /stories بدلاً من صفحة المنشورات */}
             <button
               type="button"
               className="ym-topbar-link ym-topbar-story"
-              aria-label="إنشاء ستوري"
+              aria-label="الستوري"
               onClick={() => {
-                // v50 — الانتقال إلى صفحة ReelComposer الجديدة على تبويب الستوري
-                navigate('/compose?tab=story');
+                // v51 — الانتقال إلى صفحة الستوري المخصصة
+                navigate('/stories');
               }}
               dir="rtl"
             >

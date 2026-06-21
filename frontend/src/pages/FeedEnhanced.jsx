@@ -554,8 +554,8 @@ function PostCard({ post }) {
 
   return (
     <article className="yam-post-card-v2">
-      {/* ✅ FIX (v48): عكس ترتيب الرأس ليكون الاسم بجوار الصورة الشخصية مباشرة
-          مطابقاً للصورة المرجعية الثانية: على RTL الصورة في أقصى اليمين والاسم على يسارها. */}
+      {/* ✅ FIX (v51): جعل الاسم/المعرّف/الوقت بجوار الصورة الشخصية مباشرة بدون فجوة
+          مطابقاً للصورة المرجعية الأولى. الاسم يلتصق بالصورة، والمعرف والوقت في سطر تحته على نفس السطر. */}
       <div className="yam-post-head-v2" dir="rtl">
         <div className="yam-post-author-v2 yam-post-author-v2-reversed" dir="rtl">
           <div className="yam-post-author-copy">
@@ -563,13 +563,15 @@ function PostCard({ post }) {
               <strong>{post.authorName}</strong>
               <span className="yam-verified-badge">✓</span>
             </div>
-            <div className="yam-post-handle">{post.handle}</div>
+            <div className="yam-post-handle">
+              <span className="yam-post-handle-text">{post.handle}</span>
+              <span className="yam-post-handle-dot">·</span>
+              <span className="yam-post-handle-time" title={post.timeTitle || ''}>{liveTimeAgo}</span>
+            </div>
           </div>
           <Avatar name={post.authorName} size={48} accent={Boolean(post.brandRing)} image src={post.authorAvatar} />
         </div>
         <div className="yam-post-meta-v2">
-          {/* ✅ تحديث لحظي للوقت المنقضي + tooltip بتوقيت الجهاز */}
-          <span title={post.timeTitle || ''}>{liveTimeAgo}</span>
           <div className="yam-settings-menu-wrap">
             <button type="button" className="yam-ghost-icon-btn" aria-label="خيارات المنشور" onClick={handleMoreOptions} title="خيارات المنشور">
               <YamshatIcon name="more" size={18} />
@@ -1546,13 +1548,24 @@ function FeedDesktopInner() {
             justify-content: space-between;
           }
 
+          /* ✅ v51: جعل الاسم بجوار الصورة دون فجوة — إلغاء flex:1 وجعل العرض حسب المحتوى */
+          .yam-post-author-v2-reversed {
+            flex: 0 0 auto !important;
+            min-width: 0;
+            gap: 10px;
+          }
+
           .yam-post-meta-v2 {
             color: #8894bd;
             font-size: 13px;
+            flex-shrink: 0;
           }
 
           .yam-post-author-copy {
             min-width: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
           }
 
           .yam-post-author-line,
@@ -1570,8 +1583,24 @@ function FeedDesktopInner() {
           .yam-post-handle,
           .yam-profile-handle-v2 {
             color: #8f9cc5;
-            font-size: 14px;
+            font-size: 13px;
             margin-top: 2px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: nowrap;
+          }
+
+          /* ✅ v51: المعرّف + الفاصل + الوقت في سطر واحد تحت الاسم */
+          .yam-post-handle .yam-post-handle-text {
+            color: #8f9cc5;
+          }
+          .yam-post-handle .yam-post-handle-dot {
+            color: #8f9cc5;
+            opacity: 0.7;
+          }
+          .yam-post-handle .yam-post-handle-time {
+            color: #8f9cc5;
           }
 
           .yam-verified-badge {

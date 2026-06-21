@@ -223,42 +223,47 @@ function BottomNav() {
         .ym-nav-item.active { color: #8B5CF6; }
         .ym-nav-item:hover { color: #C4B5FD; }
 
-        /* زر المنتصف (+) — مربع بحواف دائرية */
+        /* ✅ v51 — زر المنتصف (+) تم تصغيره وتسويته ليظهر مثل بقية أزرار الهيدر السفلي */
         .ym-nav-center-item {
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: center;
           gap: 3px;
-          padding: 0;
+          padding: 4px 6px; /* مطابق لـ .ym-nav-item */
           background: none;
           border: none;
           cursor: pointer;
           flex: 1 1 0;
           min-width: 0;
           font-family: inherit;
+          color: #9CA3AF;
+          font-size: 0.72rem;
+          transition: color 0.2s;
         }
+        .ym-nav-center-item:hover { color: #C4B5FD; }
+        /* بعد التعديل: أيقونة (+) بحجم ودائرية مثل بقية الأيقونات */
         .ym-nav-plus-btn {
-          width: 46px;
-          height: 38px;
+          width: 28px;
+          height: 28px;
           background-color: #8B5CF6;
-          border-radius: 12px;
+          border-radius: 8px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 4px 14px rgba(139, 92, 246, 0.5);
           color: #fff;
-          transition: transform 0.15s, box-shadow 0.15s;
+          transition: transform 0.15s, background-color 0.15s;
+          /* إزالة الظل البارز الذي كان يرفع الزر بصرياً */
+          box-shadow: none;
         }
         .ym-nav-plus-btn svg {
-          width: 22px;
-          height: 22px;
+          width: 18px;
+          height: 18px;
         }
         .ym-nav-center-item:hover .ym-nav-plus-btn {
-          transform: translateY(-1px);
-          box-shadow: 0 6px 18px rgba(139, 92, 246, 0.65);
+          background-color: #7C3AED;
         }
-        .ym-nav-center-item:active .ym-nav-plus-btn { transform: scale(0.95); }
+        .ym-nav-center-item:active .ym-nav-plus-btn { transform: scale(0.94); }
         .ym-nav-label {
           font-size: 0.72rem;
           line-height: 1.1;
@@ -277,34 +282,34 @@ function BottomNav() {
         @media (max-width: 400px) {
           .ym-bottomnav { height: calc(60px + env(safe-area-inset-bottom, 0px)); }
           .ym-bottomnav-inner { padding: 4px 2px; }
-          .ym-nav-item { padding: 3px 3px; font-size: 0.68rem; gap: 2px; }
+          .ym-nav-item, .ym-nav-center-item { padding: 3px 3px; font-size: 0.68rem; gap: 2px; }
           .ym-nav-icon svg { width: 22px; height: 22px; }
-          .ym-nav-plus-btn { width: 42px; height: 34px; border-radius: 10px; }
-          .ym-nav-plus-btn svg { width: 20px; height: 20px; }
+          .ym-nav-plus-btn { width: 26px; height: 26px; border-radius: 7px; }
+          .ym-nav-plus-btn svg { width: 16px; height: 16px; }
           .ym-nav-label { font-size: 0.68rem; max-width: 68px; }
         }
         @media (max-width: 360px) {
           .ym-bottomnav { height: calc(58px + env(safe-area-inset-bottom, 0px)); }
           .ym-bottomnav-inner { padding: 3px 2px; }
-          .ym-nav-item { padding: 2px 2px; font-size: 0.64rem; }
+          .ym-nav-item, .ym-nav-center-item { padding: 2px 2px; font-size: 0.64rem; }
           .ym-nav-icon svg { width: 21px; height: 21px; }
-          .ym-nav-plus-btn { width: 38px; height: 30px; border-radius: 9px; }
-          .ym-nav-plus-btn svg { width: 19px; height: 19px; }
+          .ym-nav-plus-btn { width: 24px; height: 24px; border-radius: 6px; }
+          .ym-nav-plus-btn svg { width: 15px; height: 15px; }
           .ym-nav-label { font-size: 0.64rem; max-width: 62px; }
         }
         @media (max-width: 320px) {
           .ym-bottomnav { height: calc(54px + env(safe-area-inset-bottom, 0px)); }
           .ym-bottomnav-inner { padding: 2px 1px; }
-          .ym-nav-item { padding: 2px 1px; font-size: 0.58rem; gap: 1px; }
+          .ym-nav-item, .ym-nav-center-item { padding: 2px 1px; font-size: 0.58rem; gap: 1px; }
           .ym-nav-icon svg { width: 19px; height: 19px; }
-          .ym-nav-plus-btn { width: 34px; height: 26px; border-radius: 7px; box-shadow: 0 2px 8px rgba(139, 92, 246, 0.45); }
-          .ym-nav-plus-btn svg { width: 16px; height: 16px; }
+          .ym-nav-plus-btn { width: 22px; height: 22px; border-radius: 5px; }
+          .ym-nav-plus-btn svg { width: 14px; height: 14px; }
           .ym-nav-label { font-size: 0.56rem; max-width: 52px; }
         }
         /* دعم Redmi Note 8 (393px) */
         @media (max-width: 393px) and (min-width: 361px) {
           .ym-bottomnav { height: calc(62px + env(safe-area-inset-bottom, 0px)); }
-          .ym-nav-plus-btn { width: 44px; height: 36px; }
+          .ym-nav-plus-btn { width: 26px; height: 26px; }
           .ym-nav-label { font-size: 0.7rem; }
         }
         /* دعم الأجهزة القديمة بدون env(safe-area-inset-bottom) */

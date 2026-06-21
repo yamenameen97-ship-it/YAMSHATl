@@ -62,6 +62,30 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
           /* تحسينات اللمس للجوال */
           touch-action: pan-y;
           -webkit-tap-highlight-color: transparent;
+          /* ✅ v51 — جعل شريط التصفية لاصقاً فوق صورة الملف الشخصي لصاحب المنشور */
+          position: sticky;
+          top: calc(56px + env(safe-area-inset-top, 0px));
+          z-index: 50;
+          border-bottom: 1px solid #1F2937;
+          direction: rtl;
+        }
+        @media (min-width: 768px) {
+          .ym-filters-container { top: calc(60px + env(safe-area-inset-top, 0px)); }
+        }
+        @media (min-width: 1024px) {
+          .ym-filters-container { top: calc(64px + env(safe-area-inset-top, 0px)); }
+        }
+        @media (max-width: 480px) {
+          .ym-filters-container { top: calc(54px + env(safe-area-inset-top, 0px)); }
+        }
+        @media (max-width: 400px) {
+          .ym-filters-container { top: calc(52px + env(safe-area-inset-top, 0px)); }
+        }
+        @media (max-width: 360px) {
+          .ym-filters-container { top: calc(50px + env(safe-area-inset-top, 0px)); }
+        }
+        @media (max-width: 340px) {
+          .ym-filters-container { top: calc(48px + env(safe-area-inset-top, 0px)); }
         }
         .ym-filters {
           display: flex;
@@ -73,6 +97,7 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
           padding-bottom: 2px;
           width: 100%;
           direction: rtl;
+          /* ✅ v51 — ترتيب عربي: العناصر تبدأ من اليمين */
           justify-content: flex-start;
           /* تمكين السحب الأفقي السلس على الجوال */
           -webkit-overflow-scrolling: touch;

@@ -9,11 +9,13 @@ import {
 } from '../api/users.js';
 
 /**
- * useFollow - Hook ู…ูˆุญุฏ ู„ุฅุฏุงุฑุฉ ู†ุธุงู… ุงู„ู…ุชุงุจุนุฉ
- * ูŠุญู„ ู…ุดูƒู„ุฉ ุนุฏู… ุงุฑุชุจุงุท ุฒุฑ ุงู„ู…ุชุงุจุนุฉ ุจุงู„ู€ backend
+ * useFollow - Hook موحَّد لإدارة نظام المتابعة
+ * v51 — إصلاح: زر "متابعة" لم يكن يتحول إلى "متابَع" بعد النقر بسبب إعادة
+ *               تعيين الحالة من props كل re-render للأب. الحل: علم userInteracted
+ *               يمنع props من الكتابة فوق الحالة المحلية بعد تفاعل المستخدم.
  *
- * @param {string} username - ุงุณู… ุงู„ู…ุณุชุฎุฏู… ุงู„ู…ุณุชู‡ุฏู
- * @param {object} options - { initialIsFollowing, initialFollowersCount, initialFollowingCount }
+ * @param {string} username
+ * @param {object} options
  */
 export default function useFollow(username, options = {}) {
   const {
@@ -29,28 +31,43 @@ export default function useFollow(username, options = {}) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const inflightRef = useRef(false);
+  // ✅ v51 FIX: علم تفاعل المستخدم — بعد ضغط الزر لا نسمح للـ props بتجاوز الحالة
+  const userInteractedRef = useRef(false);
+  const usernameRef = useRef(username);
 
-  // ู…ุฒุงู…ู†ุฉ ุงู„ู‚ูŠู… ุงู„ุงูุชุฑุงุถูŠุฉ ุนู†ุฏ ุชุบูŠุฑู‡ุง
+  // عند تغيُّر المستخدم المستهدف، نُعيد ضبط علم التفاعل
   useEffect(() => {
+    if (usernameRef.current !== username) {
+      usernameRef.current = username;
+      userInteractedRef.current = false;
+    }
+  }, [username]);
+
+  // مزامنة القيم الافتراضية — تتجاهل إذا تفاعل المستخدم
+  useEffect(() => {
+    if (userInteractedRef.current) return;
     setFollowersCount(Number(initialFollowersCount) || 0);
   }, [initialFollowersCount]);
 
   useEffect(() => {
+    if (userInteractedRef.current) return;
     setFollowingCount(Number(initialFollowingCount) || 0);
   }, [initialFollowingCount]);
 
   useEffect(() => {
+    if (userInteractedRef.current) return;
     setIsFollowing(Boolean(initialIsFollowing));
   }, [initialIsFollowing]);
 
-  // ูุญุต ุญุงู„ุฉ ุงู„ู…ุชุงุจุนุฉ ุนู†ุฏ ุชุญู…ูŠู„ ุงู„ู‡ูˆูƒ
+  // فحص حالة المتابعة عند تحميل الهوك
   useEffect(() => {
     if (!username || !autoCheck) return;
     let cancelled = false;
     (async () => {
       try {
         const res = await checkIsFollowing(username);
-        if (!cancelled && res?.data) {
+        // ✅ v51 FIX: لا نتجاوز تفاعل المستخدم إذا ضغط الزر خلال فترة الفحص
+        if (!cancelled && res?.data && !userInteractedRef.current) {
           if (typeof res.data.is_following === 'boolean') {
             setIsFollowing(res.data.is_following);
           }
@@ -63,7 +80,7 @@ export default function useFollow(username, options = {}) {
         }
       } catch (e) {
         if (!cancelled) {
-          // ู„ุง ู†ุนุฑุถ ุฎุทุฃุŒ ุงู„ุฑุฌูˆุน ู„ู„ู‚ูŠู… ุงู„ุงูุชุฑุงุถูŠุฉ
+          // لا نعرض خطأ، الرجوع للقيم الافتراضية
         }
       }
     })();
@@ -75,6 +92,7 @@ export default function useFollow(username, options = {}) {
   const toggleFollow = useCallback(async () => {
     if (!username || inflightRef.current) return;
     inflightRef.current = true;
+    userInteractedRef.current = true; // ✅ v51: علامة تفاعل المستخدم
     setLoading(true);
     setError(null);
 
@@ -91,11 +109,13 @@ export default function useFollow(username, options = {}) {
       } else {
         await unfollowUser(username);
       }
+      // ✅ v51: تثبيت الحالة بعد نجاح الـ API صراحةً
+      setIsFollowing(nextState);
     } catch (err) {
-      // ุฅุฑุฌุงุน ุงู„ุญุงู„ุฉ ุนู†ุฏ ุงู„ูุดู„
+      // إرجاع الحالة عند الفشل
       setIsFollowing(previousState);
       setFollowersCount(previousCount);
-      setError(err?.message || 'ุชุนุฐุฑ ุชุญุฏูŠุซ ุงู„ู…ุชุงุจุนุฉ');
+      setError(err?.message || 'تعذر تحديث المتابعة');
       throw err;
     } finally {
       inflightRef.current = false;
@@ -128,7 +148,7 @@ export default function useFollow(username, options = {}) {
   };
 }
 
-/** Hook ุฅุถุงููŠ ู„ุฌู„ุจ ู‚ุงุฆู…ุฉ ุงู„ู…ุชุงุจุนูŠู†/ุงู„ู…ุชุงุจูŽุนูŠู† */
+/** Hook إضافي لجلب قائمة المتابعين/المتابَعين */
 export function useFollowList(username, type = 'followers') {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -152,7 +172,7 @@ export function useFollowList(username, type = 'followers') {
       setItems(list);
       return list;
     } catch (err) {
-      setError(err?.message || 'ุชุนุฐุฑ ุชุญู…ูŠู„ ุงู„ู‚ุงุฆู…ุฉ');
+      setError(err?.message || 'تعذر تحميل القائمة');
       setItems([]);
       return [];
     } finally {

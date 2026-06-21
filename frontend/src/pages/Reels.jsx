@@ -7,7 +7,7 @@ import API from '../api/axios.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
 
 /**
- * Reels.jsx — v54 (Pixel-perfect rebuild — مطابق 1:1 للصورة المرجعية)
+ * Reels.jsx — v58 (Touch Master + Centered Tabs + Avatar-Follow)
  * ---------------------------------------------------------------------------
  * - dir="rtl" + خط Noto Sans Arabic في كل مكان.
  * - تصميم موحّد للموبايل واللابتوب (يتمدّد ويلتزم بنفس الـ UI).
@@ -55,6 +55,7 @@ function normalizeReel(item = {}) {
     share_count: Number(item.share_count || 356),
     is_liked: Boolean(item.is_liked),
     is_saved: Boolean(item.is_saved),
+    is_following: Boolean(item.is_following ?? item.user?.is_following ?? false),
     avatar: resolveMediaUrl(item.user?.avatar || item.avatar || ''),
   };
 }
@@ -304,16 +305,53 @@ export default function Reels() {
 
               {/* Right side actions */}
               <aside className="ym-reels-actions" aria-label="إجراءات الريل">
-                {/* (+) follow */}
-                <div className="ym-action-group">
-                  <button type="button" className="ym-action-btn ym-action-add" aria-label="متابعة">
-                    <span className="ym-y-mini" aria-hidden>
-                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M5 4 L12 16 L19 4" />
-                        <path d="M12 16 L12 22" />
-                      </svg>
-                    </span>
-                    <span className="ym-action-plus" aria-hidden>+</span>
+                {/* Avatar + Follow (+) — v58: avatar circle مع زر + للمتابعة (كما في الصورة المرجعية) */}
+                <div className="ym-action-group ym-action-author">
+                  <button
+                    type="button"
+                    className="ym-author-avatar-btn"
+                    onClick={() => navigate(`/profile/${encodeURIComponent(reel.username)}`)}
+                    aria-label={`ملف ${reel.username}`}
+                  >
+                    {reel.avatar ? (
+                      <img
+                        src={reel.avatar}
+                        alt={reel.username}
+                        className="ym-author-avatar-img"
+                        loading="lazy"
+                        draggable="false"
+                      />
+                    ) : (
+                      <span className="ym-author-avatar-fallback" aria-hidden>
+                        {(reel.username || 'Y')[0]?.toUpperCase()}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className={`ym-author-follow-plus ${reel.is_following ? 'is-following' : ''}`}
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      const wasFollowing = reel.is_following;
+                      setReels((prev) => prev.map((r) => (r.id === reel.id ? { ...r, is_following: !wasFollowing } : r)));
+                      try {
+                        if (wasFollowing) {
+                          await API.delete(`/users/${encodeURIComponent(reel.username)}/follow`).catch(() =>
+                            API.post(`/users/${encodeURIComponent(reel.username)}/unfollow`)
+                          );
+                        } else {
+                          await API.post(`/users/${encodeURIComponent(reel.username)}/follow`);
+                        }
+                        pushToast?.({ type: 'success', title: wasFollowing ? 'تم إلغاء المتابعة' : 'تمت المتابعة' });
+                      } catch {
+                        // rollback
+                        setReels((prev) => prev.map((r) => (r.id === reel.id ? { ...r, is_following: wasFollowing } : r)));
+                        pushToast?.({ type: 'error', title: 'تعذّر تحديث المتابعة' });
+                      }
+                    }}
+                    aria-label={reel.is_following ? 'إلغاء المتابعة' : 'متابعة'}
+                  >
+                    {reel.is_following ? '✓' : '+'}
                   </button>
                 </div>
 
@@ -354,22 +392,7 @@ export default function Reels() {
                   <div className="ym-action-label">{fmtCount(reel.share_count)}</div>
                 </div>
 
-                {/* Brand small button */}
-                <div className="ym-action-group">
-                  <button
-                    type="button"
-                    className="ym-action-btn ym-action-brand"
-                    onClick={() => navigate(`/profile/${encodeURIComponent(reel.username)}`)}
-                    aria-label="ملف المستخدم"
-                  >
-                    <span className="ym-y-mini" aria-hidden>
-                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M5 4 L12 16 L19 4" />
-                        <path d="M12 16 L12 22" />
-                      </svg>
-                    </span>
-                  </button>
-                </div>
+                {/* Brand small button — v58: تم نقله إلى الأعلى مع الأفاتار */}
               </aside>
 
               {/* Music orb (bottom-left small circle) */}
@@ -468,21 +491,27 @@ export default function Reels() {
             top: env(safe-area-inset-top, 0px);
             inset-inline-start: 0;
             inset-inline-end: 0;
-            /* v55: تم تقليل البادينج العلوي بعد إزالة عنوان الريلز — التابات الآن في الأعلى */
+            /* v58: تم توسيط التابات أفقيّاً في عرض الشاشة (ريلز/متابعة/اكتشف) */
             padding: 18px 18px 10px;
             display: flex;
-            flex-direction: column;
-            align-items: flex-end;
+            flex-direction: row;
+            align-items: center;
+            justify-content: center;
             gap: 10px;
             z-index: 6;
             pointer-events: none;
           }
           .ym-reels-tabs {
             display: flex;
-            /* v55: ترتيب RTL طبيعي — ريلز يمين، اكتشف يسار (مطابق للتصميم المرجعي) */
+            /* v58: توسيط التابات في منتصف الشاشة (مطابق للصورة المرجعية الثانية) */
             flex-direction: row;
-            gap: 18px;
+            gap: 22px;
             pointer-events: auto;
+            margin: 0 auto;
+            padding: 4px 8px;
+            /* لمس سريع وسلس */
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
           }
           .ym-reels-tab {
             background: transparent;
@@ -653,43 +682,71 @@ export default function Reels() {
             50% { transform: scale(1.25); }
             100% { transform: scale(1); }
           }
-          .ym-action-add {
+          /* v58: أفاتار المؤلف الدائري + زر متابعة (+) تحته — مطابق لتيكتوك/انستغرام */
+          .ym-action-author {
             position: relative;
-            width: 44px;
-            height: 44px;
-            border-radius: 12px;
-            background: linear-gradient(180deg, #8b5cf6, #6d28d9);
-            box-shadow: 0 8px 22px rgba(139,92,246,.55);
+            padding-bottom: 10px;
           }
-          .ym-action-add .ym-action-plus {
-            position: absolute;
-            bottom: -7px;
-            /* v55: نقل علامة (+) إلى الجهة اليمنى السفلية مطابقاً للتصميم المرجعي */
-            inset-inline-start: -7px;
-            width: 20px;
-            height: 20px;
+          .ym-author-avatar-btn {
+            position: relative;
+            width: 48px;
+            height: 48px;
             border-radius: 999px;
-            background: #fff;
-            color: #6d28d9;
+            padding: 0;
+            border: 2.5px solid #fff;
+            background: linear-gradient(180deg, #8b5cf6, #6d28d9);
+            overflow: hidden;
+            cursor: pointer;
+            display: grid;
+            place-items: center;
+            box-shadow: 0 6px 18px rgba(139,92,246,.5);
+            /* لمس فوري */
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            transition: transform .15s ease;
+          }
+          .ym-author-avatar-btn:active { transform: scale(0.92); }
+          .ym-author-avatar-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            -webkit-user-drag: none;
+            user-drag: none;
+          }
+          .ym-author-avatar-fallback {
+            color: #fff;
             font-weight: 900;
-            font-size: 14px;
+            font-size: 22px;
+            line-height: 1;
+          }
+          .ym-author-follow-plus {
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 22px;
+            height: 22px;
+            border-radius: 999px;
+            background: #ff3b6b;
+            color: #fff;
+            font-weight: 900;
+            font-size: 15px;
+            line-height: 1;
             display: grid;
             place-items: center;
             border: 2px solid #0a0612;
-            line-height: 1;
+            cursor: pointer;
+            padding: 0;
+            box-shadow: 0 3px 10px rgba(255,59,107,.55);
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            transition: transform .15s ease, background .2s ease;
           }
-          .ym-y-mini {
-            width: 22px;
-            height: 22px;
-            display: grid;
-            place-items: center;
-          }
-          .ym-action-brand {
-            width: 44px;
-            height: 44px;
-            border-radius: 12px;
-            background: linear-gradient(180deg, rgba(139,92,246,.85), rgba(109,40,217,.85));
-            box-shadow: 0 6px 18px rgba(139,92,246,.45);
+          .ym-author-follow-plus:active { transform: translateX(-50%) scale(0.85); }
+          .ym-author-follow-plus.is-following {
+            background: #8b5cf6;
+            box-shadow: 0 3px 10px rgba(139,92,246,.55);
           }
           .ym-action-label {
             color: #fff;
@@ -907,15 +964,17 @@ export default function Reels() {
               scroll-snap-align: center;
             }
             .ym-reels-top {
-              /* v55: بادينج مختصر على الديسكتوب لتوحيد التجربة */
+              /* v58: توسيط التابات أيضاً في تجربة الديسكتوب */
               padding: 16px 32px 12px;
-              inset-inline-start: auto;
+              inset-inline-start: 0;
               inset-inline-end: 0;
               width: 100%;
               max-width: 1280px;
               margin: 0 auto;
-              left: 50%;
-              transform: translateX(-50%);
+              left: 0;
+              right: 0;
+              transform: none;
+              justify-content: center;
             }
           }
 

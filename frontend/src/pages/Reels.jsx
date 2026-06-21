@@ -199,9 +199,8 @@ export default function Reels() {
   return (
     <MainLayout hideNav={false} lockScroll>
       <div className="ym-reels-root" dir="rtl">
-        {/* ===== Top header — العنوان والتابات ===== */}
+        {/* ===== Top header — التابات فقط (تم حذف العنوان لتوفير المساحة v55) ===== */}
         <div className="ym-reels-top" dir="rtl">
-          <div className="ym-reels-title">الريلز</div>
           <div className="ym-reels-tabs" role="tablist">
             <button
               type="button"
@@ -469,7 +468,8 @@ export default function Reels() {
             top: env(safe-area-inset-top, 0px);
             inset-inline-start: 0;
             inset-inline-end: 0;
-            padding: 56px 18px 10px;
+            /* v55: تم تقليل البادينج العلوي بعد إزالة عنوان الريلز — التابات الآن في الأعلى */
+            padding: 18px 18px 10px;
             display: flex;
             flex-direction: column;
             align-items: flex-end;
@@ -477,16 +477,10 @@ export default function Reels() {
             z-index: 6;
             pointer-events: none;
           }
-          .ym-reels-title {
-            font-size: 17px;
-            font-weight: 700;
-            color: #fff;
-            text-shadow: 0 1px 6px rgba(0,0,0,.6);
-            pointer-events: auto;
-          }
           .ym-reels-tabs {
             display: flex;
-            flex-direction: row-reverse;
+            /* v55: ترتيب RTL طبيعي — ريلز يمين، اكتشف يسار (مطابق للتصميم المرجعي) */
+            flex-direction: row;
             gap: 18px;
             pointer-events: auto;
           }
@@ -586,7 +580,8 @@ export default function Reels() {
 
           .ym-reels-mute {
             position: absolute;
-            top: 140px;
+            /* v55: رفع زر كتم الصوت ليكون بمستوى التابات */
+            top: calc(env(safe-area-inset-top, 0px) + 18px);
             inset-inline-start: 18px;
             width: 38px;
             height: 38px;
@@ -602,7 +597,8 @@ export default function Reels() {
           }
           .ym-reels-more {
             position: absolute;
-            top: 140px;
+            /* v55: رفع زر الثلاث نقاط إلى الأعلى (مكان كلمة الريلز سابقاً) */
+            top: calc(env(safe-area-inset-top, 0px) + 18px);
             inset-inline-end: 18px;
             width: 32px;
             height: 32px;
@@ -668,7 +664,8 @@ export default function Reels() {
           .ym-action-add .ym-action-plus {
             position: absolute;
             bottom: -7px;
-            inset-inline-end: -7px;
+            /* v55: نقل علامة (+) إلى الجهة اليمنى السفلية مطابقاً للتصميم المرجعي */
+            inset-inline-start: -7px;
             width: 20px;
             height: 20px;
             border-radius: 999px;
@@ -910,7 +907,8 @@ export default function Reels() {
               scroll-snap-align: center;
             }
             .ym-reels-top {
-              padding: 28px 32px 12px;
+              /* v55: بادينج مختصر على الديسكتوب لتوحيد التجربة */
+              padding: 16px 32px 12px;
               inset-inline-start: auto;
               inset-inline-end: 0;
               width: 100%;

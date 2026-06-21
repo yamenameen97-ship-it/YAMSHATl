@@ -62,14 +62,17 @@ import './styles/mobile-pixel-perfect-v47-9.css';
 import './styles/touch-responsiveness-fix.css';
 /* 📱 v48.1 — تصغير الخطوط في صفحات الويب للجوال لتناسب الجوالات القديمة + منع تجاوز حدود الأزرار والصفحات */
 import './styles/mobile-compact-fonts-v48.css';
-/* 🎯 v49 — إصلاح نهائي وحازم لمشكلة السحب لا يعمل على ويب الجوال (يجب أن يكون آخر CSS) */
+/* 🎯 v49 — إصلاح نهائي وحازم لمشكلة السحب لا يعمل على ويب الجوال */
 import './styles/mobile-touch-scroll-final-v49.css';
+/* 🚀 v52 — تجربة لمس كأنها تطبيق أصلي (يجب أن يكون آخر CSS مطلقاً) */
+import './styles/mobile-touch-app-feel-v52.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { pwaInitializer } from './services/pwaInitializer.js';
 import { smoothTouchLayer } from './services/smoothTouchLayer.js';
 import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
+import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 
-const BUILD_ID = 'yamshat-mobile-touch-scroll-fix-v49-0';
+const BUILD_ID = 'yamshat-touch-app-feel-v52-0';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {
@@ -156,7 +159,15 @@ if (typeof window !== 'undefined') {
       // كان يُلصق 4 معالجات touch على <html> وتتسبب في تعليق السحب على بعض أجهزة
       // Android القديمة (Redmi/Honor/Galaxy A). نستخدمه فقط عند الحاجة عبر عناصر محددة.
       // smoothTouchLayer.attachToElement(document.documentElement);
-      console.log('[Yamshat] Smooth touch layer deferred (v49 fix: avoid global touch listeners)');
+
+      // 🚀 v52: تفعيل طبقة الاستجابة الفورية للمس (FastClick-like + scroll detection)
+      // هذه الطبقة تجعل التطبيق يشعر كتطبيق أصلي وليس صفحة ويب.
+      try {
+        instantTouchFeedback.init();
+        console.log('[Yamshat] Instant Touch Feedback v52 activated');
+      } catch (err) {
+        console.warn('[Yamshat] Instant touch init failed', err);
+      }
 
       // تفعيل محسّن الأجهزة القديمة
       const deviceState = legacyDeviceOptimizer.getState();

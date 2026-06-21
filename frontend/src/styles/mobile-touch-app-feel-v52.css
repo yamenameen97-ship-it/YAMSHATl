@@ -1,0 +1,534 @@
+/* ============================================================
+   YAMSHAT — Mobile Touch "App Feel" Fix (v52)
+   ============================================================
+   الهدف النهائي:
+     جعل تجربة الجوال (متصفح + PWA) تشبه التطبيق الأصلي 100%:
+       ✓ نقر فوري بدون تأخير 300ms
+       ✓ سحب عمودي/أفقي سلس بدون "لمس ثقيل"
+       ✓ إزالة الاهتزاز البصري وميض الأزرق
+       ✓ تقليل الضغط على GPU في الأجهزة المتوسطة (Redmi/Honor)
+       ✓ تثبيت سلوك Pull-to-refresh وحماية من تعارض touch-action
+       ✓ تحسين رد الفعل البصري عند الضغط (active state ناعم)
+
+   هذا الملف يجب أن يكون آخر CSS يُحمَّل (يفوز في cascade).
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   A) قواعد جذرية صلبة — html / body / #root
+   ------------------------------------------------------------ */
+html {
+  height: auto !important;
+  min-height: 100%;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  /* السماح بالسحب في كلا الاتجاهين بدون أي تأخير */
+  touch-action: pan-x pan-y !important;
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* منع pull-to-refresh الخارجي المربك على Android */
+  overscroll-behavior-y: contain;
+  /* تسريع التركيب */
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  position: relative !important;
+  width: 100% !important;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  touch-action: pan-x pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-touch-callout: none;
+  overscroll-behavior-y: contain;
+}
+
+#root {
+  position: static !important;
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden !important;
+  overflow-y: visible !important;
+  touch-action: pan-x pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+/* ------------------------------------------------------------
+   B) قاعدة عامة لإزالة الوميض الأزرق والاختيار غير المرغوب
+      (مع استثناءات للنصوص القابلة للنسخ والحقول)
+   ------------------------------------------------------------ */
+*,
+*::before,
+*::after {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+/* السماح بالاختيار في الحقول والنصوص المهمة */
+input,
+textarea,
+select,
+[contenteditable="true"],
+[contenteditable=""],
+.selectable,
+.message-text,
+.post-text,
+.user-content,
+p.copyable,
+code,
+pre {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  -webkit-touch-callout: default !important;
+}
+
+/* ------------------------------------------------------------
+   C) أزرار وعناصر تفاعلية — استجابة فورية + رد فعل بصري ناعم
+   ------------------------------------------------------------ */
+button,
+a,
+[role="button"],
+[role="tab"],
+[role="link"],
+[role="menuitem"],
+[role="switch"],
+[role="checkbox"],
+[role="radio"],
+input[type="button"],
+input[type="submit"],
+input[type="reset"],
+label,
+summary,
+.btn,
+.ym-btn,
+.ym-filter-pill-new,
+.ym-footer-btn,
+.ym-more-btn,
+.yam-bottom-nav-item,
+.yam-action-btn,
+.yam-emoji-btn,
+.yam-send-btn,
+.yam-ghost-btn,
+.story-circle,
+.tab-pill,
+.clickable,
+[data-clickable="true"],
+[onclick] {
+  /* manipulation = إزالة تأخير 300ms مع الإبقاء على pinch-zoom */
+  touch-action: manipulation !important;
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: pointer;
+  pointer-events: auto !important;
+  /* تأكيد على أن الزر لا يأخذ كل touch-events ويمنع السحب من فوقه */
+  /* لكن إن كان داخل قائمة قابلة للسحب، الأب يأخذ pan-y */
+}
+
+/* إزالة outline الافتراضي مع الإبقاء على focus-visible للوصول */
+button:focus:not(:focus-visible),
+a:focus:not(:focus-visible),
+[role="button"]:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* رد فعل بصري ناعم وفوري عند الضغط (60ms — يشبه التطبيقات الأصلية) */
+@media (hover: none) and (pointer: coarse) {
+  button:not(:disabled):active,
+  a:not([disabled]):active,
+  [role="button"]:not([aria-disabled="true"]):active,
+  .btn:not(:disabled):active,
+  .ym-btn:not(:disabled):active,
+  .ym-filter-pill-new:active,
+  .ym-footer-btn:active,
+  .yam-list-row:active,
+  .yam-bottom-nav-item:active,
+  .yam-action-btn:active,
+  .story-circle:active,
+  .tab-pill:active,
+  .clickable:active,
+  [data-clickable="true"]:active {
+    opacity: 0.78;
+    transform: scale(0.97);
+    transition: opacity 70ms cubic-bezier(0.4, 0, 0.2, 1),
+                transform 70ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+/* ------------------------------------------------------------
+   D) عناصر الصفوف القابلة للنقر داخل قوائم متمررة
+      (يجب أن تسمح بـ pan-y حتى لا تعلق القائمة)
+   ------------------------------------------------------------ */
+.yam-list-row,
+.yam-row-main-line,
+.post-card,
+.ym-post-card,
+.MobilePostCard,
+.feed-card,
+.notification-item,
+.chat-list-item,
+.conversation-item,
+.message-row,
+[class*="ListItem"],
+[class*="ListRow"],
+[class*="-item"][role="button"] {
+  touch-action: pan-y !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+/* ------------------------------------------------------------
+   E) الحاويات القابلة للتمرير — سرعة + سلاسة + مومنتم
+   ------------------------------------------------------------ */
+.mobile-layout-container,
+.mobile-main-content,
+main.mobile-main-content,
+main[role="main"],
+.ym-ptr-container,
+.page-content,
+.page-shell,
+.page-shell-glow,
+.yam-mobile-page,
+.yam-mobile-screen,
+.feed-shell,
+.profile-shell,
+.feed-scroll,
+.posts-feed,
+.yam-list,
+.virtualized-list,
+.infinite-scroll,
+.scroll-container,
+[data-scroll="vertical"] {
+  overflow-x: hidden !important;
+  /* visible للحاوية الخارجية حتى ترث للأب، أو auto للحاويات المخصصة */
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  overscroll-behavior-y: contain;
+}
+
+/* حاويات تمرير داخلية مخصصة (chat, modals) — auto */
+.ym-ptr-container,
+.ym-messages-area,
+.yam-messages-area,
+.chat-messages,
+.messages-list,
+.modal-scroll-body,
+.drawer-scroll-body {
+  overflow-y: auto !important;
+}
+
+/* قوائم أفقية — pan-x فقط، مع scrollbar مخفي وسلاسة عالية */
+.ym-filters,
+.yam-stories-rail,
+.yam-tabs-rail,
+.yam-tabs-wrap,
+.horizontal-scroll,
+.scroll-x,
+.story-rail,
+.tab-strip,
+.story-bar,
+[data-scroll="horizontal"] {
+  touch-action: pan-x !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-x: contain;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  /* snap اختياري للسلاسة */
+  scroll-snap-type: x proximity;
+}
+.ym-filters::-webkit-scrollbar,
+.yam-stories-rail::-webkit-scrollbar,
+.yam-tabs-rail::-webkit-scrollbar,
+.yam-tabs-wrap::-webkit-scrollbar,
+.horizontal-scroll::-webkit-scrollbar,
+.scroll-x::-webkit-scrollbar,
+.story-bar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* ------------------------------------------------------------
+   F) إصلاح المشكلة الأكثر شيوعاً: backdrop-filter على عناصر sticky
+      أثناء السحب يقتل أداء GPU على الأجهزة المتوسطة → "لمس ثقيل"
+   ------------------------------------------------------------ */
+@media (max-width: 1023.98px) {
+  /* تقليل قوة blur للأجهزة اللمسية حتى يبقى السحب 60fps */
+  .yam-mobile-header,
+  .yam-tabs-wrap,
+  .yam-search-box,
+  .top-navbar,
+  .desktop-navbar,
+  .bottom-mobile-nav,
+  .ym-bottom-nav,
+  .mobile-header,
+  .sticky-header {
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+  }
+
+  /* أثناء السحب الفعلي، نزيل blur مؤقتاً (يُدار بـ JS عبر .is-scrolling) */
+  html.is-scrolling .yam-mobile-header,
+  html.is-scrolling .yam-tabs-wrap,
+  html.is-scrolling .yam-search-box,
+  html.is-scrolling .top-navbar,
+  html.is-scrolling .desktop-navbar,
+  html.is-scrolling .mobile-header,
+  html.is-scrolling .sticky-header {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    /* لا نُعطّل خلفية الـ header، نضعها صلبة بدل blur */
+    background: rgba(4, 7, 19, 0.96) !important;
+  }
+}
+
+/* أجهزة قديمة جداً — إيقاف blur نهائياً */
+@media (max-width: 380px),
+       (prefers-reduced-motion: reduce) {
+  .yam-mobile-header,
+  .yam-tabs-wrap,
+  .yam-search-box,
+  .top-navbar,
+  .desktop-navbar,
+  .bottom-mobile-nav,
+  .ym-bottom-nav,
+  .mobile-header,
+  .post-card,
+  .feed-card,
+  .card {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+
+/* ------------------------------------------------------------
+   G) تقليل will-change العشوائي على الموبايل
+      (will-change كثيرة → استهلاك ذاكرة GPU → بطء اللمس)
+   ------------------------------------------------------------ */
+@media (max-width: 1023.98px) {
+  *,
+  *::before,
+  *::after {
+    /* لا نطبّق will-change إلا على عناصر متحركة فعلياً */
+    will-change: auto;
+  }
+
+  /* الحاويات المتمررة تستفيد فعلاً */
+  .ym-ptr-container,
+  .yam-messages-area,
+  .messages-list,
+  .horizontal-scroll {
+    will-change: scroll-position;
+  }
+}
+
+/* ------------------------------------------------------------
+   H) حماية من pointer-events: none على طبقات تعترض اللمس
+   ------------------------------------------------------------ */
+button,
+a,
+[role="button"],
+input,
+textarea,
+select,
+.clickable,
+[onclick] {
+  pointer-events: auto !important;
+}
+
+/* العناصر الزخرفية البحتة فقط تتجاهل اللمس */
+.decorative-overlay,
+.background-glow,
+.gradient-overlay,
+.neon-glow-bg,
+.shimmer-overlay,
+.bg-blob,
+.glow-ring,
+svg[aria-hidden="true"]:not([role="button"]):not([onClick]):not(.icon-clickable) {
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------
+   I) حقول الإدخال — منع تكبير iOS + سهولة التحرير
+   ------------------------------------------------------------ */
+input,
+textarea,
+select,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+  touch-action: manipulation;
+  /* 16px حد أدنى لمنع iOS من التكبير عند التركيز */
+  font-size: max(16px, 1em);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* ------------------------------------------------------------
+   J) PWA Standalone — تجربة كأنها تطبيق
+   ------------------------------------------------------------ */
+@media (display-mode: standalone),
+       (display-mode: fullscreen),
+       (display-mode: minimal-ui) {
+  html, body {
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y !important;
+    /* منع المستخدم من تحديد كل النص بنقرة طويلة عرضية */
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* لكن نسمح بالنص في المحتوى الحقيقي */
+  .post-content,
+  .message-text,
+  .user-bio,
+  .comment-text,
+  p,
+  span:not([role]):not([class*="btn"]):not([class*="icon"]),
+  input,
+  textarea {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  /* منع السحب الجانبي للرجوع (Android browser back gesture) داخل PWA */
+  body {
+    overscroll-behavior-x: none;
+  }
+
+  /* تثبيت safe-area على الـ headers والـ bottom-nav */
+  .yam-mobile-header,
+  .top-navbar,
+  .mobile-header {
+    padding-top: env(safe-area-inset-top, 0) !important;
+  }
+
+  .bottom-mobile-nav,
+  .ym-bottom-nav {
+    padding-bottom: env(safe-area-inset-bottom, 0) !important;
+  }
+}
+
+/* ------------------------------------------------------------
+   K) gesture-container — لا نقفل التمرير العمودي افتراضياً
+   ------------------------------------------------------------ */
+.gesture-container {
+  touch-action: pan-y !important;
+}
+.gesture-container.dragging,
+.gesture-container[data-gesture-active="true"],
+.gesture-container.gesture-active {
+  touch-action: none !important;
+}
+
+/* ------------------------------------------------------------
+   L) حماية ضد touch-action: none المضافة بـ inline style
+   ------------------------------------------------------------ */
+html[style*="touch-action: none"],
+body[style*="touch-action: none"],
+#root[style*="touch-action: none"] {
+  touch-action: pan-x pan-y !important;
+}
+
+/* ------------------------------------------------------------
+   M) رد فعل فوري لبطاقات الفيد والصفوف (active state)
+   ------------------------------------------------------------ */
+@media (hover: none) and (pointer: coarse) {
+  .yam-list-row:active,
+  .post-card:active:not(.no-press),
+  .feed-card:active:not(.no-press),
+  .notification-item:active,
+  .conversation-item:active,
+  .chat-list-item:active {
+    background-color: rgba(124, 58, 237, 0.06);
+    transition: background-color 80ms ease;
+  }
+}
+
+/* ------------------------------------------------------------
+   N) إصلاح المودال/الـ Drawer مفتوح — لا يُفقد التمرير الداخلي
+   ------------------------------------------------------------ */
+body.modal-open,
+body.is-chat-open,
+body.drawer-open {
+  overflow: hidden !important;
+  /* لكن المودال نفسه يجب أن يتمرر داخلياً */
+}
+
+body.modal-open .modal-scroll-body,
+body.is-chat-open .ym-messages-area,
+body.drawer-open .drawer-scroll-body {
+  overflow-y: auto !important;
+  touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior: contain;
+}
+
+/* ------------------------------------------------------------
+   O) iOS Safari — مومنتم على كل الحاويات المتمررة
+   ------------------------------------------------------------ */
+@supports (-webkit-touch-callout: none) {
+  body,
+  #root,
+  .mobile-layout-container,
+  .ym-ptr-container,
+  .page-content,
+  .feed-scroll,
+  .yam-messages-area,
+  .messages-list,
+  .horizontal-scroll {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* ------------------------------------------------------------
+   P) عناصر يجب أن تكون "غير قابلة للسحب" (drag preview)
+   ------------------------------------------------------------ */
+img,
+video,
+.user-avatar,
+.story-avatar,
+.post-image {
+  -webkit-user-drag: none;
+  user-drag: none;
+  -webkit-touch-callout: none;
+}
+
+/* ------------------------------------------------------------
+   Q) كلاس مساعد لإيقاف التمرير الخلفي بسرعة (يُضاف بـ JS)
+   ------------------------------------------------------------ */
+html.ym-touch-active {
+  /* أثناء سحب نشط معين (مثل long-press على رسالة) */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ------------------------------------------------------------
+   R) تأكيد نهائي على أن لا أحد يضع overflow:hidden على main
+   ------------------------------------------------------------ */
+main,
+main.mobile-main-content,
+main[role="main"] {
+  overflow-x: hidden !important;
+  overflow-y: visible !important;
+  touch-action: pan-y !important;
+}
+
+/* ------------------------------------------------------------
+   S) Pull-to-refresh مخصص للتطبيق — السماح بحركة سلسة
+   ------------------------------------------------------------ */
+.ym-ptr-container {
+  overscroll-behavior-y: contain;
+  /* لا scroll-snap هنا، يُربك سحب التحديث */
+  scroll-snap-type: none;
+}
+
+/* النهاية — v52 */

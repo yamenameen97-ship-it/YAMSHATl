@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import logger from '../../utils/logger.js';
 import { timeAgoAr as fmtTimeAgoAr, formatLocalDateTimeAr } from '../../utils/timeFormat.js';
 
@@ -24,6 +25,18 @@ export default function PostCardAdvanced({
   const [isDeleting, setIsDeleting] = useState(false);
   const [showActions, setShowActions] = useState(false);
   const [showComments, setShowComments] = useState(false);
+  const navigate = useNavigate();
+
+  /* ✅ فتح الملف الشخصي عند الضغط على الاسم/الأفاتار */
+  const goToAuthorProfile = useCallback((e) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    const u = String(post?.username || '').trim().replace(/^@/, '');
+    if (!u) return;
+    navigate(`/profile/${encodeURIComponent(u)}`);
+  }, [navigate, post?.username]);
+  const onKeyGoToAuthorProfile = useCallback((e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToAuthorProfile(e); }
+  }, [goToAuthorProfile]);
 
   // معالج الإعجاب
   const handleLike = useCallback(async () => {
@@ -108,15 +121,30 @@ export default function PostCardAdvanced({
           <img
             src={post.avatar || '/default-avatar.png'}
             alt={post.username}
+            role="link"
+            tabIndex={0}
+            onClick={goToAuthorProfile}
+            onKeyDown={onKeyGoToAuthorProfile}
+            aria-label={`فتح الملف الشخصي لـ ${post.username || ''}`}
+            title={`فتح ملف ${post.username || ''}`}
             style={{
               width: '40px',
               height: '40px',
               borderRadius: '50%',
               objectFit: 'cover',
+              cursor: 'pointer',
             }}
           />
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontWeight: 'bold', fontSize: '14px' }}>
+            <div
+              role="link"
+              tabIndex={0}
+              onClick={goToAuthorProfile}
+              onKeyDown={onKeyGoToAuthorProfile}
+              aria-label={`فتح الملف الشخصي لـ ${post.username || ''}`}
+              title={`فتح ملف ${post.username || ''}`}
+              style={{ fontWeight: 'bold', fontSize: '14px', cursor: 'pointer' }}
+            >
               {post.username}
             </div>
             <div style={{ fontSize: '12px', color: 'var(--text-muted)' }} title={timeTitle}>

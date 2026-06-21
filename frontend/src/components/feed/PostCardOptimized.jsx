@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, memo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Button from '../ui/Button.jsx';
 import Modal from '../ui/Modal.jsx';
 import Card from '../ui/Card.jsx';
@@ -59,6 +60,18 @@ const PostCardOptimized = memo(function PostCard({ post, onShowAnalytics, onLike
   const [myReaction, setMyReaction] = useState(post?.my_reaction || null);
   
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  /* ✅ فتح الملف الشخصي عند الضغط على الاسم/الأفاتار */
+  const goToAuthorProfile = useCallback((e) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    const u = String(post?.username || '').trim().replace(/^@/, '');
+    if (!u) return;
+    navigate(`/profile/${encodeURIComponent(u)}`);
+  }, [navigate, post?.username]);
+  const onKeyGoToAuthorProfile = useCallback((e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToAuthorProfile(e); }
+  }, [goToAuthorProfile]);
 
   // Memoize mutations
   const saveMutation = useMutation({
@@ -155,17 +168,26 @@ const PostCardOptimized = memo(function PostCard({ post, onShowAnalytics, onLike
       {/* Header — RTL Arabic */}
       <div dir="rtl" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}>
         <div style={{ display: 'flex', flexDirection: 'row-reverse', alignItems: 'center', gap: 10 }}>
-          <div style={{ 
-            width: 44, 
-            height: 44, 
-            borderRadius: '50%', 
-            background: 'var(--bg-soft)', 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center', 
-            overflow: 'hidden',
-            border: '2px solid var(--line)'
-          }}>
+          <div
+            role="link"
+            tabIndex={0}
+            onClick={goToAuthorProfile}
+            onKeyDown={onKeyGoToAuthorProfile}
+            aria-label={`فتح الملف الشخصي لـ ${post.username || ''}`}
+            title={`فتح ملف ${post.username || ''}`}
+            style={{ 
+              width: 44, 
+              height: 44, 
+              borderRadius: '50%', 
+              background: 'var(--bg-soft)', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              overflow: 'hidden',
+              border: '2px solid var(--line)',
+              cursor: 'pointer'
+            }}
+          >
             {post.avatar ? (
               <OptimizedImage
                 src={post.avatar}
@@ -179,7 +201,15 @@ const PostCardOptimized = memo(function PostCard({ post, onShowAnalytics, onLike
             )}
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+            <div
+              role="link"
+              tabIndex={0}
+              onClick={goToAuthorProfile}
+              onKeyDown={onKeyGoToAuthorProfile}
+              aria-label={`فتح الملف الشخصي لـ ${post.username || ''}`}
+              title={`فتح ملف ${post.username || ''}`}
+              style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end', cursor: 'pointer' }}
+            >
               {post.username}
               {post.is_verified && <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--accent)"><path d="M12,2L4.5,20.29L5.21,21L12,18L18.79,21L19.5,20.29L12,2Z" /></svg>}
             </div>

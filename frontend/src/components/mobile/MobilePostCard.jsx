@@ -1,4 +1,5 @@
 import { memo, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { timeAgoAr as fmtTimeAgoAr } from '../../utils/timeFormat.js';
 
 /**
@@ -53,6 +54,7 @@ function MobilePostCard({
   onSave,
   onMore,
 }) {
+  const navigate = useNavigate();
   const {
     authorName = 'مستخدم',
     handle = '@user',
@@ -84,9 +86,20 @@ function MobilePostCard({
     return String(n);
   };
 
+  /* ✅ v48 — استخراج اسم المستخدم النقي (بدون @) للتوجيه لصفحة البروفايل */
+  const cleanUsername = (post.username || (handle || '').replace(/^@/, '') || authorName || '').trim();
+  const goToProfile = (e) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    if (!cleanUsername) return;
+    navigate(`/profile/${encodeURIComponent(cleanUsername)}`);
+  };
+  const onKeyGoToProfile = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToProfile(e); }
+  };
+
   return (
     <article className="ym-post-card" dir="rtl">
-      {/* === الهيدر (ltr container لضمان الترتيب البصري) === */}
+      {/* === الهيدر (v48 — الاسم ملتصق بالأفاتار على اليمين، ⋯ على اليسار) === */}
       <header className="ym-post-header" dir="ltr">
         {/* أقصى اليسار: ثلاث نقاط ⋯ */}
         <button className="ym-more-btn" aria-label="المزيد" onClick={() => onMore?.(post)}>
@@ -97,23 +110,40 @@ function MobilePostCard({
           </svg>
         </button>
 
-        {/* الوسط: معلومات المستخدم — يمتد ليملأ المسافة بين ⋯ والـ Avatar */}
-        <div className="ym-post-title-area" dir="rtl">
-          <div className="ym-author-row">
-            <span className="ym-author-name">{authorName}</span>
-            {verified && <VerifiedBadge />}
+        {/* مجموعة هوية المستخدم على اليمين: [الاسم + الوقت] ثم [الأفاتار] مباشرة بجانبها */}
+        <div className="ym-identity-group" dir="ltr">
+          {/* النص (الاسم + الوقت/المعرّف) — قابل للنقر للذهاب للبروفايل */}
+          <div
+            className="ym-post-title-area ym-clickable"
+            dir="rtl"
+            role="link"
+            tabIndex={0}
+            onClick={goToProfile}
+            onKeyDown={onKeyGoToProfile}
+            aria-label={`فتح الملف الشخصي لـ ${authorName}`}
+          >
+            <div className="ym-author-row">
+              <span className="ym-author-name">{authorName}</span>
+              {verified && <VerifiedBadge />}
+            </div>
+            {/* ✅ ترتيب: الوقت • @handle (مطابق للصورة المرجعية) */}
+            <div className="ym-post-subtext" dir="rtl">
+              <span className="ym-time" title={timeTitle || ''}>{liveTime}</span>
+              <span className="ym-dot">•</span>
+              <bdi className="ym-handle">{handle}</bdi>
+              {isLive && <span className="ym-live-badge-inline">البث المباشر</span>}
+            </div>
           </div>
-          {/* ✅ إصلاح الاسم المعكوس: الوقت يأتي أولاً ثم @handle ليطابق الصورة المرجعية الثانية */}
-          <div className="ym-post-subtext" dir="rtl">
-            <span className="ym-time" title={timeTitle || ''}>{liveTime}</span>
-            <span className="ym-dot">•</span>
-            <bdi className="ym-handle">{handle}</bdi>
-            {isLive && <span className="ym-live-badge-inline">البث المباشر</span>}
-          </div>
-        </div>
 
-        {/* أقصى اليمين: Avatar (الشعار الدائري) */}
-        <div className="ym-post-avatar">
+          {/* أقصى اليمين: Avatar (الشعار الدائري) — قابل للنقر أيضاً */}
+          <div
+            className="ym-post-avatar ym-clickable"
+            role="link"
+            tabIndex={0}
+            onClick={goToProfile}
+            onKeyDown={onKeyGoToProfile}
+            aria-label={`فتح الملف الشخصي لـ ${authorName}`}
+          >
             {avatarUrl ? (
               <img src={avatarUrl} alt="" loading="lazy" decoding="async" />
             ) : (
@@ -129,6 +159,7 @@ function MobilePostCard({
                 <line x1="50" y1="55" x2="50" y2="86" stroke="url(#ym-post-avatar-grad)" strokeWidth="12" strokeLinecap="round" />
               </svg>
             )}
+          </div>
         </div>
       </header>
 
@@ -262,6 +293,26 @@ function MobilePostCard({
           touch-action: manipulation;
           -webkit-tap-highlight-color: transparent;
         }
+        /* ✅ v48: مجموعة الاسم + الأفاتار ملتصقتان كوحدة واحدة على اليمين */
+        .ym-identity-group {
+          display: flex;
+          flex-direction: row;
+          align-items: center;
+          gap: 8px;
+          min-width: 0;
+          flex: 0 1 auto;
+        }
+        .ym-clickable {
+          cursor: pointer;
+          transition: opacity 0.15s ease, transform 0.15s ease;
+        }
+        .ym-clickable:hover { opacity: 0.85; }
+        .ym-clickable:active { transform: scale(0.97); }
+        .ym-clickable:focus-visible {
+          outline: 2px solid #8B5CF6;
+          outline-offset: 2px;
+          border-radius: 8px;
+        }
         .ym-post-avatar {
           width: 38px;
           height: 38px;
@@ -282,8 +333,8 @@ function MobilePostCard({
           align-items: flex-end;
           text-align: right;
           min-width: 0;
-          flex: 1 1 auto;
-          padding-inline-end: 4px;
+          flex: 0 1 auto;
+          padding-inline-end: 0;
           direction: rtl;
         }
         .ym-author-row {

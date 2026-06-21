@@ -30,7 +30,15 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
   // وضع الريلز: الهيدر العلوي مُخفي تمامًا (v44 — TikTok pure mode)
   // المحتوى يملأ كامل الشاشة، ويتم الاكتفاء بالشريط العائم الداخلي (استكشف/أتابعه/لك + بحث + LIVE)
   const isReelsRoute = location.pathname === '/reels' || location.pathname.startsWith('/reels/');
-  const showChrome = !hideNav && !isConversationRoute; // إظهار الهيدر/الفوتر الموحّدين
+  // v50 — صفحة الإنشاء الموحّدة (رفع ريل/منشور/ستوري) تعمل بوضع fullscreen — إخفاء الهيدر العلوي والفوتر
+  const isComposerRoute =
+    location.pathname === '/compose' ||
+    location.pathname.startsWith('/compose/') ||
+    location.pathname.startsWith('/reels/compose') ||
+    location.pathname.startsWith('/reels/new') ||
+    location.pathname.startsWith('/post/compose') ||
+    location.pathname.startsWith('/post/new');
+  const showChrome = !hideNav && !isConversationRoute && !isComposerRoute; // إظهار الهيدر/الفوتر الموحّدين
   // v44: في الريلز نُخفي الهيدر العلوي بالكامل ونُبقي الفوتر فقط
   const showTopBar = showChrome && !isReelsRoute;
   const showBottomNav = showChrome;

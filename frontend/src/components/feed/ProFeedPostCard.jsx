@@ -126,6 +126,17 @@ export default function ProFeedPostCard({ post, onRefresh }) {
   const currentUsername = getCurrentUsername();
   const isOwner = String(currentUsername || '').toLowerCase() === String(post?.username || '').toLowerCase();
 
+  /* ✅ فتح الملف الشخصي لمؤلف المنشور عند الضغط على الاسم/الأفاتار */
+  const goToAuthorProfile = (e) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    const u = String(post?.username || '').trim().replace(/^@/, '');
+    if (!u) return;
+    navigate(`/profile/${encodeURIComponent(u)}`);
+  };
+  const onKeyGoToAuthorProfile = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToAuthorProfile(e); }
+  };
+
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
@@ -348,10 +359,28 @@ export default function ProFeedPostCard({ post, onRefresh }) {
       <Card className="feed-pro-card" style={{ padding: 18, borderRadius: 24, border: isPinned ? '1px solid rgba(168,85,247,0.58)' : '1px solid rgba(148,163,184,0.14)', background: 'linear-gradient(180deg, rgba(15,23,42,0.96), rgba(15,23,42,0.9))' }}>
         <div dir="rtl" style={{ display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap', fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}>
           <div style={{ display: 'flex', flexDirection: 'row-reverse', gap: 12, alignItems: 'center', minWidth: 0 }}>
-            <Avatar username={post.username || 'Yamshat'} src={post.avatar || post.user_avatar} size={48} />
+            <div
+              role="link"
+              tabIndex={0}
+              onClick={goToAuthorProfile}
+              onKeyDown={onKeyGoToAuthorProfile}
+              aria-label={`فتح الملف الشخصي لـ ${post.username || ''}`}
+              title={`فتح ملف ${post.username || ''}`}
+              style={{ cursor: 'pointer', display: 'inline-flex' }}
+            >
+              <Avatar username={post.username || 'Yamshat'} src={post.avatar || post.user_avatar} size={48} />
+            </div>
             <div style={{ minWidth: 0, textAlign: 'right' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                <strong style={{ fontSize: 16 }}>{post.username || 'Yamshat'}</strong>
+                <strong
+                  role="link"
+                  tabIndex={0}
+                  onClick={goToAuthorProfile}
+                  onKeyDown={onKeyGoToAuthorProfile}
+                  aria-label={`فتح الملف الشخصي لـ ${post.username || ''}`}
+                  title={`فتح ملف ${post.username || ''}`}
+                  style={{ fontSize: 16, cursor: 'pointer' }}
+                >{post.username || 'Yamshat'}</strong>
                 {post.is_verified ? <span title="موثق">✅</span> : null}
                 {isPinned ? <span className="feed-pill">📌 مثبت</span> : null}
                 {post.edit_count ? <span className="feed-pill soft">{post.edit_count} تعديل</span> : null}

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Button from '../ui/Button.jsx';
 import Modal from '../ui/Modal.jsx';
 import Card from '../ui/Card.jsx';
@@ -157,7 +158,19 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
   const { pushToast } = useToast();
   const currentUser = getCurrentUsername();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const prefs = useMemo(() => loadPostPrefs(), []);
+
+  /* ✅ فتح الملف الشخصي لمؤلف المنشور عند الضغط على الاسم أو الأفاتار */
+  const goToAuthorProfile = (e) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    const u = String(post?.username || '').trim().replace(/^@/, '');
+    if (!u) return;
+    navigate(`/profile/${encodeURIComponent(u)}`);
+  };
+  const onKeyGoToAuthorProfile = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToAuthorProfile(e); }
+  };
 
   const [showReactions, setShowReactions] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -472,11 +485,27 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
 
       <div dir="rtl" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 10, flexWrap: 'wrap', fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}>
         <div style={{ display: 'flex', flexDirection: 'row-reverse', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--bg-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '2px solid var(--line)' }}>
+          <div
+            role="link"
+            tabIndex={0}
+            onClick={goToAuthorProfile}
+            onKeyDown={onKeyGoToAuthorProfile}
+            aria-label={`فتح الملف الشخصي لـ ${post.username || ''}`}
+            title={`فتح ملف ${post.username || ''}`}
+            style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--bg-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '2px solid var(--line)', cursor: 'pointer' }}
+          >
             {post.avatar ? <img src={post.avatar} alt={post.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <strong>{post.username?.[0]?.toUpperCase()}</strong>}
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <div
+              role="link"
+              tabIndex={0}
+              onClick={goToAuthorProfile}
+              onKeyDown={onKeyGoToAuthorProfile}
+              aria-label={`فتح الملف الشخصي لـ ${post.username || ''}`}
+              title={`فتح ملف ${post.username || ''}`}
+              style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end', cursor: 'pointer' }}
+            >
               {post.username}
               {post.is_verified ? <span title="حساب موثق">✅</span> : null}
               {post.mentions?.length ? <span className="muted" style={{ fontSize: 12 }}>ذكر {post.mentions.length} مستخدم</span> : null}

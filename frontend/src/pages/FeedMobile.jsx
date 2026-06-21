@@ -1,9 +1,12 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import MobileComposer from '../components/mobile/MobileComposer.jsx';
 import MobileFilterPills from '../components/mobile/MobileFilterPills.jsx';
 import MobilePostCard from '../components/mobile/MobilePostCard.jsx';
-import MobileComposeModal from '../components/mobile/MobileComposeModal.jsx';
+// v50 — ألغي MobileComposeModal: استبدل بصفحة ReelComposer (/compose).
+// إبقاء المستورد للتوافق الخلفي (لن يتم استخدامه).
+// import MobileComposeModal from '../components/mobile/MobileComposeModal.jsx';
 import MobileCommentsSheet from '../components/mobile/MobileCommentsSheet.jsx';
 import Modal from '../components/ui/Modal.jsx';
 import useSmartFeed from '../hooks/useSmartFeed.js';
@@ -59,6 +62,8 @@ function normalizePost(p, i) {
   return {
     id: p.id ?? `p-${i}`,
     rawId: p.id,
+    /* ✅ v48: تمرير username صريح لتمكين التوجيه إلى /profile/:username عند النقر */
+    username: handle.replace(/^@/, ''),
     authorName: author,
     handle: `@${handle.replace(/^@/, '')}`,
     timeText: timeAgoAr(rawTime),
@@ -97,8 +102,8 @@ const WELCOME_POST = {
 
 function FeedMobile() {
   const [activeFilter, setActiveFilter] = useState('all');
-  const [composerOpen, setComposerOpen] = useState(false);
-  const [composerAction, setComposerAction] = useState(null);
+  // v50 — تمت إزالة حالة composerOpen/composerAction لأن المؤلّف أصبح صفحة مستقلة /compose
+  const navigate = useNavigate();
   const [commentsPostId, setCommentsPostId] = useState(null);
   const [moreMenuPost, setMoreMenuPost] = useState(null);
   const [moreMenuBusy, setMoreMenuBusy] = useState(false);
@@ -116,25 +121,29 @@ function FeedMobile() {
   const loading = smart?.isLoading || smart?.loading;
   const error = smart?.error;
 
-  // فتح المُنشئ عبر حدث (من BottomNav أو composer slot)
+  // v50 — أي حدث قديم لفتح المؤلّف أو ?compose=1 يحوّل إلى صفحة ReelComposer الجديدة
   useEffect(() => {
     const handler = (e) => {
-      setComposerAction(e?.detail?.action || null);
-      setComposerOpen(true);
+      const action = e?.detail?.action || null;
+      // تحديد التبويب المناسب بناءً على action
+      const tab = action === 'video' ? 'reel'
+        : action === 'story' ? 'story'
+        : action === 'image' ? 'photo'
+        : 'post';
+      navigate(`/compose?tab=${tab}`);
     };
     window.addEventListener('yamshat:open-composer', handler);
-    // كذلك ?compose=1 في URL
+    // توافق مع ?compose=1
     const url = new URL(window.location.href);
     if (url.searchParams.get('compose') === '1' || /[?&]compose=1/.test(window.location.hash)) {
-      setComposerOpen(true);
-      // تنظيف URL
       try {
         url.searchParams.delete('compose');
         window.history.replaceState(null, '', url.toString());
       } catch { /* ignore */ }
+      navigate('/compose?tab=post');
     }
     return () => window.removeEventListener('yamshat:open-composer', handler);
-  }, []);
+  }, [navigate]);
 
   const posts = useMemo(() => {
     const normalizedPosts = (Array.isArray(rawPosts) && rawPosts.length)
@@ -381,11 +390,15 @@ function FeedMobile() {
 
   const isOwnMoreMenuPost = moreMenuPost?.authorName === session?.username;
 
-  // ✅ v47: فتح المُنشئ بحالة محددة (صورة / GIF / إيموجي) مباشرةً
+  // v50 — تحويل صندوق "بماذا تفكر؟" لفتح صفحة ReelComposer (/compose) بدلاً من modal
   const openComposerWithAction = useCallback((action = null) => {
-    setComposerAction(action || null);
-    setComposerOpen(true);
-  }, []);
+    const tab = action === 'image' ? 'photo'
+      : action === 'video' ? 'reel'
+      : action === 'gif' ? 'post'
+      : action === 'emoji' ? 'post'
+      : 'post';
+    navigate(`/compose?tab=${tab}`);
+  }, [navigate]);
 
   return (
     <>
@@ -425,12 +438,7 @@ function FeedMobile() {
         </div>
       ) : null}
 
-      {/* مودال إنشاء منشور */}
-      <MobileComposeModal
-        open={composerOpen}
-        initialAction={composerAction}
-        onClose={() => { setComposerOpen(false); setComposerAction(null); }}
-      />
+      {/* v50 — تمت إزالة MobileComposeModal (المؤلّف القديم). الإنشاء يتم الآن عبر صفحة /compose */}
 
       {/* بوتوم شيت التعليقات */}
       <MobileCommentsSheet

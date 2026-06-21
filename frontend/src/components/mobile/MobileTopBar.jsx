@@ -117,9 +117,8 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
               className="ym-topbar-link ym-topbar-story"
               aria-label="إنشاء ستوري"
               onClick={() => {
-                try {
-                  window.dispatchEvent(new CustomEvent('yamshat:open-composer', { detail: { type: 'story' } }));
-                } catch { /* ignore */ }
+                // v50 — الانتقال إلى صفحة ReelComposer الجديدة على تبويب الستوري
+                navigate('/compose?tab=story');
               }}
               dir="rtl"
             >

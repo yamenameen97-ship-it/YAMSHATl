@@ -75,6 +75,14 @@ const NAV_ITEMS_LTR_ORDER = [
   },
 ];
 
+/**
+ * v50 — توحيد الإنشاء على صفحة ReelComposer (/compose):
+ * كل سياقات الإنشاء (منشور/ريل/ستوري/لايف/قوالب/صورة) أصبحت تفتح صفحة ReelComposer
+ * مع تمرير الـ tab الافتراضي عبر ?tab=...
+ * استثناء واحد:
+ *   - داخل /groups → إنشاء مجموعة (route خاص)
+ *   - داخل /inbox أو /chat → دردشة جديدة (حدث NewChatDialog)
+ */
 function resolveCreateAction(pathname) {
   if (pathname.startsWith('/groups')) {
     return { label: 'إنشاء مجموعة', kind: 'navigate', target: '/groups/create' };
@@ -83,12 +91,12 @@ function resolveCreateAction(pathname) {
     return { label: 'دردشة جديدة', kind: 'event', event: 'yamshat:open-new-chat', fallback: '/inbox' };
   }
   if (pathname.startsWith('/reels')) {
-    return { label: 'ريل جديد', kind: 'event', event: 'yamshat:open-reel-composer', fallback: '/reels' };
+    return { label: 'ريل جديد', kind: 'navigate', target: '/compose?tab=reel' };
   }
   if (pathname.startsWith('/stories')) {
-    return { label: 'ستوري جديد', kind: 'event', event: 'yamshat:open-story-composer', fallback: '/stories' };
+    return { label: 'ستوري جديد', kind: 'navigate', target: '/compose?tab=story' };
   }
-  return { label: 'منشور جديد', kind: 'event', event: 'yamshat:open-composer', fallback: '/' };
+  return { label: 'منشور جديد', kind: 'navigate', target: '/compose?tab=post' };
 }
 
 function BottomNav() {

@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 /**
  * MobileComposer (v47.7 — pixel-perfect "بماذا تفكر؟" — مطابق تماماً للصورة)
@@ -16,12 +17,17 @@ import { memo } from 'react';
  * ✅ استجابة كاملة: 320 / 360 / 400 / 480 / 768+.
  */
 function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
+  const navigate = useNavigate();
+  // v50 — فتح صفحة ReelComposer الجديدة بدلاً من dispatch حدث المودال القديم
   const open = (action) => {
     if (onFocus) {
       onFocus(action);
       return;
     }
-    window.dispatchEvent(new CustomEvent('yamshat:open-composer', { detail: { action } }));
+    const tab = action === 'image' ? 'photo'
+      : action === 'video' ? 'reel'
+      : 'post';
+    navigate(`/compose?tab=${tab}`);
   };
 
   return (

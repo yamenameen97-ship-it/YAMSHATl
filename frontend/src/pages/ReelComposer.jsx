@@ -1,6 +1,6 @@
 // PLACEHOLDER - will be filled by MultiEdit
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import API from '../api/axios.js';
 import mediaUploadService from '../services/media/mediaUploadService.js';
 import { useToast } from '../components/admin/ToastProvider.jsx';
@@ -108,10 +108,24 @@ const Icons = {
 
 export default function ReelComposer() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { push: pushToast } = useToast() || {};
 
+  // v50 — التبويب الافتراضي يأتي من ?tab=post|reel|story|live|photo|templates
+  const initialTabFromUrl = useMemo(() => {
+    try {
+      const sp = new URLSearchParams(location.search);
+      const t = (sp.get('tab') || '').toLowerCase();
+      if (['post', 'reel', 'story', 'live', 'photo', 'templates'].includes(t)) return t;
+    } catch { /* ignore */ }
+    // fallback بناءً على pathname
+    if (location.pathname.startsWith('/post')) return 'post';
+    if (location.pathname.startsWith('/reels')) return 'reel';
+    return 'reel';
+  }, [location.search, location.pathname]);
+
   // أوضاع الكاميرا والإعدادات
-  const [activeTab, setActiveTab] = useState('reel');
+  const [activeTab, setActiveTab] = useState(initialTabFromUrl);
   const [duration, setDuration] = useState(15);
   const [speed, setSpeed] = useState(1);
   const [quality, setQuality] = useState('1080p');
@@ -325,14 +339,22 @@ export default function ReelComposer() {
     pushToast?.({ tone: 'info', message: 'تم اختيار الفيديو من المعرض' });
   };
 
+  // v50 — تبديل التبويبات داخل الصفحة (دون الرجوع للمؤلّف القديم)
   const onTabSwitch = (id) => {
     setActiveTab(id);
-    if (id === 'live') navigate('/voice'); // البث المباشر
-    if (id === 'post') {
-      // فتح المؤلّف العام
-      try { window.dispatchEvent(new CustomEvent('yamshat:open-composer')); } catch { /* ignore */ }
-      navigate('/');
+    // تحديث ?tab=... في الرابط للحفاظ على الحالة عند التحديث
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', id);
+      window.history.replaceState(null, '', url.toString());
+    } catch { /* ignore */ }
+
+    if (id === 'live') {
+      // البث المباشر — انتقال للغرف الصوتية/البث
+      navigate('/voice');
+      return;
     }
+    // باقي التبويبات (post / reel / story / photo / templates) تبقى داخل نفس الصفحة
   };
 
   // --- شريط التقدم العلوي أثناء التسجيل ---

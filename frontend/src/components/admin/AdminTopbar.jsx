@@ -6,7 +6,7 @@ import { clearStoredUser, getStoredUser } from '../../utils/auth.js';
 import useDebouncedValue from '../../hooks/useDebouncedValue.js';
 import { getFlattenedAdminItems } from './adminNavigation.js';
 
-export default function AdminTopbar({ title, subtitle, onToggleSidebar, notifications = [] }) {
+export default function AdminTopbar({ title, subtitle, onToggleSidebar, notifications = [], serverStatus = { state: 'online', text: 'متصل' } }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState({ users: [], posts: [] });
   const [openNotifications, setOpenNotifications] = useState(false);
@@ -75,9 +75,20 @@ export default function AdminTopbar({ title, subtitle, onToggleSidebar, notifica
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="بحث عن مستخدم، بث، منشور..." />
           </div>
           {/* Inline page heading next to search to save vertical space */}
-          <div className="admin-topbar-inline-heading">
+          <div className="admin-topbar-inline-heading admin-topbar-inline-heading-compact">
             <strong className="admin-topbar-inline-title">{title}</strong>
             {subtitle ? <span className="admin-topbar-inline-sub">{subtitle}</span> : null}
+          </div>
+          {/* ✅ v55: صندوق حالة السيرفر (مربع صغير بجوار العنوان بدل الشريط الأحمر الممتد) */}
+          <div
+            className={`admin-server-status admin-server-status-${serverStatus.state || 'online'}`}
+            title={`حالة السيرفر: ${serverStatus.text}`}
+          >
+            <span className="admin-server-status-dot" />
+            <div className="admin-server-status-body">
+              <strong>حالة السيرفر</strong>
+              <span>{serverStatus.text}</span>
+            </div>
           </div>
           {(results.users.length || results.posts.length) ? (
             <div className="search-results-panel">

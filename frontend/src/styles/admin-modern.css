@@ -1162,3 +1162,172 @@
   height: 100% !important;
   object-fit: contain;
 }
+
+/* ============================================================
+ * ✅ v55 — Fixes:
+ *  1) إزالة الفراغ العلوي فوق التوب-بار (رفع المحتوى لأعلى الشاشة)
+ *  2) صندوق "حالة السيرفر" مربع بجوار عنوان "لوحة التحكم"
+ *     بدل الشريط الأحمر الممتد على كامل الصفحة (يستعيد المساحة
+ *     المسروقة من نصوص بطاقات الإحصائيات كـ "الإيرادات")
+ *  3) تقصير ارتفاع رسالة الترحيب لتساوي ارتفاع صندوق الحالة
+ * ============================================================ */
+
+/* ---------- إزالة الفراغ العلوي ---------- */
+.admin-app-shell,
+.admin-reference-shell,
+.admin-shell-modern {
+  margin: 0 !important;
+  padding: 0 !important;
+  min-height: 100vh;
+}
+
+.admin-main-shell-modern {
+  padding-top: 0 !important;
+  margin-top: 0 !important;
+}
+
+.admin-topbar-modern {
+  margin-top: 0 !important;
+  top: 0 !important;
+}
+
+body, html {
+  margin: 0 !important;
+}
+
+/* تقليص ارتفاع التوب-بار وجعله محاذي تماماً لأعلى الشاشة */
+.admin-topbar-modern {
+  padding-top: 3px !important;
+  padding-bottom: 3px !important;
+  min-height: 42px !important;
+}
+
+/* ---------- صندوق حالة السيرفر (بجوار العنوان) ---------- */
+.admin-topbar-inline-heading-compact {
+  flex: 0 1 auto !important;
+  min-width: 0;
+  max-width: 260px;
+}
+.admin-topbar-inline-heading-compact .admin-topbar-inline-title {
+  font-size: 13px;
+  font-weight: 800;
+}
+.admin-topbar-inline-heading-compact .admin-topbar-inline-sub {
+  font-size: 10.5px;
+}
+
+.admin-server-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--adm-border);
+  background: rgba(255,255,255,0.04);
+  flex-shrink: 0;
+  transition: background .18s ease, border-color .18s ease;
+  margin-inline-start: 8px;
+}
+.admin-server-status-body {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+  min-width: 0;
+}
+.admin-server-status-body strong {
+  color: var(--adm-text);
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.admin-server-status-body span {
+  color: var(--adm-text-muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.admin-server-status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #94a3b8;
+  flex-shrink: 0;
+  box-shadow: 0 0 8px rgba(148, 163, 184, 0.6);
+  animation: serverStatusPulse 2.2s ease-in-out infinite;
+}
+
+/* ألوان الحالات المختلفة */
+.admin-server-status-online {
+  background: rgba(16, 185, 129, 0.10);
+  border-color: rgba(16, 185, 129, 0.35);
+}
+.admin-server-status-online .admin-server-status-dot {
+  background: #10b981;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.85);
+}
+.admin-server-status-online .admin-server-status-body span {
+  color: #34d399;
+}
+
+.admin-server-status-error,
+.admin-server-status-offline {
+  background: rgba(239, 68, 68, 0.10);
+  border-color: rgba(239, 68, 68, 0.40);
+}
+.admin-server-status-error .admin-server-status-dot,
+.admin-server-status-offline .admin-server-status-dot {
+  background: #ef4444;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.85);
+}
+.admin-server-status-error .admin-server-status-body span,
+.admin-server-status-offline .admin-server-status-body span {
+  color: #fca5a5;
+}
+
+.admin-server-status-warning {
+  background: rgba(234, 179, 8, 0.10);
+  border-color: rgba(234, 179, 8, 0.40);
+}
+.admin-server-status-warning .admin-server-status-dot {
+  background: #eab308;
+  box-shadow: 0 0 10px rgba(234, 179, 8, 0.85);
+}
+.admin-server-status-warning .admin-server-status-body span {
+  color: #fde047;
+}
+
+.admin-server-status-checking {
+  background: rgba(99, 102, 241, 0.10);
+  border-color: rgba(99, 102, 241, 0.35);
+}
+.admin-server-status-checking .admin-server-status-dot {
+  background: #818cf8;
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.85);
+}
+
+@keyframes serverStatusPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(0.85); opacity: 0.7; }
+}
+
+/* تجاوب: على الشاشات الأصغر، اختفاء النص وإبقاء النقطة فقط */
+@media (max-width: 980px) {
+  .admin-server-status-body { display: none; }
+  .admin-server-status {
+    padding: 6px;
+    width: 36px;
+    justify-content: center;
+  }
+}
+
+/* ---------- إخفاء أي شريط أحمر ممتد قديم ---------- */
+.admin-page-shell-modern .ls-error,
+.admin-page-shell-modern > .app-status-banner,
+.admin-reference-page-shell > .app-status-banner {
+  display: none !important;
+}
+
+/* تقليص الـ padding العلوي للصفحة لرفع البطاقات */
+.admin-page-shell-modern {
+  padding-top: 4px !important;
+}

@@ -286,9 +286,7 @@ export default function AdminDashboard() {
         {loading && !data ? (
           <div className="ls-loading">جاري تحميل البيانات الحية...</div>
         ) : null}
-        {error ? (
-          <div className="ls-error">⚠ {error}</div>
-        ) : null}
+        {/* ✅ v55: إزالة شريط الخطأ الأحمر الممتد لأن حالة السيرفر تظهر الآن في التوب-بار */}
 
         {/* ====== Stat cards (6 بطاقات في صف واحد) ====== */}
         <div className="ls-stats-grid">

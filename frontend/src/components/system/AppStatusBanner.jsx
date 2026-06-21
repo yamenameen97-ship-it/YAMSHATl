@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAppStore } from '../../store/appStore.js';
 import { getSessionTtlMs } from '../../utils/auth.js';
 
@@ -8,10 +9,16 @@ function formatRemaining(ms) {
 }
 
 export default function AppStatusBanner() {
+  const location = useLocation();
   const isOnline = useAppStore((state) => state.isOnline);
   const queuedActions = useAppStore((state) => state.queuedActions);
   const ttl = getSessionTtlMs();
   const [syncNote, setSyncNote] = useState('');
+
+  // ✅ v55: إخفاء البانر العلوي داخل صفحات الأدمن لأنها أصبحت
+  // تملك صندوق "حالة السيرفر" الخاص بها داخل التوب-بار،
+  // والبانر الممتد كان يسبب فراغاً فوق اللوحة ويضغط بطاقات الإحصائيات.
+  const isAdminRoute = /^\/admin(\/|$)/.test(location.pathname || '');
 
   useEffect(() => {
     const handleSent = () => setSyncNote('تمت مزامنة عنصر مؤجل بنجاح.');
@@ -51,6 +58,7 @@ export default function AppStatusBanner() {
     return null;
   }, [isOnline, queuedActions.length, syncNote, ttl]);
 
+  if (isAdminRoute) return null;
   if (!banner) return null;
 
   return (

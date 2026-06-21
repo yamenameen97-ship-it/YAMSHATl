@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
-import { getAdminNotifications } from '../../api/admin.js';
+import { getAdminNotifications, getAdminDashboardLive } from '../../api/admin.js';
 import socket from '../../api/socket.js';
 import { getAuthToken, getStoredUser } from '../../utils/auth.js';
 import '../../styles/admin-modern.css';
@@ -10,10 +10,10 @@ import AdminTopbar from './AdminTopbar.jsx';
 import { useToast } from './ToastProvider.jsx';
 
 const routeMeta = {
-  '/admin/dashboard': { title: 'لوحة التحكم', subtitle: 'مرحباً بك، إليك نظرة عامة على المنصة', breadcrumb: ['الإدارة', 'الرئيسية'] },
+  '/admin/dashboard': { title: 'لوحة التحكم', subtitle: 'نظرة عامة على المنصة', breadcrumb: ['الإدارة', 'الرئيسية'] },
   '/admin/posts': { title: 'إدارة المنشورات', breadcrumb: ['الإدارة', 'المنشورات'] },
   '/admin/content': { title: 'إدارة المنشورات', breadcrumb: ['الإدارة', 'المنشورات'] },
-  '/admin/chat': { title: 'إدارة الشات', breadcrumb: ['الإدارة', 'الشات'] },
+  '/admin/chat': { title: 'إدارة الشات', subtitle: 'مراقبة المحادثات والإشراف الفوري', breadcrumb: ['الإدارة', 'الشات'] },
   '/admin/stories': { title: 'إدارة الستوري', breadcrumb: ['الإدارة', 'الستوري'] },
   '/admin/reels': { title: 'إدارة الريلز', breadcrumb: ['الإدارة', 'الريلز'] },
   '/admin/live': { title: 'إدارة البثوث', breadcrumb: ['الإدارة', 'البثوث'] },
@@ -30,6 +30,7 @@ export default function AdminLayout({ children }) {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [notifications, setNotifications] = useState([]);
+  const [serverStatus, setServerStatus] = useState({ state: 'checking', text: 'جاري الفحص...' });
   const { pushToast } = useToast();
   const user = getStoredUser();
   const token = getAuthToken();
@@ -39,6 +40,23 @@ export default function AdminLayout({ children }) {
     () => meta.breadcrumb.map((label, index) => ({ label, to: index === meta.breadcrumb.length - 1 ? '' : '/admin/dashboard' })),
     [meta]
   );
+
+  // ✅ v55: فحص حالة السيرفر بشكل خفيف بدون إظهار شريط أحمر على كامل الصفحة
+  const checkServerStatus = useCallback(async () => {
+    try {
+      await getAdminDashboardLive();
+      setServerStatus({ state: 'online', text: 'متصل' });
+    } catch (err) {
+      const code = err?.response?.status;
+      if (!code) {
+        setServerStatus({ state: 'offline', text: 'بلا اتصال' });
+      } else if (code >= 500) {
+        setServerStatus({ state: 'error', text: 'خطأ بالخادم' });
+      } else {
+        setServerStatus({ state: 'warning', text: 'اتصال ضعيف' });
+      }
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -52,6 +70,16 @@ export default function AdminLayout({ children }) {
     };
 
     loadNotifications();
+    checkServerStatus();
+    const statusInterval = setInterval(() => {
+      if (active) checkServerStatus();
+    }, 30_000);
+
+    // الاستماع لأحداث socket لتحديث حالة السيرفر فوراً
+    const onConnect = () => active && setServerStatus({ state: 'online', text: 'متصل' });
+    const onDisconnect = () => active && setServerStatus({ state: 'offline', text: 'بلا اتصال' });
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
 
     if (!socket.connected) socket.connect();
     socket.emit('register_user', { token, user: user?.username });
@@ -67,16 +95,25 @@ export default function AdminLayout({ children }) {
 
     return () => {
       active = false;
+      clearInterval(statusInterval);
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
       socket.off('admin:notification', onAdminNotification);
       syncEvents.forEach((eventName) => socket.off(eventName, loadNotifications));
     };
-  }, [pushToast, token, user?.username]);
+  }, [pushToast, token, user?.username, checkServerStatus]);
 
   return (
     <div className="admin-app-shell admin-reference-shell admin-shell-modern">
       <AdminSidebar collapsed={collapsed} permissions={user?.permissions || []} role={user?.role || 'user'} />
       <div className="admin-main-shell admin-main-shell-modern">
-        <AdminTopbar title={meta.title} subtitle={meta.subtitle} onToggleSidebar={() => setCollapsed((prev) => !prev)} notifications={notifications} />
+        <AdminTopbar
+          title={meta.title}
+          subtitle={meta.subtitle}
+          onToggleSidebar={() => setCollapsed((prev) => !prev)}
+          notifications={notifications}
+          serverStatus={serverStatus}
+        />
         <main className="admin-page-shell admin-reference-page-shell admin-page-shell-modern">
           {children}
         </main>

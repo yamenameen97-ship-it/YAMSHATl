@@ -1,108 +1,720 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout.jsx';
-import Card from '../../components/ui/Card.jsx';
-import Button from '../../components/ui/Button.jsx';
-import Modal from '../../components/ui/Modal.jsx';
 import { getChatThreads, getMessages, restoreMessage } from '../../api/chat.js';
 import socket from '../../api/socket.js';
 import { useToast } from '../../components/admin/ToastProvider.jsx';
+
+/**
+ * ========================================================================
+ * AdminChat — إدارة الشات (v55)
+ * ------------------------------------------------------------------------
+ *  - واجهة عربية كاملة (RTL)
+ *  - تصميم متناسق مع باقي صفحات الأدمن (admin-modern)
+ *  - فك تشفير الرسائل المعروضة (إخفاء بادئة [ENCRYPTED]) وتنظيفها
+ *  - عرض المحادثات النشطة في عمود يمين، ومحتوى المحادثة في عمود يسار
+ *  - الإشراف الفوري على المحادثات + استعادة الرسائل المحذوفة
+ * ========================================================================
+ */
+
+// تنظيف نص الرسالة من أي بادئات/علامات تشفير قبل عرضها للأدمن
+function cleanEncryptedText(text) {
+  if (!text || typeof text !== 'string') return '';
+  return text
+    .replace(/\[\/?ENCRYPTED[^\]]*\]/gi, '')
+    .replace(/^\.\.\.\s*/, '')
+    .trim();
+}
+
+// اختصار النص لطول معيّن
+function truncate(text, n = 60) {
+  const t = cleanEncryptedText(text);
+  if (!t) return 'لا توجد رسائل بعد';
+  return t.length > n ? `${t.slice(0, n)}…` : t;
+}
+
+// تنسيق الوقت بصيغة عربية مختصرة
+function formatTime(ts) {
+  if (!ts) return '';
+  try {
+    const d = new Date(ts);
+    return d.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
+}
 
 export default function AdminChat() {
   const [threads, setThreads] = useState([]);
   const [activeThread, setActiveThread] = useState(null);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
   const { pushToast } = useToast();
 
   const loadThreads = async () => {
     try {
       const { data } = await getChatThreads();
-      setThreads(data || []);
+      const list = Array.isArray(data) ? data : (data?.items || []);
+      setThreads(list);
+    } catch {
+      setThreads([]);
     } finally {
       setLoading(false);
     }
   };
 
+  const loadMessages = async (threadId) => {
+    if (!threadId) return;
+    try {
+      const { data } = await getMessages(threadId);
+      setMessages(data?.items || data?.messages || []);
+    } catch {
+      setMessages([]);
+    }
+  };
+
   useEffect(() => {
     loadThreads();
-    socket.on('abuse_detected', (payload) => {
-      pushToast({ title: 'Abuse Detected', description: `In chat with ${payload.user}`, type: 'warning' });
+    const onAbuse = (payload) => {
+      pushToast({
+        title: 'تم رصد إساءة',
+        description: `في محادثة مع ${payload?.user || 'مستخدم'}`,
+        type: 'warning',
+      });
       loadThreads();
-    });
-    return () => socket.off('abuse_detected');
+    };
+    socket.on('abuse_detected', onAbuse);
+    return () => socket.off('abuse_detected', onAbuse);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleRestore = async (messageId) => {
     try {
       await restoreMessage(messageId);
-      pushToast({ title: 'Message Restored', type: 'success' });
+      pushToast({ title: 'تمت استعادة الرسالة', type: 'success' });
       if (activeThread) loadMessages(activeThread.id);
-    } catch (err) {
-      pushToast({ title: 'Restore Failed', type: 'error' });
+    } catch {
+      pushToast({ title: 'فشلت استعادة الرسالة', type: 'error' });
     }
   };
 
-  const loadMessages = async (threadId) => {
-    const { data } = await getMessages(threadId);
-    setMessages(data.items || []);
-  };
+  const filteredThreads = useMemo(() => {
+    if (!searchTerm.trim()) return threads;
+    const q = searchTerm.trim().toLowerCase();
+    return threads.filter((t) => {
+      const name = (t.username || t.name || '').toLowerCase();
+      const last = cleanEncryptedText(t.last_message || '').toLowerCase();
+      return name.includes(q) || last.includes(q);
+    });
+  }, [threads, searchTerm]);
 
   return (
     <AdminLayout>
-      <div className="admin-chat-layout">
-        <aside className="chat-sidebar">
-          <Card title="Active Conversations">
-            <div className="thread-list">
-              {threads.map(thread => (
-                <div 
-                  key={thread.id} 
-                  className={`thread-item ${activeThread?.id === thread.id ? 'active' : ''} ${thread.flagged ? 'flagged' : ''}`}
-                  onClick={() => { setActiveThread(thread); loadMessages(thread.id); }}
-                >
-                  <div className="thread-meta">
-                    <strong>{thread.username}</strong>
-                    {thread.abuse_score > 50 && <span className="abuse-indicator">!</span>}
-                  </div>
-                  <p className="last-msg">{thread.last_message?.slice(0, 30)}...</p>
-                </div>
-              ))}
+      <div className="adm-chat" dir="rtl">
+        {/* الشريط العلوي للصفحة (إحصائيات سريعة) */}
+        <div className="adm-chat-toolbar">
+          <div className="adm-chat-toolbar-left">
+            <div className="adm-chat-stat">
+              <span className="adm-chat-stat-dot adm-chat-stat-dot-ok" />
+              <strong>{threads.length}</strong>
+              <span>محادثات نشطة</span>
             </div>
-          </Card>
-        </aside>
+            <div className="adm-chat-stat">
+              <span className="adm-chat-stat-dot adm-chat-stat-dot-warn" />
+              <strong>{threads.filter((t) => t.flagged || (t.abuse_score || 0) > 50).length}</strong>
+              <span>تحت المراقبة</span>
+            </div>
+            <div className="adm-chat-stat">
+              <span className="adm-chat-stat-dot adm-chat-stat-dot-info" />
+              <strong>مفعّل</strong>
+              <span>الإشراف الفوري</span>
+            </div>
+          </div>
+          <div className="adm-chat-toolbar-right">
+            <input
+              type="search"
+              className="adm-chat-search"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="ابحث عن مستخدم أو محتوى رسالة..."
+            />
+          </div>
+        </div>
 
-        <main className="chat-monitor-area">
-          {activeThread ? (
-            <Card title={`Monitoring: ${activeThread.username}`}>
-              <div className="messages-scroller">
-                {messages.map(msg => (
-                  <div key={msg.id} className={`msg-bubble ${msg.deleted ? 'deleted' : ''}`}>
-                    <div className="msg-content">
-                      {msg.type === 'media' ? (
-                        <div className="media-placeholder">
-                          [Media Moderation Pending]
-                          <button className="text-link" onClick={() => window.open(msg.media_url)}>View Original</button>
+        <div className="adm-chat-grid">
+          {/* قائمة المحادثات */}
+          <aside className="adm-chat-list-card">
+            <div className="adm-chat-card-head">
+              <h3>المحادثات النشطة</h3>
+              <span className="adm-chat-count">{filteredThreads.length}</span>
+            </div>
+            <div className="adm-chat-thread-list">
+              {loading ? (
+                <div className="adm-chat-empty">جاري تحميل المحادثات...</div>
+              ) : filteredThreads.length === 0 ? (
+                <div className="adm-chat-empty">
+                  {searchTerm ? 'لا نتائج مطابقة لبحثك' : 'لا توجد محادثات حالياً'}
+                </div>
+              ) : (
+                filteredThreads.map((thread) => {
+                  const isActive = activeThread?.id === thread.id;
+                  const isFlagged = thread.flagged || (thread.abuse_score || 0) > 50;
+                  const lastMsg = truncate(thread.last_message, 50);
+                  return (
+                    <button
+                      type="button"
+                      key={thread.id}
+                      className={`adm-chat-thread ${isActive ? 'is-active' : ''} ${isFlagged ? 'is-flagged' : ''}`}
+                      onClick={() => {
+                        setActiveThread(thread);
+                        loadMessages(thread.id);
+                      }}
+                    >
+                      <div className="adm-chat-thread-avatar">
+                        {(thread.username || '?').charAt(0).toUpperCase()}
+                      </div>
+                      <div className="adm-chat-thread-body">
+                        <div className="adm-chat-thread-row">
+                          <strong>{thread.username || 'مستخدم'}</strong>
+                          {isFlagged ? <span className="adm-chat-flag">⚠</span> : null}
+                          <span className="adm-chat-thread-time">{formatTime(thread.updated_at || thread.last_at)}</span>
                         </div>
-                      ) : (
-                        <p>{msg.content}</p>
-                      )}
-                      {msg.deleted && <button className="restore-btn" onClick={() => handleRestore(msg.id)}>Restore Message</button>}
+                        <p className="adm-chat-thread-preview">{lastMsg}</p>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </aside>
+
+          {/* محتوى المحادثة */}
+          <section className="adm-chat-main-card">
+            {activeThread ? (
+              <>
+                <div className="adm-chat-card-head">
+                  <div className="adm-chat-active-info">
+                    <div className="adm-chat-active-avatar">
+                      {(activeThread.username || '?').charAt(0).toUpperCase()}
                     </div>
-                    <div className="msg-meta">
-                      <span>{new Date(msg.created_at).toLocaleTimeString()}</span>
-                      {msg.ai_score && <span className="ai-score">AI: {msg.ai_score}%</span>}
+                    <div>
+                      <h3>{activeThread.username || 'مستخدم'}</h3>
+                      <small>مراقبة فورية للمحادثة · كشف الإساءة والوسائط مفعّل</small>
                     </div>
                   </div>
-                ))}
+                  <div className="adm-chat-active-actions">
+                    <button type="button" className="adm-chat-btn ghost" onClick={() => loadMessages(activeThread.id)}>تحديث</button>
+                  </div>
+                </div>
+
+                <div className="adm-chat-messages">
+                  {messages.length === 0 ? (
+                    <div className="adm-chat-empty">لا توجد رسائل في هذه المحادثة بعد.</div>
+                  ) : (
+                    messages.map((msg) => {
+                      const isMedia = msg.type === 'media' || msg.kind === 'media' || msg.media_url;
+                      const cleanText = cleanEncryptedText(msg.content || msg.text || msg.message || '');
+                      return (
+                        <div
+                          key={msg.id}
+                          className={`adm-chat-msg ${msg.deleted ? 'is-deleted' : ''} ${(msg.ai_score || 0) > 70 ? 'is-flagged' : ''}`}
+                        >
+                          <div className="adm-chat-msg-head">
+                            <strong>{msg.sender || msg.from || activeThread.username}</strong>
+                            <span className="adm-chat-msg-time">{formatTime(msg.created_at || msg.timestamp)}</span>
+                            {msg.ai_score ? (
+                              <span className={`adm-chat-msg-ai ${msg.ai_score > 70 ? 'high' : msg.ai_score > 40 ? 'mid' : 'low'}`}>
+                                AI {msg.ai_score}%
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="adm-chat-msg-body">
+                            {isMedia ? (
+                              <div className="adm-chat-msg-media">
+                                <span className="adm-chat-msg-media-icon">📎</span>
+                                <span>وسائط بانتظار المراجعة</span>
+                                {msg.media_url ? (
+                                  <button
+                                    type="button"
+                                    className="adm-chat-link"
+                                    onClick={() => window.open(msg.media_url, '_blank', 'noopener,noreferrer')}
+                                  >
+                                    عرض الأصل
+                                  </button>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <p>{cleanText || '— رسالة فارغة —'}</p>
+                            )}
+                            {msg.deleted ? (
+                              <button
+                                type="button"
+                                className="adm-chat-btn solid"
+                                onClick={() => handleRestore(msg.id)}
+                              >
+                                استعادة الرسالة
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="adm-chat-placeholder">
+                <div className="adm-chat-placeholder-icon">💬</div>
+                <h3>اختر محادثة لبدء المراقبة</h3>
+                <p>الإشراف الفوري على الإساءات وفحص الوسائط مُفعّل لكل المحادثات.</p>
+                <ul className="adm-chat-placeholder-tips">
+                  <li>اضغط على أي محادثة من القائمة الجانبية لعرض رسائلها.</li>
+                  <li>الرسائل المُشار إليها بـ <em>⚠</em> تحتاج مراجعة سريعة.</li>
+                  <li>يمكنك استعادة أي رسالة محذوفة من المحادثة المختارة.</li>
+                </ul>
               </div>
-            </Card>
-          ) : (
-            <div className="chat-empty-state">
-              <h3>Select a conversation to monitor</h3>
-              <p>Real-time abuse detection and media moderation are active.</p>
-            </div>
-          )}
-        </main>
+            )}
+          </section>
+        </div>
       </div>
+
+      <style>{`
+        /* ====================================================================
+         * AdminChat v55 — تنسيق متناسق مع باقي صفحات الأدمن
+         * ==================================================================== */
+        .adm-chat {
+          font-family: 'Noto Sans Arabic', system-ui, sans-serif;
+          color: #e2e8f0;
+          padding: 0;
+          margin: 0;
+          direction: rtl;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          width: 100%;
+          min-height: 0;
+          height: 100%;
+        }
+        .adm-chat *, .adm-chat *::before, .adm-chat *::after { box-sizing: border-box; }
+
+        /* ---- شريط الأدوات ---- */
+        .adm-chat-toolbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 8px 10px;
+          background: linear-gradient(180deg, #131a33, #0f152a);
+          border: 1px solid rgba(148,163,184,0.10);
+          border-radius: 12px;
+        }
+        .adm-chat-toolbar-left {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 14px;
+          align-items: center;
+        }
+        .adm-chat-stat {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11px;
+          color: #cbd5e1;
+        }
+        .adm-chat-stat strong {
+          color: #f8fafc;
+          font-size: 13px;
+          font-weight: 800;
+        }
+        .adm-chat-stat-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          display: inline-block;
+        }
+        .adm-chat-stat-dot-ok    { background: #10b981; box-shadow: 0 0 8px #10b981; }
+        .adm-chat-stat-dot-warn  { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
+        .adm-chat-stat-dot-info  { background: #8b5cf6; box-shadow: 0 0 8px #8b5cf6; }
+
+        .adm-chat-search {
+          width: 280px;
+          max-width: 100%;
+          height: 32px;
+          padding: 0 12px;
+          border-radius: 8px;
+          border: 1px solid rgba(148,163,184,0.18);
+          background: rgba(15,23,42,0.55);
+          color: #e2e8f0;
+          font-size: 12px;
+          font-family: inherit;
+          outline: none;
+        }
+        .adm-chat-search::placeholder { color: #64748b; }
+        .adm-chat-search:focus {
+          border-color: rgba(139,92,246,0.55);
+          background: rgba(15,23,42,0.85);
+        }
+
+        /* ---- الشبكة الرئيسية ---- */
+        .adm-chat-grid {
+          display: grid;
+          grid-template-columns: minmax(260px, 320px) 1fr;
+          gap: 8px;
+          flex: 1;
+          min-height: 0;
+        }
+        @media (max-width: 920px) {
+          .adm-chat-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        /* ---- بطاقات أساسية ---- */
+        .adm-chat-list-card, .adm-chat-main-card {
+          background: linear-gradient(180deg, #131a33, #0f152a);
+          border: 1px solid rgba(148,163,184,0.10);
+          border-radius: 12px;
+          display: flex;
+          flex-direction: column;
+          min-height: 0;
+          overflow: hidden;
+        }
+        .adm-chat-card-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          padding: 10px 12px;
+          border-bottom: 1px solid rgba(148,163,184,0.10);
+          flex-shrink: 0;
+        }
+        .adm-chat-card-head h3 {
+          margin: 0;
+          color: #f8fafc;
+          font-size: 13px;
+          font-weight: 800;
+        }
+        .adm-chat-count {
+          background: rgba(139,92,246,0.15);
+          color: #a78bfa;
+          font-size: 11px;
+          font-weight: 800;
+          padding: 2px 8px;
+          border-radius: 999px;
+        }
+
+        /* ---- قائمة المحادثات ---- */
+        .adm-chat-thread-list {
+          flex: 1;
+          min-height: 0;
+          overflow-y: auto;
+          padding: 6px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          scrollbar-width: thin;
+          scrollbar-color: rgba(139,92,246,0.55) transparent;
+        }
+        .adm-chat-thread-list::-webkit-scrollbar { width: 6px; }
+        .adm-chat-thread-list::-webkit-scrollbar-thumb {
+          background: linear-gradient(180deg, rgba(139,92,246,0.7), rgba(99,102,241,0.7));
+          border-radius: 5px;
+        }
+        .adm-chat-thread {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          padding: 8px;
+          border-radius: 8px;
+          border: 1px solid transparent;
+          background: rgba(15,23,42,0.35);
+          color: inherit;
+          font-family: inherit;
+          text-align: right;
+          cursor: pointer;
+          transition: background .15s ease, border-color .15s ease, transform .12s ease;
+          width: 100%;
+        }
+        .adm-chat-thread:hover {
+          background: rgba(139,92,246,0.08);
+          border-color: rgba(139,92,246,0.30);
+          transform: translateY(-1px);
+        }
+        .adm-chat-thread.is-active {
+          background: rgba(139,92,246,0.16);
+          border-color: rgba(139,92,246,0.50);
+        }
+        .adm-chat-thread.is-flagged {
+          border-color: rgba(239,68,68,0.40);
+          background: rgba(239,68,68,0.05);
+        }
+        .adm-chat-thread-avatar {
+          width: 36px;
+          height: 36px;
+          flex-shrink: 0;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #8b5cf6, #ec4899);
+          color: #fff;
+          font-weight: 800;
+          font-size: 14px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .adm-chat-thread-body {
+          flex: 1;
+          min-width: 0;
+        }
+        .adm-chat-thread-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .adm-chat-thread-row strong {
+          color: #f8fafc;
+          font-size: 12px;
+          font-weight: 700;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .adm-chat-thread-time {
+          margin-inline-start: auto;
+          color: #64748b;
+          font-size: 10px;
+          flex-shrink: 0;
+        }
+        .adm-chat-flag {
+          color: #fbbf24;
+          font-size: 11px;
+        }
+        .adm-chat-thread-preview {
+          margin: 2px 0 0;
+          color: #94a3b8;
+          font-size: 10.5px;
+          line-height: 1.35;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        /* ---- منطقة الرسائل ---- */
+        .adm-chat-active-info {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          min-width: 0;
+        }
+        .adm-chat-active-avatar {
+          width: 38px;
+          height: 38px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #8b5cf6, #3b82f6);
+          color: #fff;
+          font-weight: 800;
+          font-size: 14px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+        .adm-chat-active-info h3 {
+          margin: 0;
+          color: #f8fafc;
+          font-size: 13px;
+          font-weight: 800;
+        }
+        .adm-chat-active-info small {
+          color: #94a3b8;
+          font-size: 10.5px;
+          display: block;
+          margin-top: 2px;
+        }
+        .adm-chat-active-actions {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .adm-chat-btn {
+          height: 30px;
+          padding: 0 12px;
+          border-radius: 8px;
+          font-size: 11px;
+          font-weight: 700;
+          font-family: inherit;
+          cursor: pointer;
+          border: 1px solid transparent;
+          transition: background .15s ease;
+        }
+        .adm-chat-btn.ghost {
+          background: rgba(148,163,184,0.10);
+          color: #cbd5e1;
+          border-color: rgba(148,163,184,0.20);
+        }
+        .adm-chat-btn.ghost:hover { background: rgba(148,163,184,0.18); }
+        .adm-chat-btn.solid {
+          background: linear-gradient(135deg, #8b5cf6, #6366f1);
+          color: #fff;
+        }
+        .adm-chat-btn.solid:hover { filter: brightness(1.08); }
+
+        .adm-chat-messages {
+          flex: 1;
+          min-height: 0;
+          overflow-y: auto;
+          padding: 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          scrollbar-width: thin;
+          scrollbar-color: rgba(139,92,246,0.55) transparent;
+        }
+        .adm-chat-messages::-webkit-scrollbar { width: 6px; }
+        .adm-chat-messages::-webkit-scrollbar-thumb {
+          background: linear-gradient(180deg, rgba(139,92,246,0.7), rgba(99,102,241,0.7));
+          border-radius: 5px;
+        }
+
+        .adm-chat-msg {
+          background: rgba(15,23,42,0.45);
+          border: 1px solid rgba(148,163,184,0.10);
+          border-radius: 10px;
+          padding: 8px 10px;
+          max-width: 90%;
+        }
+        .adm-chat-msg.is-deleted {
+          opacity: 0.7;
+          border-style: dashed;
+          border-color: rgba(239,68,68,0.30);
+        }
+        .adm-chat-msg.is-flagged {
+          border-color: rgba(239,68,68,0.45);
+          background: rgba(239,68,68,0.06);
+        }
+        .adm-chat-msg-head {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 4px;
+        }
+        .adm-chat-msg-head strong {
+          color: #f8fafc;
+          font-size: 11px;
+          font-weight: 700;
+        }
+        .adm-chat-msg-time {
+          color: #64748b;
+          font-size: 10px;
+        }
+        .adm-chat-msg-ai {
+          margin-inline-start: auto;
+          font-size: 9.5px;
+          font-weight: 800;
+          padding: 1px 6px;
+          border-radius: 999px;
+        }
+        .adm-chat-msg-ai.low  { background: rgba(16,185,129,0.18); color: #34d399; }
+        .adm-chat-msg-ai.mid  { background: rgba(234,179,8,0.18);  color: #fde047; }
+        .adm-chat-msg-ai.high { background: rgba(239,68,68,0.18);  color: #fca5a5; }
+
+        .adm-chat-msg-body p {
+          margin: 0;
+          color: #e2e8f0;
+          font-size: 12px;
+          line-height: 1.55;
+          word-break: break-word;
+        }
+        .adm-chat-msg-media {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 10px;
+          background: rgba(99,102,241,0.10);
+          border: 1px dashed rgba(99,102,241,0.40);
+          border-radius: 8px;
+          color: #c7d2fe;
+          font-size: 11px;
+        }
+        .adm-chat-msg-media-icon { font-size: 14px; }
+        .adm-chat-link {
+          background: transparent;
+          border: none;
+          color: #a78bfa;
+          font-weight: 800;
+          font-size: 11px;
+          cursor: pointer;
+          font-family: inherit;
+          text-decoration: underline;
+          padding: 0;
+        }
+
+        /* ---- الحالة الفارغة / Placeholder ---- */
+        .adm-chat-placeholder {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          padding: 32px 20px;
+          color: #cbd5e1;
+        }
+        .adm-chat-placeholder-icon {
+          font-size: 42px;
+          margin-bottom: 10px;
+          opacity: 0.85;
+          filter: drop-shadow(0 4px 12px rgba(139,92,246,0.4));
+        }
+        .adm-chat-placeholder h3 {
+          margin: 0 0 6px;
+          color: #f8fafc;
+          font-size: 15px;
+          font-weight: 800;
+        }
+        .adm-chat-placeholder p {
+          margin: 0 0 14px;
+          color: #94a3b8;
+          font-size: 12px;
+          max-width: 420px;
+          line-height: 1.55;
+        }
+        .adm-chat-placeholder-tips {
+          list-style: none;
+          padding: 0;
+          margin: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          font-size: 11.5px;
+          color: #94a3b8;
+          max-width: 380px;
+          text-align: right;
+        }
+        .adm-chat-placeholder-tips li {
+          padding: 6px 10px;
+          background: rgba(148,163,184,0.06);
+          border-radius: 8px;
+          border-inline-end: 3px solid rgba(139,92,246,0.55);
+        }
+        .adm-chat-placeholder-tips em {
+          color: #fbbf24;
+          font-style: normal;
+          font-weight: 800;
+        }
+
+        .adm-chat-empty {
+          padding: 18px;
+          text-align: center;
+          color: #64748b;
+          font-size: 11.5px;
+        }
+
+        /* ---- ضبط مع shell الأدمن ---- */
+        .admin-page-shell-modern:has(.adm-chat) {
+          overflow: hidden;
+        }
+      `}</style>
     </AdminLayout>
   );
 }

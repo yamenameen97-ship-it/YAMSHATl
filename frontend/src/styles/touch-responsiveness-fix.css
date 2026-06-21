@@ -11,9 +11,9 @@
    ============================================================ */
 
 /* === 1) تفعيل اللمس الفوري على كامل التطبيق === */
+/* ⚠️ v57: تم إزالة touch-action: manipulation على html —
+   كان يلغي pan-y ويعطل التمرير على بعض المتصفحاح */
 html {
-  /* تعطيل تأخير اللمس وتمكين اللمس السلس */
-  touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;

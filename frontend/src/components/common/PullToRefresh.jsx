@@ -44,11 +44,16 @@ function PullToRefresh({
       className={`ym-ptr-container ${className}`}
       style={{
         position: 'relative',
-        overflowY: 'auto',
+        /* ⚠️ v57: لا overflow:auto هنا — يكسر التمرير في صفحة المنشورات.
+           نترك التمرير على body طبيعياً. */
         overflowX: 'hidden',
+        overflowY: 'visible',
         WebkitOverflowScrolling: 'touch',
         overscrollBehaviorY: 'contain',
+        touchAction: 'pan-y',
         minHeight: '100%',
+        width: '100%',
+        flex: '1 1 auto',
       }}
     >
       {/* مؤشر السحب — يتمدّد من الأعلى */}

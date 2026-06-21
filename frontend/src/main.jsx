@@ -64,15 +64,17 @@ import './styles/touch-responsiveness-fix.css';
 import './styles/mobile-compact-fonts-v48.css';
 /* 🎯 v49 — إصلاح نهائي وحازم لمشكلة السحب لا يعمل على ويب الجوال */
 import './styles/mobile-touch-scroll-final-v49.css';
-/* 🚀 v52 — تجربة لمس كأنها تطبيق أصلي (يجب أن يكون آخر CSS مطلقاً) */
+/* 🚀 v52 — تجربة لمس كأنها تطبيق أصلي */
 import './styles/mobile-touch-app-feel-v52.css';
+/* 🏆 v57 — Master Touch Fix: إصلاح نهائي للسحب واللمس على كل الصفحات والمتصفحات (آخر CSS مطلقاً) */
+import './styles/mobile-touch-master-fix-v57.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { pwaInitializer } from './services/pwaInitializer.js';
 import { smoothTouchLayer } from './services/smoothTouchLayer.js';
 import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 
-const BUILD_ID = 'yamshat-touch-app-feel-v52-0';
+const BUILD_ID = 'yamshat-master-touch-fix-v57-0';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

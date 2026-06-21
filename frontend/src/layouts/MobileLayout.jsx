@@ -91,13 +91,15 @@ function MobileLayout({ children }) {
           padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px));
           font-family: "Noto Sans Arabic", "Cairo", system-ui, -apple-system, sans-serif;
           box-sizing: border-box;
-          /* أفقي فقط — لا نقفل العمودي حتى يبقى السحب يعمل */
+          /* v57: تمرير على body — لا نقفل أي اتجاه هنا */
           overflow-x: hidden;
           overflow-y: visible;
           max-width: 100vw;
-          /* تمكين تمرير عمودي سلس على iOS و Android */
           -webkit-overflow-scrolling: touch;
           touch-action: pan-x pan-y;
+          /* GPU acceleration */
+          transform: translateZ(0);
+          backface-visibility: hidden;
         }
 
         .mobile-main-content {
@@ -105,7 +107,7 @@ function MobileLayout({ children }) {
           width: 100%;
           max-width: 600px;
           margin: 0 auto;
-          /* 🔧 إصلاح حرج: السماح بالتمرير العمودي — كان overflow:hidden يقفل السحب */
+          /* v57: التمرير على body — visible حتى يرث */
           overflow-x: hidden;
           overflow-y: visible;
           display: flex;

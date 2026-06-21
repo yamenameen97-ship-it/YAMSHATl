@@ -34,6 +34,7 @@ const AdminChat = lazy(() => import('./features/admin/index.js').then((mod) => (
 const AdminStories = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminStories })));
 const AdminReels = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminReels })));
 const AdminGroups = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminGroups })));
+const AdminLive = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminLive })));
 const Login = lazy(() => import('./pages/Login.jsx'));
 const AdminLogin = lazy(() => import('./pages/AdminLogin.jsx'));
 const Register = lazy(() => import('./pages/Register.jsx'));
@@ -263,6 +264,7 @@ export default function App() {
             <Route path="/admin/stories" element={<ProtectedRoute><AdminStories /></ProtectedRoute>} />
             <Route path="/admin/reels" element={<ProtectedRoute><AdminReels /></ProtectedRoute>} />
             <Route path="/admin/groups" element={<ProtectedRoute><AdminGroups /></ProtectedRoute>} />
+            <Route path="/admin/live" element={<ProtectedRoute><AdminLive /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>

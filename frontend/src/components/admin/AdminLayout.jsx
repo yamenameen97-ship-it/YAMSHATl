@@ -16,6 +16,7 @@ const routeMeta = {
   '/admin/chat': { title: 'إدارة الشات', breadcrumb: ['الإدارة', 'الشات'] },
   '/admin/stories': { title: 'إدارة الستوري', breadcrumb: ['الإدارة', 'الستوري'] },
   '/admin/reels': { title: 'إدارة الريلز', breadcrumb: ['الإدارة', 'الريلز'] },
+  '/admin/live': { title: 'إدارة البثوث', breadcrumb: ['الإدارة', 'البثوث'] },
   '/admin/groups': { title: 'إدارة المجموعات', breadcrumb: ['الإدارة', 'المجموعات'] },
   '/admin/users': { title: 'إدارة المستخدمين', breadcrumb: ['الإدارة', 'المستخدمون'] },
   '/admin/rbac': { title: 'الأدوار والصلاحيات', breadcrumb: ['الإدارة', 'الصلاحيات'] },

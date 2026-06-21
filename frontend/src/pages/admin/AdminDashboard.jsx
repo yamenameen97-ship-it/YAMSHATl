@@ -6,25 +6,28 @@ import { getAdminDashboardLive } from '../../api/admin.js';
 /**
  * ========================================================================
  * AdminDashboard — لوحة المدير العام
- * (v51 — Square Cards Uniform Grid + Top-Aligned Layout)
+ * (v60 — Single-Viewport Compact Grid · Matches Reference Mockup)
  * ------------------------------------------------------------------------
- * أهداف هذه النسخة (v51):
- *  1) إزالة المساحة الفارغة في الأعلى ورفع المحتوى لأقصى الأعلى.
- *  2) جميع البطاقات بنفس الحجم (مربعة) - تطابق صندوق "توزيع المحتوى".
- *  3) تقصير ارتفاع البطاقات (aspect-ratio: 1) لتظهر مربعة وليست مستطيلة.
- *  4) شبكة موحّدة 3 أعمدة لجميع الصناديق - بنفس النسب والمظهر.
- *  5) الحفاظ على ربط البيانات الحية بـ /api/admin/dashboard/live.
- *  6) dir="rtl" + Noto Sans Arabic.
+ * أهداف هذه النسخة (v60):
+ *  1) جميع الصناديق تظهر في صفحة واحدة بدون تمرير عمودي طويل.
+ *  2) كل البطاقات مربعة الشكل ومتقاربة (gap صغير) — تطابق الصورة المرجعية.
+ *  3) شريط 6 إحصائيات علوي (إجمالي المستخدمين، البثوث، المشاهدات، الإيرادات،
+ *     المنشورات، الريلز) — مدمج وقابل للنقر.
+ *  4) ثلاثة صفوف رئيسية × 3 أعمدة + صفّ تقارير سفلي (full width).
+ *  5) عند الضغط على أي صندوق → فتح الصفحة التفصيلية الخاصة به.
+ *  6) ربط البيانات الحية بـ /api/admin/dashboard/live (بدون mock).
+ *  7) dir="rtl" + Noto Sans Arabic.
  * ========================================================================
  */
 
 // ============ Fallback (يظهر فقط أثناء التحميل أو إذا فشل الاتصال) ============
 const FALLBACK_STAT_CARDS = [
-  { id: 'users',   label: 'إجمالي المستخدمين', value: '—', trend: '+0.0%', icon: '👥', tone: '#8b5cf6' },
-  { id: 'views',   label: 'المشاهدات الكلية',  value: '—', trend: '+0.0%', icon: '👁', tone: '#ef4444' },
-  { id: 'revenue', label: 'الإيرادات',         value: '—', trend: '+0.0%', icon: '$',  tone: '#10b981' },
-  { id: 'posts',   label: 'المنشورات',         value: '—', trend: '+0.0%', icon: '🎁', tone: '#f59e0b' },
-  { id: 'reels',   label: 'الريلز',            value: '—', trend: '+0.0%', icon: '🎵', tone: '#ec4899' },
+  { id: 'users',    label: 'إجمالي المستخدمين', value: '—', trend: '+0.0%', icon: '👥', tone: '#8b5cf6' },
+  { id: 'live',     label: 'البثوث المباشرة',   value: '—', trend: '+0.0%', icon: '📡', tone: '#ef4444' },
+  { id: 'views',    label: 'المشاهدات الكلية',  value: '—', trend: '+0.0%', icon: '👁', tone: '#ef4444' },
+  { id: 'revenue',  label: 'الإيرادات',         value: '—', trend: '+0.0%', icon: '$',  tone: '#10b981' },
+  { id: 'posts',    label: 'المنشورات',         value: '—', trend: '+0.0%', icon: '🎁', tone: '#f59e0b' },
+  { id: 'reels',    label: 'الريلز',            value: '—', trend: '+0.0%', icon: '🎵', tone: '#ec4899' },
 ];
 
 const FALLBACK_VIEWS_TREND = [
@@ -33,10 +36,11 @@ const FALLBACK_VIEWS_TREND = [
 ];
 
 const FALLBACK_CONTENT_DISTRIBUTION = [
-  { label: 'منشورات', value: 25, color: '#a78bfa' },
-  { label: 'ريلز',    value: 20, color: '#f59e0b' },
-  { label: 'ستوري',   value: 10, color: '#10b981' },
-  { label: 'أخرى',    value: 5,  color: '#ef4444' },
+  { label: 'بثوث مباشرة', value: 40, color: '#a78bfa' },
+  { label: 'منشورات',     value: 25, color: '#8b5cf6' },
+  { label: 'ريلز',        value: 20, color: '#f59e0b' },
+  { label: 'ستوري',       value: 10, color: '#10b981' },
+  { label: 'أخرى',        value: 5,  color: '#ef4444' },
 ];
 
 const FALLBACK_AUDIENCE = [
@@ -46,28 +50,28 @@ const FALLBACK_AUDIENCE = [
   { label: 'أكثر من ذلك', value: 10, color: '#10b981' },
 ];
 
-// ربط كل stat-card بصفحته التفصيلية
+// ربط كل بطاقة بصفحتها التفصيلية
 const STAT_TARGETS = {
   users:    '/admin/users',
+  live:     '/admin/live',
   views:    '/admin/reports',
   revenue:  '/admin/reports',
   posts:    '/admin/posts',
   reels:    '/admin/reels',
   stories:  '/admin/stories',
   chat:     '/admin/chat',
-  live:     '/admin/dashboard',
   reports:  '/admin/reports',
   notifications: '/admin/notifications',
 };
 
 // رسم بياني منطقة (Area / Line) بـ SVG — مدمج
-function AreaChart({ data, height = 110 }) {
+function AreaChart({ data, height = 130 }) {
   if (!data?.length) return null;
   const max = Math.max(...data.map((d) => d.value), 1) * 1.1;
   const w = 700;
   const h = height;
-  const padX = 26;
-  const padY = 12;
+  const padX = 28;
+  const padY = 14;
   const stepX = (w - padX * 2) / Math.max(data.length - 1, 1);
   const points = data.map((d, i) => {
     const x = padX + i * stepX;
@@ -79,7 +83,7 @@ function AreaChart({ data, height = 110 }) {
   const yTicks = [0, Math.round(max * 0.5), Math.round(max)];
 
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} width="100%" height={h} preserveAspectRatio="xMidYMid meet">
+    <svg viewBox={`0 0 ${w} ${h}`} width="100%" height="100%" preserveAspectRatio="none">
       <defs>
         <linearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%"   stopColor="#8b5cf6" stopOpacity="0.55" />
@@ -91,16 +95,16 @@ function AreaChart({ data, height = 110 }) {
         return (
           <g key={i}>
             <line x1={padX} y1={y} x2={w - padX} y2={y} stroke="rgba(148,163,184,0.12)" />
-            <text x={padX - 4} y={y + 3} fill="#64748b" fontSize="8" textAnchor="end">{t}K</text>
+            <text x={padX - 4} y={y + 3} fill="#64748b" fontSize="9" textAnchor="end">{t}K</text>
           </g>
         );
       })}
       <path d={areaPath} fill="url(#areaFill)" />
-      <path d={linePath} fill="none" stroke="#8b5cf6" strokeWidth="1.8" />
+      <path d={linePath} fill="none" stroke="#8b5cf6" strokeWidth="2" />
       {points.map((p, i) => (
         <g key={i}>
-          <circle cx={p.x} cy={p.y} r="2.5" fill="#8b5cf6" stroke="#0f172a" strokeWidth="1.5" />
-          <text x={p.x} y={h - 2} fill="#64748b" fontSize="8" textAnchor="middle">{p.day}</text>
+          <circle cx={p.x} cy={p.y} r="3" fill="#8b5cf6" stroke="#0f172a" strokeWidth="1.5" />
+          <text x={p.x} y={h - 2} fill="#64748b" fontSize="9" textAnchor="middle">{p.day}</text>
         </g>
       ))}
     </svg>
@@ -108,7 +112,7 @@ function AreaChart({ data, height = 110 }) {
 }
 
 // Donut chart — مدمج
-function Donut({ data, size = 96, centerLabel = 'الإجمالي', centerValue = '100%' }) {
+function Donut({ data, size = 110, centerLabel = 'الإجمالي', centerValue = '100%' }) {
   const total = data.reduce((s, d) => s + d.value, 0) || 1;
   const r = size / 2 - 10;
   const cx = size / 2;
@@ -136,7 +140,7 @@ function Donut({ data, size = 96, centerLabel = 'الإجمالي', centerValue 
 }
 
 // Bar chart — مدمج
-function BarChart({ values, labels, height = 100, color = '#a78bfa' }) {
+function BarChart({ values, labels, height = 110, color = '#a78bfa' }) {
   if (!values?.length) return null;
   const max = Math.max(...values, 1) * 1.15;
   const w = 700;
@@ -145,7 +149,7 @@ function BarChart({ values, labels, height = 100, color = '#a78bfa' }) {
   const bw = (w - padX * 2) / values.length - 6;
   const yTicks = [0, Math.round(max * 0.5), Math.round(max)];
   return (
-    <svg viewBox={`0 0 ${w} ${height}`} width="100%" height={height} preserveAspectRatio="xMidYMid meet">
+    <svg viewBox={`0 0 ${w} ${height}`} width="100%" height="100%" preserveAspectRatio="none">
       {yTicks.map((t, i) => {
         const y = height - padY - ((t / max) * (height - padY * 2));
         return (
@@ -173,7 +177,6 @@ function BarChart({ values, labels, height = 100, color = '#a78bfa' }) {
 // مكوّن مساعد: صندوق قابل للنقر يفتح صفحة تفاصيله
 function ClickableCard({ to, navigate, className = '', children, ariaLabel }) {
   const handle = (e) => {
-    // امنع الانتقال عند الضغط على عناصر تفاعلية داخل البطاقة
     const tag = (e.target.tagName || '').toLowerCase();
     if (['button', 'input', 'select', 'textarea', 'a', 'option'].includes(tag)) return;
     if (e.target.closest('button, input, select, textarea, a')) return;
@@ -207,10 +210,9 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // مؤشر بسيط على أن النسخة الجديدة الموحّدة هي التي حُمّلت
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      window.__YAMSHAT_ADMIN_DASHBOARD_VERSION__ = 'unified-v51-square-cards';
+      window.__YAMSHAT_ADMIN_DASHBOARD_VERSION__ = 'unified-v60-single-viewport';
       document.querySelectorAll('[data-legacy-admin-dashboard="true"]').forEach((el) => el.remove());
     }
   }, []);
@@ -241,7 +243,18 @@ export default function AdminDashboard() {
     };
   }, []);
 
-  const statCards = data?.stat_cards || FALLBACK_STAT_CARDS;
+  // ضمان وجود 6 بطاقات إحصائية بالترتيب الصحيح (مثل الصورة المرجعية)
+  const apiStatCards = data?.stat_cards || [];
+  const statCards = useMemo(() => {
+    // ندمج بيانات الـ API مع الـ fallback مع الحفاظ على الترتيب من FALLBACK_STAT_CARDS
+    const byId = new Map();
+    apiStatCards.forEach((s) => byId.set(s.id, s));
+    return FALLBACK_STAT_CARDS.map((fb) => {
+      const live = byId.get(fb.id);
+      return live ? { ...fb, ...live } : fb;
+    });
+  }, [apiStatCards]);
+
   const viewsTrend = data?.views_trend || FALLBACK_VIEWS_TREND;
   const contentDistribution = data?.content_distribution || FALLBACK_CONTENT_DISTRIBUTION;
   const recentActivities = data?.recent_activities || [];
@@ -249,6 +262,7 @@ export default function AdminDashboard() {
   const chatRows = data?.chat_table || [];
   const storiesRows = data?.stories_table || [];
   const reelsRows = data?.reels_table || [];
+  const liveRows = data?.live_table || data?.broadcasts_table || [];
   const kpis = data?.kpis || [];
   const dailyValues = data?.daily_views_values || [];
   const dailyLabels = data?.daily_views_labels || [];
@@ -259,15 +273,16 @@ export default function AdminDashboard() {
     [contentDistribution]
   );
 
-  // أعلى 3 صفوف فقط لكل قسم — تمشياً مع فكرة "اختصار يفتح التفاصيل"
-  const previewPosts   = postsRows.slice(0, 3);
-  const previewChat    = chatRows.slice(0, 3);
-  const previewStories = storiesRows.slice(0, 3);
-  const previewReels   = reelsRows.slice(0, 3);
+  // أعلى 4 صفوف فقط لكل قسم
+  const previewPosts   = postsRows.slice(0, 4);
+  const previewChat    = chatRows.slice(0, 4);
+  const previewStories = storiesRows.slice(0, 4);
+  const previewReels   = reelsRows.slice(0, 4);
+  const previewLive    = liveRows.slice(0, 4);
 
   return (
     <AdminLayout>
-      <div className="ls-admin" dir="rtl" data-yamshat-version="unified-v51-square-cards">
+      <div className="ls-admin" dir="rtl" data-yamshat-version="unified-v60-single-viewport">
         {loading && !data ? (
           <div className="ls-loading">جاري تحميل البيانات الحية...</div>
         ) : null}
@@ -275,7 +290,7 @@ export default function AdminDashboard() {
           <div className="ls-error">⚠ {error}</div>
         ) : null}
 
-        {/* ====== Stat cards (مدمجة وقابلة للنقر) ====== */}
+        {/* ====== Stat cards (6 بطاقات في صف واحد) ====== */}
         <div className="ls-stats-grid">
           {statCards.map((s) => {
             const target = STAT_TARGETS[s.id] || '/admin/dashboard';
@@ -298,12 +313,11 @@ export default function AdminDashboard() {
           })}
         </div>
 
-        {/* ====== Row: Views chart + Distribution donut + Recent activities ====== */}
+        {/* ====== الصف 1: المشاهدات (chart) + توزيع المحتوى (donut) + النشاطات الأخيرة ====== */}
         <div className="ls-row ls-row-3">
           <ClickableCard
             to="/admin/reports"
             navigate={navigate}
-            className="ls-col-2"
             ariaLabel="فتح التقارير والمشاهدات الكاملة"
           >
             <div className="ls-card-head">
@@ -314,10 +328,11 @@ export default function AdminDashboard() {
                   <option value="interactions">التفاعلات</option>
                   <option value="users">المستخدمون</option>
                 </select>
-                <span className="ls-open-hint">عرض الكل ›</span>
               </div>
             </div>
-            <AreaChart data={viewsTrend} />
+            <div className="ls-chart-area">
+              <AreaChart data={viewsTrend} />
+            </div>
           </ClickableCard>
 
           <ClickableCard to="/admin/reports" navigate={navigate} ariaLabel="فتح إحصائيات توزيع المحتوى">
@@ -361,8 +376,41 @@ export default function AdminDashboard() {
           </ClickableCard>
         </div>
 
-        {/* ====== Row: Posts + Chat (اختصار + رابط) ====== */}
-        <div className="ls-row ls-row-2">
+        {/* ====== الصف 2: إدارة البثوث + إدارة المنشورات + إدارة الشات ====== */}
+        <div className="ls-row ls-row-3">
+          <ClickableCard to="/admin/live" navigate={navigate} ariaLabel="فتح صفحة إدارة البثوث الكاملة">
+            <div className="ls-card-head">
+              <h3>📡 إدارة البثوث</h3>
+              <span className="ls-open-hint">عرض الكل ›</span>
+            </div>
+            <div className="ls-table-wrap">
+              <table className="ls-table">
+                <thead>
+                  <tr>
+                    <th>التاريخ</th>
+                    <th>المستخدم</th>
+                    <th>عنوان البث</th>
+                    <th>المشاهدات</th>
+                    <th>الحالة</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {previewLive.length === 0 ? (
+                    <tr><td colSpan={5} className="ls-empty-row">لا توجد بثوث بعد</td></tr>
+                  ) : previewLive.map((r) => (
+                    <tr key={r.id}>
+                      <td>{r.date}</td>
+                      <td>{r.user}</td>
+                      <td className="ls-ellipsis">{r.title}</td>
+                      <td>{r.views ?? r.viewers ?? '—'}</td>
+                      <td><span className="ls-status ls-status-live">إنهاء</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </ClickableCard>
+
           <ClickableCard to="/admin/posts" navigate={navigate} ariaLabel="فتح صفحة إدارة المنشورات الكاملة">
             <div className="ls-card-head">
               <h3>📨 إدارة المنشورات</h3>
@@ -374,7 +422,7 @@ export default function AdminDashboard() {
                   <tr>
                     <th>التاريخ</th>
                     <th>المستخدم</th>
-                    <th>محتوى المنشور</th>
+                    <th>المحتوى</th>
                     <th>التفاعلات</th>
                     <th>الحالة</th>
                   </tr>
@@ -426,8 +474,8 @@ export default function AdminDashboard() {
           </ClickableCard>
         </div>
 
-        {/* ====== Row: Stories + Reels ====== */}
-        <div className="ls-row ls-row-2">
+        {/* ====== الصف 3: إدارة الستوري + إدارة الريلز + التقارير والإحصائيات ====== */}
+        <div className="ls-row ls-row-3">
           <ClickableCard to="/admin/stories" navigate={navigate} ariaLabel="فتح صفحة إدارة الستوري الكاملة">
             <div className="ls-card-head">
               <h3>📷 إدارة الستوري</h3>
@@ -491,102 +539,95 @@ export default function AdminDashboard() {
               </table>
             </div>
           </ClickableCard>
+
+          <ClickableCard
+            to="/admin/reports"
+            navigate={navigate}
+            ariaLabel="فتح صفحة التقارير والإحصائيات الكاملة"
+          >
+            <div className="ls-card-head">
+              <h3>📊 التقارير والإحصائيات</h3>
+              <div className="ls-head-actions">
+                <select
+                  className="ls-select"
+                  value={reportTab}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => setReportTab(e.target.value)}
+                >
+                  <option value="interactions">التفاعلات</option>
+                  <option value="revenue">الإيرادات</option>
+                  <option value="content">المحتوى</option>
+                  <option value="users">المستخدمون</option>
+                  <option value="overview">نظرة عامة</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="ls-kpi-mini">
+              {(kpis.length ? kpis : [
+                { label: 'إجمالي الإيرادات', value: '—', trend: '+0.0%' },
+                { label: 'معدل التفاعل',     value: '—', trend: '+0.0%' },
+                { label: 'متوسط المشاهدة',   value: '—', trend: '+0.0%' },
+                { label: 'إجمالي المشاهدات', value: '—', trend: '+0.0%' },
+              ]).slice(0, 4).map((k, i) => (
+                <div key={i} className="ls-kpi-cell">
+                  <div className="ls-kpi-label">{k.label}</div>
+                  <div className="ls-kpi-value">{k.value}</div>
+                  <div className="ls-kpi-trend up">▲ {k.trend}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="ls-reports-mini">
+              <div className="ls-reports-chart">
+                <h4 className="ls-sub-title">المشاهدات اليومية</h4>
+                <BarChart
+                  values={dailyValues.length ? dailyValues : [0]}
+                  labels={dailyLabels.length ? dailyLabels : ['—']}
+                  height={70}
+                />
+              </div>
+              <div className="ls-reports-donut">
+                <h4 className="ls-sub-title">توزيع الجمهور</h4>
+                <div className="ls-donut-wrap ls-donut-wrap-sm">
+                  <Donut data={audience} size={72} centerLabel="الجمهور" centerValue="100%" />
+                  <ul className="ls-legend ls-legend-sm">
+                    {audience.map((d) => (
+                      <li key={d.label}>
+                        <span className="ls-dot" style={{ background: d.color }} />
+                        <span className="ls-legend-label">{d.label}</span>
+                        <span className="ls-legend-value">{d.value}%</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </ClickableCard>
         </div>
-
-        {/* ====== Reports & Analytics ====== */}
-        <ClickableCard
-          to="/admin/reports"
-          navigate={navigate}
-          className="ls-card-full"
-          ariaLabel="فتح صفحة التقارير والإحصائيات الكاملة"
-        >
-          <div className="ls-card-head">
-            <h3>📊 التقارير والإحصائيات</h3>
-            <div className="ls-head-actions">
-              <div className="ls-tabs">
-                {[
-                  ['interactions', 'التفاعلات'],
-                  ['revenue',      'الإيرادات'],
-                  ['content',      'المحتوى'],
-                  ['users',        'المستخدمون'],
-                  ['overview',     'نظرة عامة'],
-                ].map(([k, l]) => (
-                  <button
-                    key={k}
-                    className={`ls-tab ${reportTab === k ? 'active' : ''}`}
-                    onClick={(e) => { e.stopPropagation(); setReportTab(k); }}
-                  >
-                    {l}
-                  </button>
-                ))}
-              </div>
-              <span className="ls-open-hint">عرض الكل ›</span>
-            </div>
-          </div>
-
-          <div className="ls-kpi-row">
-            {(kpis.length ? kpis : [
-              { label: 'إجمالي الإيرادات', value: '—', trend: '+0.0%' },
-              { label: 'معدل التفاعل',     value: '—', trend: '+0.0%' },
-              { label: 'متوسط المشاهدة',   value: '—', trend: '+0.0%' },
-              { label: 'إجمالي المشاهدات', value: '—', trend: '+0.0%' },
-            ]).map((k, i) => (
-              <div key={i} className="ls-kpi">
-                <div className="ls-kpi-label">{k.label}</div>
-                <div className="ls-kpi-value">{k.value}</div>
-                <div className="ls-kpi-trend up">▲ {k.trend}</div>
-              </div>
-            ))}
-          </div>
-
-          <div className="ls-row ls-row-2 ls-reports-inner">
-            <div>
-              <h4 className="ls-sub-title">المشاهدات اليومية</h4>
-              <BarChart values={dailyValues.length ? dailyValues : [0]} labels={dailyLabels.length ? dailyLabels : ['—']} />
-            </div>
-            <div>
-              <h4 className="ls-sub-title">توزيع الجمهور</h4>
-              <div className="ls-donut-wrap">
-                <Donut data={audience} centerLabel="الجمهور" centerValue="100%" />
-                <ul className="ls-legend">
-                  {audience.map((d) => (
-                    <li key={d.label}>
-                      <span className="ls-dot" style={{ background: d.color }} />
-                      <span className="ls-legend-label">{d.label}</span>
-                      <span className="ls-legend-value">{d.value}%</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
-        </ClickableCard>
       </div>
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;600;700;800&display=swap');
 
         /* ============================================================
-         * v32 — Single-Viewport Compact Layout
+         * v60 — Single-Viewport Compact Layout
          * كل اللوحة تظهر في صفحة واحدة بدون تمرير عمودي.
-         * كل صندوق هو "اختصار" يفتح صفحته الكاملة عند الضغط.
+         * 6 إحصائيات + 3 صفوف × 3 صناديق متراصة، كل صندوق اختصار قابل للنقر.
          * ============================================================ */
 
         .ls-admin {
           font-family: 'Noto Sans Arabic', system-ui, sans-serif;
           color: #e2e8f0;
-          background: #0b1020;
+          background: transparent;
           padding: 0;
           margin: 0;
-          min-height: 100%;
           direction: rtl;
           font-size: 11px;
           display: flex;
           flex-direction: column;
           gap: 8px;
-          /* v51: ارفع المحتوى للأعلى — لا مساحة فارغة فوق */
-          justify-content: flex-start;
-          align-items: stretch;
+          width: 100%;
         }
         .ls-admin *, .ls-admin *::before, .ls-admin *::after { box-sizing: border-box; }
 
@@ -643,7 +684,7 @@ export default function AdminDashboard() {
           background: rgba(139, 92, 246, 0.10);
         }
 
-        /* === Stat cards (مدمجة) === */
+        /* === Stat cards (6 بطاقات في صف واحد) === */
         .ls-stats-grid {
           display: grid;
           grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -659,57 +700,51 @@ export default function AdminDashboard() {
         .ls-stat-card {
           background: linear-gradient(180deg, #131a33, #0f152a);
           border: 1px solid rgba(148,163,184,0.10);
-          border-radius: 9px;
-          padding: 7px 9px;
+          border-radius: 10px;
+          padding: 9px 11px;
           text-align: right;
           color: inherit;
           font-family: inherit;
           width: 100%;
           display: block;
         }
-        .ls-stat-top { display: flex; align-items: center; gap: 5px; }
+        .ls-stat-top { display: flex; align-items: center; gap: 6px; }
         .ls-stat-icon {
-          width: 22px; height: 22px; border-radius: 6px;
+          width: 26px; height: 26px; border-radius: 7px;
           display: inline-flex; align-items: center; justify-content: center;
-          font-weight: 700; font-size: 11px;
+          font-weight: 700; font-size: 13px;
         }
-        .ls-stat-label { color: #94a3b8; font-size: 10px; }
+        .ls-stat-label { color: #94a3b8; font-size: 10.5px; }
         .ls-stat-value {
-          color: #f8fafc; font-size: 15px; font-weight: 800;
-          margin: 3px 0 1px; letter-spacing: -0.2px;
+          color: #f8fafc; font-size: 17px; font-weight: 800;
+          margin: 4px 0 2px; letter-spacing: -0.2px;
         }
-        .ls-stat-trend { color: #10b981; font-size: 9px; font-weight: 700; }
-        .ls-stat-muted { color: #64748b; font-weight: 500; margin-right: 3px; font-size: 9px; }
+        .ls-stat-trend { color: #10b981; font-size: 9.5px; font-weight: 700; }
+        .ls-stat-muted { color: #64748b; font-weight: 500; margin-right: 3px; font-size: 9.5px; }
 
-        /* === Rows (v51: شبكة موحّدة بنفس الحجم لجميع البطاقات) === */
+        /* === Rows (شبكة موحّدة بنفس الحجم لجميع البطاقات) === */
         .ls-row { display: grid; gap: 8px; margin: 0; }
-        /* صفّ 3 أعمدة متساوية — كل بطاقة 1fr */
-        .ls-row-2 { grid-template-columns: repeat(3, 1fr); }
         .ls-row-3 { grid-template-columns: repeat(3, 1fr); }
-        /* صندوق "المشاهدات خلال آخر 7 أيام" يبقى 1fr مثل البقية */
-        .ls-col-2 { grid-column: span 1; }
 
-        /* === Cards (v51: مربعة بنفس حجم بطاقة "توزيع المحتوى") === */
+        /* === Cards (مربعة / شبه مربعة بنفس الحجم) === */
         .ls-card {
           background: linear-gradient(180deg, #131a33, #0f152a);
           border: 1px solid rgba(148,163,184,0.10);
           border-radius: 12px;
           padding: 10px 12px;
-          /* النسبة المربعة — البطاقة بنفس عرضها تقريباً = مربع */
-          aspect-ratio: 1 / 1;
-          min-height: 220px;
-          max-height: 280px;
+          min-height: 240px;
+          height: 240px;
           overflow: hidden;
           display: flex;
           flex-direction: column;
         }
         .ls-card-head {
           display: flex; align-items: center; justify-content: space-between;
-          margin-bottom: 4px; gap: 6px;
+          margin-bottom: 6px; gap: 6px;
           flex-shrink: 0;
         }
         .ls-card-head h3 {
-          margin: 0; color: #f8fafc; font-size: 11px; font-weight: 700;
+          margin: 0; color: #f8fafc; font-size: 11.5px; font-weight: 700;
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
         .ls-head-actions { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
@@ -723,22 +758,45 @@ export default function AdminDashboard() {
           font-family: inherit;
         }
 
+        /* === Chart area === */
+        .ls-chart-area {
+          flex: 1; min-height: 0;
+          display: flex; align-items: stretch;
+        }
+
         /* === Donut + legend === */
-        .ls-donut-wrap { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex: 1; min-height: 0; }
-        .ls-legend { list-style: none; padding: 0; margin: 0; flex: 1; min-width: 95px; }
+        .ls-donut-wrap {
+          display: flex; align-items: center; gap: 8px; flex-wrap: nowrap;
+          flex: 1; min-height: 0;
+        }
+        .ls-donut-wrap-sm { gap: 6px; }
+        .ls-legend { list-style: none; padding: 0; margin: 0; flex: 1; min-width: 0; }
         .ls-legend li {
           display: flex; align-items: center; gap: 4px;
-          padding: 1px 0; font-size: 9.5px; color: #cbd5e1;
+          padding: 1.5px 0; font-size: 9.5px; color: #cbd5e1;
         }
-        .ls-legend-label { flex: 1; }
+        .ls-legend-sm li { font-size: 8.5px; padding: 1px 0; }
+        .ls-legend-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .ls-legend-value { color: #f8fafc; font-weight: 700; }
-        .ls-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+        .ls-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 
         /* === Activity list === */
-        .ls-activity { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
-        .ls-activity li { display: flex; align-items: center; gap: 5px; }
+        .ls-activity {
+          list-style: none; padding: 0; margin: 0;
+          display: flex; flex-direction: column; gap: 6px;
+          flex: 1; min-height: 0; overflow-y: auto;
+          scrollbar-width: thin;
+          scrollbar-color: rgba(139,92,246,0.55) transparent;
+          padding-inline-end: 3px;
+        }
+        .ls-activity::-webkit-scrollbar { width: 4px; }
+        .ls-activity::-webkit-scrollbar-thumb {
+          background: linear-gradient(180deg, rgba(139,92,246,0.65), rgba(99,102,241,0.65));
+          border-radius: 5px;
+        }
+        .ls-activity li { display: flex; align-items: center; gap: 6px; }
         .ls-avatar {
-          width: 21px; height: 21px; border-radius: 50%;
+          width: 22px; height: 22px; border-radius: 50%;
           background: linear-gradient(135deg, #8b5cf6, #ec4899);
           display: inline-flex; align-items: center; justify-content: center;
           color: #fff; font-weight: 800; font-size: 10px;
@@ -755,7 +813,7 @@ export default function AdminDashboard() {
           font-size: 8px; font-weight: 800; padding: 1px 4px; border-radius: 4px;
         }
 
-        /* === Scrollable inner areas === */
+        /* === Scrollable table areas === */
         .ls-table-wrap {
           flex: 1;
           min-height: 0;
@@ -772,17 +830,6 @@ export default function AdminDashboard() {
         .ls-table-wrap::-webkit-scrollbar-track {
           background: rgba(15,23,42,0.4); border-radius: 5px;
         }
-        .ls-activity {
-          flex: 1; min-height: 0; overflow-y: auto;
-          scrollbar-width: thin;
-          scrollbar-color: rgba(139,92,246,0.55) transparent;
-          padding-inline-end: 3px;
-        }
-        .ls-activity::-webkit-scrollbar { width: 4px; }
-        .ls-activity::-webkit-scrollbar-thumb {
-          background: linear-gradient(180deg, rgba(139,92,246,0.65), rgba(99,102,241,0.65));
-          border-radius: 5px;
-        }
 
         /* === Tables (مدمجة) === */
         .ls-table { width: 100%; border-collapse: collapse; font-size: 9.5px; }
@@ -792,85 +839,71 @@ export default function AdminDashboard() {
         }
         .ls-table th {
           text-align: right; color: #94a3b8; font-weight: 600;
-          padding: 3px 4px; border-bottom: 1px solid rgba(148,163,184,0.10);
-          font-size: 8.5px; white-space: nowrap;
+          padding: 4px 4px; border-bottom: 1px solid rgba(148,163,184,0.10);
+          font-size: 8.8px; white-space: nowrap;
         }
         .ls-table td {
-          padding: 3px 4px; color: #e2e8f0;
+          padding: 4px 4px; color: #e2e8f0;
           border-bottom: 1px solid rgba(148,163,184,0.06); font-size: 9.5px;
           white-space: nowrap;
         }
         .ls-table td.ls-ellipsis {
-          max-width: 140px;
+          max-width: 120px;
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
         .ls-status {
-          display: inline-block; padding: 1px 5px; border-radius: 999px;
+          display: inline-block; padding: 1px 6px; border-radius: 999px;
           font-size: 8.5px; font-weight: 700;
         }
-        .ls-status-ok { background: rgba(16,185,129,0.18); color: #34d399; }
+        .ls-status-ok   { background: rgba(16,185,129,0.18); color: #34d399; }
+        .ls-status-live { background: rgba(239,68,68,0.18);  color: #fca5a5; }
 
-        /* === Tabs (مدمجة) === */
-        .ls-tabs { display: flex; gap: 3px; flex-wrap: wrap; }
-        .ls-tab {
-          background: transparent; border: 0;
-          color: #94a3b8; padding: 3px 7px; border-radius: 5px;
-          font-size: 9.5px; cursor: pointer; font-family: inherit;
+        /* === KPI mini (داخل بطاقة التقارير المضغوطة) === */
+        .ls-kpi-mini {
+          display: grid; grid-template-columns: repeat(2, 1fr);
+          gap: 4px; margin-bottom: 5px;
+          flex-shrink: 0;
         }
-        .ls-tab.active { background: rgba(139,92,246,0.18); color: #c4b5fd; }
-
-        /* === KPI row === */
-        .ls-kpi-row {
-          display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 5px; margin-bottom: 5px;
-        }
-        @media (max-width: 900px) {
-          .ls-kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        }
-        .ls-kpi {
-          background: rgba(15,23,42,0.65);
+        .ls-kpi-cell {
+          background: rgba(15,23,42,0.55);
           border: 1px solid rgba(148,163,184,0.10);
-          border-radius: 7px; padding: 5px 7px;
+          border-radius: 6px; padding: 4px 6px;
         }
-        .ls-kpi-label { color: #94a3b8; font-size: 9px; }
+        .ls-kpi-label { color: #94a3b8; font-size: 8.5px; }
         .ls-kpi-value {
-          color: #f8fafc; font-size: 12px; font-weight: 800;
+          color: #f8fafc; font-size: 11px; font-weight: 800;
           margin: 1px 0; letter-spacing: -0.2px;
         }
-        .ls-kpi-trend.up { color: #10b981; font-size: 9px; font-weight: 700; }
+        .ls-kpi-trend.up { color: #10b981; font-size: 8.5px; font-weight: 700; }
 
-        /* === Reports card (يأخذ كامل العرض كصف مستقل لكنه أقصر) === */
-        .ls-card.ls-card-full {
-          aspect-ratio: auto;
-          min-height: 220px;
-          max-height: 280px;
-          overflow: hidden;
-          display: flex;
-          flex-direction: column;
-          padding: 10px 12px;
-          grid-column: 1 / -1;
+        /* === Reports mini (chart + donut صغيرين داخل بطاقة واحدة) === */
+        .ls-reports-mini {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 6px;
+          flex: 1;
+          min-height: 0;
         }
-        .ls-reports-inner {
-          flex: 1; min-height: 0;
-          grid-template-columns: 2fr 1fr;
-        }
-        .ls-reports-inner > div {
-          display: flex; flex-direction: column; min-height: 0; overflow: hidden;
+        .ls-reports-chart, .ls-reports-donut {
+          display: flex; flex-direction: column;
+          min-height: 0; overflow: hidden;
         }
 
         /* === Responsive breakpoints === */
+        @media (max-width: 1280px) {
+          .ls-card { height: 230px; min-height: 230px; }
+        }
         @media (max-width: 1180px) {
-          .ls-row-2, .ls-row-3 { grid-template-columns: repeat(2, 1fr); }
+          .ls-row-3 { grid-template-columns: repeat(2, 1fr); }
         }
         @media (max-width: 820px) {
-          .ls-row-2, .ls-row-3 { grid-template-columns: 1fr; }
-          .ls-card { aspect-ratio: auto; min-height: 200px; max-height: 240px; }
-          .ls-card.ls-card-full { max-height: none; aspect-ratio: auto; }
+          .ls-row-3 { grid-template-columns: 1fr; }
+          .ls-card { height: auto; min-height: 220px; max-height: 280px; }
         }
 
-        /* === v51: رفع المحتوى لأقصى الأعلى وإزالة كل مساحة بيضاء (Override للـ AdminLayout) === */
+        /* === Override AdminLayout shell: إزالة الفراغات العلوية === */
         .admin-page-shell-modern {
-          padding: 4px 10px 8px !important;
+          padding: 6px 12px 10px !important;
           gap: 8px !important;
           justify-content: flex-start !important;
           align-content: flex-start !important;
@@ -883,7 +916,6 @@ export default function AdminDashboard() {
           min-height: 44px !important;
           padding: 4px 12px !important;
         }
-        /* تأكيد إزالة أي margin-top على أول عنصر داخل اللوحة */
         .ls-admin > *:first-child {
           margin-top: 0 !important;
         }

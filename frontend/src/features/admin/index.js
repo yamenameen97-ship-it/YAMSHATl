@@ -12,3 +12,4 @@ export { default as AdminChat } from '../../pages/admin/AdminChat.jsx';
 export { default as AdminStories } from '../../pages/admin/AdminStories.jsx';
 export { default as AdminReels } from '../../pages/admin/AdminReels.jsx';
 export { default as AdminGroups } from '../../pages/admin/AdminGroups.jsx';
+export { default as AdminLive } from '../../pages/admin/AdminLive.jsx';

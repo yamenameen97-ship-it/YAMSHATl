@@ -153,6 +153,10 @@
         "src/components/chat/MessageReactionPicker.jsx",
         "src/components/chat/SafeImage.jsx",
         "src/components/mobile/PWAInstallBanner.jsx",
+        "src/components/groups/GroupPinnedBar.jsx",
+        "src/components/groups/GroupQuickLinks.jsx",
+        "src/components/groups/GroupSubHeader.jsx",
+        "src/components/stories/StoriesBar.jsx",
         "src/components/yamshat/YamshatIcon.jsx"
     ]
 }

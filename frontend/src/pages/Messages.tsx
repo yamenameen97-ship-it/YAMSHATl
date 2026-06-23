@@ -108,7 +108,9 @@ export default function Messages() {
 
   const handleSendMessage = () => {
     if (messageText.trim()) {
-      console.log("Sending message:", messageText);
+      // ✅ v59.0: تم إزالة console.log من الإنتاج.
+      // ملاحظة: هذا الملف legacy غير مرتبط بنظام الشات الأساسي (Chat.jsx)،
+      // ويُحتفظ به للتوافق فقط. الإرسال الفعلي يحدث في ChatInput.jsx + api/chat.js.
       setMessageText("");
     }
   };

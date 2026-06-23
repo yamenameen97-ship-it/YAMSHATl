@@ -354,12 +354,23 @@ const RichTextEditor = memo(function RichTextEditor({
           <HashtagRenderer
             text={content}
             inline={true}
-            onHashtagClick={(tag) => console.log('Hashtag:', tag)}
+            onHashtagClick={(tag) => {
+              // v58.1 — توجيه إلى صفحة الوسم بدلاً من console.log
+              try {
+                window.location.hash = `#/search?tag=${encodeURIComponent(tag)}`;
+              } catch { /* ignore */ }
+            }}
           />
           <MentionRenderer
             text={content}
             inline={true}
-            onMentionClick={(user) => console.log('Mention:', user)}
+            onMentionClick={(user) => {
+              // v58.1 — توجيه إلى الملف الشخصي بدلاً من console.log
+              try {
+                const u = String(user || '').replace(/^@/, '');
+                if (u) window.location.hash = `#/profile/${encodeURIComponent(u)}`;
+              } catch { /* ignore */ }
+            }}
           />
         </div>
       )}

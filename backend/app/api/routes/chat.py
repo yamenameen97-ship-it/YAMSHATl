@@ -34,6 +34,11 @@ router = APIRouter()
 
 TRANSLATE_TIMEOUT_SECONDS = 12
 
+# v59.4: حدود أمان للرسائل (بعد توحيد التخزين في backend monolith).
+MAX_MESSAGE_LENGTH = 8000          # حد أقصى لتعديل أو إرسال رسالة نصية
+EDIT_WINDOW_HOURS = 24             # نافذة تعديل الرسالة
+DELETE_FOR_EVERYONE_HOURS = 24     # نافذة حذف للجميع
+
 
 async def _resolve_rate_limit_result(result) -> bool:
     if inspect.isawaitable(result):
@@ -218,6 +223,13 @@ async def send_message(payload: dict, db: Session = Depends(get_db), current_use
 
     if not receiver_username or (not raw_message and not media_url and not attachments):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='receiver and message or media_url/attachments are required')
+
+    # v59.4: حد أقصى لطول الرسالة (دفاع على مستوى التطبيق بجانب max-body في الـ gateway).
+    if len(raw_message) > MAX_MESSAGE_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f'Message exceeds {MAX_MESSAGE_LENGTH} characters',
+        )
 
     if not await _resolve_rate_limit_result(allow_socket_message(f'chat:{current_user.id}')):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail='You are sending messages too quickly')
@@ -458,6 +470,14 @@ async def delete_message(payload: dict = Body(...), db: Session = Depends(get_db
     message = db.query(Message).filter(Message.id == message_id, Message.sender_id == current_user.id).first()
     if message is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Message not found')
+    # v59.4: فرض نافذة حذف للجميع (مثل WhatsApp).
+    if delete_for_everyone:
+        from datetime import timedelta
+        if message.created_at and (datetime.utcnow() - message.created_at) > timedelta(hours=DELETE_FOR_EVERYONE_HOURS):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f'Delete-for-everyone window expired ({DELETE_FOR_EVERYONE_HOURS}h)',
+            )
     message.deleted_at = datetime.utcnow()
     message.deleted_for_everyone = bool(delete_for_everyone)
     db.commit()
@@ -551,6 +571,12 @@ async def edit_message(payload: dict = Body(...), db: Session = Depends(get_db),
     new_text = str(payload.get('content') or payload.get('message') or '').strip()
     if not message_id or not new_text:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='message_id and content are required')
+    # v59.4: حد طول الرسالة لمنع DoS/abuse.
+    if len(new_text) > MAX_MESSAGE_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f'Message exceeds {MAX_MESSAGE_LENGTH} characters',
+        )
 
     message = db.query(Message).filter(
         Message.id == message_id,
@@ -562,8 +588,8 @@ async def edit_message(payload: dict = Body(...), db: Session = Depends(get_db),
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Cannot edit deleted/recalled message')
 
     from datetime import timedelta
-    if message.created_at and (datetime.utcnow() - message.created_at) > timedelta(hours=24):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Edit window expired (24h)')
+    if message.created_at and (datetime.utcnow() - message.created_at) > timedelta(hours=EDIT_WINDOW_HOURS):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f'Edit window expired ({EDIT_WINDOW_HOURS}h)')
 
     clean = bleach.clean(new_text)
     message.message = clean

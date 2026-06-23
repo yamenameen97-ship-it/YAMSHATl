@@ -14,17 +14,19 @@ spec:
       path: /metrics
       interval: 15s
 ---
+# v59.4: حُذف ServiceMonitor الخاص بـ chat-service — الخدمة محذوفة.
+# مقاييس الدردشة الآن تأتي من backend monolith.
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: chat-service
+  name: backend
   namespace: monitoring
 spec:
   namespaceSelector:
     matchNames: [app-prod]
   selector:
     matchLabels:
-      app: chat-service
+      app: backend
   endpoints:
     - port: http
       path: /metrics

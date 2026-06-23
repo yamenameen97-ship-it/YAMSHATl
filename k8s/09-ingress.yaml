@@ -7,17 +7,31 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-body-size: '20m'
     nginx.ingress.kubernetes.io/proxy-read-timeout: '3600'
     nginx.ingress.kubernetes.io/proxy-send-timeout: '3600'
+    # v59.4: تمكين WebSocket على الـ backend monolith
+    nginx.ingress.kubernetes.io/proxy-http-version: '1.1'
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
 spec:
   ingressClassName: nginx
   rules:
     - host: api.yamshat.local
       http:
         paths:
+          # v59.4: تم توجيه /ws إلى backend monolith (المصدر الموحَّد للدردشة).
+          # عبور كل WebSockets — الدردشة، المجموعات، الـ presence — عبر backend.
           - path: /ws
             pathType: Prefix
             backend:
               service:
-                name: chat-service
+                name: backend
+                port:
+                  number: 8000
+          - path: /api/ws
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
                 port:
                   number: 8000
           - path: /

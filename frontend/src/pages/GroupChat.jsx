@@ -22,8 +22,11 @@ import MessageActionsToolbar from '../components/chat/MessageActionsToolbar.jsx'
 import MessageReactionPicker from '../components/chat/MessageReactionPicker.jsx';
 import SafeImage from '../components/chat/SafeImage.jsx';
 import CallBubble from '../components/chat/CallBubble.jsx';
+import GroupPinnedBar from '../components/groups/GroupPinnedBar.jsx';
+import GroupQuickLinks from '../components/groups/GroupQuickLinks.jsx';
 import '../styles/group-chat.css';
 import '../styles/chat-mobile-fixes.css';
+import '../styles/groups-features.css';
 
 /**
  * صفحة دردشة مجموعة واحدة — نسخة v22 مُصلحة.
@@ -739,6 +742,30 @@ const GroupChat = () => {
           🔔 فعّل إشعارات المجموعة لتصلك الرسائل وأنت بعيد عن التطبيق
         </div>
       )}
+
+      {/* v59.3 — شريط الرسائل المثبّتة */}
+      <GroupPinnedBar
+        groupId={groupId}
+        canManage={
+          groupInfo?.members?.find?.((m) => (m.username || m.user_id) === currentUser)?.role === 'owner' ||
+          groupInfo?.members?.find?.((m) => (m.username || m.user_id) === currentUser)?.role === 'admin' ||
+          groupInfo?.members?.find?.((m) => (m.username || m.user_id) === currentUser)?.role === 'moderator'
+        }
+        onJump={(msgId) => {
+          const el = document.querySelector(`[data-msg-id="${msgId}"]`);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.style.outline = '2px solid #f59e0b';
+            setTimeout(() => { el.style.outline = ''; }, 1500);
+          }
+        }}
+      />
+
+      {/* v59.3 — اختصارات ميزات المجموعة */}
+      <GroupQuickLinks
+        groupId={groupId}
+        role={groupInfo?.members?.find?.((m) => (m.username || m.user_id) === currentUser)?.role || 'member'}
+      />
 
       {/* منطقة الرسائل */}
       <main className="yam-group-messages">

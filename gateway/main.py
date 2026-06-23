@@ -13,7 +13,9 @@ from rate_limiter import consume
 AUTH_SERVICE_URL = os.getenv('AUTH_SERVICE_URL', 'http://auth-service:8000')
 USER_SERVICE_URL = os.getenv('USER_SERVICE_URL', 'http://user-service:8000')
 POST_SERVICE_URL = os.getenv('POST_SERVICE_URL', 'http://post-service:8000')
-CHAT_SERVICE_URL = os.getenv('CHAT_SERVICE_URL', 'http://chat-service:8000')
+# v59.4: المصدر الموحّد للدردشة هو الـ monolith backend (chat-service القديم محذوف).
+BACKEND_SERVICE_URL = os.getenv('BACKEND_SERVICE_URL', 'http://backend:8000')
+CHAT_SERVICE_URL = os.getenv('CHAT_SERVICE_URL', BACKEND_SERVICE_URL)
 NOTIFICATION_SERVICE_URL = os.getenv('NOTIFICATION_SERVICE_URL', 'http://notification-service:8000')
 MEDIA_SERVICE_URL = os.getenv('MEDIA_SERVICE_URL', 'http://media-service:8000')
 SEARCH_SERVICE_URL = os.getenv('SEARCH_SERVICE_URL', 'http://search-service:8000')
@@ -22,7 +24,12 @@ ROUTE_TABLE = {
     '/auth': AUTH_SERVICE_URL,
     '/users': USER_SERVICE_URL,
     '/posts': POST_SERVICE_URL,
+    # v59.4: الدردشة موحّدة في الـ monolith backend (مصدر حقيقة وحيد).
     '/chat': CHAT_SERVICE_URL,
+    '/messages': CHAT_SERVICE_URL,
+    '/conversations': CHAT_SERVICE_URL,
+    '/inbox': CHAT_SERVICE_URL,
+    '/ws': CHAT_SERVICE_URL,
     '/notifications': NOTIFICATION_SERVICE_URL,
     '/media': MEDIA_SERVICE_URL,
     '/search': SEARCH_SERVICE_URL,
@@ -37,6 +44,9 @@ ROUTE_TABLE = {
     '/api/follows': USER_SERVICE_URL,
     '/api/inbox': CHAT_SERVICE_URL,
     '/api/chat': CHAT_SERVICE_URL,
+    '/api/messages': CHAT_SERVICE_URL,
+    '/api/conversations': CHAT_SERVICE_URL,
+    '/api/ws': CHAT_SERVICE_URL,
     '/api/notifications': NOTIFICATION_SERVICE_URL,
     '/api/search': SEARCH_SERVICE_URL,
     '/api/upload': MEDIA_SERVICE_URL,
@@ -135,6 +145,17 @@ async def rate_limit_middleware(request: Request, call_next):
     return response
 
 
+# v59.4: رؤوس حساسة لا تُمرّر إلى الـ upstream (تمنع spoofing لـ X-User-ID وغيرها).
+_HEADERS_TO_STRIP = {
+    'host',
+    'content-length',
+    # رؤوس تحديد الهوية تُعيّن فقط عبر middleware بعد التحقق من JWT
+    'x-user-id',
+    'x-user-username',
+    'x-internal-token',
+}
+
+
 @app.api_route('/{path:path}', methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'])
 async def proxy(path: str, request: Request):
     full_path = '/' + path
@@ -142,8 +163,17 @@ async def proxy(path: str, request: Request):
     target_url = f'{upstream}{full_path}'
 
     body = await request.body()
-    headers = dict(request.headers)
-    headers.pop('host', None)
+    # v59.4: حد أقصى للجسم (دفاع على مستوى الـ gateway مع ingress).
+    max_body = int(os.getenv('GATEWAY_MAX_BODY_BYTES', '20971520'))  # 20 MB
+    if len(body) > max_body:
+        raise HTTPException(status_code=413, detail='Payload too large')
+
+    headers = {k: v for k, v in request.headers.items() if k.lower() not in _HEADERS_TO_STRIP}
+    headers['X-Forwarded-For'] = request.headers.get(
+        'X-Forwarded-For', request.client.host if request.client else 'unknown'
+    )
+    headers['X-Forwarded-Proto'] = request.url.scheme
+    headers['X-Forwarded-Host'] = request.headers.get('host', '')
 
     start = time.perf_counter()
     upstream_response = await http_client.request(

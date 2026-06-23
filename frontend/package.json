@@ -35,6 +35,8 @@
     "guard:ui-library": "node scripts/enforce-ui-library.mjs"
   },
   "dependencies": {
+    "@babel/core": "^7.29.0",
+    "@babel/parser": "^7.29.2",
     "@signalapp/libsignal-client": "^0.94.0",
     "@tanstack/react-query": "^5.100.9",
     "axios": "^1.8.4",

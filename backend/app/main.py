@@ -276,6 +276,8 @@ _include("app.api.routes.chat.router", prefix="/api/chat")
 _include("app.api.routes.stories.router", prefix="/api")
 _include("app.api.routes.reels.router", prefix="/api/reels")
 _include("app.api.routes.groups.router", prefix="/api/groups")
+# WebSocket المجموعات: /api/ws/groups/{group_id}/{user_id}
+_include("app.api.routes.groups.ws_router", prefix="/api")
 _include("app.api.routes.inbox.router", prefix="/api/inbox")
 # ⚠️ recommendations.py داخلياً يعرّف مساراته بـ /recommendations/...
 # لذلك نحمله تحت /api فقط لتجنب /api/recommendations/recommendations/...

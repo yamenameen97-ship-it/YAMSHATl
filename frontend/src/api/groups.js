@@ -123,6 +123,46 @@ export const generateGroupInvite = (groupId) =>
 export const getGroupAnalytics = (groupId) =>
   API.get(`/groups/${groupId}/analytics`).catch(() => ({ data: null }));
 
+// =================== أحداث / استطلاعات / منشورات — قوائم ===================
+export const listGroupEvents = (groupId, params = {}) =>
+  API.get(`/groups/${groupId}/events`, { params }).catch(() => ({ data: [] }));
+export const listGroupPolls = (groupId, params = {}) =>
+  API.get(`/groups/${groupId}/polls`, { params }).catch(() => ({ data: [] }));
+export const listGroupAnnouncements = (groupId, params = {}) =>
+  API.get(`/groups/${groupId}/announcements`, { params }).catch(() => ({ data: [] }));
+export const listGroupRules = (groupId) =>
+  API.get(`/groups/${groupId}/rules`).catch(() => ({ data: [] }));
+export const listPinnedMessages = (groupId) =>
+  API.get(`/groups/${groupId}/pinned`).catch(() => ({ data: [] }));
+
+// =================== الإشارات (mentions) ===================
+export const listGroupMentions = (groupId, params = {}) =>
+  API.get(`/groups/${groupId}/mentions`, { params }).catch(() => ({ data: [] }));
+export const markMentionRead = (groupId, mentionId) =>
+  API.post(`/groups/${groupId}/mentions/${mentionId}/read`).catch(() => ({ data: null }));
+
+// =================== معرض الوسائط ===================
+export const listGroupMedia = (groupId, params = {}) =>
+  API.get(`/groups/${groupId}/media`, { params }).catch(() => ({ data: [] }));
+
+// =================== سجل التدقيق (audit) ===================
+export const getGroupAuditLog = (groupId, params = {}) =>
+  API.get(`/groups/${groupId}/audit`, { params }).catch(() => ({ data: [] }));
+
+// =================== استكشاف المجموعات ===================
+export const discoverGroups = (params = {}) =>
+  API.get('/groups/discover', { params }).catch(() => ({ data: [] }));
+export const getTrendingGroups = (limit = 20) =>
+  API.get('/groups/trending', { params: { limit } }).catch(() => ({ data: [] }));
+
+// =================== إعدادات الإشعارات لكل مجموعة ===================
+export const getGroupNotificationSettings = (groupId) =>
+  API.get(`/groups/${groupId}/notifications/settings`).catch(() => ({
+    data: { mode: 'all', mute_until: null, mute_mentions: false, sound: 'default', vibrate: true, preview: true },
+  }));
+export const updateGroupNotificationSettings = (groupId, payload) =>
+  API.put(`/groups/${groupId}/notifications/settings`, payload).catch(() => ({ data: payload }));
+
 // =================== WebSocket ===================
 export const buildGroupWsUrl = (groupId, userId) => {
   const base = (API.defaults?.baseURL || window.location.origin)

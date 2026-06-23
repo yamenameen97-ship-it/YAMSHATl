@@ -25,8 +25,11 @@ spec:
           env:
             - name: USER_SERVICE_URL
               value: http://user-service:8000
+            # v59.4: توحيد الدردشة في backend monolith (chat-service القديم محذوف).
+            - name: BACKEND_SERVICE_URL
+              value: http://backend:8000
             - name: CHAT_SERVICE_URL
-              value: http://chat-service:8000
+              value: http://backend:8000
             - name: NOTIFICATION_SERVICE_URL
               value: http://notification-service:8000
             - name: BILLING_SERVICE_URL

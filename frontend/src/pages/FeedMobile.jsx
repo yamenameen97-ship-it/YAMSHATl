@@ -388,7 +388,18 @@ function FeedMobile() {
     }
   }, [moreMenuPost, pushToast, queryClient, closeMoreMenu]);
 
-  const isOwnMoreMenuPost = moreMenuPost?.authorName === session?.username;
+  // ✅ v58.1 — إصلاح منطقي: مقارنة username وليس authorName (الاسم المعروض)
+  // حتى يستطيع المستخدم حذف منشوره الخاص فعلياً.
+  const isOwnMoreMenuPost = (() => {
+    const myUsername = String(session?.username || '').trim().toLowerCase().replace(/^@/, '');
+    if (!myUsername || !moreMenuPost) return false;
+    const postUsername = String(
+      moreMenuPost.username
+      || (moreMenuPost.handle || '').replace(/^@/, '')
+      || ''
+    ).trim().toLowerCase();
+    return Boolean(postUsername) && postUsername === myUsername;
+  })();
 
   // v50 — تحويل صندوق "بماذا تفكر؟" لفتح صفحة ReelComposer (/compose) بدلاً من modal
   const openComposerWithAction = useCallback((action = null) => {

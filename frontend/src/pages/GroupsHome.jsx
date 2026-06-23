@@ -90,9 +90,18 @@ const GroupsHome = () => {
           </div>
         </header>
 
-        <button className="yam-create-group-btn" onClick={() => navigate('/groups/create')}>
-          <span>+</span> إنشاء مجموعة
-        </button>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button className="yam-create-group-btn" onClick={() => navigate('/groups/wizard')}>
+            <span>+</span> إنشاء مجموعة (معالج)
+          </button>
+          <button
+            className="yam-create-group-btn"
+            style={{ background: 'linear-gradient(135deg, #22d3ee, #0ea5e9)' }}
+            onClick={() => navigate('/groups/discover')}
+          >
+            <span>🔭</span> اكتشف مجموعات
+          </button>
+        </div>
 
         {/* البحث */}
         <section className="yam-search-filter-section" style={{ marginTop: '24px' }}>

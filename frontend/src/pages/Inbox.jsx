@@ -7,6 +7,8 @@ import { getGroups, createGroup } from '../api/groups.js';
 import { getMe, getUsers } from '../api/users.js';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import useIsMobile from '../hooks/useIsMobile.js';
+// v59.1 — شريط الستوريات الدائري تحت هيدر الشات (أصدقاء فقط)
+import StoriesBar from '../components/stories/StoriesBar.jsx';
 
 /**
  * Inbox (v36) — الصفحة الرئيسية للشات
@@ -759,6 +761,12 @@ export default function Inbox() {
             onClose={() => setComposeOpen(false)}
             navigate={navigate}
             pushToast={pushToast}
+          />
+
+          {/* ============== شريط الستوريات الدائري (أصدقاء فقط) ============== */}
+          <StoriesBar
+            currentUser={profile}
+            onOpenComposer={() => navigate('/stories')}
           />
 
           {/* ============== شريط البحث ============== */}

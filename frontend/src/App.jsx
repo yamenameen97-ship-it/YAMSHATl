@@ -67,6 +67,16 @@ const Search = lazy(() => import('./pages/Search.jsx'));
 const Settings = lazy(() => import('./pages/Settings.jsx'));
 const ChatSettings = lazy(() => import('./pages/ChatSettings.jsx'));
 const GroupSettings = lazy(() => import('./pages/GroupSettings.jsx'));
+// v59.3 — شاشات المجموعات العشرة الجديدة (منشورات، أحداث، استطلاعات، إشارات، وسائط، سجل، معالج، اكتشاف، إشعارات)
+const GroupPostsFeed = lazy(() => import('./pages/groups/GroupPostsFeed.jsx'));
+const GroupEvents = lazy(() => import('./pages/groups/GroupEvents.jsx'));
+const GroupPolls = lazy(() => import('./pages/groups/GroupPolls.jsx'));
+const GroupMentions = lazy(() => import('./pages/groups/GroupMentions.jsx'));
+const GroupMediaGallery = lazy(() => import('./pages/groups/GroupMediaGallery.jsx'));
+const GroupAuditLog = lazy(() => import('./pages/groups/GroupAuditLog.jsx'));
+const GroupCreateWizard = lazy(() => import('./pages/groups/GroupCreateWizard.jsx'));
+const GroupDiscover = lazy(() => import('./pages/groups/GroupDiscover.jsx'));
+const GroupNotificationSettings = lazy(() => import('./pages/groups/GroupNotificationSettings.jsx'));
 const ShareTargetLanding = lazy(() => import('./pages/ShareTargetLanding.jsx'));
 // 🎮 ميزات التفاعل والتلعيب + الغرف الصوتية
 const EngagementHub = lazy(() => import('./pages/EngagementHub.jsx'));
@@ -226,6 +236,16 @@ export default function App() {
             <Route path="/groups/create" element={<ProtectedRoute><CreateGroup /></ProtectedRoute>} />
             <Route path="/groups/:groupId/chat" element={<ProtectedRoute><GroupChatPage /></ProtectedRoute>} />
             <Route path="/groups/:groupId/settings" element={<ProtectedRoute><GroupSettings /></ProtectedRoute>} />
+            {/* v59.3 — الشاشات العشرة الجديدة للمجموعات */}
+            <Route path="/groups/discover" element={<ProtectedRoute><GroupDiscover /></ProtectedRoute>} />
+            <Route path="/groups/wizard" element={<ProtectedRoute><GroupCreateWizard /></ProtectedRoute>} />
+            <Route path="/groups/:groupId/posts" element={<ProtectedRoute><GroupPostsFeed /></ProtectedRoute>} />
+            <Route path="/groups/:groupId/events" element={<ProtectedRoute><GroupEvents /></ProtectedRoute>} />
+            <Route path="/groups/:groupId/polls" element={<ProtectedRoute><GroupPolls /></ProtectedRoute>} />
+            <Route path="/groups/:groupId/mentions" element={<ProtectedRoute><GroupMentions /></ProtectedRoute>} />
+            <Route path="/groups/:groupId/media" element={<ProtectedRoute><GroupMediaGallery /></ProtectedRoute>} />
+            <Route path="/groups/:groupId/audit" element={<ProtectedRoute><GroupAuditLog /></ProtectedRoute>} />
+            <Route path="/groups/:groupId/notifications" element={<ProtectedRoute><GroupNotificationSettings /></ProtectedRoute>} />
             <Route path="/messages" element={<Navigate to="/inbox" replace />} />
             <Route path="/inbox" element={<ProtectedRoute><Inbox /></ProtectedRoute>} />
             <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />

@@ -7,13 +7,14 @@ const save = (p) => { try { localStorage.setItem(KEY, JSON.stringify(p)); } catc
 
 export default function StoriesSettingsPage() {
   const [prefs, setPrefs] = useState(() => ({
-    whoCanSeeMyStory: 'followers',
+    // v59.1: السياسة الجديدة — لا توجد قصص عامة، الأصدقاء فقط
+    whoCanSeeMyStory: 'friends',
     hideStoryFrom: [],
-    allowReplies: 'followers',
-    allowSharing: true,
+    allowReplies: 'friends',
+    allowSharing: false,        // معطّل افتراضيًا لأن القصص خاصة بالأصدقاء
     autoArchive: true,
     saveToCameraRoll: false,
-    showInExplore: false,
+    showInExplore: false,        // غير متاح في السياسة الجديدة
     allowReactions: true,
     showViewerList: true,
     closeFriendsOnly: false,
@@ -37,38 +38,36 @@ export default function StoriesSettingsPage() {
 
   return (
     <SettingsShell title="إعدادات الستوري" subtitle="خصوصية، أرشيف، ومشاركة الستوريز." icon="📖" backTo="/stories" message={msg}>
-      <SettingsSection title="من يستطيع رؤية ستوري" description="تحكم في جمهور القصص">
+      <div dir="rtl" style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}>
+
+      <SettingsSection title="من يستطيع رؤية ستوري" description="القصص خاصة بالأصدقاء فقط ولا تظهر للعامة">
         <SettingsRow icon="👥" title="جمهور الستوري الافتراضي">
           <select className="settings-select" value={prefs.whoCanSeeMyStory} onChange={(e) => u('whoCanSeeMyStory', e.target.value)}>
-            <option value="everyone">الجميع</option>
-            <option value="followers">المتابعون فقط</option>
+            <option value="friends">الأصدقاء فقط</option>
             <option value="close-friends">الأصدقاء المقربون</option>
-            <option value="custom">مخصص</option>
+            <option value="private">خاص (أنا فقط)</option>
           </select>
         </SettingsRow>
-        <SettingsRow icon="⭐" title="مشاركة فقط مع المقربين">
+        <SettingsRow icon="💚" title="مشاركة فقط مع المقربين">
           <SettingsToggle on={prefs.closeFriendsOnly} onChange={(v) => u('closeFriendsOnly', v)} />
         </SettingsRow>
         <SettingsRow icon="👁️" title="عرض قائمة المشاهدين">
           <SettingsToggle on={prefs.showViewerList} onChange={(v) => u('showViewerList', v)} />
-        </SettingsRow>
-        <SettingsRow icon="🌐" title="ظهور في صفحة الاستكشاف">
-          <SettingsToggle on={prefs.showInExplore} onChange={(v) => u('showInExplore', v)} />
         </SettingsRow>
       </SettingsSection>
 
       <SettingsSection title="التفاعل والردود">
         <SettingsRow icon="💬" title="السماح بالردود">
           <select className="settings-select" value={prefs.allowReplies} onChange={(e) => u('allowReplies', e.target.value)}>
-            <option value="everyone">الجميع</option>
-            <option value="followers">المتابعون</option>
+            <option value="friends">الأصدقاء</option>
+            <option value="close-friends">المقربون فقط</option>
             <option value="nobody">لا أحد</option>
           </select>
         </SettingsRow>
         <SettingsRow icon="😍" title="السماح بالتفاعلات (إعجاب، إيموجي)">
           <SettingsToggle on={prefs.allowReactions} onChange={(v) => u('allowReactions', v)} />
         </SettingsRow>
-        <SettingsRow icon="🔁" title="السماح بإعادة المشاركة">
+        <SettingsRow icon="🔁" title="السماح بإعادة المشاركة" description="ضمن الأصدقاء فقط">
           <SettingsToggle on={prefs.allowSharing} onChange={(v) => u('allowSharing', v)} />
         </SettingsRow>
       </SettingsSection>
@@ -110,6 +109,8 @@ export default function StoriesSettingsPage() {
           <SettingsToggle on={prefs.crossPostToReels} onChange={(v) => u('crossPostToReels', v)} />
         </SettingsRow>
       </SettingsSection>
+
+      </div>
     </SettingsShell>
   );
 }

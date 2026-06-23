@@ -1,1 +1,331 @@
-import { useEffect, useRef, useCallback, useState, useMemo } from 'react';\n\n/**\n * usePerformanceOptimization Hook\n * \n * مجموعة من الـ hooks لتحسين الأداء\n */\n\n/**\n * useDebounce - تأخير تنفيذ دالة\n */\nexport function useDebounce(value, delay = 500) {\n  const [debouncedValue, setDebouncedValue] = useState(value);\n\n  useEffect(() => {\n    const handler = setTimeout(() => {\n      setDebouncedValue(value);\n    }, delay);\n\n    return () => clearTimeout(handler);\n  }, [value, delay]);\n\n  return debouncedValue;\n}\n\n/**\n * useThrottle - تحديد معدل تنفيذ دالة\n */\nexport function useThrottle(callback, delay = 500) {\n  const lastRun = useRef(Date.now());\n\n  return useCallback((...args) => {\n    const now = Date.now();\n    if (now - lastRun.current >= delay) {\n      callback(...args);\n      lastRun.current = now;\n    }\n  }, [callback, delay]);\n}\n\n/**\n * useIntersectionObserver - مراقبة ظهور العناصر\n */\nexport function useIntersectionObserver(ref, options = {}) {\n  const [isVisible, setIsVisible] = useState(false);\n\n  useEffect(() => {\n    if (!ref.current) return;\n\n    const observer = new IntersectionObserver(([entry]) => {\n      if (entry.isIntersecting) {\n        setIsVisible(true);\n        observer.unobserve(entry.target);\n      }\n    }, {\n      rootMargin: '50px',\n      ...options,\n    });\n\n    observer.observe(ref.current);\n\n    return () => observer.disconnect();\n  }, [ref, options]);\n\n  return isVisible;\n}\n\n/**\n * useResizeObserver - مراقبة تغيير حجم العنصر\n */\nexport function useResizeObserver(ref) {\n  const [size, setSize] = useState({ width: 0, height: 0 });\n\n  useEffect(() => {\n    if (!ref.current) return;\n\n    const observer = new ResizeObserver(([entry]) => {\n      setSize({\n        width: entry.contentRect.width,\n        height: entry.contentRect.height,\n      });\n    });\n\n    observer.observe(ref.current);\n\n    return () => observer.disconnect();\n  }, [ref]);\n\n  return size;\n}\n\n/**\n * usePrevious - الحصول على القيمة السابقة\n */\nexport function usePrevious(value) {\n  const ref = useRef();\n\n  useEffect(() => {\n    ref.current = value;\n  }, [value]);\n\n  return ref.current;\n}\n\n/**\n * useAsync - معالجة العمليات غير المتزامنة\n */\nexport function useAsync(asyncFunction, immediate = true) {\n  const [status, setStatus] = useState('idle');\n  const [value, setValue] = useState(null);\n  const [error, setError] = useState(null);\n\n  const execute = useCallback(async () => {\n    setStatus('pending');\n    setValue(null);\n    setError(null);\n\n    try {\n      const response = await asyncFunction();\n      setValue(response);\n      setStatus('success');\n      return response;\n    } catch (err) {\n      setError(err);\n      setStatus('error');\n    }\n  }, [asyncFunction]);\n\n  useEffect(() => {\n    if (immediate) {\n      execute();\n    }\n  }, [execute, immediate]);\n\n  return { execute, status, value, error };\n}\n\n/**\n * useLocalStorage - تخزين البيانات محلياً\n */\nexport function useLocalStorage(key, initialValue) {\n  const [storedValue, setStoredValue] = useState(() => {\n    try {\n      const item = window.localStorage.getItem(key);\n      return item ? JSON.parse(item) : initialValue;\n    } catch (error) {\n      console.error(error);\n      return initialValue;\n    }\n  });\n\n  const setValue = useCallback((value) => {\n    try {\n      const valueToStore = value instanceof Function ? value(storedValue) : value;\n      setStoredValue(valueToStore);\n      window.localStorage.setItem(key, JSON.stringify(valueToStore));\n    } catch (error) {\n      console.error(error);\n    }\n  }, [key, storedValue]);\n\n  return [storedValue, setValue];\n}\n\n/**\n * useWindowSize - الحصول على حجم النافذة\n */\nexport function useWindowSize() {\n  const [windowSize, setWindowSize] = useState({\n    width: typeof window !== 'undefined' ? window.innerWidth : 0,\n    height: typeof window !== 'undefined' ? window.innerHeight : 0,\n  });\n\n  useEffect(() => {\n    const handleResize = () => {\n      setWindowSize({\n        width: window.innerWidth,\n        height: window.innerHeight,\n      });\n    };\n\n    window.addEventListener('resize', handleResize, { passive: true });\n    return () => window.removeEventListener('resize', handleResize);\n  }, []);\n\n  return windowSize;\n}\n\n/**\n * useMediaQuery - مراقبة media queries\n */\nexport function useMediaQuery(query) {\n  const [matches, setMatches] = useState(false);\n\n  useEffect(() => {\n    const media = window.matchMedia(query);\n    if (media.matches !== matches) {\n      setMatches(media.matches);\n    }\n\n    const listener = () => setMatches(media.matches);\n    media.addEventListener('change', listener);\n\n    return () => media.removeEventListener('change', listener);\n  }, [matches, query]);\n\n  return matches;\n}\n\n/**\n * useFetch - جلب البيانات مع التخزين المؤقت\n */\nexport function useFetch(url, options = {}) {\n  const cache = useRef({});\n  const [data, setData] = useState(null);\n  const [loading, setLoading] = useState(true);\n  const [error, setError] = useState(null);\n\n  useEffect(() => {\n    if (!url) return;\n\n    const fetchData = async () => {\n      if (cache.current[url]) {\n        setData(cache.current[url]);\n        setLoading(false);\n        return;\n      }\n\n      try {\n        const response = await fetch(url, options);\n        if (!response.ok) throw new Error('Failed to fetch');\n        const result = await response.json();\n        cache.current[url] = result;\n        setData(result);\n      } catch (err) {\n        setError(err);\n      } finally {\n        setLoading(false);\n      }\n    };\n\n    fetchData();\n  }, [url, options]);\n\n  return { data, loading, error };\n}\n\n/**\n * usePerformanceMetrics - قياس الأداء\n */\nexport function usePerformanceMetrics(componentName) {\n  useEffect(() => {\n    if (typeof window === 'undefined' || !window.performance) return;\n\n    const startTime = performance.now();\n\n    return () => {\n      const endTime = performance.now();\n      const duration = endTime - startTime;\n\n      if (duration > 16.67) {\n        // أكثر من frame واحد\n        console.warn(`[Performance] ${componentName} took ${duration.toFixed(2)}ms`);\n      }\n    };\n  }, [componentName]);\n}\n\n/**\n * useAnimationFrame - استخدام requestAnimationFrame\n */\nexport function useAnimationFrame(callback) {\n  const requestRef = useRef();\n\n  useEffect(() => {\n    const animate = () => {\n      callback();\n      requestRef.current = requestAnimationFrame(animate);\n    };\n\n    requestRef.current = requestAnimationFrame(animate);\n\n    return () => cancelAnimationFrame(requestRef.current);\n  }, [callback]);\n}\n\n/**\n * useMemoCompare - مقارنة مخصصة للـ useMemo\n */\nexport function useMemoCompare(value, compare) {\n  const ref = useRef();\n  const signalRef = useRef(0);\n\n  if (!compare(value, ref.current)) {\n    ref.current = value;\n    signalRef.current += 1;\n  }\n\n  return useMemo(() => ref.current, [signalRef.current]);\n}\n\n/**\n * useCallbackRef - دمج useCallback مع useRef\n */\nexport function useCallbackRef(callback) {\n  const ref = useRef(callback);\n\n  useEffect(() => {\n    ref.current = callback;\n  }, [callback]);\n\n  return useCallback((...args) => ref.current(...args), []);\n}\n\nexport default {\n  useDebounce,\n  useThrottle,\n  useIntersectionObserver,\n  useResizeObserver,\n  usePrevious,\n  useAsync,\n  useLocalStorage,\n  useWindowSize,\n  useMediaQuery,\n  useFetch,\n  usePerformanceMetrics,\n  useAnimationFrame,\n  useMemoCompare,\n  useCallbackRef,\n};\n
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
+
+/**
+ * usePerformanceOptimization Hook
+ * 
+ * مجموعة من الـ hooks لتحسين الأداء
+ */
+
+/**
+ * useDebounce - تأخير تنفيذ دالة
+ */
+export function useDebounce(value, delay = 500) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
+/**
+ * useThrottle - تحديد معدل تنفيذ دالة
+ */
+export function useThrottle(callback, delay = 500) {
+  const lastRun = useRef(Date.now());
+
+  return useCallback((...args) => {
+    const now = Date.now();
+    if (now - lastRun.current >= delay) {
+      callback(...args);
+      lastRun.current = now;
+    }
+  }, [callback, delay]);
+}
+
+/**
+ * useIntersectionObserver - مراقبة ظهور العناصر
+ */
+export function useIntersectionObserver(ref, options = {}) {
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    if (!ref.current) return;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setIsVisible(true);
+        observer.unobserve(entry.target);
+      }
+    }, {
+      rootMargin: '50px',
+      ...options,
+    });
+
+    observer.observe(ref.current);
+
+    return () => observer.disconnect();
+  }, [ref, options]);
+
+  return isVisible;
+}
+
+/**
+ * useResizeObserver - مراقبة تغيير حجم العنصر
+ */
+export function useResizeObserver(ref) {
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    if (!ref.current) return;
+
+    const observer = new ResizeObserver(([entry]) => {
+      setSize({
+        width: entry.contentRect.width,
+        height: entry.contentRect.height,
+      });
+    });
+
+    observer.observe(ref.current);
+
+    return () => observer.disconnect();
+  }, [ref]);
+
+  return size;
+}
+
+/**
+ * usePrevious - الحصول على القيمة السابقة
+ */
+export function usePrevious(value) {
+  const ref = useRef();
+
+  useEffect(() => {
+    ref.current = value;
+  }, [value]);
+
+  return ref.current;
+}
+
+/**
+ * useAsync - معالجة العمليات غير المتزامنة
+ */
+export function useAsync(asyncFunction, immediate = true) {
+  const [status, setStatus] = useState('idle');
+  const [value, setValue] = useState(null);
+  const [error, setError] = useState(null);
+
+  const execute = useCallback(async () => {
+    setStatus('pending');
+    setValue(null);
+    setError(null);
+
+    try {
+      const response = await asyncFunction();
+      setValue(response);
+      setStatus('success');
+      return response;
+    } catch (err) {
+      setError(err);
+      setStatus('error');
+    }
+  }, [asyncFunction]);
+
+  useEffect(() => {
+    if (immediate) {
+      execute();
+    }
+  }, [execute, immediate]);
+
+  return { execute, status, value, error };
+}
+
+/**
+ * useLocalStorage - تخزين البيانات محلياً
+ */
+export function useLocalStorage(key, initialValue) {
+  const [storedValue, setStoredValue] = useState(() => {
+    try {
+      const item = window.localStorage.getItem(key);
+      return item ? JSON.parse(item) : initialValue;
+    } catch (error) {
+      console.error(error);
+      return initialValue;
+    }
+  });
+
+  const setValue = useCallback((value) => {
+    try {
+      const valueToStore = value instanceof Function ? value(storedValue) : value;
+      setStoredValue(valueToStore);
+      window.localStorage.setItem(key, JSON.stringify(valueToStore));
+    } catch (error) {
+      console.error(error);
+    }
+  }, [key, storedValue]);
+
+  return [storedValue, setValue];
+}
+
+/**
+ * useWindowSize - الحصول على حجم النافذة
+ */
+export function useWindowSize() {
+  const [windowSize, setWindowSize] = useState({
+    width: typeof window !== 'undefined' ? window.innerWidth : 0,
+    height: typeof window !== 'undefined' ? window.innerHeight : 0,
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowSize({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    };
+
+    window.addEventListener('resize', handleResize, { passive: true });
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  return windowSize;
+}
+
+/**
+ * useMediaQuery - مراقبة media queries
+ */
+export function useMediaQuery(query) {
+  const [matches, setMatches] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    if (media.matches !== matches) {
+      setMatches(media.matches);
+    }
+
+    const listener = () => setMatches(media.matches);
+    media.addEventListener('change', listener);
+
+    return () => media.removeEventListener('change', listener);
+  }, [matches, query]);
+
+  return matches;
+}
+
+/**
+ * useFetch - جلب البيانات مع التخزين المؤقت
+ */
+export function useFetch(url, options = {}) {
+  const cache = useRef({});
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!url) return;
+
+    const fetchData = async () => {
+      if (cache.current[url]) {
+        setData(cache.current[url]);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(url, options);
+        if (!response.ok) throw new Error('Failed to fetch');
+        const result = await response.json();
+        cache.current[url] = result;
+        setData(result);
+      } catch (err) {
+        setError(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [url, options]);
+
+  return { data, loading, error };
+}
+
+/**
+ * usePerformanceMetrics - قياس الأداء
+ */
+export function usePerformanceMetrics(componentName) {
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.performance) return;
+
+    const startTime = performance.now();
+
+    return () => {
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+
+      if (duration > 16.67) {
+        // أكثر من frame واحد
+        console.warn(`[Performance] ${componentName} took ${duration.toFixed(2)}ms`);
+      }
+    };
+  }, [componentName]);
+}
+
+/**
+ * useAnimationFrame - استخدام requestAnimationFrame
+ */
+export function useAnimationFrame(callback) {
+  const requestRef = useRef();
+
+  useEffect(() => {
+    const animate = () => {
+      callback();
+      requestRef.current = requestAnimationFrame(animate);
+    };
+
+    requestRef.current = requestAnimationFrame(animate);
+
+    return () => cancelAnimationFrame(requestRef.current);
+  }, [callback]);
+}
+
+/**
+ * useMemoCompare - مقارنة مخصصة للـ useMemo
+ */
+export function useMemoCompare(value, compare) {
+  const ref = useRef();
+  const signalRef = useRef(0);
+
+  if (!compare(value, ref.current)) {
+    ref.current = value;
+    signalRef.current += 1;
+  }
+
+  return useMemo(() => ref.current, [signalRef.current]);
+}
+
+/**
+ * useCallbackRef - دمج useCallback مع useRef
+ */
+export function useCallbackRef(callback) {
+  const ref = useRef(callback);
+
+  useEffect(() => {
+    ref.current = callback;
+  }, [callback]);
+
+  return useCallback((...args) => ref.current(...args), []);
+}
+
+export default {
+  useDebounce,
+  useThrottle,
+  useIntersectionObserver,
+  useResizeObserver,
+  usePrevious,
+  useAsync,
+  useLocalStorage,
+  useWindowSize,
+  useMediaQuery,
+  useFetch,
+  usePerformanceMetrics,
+  useAnimationFrame,
+  useMemoCompare,
+  useCallbackRef,
+};
+

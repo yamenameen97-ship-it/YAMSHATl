@@ -157,6 +157,7 @@
         "src/components/groups/GroupQuickLinks.jsx",
         "src/components/groups/GroupSubHeader.jsx",
         "src/components/stories/StoriesBar.jsx",
+        "src/components/reels/CameraFilterCarousel.jsx",
         "src/components/yamshat/YamshatIcon.jsx"
     ]
 }

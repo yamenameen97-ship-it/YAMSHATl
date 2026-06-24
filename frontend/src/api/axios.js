@@ -41,11 +41,26 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 // ✅ FIX: أنماط مسارات البث التي ترجع 403/404 بشكل طبيعي
 // (غير مصرح / البث انتهى / لا توجد تعليقات) — لا تسجل أخطائها تلقائياً
+// v59.7: أضفنا stories/grouped و groups/*/pinned لأنها قد ترجع 404 عند
+//        عدم وجود محتوى أو في بيئات بدون هذا الـ endpoint بعد.
 const SILENT_404_403_PATTERNS = [
   /\/live\/[^/]+\/analytics$/i,
   /\/live_comments\/[^/]+/i,
   /\/live_room\/[^/]+/i,
   /\/live\/[^/]+\/viewers$/i,
+  /\/stories\/grouped$/i,
+  /\/stories\/highlights$/i,
+  /\/stories\/archive$/i,
+  /\/stories\/analytics\/summary$/i,
+  /\/groups\/[^/]+\/pinned$/i,
+  /\/groups\/[^/]+\/announcements$/i,
+  /\/groups\/[^/]+\/rules$/i,
+  /\/groups\/[^/]+\/mentions$/i,
+  /\/groups\/[^/]+\/media$/i,
+  /\/groups\/[^/]+\/audit$/i,
+  /\/groups\/[^/]+\/events$/i,
+  /\/groups\/[^/]+\/polls$/i,
+  /\/groups\/discover$/i,
 ];
 
 const shouldSilenceError = (config = {}, status) => {
@@ -151,8 +166,10 @@ API.interceptors.response.use(
     }
 
     // Advanced Retry Strategy (Exponential Backoff)
+    // v59.7: لا تعد المحاولة على المسارات الصامتة لتفادي الضجيج
     const retryCount = config?._retryCount || 0;
-    if (config && shouldRetryRequest(config, response?.status) && retryCount < 3) {
+    const isSilentPath = config && shouldSilenceError(config, response?.status);
+    if (config && !isSilentPath && shouldRetryRequest(config, response?.status) && retryCount < 3) {
       config._retryCount = retryCount + 1;
       const delay = Math.pow(2, retryCount) * 1000 + Math.random() * 1000;
       await new Promise((resolve) => setTimeout(resolve, delay));
@@ -160,9 +177,26 @@ API.interceptors.response.use(
     }
 
     // ✅ FIX: وسم الخطأ بأنه "صامت" حتى يعرف المستخدمون أنه لا داعي للسجل في الكونسول
+    // v59.7: رجوع بـ resolved promise و data فارغة عندما يكون 404 صامتاً
+    //         حتى لا تظهر AxiosError في الكونسول عند استخدام await بدون catch.
     if (config && shouldSilenceError(config, response?.status)) {
       error.isSilent = true;
       error.silent = true;
+      // إذا كان 404 على مسار صامت → أرجع data فارغة بدلاً من الرفض
+      if (response?.status === 404) {
+        const emptyData = /pinned|highlights|grouped|archive|analytics|announcements|rules|mentions|media|audit|events|polls|discover/i
+          .test(String(config.url || ''))
+          ? []
+          : null;
+        return Promise.resolve({
+          data: emptyData,
+          status: 404,
+          statusText: 'Not Found (silent)',
+          headers: {},
+          config,
+          request: error.request,
+        });
+      }
     }
 
     return Promise.reject(error);

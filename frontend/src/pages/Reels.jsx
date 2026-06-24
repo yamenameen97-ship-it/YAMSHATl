@@ -333,20 +333,44 @@ export default function Reels() {
                     onClick={async (e) => {
                       e.stopPropagation();
                       const wasFollowing = reel.is_following;
+                      // التحديث التفاؤلي
                       setReels((prev) => prev.map((r) => (r.id === reel.id ? { ...r, is_following: !wasFollowing } : r)));
                       try {
-                        if (wasFollowing) {
-                          await API.delete(`/users/${encodeURIComponent(reel.username)}/follow`).catch(() =>
-                            API.post(`/users/${encodeURIComponent(reel.username)}/unfollow`)
-                          );
-                        } else {
-                          await API.post(`/users/${encodeURIComponent(reel.username)}/follow`);
+                        // v59.6: توحيد الاستدعاء على endpoint واحد فعلي في الباك اند:
+                        // POST /api/users/follow { following: <username> } — يعمل toggle تلقائياً
+                        // ثم fallback للمسارات المتاحة الأخرى احتياطاً
+                        let serverFollowing = !wasFollowing;
+                        try {
+                          const { data } = await API.post('/users/follow', { following: reel.username });
+                          if (data && typeof data.following === 'boolean') {
+                            serverFollowing = data.following;
+                          }
+                        } catch (primaryErr) {
+                          // fallback: profile_v2 (Flask) بـ username في المسار
+                          try {
+                            if (wasFollowing) {
+                              await API.post(`/unfollow/${encodeURIComponent(reel.username)}`);
+                              serverFollowing = false;
+                            } else {
+                              await API.post(`/follow/${encodeURIComponent(reel.username)}`);
+                              serverFollowing = true;
+                            }
+                          } catch (secondaryErr) {
+                            throw primaryErr;
+                          }
                         }
-                        pushToast?.({ type: 'success', title: wasFollowing ? 'تم إلغاء المتابعة' : 'تمت المتابعة' });
-                      } catch {
-                        // rollback
+                        // مزامنة الحالة مع الخادم
+                        setReels((prev) => prev.map((r) => (r.id === reel.id ? { ...r, is_following: serverFollowing } : r)));
+                        pushToast?.({ type: 'success', title: serverFollowing ? 'تمت المتابعة' : 'تم إلغاء المتابعة' });
+                      } catch (err) {
+                        // rollback عند فشل حقيقي
                         setReels((prev) => prev.map((r) => (r.id === reel.id ? { ...r, is_following: wasFollowing } : r)));
-                        pushToast?.({ type: 'error', title: 'تعذّر تحديث المتابعة' });
+                        const status = err?.response?.status;
+                        if (status === 401 || status === 403) {
+                          pushToast?.({ type: 'error', title: 'يلزم تسجيل الدخول للمتابعة' });
+                        } else {
+                          pushToast?.({ type: 'error', title: 'تعذّر تحديث المتابعة' });
+                        }
                       }
                     }}
                     aria-label={reel.is_following ? 'إلغاء المتابعة' : 'متابعة'}

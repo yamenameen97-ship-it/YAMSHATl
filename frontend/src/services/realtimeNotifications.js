@@ -164,9 +164,16 @@ class RealtimeNotificationsClient {
       // circuit breaker: توقف نهائياً لهذه الجلسة
       this.disabled = true;
       this._clearTimers();
-      console.warn(
-        `[realtime] WS endpoint unavailable after ${MAX_FAILED_ATTEMPTS} attempts — disabled for this session. ` +
-        `Set VITE_DISABLE_REALTIME_WS=true to suppress this.`
+      // v59.7: خفّضنا الرسالة إلى info بدل warn لتفادي الضجيج في الكونسول.
+      //         يظهر مرة واحدة فقط لأن disabled=true يمنع أي محاولة لاحقة.
+      try {
+        // علِّم الـ window حتى لا تحاول أي وحدة أخرى الاتصال مجدداً في نفس الجلسة
+        if (typeof window !== 'undefined') {
+          window.__YAMSHAT_WS_DISABLED__ = true;
+        }
+      } catch (_) { /* ignore */ }
+      console.info(
+        '[realtime] notifications WS unavailable — switched to silent mode for this session.'
       );
       return;
     }

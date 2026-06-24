@@ -34,6 +34,12 @@ const rewriteKnownBrokenBrandAsset = (value = '') => {
         || /(?:^|\/)logo192\.(?:png|jpe?g|webp)$/i.test(pathname)) {
       return '__FRONTEND__/logo192.png';
     }
+    // ✅ FIX (v59.7): ملفات عامة بأسماء placeholder في /uploads/ مثل
+    //    file_00000000-*.png إلى صورة بديل محلية لتفادي 404 في الكونسول
+    if (/(?:^|\/)uploads\/[a-f0-9]+_+file_0+[-_].+\.(?:png|jpe?g|webp|gif)$/i.test(pathname)
+        || /(?:^|\/)uploads\/.+file_0{6,}.+\.(?:png|jpe?g|webp|gif)$/i.test(pathname)) {
+      return '__FRONTEND__/brand/yamshat-logo.jpg';
+    }
     // ✅ FIX (2026-06-13): إعادة كتابة yamshat-logo بأي امتداد أو أي مسار فرعي في uploads/brand/api/v1
     if (/yamshat-logo\.(?:png|jpe?g|webp|svg)$/i.test(pathname)) {
       return '__FRONTEND__/brand/yamshat-logo.jpg';

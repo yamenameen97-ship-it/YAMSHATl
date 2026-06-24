@@ -22,12 +22,34 @@ export default function StoriesBar({ currentUser, onOpenComposer }) {
   const fileInputRef = useRef(null);
   const scrollRef = useRef(null);
 
+  // v59.7: circuit breaker — إيقاف الـ polling عند تكرار الفشل لتفادي ضجيج الكونسول
+  const disabledRef = useRef(false);
+  const failCountRef = useRef(0);
+
   const loadGroups = useCallback(async () => {
+    if (disabledRef.current) return;
     try {
       const res = await getStoriesGrouped();
-      setGroups(Array.isArray(res?.data) ? res.data : []);
+      // عند 404 صامت يرجع status=404 و data=[] من الـ interceptor
+      if (res?.status === 404) {
+        failCountRef.current += 1;
+        if (failCountRef.current >= 2) {
+          disabledRef.current = true;
+        }
+        setGroups([]);
+      } else {
+        failCountRef.current = 0;
+        setGroups(Array.isArray(res?.data) ? res.data : []);
+      }
     } catch (err) {
-      console.warn('[StoriesBar] failed to load grouped stories', err);
+      // لا تسجل في الكونسول إذا وُسم الخطأ بأنه صامت
+      if (!err?.isSilent && !err?.silent) {
+        console.warn('[StoriesBar] failed to load grouped stories', err);
+      }
+      failCountRef.current += 1;
+      if (failCountRef.current >= 3) {
+        disabledRef.current = true;
+      }
       setGroups([]);
     } finally {
       setLoading(false);
@@ -36,7 +58,13 @@ export default function StoriesBar({ currentUser, onOpenComposer }) {
 
   useEffect(() => {
     loadGroups();
-    const t = setInterval(loadGroups, 60_000); // تحديث كل دقيقة
+    const t = setInterval(() => {
+      if (disabledRef.current) {
+        clearInterval(t);
+        return;
+      }
+      loadGroups();
+    }, 60_000); // تحديث كل دقيقة
     return () => clearInterval(t);
   }, [loadGroups]);
 

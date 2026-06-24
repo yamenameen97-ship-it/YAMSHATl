@@ -43,12 +43,27 @@ const NAV_ITEMS_LTR_ORDER = [
     id: 'create',
     label: 'منشور جديد',
     isCenter: true,
-    icon: () => (
-      <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.8" strokeLinecap="round">
-        <line x1="12" y1="5" x2="12" y2="19" />
-        <line x1="5" y1="12" x2="19" y2="12" />
-      </svg>
-    ),
+    // v59.6: أيقونة "ريلز جديد" — مستطيل ريلز (clapper) مطابق للصورة المرجعية
+    icon: (ctx) => {
+      // ctx.kind: 'reel' | 'story' | 'post' | 'group' | 'chat'
+      const kind = ctx?.kind || 'post';
+      if (kind === 'reel' || kind === 'story') {
+        // أيقونة "ريل" (clapper / film) — مثل الصورة الأولى
+        return (
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="4" ry="4" />
+            <path d="M10 9.2v5.6a.5.5 0 0 0 .75.43l4.8-2.8a.5.5 0 0 0 0-.86l-4.8-2.8A.5.5 0 0 0 10 9.2z" fill="white" stroke="none" />
+          </svg>
+        );
+      }
+      // افتراضي: علامة (+) للمنشور/المجموعة/الدردشة
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.8" strokeLinecap="round">
+          <line x1="12" y1="5" x2="12" y2="19" />
+          <line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+      );
+    },
   },
   {
     id: 'chat',
@@ -85,19 +100,19 @@ const NAV_ITEMS_LTR_ORDER = [
  */
 function resolveCreateAction(pathname) {
   if (pathname.startsWith('/groups')) {
-    return { label: 'إنشاء مجموعة', kind: 'navigate', target: '/groups/create' };
+    return { label: 'إنشاء مجموعة', kind: 'navigate', target: '/groups/create', iconKind: 'group' };
   }
   if (pathname.startsWith('/inbox') || pathname.startsWith('/chat')) {
-    return { label: 'دردشة جديدة', kind: 'event', event: 'yamshat:open-new-chat', fallback: '/inbox' };
+    return { label: 'دردشة جديدة', kind: 'event', event: 'yamshat:open-new-chat', fallback: '/inbox', iconKind: 'chat' };
   }
   if (pathname.startsWith('/reels')) {
     /* v55: تصحيح النص إلى "ريلز جديد" ليتطابق مع التصميم المرجعي */
-    return { label: 'ريلز جديد', kind: 'navigate', target: '/compose?tab=reel' };
+    return { label: 'ريلز جديد', kind: 'navigate', target: '/compose?tab=reel', iconKind: 'reel' };
   }
   if (pathname.startsWith('/stories')) {
-    return { label: 'ستوري جديد', kind: 'navigate', target: '/compose?tab=story' };
+    return { label: 'ستوري جديد', kind: 'navigate', target: '/compose?tab=story', iconKind: 'story' };
   }
-  return { label: 'منشور جديد', kind: 'navigate', target: '/compose?tab=post' };
+  return { label: 'منشور جديد', kind: 'navigate', target: '/compose?tab=post', iconKind: 'post' };
 }
 
 function BottomNav() {
@@ -132,17 +147,18 @@ function BottomNav() {
           const isActive = item.match ? item.match(location.pathname) : location.pathname === item.to;
 
           if (item.isCenter) {
+            const isReelLike = createAction.iconKind === 'reel' || createAction.iconKind === 'story';
             return (
               <button
                 key={item.id}
                 type="button"
-                className="ym-nav-center-item"
+                className={`ym-nav-center-item ${isReelLike ? 'is-reel-floating' : ''}`}
                 aria-label={createAction.label}
                 title={createAction.label}
                 onClick={handleCreateClick}
               >
-                <span className="ym-nav-plus-btn">
-                  {item.icon()}
+                <span className={`ym-nav-plus-btn ${isReelLike ? 'is-reel' : ''}`}>
+                  {item.icon({ kind: createAction.iconKind })}
                 </span>
                 <span className="ym-nav-label ym-nav-label-center" dir="rtl">{createAction.label}</span>
               </button>
@@ -241,6 +257,7 @@ function BottomNav() {
           color: #E5E7EB;
           font-size: 0.72rem;
           transition: color 0.2s;
+          position: relative;
         }
         .ym-nav-center-item:hover { color: #C4B5FD; }
         /* v55: تكبير زر (+) ليصبح أبرز وأوضح (مطابق للتصميم المرجعي) */
@@ -265,6 +282,29 @@ function BottomNav() {
           background-color: #7C3AED;
         }
         .ym-nav-center-item:active .ym-nav-plus-btn { transform: scale(0.94); }
+
+        /* ✨ v59.6 — داخل صفحة /reels (الريلز) يظهر الزر أكبر و"طافياً" فوق النافبار مثل الصورة المرجعية */
+        .ym-nav-center-item.is-reel-floating .ym-nav-plus-btn.is-reel {
+          width: 56px;
+          height: 56px;
+          border-radius: 16px;
+          margin-top: -22px; /* يرفع الزر ليبرز فوق الشريط */
+          background-image: linear-gradient(180deg, #A78BFA 0%, #8B5CF6 50%, #6D28D9 100%);
+          box-shadow:
+            0 10px 28px rgba(139,92,246,.55),
+            0 0 0 4px #0A0D1A; /* إطار بلون النافبار ليبدو منفصلاً */
+          position: relative;
+          z-index: 2;
+        }
+        .ym-nav-center-item.is-reel-floating .ym-nav-plus-btn.is-reel svg {
+          width: 30px;
+          height: 30px;
+        }
+        .ym-nav-center-item.is-reel-floating .ym-nav-label-center {
+          margin-top: 2px;
+          color: #C4B5FD;
+          font-weight: 700;
+        }
         .ym-nav-label {
           font-size: 0.72rem;
           line-height: 1.1;
@@ -293,6 +333,11 @@ function BottomNav() {
           .ym-nav-plus-btn svg { width: 20px; height: 20px; }
           .ym-nav-label { font-size: 0.68rem; max-width: 68px; }
           .ym-nav-label-center { max-width: 90px; }
+          /* v59.6: الحجم الطافي للريلز على الشاشات الصغيرة */
+          .ym-nav-center-item.is-reel-floating .ym-nav-plus-btn.is-reel {
+            width: 52px; height: 52px; border-radius: 15px; margin-top: -20px;
+          }
+          .ym-nav-center-item.is-reel-floating .ym-nav-plus-btn.is-reel svg { width: 28px; height: 28px; }
         }
         @media (max-width: 360px) {
           .ym-bottomnav { height: calc(58px + env(safe-area-inset-bottom, 0px)); }

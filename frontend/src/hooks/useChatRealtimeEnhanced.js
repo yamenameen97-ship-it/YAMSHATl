@@ -245,7 +245,18 @@ export default function useChatRealtimeEnhanced() {
   }, [flushSeenReceipts, syncChatState, token]);
 
   const handleDisconnect = useCallback((reason) => {
-    logger.warn('chat realtime disconnected', { reason });
+    // v59.7: أسباب طبيعية لا تحتاج وسمها بـ warn في الكونسول
+    const benignReasons = new Set([
+      'transport close',
+      'ping timeout',
+      'transport error',
+      'io client disconnect',
+    ]);
+    if (benignReasons.has(String(reason || ''))) {
+      logger.info('chat realtime disconnected', { reason });
+    } else {
+      logger.warn('chat realtime disconnected', { reason });
+    }
   }, []);
 
   useEffect(() => {

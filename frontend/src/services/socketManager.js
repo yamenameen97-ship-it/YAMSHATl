@@ -182,7 +182,19 @@ class SocketManager {
     });
 
     this.socket.on('disconnect', (reason) => {
-      logger.warn('Socket disconnected', { reason });
+      // v59.7: أسباب طبيعية (transport close / ping timeout) لا نحتاج تسجيلها بـ warn
+      //         حتى لا تغرق الكونسول عند تقلب الشبكة.
+      const benignReasons = new Set([
+        'transport close',
+        'ping timeout',
+        'transport error',
+        'io client disconnect',
+      ]);
+      if (benignReasons.has(String(reason || ''))) {
+        logger.info('Socket disconnected', { reason });
+      } else {
+        logger.warn('Socket disconnected', { reason });
+      }
       this.emitBrowserEvent('yamshat:socket-state', {
         connected: false,
         reconnecting: reason !== 'io client disconnect',
@@ -195,7 +207,8 @@ class SocketManager {
     });
 
     this.socket.on('connect_error', (error) => {
-      logger.warn('Socket connect error', { detail: error?.message });
+      // v59.7: خفيف الصوت — خطأ اتصال عادي أثناء تأرجح الشبكة
+      logger.info('Socket connect error', { detail: error?.message });
       this.emitBrowserEvent('yamshat:socket-state', {
         connected: false,
         reconnecting: true,

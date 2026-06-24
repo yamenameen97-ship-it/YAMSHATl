@@ -4,6 +4,12 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import API from '../api/axios.js';
 import mediaUploadService from '../services/media/mediaUploadService.js';
 import { useToast } from '../components/admin/ToastProvider.jsx';
+import CameraFilterCarousel, {
+  CAMERA_FILTERS,
+  getSavedCamFilter,
+  saveCamFilter,
+  getCamFilterCss,
+} from '../components/reels/CameraFilterCarousel.jsx';
 
 /**
  * ReelComposer.jsx — v56 (Pixel-perfect rebuild — مطابق 1:1 للصورة المرجعية)
@@ -101,6 +107,7 @@ const Icons = {
   Noise: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round"><path d="M3 12h2l2-6 4 12 4-9 2 5h4"/></svg>,
   Mute: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg>,
   Caption: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 11h4M7 14h7"/></svg>,
+  Camera: <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>,
   Gallery: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg>,
   Draft: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>,
   Check: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 12 10 18 20 6"/></svg>,
@@ -131,7 +138,7 @@ export default function ReelComposer() {
   const [quality, setQuality] = useState('1080p');
   const [layout, setLayout] = useState('9:16');
   const [flash, setFlash] = useState('off');
-  const [filter, setFilter] = useState('none');
+  const [filter, setFilter] = useState(() => getSavedCamFilter());
   const [effect, setEffect] = useState('none');
   const [timer, setTimer] = useState(0);
   const [beautify, setBeautify] = useState(false);
@@ -150,20 +157,26 @@ export default function ReelComposer() {
   const [recordedBlob, setRecordedBlob] = useState(null);
   const [recordTime, setRecordTime] = useState(0);
   const [galleryFile, setGalleryFile] = useState(null);
+  const [galleryPreviewUrl, setGalleryPreviewUrl] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  // v59.8 — وضع الكاميرا: لا تُفتح تلقائياً، فقط عند ضغط زر الكاميرا
+  const [cameraOn, setCameraOn] = useState(false);
 
   const videoRef = useRef(null);
+  const previewVideoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
   const recordTimerRef = useRef(null);
   const fileInputRef = useRef(null);
 
   // ---- بدء/إيقاف الكاميرا حسب الجلسة ----
+  // v59.8 — لا تُفتح الكاميرا تلقائياً عند دخول الصفحة، فقط عند تفعيل cameraOn
   useEffect(() => {
     let cancelled = false;
     async function start() {
+      if (!cameraOn) return; // لا تُشغّل الكاميرا إلا بطلب صريح من المستخدم
       try {
         const s = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: facing, width: { ideal: 1080 }, height: { ideal: 1920 } },
@@ -178,8 +191,9 @@ export default function ReelComposer() {
           videoRef.current.srcObject = s;
           videoRef.current.play().catch(() => {});
         }
-      } catch {
-        // إذا تعذّر الوصول للكاميرا — لا نوقف الصفحة، فقط نعرض خلفية
+      } catch (err) {
+        setErrorMessage('تعذّر الوصول للكاميرا: ' + (err?.message || ''));
+        setCameraOn(false);
       }
     }
     start();
@@ -188,7 +202,42 @@ export default function ReelComposer() {
       if (stream) stream.getTracks().forEach((t) => t.stop());
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [facing, micOn, muteAll]);
+  }, [cameraOn, facing, micOn, muteAll]);
+
+  // إيقاف الكاميرا فوراً عند إطفائها أو عند اختيار ملف من المعرض
+  useEffect(() => {
+    if (!cameraOn && stream) {
+      try { stream.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
+      setStream(null);
+      if (videoRef.current) {
+        try { videoRef.current.srcObject = null; } catch { /* ignore */ }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cameraOn]);
+
+  // تنظيف الـ object URL للمعاينة عند تغييرها أو الخروج
+  useEffect(() => {
+    return () => {
+      if (galleryPreviewUrl) {
+        try { URL.revokeObjectURL(galleryPreviewUrl); } catch { /* ignore */ }
+      }
+    };
+  }, [galleryPreviewUrl]);
+
+  // طلب فتح الكاميرا (مع إيقاف معاينة المعرض إن وُجدت)
+  const requestOpenCamera = useCallback(() => {
+    setErrorMessage('');
+    if (galleryFile) {
+      // إفراغ معاينة المعرض حتى تظهر الكاميرا
+      setGalleryFile(null);
+      if (galleryPreviewUrl) {
+        try { URL.revokeObjectURL(galleryPreviewUrl); } catch { /* ignore */ }
+      }
+      setGalleryPreviewUrl('');
+    }
+    setCameraOn(true);
+  }, [galleryFile, galleryPreviewUrl]);
 
   // ---- العدّاد أثناء التسجيل ----
   useEffect(() => {
@@ -211,19 +260,23 @@ export default function ReelComposer() {
   }, [recording, duration]);
 
   // ---- مرشّح CSS للمعاينة ----
+  // يعتمد على قائمة الفلاتر الموحّدة في CameraFilterCarousel (نفس الفلاتر تماماً
+  // التي تظهر في الكاروسيل السفلي على طريقة سناب شات)
   const previewFilter = useMemo(() => {
-    const map = {
-      none: '',
-      enhance: 'contrast(1.08) saturate(1.15) brightness(1.05)',
-      warm: 'sepia(0.25) saturate(1.2) brightness(1.05)',
-      cool: 'hue-rotate(-15deg) saturate(1.1)',
-      vintage: 'sepia(0.5) contrast(0.95)',
-      mono: 'grayscale(1) contrast(1.1)',
-    };
-    let f = map[filter] || '';
-    if (beautify) f += ' blur(0.4px) brightness(1.06) saturate(1.1)';
-    return f.trim();
+    let f = getCamFilterCss(filter, true);
+    if (f === 'none') f = '';
+    if (beautify) f = `${f} blur(0.4px) brightness(1.06) saturate(1.1)`.trim();
+    return f || '';
   }, [filter, beautify]);
+
+  // احفظ الفلتر الأخير محلياً ليُسترجع تلقائياً في المرّة القادمة
+  useEffect(() => { saveCamFilter(filter); }, [filter]);
+
+  // فلتر سناب شات النشط (للعرض في الإعدادات)
+  const activeCamFilter = useMemo(
+    () => CAMERA_FILTERS.find((x) => x.id === filter) || CAMERA_FILTERS[0],
+    [filter]
+  );
 
   const startRecording = useCallback(() => {
     if (!stream || recording) return;
@@ -278,6 +331,10 @@ export default function ReelComposer() {
   const onCancel = () => {
     setRecordedBlob(null);
     setGalleryFile(null);
+    if (galleryPreviewUrl) {
+      try { URL.revokeObjectURL(galleryPreviewUrl); } catch { /* ignore */ }
+    }
+    setGalleryPreviewUrl('');
     setRecordTime(0);
     setUploadProgress(0);
     setErrorMessage('');
@@ -296,7 +353,7 @@ export default function ReelComposer() {
       const upload = await mediaUploadService.uploadFile(file, {
         purpose: 'reel-upload',
         compressionPreset: 'balanced',
-        processingProfile: `${filter}:${effect}`,
+        processingProfile: `${filter}:${effect}${beautify ? ':beauty' : ''}`,
         onProgress: (p) => setUploadProgress(Math.min(100, Number(p?.percent || 0))),
       });
       const mediaUrl = upload?.mediaUrl || upload?.url || '';
@@ -334,9 +391,21 @@ export default function ReelComposer() {
       pushToast?.({ tone: 'error', message: `الملف كبير جداً. الحد ${MAX_VIDEO_SIZE / (1024 * 1024)}MB` });
       return;
     }
+    // v59.8 — أوقف الكاميرا (إن كانت مشغّلة) وأظهر معاينة للملف مع جميع التحسينات
+    setCameraOn(false);
     setGalleryFile(f);
     setRecordedBlob(null);
-    pushToast?.({ tone: 'info', message: 'تم اختيار الفيديو من المعرض' });
+    if (galleryPreviewUrl) {
+      try { URL.revokeObjectURL(galleryPreviewUrl); } catch { /* ignore */ }
+    }
+    try {
+      const url = URL.createObjectURL(f);
+      setGalleryPreviewUrl(url);
+    } catch { /* ignore */ }
+    setErrorMessage('');
+    // أعد قيمة الـ input ليُمكن اختيار نفس الملف مرة أخرى لاحقاً
+    try { e.target.value = ''; } catch { /* ignore */ }
+    pushToast?.({ tone: 'info', message: 'تم اختيار الفيديو — جرّب التحسينات قبل النشر' });
   };
 
   // v50 — تبديل التبويبات داخل الصفحة (دون الرجوع للمؤلّف القديم)
@@ -360,17 +429,51 @@ export default function ReelComposer() {
   // --- شريط التقدم العلوي أثناء التسجيل ---
   const recPct = Math.min(100, (recordTime / duration) * 100);
 
+  // هل لدينا مقطع من المعرض جاهز للمعاينة/التحسين؟
+  const hasGalleryPreview = Boolean(galleryFile && galleryPreviewUrl);
+  // حساب فلتر CSS للمعاينة مع تطبيق السرعة على عنصر الفيديو
+  useEffect(() => {
+    if (previewVideoRef.current) {
+      try { previewVideoRef.current.playbackRate = speed || 1; } catch { /* ignore */ }
+    }
+  }, [speed, galleryPreviewUrl]);
+
   return (
     <div className="ymrc-root" dir="rtl">
       {/* الفيديو/الكاميرا — خلفية ملء الشاشة */}
-      <video
-        ref={videoRef}
-        playsInline
-        autoPlay
-        muted
-        className="ymrc-cam"
-        style={{ filter: previewFilter || 'none', transform: facing === 'user' ? 'scaleX(-1)' : 'none' }}
-      />
+      {/* أولاً: معاينة فيديو المعرض إن وُجد، وإلا الكاميرا الحية إن كانت مُفعّلة */}
+      {hasGalleryPreview ? (
+        <video
+          ref={previewVideoRef}
+          src={galleryPreviewUrl}
+          playsInline
+          autoPlay
+          loop
+          muted={muteAll}
+          controls={false}
+          className="ymrc-cam"
+          style={{ filter: previewFilter || 'none' }}
+        />
+      ) : (
+        <video
+          ref={videoRef}
+          playsInline
+          autoPlay
+          muted
+          className="ymrc-cam"
+          style={{ filter: previewFilter || 'none', transform: facing === 'user' ? 'scaleX(-1)' : 'none', display: cameraOn ? 'block' : 'none' }}
+        />
+      )}
+      {/* عند عدم تشغيل الكاميرا ولا وجود معاينة — أظهر شاشة طلب فتح الكاميرا */}
+      {!hasGalleryPreview && !cameraOn ? (
+        <div className="ymrc-cam-placeholder">
+          <button type="button" className="ymrc-open-cam" onClick={requestOpenCamera} aria-label="فتح الكاميرا">
+            {Icons.Camera}
+            <span>اضغط لفتح الكاميرا</span>
+          </button>
+          <p className="ymrc-cam-hint">أو اختر مقطعاً من <button type="button" className="ymrc-link-btn" onClick={() => fileInputRef.current?.click()}>المعرض</button></p>
+        </div>
+      ) : null}
       <div className="ymrc-veil" aria-hidden />
 
       {/* شريط التقدم أثناء التسجيل */}
@@ -381,55 +484,110 @@ export default function ReelComposer() {
         <button type="button" className="ymrc-icon-btn" onClick={() => navigate(-1)} aria-label="إغلاق">
           {Icons.Close}
         </button>
-        <button type="button" className="ymrc-pill" onClick={() => setShowSheet('audio')} aria-label="إضافة صوت">
-          <span>إضافة صوت</span>
-          {Icons.Music}
-        </button>
+        <div className="ymrc-top-center">
+          <button type="button" className="ymrc-pill" onClick={() => setShowSheet('audio')} aria-label="إضافة صوت">
+            <span>إضافة صوت</span>
+            {Icons.Music}
+          </button>
+          {/* v59.8 — زر أيقونة الكاميرا لفتحها/إغلاقها يدوياً */}
+          <button
+            type="button"
+            className={`ymrc-cam-toggle ${cameraOn ? 'is-on' : ''}`}
+            onClick={() => (cameraOn ? setCameraOn(false) : requestOpenCamera())}
+            aria-label={cameraOn ? 'إيقاف الكاميرا' : 'فتح الكاميرا'}
+            title={cameraOn ? 'إيقاف الكاميرا' : 'فتح الكاميرا'}
+          >
+            {Icons.Camera}
+          </button>
+        </div>
         <button type="button" className="ymrc-icon-btn" onClick={() => setShowSettingsSheet(true)} aria-label="الإعدادات">
           {Icons.Settings}
         </button>
       </header>
 
-      {/* العمود الأيسر — أدوات تحسين الفيديو */}
+      {/* العمود الأيسر — أدوات تحسين الفيديو (تعمل في وضعي الكاميرا والمعاينة) */}
       <aside className="ymrc-rail ymrc-rail-left" aria-label="أدوات الفيديو">
-        <RailButton icon={Icons.Timer} label="المدة" sub={`${duration}s`} onClick={() => setShowSheet('duration')} />
+        {!hasGalleryPreview && (
+          <RailButton icon={Icons.Timer} label="المدة" sub={`${duration}s`} onClick={() => setShowSheet('duration')} />
+        )}
         <RailButton icon={Icons.Speed} label="السرعة" sub={`${speed}x`} onClick={() => setShowSheet('speed')} />
         <RailButton icon={Icons.Sparkle} label="تحسين" sub={beautify ? 'تشغيل' : 'إيقاف'} active={beautify} onClick={() => setBeautify((v) => !v)} />
         <RailButton icon={Icons.Filters} label="الفلاتر" onClick={() => setShowSheet('filter')} active={filter !== 'none'} />
         <RailButton icon={Icons.Effects} label="المؤثرات" onClick={() => setShowSheet('effect')} active={effect !== 'none'} />
-        <RailButton icon={Icons.Timer} label="المؤقت" sub={timer ? `${timer}s` : 'إيقاف'} onClick={() => setShowSheet('timer')} active={timer > 0} />
+        {!hasGalleryPreview && (
+          <RailButton icon={Icons.Timer} label="المؤقت" sub={timer ? `${timer}s` : 'إيقاف'} onClick={() => setShowSheet('timer')} active={timer > 0} />
+        )}
         <RailButton icon={Icons.Layout} label="التخطيط" sub={layout} onClick={() => setShowSheet('layout')} />
         <RailButton icon={Icons.Beautify} label="تجميل" sub={beautify ? 'تشغيل' : 'إيقاف'} active={beautify} onClick={() => setBeautify((v) => !v)} />
       </aside>
 
       {/* العمود الأيمن — أدوات الكاميرا والصوت */}
       <aside className="ymrc-rail ymrc-rail-right" aria-label="إعدادات الكاميرا">
-        <RailButton icon={Icons.Flip} label="قلب" onClick={() => setFacing((f) => (f === 'user' ? 'environment' : 'user'))} />
-        <RailButton icon={Icons.Flash} label="الفلاش" sub={FLASH_MODES.find((m) => m.v === flash)?.label} onClick={() => setShowSheet('flash')} active={flash !== 'off'} />
+        {!hasGalleryPreview && (
+          <>
+            <RailButton icon={Icons.Flip} label="قلب" onClick={() => setFacing((f) => (f === 'user' ? 'environment' : 'user'))} />
+            <RailButton icon={Icons.Flash} label="الفلاش" sub={FLASH_MODES.find((m) => m.v === flash)?.label} onClick={() => setShowSheet('flash')} active={flash !== 'off'} />
+          </>
+        )}
         <RailButton icon={Icons.Quality} label="الجودة" sub={quality} onClick={() => setShowSheet('quality')} />
-        <RailButton icon={Icons.Mic} label="الميكروفون" sub={micOn ? 'تشغيل' : 'إيقاف'} active={micOn} onClick={() => setMicOn((v) => !v)} />
-        <RailButton icon={Icons.Noise} label="فلاتر الضوضاء" sub={noiseReduction ? 'تشغيل' : 'إيقاف'} active={noiseReduction} onClick={() => setNoiseReduction((v) => !v)} />
+        {!hasGalleryPreview && (
+          <>
+            <RailButton icon={Icons.Mic} label="الميكروفون" sub={micOn ? 'تشغيل' : 'إيقاف'} active={micOn} onClick={() => setMicOn((v) => !v)} />
+            <RailButton icon={Icons.Noise} label="فلاتر الضوضاء" sub={noiseReduction ? 'تشغيل' : 'إيقاف'} active={noiseReduction} onClick={() => setNoiseReduction((v) => !v)} />
+          </>
+        )}
         <RailButton icon={Icons.Mute} label="كتم الأصوات" sub={muteAll ? 'مكتوم' : 'تشغيل'} active={muteAll} onClick={() => setMuteAll((v) => !v)} />
         <RailButton icon={Icons.Caption} label="الترجمة" sub={captions ? 'تشغيل' : 'إيقاف'} active={captions} onClick={() => setCaptions((v) => !v)} />
       </aside>
 
       {/* وسط أسفل — زر التسجيل + إلغاء/تأكيد */}
+      {/* عند معاينة ملف من المعرض: زر منتصف يصبح زر "تأكيد ونشر" مع شريط تحسين */}
       <div className="ymrc-record-row">
         <button type="button" className="ymrc-side-btn" onClick={onCancel} aria-label="إلغاء">
           {Icons.Close}
         </button>
-        <button
-          type="button"
-          className={`ymrc-record ${recording ? 'is-recording' : ''}`}
-          onClick={onCenterPress}
-          aria-label={recording ? 'إيقاف التسجيل' : 'بدء التسجيل'}
-        >
-          <span className="ymrc-record-core" />
-        </button>
-        <button type="button" className="ymrc-side-btn" onClick={onConfirm} aria-label="تأكيد ونشر" disabled={uploading}>
+        {hasGalleryPreview ? (
+          <button
+            type="button"
+            className="ymrc-record is-confirm"
+            onClick={onConfirm}
+            disabled={uploading}
+            aria-label="تأكيد ونشر الفيديو المختار"
+            title="تأكيد ونشر"
+          >
+            <span className="ymrc-record-core ymrc-record-core-check">{Icons.Check}</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            className={`ymrc-record ${recording ? 'is-recording' : ''} ${!cameraOn ? 'is-disabled' : ''}`}
+            onClick={cameraOn ? onCenterPress : requestOpenCamera}
+            aria-label={!cameraOn ? 'فتح الكاميرا' : (recording ? 'إيقاف التسجيل' : 'بدء التسجيل')}
+          >
+            <span className="ymrc-record-core" />
+          </button>
+        )}
+        <button type="button" className="ymrc-side-btn" onClick={onConfirm} aria-label="تأكيد ونشر" disabled={uploading || (!recordedBlob && !galleryFile)}>
           {Icons.Check}
         </button>
       </div>
+
+      {/* ===== شريط الفلاتر السفلي على طريقة سناب شات ===== */}
+      {/* يظهر دائماً تحت زر التسجيل، يعرض دوائر حيّة للكاميرا بفلاتر متعددة
+          (جمالية، ألعاب، كلاسيكي، دافئ، بارد، سينمائي، مونو، حيوي، ...).
+          اختيار أي فلتر يُطبَّق فوراً على المعاينة الرئيسية. */}
+      {(cameraOn || hasGalleryPreview) ? (
+        <div className="ymrc-fcar-wrap" role="region" aria-label="فلاتر الكاميرا">
+          <CameraFilterCarousel
+            stream={cameraOn ? stream : null}
+            facing={facing}
+            galleryUrl={hasGalleryPreview ? galleryPreviewUrl : ''}
+            activeId={filter}
+            onSelect={(f) => setFilter(f.id)}
+            onOpenMore={() => setShowSheet('filter')}
+          />
+        </div>
+      ) : null}
 
       {/* تابات النوع */}
       <nav className="ymrc-tabs" aria-label="نوع المحتوى">
@@ -460,6 +618,14 @@ export default function ReelComposer() {
 
       {/* مدخل ملف مخفي للمعرض */}
       <input ref={fileInputRef} type="file" accept={ACCEPTED_VIDEO} onChange={onGalleryPick} style={{ display: 'none' }} />
+
+      {/* v59.8 — شارة وضع المعاينة (عند وجود ملف من المعرض) */}
+      {hasGalleryPreview ? (
+        <div className="ymrc-preview-badge" role="status">
+          <span className="ymrc-preview-dot" />
+          <span>وضع المعاينة — جرّب الفلاتر والمؤثرات والسرعة قبل النشر</span>
+        </div>
+      ) : null}
 
       {/* لوحة الاختيار السفلية */}
       {showSheet ? (
@@ -518,10 +684,18 @@ export default function ReelComposer() {
             )}
             {showSheet === 'filter' && (
               <>
-                <h4>الفلاتر</h4>
+                <h4>كل الفلاتر</h4>
+                <p className="ymrc-muted">اختر فلتراً لتطبيقه فوراً على الكاميرا وعلى الفيديو المُسجَّل.</p>
                 <div className="ymrc-grid">
-                  {FILTERS.map((f) => (
-                    <button key={f.v} className={`ymrc-chip ${filter === f.v ? 'is-on' : ''}`} onClick={() => { setFilter(f.v); setShowSheet(null); }}>{f.label}</button>
+                  {CAMERA_FILTERS.map((f) => (
+                    <button
+                      key={f.id}
+                      className={`ymrc-chip ${filter === f.id ? 'is-on' : ''}`}
+                      onClick={() => { setFilter(f.id); setShowSheet(null); }}
+                    >
+                      <span style={{ marginInlineEnd: 6 }}>{f.emoji}</span>
+                      {f.label}
+                    </button>
                   ))}
                 </div>
               </>
@@ -571,7 +745,7 @@ export default function ReelComposer() {
               <li><span>الجودة الافتراضية</span><strong>{quality}</strong></li>
               <li><span>التخطيط</span><strong>{layout}</strong></li>
               <li><span>المدّة القصوى</span><strong>{duration}s</strong></li>
-              <li><span>الفلتر</span><strong>{FILTERS.find((x) => x.v === filter)?.label}</strong></li>
+              <li><span>الفلتر</span><strong>{activeCamFilter.emoji} {activeCamFilter.label}</strong></li>
               <li><span>المؤثر</span><strong>{EFFECTS.find((x) => x.v === effect)?.label}</strong></li>
               <li><span>تجميل تلقائي</span><strong>{beautify ? 'تشغيل' : 'إيقاف'}</strong></li>
               <li><span>ميكروفون</span><strong>{micOn ? 'تشغيل' : 'إيقاف'}</strong></li>
@@ -586,6 +760,7 @@ export default function ReelComposer() {
       ) : null}
 
       {/* شريط رفع/أخطاء */}
+      {/* (تم نقل الكاروسيل أعلاه بحيث يظهر تحت زر التسجيل) */}
       {(uploading || errorMessage || (recordedBlob || galleryFile)) && !showSheet && !showSettingsSheet ? (
         <div className="ymrc-upload-pill" role="status">
           {uploading ? (
@@ -642,6 +817,94 @@ export default function ReelComposer() {
           gap: 12px;
           z-index: 6;
         }
+        .ymrc-top-center {
+          display: inline-flex; align-items: center; gap: 10px;
+        }
+        .ymrc-cam-toggle {
+          width: 42px; height: 42px;
+          border-radius: 50%;
+          background: rgba(0,0,0,0.55);
+          border: 1px solid rgba(255,255,255,0.12);
+          display: grid; place-items: center;
+          color: #fff; cursor: pointer;
+          backdrop-filter: blur(6px);
+          transition: transform 120ms ease, background 120ms ease;
+        }
+        .ymrc-cam-toggle:hover { transform: scale(1.05); }
+        .ymrc-cam-toggle.is-on {
+          background: linear-gradient(135deg, rgba(139,92,246,0.85), rgba(99,102,241,0.85));
+          border-color: rgba(167,139,250,0.85);
+          box-shadow: 0 4px 18px rgba(138,92,255,0.45);
+        }
+        .ymrc-cam-toggle svg { width: 22px; height: 22px; }
+
+        .ymrc-cam-placeholder {
+          position: absolute; inset: 0;
+          display: grid; place-items: center;
+          background:
+            radial-gradient(60% 50% at 50% 45%, rgba(139,92,246,0.18), transparent 70%),
+            #0a0a14;
+          z-index: 1;
+          padding: 0 24px;
+          text-align: center;
+        }
+        .ymrc-open-cam {
+          display: grid; justify-items: center; gap: 14px;
+          background: rgba(255,255,255,0.04);
+          border: 1px dashed rgba(255,255,255,0.18);
+          border-radius: 22px;
+          padding: 26px 28px;
+          color: #fff;
+          font-size: 15px; font-weight: 800;
+          cursor: pointer;
+          backdrop-filter: blur(4px);
+          transition: transform 120ms ease, background 120ms ease;
+        }
+        .ymrc-open-cam:hover {
+          transform: translateY(-2px);
+          background: rgba(139,92,246,0.12);
+          border-color: rgba(139,92,246,0.45);
+        }
+        .ymrc-open-cam svg { width: 44px; height: 44px; }
+        .ymrc-cam-hint {
+          margin-top: 16px;
+          color: rgba(255,255,255,0.7);
+          font-size: 13px;
+        }
+        .ymrc-link-btn {
+          background: transparent; border: 0;
+          color: #b066ff;
+          font-weight: 800; cursor: pointer;
+          padding: 0 4px;
+          text-decoration: underline;
+        }
+
+        .ymrc-preview-badge {
+          position: absolute;
+          top: calc(env(safe-area-inset-top, 0) + 64px);
+          inset-inline: 0;
+          display: flex; align-items: center; justify-content: center;
+          gap: 8px;
+          z-index: 5;
+          pointer-events: none;
+        }
+        .ymrc-preview-badge > span:last-child {
+          background: rgba(0,0,0,0.6);
+          padding: 6px 12px; border-radius: 999px;
+          font-size: 12px; color: #fff;
+          backdrop-filter: blur(6px);
+          border: 1px solid rgba(167,139,250,0.35);
+        }
+        .ymrc-preview-dot {
+          width: 8px; height: 8px; border-radius: 50%;
+          background: #b066ff;
+          box-shadow: 0 0 0 4px rgba(176,102,255,0.15);
+          animation: ymrc-pulse 1.6s ease-in-out infinite;
+        }
+        @keyframes ymrc-pulse {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.25); opacity: 0.7; }
+        }
         .ymrc-icon-btn {
           width: 38px; height: 38px;
           display: grid; place-items: center;
@@ -690,10 +953,20 @@ export default function ReelComposer() {
 
         .ymrc-record-row {
           position: absolute;
-          bottom: calc(env(safe-area-inset-bottom, 0) + 130px);
+          bottom: calc(env(safe-area-inset-bottom, 0) + 222px);
           inset-inline: 0;
           display: flex; align-items: center; justify-content: center; gap: 36px;
           z-index: 6;
+        }
+        /* حاوية شريط الفلاتر السفلي (على طريقة سناب شات) */
+        .ymrc-fcar-wrap {
+          position: absolute;
+          bottom: calc(env(safe-area-inset-bottom, 0) + 140px);
+          inset-inline: 0;
+          z-index: 7;
+          pointer-events: auto;
+          background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.45) 35%, rgba(0,0,0,0.55) 100%);
+          padding-top: 8px;
         }
         .ymrc-side-btn {
           width: 44px; height: 44px;
@@ -721,6 +994,22 @@ export default function ReelComposer() {
           background: #fff;
           border-radius: 6px;
         }
+        .ymrc-record.is-disabled {
+          background: rgba(138,92,255,0.45);
+          box-shadow: 0 0 0 2px rgba(0,0,0,0.25), 0 6px 20px rgba(138,92,255,0.25);
+        }
+        .ymrc-record.is-confirm {
+          background: linear-gradient(135deg, #22c55e, #16a34a);
+          box-shadow: 0 0 0 2px rgba(0,0,0,0.25), 0 8px 28px rgba(34,197,94,0.45);
+        }
+        .ymrc-record.is-confirm:disabled { opacity: 0.6; cursor: not-allowed; }
+        .ymrc-record-core-check {
+          background: transparent !important;
+          display: grid; place-items: center;
+        }
+        .ymrc-record-core-check svg {
+          width: 36px; height: 36px;
+        }
         .ymrc-record-core {
           width: 64px; height: 64px;
           border-radius: 50%;
@@ -730,7 +1019,7 @@ export default function ReelComposer() {
 
         .ymrc-tabs {
           position: absolute;
-          bottom: calc(env(safe-area-inset-bottom, 0) + 78px);
+          bottom: calc(env(safe-area-inset-bottom, 0) + 90px);
           inset-inline: 0;
           display: flex; align-items: center; justify-content: center;
           gap: 22px;
@@ -839,7 +1128,7 @@ export default function ReelComposer() {
         .ymrc-upload-pill {
           position: absolute;
           left: 50%; transform: translateX(-50%);
-          bottom: calc(env(safe-area-inset-bottom, 0) + 224px);
+          bottom: calc(env(safe-area-inset-bottom, 0) + 316px);
           background: rgba(0,0,0,0.7);
           padding: 10px 14px; border-radius: 999px;
           display: inline-flex; align-items: center; gap: 10px;

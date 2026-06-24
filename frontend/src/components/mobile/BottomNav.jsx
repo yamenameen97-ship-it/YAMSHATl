@@ -2,19 +2,16 @@ import { memo, useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 /**
- * BottomNav (v47.7 — pixel-perfect — مطابق تماماً للصورة المرجعية)
+ * BottomNav (v59.8 — Create Button Always Visible Fix)
  * ----------------------------------------------------------------
  * الترتيب البصري كما في الصورة (من اليسار→اليمين على الشاشة):
  *   حسابي | الريلز | (+) منشور جديد | الدردشات | الرئيسية (نشط)
- *  (يسار)                                                  (يمين)
  *
- * - زر (+) في المنتصف: مربع بحواف دائرية باللون البنفسجي الممتلئ.
- * - "الرئيسية" نشط (لون بنفسجي) في أقصى اليمين على الشاشة.
- * - الأيقونات بأنماط outline.
+ * v59.8: زر (+) الإنشاء يظهر كاملاً وبارزاً في جميع الصفحات (منشورات، ريلز،
+ * ستوري، دردشات، مجموعات). تم توحيد المظهر ومنع القطع/الاختفاء السفلي.
  */
 
 const NAV_ITEMS_LTR_ORDER = [
-  // الترتيب أدناه يطابق ترتيب الظهور البصري من اليسار إلى اليمين على الشاشة
   {
     id: 'profile',
     label: 'حسابي',
@@ -43,12 +40,9 @@ const NAV_ITEMS_LTR_ORDER = [
     id: 'create',
     label: 'منشور جديد',
     isCenter: true,
-    // v59.6: أيقونة "ريلز جديد" — مستطيل ريلز (clapper) مطابق للصورة المرجعية
     icon: (ctx) => {
-      // ctx.kind: 'reel' | 'story' | 'post' | 'group' | 'chat'
       const kind = ctx?.kind || 'post';
       if (kind === 'reel' || kind === 'story') {
-        // أيقونة "ريل" (clapper / film) — مثل الصورة الأولى
         return (
           <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="4" ry="4" />
@@ -56,7 +50,6 @@ const NAV_ITEMS_LTR_ORDER = [
           </svg>
         );
       }
-      // افتراضي: علامة (+) للمنشور/المجموعة/الدردشة
       return (
         <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.8" strokeLinecap="round">
           <line x1="12" y1="5" x2="12" y2="19" />
@@ -90,14 +83,6 @@ const NAV_ITEMS_LTR_ORDER = [
   },
 ];
 
-/**
- * v50 — توحيد الإنشاء على صفحة ReelComposer (/compose):
- * كل سياقات الإنشاء (منشور/ريل/ستوري/لايف/قوالب/صورة) أصبحت تفتح صفحة ReelComposer
- * مع تمرير الـ tab الافتراضي عبر ?tab=...
- * استثناء واحد:
- *   - داخل /groups → إنشاء مجموعة (route خاص)
- *   - داخل /inbox أو /chat → دردشة جديدة (حدث NewChatDialog)
- */
 function resolveCreateAction(pathname) {
   if (pathname.startsWith('/groups')) {
     return { label: 'إنشاء مجموعة', kind: 'navigate', target: '/groups/create', iconKind: 'group' };
@@ -106,7 +91,6 @@ function resolveCreateAction(pathname) {
     return { label: 'دردشة جديدة', kind: 'event', event: 'yamshat:open-new-chat', fallback: '/inbox', iconKind: 'chat' };
   }
   if (pathname.startsWith('/reels')) {
-    /* v55: تصحيح النص إلى "ريلز جديد" ليتطابق مع التصميم المرجعي */
     return { label: 'ريلز جديد', kind: 'navigate', target: '/compose?tab=reel', iconKind: 'reel' };
   }
   if (pathname.startsWith('/stories')) {
@@ -147,17 +131,16 @@ function BottomNav() {
           const isActive = item.match ? item.match(location.pathname) : location.pathname === item.to;
 
           if (item.isCenter) {
-            const isReelLike = createAction.iconKind === 'reel' || createAction.iconKind === 'story';
             return (
               <button
                 key={item.id}
                 type="button"
-                className={`ym-nav-center-item ${isReelLike ? 'is-reel-floating' : ''}`}
+                className="ym-nav-center-item"
                 aria-label={createAction.label}
                 title={createAction.label}
                 onClick={handleCreateClick}
               >
-                <span className={`ym-nav-plus-btn ${isReelLike ? 'is-reel' : ''}`}>
+                <span className="ym-nav-plus-btn">
                   {item.icon({ kind: createAction.iconKind })}
                 </span>
                 <span className="ym-nav-label ym-nav-label-center" dir="rtl">{createAction.label}</span>
@@ -185,7 +168,8 @@ function BottomNav() {
           bottom: 0;
           left: 0;
           right: 0;
-          height: calc(64px + env(safe-area-inset-bottom, 0px));
+          /* v59.8: زيادة الارتفاع قليلاً لاحتواء زر (+) كاملاً بدون قص */
+          height: calc(72px + env(safe-area-inset-bottom, 0px));
           padding-bottom: env(safe-area-inset-bottom, 0px);
           background-color: #0A0D1A;
           border-top: 1px solid #1F2937;
@@ -200,6 +184,8 @@ function BottomNav() {
           font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
           box-sizing: border-box;
           direction: ltr;
+          /* v59.8: السماح للزر بالظهور بشكل كامل دون قطع */
+          overflow: visible;
         }
         .ym-bottomnav-inner {
           display: flex;
@@ -208,8 +194,9 @@ function BottomNav() {
           align-items: center;
           width: 100%;
           max-width: 600px;
-          padding: 6px 4px 6px;
+          padding: 8px 4px 8px;
           box-sizing: border-box;
+          overflow: visible;
         }
         @media (min-width: 1024px) {
           .ym-bottomnav-inner { max-width: 900px; }
@@ -240,71 +227,52 @@ function BottomNav() {
         .ym-nav-item.active { color: #8B5CF6; }
         .ym-nav-item:hover { color: #C4B5FD; }
 
-        /* ✅ v55 — زر (+) المركزي تم تكبيره وتوسيع مساحة الليبل ليظهر "ريلز جديد" بوضوح كامل مثل التصميم المرجعي */
+        /* ✅ v59.8 — زر (+) المركزي يظهر كاملاً وبارزاً في جميع الصفحات */
         .ym-nav-center-item {
           display: flex;
           flex-direction: column;
           align-items: center;
-          justify-content: center;
+          justify-content: flex-start;
           gap: 4px;
-          padding: 2px 4px;
+          padding: 0 4px;
           background: none;
           border: none;
           cursor: pointer;
-          flex: 1.2 1 0; /* v55: إعطائه مساحة أكبر من باقي الأزرار */
+          flex: 1.2 1 0;
           min-width: 0;
           font-family: inherit;
           color: #E5E7EB;
           font-size: 0.72rem;
           transition: color 0.2s;
           position: relative;
+          overflow: visible;
         }
         .ym-nav-center-item:hover { color: #C4B5FD; }
-        /* v55: تكبير زر (+) ليصبح أبرز وأوضح (مطابق للتصميم المرجعي) */
+
+        /* v59.8: زر (+) موحّد — مربع بحواف دائرية، بارز وكامل في كل الصفحات */
         .ym-nav-plus-btn {
-          width: 40px;
-          height: 40px;
+          width: 48px;
+          height: 48px;
           background-color: #8B5CF6;
           background-image: linear-gradient(180deg, #A78BFA 0%, #8B5CF6 55%, #7C3AED 100%);
-          border-radius: 12px;
+          border-radius: 14px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
           color: #fff;
           transition: transform 0.15s, background-color 0.15s, box-shadow 0.15s;
           box-shadow: 0 6px 16px rgba(139,92,246,.45);
+          flex-shrink: 0;
         }
         .ym-nav-plus-btn svg {
-          width: 22px;
-          height: 22px;
+          width: 26px;
+          height: 26px;
         }
         .ym-nav-center-item:hover .ym-nav-plus-btn {
           background-color: #7C3AED;
         }
         .ym-nav-center-item:active .ym-nav-plus-btn { transform: scale(0.94); }
 
-        /* ✨ v59.6 — داخل صفحة /reels (الريلز) يظهر الزر أكبر و"طافياً" فوق النافبار مثل الصورة المرجعية */
-        .ym-nav-center-item.is-reel-floating .ym-nav-plus-btn.is-reel {
-          width: 56px;
-          height: 56px;
-          border-radius: 16px;
-          margin-top: -22px; /* يرفع الزر ليبرز فوق الشريط */
-          background-image: linear-gradient(180deg, #A78BFA 0%, #8B5CF6 50%, #6D28D9 100%);
-          box-shadow:
-            0 10px 28px rgba(139,92,246,.55),
-            0 0 0 4px #0A0D1A; /* إطار بلون النافبار ليبدو منفصلاً */
-          position: relative;
-          z-index: 2;
-        }
-        .ym-nav-center-item.is-reel-floating .ym-nav-plus-btn.is-reel svg {
-          width: 30px;
-          height: 30px;
-        }
-        .ym-nav-center-item.is-reel-floating .ym-nav-label-center {
-          margin-top: 2px;
-          color: #C4B5FD;
-          font-weight: 700;
-        }
         .ym-nav-label {
           font-size: 0.72rem;
           line-height: 1.1;
@@ -316,7 +284,6 @@ function BottomNav() {
           color: inherit;
           direction: rtl;
         }
-        /* v55: توسيع max-width لليبل المركزي حتى يظهر "ريلز جديد" كاملاً بدون قطع */
         .ym-nav-label-center {
           color: #E5E7EB;
           max-width: 100px;
@@ -324,56 +291,50 @@ function BottomNav() {
         }
 
         @media (max-width: 400px) {
-          .ym-bottomnav { height: calc(60px + env(safe-area-inset-bottom, 0px)); }
-          .ym-bottomnav-inner { padding: 4px 2px; }
+          .ym-bottomnav { height: calc(68px + env(safe-area-inset-bottom, 0px)); }
+          .ym-bottomnav-inner { padding: 6px 2px; }
           .ym-nav-item, .ym-nav-center-item { padding: 3px 3px; font-size: 0.68rem; gap: 2px; }
           .ym-nav-icon svg { width: 22px; height: 22px; }
-          /* v55: الحجم يبقى أكبر لتبرز أهميته */
-          .ym-nav-plus-btn { width: 38px; height: 38px; border-radius: 11px; }
-          .ym-nav-plus-btn svg { width: 20px; height: 20px; }
+          .ym-nav-plus-btn { width: 44px; height: 44px; border-radius: 13px; }
+          .ym-nav-plus-btn svg { width: 24px; height: 24px; }
           .ym-nav-label { font-size: 0.68rem; max-width: 68px; }
           .ym-nav-label-center { max-width: 90px; }
-          /* v59.6: الحجم الطافي للريلز على الشاشات الصغيرة */
-          .ym-nav-center-item.is-reel-floating .ym-nav-plus-btn.is-reel {
-            width: 52px; height: 52px; border-radius: 15px; margin-top: -20px;
-          }
-          .ym-nav-center-item.is-reel-floating .ym-nav-plus-btn.is-reel svg { width: 28px; height: 28px; }
         }
         @media (max-width: 360px) {
-          .ym-bottomnav { height: calc(58px + env(safe-area-inset-bottom, 0px)); }
-          .ym-bottomnav-inner { padding: 3px 2px; }
+          .ym-bottomnav { height: calc(66px + env(safe-area-inset-bottom, 0px)); }
+          .ym-bottomnav-inner { padding: 5px 2px; }
           .ym-nav-item, .ym-nav-center-item { padding: 2px 2px; font-size: 0.64rem; }
           .ym-nav-icon svg { width: 21px; height: 21px; }
-          .ym-nav-plus-btn { width: 36px; height: 36px; border-radius: 10px; }
-          .ym-nav-plus-btn svg { width: 19px; height: 19px; }
+          .ym-nav-plus-btn { width: 42px; height: 42px; border-radius: 12px; }
+          .ym-nav-plus-btn svg { width: 23px; height: 23px; }
           .ym-nav-label { font-size: 0.64rem; max-width: 62px; }
           .ym-nav-label-center { max-width: 82px; }
         }
         @media (max-width: 320px) {
-          .ym-bottomnav { height: calc(54px + env(safe-area-inset-bottom, 0px)); }
-          .ym-bottomnav-inner { padding: 2px 1px; }
+          .ym-bottomnav { height: calc(62px + env(safe-area-inset-bottom, 0px)); }
+          .ym-bottomnav-inner { padding: 4px 1px; }
           .ym-nav-item, .ym-nav-center-item { padding: 2px 1px; font-size: 0.58rem; gap: 1px; }
           .ym-nav-icon svg { width: 19px; height: 19px; }
-          .ym-nav-plus-btn { width: 32px; height: 32px; border-radius: 9px; }
-          .ym-nav-plus-btn svg { width: 17px; height: 17px; }
+          .ym-nav-plus-btn { width: 38px; height: 38px; border-radius: 11px; }
+          .ym-nav-plus-btn svg { width: 21px; height: 21px; }
           .ym-nav-label { font-size: 0.56rem; max-width: 52px; }
           .ym-nav-label-center { max-width: 72px; }
         }
         /* دعم Redmi Note 8 (393px) */
         @media (max-width: 393px) and (min-width: 361px) {
-          .ym-bottomnav { height: calc(62px + env(safe-area-inset-bottom, 0px)); }
-          .ym-nav-plus-btn { width: 38px; height: 38px; }
+          .ym-bottomnav { height: calc(70px + env(safe-area-inset-bottom, 0px)); }
+          .ym-nav-plus-btn { width: 44px; height: 44px; }
           .ym-nav-label { font-size: 0.7rem; }
         }
         /* دعم الأجهزة القديمة بدون env(safe-area-inset-bottom) */
         @supports not (padding: env(safe-area-inset-bottom)) {
           .ym-bottomnav {
-            height: 64px;
+            height: 72px;
             padding-bottom: 0;
           }
-          @media (max-width: 400px) { .ym-bottomnav { height: 60px; } }
-          @media (max-width: 360px) { .ym-bottomnav { height: 58px; } }
-          @media (max-width: 320px) { .ym-bottomnav { height: 54px; } }
+          @media (max-width: 400px) { .ym-bottomnav { height: 68px; } }
+          @media (max-width: 360px) { .ym-bottomnav { height: 66px; } }
+          @media (max-width: 320px) { .ym-bottomnav { height: 62px; } }
         }
         @media (min-width: 1024px) {
           .ym-nav-label { font-size: 0.85rem; }

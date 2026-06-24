@@ -161,22 +161,32 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
           .main-shell {
             display: flex;
             flex-direction: column;
-            flex: 1;
-            overflow: hidden;
+            flex: 1 1 auto;
             min-width: 0;
             min-height: 0;
+            overflow: hidden;
           }
 
+          /* ⭐ v59.10 — نفس فلسفة .yam-services-panel (الدراور):
+             حاوية scroll داخلية بارتفاع 100% و overflow-y: auto
+             مع -webkit-overflow-scrolling: touch و overscroll-behavior: contain
+             النتيجة: نفس خفّة وسلاسة الدراور على كل الصفحات. */
           .page-content {
-            flex: 1;
+            flex: 1 1 auto;
             min-height: 0;
+            height: 100%;
             overflow-y: auto;
             overflow-x: hidden;
             scroll-behavior: smooth;
             overscroll-behavior: contain;
+            overscroll-behavior-y: contain;
             -webkit-overflow-scrolling: touch;
+            touch-action: pan-x pan-y pinch-zoom;
             transition: opacity var(--motion-fast, 180ms);
-            /* تمّ إزالة will-change/transform لأنها تصنع containing block جديد وتكسر position:fixed للعناصر الداخلية (الهيدر/الفوتر) */
+            /* GPU acceleration للسلاسة (آمن لأنه على .page-content فقط، لا يؤثر على fixed elements الخارجية) */
+            transform: translateZ(0);
+            -webkit-transform: translateZ(0);
+            will-change: scroll-position;
           }
 
           /* عند وجود هيدر/فوتر مثبّتين أضف هوامش حتى لا يختفي المحتوى تحتهما */

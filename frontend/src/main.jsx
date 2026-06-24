@@ -69,6 +69,10 @@ import './styles/mobile-touch-app-feel-v52.css';
 /* 🏆 v57 — Master Touch Fix: إصلاح نهائي للسحب واللمس على كل الصفحات والمتصفحات (آخر CSS مطلقاً) */
 import './styles/mobile-touch-master-fix-v57.css';
 import './styles/mobile-touch-paw-v58.css';
+/* ⭐ v59.10 — نقل فلسفة الدراور (YamServicesMenu) إلى جميع الصفحات
+   حاوية .page-content تصبح هي المسؤولة عن التمرير بسلاسة
+   تماماً مثل .yam-services-panel — يجب أن يكون آخر CSS مطلقاً */
+import './styles/drawer-style-touch-final-v59.10.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { pwaInitializer } from './services/pwaInitializer.js';
 import { smoothTouchLayer } from './services/smoothTouchLayer.js';

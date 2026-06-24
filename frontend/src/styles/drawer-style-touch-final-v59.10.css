@@ -1,0 +1,619 @@
+/* ============================================================
+   YAMSHAT — Drawer-Style Touch & Scroll for ALL Pages (v59.10)
+   ============================================================
+   الهدف:
+     نقل تقنية اللمس والسحب السلسة المستخدمة في صندوق القائمة
+     (YamServicesMenu) إلى جميع صفحات التطبيق بحيث تستجيب صفحات
+     الويب على الجوال بنفس الخفّة والسلاسة.
+
+   الفكرة المطبّقة في صندوق القائمة:
+     1) حاوية scroll داخلية ذات height محدّد (height: 100%).
+     2) overflow-y: auto + -webkit-overflow-scrolling: touch.
+     3) overscroll-behavior: contain لمنع تداخل scroll مع الصفحة.
+     4) لا يوجد touch-action: none في الجدّ الأكبر للحاوية.
+     5) لا overlay شفّاف يلتقط أحداث اللمس بطريقة خاطئة.
+
+   هذه الطبقة هي آخر CSS يُحمّل، فتتفوّق على v57 و v58.
+   ============================================================ */
+
+/* ============================================================
+   0) Reset قاعدي — يضمن وصول أحداث اللمس لكل العناصر
+   ============================================================ */
+*,
+*::before,
+*::after {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* html و body — الأساس: نسمح بكامل أنواع اللمس */
+html,
+html[lang],
+html[dir],
+html[lang][dir] {
+  touch-action: pan-x pan-y pinch-zoom !important;
+  -webkit-overflow-scrolling: touch !important;
+  /* مهم جدًّا: لا overflow على html — التمرير يحدث على .page-content (تماماً مثل الدراور) */
+  overflow: hidden !important;
+  height: 100% !important;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  touch-action: pan-x pan-y pinch-zoom !important;
+  -webkit-overflow-scrolling: touch !important;
+  overflow: hidden !important;
+  height: 100% !important;
+  position: relative !important;
+  margin: 0;
+}
+
+/* جذر التطبيق — حاوية flex بكامل ارتفاع الشاشة */
+#root {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  height: 100dvh !important;
+  width: 100%;
+  overflow: hidden !important;
+  /* يسمح لمحتوى السكرول الداخلي بأن يتمرّر بسلاسة (مثل الدراور) */
+  touch-action: pan-x pan-y pinch-zoom !important;
+}
+
+/* قشرة التطبيق — تأخذ كامل المساحة، لا overflow على هذا المستوى */
+.app-shell,
+.app-shell.yamshat-unified,
+.app-shell.yamshat-shell,
+.app-shell.yamshat-unified .main-shell,
+.main-shell {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  touch-action: pan-x pan-y pinch-zoom !important;
+  /* لا transform/filter يكسر position: fixed للهيدر */
+  transform: none !important;
+  filter: none !important;
+}
+
+/* ============================================================
+   1) ⭐ الحاوية الرئيسية للتمرير = نفس فلسفة الدراور تماماً
+   ============================================================
+   .page-content هو العنصر <main> في MainLayout.
+   نطبّق عليه EXACTLY نفس قواعد .yam-services-panel:
+     • height: 100% (يأخذ ارتفاع الأب)
+     • overflow-y: auto
+     • -webkit-overflow-scrolling: touch
+     • overscroll-behavior: contain
+*/
+.page-content,
+main.page-content,
+main[class*="page-content"] {
+  /* السكرول الداخلي السلس (مثل الدراور) */
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  height: auto !important;
+  /* ⭐ النقطة الحرجة: نُعيد overflow-y: auto بعدما كسره v58 */
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior: contain !important;
+  overscroll-behavior-y: contain !important;
+  /* اللمس: السماح بالتمرير العمودي والأفقي والتكبير */
+  touch-action: pan-x pan-y pinch-zoom !important;
+  /* GPU acceleration للسلاسة (مثل الدراور لا يستخدمها لكنها لا تضرّ) */
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  /* مهم: لا containing block أبوي للعناصر fixed داخل المحتوى */
+  perspective: none !important;
+  /* عرض كامل */
+  width: 100%;
+  max-width: 100vw;
+  /* استرجاع ناعم — هذا يمنع الـ scroll-anchor البطيء */
+  scroll-behavior: smooth;
+  /* تحسين الأداء */
+  will-change: scroll-position;
+}
+
+/* ============================================================
+   2) إلغاء قاعدة v58 التي كانت تكسر التمرير
+   ============================================================
+   v58 كانت تفرض overflow-y: visible !important على main
+   مما يلغي إمكانية السكرول الداخلي. هنا نُلغي ذلك صراحة.
+*/
+main,
+main[role="main"],
+main.page-content,
+main[class*="page-content"],
+.mobile-main-content,
+.mobile-layout-container {
+  /* نُلغي overflow-y: visible من v58 — نريد auto */
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  touch-action: pan-x pan-y pinch-zoom !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+/* ============================================================
+   3) المحتوى الداخلي للصفحة — تدفّق طبيعي بدون قيود
+   ============================================================ */
+.page-shell-glow,
+.page-content > *,
+main.page-content > * {
+  /* لا overflow هنا — اترك السكرول للأب (.page-content) فقط */
+  overflow: visible;
+  /* لكن نسمح بكامل أنواع اللمس */
+  touch-action: pan-x pan-y pinch-zoom;
+  -webkit-overflow-scrolling: touch;
+  /* لا transform يكسر التخطيط */
+  transform: none;
+  will-change: auto;
+  /* لا height ثابت — اترك المحتوى يتمدّد */
+  min-height: 100%;
+}
+
+/* ============================================================
+   4) جميع حاويات الصفحات الفرعية (FeedMobile, Friends, Notifications…)
+      تتدفّق بشكل طبيعي بدون scroll داخلي خاص بها
+   ============================================================ */
+.ym-feed,
+.ym-feed-mobile,
+.ym-posts-list,
+.feed-container,
+.feed-list,
+.posts-list,
+.friends-page,
+.notifications-page,
+.groups-page,
+.profile-page,
+.settings-page,
+.saved-page,
+.search-page,
+[data-page="feed"],
+[data-page="posts"],
+[data-page="home"],
+[data-page="friends"],
+[data-page="notifications"],
+[data-page="groups"],
+[data-page="profile"],
+[data-page="settings"],
+[data-page="search"],
+[data-page="saved"],
+.ym-ptr-container,
+.ym-ptr-content {
+  /* لا overflow داخلي — التمرير يقع على .page-content */
+  overflow: visible !important;
+  overflow-y: visible !important;
+  overflow-x: visible !important;
+  height: auto !important;
+  min-height: 100%;
+  touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+  pointer-events: auto !important;
+  /* GPU */
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: auto;
+}
+
+/* ============================================================
+   5) بطاقات المنشورات والعناصر القابلة للنقر — تستجيب فوراً
+      وتسمح بالتمرير العمودي من فوقها
+   ============================================================ */
+.ym-post-card,
+.ym-feed-card,
+.mobile-post-card,
+.post-card,
+.feed-card,
+.post-item,
+.notification-item,
+.conversation-item,
+.chat-list-item,
+.friend-item,
+.user-row,
+.ym-list-row,
+.story-card,
+article[class*="post"],
+article[class*="feed"] {
+  /* اللمس: يسمح بالتمرير العمودي على البطاقة (مثل الدراور) */
+  touch-action: pan-y !important;
+  -webkit-tap-highlight-color: transparent;
+  pointer-events: auto !important;
+  /* لا overflow على البطاقة نفسها */
+  overflow: visible;
+  /* GPU acceleration ولكن دون كسر التخطيط */
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  contain: layout style;
+  /* انتقال ناعم للنقر */
+  transition: transform 100ms ease, background-color 120ms ease;
+}
+
+/* الصور والميديا داخل البطاقات — لا تأكل أحداث التمرير */
+.ym-post-card img,
+.ym-post-card video,
+.feed-card img,
+.feed-card video,
+.post-card img,
+.post-card video,
+.mobile-post-card img,
+.mobile-post-card video {
+  touch-action: pan-y !important;
+  -webkit-user-drag: none;
+  user-drag: none;
+  -webkit-touch-callout: none;
+  pointer-events: auto;
+}
+
+/* ============================================================
+   6) الأزرار والروابط — استجابة فورية (مثل الدراور تماماً)
+   ============================================================ */
+button,
+a,
+[role="button"],
+[role="tab"],
+[role="link"],
+[role="menuitem"],
+input[type="button"],
+input[type="submit"],
+label[for],
+.btn,
+.ym-btn,
+.ym-action-btn,
+.ym-icon-btn,
+.ym-clickable,
+.ym-footer-btn,
+.yam-bottom-nav-item,
+.yam-services-link,
+.story-circle,
+.bottom-nav-item,
+.mobile-tab,
+.icon-btn,
+.clickable,
+[data-clickable="true"] {
+  touch-action: manipulation !important;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: pointer;
+  /* استجابة سريعة 80ms (نفس فلسفة الدراور) */
+  transition: transform 80ms cubic-bezier(.2,.8,.2,1),
+              background-color 100ms ease,
+              opacity 100ms ease;
+  -webkit-touch-callout: none;
+  pointer-events: auto !important;
+}
+
+/* رد فعل بصري عند الضغط */
+@media (hover: none) and (pointer: coarse) {
+  button:active:not(:disabled),
+  a:active,
+  [role="button"]:active,
+  .ym-btn:active,
+  .ym-action-btn:active,
+  .yam-services-link:active,
+  .yam-bottom-nav-item:active,
+  .ym-clickable:active {
+    transform: scale(0.96) translateZ(0) !important;
+    opacity: 0.9;
+  }
+
+  .ym-list-row:active,
+  .ym-post-card:active:not(.no-press),
+  .mobile-post-card:active:not(.no-press),
+  .feed-card:active:not(.no-press),
+  .post-card:active:not(.no-press),
+  .notification-item:active,
+  .conversation-item:active,
+  .chat-list-item:active,
+  .friend-item:active,
+  .user-row:active {
+    background-color: rgba(139, 92, 246, 0.08);
+    transition: background-color 60ms ease;
+  }
+}
+
+/* ============================================================
+   7) القوائم الأفقية (filter pills, stories, tabs)
+   ============================================================ */
+.ym-filters,
+.ym-filter-pills,
+.yam-stories-rail,
+.yam-tabs-rail,
+.horizontal-scroll,
+.scroll-x,
+.tabs-row,
+.mobile-tabs,
+.mobile-filter-row,
+.stories-bar,
+[data-scroll="horizontal"] {
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-x !important;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  transform: translateZ(0);
+  will-change: scroll-position;
+}
+
+.ym-filters::-webkit-scrollbar,
+.ym-filter-pills::-webkit-scrollbar,
+.yam-stories-rail::-webkit-scrollbar,
+.yam-tabs-rail::-webkit-scrollbar,
+.horizontal-scroll::-webkit-scrollbar,
+.scroll-x::-webkit-scrollbar,
+.tabs-row::-webkit-scrollbar,
+.mobile-tabs::-webkit-scrollbar,
+.mobile-filter-row::-webkit-scrollbar,
+.stories-bar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* العناصر داخل القوائم الأفقية — لا تأخذ pan-y */
+.ym-filters > *,
+.ym-filter-pills > *,
+.yam-stories-rail > *,
+.yam-tabs-rail > *,
+.horizontal-scroll > *,
+.scroll-x > *,
+.stories-bar > * {
+  flex-shrink: 0;
+  scroll-snap-align: start;
+  touch-action: manipulation !important;
+}
+
+/* ============================================================
+   8) Bottom Nav و Top Bar — استجابة فورية
+   ============================================================ */
+.ym-bottomnav,
+.bottom-mobile-nav,
+.ym-bottom-nav,
+.mobile-bottom-nav,
+nav[class*="bottom"],
+.ym-topbar,
+.yam-mobile-header,
+.top-navbar,
+.mobile-header,
+.app-header {
+  touch-action: manipulation !important;
+  -webkit-user-select: none;
+  user-select: none;
+  z-index: 1000;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  pointer-events: auto !important;
+}
+
+/* ============================================================
+   9) Reels — pan-y مع snap عمودي
+   ============================================================ */
+.ym-reels-container,
+.reels-page,
+.reels-feed,
+.ym-reels-feed,
+[data-page="reels"] {
+  height: 100% !important;
+  height: 100dvh !important;
+  overflow-y: scroll !important;
+  overflow-x: hidden !important;
+  scroll-snap-type: y mandatory;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  overscroll-behavior-y: contain;
+  transform: translateZ(0);
+}
+
+.ym-reel-item,
+.reel-item,
+.ym-reels-slide {
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  touch-action: pan-y;
+}
+
+/* ============================================================
+   10) صفحة المحادثة — التمرير الداخلي للرسائل (مثل الدراور)
+   ============================================================ */
+.app-shell.conversation-shell .page-content,
+.app-shell.yamshat-unified.conversation-shell .page-content {
+  overflow: hidden !important;
+  padding: 0 !important;
+}
+
+.ym-messages-area,
+.messages-list,
+.chat-messages,
+.ym-comments-list,
+.modal-scroll-body,
+.ym-modal-body,
+.drawer-scroll-body,
+.sheet-body,
+.bottom-sheet-content {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior: contain !important;
+  transform: translateZ(0);
+  will-change: scroll-position;
+}
+
+/* ============================================================
+   11) Modals / Drawers مفتوحة — قفل التمرير الخلفي
+   ============================================================ */
+body.modal-open,
+body.is-chat-open,
+body.drawer-open,
+body.sheet-open,
+body[data-modal-open="true"] {
+  overflow: hidden !important;
+}
+
+body.modal-open .page-content,
+body.is-chat-open .page-content,
+body.drawer-open .page-content,
+body.sheet-open .page-content {
+  overflow: hidden !important;
+  touch-action: none !important;
+}
+
+/* ============================================================
+   12) gesture-container — افتراضياً pan-y
+   ============================================================ */
+.gesture-container {
+  touch-action: pan-y !important;
+}
+.gesture-container.dragging,
+.gesture-container[data-gesture-active="true"],
+.gesture-container.gesture-active {
+  touch-action: none !important;
+}
+
+/* ============================================================
+   13) منع touch-action: none غير المقصود من JS
+   ============================================================ */
+html[style*="touch-action: none"],
+body[style*="touch-action: none"],
+#root[style*="touch-action: none"],
+.page-content[style*="touch-action: none"],
+main[style*="touch-action: none"] {
+  touch-action: pan-x pan-y !important;
+}
+
+/* ============================================================
+   14) Inputs — منع zoom على iOS + استجابة سريعة
+   ============================================================ */
+input,
+textarea,
+select,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+  touch-action: manipulation !important;
+  font-size: max(16px, 1rem);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.search-input-compact,
+.ym-filter-search,
+.ym-tag-search,
+input[type="search"].small {
+  font-size: 14px;
+}
+
+/* ============================================================
+   15) iOS Safari — momentum scrolling خاص بـ .page-content
+   ============================================================ */
+@supports (-webkit-touch-callout: none) {
+  .page-content,
+  main.page-content,
+  .ym-messages-area,
+  .messages-list,
+  .ym-comments-list,
+  .horizontal-scroll {
+    -webkit-overflow-scrolling: touch !important;
+  }
+}
+
+/* ============================================================
+   16) تقليل العمل أثناء التمرير لتحسين FPS
+   ============================================================ */
+html.is-scrolling .ym-post-card,
+html.is-scrolling .feed-card,
+html.is-scrolling .post-card,
+html.is-scrolling .mobile-post-card,
+html.is-scrolling .story-circle {
+  transition: none !important;
+  animation-play-state: paused;
+}
+
+html.is-scrolling *,
+body.is-scrolling * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* ============================================================
+   17) Reduce motion
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  .page-content {
+    scroll-behavior: auto !important;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ============================================================
+   18) Scrollbar أنيق على .page-content (مثل الدراور)
+   ============================================================ */
+.page-content::-webkit-scrollbar {
+  width: 6px;
+}
+.page-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+.page-content::-webkit-scrollbar-thumb {
+  background: rgba(167, 139, 250, 0.25);
+  border-radius: 999px;
+}
+.page-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(167, 139, 250, 0.45);
+}
+
+/* ============================================================
+   19) إصلاحات نهائية لعناصر تكسر التخطيط
+   ============================================================ */
+/* أي element داخل page-content بـ position: fixed لازم يكون فعلاً fixed بالنسبة للـ viewport */
+.page-content [style*="position: fixed"],
+.page-content .fixed-element {
+  /* هذا يضمن أن fixed يعمل بشكل صحيح */
+  position: fixed;
+}
+
+/* تأكيد: لا transform على العناصر التي تحتوي fixed children */
+.app-shell.yamshat-unified,
+.app-shell.yamshat-unified > *,
+.main-shell,
+.page-content {
+  /* مهم جداً لـ position: fixed أن يعمل */
+  transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+  -webkit-transform: none !important;
+}
+
+/* استثناء: نُعيد translateZ على .page-content فقط للسكرول السلس
+   (translateZ لا يكسر fixed لأن أبا الـ fixed هو viewport) */
+.page-content,
+main.page-content {
+  transform: translateZ(0) !important;
+  -webkit-transform: translateZ(0) !important;
+}
+
+/* ============================================================
+   20) شاشات صغيرة جدًّا (≤320px)
+   ============================================================ */
+@media (max-width: 320px) {
+  .page-content {
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+}
+
+/* ============================================================
+   نهاية v59.10 — Drawer-Style Touch Final
+   ============================================================ */

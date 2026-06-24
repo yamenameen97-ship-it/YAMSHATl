@@ -25,6 +25,12 @@ export default function StoryEditor({ file, onClose, onSuccess }) {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
+  // v59.10: دعم الاستطلاعات (poll)
+  const [showPoll, setShowPoll] = useState(false);
+  const [pollQuestion, setPollQuestion] = useState('');
+  const [pollOptions, setPollOptions] = useState(['', '']);
+  // v59.10: معرفة إذا كان هناك تغييرات غير محفوظة
+  const dirty = caption || stickers.length || texts.length || music || filterName || showPoll || pollQuestion;
 
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
@@ -98,6 +104,7 @@ export default function StoryEditor({ file, onClose, onSuccess }) {
     setProgress(0);
     try {
       const drawingData = canvasRef.current?.toDataURL('image/png');
+      const validPollOptions = pollOptions.map(o => o.trim()).filter(Boolean);
       await uploadStory(
         file,
         {
@@ -105,6 +112,9 @@ export default function StoryEditor({ file, onClose, onSuccess }) {
           privacy,
           music,
           filter_name: filterName,
+          // v59.10: دعم الاستطلاعات
+          poll_question: showPoll && validPollOptions.length >= 2 ? pollQuestion.trim() : '',
+          poll_options: showPoll && validPollOptions.length >= 2 ? validPollOptions : [],
           drawing_data: drawingData?.length < 4500 ? drawingData : '', // تجنّب إرسال صورة كبيرة جدًا
           is_close_friends: privacy === 'close_friends',
           auto_delete_hours: 24,
@@ -117,11 +127,21 @@ export default function StoryEditor({ file, onClose, onSuccess }) {
       if (typeof onSuccess === 'function') onSuccess();
     } catch (err) {
       console.error('[StoryEditor] upload failed', err);
-      setError('تعذّر رفع القصة. يُرجى المحاولة مرة أخرى.');
+      const msg = err?.response?.data?.detail || err?.message || '';
+      setError(msg ? `تعذّر الرفع: ${msg}` : 'تعذّر رفع القصة. يُرجى المحاولة مرة أخرى.');
     } finally {
       setUploading(false);
     }
-  }, [file, caption, privacy, music, filterName, stickers, onSuccess]);
+  }, [file, caption, privacy, music, filterName, stickers, showPoll, pollQuestion, pollOptions, onSuccess]);
+
+  // v59.10: تأكيد عند الإغلاق إذا كانت هناك تعديلات
+  const handleClose = useCallback(() => {
+    if (uploading) return;
+    if (dirty && !window.confirm('أنت على وشك الخروج دون نشر. هل ترغب فعلاً بإغلاق المحرر؟')) {
+      return;
+    }
+    if (typeof onClose === 'function') onClose();
+  }, [dirty, uploading, onClose]);
 
   const FILTERS = [
     { id: '',         label: 'بدون',   css: 'none' },
@@ -138,7 +158,7 @@ export default function StoryEditor({ file, onClose, onSuccess }) {
     <div dir="rtl" className="yam-story-editor-overlay" role="dialog" aria-modal="true">
       <div className="yam-story-editor">
         <div className="yam-editor-header">
-          <button type="button" onClick={onClose} className="yam-editor-close" aria-label="إغلاق">✕</button>
+          <button type="button" onClick={handleClose} className="yam-editor-close" aria-label="إغلاق">✕</button>
           <strong>قصة جديدة</strong>
           <button
             type="button"
@@ -237,7 +257,60 @@ export default function StoryEditor({ file, onClose, onSuccess }) {
           <button type="button" onClick={() => addSticker('❤️')} className="yam-tool-btn">❤️</button>
           <button type="button" onClick={() => addSticker('😂')} className="yam-tool-btn">😂</button>
           <button type="button" onClick={() => addSticker('✨')} className="yam-tool-btn">✨</button>
+          {/* v59.10: زر الاستطلاع */}
+          <button
+            type="button"
+            onClick={() => setShowPoll(s => !s)}
+            className={`yam-tool-btn ${showPoll ? 'active' : ''}`}
+            title="إضافة استطلاع"
+          >📊 استطلاع</button>
         </div>
+
+        {/* v59.10: محرر الاستطلاع */}
+        {showPoll && (
+          <div className="yam-editor-poll">
+            <input
+              type="text"
+              dir="rtl"
+              value={pollQuestion}
+              onChange={(e) => setPollQuestion(e.target.value)}
+              placeholder="سؤال الاستطلاع…"
+              maxLength={140}
+              className="yam-editor-input"
+            />
+            {pollOptions.map((opt, idx) => (
+              <div key={idx} className="yam-poll-row">
+                <input
+                  type="text"
+                  dir="rtl"
+                  value={opt}
+                  onChange={(e) => {
+                    const next = [...pollOptions];
+                    next[idx] = e.target.value;
+                    setPollOptions(next);
+                  }}
+                  placeholder={`الخيار ${idx + 1}`}
+                  maxLength={60}
+                  className="yam-editor-input"
+                />
+                {pollOptions.length > 2 && (
+                  <button
+                    type="button"
+                    className="yam-poll-remove"
+                    onClick={() => setPollOptions(pollOptions.filter((_, i) => i !== idx))}
+                  >✕</button>
+                )}
+              </div>
+            ))}
+            {pollOptions.length < 4 && (
+              <button
+                type="button"
+                className="yam-poll-add"
+                onClick={() => setPollOptions([...pollOptions, ''])}
+              >+ إضافة خيار</button>
+            )}
+          </div>
+        )}
 
         {/* فلاتر */}
         <div className="yam-editor-filters">
@@ -495,5 +568,42 @@ const editorStyles = `
   color: rgba(255,255,255,0.55);
   margin: 4px 0 0;
   text-align: center;
+}
+
+/* v59.10: محرر الاستطلاع */
+.yam-editor-poll {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 14px;
+  background: rgba(139, 92, 246, 0.08);
+  border-top: 1px solid rgba(139, 92, 246, 0.25);
+}
+.yam-poll-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.yam-poll-row .yam-editor-input { flex: 1; }
+.yam-poll-remove {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.yam-poll-add {
+  background: rgba(139, 92, 246, 0.18);
+  border: 1px dashed rgba(139, 92, 246, 0.5);
+  color: #c4b5fd;
+  padding: 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 600;
 }
 `;

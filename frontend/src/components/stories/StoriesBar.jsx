@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getStoriesGrouped, uploadStory, viewStory } from '../../api/stories.js';
+import { getStoriesGrouped, viewStory } from '../../api/stories.js';
 import StoryViewerEnhanced from './StoryViewerEnhanced.jsx';
+import StoryEditor from './StoryEditor.jsx';
 
 /**
  * StoriesBar — شريط الستوريات الدائري الذي يظهر تحت هيدر الشات.
@@ -18,7 +19,9 @@ export default function StoriesBar({ currentUser, onOpenComposer }) {
   const [loading, setLoading] = useState(true);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [activeGroupIndex, setActiveGroupIndex] = useState(0);
-  const [uploading, setUploading] = useState(false);
+  // v59.10: ملف مختار لفتح المحرر (بدل رفع مباشر دون أدوات)
+  const [pendingFile, setPendingFile] = useState(null);
+  const [toast, setToast] = useState('');
   const fileInputRef = useRef(null);
   const scrollRef = useRef(null);
 
@@ -77,20 +80,29 @@ export default function StoriesBar({ currentUser, onOpenComposer }) {
     [groups],
   );
 
-  const handleQuickUpload = async (e) => {
+  /**
+   * v59.10: عند اختيار ملف نفتح المحرّر الكامل (StoryEditor)
+   * بدلاً من الرفع المباشر — حتى يستطيع المستخدم إضافة فلاتر/ستيكرز/كابشن/خصوصية.
+   */
+  const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    try {
-      setUploading(true);
-      await uploadStory(file, { privacy: 'friends', auto_delete_hours: 24 });
-      await loadGroups();
-    } catch (err) {
-      console.error('[StoriesBar] upload failed', err);
-      alert('تعذّر رفع القصة. حاول مجدّدًا.');
-    } finally {
-      setUploading(false);
+    // فحص حجم بسيط على الواجهة (نسخة سريعة قبل الرفع)
+    if (file.size > 600 * 1024 * 1024) {
+      setToast('الملف كبير جداً (الحد الأقصى 600MB)');
+      setTimeout(() => setToast(''), 3500);
+      return;
     }
+    setPendingFile(file);
+  };
+
+  const handleEditorClose = () => setPendingFile(null);
+  const handleEditorSuccess = async () => {
+    setPendingFile(null);
+    setToast('تم نشر القصة ✓');
+    setTimeout(() => setToast(''), 2500);
+    await loadGroups();
   };
 
   const openViewer = async (group) => {
@@ -121,7 +133,6 @@ export default function StoriesBar({ currentUser, onOpenComposer }) {
           className="yam-story-add"
           onClick={handleAddClick}
           aria-label="إضافة قصة جديدة"
-          disabled={uploading}
         >
           <div className="yam-story-avatar">
             <img
@@ -138,8 +149,12 @@ export default function StoriesBar({ currentUser, onOpenComposer }) {
           type="file"
           accept="image/*,video/*"
           hidden
-          onChange={handleQuickUpload}
+          onChange={handleFileSelect}
         />
+        {pendingFile && (
+          <StoryEditor file={pendingFile} onClose={handleEditorClose} onSuccess={handleEditorSuccess} />
+        )}
+        {toast && <div className="yam-stories-toast">{toast}</div>}
         <style>{barStyles}</style>
       </div>
     );
@@ -154,7 +169,6 @@ export default function StoriesBar({ currentUser, onOpenComposer }) {
           className="yam-story-add"
           onClick={myGroup ? () => openViewer(myGroup) : handleAddClick}
           aria-label={myGroup ? 'عرض قصصي' : 'إضافة قصة جديدة'}
-          disabled={uploading}
         >
           <div className={`yam-story-avatar ${myGroup ? 'has-stories' : ''}`}>
             <img
@@ -164,9 +178,7 @@ export default function StoriesBar({ currentUser, onOpenComposer }) {
             />
             {!myGroup && <span className="yam-story-plus" aria-hidden>+</span>}
           </div>
-          <span className="yam-story-name">
-            {uploading ? 'جاري الرفع…' : 'قصتك'}
-          </span>
+          <span className="yam-story-name">قصتك</span>
         </button>
 
         {/* زر إضافة منفصل إذا فيه قصص قائمة */}
@@ -176,7 +188,6 @@ export default function StoriesBar({ currentUser, onOpenComposer }) {
             className="yam-story-add-mini"
             onClick={handleAddClick}
             aria-label="إضافة قصة جديدة"
-            disabled={uploading}
           >
             <div className="yam-story-avatar dashed">
               <span className="yam-story-plus" aria-hidden>+</span>
@@ -215,8 +226,12 @@ export default function StoriesBar({ currentUser, onOpenComposer }) {
         type="file"
         accept="image/*,video/*"
         hidden
-        onChange={handleQuickUpload}
+        onChange={handleFileSelect}
       />
+      {pendingFile && (
+        <StoryEditor file={pendingFile} onClose={handleEditorClose} onSuccess={handleEditorSuccess} />
+      )}
+      {toast && <div className="yam-stories-toast">{toast}</div>}
 
       <AnimatePresence>
         {viewerOpen && groups[activeGroupIndex] && (
@@ -382,5 +397,27 @@ const barStyles = `
   .yam-story-item, .yam-story-add, .yam-story-add-mini { width: 64px; }
   .yam-story-avatar { width: 56px; height: 56px; }
   .yam-story-name { font-size: 10.5px; max-width: 62px; }
+}
+
+/* Toast (v59.10) */
+.yam-stories-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 15, 20, 0.95);
+  color: #fff;
+  padding: 12px 22px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  z-index: 2200;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  animation: yamToastIn 0.3s ease-out;
+}
+@keyframes yamToastIn {
+  from { opacity: 0; transform: translate(-50%, 20px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
 }
 `;

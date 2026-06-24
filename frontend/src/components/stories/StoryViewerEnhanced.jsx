@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { motion } from 'framer-motion';
-import { viewStory, reactToStory, replyToStory, deleteStory } from '../../api/stories.js';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  viewStory,
+  reactToStory,
+  replyToStory,
+  deleteStory,
+  getStoryViewers,
+  voteStoryPoll,
+  downloadStoryMedia,
+  toggleStoryHighlight,
+} from '../../api/stories.js';
 
 /**
  * StoryViewerEnhanced — عارض ستوري احترافي.
@@ -29,8 +38,17 @@ export default function StoryViewerEnhanced({
   const [replyText, setReplyText] = useState('');
   const [showReactions, setShowReactions] = useState(false);
   const [imgError, setImgError] = useState(false);
+  // v59.10: تحسينات
+  const [muted, setMuted] = useState(false);                  // كتم صوت الفيديو
+  const [showViewers, setShowViewers] = useState(false);      // Modal المشاهدين
+  const [viewers, setViewers] = useState([]);
+  const [loadingViewers, setLoadingViewers] = useState(false);
+  const [pollMyVote, setPollMyVote] = useState(null);         // تصويت المستخدم على الاستطلاع
+  const [pollVotes, setPollVotes] = useState({});             // عدد الأصوات
+  const [toast, setToast] = useState('');
   const timerRef = useRef(null);
   const startYRef = useRef(0);
+  const longPressRef = useRef(null);                          // لتمييز long-press عن click
 
   const current = stories[storyIdx];
   const STORY_MS = current?.media_type === 'video' ? 15000 : 5000;
@@ -41,7 +59,17 @@ export default function StoryViewerEnhanced({
     setStoryIdx(0);
     setProgress(0);
     setImgError(false);
+    setShowViewers(false);
   }, [group?.user_id]);
+
+  // v59.10: تحميل حالة التصويت عند تغيير القصة
+  useEffect(() => {
+    if (current) {
+      setPollMyVote(current.my_vote ?? null);
+      setPollVotes(current.poll_votes || {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.id]);
 
   // عدّاد التقدّم
   useEffect(() => {
@@ -125,12 +153,99 @@ export default function StoryViewerEnhanced({
       await deleteStory(current.id);
       handleNextStory();
     } catch (_) {
-      alert('تعذّر الحذف.');
+      setToast('تعذّر الحذف');
+      setTimeout(() => setToast(''), 2500);
     }
+  };
+
+  // v59.10: تنزيل القصة إلى الجهاز
+  const handleDownload = async () => {
+    if (!current?.media_url) return;
+    setPaused(true);
+    const ok = await downloadStoryMedia(
+      current.media_url,
+      `story-${current.username || 'user'}-${current.id}`,
+    );
+    setToast(ok ? 'تم الحفظ ✓' : 'تعذّر التنزيل');
+    setTimeout(() => { setToast(''); setPaused(false); }, 2500);
+  };
+
+  // v59.10: أرشفة كـ highlight
+  const handleHighlight = async () => {
+    if (!current?.id) return;
+    const title = window.prompt('عنوان اللحظة المميزة (اختياري):', current.highlight_title || '');
+    if (title === null) return;
+    try {
+      await toggleStoryHighlight(current.id, title || '');
+      setToast(current.highlight ? 'تمت إزالة الإبراز ✓' : 'تمت الإضافة للإبراز ✓');
+    } catch (_) {
+      setToast('تعذّر التحديث');
+    }
+    setTimeout(() => setToast(''), 2500);
+  };
+
+  // v59.10: عرض قائمة المشاهدين (للمالك فقط)
+  const handleShowViewers = async () => {
+    if (!current?.id) return;
+    setShowViewers(true);
+    setPaused(true);
+    setLoadingViewers(true);
+    try {
+      const res = await getStoryViewers(current.id);
+      setViewers(res?.data?.viewers || []);
+    } catch (_) {
+      setViewers([]);
+    } finally {
+      setLoadingViewers(false);
+    }
+  };
+
+  const handleCloseViewers = () => {
+    setShowViewers(false);
+    setPaused(false);
+  };
+
+  // v59.10: التصويت على الاستطلاع
+  const handleVotePoll = async (optionIndex) => {
+    if (!current?.id) return;
+    if (pollMyVote === optionIndex) return; // لا تكرار لنفس الخيار
+    // تحديث متفائل (optimistic)
+    setPollVotes(prev => {
+      const next = { ...prev };
+      if (pollMyVote !== null && pollMyVote !== undefined) {
+        const prevKey = String(pollMyVote);
+        next[prevKey] = Math.max(0, (next[prevKey] || 0) - 1);
+      }
+      const newKey = String(optionIndex);
+      next[newKey] = (next[newKey] || 0) + 1;
+      return next;
+    });
+    setPollMyVote(optionIndex);
+    try {
+      const res = await voteStoryPoll(current.id, optionIndex);
+      setPollVotes(res?.data?.poll_votes || {});
+    } catch (_) {
+      setToast('تعذّر التصويت');
+      setTimeout(() => setToast(''), 2500);
+    }
+  };
+
+  // v59.10: long-press للإيقاف بدل mousedown عادي
+  const handlePressStart = () => {
+    longPressRef.current = setTimeout(() => setPaused(true), 180);
+  };
+  const handlePressEnd = () => {
+    if (longPressRef.current) {
+      clearTimeout(longPressRef.current);
+      longPressRef.current = null;
+    }
+    setPaused(false);
   };
 
   if (!current) return null;
   const isOwner = group?.is_self || (currentUserId && current?.user_id === currentUserId);
+  const hasPoll = current.poll_question && Array.isArray(current.poll_options) && current.poll_options.length >= 2;
+  const totalPollVotes = Object.values(pollVotes || {}).reduce((s, n) => s + (n || 0), 0);
 
   return (
     <motion.div
@@ -177,15 +292,41 @@ export default function StoryViewerEnhanced({
           {current?.privacy === 'close_friends' && (
             <span className="yam-story-badge yam-cf" title="أصدقاء مقربون">💚</span>
           )}
-          {isOwner && (
+          {/* v59.10: زر كتم الصوت للفيديو */}
+          {current.media_type === 'video' && (
             <button
               type="button"
               className="yam-story-icon-btn"
-              onClick={handleDelete}
-              aria-label="حذف القصة"
-              title="حذف"
-            >🗑️</button>
+              onClick={() => setMuted(m => !m)}
+              aria-label={muted ? 'تشغيل الصوت' : 'كتم الصوت'}
+              title={muted ? 'تشغيل الصوت' : 'كتم الصوت'}
+            >{muted ? '🔇' : '🔊'}</button>
           )}
+          {isOwner && (
+            <>
+              <button
+                type="button"
+                className="yam-story-icon-btn"
+                onClick={handleHighlight}
+                aria-label="إبراز"
+                title={current.highlight ? 'إزالة الإبراز' : 'إبراز'}
+              >{current.highlight ? '⭐' : '☆'}</button>
+              <button
+                type="button"
+                className="yam-story-icon-btn"
+                onClick={handleDelete}
+                aria-label="حذف القصة"
+                title="حذف"
+              >🗑️</button>
+            </>
+          )}
+          <button
+            type="button"
+            className="yam-story-icon-btn"
+            onClick={handleDownload}
+            aria-label="تنزيل"
+            title="تنزيل في الجهاز"
+          >⬇</button>
           <button
             type="button"
             className="yam-story-icon-btn"
@@ -197,18 +338,18 @@ export default function StoryViewerEnhanced({
         {/* الوسائط */}
         <div
           className="yam-story-media-wrap"
-          onMouseDown={() => setPaused(true)}
-          onMouseUp={() => setPaused(false)}
-          onMouseLeave={() => setPaused(false)}
-          onTouchStart={() => setPaused(true)}
-          onTouchEnd={() => setPaused(false)}
+          onMouseDown={handlePressStart}
+          onMouseUp={handlePressEnd}
+          onMouseLeave={handlePressEnd}
+          onTouchStart={handlePressStart}
+          onTouchEnd={handlePressEnd}
         >
           {current.media_type === 'video' ? (
             <video
               src={current.media_url}
               autoPlay
               playsInline
-              muted={false}
+              muted={muted}
               onEnded={handleNextStory}
               onError={() => setImgError(true)}
               className="yam-story-media"
@@ -225,6 +366,45 @@ export default function StoryViewerEnhanced({
           {imgError && (
             <div className="yam-story-error">
               <span>تعذّر تحميل الوسائط.</span>
+            </div>
+          )}
+
+          {/* v59.10: الاستطلاع */}
+          {hasPoll && (
+            <div className="yam-story-poll" onClick={(e) => e.stopPropagation()}>
+              <div className="yam-story-poll-question">{current.poll_question}</div>
+              <div className="yam-story-poll-options">
+                {current.poll_options.map((opt, idx) => {
+                  const count = pollVotes[String(idx)] || 0;
+                  const pct = totalPollVotes > 0 ? Math.round((count / totalPollVotes) * 100) : 0;
+                  const mine = pollMyVote === idx;
+                  const showResults = pollMyVote !== null && pollMyVote !== undefined;
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      className={`yam-poll-option ${mine ? 'mine' : ''} ${showResults ? 'voted' : ''}`}
+                      onClick={() => handleVotePoll(idx)}
+                      disabled={isOwner}
+                    >
+                      {showResults && (
+                        <span
+                          className="yam-poll-bar"
+                          style={{ width: `${pct}%` }}
+                          aria-hidden
+                        />
+                      )}
+                      <span className="yam-poll-text">
+                        {opt} {mine && '✓'}
+                      </span>
+                      {showResults && <span className="yam-poll-pct">{pct}%</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              {totalPollVotes > 0 && (
+                <div className="yam-poll-total">{totalPollVotes} مصوت</div>
+              )}
             </div>
           )}
 
@@ -292,14 +472,64 @@ export default function StoryViewerEnhanced({
           </div>
         )}
 
-        {/* لصاحب القصة — عدّاد المشاهدات */}
+        {/* لصاحب القصة — عدّاد المشاهدات (قابل للنقر لعرض القائمة) */}
         {isOwner && (
-          <div className="yam-story-owner-info">
+          <button
+            type="button"
+            className="yam-story-owner-info clickable"
+            onClick={handleShowViewers}
+            aria-label="عرض المشاهدين"
+          >
             👁 {current.views_count || 0} مشاهدة
             {current.reactions_count ? ` • 💖 ${current.reactions_count}` : ''}
             {current.replies_count ? ` • 💬 ${current.replies_count}` : ''}
-          </div>
+            <span className="yam-story-chevron">›</span>
+          </button>
         )}
+
+        {/* v59.10: Toast */}
+        {toast && <div className="yam-viewer-toast">{toast}</div>}
+
+        {/* v59.10: Modal قائمة المشاهدين */}
+        <AnimatePresence>
+          {showViewers && (
+            <motion.div
+              className="yam-viewers-sheet"
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 280 }}
+            >
+              <div className="yam-viewers-handle" />
+              <div className="yam-viewers-header">
+                <strong>المشاهدون ({viewers.length})</strong>
+                <button type="button" onClick={handleCloseViewers} aria-label="إغلاق">✕</button>
+              </div>
+              <div className="yam-viewers-list">
+                {loadingViewers && (
+                  <div className="yam-viewers-empty">جاري التحميل…</div>
+                )}
+                {!loadingViewers && viewers.length === 0 && (
+                  <div className="yam-viewers-empty">لم يشاهد القصة أحد بعد</div>
+                )}
+                {!loadingViewers && viewers.map((v, i) => (
+                  <div key={`${v.username}-${i}`} className="yam-viewer-row">
+                    <img
+                      src={v.avatar_url}
+                      alt=""
+                      className="yam-viewer-avatar"
+                      loading="lazy"
+                    />
+                    <div className="yam-viewer-info">
+                      <strong>{v.username}</strong>
+                      <span>{formatTime(v.viewed_at)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <style>{viewerStyles}</style>
@@ -544,6 +774,143 @@ const viewerStyles = `
   opacity: 0.85;
   text-align: center;
   border-top: 1px solid rgba(255,255,255,0.08);
+  background: transparent;
+  border-left: 0; border-right: 0; border-bottom: 0;
+  font-family: inherit;
+  width: 100%;
+  cursor: default;
+}
+.yam-story-owner-info.clickable {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.yam-story-owner-info.clickable:hover { opacity: 1; background: rgba(255,255,255,0.04); }
+.yam-story-chevron { font-size: 18px; opacity: 0.7; }
+
+/* v59.10: الاستطلاع */
+.yam-story-poll {
+  position: absolute;
+  bottom: 80px;
+  inset-inline-start: 16px;
+  inset-inline-end: 16px;
+  background: rgba(15,15,20,0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 14px;
+  padding: 12px;
+  z-index: 3;
+}
+.yam-story-poll-question {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  text-align: center;
+}
+.yam-story-poll-options { display: flex; flex-direction: column; gap: 6px; }
+.yam-poll-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 10px;
+  color: #fff;
+  font-size: 13.5px;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+  overflow: hidden;
+}
+.yam-poll-option:disabled { cursor: default; }
+.yam-poll-option.mine { border-color: #8b5cf6; background: rgba(139, 92, 246, 0.18); }
+.yam-poll-bar {
+  position: absolute;
+  top: 0; bottom: 0;
+  inset-inline-start: 0;
+  background: linear-gradient(90deg, rgba(139, 92, 246, 0.55), rgba(236, 72, 153, 0.35));
+  z-index: 0;
+  transition: width 0.4s ease-out;
+}
+.yam-poll-text { position: relative; z-index: 1; }
+.yam-poll-pct { position: relative; z-index: 1; font-weight: 800; }
+.yam-poll-total { text-align: center; color: rgba(255,255,255,0.65); font-size: 11px; margin-top: 8px; }
+
+/* v59.10: Toast */
+.yam-viewer-toast {
+  position: absolute;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 15, 20, 0.95);
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  z-index: 10;
+  border: 1px solid rgba(139, 92, 246, 0.4);
+}
+
+/* v59.10: Bottom Sheet للمشاهدين */
+.yam-viewers-sheet {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  max-height: 70%;
+  background: #14141c;
+  border-top-left-radius: 18px;
+  border-top-right-radius: 18px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+.yam-viewers-handle {
+  width: 44px; height: 4px;
+  background: rgba(255,255,255,0.3);
+  border-radius: 4px;
+  margin: 8px auto 0;
+}
+.yam-viewers-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 18px;
+  color: #fff;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.yam-viewers-header strong { font-size: 15px; }
+.yam-viewers-header button {
+  background: transparent; border: none; color: #fff;
+  font-size: 18px; cursor: pointer; padding: 4px 8px;
+}
+.yam-viewers-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0 16px;
+}
+.yam-viewer-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+}
+.yam-viewer-row:hover { background: rgba(255,255,255,0.04); }
+.yam-viewer-avatar {
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #1a1a22;
+}
+.yam-viewer-info { display: flex; flex-direction: column; line-height: 1.3; }
+.yam-viewer-info strong { font-size: 14px; color: #fff; }
+.yam-viewer-info span { font-size: 11.5px; color: rgba(255,255,255,0.55); }
+.yam-viewers-empty {
+  text-align: center; color: rgba(255,255,255,0.5);
+  padding: 32px 16px; font-size: 13px;
 }
 
 @media (max-width: 380px) {

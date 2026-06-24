@@ -664,20 +664,18 @@ export default function Inbox() {
 
   /**
    * تجميع العناصر المعروضة حسب التبويب النشط:
-   *  - "الكل": المحادثات + المجموعات (مدمجة بالترتيب الزمني)
+   *  - "الكل": المحادثات الفردية فقط (المجموعات لها صفحتها المستقلة في /groups)
    *  - "الرسائل": المحادثات الفردية فقط
    *  - "الطلبات": الإشعارات/الطلبات غير المقروءة
+   *
+   * v59.13: تم حذف دمج المجموعات في تبويب "الكل" — المجموعات تبقى حصريًا
+   * في قسم المجموعات (/groups) ولا تظهر في الشات.
    */
   const unifiedItems = useMemo(() => {
     if (activeTab === 'requests') return filteredRequests;
-    if (activeTab === 'messages') return filteredThreads;
-    // الكل: ندمج المحادثات + المجموعات ونرتّب حسب الوقت
-    const merged = [...filteredThreads, ...filteredGroups];
-    return merged.sort(
-      (left, right) =>
-        new Date(right.timestamp || 0).getTime() - new Date(left.timestamp || 0).getTime(),
-    );
-  }, [activeTab, filteredGroups, filteredRequests, filteredThreads]);
+    // v59.13: "الكل" و"الرسائل" كلاهما يعرضان المحادثات الفردية فقط
+    return filteredThreads;
+  }, [activeTab, filteredRequests, filteredThreads]);
 
   /* -------- معالجات الأحداث -------- */
   const handleOpenThread = useCallback(

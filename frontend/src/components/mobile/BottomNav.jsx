@@ -1,11 +1,18 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 /**
- * BottomNav (v59.11 — Unified Create Button)
+ * BottomNav (v59.12 — Restored Arabic RTL Order)
  * ----------------------------------------------------------------
  * الترتيب البصري (RTL، من اليمين → اليسار على الشاشة):
- *   الرئيسية | الدردشات | (+) ديناميكي | الريلز | حسابي
+ *   حسابي | الريلز | (+) ديناميكي | الدردشات | الرئيسية
+ *
+ * v59.12 — fullscreen-top-fix:
+ *  - إعادة الترتيب الأصلي (قبل تعديل زر الإنشاء في v59.11) حيث كان
+ *    "حسابي" على اليمين و"الرئيسية" على اليسار في الجهة الأخرى.
+ *  - تم حذف `flex-direction: row-reverse` من الحاوية الداخلية لإصلاح
+ *    الانعكاس الذي حدث بالخطأ عند تحديث زر الإنشاء.
+ *  - بقية ميزات v59.11 محفوظة كاملة (زر + موحَّد، الديناميكية، إلخ).
  *
  * v59.11:
  *  - زر (+) أصبح بنفس بنية بقية الأزرار: أيقونة صغيرة بالأعلى داخل خلفية
@@ -20,7 +27,11 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
  *  - تناسق الحجم والمحاذاة العمودية مع جميع العناصر المجاورة.
  */
 
-const NAV_ITEMS_LTR_ORDER = [
+// v59.12: ترتيب العناصر كما يظهر في DOM. مع `dir="rtl"` ودون `row-reverse`
+//         يكون أول عنصر في الأقصى يمين الشاشة وآخر عنصر في الأقصى يسار الشاشة.
+//         الترتيب المطلوب (يمين → يسار):
+//         حسابي → الريلز → (+) → الدردشات → الرئيسية
+const NAV_ITEMS = [
   {
     id: 'profile',
     label: 'حسابي',
@@ -80,7 +91,9 @@ const NAV_ITEMS_LTR_ORDER = [
  */
 function resolveCreateAction(pathname) {
   if (pathname.startsWith('/groups')) {
-    return { label: 'إنشاء مجموعة', kind: 'navigate', target: '/groups/create', iconKind: 'group' };
+    // v59.13: على صفحة المجموعات نُظهر قائمة اختيار (مجموعة نصية / غرفة صوتية)
+    // بدل التنقل المباشر — لتوحيد مكان إنشاء الغرف الصوتية مع المجموعات.
+    return { label: 'إنشاء', kind: 'menu', menu: 'groups', iconKind: 'group' };
   }
   if (pathname.startsWith('/inbox') || pathname.startsWith('/chat')) {
     return { label: 'دردشة جديدة', kind: 'event', event: 'yamshat:open-new-chat', fallback: '/inbox', iconKind: 'chat' };
@@ -113,8 +126,17 @@ function BottomNav() {
 
   const createAction = resolveCreateAction(location.pathname);
 
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // إغلاق القائمة عند تغيّر المسار
+  useEffect(() => { setMenuOpen(false); }, [location.pathname]);
+
   const handleCreateClick = useCallback(() => {
     const action = resolveCreateAction(location.pathname);
+    if (action.kind === 'menu') {
+      setMenuOpen((v) => !v);
+      return;
+    }
     if (action.kind === 'navigate') {
       navigate(action.target);
       return;
@@ -127,6 +149,16 @@ function BottomNav() {
     }
   }, [location.pathname, navigate]);
 
+  // إجراءات قائمة الإنشاء على صفحة المجموعات
+  const handleCreateTextGroup = useCallback(() => {
+    setMenuOpen(false);
+    navigate('/groups/create');
+  }, [navigate]);
+  const handleCreateVoiceRoom = useCallback(() => {
+    setMenuOpen(false);
+    navigate('/voice?create=1');
+  }, [navigate]);
+
   return (
     <nav
       className="ym-bottomnav"
@@ -135,8 +167,45 @@ function BottomNav() {
       dir="rtl"
       style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}
     >
+      {/* v59.13: قائمة منبثقة لاختيار نوع الإنشاء على صفحة المجموعات */}
+      {menuOpen && createAction.menu === 'groups' && (
+        <>
+          <div
+            className="ym-create-menu-backdrop"
+            onClick={() => setMenuOpen(false)}
+            aria-hidden="true"
+          />
+          <div className="ym-create-menu" role="menu" aria-label="اختر نوع الإنشاء" dir="rtl">
+            <button
+              type="button"
+              role="menuitem"
+              className="ym-create-menu-item"
+              onClick={handleCreateTextGroup}
+            >
+              <span className="ym-create-menu-icon" style={{ background: 'linear-gradient(135deg,#8b5cf6,#7c3aed)' }}>👥</span>
+              <div className="ym-create-menu-text">
+                <strong>إنشاء مجموعة نصية</strong>
+                <small>محادثة جماعية بالنصوص والوسائط</small>
+              </div>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="ym-create-menu-item"
+              onClick={handleCreateVoiceRoom}
+            >
+              <span className="ym-create-menu-icon" style={{ background: 'linear-gradient(135deg,#22c55e,#10b981)' }}>🎙️</span>
+              <div className="ym-create-menu-text">
+                <strong>إنشاء غرفة صوتية</strong>
+                <small>بث صوتي مباشر مع مقاعد ومشاركين</small>
+              </div>
+            </button>
+          </div>
+        </>
+      )}
+
       <div className="ym-bottomnav-inner">
-        {NAV_ITEMS_LTR_ORDER.map((item) => {
+        {NAV_ITEMS.map((item) => {
           if (item.isCenter) {
             return (
               <button
@@ -200,7 +269,10 @@ function BottomNav() {
         }
         .ym-bottomnav-inner {
           display: flex;
-          flex-direction: row-reverse; /* عرض من اليمين إلى اليسار: الرئيسية أولاً */
+          /* v59.12: حذف row-reverse — الـ dir="rtl" وحده يضع أول
+             عنصر في DOM (حسابي) على اليمين وآخر عنصر (الرئيسية) على اليسار،
+             تماماً كما كان الترتيب الأصلي قبل v59.11. */
+          flex-direction: row;
           justify-content: space-around;
           align-items: stretch;
           width: 100%;
@@ -346,6 +418,90 @@ function BottomNav() {
           .ym-nav-label { font-size: 0.85rem; }
           .ym-nav-icon--create { width: 40px; height: 32px; }
           .ym-nav-icon--create svg { width: 20px; height: 20px; }
+        }
+
+        /* ============================================================
+           v59.13 — قائمة منبثقة لاختيار نوع الإنشاء (على /groups)
+           ============================================================ */
+        .ym-create-menu-backdrop {
+          position: fixed;
+          inset: 0;
+          background: rgba(0,0,0,0.45);
+          z-index: 1002;
+          animation: ym-fade-in 0.15s ease;
+        }
+        .ym-create-menu {
+          position: fixed;
+          left: 50%;
+          transform: translateX(-50%);
+          bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+          width: min(360px, calc(100% - 24px));
+          background: #0F1422;
+          border: 1px solid rgba(139,92,246,0.35);
+          border-radius: 16px;
+          box-shadow: 0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04);
+          padding: 8px;
+          z-index: 1003;
+          direction: rtl;
+          font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+          animation: ym-pop-in 0.18s ease;
+        }
+        .ym-create-menu-item {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          width: 100%;
+          padding: 12px;
+          background: transparent;
+          border: 1px solid transparent;
+          border-radius: 12px;
+          color: #E5E7EB;
+          cursor: pointer;
+          font-family: inherit;
+          text-align: right;
+          transition: background 0.15s ease, border-color 0.15s ease;
+        }
+        .ym-create-menu-item + .ym-create-menu-item { margin-top: 4px; }
+        .ym-create-menu-item:hover,
+        .ym-create-menu-item:focus-visible {
+          background: rgba(139,92,246,0.12);
+          border-color: rgba(139,92,246,0.45);
+          outline: none;
+        }
+        .ym-create-menu-icon {
+          width: 42px;
+          height: 42px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 12px;
+          font-size: 22px;
+          flex-shrink: 0;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+        }
+        .ym-create-menu-text {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          min-width: 0;
+        }
+        .ym-create-menu-text strong {
+          font-size: 14.5px;
+          font-weight: 700;
+          color: #F4F4F5;
+        }
+        .ym-create-menu-text small {
+          font-size: 12px;
+          color: #9CA3AF;
+          font-weight: 500;
+        }
+        @keyframes ym-fade-in {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes ym-pop-in {
+          from { opacity: 0; transform: translateX(-50%) translateY(8px) scale(0.96); }
+          to   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
         }
       `}</style>
     </nav>

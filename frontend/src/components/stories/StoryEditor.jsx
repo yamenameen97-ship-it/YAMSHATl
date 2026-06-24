@@ -105,7 +105,9 @@ export default function StoryEditor({ file, onClose, onSuccess }) {
     try {
       const drawingData = canvasRef.current?.toDataURL('image/png');
       const validPollOptions = pollOptions.map(o => o.trim()).filter(Boolean);
-      await uploadStory(
+      // v59.13: نلتقط نتيجة الرفع (القصة الجديدة) ونمررها لـonSuccess
+      // حتى نتمكّن من إضافتها فوريًا في الواجهة بدون انتظار الباك إند.
+      const uploadResponse = await uploadStory(
         file,
         {
           caption,
@@ -124,7 +126,8 @@ export default function StoryEditor({ file, onClose, onSuccess }) {
           if (evt?.total) setProgress(Math.round((evt.loaded / evt.total) * 100));
         },
       );
-      if (typeof onSuccess === 'function') onSuccess();
+      const uploadedStory = uploadResponse?.data || null;
+      if (typeof onSuccess === 'function') onSuccess(uploadedStory, { file, caption, privacy });
     } catch (err) {
       console.error('[StoryEditor] upload failed', err);
       const msg = err?.response?.data?.detail || err?.message || '';

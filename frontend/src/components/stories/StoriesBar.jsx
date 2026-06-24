@@ -5,6 +5,45 @@ import StoryViewerEnhanced from './StoryViewerEnhanced.jsx';
 import StoryEditor from './StoryEditor.jsx';
 
 /**
+ * v59.13 — جسر إجباري لإدراج قصّة صاحب الحساب فور رفعها (دون انتظار الباك إند).
+ * نحوّل جسم الإرجاع إلى شكل group ليتوافق مع باقي الواجهة.
+ */
+function buildOptimisticSelfGroup(uploadedStory, file, caption, currentUser, prevSelfGroup) {
+  // إن رجعت الـAPI بعنصر جاهز استخدمه مباشرة، وإلا ابنِ واحدًا مؤقتًا.
+  const storyObj = uploadedStory && uploadedStory.id
+    ? {
+        id: uploadedStory.id,
+        media_url: uploadedStory.media_url || (file ? URL.createObjectURL(file) : ''),
+        media_type: uploadedStory.media_type || (file?.type?.startsWith('video') ? 'video' : 'image'),
+        caption: uploadedStory.caption ?? caption ?? '',
+        created_at: uploadedStory.created_at || new Date().toISOString(),
+        views_count: uploadedStory.views_count ?? 0,
+        reactions_count: uploadedStory.reactions_count ?? 0,
+        replies_count: uploadedStory.replies_count ?? 0,
+      }
+    : {
+        id: `local-${Date.now()}`,
+        media_url: file ? URL.createObjectURL(file) : '',
+        media_type: file?.type?.startsWith('video') ? 'video' : 'image',
+        caption: caption || '',
+        created_at: new Date().toISOString(),
+        views_count: 0,
+        reactions_count: 0,
+        replies_count: 0,
+        _optimistic: true,
+      };
+
+  return {
+    user_id: currentUser?.id || prevSelfGroup?.user_id || 'me',
+    username: currentUser?.username || prevSelfGroup?.username || 'أنا',
+    is_self: true,
+    has_unseen: false,
+    last_created_at: storyObj.created_at,
+    stories: [storyObj, ...(prevSelfGroup?.stories || [])],
+  };
+}
+
+/**
  * StoriesBar — شريط الستوريات الدائري الذي يظهر تحت هيدر الشات.
  * -----------------------------------------------------------------
  * • RTL كامل + خط Noto Sans Arabic.
@@ -98,10 +137,26 @@ export default function StoriesBar({ currentUser, onOpenComposer }) {
   };
 
   const handleEditorClose = () => setPendingFile(null);
-  const handleEditorSuccess = async () => {
+  const handleEditorSuccess = async (uploadedStory, ctx = {}) => {
+    // v59.13: إضافة تفاؤلية للقصّة حتى تظهر فورًا تحت هيدر الشات.
     setPendingFile(null);
     setToast('تم نشر القصة ✓');
     setTimeout(() => setToast(''), 2500);
+
+    try {
+      setGroups((prev) => {
+        const prevSelf = prev.find((g) => g.is_self) || null;
+        const optimisticSelf = buildOptimisticSelfGroup(uploadedStory, ctx.file, ctx.caption, currentUser, prevSelf);
+        const others = prev.filter((g) => !g.is_self);
+        return [optimisticSelf, ...others];
+      });
+    } catch (e) {
+      // تجاهل أخطاء الدفع التفاؤلي، سنعتمد على إعادة التحميل أدناه
+    }
+
+    // إعادة ضبط الـcircuit breaker حتى لو سبق إيقاف التحديث الدوري، حاول مرة أخرى
+    disabledRef.current = false;
+    failCountRef.current = 0;
     await loadGroups();
   };
 
@@ -117,11 +172,9 @@ export default function StoriesBar({ currentUser, onOpenComposer }) {
   };
 
   const handleAddClick = () => {
-    if (typeof onOpenComposer === 'function') {
-      onOpenComposer();
-    } else {
-      fileInputRef.current?.click();
-    }
+    // v59.13: افتح المحرر مباشرة بدل الانتقال لصفحة أخرى — تجربة أسرع
+    // (onOpenComposer لم يعد يستدعى تلقائيًا: يمكن للأب تمريره إن أراد فعلاً التنقل للصفحة)
+    fileInputRef.current?.click();
   };
 
   if (!loading && groups.length === 0) {
@@ -239,6 +292,7 @@ export default function StoriesBar({ currentUser, onOpenComposer }) {
             group={groups[activeGroupIndex]}
             allGroups={groups}
             currentIndex={activeGroupIndex}
+            currentUserId={currentUser?.id}
             onClose={() => { setViewerOpen(false); loadGroups(); }}
             onNextGroup={() => {
               if (activeGroupIndex < groups.length - 1) {

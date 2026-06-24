@@ -12,6 +12,7 @@ import { useAppStore } from './store/appStore.js';
 import RealtimeProvider from './realtime/RealtimeProvider.jsx';
 import { initializePerformanceToolkit } from './utils/performance.js';
 import { initializeRuntimeErrorCapture } from './utils/runtimeErrors.js';
+import { installBrokenMediaSuppressor } from './utils/brokenMediaSuppressor.js';
 import notificationService from './services/notificationService.js';
 import audioService from './services/audio/audioService.js';
 import { activateMediaEventBridge } from './services/audio/mediaEventBridge.js';
@@ -73,6 +74,10 @@ import './styles/mobile-touch-paw-v58.css';
    حاوية .page-content تصبح هي المسؤولة عن التمرير بسلاسة
    تماماً مثل .yam-services-panel — يجب أن يكون آخر CSS مطلقاً */
 import './styles/drawer-style-touch-final-v59.10.css';
+/* ⭐ v59.12 — رفع لوحة التحكم لملء الشاشة وإزالة الفراغ العلوي
+   يجب أن يكون آخر CSS لضمان أنه يتجاوز أي قواعد سابقة
+   dir="rtl" + Noto Sans Arabic */
+import './styles/admin-fullscreen-fix-v59.12.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { pwaInitializer } from './services/pwaInitializer.js';
 import { smoothTouchLayer } from './services/smoothTouchLayer.js';
@@ -158,6 +163,8 @@ if (typeof window !== 'undefined') {
   window.__YAMSHAT_SW_READY__ = Promise.resolve(null);
   initializePerformanceToolkit();
   initializeRuntimeErrorCapture();
+  // v59.12: كتم أخطاء 404 للوسائط التالفة (/uploads/*) واستبدالها بـ placeholder محلي
+  installBrokenMediaSuppressor();
   initializeViewportTracker();
 
   // تفعيل تحسينات PWA وتجربة المستخدم بشكل مؤجل لضمان سرعة ظهور الصفحة الأولى

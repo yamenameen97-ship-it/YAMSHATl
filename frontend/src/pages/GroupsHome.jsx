@@ -90,9 +90,18 @@ const GroupsHome = () => {
           </div>
         </header>
 
+        {/* v59.13 — أزرار الإنشاء تشمل الآن إنشاء غرفة صوتية بشكل صريح */}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button className="yam-create-group-btn" onClick={() => navigate('/groups/wizard')}>
-            <span>+</span> إنشاء مجموعة (معالج)
+            <span>👥</span> إنشاء مجموعة
+          </button>
+          <button
+            className="yam-create-group-btn"
+            style={{ background: 'linear-gradient(135deg, #22c55e, #10b981)' }}
+            onClick={() => navigate('/voice?create=1')}
+            aria-label="إنشاء غرفة صوتية"
+          >
+            <span>🎙️</span> إنشاء غرفة صوتية
           </button>
           <button
             className="yam-create-group-btn"
@@ -102,6 +111,81 @@ const GroupsHome = () => {
             <span>🔭</span> اكتشف مجموعات
           </button>
         </div>
+
+        {/* v59.13 — وصول سريع لصفحة الغرف الصوتية */}
+        <button
+          type="button"
+          onClick={() => navigate('/voice')}
+          className="yam-voicerooms-card"
+          aria-label="الغرف الصوتية"
+        >
+          <div className="yam-voicerooms-icon">🎙️</div>
+          <div className="yam-voicerooms-text">
+            <strong>الغرف الصوتية</strong>
+            <small>انضمّ إلى غرف صوتية مباشرة أو أنشئ غرفتك</small>
+          </div>
+          <span className="yam-voicerooms-arrow" aria-hidden="true">‹</span>
+        </button>
+
+        <style>{`
+          .yam-voicerooms-card {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            width: 100%;
+            margin-top: 16px;
+            padding: 14px 16px;
+            background: linear-gradient(135deg, rgba(34,197,94,0.12), rgba(16,185,129,0.08));
+            border: 1px solid rgba(34,197,94,0.35);
+            border-radius: 16px;
+            color: #E5E7EB;
+            cursor: pointer;
+            font-family: inherit;
+            text-align: right;
+            transition: background 0.2s ease, transform 0.15s ease, border-color 0.2s ease;
+          }
+          .yam-voicerooms-card:hover {
+            background: linear-gradient(135deg, rgba(34,197,94,0.18), rgba(16,185,129,0.14));
+            border-color: rgba(34,197,94,0.6);
+            transform: translateY(-1px);
+          }
+          .yam-voicerooms-icon {
+            width: 48px;
+            height: 48px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 14px;
+            background: linear-gradient(135deg, #22c55e, #10b981);
+            font-size: 24px;
+            box-shadow: 0 6px 16px rgba(16,185,129,0.35);
+            flex-shrink: 0;
+          }
+          .yam-voicerooms-text {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            flex: 1;
+            min-width: 0;
+          }
+          .yam-voicerooms-text strong {
+            font-size: 15px;
+            font-weight: 800;
+            color: #F4F4F5;
+          }
+          .yam-voicerooms-text small {
+            font-size: 12.5px;
+            color: #94A3B8;
+            font-weight: 500;
+          }
+          .yam-voicerooms-arrow {
+            color: #22c55e;
+            font-size: 28px;
+            font-weight: 800;
+            line-height: 1;
+            transform: rotate(180deg);
+          }
+        `}</style>
 
         {/* البحث */}
         <section className="yam-search-filter-section" style={{ marginTop: '24px' }}>

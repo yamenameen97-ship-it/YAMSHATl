@@ -62,6 +62,57 @@ export default function StoriesPage() {
     }
   };
 
+  /**
+   * v59.13 — إدراج تفاؤلي للقصة المرفوعة حتى تظهر فورًا في الصفحة
+   * دون انتظار تحديث الباك إند (getStoriesGrouped).
+   */
+  const handleUploadSuccess = (uploadedStory, ctx = {}) => {
+    setActiveTab('feed');
+    setSelectedFile(null);
+
+    try {
+      const storyObj = uploadedStory && uploadedStory.id
+        ? {
+            id: uploadedStory.id,
+            media_url: uploadedStory.media_url || (ctx.file ? URL.createObjectURL(ctx.file) : ''),
+            media_type: uploadedStory.media_type || (ctx.file?.type?.startsWith('video') ? 'video' : 'image'),
+            caption: uploadedStory.caption ?? ctx.caption ?? '',
+            created_at: uploadedStory.created_at || new Date().toISOString(),
+            views_count: uploadedStory.views_count ?? 0,
+            reactions_count: uploadedStory.reactions_count ?? 0,
+            replies_count: uploadedStory.replies_count ?? 0,
+          }
+        : {
+            id: `local-${Date.now()}`,
+            media_url: ctx.file ? URL.createObjectURL(ctx.file) : '',
+            media_type: ctx.file?.type?.startsWith('video') ? 'video' : 'image',
+            caption: ctx.caption || '',
+            created_at: new Date().toISOString(),
+            views_count: 0,
+            reactions_count: 0,
+            replies_count: 0,
+            _optimistic: true,
+          };
+
+      setGroups((prev) => {
+        const prevSelf = prev.find((g) => g.is_self) || null;
+        const optimisticSelf = {
+          user_id: me?.id || prevSelf?.user_id || 'me',
+          username: me?.username || prevSelf?.username || 'أنا',
+          is_self: true,
+          has_unseen: false,
+          last_created_at: storyObj.created_at,
+          stories: [storyObj, ...(prevSelf?.stories || [])],
+        };
+        const others = prev.filter((g) => !g.is_self);
+        return [optimisticSelf, ...others];
+      });
+    } catch (_) { /* ignore optimistic errors */ }
+
+    // ثم أعد التحميل للتأكّد
+    loadData();
+  };
+
   const openViewer = (idx) => {
     setActiveGroupIndex(idx);
     setViewerOpen(true);
@@ -172,11 +223,7 @@ export default function StoriesPage() {
           <StoryEditor
             file={selectedFile}
             onClose={() => { setActiveTab('feed'); setSelectedFile(null); }}
-            onSuccess={() => {
-              setActiveTab('feed');
-              setSelectedFile(null);
-              loadData();
-            }}
+            onSuccess={handleUploadSuccess}
           />
         )}
 

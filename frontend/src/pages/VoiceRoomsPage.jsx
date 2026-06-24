@@ -2,7 +2,8 @@
  * صفحة الغرف الصوتية - VoiceRoomsPage
  * RTL + Noto Sans Arabic. تتنقل بين القائمة وإنشاء غرفة وعرض غرفة inline (لا مدوالس).
  */
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import MainLayout from "../components/layout/MainLayout.jsx";
 import VoiceRoomsList from "@/features/voice-rooms/components/VoiceRoomsList";
 import VoiceRoomView from "@/features/voice-rooms/components/VoiceRoomView";
@@ -10,10 +11,25 @@ import { voiceRoomsApi } from "@/features/engagement/api/engagementApi";
 import { useAppStore } from "../store/appStore.js";
 
 export default function VoiceRoomsPage() {
-  const [mode, setMode] = useState("list"); // list | create | room
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  // v59.13: دعم ?create=1 لفتح وضع الإنشاء مباشرة (عند الدخول من صفحة المجموعات)
+  const wantsCreate = searchParams.get('create') === '1';
+  const [mode, setMode] = useState(wantsCreate ? "create" : "list"); // list | create | room
   const [activeRoomId, setActiveRoomId] = useState(null);
   // ⚡ المشروع يستخدم Zustand وليس Redux
   const currentUserId = useAppStore((s) => s?.session?.id ?? s?.session?.user?.id ?? null);
+
+  // بعد فتح وضع الإنشاء تلقائيًا، ننظّف الـquery param لأن المستخدم إذا ضغط رجوع
+  // ثم فتح الصفحة مجددًا لا تفتح على وضع الإنشاء دون قصد.
+  useEffect(() => {
+    if (wantsCreate) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('create');
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (mode === "room" && activeRoomId) {
     return (
@@ -31,7 +47,14 @@ export default function VoiceRoomsPage() {
     return (
       <MainLayout>
         <CreateRoomInline
-          onCancel={() => setMode("list")}
+          onCancel={() => {
+            // v59.13: إذا أتى المستخدم من /groups عبر ?create=1، ارجع للمجموعات
+            if (wantsCreate) {
+              navigate('/groups');
+              return;
+            }
+            setMode("list");
+          }}
           onCreated={(id) => { setActiveRoomId(id); setMode("room"); }}
         />
       </MainLayout>

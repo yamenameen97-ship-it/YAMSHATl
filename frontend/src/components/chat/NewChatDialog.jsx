@@ -50,21 +50,39 @@ export default function NewChatDialog() {
   }, [open]);
 
   // البحث عن مستخدمين بالاسم
+  // ✅ FIX v59.13.10: إلغاء سلسلة سباق (race condition) + setState بعد غلق المودال.
+  //
+  // السلوك السابق: cleanup يلغي setTimeout فقط، لكن لو انطلق الطلب فعلاً
+  // (بعد 250ms) ثم غيّر المستخدم query أو أغلق المودال، الـ await
+  // يستكمل ويحدث setUsers/setLoading على محتوى بحث قديم أو مودال مغلق →
+  // سباق بين الطلبات (الأخير إنتهاءاً ليس الأخير بدءاً) + تحذيرات unmount.
+  //
+  // الإصلاح: علم cancelled محلّي + AbortController إن دعمه getUsers.
   useEffect(() => {
     if (!open) return undefined;
+    let cancelled = false;
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const handle = setTimeout(async () => {
+      if (cancelled) return;
       setLoading(true);
       try {
-        const resp = await getUsers({ q: query.trim(), limit: 20 });
+        const resp = await getUsers({ q: query.trim(), limit: 20, signal: controller?.signal });
+        if (cancelled) return;
         const list = Array.isArray(resp?.data) ? resp.data : (resp?.data?.users || []);
         setUsers(Array.isArray(list) ? list : []);
-      } catch {
+      } catch (err) {
+        // تجاهل الإلغاء المتعمّد.
+        if (cancelled || err?.name === 'CanceledError' || err?.name === 'AbortError') return;
         setUsers([]);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }, 250);
-    return () => clearTimeout(handle);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+      try { controller?.abort(); } catch { /* noop */ }
+    };
   }, [open, query]);
 
   const close = useCallback(() => {

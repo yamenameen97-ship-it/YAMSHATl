@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import Button from '../ui/Button.jsx';
-import { FixedSizeList as List } from 'react-window';
+import { VariableSizeList as List } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
 
 const EMOJIS = ['❤️', '🔥', '😂', '👏', '😮', '💯'];
@@ -89,15 +89,32 @@ const CommentRow = ({ index, style, data }) => {
               </button>
             ))}
           </div>
+          {/* ✅ FIX v59.13.10: إخفاء إجراءات الملكية/الإشراف عن من ليس له صلاحية
+              وإضافة تأكيد للحذف. item.is_owner و item.can_moderate يحسبان في
+              الأب. */}
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <button type="button" className="comment-link-btn" onClick={() => onLike?.(item.id)}>{item.is_liked ? '💙' : '🤍'} {item.likes_count || 0}</button>
             <button type="button" className="comment-link-btn" onClick={() => onReplyStateChange(item.id, isReplying ? null : '')}>رد</button>
-            <button type="button" className="comment-link-btn" onClick={() => onEditStateChange(item.id, item.content || '')}>تعديل</button>
-            <button type="button" className="comment-link-btn" onClick={() => onPin?.(item.id, !item.is_pinned)}>{item.is_pinned ? 'إلغاء التثبيت' : 'تثبيت'}</button>
-            <button type="button" className="comment-link-btn" onClick={() => onHide?.(item.id, !item.is_hidden)}>{item.is_hidden ? 'إظهار' : 'إخفاء'}</button>
+            {item.is_owner ? (
+              <button type="button" className="comment-link-btn" onClick={() => onEditStateChange(item.id, item.content || '')}>تعديل</button>
+            ) : null}
+            {item.can_moderate ? (
+              <button type="button" className="comment-link-btn" onClick={() => onPin?.(item.id, !item.is_pinned)}>{item.is_pinned ? 'إلغاء التثبيت' : 'تثبيت'}</button>
+            ) : null}
+            {item.can_moderate ? (
+              <button type="button" className="comment-link-btn" onClick={() => onHide?.(item.id, !item.is_hidden)}>{item.is_hidden ? 'إظهار' : 'إخفاء'}</button>
+            ) : null}
             <button type="button" className="comment-link-btn" onClick={() => onCopy?.(item)}>نسخ</button>
-            <button type="button" className="comment-link-btn" onClick={() => onReport?.(item.id)}>إبلاغ</button>
-            <button type="button" className="comment-link-btn danger" onClick={() => onDelete?.(item.id)}>حذف</button>
+            {!item.is_owner ? (
+              <button type="button" className="comment-link-btn" onClick={() => onReport?.(item.id)}>إبلاغ</button>
+            ) : null}
+            {(item.is_owner || item.can_moderate) ? (
+              <button type="button" className="comment-link-btn danger" onClick={() => {
+                if (window.confirm('هل تريد حذف هذا التعليق؟')) {
+                  onDelete?.(item.id);
+                }
+              }}>حذف</button>
+            ) : null}
             <span className="muted" style={{ fontSize: 11 }}>إجمالي التفاعل {totalReactions}</span>
           </div>
         </div>
@@ -121,6 +138,8 @@ export default function NestedComments({
   pagination = null,
   sortBy = 'newest',
   loadingMore = false,
+  currentUserId = null,
+  isModerator = false,
   onSortChange,
   onLoadMore,
   onAddComment,
@@ -138,7 +157,19 @@ export default function NestedComments({
   const [replyDrafts, setReplyDrafts] = useState({});
   const [editDrafts, setEditDrafts] = useState({});
 
-  const flatComments = useMemo(() => flattenComments(comments), [comments]);
+  // ✅ FIX v59.13.10: تحسيب الملكية/صلاحية الإشراف لكل تعليق، بدلاً من أن تُعرض
+  // أزرار التعديل/الحذف/التثبيت/الإخفاء لأي مستخدم.
+  const flatComments = useMemo(() => {
+    const list = flattenComments(comments);
+    return list.map((item) => ({
+      ...item,
+      is_owner:
+        currentUserId != null &&
+        (String(item.user_id) === String(currentUserId) ||
+          String(item.author_id) === String(currentUserId)),
+      can_moderate: !!isModerator,
+    }));
+  }, [comments, currentUserId, isModerator]);
   const pendingCount = flatComments.filter((item) => item.optimistic).length;
   const liveCount = flatComments.filter((item) => item.justArrived).length;
 
@@ -189,6 +220,22 @@ export default function NestedComments({
     onReact: onToggleReaction,
   }), [flatComments, replyDrafts, editDrafts, onReply, onEditComment, onLikeComment, onPinComment, onHideComment, onReportComment, onDeleteComment, onCopyComment, onToggleReaction]);
 
+  // ✅ FIX v59.13.10: ارتفاع ديناميكي لكل تعليق حسب حالته:
+  //   - الأساس: 180px (رأس + محتوى قصير + شريط أدوات).
+  //   - +تقدير للمحتوى الطويل (كل 60 حرف إضافي  18px).
+  //   - +130 عند فتح صندوق الرد.
+  //   - +150 عند فتح صندوق التعديل.
+  const getItemSize = (index) => {
+    const item = flatComments[index];
+    if (!item) return 180;
+    let h = 180;
+    const textLen = String(item.content || item.text || item.comment || '').length;
+    if (textLen > 80) h += Math.min(220, Math.ceil((textLen - 80) / 60) * 18);
+    if (typeof replyDrafts[item.id] === 'string') h += 130;
+    if (typeof editDrafts[item.id] === 'string') h += 150;
+    return h;
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 16 }}>
       <div className="comments-head-row" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
@@ -207,6 +254,9 @@ export default function NestedComments({
         </div>
       </div>
 
+      {/* ✅ FIX v59.13.10: الاستبدال بـ VariableSizeList مع getItemSize ديناميكية.
+          السلوك السابق: itemSize ثابت 220px → عند فتح صندوق الرد أو التعديل
+          المحتوى يتجاوز الصفّ ويتداخل مع التعليق التالي. */}
       <div style={{ flex: 1, minHeight: 320 }}>
         {flatComments.length === 0 ? (
           <div className="muted text-center py-10">لا توجد تعليقات بعد.</div>
@@ -217,7 +267,8 @@ export default function NestedComments({
                 height={height}
                 width={width}
                 itemCount={flatComments.length}
-                itemSize={220}
+                itemSize={getItemSize}
+                estimatedItemSize={200}
                 itemData={listData}
                 className="no-scrollbar"
               >

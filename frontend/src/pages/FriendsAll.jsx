@@ -109,21 +109,37 @@ export default function FriendsAll() {
     setSearchParams(next, { replace: true });
   };
 
+  // ✅ FIX v59.13.10: handleAction محصّن ضد ثلاث عيوب جوهريّة:
+  //   1) confirm() لـ unfriend كان يأتي بعد setBusy(…) فإذا ألغى المستخدم
+  //      المربّع يخرج عبر return وبدون تصفير busy → الزر يبقى في حالة
+  //      loading دائماً ولا يمكن إعادة المحاولة إلا بإعادة تحميل الصفحة. إصلاح:
+  //      ندعو confirm قبل setBusy.
+  //   2) بعد await لا يتم فحص mountedRef.current → إذا خرج المستخدم
+  //      من الصفحة أثناء الطلب يحدث setState على مكوّن مُزال → تحذيرات React.
+  //   3) actionError السابق لا يُمسح إذا أغلق confirm() مبكراً
+  //      → رسالة خطأ قديمة تبقى معروضة للمستخدم.
   const handleAction = async (type, target) => {
+    // (1) سؤال التأكيد أولاً قبل أي setBusy، للتخلص من العلقة الدائمة.
+    if (type === 'unfriend' && !window.confirm('هل تريد إزالة هذا الصديق؟')) {
+      return;
+    }
+    // (3) مسح خطأ أي عملية سابقة.
+    setActionError('');
     try {
-      setActionError('');
       if (type === 'accept') {
         setBusy(`accept-${target}`);
         await acceptFriendRequest(target);
+        if (!mountedRef.current) return; // (2)
         setItems((p) => p.filter((u) => u.friendship?.friendship_id !== target));
       } else if (type === 'decline' || type === 'cancel' || type === 'unfriend') {
         setBusy(`${type}-${target}`);
-        if (type === 'unfriend' && !window.confirm('هل تريد إزالة هذا الصديق؟')) return;
         await removeFriendship(target);
+        if (!mountedRef.current) return; // (2)
         setItems((p) => p.filter((u) => u.friendship?.friendship_id !== target));
       } else if (type === 'add') {
         setBusy(`add-${target}`);
         const { data } = await sendFriendRequest(target);
+        if (!mountedRef.current) return; // (2)
         const fr = data?.friendship;
         setItems((p) => p.map((u) => u.username === target
           ? { ...u, friendship: { status: fr?.status, friendship_id: fr?.id, direction: fr?.direction || 'outgoing' } }
@@ -131,12 +147,15 @@ export default function FriendsAll() {
       } else if (type === 'dismiss') {
         setBusy(`dismiss-${target}`);
         await dismissSuggestion(target);
+        if (!mountedRef.current) return; // (2)
         setItems((p) => p.filter((u) => u.username !== target));
       }
     } catch (err) {
-      setActionError(err?.response?.data?.detail || 'فشلت العملية.');
+      if (mountedRef.current) {
+        setActionError(err?.response?.data?.detail || 'فشلت العملية.');
+      }
     } finally {
-      setBusy('');
+      if (mountedRef.current) setBusy('');
     }
   };
 

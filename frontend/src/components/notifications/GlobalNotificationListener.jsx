@@ -101,7 +101,15 @@ export default function GlobalNotificationListener() {
     const unsubscribeRT = realtimeNotifications.onNotification(handleIncoming);
 
     // تسجيل Web Push للإشعارات عندما يكون التبويب مغلقاً.
-    if (typeof window !== 'undefined' && Notification.permission === 'granted') {
+    // ✅ FIX v59.13.10: حماية ضد المتصفحات التي لا تعرّف Notification
+    // (iOS Safari < 16.4 / SSR / WebView بدون permissions). الوصول إلى
+    // Notification.permission مباشرةً كان يرمي ReferenceError ويوقف
+    // تنفيذ effect كاملاً → بقية المستمعين لا تُسجَّل.
+    if (
+      typeof window !== 'undefined' &&
+      typeof Notification !== 'undefined' &&
+      Notification.permission === 'granted'
+    ) {
       registerWebPush().catch(() => {});
     }
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import MainLayout from '../../components/layout/MainLayout.jsx';
 import Card from '../../components/ui/Card.jsx';
 import Button from '../../components/ui/Button.jsx';
@@ -38,15 +38,25 @@ export default function NotificationsPage() {
     notify_live: true
   });
 
+  // ✅ FIX v59.13.10: حماية ضد setState على مكوّن مُزال.
+  // أربع دوال أسنكرونية (loadNotifications/loadPreferences/handleSaveSettings/
+  // handleMarkAllRead) كلها تستدعي setState بعد await دون فحص mount.
+  // إذا خرج المستخدم من صفحة الإشعارات أثناء التحميل تظهر تحذيرات React
+  // وتسرّب ذاكرة بسيطة.
+  const isMountedRef = useRef(true);
+  useEffect(() => () => { isMountedRef.current = false; }, []);
+
   useEffect(() => {
     loadNotifications();
     loadPreferences();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadPreferences = async () => {
     try {
       const { getUserPreferences } = await import('../../api/users.js');
       const { data } = await getUserPreferences();
+      if (!isMountedRef.current) return;
       if (data) {
         setSettings(prev => ({
           ...prev,
@@ -59,7 +69,7 @@ export default function NotificationsPage() {
         }));
       }
     } catch (err) {
-      console.error('Failed to load preferences', err);
+      if (isMountedRef.current) console.error('Failed to load preferences', err);
     }
   };
 
@@ -74,18 +84,20 @@ export default function NotificationsPage() {
         notify_stories: settings.notify_stories,
         notify_live: settings.notify_live
       });
+      if (!isMountedRef.current) return;
       setShowSettings(false);
     } catch (err) {
-      console.error('Failed to save preferences', err);
+      if (isMountedRef.current) console.error('Failed to save preferences', err);
     }
   };
 
   const loadNotifications = async () => {
     try {
       const { data } = await getNotifications();
+      if (!isMountedRef.current) return;
       setNotifications(data || []);
     } catch (err) {
-      console.error('Failed to load notifications', err);
+      if (isMountedRef.current) console.error('Failed to load notifications', err);
     }
   };
 
@@ -117,9 +129,10 @@ export default function NotificationsPage() {
     if (unreadIds.length > 0) {
       try {
         await markNotificationsRead(unreadIds);
+        if (!isMountedRef.current) return;
         setNotifications(prev => prev.map(n => ({ ...n, seen: true })));
       } catch (err) {
-        console.error('Failed to mark notifications as read', err);
+        if (isMountedRef.current) console.error('Failed to mark notifications as read', err);
       }
     }
   };

@@ -76,6 +76,10 @@ export default function Reels() {
 
   const videoRefs = useRef([]);
   const containerRef = useRef(null);
+  // ✅ FIX v59.13.8 (#3): isMountedRef لحماية setState داخل الـ handlers الـ async
+  //    (handleLike / handleShare / openComments / sendComment) عند مغادرة الصفحة.
+  const isMountedRef = useRef(true);
+  useEffect(() => () => { isMountedRef.current = false; }, []);
 
   // Load feed
   useEffect(() => {
@@ -105,30 +109,64 @@ export default function Reels() {
   const currentReel = reels[activeIndex] || null;
 
   // Snap scroll: detect active reel
+  // ✅ v59.13.5 FIX #5: throttle عبر rAF + حماية من clientHeight===0 → NaN
+  // المشكلة السابقة: المعالج كان يُطلق 60+ مرّة/ثانية أثناء السكرول الزخمي
+  // (momentum)، وإذا كان الحاوي مخفيًا (clientHeight=0) تحول النتيجة إلى NaN
+  // → setActiveIndex(NaN) يكسر تشغيل الفيديو بصمت.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return undefined;
+    let rafId = 0;
+    let pending = false;
     const onScroll = () => {
-      const idx = Math.round(el.scrollTop / el.clientHeight);
-      if (idx !== activeIndex && idx >= 0 && idx < reels.length) setActiveIndex(idx);
+      if (pending) return;
+      pending = true;
+      rafId = window.requestAnimationFrame(() => {
+        pending = false;
+        const h = el.clientHeight;
+        if (!h) return; // حماية من القسمة على صفر
+        const raw = el.scrollTop / h;
+        if (!Number.isFinite(raw)) return;
+        const idx = Math.round(raw);
+        if (idx !== activeIndex && idx >= 0 && idx < reels.length) {
+          setActiveIndex(idx);
+        }
+      });
     };
     el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      if (rafId) window.cancelAnimationFrame(rafId);
+    };
   }, [activeIndex, reels.length]);
 
   // Play / pause based on active
+  // ✅ FIX (v59.13.3): إزالة اعتمادية reels الكاملة من الـ effect.
+  // المشكلة السابقة: أي تحديث للـ reels (إعجاب/تعليق/مشاركة) كان يعيد تشغيل
+  // الـ effect → استدعاء .play() غير ضروري + إعادة تشغيل الفيديو من البداية
+  // + ترك مراجع فيديوهات معلّقة في videoRefs بعد إعادة العرض.
+  // الحل: نعتمد فقط على activeIndex و muted و reels.length
+  // (لإعادة التشغيل فقط عند تغير العدد الفعلي للريلز)
   useEffect(() => {
+    // تنظيف المراجع المعلّقة: إذا صغر المصفوف بعد حذف
+    if (videoRefs.current.length > reels.length) {
+      videoRefs.current.length = reels.length;
+    }
+
     videoRefs.current.forEach((v, i) => {
       if (!v) return;
       if (i === activeIndex) {
         v.muted = muted;
-        v.play?.().catch(() => {});
+        // لا تستدعي play() إلا إذا كان الفيديو فعلياً متوقفاً
+        if (v.paused) {
+          v.play?.().catch(() => {});
+        }
       } else {
-        v.pause?.();
+        if (!v.paused) v.pause?.();
         try { v.currentTime = 0; } catch {}
       }
     });
-  }, [activeIndex, muted, reels]);
+  }, [activeIndex, muted, reels.length]);
 
   const handleLike = useCallback(async (reel) => {
     if (!reel) return;
@@ -140,6 +178,8 @@ export default function Reels() {
     try {
       await API.post(`/reels/${encodeURIComponent(reel.id)}/like`);
     } catch {
+      // ✅ FIX v59.13.8 (#3): تجنّب rollback / toast بعد unmount
+      if (!isMountedRef.current) return;
       setReels((prev) => prev.map((r) => (r.id === reel.id
         ? { ...r, is_liked: !nextLiked, likes_count: Math.max(0, r.likes_count - delta) }
         : r)));
@@ -155,8 +195,11 @@ export default function Reels() {
         await navigator.share({ title: 'Yamshat Reel', url });
       } else {
         await navigator.clipboard.writeText(url);
+        // ✅ FIX v59.13.8 (#3): فحص mount قبل toast (قد يغادر المستخدم أثناء نسخ الرابط)
+        if (!isMountedRef.current) return;
         pushToast?.({ type: 'success', title: 'تم نسخ الرابط' });
       }
+      if (!isMountedRef.current) return;
       setReels((prev) => prev.map((r) => (r.id === reel.id ? { ...r, share_count: r.share_count + 1 } : r)));
       API.post(`/reels/${encodeURIComponent(reel.id)}/share`).catch(() => {});
     } catch {}
@@ -167,8 +210,13 @@ export default function Reels() {
     setShowComments(true);
     try {
       const { data } = await getComments(reel.id);
+      // ✅ FIX v59.13.8 (#3): تجنّب setState إذا تم إغلاق الصفحة أثناء جلب التعليقات
+      if (!isMountedRef.current) return;
       setActiveComments(Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : []);
-    } catch { setActiveComments([]); }
+    } catch {
+      if (!isMountedRef.current) return;
+      setActiveComments([]);
+    }
   }, []);
 
   const sendComment = useCallback(async () => {
@@ -176,16 +224,20 @@ export default function Reels() {
     if (!text || !currentReel) return;
     try {
       const { data } = await addComment(currentReel.id, text);
+      // ✅ FIX v59.13.8 (#3): حراسة سلسلة الـ setState بعد الـ await
+      if (!isMountedRef.current) return;
       setActiveComments((prev) => [data || { id: Date.now(), content: text, username: 'me' }, ...prev]);
       setReels((prev) => prev.map((r) => (r.id === currentReel.id ? { ...r, comments_count: r.comments_count + 1 } : r)));
       setCommentText('');
     } catch {
       try {
         await API.post(`/reels/${encodeURIComponent(currentReel.id)}/comment`, { content: text });
+        if (!isMountedRef.current) return;
         setReels((prev) => prev.map((r) => (r.id === currentReel.id ? { ...r, comments_count: r.comments_count + 1 } : r)));
         setActiveComments((prev) => [{ id: Date.now(), content: text, username: 'me' }, ...prev]);
         setCommentText('');
       } catch {
+        if (!isMountedRef.current) return;
         pushToast?.({ type: 'error', title: 'تعذّر إرسال التعليق' });
       }
     }

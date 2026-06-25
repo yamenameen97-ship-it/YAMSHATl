@@ -7,23 +7,41 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 
+// ✅ FIX (v59.13.3): ثوابت لتأمين مدخلات الشراء/السحب
+const MAX_PURCHASE_AMOUNT = 1_000_000; // سقف أعلى للشراء لمنع أرقام ضخمة عن طريق الخطأ
+
+// تحويل آمن للمدخل: يعيد null للفراغ/NaN بدل 0 حتى يظهر placeholder
+function parseAmountInput(raw: string, max: number): number | null {
+  if (raw === '' || raw == null) return null;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || Number.isNaN(n)) return null;
+  if (n < 0) return 0;
+  if (n > max) return max;
+  return n;
+}
+
 export default function Wallet() {
   const { user, isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
-  const [purchaseAmount, setPurchaseAmount] = useState(0);
-  const [withdrawAmount, setWithdrawAmount] = useState(0);
+  // ✅ FIX: نستخدم null بدل 0 حتى يظهر placeholder بدل رقم وهمي
+  const [purchaseAmount, setPurchaseAmount] = useState<number | null>(null);
+  const [withdrawAmount, setWithdrawAmount] = useState<number | null>(null);
+  const [withdrawError, setWithdrawError] = useState<string | null>(null);
 
   // Queries
   const walletQuery = trpc.wallets.get.useQuery(undefined, { enabled: isAuthenticated });
   const transactionQuery = trpc.wallets.getTransactionHistory.useQuery({ limit: 50 }, { enabled: isAuthenticated });
   const updateBalanceMutation = trpc.wallets.updateBalance.useMutation();
 
+  const balance = walletQuery.data?.balance || 0;
+
   const handlePurchaseCoins = async () => {
-    if (purchaseAmount <= 0) return;
+    if (!purchaseAmount || purchaseAmount <= 0) return;
+    if (purchaseAmount > MAX_PURCHASE_AMOUNT) return;
 
     try {
       await updateBalanceMutation.mutateAsync(purchaseAmount);
-      setPurchaseAmount(0);
+      setPurchaseAmount(null);
       walletQuery.refetch();
       transactionQuery.refetch();
     } catch (error) {
@@ -32,11 +50,18 @@ export default function Wallet() {
   };
 
   const handleWithdraw = async () => {
-    if (withdrawAmount <= 0 || !walletQuery.data || withdrawAmount > walletQuery.data.balance) return;
+    if (!withdrawAmount || withdrawAmount <= 0) return;
+    if (!walletQuery.data) return;
+    // ✅ FIX: تنبيه واضح عند تجاوز الرصيد
+    if (withdrawAmount > balance) {
+      setWithdrawError(`المبلغ يتجاوز الرصيد المتاح (${balance} عملة)`);
+      return;
+    }
+    setWithdrawError(null);
 
     try {
       await updateBalanceMutation.mutateAsync(-withdrawAmount);
-      setWithdrawAmount(0);
+      setWithdrawAmount(null);
       walletQuery.refetch();
       transactionQuery.refetch();
     } catch (error) {
@@ -115,21 +140,25 @@ export default function Wallet() {
                 <Input
                   type="number"
                   placeholder="أدخل عدد العملات"
-                  value={purchaseAmount}
-                  onChange={(e) => setPurchaseAmount(parseInt(e.target.value) || 0)}
+                  value={purchaseAmount ?? ''}
+                  onChange={(e) => setPurchaseAmount(parseAmountInput(e.target.value, MAX_PURCHASE_AMOUNT))}
                   min="0"
+                  max={MAX_PURCHASE_AMOUNT}
                 />
+                {purchaseAmount === MAX_PURCHASE_AMOUNT && (
+                  <p className="text-xs text-orange-600 mt-1">تم الوصول للحد الأعلى للشراء</p>
+                )}
               </div>
 
               <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  السعر: <span className="font-bold">{purchaseAmount * 0.1}</span> ريال
+                  السعر: <span className="font-bold">{((purchaseAmount ?? 0) * 0.1).toFixed(2)}</span> ريال
                 </p>
               </div>
 
               <Button
                 onClick={handlePurchaseCoins}
-                disabled={purchaseAmount <= 0 || updateBalanceMutation.isPending}
+                disabled={!purchaseAmount || purchaseAmount <= 0 || updateBalanceMutation.isPending}
                 className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white"
               >
                 {updateBalanceMutation.isPending ? "جاري الشراء..." : "شراء الآن"}
@@ -147,22 +176,34 @@ export default function Wallet() {
                 <Input
                   type="number"
                   placeholder="أدخل المبلغ"
-                  value={withdrawAmount}
-                  onChange={(e) => setWithdrawAmount(parseInt(e.target.value) || 0)}
+                  value={withdrawAmount ?? ''}
+                  onChange={(e) => {
+                    const next = parseAmountInput(e.target.value, balance || MAX_PURCHASE_AMOUNT);
+                    setWithdrawAmount(next);
+                    // تنبيه فوري عند تجاوز الرصيد
+                    if (next !== null && next > balance) {
+                      setWithdrawError(`المبلغ يتجاوز الرصيد المتاح (${balance} عملة)`);
+                    } else {
+                      setWithdrawError(null);
+                    }
+                  }}
                   min="0"
-                  max={walletQuery.data?.balance || 0}
+                  max={balance}
                 />
+                {withdrawError && (
+                  <p className="text-xs text-red-600 mt-1" role="alert">{withdrawError}</p>
+                )}
               </div>
 
               <div className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded-lg">
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  الرصيد المتاح: <span className="font-bold">{walletQuery.data?.balance || 0}</span> عملة
+                  الرصيد المتاح: <span className="font-bold">{balance}</span> عملة
                 </p>
               </div>
 
               <Button
                 onClick={handleWithdraw}
-                disabled={withdrawAmount <= 0 || !walletQuery.data || withdrawAmount > walletQuery.data.balance || updateBalanceMutation.isPending}
+                disabled={!withdrawAmount || withdrawAmount <= 0 || !walletQuery.data || withdrawAmount > balance || updateBalanceMutation.isPending}
                 className="w-full bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white"
               >
                 {updateBalanceMutation.isPending ? "جاري السحب..." : "سحب الآن"}
@@ -179,7 +220,7 @@ export default function Wallet() {
                 <Button
                   key={amount}
                   variant="outline"
-                  onClick={() => setPurchaseAmount(amount)}
+                  onClick={() => setPurchaseAmount(Math.min(amount, MAX_PURCHASE_AMOUNT))}
                   className="w-full justify-start"
                 >
                   <span className="ml-2">{amount}</span> عملة

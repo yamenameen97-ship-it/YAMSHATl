@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import MainLayout from '../../components/layout/MainLayout.jsx';
 import StoryViewerEnhanced from '../../components/stories/StoryViewerEnhanced.jsx';
 import StoryEditor from '../../components/stories/StoryEditor.jsx';
@@ -23,6 +23,10 @@ export default function StoriesPage() {
   const [activeGroupIndex, setActiveGroupIndex] = useState(0);
   const [me, setMe] = useState(null);
   const [loading, setLoading] = useState(true);
+  // ✅ FIX v59.13.6: تتبّع blob URLs المولّدة تفاؤليًّا حتّى نحرّرها عند unmount.
+  // السلوك السابق: URL.createObjectURL يُستدعى بلا revokeObjectURL أبدًا
+  // → تسرّب blob URLs يتراكم عند رفع عدّة قصص.
+  const optimisticBlobUrlsRef = useRef(new Set());
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -39,6 +43,14 @@ export default function StoriesPage() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // ✅ FIX v59.13.6: تحرير كل blob URLs التفاؤليّة عند unmount
+  useEffect(() => () => {
+    optimisticBlobUrlsRef.current.forEach((url) => {
+      try { URL.revokeObjectURL(url); } catch (_) { /* ignore */ }
+    });
+    optimisticBlobUrlsRef.current.clear();
+  }, []);
 
   // Preload للقصص التالية
   useEffect(() => {
@@ -71,10 +83,17 @@ export default function StoriesPage() {
     setSelectedFile(null);
 
     try {
+      // ✅ FIX v59.13.6: دالة مساعدة لإنشاء blob URL وتسجيله في مجموعة التتبُع
+      const makeTrackedBlobUrl = (file) => {
+        if (!file) return '';
+        const url = URL.createObjectURL(file);
+        optimisticBlobUrlsRef.current.add(url);
+        return url;
+      };
       const storyObj = uploadedStory && uploadedStory.id
         ? {
             id: uploadedStory.id,
-            media_url: uploadedStory.media_url || (ctx.file ? URL.createObjectURL(ctx.file) : ''),
+            media_url: uploadedStory.media_url || makeTrackedBlobUrl(ctx.file),
             media_type: uploadedStory.media_type || (ctx.file?.type?.startsWith('video') ? 'video' : 'image'),
             caption: uploadedStory.caption ?? ctx.caption ?? '',
             created_at: uploadedStory.created_at || new Date().toISOString(),
@@ -84,7 +103,7 @@ export default function StoriesPage() {
           }
         : {
             id: `local-${Date.now()}`,
-            media_url: ctx.file ? URL.createObjectURL(ctx.file) : '',
+            media_url: makeTrackedBlobUrl(ctx.file),
             media_type: ctx.file?.type?.startsWith('video') ? 'video' : 'image',
             caption: ctx.caption || '',
             created_at: new Date().toISOString(),

@@ -400,9 +400,36 @@ class AudioEngine {
   }
 
   stopIncomingCall() {
+    // ✅ FIX (v59.13.3): إيقاف جميع الحلقات النشطة من فئة "calls" + النغمات المخصصة
+    // المشكلة السابقة: عند اختيار المستخدم نغمة رنين مخصصة (settings.ringtone / videoRingtone)
+    // مختلفة عن ring_voice/ring_video، كانت الدالة لا توقف الرنين الفعلي
+    // → رنين أبدي بعد الرد على المكالمة.
+
+    // 1) أوقف النغمتين المختارتين حالياً من الإعدادات (قد تكون مخصصة)
+    try {
+      if (this.settings?.ringtone) this.stop(this.settings.ringtone);
+      if (this.settings?.videoRingtone) this.stop(this.settings.videoRingtone);
+    } catch { /* ignore */ }
+
+    // 2) أوقف النغمات الافتراضية + نغمة الانتظار للاحتياط
     this.stop('ring_voice');
     this.stop('ring_video');
     this.stop('call_waiting');
+
+    // 3) أوقف أي حلقة نشطة أخرى تنتمي لفئة "calls" (حماية شاملة)
+    try {
+      Array.from(this.activeLoops.keys()).forEach((k) => {
+        const def = SOUND_CATALOG[k];
+        if (def && def.category === 'calls') this.stop(k);
+      });
+    } catch { /* ignore */ }
+
+    // 4) أوقف الاهتزاز إن كان مستمراً
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+        navigator.vibrate(0);
+      }
+    } catch { /* ignore */ }
   }
 
   endCall() {

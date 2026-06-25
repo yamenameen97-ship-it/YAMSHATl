@@ -122,10 +122,22 @@ export default function Profile() {
   };
 
   const loadProfile = async () => {
+    // ✅ FIX (v59.13.3): حل race condition عند التنقل بين الملفات
+    // عند التنقل بين ملفي A ثم B بسرعة، استجابة A البطيئة
+    // كانت قد تصل بعد B وتستبدل بيانات B الأحدث.
+    const mySeq = ++requestSeqRef.current;
+    const myUsername = username;
+
     try {
-      const { data } = await getProfileBundle(username);
+      const { data } = await getProfileBundle(myUsername);
+
+      // إذا أُطلق طلب أحدث بعدنا، أو تغيّر الملف المستهدف — تجاهل الاستجابة
+      if (mySeq !== requestSeqRef.current || myUsername !== username) {
+        return;
+      }
+
       // دمج بيانات الصور المحفوظة محلياً إذا لم تأتٍ من الخادم
-      const local = readLocalProfileImages(username);
+      const local = readLocalProfileImages(myUsername);
       if (local && data?.user) {
         if (!data.user.avatar && local.avatar) {
           data.user.avatar = local.avatar;
@@ -138,12 +150,16 @@ export default function Profile() {
       setProfile(data);
       setTheme(data?.profile_insights?.theme || data?.user?.profile?.profile_theme || 'midnight');
     } catch (error) {
+      // لا تكتب حالة فشل إذا لم تعد الاستجابة تخصنا
+      if (mySeq !== requestSeqRef.current || myUsername !== username) {
+        return;
+      }
       console.error('Failed to load profile', error);
       // عند فشل تحميل الخادم، استخدم النسخة المحلية إن وجدت
-      const local = readLocalProfileImages(username) || {};
+      const local = readLocalProfileImages(myUsername) || {};
       setProfile({
         user: {
-          username,
+          username: myUsername,
           avatar: local.avatar || '',
           profile: { bio: '', cover_photo: local.cover_photo || '' },
         },

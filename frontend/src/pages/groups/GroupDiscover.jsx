@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MainLayout from '../../components/layout/MainLayout.jsx';
 import GroupSubHeader from '../../components/groups/GroupSubHeader.jsx';
@@ -31,7 +31,18 @@ const GroupDiscover = () => {
   const [query, setQuery] = useState('');
   const [joining, setJoining] = useState({});
 
+  // ✅ FIX v59.13.6: حارس isMounted + عدّاد طلبات لمنع race condition
+  // السلوك السابق: إذا أرسل المستخدم عدّة طلبات بحث سريعة، أو غادر الصفحة
+  // خلال الـ 350ms debounce، فإن setItems() تُستدعى على مكوّن مُزال أو تُكتبفوق
+  // نتائج أحدث. يحصل أيضًا لـ load() عند تغيير category بسرعة.
+  const isMountedRef = useRef(true);
+  const searchSeqRef = useRef(0);
+  const loadSeqRef = useRef(0);
+
+  useEffect(() => () => { isMountedRef.current = false; }, []);
+
   const load = async () => {
+    const seq = ++loadSeqRef.current;
     try {
       setLoading(true);
       let res;
@@ -42,11 +53,16 @@ const GroupDiscover = () => {
       } else {
         res = await discoverGroups({ category, limit: 60 });
       }
+      // تجاهل النتيجة إن بدأ طلب أحدث أو تمّ unmount
+      if (!isMountedRef.current || seq !== loadSeqRef.current) return;
       const list = Array.isArray(res?.data) ? res.data : (res?.data?.groups || []);
       setItems(list);
     } catch {
+      if (!isMountedRef.current || seq !== loadSeqRef.current) return;
       setItems([]);
-    } finally { setLoading(false); }
+    } finally {
+      if (isMountedRef.current && seq === loadSeqRef.current) setLoading(false);
+    }
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [category]);
@@ -55,9 +71,12 @@ const GroupDiscover = () => {
   useEffect(() => {
     const q = query.trim();
     if (!q) return;
+    const seq = ++searchSeqRef.current;
     const h = setTimeout(async () => {
       try {
         const res = await searchGroups(q, 40);
+        // ✅ FIX v59.13.6: تأكد من أنّ المكوّن لا يزال متركّبًا + أنّ هذا أحدث طلب
+        if (!isMountedRef.current || seq !== searchSeqRef.current) return;
         const list = Array.isArray(res?.data) ? res.data : (res?.data?.groups || []);
         if (list.length) setItems(list);
       } catch { /* keep silent */ }

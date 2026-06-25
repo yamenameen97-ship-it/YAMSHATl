@@ -170,6 +170,13 @@ export default function ReelComposer() {
   const recordedChunksRef = useRef([]);
   const recordTimerRef = useRef(null);
   const fileInputRef = useRef(null);
+  // ✅ v59.13.7 FIX #3: تتبّع مؤقت العدّ التنازلي + حارس isMounted
+  // لمنع:
+  //   (أ) استدعاء startRecording() بعد مغادرة الصفحة أثناء العدّ التنازلي.
+  //   (ب) setRecordedBlob في onstop بعد unmount.
+  //   (ج) setState بعد unmount في onConfirm async.
+  const countdownTimerRef = useRef(null);
+  const isMountedRef = useRef(true);
 
   // ---- بدء/إيقاف الكاميرا حسب الجلسة ----
   // v59.8 — لا تُفتح الكاميرا تلقائياً عند دخول الصفحة، فقط عند تفعيل cameraOn
@@ -259,6 +266,34 @@ export default function ReelComposer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recording, duration]);
 
+  // ✅ v59.13.7 FIX #3: cleanup عام — مؤقتات + isMounted + توقيف MediaRecorder
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      // أوقف مؤقت العدّ التنازلي إن وجد
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
+      }
+      // أوقف أي مؤقت تسجيل عالق
+      if (recordTimerRef.current) {
+        clearInterval(recordTimerRef.current);
+        recordTimerRef.current = null;
+      }
+      // عطّل callbackات الـ MediaRecorder لمنع setState بعد unmount
+      try {
+        if (mediaRecorderRef.current) {
+          mediaRecorderRef.current.ondataavailable = null;
+          mediaRecorderRef.current.onstop = null;
+          if (mediaRecorderRef.current.state !== 'inactive') {
+            mediaRecorderRef.current.stop();
+          }
+        }
+      } catch { /* ignore */ }
+    };
+  }, []);
+
   // ---- مرشّح CSS للمعاينة ----
   // يعتمد على قائمة الفلاتر الموحّدة في CameraFilterCarousel (نفس الفلاتر تماماً
   // التي تظهر في الكاروسيل السفلي على طريقة سناب شات)
@@ -288,6 +323,8 @@ export default function ReelComposer() {
       const rec = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9,opus' });
       rec.ondataavailable = (e) => { if (e.data?.size) recordedChunksRef.current.push(e.data); };
       rec.onstop = () => {
+        // ✅ v59.13.7 FIX #3 (ب): فحص mount قبل setState
+        if (!isMountedRef.current) return;
         const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
         setRecordedBlob(blob);
       };
@@ -314,12 +351,26 @@ export default function ReelComposer() {
       return;
     }
     if (timer && timer > 0) {
+      // ✅ v59.13.7 FIX #3 (أ): ألغ أي عدّ تنازلي سابق إن وجد (تأمين ضغط متكرّر)
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
+      }
       let countdown = timer;
       pushToast?.({ tone: 'info', message: `يبدأ التسجيل خلال ${countdown}…` });
-      const id = setInterval(() => {
+      countdownTimerRef.current = setInterval(() => {
+        // ✅ v59.13.7 FIX #3 (أ): لا تتابع إذا أُزيل المكوّن
+        if (!isMountedRef.current) {
+          if (countdownTimerRef.current) {
+            clearInterval(countdownTimerRef.current);
+            countdownTimerRef.current = null;
+          }
+          return;
+        }
         countdown -= 1;
         if (countdown <= 0) {
-          clearInterval(id);
+          clearInterval(countdownTimerRef.current);
+          countdownTimerRef.current = null;
           startRecording();
         }
       }, 1000);
@@ -354,7 +405,11 @@ export default function ReelComposer() {
         purpose: 'reel-upload',
         compressionPreset: 'balanced',
         processingProfile: `${filter}:${effect}${beautify ? ':beauty' : ''}`,
-        onProgress: (p) => setUploadProgress(Math.min(100, Number(p?.percent || 0))),
+        // ✅ v59.13.7 FIX #3 (ج): تجنّب setState بعد unmount
+        onProgress: (p) => {
+          if (!isMountedRef.current) return;
+          setUploadProgress(Math.min(100, Number(p?.percent || 0)));
+        },
       });
       const mediaUrl = upload?.mediaUrl || upload?.url || '';
       try {
@@ -373,14 +428,18 @@ export default function ReelComposer() {
         // fallback لِنقطة بديلة
         try { await API.post('/reels/create', { media_url: mediaUrl }); } catch { /* ignore */ }
       }
+      if (!isMountedRef.current) return;
       pushToast?.({ tone: 'success', message: 'تم نشر الريل بنجاح 🎉' });
       navigate('/reels', { replace: true });
     } catch (err) {
       const m = err?.response?.data?.detail || err?.message || 'فشل نشر الريل';
-      setErrorMessage(m);
-      pushToast?.({ tone: 'error', message: m });
+      // ✅ v59.13.7 FIX #3 (ج): تجنّب setState بعد unmount
+      if (isMountedRef.current) {
+        setErrorMessage(m);
+        pushToast?.({ tone: 'error', message: m });
+      }
     } finally {
-      setUploading(false);
+      if (isMountedRef.current) setUploading(false);
     }
   };
 

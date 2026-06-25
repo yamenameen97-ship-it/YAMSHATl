@@ -80,6 +80,14 @@ const GroupChat = () => {
     activeGroupIdRef.current = groupId;
   }, [groupId]);
 
+  // ✅ v59.13.5 FIX #4: حفظ اسم المجموعة في ref حتّى لا نضعه في deps
+  // الـ effect الكبير (سوكت + refetch)، وبالتالي لا يُعاد تشغيله
+  // عند وصول groupInfo (الذي كان يتسبّب في leave/join + إعادة جلب كل الرسائل).
+  const groupNameRef = useRef('المجموعة');
+  useEffect(() => {
+    if (groupInfo?.name) groupNameRef.current = groupInfo.name;
+  }, [groupInfo?.name]);
+
   const currentUser = getCurrentUsername();
 
   const scrollToBottom = () => {
@@ -233,7 +241,7 @@ const GroupChat = () => {
       // 🔔 إشعار محلي إن لم تكن الرسالة منا والصفحة غير مرئية
       if (!isFromMe && !documentVisibleRef.current) {
         try {
-          const groupName = groupInfo?.name || 'المجموعة';
+          const groupName = groupNameRef.current || 'المجموعة';
           showLocalNotification?.({
             title: `${groupName} — ${senderName}`,
             body: newMsg.text || (newMsg.mediaUrl ? '📎 مرفق جديد' : 'رسالة جديدة'),
@@ -245,7 +253,7 @@ const GroupChat = () => {
           // fallback: استخدم Notification API مباشرة
           if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
             try {
-              new Notification(`${groupInfo?.name || 'المجموعة'} — ${senderName}`, {
+              new Notification(`${groupNameRef.current || 'المجموعة'} — ${senderName}`, {
                 body: newMsg.text || '📎 مرفق جديد',
                 icon: '/favicon.ico',
                 tag: `group-${currentGid}`,
@@ -267,7 +275,8 @@ const GroupChat = () => {
         socketManager.emit('leave_group', { group_id: groupId, room });
       } catch { /* تجاهل */ }
     };
-  }, [groupId, currentUser, groupInfo?.name]);
+    // ✅ v59.13.5 FIX #4: أزلنا groupInfo?.name من deps — يُقرأ عبر groupNameRef داخل المعالج
+  }, [groupId, currentUser]);
 
   useEffect(() => {
     scrollToBottom();

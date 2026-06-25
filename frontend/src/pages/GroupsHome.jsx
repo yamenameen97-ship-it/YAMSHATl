@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import { getGroups, searchGroups } from '../api/groups.js';
@@ -21,6 +21,9 @@ const GroupsHome = () => {
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(true);
+  // ✅ FIX v59.13.4: احتفظ بالقائمة الأصلية + seq لتجنب race condition في البحث
+  const baseGroupsRef = useRef([]);
+  const searchSeqRef = useRef(0);
 
   const categories = [
     { id: 1, name: 'الكل', icon: '📱' },
@@ -32,36 +35,51 @@ const GroupsHome = () => {
   ];
 
   useEffect(() => {
+    let cancelled = false;
     const fetchGroups = async () => {
       try {
         setLoading(true);
         const response = await getGroups();
+        if (cancelled) return;
         const groupsData = Array.isArray(response.data) ? response.data : (response.data?.items || []);
+        baseGroupsRef.current = groupsData;
         setGroups(groupsData);
       } catch (err) {
+        if (cancelled) return;
         console.error('Error fetching groups:', err);
         setError('تعذر تحميل المجموعات. يرجى المحاولة مرة أخرى.');
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchGroups();
+    return () => { cancelled = true; };
   }, []);
 
-  // بحث ذكي مع debounce + fallback للبحث المحلي
+  // ✅ FIX v59.13.4: بحث مع debounce + حماية من race condition + إعادة للأصل عند المسح
+  // المشكلة السابقة:
+  //  (أ) عند مسح البحث كانت القائمة تبقى مدمجة مع نتائج البحث
+  //  (ب) تتابع بحث سريع يجعل نتيجة أقدم تصل بعد الأحدث فتطؼي عليها
   useEffect(() => {
-    if (!searchQuery.trim()) return;
+    const q = searchQuery.trim();
+    if (!q) {
+      // إعادة للقائمة الأصلية
+      if (baseGroupsRef.current.length) setGroups(baseGroupsRef.current);
+      return undefined;
+    }
+    const mySeq = ++searchSeqRef.current;
     const handle = setTimeout(async () => {
       try {
-        const res = await searchGroups(searchQuery.trim(), 50);
+        const res = await searchGroups(q, 50);
+        // تجاهل الاستجابة إذا بدأ بحث أحدث أو أُلغي البحث
+        if (mySeq !== searchSeqRef.current) return;
         const data = res?.data?.groups || res?.data || [];
         if (Array.isArray(data) && data.length) {
-          setGroups((prev) => {
-            const map = new Map(prev.map((g) => [String(g.id), g]));
-            for (const g of data) map.set(String(g.id), { ...map.get(String(g.id)), ...g });
-            return Array.from(map.values());
-          });
+          // ادمج مع الأصل لا مع الحالة السابقة (حتى لا تتراكم نتائج بحوث سابقة)
+          const map = new Map(baseGroupsRef.current.map((g) => [String(g.id), g]));
+          for (const g of data) map.set(String(g.id), { ...map.get(String(g.id)), ...g });
+          setGroups(Array.from(map.values()));
         }
       } catch { /* fallback للبحث المحلي فقط */ }
     }, 400);

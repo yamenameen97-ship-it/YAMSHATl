@@ -80,48 +80,60 @@ function MobileLayout({ children }) {
       <BottomNav />
 
       <style>{`
+        /* v59.13.2: الحاوية الأم تثبّت ارتفاع الشاشة بالضبط ولا تتمرّر —
+           التمرير يحدث داخل main.mobile-main-content وحدها. باقي التفاصيل
+           في mobile-scroll-final-v59.13.2.css الذي يفوز بـ !important. */
         .mobile-layout-container {
           display: flex;
           flex-direction: column;
-          min-height: 100vh;
-          min-height: 100dvh;
+          /* ارتفاع الشاشة الديناميكي (يتجاوب مع شريط العنوان على iOS) */
+          height: 100dvh;
+          max-height: 100dvh;
+          width: 100%;
+          max-width: 100vw;
           background-color: #0A0D1A;
           color: white;
-          padding-top: 56px;
-          padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px));
           font-family: "Noto Sans Arabic", "Cairo", system-ui, -apple-system, sans-serif;
           box-sizing: border-box;
-          /* v57: تمرير على body — لا نقفل أي اتجاه هنا */
-          overflow-x: hidden;
-          overflow-y: visible;
-          max-width: 100vw;
+          /* ⛔ لا تمرير على هذا المستوى — التمرير على main فقط */
+          overflow: hidden;
+          touch-action: pan-x pan-y pinch-zoom;
           -webkit-overflow-scrolling: touch;
-          touch-action: pan-x pan-y;
           /* GPU acceleration */
           transform: translateZ(0);
           backface-visibility: hidden;
         }
 
+        /* v59.13.2: main هو الـ scroll container الوحيد.
+           padding-top/bottom يحجزان مساحة لـ TopBar + BottomNav الـ fixed. */
         .mobile-main-content {
           flex: 1 1 auto;
+          min-height: 0;          /* ⭐ ضروري لتمرير flex item */
           width: 100%;
           max-width: 600px;
           margin: 0 auto;
-          /* v57: التمرير على body — visible حتى يرث */
+          padding-top: 56px;
+          padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+          /* ✅ التمرير الفعلي داخل main */
+          overflow-y: auto;
           overflow-x: hidden;
-          overflow-y: visible;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior-y: contain;
           display: flex;
           flex-direction: column;
           box-sizing: border-box;
-          min-height: 0;
-          touch-action: pan-x pan-y;
-          -webkit-overflow-scrolling: touch;
+          touch-action: pan-y pinch-zoom;
+          /* سلاسة GPU */
+          transform: translateZ(0);
+          will-change: scroll-position;
         }
 
-        /* ✅ v47: ضمان عدم خروج أي عنصر عن حدود الشاشة على الأجهزة القديمة */
+        /* ✅ ضمان عدم خروج أي عنصر عن حدود الشاشة على الأجهزة القديمة */
         @media (max-width: 400px) {
-          .mobile-layout-container { padding-top: 54px; }
-          .mobile-main-content { max-width: 100%; }
+          .mobile-main-content { padding-top: 54px; max-width: 100%; }
+        }
+        @media (max-width: 360px) {
+          .mobile-main-content { padding-top: 52px; }
         }
 
         .mobile-main-content > .ym-ptr-container {

@@ -1,6 +1,49 @@
 import { buildAppUrl, redirectToAppPath } from './router.js';
 
-const shownNotificationIds = new Set();
+// ✅ FIX (v59.13.3): منع تسرّب الذاكرة
+// المشكلة السابقة: الـ Set كان يكبر بلا حدود لأن الإدخالات في maybeShowBrowserNotification
+// لا تُحذف أبداً. الحل: (1) سقف أعلى للحجم مع إزالة أقدم إدخال (FIFO)
+// (2) TTL للإدخالات بحيث تنتهي صلاحيتها تلقائياً.
+const SHOWN_NOTIFICATIONS_MAX = 500;
+const SHOWN_NOTIFICATIONS_TTL_MS = 10 * 60 * 1000; // 10 دقائق
+
+// نستخدم Map بدل Set لتخزين وقت الإدخال (لـ TTL) وللحفاظ على ترتيب الإدراج (لـ FIFO)
+const shownNotificationIds = new Map(); // id -> timestamp
+
+function rememberShownNotification(id) {
+  const key = String(id);
+  const now = Date.now();
+
+  // تنظيف الإدخالات المنتهية صلاحيتها
+  for (const [k, ts] of shownNotificationIds) {
+    if (now - ts > SHOWN_NOTIFICATIONS_TTL_MS) {
+      shownNotificationIds.delete(k);
+    } else {
+      // Map يحافظ على ترتيب الإدخال، أول مفتاح هو الأقدم
+      break;
+    }
+  }
+
+  // سقف أعلى للحجم (FIFO)
+  while (shownNotificationIds.size >= SHOWN_NOTIFICATIONS_MAX) {
+    const oldestKey = shownNotificationIds.keys().next().value;
+    if (oldestKey === undefined) break;
+    shownNotificationIds.delete(oldestKey);
+  }
+
+  shownNotificationIds.set(key, now);
+}
+
+function hasShownNotification(id) {
+  const key = String(id);
+  const ts = shownNotificationIds.get(key);
+  if (ts === undefined) return false;
+  if (Date.now() - ts > SHOWN_NOTIFICATIONS_TTL_MS) {
+    shownNotificationIds.delete(key);
+    return false;
+  }
+  return true;
+}
 
 export function resolveNotificationPath(notification) {
   const payload = notification?.payload || notification?.data || {};
@@ -83,8 +126,8 @@ export async function maybeShowBrowserNotification(item) {
   if (window.Notification.permission !== 'granted') return false;
 
   const notification = normalizeNotification(item);
-  if (shownNotificationIds.has(String(notification.id))) return false;
-  shownNotificationIds.add(String(notification.id));
+  if (hasShownNotification(notification.id)) return false;
+  rememberShownNotification(notification.id);
 
   try {
     await serviceWorkerNotification(notification);
@@ -127,7 +170,7 @@ export function showLocalNotification({ title, body, icon, tag, data } = {}) {
   // إزالة التكرار خلال 3 ثواني لنفس الـ tag
   const dedupeKey = `${tag || title}:${body}`;
   if (shownNotificationIds.has(dedupeKey)) return null;
-  shownNotificationIds.add(dedupeKey);
+  shownNotificationIds.set(dedupeKey, Date.now());
   setTimeout(() => shownNotificationIds.delete(dedupeKey), 3000);
 
   try {

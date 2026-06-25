@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import { getChatThreads, markMessagesSeen } from '../api/chat.js';
@@ -264,21 +264,29 @@ function ComposeModal({ open, onClose, navigate, pushToast }) {
     }
   }, [open]);
 
+  // ✅ v59.13.9 FIX #5 (جزء أ): منع setUsers/setSearching بعد إغلاق المودال أو
+  // بعد بحث أحدث (race condition أثناء الكتابة السريعة)
   useEffect(() => {
     if (!open || tab !== 'chat') return undefined;
+    let cancelled = false;
     const handle = setTimeout(async () => {
+      if (cancelled) return;
       setSearching(true);
       try {
         const resp = await getUsers({ q: query, limit: 20 });
+        if (cancelled) return;
         const list = Array.isArray(resp?.data) ? resp.data : resp?.data?.users || [];
         setUsers(Array.isArray(list) ? list : []);
       } catch {
-        setUsers([]);
+        if (!cancelled) setUsers([]);
       } finally {
-        setSearching(false);
+        if (!cancelled) setSearching(false);
       }
     }, 250);
-    return () => clearTimeout(handle);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
   }, [open, tab, query]);
 
   const handleOpenChat = useCallback(
@@ -295,6 +303,14 @@ function ComposeModal({ open, onClose, navigate, pushToast }) {
     [navigate, onClose],
   );
 
+  // ✅ v59.13.9 FIX #5 (جزء أ): حماية setCreatingGroup عند إغلاق المودال
+  // أثناء إنشاء مجموعة (الطلب قد يأخذ عدة ثوانٍ)
+  const composeMountedRef = useRef(true);
+  useEffect(() => {
+    composeMountedRef.current = true;
+    return () => { composeMountedRef.current = false; };
+  }, []);
+
   const handleCreateGroup = useCallback(async () => {
     const name = groupName.trim();
     if (!name) {
@@ -305,19 +321,22 @@ function ComposeModal({ open, onClose, navigate, pushToast }) {
     try {
       const resp = await createGroup({ name, description: groupDesc.trim() });
       const group = resp?.data || resp;
+      if (!composeMountedRef.current) return;
       pushToast?.({ type: 'success', title: 'تم إنشاء المجموعة', description: name });
       onClose?.();
       if (group?.id) {
         navigate(`/groups`);
       }
     } catch {
-      pushToast?.({
-        type: 'warning',
-        title: 'تعذر إنشاء المجموعة',
-        description: 'تحقق من الاتصال وحاول مجدداً.',
-      });
+      if (composeMountedRef.current) {
+        pushToast?.({
+          type: 'warning',
+          title: 'تعذر إنشاء المجموعة',
+          description: 'تحقق من الاتصال وحاول مجدداً.',
+        });
+      }
     } finally {
-      setCreatingGroup(false);
+      if (composeMountedRef.current) setCreatingGroup(false);
     }
   }, [groupName, groupDesc, pushToast, onClose, navigate]);
 
@@ -543,6 +562,14 @@ export default function Inbox() {
   const [profile, setProfile] = useState(null);
   const [composeOpen, setComposeOpen] = useState(false);
 
+  // ✅ v59.13.9 FIX #5 (جزء ب): حماية setState الـ 8+ في loadData عند الخروج
+  // من صفحة الشات (المستخدم غالباً يضغط تجريدة/مجموعة قبل انتهاء التحميل)
+  const inboxMountedRef = useRef(true);
+  useEffect(() => {
+    inboxMountedRef.current = true;
+    return () => { inboxMountedRef.current = false; };
+  }, []);
+
   const loadData = useCallback(
     async (silent = false) => {
       if (silent) setRefreshing(true);
@@ -554,6 +581,9 @@ export default function Inbox() {
         getGroups(),
         getMe(),
       ]);
+
+      // ✅ فحص واحد بعد انتهاء await — إذا المستخدم غادر الصفحة حدث setState
+      if (!inboxMountedRef.current) return;
 
       const [threadsRes, notificationsRes, groupsRes, meRes] = results;
 

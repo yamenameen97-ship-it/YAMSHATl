@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
@@ -88,6 +88,13 @@ export default function Notifications() {
   const [activeFilter, setActiveFilter] = useState('all');
   const [showSettings, setShowSettings] = useState(false);
   const [loading, setLoading] = useState(false);
+  // ✅ v59.13.9 FIX #1: حماية مكوّن الإشعارات من setState بعد unmount
+  // (handleIncoming الـ async + await maybeShowBrowserNotification + load async)
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
   const [settings, setSettings] = useState({
     pushEnabled: true,
     realtimeEnabled: true,
@@ -102,10 +109,10 @@ export default function Notifications() {
       setLoading(true);
       try {
         const { data } = await getNotifications();
-        if (!active) return;
+        if (!active || !isMountedRef.current) return;
         hydrateNotifications(Array.isArray(data) ? data.map(normalizeNotification) : [], { replace: true });
       } finally {
-        if (active) setLoading(false);
+        if (active && isMountedRef.current) setLoading(false);
       }
     };
     load();
@@ -114,17 +121,34 @@ export default function Notifications() {
 
   useEffect(() => {
     if (!settings.realtimeEnabled) return undefined;
-    
+
+    // ✅ v59.13.9 FIX #1: علم محلي لكل اشتراك — يمنع استدعاء setState/toast/audio
+    // بعد إلغاء الاشتراك (تبديل realtimeEnabled أو unmount الصفحة)
+    let subscriptionActive = true;
+
     const handleIncoming = async (incoming) => {
+      if (!subscriptionActive || !isMountedRef.current) return;
       const nextItem = normalizeNotification(incoming);
+      // upsertNotification يعتمد على zustand store (عالمي وآمن دائماً)
       upsertNotification(nextItem);
+      // الصوت + التوست + إشعار المتصفح مرتبطة بهذه الصفحة فقط
+      if (!subscriptionActive || !isMountedRef.current) return;
       audioService.onNotification(nextItem.type || nextItem.category || 'generic');
       pushToast({ type: 'info', title: nextItem.title, description: nextItem.body, duration: 4200 });
-      if (settings.pushEnabled) await maybeShowBrowserNotification(nextItem).catch(() => null);
+      if (settings.pushEnabled) {
+        try {
+          await maybeShowBrowserNotification(nextItem);
+        } catch {
+          /* تجاهل أخطاء إشعار المتصفح */
+        }
+      }
     };
 
     const unsubscribe = socketManager.on('new_notification', handleIncoming);
-    return () => unsubscribe();
+    return () => {
+      subscriptionActive = false;
+      try { unsubscribe?.(); } catch { /* ignore */ }
+    };
   }, [pushToast, settings.pushEnabled, settings.realtimeEnabled, upsertNotification]);
 
   const filteredItems = useMemo(() => {

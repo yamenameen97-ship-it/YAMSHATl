@@ -267,11 +267,15 @@ export default function Friends() {
 
   // ---------------- الإجراءات ----------------
 
+  // ✅ v59.13.9 FIX #4: جميع معالجات إجراءات الصداقة تفحص mountedRef
+  // قبل أي setState بعد await — لتجنّب تحذيرات React لو المستخدم
+  // ضغط "تأكيد/حذف/إضافة" ثم غادر الصفحة فوراً.
   const handleAccept = async (friendshipId) => {
     try {
       setBusy(`accept-${friendshipId}`);
       setActionError('');
       await acceptFriendRequest(friendshipId);
+      if (!mountedRef.current) return;
       const accepted = requests.find((u) => u.friendship?.friendship_id === friendshipId);
       setRequests((prev) => prev.filter((u) => u.friendship?.friendship_id !== friendshipId));
       if (accepted) {
@@ -282,9 +286,9 @@ export default function Friends() {
       }
       setStats((s) => ({ ...s, friends: s.friends + 1, requests_received: Math.max(0, s.requests_received - 1) }));
     } catch (err) {
-      setActionError(err?.response?.data?.detail || 'تعذر قبول الطلب.');
+      if (mountedRef.current) setActionError(err?.response?.data?.detail || 'تعذر قبول الطلب.');
     } finally {
-      setBusy('');
+      if (mountedRef.current) setBusy('');
     }
   };
 
@@ -293,12 +297,13 @@ export default function Friends() {
       setBusy(`decline-${friendshipId}`);
       setActionError('');
       await removeFriendship(friendshipId);
+      if (!mountedRef.current) return;
       setRequests((prev) => prev.filter((u) => u.friendship?.friendship_id !== friendshipId));
       setStats((s) => ({ ...s, requests_received: Math.max(0, s.requests_received - 1) }));
     } catch (err) {
-      setActionError(err?.response?.data?.detail || 'تعذر حذف الطلب.');
+      if (mountedRef.current) setActionError(err?.response?.data?.detail || 'تعذر حذف الطلب.');
     } finally {
-      setBusy('');
+      if (mountedRef.current) setBusy('');
     }
   };
 
@@ -307,6 +312,7 @@ export default function Friends() {
       setBusy(`add-${username}`);
       setActionError('');
       const { data } = await sendFriendRequest(username);
+      if (!mountedRef.current) return;
       const friendship = data?.friendship;
       const updater = (list) => list.map((u) => (
         u.username === username
@@ -321,9 +327,9 @@ export default function Friends() {
         setStats((s) => ({ ...s, friends: s.friends + 1 }));
       }
     } catch (err) {
-      setActionError(err?.response?.data?.detail || 'تعذر إرسال الطلب.');
+      if (mountedRef.current) setActionError(err?.response?.data?.detail || 'تعذر إرسال الطلب.');
     } finally {
-      setBusy('');
+      if (mountedRef.current) setBusy('');
     }
   };
 
@@ -332,6 +338,7 @@ export default function Friends() {
       setBusy(`cancel-${friendshipId}`);
       setActionError('');
       await removeFriendship(friendshipId);
+      if (!mountedRef.current) return;
       const updater = (list) => list.map((u) => (
         u.friendship?.friendship_id === friendshipId
           ? { ...u, friendship: { status: 'none', friendship_id: null, direction: null } }
@@ -342,9 +349,9 @@ export default function Friends() {
       setSentRequests((prev) => prev.filter((u) => u.friendship?.friendship_id !== friendshipId));
       setStats((s) => ({ ...s, requests_sent: Math.max(0, s.requests_sent - 1) }));
     } catch (err) {
-      setActionError(err?.response?.data?.detail || 'تعذر إلغاء الطلب.');
+      if (mountedRef.current) setActionError(err?.response?.data?.detail || 'تعذر إلغاء الطلب.');
     } finally {
-      setBusy('');
+      if (mountedRef.current) setBusy('');
     }
   };
 
@@ -353,11 +360,12 @@ export default function Friends() {
       setBusy(`dismiss-${username}`);
       setActionError('');
       await dismissSuggestion(username);
+      if (!mountedRef.current) return;
       setSuggestions((prev) => prev.filter((u) => u.username !== username));
     } catch (err) {
-      setActionError(err?.response?.data?.detail || 'تعذر إزالة المقترح.');
+      if (mountedRef.current) setActionError(err?.response?.data?.detail || 'تعذر إزالة المقترح.');
     } finally {
-      setBusy('');
+      if (mountedRef.current) setBusy('');
     }
   };
 
@@ -367,12 +375,13 @@ export default function Friends() {
       setBusy(`unfriend-${friendshipId}`);
       setActionError('');
       await removeFriendship(friendshipId);
+      if (!mountedRef.current) return;
       setFriends((prev) => prev.filter((u) => u.friendship?.friendship_id !== friendshipId));
       setStats((s) => ({ ...s, friends: Math.max(0, s.friends - 1) }));
     } catch (err) {
-      setActionError(err?.response?.data?.detail || 'تعذر إزالة الصديق.');
+      if (mountedRef.current) setActionError(err?.response?.data?.detail || 'تعذر إزالة الصديق.');
     } finally {
-      setBusy('');
+      if (mountedRef.current) setBusy('');
     }
   };
 

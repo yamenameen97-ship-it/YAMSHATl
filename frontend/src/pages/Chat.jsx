@@ -263,24 +263,34 @@ export default function Chat() {
     };
   }, [hydrateThreads]);
 
-  const loadMessages = useCallback(async () => {
-    if (!peer) return;
+  // ✅ FIX v59.13.4: حماية من race condition عند التنقل السريع بين المحادثات.
+  // السلوك السابق: فتح محادثة A ثم بسرعة فتح محادثة B، فتصل استجابة A متأخرة
+  // وتكتب رسائل A / presence A / block A فوق بيانات B.
+  // الحل: رقم تسلسلي + التقاط peer وقت الإطلاق، وفحصهما بعد await.
+  const peerLoadSeqRef = useRef(0);
+
+  const loadMessages = useCallback(async (forPeer, mySeq) => {
+    if (!forPeer) return;
     setMsgLoading(true);
     try {
-      const { data } = await getMessages(peer, 60);
-      replaceConversationMessages(peer, data?.items || [], {
+      const { data } = await getMessages(forPeer, 60);
+      // تجاهل الاستجابة إذا تغيّر peer أو أُطلق تحميل أحدث
+      if (mySeq !== peerLoadSeqRef.current) return;
+      replaceConversationMessages(forPeer, data?.items || [], {
         hasMore: Boolean(data?.paging?.has_more),
         oldestMessageId: data?.paging?.next_before_id,
         limit: 250,
       });
-      await markMessagesSeen(peer);
-      markThreadRead(peer);
+      await markMessagesSeen(forPeer);
+      if (mySeq !== peerLoadSeqRef.current) return;
+      markThreadRead(forPeer);
     } catch {
+      if (mySeq !== peerLoadSeqRef.current) return;
       pushToast({ type: 'error', title: 'خطأ', description: 'تعذر تحميل الرسائل' });
     } finally {
-      setMsgLoading(false);
+      if (mySeq === peerLoadSeqRef.current) setMsgLoading(false);
     }
-  }, [markThreadRead, peer, pushToast, replaceConversationMessages]);
+  }, [markThreadRead, pushToast, replaceConversationMessages]);
 
   useEffect(() => {
     if (!peer) return undefined;
@@ -289,21 +299,29 @@ export default function Chat() {
     setIsPinnedConversation(prefs.pinned.has(peer));
     setShowDetailsDrawer(false);
     setActivePeer(peer);
-    loadMessages();
 
-    getPresence(peer)
+    const mySeq = ++peerLoadSeqRef.current;
+    const localPeer = peer;
+    loadMessages(localPeer, mySeq);
+
+    getPresence(localPeer)
       .then(({ data }) => {
-        setPresenceStore(peer, data || {});
+        if (mySeq !== peerLoadSeqRef.current) return;
+        setPresenceStore(localPeer, data || {});
       })
       .catch(() => {});
 
-    getBlockStatus(peer)
+    getBlockStatus(localPeer)
       .then(({ data }) => {
+        if (mySeq !== peerLoadSeqRef.current) return;
         setBlockStatus(data || {});
       })
       .catch(() => {});
 
-    return () => setActivePeer(null);
+    return () => {
+      // أي استجابة أبطأ ستُرفض لأن mySeq لن يساوي peerLoadSeqRef.current
+      setActivePeer(null);
+    };
   }, [loadMessages, peer, setActivePeer, setPresenceStore]);
 
   const scrollToBottom = useCallback((behavior = 'smooth') => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from '../ui/Button.jsx';
 import Modal from '../ui/Modal.jsx';
@@ -238,6 +238,10 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
     }
   };
 
+  // ✅ v59.13.5 FIX #1: تتبّع كل setTimeout يُحرّك state للـ comments
+  // كي نلغيها عند unmount / إغلاق المودال — لمنع "setState على مكوّن مُزال" + تسرّب ذاكرة.
+  const justArrivedTimersRef = useRef(new Set());
+
   useEffect(() => {
     if (!showCommentsModal) return undefined;
     socketManager.connect();
@@ -249,13 +253,26 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
         return insertCommentIntoTree(prev, { ...payload, justArrived: true, replies: payload.replies || [] });
       });
       setCommentsPagination((prev) => ({ ...prev, total_count: Number(prev.total_count || 0) + 1 }));
-      window.setTimeout(() => {
+      const timerId = window.setTimeout(() => {
+        justArrivedTimersRef.current.delete(timerId);
         setComments((prev) => mapCommentsTree(prev, (item) => String(item.id) === String(payload.id) ? { ...item, justArrived: false } : item));
       }, 2600);
+      justArrivedTimersRef.current.add(timerId);
     };
     socketManager.on('post_comment', handleIncomingComment);
-    return () => socketManager.off('post_comment', handleIncomingComment);
+    return () => {
+      socketManager.off('post_comment', handleIncomingComment);
+      // إلغاء كل المؤقتات المعلّقة عند إغلاق المودال أو unmount
+      justArrivedTimersRef.current.forEach((id) => window.clearTimeout(id));
+      justArrivedTimersRef.current.clear();
+    };
   }, [post.id, showCommentsModal]);
+
+  // cleanup احتياطي عند unmount — يغطّي حالة unmount أثناء إغلاق المودال
+  useEffect(() => () => {
+    justArrivedTimersRef.current.forEach((id) => window.clearTimeout(id));
+    justArrivedTimersRef.current.clear();
+  }, []);
 
   const saveMutation = useMutation({
     mutationFn: () => savePost(post.id),
@@ -322,9 +339,12 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
       setCommentsPagination((prev) => ({ ...prev, total_count: Number(prev.total_count || 0) + 1 }));
       queryClient.invalidateQueries({ queryKey: ['feed-data'] });
       socketManager.emit?.('post_comment', { ...confirmedComment, post_id: post.id });
-      window.setTimeout(() => {
+      // ✅ v59.13.5 FIX #1: تتبّع المؤقّت حتّى نُلغيه عند unmount
+      const tId = window.setTimeout(() => {
+        justArrivedTimersRef.current.delete(tId);
         setComments((prev) => mapCommentsTree(prev, (item) => String(item.id) === String(confirmedComment.id) ? { ...item, justArrived: false } : item));
       }, 2600);
+      justArrivedTimersRef.current.add(tId);
     } catch (error) {
       setComments((prev) => removeCommentFromTree(prev, optimisticId));
       pushToast({ type: 'error', title: 'تعذر إضافة التعليق', description: error?.response?.data?.detail || error?.message });

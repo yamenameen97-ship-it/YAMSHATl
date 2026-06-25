@@ -33,6 +33,15 @@ export default function ReelPlayer({
   const retryCountRef = useRef(0);
   const MAX_RETRIES = 2;
 
+  // ✅ v59.13.5 FIX #3: تتبّع كل مؤقّتات setTimeout داخل المكوّن
+  // لإلغائها عند unmount — لمنع الوصول لـ videoRef بعد تفريغه + setState على mount-less
+  const pendingTimersRef = useRef(new Set());
+  const trackTimer = useCallback((id) => {
+    pendingTimersRef.current.add(id);
+    return id;
+  }, []);
+  const isMountedRef = useRef(true);
+
   const [progress, setProgress] = useState(0);
   const [buffering, setBuffering] = useState(false);
   const [showHeart, setShowHeart] = useState(false);
@@ -119,38 +128,52 @@ export default function ReelPlayer({
     if (!v) return;
     if (retryCountRef.current < MAX_RETRIES) {
       retryCountRef.current += 1;
-      setTimeout(() => {
+      const id = window.setTimeout(() => {
+        pendingTimersRef.current.delete(id);
+        // تحقّق أن المكوّن لا يزال mounted والفيديو موجود
+        if (!isMountedRef.current) return;
+        const cur = videoRef.current;
+        if (!cur) return;
         try {
-          const src = v.src;
-          v.src = '';
-          v.src = src;
-          v.load();
-          if (isActive) v.play().catch(() => {});
+          const src = cur.src;
+          cur.src = '';
+          cur.src = src;
+          cur.load();
+          if (isActive) cur.play().catch(() => {});
         } catch {}
       }, 1500 * retryCountRef.current);
+      trackTimer(id);
     } else {
       setHasError(true);
       onError?.(reel);
     }
-  }, [isActive, onError, reel]);
+  }, [isActive, onError, reel, trackTimer]);
 
   const handleStalled = useCallback(() => {
     const v = videoRef.current;
     if (!v || !isActive) return;
     // ممكن الشبكة وقعت — جرّب نكمل بعد ثانية
-    setTimeout(() => {
-      if (v && v.paused === false && v.readyState < 3) {
-        try { v.load(); } catch {}
+    const id = window.setTimeout(() => {
+      pendingTimersRef.current.delete(id);
+      if (!isMountedRef.current) return;
+      const cur = videoRef.current;
+      if (cur && cur.paused === false && cur.readyState < 3) {
+        try { cur.load(); } catch {}
       }
     }, 1500);
-  }, [isActive]);
+    trackTimer(id);
+  }, [isActive, trackTimer]);
 
   /* ---------- 3) Tap handling (single = pause/play, double = like) ---------- */
   const triggerHeart = useCallback(() => {
     setShowHeart(true);
     onLike?.(reel);
-    window.setTimeout(() => setShowHeart(false), 900);
-  }, [onLike, reel]);
+    const id = window.setTimeout(() => {
+      pendingTimersRef.current.delete(id);
+      if (isMountedRef.current) setShowHeart(false);
+    }, 900);
+    trackTimer(id);
+  }, [onLike, reel, trackTimer]);
 
   const togglePlayback = useCallback(() => {
     const v = videoRef.current;
@@ -164,8 +187,12 @@ export default function ReelPlayer({
       setPaused(true);
     }
     setShowPauseIcon(true);
-    window.setTimeout(() => setShowPauseIcon(false), 700);
-  }, []);
+    const id = window.setTimeout(() => {
+      pendingTimersRef.current.delete(id);
+      if (isMountedRef.current) setShowPauseIcon(false);
+    }, 700);
+    trackTimer(id);
+  }, [trackTimer]);
 
   const onSurfaceTap = useCallback(() => {
     const now = Date.now();
@@ -219,8 +246,13 @@ export default function ReelPlayer({
 
   /* ---------- 6) Cleanup on unmount ---------- */
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
+      isMountedRef.current = false;
       if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+      // ✅ v59.13.5 FIX #3: إلغاء كل المؤقّتات المعلّقة لمنع الوصول لـ video مفرغ
+      pendingTimersRef.current.forEach((id) => window.clearTimeout(id));
+      pendingTimersRef.current.clear();
       const v = videoRef.current;
       if (v) {
         try {

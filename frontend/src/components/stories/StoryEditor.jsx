@@ -35,6 +35,12 @@ export default function StoryEditor({ file, onClose, onSuccess }) {
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
   const stageRef = useRef(null);
+  // ✅ v59.13.7 FIX #1: حارس للمنع setState بعد unmount أثناء عملية رفع القصة
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
 
@@ -123,17 +129,27 @@ export default function StoryEditor({ file, onClose, onSuccess }) {
           stickers: stickers.map(s => s.emoji),
         },
         (evt) => {
+          // ✅ v59.13.7 FIX #1: فحص mount قبل setState في كولباك التقدّم
+          if (!isMountedRef.current) return;
           if (evt?.total) setProgress(Math.round((evt.loaded / evt.total) * 100));
         },
       );
       const uploadedStory = uploadResponse?.data || null;
-      if (typeof onSuccess === 'function') onSuccess(uploadedStory, { file, caption, privacy });
+      // ✅ v59.13.7 FIX #1: لا تستدعِ onSuccess إذا أُزيل المكوّن (الأب قد لا يزال حياً
+      // لكن نتجنّب اللعب بالحالة الداخلية لو حدث ذلك أثناء رفع طويل)
+      if (isMountedRef.current && typeof onSuccess === 'function') {
+        onSuccess(uploadedStory, { file, caption, privacy });
+      }
     } catch (err) {
       console.error('[StoryEditor] upload failed', err);
       const msg = err?.response?.data?.detail || err?.message || '';
-      setError(msg ? `تعذّر الرفع: ${msg}` : 'تعذّر رفع القصة. يُرجى المحاولة مرة أخرى.');
+      // ✅ v59.13.7 FIX #1: تجنّب setState إذا أُزيل المكوّن
+      if (isMountedRef.current) {
+        setError(msg ? `تعذّر الرفع: ${msg}` : 'تعذّر رفع القصة. يُرجى المحاولة مرة أخرى.');
+      }
     } finally {
-      setUploading(false);
+      // ✅ v59.13.7 FIX #1: تجنّب setState إذا أُزيل المكوّن
+      if (isMountedRef.current) setUploading(false);
     }
   }, [file, caption, privacy, music, filterName, stickers, showPoll, pollQuestion, pollOptions, onSuccess]);
 

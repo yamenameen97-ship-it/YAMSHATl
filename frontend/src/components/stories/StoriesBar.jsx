@@ -8,22 +8,39 @@ import StoryEditor from './StoryEditor.jsx';
  * v59.13 — جسر إجباري لإدراج قصّة صاحب الحساب فور رفعها (دون انتظار الباك إند).
  * نحوّل جسم الإرجاع إلى شكل group ليتوافق مع باقي الواجهة.
  */
+// ✅ v59.13.7 FIX #2: تسرّب blob URLs — جانب خفي:
+// الدالة كانت تستدعي URL.createObjectURL(file) داخليّاً دون إعادة عنوان الـURL
+// للمستدعي، وبالتالي لا توجد فرصة لتحريره لاحقاً. عند رفع عدّة قصص متتالية
+// تستهلك الذاكرة بشكل جلي (على الأجهزة المحمولة بشكل خاص).
+// الحلّ: إرجاع createdLocalUrl إلى المستدعي ليحرره عند إعادة التحميل من الباك إند.
 function buildOptimisticSelfGroup(uploadedStory, file, caption, currentUser, prevSelfGroup) {
   // إن رجعت الـAPI بعنصر جاهز استخدمه مباشرة، وإلا ابنِ واحدًا مؤقتًا.
+  let createdLocalUrl = '';
+  const buildLocalUrl = () => {
+    if (!file) return '';
+    try {
+      const u = URL.createObjectURL(file);
+      createdLocalUrl = u;
+      return u;
+    } catch {
+      return '';
+    }
+  };
   const storyObj = uploadedStory && uploadedStory.id
     ? {
         id: uploadedStory.id,
-        media_url: uploadedStory.media_url || (file ? URL.createObjectURL(file) : ''),
+        media_url: uploadedStory.media_url || buildLocalUrl(),
         media_type: uploadedStory.media_type || (file?.type?.startsWith('video') ? 'video' : 'image'),
         caption: uploadedStory.caption ?? caption ?? '',
         created_at: uploadedStory.created_at || new Date().toISOString(),
         views_count: uploadedStory.views_count ?? 0,
         reactions_count: uploadedStory.reactions_count ?? 0,
         replies_count: uploadedStory.replies_count ?? 0,
+        _localBlobUrl: createdLocalUrl || undefined,
       }
     : {
         id: `local-${Date.now()}`,
-        media_url: file ? URL.createObjectURL(file) : '',
+        media_url: buildLocalUrl(),
         media_type: file?.type?.startsWith('video') ? 'video' : 'image',
         caption: caption || '',
         created_at: new Date().toISOString(),
@@ -31,15 +48,19 @@ function buildOptimisticSelfGroup(uploadedStory, file, caption, currentUser, pre
         reactions_count: 0,
         replies_count: 0,
         _optimistic: true,
+        _localBlobUrl: createdLocalUrl || undefined,
       };
 
   return {
-    user_id: currentUser?.id || prevSelfGroup?.user_id || 'me',
-    username: currentUser?.username || prevSelfGroup?.username || 'أنا',
-    is_self: true,
-    has_unseen: false,
-    last_created_at: storyObj.created_at,
-    stories: [storyObj, ...(prevSelfGroup?.stories || [])],
+    group: {
+      user_id: currentUser?.id || prevSelfGroup?.user_id || 'me',
+      username: currentUser?.username || prevSelfGroup?.username || 'أنا',
+      is_self: true,
+      has_unseen: false,
+      last_created_at: storyObj.created_at,
+      stories: [storyObj, ...(prevSelfGroup?.stories || [])],
+    },
+    createdLocalUrl, // '' إذا لم يُنشَأ ولا واحد
   };
 }
 
@@ -64,6 +85,51 @@ export default function StoriesBar({ currentUser, onOpenComposer }) {
   const fileInputRef = useRef(null);
   const scrollRef = useRef(null);
 
+  // ✅ v59.13.5 FIX #2: مؤقت موحَّد للتوست — نُلغي السابق قبل وضع جديد + ننظف عند unmount
+  const toastTimerRef = useRef(null);
+
+  // ✅ v59.13.7 FIX #2 (أ): isMountedRef لمنع setState بعد unmount عند تحميل المجموعات.
+  const isMountedRef = useRef(true);
+
+  // ✅ v59.13.7 FIX #2 (ب): تتبّع كل blob URLs المُنشَأة من القصص التفاؤلية لتحريرها لاحقاً.
+  // عند رفع عدّة قصص متتالية كل واحدة كانت تنشئ blob URL مستقلاً لا يُحرَّر أبداً
+  // (تسرّب ذاكرة ملحوظ على الأجهزة المحمولة عند رفع 3+ قصص).
+  const optimisticBlobUrlsRef = useRef(new Set());
+  const trackOptimisticBlobUrl = useCallback((url) => {
+    if (url && typeof url === 'string') optimisticBlobUrlsRef.current.add(url);
+  }, []);
+  const revokeOptimisticBlobUrls = useCallback(() => {
+    optimisticBlobUrlsRef.current.forEach((u) => {
+      try { URL.revokeObjectURL(u); } catch { /* ignore */ }
+    });
+    optimisticBlobUrlsRef.current.clear();
+  }, []);
+
+  const showToast = useCallback((message, duration = 2500) => {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+    if (!isMountedRef.current) return;
+    setToast(message);
+    toastTimerRef.current = window.setTimeout(() => {
+      if (!isMountedRef.current) return;
+      setToast('');
+      toastTimerRef.current = null;
+    }, duration);
+  }, []);
+
+  // cleanup عند unmount
+  useEffect(() => () => {
+    isMountedRef.current = false;
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+    // ✅ v59.13.7 FIX #2 (ب): حرّر كل blob URLs المتراكمة من الـ optimistic stories
+    revokeOptimisticBlobUrls();
+  }, [revokeOptimisticBlobUrls]);
+
   // v59.7: circuit breaker — إيقاف الـ polling عند تكرار الفشل لتفادي ضجيج الكونسول
   const disabledRef = useRef(false);
   const failCountRef = useRef(0);
@@ -72,6 +138,8 @@ export default function StoriesBar({ currentUser, onOpenComposer }) {
     if (disabledRef.current) return;
     try {
       const res = await getStoriesGrouped();
+      // ✅ v59.13.7 FIX #2 (أ): تجنّب setState إذا أُزيل المكوّن أثناء fetch
+      if (!isMountedRef.current) return;
       // عند 404 صامت يرجع status=404 و data=[] من الـ interceptor
       if (res?.status === 404) {
         failCountRef.current += 1;
@@ -81,22 +149,27 @@ export default function StoriesBar({ currentUser, onOpenComposer }) {
         setGroups([]);
       } else {
         failCountRef.current = 0;
-        setGroups(Array.isArray(res?.data) ? res.data : []);
+        // ✅ v59.13.7: عند وصول البيانات الحقيقية من الباك إند، حرّر أي blob URLs تفاؤلية
+        // لأنها لم تعد مطلوبة (الـ media_url الحقيقي حلّ محلها).
+        const freshGroups = Array.isArray(res?.data) ? res.data : [];
+        revokeOptimisticBlobUrls();
+        setGroups(freshGroups);
       }
     } catch (err) {
       // لا تسجل في الكونسول إذا وُسم الخطأ بأنه صامت
       if (!err?.isSilent && !err?.silent) {
         console.warn('[StoriesBar] failed to load grouped stories', err);
       }
+      if (!isMountedRef.current) return;
       failCountRef.current += 1;
       if (failCountRef.current >= 3) {
         disabledRef.current = true;
       }
       setGroups([]);
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) setLoading(false);
     }
-  }, []);
+  }, [revokeOptimisticBlobUrls]);
 
   useEffect(() => {
     loadGroups();
@@ -129,8 +202,7 @@ export default function StoriesBar({ currentUser, onOpenComposer }) {
     if (!file) return;
     // فحص حجم بسيط على الواجهة (نسخة سريعة قبل الرفع)
     if (file.size > 600 * 1024 * 1024) {
-      setToast('الملف كبير جداً (الحد الأقصى 600MB)');
-      setTimeout(() => setToast(''), 3500);
+      showToast('الملف كبير جداً (الحد الأقصى 600MB)', 3500);
       return;
     }
     setPendingFile(file);
@@ -140,13 +212,16 @@ export default function StoriesBar({ currentUser, onOpenComposer }) {
   const handleEditorSuccess = async (uploadedStory, ctx = {}) => {
     // v59.13: إضافة تفاؤلية للقصّة حتى تظهر فورًا تحت هيدر الشات.
     setPendingFile(null);
-    setToast('تم نشر القصة ✓');
-    setTimeout(() => setToast(''), 2500);
+    showToast('تم نشر القصة ✓', 2500);
 
     try {
       setGroups((prev) => {
         const prevSelf = prev.find((g) => g.is_self) || null;
-        const optimisticSelf = buildOptimisticSelfGroup(uploadedStory, ctx.file, ctx.caption, currentUser, prevSelf);
+        // ✅ v59.13.7 FIX #2: استخراج blob URL المُنشأ وتتبّعه لتحريره لاحقاً
+        const { group: optimisticSelf, createdLocalUrl } = buildOptimisticSelfGroup(
+          uploadedStory, ctx.file, ctx.caption, currentUser, prevSelf,
+        );
+        if (createdLocalUrl) trackOptimisticBlobUrl(createdLocalUrl);
         const others = prev.filter((g) => !g.is_self);
         return [optimisticSelf, ...others];
       });

@@ -14,7 +14,7 @@
  *     targetLabel="منشور فلان"   // اختياري للعرض فقط
  *   />
  */
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { API_BASE } from '../../api/config.js';
 
@@ -47,12 +47,30 @@ export default function ReportModal({
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
 
+  // ✅ v59.13.9 FIX #3: حماية الـ setState بعد unmount + إلغاء طلب axios إذا أغلق المودال أثناء الإرسال
+  const isMountedRef = useRef(true);
+  const abortRef = useRef(null);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      // إلغاء أي طلب بلاغ قيد التنفيذ عند إزالة المكوّن
+      try { abortRef.current?.abort?.(); } catch { /* ignore */ }
+    };
+  }, []);
+
   useEffect(() => {
     if (open) {
+      // ✅ v59.13.9 FIX #3: إعادة ضبط submitting أيضاً عند إعادة فتح المودال
+      // (سابقاً: لو المستخدم ألغى أثناء الإرسال ثم أعاد الفتح → الزر يبقى "جارٍ الإرسال...")
       setReason('');
       setDetails('');
       setDone(false);
       setError('');
+      setSubmitting(false);
+    } else {
+      // عند إغلاق المودال — ألغِ أي طلب جارٍ
+      try { abortRef.current?.abort?.(); } catch { /* ignore */ }
     }
   }, [open]);
 
@@ -63,6 +81,9 @@ export default function ReportModal({
     }
     setSubmitting(true);
     setError('');
+    // ✅ v59.13.9 FIX #3: AbortController جديد لكل محاولة إرسال
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       await axios.post(
@@ -74,14 +95,23 @@ export default function ReportModal({
           details: details.trim() || null,
           context: { source: 'web', target_label: targetLabel },
         },
-        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          signal: controller.signal,
+        },
       );
-      setDone(true);
+      if (isMountedRef.current) setDone(true);
     } catch (e) {
+      // تجاهل أخطاء الإلغاء المقصود
+      if (axios.isCancel?.(e) || e?.name === 'CanceledError' || e?.code === 'ERR_CANCELED') {
+        return;
+      }
+      if (!isMountedRef.current) return;
       const msg = e?.response?.data?.detail || 'تعذّر إرسال البلاغ، حاول مرة أخرى';
       setError(typeof msg === 'string' ? msg : 'حدث خطأ');
     } finally {
-      setSubmitting(false);
+      if (isMountedRef.current) setSubmitting(false);
+      if (abortRef.current === controller) abortRef.current = null;
     }
   }, [reason, details, targetType, targetId, targetLabel]);
 

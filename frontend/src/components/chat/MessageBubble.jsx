@@ -86,6 +86,20 @@ function MessageBubble({
   const isSwipingRef = useRef(false);
   const isLongPressFiredRef = useRef(false);
   const bubbleRef = useRef(null);
+  // ✅ FIX v59.13.6: حارس isMounted لمنع setState بعد إزالة الفقاعة من virtualized list
+  const isMountedRef = useRef(true);
+
+  // ✅ FIX v59.13.6: cleanup نهائي عند unmount — يُلغي مؤقّت الضغط المطوّل
+  // السلوك السابق: إذا بدأ المستخدم long-press ثم انتقل لرسالة أخرى
+  // (أو تمّت إعادة التدوير في virtualized list) خلال LONG_PRESS_MS
+  // → setContextMenu يُستدعى على مكوّن مُزال → تحذير React + تسرّب.
+  useEffect(() => () => {
+    isMountedRef.current = false;
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
 
   const hasMedia = Boolean(message?.media_url);
   const isVoice = message?.type === 'voice';
@@ -172,6 +186,8 @@ function MessageBubble({
     isLongPressFiredRef.current = false;
     clearTimeout(longPressTimerRef.current);
     longPressTimerRef.current = setTimeout(() => {
+      // ✅ FIX v59.13.6: افحص أن المكوّن لا يزال متركّبًا قبل لمس الحالة
+      if (!isMountedRef.current) return;
       isLongPressFiredRef.current = true;
       openContextMenu(x, y);
     }, LONG_PRESS_MS);

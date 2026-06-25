@@ -53,11 +53,28 @@ export default function VoiceRecorder({ onSend, onCancel, onStateChange }) {
     onStateChange?.(recordingState);
   }, [onStateChange, recordingState]);
 
-  useEffect(() => () => {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    if (timerRef.current) window.clearInterval(timerRef.current);
-    mediaStreamRef.current?.getTracks()?.forEach((track) => track.stop());
+  // ✅ FIX v59.13.4: cleanup عند unmount فقط (deps فارغة)
+  // المشكلة السابقة: dep على previewUrl كان يستدعي revoke على URL الجديد
+  //                  ويحرر تسجيلات ما زالت جارية عند كل تغيير حالة.
+  useEffect(() => {
+    const previousUrlRef = { current: previewUrl };
+    return () => {
+      if (previousUrlRef.current) URL.revokeObjectURL(previousUrlRef.current);
+    };
   }, [previewUrl]);
+
+  // cleanup نهائي عند إزالة المكوّن: أوقف المؤقت + مسارات الميديا
+  useEffect(() => () => {
+    if (timerRef.current) window.clearInterval(timerRef.current);
+    try {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        // امنع تشغيل onstop بعد unmount لتفادي setState على مكوّن مزال
+        mediaRecorderRef.current.onstop = null;
+        mediaRecorderRef.current.stop();
+      }
+    } catch { /* تجاهل */ }
+    mediaStreamRef.current?.getTracks()?.forEach((track) => track.stop());
+  }, []);
 
   const mimeType = useMemo(() => pickSupportedMimeType(), []);
 
@@ -151,11 +168,20 @@ export default function VoiceRecorder({ onSend, onCancel, onStateChange }) {
   };
 
   const cancelRecording = () => {
+    // ✅ FIX v59.13.4: قبل stop() نعطّل onstop حتى لا يبني blob ويفتح preview
+    // للتسجيل الملغي. السلوك السابق كان يعرض preview لتسجيل اختاره المستخدم إلغاءه!
     stopTimer();
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-    }
+    try {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.ondataavailable = null;
+        mediaRecorderRef.current.onstop = null;
+        mediaRecorderRef.current.stop();
+      }
+    } catch { /* تجاهل أخطاء stop المتكررة */ }
+    audioChunksRef.current = [];
     mediaStreamRef.current?.getTracks()?.forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+    mediaRecorderRef.current = null;
     clearPreview();
     setDuration(0);
     durationRef.current = 0;

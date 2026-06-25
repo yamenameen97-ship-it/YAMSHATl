@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import socketManager from '../../services/socketManager';
 import notificationService from '../../services/notificationService';
 import { useNotificationStore } from '../../store/notificationStore';
@@ -7,19 +7,37 @@ export default function NotificationList() {
   const { notifications, markRead, markAllRead } = useNotificationStore();
   const [filter, setFilter] = useState('all'); // all, unread, mentions, system
 
+  // ✅ v59.13.9 FIX #2: حماية المكوّن من unmount أثناء استقبال إشعار socket
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
+
   useEffect(() => {
     // Live push updates via socket
     const unsubscribe = socketManager.on('new_notification', (notification) => {
-      // Sync with store
+      if (!isMountedRef.current) return;
+      // Sync with store (store عالمي وآمن)
       useNotificationStore.getState().addNotification(notification);
-      
-      // Show browser notification if permitted
-      if (Notification.permission === 'granted') {
-        new Notification(notification.title, { body: notification.message });
+
+      // ✅ v59.13.9 FIX #2: فحص دعم المتصفّح لـ Notification API (لا يوجد في SSR/iOS Safari < 16.4)
+      // + عدم إظهار إشعار OS إذا المستخدم بالفعل فاتح صفحة الإشعارات
+      try {
+        if (
+          typeof Notification !== 'undefined' &&
+          Notification.permission === 'granted' &&
+          typeof document !== 'undefined' &&
+          document.visibilityState === 'hidden'
+        ) {
+          new Notification(notification.title, { body: notification.message });
+        }
+      } catch {
+        /* بعض المتصفّحات المحمولة ترفض البناء المباشر — تجاهل */
       }
     });
 
-    return () => unsubscribe();
+    return () => { try { unsubscribe?.(); } catch { /* ignore */ } };
   }, []);
 
   // Grouped notifications logic
@@ -60,7 +78,8 @@ export default function NotificationList() {
               color: 'white'
             }}
           >
-            {f === 'all' ? 'الكل' : f === 'unread' ? 'غير مقروء' : 'منشورات'}
+            {/* ✅ v59.13.9 FIX #2: تصحيح ترجمة mentions (كانت خطأه 'منشورات' = posts) */}
+            {f === 'all' ? 'الكل' : f === 'unread' ? 'غير مقروء' : 'إشارات (Mentions)'}
           </button>
         ))}
       </div>

@@ -32,6 +32,10 @@ export default function PostComposer() {
   const [isDragActive, setIsDragActive] = useState(false);
   const fileInputRef = useRef(null);
   const textareaRef = useRef(null);
+  // ✅ FIX v59.13.8 (#2): isMountedRef لمنع setState بعد unmount
+  //    خلال handleSubmit الـ async الطويلة (رفع فيديو حتّى 200MB).
+  const isMountedRef = useRef(true);
+  useEffect(() => () => { isMountedRef.current = false; }, []);
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
 
@@ -103,8 +107,16 @@ export default function PostComposer() {
     return () => window.clearTimeout(timer);
   }, [content]);
 
-  useEffect(() => () => {
-    if (mediaPreview) URL.revokeObjectURL(mediaPreview);
+  // ✅ FIX v59.13.4: إلغاء الـ ObjectURL السابق عند استبداله أو عند unmount.
+  // المشكلة السابقة: cleanup كان يستخدم القيمة الجديدة لـ mediaPreview بدلاً
+  // من القديمة (بسبب closure)، فيُلغي الـ URL الجديد ويترك القديم معلّقاً في الذاكرة،
+  // ويجعل صورة المعاينة الجديدة معطّلة.
+  // الحل: التقاط الـ URL في وقت ترتيب الـ effect ثم إلغاؤه فعلّياً في cleanup.
+  useEffect(() => {
+    const urlToRevoke = mediaPreview;
+    return () => {
+      if (urlToRevoke) URL.revokeObjectURL(urlToRevoke);
+    };
   }, [mediaPreview]);
 
   const tagsPreview = useMemo(() => extractTags(content), [content]);
@@ -176,6 +188,9 @@ export default function PostComposer() {
           processingProfile: isVideoMedia ? 'balanced' : '',
           useCdn: true,
           onProgress: (payload) => {
+            // ✅ FIX v59.13.8 (#2): حارس isMounted داخل onProgress
+            //    (يستمر الإطلاق حتّى بعد unmount إذا لم يلغِ الرفع).
+            if (!isMountedRef.current) return;
             const percent = typeof payload === 'number' ? Number(payload || 0) : Number(payload?.percent || 0);
             setUploadProgress(percent);
           },
@@ -210,11 +225,17 @@ export default function PostComposer() {
       });
 
       const createdPost = createdPostResponse?.data || null;
+      // ✅ FIX v59.13.8 (#2): حتّى لو تم unmount نجح المنشور على السيرفر
+      //    — نحدّث cache الفيد لأنّه عالمي (غير مرتبط بالمكوّن)
+      //    لكن نتجنّب setState و toast المحلي.
       if (status === 'published' && createdPost) {
         injectPostIntoFeedCache(queryClient, createdPost);
       } else {
         clearLocalFeedCaches();
       }
+      queryClient.invalidateQueries({ queryKey: ['feed-data'] });
+
+      if (!isMountedRef.current) return;
 
       pushToast({
         type: 'success',
@@ -222,7 +243,6 @@ export default function PostComposer() {
         description: isPinned ? 'المنشور متجهز كمنشور مثبت.' : undefined,
       });
       clearComposer();
-      queryClient.invalidateQueries({ queryKey: ['feed-data'] });
     } catch (error) {
       // ✅ v33+1: رسالة فشل واضحة + محاولة احتياطية عبر multipart للفيديو
       const detail = error?.response?.data?.detail || error?.message || '';
@@ -236,6 +256,9 @@ export default function PostComposer() {
           const fallbackUrl = uploadResp?.data?.url || uploadResp?.data?.media_url || uploadResp?.data?.file_url || '';
           if (fallbackUrl) {
             const { hashtags: hh, mentions: mm } = extractTags(content);
+            // ✅ FIX v59.13.8 (#2): فحص isMounted قبل إنشاء المنشور الاحتياطي
+            //    (إذا غادر المستخدم الصفحة أثناء الـ fallback upload — لا نكمل المسار الاحتياطي)
+            if (!isMountedRef.current) return;
             const createdPostResponse = await createPost({
               content: pollQuestion.trim() ? `${pollQuestion.trim()}\n${content}`.trim() : content,
               media_url: fallbackUrl,
@@ -255,12 +278,14 @@ export default function PostComposer() {
             } else {
               clearLocalFeedCaches();
             }
+            queryClient.invalidateQueries({ queryKey: ['feed-data'] });
+            if (!isMountedRef.current) return;
             pushToast({ type: 'success', title: 'تم نشر الفيديو عبر مسار احتياطي' });
             clearComposer();
-            queryClient.invalidateQueries({ queryKey: ['feed-data'] });
             return;
           }
         } catch (fallbackError) {
+          if (!isMountedRef.current) return;
           pushToast({
             type: 'error',
             title: 'فشل نشر الفيديو',
@@ -269,9 +294,11 @@ export default function PostComposer() {
           return;
         }
       }
+      if (!isMountedRef.current) return;
       pushToast({ type: 'error', title: 'فشل نشر المنشور', description: detail || 'حاول مرة تانية.' });
     } finally {
-      setIsUploading(false);
+      // ✅ FIX v59.13.8 (#2): حارس isMounted في finally
+      if (isMountedRef.current) setIsUploading(false);
     }
   };
 

@@ -25,6 +25,8 @@ export default function IncomingCallOverlay() {
   const [activeCall, setActiveCall] = useState(null);
   const ringtoneRef = useRef(null);
   const ringtoneCtxRef = useRef(null);
+  // ✅ FIX v59.13.6: تتبّع إشعار النظام لإغلاقه عند انتهاء الرنين أو unmount
+  const systemNotificationRef = useRef(null);
 
   // Wire up the global socket listeners exactly once.
   useEffect(() => {
@@ -48,6 +50,13 @@ export default function IncomingCallOverlay() {
       unsubInvite?.();
       unsubCall?.();
       stopRingtone();
+      // ✅ FIX v59.13.6: إغلاق AudioContext عند unmount لتحرير عتاد الصوت.
+      // السلوك السابق: ringtoneCtxRef كان يُحتفظ به إلى الأبد → تسرّب موارد.
+      const ctx = ringtoneCtxRef.current;
+      if (ctx && typeof ctx.close === 'function' && ctx.state !== 'closed') {
+        try { ctx.close(); } catch (_) { /* noop */ }
+      }
+      ringtoneCtxRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -82,7 +91,13 @@ export default function IncomingCallOverlay() {
       // Also try a system Notification with sound while the tab is hidden.
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.hidden) {
         try {
-          new Notification('مكالمة واردة', {
+          // ✅ FIX v59.13.6: احفظ الإشعار في ref حتى نتمكّن من إغلاقه عند
+          // إيقاف الرنين. السلوك السابق: requireInteraction:true + بدون close()
+          // كان يترك الإشعار على الشاشة حتى بعد تصفية المكالمة.
+          if (systemNotificationRef.current) {
+            try { systemNotificationRef.current.close(); } catch (_) { /* noop */ }
+          }
+          systemNotificationRef.current = new Notification('مكالمة واردة', {
             body: 'يحاول مستخدم الاتصال بك',
             tag: 'yamshat-incoming-call',
             requireInteraction: true,
@@ -96,6 +111,11 @@ export default function IncomingCallOverlay() {
     if (ringtoneRef.current) {
       clearInterval(ringtoneRef.current);
       ringtoneRef.current = null;
+    }
+    // ✅ FIX v59.13.6: أغلق إشعار النظام إن وُجد لمنع بقائه بعد إغلاق الرنين
+    if (systemNotificationRef.current) {
+      try { systemNotificationRef.current.close(); } catch (_) { /* noop */ }
+      systemNotificationRef.current = null;
     }
   };
 

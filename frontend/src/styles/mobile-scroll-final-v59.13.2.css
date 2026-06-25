@@ -1,0 +1,386 @@
+/* ============================================================
+   🛠️ YAMSHAT — v59.13.2 Mobile Scroll Hotfix
+   ------------------------------------------------------------
+   مشكلة v59.13.1 (المُبلَّغ عنها):
+     "صفحات الويب لا تستجيب للسحب على الجوال (ويب الموبايل + PWA)"
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   🔬 التشخيص الجذري
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   ❶ تعارض بين CSS و Layout JSX
+       drawer-style-touch-final-v59.10.css يفرض على html/body/#root
+         overflow: hidden !important  + height: 100% !important
+       ويفترض أن .page-content هي scroll container.
+       لكن MobileLayout.jsx لا يولّد .page-content — بل
+       .mobile-layout-container > main.mobile-main-content
+       وقواعدها inline تستخدم overflow-y: visible (تتمرّر على body)،
+       و body مقفول → فلا يوجد scroll container صالح.
+
+   ❷ تداخل scroll containers
+       v59.10 يضع overflow-y:auto !important على كل من
+       .mobile-layout-container و .mobile-main-content
+       → حاويتان متمرّرتان متداخلتان (parent + child).
+       هذا يربك المتصفح ويُحرَم flex من min-height:0 الواجب
+       لـ overflow على flex-item.
+
+   ❸ Pull-to-Refresh يخنق اللمس
+       usePullToRefresh.js يستمع لـ touchmove على window بـ
+       passive:false، ويفحص window.scrollY.
+       بما أن body مقفول overflow → window.scrollY = 0 دائماً
+       → الـ hook يعتقد أن المستخدم في القمة في كل لمسة
+       ويستدعي preventDefault() → يمنع التمرير الفعلي داخل main.
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   ✅ خطة الإصلاح (هذا الملف + تعديل JS صغير على usePullToRefresh)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   1) جعل .mobile-main-content هي الـ scroll container الوحيد على
+      الجوال (بدلاً من حاويتين متداخلتين).
+   2) إلغاء overflow-y من .mobile-layout-container (تبقى flex container
+      فقط، بدون تمرير).
+   3) إعطاء main: min-height: 0 + height: 100% ليعمل overflow في flex.
+   4) ضبط padding لتجنّب اختباء المحتوى تحت الـ topbar/bottomnav.
+   5) تأكيد .ym-ptr-container و .ym-ptr-content يدعمان التمرير
+      ولا يحجبون أحداث اللمس.
+   6) التأكد أن أي عنصر inline يضع overflow:visible على main لا يفوز.
+
+   ⚠️ يجب أن يبقى هذا الملف آخر import CSS في main.jsx
+       (بعد yamshat-fixes-v59.13.1.css) ليفوز في cascade.
+   ============================================================ */
+
+
+/* ─────────────────────────────────────────────────────────────
+   0) أساس الشاشة على الجوال — html/body/#root كحاويات ثابتة
+      (نُبقي قاعدة v59.10 لكن نضمن عدم وجود تمرير عليها)
+   ───────────────────────────────────────────────────────────── */
+html,
+body {
+  /* لا تمرير على هذا المستوى — التمرير يحدث داخل main */
+  overflow: hidden !important;
+  height: 100% !important;
+  /* اللمس مسموح به بكل أنواعه، فقط لا overflow */
+  touch-action: pan-x pan-y pinch-zoom !important;
+  -webkit-overflow-scrolling: touch !important;
+  /* امنع overscroll bounce على iOS عند الحدود */
+  overscroll-behavior: contain !important;
+}
+
+#root {
+  height: 100% !important;
+  height: 100dvh !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  touch-action: pan-x pan-y pinch-zoom !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   1) الحاوية الأم على الجوال — Flex container فقط (لا تمرير)
+   ───────────────────────────────────────────────────────────── */
+.mobile-layout-container {
+  /* تخطيط رأسي: TopBar + main + BottomNav */
+  display: flex !important;
+  flex-direction: column !important;
+  /* تأخذ كامل الشاشة بالضبط — لا 100vh الذي يضيف ارتفاع شريط العنوان على iOS */
+  height: 100% !important;
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  max-height: 100dvh !important;
+  width: 100% !important;
+  max-width: 100vw !important;
+
+  /* ⛔ هام: لا تمرير على هذا المستوى — يلغي تداخل v59.10 */
+  overflow: hidden !important;
+  overflow-x: hidden !important;
+  overflow-y: hidden !important;
+
+  /* اللمس مسموح بحرية لمكوناتها الأبناء */
+  touch-action: pan-x pan-y pinch-zoom !important;
+
+  /* نُلغي padding-top/bottom القديم — الـ topbar و bottomnav fixed،
+     سنُعطي main padding من جهته فقط */
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+
+  /* GPU-friendly لكن دون كسر position: fixed للأبناء */
+  transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+  will-change: auto !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   2) ⭐ main.mobile-main-content = الـ Scroll Container الوحيد
+   ─────────────────────────────────────────────────────────────
+   هذا قلب الإصلاح. main يأخذ المساحة المتبقية بين topbar (56-60px)
+   و bottomnav (70-76px) ويكون هو وحده القابل للتمرير عمودياً.
+*/
+main.mobile-main-content,
+.mobile-main-content {
+  /* أهم 3 قواعد على الإطلاق لتمرير flex item: */
+  flex: 1 1 auto !important;
+  min-height: 0 !important;          /* ⭐ بدونها flex item لا يتقلّص */
+  height: auto !important;
+
+  /* التمرير الفعلي */
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+  overscroll-behavior-x: none !important;
+
+  /* اللمس: نسمح بالتمرير العمودي والـ pinch-zoom */
+  touch-action: pan-y pinch-zoom !important;
+
+  /* عرض كامل، margin auto لتوسيط على الـ tablet */
+  width: 100% !important;
+  max-width: 600px !important;
+  margin: 0 auto !important;
+
+  /* padding يحجز مكان TopBar و BottomNav (لأنهما position: fixed) */
+  padding-top: 56px !important;
+  padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px)) !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  box-sizing: border-box !important;
+
+  /* GPU acceleration للسلاسة */
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: scroll-position;
+
+  /* سكرول ناعم */
+  scroll-behavior: smooth;
+}
+
+/* على شاشات Redmi Note 8 وأصغر — padding-top أقل قليلاً */
+@media (max-width: 400px) {
+  main.mobile-main-content,
+  .mobile-main-content {
+    padding-top: 54px !important;
+    max-width: 100% !important;
+  }
+}
+
+@media (max-width: 360px) {
+  main.mobile-main-content,
+  .mobile-main-content {
+    padding-top: 52px !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   3) PullToRefresh wrapper — يجب أن يكون شفّافاً للتمرير
+   ─────────────────────────────────────────────────────────────
+   .ym-ptr-container هو wrapper داخلي تحت main.
+   لا يجب أن يكون له overflow خاص — التمرير على main وحده.
+*/
+main.mobile-main-content > .ym-ptr-container,
+.mobile-main-content > .ym-ptr-container,
+.ym-ptr-container {
+  position: relative !important;
+  /* لا تمرير هنا — main هو الذي يتمرّر */
+  overflow: visible !important;
+  overflow-x: visible !important;
+  overflow-y: visible !important;
+
+  /* يأخذ المساحة الكاملة */
+  width: 100% !important;
+  min-height: 100% !important;
+  height: auto !important;
+  flex: 1 1 auto !important;
+
+  /* اللمس: pan-y فقط (للسحب العمودي للتحديث + التمرير) */
+  touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+
+  /* استجابة فورية لأحداث اللمس */
+  pointer-events: auto !important;
+}
+
+.ym-ptr-content {
+  /* المحتوى ينساب طبيعياً، لا overflow هنا */
+  overflow: visible !important;
+  min-height: 100%;
+  width: 100%;
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+  /* استرخاء will-change بعد انتهاء السحب */
+  will-change: transform;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   4) PWA Install Banner — لا يحجب التمرير
+   ───────────────────────────────────────────────────────────── */
+main.mobile-main-content > div[class*="pwa-install"],
+main.mobile-main-content > .pwa-install-banner,
+.pwa-install-banner {
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+  flex-shrink: 0 !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   5) صفحات المحتوى الفرعية — تتدفّق بشكل طبيعي
+   ─────────────────────────────────────────────────────────────
+   كل العناصر الأبناء لا يجب أن يكون لها overflow:hidden داخلي
+   يكسر التمرير الموروث من main.
+*/
+.ym-feed,
+.ym-feed-mobile,
+.ym-posts-list,
+.feed-container,
+.feed-list,
+.posts-list,
+.friends-page,
+.notifications-page,
+.groups-page,
+.profile-page,
+.settings-page,
+.saved-page,
+.search-page,
+.stories-page,
+[data-page] {
+  overflow: visible !important;
+  overflow-x: visible !important;
+  overflow-y: visible !important;
+  height: auto !important;
+  min-height: auto;
+  touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+  pointer-events: auto !important;
+  /* لا transform يكسر التخطيط */
+  transform: none !important;
+  will-change: auto !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   6) بطاقات وعناصر قابلة للنقر — تستجيب فوراً ولا تأكل التمرير
+   ───────────────────────────────────────────────────────────── */
+.ym-post-card,
+.ym-feed-card,
+.mobile-post-card,
+.post-card,
+.feed-card,
+.post-item,
+.notification-item,
+.conversation-item,
+.chat-list-item,
+.friend-item,
+.user-row,
+.ym-list-row,
+.story-card,
+article[class*="post"],
+article[class*="feed"] {
+  touch-action: pan-y !important;
+  -webkit-tap-highlight-color: transparent;
+  pointer-events: auto !important;
+  /* لا overflow على البطاقة (تكسر الـ shadow) */
+  overflow: visible;
+}
+
+/* الصور/الفيديو داخل البطاقات لا تأكل أحداث التمرير */
+.ym-post-card img,
+.ym-post-card video,
+.feed-card img,
+.feed-card video,
+.post-card img,
+.post-card video,
+.mobile-post-card img,
+.mobile-post-card video,
+article img,
+article video {
+  touch-action: pan-y !important;
+  -webkit-user-drag: none;
+  user-drag: none;
+  -webkit-touch-callout: none;
+  pointer-events: auto;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   7) الأزرار والروابط — استجابة فورية للمس
+   ───────────────────────────────────────────────────────────── */
+button,
+a,
+[role="button"],
+[role="tab"],
+[role="link"],
+[role="menuitem"],
+input[type="button"],
+input[type="submit"] {
+  touch-action: manipulation !important;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   8) Reels & Stories: تمرير عمودي snap داخلي — نحتاج استثناء
+   ─────────────────────────────────────────────────────────────
+   صفحات الريلز تستخدم scroll-snap عمودي ذاتي،
+   فنُلغي عليها overflow main ونعتمد على scroll الداخلي.
+*/
+main.mobile-main-content:has(.reels-feed-mobile),
+main.mobile-main-content:has(.ym-reels-container),
+main.mobile-main-content:has([data-page="reels"]) {
+  /* في صفحة الريلز، main لا يحتاج تمرير — الـ reels container يتمرّر */
+  overflow: hidden !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+/* الـ reels container الداخلي يتمرّر بـ snap */
+.reels-feed-mobile,
+.ym-reels-container,
+[data-page="reels"] .reels-scroller {
+  overflow-y: auto !important;
+  scroll-snap-type: y mandatory !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  height: 100% !important;
+  height: 100dvh !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   9) صفحة الدردشة — keyboard awareness
+   ─────────────────────────────────────────────────────────────
+   صفحة الدردشة قد تستخدم تمرير داخلي لقائمة الرسائل.
+   نسمح لها بالتمرير العادي داخل main، وندع composer fixed بأسفل.
+*/
+main.mobile-main-content:has(.chat-room),
+main.mobile-main-content:has(.ym-chat-container),
+main.mobile-main-content:has([data-page="chat"]) {
+  /* main يحتفظ بـ scroll لكن المحتوى الداخلي يتعامل مع keyboard */
+  padding-bottom: 0 !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   🔟 إصلاح حالة الـ refresh لتجنّب وميض overscroll
+   ───────────────────────────────────────────────────────────── */
+main.mobile-main-content::-webkit-scrollbar,
+.mobile-main-content::-webkit-scrollbar {
+  width: 0;
+  background: transparent;
+}
+
+main.mobile-main-content {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE */
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   ✨ نهاية v59.13.2 — إذا ظهرت مشكلة جديدة، انشر v59.13.3
+       لا تُعدّل هذا الملف بعد النشر.
+   ───────────────────────────────────────────────────────────── */

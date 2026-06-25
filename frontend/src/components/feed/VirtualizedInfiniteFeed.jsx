@@ -43,6 +43,24 @@ export default function VirtualizedInfiniteFeed({
   const listRef = useRef(null);
   const sizeMapRef = useRef(new Map());
   const [listWidth, setListWidth] = useState(0);
+  // ✅ v59.13.7 FIX #5: تتبّع requestAnimationFrame + isMounted
+  // المشكلة: الكود يستدعي window.requestAnimationFrame(() => setListWidth(width)) داخل render
+  // دون تخزين معرّف الـ rAF ودون إلغائه عند unmount، فيتسبب في:
+  //   - setState بعد unmount (تحذير React)
+  //   - rAFات متعددة تتراكم عند إعادة تحجيم سريعة (resize)
+  const rafIdRef = useRef(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (rafIdRef.current != null) {
+        try { window.cancelAnimationFrame(rafIdRef.current); } catch { /* ignore */ }
+        rafIdRef.current = null;
+      }
+    };
+  }, []);
 
   const setItemSize = useCallback((index, size) => {
     const prev = sizeMapRef.current.get(index);
@@ -75,7 +93,16 @@ export default function VirtualizedInfiniteFeed({
         {({ height: autoHeight, width }) => {
           if (!autoHeight || !width) return null;
           if (listWidth !== width) {
-            window.requestAnimationFrame(() => setListWidth(width));
+            // ✅ v59.13.7 FIX #5: ألغ أي rAF سابق قبل جدولة واحد جديد (تجنّب التراكم)
+            // وفحص isMounted داخل الـ callback لمنع setState بعد unmount.
+            if (rafIdRef.current != null) {
+              try { window.cancelAnimationFrame(rafIdRef.current); } catch { /* ignore */ }
+            }
+            rafIdRef.current = window.requestAnimationFrame(() => {
+              rafIdRef.current = null;
+              if (!isMountedRef.current) return;
+              setListWidth(width);
+            });
           }
           return (
             <List

@@ -1,12 +1,24 @@
 /**
- * usePullToRefresh — v57 (Smart Passive)
- * --------------------------------------
+ * usePullToRefresh — v59.13.2 (Scroll-Container Aware)
+ * ----------------------------------------------------
  * Hook عام للسحب من أعلى لتحديث الصفحة (Pull-to-Refresh)
  *
- * 🔧 إصلاح v57:
+ * 🔧 إصلاح v59.13.2 (السبب الجذري لـ "الصفحات لا تستجيب للسحب"):
+ *   • منذ v59.10 أصبح body/#root مقفول بـ overflow:hidden،
+ *     والتمرير الفعلي يحدث داخل main.mobile-main-content فقط.
+ *   • النسخة القديمة كانت تستمع على window و تفحص window.scrollY
+ *     → window.scrollY = 0 دائماً → الـ hook يظنّ أن المستخدم
+ *     في القمة في كل لمسة → يستدعي preventDefault على touchmove
+ *     → يمنع التمرير الفعلي داخل main. (هذا هو سبب "لا يستجيب للسحب").
+ *
+ *   ✅ الحل: الاستماع على الـ scroll container الفعلي وفحص
+ *      scrollTop الخاص به. نبحث عن:
+ *        1) أقرب أب يحقّق overflow-y: auto/scroll (انطلاقاً من containerRef)
+ *        2) إن لم يوجد → fallback إلى window.scrollY (سلوك v57 القديم)
+ *
+ * 🔧 إصلاح v57 (محفوظ):
  *   • يستخدم passive listeners افتراضياً (لا يخنق التمرير)
  *   • preventDefault يُستدعى فقط عند سحب فعلي من scrollTop=0
- *   • تتبّع scroll الـ window بدلاً من حاوية داخلية (يصلح صفحة المنشورات)
  *   • تعطيل تلقائي إذا لم يكن الجهاز touch
  *   • تجاهل multi-touch (pinch zoom)
  *
@@ -84,9 +96,51 @@ export default function usePullToRefresh({
 
     if (!isTouchDevice) return undefined;
 
-    // نتتبّع scroll الـ window بدلاً من حاوية محددة
-    // هذا يُصلح صفحة المنشورات وأي صفحة لا يكون فيها overflow:auto داخلي
-    const getScrollTop = () => window.scrollY || document.documentElement.scrollTop || 0;
+    // ──────────────────────────────────────────────────────────────
+    // v59.13.2: إيجاد الـ scroll container الفعلي
+    // ──────────────────────────────────────────────────────────────
+    // نبدأ من containerRef الذي مرّره PullToRefresh component،
+    // ثم نصعد لأعلى لإيجاد أوّل أب overflow-y فيه auto/scroll.
+    // هذا يصلح حالة v59.10+ حيث body مقفول والتمرير على main.
+    const findScrollContainer = () => {
+      // 1) جرّب البحث المباشر عن main.mobile-main-content (سيناريو الجوال)
+      const mainEl = document.querySelector('main.mobile-main-content, .mobile-main-content');
+      if (mainEl) {
+        const style = window.getComputedStyle(mainEl);
+        if (/(auto|scroll)/.test(style.overflowY)) {
+          return mainEl;
+        }
+      }
+
+      // 2) ابدأ من containerRef واصعد لأعلى
+      let node = containerRef.current;
+      while (node && node !== document.body && node !== document.documentElement) {
+        const style = window.getComputedStyle(node);
+        if (/(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight) {
+          return node;
+        }
+        node = node.parentElement;
+      }
+
+      // 3) Fallback: window/document
+      return null;
+    };
+
+    // نُخزّن المرجع لتجنّب البحث في كل touchmove (مكلف)
+    let scrollContainer = findScrollContainer();
+
+    // نُعيد البحث على onTouchStart فقط (الـ DOM قد يتغيّر بين التنقّلات)
+    const refreshScrollContainer = () => {
+      scrollContainer = findScrollContainer();
+    };
+
+    const getScrollTop = () => {
+      if (scrollContainer) {
+        return scrollContainer.scrollTop || 0;
+      }
+      // Fallback القديم — يعمل في صفحات الـ Desktop
+      return window.scrollY || document.documentElement.scrollTop || 0;
+    };
 
     const reset = () => {
       stateRef.current.active = false;
@@ -102,6 +156,8 @@ export default function usePullToRefresh({
         stateRef.current.cancelled = true;
         return;
       }
+      // v59.13.2: حدّث مرجع الـ scroll container في حال تغيّر الـ DOM
+      if (!scrollContainer) refreshScrollContainer();
       if (getScrollTop() > 0) {
         stateRef.current.cancelled = true;
         return;
@@ -194,16 +250,21 @@ export default function usePullToRefresh({
     const opts = { passive: false };
     const passiveOpts = { passive: true };
 
-    window.addEventListener('touchstart', onTouchStart, passiveOpts);
-    window.addEventListener('touchmove', onTouchMove, opts);
-    window.addEventListener('touchend', onTouchEnd, passiveOpts);
-    window.addEventListener('touchcancel', onTouchEnd, passiveOpts);
+    // v59.13.2: نُرفِق المستمعين على الـ scroll container الفعلي إن وُجد،
+    // وإلا نقع على window (Desktop fallback). هذا يضمن أن الـ hook
+    // لا يخنق التمرير في صفحات الجوال (حيث body مقفول overflow:hidden).
+    const target = scrollContainer || window;
+
+    target.addEventListener('touchstart', onTouchStart, passiveOpts);
+    target.addEventListener('touchmove', onTouchMove, opts);
+    target.addEventListener('touchend', onTouchEnd, passiveOpts);
+    target.addEventListener('touchcancel', onTouchEnd, passiveOpts);
 
     return () => {
-      window.removeEventListener('touchstart', onTouchStart);
-      window.removeEventListener('touchmove', onTouchMove);
-      window.removeEventListener('touchend', onTouchEnd);
-      window.removeEventListener('touchcancel', onTouchEnd);
+      target.removeEventListener('touchstart', onTouchStart);
+      target.removeEventListener('touchmove', onTouchMove);
+      target.removeEventListener('touchend', onTouchEnd);
+      target.removeEventListener('touchcancel', onTouchEnd);
     };
   }, [disabled, isRefreshing, threshold, maxPull, pullDistance, finishRefresh, triggerHaptic]);
 

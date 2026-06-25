@@ -49,6 +49,40 @@ export default function StoryViewerEnhanced({
   const timerRef = useRef(null);
   const startYRef = useRef(0);
   const longPressRef = useRef(null);                          // لتمييز long-press عن click
+  // ✅ FIX v59.13.4: مرجع لعنصر <video> للتحكم الفعلي بالتشغيل/الإيقاف
+  const videoElRef = useRef(null);
+  // ✅ FIX v59.13.6: تتبّع مؤقّت التوست + حارس isMounted لمنع setState على مكوّن مُزال
+  const toastTimerRef = useRef(null);
+  const isMountedRef = useRef(true);
+
+  // دالة موحَّدة لعرض التوست: تُلغي المؤقّت السابق وتُسجّل المؤقّت الجديد
+  const showToast = useCallback((message, duration = 2500, onAfter) => {
+    if (!isMountedRef.current) return;
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+    setToast(message);
+    toastTimerRef.current = setTimeout(() => {
+      if (!isMountedRef.current) return;
+      setToast('');
+      toastTimerRef.current = null;
+      if (typeof onAfter === 'function') onAfter();
+    }, duration);
+  }, []);
+
+  // cleanup نهائي عند unmount: إلغاء مؤقّت التوست + الـ long-press + ضبط isMounted=false
+  useEffect(() => () => {
+    isMountedRef.current = false;
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+    if (longPressRef.current) {
+      clearTimeout(longPressRef.current);
+      longPressRef.current = null;
+    }
+  }, []);
 
   const current = stories[storyIdx];
   const STORY_MS = current?.media_type === 'video' ? 15000 : 5000;
@@ -69,6 +103,25 @@ export default function StoryViewerEnhanced({
       setPollVotes(current.poll_votes || {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.id]);
+
+  // ✅ FIX v59.13.4: مزامنة حالة الفيديو الفعلية مع حالة paused / muted
+  // السلوك السابق: long-press كان يوقف فقط مؤقت التقدم لكن الفيديو يستمر!
+  useEffect(() => {
+    const v = videoElRef.current;
+    if (!v) return;
+    v.muted = muted;
+    if (paused) {
+      if (!v.paused) { try { v.pause(); } catch { /* ignore */ } }
+    } else {
+      if (v.paused) { v.play?.().catch(() => {}); }
+    }
+  }, [paused, muted, current?.id]);
+
+  // تنظيف الفيديو عند الانتقال بين القصص أو unmount
+  useEffect(() => () => {
+    const v = videoElRef.current;
+    if (v && !v.paused) { try { v.pause(); } catch { /* ignore */ } }
   }, [current?.id]);
 
   // عدّاد التقدّم
@@ -136,6 +189,9 @@ export default function StoryViewerEnhanced({
   const handleReact = async (emoji) => {
     if (!current?.id) return;
     try { await reactToStory(current.id, emoji); } catch (_) {}
+    // ✅ FIX v59.13.8 (#5): حارس mount بعد الـ await
+    //    (العارض قد يغلق الـ onClose ثم يصل رد الـ reactToStory)
+    if (!isMountedRef.current) return;
     setShowReactions(false);
   };
 
@@ -144,6 +200,7 @@ export default function StoryViewerEnhanced({
     if (!text || !current?.id) return;
     setReplyText('');
     try { await replyToStory(current.id, text); } catch (_) {}
+    // لا حاجة لـ setState بعد await هنا (setReplyText تمّت قبل الـ await).
   };
 
   const handleDelete = async () => {
@@ -151,10 +208,12 @@ export default function StoryViewerEnhanced({
     if (!window.confirm('حذف هذه القصة؟')) return;
     try {
       await deleteStory(current.id);
+      // ✅ FIX v59.13.8 (#5): تجنّب setState بعد unmount
+      if (!isMountedRef.current) return;
       handleNextStory();
     } catch (_) {
-      setToast('تعذّر الحذف');
-      setTimeout(() => setToast(''), 2500);
+      if (!isMountedRef.current) return;
+      showToast('تعذّر الحذف');
     }
   };
 
@@ -166,8 +225,9 @@ export default function StoryViewerEnhanced({
       current.media_url,
       `story-${current.username || 'user'}-${current.id}`,
     );
-    setToast(ok ? 'تم الحفظ ✓' : 'تعذّر التنزيل');
-    setTimeout(() => { setToast(''); setPaused(false); }, 2500);
+    showToast(ok ? 'تم الحفظ ✓' : 'تعذّر التنزيل', 2500, () => {
+      if (isMountedRef.current) setPaused(false);
+    });
   };
 
   // v59.10: أرشفة كـ highlight
@@ -177,11 +237,13 @@ export default function StoryViewerEnhanced({
     if (title === null) return;
     try {
       await toggleStoryHighlight(current.id, title || '');
-      setToast(current.highlight ? 'تمت إزالة الإبراز ✓' : 'تمت الإضافة للإبراز ✓');
+      // ✅ FIX v59.13.8 (#5): حارس mount
+      if (!isMountedRef.current) return;
+      showToast(current.highlight ? 'تمت إزالة الإبراز ✓' : 'تمت الإضافة للإبراز ✓');
     } catch (_) {
-      setToast('تعذّر التحديث');
+      if (!isMountedRef.current) return;
+      showToast('تعذّر التحديث');
     }
-    setTimeout(() => setToast(''), 2500);
   };
 
   // v59.10: عرض قائمة المشاهدين (للمالك فقط)
@@ -192,11 +254,14 @@ export default function StoryViewerEnhanced({
     setLoadingViewers(true);
     try {
       const res = await getStoryViewers(current.id);
+      // ✅ FIX v59.13.8 (#5): حارس mount بعد الـ await الشبكي
+      if (!isMountedRef.current) return;
       setViewers(res?.data?.viewers || []);
     } catch (_) {
+      if (!isMountedRef.current) return;
       setViewers([]);
     } finally {
-      setLoadingViewers(false);
+      if (isMountedRef.current) setLoadingViewers(false);
     }
   };
 
@@ -223,10 +288,14 @@ export default function StoryViewerEnhanced({
     setPollMyVote(optionIndex);
     try {
       const res = await voteStoryPoll(current.id, optionIndex);
+      // ✅ FIX v59.13.8 (#5): تجنّب setState بعد unmount
+      //    (فترة الإفصاح عن النتيجة قد تصل بعد إغلاق العارض
+      //    → setPollVotes على مكوّن مُزال + التحديث المتفائل يبقى دون مزامنة)
+      if (!isMountedRef.current) return;
       setPollVotes(res?.data?.poll_votes || {});
     } catch (_) {
-      setToast('تعذّر التصويت');
-      setTimeout(() => setToast(''), 2500);
+      if (!isMountedRef.current) return;
+      showToast('تعذّر التصويت');
     }
   };
 
@@ -346,6 +415,7 @@ export default function StoryViewerEnhanced({
         >
           {current.media_type === 'video' ? (
             <video
+              ref={videoElRef}
               src={current.media_url}
               autoPlay
               playsInline

@@ -78,20 +78,37 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
   const attachmentsRef = useRef([]);
   const textareaRef = useRef(null);
   const emojiPickerRef = useRef(null);
+  // ✅ FIX v59.13.8 (#4): isMountedRef لحماية uploadAttachment الـ async
+  //    + لتنظيف blob URLs المتراكمة عند تبديل peer.
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
     attachmentsRef.current = attachments;
   }, [attachments]);
 
+  // ✅ FIX v59.13.8 (#4): عند تبديل المحادثة (peer)، يجب تحرير بلوبات المرفقات
+  //    السابقة و إفراغ المصفوفة — وإلّا تتراكم blob URLs في الذاكرة
+  //    و المرفقات السابقة تظهر في محادثة جديدة بسبب بقاء attachments state.
   useEffect(() => {
     if (!peer) {
       setText('');
+      // تنظيف المرفقات عند غياب peer
+      if (attachmentsRef.current.length) {
+        revokeAttachments(attachmentsRef.current);
+        setAttachments([]);
+      }
       return;
+    }
+    // تنظيف مرفقات المحادثة السابقة عند تبديل peer
+    if (attachmentsRef.current.length) {
+      revokeAttachments(attachmentsRef.current);
+      setAttachments([]);
     }
     setText(loadChatDraft(currentUser, peer));
   }, [currentUser, peer]);
 
   useEffect(() => () => {
+    isMountedRef.current = false;
     revokeAttachments(attachmentsRef.current);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
   }, []);
@@ -211,10 +228,15 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
   };
 
   const uploadAttachment = async (entry) => {
+    // ✅ FIX v59.13.8 (#4): حراسة setState في onProgress و بعد await
+    //    سيناريو الخلل: رفع 5 مرفقات فيديو كبيرة ثم تبديل المحادثة أو إغلاق الشات:
+    //    onProgress يستمر يستدعي updateAttachment → setAttachments على مكوّن مُزال
+    //    + تحديث status على مرفقات المحادثة السابقة إذا لم يتم تنظيفها.
     updateAttachment(entry.id, { status: MESSAGE_LIFECYCLE.PENDING_UPLOAD, progress: 0, stage: 'preparing', error: '' });
     try {
       const uploadResult = await mediaUploadService.uploadFile(entry.file, {
         onProgress: (payload) => {
+          if (!isMountedRef.current) return;
           updateAttachment(entry.id, {
             status: payload?.percent >= 100 ? MESSAGE_LIFECYCLE.SYNCING : MESSAGE_LIFECYCLE.UPLOADING,
             progress: Number(payload?.percent || 0),
@@ -222,10 +244,13 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
           });
         },
       });
+      if (!isMountedRef.current) return uploadResult;
       updateAttachment(entry.id, { status: MESSAGE_LIFECYCLE.SYNCING, progress: 100, stage: 'done', uploadResult });
       return uploadResult;
     } catch (error) {
-      updateAttachment(entry.id, { status: MESSAGE_LIFECYCLE.FAILED, error: error?.message || 'فشل الرفع', stage: 'failed' });
+      if (isMountedRef.current) {
+        updateAttachment(entry.id, { status: MESSAGE_LIFECYCLE.FAILED, error: error?.message || 'فشل الرفع', stage: 'failed' });
+      }
       throw error;
     }
   };

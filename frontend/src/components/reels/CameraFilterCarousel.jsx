@@ -173,6 +173,11 @@ function FilterThumb({ filter, isActive, stream, galleryUrl, facing, onClick }) 
   const vidRef = useRef(null);
 
   // اربط الـ stream الحيّ بكل دائرة (نفس المصدر، فلتر مختلف)
+  //
+  // ✅ v59.13.7 FIX #4: عند unmount أو تغيّر الـ stream/galleryUrl يجب إلغاء الربط،
+  // وإلا 14 video element (عدد الفلاتر) تبقى تمسك بمرجع الكاميرا الحيّ:
+  //   - على iOS Safari مؤشر الكاميرا يبقى مضيئاً بعد مغادرة صفحة الريلز.
+  //   - تسرّب ذاكرة GPU على Chrome/Firefox لأن كل video element يبقى يحتفظ بإطارات.
   useEffect(() => {
     const v = vidRef.current;
     if (!v) return;
@@ -197,6 +202,16 @@ function FilterThumb({ filter, isActive, stream, galleryUrl, facing, onClick }) 
     } else {
       try { v.srcObject = null; v.removeAttribute('src'); v.load(); } catch { /* ignore */ }
     }
+    // ✅ v59.13.7 FIX #4: cleanup حتمي عند unmount/تغير المدخلات — فك الربط بالكاميرا
+    return () => {
+      try {
+        v.pause();
+        v.srcObject = null;
+        v.removeAttribute('src');
+        // لا نستدعي load() إذا كان العنصر تمّ إزالته بالفعل، ولكن آمن على عنصر detached
+        v.load();
+      } catch { /* ignore */ }
+    };
   }, [stream, galleryUrl]);
 
   const hasMedia = Boolean(stream || galleryUrl);

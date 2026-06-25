@@ -1,0 +1,211 @@
+/* ============================================================
+   🩹 YAMSHAT — v59.13.1 Fix Pack (آخر طبقة CSS مطلقاً)
+   ------------------------------------------------------------
+   هدف الملف: حلّ ثلاث مشكلات بصرية حصلت بعد تراكب طبقات CSS
+   المتعددة (v47.9 + v59.10 + v59.12) دون لمس مكوّنات React نفسها.
+
+   ✅ 1) زر الإنشاء (+) في الشريط السفلي:
+        يتمدّد لأسفل ويختفي تحت شريط النظام.
+        السبب: تعارض قاعدة قديمة `.ym-bottomnav-inner { display: grid }`
+        من mobile-yamshat-redesign.css مع تخطيط Flex الجديد، إضافة إلى
+        فرض `direction: ltr !important` من mobile-pixel-perfect-v47-9.css
+        مما يحرف ترتيب العناصر ومحاذاتها.
+
+   ✅ 2) شريط التصفيات (الكل / المجموعات / الستوري / الوسائط):
+        يظهر مدفوعاً نحو اليسار بدل اليمين (الترتيب العربي الصحيح).
+        السبب: `.ym-filters { direction: ltr !important }` يكسر RTL.
+
+   ✅ 3) صندوق "بماذا تفكر؟" (Composer):
+        يظهر ضيقاً ومدفوعاً لليسار بدل ملء العرض.
+        السبب نفسه: تكدّس قواعد direction/flex من ملفات قديمة.
+
+   ⚠️ لا تنقل هذا الملف لأعلى — يجب أن يبقى آخر import في main.jsx
+       حتى يفوز في cascade.
+   ============================================================ */
+
+/* ─────────────────────────────────────────────────────────────
+   1️⃣  Bottom Navigation — استعادة Flex وضمان عدم اختفاء (+)
+   ───────────────────────────────────────────────────────────── */
+
+/* إلغاء grid القديم وإعادة Flex لكي يحترم التخطيط الجديد */
+.ym-bottomnav-inner {
+  display: flex !important;
+  flex-direction: row !important;
+  justify-content: space-around !important;
+  align-items: stretch !important;
+  grid-template-columns: none !important;
+  height: auto !important;
+  max-width: 600px !important;
+  width: 100% !important;
+  margin: 0 auto !important;
+  padding: 6px 4px !important;
+  /* RTL طبيعي — العناصر تتبع dir=\"rtl\" من العنصر nav */
+  direction: rtl !important;
+}
+
+/* ضمان أن كل عنصر (بما فيه زر +) يحجز مساحة متساوية */
+.ym-bottomnav .ym-nav-item,
+.ym-bottomnav .ym-nav-item--create {
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  padding: 4px 6px !important;
+  /* امنع أي transform/translateY قديم كان يرفع الزر للأعلى ويُفقد المحاذاة */
+  transform: none !important;
+  position: static !important;
+  top: auto !important;
+  bottom: auto !important;
+}
+
+/* أيقونة (+) — كبسولة بنفسجية متناسقة الأبعاد مع جيرانها */
+.ym-bottomnav .ym-nav-icon--create {
+  width: 34px !important;
+  height: 28px !important;
+  border-radius: 999px !important;
+  background-image: linear-gradient(180deg, #A78BFA 0%, #8B5CF6 55%, #7C3AED 100%) !important;
+  background-color: #8B5CF6 !important;
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.40) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  /* لا transform — هذا ما كان يجعل الزر يتمدّد للأسفل */
+  transform: none !important;
+}
+.ym-bottomnav .ym-nav-icon--create svg {
+  width: 18px !important;
+  height: 18px !important;
+  stroke: #fff !important;
+}
+
+/* عنوان زر (+) — يتسع في المساحة المتاحة ولا يُقصَّ */
+.ym-bottomnav .ym-nav-label--create {
+  font-size: 0.72rem !important;
+  line-height: 1.15 !important;
+  max-width: 96px !important;
+  color: #E5E7EB !important;
+  font-weight: 600 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  text-align: center !important;
+  direction: rtl !important;
+}
+
+/* ارتفاع الشريط السفلي ثابت على كل الأحجام مع احترام safe-area */
+.ym-bottomnav {
+  height: calc(64px + env(safe-area-inset-bottom, 0px)) !important;
+  padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  overflow: visible !important;
+}
+
+/* تكييفات الشاشات الصغيرة — نفس قيم BottomNav.jsx الأصلية */
+@media (max-width: 400px) {
+  .ym-bottomnav { height: calc(62px + env(safe-area-inset-bottom, 0px)) !important; }
+  .ym-bottomnav-inner { padding: 5px 2px !important; }
+  .ym-bottomnav .ym-nav-icon--create { width: 32px !important; height: 26px !important; }
+}
+@media (max-width: 360px) {
+  .ym-bottomnav { height: calc(60px + env(safe-area-inset-bottom, 0px)) !important; }
+  .ym-bottomnav .ym-nav-icon--create { width: 30px !important; height: 24px !important; }
+}
+@media (max-width: 320px) {
+  .ym-bottomnav { height: calc(58px + env(safe-area-inset-bottom, 0px)) !important; }
+  .ym-bottomnav .ym-nav-icon--create { width: 28px !important; height: 22px !important; }
+}
+
+/* إخفاء عناصر النسخة القديمة (.ym-nav-plus) في حال صودف رسمها */
+.ym-nav-plus,
+.ym-nav-plus-wrap,
+.ym-nav-plus-btn {
+  display: none !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   2️⃣  Filter Pills — إعادة الاتجاه RTL الصحيح
+   ───────────────────────────────────────────────────────────── */
+
+/* الحاوية الخارجية تأخذ كامل العرض وتعمل RTL */
+.ym-filters-container {
+  width: 100% !important;
+  max-width: 100% !important;
+  direction: rtl !important;
+  box-sizing: border-box !important;
+}
+
+/* الصف الداخلي — إلغاء الفرض السابق direction:ltr !important
+   وإعادة RTL مع بدء العناصر من اليمين */
+.ym-filters {
+  direction: rtl !important;
+  display: flex !important;
+  flex-direction: row !important;
+  justify-content: flex-start !important;
+  width: 100% !important;
+  gap: 8px !important;
+}
+
+/* النص داخل أزرار التصفية يجب أن يبقى RTL */
+.ym-filter-pill-new,
+.ym-filter-pill-new .pill-content {
+  direction: rtl !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   3️⃣  Composer "بماذا تفكر؟" — إعادته لكامل العرض والاتجاه السليم
+   ───────────────────────────────────────────────────────────── */
+
+.ym-composer-wrap {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  direction: rtl !important;
+}
+
+/* الصندوق الداخلي: ترتيب عربي من اليمين لليسار
+   (الأفاتار يمين، النص في الوسط، أيقونات الوسائط في اليسار)
+   هذا يطابق طلب المستخدم لإرجاع المنطقة لمكانها الصحيح */
+.ym-composer {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 8px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  direction: rtl !important;
+}
+
+/* الأفاتار لا يتقلّص ولا يكبر */
+.ym-composer .ym-composer-avatar {
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+}
+
+/* مربع الإدخال يتمدد ليأخذ كل المساحة الباقية */
+.ym-composer .ym-composer-input {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  text-align: right !important;
+  direction: rtl !important;
+}
+
+/* أيقونات الوسائط تبقى مجمّعة في الطرف الآخر */
+.ym-composer .ym-composer-actions {
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  gap: 4px !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   ✨ نهاية ملف v59.13.1
+   ───────────────────────────────────────────────────────────── */

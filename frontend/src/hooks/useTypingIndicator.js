@@ -23,6 +23,10 @@ export function useTypingIndicator(receiver, options = {}) {
   const stopTimerRef = useRef(null);
   const lastEmitRef = useRef(0);
   const currentStateRef = useRef(false);
+  // ✅ FIX v59.13.8 (#1): isMountedRef لمنع setState بعد unmount
+  //    + handleTypingStopRef لكسر stale closure داخل setTimeout الـ debounce.
+  const isMountedRef = useRef(true);
+  const handleTypingStopRef = useRef(null);
 
   // إرسال حالة الكتابة
   const emitTypingState = useCallback((typing) => {
@@ -49,6 +53,7 @@ export function useTypingIndicator(receiver, options = {}) {
 
   // معالج بدء الكتابة
   const handleTypingStart = useCallback(() => {
+    if (!isMountedRef.current) return;
     if (isTyping) return;
     setIsTyping(true);
 
@@ -62,17 +67,24 @@ export function useTypingIndicator(receiver, options = {}) {
 
     // إرسال حالة الكتابة بعد Debounce
     debounceTimerRef.current = setTimeout(() => {
+      if (!isMountedRef.current) return;
       emitTypingState(true);
 
-      // إيقاف الكتابة بعد Timeout
+      // ✅ FIX v59.13.8 (#1): استخدام ref لتجنّب stale closure
+      // كان handleTypingStop غير معرَّف وقت تعريف handleTypingStart
+      // (TDZ) ولذلك كان setTimeout يحمل reference لمتغيّر undeclared.
       stopTimerRef.current = setTimeout(() => {
-        handleTypingStop();
+        if (!isMountedRef.current) return;
+        if (typeof handleTypingStopRef.current === 'function') {
+          handleTypingStopRef.current();
+        }
       }, stopTimeoutMs);
     }, debounceMs);
   }, [isTyping, debounceMs, stopTimeoutMs, emitTypingState]);
 
   // معالج إيقاف الكتابة
   const handleTypingStop = useCallback(() => {
+    if (!isMountedRef.current) return;
     if (!isTyping) return;
     
     setIsTyping(false);
@@ -93,9 +105,35 @@ export function useTypingIndicator(receiver, options = {}) {
     }
   }, [isTyping, emitTypingState]);
 
-  // تنظيف عند الفصل
+  // ✅ FIX v59.13.8 (#1): مزامنة الـ ref مع آخر نسخة من handleTypingStop
+  useEffect(() => {
+    handleTypingStopRef.current = handleTypingStop;
+  }, [handleTypingStop]);
+
+  // ✅ FIX v59.13.8 (#1): عند تبديل المحادثة (تغيّر receiver) نُعيد ضبط الحالة
+  //    حتى لا يبقى isTyping=true عالقاً → يمنع handleTypingStart من العمل
+  //    على المحادثة الجديدة (كان السلوك السابق يجعل أوّل ضربة مفتاح في
+  //    المحادثة الجديدة لا تُرسل أي typing indicator).
+  useEffect(() => {
+    // إلغاء أي مؤقّتات قديمة عند الانتقال بين المحادثات
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    if (stopTimerRef.current) {
+      clearTimeout(stopTimerRef.current);
+      stopTimerRef.current = null;
+    }
+    // إعادة ضبط الحالة الداخلية للمحادثة الجديدة
+    currentStateRef.current = false;
+    lastEmitRef.current = 0;
+    setIsTyping(false);
+  }, [receiver]);
+
+  // تنظيف عند الفصل (unmount نهائي فقط — منفصل عن تنظيف تبديل المحادثة)
   useEffect(() => {
     return () => {
+      isMountedRef.current = false;
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
@@ -115,7 +153,8 @@ export function useTypingIndicator(receiver, options = {}) {
         }
       }
     };
-  }, [receiver]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return {
     isTyping,

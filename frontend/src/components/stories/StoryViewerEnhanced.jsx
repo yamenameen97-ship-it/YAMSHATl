@@ -10,6 +10,8 @@ import {
   downloadStoryMedia,
   toggleStoryHighlight,
 } from '../../api/stories.js';
+// ✅ v59.13.16 FIX #2: إضافة زر إبلاغ في عارض الستوري لقصص الآخرين
+import ReportModal from '../reports/ReportModal.jsx';
 
 /**
  * StoryViewerEnhanced — عارض ستوري احترافي.
@@ -46,6 +48,8 @@ export default function StoryViewerEnhanced({
   const [pollMyVote, setPollMyVote] = useState(null);         // تصويت المستخدم على الاستطلاع
   const [pollVotes, setPollVotes] = useState({});             // عدد الأصوات
   const [toast, setToast] = useState('');
+  // ✅ v59.13.16 FIX #2: حالة فتح مودال إبلاغ الستوري
+  const [showReport, setShowReport] = useState(false);
   const timerRef = useRef(null);
   const startYRef = useRef(0);
   const longPressRef = useRef(null);                          // لتمييز long-press عن click
@@ -89,11 +93,17 @@ export default function StoryViewerEnhanced({
   const STEP_MS = 50;
 
   // إعادة الضبط عند تغيير المجموعة
+  // ✅ v59.13.13 FIX #2: مسح مسودة الرد + لوحة التفاعلات + حالة الإيقاف عند تبديل صاحب الستوري
+  //                       الخلل السابق: المستخدم يكتب رداً لـ User A ثم ينتقل لـ User B
+  //                       → النص يبقى وقد يُرسل للشخص الخطأ! (Privacy leak)
   useEffect(() => {
     setStoryIdx(0);
     setProgress(0);
     setImgError(false);
     setShowViewers(false);
+    setReplyText('');
+    setShowReactions(false);
+    setPaused(false);
   }, [group?.user_id]);
 
   // v59.10: تحميل حالة التصويت عند تغيير القصة
@@ -389,6 +399,16 @@ export default function StoryViewerEnhanced({
               >🗑️</button>
             </>
           )}
+          {/* ✅ v59.13.16 FIX #2: زر إبلاغ لقصص الآخرين فقط */}
+          {!isOwner && (
+            <button
+              type="button"
+              className="yam-story-icon-btn"
+              onClick={() => { setPaused(true); setShowReport(true); }}
+              aria-label="إبلاغ عن القصة"
+              title="إبلاغ"
+            >🚩</button>
+          )}
           <button
             type="button"
             className="yam-story-icon-btn"
@@ -603,6 +623,15 @@ export default function StoryViewerEnhanced({
       </div>
 
       <style>{viewerStyles}</style>
+
+      {/* ✅ v59.13.16 FIX #2: مودال الإبلاغ للستوري */}
+      <ReportModal
+        open={showReport}
+        onClose={() => { setShowReport(false); setPaused(false); }}
+        targetType="story"
+        targetId={current?.id}
+        targetLabel={`قصة @${group?.username || ''}`}
+      />
     </motion.div>
   );
 }

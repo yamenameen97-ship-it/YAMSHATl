@@ -27,6 +27,8 @@ import GroupQuickLinks from '../components/groups/GroupQuickLinks.jsx';
 import '../styles/group-chat.css';
 import '../styles/chat-mobile-fixes.css';
 import '../styles/groups-features.css';
+// ✅ v59.13.17 FIX #3: ReportModal الموحّد بدلاً عن window.prompt للإبلاغ على رسائل المجموعة
+import ReportModal from '../components/reports/ReportModal.jsx';
 
 /**
  * صفحة دردشة مجموعة واحدة — نسخة v22 مُصلحة.
@@ -71,6 +73,11 @@ const GroupChat = () => {
   // حالة تحديد رسالة (Long-Press)
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [reactionAnchor, setReactionAnchor] = useState(null);    // DOMRect
+  // ✅ v59.13.17 FIX #3: هدف الإبلاغ لرسالة المجموعة + مودال إعادة التوجيه الداخلي
+  const [reportTarget, setReportTarget] = useState(null);
+  const [forwardTarget, setForwardTarget] = useState(null);   // { messageId }
+  const [forwardDraft, setForwardDraft] = useState('');
+  const [forwardBusy, setForwardBusy] = useState(false);
   const documentVisibleRef = useRef(
     typeof document !== 'undefined' ? !document.hidden : true
   );
@@ -591,24 +598,32 @@ const GroupChat = () => {
       description: `المرسل: ${m?.sender || '—'} • الوقت: ${m?.time || '—'}`,
     });
   };
-  const onMsgForward  = async (m) => {
-    const target = window.prompt('اسم المستخدم أو معرّف المجموعة لإعادة التوجيه:');
-    if (!target || !target.trim()) return;
+  // ✅ v59.13.17 FIX #3: فتح مودال داخلي لإعادة التوجيه بدلاً من window.prompt
+  const onMsgForward  = (m) => {
+    setForwardDraft('');
+    setForwardTarget({ messageId: m.id });
+  };
+  const submitForward = async () => {
+    const target = (forwardDraft || '').trim();
+    if (!target || !forwardTarget?.messageId) return;
+    setForwardBusy(true);
     try {
-      await forwardGroupMessage(groupId, m.id, [target.trim()]);
+      await forwardGroupMessage(groupId, forwardTarget.messageId, [target]);
       pushToast?.({ type: 'success', title: 'تم', description: 'تم إعادة توجيه الرسالة' });
+      setForwardTarget(null);
+      setForwardDraft('');
     } catch {
       pushToast?.({ type: 'error', title: 'خطأ', description: 'فشل إعادة التوجيه' });
+    } finally {
+      setForwardBusy(false);
     }
   };
-  const onMsgReport   = async (m) => {
-    const reason = window.prompt('سبب البلاغ (اختياري):', '');
-    try {
-      await reportGroupMessage(groupId, m.id, reason || '');
-      pushToast?.({ type: 'success', title: 'تم', description: 'تم إرسال البلاغ' });
-    } catch {
-      pushToast?.({ type: 'error', title: 'خطأ', description: 'فشل إرسال البلاغ' });
-    }
+  // ✅ v59.13.17 FIX #3: فتح ReportModal الموحّد بدلاً من window.prompt + استدعاء yam-مخصّص
+  const onMsgReport   = (m) => {
+    setReportTarget({
+      id: m?.id,
+      label: `رسالة مجموعة من ${m?.sender || 'عضو'}`,
+    });
   };
   const onMsgReact    = async (m, emoji) => {
     setMessages((prev) => prev.map((x) => x.id === m.id ? { ...x, reaction: emoji } : x));
@@ -1018,6 +1033,97 @@ const GroupChat = () => {
         </button>
       </footer>
     </div>
+
+      {/* ✅ v59.13.17 FIX #3: مودال الإبلاغ الموحّد لرسائل المجموعة */}
+      <ReportModal
+        open={!!reportTarget}
+        onClose={() => setReportTarget(null)}
+        targetType="group_message"
+        targetId={reportTarget?.id}
+        targetLabel={reportTarget?.label}
+      />
+
+      {/* ✅ v59.13.17 FIX #3: مودال إعادة توجيه رسالة مجموعة */}
+      {forwardTarget ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="yam-fwd-title"
+          dir="rtl"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16,
+            fontFamily: "'Noto Sans Arabic','Cairo','Tahoma',sans-serif",
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !forwardBusy) {
+              setForwardTarget(null);
+              setForwardDraft('');
+            }
+          }}
+        >
+          <div style={{
+            background: 'var(--bg-elevated, #1f2233)', color: 'var(--text, #fff)',
+            borderRadius: 14, width: '100%', maxWidth: 460,
+            padding: 18, boxShadow: '0 18px 48px rgba(0,0,0,0.45)',
+            border: '1px solid rgba(255,255,255,0.08)',
+          }}>
+            <h3 id="yam-fwd-title" style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 700 }}>
+              ↪️ إعادة توجيه الرسالة
+            </h3>
+            <p style={{ margin: '0 0 12px', fontSize: 13, opacity: 0.7 }}>
+              أدخل اسم المستخدم (@username) أو معرّف المجموعة:
+            </p>
+            <input
+              autoFocus
+              type="text"
+              dir="auto"
+              placeholder="مثال: @ahmad أو group:42"
+              value={forwardDraft}
+              onChange={(e) => setForwardDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !forwardBusy && forwardDraft.trim()) submitForward();
+                if (e.key === 'Escape') { setForwardTarget(null); setForwardDraft(''); }
+              }}
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                padding: '11px 14px', borderRadius: 10,
+                background: 'rgba(255,255,255,0.06)',
+                color: 'inherit', border: '1px solid rgba(255,255,255,0.12)',
+                fontFamily: 'inherit', fontSize: 15,
+              }}
+            />
+            <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                disabled={forwardBusy}
+                onClick={() => { setForwardTarget(null); setForwardDraft(''); }}
+                style={{
+                  padding: '9px 16px', borderRadius: 10,
+                  cursor: forwardBusy ? 'not-allowed' : 'pointer',
+                  background: 'transparent', color: 'inherit',
+                  border: '1px solid rgba(255,255,255,0.16)', fontWeight: 600,
+                  opacity: forwardBusy ? 0.5 : 1,
+                }}
+              >إلغاء</button>
+              <button
+                type="button"
+                disabled={forwardBusy || !forwardDraft.trim()}
+                onClick={submitForward}
+                style={{
+                  padding: '9px 18px', borderRadius: 10,
+                  cursor: (forwardBusy || !forwardDraft.trim()) ? 'not-allowed' : 'pointer',
+                  background: 'var(--primary, #6f53ff)', color: '#fff',
+                  border: 'none', fontWeight: 700,
+                  opacity: (forwardBusy || !forwardDraft.trim()) ? 0.5 : 1,
+                }}
+              >{forwardBusy ? 'جارٍ…' : 'إعادة توجيه'}</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </MainLayout>
   );
 };

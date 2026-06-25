@@ -1,4 +1,4 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import MobileTopBar from '../components/mobile/MobileTopBar';
 import BottomNav from '../components/mobile/BottomNav';
@@ -7,9 +7,14 @@ import PullToRefresh from '../components/common/PullToRefresh.jsx';
 /**
  * DesktopLayout - التخطيط الموحد للابتوب
  * + ميزة "اسحب للتحديث" تعمل أيضاً على شاشات اللمس الكبيرة (تابلت/شاشات هجينة)
+ *
+ * 🔧 v59.13.18: mainRef يُمرّر مباشرة إلى PullToRefresh لضمان عمل السحب
+ * في كل صفحات الديسكتوب التي تعمل على شاشات لمس.
  */
 function DesktopLayout({ children }) {
   const location = useLocation();
+  // ⭐ v59.13.18: مرجع عنصر التمرير الفعلي
+  const mainRef = useRef(null);
   const isReelsRoute = location.pathname === '/reels' || location.pathname.startsWith('/reels/');
   const isChatRoute = location.pathname.startsWith('/chat') || location.pathname.startsWith('/inbox');
   const disablePullToRefresh = isReelsRoute || isChatRoute;
@@ -43,7 +48,7 @@ function DesktopLayout({ children }) {
     <div className="desktop-layout-container" dir="rtl">
       <MobileTopBar />
 
-      <main className="desktop-main-content">
+      <main className="desktop-main-content" ref={mainRef}>
         <PullToRefresh
           onRefresh={onRefresh}
           disabled={disablePullToRefresh}
@@ -51,6 +56,7 @@ function DesktopLayout({ children }) {
           releaseText="اترك للتحديث"
           loadingText="جارٍ التحديث…"
           className="desktop-ptr"
+          scrollContainerRef={mainRef}
         >
           <div className="content-wrapper">
             {children}

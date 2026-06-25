@@ -1,21 +1,49 @@
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import notificationService from '../../services/notificationService.js';
 
 const DISMISS_KEY = 'yamshat_notification_prompt_dismissed';
+// ✅ v59.13.13 FIX #5: إضافة TTL لـ dismiss (7 أيام)
+// الخلل السابق: رفض المستخدم للإشعار كان يخفي النافذة للأبد بدون انتهاء صلاحية
+// → لو غيّر رأيه لاحقاً، لا توجد طريقة لتثبيت التفعيل إلا عبر إعدادات المتصفح مباشرة.
+const DISMISS_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 أيام
 
 function getPermission() {
   if (typeof window === 'undefined' || !('Notification' in window)) return 'unsupported';
   return window.Notification.permission;
 }
 
+function isDismissActive() {
+  if (typeof window === 'undefined') return false;
+  const stamp = window.localStorage.getItem(DISMISS_KEY);
+  if (!stamp) return false;
+  // توافق خلفي مع القيمة القديمة '1' → نعتبرها منتهية ونعيد إظهار النافذة
+  if (stamp === '1') {
+    try { window.localStorage.removeItem(DISMISS_KEY); } catch { /* ignore */ }
+    return false;
+  }
+  const ts = Number(stamp);
+  if (!Number.isFinite(ts) || ts <= 0) {
+    try { window.localStorage.removeItem(DISMISS_KEY); } catch { /* ignore */ }
+    return false;
+  }
+  if (Date.now() - ts > DISMISS_TTL_MS) {
+    try { window.localStorage.removeItem(DISMISS_KEY); } catch { /* ignore */ }
+    return false;
+  }
+  return true;
+}
+
 export default function NotificationPermissionPrompt() {
   const [permission, setPermission] = useState(getPermission);
   const [busy, setBusy] = useState(false);
-  const [dismissed, setDismissed] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return window.localStorage.getItem(DISMISS_KEY) === '1';
-  });
+  const [dismissed, setDismissed] = useState(() => isDismissActive());
+  // ✅ v59.13.13 FIX #5: حراس mount لمنع setState بعد unmount في handleEnable
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -43,7 +71,8 @@ export default function NotificationPermissionPrompt() {
 
   const handleDismiss = () => {
     if (typeof window !== 'undefined') {
-      window.localStorage.setItem(DISMISS_KEY, '1');
+      // ✅ v59.13.13 FIX #5: خزِّن طابع زمني بدل '1' حتى تعمل حسابات TTL
+      window.localStorage.setItem(DISMISS_KEY, String(Date.now()));
     }
     setDismissed(true);
   };
@@ -54,9 +83,10 @@ export default function NotificationPermissionPrompt() {
       await notificationService.subscribeToPushNotifications().catch(async () => {
         await notificationService.requestPermission();
       });
-      setPermission(getPermission());
+      // ✅ v59.13.13 FIX #5: تجنّب setState بعد unmount
+      if (isMountedRef.current) setPermission(getPermission());
     } finally {
-      setBusy(false);
+      if (isMountedRef.current) setBusy(false);
     }
   };
 

@@ -81,6 +81,13 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
   // ✅ FIX v59.13.8 (#4): isMountedRef لحماية uploadAttachment الـ async
   //    + لتنظيف blob URLs المتراكمة عند تبديل peer.
   const isMountedRef = useRef(true);
+  // ✅ v59.13.12 FIX #4: تتبّع كل AbortControllers للرفع الجارٍ
+  //    وإلغاؤها عند تبديل peer أو unmount — لمنع إرسال مرفقات لمحادثة خاطئة.
+  const uploadControllersRef = useRef(new Set());
+  const abortAllUploads = () => {
+    uploadControllersRef.current.forEach((c) => { try { c.abort?.(); } catch { /* ignore */ } });
+    uploadControllersRef.current.clear();
+  };
 
   useEffect(() => {
     attachmentsRef.current = attachments;
@@ -92,14 +99,16 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
   useEffect(() => {
     if (!peer) {
       setText('');
-      // تنظيف المرفقات عند غياب peer
+      // ✅ v59.13.12 FIX #4: ألغِ أي رفع جارٍ قبل إفراغ المرفقات
+      abortAllUploads();
       if (attachmentsRef.current.length) {
         revokeAttachments(attachmentsRef.current);
         setAttachments([]);
       }
       return;
     }
-    // تنظيف مرفقات المحادثة السابقة عند تبديل peer
+    // ✅ v59.13.12 FIX #4: ألغِ رفع المحادثة السابقة حتى لا تصل إلى peer الجديد
+    abortAllUploads();
     if (attachmentsRef.current.length) {
       revokeAttachments(attachmentsRef.current);
       setAttachments([]);
@@ -109,6 +118,8 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
 
   useEffect(() => () => {
     isMountedRef.current = false;
+    // ✅ v59.13.12 FIX #4: ألغِ أي رفع جارٍ عند unmount
+    abortAllUploads();
     revokeAttachments(attachmentsRef.current);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
   }, []);
@@ -233,8 +244,12 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
     //    onProgress يستمر يستدعي updateAttachment → setAttachments على مكوّن مُزال
     //    + تحديث status على مرفقات المحادثة السابقة إذا لم يتم تنظيفها.
     updateAttachment(entry.id, { status: MESSAGE_LIFECYCLE.PENDING_UPLOAD, progress: 0, stage: 'preparing', error: '' });
+    // ✅ v59.13.12 FIX #4: أنشئ AbortController لهذا الرفع
+    const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    if (controller) uploadControllersRef.current.add(controller);
     try {
       const uploadResult = await mediaUploadService.uploadFile(entry.file, {
+        signal: controller?.signal,
         onProgress: (payload) => {
           if (!isMountedRef.current) return;
           updateAttachment(entry.id, {
@@ -248,10 +263,14 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
       updateAttachment(entry.id, { status: MESSAGE_LIFECYCLE.SYNCING, progress: 100, stage: 'done', uploadResult });
       return uploadResult;
     } catch (error) {
-      if (isMountedRef.current) {
+      // ✅ v59.13.12 FIX #4: تجاهل أخطاء AbortController (إلغاء مقصود)
+      const aborted = error?.name === 'AbortError' || error?.code === 'ERR_CANCELED' || controller?.signal?.aborted;
+      if (isMountedRef.current && !aborted) {
         updateAttachment(entry.id, { status: MESSAGE_LIFECYCLE.FAILED, error: error?.message || 'فشل الرفع', stage: 'failed' });
       }
       throw error;
+    } finally {
+      if (controller) uploadControllersRef.current.delete(controller);
     }
   };
 

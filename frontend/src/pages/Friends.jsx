@@ -152,6 +152,103 @@ function SuggestionRow({ user, busy, onSend, onCancel, onDismiss }) {
   );
 }
 
+/* =================================================================
+   ✅ v59.13.15 FIX #3 — حوار تأكيد مخصص (بديل window.confirm)
+   - role="dialog" + aria-modal="true" + ESC يغلق
+   - ركّز تلقائياً على زر الإلغاء لأمان المدخل
+   - focus trap داخل الحوار
+   - غير blocking — لا يجمّد خيط JS على الموبايل
+   ================================================================= */
+function ConfirmDialog({ dialog, onClose }) {
+  const cancelRef = useRef(null);
+  const cardRef = useRef(null);
+  useEffect(() => {
+    if (!dialog) return undefined;
+    const t = window.setTimeout(() => { try { cancelRef.current?.focus(); } catch { /* ignore */ } }, 30);
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
+      if (e.key === 'Tab') {
+        const root = cardRef.current;
+        if (!root) return;
+        const focusables = root.querySelectorAll('button:not([disabled])');
+        if (!focusables.length) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        const active = document.activeElement;
+        if (e.shiftKey && active === first) { e.preventDefault(); try { last.focus(); } catch { /* ignore */ } }
+        else if (!e.shiftKey && active === last) { e.preventDefault(); try { first.focus(); } catch { /* ignore */ } }
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      window.clearTimeout(t);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [dialog, onClose]);
+  if (!dialog) return null;
+  return (
+    <div
+      role="presentation"
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 16,
+      }}
+    >
+      <div
+        ref={cardRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="yam-confirm-msg"
+        dir="rtl"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 380,
+          background: 'linear-gradient(180deg,#1e1b3a,#14122a)',
+          borderRadius: 16, padding: '20px 18px',
+          border: '1px solid rgba(124,58,237,0.35)',
+          color: '#fff', fontFamily: '"Noto Sans Arabic","Cairo",system-ui,sans-serif',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+        }}
+      >
+        <p id="yam-confirm-msg" style={{ margin: '0 0 18px', fontSize: 15, lineHeight: 1.7 }}>
+          {dialog.message}
+        </p>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            ref={cancelRef}
+            type="button"
+            onClick={onClose}
+            style={{
+              flex: 1, padding: '10px 14px', borderRadius: 10,
+              background: 'rgba(255,255,255,0.08)', color: '#fff',
+              border: '1px solid rgba(255,255,255,0.12)',
+              fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >إلغاء</button>
+          <button
+            type="button"
+            onClick={() => dialog.onConfirm?.()}
+            style={{
+              flex: 1.2, padding: '10px 14px', borderRadius: 10,
+              background: dialog.danger
+                ? 'linear-gradient(90deg,#ef4444,#b91c1c)'
+                : 'linear-gradient(90deg,#7c3aed,#a855f7)',
+              color: '#fff', border: 'none',
+              fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >{dialog.confirmLabel || 'موافق'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** بطاقة صديق حالي: فتح الملف الشخصي / إزالة */
 function FriendRow({ user, busy, onUnfriend, onMessage }) {
   const friendshipId = user?.friendship?.friendship_id;
@@ -199,6 +296,9 @@ export default function Friends() {
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
   const [busy, setBusy] = useState('');
+  // ✅ v59.13.15 FIX #3: بدل window.confirm المتزامن (تجربة سيئة على الموبايل + يحجبه بعض المتصفحات)
+  // نستخدم حوار تأكيد مخصصاً RTL + a11y كامل (role=dialog/aria-modal/ESC)
+  const [confirmDialog, setConfirmDialog] = useState(null); // { message, onConfirm }
 
   const mountedRef = useRef(true);
 
@@ -270,6 +370,9 @@ export default function Friends() {
   // ✅ v59.13.9 FIX #4: جميع معالجات إجراءات الصداقة تفحص mountedRef
   // قبل أي setState بعد await — لتجنّب تحذيرات React لو المستخدم
   // ضغط "تأكيد/حذف/إضافة" ثم غادر الصفحة فوراً.
+  // ✅ v59.13.13 FIX #3: عند قبول طلب صداقة، حدِّث البطاقة في نتائج البحث/الاقتراحات أيضاً
+  //                       الخلل السابق: لو كان الشخص في لائحة البحث، البطاقة تبقى تعرض "إضافة،حذف"
+  //                       بدلاً من "صديقك".
   const handleAccept = async (friendshipId) => {
     try {
       setBusy(`accept-${friendshipId}`);
@@ -283,6 +386,14 @@ export default function Friends() {
           { ...accepted, friendship: { ...accepted.friendship, status: 'accepted' } },
           ...prev.filter((u) => u.id !== accepted.id),
         ]);
+        // حدِّث حالة بطاقة الشخص في الاقتراحات/البحث إلى accepted حتى تظهر "صديقك"
+        const markAccepted = (list) => list.map((u) => (
+          u.username === accepted.username
+            ? { ...u, friendship: { status: 'accepted', friendship_id: friendshipId, direction: null } }
+            : u
+        ));
+        setSuggestions(markAccepted);
+        setSearchResults(markAccepted);
       }
       setStats((s) => ({ ...s, friends: s.friends + 1, requests_received: Math.max(0, s.requests_received - 1) }));
     } catch (err) {
@@ -355,6 +466,9 @@ export default function Friends() {
     }
   };
 
+  // ✅ v59.13.13 FIX #3: إزالة المستخدم من نتائج البحث أيضاً عند rejection
+  //                       الخلل السابق: دغط المستخدم "إزالة" أثناء البحث → الشخص يختفي من الاقتراحات
+  //                       لكنه يبقى في لائحة نتائج البحث والمستخدم يستطيع الضغط "إزالة" مرة ثانية → خطأ API
   const handleDismiss = async (username) => {
     try {
       setBusy(`dismiss-${username}`);
@@ -362,6 +476,7 @@ export default function Friends() {
       await dismissSuggestion(username);
       if (!mountedRef.current) return;
       setSuggestions((prev) => prev.filter((u) => u.username !== username));
+      setSearchResults((prev) => prev.filter((u) => u.username !== username));
     } catch (err) {
       if (mountedRef.current) setActionError(err?.response?.data?.detail || 'تعذر إزالة المقترح.');
     } finally {
@@ -369,20 +484,28 @@ export default function Friends() {
     }
   };
 
-  const handleUnfriend = async (friendshipId) => {
-    if (!window.confirm('هل تريد إزالة هذا الصديق من قائمتك؟')) return;
-    try {
-      setBusy(`unfriend-${friendshipId}`);
-      setActionError('');
-      await removeFriendship(friendshipId);
-      if (!mountedRef.current) return;
-      setFriends((prev) => prev.filter((u) => u.friendship?.friendship_id !== friendshipId));
-      setStats((s) => ({ ...s, friends: Math.max(0, s.friends - 1) }));
-    } catch (err) {
-      if (mountedRef.current) setActionError(err?.response?.data?.detail || 'تعذر إزالة الصديق.');
-    } finally {
-      if (mountedRef.current) setBusy('');
-    }
+  // ✅ v59.13.15 FIX #3: حوار إزالة صديق تفاعلي (غير blocking)
+  const handleUnfriend = (friendshipId) => {
+    setConfirmDialog({
+      message: 'هل تريد إزالة هذا الصديق من قائمتك؟',
+      confirmLabel: 'إزالة',
+      danger: true,
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        try {
+          setBusy(`unfriend-${friendshipId}`);
+          setActionError('');
+          await removeFriendship(friendshipId);
+          if (!mountedRef.current) return;
+          setFriends((prev) => prev.filter((u) => u.friendship?.friendship_id !== friendshipId));
+          setStats((s) => ({ ...s, friends: Math.max(0, s.friends - 1) }));
+        } catch (err) {
+          if (mountedRef.current) setActionError(err?.response?.data?.detail || 'تعذر إزالة الصديق.');
+        } finally {
+          if (mountedRef.current) setBusy('');
+        }
+      },
+    });
   };
 
   const handleMessage = (username) => navigate(`/chat/${encodeURIComponent(username)}`);
@@ -636,6 +759,9 @@ export default function Friends() {
             )}
           </section>
         ) : null}
+
+        {/* ✅ v59.13.15 FIX #3: حوار تأكيد داخل التطبيق بدل window.confirm المتزامن */}
+        <ConfirmDialog dialog={confirmDialog} onClose={() => setConfirmDialog(null)} />
       </div>
 
       <style>{`

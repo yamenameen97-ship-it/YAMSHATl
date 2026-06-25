@@ -30,6 +30,8 @@ import { getChatPreferences, toggleChatPreference } from '../utils/chatPreferenc
 import { formatLastSeen } from '../components/yamshat/YamshatDesign.js';
 import { CHAT_NAV_ITEMS, buildContacts, getContactDetails } from '../features/chat/chatShellFixtures.js';
 import BrandLogo from '../components/ui/BrandLogo.jsx';
+// ✅ v59.13.17 FIX #1+#2: ReportModal الموحّد بدلاً من window.prompt للإبلاغ، ومحرّر تعديل داخلي بدلاً من window.prompt للتعديل
+import ReportModal from '../components/reports/ReportModal.jsx';
 
 const EMPTY_MESSAGES = [];
 const REACTION_STORAGE_KEY = 'yamshat-message-reactions-v2';
@@ -191,6 +193,11 @@ export default function Chat() {
   const [isPinnedConversation, setIsPinnedConversation] = useState(initialChatPrefs.pinned.has(peer));
   const [reactionsByMessage, setReactionsByMessage] = useState(() => loadPeerReactions(peer));
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  // ✅ v59.13.17 FIX #1: هدف الإبلاغ عن رسالة (يفتح ReportModal بـ targetType="message")
+  const [reportTarget, setReportTarget] = useState(null);
+  // ✅ v59.13.17 FIX #2: تحرير الرسالة عبر مودال داخلي بدلاً من window.prompt المتزامن
+  const [editingMessage, setEditingMessage] = useState(null); // { id, content }
+  const [editingDraft, setEditingDraft] = useState('');
   const messagesEndRef = useRef(null);
   const messagesAreaRef = useRef(null);
   const searchInputRef = useRef(null);
@@ -2011,16 +2018,10 @@ export default function Chat() {
                   onDeleteForMe={(id) => handleDelete(id, false)}
                   onDeleteForEveryone={(id) => handleDelete(id, true)}
                   onEdit={(message) => {
-                    const newText = window.prompt('تعديل الرسالة:', message?.content || message?.message || '');
-                    if (newText !== null && newText.trim()) {
-                      applyMessagePatch(peer, [message.id || message.client_id], {
-                        content: newText.trim(),
-                        message: newText.trim(),
-                        edited: true,
-                        edited_at: new Date().toISOString(),
-                      });
-                      pushToast({ type: 'success', title: 'تم تعديل الرسالة' });
-                    }
+                    // ✅ v59.13.17 FIX #2: استبدال window.prompt بمودال داخلي (UX أفضل على الموبايل ولا يحجبه أي متصفّح)
+                    const current = message?.content || message?.message || '';
+                    setEditingMessage({ id: message.id || message.client_id, original: current });
+                    setEditingDraft(current);
                   }}
                   onResend={(message) => {
                     setReplyTo(null);
@@ -2032,10 +2033,11 @@ export default function Chat() {
                     pushToast({ type: 'success', title: 'جاري إعادة الإرسال…' });
                   }}
                   onReport={(message) => {
-                    const reason = window.prompt('سبب الإبلاغ عن الرسالة:', '');
-                    if (reason !== null && reason.trim()) {
-                      pushToast({ type: 'success', title: 'تم إرسال البلاغ', description: 'سيراجعه فريق الإدارة قريباً' });
-                    }
+                    // ✅ v59.13.17 FIX #1: فتح ReportModal الموحّد بدلاً من window.prompt + Toast كاذب لا يصل للسيرفر
+                    setReportTarget({
+                      id: message?.id || message?.client_id,
+                      label: `رسالة من @${message?.sender || message?.author || peer}`,
+                    });
                   }}
                   onReact={handleReact}
                   reactionState={reactionsByMessage[String(msg.id || msg.client_id)] || { counts: {}, myReaction: null }}
@@ -2128,6 +2130,107 @@ export default function Chat() {
         initialIndex={mediaViewerState.index}
         onClose={() => setMediaViewerState({ open: false, index: 0 })}
       />
+
+      {/* ✅ v59.13.17 FIX #1: مودال الإبلاغ الموحّد لرسائل الشات 1‑1 */}
+      <ReportModal
+        open={!!reportTarget}
+        onClose={() => setReportTarget(null)}
+        targetType="message"
+        targetId={reportTarget?.id}
+        targetLabel={reportTarget?.label}
+      />
+
+      {/* ✅ v59.13.17 FIX #2: مودال تعديل الرسالة (بدلاً عن window.prompt) */}
+      {editingMessage ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="yam-edit-msg-title"
+          dir="rtl"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16,
+            fontFamily: "'Noto Sans Arabic','Cairo','Tahoma',sans-serif",
+          }}
+          onClick={(e) => {
+            // إغلاق عند النقر على الخلفية
+            if (e.target === e.currentTarget) {
+              setEditingMessage(null);
+              setEditingDraft('');
+            }
+          }}
+        >
+          <div style={{
+            background: 'var(--bg-elevated, #1f2233)', color: 'var(--text, #fff)',
+            borderRadius: 14, width: '100%', maxWidth: 480,
+            padding: 18, boxShadow: '0 18px 48px rgba(0,0,0,0.45)',
+            border: '1px solid rgba(255,255,255,0.08)',
+          }}>
+            <h3 id="yam-edit-msg-title" style={{ margin: '0 0 12px', fontSize: 17, fontWeight: 700 }}>
+              ✏️ تعديل الرسالة
+            </h3>
+            <textarea
+              autoFocus
+              value={editingDraft}
+              onChange={(e) => setEditingDraft(e.target.value)}
+              rows={4}
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                padding: 10, borderRadius: 10,
+                background: 'rgba(255,255,255,0.06)',
+                color: 'inherit', border: '1px solid rgba(255,255,255,0.12)',
+                fontFamily: 'inherit', fontSize: 15, resize: 'vertical',
+              }}
+              maxLength={2000}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setEditingMessage(null);
+                  setEditingDraft('');
+                }
+              }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+              <span style={{ fontSize: 12, opacity: 0.6 }}>{editingDraft.length}/2000</span>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => { setEditingMessage(null); setEditingDraft(''); }}
+                style={{
+                  padding: '9px 16px', borderRadius: 10, cursor: 'pointer',
+                  background: 'transparent', color: 'inherit',
+                  border: '1px solid rgba(255,255,255,0.16)', fontWeight: 600,
+                }}
+              >إلغاء</button>
+              <button
+                type="button"
+                disabled={!editingDraft.trim() || editingDraft.trim() === (editingMessage?.original || '').trim()}
+                onClick={() => {
+                  const newText = editingDraft.trim();
+                  if (!newText || !editingMessage?.id) return;
+                  applyMessagePatch(peer, [editingMessage.id], {
+                    content: newText,
+                    message: newText,
+                    edited: true,
+                    edited_at: new Date().toISOString(),
+                  });
+                  pushToast({ type: 'success', title: 'تم تعديل الرسالة' });
+                  setEditingMessage(null);
+                  setEditingDraft('');
+                }}
+                style={{
+                  padding: '9px 18px', borderRadius: 10, cursor: 'pointer',
+                  background: 'var(--primary, #6f53ff)', color: '#fff',
+                  border: 'none', fontWeight: 700,
+                  opacity: (!editingDraft.trim() || editingDraft.trim() === (editingMessage?.original || '').trim()) ? 0.5 : 1,
+                }}
+              >حفظ التعديل</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </MainLayout>
   );
 }

@@ -1,35 +1,31 @@
 /**
- * usePullToRefresh — v59.13.2 (Scroll-Container Aware)
- * ----------------------------------------------------
+ * usePullToRefresh — v59.13.18 (Direct Scroll-Container Ref)
+ * ----------------------------------------------------------
  * Hook عام للسحب من أعلى لتحديث الصفحة (Pull-to-Refresh)
  *
- * 🔧 إصلاح v59.13.2 (السبب الجذري لـ "الصفحات لا تستجيب للسحب"):
- *   • منذ v59.10 أصبح body/#root مقفول بـ overflow:hidden،
- *     والتمرير الفعلي يحدث داخل main.mobile-main-content فقط.
- *   • النسخة القديمة كانت تستمع على window و تفحص window.scrollY
- *     → window.scrollY = 0 دائماً → الـ hook يظنّ أن المستخدم
- *     في القمة في كل لمسة → يستدعي preventDefault على touchmove
- *     → يمنع التمرير الفعلي داخل main. (هذا هو سبب "لا يستجيب للسحب").
+ * 🔧 إصلاح v59.13.18 (الإصلاح الجذري للسحب بين الصفحات):
+ *   • قبلًا: كان الـ hook يستخدم document.querySelector('main.mobile-main-content')
+ *     لإيجاد حاوية التمرير. هذا فشل في بعض الصفحات لأن:
+ *       - DOM لم يكن جاهزاً وقت الـ effect
+ *       - بعض الصفحات تستخدم حاوية تمرير داخلية مختلفة
+ *       - أي تغيير في أسماء الـ classes كان يكسر السحب صامتاً
+ *   • الآن: الـ hook يقبل scrollContainerRef خارجي يتم تمريره مباشرة
+ *     من MainLayout (الـ ref الفعلي على عنصر <main>).
+ *     النتيجة: نفس عنصر التمرير في كل الصفحات بدون اعتماد على CSS classes.
  *
- *   ✅ الحل: الاستماع على الـ scroll container الفعلي وفحص
- *      scrollTop الخاص به. نبحث عن:
- *        1) أقرب أب يحقّق overflow-y: auto/scroll (انطلاقاً من containerRef)
- *        2) إن لم يوجد → fallback إلى window.scrollY (سلوك v57 القديم)
+ *   ✅ الاتصال الجديد:
+ *     MobileLayout → mainRef → PullToRefresh(scrollContainerRef={mainRef})
+ *                 → usePullToRefresh({ scrollContainerRef })
  *
- * 🔧 إصلاح v57 (محفوظ):
- *   • يستخدم passive listeners افتراضياً (لا يخنق التمرير)
+ * 🔧 إصلاحات سابقة محفوظة:
+ *   • passive listeners افتراضياً (لا يخنق التمرير)
  *   • preventDefault يُستدعى فقط عند سحب فعلي من scrollTop=0
  *   • تعطيل تلقائي إذا لم يكن الجهاز touch
  *   • تجاهل multi-touch (pinch zoom)
- *
- * المميزات:
- *  ✓ يعمل فقط عندما يكون window scrollY = 0
- *  ✓ يدعم Touch events فقط (Pointer events تتداخل مع scroll)
- *  ✓ RTL آمن — السحب عمودي فقط
- *  ✓ مقاومة (resistance) لتجربة شبيهة بالتطبيقات الأصلية
- *  ✓ Haptic feedback خفيف عند التفعيل
- *  ✓ تنظيف آمن لمستمعي الأحداث
- *  ✓ آمن على iOS notch + Android safe-area
+ *   • RTL آمن — السحب عمودي فقط
+ *   • مقاومة (resistance) لتجربة شبيهة بالتطبيقات الأصلية
+ *   • Haptic feedback خفيف عند التفعيل
+ *   • تنظيف آمن لمستمعي الأحداث
  */
 import { useEffect, useRef, useState, useCallback } from 'react';
 
@@ -45,7 +41,10 @@ export default function usePullToRefresh({
   maxPull = DEFAULT_MAX_PULL,
   disabled = false,
   hapticOnTrigger = true,
+  scrollContainerRef = null, // ⭐ v59.13.18: مرجع خارجي لحاوية التمرير الفعلية
 } = {}) {
+  // containerRef داخلي يستخدمه PullToRefresh لتحريك الـ indicator (لفّ المحتوى)
+  // أما scrollContainerRef فهو حاوية التمرير الحقيقية القادمة من MainLayout.
   const containerRef = useRef(null);
   const [pullDistance, setPullDistance] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -97,48 +96,74 @@ export default function usePullToRefresh({
     if (!isTouchDevice) return undefined;
 
     // ──────────────────────────────────────────────────────────────
-    // v59.13.2: إيجاد الـ scroll container الفعلي
+    // v59.13.18: إيجاد حاوية التمرير — الأولوية المطلقة للـ ref الخارجي
     // ──────────────────────────────────────────────────────────────
-    // نبدأ من containerRef الذي مرّره PullToRefresh component،
-    // ثم نصعد لأعلى لإيجاد أوّل أب overflow-y فيه auto/scroll.
-    // هذا يصلح حالة v59.10+ حيث body مقفول والتمرير على main.
-    const findScrollContainer = () => {
-      // 1) جرّب البحث المباشر عن main.mobile-main-content (سيناريو الجوال)
-      const mainEl = document.querySelector('main.mobile-main-content, .mobile-main-content');
-      if (mainEl) {
-        const style = window.getComputedStyle(mainEl);
-        if (/(auto|scroll)/.test(style.overflowY)) {
-          return mainEl;
+    // 1) إذا كان scrollContainerRef.current موجوداً → استخدمه دائماً.
+    //    هذا يضمن أن السحب يعمل في كل صفحة بدون اعتماد على CSS classes.
+    // 2) إذا لم يُمرَّر → fallback ذكي: ابحث في الـ DOM (للتوافق العكسي).
+    // 3) إذا فشل كل شيء → window/document (سلوك Desktop القديم).
+    // Helper: هل هذا العنصر حاوية تمرير فعلية؟
+    const isScrollable = (el) => {
+      if (!el || el.nodeType !== 1) return false;
+      try {
+        const style = window.getComputedStyle(el);
+        return /(auto|scroll)/.test(style.overflowY);
+      } catch {
+        return false;
+      }
+    };
+
+    const resolveScrollContainer = () => {
+      // 1) Direct ref — الطريقة الموصى بها (MainLayout يمرّر mainRef)
+      if (scrollContainerRef && scrollContainerRef.current) {
+        const refEl = scrollContainerRef.current;
+        // إذا كان العنصر نفسه قابلاً للتمرير → استخدمه مباشرة
+        if (isScrollable(refEl)) return refEl;
+        // وإلا تحقّق من أول أبنائه لعلّ التمرير داخلي (حالة wrapper بـ overflow:hidden)
+        for (const child of refEl.children) {
+          if (isScrollable(child) && child.scrollHeight > child.clientHeight) {
+            return child;
+          }
         }
+        // إذا لم يكن تمريراً حقيقياً (مثل desktop overflow:hidden) → fallback إلى window
+        // بإرجاع null هنا حتى يتم تفعيل fallback window.scrollY
+        if (!isScrollable(refEl)) return null;
+        return refEl;
       }
 
-      // 2) ابدأ من containerRef واصعد لأعلى
+      // 2) Legacy fallback — للتوافق مع الكود القديم الذي لا يمرّر ref
+      const mainEl = typeof document !== 'undefined'
+        ? document.querySelector('main.mobile-main-content, .mobile-main-content, main.page-content, .page-content')
+        : null;
+      if (mainEl && isScrollable(mainEl)) {
+        return mainEl;
+      }
+
+      // 3) ابدأ من containerRef الداخلي واصعد لأعلى
       let node = containerRef.current;
       while (node && node !== document.body && node !== document.documentElement) {
-        const style = window.getComputedStyle(node);
-        if (/(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight) {
+        if (isScrollable(node) && node.scrollHeight > node.clientHeight) {
           return node;
         }
         node = node.parentElement;
       }
 
-      // 3) Fallback: window/document
+      // 4) Fallback نهائي: window/document
       return null;
     };
 
-    // نُخزّن المرجع لتجنّب البحث في كل touchmove (مكلف)
-    let scrollContainer = findScrollContainer();
+    let scrollContainer = resolveScrollContainer();
 
-    // نُعيد البحث على onTouchStart فقط (الـ DOM قد يتغيّر بين التنقّلات)
+    // نُعيد البحث على onTouchStart فقط إن لم نكن قد وجدنا الحاوية بعد
     const refreshScrollContainer = () => {
-      scrollContainer = findScrollContainer();
+      scrollContainer = resolveScrollContainer();
     };
 
     const getScrollTop = () => {
       if (scrollContainer) {
         return scrollContainer.scrollTop || 0;
       }
-      // Fallback القديم — يعمل في صفحات الـ Desktop
+      // Fallback القديم — يعمل في صفحات الـ Desktop بدون scroll container
       return window.scrollY || document.documentElement.scrollTop || 0;
     };
 
@@ -156,7 +181,7 @@ export default function usePullToRefresh({
         stateRef.current.cancelled = true;
         return;
       }
-      // v59.13.2: حدّث مرجع الـ scroll container في حال تغيّر الـ DOM
+      // v59.13.18: حدّث مرجع الـ scroll container إن لم يكن جاهزاً
       if (!scrollContainer) refreshScrollContainer();
       if (getScrollTop() > 0) {
         stateRef.current.cancelled = true;
@@ -250,7 +275,7 @@ export default function usePullToRefresh({
     const opts = { passive: false };
     const passiveOpts = { passive: true };
 
-    // v59.13.2: نُرفِق المستمعين على الـ scroll container الفعلي إن وُجد،
+    // v59.13.18: نُرفِق المستمعين على الـ scroll container الفعلي إن وُجد،
     // وإلا نقع على window (Desktop fallback). هذا يضمن أن الـ hook
     // لا يخنق التمرير في صفحات الجوال (حيث body مقفول overflow:hidden).
     const target = scrollContainer || window;
@@ -266,7 +291,8 @@ export default function usePullToRefresh({
       target.removeEventListener('touchend', onTouchEnd);
       target.removeEventListener('touchcancel', onTouchEnd);
     };
-  }, [disabled, isRefreshing, threshold, maxPull, pullDistance, finishRefresh, triggerHaptic]);
+    // scrollContainerRef نفسه stable (useRef) لكن نضمّنه احتياطاً
+  }, [disabled, isRefreshing, threshold, maxPull, pullDistance, finishRefresh, triggerHaptic, scrollContainerRef]);
 
   return {
     containerRef,

@@ -60,6 +60,9 @@ export default function FriendsAll() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
   const [actionError, setActionError] = useState('');
+  // ✅ v59.13.17 FIX #4: حوار تأكيد داخلي لإزالة صديق بدلاً من window.confirm المتزامن
+  // (يحجب الواجهة وتجربة سيئة على الموبايل + بعض المتصفّحات تحجبه الآن)
+  const [confirmUnfriend, setConfirmUnfriend] = useState(null); // friendshipId | null
 
   const [query, setQuery] = useState('');
   const debounced = useDebouncedValue(query, 280);
@@ -119,8 +122,10 @@ export default function FriendsAll() {
   //   3) actionError السابق لا يُمسح إذا أغلق confirm() مبكراً
   //      → رسالة خطأ قديمة تبقى معروضة للمستخدم.
   const handleAction = async (type, target) => {
-    // (1) سؤال التأكيد أولاً قبل أي setBusy، للتخلص من العلقة الدائمة.
-    if (type === 'unfriend' && !window.confirm('هل تريد إزالة هذا الصديق؟')) {
+    // ✅ v59.13.17 FIX #4: بدلاً من window.confirm المتزامن، نفتح حوار تأكيد داخلي،
+    // ثم نعيد استدعاء handleAction بـ type='unfriend-confirmed' بعد موافقة المستخدم.
+    if (type === 'unfriend') {
+      setConfirmUnfriend(target);
       return;
     }
     // (3) مسح خطأ أي عملية سابقة.
@@ -131,8 +136,10 @@ export default function FriendsAll() {
         await acceptFriendRequest(target);
         if (!mountedRef.current) return; // (2)
         setItems((p) => p.filter((u) => u.friendship?.friendship_id !== target));
-      } else if (type === 'decline' || type === 'cancel' || type === 'unfriend') {
-        setBusy(`${type}-${target}`);
+      } else if (type === 'decline' || type === 'cancel' || type === 'unfriend-confirmed') {
+        // ✅ v59.13.17 FIX #4: نستخدم المفتاح المجدد 'unfriend-confirmed' حتى نتفادى حلقة confirm أعلاه
+        const busyKey = type === 'unfriend-confirmed' ? 'unfriend' : type;
+        setBusy(`${busyKey}-${target}`);
         await removeFriendship(target);
         if (!mountedRef.current) return; // (2)
         setItems((p) => p.filter((u) => u.friendship?.friendship_id !== target));
@@ -335,6 +342,63 @@ export default function FriendsAll() {
           .fa-actions button { flex: 1; }
         }
       `}</style>
+
+      {/* ✅ v59.13.17 FIX #4: حوار تأكيد داخلي بدلاً من window.confirm */}
+      {confirmUnfriend ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="yam-unfriend-title"
+          dir="rtl"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16,
+            fontFamily: "'Noto Sans Arabic','Cairo','Tahoma',sans-serif",
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setConfirmUnfriend(null); }}
+        >
+          <div style={{
+            background: '#1f2233', color: '#f8fafc',
+            borderRadius: 14, width: '100%', maxWidth: 380,
+            padding: 20, boxShadow: '0 18px 48px rgba(0,0,0,0.45)',
+            border: '1px solid rgba(255,255,255,0.08)',
+          }}>
+            <h3 id="yam-unfriend-title" style={{ margin: '0 0 8px', fontSize: 17, fontWeight: 700 }}>
+              ❌ إزالة صديق
+            </h3>
+            <p style={{ margin: '0 0 18px', color: '#cbd5e1', fontSize: 14, lineHeight: 1.6 }}>
+              هل تريد إزالة هذا الصديق؟ يمكنك إعادة إرسال طلب صداقة لاحقاً.
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setConfirmUnfriend(null)}
+                style={{
+                  padding: '9px 16px', borderRadius: 10, cursor: 'pointer',
+                  background: 'transparent', color: 'inherit',
+                  border: '1px solid rgba(255,255,255,0.16)', fontWeight: 600,
+                }}
+              >إلغاء</button>
+              <button
+                type="button"
+                autoFocus
+                onClick={() => {
+                  const t = confirmUnfriend;
+                  setConfirmUnfriend(null);
+                  handleAction('unfriend-confirmed', t);
+                }}
+                style={{
+                  padding: '9px 18px', borderRadius: 10, cursor: 'pointer',
+                  background: '#dc2626', color: '#fff',
+                  border: 'none', fontWeight: 700,
+                }}
+              >نعم، أزل</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </MainLayout>
   );
 }

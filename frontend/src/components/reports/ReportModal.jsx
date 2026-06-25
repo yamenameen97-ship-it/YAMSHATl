@@ -50,6 +50,12 @@ export default function ReportModal({
   // ✅ v59.13.9 FIX #3: حماية الـ setState بعد unmount + إلغاء طلب axios إذا أغلق المودال أثناء الإرسال
   const isMountedRef = useRef(true);
   const abortRef = useRef(null);
+  // ✅ v59.13.14 FIX #1: مراجع لإمكانية الوصول (a11y) — focus trap + auto-focus + إعادة التركيز للمشغّل بعد الإغلاق
+  const dialogRef = useRef(null);
+  const closeBtnRef = useRef(null);
+  const detailsId = React.useId ? React.useId() : 'report-details-field';
+  const titleId = React.useId ? React.useId() : 'report-modal-title';
+  const previouslyFocusedRef = useRef(null);
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -61,18 +67,75 @@ export default function ReportModal({
 
   useEffect(() => {
     if (open) {
-      // ✅ v59.13.9 FIX #3: إعادة ضبط submitting أيضاً عند إعادة فتح المودال
-      // (سابقاً: لو المستخدم ألغى أثناء الإرسال ثم أعاد الفتح → الزر يبقى "جارٍ الإرسال...")
       setReason('');
       setDetails('');
       setDone(false);
       setError('');
       setSubmitting(false);
     } else {
-      // عند إغلاق المودال — ألغِ أي طلب جارٍ
       try { abortRef.current?.abort?.(); } catch { /* ignore */ }
     }
   }, [open]);
+
+  // ✅ v59.13.12 FIX #2 + v59.13.14 FIX #1: ESC + قفل التمرير + focus trap + auto-focus + استعادة التركيز السابق
+  useEffect(() => {
+    if (!open) return undefined;
+
+    // احفظ العنصر الذي كان مركَّزًا قبل فتح المودال لإعادة التركيز إليه عند الإغلاق
+    try {
+      previouslyFocusedRef.current = (typeof document !== 'undefined' && document.activeElement) || null;
+    } catch { /* ignore */ }
+
+    // ركّز تلقائيًا على زر الإغلاق (نقطة دخول آمنة) بعد paint قصير
+    const focusTimer = window.setTimeout(() => {
+      try { closeBtnRef.current?.focus?.(); } catch { /* ignore */ }
+    }, 30);
+
+    const getFocusables = () => {
+      const root = dialogRef.current;
+      if (!root) return [];
+      const sel = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+      return Array.from(root.querySelectorAll(sel)).filter((el) => !el.hasAttribute('hidden'));
+    };
+
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose?.();
+        return;
+      }
+      if (e.key === 'Tab') {
+        const list = getFocusables();
+        if (list.length === 0) return;
+        const first = list[0];
+        const last = list[list.length - 1];
+        const active = document.activeElement;
+        if (e.shiftKey && active === first) {
+          e.preventDefault();
+          try { last.focus(); } catch { /* ignore */ }
+        } else if (!e.shiftKey && active === last) {
+          e.preventDefault();
+          try { first.focus(); } catch { /* ignore */ }
+        }
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+      window.clearTimeout(focusTimer);
+      // أعِد التركيز إلى العنصر السابق (إن كان لا يزال في الـ DOM)
+      try {
+        const prev = previouslyFocusedRef.current;
+        if (prev && typeof prev.focus === 'function' && document.contains(prev)) {
+          prev.focus();
+        }
+      } catch { /* ignore */ }
+      previouslyFocusedRef.current = null;
+    };
+  }, [open, onClose]);
 
   const submit = useCallback(async () => {
     if (!reason) {
@@ -131,7 +194,11 @@ export default function ReportModal({
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
         className="report-modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         onClick={(e) => e.stopPropagation()}
         style={{
           width: '100%', maxWidth: 520,
@@ -152,8 +219,8 @@ export default function ReportModal({
         {!done ? (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-              <span style={{ fontSize: 24 }}>🚨</span>
-              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>
+              <span style={{ fontSize: 24 }} aria-hidden="true">🚨</span>
+              <h3 id={titleId} style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>
                 الإبلاغ عن مخالفة
               </h3>
             </div>
@@ -197,10 +264,11 @@ export default function ReportModal({
 
             {/* تفاصيل إضافية */}
             <div style={{ marginTop: 16 }}>
-              <label style={{ fontSize: 13, opacity: 0.85, marginBottom: 6, display: 'block' }}>
+              <label htmlFor={detailsId} style={{ fontSize: 13, opacity: 0.85, marginBottom: 6, display: 'block' }}>
                 تفاصيل إضافية (اختياري)
               </label>
               <textarea
+                id={detailsId}
                 value={details}
                 onChange={(e) => setDetails(e.target.value)}
                 maxLength={2000}
@@ -231,8 +299,10 @@ export default function ReportModal({
 
             <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
               <button
+                ref={closeBtnRef}
                 onClick={onClose}
                 disabled={submitting}
+                aria-label="إلغاء وإغلاق نافذة البلاغ"
                 style={{
                   flex: 1, padding: '12px 16px', borderRadius: 12,
                   background: 'rgba(255,255,255,0.08)', color: '#fff',
@@ -264,9 +334,9 @@ export default function ReportModal({
           </>
         ) : (
           /* بعد الإرسال */
-          <div style={{ textAlign: 'center', padding: '20px 10px' }}>
-            <div style={{ fontSize: 56, marginBottom: 10 }}>✅</div>
-            <h3 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700 }}>
+          <div style={{ textAlign: 'center', padding: '20px 10px' }} role="status" aria-live="polite">
+            <div style={{ fontSize: 56, marginBottom: 10 }} aria-hidden="true">✅</div>
+            <h3 id={titleId} style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700 }}>
               تم استلام بلاغك
             </h3>
             <p style={{ margin: '0 0 18px', fontSize: 14, opacity: 0.8, lineHeight: 1.7 }}>

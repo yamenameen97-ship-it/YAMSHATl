@@ -39,16 +39,48 @@ export default function MoreOptionsMenu({
   const [openMenu, setOpenMenu] = useState(false);
   const [openReport, setOpenReport] = useState(false);
   const wrapRef = useRef(null);
+  const triggerRef = useRef(null);
+  // ✅ v59.13.15 FIX #5: مرجع لعناصر القائمة لدعم تركيز تلقائي + أسهم تنقّل WAI-ARIA menu
+  const menuRef = useRef(null);
+  const [activeIdx, setActiveIdx] = useState(0);
 
-  // إغلاق عند النقر خارجاً
+  // ✅ v59.13.13 FIX #1: إغلاق عند النقر/اللمس خارجاً + ESC + إعادة التركيز للزر
   useEffect(() => {
+    if (!openMenu) return undefined;
     function handler(e) {
       if (wrapRef.current && !wrapRef.current.contains(e.target)) {
         setOpenMenu(false);
       }
     }
-    if (openMenu) document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    function onKey(e) {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        setOpenMenu(false);
+        // إعادة التركيز إلى زر الـ trigger ليُعرَف للمستخدم بلوحة المفاتيح
+        try { triggerRef.current?.focus?.(); } catch { /* ignore */ }
+      }
+    }
+    document.addEventListener('mousedown', handler);
+    document.addEventListener('touchstart', handler, { passive: true });
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('touchstart', handler);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [openMenu]);
+
+  // ✅ v59.13.15 FIX #5: عند فتح القائمة، ركّز على أول عنصر (WAI-ARIA menu pattern)
+  useEffect(() => {
+    if (!openMenu) { setActiveIdx(0); return; }
+    const t = window.setTimeout(() => {
+      const root = menuRef.current;
+      if (!root) return;
+      const first = root.querySelector('[role="menuitem"]');
+      try { first?.focus?.(); } catch { /* ignore */ }
+      setActiveIdx(0);
+    }, 20);
+    return () => window.clearTimeout(t);
   }, [openMenu]);
 
   const items = [];
@@ -90,8 +122,11 @@ export default function MoreOptionsMenu({
       dir="rtl"
     >
       <button
+        ref={triggerRef}
         type="button"
         aria-label="المزيد"
+        aria-haspopup="menu"
+        aria-expanded={openMenu}
         onClick={(e) => {
           e.stopPropagation();
           setOpenMenu((v) => !v);
@@ -109,6 +144,28 @@ export default function MoreOptionsMenu({
 
       {openMenu && (
         <div
+          ref={menuRef}
+          role="menu"
+          aria-label="خيارات إضافية"
+          aria-orientation="vertical"
+          onKeyDown={(e) => {
+            // ✅ v59.13.15 FIX #5: تنقّل أسهم اللوحة داخل القائمة حسب WAI-ARIA menu pattern
+            const root = menuRef.current;
+            if (!root) return;
+            const itemEls = Array.from(root.querySelectorAll('[role="menuitem"]'));
+            if (!itemEls.length) return;
+            const curIdx = itemEls.indexOf(document.activeElement);
+            let nextIdx = curIdx < 0 ? 0 : curIdx;
+            if (e.key === 'ArrowDown') nextIdx = (curIdx + 1) % itemEls.length;
+            else if (e.key === 'ArrowUp') nextIdx = (curIdx - 1 + itemEls.length) % itemEls.length;
+            else if (e.key === 'Home') nextIdx = 0;
+            else if (e.key === 'End') nextIdx = itemEls.length - 1;
+            else return;
+            e.preventDefault();
+            e.stopPropagation();
+            try { itemEls[nextIdx]?.focus(); } catch { /* ignore */ }
+            setActiveIdx(nextIdx);
+          }}
           style={{
             position: 'absolute', top: '100%', insetInlineEnd: 0,
             marginTop: 6, minWidth: 220, zIndex: 1000,
@@ -127,7 +184,12 @@ export default function MoreOptionsMenu({
           )}
           {items.map((it, i) => (
             <button
-              key={i}
+              key={`${it.label}-${i}`}
+              type="button"
+              role="menuitem"
+              // ✅ v59.13.15 FIX #5: roving tabindex — فقط العنصر النشط في Tab order
+              tabIndex={activeIdx === i ? 0 : -1}
+              onFocus={() => setActiveIdx(i)}
               onClick={(e) => {
                 e.stopPropagation();
                 setOpenMenu(false);
@@ -137,19 +199,22 @@ export default function MoreOptionsMenu({
                 width: '100%', textAlign: 'start',
                 display: 'flex', alignItems: 'center', gap: 10,
                 padding: '10px 12px', borderRadius: 10,
-                background: 'transparent', border: 'none', cursor: 'pointer',
+                background: activeIdx === i ? 'rgba(124,58,237,0.18)' : 'transparent',
+                border: 'none', cursor: 'pointer',
                 color: it.danger ? '#fca5a5' : '#fff',
                 fontSize: 14, fontWeight: 600,
                 fontFamily: 'inherit',
+                outline: 'none',
               }}
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.background = 'rgba(124,58,237,0.18)')
-              }
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.background = 'transparent')
-              }
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(124,58,237,0.18)';
+                setActiveIdx(i);
+              }}
+              onMouseLeave={(e) => {
+                if (activeIdx !== i) e.currentTarget.style.background = 'transparent';
+              }}
             >
-              <span style={{ fontSize: 18 }}>{it.icon}</span>
+              <span style={{ fontSize: 18 }} aria-hidden="true">{it.icon}</span>
               <span>{it.label}</span>
             </button>
           ))}

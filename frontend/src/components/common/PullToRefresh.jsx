@@ -1,12 +1,18 @@
 /**
- * PullToRefresh
- * -------------
+ * PullToRefresh — v59.13.18
+ * --------------------------
  * مكوّن لفّاف يضيف ميزة "السحب من أعلى للتحديث" لأي صفحة في يمشات.
  * يعمل بشكل صحيح مع RTL ويوفّر تجربة شبيهة بالتطبيقات الأصلية:
  *   ✓ مؤشّر دائري ينمو حسب مسافة السحب
  *   ✓ يدور تلقائياً أثناء التحديث
  *   ✓ يحترم safe-area على iOS
  *   ✓ يدعم خطوط Noto Sans Arabic للنص العربي
+ *
+ * 🔧 جديد v59.13.18:
+ *   • يقبل prop جديد: scrollContainerRef
+ *   • يمرّر هذا المرجع مباشرة لـ usePullToRefresh كي يلتقط الأحداث
+ *     على عنصر التمرير الفعلي بدل البحث عنه في الـ DOM.
+ *   • النتيجة: السحب يعمل في كل صفحات YamShat دون استثناء.
  */
 import { memo } from 'react';
 import usePullToRefresh from '../../hooks/usePullToRefresh.js';
@@ -20,6 +26,7 @@ function PullToRefresh({
   loadingText = 'جارٍ التحديث…',
   pullText = 'اسحب للتحديث',
   releaseText = 'اترك للتحديث',
+  scrollContainerRef = null, // ⭐ v59.13.18: مرجع حاوية التمرير من MainLayout
 }) {
   const {
     containerRef,
@@ -27,7 +34,7 @@ function PullToRefresh({
     isRefreshing,
     isTriggered,
     progress,
-  } = usePullToRefresh({ onRefresh, threshold, disabled });
+  } = usePullToRefresh({ onRefresh, threshold, disabled, scrollContainerRef });
 
   const visibleOffset = isRefreshing ? threshold : pullDistance;
   const indicatorOpacity = Math.min(1, Math.max(0.15, progress));

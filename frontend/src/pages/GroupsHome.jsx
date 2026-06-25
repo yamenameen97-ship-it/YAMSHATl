@@ -206,40 +206,88 @@ const GroupsHome = () => {
         `}</style>
 
         {/* البحث */}
+        {/* ✅ v59.13.15 FIX #1: تحويل الـ divs غير الدلالية إلى عناصر <button>/<form>
+            مع دعم كامل لـ keyboard a11y + إرسال البحث بمفتاح Enter + role/aria صحيحة. */}
         <section className="yam-search-filter-section" style={{ marginTop: '24px' }}>
-          <div
+          <button
+            type="button"
             className="yam-filter-btn"
             onClick={() => setShowFilters((v) => !v)}
             title="إظهار/إخفاء التصنيفات"
             aria-label="إظهار/إخفاء التصنيفات"
-          >⚙️</div>
-          <div className="yam-search-bar-wrap">
+            aria-expanded={showFilters}
+            aria-controls="yam-groups-categories"
+          >
+            <span aria-hidden="true">⚙️</span>
+          </button>
+          <form
+            className="yam-search-bar-wrap"
+            role="search"
+            onSubmit={(e) => { e.preventDefault(); /* البحث تلقائي عبر debounce */ }}
+          >
+            <label htmlFor="yam-groups-search" className="sr-only" style={{
+              position: 'absolute', width: 1, height: 1, padding: 0, margin: -1,
+              overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap', border: 0,
+            }}>ابحث عن مجموعة</label>
             <input
-              type="text"
+              id="yam-groups-search"
+              type="search"
               className="yam-search-input"
               placeholder="ابحث عن مجموعة..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               dir="rtl"
               enterKeyHint="search"
+              aria-label="بحث في المجموعات"
+              autoComplete="off"
             />
-            <span className="yam-search-icon">🔍</span>
-          </div>
+            <span className="yam-search-icon" aria-hidden="true">🔍</span>
+          </form>
         </section>
 
         {/* التصنيفات */}
         {showFilters && (
-          <section className="yam-categories-scroll">
-            {categories.map((cat) => (
-              <div
-                key={cat.id}
-                className={`yam-category-pill ${activeCategory === cat.name ? 'active' : ''}`}
-                onClick={() => setActiveCategory(cat.name)}
-              >
-                <span>{cat.icon}</span>
-                {cat.name}
-              </div>
-            ))}
+          <section
+            id="yam-groups-categories"
+            className="yam-categories-scroll"
+            role="tablist"
+            aria-label="تصنيفات المجموعات"
+          >
+            {categories.map((cat) => {
+              const isActive = activeCategory === cat.name;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  tabIndex={isActive ? 0 : -1}
+                  className={`yam-category-pill ${isActive ? 'active' : ''}`}
+                  onClick={() => setActiveCategory(cat.name)}
+                  onKeyDown={(e) => {
+                    // تنقل بأسهم لوحة المفاتيح بين التصنيفات (مع احترام RTL)
+                    const dir = e.currentTarget.closest('[dir="rtl"]') ? -1 : 1;
+                    const idx = categories.findIndex((c) => c.name === activeCategory);
+                    let next = -1;
+                    if (e.key === 'ArrowRight') next = idx + dir;
+                    else if (e.key === 'ArrowLeft') next = idx - dir;
+                    else if (e.key === 'Home') next = 0;
+                    else if (e.key === 'End') next = categories.length - 1;
+                    if (next >= 0 && next < categories.length) {
+                      e.preventDefault();
+                      setActiveCategory(categories[next].name);
+                      const root = e.currentTarget.parentElement;
+                      const btns = root?.querySelectorAll('.yam-category-pill');
+                      try { btns?.[next]?.focus(); } catch { /* ignore */ }
+                    }
+                  }}
+                  aria-label={`تصنيف ${cat.name}`}
+                >
+                  <span aria-hidden="true">{cat.icon}</span>
+                  {cat.name}
+                </button>
+              );
+            })}
           </section>
         )}
 
@@ -254,42 +302,63 @@ const GroupsHome = () => {
               {searchQuery.trim() ? 'لا توجد نتائج مطابقة لبحثك.' : 'لا توجد مجموعات حالياً.'}
             </div>
           ) : (
-            filteredGroups.map((group) => (
-              <div
-                key={group.id}
-                className="yam-group-card"
-                onClick={() => navigate(`/groups/${group.id}/chat`)}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="yam-group-main-info">
-                  <div className="yam-group-neon-icon" style={{ '--neon-color': group.color || '#8b5cf6' }}>
-                    <span style={{ color: group.color || '#8b5cf6' }}>{group.icon || '👥'}</span>
-                  </div>
-                  <div className="yam-group-text-details">
-                    <h3>{group.name} {group.verified && <span style={{ color: '#8b5cf6', fontSize: '14px' }}>✔️</span>}</h3>
-                    <p className="yam-group-desc">{group.description || group.desc || 'لا يوجد وصف للمجموعة'}</p>
-                    <div className="yam-group-meta">
-                      <span className="yam-member-count">👥 {group.members_count || group.members || 0} عضو</span>
-                      <span className="yam-status-dot" style={{ backgroundColor: '#22c55e', width: '8px', height: '8px', borderRadius: '50%' }}></span>
+            filteredGroups.map((group) => {
+              const openGroup = () => navigate(`/groups/${group.id}/chat`);
+              const openSettings = (e) => {
+                e?.stopPropagation?.();
+                navigate(`/groups/${group.id}/settings`);
+              };
+              return (
+                <div
+                  key={group.id}
+                  className="yam-group-card"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`فتح مجموعة ${group.name}${group.unread_count > 0 ? `، ${group.unread_count} رسالة غير مقروءة` : ''}`}
+                  onClick={openGroup}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      openGroup();
+                    }
+                  }}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="yam-group-main-info">
+                    <div className="yam-group-neon-icon" style={{ '--neon-color': group.color || '#8b5cf6' }}>
+                      <span style={{ color: group.color || '#8b5cf6' }} aria-hidden="true">{group.icon || '👥'}</span>
+                    </div>
+                    <div className="yam-group-text-details">
+                      <h3>{group.name} {group.verified && <span style={{ color: '#8b5cf6', fontSize: '14px' }} aria-label="موثّقة">✔️</span>}</h3>
+                      <p className="yam-group-desc">{group.description || group.desc || 'لا يوجد وصف للمجموعة'}</p>
+                      <div className="yam-group-meta">
+                        <span className="yam-member-count"><span aria-hidden="true">👥</span> {group.members_count || group.members || 0} عضو</span>
+                        <span className="yam-status-dot" aria-hidden="true" style={{ backgroundColor: '#22c55e', width: '8px', height: '8px', borderRadius: '50%' }}></span>
+                      </div>
                     </div>
                   </div>
+                  <div className="yam-group-side-info">
+                    <span className="yam-last-active">
+                      {group.is_active && <span className="yam-active-dot" aria-hidden="true"></span>}
+                      {group.last_active_human || 'نشط'}
+                    </span>
+                    {group.unread_count > 0 && (
+                      <div className="yam-unread-badge" aria-label={`${group.unread_count} غير مقروء`}>{group.unread_count}</div>
+                    )}
+                    <button
+                      type="button"
+                      className="yam-more-btn"
+                      onClick={openSettings}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openSettings(e); } }}
+                      aria-label={`إعدادات مجموعة ${group.name}`}
+                      style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+                    >
+                      <span aria-hidden="true">⋮</span>
+                    </button>
+                  </div>
                 </div>
-                <div className="yam-group-side-info">
-                  <span className="yam-last-active">
-                    {group.is_active && <span className="yam-active-dot"></span>}
-                    {group.last_active_human || 'نشط'}
-                  </span>
-                  {group.unread_count > 0 && <div className="yam-unread-badge">{group.unread_count}</div>}
-                  <div
-                    className="yam-more-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigate(`/groups/${group.id}/settings`);
-                    }}
-                  >⋮</div>
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </section>
       </div>

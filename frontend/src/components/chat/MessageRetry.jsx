@@ -1,4 +1,4 @@
-import { memo, useCallback, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 
 /**
  * MessageRetry
@@ -20,17 +20,28 @@ function MessageRetry({
   const isMine = message?.sender === currentUser;
   const isFailed = message?.status === 'failed' || message?.lifecycle?.status === 'failed';
   const [isRetrying, setIsRetrying] = useState(false);
-  
+
+  // ✅ v59.13.11 FIX #1: حماية setState بعد unmount عند رجوع await onRetry()
+  // المشكلة السابقة: إذا تم unmount المكوّن (الرسالة حُذفت، تم التنقّل لمحادثة أخرى،
+  // أو أُغلقت النافذة) أثناء عملية إعادة المحاولة، فإن setIsRetrying(false) في finally
+  // تُستدعى على مكوّن مزال → تحذير React: "Can't perform a state update on an unmounted component".
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
+
   const errorMessage = message?.queue_error || message?.error || 'فشل إرسال الرسالة';
-  
+
   const handleRetry = useCallback(async () => {
     if (!isFailed || isRetrying || !onRetry) return;
-    
+
     setIsRetrying(true);
     try {
       await onRetry(message);
     } finally {
-      setIsRetrying(false);
+      // ✅ v59.13.11 FIX #1: لا تستدع setState إذا أُزيل المكوّن
+      if (isMountedRef.current) setIsRetrying(false);
     }
   }, [isFailed, isRetrying, message, onRetry]);
   

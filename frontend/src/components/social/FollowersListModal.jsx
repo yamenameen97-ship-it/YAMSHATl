@@ -1,10 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useFollowList } from '../../hooks/useFollow.js';
 import FollowButton from './FollowButton.jsx';
 import { resolveMediaUrl } from '../../config/mediaConfig.js';
 
 /**
- * FollowersListModal - ู…ูˆุฏุงู„ ู„ุนุฑุถ ู‚ุงุฆู…ุฉ ุงู„ู…ุชุงุจุนูŠู† / ุงู„ู…ุชุงุจูŽุนูŠู† / ุงู„ุฃุตุฏู‚ุงุก ุงู„ู…ุดุชุฑูƒูŠู†
+ * FollowersListModal — مودال لعرض قائمة المتابعين / المتابَعين / الأصدقاء المشتركين.
+ *
+ * ✅ v59.13.11 FIX #5:
+ *   - إصلاح ترميز كل النصوص العربية المعطوبة (mojibake) — كانت تظهر
+ *     في الملف الأصلي كرموز مكسورة مثل "ุงู„ู…ุชุงุจุนูˆู†" و "โœ•" بدلاً من
+ *     "المتابِعون" و "✕" → كانت تُعرض للمستخدم رموزاً عشوائية غير مفهومة.
+ *   - إضافة dir="rtl" + خط Noto Sans Arabic للحاوية والبطاقة.
+ *   - إضافة دعم مفتاح Escape لإغلاق المودال (تجربة UX قياسية للمودالات).
+ *   - منع تمرير صفحة الخلفية أثناء فتح المودال (body scroll lock).
+ *
  * @param {string} username
  * @param {'followers'|'following'|'mutual'} initialTab
  * @param {function} onClose
@@ -18,26 +27,46 @@ export default function FollowersListModal({
   const [tab, setTab] = useState(initialTab);
   const { items, loading, error } = useFollowList(username, tab);
 
+  // ✅ v59.13.11 FIX #5: إغلاق بـ Escape
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose?.();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  // ✅ v59.13.11 FIX #5: منع تمرير الخلفية أثناء فتح المودال
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
   const tabs = [
-    { key: 'followers', label: 'ุงู„ู…ุชุงุจุนูˆู†' },
-    { key: 'following', label: 'ุงู„ู…ุชุงุจูŽุนูˆู†' },
-    { key: 'mutual', label: 'ุฃุตุฏู‚ุงุก ู…ุดุชุฑูƒูˆู†' },
+    { key: 'followers', label: 'المتابِعون' },
+    { key: 'following', label: 'المتابَعون' },
+    { key: 'mutual',    label: 'أصدقاء مشتركون' },
   ];
 
   return (
     <div
       role="dialog"
       aria-modal="true"
+      aria-label="قائمة المتابعين"
+      dir="rtl"
       className="ym-modal-backdrop"
       onClick={(e) => e.target === e.currentTarget && onClose?.()}
       style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
         zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 16,
+        fontFamily: '"Noto Sans Arabic","Cairo",system-ui,sans-serif',
       }}
     >
       <div
         className="ym-modal-content"
+        dir="rtl"
         style={{
           background: '#0F172A',
           color: '#fff',
@@ -49,6 +78,7 @@ export default function FollowersListModal({
           flexDirection: 'column',
           overflow: 'hidden',
           border: '1px solid #1F2937',
+          fontFamily: 'inherit',
         }}
       >
         {/* Header */}
@@ -58,19 +88,20 @@ export default function FollowersListModal({
             type="button"
             onClick={onClose}
             className="icon-only"
-            style={{ background: 'transparent', border: 0, color: '#9CA3AF', fontSize: 22, cursor: 'pointer' }}
-            aria-label="ุฅุบู„ุงู‚"
-          >โœ•</button>
+            style={{ background: 'transparent', border: 0, color: '#9CA3AF', fontSize: 22, cursor: 'pointer', fontFamily: 'inherit' }}
+            aria-label="إغلاق"
+          >✕</button>
         </div>
 
         {/* Tabs */}
         <div style={{ display: 'flex', borderBottom: '1px solid #1F2937' }}>
-          {tabs.map(t => (
+          {tabs.map((t) => (
             <button
               key={t.key}
               type="button"
               onClick={() => setTab(t.key)}
               className="no-unify"
+              aria-pressed={tab === t.key}
               style={{
                 flex: 1,
                 padding: '12px 8px',
@@ -81,6 +112,7 @@ export default function FollowersListModal({
                 fontWeight: tab === t.key ? 600 : 500,
                 cursor: 'pointer',
                 fontSize: 14,
+                fontFamily: 'inherit',
               }}
             >
               {t.label}
@@ -91,13 +123,13 @@ export default function FollowersListModal({
         {/* List */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
           {loading && (
-            <div style={{ padding: 24, textAlign: 'center', color: '#9CA3AF' }}>ุฌุงุฑูŠ ุงู„ุชุญู…ูŠู„โ€ฆ</div>
+            <div style={{ padding: 24, textAlign: 'center', color: '#9CA3AF' }}>جاري التحميل…</div>
           )}
           {error && !loading && (
-            <div style={{ padding: 24, textAlign: 'center', color: '#F87171' }}>ุชุนุฐุฑ ุงู„ุชุญู…ูŠู„</div>
+            <div style={{ padding: 24, textAlign: 'center', color: '#F87171' }}>تعذّر التحميل</div>
           )}
           {!loading && !error && items.length === 0 && (
-            <div style={{ padding: 24, textAlign: 'center', color: '#9CA3AF' }}>ู„ุง ูŠูˆุฌุฏ</div>
+            <div style={{ padding: 24, textAlign: 'center', color: '#9CA3AF' }}>لا يوجد</div>
           )}
           {!loading && items.map((user, idx) => {
             const name = user?.username || user?.name || user?.user?.username || `user-${idx}`;

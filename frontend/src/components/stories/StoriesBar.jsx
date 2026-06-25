@@ -171,16 +171,39 @@ export default function StoriesBar({ currentUser, onOpenComposer }) {
     }
   }, [revokeOptimisticBlobUrls]);
 
+  // ✅ v59.13.12 FIX #5: إيقاف polling عندما يكون التبويب مخفياً (لتوفير البطارية والداتا)
   useEffect(() => {
     loadGroups();
-    const t = setInterval(() => {
-      if (disabledRef.current) {
-        clearInterval(t);
-        return;
+    let intervalId = null;
+    const startPolling = () => {
+      if (intervalId) return;
+      intervalId = setInterval(() => {
+        if (disabledRef.current) { stopPolling(); return; }
+        if (typeof document !== 'undefined' && document.hidden) return;
+        loadGroups();
+      }, 60_000);
+    };
+    const stopPolling = () => {
+      if (intervalId) { clearInterval(intervalId); intervalId = null; }
+    };
+    const onVisibility = () => {
+      if (document.hidden) {
+        // في الخلفية: اترك الـ interval بدون تحميل (الفحص فوق يصدّ ال fetch)
+      } else {
+        // عند العودة: حمّل فوراً
+        if (!disabledRef.current) loadGroups();
       }
-      loadGroups();
-    }, 60_000); // تحديث كل دقيقة
-    return () => clearInterval(t);
+    };
+    startPolling();
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibility);
+    }
+    return () => {
+      stopPolling();
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisibility);
+      }
+    };
   }, [loadGroups]);
 
   const myGroup = useMemo(
@@ -195,16 +218,43 @@ export default function StoriesBar({ currentUser, onOpenComposer }) {
   /**
    * v59.10: عند اختيار ملف نفتح المحرّر الكامل (StoryEditor)
    * بدلاً من الرفع المباشر — حتى يستطيع المستخدم إضافة فلاتر/ستيكرز/كابشن/خصوصية.
+   *
+   * ✅ v59.13.14 FIX #5: تحقّق صارم من نوع الملف (MIME type) وحدّ أدنى للحجم.
+   * سابقًا كان الفحص فقط على الحجم الأعلى → يدخل أي ملف (حتى PDF بامتداد مزوّر)
+   * إلى StoryEditor ويفشل لاحقًا عند الرفع برسالة فنية غامضة.
    */
+  const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif'];
+  const ACCEPTED_VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm', 'video/x-m4v', 'video/3gpp', 'video/mpeg'];
+  const MAX_FILE_SIZE = 600 * 1024 * 1024; // 600 MB
+  const MIN_FILE_SIZE = 1024;               // 1 KB — تجنّب ملفات فارغة / placeholders
+
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    // فحص حجم بسيط على الواجهة (نسخة سريعة قبل الرفع)
-    if (file.size > 600 * 1024 * 1024) {
+
+    const type = (file.type || '').toLowerCase();
+    const isImage = type.startsWith('image/') && ACCEPTED_IMAGE_TYPES.includes(type);
+    const isVideo = type.startsWith('video/') && ACCEPTED_VIDEO_TYPES.includes(type);
+
+    // رفض الملفات غير المدعومة (حتى لو تمّ تزوير الامتداد)
+    if (!isImage && !isVideo) {
+      showToast('صيغة الملف غير مدعومة. اختر صورة أو فيديو.', 3500);
+      return;
+    }
+
+    // رفض الملفات الفارغة/التالفة (أصغر من 1KB)
+    if (file.size < MIN_FILE_SIZE) {
+      showToast('الملف فارغ أو تالف', 3000);
+      return;
+    }
+
+    // فحص الحد الأعلى للحجم على الواجهة قبل الرفع
+    if (file.size > MAX_FILE_SIZE) {
       showToast('الملف كبير جداً (الحد الأقصى 600MB)', 3500);
       return;
     }
+
     setPendingFile(file);
   };
 

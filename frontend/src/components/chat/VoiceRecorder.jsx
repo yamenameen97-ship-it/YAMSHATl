@@ -36,18 +36,24 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-export default function VoiceRecorder({ onSend, onCancel, onStateChange }) {
+// ✅ v59.13.16 FIX #4: حد أقصى لمدة التسجيل الصوتي (5 دقائق)
+const MAX_RECORDING_SECONDS = 300;
+
+export default function VoiceRecorder({ onSend, onCancel, onStateChange, maxSeconds = MAX_RECORDING_SECONDS }) {
   const [recordingState, setRecordingState] = useState('idle');
   const [duration, setDuration] = useState(0);
   const [waveSeed, setWaveSeed] = useState(`voice-${Date.now()}`);
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewBlob, setPreviewBlob] = useState(null);
+  // ✅ v59.13.16 FIX #4: بنر خطأ غير حاجب بدل من window.alert الذي يجمّد الواجهة
+  const [errorMessage, setErrorMessage] = useState('');
   const mediaRecorderRef = useRef(null);
   const mediaStreamRef = useRef(null);
   const audioChunksRef = useRef([]);
   const durationRef = useRef(0);
   const timerRef = useRef(null);
   const audioRef = useRef(null);
+  const errorTimerRef = useRef(null);
 
   useEffect(() => {
     onStateChange?.(recordingState);
@@ -66,6 +72,7 @@ export default function VoiceRecorder({ onSend, onCancel, onStateChange }) {
   // cleanup نهائي عند إزالة المكوّن: أوقف المؤقت + مسارات الميديا
   useEffect(() => () => {
     if (timerRef.current) window.clearInterval(timerRef.current);
+    if (errorTimerRef.current) window.clearTimeout(errorTimerRef.current);
     try {
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         // امنع تشغيل onstop بعد unmount لتفادي setState على مكوّن مزال
@@ -89,7 +96,23 @@ export default function VoiceRecorder({ onSend, onCancel, onStateChange }) {
     timerRef.current = window.setInterval(() => {
       durationRef.current += 1;
       setDuration(durationRef.current);
+      // ✅ v59.13.16 FIX #4: إيقاف تلقائي عند الوصول للحد الأقصى
+      if (durationRef.current >= maxSeconds) {
+        try {
+          if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+            mediaRecorderRef.current.stop();
+          }
+        } catch { /* ignore */ }
+        showError(`تم الوصول للحد الأقصى للتسجيل (${Math.floor(maxSeconds / 60)} دقائق).`, 3500);
+      }
     }, 1000);
+  };
+
+  // ✅ v59.13.16 FIX #4: عرض رسالة خطأ داخل المكوّن بدل alert
+  const showError = (text, ms = 4000) => {
+    setErrorMessage(text);
+    if (errorTimerRef.current) window.clearTimeout(errorTimerRef.current);
+    errorTimerRef.current = window.setTimeout(() => setErrorMessage(''), ms);
   };
 
   const stopTimer = () => {
@@ -100,6 +123,12 @@ export default function VoiceRecorder({ onSend, onCancel, onStateChange }) {
   };
 
   const startRecording = async () => {
+    setErrorMessage('');
+    // ✅ v59.13.16 FIX #4: تحقّق مسبق من دعم المتصفح بدون alert
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      showError('المتصفح لا يدعم التسجيل الصوتي في هذا السياق (جرّب على HTTPS).');
+      return;
+    }
     try {
       clearPreview();
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -140,8 +169,21 @@ export default function VoiceRecorder({ onSend, onCancel, onStateChange }) {
       setRecordingState('recording');
       startTimer();
     } catch (error) {
-      console.error(error);
-      window.alert('لا يمكن الوصول إلى الميكروفون أو المتصفح لا يدعم التسجيل الصوتي.');
+      // ✅ v59.13.16 FIX #4: بدل window.alert (الذي يجمّد الواجهة) — رسالة داخل المكوّن
+      console.warn('[VoiceRecorder] getUserMedia failed:', error?.name, error?.message);
+      const name = error?.name || '';
+      let msg = 'تعذّر بدء التسجيل الصوتي.';
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        msg = 'تم رفض الوصول للميكروفون. فعّل الإذن من إعدادات المتصفح ثم حاول مجدداً.';
+      } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        msg = 'لا يوجد ميكروفون متاح في هذا الجهاز.';
+      } else if (name === 'NotReadableError' || name === 'TrackStartError') {
+        msg = 'الميكروفون مشغول بتطبيق آخر. أغلقه ثم حاول مجدداً.';
+      } else if (name === 'SecurityError') {
+        msg = 'تسجيل الصوت يتطلّب اتصالاً آمناً (HTTPS).';
+      }
+      showError(msg, 5000);
+      setRecordingState('idle');
     }
   };
 
@@ -231,8 +273,38 @@ export default function VoiceRecorder({ onSend, onCancel, onStateChange }) {
         </div>
       </div>
 
+      {/* ✅ v59.13.16 FIX #4: بنر رسالة خطأ غير حاجب (يحل محل window.alert) */}
+      {errorMessage ? (
+        <div role="alert" style={{
+          padding: '10px 12px', borderRadius: 12,
+          background: 'rgba(239,68,68,0.12)', color: '#fca5a5',
+          fontSize: 13, border: '1px solid rgba(239,68,68,0.3)',
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <span aria-hidden="true">⚠️</span>
+          <span>{errorMessage}</span>
+        </div>
+      ) : null}
+
+      {/* ✅ v59.13.16 FIX #4: مؤشر الحد الأقصى للتسجيل */}
       {(recordingState === 'recording' || recordingState === 'paused') ? (
         <div style={{ display: 'grid', gap: 8 }}>
+          <div style={{
+            height: 4, borderRadius: 4,
+            background: 'rgba(255,255,255,0.08)', overflow: 'hidden',
+          }} aria-hidden="true">
+            <div style={{
+              height: '100%',
+              width: `${Math.min(100, (duration / maxSeconds) * 100)}%`,
+              background: duration / maxSeconds > 0.9
+                ? 'linear-gradient(90deg,#ef4444,#f97316)'
+                : 'linear-gradient(90deg,#8b5cf6,#a855f7)',
+              transition: 'width 250ms ease',
+            }} />
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'start' }}>
+            {formatTime(duration)} / {formatTime(maxSeconds)}
+          </div>
           <AudioWaveform seed={waveSeed} />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {recordingState === 'recording' ? (

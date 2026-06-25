@@ -13,6 +13,8 @@ import {
   updatePost,
   votePoll,
 } from '../../api/posts.js';
+// ✅ v59.13.16 FIX #5: ربط حقيقي بمسار /reports بدلاً من الحفظ المحلّي فقط
+import { submitReport } from '../../api/reports.js';
 import { useToast } from '../admin/ToastProvider.jsx';
 import { getCurrentUsername } from '../../utils/auth.js';
 import { avatarGradient, formatCompactNumber, formatTimeAgo, initialsFromName } from '../yamshat/YamshatDesign.js';
@@ -281,7 +283,29 @@ export default function ProFeedPostCard({ post, onRefresh }) {
     }
   };
 
-  const handleReport = () => {
+  // ✅ v59.13.16 FIX #5: إرسال فعلي لـ /reports عبر submitReport مع إبقاء نسخة محلية للأرشفة
+  const handleReport = async () => {
+    if (!selectedReportReason) {
+      pushToast({ type: 'error', title: 'يرجى اختيار سبب البلاغ' });
+      return;
+    }
+    // أرسل البلاغ فعلياً للخادم
+    let serverOk = false;
+    try {
+      await submitReport({
+        targetType: 'post',
+        targetId: post.id,
+        reason: selectedReportReason,
+        details: reportNote.trim() || null,
+        context: { source: 'web', target_label: `منشور @${post.username || ''}` },
+      });
+      serverOk = true;
+    } catch (error) {
+      // لا نفقد البلاغ — نخزّنه محلياً ونعرض رسالة خطأ
+      console.warn('[ProFeedPostCard] submitReport failed:', error?.response?.status, error?.message);
+    }
+
+    // حفظ أرشيفي محلي للوصول السريع (لوحة الإشراف المحلية)
     const nextReports = [
       {
         id: `${post.id}-${Date.now()}`,
@@ -289,12 +313,26 @@ export default function ProFeedPostCard({ post, onRefresh }) {
         username: post.username,
         reason: selectedReportReason,
         note: reportNote.trim(),
+        synced: serverOk,
         created_at: new Date().toISOString(),
       },
       ...loadReports(),
     ].slice(0, 200);
     saveReports(nextReports);
-    pushToast({ type: 'success', title: 'تم إرسال البلاغ', description: 'تم تسجيل البلاغ محلياً داخل النظام.' });
+
+    if (serverOk) {
+      pushToast({
+        type: 'success',
+        title: 'تم إرسال البلاغ',
+        description: 'سيتم مراجعته خلال 24 ساعة.',
+      });
+    } else {
+      pushToast({
+        type: 'warning',
+        title: 'تم حفظ البلاغ محلياً',
+        description: 'تعذّر الاتصال بالخادم — سيتم إعادة الإرسال عند توفر الاتصال.',
+      });
+    }
     setShowReportModal(false);
     setReportNote('');
   };

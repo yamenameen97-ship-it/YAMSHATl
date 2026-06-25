@@ -5,6 +5,8 @@ import { useToast } from '../components/admin/ToastProvider.jsx';
 import { addComment, getComments } from '../api/posts.js';
 import API from '../api/axios.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
+// ✅ v59.13.16 FIX #1: ربط ReportModal بصفحة الريلز — كان موجوداً لكن غير مستخدم في الريلز
+import ReportModal from '../components/reports/ReportModal.jsx';
 
 /**
  * Reels.jsx — v58 (Touch Master + Centered Tabs + Avatar-Follow)
@@ -73,6 +75,8 @@ export default function Reels() {
   const [showComments, setShowComments] = useState(false);
   const [activeComments, setActiveComments] = useState([]);
   const [commentText, setCommentText] = useState('');
+  // ✅ v59.13.16 FIX #1: هدف الإبلاغ لـ ReportModal
+  const [reportTarget, setReportTarget] = useState(null);
 
   const videoRefs = useRef([]);
   const containerRef = useRef(null);
@@ -466,6 +470,23 @@ export default function Reels() {
                     </svg>
                   </button>
                   <div className="ym-action-label">{fmtCount(reel.share_count)}</div>
+                </div>
+
+                {/* ✅ v59.13.16 FIX #1: زر إبلاغ على الريل */}
+                <div className="ym-action-group">
+                  <button
+                    type="button"
+                    className="ym-action-btn"
+                    onClick={() => setReportTarget({ id: reel.id, label: `ريل @${reel.username || ''}` })}
+                    aria-label="إبلاغ عن الريل"
+                    title="إبلاغ"
+                  >
+                    <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 21V4h12l-2 4 2 4H4" />
+                      <line x1="4" y1="21" x2="4" y2="4" />
+                    </svg>
+                  </button>
+                  <div className="ym-action-label">إبلاغ</div>
                 </div>
 
                 {/* Brand small button — v58: تم نقله إلى الأعلى مع الأفاتار */}
@@ -1062,6 +1083,14 @@ export default function Reels() {
           }
         `}</style>
       </div>
+      {/* ✅ v59.13.16 FIX #1: مودال الإبلاغ متصل بصفحة الريلز */}
+      <ReportModal
+        open={!!reportTarget}
+        onClose={() => setReportTarget(null)}
+        targetType="reel"
+        targetId={reportTarget?.id}
+        targetLabel={reportTarget?.label}
+      />
     </MainLayout>
   );
 }

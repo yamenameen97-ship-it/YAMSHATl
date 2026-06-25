@@ -1,4 +1,4 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import BottomNav from '../components/mobile/BottomNav';
 import MobileTopBar from '../components/mobile/MobileTopBar';
@@ -9,9 +9,16 @@ import PullToRefresh from '../components/common/PullToRefresh.jsx';
  * MobileLayout - التخطيط الموحد للجوال
  * يضمن بقاء الهيدر والفوتر ثابتين في جميع صفحات الموقع
  * + ميزة "اسحب للتحديث" (Pull-to-Refresh) موحدة على كل الصفحات
+ *
+ * 🔧 v59.13.18: تمرير mainRef مباشرة إلى PullToRefresh.
+ *   لم يعد usePullToRefresh يبحث عن حاوية التمرير في الـ DOM —
+ *   نُمرّرها له بشكل صريح كي يعمل السحب في كل الصفحات بدون استثناء.
  */
 function MobileLayout({ children }) {
   const location = useLocation();
+  // ⭐ v59.13.18: مرجع لعنصر التمرير الفعلي (main.mobile-main-content)
+  // نمرّره مباشرة إلى PullToRefresh → usePullToRefresh لتجنّب الاعتماد على CSS classes.
+  const mainRef = useRef(null);
 
   // تعطيل ميزة السحب في صفحات يكون فيها التمرير العمودي جزءاً من تجربة الصفحة الأساسية
   // (مثل الريلز التي تستخدم snap عمودي، أو الدردشة التي قد تتعارض مع keyboard)
@@ -64,7 +71,7 @@ function MobileLayout({ children }) {
     <div className="mobile-layout-container" dir="rtl" style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, -apple-system, sans-serif" }}>
       <MobileTopBar />
 
-      <main className="mobile-main-content">
+      <main className="mobile-main-content" ref={mainRef}>
         <PWAInstallBanner />
         <PullToRefresh
           onRefresh={onRefresh}
@@ -72,6 +79,7 @@ function MobileLayout({ children }) {
           pullText="اسحب للتحديث"
           releaseText="اترك للتحديث"
           loadingText="جارٍ التحديث…"
+          scrollContainerRef={mainRef}
         >
           {children}
         </PullToRefresh>

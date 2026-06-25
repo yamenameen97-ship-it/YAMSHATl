@@ -29,6 +29,10 @@ export default function StoryEditor({ file, onClose, onSuccess }) {
   const [showPoll, setShowPoll] = useState(false);
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState(['', '']);
+  // ✅ v59.13.17 FIX #5: مودال إضافة نص داخلي بدلاً من window.prompt
+  // (window.prompt تجربة سيئة جداً على الموبايل + محجوب في iframes/PWA)
+  const [showTextModal, setShowTextModal] = useState(false);
+  const [textDraft, setTextDraft] = useState('');
   // v59.10: معرفة إذا كان هناك تغييرات غير محفوظة
   const dirty = caption || stickers.length || texts.length || music || filterName || showPoll || pollQuestion;
 
@@ -63,11 +67,18 @@ export default function StoryEditor({ file, onClose, onSuccess }) {
     setStickers(s => [...s, { id: Date.now() + Math.random(), emoji, x: 40, y: 40 }]);
   };
 
+  // ✅ v59.13.17 FIX #5: فتح مودال داخلي بدلاً من window.prompt
   const addText = () => {
-    const text = window.prompt('أدخل النص:');
-    if (text && text.trim()) {
-      setTexts(t => [...t, { id: Date.now() + Math.random(), text: text.trim(), x: 30, y: 80 }]);
+    setTextDraft('');
+    setShowTextModal(true);
+  };
+  const confirmAddText = () => {
+    const value = textDraft.trim();
+    if (value) {
+      setTexts(t => [...t, { id: Date.now() + Math.random(), text: value, x: 30, y: 80 }]);
     }
+    setShowTextModal(false);
+    setTextDraft('');
   };
 
   const removeText = (id) => setTexts(t => t.filter(x => x.id !== id));
@@ -391,6 +402,80 @@ export default function StoryEditor({ file, onClose, onSuccess }) {
           </p>
         </div>
       </div>
+
+      {/* ✅ v59.13.17 FIX #5: مودال إضافة نص داخلي بدلاً عن window.prompt */}
+      {showTextModal ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="yam-story-text-title"
+          dir="rtl"
+          onClick={(e) => { if (e.target === e.currentTarget) { setShowTextModal(false); setTextDraft(''); } }}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 10000,
+            background: 'rgba(0,0,0,0.6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16,
+            fontFamily: "'Noto Sans Arabic','Cairo','Tahoma',sans-serif",
+          }}
+        >
+          <div style={{
+            background: '#1f2233', color: '#fff',
+            borderRadius: 14, width: '100%', maxWidth: 420,
+            padding: 18, boxShadow: '0 18px 48px rgba(0,0,0,0.45)',
+            border: '1px solid rgba(255,255,255,0.08)',
+          }}>
+            <h3 id="yam-story-text-title" style={{ margin: '0 0 12px', fontSize: 17, fontWeight: 700 }}>
+              🔤 إضافة نص للقصة
+            </h3>
+            <textarea
+              autoFocus
+              value={textDraft}
+              onChange={(e) => setTextDraft(e.target.value)}
+              placeholder="أدخل النص هنا…"
+              maxLength={140}
+              rows={3}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') { setShowTextModal(false); setTextDraft(''); }
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && textDraft.trim()) confirmAddText();
+              }}
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                padding: 12, borderRadius: 10,
+                background: 'rgba(255,255,255,0.06)',
+                color: 'inherit', border: '1px solid rgba(255,255,255,0.12)',
+                fontFamily: 'inherit', fontSize: 16, resize: 'vertical',
+              }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+              <span style={{ fontSize: 11, opacity: 0.55 }}>Ctrl/Cmd + Enter للإضافة</span>
+              <span style={{ fontSize: 12, opacity: 0.6 }}>{textDraft.length}/140</span>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => { setShowTextModal(false); setTextDraft(''); }}
+                style={{
+                  padding: '9px 16px', borderRadius: 10, cursor: 'pointer',
+                  background: 'transparent', color: 'inherit',
+                  border: '1px solid rgba(255,255,255,0.16)', fontWeight: 600,
+                }}
+              >إلغاء</button>
+              <button
+                type="button"
+                disabled={!textDraft.trim()}
+                onClick={confirmAddText}
+                style={{
+                  padding: '9px 18px', borderRadius: 10, cursor: 'pointer',
+                  background: 'var(--primary, #8b5cf6)', color: '#fff',
+                  border: 'none', fontWeight: 700,
+                  opacity: !textDraft.trim() ? 0.5 : 1,
+                }}
+              >إضافة</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <style>{editorStyles}</style>
     </div>

@@ -165,9 +165,13 @@ export default function ReelPlayer({
   }, [isActive, trackTimer]);
 
   /* ---------- 3) Tap handling (single = pause/play, double = like) ---------- */
+  // ✅ v59.13.12 FIX #3: double-tap يعمل LIKE فقط (لا yet unlike)
+  // سابقاً: لو الريل مُعجَب به → double-tap ثانية كان يلغي الإعجاب.
   const triggerHeart = useCallback(() => {
     setShowHeart(true);
-    onLike?.(reel);
+    if (!reel?.isLiked) {
+      onLike?.(reel);
+    }
     const id = window.setTimeout(() => {
       pendingTimersRef.current.delete(id);
       if (isMountedRef.current) setShowHeart(false);
@@ -222,7 +226,10 @@ export default function ReelPlayer({
     const bar = event.currentTarget;
     const rect = bar.getBoundingClientRect();
     const pageX = event.clientX ?? event.touches?.[0]?.clientX ?? event.changedTouches?.[0]?.clientX ?? 0;
-    const ratio = Math.max(0, Math.min(1, (pageX - rect.left) / rect.width));
+    // احترام RTL: لو البروجرس يتحرّك من اليمين، اعكس الحساب
+    const isRTL = (typeof document !== 'undefined') && document.documentElement.getAttribute('dir') === 'rtl';
+    const raw = (pageX - rect.left) / rect.width;
+    const ratio = Math.max(0, Math.min(1, isRTL ? 1 - raw : raw));
     v.currentTime = ratio * v.duration;
     setProgress(ratio * 100);
   }, []);
@@ -239,10 +246,39 @@ export default function ReelPlayer({
     return () => window.clearInterval(id);
   }, [isActive]);
 
+  // ✅ v59.13.16 تصحيح ترتيب hooks: نقل wakeImmersion قبل onProgressKey لتجنّب TDZ
   const wakeImmersion = useCallback(() => {
     lastImmersionRef.current = Date.now();
     setImmersive(false);
   }, []);
+
+  // ✅ v59.13.15 FIX #4: دعم لوحة المفاتيح لشريط التقدّم (role="slider" WAI-ARIA)
+  const onProgressKey = useCallback((event) => {
+    const v = videoRef.current;
+    if (!v || !v.duration) return;
+    let next = v.currentTime;
+    const step = Math.max(1, v.duration * 0.05); // 5% أو 1 ثانية حد أدنى
+    const bigStep = Math.max(5, v.duration * 0.1); // 10% لـ PageUp/PageDown
+    const isRTL = (typeof document !== 'undefined') && document.documentElement.getAttribute('dir') === 'rtl';
+    const fwd = isRTL ? 'ArrowLeft' : 'ArrowRight';
+    const back = isRTL ? 'ArrowRight' : 'ArrowLeft';
+    switch (event.key) {
+      case fwd: case 'ArrowUp': next = Math.min(v.duration, v.currentTime + step); break;
+      case back: case 'ArrowDown': next = Math.max(0, v.currentTime - step); break;
+      case 'PageUp': next = Math.min(v.duration, v.currentTime + bigStep); break;
+      case 'PageDown': next = Math.max(0, v.currentTime - bigStep); break;
+      case 'Home': next = 0; break;
+      case 'End': next = v.duration; break;
+      default: return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    try {
+      v.currentTime = next;
+      setProgress((next / v.duration) * 100);
+      wakeImmersion();
+    } catch { /* ignore */ }
+  }, [wakeImmersion]);
 
   /* ---------- 6) Cleanup on unmount ---------- */
   useEffect(() => {
@@ -480,16 +516,21 @@ export default function ReelPlayer({
         </div>
       )}
 
-      {/* Progress bar (mouse + touch) */}
+      {/* Progress bar (mouse + touch + keyboard) */}
+      {/* ✅ v59.13.15 FIX #4: إضافة tabIndex + onKeyDown + aria-valuetext لدعم لوحة المفاتيح وقارئات الشاشة */}
       <div
         className="reel-progress"
         onClick={onProgressTap}
         onTouchEnd={onProgressTap}
+        onKeyDown={onProgressKey}
         role="slider"
-        aria-label="مؤشر التقدم"
-        aria-valuenow={Math.round(progress)}
-        aria-valuemin={0}
-        aria-valuemax={100}
+        tabIndex={isActive ? 0 : -1}
+        aria-label="مؤشر تقدّم الريل — استخدم الأسهم للتقدّم والرجوع"
+          aria-valuenow={Math.round(progress)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        aria-valuetext={`${Math.round(progress)} بالمئة`}
+          aria-orientation="horizontal"
       >
         <div className="reel-progress-fill" style={{ width: `${progress}%` }} />
       </div>

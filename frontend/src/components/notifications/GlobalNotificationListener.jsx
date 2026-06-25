@@ -19,16 +19,10 @@ export default function GlobalNotificationListener() {
   const upsertNotification = useNotificationStore((state) => state.upsertNotification);
   const lastBeepRef = useRef(0);
 
-  useEffect(() => {
-    // Try to ask for notification permission on first mount. We don't force
-    // it; the browser will silently keep the default state if the user has
-    // already decided.
-    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-      try {
-        Notification.requestPermission().catch(() => {});
-      } catch (_) { /* noop */ }
-    }
-  }, []);
+  // ✅ v59.13.14 FIX #4: تمّ حذف استدعاء Notification.requestPermission() التلقائي عند mount.
+  // السبب: Chrome/Firefox الحديثة تعتبر طلب الصلاحية دون user gesture (نقر/لمس)
+  // بمثابة spam وقد ترفضه تلقائيًا. أصبح الطلب حصريًا عبر
+  // <NotificationPermissionPrompt /> الذي يعرض زرًا صريحًا للمستخدم.
 
   useEffect(() => {
     const handleIncoming = (raw) => {
@@ -60,17 +54,30 @@ export default function GlobalNotificationListener() {
             });
             notif.onclick = () => {
               try { window.focus(); } catch (_) {}
+              // ✅ v59.13.14 FIX #4: استخدم SPA navigation عبر history.pushState + popstate
+              // بدلًا من location.assign الذي يعيد تحميل التطبيق بالكامل ويفقد حالة React.
               if (item.path) {
-                try { window.location.assign(item.path); } catch (_) {}
+                try {
+                  if (typeof window.history?.pushState === 'function') {
+                    window.history.pushState({}, '', item.path);
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  } else {
+                    window.location.assign(item.path);
+                  }
+                } catch (_) {
+                  try { window.location.assign(item.path); } catch (__) {}
+                }
               }
               notif.close();
             };
           }
         } catch (_) { /* noop */ }
 
-        // Short beep (skip if a beep already played in the last 1.5s).
+        // ✅ v59.13.14 FIX #4: Beep فقط عندما يكون التبويب فعليًا في الخلفية أو غير مركَّز.
+        // سابقًا: كان beep يصدر حتّى عندما يكون المستخدم ينظر للشاشة → إزعاج صوتي غير مبرّر.
+        const tabHasFocus = typeof document !== 'undefined' && (document.hidden || !document.hasFocus?.());
         const now = Date.now();
-        if (now - lastBeepRef.current > 1500) {
+        if (tabHasFocus && now - lastBeepRef.current > 1500) {
           lastBeepRef.current = now;
           try {
             const Ctx = window.AudioContext || window.webkitAudioContext;

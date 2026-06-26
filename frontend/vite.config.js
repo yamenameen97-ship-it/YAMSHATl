@@ -5,9 +5,15 @@ import { VitePWA } from 'vite-plugin-pwa';
 import compression from 'vite-plugin-compression';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { readFileSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// v59.13.19 UX FIX: حقن رقم الإصدار + تاريخ البناء وقت البناء لعرضها في صفحة "عن التطبيق".
+const __pkg__ = JSON.parse(readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'));
+const __APP_VERSION__ = JSON.stringify(__pkg__.version);
+const __APP_BUILD_DATE__ = JSON.stringify(new Date().toISOString().slice(0, 10).replace(/-/g, '.'));
 
 const enableAnalyze = process.env.ANALYZE === 'true';
 const enableCompression = process.env.COMPRESS === 'true';
@@ -24,6 +30,10 @@ const enablePwa = false; // Fixed to prevent Render serving old cached admin das
 const manualChunks = undefined;
 
 export default defineConfig({
+  define: {
+    __APP_VERSION__,
+    __APP_BUILD_DATE__,
+  },
   plugins: [
     react({
       // Enable JSX fast refresh

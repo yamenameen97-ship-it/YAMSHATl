@@ -1,0 +1,319 @@
+/* ============================================================
+   🛠️ YAMSHAT — v59.13.20 Mobile Pull Fix (Definitive)
+   ------------------------------------------------------------
+   هذا الملف يُحمَّل **آخر شيء** في main.jsx ويفوز على كل ما سبق.
+   هدفه: ضمان عمل التمرير والسحب على الجوال بشكل قاطع.
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   التشخيص الجذري لمشكلة "السحب لا يستجيب":
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   ❶ Re-attach Storm في usePullToRefresh (مُصلَح في JS)
+   ❷ CSS قديم قد يحقن touch-action:none أو pointer-events:none
+   ❸ overlay بنفس مستوى main يلتقط أحداث اللمس
+   ❹ overflow-y:hidden على .ym-ptr-content أو wrapper داخلي يخنق التمرير
+   ❺ banners مع position:fixed بأبعاد كاملة تغطي الشاشة
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   هذا الملف يفرض القواعد الصحيحة بشكل قاطع.
+   ============================================================ */
+
+
+/* ─────────────────────────────────────────────────────────────
+   1) قاعدة قاطعة: لا touch-action:none على أي حاوية رئيسية
+   ───────────────────────────────────────────────────────────── */
+html,
+html[lang],
+html[dir],
+body,
+#root,
+.app-shell,
+.main-shell,
+.mobile-layout-container,
+.mobile-main-content,
+main.mobile-main-content,
+.ym-ptr-container,
+.ym-ptr-content,
+.page-content,
+main.page-content {
+  touch-action: pan-y pinch-zoom !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   2) ⭐ Scroll container هو main وحده — لا أحد آخر يتمرّر
+   ───────────────────────────────────────────────────────────── */
+main.mobile-main-content,
+.mobile-main-content {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+
+  /* التمرير الفعلي */
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+  overscroll-behavior-x: none !important;
+
+  /* لا shadow / filter يكسر التمرير */
+  filter: none !important;
+  -webkit-filter: none !important;
+
+  /* اللمس */
+  touch-action: pan-y pinch-zoom !important;
+  pointer-events: auto !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   3) ⭐⭐⭐ PullToRefresh wrapper — شفاف تماماً للتمرير
+   ─────────────────────────────────────────────────────────────
+   هذه أهم قواعد في هذا الملف. wrapper الـ PTR يجب ألا يحجب الـ
+   touch ولا يحدّ الـ overflow. كل ما يفعله هو وضع indicator في
+   الأعلى وتزحيف المحتوى أثناء السحب.
+*/
+.ym-ptr-container,
+main.mobile-main-content > .ym-ptr-container,
+.mobile-main-content > .ym-ptr-container {
+  position: relative !important;
+  /* لا تمرير هنا — main هو الذي يتمرّر */
+  overflow: visible !important;
+  overflow-x: visible !important;
+  overflow-y: visible !important;
+
+  /* لا height ثابت — يتمدّد طبيعياً */
+  width: 100% !important;
+  min-height: 100% !important;
+  height: auto !important;
+  max-height: none !important;
+
+  /* flex item: يأخذ المساحة المتبقية */
+  flex: 1 1 auto !important;
+
+  /* اللمس: تمرير عمودي مفتوح بالكامل */
+  touch-action: pan-y pinch-zoom !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+
+  /* استجابة فورية لأحداث اللمس */
+  pointer-events: auto !important;
+
+  /* لا transform يحجب الأبناء عن استقبال اللمس */
+  /* (transform مسموح على ym-ptr-content فقط — وهو ابن مباشر) */
+}
+
+.ym-ptr-content {
+  overflow: visible !important;
+  min-height: 100%;
+  width: 100%;
+  height: auto !important;
+  touch-action: pan-y pinch-zoom !important;
+  pointer-events: auto !important;
+  /* transform يُطبَّق inline أثناء السحب — لا نتدخّل هنا */
+  will-change: transform;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   4) ⛔ منع overlays شفافة من حجب اللمس
+   ─────────────────────────────────────────────────────────────
+   أي عنصر يضع inset:0 + position:fixed + transparent يجب أن
+   يكون pointer-events:none ما لم يكن مرئيًا فعلاً.
+*/
+.modal-backdrop[hidden],
+.overlay[hidden],
+[data-overlay="true"][hidden],
+[aria-hidden="true"][data-floating="true"] {
+  pointer-events: none !important;
+  touch-action: auto !important;
+}
+
+/* drawer مغلق لا يجب أن يحجب اللمس */
+.drawer[aria-hidden="true"],
+.sidebar[aria-hidden="true"],
+.bottom-sheet[aria-hidden="true"],
+[role="dialog"][aria-hidden="true"] {
+  pointer-events: none !important;
+  visibility: hidden !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   5) PWA Install Banner — لا يحجب التمرير حتى لو ظاهر
+   ───────────────────────────────────────────────────────────── */
+.pwa-install-banner,
+.pwa-install-prompt,
+div[class*="pwa-install"],
+div[class*="install-prompt"] {
+  flex-shrink: 0 !important;
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+  /* لا position:fixed داخل main — يجب أن يكون static/relative */
+  position: relative !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   6) صفحات المحتوى — تتدفّق طبيعياً، لا overflow داخلي
+   ───────────────────────────────────────────────────────────── */
+.ym-feed,
+.ym-feed-mobile,
+.ym-posts-list,
+.feed-container,
+.feed-list,
+.posts-list,
+.friends-page,
+.notifications-page,
+.groups-page,
+.profile-page,
+.settings-page,
+.saved-page,
+.search-page,
+.stories-page,
+[data-page]:not([data-page="reels"]):not([data-page="chat"]) {
+  overflow: visible !important;
+  overflow-x: visible !important;
+  overflow-y: visible !important;
+  height: auto !important;
+  max-height: none !important;
+  min-height: auto;
+  touch-action: pan-y pinch-zoom !important;
+  -webkit-overflow-scrolling: touch !important;
+  pointer-events: auto !important;
+  transform: none !important;
+  will-change: auto !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   7) البطاقات — لا تأكل التمرير العمودي
+   ───────────────────────────────────────────────────────────── */
+.ym-post-card,
+.ym-feed-card,
+.mobile-post-card,
+.post-card,
+.feed-card,
+.post-item,
+.notification-item,
+.conversation-item,
+.chat-list-item,
+.friend-item,
+.user-row,
+.ym-list-row,
+.story-card,
+article[class*="post"],
+article[class*="feed"] {
+  touch-action: pan-y pinch-zoom !important;
+  -webkit-tap-highlight-color: transparent;
+  pointer-events: auto !important;
+  overflow: visible;
+}
+
+/* صور وفيديو داخل البطاقات */
+.ym-post-card img,
+.ym-post-card video,
+.feed-card img,
+.feed-card video,
+.post-card img,
+.post-card video,
+.mobile-post-card img,
+.mobile-post-card video,
+article img,
+article video {
+  touch-action: pan-y pinch-zoom !important;
+  -webkit-user-drag: none;
+  user-drag: none;
+  -webkit-touch-callout: none;
+  pointer-events: auto;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   8) أزرار/روابط — استجابة فورية، لكن لا تأكل التمرير
+   ───────────────────────────────────────────────────────────── */
+button,
+a,
+[role="button"],
+[role="tab"],
+[role="link"],
+[role="menuitem"] {
+  touch-action: manipulation !important;
+  -webkit-tap-highlight-color: transparent;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   9) ⛔ حماية حاسمة ضد touch-action:none inline
+   ───────────────────────────────────────────────────────────── */
+html[style*="touch-action: none"],
+html[style*="touch-action:none"],
+body[style*="touch-action: none"],
+body[style*="touch-action:none"],
+#root[style*="touch-action: none"],
+#root[style*="touch-action:none"],
+.mobile-layout-container[style*="touch-action: none"],
+.mobile-main-content[style*="touch-action: none"],
+.ym-ptr-container[style*="touch-action: none"],
+.ym-ptr-content[style*="touch-action: none"] {
+  touch-action: pan-x pan-y pinch-zoom !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   10) ⛔ حماية ضد pointer-events:none غير مقصودة
+   ───────────────────────────────────────────────────────────── */
+main.mobile-main-content[style*="pointer-events: none"],
+.mobile-main-content[style*="pointer-events: none"],
+.ym-ptr-container[style*="pointer-events: none"],
+.ym-ptr-content[style*="pointer-events: none"] {
+  pointer-events: auto !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   11) Reels & Stories — استثناء مقصود (snap scroll عمودي)
+   ───────────────────────────────────────────────────────────── */
+main.mobile-main-content:has(.reels-feed-mobile),
+main.mobile-main-content:has(.ym-reels-container),
+main.mobile-main-content:has([data-page="reels"]) {
+  overflow: hidden !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.reels-feed-mobile,
+.ym-reels-container,
+[data-page="reels"] .reels-scroller {
+  overflow-y: auto !important;
+  scroll-snap-type: y mandatory !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  height: 100% !important;
+  height: 100dvh !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   12) إخفاء scrollbar (تجميل)
+   ───────────────────────────────────────────────────────────── */
+main.mobile-main-content::-webkit-scrollbar,
+.mobile-main-content::-webkit-scrollbar {
+  width: 0;
+  background: transparent;
+}
+
+main.mobile-main-content {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+
+/* ============================================================
+   ✨ نهاية v59.13.20 — السحب يجب أن يعمل الآن في كل صفحة.
+   إن لم يعمل: افتح DevTools (Mobile View) وافحص:
+     - getComputedStyle(main.mobile-main-content).overflowY = "auto"
+     - getComputedStyle(main.mobile-main-content).touchAction = "pan-y..."
+     - mainEl.scrollHeight > mainEl.clientHeight (هل المحتوى يتجاوز الشاشة؟)
+   ============================================================ */

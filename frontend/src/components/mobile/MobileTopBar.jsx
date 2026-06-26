@@ -1,6 +1,7 @@
 import { memo, useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../../store/appStore.js';
+import { useNotificationStore, selectUnreadNotificationsCount } from '../../store/notificationStore.js';
 import { logoutUser } from '../../api/auth.js';
 import { clearStoredUser } from '../../utils/auth.js';
 import YamServicesMenu from '../ui/YamServicesMenu.jsx';
@@ -27,6 +28,9 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
   const navigate = useNavigate();
   const user = useAppStore((state) => state.user);
   const [menuOpen, setMenuOpen] = useState(false);
+  // v59.13.19 UX FIX: عدد الإشعارات غير المقروءة — يظهر كشارة على الجرس
+  const unreadCount = useNotificationStore(selectUnreadNotificationsCount);
+  const unreadLabel = unreadCount > 99 ? '99+' : String(unreadCount);
 
   const openMenu = useCallback(() => {
     if (typeof onMenuClick === 'function') {
@@ -81,17 +85,26 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
 
           {/* === العناصر الوسطى/اليمنى === */}
           <div className="ym-topbar-actions">
-            {/* 2) جرس الإشعارات */}
+            {/* 2) جرس الإشعارات — v59.13.19: أضفت شارة عدد غير المقروء */}
             <button
               type="button"
               className="ym-topbar-icon ym-topbar-bell"
-              aria-label="الإشعارات"
+              aria-label={unreadCount > 0 ? `الإشعارات (${unreadCount} غير مقروءة)` : 'الإشعارات'}
               onClick={() => navigate('/notifications')}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
                 <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
               </svg>
+              {unreadCount > 0 && (
+                <span
+                  className="ym-topbar-bell-badge"
+                  aria-hidden="true"
+                  data-count={unreadCount}
+                >
+                  {unreadLabel}
+                </span>
+              )}
             </button>
 
             {/* 3) المجموعات */}
@@ -252,6 +265,31 @@ function MobileTopBar({ onMenuClick, transparent = false }) {
           border-radius: 8px;
           flex-shrink: 0;
           transition: background 0.15s;
+          position: relative; /* v59.13.19: لوضع شارة العدد */
+        }
+        /* v59.13.19 UX FIX: شارة إشعارات غير مقروءة على الجرس */
+        .ym-topbar-bell-badge {
+          position: absolute;
+          top: 2px;
+          right: 2px;
+          min-width: 16px;
+          height: 16px;
+          padding: 0 4px;
+          background: linear-gradient(135deg, #ef4444, #dc2626);
+          color: #fff;
+          font-size: 10px;
+          font-weight: 700;
+          line-height: 16px;
+          text-align: center;
+          border-radius: 999px;
+          box-shadow: 0 0 0 2px #0A0D1A;
+          font-family: 'Noto Sans Arabic', system-ui, sans-serif;
+          pointer-events: none;
+          animation: ym-bell-pop 0.25s ease;
+        }
+        @keyframes ym-bell-pop {
+          from { transform: scale(0.6); opacity: 0; }
+          to   { transform: scale(1);   opacity: 1; }
         }
         .ym-topbar-icon svg {
           width: 22px;

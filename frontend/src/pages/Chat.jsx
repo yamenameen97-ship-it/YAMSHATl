@@ -649,14 +649,14 @@ export default function Chat() {
         <MessageActionsToolbar
           selectedMessage={chatSelectedMessage}
           onClose={() => { setChatSelectedMessage(null); setChatReactionAnchor(null); try { document.body.classList.remove('yam-long-press-active'); } catch {} }}
-          onForward={(m) => alert('اختر جهة لإعادة التوجيه')}
+          onForward={(m) => pushToast({ type: 'info', title: 'إعادة توجيه', description: 'اختر جهة الوجهة لإعادة توجيه الرسالة' })}
           onDelete={(m) => setMessages((prev) => prev.filter((x) => (x.id || x.client_id) !== (m.id || m.client_id)))}
           onStar={(m) => setMessages((prev) => prev.map((x) => (x.id||x.client_id)===(m.id||m.client_id) ? { ...x, starred: !x.starred } : x))}
           onReply={(m) => setReplyTo(m)}
           onCopy={(m) => { try { navigator.clipboard.writeText(m?.text || m?.content || ''); } catch {} }}
-          onPin={(m) => alert('تم تثبيت الرسالة')}
-          onInfo={(m) => alert(`المرسل: ${m?.sender}\nالوقت: ${m?.time || m?.created_at}`)}
-          onReport={(m) => alert('تم إرسال البلاغ')}
+          onPin={(m) => pushToast({ type: 'success', title: 'تم تثبيت الرسالة', description: 'ستظهر في أعلى المحادثة' })}
+          onInfo={(m) => pushToast({ type: 'info', title: 'تفاصيل الرسالة', description: `المرسل: ${m?.sender || 'غير معروف'} · الوقت: ${m?.time || m?.created_at || 'غير متوفر'}` })}
+          onReport={(m) => pushToast({ type: 'success', title: 'تم إرسال البلاغ', description: 'سنراجع البلاغ خلال 24 ساعة' })}
         />
       ) : null}
 

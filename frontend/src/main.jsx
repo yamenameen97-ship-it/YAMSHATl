@@ -81,9 +81,12 @@ import './styles/admin-fullscreen-fix-v59.12.css';
 /* 🩹 v59.13.1 — Fix Pack: زر (+) في الشريط السفلي + شريط التصفية + صندوق "بماذا تفكر؟" */
 import './styles/yamshat-fixes-v59.13.1.css';
 /* 🛠️ v59.13.2 — إصلاح جذري لعدم استجابة الصفحات للسحب على الجوال (ويب + PWA)
-   حلّ تعارض overflow بين v59.10 CSS و MobileLayout JSX + إصلاح Pull-to-Refresh
-   ⚠️ يجب أن يبقى آخر CSS مطلقاً — لا تضف import بعده */
+   حلّ تعارض overflow بين v59.10 CSS و MobileLayout JSX + إصلاح Pull-to-Refresh */
 import './styles/mobile-scroll-final-v59.13.2.css';
+/* 🩹 v59.13.20 — Definitive Mobile Pull Fix — يفوز على كل ما سبق.
+   يُصلح: re-attach storm + overlays + touch-action:none + pointer-events:none
+   ⚠️ يجب أن يبقى آخر CSS مطلقاً — لا تضف import CSS بعده */
+import './styles/mobile-pull-fix-v59.13.20.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { pwaInitializer } from './services/pwaInitializer.js';
 import { smoothTouchLayer } from './services/smoothTouchLayer.js';

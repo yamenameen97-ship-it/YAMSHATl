@@ -175,7 +175,28 @@ function MobilePostCard({
         {isLive && <div className="ym-live-overlay-label">مباشر الآن LIVE</div>}
         {banner && banner.type === 'image' ? (
           <div className="banner-image-container">
-            <img src={banner.url} alt="" loading="lazy" decoding="async" />
+            {/* v59.13.19 UX FIX: alt وصفي للوصولية + معالجة خطأ تحميل
+                الصورة بدل إظهار أيقونة "صورة مكسورة" للمستخدم */}
+            <img
+              src={banner.url}
+              alt={(text && String(text).trim().slice(0, 140)) || `صورة منشور من ${authorName}`}
+              loading="lazy"
+              decoding="async"
+              onError={(e) => {
+                try {
+                  const el = e.currentTarget;
+                  el.style.display = 'none';
+                  if (el.parentNode && !el.parentNode.querySelector('.banner-image-fallback')) {
+                    const fb = document.createElement('div');
+                    fb.className = 'banner-image-fallback';
+                    fb.setAttribute('role', 'img');
+                    fb.setAttribute('aria-label', 'تعذّر تحميل الصورة');
+                    fb.innerText = '🖼️ تعذّر تحميل الصورة';
+                    el.parentNode.appendChild(fb);
+                  }
+                } catch { /* ignore */ }
+              }}
+            />
             {isLive && (
               <div className="banner-live-info">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="white" aria-hidden="true">
@@ -257,12 +278,27 @@ function MobilePostCard({
             <span className="ym-count">{formatCount(Number(comments) || 0)}</span>
           </button>
 
-          {/* إعجاب (أقصى اليمين على الشاشة) */}
-          <button className={`ym-footer-btn ym-footer-btn-like ${liked ? 'liked' : ''}`} aria-label="إعجاب" onClick={() => onLike?.(post)}>
-            <svg viewBox="0 0 24 24" fill="#8B5CF6" stroke="#8B5CF6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          {/* إعجاب (أقصى اليمين على الشاشة) — v59.13.19 UX FIX:
+             القلب يعكس حالة liked فعلياً (ممتلئ بنفسجي عند الإعجاب،
+             مفرَّغ رمادي بدون إعجاب)، والعدد كذلك. */}
+          <button
+            className={`ym-footer-btn ym-footer-btn-like ${liked ? 'liked' : ''}`}
+            aria-label={liked ? 'إلغاء الإعجاب' : 'إعجاب'}
+            aria-pressed={liked ? 'true' : 'false'}
+            onClick={() => onLike?.(post)}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill={liked ? '#8B5CF6' : 'none'}
+              stroke={liked ? '#8B5CF6' : 'currentColor'}
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
               <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
             </svg>
-            <span className="ym-count text-purple">{formatCount(Number(likes) || 0)}</span>
+            <span className={`ym-count ${liked ? 'text-purple' : ''}`}>{formatCount(Number(likes) || 0)}</span>
           </button>
         </div>
       </footer>
@@ -434,6 +470,21 @@ function MobilePostCard({
           width: 100%;
           height: 100%;
           object-fit: cover;
+        }
+        /* v59.13.19 UX FIX: بديل احتياطي عند فشل تحميل صورة المنشور */
+        .banner-image-fallback {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: linear-gradient(135deg, #1a1f33 0%, #0f1422 100%);
+          color: #9CA3AF;
+          font-size: 0.85rem;
+          font-family: 'Noto Sans Arabic', 'Cairo', system-ui, sans-serif;
+          text-align: center;
+          padding: 12px;
+          direction: rtl;
         }
         .banner-logo-container {
           width: 100%;

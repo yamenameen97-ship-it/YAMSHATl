@@ -731,13 +731,17 @@ export default function Settings() {
               </Card>
             ) : null}
 
-            {/* ===== عن التطبيق ===== */}
+            {/* ===== عن التطبيق — v59.13.19 UX FIX: الإصدار الحقيقي من build time =====  */}
             {activeTab === 'about' ? (
               <Card style={{ padding: 18 }}>
                 <h3 style={{ marginTop: 0 }}>عن يمشات</h3>
                 <div style={{ display: 'grid', gap: 10 }}>
-                  <SettingsRow icon="📦" title="الإصدار"><span className="muted">v30.0.0</span></SettingsRow>
-                  <SettingsRow icon="🏗️" title="رقم البناء"><span className="muted">2026.06.14</span></SettingsRow>
+                  <SettingsRow icon="📦" title="الإصدار">
+                    <span className="muted">{`v${__APP_VERSION__ || (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_APP_VERSION) || '59.13.19'}`}</span>
+                  </SettingsRow>
+                  <SettingsRow icon="🏗️" title="رقم البناء">
+                    <span className="muted">{__APP_BUILD_DATE__ || new Date().toISOString().slice(0, 10).replace(/-/g, '.')}</span>
+                  </SettingsRow>
                   <SettingsRow icon="🆕" title="ما الجديد"><Button variant="secondary" size="small">عرض</Button></SettingsRow>
                   <SettingsRow icon="🌐" title="الموقع الرسمي"><Button variant="secondary" size="small">زيارة</Button></SettingsRow>
                   <SettingsRow icon="📱" title="تابعنا"><span className="muted">@yamshat</span></SettingsRow>

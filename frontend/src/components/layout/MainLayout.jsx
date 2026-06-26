@@ -109,20 +109,26 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
 
       <style dangerouslySetInnerHTML={{
         __html: `
+          /* ✅ v59.13.26 — نفس بصمة .ym-reels-root بالضبط (position:fixed/inset:0)
+             الهدف: نجعل .app-shell شاشة كاملة محصورة، وحاوية التمرير الفعلية
+             (.page-content) تنشأ كـ position:absolute داخلها — مماثل تماماً
+             للريلز الذي يعمل بسلاسة في كل المتصفحات والأجهزة. */
           .app-shell.yamshat-unified {
             display: flex;
             flex-direction: column;
+            height: 100vh;
+            height: 100dvh;
             min-height: 100vh;
             min-height: 100dvh;
-            height: auto;
             background: #0A0D1A;
-            overflow-x: hidden;
-            overflow-y: visible;
+            overflow: hidden;
             --yam-top-chrome-height: 54px;
             --yam-bottom-chrome-height: calc(64px + env(safe-area-inset-bottom, 0px));
             font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
             width: 100%;
             max-width: 100vw;
+            position: relative;
+            touch-action: pan-y pinch-zoom;
           }
           /* ✅ v47.4: ضمان عدم خروج أي عنصر عن حدود الشاشة */
           @media (max-width: 400px) {
@@ -158,34 +164,38 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
             background: #000;
           }
 
+          /* ✅ v59.13.26 — .main-shell كحاوية شاشة كاملة (مثل .ym-reels-root) */
           .main-shell {
-            display: flex;
-            flex-direction: column;
+            position: relative;
             flex: 1 1 auto;
             min-width: 0;
             min-height: 0;
+            width: 100%;
+            height: 100%;
             overflow: hidden;
           }
 
-          /* ⭐ v59.10 — نفس فلسفة .yam-services-panel (الدراور):
-             حاوية scroll داخلية بارتفاع 100% و overflow-y: auto
-             مع -webkit-overflow-scrolling: touch و overscroll-behavior: contain
-             النتيجة: نفس خفّة وسلاسة الدراور على كل الصفحات. */
+          /* ⭐ v59.13.26 — "بصمة الريلز" الحقيقية:
+             .page-content = position:absolute; inset:0; overflow-y:auto
+             مطابقة 1:1 لـ .ym-reels-feed التي يشهد لها المستخدم بأنها سلسة.
+             هذا يضمن:
+             - حاوية التمرير لها أبعاد ثابتة (inset:0) → المتصفح يعرف بالضبط
+               متى يفعّل momentum scroll بدلاً من الاعتماد على flex+height:100%
+             - لا تحتاج إلى transform:translateZ(0) (التي تكسر position:fixed لأبنائها)
+             - touch-action:pan-y فقط (نفس الريلز) — لا pan-x لأنها صفحات عمودية */
           .page-content {
-            flex: 1 1 auto;
-            min-height: 0;
-            height: 100%;
+            position: absolute;
+            inset: 0;
             overflow-y: auto;
             overflow-x: hidden;
             scroll-behavior: smooth;
             overscroll-behavior: contain;
             overscroll-behavior-y: contain;
             -webkit-overflow-scrolling: touch;
-            touch-action: pan-x pan-y pinch-zoom;
+            touch-action: pan-y;
             transition: opacity var(--motion-fast, 180ms);
-            /* GPU acceleration للسلاسة (آمن لأنه على .page-content فقط، لا يؤثر على fixed elements الخارجية) */
-            transform: translateZ(0);
-            -webkit-transform: translateZ(0);
+            overflow-anchor: none;
+            scrollbar-gutter: stable;
             will-change: scroll-position;
           }
 
@@ -210,16 +220,22 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
             will-change: auto !important;
           }
 
+          /* lock-scroll: تعطيل تمرير الأم فقط — الأبناء (قوائم الشات، رسائل...)
+             تبقى بـ touch-action:pan-y لتعمل scroll بشكل طبيعي */
           .page-content.lock-scroll {
             overflow: hidden;
+            touch-action: pan-y;
           }
 
           .page-content.is-transitioning {
             opacity: 0.985;
           }
 
+          /* ✅ v59.13.26 — page-shell-glow يجب أن لا يقيّد ارتفاع المحتوى
+             ليحدث overflow الطبيعي على .page-content مثل .ym-reels-feed */
           .page-shell-glow {
             min-height: 100%;
+            width: 100%;
             animation: pageFadeIn var(--motion-base, 240ms) var(--ease-standard, ease-out);
             content-visibility: auto;
             contain-intrinsic-size: 900px;

@@ -12,6 +12,10 @@ import {
 } from '../../api/stories.js';
 // ✅ v59.13.16 FIX #2: إضافة زر إبلاغ في عارض الستوري لقصص الآخرين
 import ReportModal from '../reports/ReportModal.jsx';
+// ✅ v59.13.27 FIX: safety-net لتحويل media_url النسبي إلى رابط مطلق
+// قبل تمريره لـ<img>/<video> — يحمي من حالات الـoptimistic update
+// أو القصص الواردة من مصادر لم تمر عبر api/stories.js (مثل cache قديم).
+import { resolveMediaUrl } from '../../config/mediaConfig.js';
 
 /**
  * StoryViewerEnhanced — عارض ستوري احترافي.
@@ -88,7 +92,19 @@ export default function StoryViewerEnhanced({
     }
   }, []);
 
-  const current = stories[storyIdx];
+  const rawCurrent = stories[storyIdx];
+  // ✅ v59.13.27: تطبيع media_url قبل أي استخدام في الـrender أو الـAPI calls.
+  // إذا كان الرابط نسبياً (/uploads/xxx) يتم تحويله إلى BACKEND_ORIGIN/uploads/xxx.
+  // إذا كان blob:/data: أو مطلقاً مسبقاً يبقى كما هو.
+  const current = useMemo(() => {
+    if (!rawCurrent) return rawCurrent;
+    const fixedMedia = resolveMediaUrl(rawCurrent.media_url || rawCurrent.media || '');
+    return {
+      ...rawCurrent,
+      media_url: fixedMedia || rawCurrent.media_url || '',
+      media: fixedMedia || rawCurrent.media || '',
+    };
+  }, [rawCurrent]);
   const STORY_MS = current?.media_type === 'video' ? 15000 : 5000;
   const STEP_MS = 50;
 

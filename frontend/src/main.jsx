@@ -84,9 +84,11 @@ import './styles/yamshat-fixes-v59.13.1.css';
    حلّ تعارض overflow بين v59.10 CSS و MobileLayout JSX + إصلاح Pull-to-Refresh */
 import './styles/mobile-scroll-final-v59.13.2.css';
 /* 🩹 v59.13.20 — Definitive Mobile Pull Fix — يفوز على كل ما سبق.
-   يُصلح: re-attach storm + overlays + touch-action:none + pointer-events:none
-   ⚠️ يجب أن يبقى آخر CSS مطلقاً — لا تضف import CSS بعده */
+   يُصلح: re-attach storm + overlays + touch-action:none + pointer-events:none */
 import './styles/mobile-pull-fix-v59.13.20.css';
+/* ⭐ v59.13.24 — Final Fix Pack (Reels-style scroll + composer/filters RTL)
+   ⚠️ يجب أن يبقى آخر CSS مطلقاً — لا تضف import CSS بعده */
+import './styles/yamshat-fixes-v59.13.24.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { pwaInitializer } from './services/pwaInitializer.js';
 import { smoothTouchLayer } from './services/smoothTouchLayer.js';

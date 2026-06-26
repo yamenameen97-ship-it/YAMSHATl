@@ -34,6 +34,7 @@ function PullToRefresh({
     isRefreshing,
     isTriggered,
     progress,
+    a11yMessage, // ⭐ v59.13.23 a11y: رسالة لـ aria-live
   } = usePullToRefresh({ onRefresh, threshold, disabled, scrollContainerRef });
 
   const visibleOffset = isRefreshing ? threshold : pullDistance;
@@ -136,12 +137,38 @@ function PullToRefresh({
         {children}
       </div>
 
+      {/* ⭐ v59.13.23 a11y: aria-live region لإعلام قارئات الشاشة
+           بحالة السحب/التحديد والتحديث. خفية بصرياً ولكن مرئية لـ AT. */}
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="ym-ptr-sr-only"
+        style={{
+          position: 'absolute',
+          width: '1px',
+          height: '1px',
+          padding: 0,
+          margin: '-1px',
+          overflow: 'hidden',
+          clip: 'rect(0,0,0,0)',
+          whiteSpace: 'nowrap',
+          border: 0,
+        }}
+      >
+        {a11yMessage || (isRefreshing ? loadingText : '')}
+      </div>
+
       <style>{`
         @keyframes ym-ptr-spin {
           from { transform: rotate(0deg); }
           to   { transform: rotate(360deg); }
         }
         .ym-ptr-container::-webkit-scrollbar { width: 0; height: 0; }
+        /* ⭐ v59.13.23 a11y: احترام prefers-reduced-motion */
+        @media (prefers-reduced-motion: reduce) {
+          .ym-ptr-container svg { animation: none !important; }
+        }
       `}</style>
     </div>
   );

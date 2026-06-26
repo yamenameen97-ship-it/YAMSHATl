@@ -1,0 +1,269 @@
+/* ============================================================
+   🩹 YAMSHAT — v59.13.24 — Final Fix Pack (User-Reported Issues)
+   ------------------------------------------------------------
+   إصلاح 3 مشاكل أبلغ عنها المستخدم:
+
+   ✅ 1) شريط التصفية (الكل / المجموعات / الستوري / الوسائط):
+        كان يبدأ من منتصف الشاشة بدل أقصى اليمين.
+        السبب: ym-filters-container كان padding-inline غير متماثل بسبب
+        تكدّس CSS قديم + عدم وجود width:100% صريح من حاويته الأم.
+        الحل: إجبار width:100% + padding-inline-end:0 + margin-inline-end:0
+              + justify-content:flex-start مع direction:rtl صارم.
+
+   ✅ 2) صندوق "بماذا تفكر؟" (Composer):
+        كان مزاحاً نحو اليسار بدل ملء العرض من اليمين.
+        نفس الحل (الإجبار على width:100% وإزالة أي margin/padding مخالف).
+
+   ✅ 3) ⭐⭐⭐ السحب لأعلى/لأسفل في الصفحة الرئيسية:
+        كان يعمل فقط من الأطراف القصوى (الحواف).
+        السبب الحقيقي: usePullToRefresh كان يربط معالج touchmove
+        على document مع {capture:true, passive:false}، ويُجبر
+        preventDefault على كل سحب عمودي يبدأ والصفحة في القمة.
+        النتيجة: المتصفح يفقد قدرة التمرير الأصلي عند بدء اللمس
+        من داخل عناصر فرعية لها touch-action قد يتعارض.
+
+        صفحة الريلز تعمل بسلاسة لأنها لا تستخدم PullToRefresh
+        (disablePullToRefresh = true في MobileLayout)، فالتمرير
+        الأصلي للمتصفح يعمل بدون أي تدخل.
+
+        الحل في v59.13.24:
+        - إعادة كتابة usePullToRefresh: تخفيف الـ preventDefault
+          بحيث يُستدعى فقط بعد أن يتجاوز السحب العمودي عتبة
+          واضحة (12px) ويكون فعلاً سحباً للأسفل (deltaY موجب).
+        - في كل الحالات الأخرى (deltaY<=0 / scrollTop>0 / حركة
+          أفقية / حركة قصيرة)، نُفلت الحدث للمتصفح ليتمرّر طبيعياً.
+        - هذا يُحاكي سلوك Reels: التمرير العادي مفتوح للمتصفح،
+          وPTR لا يتدخل إلا عند سحب واضح من قمة الصفحة.
+
+   ⚠️ يجب أن يبقى آخر CSS بعد v59.13.20 ليفوز في cascade.
+   ============================================================ */
+
+
+/* ─────────────────────────────────────────────────────────────
+   1️⃣  Filter Pills — التصاق كامل بحافة اليمين (RTL)
+   ───────────────────────────────────────────────────────────── */
+
+main.mobile-main-content .ym-filters-container,
+.mobile-main-content .ym-filters-container,
+.ym-filters-container {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-inline-start: 0 !important;
+  margin-inline-end: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  /* ضمان أن الـ padding يُستهلك بشكل متماثل ولا يدفع المحتوى لليسار */
+  padding-inline-start: 12px !important;
+  padding-inline-end: 12px !important;
+  padding-top: 8px !important;
+  padding-bottom: 10px !important;
+  box-sizing: border-box !important;
+  direction: rtl !important;
+  /* لا يقتطع المحتوى عند الحواف */
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+}
+
+main.mobile-main-content .ym-filters,
+.mobile-main-content .ym-filters,
+.ym-filters {
+  display: flex !important;
+  flex-direction: row !important;
+  /* في RTL: flex-start = اليمين تماماً */
+  justify-content: flex-start !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  gap: 6px !important;
+  direction: rtl !important;
+  /* السماح بالسحب الأفقي الطبيعي */
+  touch-action: pan-x !important;
+}
+
+/* أول pill (الكل) يلتصق باليمين تماماً بلا هامش */
+main.mobile-main-content .ym-filters > .ym-filter-pill-new:first-child,
+.mobile-main-content .ym-filters > .ym-filter-pill-new:first-child {
+  margin-right: 0 !important;
+  margin-inline-start: 0 !important;
+}
+
+.ym-filter-pill-new,
+.ym-filter-pill-new .pill-content {
+  direction: rtl !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   2️⃣  Composer "بماذا تفكر؟" — التصاق كامل بحافة اليمين
+   ───────────────────────────────────────────────────────────── */
+
+main.mobile-main-content .ym-composer-wrap,
+.mobile-main-content .ym-composer-wrap,
+.ym-composer-wrap {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-inline-start: 0 !important;
+  margin-inline-end: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding-inline-start: 12px !important;
+  padding-inline-end: 12px !important;
+  padding-top: 10px !important;
+  padding-bottom: 4px !important;
+  box-sizing: border-box !important;
+  direction: rtl !important;
+}
+
+main.mobile-main-content .ym-composer,
+.mobile-main-content .ym-composer,
+.ym-composer {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 8px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  direction: rtl !important;
+}
+
+.ym-composer .ym-composer-avatar {
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  /* الأفاتار (Y) أول عنصر في RTL → يلتصق باليمين تماماً */
+  margin-inline-start: 0 !important;
+}
+
+.ym-composer .ym-composer-input {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  text-align: right !important;
+  direction: rtl !important;
+}
+
+.ym-composer .ym-composer-actions {
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  gap: 4px !important;
+  /* أيقونات الوسائط (يسار) → بلا margin زائد */
+  margin-inline-end: 0 !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   3️⃣  السحب لأعلى/لأسفل — التمرير الطبيعي يعمل من أي مكان
+   ─────────────────────────────────────────────────────────────
+   فلسفة الإصلاح: نُحاكي سلوك صفحة الريلز (التي يُعطّل فيها PTR
+   من MobileLayout) بضمان أن التمرير العمودي الأصلي للمتصفح
+   لا يُكسر أبداً، ولا تتدخل JS في حدث touchmove إلا في حالة
+   واحدة محددة: السحب الفعلي من القمة لأسفل لتحديث الصفحة.
+*/
+
+/* main = scroll container الوحيد، ولا touch-action مقيِّد */
+main.mobile-main-content,
+.mobile-main-content {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+  /* ⭐ pan-y نظيف — لا pinch-zoom قد يربك بعض إصدارات Chrome Android */
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+}
+
+/* أي عنصر داخل الـ feed لا يستهلك السحب العمودي */
+main.mobile-main-content .ym-feed,
+main.mobile-main-content .ym-feed *,
+.mobile-main-content .ym-feed,
+.mobile-main-content .ym-feed * {
+  touch-action: pan-y !important;
+}
+
+/* ⭐⭐⭐ بطاقات المنشورات: pan-y فقط، لا manipulation، لا none */
+main.mobile-main-content .ym-post-card,
+main.mobile-main-content .mobile-post-card,
+main.mobile-main-content article[class*="post"],
+main.mobile-main-content .ym-post-header,
+main.mobile-main-content .ym-post-body,
+main.mobile-main-content .ym-post-footer,
+main.mobile-main-content .ym-post-content,
+main.mobile-main-content .ym-post-meta,
+main.mobile-main-content .ym-post-text {
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+}
+
+/* الصور والفيديو داخل المنشورات: pan-y لا يستهلك السحب العمودي */
+main.mobile-main-content .ym-post-card img,
+main.mobile-main-content .mobile-post-card img,
+main.mobile-main-content article img,
+main.mobile-main-content .ym-post-banner,
+main.mobile-main-content .ym-post-banner *,
+main.mobile-main-content .ym-post-media,
+main.mobile-main-content .ym-post-media * {
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+  -webkit-user-drag: none !important;
+  user-drag: none !important;
+}
+
+/* ⭐ الأزرار داخل البطاقات: manipulation للسرعة، لكن لا تأكل التمرير العمودي
+   لأن manipulation تسمح بـ pan-y بشكل طبيعي في المتصفحات الحديثة */
+main.mobile-main-content .ym-post-card button,
+main.mobile-main-content .ym-post-card a,
+main.mobile-main-content .mobile-post-card button,
+main.mobile-main-content .mobile-post-card a,
+main.mobile-main-content .ym-post-actions,
+main.mobile-main-content .ym-post-actions * {
+  touch-action: manipulation !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+/* الكاروسيلات الأفقية تحتفظ بمحورها */
+main.mobile-main-content .ym-filters,
+main.mobile-main-content [data-horizontal-scroll="true"],
+main.mobile-main-content .stories-row {
+  touch-action: pan-x !important;
+}
+
+/* PullToRefresh wrappers: شفافة تماماً، لا تحجب التمرير العمودي */
+main.mobile-main-content > .ym-ptr-container,
+.mobile-main-content > .ym-ptr-container,
+.ym-ptr-container,
+.ym-ptr-content {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 100% !important;
+  height: auto !important;
+  overflow: visible !important;
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+  /* لا تمرير داخلي هنا — main وحده يتمرّر */
+  -webkit-overflow-scrolling: touch !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   4️⃣  حماية احتياطية ضد قواعد قد تخنق التمرير
+   ───────────────────────────────────────────────────────────── */
+
+/* لا touch-action: none على أي حاوية أب للـ feed */
+html, body, #root,
+.mobile-layout-container,
+main.mobile-main-content {
+  touch-action: pan-y !important;
+}
+
+/* استثناء واضح: video element يبقى manipulation */
+main.mobile-main-content video {
+  touch-action: manipulation !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   ✨ نهاية ملف v59.13.24 — السحب يعمل من أي مكان كالـ Reels
+   ───────────────────────────────────────────────────────────── */

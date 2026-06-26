@@ -2,6 +2,11 @@ import { memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 /**
+ * MobileComposer (v59.13.23 — A11y Pass)
+ *  • v59.13.23 UX fixes:
+ *    - إضافة focus-visible ring للصندوق وأزرار الإجراءات (Keyboard a11y).
+ *    - احترام prefers-reduced-motion (إيقاف scale animation).
+ *
  * MobileComposer (v59.13.21 — RTL Arabic Order Restored)
  * --------------------------------------------------------------------------
  * الترتيب البصري الصحيح للعربية (RTL، من اليمين→اليسار على الشاشة):
@@ -111,7 +116,12 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
 
       <style>{`
         .ym-composer-wrap {
+          /* ⭐ v59.13.24: padding متماثل + width:100% لضمان التصاق
+             الأفاتار (Y) بحافة اليمين تماماً بدون فراغ زائد */
           padding: 10px 12px 4px;
+          padding-inline-start: 12px;
+          padding-inline-end: 12px;
+          margin: 0;
           background-color: #0A0D1A;
           box-sizing: border-box;
           width: 100%;
@@ -128,6 +138,7 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           border: 1px solid #1F2937;
           border-radius: 14px;
           padding: 7px 10px;
+          margin: 0;
           cursor: pointer;
           transition: border-color 0.15s, background 0.15s;
           box-sizing: border-box;
@@ -137,6 +148,12 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           direction: rtl;
         }
         .ym-composer:hover { border-color: rgba(139,92,246,0.45); }
+        /* ⭐ v59.13.23 a11y: focus-visible ring للصندوق */
+        .ym-composer:focus { outline: none; }
+        .ym-composer:focus-visible {
+          border-color: #A78BFA;
+          box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.35);
+        }
         .ym-composer-avatar {
           width: 32px;
           height: 32px;
@@ -201,6 +218,14 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           color: #C4B5FD;
         }
         .ym-composer-action:active { transform: scale(0.93); }
+        /* ⭐ v59.13.23 a11y: focus-visible لأزرار الإجراءات */
+        .ym-composer-action:focus { outline: none; }
+        .ym-composer-action:focus-visible {
+          outline: 2px solid #A78BFA;
+          outline-offset: 2px;
+          color: #C4B5FD;
+          background: rgba(139, 92, 246, 0.15);
+        }
         .ym-gif-pill {
           font-weight: 700;
           font-size: 0.66rem;
@@ -247,6 +272,15 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           .ym-composer-wrap { padding: 9px 11px 4px; }
           .ym-composer { padding: 6px 9px; }
           .ym-composer-input { font-size: 0.84rem; }
+        }
+
+        /* ⭐ v59.13.23 a11y: احترام prefers-reduced-motion */
+        @media (prefers-reduced-motion: reduce) {
+          .ym-composer,
+          .ym-composer-action {
+            transition: none !important;
+          }
+          .ym-composer-action:active { transform: none !important; }
         }
       `}</style>
     </div>

@@ -1,7 +1,13 @@
-import { memo, useCallback, useState, useEffect } from 'react';
+import { memo, useCallback, useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 /**
+ * BottomNav (v59.13.23 — A11y Pass: focus-visible + Escape + reduced-motion)
+ *  • v59.13.23 UX fixes:
+ *    - إضافة focus-visible لكل عناصر التنقل (Keyboard a11y).
+ *    - دعم مفتاح Escape لإغلاق قائمة الإنشاء + إعادة التركيز للزر.
+ *    - احترام prefers-reduced-motion (إيقاف الـ scale/pop-in).
+ *
  * BottomNav (v59.13.21 — Arabic RTL Order Restored + FAB Create Button)
  * ----------------------------------------------------------------
  * الترتيب البصري (RTL، من اليمين → اليسار على الشاشة):
@@ -105,8 +111,33 @@ function BottomNav() {
   const createAction = resolveCreateAction(location.pathname);
 
   const [menuOpen, setMenuOpen] = useState(false);
+  // v59.13.23 a11y: مرجع لزر (+) لإرجاع التركيز إليه بعد إغلاق القائمة
+  const createBtnRef = useRef(null);
+  const firstMenuItemRef = useRef(null);
 
   useEffect(() => { setMenuOpen(false); }, [location.pathname]);
+
+  // v59.13.23 a11y: إغلاق القائمة بمفتاح Escape + إعادة التركيز
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        setMenuOpen(false);
+        // إرجاع التركيز للزر الذي فتح القائمة
+        try { createBtnRef.current?.focus(); } catch { /* ignore */ }
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    // نقل التركيز لأول عنصر في القائمة عند فتحها (focus management)
+    const t = setTimeout(() => {
+      try { firstMenuItemRef.current?.focus(); } catch { /* ignore */ }
+    }, 20);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      clearTimeout(t);
+    };
+  }, [menuOpen]);
 
   const handleCreateClick = useCallback(() => {
     const action = resolveCreateAction(location.pathname);
@@ -151,6 +182,7 @@ function BottomNav() {
           />
           <div className="ym-create-menu" role="menu" aria-label="اختر نوع الإنشاء" dir="rtl">
             <button
+              ref={firstMenuItemRef}
               type="button"
               role="menuitem"
               className="ym-create-menu-item"
@@ -181,13 +213,17 @@ function BottomNav() {
       <div className="ym-bottomnav-inner">
         {NAV_ITEMS.map((item) => {
           if (item.isCenter) {
+            const isMenu = createAction.kind === 'menu';
             return (
               <button
+                ref={createBtnRef}
                 key={item.id}
                 type="button"
                 className="ym-nav-item ym-nav-item--create"
                 aria-label={createAction.label}
                 title={createAction.label}
+                aria-haspopup={isMenu ? 'menu' : undefined}
+                aria-expanded={isMenu ? menuOpen : undefined}
                 onClick={handleCreateClick}
               >
                 <div className="ym-nav-icon ym-nav-icon--create">
@@ -275,9 +311,28 @@ function BottomNav() {
           cursor: pointer;
           font-family: inherit;
           position: relative;
+          /* v59.13.23 a11y: إزالة outline الافتراضي ووضع focus-visible خاص بنا */
+          outline: none;
+          border-radius: 10px;
         }
         .ym-nav-item:hover { color: #C4B5FD; }
         .ym-nav-item.active { color: #8B5CF6; }
+        /* ⭐ v59.13.23 a11y: حلقة تركيز مرئية لمستخدمي الكيبورد فقط */
+        .ym-nav-item:focus-visible {
+          outline: 2px solid #A78BFA;
+          outline-offset: -2px;
+          background: rgba(139, 92, 246, 0.10);
+        }
+        .ym-nav-item--create:focus-visible {
+          outline: none; /* لا outline على الزر نفسه — نضع ring على الأيقونة */
+          background: transparent;
+        }
+        .ym-nav-item--create:focus-visible .ym-nav-icon--create {
+          box-shadow:
+            0 0 0 3px #0A0D1A,
+            0 0 0 6px #A78BFA,
+            0 6px 18px rgba(139, 92, 246, 0.55) !important;
+        }
 
         .ym-nav-icon {
           display: inline-flex;
@@ -494,6 +549,25 @@ function BottomNav() {
         @keyframes ym-pop-in {
           from { opacity: 0; transform: translateX(-50%) translateY(8px) scale(0.96); }
           to   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+        }
+
+        /* ⭐ v59.13.23 a11y: احترام تفضيل تقليل الحركة */
+        @media (prefers-reduced-motion: reduce) {
+          .ym-nav-item,
+          .ym-nav-icon--create,
+          .ym-create-menu-item,
+          .ym-create-menu-backdrop,
+          .ym-create-menu {
+            transition: none !important;
+            animation: none !important;
+          }
+          .ym-nav-item--create:active .ym-nav-icon--create {
+            transform: none !important;
+          }
+          .ym-create-menu {
+            /* استبدال pop-in بـ translate ثابت بدون scale */
+            transform: translateX(-50%) !important;
+          }
         }
       `}</style>
     </nav>

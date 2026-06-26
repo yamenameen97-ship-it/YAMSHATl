@@ -411,8 +411,17 @@ function FeedMobile() {
     navigate(`/compose?tab=${tab}`);
   }, [navigate]);
 
+  // ⭐ v59.13.28 — الصفحة الرئيسية للجوال أصبحت مطابقة 1:1 لصفحة المجموعات (GroupsHome.jsx).
+  // GroupsHome تستخدم <div className="yam-groups-page" dir="rtl" style={fontFamily}> كحاوية جذرية
+  // بدون أي معالجات لمس مخصصة، والسكرول يحدث على .page-content ببصمة الريلز (inset:0).
+  // لجعل FeedMobile يعمل بنفس السلاسة، نلف كل المحتوى بـ <div className="yam-feed-page">
+  // بنفس بصمة yam-groups-page تماماً (dir="rtl" + Noto Sans Arabic).
   return (
-    <>
+    <div
+      className="yam-feed-page"
+      dir="rtl"
+      style={{ fontFamily: "'Noto Sans Arabic','Cairo','Tahoma',sans-serif" }}
+    >
       {/* === صندوق المُنشئ "بماذا تفكر؟" === */}
       <MobileComposer
         onFocus={(action) => openComposerWithAction(action)}
@@ -472,7 +481,7 @@ function FeedMobile() {
           <button type="button" className="profile-tab" onClick={handleMenuReport} disabled={moreMenuBusy}>بلاغ</button>
         </div>
       </Modal>
-    </>
+    </div>
   );
 }
 

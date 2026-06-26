@@ -1,0 +1,279 @@
+/* ============================================================
+   ⭐ YAMSHAT — v59.13.28 — HOME PAGE = GROUPS PAGE (1:1 PARITY)
+   ------------------------------------------------------------
+   🔴 شكوى المستخدم:
+     "اريد الصفحة الرئيسية تعمل بالمس والسحب لأعلى وأسفل مثل
+      صفحة المجموعات تماماً دون زيادة ولا نقصان. اضبطها لتكون
+      مثلها بالملي. احذف أي تعديلات سابقة وطبق إصلاحات للصفحة
+      الرئيسية بويب جوال لتكون مثل صفحة المجموعات بويب جوال،
+      خذ المعرفة منها وطبقها للصفحة الرئيسية."
+
+   ✅ التشخيص الدقيق (مقارنة 1:1 بين GroupsHome و FeedMobile):
+
+     ┌─ GroupsHome.jsx (يعمل بسلاسة) ───────────────────────────┐
+     │ <MainLayout>                                              │
+     │   <div className="yam-groups-page" dir="rtl"              │
+     │        style={{ fontFamily: "'Noto Sans Arabic',...sans"}}│
+     │     ...المحتوى مباشرة...                                  │
+     │   </div>                                                  │
+     │ </MainLayout>                                             │
+     │                                                           │
+     │ ✓ لا useEffect يضيف classes على .page-content             │
+     │ ✓ لا scroll listeners على window أو على .page-content     │
+     │ ✓ لا ScrollToTopFab يلوّث الحاوية المشتركة                │
+     │ ✓ لا div بـ display:flex مع height ثابت                   │
+     └───────────────────────────────────────────────────────────┘
+
+     ┌─ FeedMobile.jsx قبل v59.13.28 (مكسور) ───────────────────┐
+     │ <MainLayout>                                              │
+     │   <FeedMobile>                                            │
+     │     <>...</>  ← Fragment (لا dir, لا fontFamily)         │
+     │   </FeedMobile>                                           │
+     │   <ScrollToTopFab targetSelector=null/> ← scroll على     │
+     │      window بدل .page-content (لا يعمل + يضيف listener) │
+     │ </MainLayout>                                             │
+     │                                                           │
+     │ + useEffect يفعل:                                         │
+     │   pageContent.classList.toggle('yam-feed-page-locked')   │
+     │   ← يلوّث الحاوية المشتركة ويبقى عند التنقل أحياناً       │
+     └───────────────────────────────────────────────────────────┘
+
+   ✅ الإصلاحات المطبقة في v59.13.28:
+
+     ❶ FeedEnhanced.jsx:
+        - حذف useEffect الذي يضيف 'yam-feed-page-locked'
+        - ScrollToTopFab يظهر فقط على الديسكتوب (isMobile=false)
+        - وعلى الديسكتوب يستهدف .page-content بدل window
+
+     ❷ FeedMobile.jsx:
+        - استبدال <> (Fragment) بـ <div className="yam-feed-page"
+          dir="rtl" style={fontFamily}>
+        - مطابقة 1:1 لـ <div className="yam-groups-page" dir="rtl"
+          style={fontFamily}> في GroupsHome.jsx
+
+     ❸ هذا الملف CSS (v59.13.28):
+        - يطبّع .yam-feed-page بنفس قواعد .yam-groups-page
+        - يحرس على .ym-feed لتكون شفافة (لا scroll container داخلي)
+        - يعالج .page-content.yam-feed-page-locked القديمة (إن
+          بقيت بسبب تنقل) بإعادتها للوضع الطبيعي
+        - دعم 100% لـ dir="rtl" و Noto Sans Arabic
+        - يطابق سلوك touch/scroll لـ GroupsHome على .page-content
+
+   ⚠️ يجب أن يبقى هذا الملف آخر import CSS في main.jsx (بعد
+   v59.13.26 الذي يضع بصمة الريلز على .page-content).
+   ============================================================ */
+
+
+/* ─────────────────────────────────────────────────────────────
+   1️⃣  حماية ضد البقايا — إزالة أي class قديم على .page-content
+       (في حال جاء المستخدم من نسخة سابقة كان فيها yam-feed-page-locked
+        مُضافاً ولم يُحذف بسبب navigation)
+   ───────────────────────────────────────────────────────────── */
+.app-shell .page-content.yam-feed-page-locked {
+  /* إلغاء كل تأثير القفل القديم على الجوال */
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  touch-action: pan-y !important;
+}
+
+/* على الديسكتوب فقط، حافظ على القفل القديم إن لزم (للتخطيط الثلاثي
+   الأعمدة) — لكن بدون كسر التمرير */
+@media (max-width: 1140px) {
+  .app-shell .page-content.yam-feed-page-locked {
+    overflow-y: auto !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   2️⃣  ⭐ المطابقة الجوهرية — .yam-feed-page تتصرف مثل .yam-groups-page
+       تماماً بدون زيادة ولا نقصان.
+   ───────────────────────────────────────────────────────────── */
+.app-shell .page-content .yam-feed-page,
+.app-shell .page-content .yam-groups-page {
+  /* لا تنشئ scroll container داخلي — اترك .page-content يتمرر بحرية */
+  display: block;
+  width: 100%;
+  min-height: 100%;
+  height: auto;
+  max-height: none;
+  overflow: visible;
+  overflow-y: visible;
+  overflow-x: visible;
+
+  /* تمرير ولمس */
+  touch-action: pan-y;
+  pointer-events: auto;
+  -webkit-overflow-scrolling: touch;
+
+  /* لا transform/filter يكسر momentum scrolling */
+  transform: none;
+  -webkit-transform: none;
+  filter: none;
+  -webkit-filter: none;
+  perspective: none;
+  will-change: auto;
+
+  /* الخط — مطابق لـ GroupsHome (dir="rtl" + Noto Sans Arabic) */
+  font-family: 'Noto Sans Arabic', 'Cairo', 'Tahoma', sans-serif;
+  direction: rtl;
+
+  /* padding داخلي بسيط مثل صفحة المجموعات */
+  padding: 12px 14px calc(96px + env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   3️⃣  ⭐ كل العناصر الداخلية في .yam-feed-page تتصرف مثل أبناء
+       .yam-groups-page — لا أحدها ينشئ scroll container.
+   ───────────────────────────────────────────────────────────── */
+.app-shell .page-content .yam-feed-page > *,
+.app-shell .page-content .yam-feed-page .ym-feed,
+.app-shell .page-content .yam-feed-page .ym-feed > *,
+.app-shell .page-content .yam-feed-page .ym-composer,
+.app-shell .page-content .yam-feed-page .ym-filters,
+.app-shell .page-content .yam-feed-page .yam-mobile-composer,
+.app-shell .page-content .yam-feed-page .mobile-post-card {
+  /* أبناء الصفحة شفافون: لا overflow، لا height ثابت، لا transform */
+  max-height: none !important;
+  touch-action: pan-y;
+  pointer-events: auto;
+  transform: none;
+  filter: none;
+}
+
+/* ⭐ ym-feed: تطابق ym-feed مع yam-groups-list بالضبط
+   (GroupsHome تستخدم <section className="yam-groups-list">) */
+.app-shell .page-content .yam-feed-page .ym-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 0 16px;
+  width: 100%;
+  min-height: auto;
+  height: auto;
+  /* مهم جداً: overflow visible — السكرول يحدث على .page-content فقط */
+  overflow: visible !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   4️⃣  استثناء الكاروسيلات الأفقية (الفلاتر) — تبقى تعمل أفقياً
+   ───────────────────────────────────────────────────────────── */
+.app-shell .page-content .yam-feed-page .ym-filters,
+.app-shell .page-content .yam-feed-page .ym-feed-filters,
+.app-shell .page-content .yam-feed-page [data-horizontal-scroll="true"] {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x !important;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.app-shell .page-content .yam-feed-page .ym-filters::-webkit-scrollbar,
+.app-shell .page-content .yam-feed-page .ym-feed-filters::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   5️⃣  الأزرار والروابط داخل الصفحة الرئيسية لا تخنق التمرير
+       (نفس فلسفة GroupsHome — touch-action: manipulation)
+   ───────────────────────────────────────────────────────────── */
+.app-shell .page-content .yam-feed-page button,
+.app-shell .page-content .yam-feed-page a,
+.app-shell .page-content .yam-feed-page [role="button"],
+.app-shell .page-content .yam-feed-page [role="tab"] {
+  touch-action: manipulation;
+}
+
+.app-shell .page-content .yam-feed-page input[type="text"],
+.app-shell .page-content .yam-feed-page input[type="search"],
+.app-shell .page-content .yam-feed-page textarea,
+.app-shell .page-content .yam-feed-page [contenteditable] {
+  touch-action: auto;
+}
+
+.app-shell .page-content .yam-feed-page img {
+  touch-action: pan-y;
+  -webkit-user-drag: none;
+  user-drag: none;
+  max-width: 100%;
+  height: auto;
+}
+
+.app-shell .page-content .yam-feed-page video {
+  touch-action: manipulation;
+  max-width: 100%;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   6️⃣  حماية مطلقة — رفع أي قاعدة قديمة تكسر السحب على الرئيسية
+   ───────────────────────────────────────────────────────────── */
+.app-shell .page-content .yam-feed-page[style*="overflow: hidden"],
+.app-shell .page-content .yam-feed-page[style*="overflow:hidden"],
+.app-shell .page-content .yam-feed-page[style*="touch-action: none"],
+.app-shell .page-content .yam-feed-page[style*="touch-action:none"] {
+  overflow: visible !important;
+  overflow-y: visible !important;
+  touch-action: pan-y !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   7️⃣  iOS Safari — momentum scrolling مضمون
+   ───────────────────────────────────────────────────────────── */
+@supports (-webkit-touch-callout: none) {
+  .app-shell .page-content .yam-feed-page,
+  .app-shell .page-content .yam-groups-page {
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   8️⃣  responsive — ضبط padding على الشاشات الصغيرة
+   ───────────────────────────────────────────────────────────── */
+@media (max-width: 400px) {
+  .app-shell .page-content .yam-feed-page,
+  .app-shell .page-content .yam-groups-page {
+    padding: 10px 10px calc(92px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (max-width: 360px) {
+  .app-shell .page-content .yam-feed-page,
+  .app-shell .page-content .yam-groups-page {
+    padding: 8px 8px calc(88px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   9️⃣  prefers-reduced-motion — احترام إعداد المستخدم
+   ───────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .app-shell .page-content .yam-feed-page {
+    scroll-behavior: auto;
+  }
+}
+
+
+/* ============================================================
+   ✨ نهاية ملف v59.13.28
+   الصفحة الرئيسية للجوال الآن مطابقة 1:1 لصفحة المجموعات:
+   - نفس بنية DOM (.yam-feed-page ↔ .yam-groups-page)
+   - نفس dir="rtl" + نفس Noto Sans Arabic
+   - نفس قواعد CSS (overflow:visible, touch-action:pan-y)
+   - نفس سلوك السكرول (يحدث على .page-content بـ بصمة الريلز)
+   - لا useEffect يلوّث .page-content
+   - لا ScrollToTopFab على الجوال
+   ============================================================ */

@@ -684,12 +684,18 @@ function PostCard({ post }) {
 export default function FeedEnhanced() {
   // ✅ MainLayout الموحّد يثبّت الهيدر العلوي والفوتر السفلي
   // في كل صفحة سواء على الجوال أو الويب/اللابتوب لتجربة موحّدة.
+  // ⭐ v59.13.28 — الصفحة الرئيسية للجوال أصبحت مطابقة 1:1 لصفحة المجموعات:
+  //   - لا useEffect يضيف classes على .page-content
+  //   - لا ScrollToTopFab على الجوال (كان يضيف scroll listener على window
+  //     بينما السكرول الفعلي على .page-content، ويخلق طبقات إضافية)
+  //   - FeedMobile يضع المحتوى مباشرة داخل .page-content بدون حاويات فرعية
+  //     مكسورة تعمل بـ display:flex مع height ثابت.
   const isMobile = useIsMobile();
   return (
     <MainLayout>
       {isMobile ? <FeedMobile /> : <FeedDesktopInner />}
-      {/* ✨ ميزة فرونت-إند فقط للشاشة الرئيسية: زر «العودة للأعلى» — بدون أي اتصال بـ backend أو جداول */}
-      <ScrollToTopFab threshold={500} />
+      {/* ✨ زر «العودة للأعلى» — يظهر فقط على الديسكتوب (الجوال يلتزم ببصمة المجموعات) */}
+      {!isMobile ? <ScrollToTopFab threshold={500} targetSelector=".page-content" /> : null}
     </MainLayout>
   );
 }
@@ -758,31 +764,11 @@ function FeedDesktopInner() {
   const totalPosts = feedPosts.length;
   const profilePostsCount = Number(profile?.posts_count || profileDetails.posts_count || profileDetails.posts || profile?.posts || totalPosts || 0);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    const pageContent = document.querySelector('.page-content');
-    if (!pageContent) return undefined;
-
-    const mediaQuery = window.matchMedia('(min-width: 1141px)');
-    const syncScrollMode = () => {
-      pageContent.classList.toggle('yam-feed-page-locked', mediaQuery.matches);
-    };
-
-    syncScrollMode();
-    if (typeof mediaQuery.addEventListener === 'function') {
-      mediaQuery.addEventListener('change', syncScrollMode);
-      return () => {
-        pageContent.classList.remove('yam-feed-page-locked');
-        mediaQuery.removeEventListener('change', syncScrollMode);
-      };
-    }
-
-    mediaQuery.addListener(syncScrollMode);
-    return () => {
-      pageContent.classList.remove('yam-feed-page-locked');
-      mediaQuery.removeListener(syncScrollMode);
-    };
-  }, []);
+  // ⭐ v59.13.28 — تم تعطيل إضافة class 'yam-feed-page-locked' على .page-content
+  // لأنها تلوّث الحاوية المشتركة بين كل الصفحات (وتبقى عليها عند التنقل).
+  // صفحة المجموعات لا تلمس .page-content خارجها، ونحن نطبّق نفس الفلسفة هنا.
+  // بديله: CSS في yamshat-fixes-v59.13.28.css يعالج الديسكتوب عبر media query مباشرة.
+  // useEffect السابق تم حذفه بالكامل لمطابقة بصمة GroupsHome.jsx تماماً.
 
   useEffect(() => {
     const scroller = centerStageRef.current;

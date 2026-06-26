@@ -2,17 +2,16 @@ import { memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 /**
- * MobileComposer (v47.7 — pixel-perfect "بماذا تفكر؟" — مطابق تماماً للصورة)
+ * MobileComposer (v59.13.21 — RTL Arabic Order Restored)
  * --------------------------------------------------------------------------
- * الترتيب البصري كما في الصورة (من اليسار→اليمين على الشاشة):
+ * الترتيب البصري الصحيح للعربية (RTL، من اليمين→اليسار على الشاشة):
  *
- *   |  Y   بماذا تفكر؟                       🖼️  GIF  ☺  |
- *   |(يسار: أفاتار+نص)              (يمين: أيقونات الوسائط) |
+ *   |  ☺  GIF  🖼️                      بماذا تفكر؟   Y  |
+ *   |(يسار: أيقونات الوسائط)           (يمين: نص+أفاتار) |
  *
- * ✅ شعار Y (الأفاتار) في **يسار** الصندوق على الشاشة.
- * ✅ نص "بماذا تفكر؟" بجواره مباشرة (وسط/يسار).
- * ✅ أيقونات الوسائط (صورة، GIF، إيموجي) في **يمين** الصندوق على الشاشة.
- * ✅ ترتيب الأيقونات من اليسار→اليمين: 🖼️ ← GIF ← ☺
+ * ✅ شعار Y (الأفاتار) في **يمين** الصندوق (وفق العرف العربي).
+ * ✅ نص "بماذا تفكر؟" بجوار الأفاتار من اليسار.
+ * ✅ أيقونات الوسائط (صورة، GIF، إيموجي) في **يسار** الصندوق.
  * ✅ حاوية مستطيلة بزوايا 14px.
  * ✅ استجابة كاملة: 320 / 360 / 400 / 480 / 768+.
  */
@@ -36,7 +35,7 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
         className="ym-composer"
         role="button"
         tabIndex={0}
-        dir="ltr"
+        dir="rtl"
         onClick={() => open(null)}
         onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && open(null)}
       >
@@ -135,7 +134,7 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           width: 100%;
           max-width: 100%;
           overflow: hidden;
-          direction: ltr;
+          direction: rtl;
         }
         .ym-composer:hover { border-color: rgba(139,92,246,0.45); }
         .ym-composer-avatar {

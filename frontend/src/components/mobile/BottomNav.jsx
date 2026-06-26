@@ -2,47 +2,47 @@ import { memo, useCallback, useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 /**
- * BottomNav (v59.12 — Restored Arabic RTL Order)
+ * BottomNav (v59.13.21 — Arabic RTL Order Restored + FAB Create Button)
  * ----------------------------------------------------------------
  * الترتيب البصري (RTL، من اليمين → اليسار على الشاشة):
- *   حسابي | الريلز | (+) ديناميكي | الدردشات | الرئيسية
+ *   الرئيسية | الدردشات | (+) FAB | الريلز | حسابي
  *
- * v59.12 — fullscreen-top-fix:
- *  - إعادة الترتيب الأصلي (قبل تعديل زر الإنشاء في v59.11) حيث كان
- *    "حسابي" على اليمين و"الرئيسية" على اليسار في الجهة الأخرى.
- *  - تم حذف `flex-direction: row-reverse` من الحاوية الداخلية لإصلاح
- *    الانعكاس الذي حدث بالخطأ عند تحديث زر الإنشاء.
- *  - بقية ميزات v59.11 محفوظة كاملة (زر + موحَّد، الديناميكية، إلخ).
- *
- * v59.11:
- *  - زر (+) أصبح بنفس بنية بقية الأزرار: أيقونة صغيرة بالأعلى داخل خلفية
- *    بنفسجية بحواف دائرية، ونص توصيفي بالأسفل (مثل جيرانه تماماً).
- *  - النص يتغيّر ديناميكياً حسب الصفحة الحالية:
- *      • الرئيسية → "منشور جديد"
- *      • المجموعات → "إنشاء مجموعة"
- *      • الريلز → "ريلز جديد"
- *      • الدردشات → "دردشة جديدة"
- *      • الستوري → "ستوري جديد"
- *  - منع القص/الاختفاء بضمان احتواء كامل داخل الهيدر السفلي.
- *  - تناسق الحجم والمحاذاة العمودية مع جميع العناصر المجاورة.
+ * v59.13.21 fixes:
+ *  - عكس ترتيب الرئيسية/حسابي ليصبح "الرئيسية" في أقصى اليمين
+ *    و"حسابي" في أقصى اليسار، وفق العرف العربي.
+ *  - زر (+) أصبح FAB دائرياً بارزاً مرفوعاً فوق الشريط مثل Instagram/Threads
+ *    لإصلاح "اختفاءه/قصّه من الأسفل" — الآن مرئي بالكامل ومميّز.
+ *  - الحاوية تسمح بـ overflow visible للسماح بالـ FAB بالبروز فوقها.
  */
 
-// v59.12: ترتيب العناصر كما يظهر في DOM. مع `dir="rtl"` ودون `row-reverse`
-//         يكون أول عنصر في الأقصى يمين الشاشة وآخر عنصر في الأقصى يسار الشاشة.
-//         الترتيب المطلوب (يمين → يسار):
-//         حسابي → الريلز → (+) → الدردشات → الرئيسية
+// v59.13.21: ترتيب RTL الصحيح — الرئيسية (يمين) ← الدردشات ← + ← الريلز ← حسابي (يسار)
 const NAV_ITEMS = [
   {
-    id: 'profile',
-    label: 'حسابي',
-    to: '/profile',
-    match: (p) => p.startsWith('/profile'),
+    id: 'home',
+    label: 'الرئيسية',
+    to: '/',
+    match: (p) => p === '/',
     icon: (active) => (
       <svg viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-        <circle cx="12" cy="7" r="4" />
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+        <polyline points="9 22 9 12 15 12 15 22" />
       </svg>
     ),
+  },
+  {
+    id: 'chat',
+    label: 'الدردشات',
+    to: '/inbox',
+    match: (p) => p.startsWith('/inbox') || p.startsWith('/chat'),
+    icon: (active) => (
+      <svg viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      </svg>
+    ),
+  },
+  {
+    id: 'create',
+    isCenter: true,
   },
   {
     id: 'reels',
@@ -57,29 +57,14 @@ const NAV_ITEMS = [
     ),
   },
   {
-    id: 'create',
-    isCenter: true,
-  },
-  {
-    id: 'chat',
-    label: 'الدردشات',
-    to: '/inbox',
-    match: (p) => p.startsWith('/inbox') || p.startsWith('/chat'),
+    id: 'profile',
+    label: 'حسابي',
+    to: '/profile',
+    match: (p) => p.startsWith('/profile'),
     icon: (active) => (
       <svg viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-      </svg>
-    ),
-  },
-  {
-    id: 'home',
-    label: 'الرئيسية',
-    to: '/',
-    match: (p) => p === '/',
-    icon: (active) => (
-      <svg viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-        <polyline points="9 22 9 12 15 12 15 22" />
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+        <circle cx="12" cy="7" r="4" />
       </svg>
     ),
   },
@@ -87,12 +72,9 @@ const NAV_ITEMS = [
 
 /**
  * يحدد سلوك زر الإنشاء (+) بناءً على الصفحة الحالية.
- * يعيد: { label, kind: 'navigate'|'event', target?, event?, fallback?, iconKind }
  */
 function resolveCreateAction(pathname) {
   if (pathname.startsWith('/groups')) {
-    // v59.13: على صفحة المجموعات نُظهر قائمة اختيار (مجموعة نصية / غرفة صوتية)
-    // بدل التنقل المباشر — لتوحيد مكان إنشاء الغرف الصوتية مع المجموعات.
     return { label: 'إنشاء', kind: 'menu', menu: 'groups', iconKind: 'group' };
   }
   if (pathname.startsWith('/inbox') || pathname.startsWith('/chat')) {
@@ -107,13 +89,9 @@ function resolveCreateAction(pathname) {
   return { label: 'منشور جديد', kind: 'navigate', target: '/compose?tab=post', iconKind: 'post' };
 }
 
-/**
- * أيقونة (+) موحدة بنفس حجم أيقونات بقية الأزرار (24x24).
- * نستخدم علامة + بسيطة بيضاء داخل الخلفية البنفسجية.
- */
 function CenterPlusIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.8" strokeLinecap="round">
       <line x1="12" y1="5" x2="12" y2="19" />
       <line x1="5" y1="12" x2="19" y2="12" />
     </svg>
@@ -128,7 +106,6 @@ function BottomNav() {
 
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // إغلاق القائمة عند تغيّر المسار
   useEffect(() => { setMenuOpen(false); }, [location.pathname]);
 
   const handleCreateClick = useCallback(() => {
@@ -144,12 +121,10 @@ function BottomNav() {
     try {
       window.dispatchEvent(new CustomEvent(action.event, { detail: { from: location.pathname } }));
     } catch {
-      // تجاهل أي خطأ في إطلاق الحدث
       if (action.fallback) navigate(action.fallback);
     }
   }, [location.pathname, navigate]);
 
-  // إجراءات قائمة الإنشاء على صفحة المجموعات
   const handleCreateTextGroup = useCallback(() => {
     setMenuOpen(false);
     navigate('/groups/create');
@@ -167,7 +142,6 @@ function BottomNav() {
       dir="rtl"
       style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}
     >
-      {/* v59.13: قائمة منبثقة لاختيار نوع الإنشاء على صفحة المجموعات */}
       {menuOpen && createAction.menu === 'groups' && (
         <>
           <div
@@ -243,7 +217,7 @@ function BottomNav() {
 
       <style>{`
         /* ============================================================
-           v59.11 — هيدر سفلي موحّد وزر (+) متناسق مع جيرانه
+           v59.13.21 — هيدر سفلي مع FAB دائري بارز لزر (+)
            ============================================================ */
         .ym-bottomnav {
           position: fixed;
@@ -265,13 +239,11 @@ function BottomNav() {
           font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
           box-sizing: border-box;
           direction: rtl;
+          /* ⭐ السماح بـ FAB الدائري بالبروز فوق الشريط */
           overflow: visible;
         }
         .ym-bottomnav-inner {
           display: flex;
-          /* v59.12: حذف row-reverse — الـ dir="rtl" وحده يضع أول
-             عنصر في DOM (حسابي) على اليمين وآخر عنصر (الرئيسية) على اليسار،
-             تماماً كما كان الترتيب الأصلي قبل v59.11. */
           flex-direction: row;
           justify-content: space-around;
           align-items: stretch;
@@ -285,7 +257,6 @@ function BottomNav() {
           .ym-bottomnav-inner { max-width: 900px; }
         }
 
-        /* العنصر القاعدي — مشترك بين جميع الأزرار (بما فيها زر +) */
         .ym-nav-item {
           display: flex;
           flex-direction: column;
@@ -303,6 +274,7 @@ function BottomNav() {
           border: none;
           cursor: pointer;
           font-family: inherit;
+          position: relative;
         }
         .ym-nav-item:hover { color: #C4B5FD; }
         .ym-nav-item.active { color: #8B5CF6; }
@@ -331,28 +303,39 @@ function BottomNav() {
           direction: rtl;
         }
 
-        /* ✅ زر (+) المركزي — بنفس بنية بقية الأزرار، فقط الأيقونة داخل خلفية بنفسجية */
+        /* ============================================================
+           ✅ v59.13.21 — زر (+) FAB دائري بارز فوق الشريط
+           ============================================================ */
         .ym-nav-item--create {
           color: #E5E7EB;
+          /* رفع الزر كاملاً لإبراز الـ FAB */
+          margin-top: -22px;
+          justify-content: flex-start;
+          gap: 3px;
+          overflow: visible;
         }
         .ym-nav-item--create:hover { color: #C4B5FD; }
 
         .ym-nav-icon--create {
-          width: 34px;
-          height: 28px;
+          width: 54px;
+          height: 54px;
           background-image: linear-gradient(180deg, #A78BFA 0%, #8B5CF6 55%, #7C3AED 100%);
           background-color: #8B5CF6;
-          border-radius: 999px; /* شكل دائري ممدود مثل الصورة الأولى */
-          box-shadow: 0 4px 12px rgba(139, 92, 246, 0.40);
+          border-radius: 50%;
+          border: 3px solid #0A0D1A;
+          box-shadow: 0 6px 18px rgba(139, 92, 246, 0.55), 0 2px 6px rgba(0,0,0,0.4);
           transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
         }
         .ym-nav-icon--create svg {
-          width: 18px;
-          height: 18px;
+          width: 26px;
+          height: 26px;
         }
         .ym-nav-item--create:hover .ym-nav-icon--create {
           background-color: #7C3AED;
-          box-shadow: 0 6px 16px rgba(139, 92, 246, 0.55);
+          box-shadow: 0 8px 22px rgba(139, 92, 246, 0.65), 0 2px 6px rgba(0,0,0,0.4);
         }
         .ym-nav-item--create:active .ym-nav-icon--create {
           transform: scale(0.94);
@@ -362,6 +345,8 @@ function BottomNav() {
           color: #E5E7EB;
           max-width: 96px;
           font-weight: 600;
+          font-size: 0.68rem;
+          margin-top: 1px;
         }
 
         /* =================== شاشات صغيرة =================== */
@@ -371,10 +356,11 @@ function BottomNav() {
           .ym-nav-item { padding: 3px 3px; font-size: 0.68rem; gap: 3px; }
           .ym-nav-icon { width: 26px; height: 26px; }
           .ym-nav-icon svg { width: 22px; height: 22px; }
-          .ym-nav-icon--create { width: 32px; height: 26px; }
-          .ym-nav-icon--create svg { width: 17px; height: 17px; }
+          .ym-nav-item--create { margin-top: -20px; }
+          .ym-nav-icon--create { width: 50px; height: 50px; border-width: 3px; }
+          .ym-nav-icon--create svg { width: 24px; height: 24px; }
           .ym-nav-label { font-size: 0.68rem; max-width: 76px; }
-          .ym-nav-label--create { max-width: 88px; }
+          .ym-nav-label--create { font-size: 0.64rem; max-width: 88px; }
         }
         @media (max-width: 360px) {
           .ym-bottomnav { height: calc(60px + env(safe-area-inset-bottom, 0px)); }
@@ -382,10 +368,11 @@ function BottomNav() {
           .ym-nav-item { padding: 2px 2px; font-size: 0.64rem; gap: 2px; }
           .ym-nav-icon { width: 24px; height: 24px; }
           .ym-nav-icon svg { width: 21px; height: 21px; }
-          .ym-nav-icon--create { width: 30px; height: 24px; }
-          .ym-nav-icon--create svg { width: 16px; height: 16px; }
+          .ym-nav-item--create { margin-top: -18px; }
+          .ym-nav-icon--create { width: 46px; height: 46px; border-width: 2.5px; }
+          .ym-nav-icon--create svg { width: 22px; height: 22px; }
           .ym-nav-label { font-size: 0.64rem; max-width: 68px; }
-          .ym-nav-label--create { max-width: 80px; }
+          .ym-nav-label--create { font-size: 0.6rem; max-width: 80px; }
         }
         @media (max-width: 320px) {
           .ym-bottomnav { height: calc(58px + env(safe-area-inset-bottom, 0px)); }
@@ -393,16 +380,19 @@ function BottomNav() {
           .ym-nav-item { padding: 2px 1px; font-size: 0.58rem; gap: 2px; }
           .ym-nav-icon { width: 22px; height: 22px; }
           .ym-nav-icon svg { width: 19px; height: 19px; }
-          .ym-nav-icon--create { width: 28px; height: 22px; }
-          .ym-nav-icon--create svg { width: 15px; height: 15px; }
+          .ym-nav-item--create { margin-top: -16px; }
+          .ym-nav-icon--create { width: 42px; height: 42px; border-width: 2px; }
+          .ym-nav-icon--create svg { width: 20px; height: 20px; }
           .ym-nav-label { font-size: 0.58rem; max-width: 58px; }
-          .ym-nav-label--create { max-width: 72px; }
+          .ym-nav-label--create { font-size: 0.54rem; max-width: 72px; }
         }
 
         /* Redmi Note 8 (393px) */
         @media (max-width: 393px) and (min-width: 361px) {
           .ym-bottomnav { height: calc(63px + env(safe-area-inset-bottom, 0px)); }
-          .ym-nav-icon--create { width: 32px; height: 26px; }
+          .ym-nav-item--create { margin-top: -21px; }
+          .ym-nav-icon--create { width: 52px; height: 52px; }
+          .ym-nav-icon--create svg { width: 25px; height: 25px; }
           .ym-nav-label { font-size: 0.7rem; }
         }
 
@@ -416,12 +406,14 @@ function BottomNav() {
 
         @media (min-width: 1024px) {
           .ym-nav-label { font-size: 0.85rem; }
-          .ym-nav-icon--create { width: 40px; height: 32px; }
-          .ym-nav-icon--create svg { width: 20px; height: 20px; }
+          .ym-nav-item--create { margin-top: -24px; }
+          .ym-nav-icon--create { width: 60px; height: 60px; }
+          .ym-nav-icon--create svg { width: 28px; height: 28px; }
+          .ym-nav-label--create { font-size: 0.78rem; }
         }
 
         /* ============================================================
-           v59.13 — قائمة منبثقة لاختيار نوع الإنشاء (على /groups)
+           قائمة منبثقة لاختيار نوع الإنشاء (على /groups)
            ============================================================ */
         .ym-create-menu-backdrop {
           position: fixed;

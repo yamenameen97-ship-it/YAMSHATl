@@ -1,20 +1,20 @@
 import { memo } from 'react';
 
 /**
- * MobileFilterPills (v47.13 — اتجاه معكوس بناءً على طلب المستخدم)
+ * MobileFilterPills (v59.13.21 — RTL صحيح مع عدم الفيضان)
  * ----------------------------------------------------------------
- * الترتيب البصري الجديد على الشاشة من اليمين → اليسار:
- *   [الوسائط] [الستوري] [المجموعات] [الكل (نشط)]
+ * الترتيب البصري على الشاشة من اليمين → اليسار:
+ *   [الكل (نشط)] [المجموعات] [الستوري] [الوسائط]
  *
- * - "الوسائط" في **أقصى اليمين** على الشاشة.
- * - "الكل" في **أقصى اليسار** على الشاشة وهو الزر النشط (بنفسجي ممتلئ).
- * - تم عكس الترتيب بالكامل مقارنة بالنسخة السابقة.
+ * - "الكل" في **أقصى اليمين** على الشاشة (الزر النشط).
+ * - "الوسائط" في **أقصى اليسار**.
+ * - أحجام أصغر وحشو أقل لضمان ظهور الأربعة دفعة واحدة بدون فيضان.
  */
 const FILTERS = [
-  { id: 'updates', label: 'الوسائط' },
-  { id: 'stories', label: 'الستوري' },
-  { id: 'community', label: 'المجموعات' },
   { id: 'all', label: 'الكل' },
+  { id: 'community', label: 'المجموعات' },
+  { id: 'stories', label: 'الستوري' },
+  { id: 'updates', label: 'الوسائط' },
 ];
 
 function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange }) {
@@ -90,14 +90,14 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
         .ym-filters {
           display: flex;
           flex-direction: row;
-          gap: 8px;
+          gap: 6px;
           overflow-x: auto;
           scrollbar-width: none;
           -ms-overflow-style: none;
           padding-bottom: 2px;
           width: 100%;
           direction: rtl;
-          /* ✅ v51 — ترتيب عربي: العناصر تبدأ من اليمين */
+          /* ✅ v59.13.21 — العناصر تبدأ من اليمين */
           justify-content: flex-start;
           /* تمكين السحب الأفقي السلس على الجوال */
           -webkit-overflow-scrolling: touch;
@@ -108,13 +108,13 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
 
         .ym-filter-pill-new {
           flex: 0 0 auto;
-          height: 36px;
-          padding: 0 18px;
+          height: 34px;
+          padding: 0 14px;
           border-radius: 999px;
           border: none;
           background: #1A1F2E;
           color: #9CA3AF;
-          font-size: 0.82rem;
+          font-size: 0.78rem;
           font-weight: 600;
           font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
           cursor: pointer;
@@ -131,7 +131,7 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
           -webkit-user-select: none;
           user-select: none;
           /* ضمان قابلية اللمس */
-          min-width: 44px;
+          min-width: 40px;
           position: relative;
           z-index: 1;
         }
@@ -153,34 +153,34 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
         }
 
         @media (max-width: 400px) {
-          .ym-filters-container { padding: 7px 10px 9px; }
-          .ym-filters { gap: 7px; }
-          .ym-filter-pill-new {
-            height: 34px;
-            padding: 0 16px;
-            font-size: 0.78rem;
-          }
-        }
-        @media (max-width: 360px) {
-          .ym-filters-container { padding: 6px 8px 8px; }
-          .ym-filters { gap: 6px; }
+          .ym-filters-container { padding: 7px 8px 9px; }
+          .ym-filters { gap: 5px; }
           .ym-filter-pill-new {
             height: 32px;
-            padding: 0 14px;
+            padding: 0 12px;
             font-size: 0.74rem;
           }
         }
-        @media (max-width: 320px) {
-          .ym-filters-container { padding: 5px 6px 6px; }
+        @media (max-width: 360px) {
+          .ym-filters-container { padding: 6px 6px 8px; }
           .ym-filters { gap: 4px; }
           .ym-filter-pill-new {
-            height: 28px;
+            height: 30px;
             padding: 0 10px;
-            font-size: 0.66rem;
+            font-size: 0.7rem;
+          }
+        }
+        @media (max-width: 320px) {
+          .ym-filters-container { padding: 5px 4px 6px; }
+          .ym-filters { gap: 3px; }
+          .ym-filter-pill-new {
+            height: 26px;
+            padding: 0 8px;
+            font-size: 0.62rem;
           }
         }
         @media (max-width: 393px) and (min-width: 361px) {
-          .ym-filter-pill-new { height: 35px; padding: 0 17px; font-size: 0.8rem; }
+          .ym-filter-pill-new { height: 32px; padding: 0 12px; font-size: 0.76rem; }
         }
       `}</style>
     </div>

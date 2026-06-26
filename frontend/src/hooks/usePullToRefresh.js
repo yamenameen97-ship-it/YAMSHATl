@@ -312,8 +312,10 @@ export default function usePullToRefresh({
 
     // ⚠️ touchmove يجب أن يكون non-passive حتى يستطيع preventDefault
     //    لكن preventDefault لا يُستدعى إلا في وضع locked + sentence من القمة
-    const opts = { passive: false };
-    const passiveOpts = { passive: true };
+    // ⭐ v59.13.21: نستخدم capture: true لاستلام الأحداث أولاً
+    //   قبل أي child لديه touch-action أو stopPropagation → السحب يعمل من أي مكان.
+    const opts = { passive: false, capture: true };
+    const passiveOpts = { passive: true, capture: true };
 
     // ⭐ v59.13.20: نُلصق المعالجات على scroll container إن وُجد، وإلا window.
     // المهم: لا نضع scrollContainer في dependencies كي لا نُعيد الإلصاق.
@@ -325,10 +327,10 @@ export default function usePullToRefresh({
     target.addEventListener('touchcancel', onTouchEnd, passiveOpts);
 
     return () => {
-      target.removeEventListener('touchstart', onTouchStart);
-      target.removeEventListener('touchmove', onTouchMove);
-      target.removeEventListener('touchend', onTouchEnd);
-      target.removeEventListener('touchcancel', onTouchEnd);
+      target.removeEventListener('touchstart', onTouchStart, passiveOpts);
+      target.removeEventListener('touchmove', onTouchMove, opts);
+      target.removeEventListener('touchend', onTouchEnd, passiveOpts);
+      target.removeEventListener('touchcancel', onTouchEnd, passiveOpts);
     };
     // ⭐ v59.13.20: dependencies مختصرة — لا pullDistance ولا isRefreshing!
     // listeners تُلصق مرة واحدة وتبقى ثابتة طوال دورة حياة المكوّن.

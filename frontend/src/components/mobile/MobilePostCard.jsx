@@ -325,8 +325,8 @@ function MobilePostCard({
           margin-bottom: 10px;
           gap: 8px;
           direction: ltr;
-          /* تحسينات اللمس على الجوال */
-          touch-action: manipulation;
+          /* v59.13.21: pan-y بدل manipulation لإتاحة Pull-to-Refresh من أي مكان */
+          touch-action: pan-y;
           -webkit-tap-highlight-color: transparent;
         }
         /* ✅ v48: مجموعة الاسم + الأفاتار ملتصقتان كوحدة واحدة على اليمين */

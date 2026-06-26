@@ -92,9 +92,13 @@ import './styles/yamshat-fixes-v59.13.24.css';
 import './styles/yamshat-fixes-v59.13.25.css';
 /* ⭐ v59.13.26 — PERFECT REELS-PARITY: Scroll متطابق 100% مع الريلز/المجموعات
    على كل الصفحات (الرئيسية/الشات/الستوري/الإشعارات/الإعدادات...).
-   يعمل مع تعديلات MainLayout.jsx (position:absolute + inset:0 على .page-content).
-   ⚠️ يجب أن يبقى آخر CSS مطلقاً — لا تضف import CSS بعده */
+   يعمل مع تعديلات MainLayout.jsx (position:absolute + inset:0 على .page-content). */
 import './styles/yamshat-fixes-v59.13.26.css';
+/* ⭐ v59.13.28 — HOME MOBILE = GROUPS MOBILE (parity)
+   يجعل الصفحة الرئيسية على ويب الموبايل تستجيب للسحب لأعلى/أسفل
+   بسلاسة فائقة مثل صفحة المجموعات تماماً (بصمة .yam-groups-page).
+   ⚠️ يجب أن يبقى آخر import CSS مطلقاً. */
+import './styles/home-mobile-page-v59.13.28.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { pwaInitializer } from './services/pwaInitializer.js';
 import { smoothTouchLayer } from './services/smoothTouchLayer.js';

@@ -1,0 +1,282 @@
+/* ============================================================
+   🩹 YAMSHAT — v59.13.28 — HOME MOBILE = GROUPS MOBILE (parity)
+   ------------------------------------------------------------
+   🔴 شكوى المستخدم (متكررة، حاسمة):
+     "الصفحة الرئيسية على ويب موبايل لا تستجيب للسحب لأعلى وأسفل،
+      أما صفحة المجموعات على ويب موبايل تعمل بسلاسة فائقة من
+      أي منطقة أسحب فيها تستجيب — اجعل الصفحة الرئيسية مطابقة
+      تماماً لصفحة المجموعات."
+
+   ✅ التشخيص:
+     ▸ صفحة المجموعات تُلف محتواها في:
+         <div className="yam-groups-page"> { height: 100dvh; overflow-y: auto; }
+       هذا ينشئ scroll container داخلي بأبعاد ثابتة (100dvh)،
+       والمتصفح يفعّل momentum scroll بثقة عليه (مثل الريلز
+       تماماً) — هذه هي السبب الوحيد لسلاسته على iOS Safari
+       وكل المتصفحات الموبايل.
+
+     ▸ FeedMobile.jsx (الصفحة الرئيسية) تستخدم فقط:
+         <div className="ym-feed"> بدون أي scroll container
+       يعتمد على .page-content من MainLayout — وهذه الحاوية،
+       رغم محاولات v59.13.25/26، تتعرض لتعارضات مع ملفات CSS
+       قديمة (mobile-scroll-final-v59.13.2 + mobile-pull-fix
+       v59.13.20) تطبق على selectors مختلفة (.mobile-main-content)
+       تخلق ضباباً في cascade.
+
+   ✅ الحل المعماري الجديد (v59.13.28):
+     نُغلّف FeedMobile بـ <div className="yam-home-mobile-page">
+     بسلوك مطابق 1:1 لـ .yam-groups-page. هذا:
+       1. ينشئ scroll container داخلي مستقل تماماً.
+       2. لا يعتمد على .page-content في MainLayout (تبقى كما هي
+          للصفحات الأخرى).
+       3. لا تعديل وظيفي على MobilePostCard / MobileComposer / MobileFilterPills.
+       4. صفر مكتبات جديدة، صفر نودي مودولز.
+
+   ⚠️ هذا الملف يجب أن يبقى آخر import CSS بعد v59.13.26.
+   ============================================================ */
+
+
+/* ─────────────────────────────────────────────────────────────
+   1️⃣  ⭐ .yam-home-mobile-page — حاوية التمرير الأساسية
+       مطابقة 1:1 لـ .yam-groups-page في groups-list.css
+   ───────────────────────────────────────────────────────────── */
+.yam-home-mobile-page {
+  /* ⭐ نفس بصمة .yam-groups-page تماماً */
+  background-color: transparent;
+  color: #ffffff;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 12px calc(100px + env(safe-area-inset-bottom, 0px)) 12px;
+  font-family: 'Noto Sans Arabic', 'Tajawal', 'Cairo', 'Inter', sans-serif;
+  direction: rtl;
+
+  /* momentum scroll حقيقي (iOS) — هذا هو السر في صفحة المجموعات */
+  -webkit-overflow-scrolling: touch;
+
+  /* اللمس: pan-y فقط (عمودي نقي) */
+  touch-action: pan-y;
+  -ms-touch-action: pan-y;
+
+  /* لا انعكاس bounce يبتلع التمرير */
+  overscroll-behavior-y: contain;
+  overscroll-behavior-x: none;
+
+  /* لا transform/filter يكسر momentum على iOS */
+  transform: none;
+  -webkit-transform: none;
+  filter: none;
+  -webkit-filter: none;
+  perspective: none;
+
+  /* استقبال أحداث اللمس بالكامل */
+  pointer-events: auto;
+
+  /* سكرول ناعم لخواص JS مثل scrollIntoView */
+  scroll-behavior: smooth;
+
+  /* لا overflow-anchor يقفز بالمحتوى عند تحميل الصور */
+  overflow-anchor: none;
+
+  /* تحسين الأداء على المتصفح */
+  will-change: scroll-position;
+
+  /* scrollbar أنيق على ديسكتوب، مخفي على الموبايل */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(139, 92, 246, 0.45) transparent;
+
+  /* مهم: نُحرّر margin من سقف الصفحة بدون التأثير على الفوتر/الهيدر العائم */
+  box-sizing: border-box;
+}
+
+/* scrollbar أنيق على ديسكتوب */
+.yam-home-mobile-page::-webkit-scrollbar {
+  width: 6px;
+}
+.yam-home-mobile-page::-webkit-scrollbar-track {
+  background: transparent;
+}
+.yam-home-mobile-page::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.45);
+  border-radius: 999px;
+}
+.yam-home-mobile-page::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 92, 246, 0.7);
+}
+
+/* مخفي على الموبايل (يتطابق مع تجربة المجموعات) */
+@media (max-width: 768px) {
+  .yam-home-mobile-page {
+    scrollbar-width: none;
+  }
+  .yam-home-mobile-page::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   2️⃣  داخل .yam-home-mobile-page — ضبط .ym-feed كمحتوى داخلي
+       يتدفّق طبيعياً (لا scroll container داخلي زائد)
+   ───────────────────────────────────────────────────────────── */
+.yam-home-mobile-page .ym-feed {
+  /* لا height ثابت، فقط محتوى يتدفّق */
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  min-height: auto;
+  height: auto;
+  max-height: none;
+
+  /* اللمس مفتوح على الكامل */
+  touch-action: pan-y;
+  pointer-events: auto;
+
+  /* لا overflow داخلي يبتلع التمرير */
+  overflow: visible;
+  overflow-x: visible;
+  overflow-y: visible;
+
+  padding: 0;
+  margin: 0;
+}
+
+/* أبناء .ym-feed (البطاقات + المؤلّف + الفلاتر) — كل واحد يستقبل اللمس */
+.yam-home-mobile-page .ym-feed > *,
+.yam-home-mobile-page > .ym-composer,
+.yam-home-mobile-page > .ym-filters,
+.yam-home-mobile-page > .ym-feed-filters {
+  touch-action: pan-y;
+  pointer-events: auto;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   3️⃣  العناصر التفاعلية داخل الصفحة الرئيسية — manipulation
+       (تسمح بـ pan-y للسحب عند البدء على زر)
+   ───────────────────────────────────────────────────────────── */
+.yam-home-mobile-page button,
+.yam-home-mobile-page a,
+.yam-home-mobile-page [role="button"],
+.yam-home-mobile-page [role="tab"],
+.yam-home-mobile-page [role="link"] {
+  touch-action: manipulation;
+}
+
+/* حقول الإدخال: السماح للمتصفح بإدارتها */
+.yam-home-mobile-page input,
+.yam-home-mobile-page textarea,
+.yam-home-mobile-page [contenteditable] {
+  touch-action: auto;
+}
+
+/* الصور: تسمح بالتمرير العمودي ولا تُسحب */
+.yam-home-mobile-page img {
+  touch-action: pan-y;
+  -webkit-user-drag: none;
+  user-drag: none;
+}
+
+/* الفيديو: manipulation (يحتاج onClick داخلي + scroll) */
+.yam-home-mobile-page video {
+  touch-action: manipulation;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   4️⃣  الكاروسيلات الأفقية داخل الصفحة الرئيسية — pan-x فقط
+       (نفس منطق صفحة المجموعات: .yam-categories-scroll)
+   ───────────────────────────────────────────────────────────── */
+.yam-home-mobile-page .ym-filters,
+.yam-home-mobile-page .ym-feed-filters,
+.yam-home-mobile-page .stories-row,
+.yam-home-mobile-page .yam-stories-bar,
+.yam-home-mobile-page .ym-stories-row,
+.yam-home-mobile-page [data-horizontal-scroll="true"],
+.yam-home-mobile-page .horizontal-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.yam-home-mobile-page .ym-filters::-webkit-scrollbar,
+.yam-home-mobile-page .ym-feed-filters::-webkit-scrollbar,
+.yam-home-mobile-page .stories-row::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   5️⃣  حماية ضد أي قاعدة قديمة تكسر التمرير على الجذر
+       (mobile-scroll-final-v59.13.2 + mobile-pull-fix-v59.13.20
+        قد يستهدفا .ym-feed بـ overflow:visible — هذا صحيح،
+        لكن نُؤكد أن .yam-home-mobile-page نفسها تحافظ على
+        overflow-y:auto)
+   ───────────────────────────────────────────────────────────── */
+.app-shell .page-content .yam-home-mobile-page,
+.app-shell.yamshat-unified .page-content .yam-home-mobile-page {
+  /* تأكيد قاطع: هذه الحاوية هي scroll container */
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  max-height: 100dvh !important;
+  touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+  pointer-events: auto !important;
+
+  /* لا transform أو filter يكسر التمرير */
+  transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+}
+
+/* عندما تكون الصفحة الرئيسية داخل .page-content، نُلغي padding-top/bottom
+   من .page-content لأن .yam-home-mobile-page تتولى ذلك بنفسها */
+.app-shell .page-content:has(.yam-home-mobile-page) {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   6️⃣  iOS Safari خاص — تأكيد momentum scrolling 1:1 مع المجموعات
+   ───────────────────────────────────────────────────────────── */
+@supports (-webkit-touch-callout: none) {
+  .yam-home-mobile-page {
+    -webkit-overflow-scrolling: touch !important;
+    overflow-y: auto !important;
+    touch-action: pan-y !important;
+    /* مهم على iOS 16+: 100dvh لمعرفة الارتفاع الحقيقي بدون شريط العنوان */
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   7️⃣  prefers-reduced-motion — احترام إعداد المستخدم
+   ───────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .yam-home-mobile-page {
+    scroll-behavior: auto !important;
+  }
+}
+
+
+/* ============================================================
+   ✨ نهاية v59.13.28
+   الصفحة الرئيسية على ويب الموبايل تتمرّر الآن بنفس سلاسة
+   صفحة المجموعات تماماً — من أي منطقة في الصفحة، اللمس
+   والسحب لأعلى/أسفل يستجيبان فوراً، وبـ momentum scroll
+   حقيقي على iOS Safari وكل المتصفحات.
+   ============================================================ */

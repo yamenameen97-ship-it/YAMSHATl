@@ -413,41 +413,54 @@ function FeedMobile() {
 
   return (
     <>
-      {/* === صندوق المُنشئ "بماذا تفكر؟" === */}
-      <MobileComposer
-        onFocus={(action) => openComposerWithAction(action)}
-        onMedia={() => openComposerWithAction('image')}
-        onGif={() => openComposerWithAction('gif')}
-        onEmoji={() => openComposerWithAction('emoji')}
-      />
+      {/* ⭐ v59.13.28 — الصفحة الرئيسية على ويب الموبايل مغلّفة الآن
+          بـ .yam-home-mobile-page تماماً مثل صفحة المجموعات
+          (.yam-groups-page). هذا يضمن أن السحب لأعلى/أسفل من أي
+          منطقة من الصفحة يستجيب بسلاسة 100% — momentum scroll حقيقي
+          على iOS Safari وكل المتصفحات. */}
+      <div
+        className="yam-home-mobile-page"
+        dir="rtl"
+        role="region"
+        aria-label="الصفحة الرئيسية"
+        style={{ fontFamily: "'Noto Sans Arabic','Tajawal','Cairo',sans-serif" }}
+      >
+        {/* === صندوق المُنشئ "بماذا تفكر؟" === */}
+        <MobileComposer
+          onFocus={(action) => openComposerWithAction(action)}
+          onMedia={() => openComposerWithAction('image')}
+          onGif={() => openComposerWithAction('gif')}
+          onEmoji={() => openComposerWithAction('emoji')}
+        />
 
-      {/* Filter Pills */}
-      <MobileFilterPills activeFilter={activeFilter} onFilterChange={setActiveFilter} />
+        {/* Filter Pills */}
+        <MobileFilterPills activeFilter={activeFilter} onFilterChange={setActiveFilter} />
 
-      {/* Posts Feed */}
-      <div className="ym-feed">
-        {filtered.map((post) => {
-          // عرض المنشورات العادية فقط (تمت إزالة بطاقة البث المباشر)
-          return (
-            <MobilePostCard
-              key={post.id}
-              post={post}
-              onLike={handleLike}
-              onComment={handleComment}
-              onShare={handleShare}
-              onSave={handleSave}
-              onMore={handleMore}
-            />
-          );
-        })}
-      </div>
-
-      {!loading && filtered.length === 0 ? (
-        <div className="ym-empty">
-          <div className="icon">📭</div>
-          لا توجد منشورات في هذا التصنيف بعد.
+        {/* Posts Feed */}
+        <div className="ym-feed">
+          {filtered.map((post) => {
+            // عرض المنشورات العادية فقط (تمت إزالة بطاقة البث المباشر)
+            return (
+              <MobilePostCard
+                key={post.id}
+                post={post}
+                onLike={handleLike}
+                onComment={handleComment}
+                onShare={handleShare}
+                onSave={handleSave}
+                onMore={handleMore}
+              />
+            );
+          })}
         </div>
-      ) : null}
+
+        {!loading && filtered.length === 0 ? (
+          <div className="ym-empty">
+            <div className="icon">📭</div>
+            لا توجد منشورات في هذا التصنيف بعد.
+          </div>
+        ) : null}
+      </div>
 
       {/* v50 — تمت إزالة MobileComposeModal (المؤلّف القديم). الإنشاء يتم الآن عبر صفحة /compose */}
 

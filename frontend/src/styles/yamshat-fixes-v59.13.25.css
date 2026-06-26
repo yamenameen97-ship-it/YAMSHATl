@@ -1,0 +1,424 @@
+/* ============================================================
+   🩹 YAMSHAT — v59.13.25 — Reels-Style Scroll Fix (Definitive)
+   ------------------------------------------------------------
+   🔴 المشكلة المُبلَّغ عنها من المستخدم:
+     "اصلاح مشكلة سحب الصفحات بالصفحه الرئيسيه وصفحة الشات
+      وبقية الصفحات ما تستجيب للسحب للاعلى والاسفل... ضبطها لتعمل
+      مثل صفحة الريلز وصفحة المجموعات."
+
+   ✅ التشخيص الجذري (لماذا الريلز/المجموعات تعملان وغيرهما لا):
+     ▸ صفحات الريلز (Reels.jsx) والمجموعات (GroupsHome.jsx) تنشئ
+       حاوية تمرير داخلية مستقلة بنفسها:
+         - Reels: .ym-reels-feed (overflow-y:auto + scroll-snap)
+         - Groups: .yam-groups-page (height:100dvh + overflow-y:auto)
+       لذلك التمرير العمودي طبيعي تماماً ولا يعتمد على CSS عام.
+
+     ▸ بقية الصفحات (Dashboard / Chat / Home(Feed) / Friends / ...)
+       تعتمد على حاوية MainLayout الموحّدة: <main class="page-content">
+       ولا تُنشئ حاوية تمرير خاصة بها.
+
+     ▸ المشكلة: ملفات CSS الأخيرة (v59.13.20 / v59.13.24) كانت تستهدف
+       .mobile-main-content وهي class تابعة لـ MobileLayout (في
+       مجلد /layouts/) الذي **لا يُستخدم في الـ App الحقيقي**.
+       App.jsx يستخدم MainLayout من /components/layout/MainLayout.jsx
+       الذي يولّد .page-content فقط.
+       النتيجة: قواعد touch-action و overflow لم تكن تطبّق على الـ DOM
+       الفعلي، فالتمرير كان يعتمد على القواعد القديمة المتراكمة.
+
+   ✅ الحل في v59.13.25:
+     ❶ نُلصق نفس "بصمة Reels" على .page-content مباشرة:
+        - overflow-y:auto + -webkit-overflow-scrolling:touch
+        - touch-action:pan-y (لا pan-x ولا none ولا manipulation)
+        - overscroll-behavior-y:contain
+        - GPU acceleration خفيف (translateZ(0)) للسلاسة
+     ❷ نسحب أي touch-action معاكس من الأبناء (manipulation,
+        none, pan-x فقط) ما عدا الكاروسيلات الأفقية الصريحة.
+     ❸ نضمن أن الحاوية الأم (.app-shell / .main-shell) لا تقفل
+        التمرير عبر overflow:hidden + height ثابت.
+     ❹ نعالج صفحات معيّنة (Chat / Dashboard / Friends / Notifications
+        / Profile / Search / Wallet) بإعطائها min-height:100%
+        لتُغذّي ارتفاع .page-content وتُفعّل التمرير.
+
+   ⚠️ هذا الملف يجب أن يُحمَّل **آخر شيء** في main.jsx ليفوز في
+   cascade على كل ما سبق.
+   ============================================================ */
+
+
+/* ─────────────────────────────────────────────────────────────
+   1️⃣  جذر الصفحة — لا قفل overflow، لا touch-action معاكس
+   ───────────────────────────────────────────────────────────── */
+html,
+html[lang],
+html[dir],
+body,
+#root {
+  touch-action: pan-y pinch-zoom !important;
+  overscroll-behavior-y: contain !important;
+}
+
+/* الـ App Shell موجب يسمح بفائض رأسي عند الحاجة */
+.app-shell,
+.app-shell.yamshat-unified,
+.main-shell {
+  touch-action: pan-y pinch-zoom !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   2️⃣  ⭐ .page-content — الحاوية الرئيسية للتمرير في كل الصفحات
+       (نفس بصمة .ym-reels-feed و .yam-groups-page تماماً)
+   ───────────────────────────────────────────────────────────── */
+.page-content,
+main.page-content,
+main[class*="page-content"] {
+  /* مرنة داخل flex */
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+
+  /* التمرير الفعلي العمودي */
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+  overscroll-behavior-x: none !important;
+
+  /* ⭐ touch-action نظيف — pan-y فقط (مطابق للريلز/المجموعات) */
+  touch-action: pan-y !important;
+
+  /* GPU acceleration خفيف للسلاسة (مطابق لما تفعله الريلز) */
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  will-change: scroll-position;
+
+  /* لا shadow/filter يكسر التمرير */
+  filter: none !important;
+  -webkit-filter: none !important;
+
+  /* السماح بإستقبال أحداث اللمس */
+  pointer-events: auto !important;
+
+  /* لا overflow-anchor يقفز بالصفحة عند تحميل صور */
+  overflow-anchor: none !important;
+
+  /* سلاسة على iOS Safari */
+  scroll-behavior: smooth;
+}
+
+/* في وضع المحادثة الفردية فقط نقفل التمرير على page-content
+   لأن داخل المحادثة قائمة الرسائل لها سكرول خاص */
+.page-content.conversation-mode,
+.app-shell.conversation-shell .page-content,
+.app-shell.yamshat-unified.conversation-shell .page-content {
+  overflow: hidden !important;
+  touch-action: none !important;
+}
+
+/* في وضع الريلز: page-content يأخذ كامل الشاشة بدون scroll عام
+   (الـ ym-reels-feed الداخلي يدير السكرول snap) */
+.page-content.reels-mode,
+.app-shell.reels-shell .page-content {
+  overflow: hidden !important;
+  height: 100dvh !important;
+  height: 100vh !important;
+  padding-top: 0 !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   3️⃣  ⭐ أبناء page-content — لا أحد يستهلك السحب العمودي
+   ───────────────────────────────────────────────────────────── */
+
+/* القاعدة العامة: كل أبناء page-content يسمحون بالسحب العمودي */
+.page-content > *,
+.page-content .page-shell-glow,
+.page-content .page-shell-glow > * {
+  /* لا overflow هنا — التمرير يقع على .page-content فقط */
+  touch-action: pan-y !important;
+  /* نسمح للأبناء بالنمو بالطول الطبيعي */
+  min-height: 0;
+}
+
+/* الكاروسيلات الأفقية الصريحة: استثناء (pan-x فقط) */
+.page-content [data-horizontal-scroll="true"],
+.page-content .ym-filters,
+.page-content .ym-filters-container,
+.page-content .stories-row,
+.page-content .ym-stories-row,
+.page-content .yam-categories-scroll,
+.page-content [role="tablist"][aria-orientation="horizontal"] {
+  touch-action: pan-x !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+}
+
+/* العناصر التفاعلية: manipulation للسرعة (المتصفحات تسمح بـ pan-y معها) */
+.page-content button,
+.page-content a,
+.page-content [role="button"],
+.page-content input[type="checkbox"],
+.page-content input[type="radio"],
+.page-content label {
+  touch-action: manipulation !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+/* حقول الإدخال النصية: auto (يحتاجها المتصفح لإظهار keyboard hints) */
+.page-content input[type="text"],
+.page-content input[type="search"],
+.page-content input[type="email"],
+.page-content input[type="password"],
+.page-content input[type="tel"],
+.page-content input[type="url"],
+.page-content textarea,
+.page-content [contenteditable="true"] {
+  touch-action: auto !important;
+}
+
+/* الفيديو: manipulation (تسمح بـ pan-y) */
+.page-content video {
+  touch-action: manipulation !important;
+}
+
+/* الصور: pan-y واضح، ولا تُسحب */
+.page-content img,
+.page-content picture {
+  touch-action: pan-y !important;
+  -webkit-user-drag: none !important;
+  user-drag: none !important;
+  -webkit-touch-callout: none;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   4️⃣  ⭐ بطاقات المنشورات والصفحات — لا touch-action مقيّد
+   ───────────────────────────────────────────────────────────── */
+.page-content .ym-post-card,
+.page-content .mobile-post-card,
+.page-content .ym-feed,
+.page-content .ym-feed > *,
+.page-content .yam-post-card-v2,
+.page-content article,
+.page-content article * {
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+}
+
+/* الأزرار داخل بطاقات المنشور: manipulation فقط (تسمح بـ pan-y) */
+.page-content .ym-post-card button,
+.page-content .ym-post-card a,
+.page-content .mobile-post-card button,
+.page-content .mobile-post-card a,
+.page-content article button,
+.page-content article a {
+  touch-action: manipulation !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   5️⃣  ⭐ صفحات لا تنشئ scroll container خاص بها — نضمن أن
+      محتواها يملأ ارتفاع .page-content على الأقل لإطلاق السكرول
+   ───────────────────────────────────────────────────────────── */
+
+/* Dashboard */
+.page-content .dashboard-grid,
+.page-content section.dashboard-grid {
+  min-height: 100%;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Friends / Users / Notifications / Search / Profile / Settings / Wallet */
+.page-content .yam-friends-page,
+.page-content .yam-users-page,
+.page-content .yam-notifications-page,
+.page-content .yam-search-page,
+.page-content .yam-profile-page,
+.page-content .yam-settings-page,
+.page-content .yam-wallet-page,
+.page-content .yam-inbox-page,
+.page-content .yam-stories-page,
+.page-content .yam-laptop-page {
+  /* المحتوى يملأ على الأقل ارتفاع الحاوية، ويتمرّر طبيعياً عند الفائض */
+  min-height: 100%;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  /* ❌ لا تُنشئ scroll container داخلي — اترك السكرول للحاوية الأم */
+  overflow: visible !important;
+  /* السماح الكامل بالسحب العمودي */
+  touch-action: pan-y !important;
+}
+
+/* صفحة الـ Feed (الرئيسية) — تستخدم FeedMobile و FeedDesktopInner */
+.page-content .ym-feed-page,
+.page-content .ym-laptop-page,
+.page-content .ym-feed-container {
+  min-height: 100%;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  /* لا overflow داخلي — اترك السكرول للأب */
+  overflow: visible !important;
+  overflow-y: visible !important;
+  touch-action: pan-y !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   6️⃣  ⭐ صفحة الدردشة (Chat.jsx) — استثناء خاص
+      ----------------------------------------------------------
+      صفحة Chat.jsx تستخدم MainLayout بـ hideNav + lockScroll،
+      ولها قائمة محادثات جانبية ومنطقة رسائل منفصلة لكل منهما
+      سكرول داخلي. نضمن أن:
+        - حاوية الصفحة بأكملها لا تقفل التمرير
+        - قائمة الـ chats (sidebar) قابلة للتمرير عمودياً
+        - قائمة الرسائل (messages-area) قابلة للتمرير عمودياً
+   ───────────────────────────────────────────────────────────── */
+
+/* للحاوية الأم لصفحة الشات (وضع hideNav + lockScroll) */
+.page-content.lock-scroll {
+  overflow: hidden !important;
+}
+
+/* داخل صفحة الشات: قائمة المحادثات */
+.page-content .yam-chat-list,
+.page-content .ym-chat-list,
+.page-content .chat-list,
+.page-content [data-chat-list="true"] {
+  height: 100% !important;
+  max-height: 100% !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+  touch-action: pan-y !important;
+}
+
+/* داخل صفحة الشات: منطقة الرسائل */
+.page-content .ym-messages-area,
+.page-content .messages-list,
+.page-content .chat-messages,
+.page-content [data-messages-area="true"] {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+  touch-action: pan-y !important;
+  overflow-anchor: none;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   7️⃣  ⭐ توافق مع MobileLayout (في حال تم تفعيله مستقبلاً)
+       نُبقي القواعد القديمة فعّالة لـ .mobile-main-content
+   ───────────────────────────────────────────────────────────── */
+main.mobile-main-content,
+.mobile-main-content {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   8️⃣  PullToRefresh wrappers — شفافة تماماً، لا تخنق التمرير
+   ───────────────────────────────────────────────────────────── */
+.ym-ptr-container,
+.ym-ptr-content,
+.page-content > .ym-ptr-container,
+.page-content > .ym-ptr-content {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 100% !important;
+  height: auto !important;
+  /* لا overflow داخلي — التمرير على .page-content فقط */
+  overflow: visible !important;
+  overflow-y: visible !important;
+  overflow-x: visible !important;
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   9️⃣  حماية احتياطية: لا touch-action: none على أي حاوية أب
+       (يلغي أي قاعدة قديمة تخنق التمرير بطريق الخطأ)
+   ───────────────────────────────────────────────────────────── */
+.page-content[style*="touch-action: none"],
+.page-content[style*="touch-action:none"],
+main.page-content[style*="touch-action: none"],
+main.page-content[style*="touch-action:none"],
+#root[style*="touch-action: none"],
+#root[style*="touch-action:none"] {
+  touch-action: pan-y !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   🔟  Scrollbar أنيق على .page-content (نفس نمط الريلز/المجموعات)
+   ───────────────────────────────────────────────────────────── */
+.page-content::-webkit-scrollbar {
+  width: 6px;
+}
+.page-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+.page-content::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.5);
+  border-radius: 999px;
+}
+.page-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 92, 246, 0.75);
+}
+
+/* على الموبايل نخفي شريط التمرير تماماً (مثل الريلز) */
+@media (max-width: 768px) {
+  .page-content {
+    scrollbar-width: none;
+  }
+  .page-content::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   1️⃣1️⃣  iOS Safari — momentum scrolling خاص بـ .page-content
+   ───────────────────────────────────────────────────────────── */
+@supports (-webkit-touch-callout: none) {
+  .page-content,
+  main.page-content,
+  .mobile-main-content,
+  main.mobile-main-content {
+    -webkit-overflow-scrolling: touch !important;
+    overflow-y: auto !important;
+    touch-action: pan-y !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   1️⃣2️⃣  prefers-reduced-motion: نُلغي smooth scroll لكن نُبقي
+        التمرير العمودي يعمل
+   ───────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .page-content {
+    scroll-behavior: auto !important;
+  }
+}
+
+
+/* ============================================================
+   ✨ نهاية ملف v59.13.25 — كل الصفحات تتمرّر بسلاسة الريلز
+   ============================================================ */

@@ -86,9 +86,11 @@ import './styles/mobile-scroll-final-v59.13.2.css';
 /* 🩹 v59.13.20 — Definitive Mobile Pull Fix — يفوز على كل ما سبق.
    يُصلح: re-attach storm + overlays + touch-action:none + pointer-events:none */
 import './styles/mobile-pull-fix-v59.13.20.css';
-/* ⭐ v59.13.24 — Final Fix Pack (Reels-style scroll + composer/filters RTL)
-   ⚠️ يجب أن يبقى آخر CSS مطلقاً — لا تضف import CSS بعده */
+/* ⭐ v59.13.24 — Final Fix Pack (Reels-style scroll + composer/filters RTL) */
 import './styles/yamshat-fixes-v59.13.24.css';
+/* ⭐ v59.13.25 — Reels-Style Scroll Fix على .page-content (الحاوية الحقيقية)
+   ⚠️ يجب أن يبقى آخر CSS مطلقاً — لا تضف import CSS بعده */
+import './styles/yamshat-fixes-v59.13.25.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { pwaInitializer } from './services/pwaInitializer.js';
 import { smoothTouchLayer } from './services/smoothTouchLayer.js';

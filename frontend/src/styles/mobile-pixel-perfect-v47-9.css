@@ -108,13 +108,18 @@ html, body {
   }
 }
 
-/* ============ تأكيد ظهور أيقونات الـ topbar في الترتيب الصحيح ============ */
+/* ============ v59.13.22: تأكيد ظهور أيقونات الـ topbar في الترتيب الصحيح ============
+   ⚠️ تم إزالة `direction: ltr !important` من .ym-filters و .ym-bottomnav-inner
+   لأنها كانت تكسر RTL للعربية وتدفع شريط التصفية وأزرار الشريط السفلي
+   نحو اليسار، ما يجعل العنصر الأول يخرج عن حدود الشاشة (الكل + المنزل).
+   الآن نعتمد على dir="rtl" المضبوط في JSX و BottomNav.jsx / MobileFilterPills.jsx.
+   الـ topbar يبقى ltr لأن ترتيبه (شعار يسار + أيقونات يمين) منطقي عرضياً. */
 .ym-topbar-inner { direction: ltr !important; }
 .ym-topbar-center { direction: ltr !important; }
 .ym-footer-actions { direction: ltr !important; }
 .ym-post-header { direction: ltr !important; }
-.ym-filters { direction: ltr !important; }
-.ym-bottomnav-inner { direction: ltr !important; }
+/* .ym-filters: تركها لتأخذ direction:rtl من المكوّن — لا تفرض ltr */
+/* .ym-bottomnav-inner: تركها لتأخذ direction:rtl من nav — لا تفرض ltr */
 
 /* لكن النصوص العربية تبقى rtl */
 .ym-topbar-link-text,

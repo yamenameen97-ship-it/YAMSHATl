@@ -1,42 +1,38 @@
 /**
- * usePullToRefresh — v59.13.20 (Mobile Pull Fix — Stable Refs Edition)
+ * usePullToRefresh — v59.13.22 (Mobile Pull Anywhere Edition)
  * ----------------------------------------------------------------------
  * Hook عام للسحب من أعلى لتحديث الصفحة (Pull-to-Refresh)
  *
- * 🔴 إصلاحات v59.13.20 الجذرية لمشكلة "السحب لا يستجيب على الجوال":
+ * 🔴 إصلاح v59.13.22 — مشكلة "السحب يعمل فقط من حواف الشاشة":
  *
- *   1️⃣ مشكلة Re-attach Storm (الأخطر على الإطلاق)
- *      • قبلًا: useEffect كان يضع pullDistance/isRefreshing في dependencies
- *        فيتم إزالة ثم إضافة touch listeners عشرات المرات في الثانية
- *        أثناء السحب → المتصفح يربك ولا يلتقط الأحداث.
- *      • الآن: useEffect يعتمد فقط على [disabled, scrollContainerRef].
- *        كل القيم المتغيرة (pullDistance, isRefreshing) نقرأها من refs
- *        داخل المعالج → listeners يُلصقان مرة واحدة فقط ويظلان مستقرين.
+ *   السبب الجذري:
+ *   - في v59.13.20/21 كانت المعالجات تُلصق على `main.mobile-main-content`
+ *     فقط (مع capture:true).
+ *   - أي عنصر فرعي يستخدم stopPropagation أو touch-action مخالف
+ *     (بطاقات منشورات، صور، فيديو، أزرار، sliders) كان يستهلك الحدث
+ *     قبل أن يصل إلى main → السحب يعمل فقط من الحواف الفارغة.
  *
- *   2️⃣ مشكلة Race Condition عند Mount
- *      • قبلًا: resolveScrollContainer() يُستدعى مرة واحدة وقت الـ effect.
- *        إن لم يكن mainRef.current جاهزًا أو CSS لم يُحمَّل (overflow:auto
- *        غير مُطبَّق بعد) → يقع على window → السحب لا يعمل أبدًا.
- *      • الآن: نُعيد المحاولة عند كل touchstart إن لم يُعثر على حاوية.
+ *   الحل في v59.13.22:
+ *   - نُلصق المعالجات على `document` (capture:true) → نضمن استلام
+ *     الـ touchstart/touchmove قبل أي عنصر فرعي مهما فعل.
+ *   - نستخدم `scrollContainer.scrollTop` لمعرفة هل نحن في القمة قبل
+ *     تفعيل السحب — هذا يحفظ السلوك الصحيح: السحب يبدأ فقط عند top=0.
+ *   - النتيجة: المستخدم يستطيع السحب من أي موضع في الصفحة (بطاقة منشور،
+ *     صورة، نص...) ما دامت الصفحة في القمة.
  *
- *   3️⃣ مشكلة passive:false يخنق التمرير
- *      • قبلًا: touchmove non-passive على main يُجبر المتصفح على انتظار JS
- *        قبل كل scroll → بطء واضح على Android القديم.
- *      • الآن: نبدأ بمستمع passive:true. إذا اكتشفنا حركة سحب فعلية من
- *        الأعلى نُحوِّل ديناميكيًا (نضيف معالجًا non-passive ثانٍ فقط
- *        لإنشاء preventDefault، مع الحفاظ على المستمع السريع).
+ * 🔧 إصلاحات سابقة محفوظة (v59.13.20):
+ *   • Stable refs (لا re-attach storm)
+ *   • passive opportunistic
+ *   • Stale closure مُحلولة
+ *   • Race condition عند mount مُحلولة
  *
- *   4️⃣ مشكلة Stale Closure على onRefresh
- *      • قبلًا: تغيير onRefresh يُعيد إنشاء finishRefresh ثم الـ effect.
- *      • الآن: نحفظ onRefresh في ref → الـ effect ثابت تمامًا.
- *
- * 🔧 إصلاحات سابقة محفوظة (v59.13.18):
- *   • passive listeners افتراضياً (لا يخنق التمرير)
- *   • preventDefault يُستدعى فقط عند سحب فعلي من scrollTop=0
+ * 🔧 إصلاحات أقدم (v59.13.18):
+ *   • passive listeners افتراضياً
+ *   • preventDefault فقط عند سحب فعلي من scrollTop=0
  *   • تعطيل تلقائي إذا لم يكن الجهاز touch
  *   • تجاهل multi-touch (pinch zoom)
  *   • RTL آمن — السحب عمودي فقط
- *   • مقاومة (resistance) لتجربة شبيهة بالتطبيقات الأصلية
+ *   • Resistance لتجربة شبيهة بالتطبيقات الأصلية
  *   • Haptic feedback خفيف عند التفعيل
  *   • تنظيف آمن لمستمعي الأحداث
  */
@@ -45,8 +41,8 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 const DEFAULT_THRESHOLD = 70;
 const DEFAULT_MAX_PULL = 140;
 const RESISTANCE = 2.4;
-const HORIZONTAL_TOLERANCE = 12; // إن تجاوزت الحركة الأفقية هذا الرقم → ألغِ السحب
-const ACTIVATION_DELTA = 6;      // الحد الأدنى لاعتبار اللمس "سحب"
+const HORIZONTAL_TOLERANCE = 12;
+const ACTIVATION_DELTA = 6;
 
 export default function usePullToRefresh({
   onRefresh,
@@ -54,16 +50,13 @@ export default function usePullToRefresh({
   maxPull = DEFAULT_MAX_PULL,
   disabled = false,
   hapticOnTrigger = true,
-  scrollContainerRef = null, // ⭐ مرجع خارجي لحاوية التمرير الفعلية
+  scrollContainerRef = null,
 } = {}) {
-  // containerRef داخلي يستخدمه PullToRefresh لتحريك الـ indicator (لفّ المحتوى)
-  // أما scrollContainerRef فهو حاوية التمرير الحقيقية القادمة من MainLayout.
   const containerRef = useRef(null);
   const [pullDistance, setPullDistance] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // ⭐ v59.13.20: نحتفظ بالقيم المتغيرة في refs بدلاً من dependencies
-  // كي لا يُعاد تشغيل useEffect (وبالتالي إعادة إلصاق listeners) في كل تحديث.
+  // refs مستقرة — تجنّب re-attach storm
   const isRefreshingRef = useRef(false);
   const pullDistanceRef = useRef(0);
   const onRefreshRef = useRef(onRefresh);
@@ -71,7 +64,6 @@ export default function usePullToRefresh({
   const maxPullRef = useRef(maxPull);
   const hapticOnTriggerRef = useRef(hapticOnTrigger);
 
-  // مزامنة القيم → refs (آمن، لا يسبب re-attach)
   useEffect(() => { isRefreshingRef.current = isRefreshing; }, [isRefreshing]);
   useEffect(() => { pullDistanceRef.current = pullDistance; }, [pullDistance]);
   useEffect(() => { onRefreshRef.current = onRefresh; }, [onRefresh]);
@@ -83,7 +75,7 @@ export default function usePullToRefresh({
     startY: 0,
     startX: 0,
     active: false,
-    locked: false,        // قُفل كسحب فعلي
+    locked: false,
     triggered: false,
     cancelled: false,
   });
@@ -119,9 +111,8 @@ export default function usePullToRefresh({
 
   useEffect(() => {
     if (disabled) return undefined;
-    if (typeof window === 'undefined') return undefined;
+    if (typeof window === 'undefined' || typeof document === 'undefined') return undefined;
 
-    // فقط على أجهزة اللمس
     const isTouchDevice =
       'ontouchstart' in window ||
       navigator.maxTouchPoints > 0 ||
@@ -129,10 +120,6 @@ export default function usePullToRefresh({
 
     if (!isTouchDevice) return undefined;
 
-    // ──────────────────────────────────────────────────────────────
-    // v59.13.18: إيجاد حاوية التمرير — الأولوية المطلقة للـ ref الخارجي
-    // v59.13.20: نُعيد المحاولة عند كل touchstart إن لم نجدها
-    // ──────────────────────────────────────────────────────────────
     const isScrollable = (el) => {
       if (!el || el.nodeType !== 1) return false;
       try {
@@ -143,33 +130,29 @@ export default function usePullToRefresh({
       }
     };
 
+    // ──────────────────────────────────────────────────────────────
+    // إيجاد حاوية التمرير الفعلية (main.mobile-main-content)
+    // ──────────────────────────────────────────────────────────────
     const resolveScrollContainer = () => {
-      // 1) Direct ref — الطريقة الموصى بها (MainLayout يمرّر mainRef)
       if (scrollContainerRef && scrollContainerRef.current) {
         const refEl = scrollContainerRef.current;
-        // إذا كان العنصر نفسه قابلاً للتمرير → استخدمه مباشرة
         if (isScrollable(refEl)) return refEl;
-        // وإلا تحقّق من أبنائه (حالة wrapper بـ overflow:hidden)
         for (const child of refEl.children) {
           if (isScrollable(child) && child.scrollHeight > child.clientHeight) {
             return child;
           }
         }
-        // ⭐ v59.13.20: إذا لم يكن قابلاً للتمرير لكنه يحمل padding/min-height
-        // ومُعرَّف بأنه main → استخدمه على أي حال (CSS قد يُطبَّق لاحقاً)
         if (refEl.tagName === 'MAIN' || refEl.classList.contains('mobile-main-content')) {
           return refEl;
         }
         return null;
       }
 
-      // 2) Legacy fallback — للتوافق مع الكود القديم
-      const mainEl = typeof document !== 'undefined'
-        ? document.querySelector('main.mobile-main-content, .mobile-main-content, main.page-content, .page-content')
-        : null;
-      if (mainEl) return mainEl; // نقبله حتى لو CSS لم يُطبَّق بعد
+      const mainEl = document.querySelector(
+        'main.mobile-main-content, .mobile-main-content, main.page-content, .page-content'
+      );
+      if (mainEl) return mainEl;
 
-      // 3) ابدأ من containerRef الداخلي واصعد لأعلى
       let node = containerRef.current;
       while (node && node !== document.body && node !== document.documentElement) {
         if (isScrollable(node) && node.scrollHeight > node.clientHeight) {
@@ -178,12 +161,9 @@ export default function usePullToRefresh({
         node = node.parentElement;
       }
 
-      // 4) Fallback نهائي: null → سنستخدم window
       return null;
     };
 
-    // ⭐ v59.13.20: نُبقي مرجعًا متغيرًا لحاوية التمرير
-    // ونُحدِّثه عند كل touchstart إن لم يُعثر عليها بعد.
     let scrollContainer = resolveScrollContainer();
 
     const getScrollTop = () => {
@@ -191,6 +171,54 @@ export default function usePullToRefresh({
         return scrollContainer.scrollTop || 0;
       }
       return window.scrollY || document.documentElement.scrollTop || 0;
+    };
+
+    // ⭐ v59.13.22: نتحقق أن النقطة التي بدأ منها اللمس داخل المنطقة
+    // القابلة للتمرير (main) — وليس داخل الشريط العلوي أو السفلي أو drawer.
+    const isPointInsideScrollArea = (clientX, clientY) => {
+      if (!scrollContainer) return true;
+      try {
+        const rect = scrollContainer.getBoundingClientRect();
+        // النقطة يجب أن تكون داخل الـ rect (مع هامش بسيط)
+        return (
+          clientX >= rect.left &&
+          clientX <= rect.right &&
+          clientY >= rect.top &&
+          clientY <= rect.bottom
+        );
+      } catch {
+        return true;
+      }
+    };
+
+    // ⭐ v59.13.22: تجاهل اللمس إذا بدأ داخل modal/drawer/overlay مفتوح
+    // أو داخل عنصر فيه data-no-pull أو أي scroller داخلي.
+    const isInsideInteractiveOverlay = (target) => {
+      if (!target || target.nodeType !== 1) return false;
+      try {
+        // overlays مفتوحة
+        if (target.closest('[role="dialog"]:not([aria-hidden="true"])')) return true;
+        if (target.closest('.modal:not([hidden]):not([aria-hidden="true"])')) return true;
+        if (target.closest('.drawer:not([aria-hidden="true"])')) return true;
+        if (target.closest('.bottom-sheet:not([aria-hidden="true"])')) return true;
+        // ⭐ v59.13.22: عناصر تستثني نفسها من PTR صراحةً
+        if (target.closest('[data-no-pull-to-refresh="true"]')) return true;
+        // عناصر input/textarea (الكيبورد)
+        const tag = target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+        if (target.isContentEditable) return true;
+        // ⭐ كاروسيلات/sliders/horizontal scrollers أفقية تستهلك اللمس
+        // (شريط التصفية، قصص، ريلز sliders) — تجاهل السحب إذا بدأ داخلها
+        const horizontalScroller = target.closest(
+          '[data-horizontal-scroll="true"], .ym-filters, .stories-row, .reels-snap, [data-reels]'
+        );
+        if (horizontalScroller) return true;
+        // ⭐ video element — يستهلك touch لتشغيل/إيقاف
+        if (tag === 'VIDEO') return true;
+        return false;
+      } catch {
+        return false;
+      }
     };
 
     const reset = () => {
@@ -203,19 +231,31 @@ export default function usePullToRefresh({
     const onTouchStart = (e) => {
       if (isRefreshingRef.current) return;
       if (!e.touches || e.touches.length !== 1) {
-        // pinch / multi-touch → تجاهل
         stateRef.current.cancelled = true;
         return;
       }
-      // ⭐ v59.13.20: إعادة المحاولة لإيجاد حاوية التمرير إن لم تكن جاهزة
+      // إعادة محاولة حلّ scroll container إن لم يكن جاهزاً
       if (!scrollContainer) {
         scrollContainer = resolveScrollContainer();
       }
+      const t = e.touches[0];
+
+      // ⭐ v59.13.22: تحقق صريح من أن اللمس داخل منطقة التمرير
+      if (!isPointInsideScrollArea(t.clientX, t.clientY)) {
+        stateRef.current.cancelled = true;
+        return;
+      }
+      // ⭐ v59.13.22: تجاهل overlay/dialog/input/horizontal-scroller
+      if (isInsideInteractiveOverlay(e.target)) {
+        stateRef.current.cancelled = true;
+        return;
+      }
+      // يجب أن نكون في قمة التمرير
       if (getScrollTop() > 0) {
         stateRef.current.cancelled = true;
         return;
       }
-      const t = e.touches[0];
+
       stateRef.current.startY = t.clientY;
       stateRef.current.startX = t.clientX;
       stateRef.current.active = true;
@@ -240,9 +280,7 @@ export default function usePullToRefresh({
       const deltaY = t.clientY - stateRef.current.startY;
       const deltaX = t.clientX - stateRef.current.startX;
 
-      // لم نقفل بعد كسحب — افحص الاتجاه أولاً
       if (!stateRef.current.locked) {
-        // إذا كانت الحركة أفقية أو لأعلى → ألغِ
         if (Math.abs(deltaX) > HORIZONTAL_TOLERANCE || deltaY < ACTIVATION_DELTA) {
           if (deltaY < 0 || Math.abs(deltaX) > Math.abs(deltaY)) {
             stateRef.current.cancelled = true;
@@ -268,7 +306,6 @@ export default function usePullToRefresh({
         }
       }
 
-      // الآن نحن في وضع سحب مؤكد
       if (deltaY <= 0) {
         if (pullDistanceRef.current !== 0) {
           setPullDistance(0);
@@ -277,7 +314,6 @@ export default function usePullToRefresh({
         return;
       }
 
-      // الآن فقط يُسمح بـ preventDefault لمنع scroll الافتراضي
       if (e.cancelable) {
         try { e.preventDefault(); } catch { /* ignore */ }
       }
@@ -310,30 +346,29 @@ export default function usePullToRefresh({
       }
     };
 
-    // ⚠️ touchmove يجب أن يكون non-passive حتى يستطيع preventDefault
-    //    لكن preventDefault لا يُستدعى إلا في وضع locked + sentence من القمة
-    // ⭐ v59.13.21: نستخدم capture: true لاستلام الأحداث أولاً
-    //   قبل أي child لديه touch-action أو stopPropagation → السحب يعمل من أي مكان.
-    const opts = { passive: false, capture: true };
+    // ⭐⭐⭐ v59.13.22: إلصاق المعالجات على document مع capture:true
+    // - capture:true: نلتقط الحدث في مرحلة capture قبل أي child handler
+    // - target=document: لا child يستطيع منعنا من استلام الحدث
+    // - passive:false على touchmove (للتمكن من preventDefault بشكل شرطي)
+    // - passive:true على touchstart/touchend (لا حاجة لـ preventDefault)
+    //
+    // النتيجة: السحب يعمل من أي موضع في الصفحة (بطاقة، صورة، نص...)
+    // ما دامت الصفحة في القمة واللمس داخل main.
+    const target = document;
+    const moveOpts = { passive: false, capture: true };
     const passiveOpts = { passive: true, capture: true };
 
-    // ⭐ v59.13.20: نُلصق المعالجات على scroll container إن وُجد، وإلا window.
-    // المهم: لا نضع scrollContainer في dependencies كي لا نُعيد الإلصاق.
-    const target = scrollContainer || window;
-
     target.addEventListener('touchstart', onTouchStart, passiveOpts);
-    target.addEventListener('touchmove', onTouchMove, opts);
+    target.addEventListener('touchmove', onTouchMove, moveOpts);
     target.addEventListener('touchend', onTouchEnd, passiveOpts);
     target.addEventListener('touchcancel', onTouchEnd, passiveOpts);
 
     return () => {
       target.removeEventListener('touchstart', onTouchStart, passiveOpts);
-      target.removeEventListener('touchmove', onTouchMove, opts);
+      target.removeEventListener('touchmove', onTouchMove, moveOpts);
       target.removeEventListener('touchend', onTouchEnd, passiveOpts);
       target.removeEventListener('touchcancel', onTouchEnd, passiveOpts);
     };
-    // ⭐ v59.13.20: dependencies مختصرة — لا pullDistance ولا isRefreshing!
-    // listeners تُلصق مرة واحدة وتبقى ثابتة طوال دورة حياة المكوّن.
   }, [disabled, scrollContainerRef, triggerHaptic, finishRefresh]);
 
   return {

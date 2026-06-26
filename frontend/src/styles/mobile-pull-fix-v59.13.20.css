@@ -317,3 +317,41 @@ main.mobile-main-content {
      - getComputedStyle(main.mobile-main-content).touchAction = "pan-y..."
      - mainEl.scrollHeight > mainEl.clientHeight (هل المحتوى يتجاوز الشاشة؟)
    ============================================================ */
+
+
+/* ============================================================
+   🆕 v59.13.22 — Pull-from-Anywhere Guarantee
+   ------------------------------------------------------------
+   تأكد أن البطاقات والصور والفيديوهات لا تستهلك أحداث touch
+   العمودية بشكل يمنع PTR من العمل.
+   المعالج في usePullToRefresh.js v59.13.22 ملصوق على document بـ
+   capture:true ليلتقط الحدث أولاً — وهذه القواعد تدعمه
+   على مستوى CSS.
+   ============================================================ */
+
+/* جميع الأبناء داخل main: لا touch-action:none — كلهم pan-y pinch-zoom افتراضياً */
+main.mobile-main-content *:not(button):not(a):not([role="button"]):not([role="tab"]):not(input):not(textarea):not(select):not(video):not(.ym-filters):not(.ym-filters *):not([data-horizontal-scroll="true"]):not([data-horizontal-scroll="true"] *) {
+  touch-action: pan-y pinch-zoom;
+}
+
+/* تجاوزات محددة: أزرار، روابط، وعناصر تفاعلية تبقى manipulation */
+main.mobile-main-content button,
+main.mobile-main-content a,
+main.mobile-main-content [role="button"],
+main.mobile-main-content [role="tab"],
+main.mobile-main-content [role="link"] {
+  touch-action: manipulation;
+}
+
+/* كاروسيلات أفقية (ستوري، فلتر) تحتفظ بمحورها الأفقي */
+main.mobile-main-content .ym-filters,
+main.mobile-main-content [data-horizontal-scroll="true"],
+main.mobile-main-content .stories-row,
+main.mobile-main-content .reels-snap {
+  touch-action: pan-x !important;
+}
+
+/* video element تحتاج manipulation للنقر عليها */
+main.mobile-main-content video {
+  touch-action: manipulation;
+}

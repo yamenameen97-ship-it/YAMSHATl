@@ -182,6 +182,8 @@ function MobilePostCard({
               alt={(text && String(text).trim().slice(0, 140)) || `صورة منشور من ${authorName}`}
               loading="lazy"
               decoding="async"
+              draggable={false}
+              onContextMenu={(e) => e.preventDefault()}
               onError={(e) => {
                 try {
                   const el = e.currentTarget;
@@ -465,11 +467,32 @@ function MobilePostCard({
           position: relative;
           width: 100%;
           height: 100%;
+          /* v59.13.28: منع متصفح Chrome/Android من إظهار
+             أيقونة Google Lens (دائرة ملوّنة) فوق الصور */
+          -webkit-touch-callout: none;
+          user-select: none;
         }
         .banner-image-container img {
           width: 100%;
           height: 100%;
           object-fit: cover;
+          /* v59.13.28: إخفاء أيقونة Google Lens / Chrome image actions */
+          -webkit-touch-callout: none;
+          -webkit-user-drag: none;
+          user-select: none;
+          pointer-events: none;
+        }
+        /* v59.13.28: طبقة تفاعل شفافة تمنع قائمة الصورة
+           وأيقونة Google Lens عند الضغط المطوّل */
+        .banner-image-container::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          pointer-events: auto;
+          background: transparent;
+          -webkit-touch-callout: none;
+          -webkit-user-drag: none;
+          user-select: none;
         }
         /* v59.13.19 UX FIX: بديل احتياطي عند فشل تحميل صورة المنشور */
         .banner-image-fallback {

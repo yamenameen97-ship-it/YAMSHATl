@@ -92,12 +92,9 @@ import './styles/yamshat-fixes-v59.13.24.css';
 import './styles/yamshat-fixes-v59.13.25.css';
 /* ⭐ v59.13.26 — PERFECT REELS-PARITY: Scroll متطابق 100% مع الريلز/المجموعات
    على كل الصفحات (الرئيسية/الشات/الستوري/الإشعارات/الإعدادات...).
-   يعمل مع تعديلات MainLayout.jsx (position:absolute + inset:0 على .page-content). */
-import './styles/yamshat-fixes-v59.13.26.css';
-/* ⭐ v59.13.28 — HOME = GROUPS (1:1 parity): الصفحة الرئيسية للجوال أصبحت
-   مطابقة لصفحة المجموعات بالملي (dir="rtl" + Noto Sans Arabic).
+   يعمل مع تعديلات MainLayout.jsx (position:absolute + inset:0 على .page-content).
    ⚠️ يجب أن يبقى آخر CSS مطلقاً — لا تضف import CSS بعده */
-import './styles/yamshat-fixes-v59.13.28.css';
+import './styles/yamshat-fixes-v59.13.26.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { pwaInitializer } from './services/pwaInitializer.js';
 import { smoothTouchLayer } from './services/smoothTouchLayer.js';

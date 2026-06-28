@@ -139,6 +139,8 @@ import './styles/chat-mobile-redesign-v60.3.css';
    كذلك تنسيق رسائل صوتية WhatsApp-style + قائمة منبثقة بإعادة إرسال.
    ⚠️ يجب أن يبقى هذا آخر import CSS مطلقاً ليفوز في cascade */
 import './styles/chat-mobile-redesign-v60.4.css';
+/* v60.5 — إصلاحات نهائية pixel-perfect: "نشط الآن" + "جاري الكتابة" + "تمت الترجمة تلقائياً" + composer صف واحد مع زر + */
+import './styles/chat-mobile-redesign-v60.5.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';

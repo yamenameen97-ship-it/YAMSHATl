@@ -668,6 +668,9 @@ function ChatTranslationStrip({ content, isMe }) {
 
   if (!showTranslation && !loading) return null;
 
+  // إخفاء شريط الترجمة على رسائلي (تظهر فقط على رسائل الطرف الآخر كما في الصورة المرجعية)
+  if (isMe) return null;
+
   if (loading) {
     return (
       <div className="yam-translation-strip is-loading" aria-live="polite">
@@ -683,7 +686,7 @@ function ChatTranslationStrip({ content, isMe }) {
       title={provider === 'backend' ? 'Yamshat Translate' : (provider === 'google-free' ? 'Google Translate' : 'MyMemory')}
     >
       <span className="yam-translation-label">
-        الترجمة من {(detected || '').toUpperCase() || 'اللغة الأصلية'}
+        تمت الترجمة تلقائياً
       </span>
       <span className="yam-translation-text">{translated}</span>
     </div>

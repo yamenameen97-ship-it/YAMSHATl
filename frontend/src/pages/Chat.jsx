@@ -2149,7 +2149,7 @@ export default function Chat() {
                 </div>
                 <div className="yam-contact-copy">
                   <strong>{contact.username}</strong>
-                  <span>{contact.username === peer ? (isTyping ? 'يكتب الآن...' : (peerDetails.preview || contact.preview)) : contact.preview}</span>
+                  <span>{contact.username === peer ? (isTyping ? 'جاري الكتابة...' : (peerDetails.preview || contact.preview)) : contact.preview}</span>
                 </div>
                 {Number(contact.unreadCount || 0) > 0 ? <span className="yam-mini-stat">{contact.unreadCount}</span> : null}
               </button>
@@ -2162,7 +2162,7 @@ export default function Chat() {
             </div>
             <div className="yam-contact-copy">
               <strong>{currentUser || 'يوسف محمد'}</strong>
-              <span>متصل الآن</span>
+              <span>نشط الآن</span>
             </div>
             <button type="button" className="yam-icon-action subtle" onClick={() => navigate('/settings')}>⋮</button>
           </div>
@@ -2204,7 +2204,7 @@ export default function Chat() {
                 </div>
                 <div className="yam-chat-stage-peer-copy">
                   <strong>{peer}</strong>
-                  <span>{isTyping ? 'يكتب الآن...' : formatLastSeen(lastSeen, isOnline)}</span>
+                  <span className={(isOnline || isTyping) ? 'online' : 'offline'}>{isTyping ? 'جاري الكتابة...' : formatLastSeen(lastSeen, isOnline)}</span>
                 </div>
               </button>
             </div>

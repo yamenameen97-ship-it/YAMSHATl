@@ -53,7 +53,7 @@ export function formatTimeAgo(value) {
 }
 
 export function formatLastSeen(value, isOnline = false) {
-  if (isOnline) return 'متصل الآن';
+  if (isOnline) return 'نشط الآن';
   if (!value) return 'آخر ظهور غير متاح';
   try {
     const date = new Date(value);

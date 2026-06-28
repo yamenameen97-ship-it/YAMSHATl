@@ -893,7 +893,7 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
           <textarea
             ref={textareaRef}
             disabled={composerDisabled}
-            placeholder={disabled ? 'المحادثة معطلة حالياً' : peer ? `اكتب رسالة إلى ${peer}...` : 'اكتب رسالة...'}
+            placeholder={disabled ? 'المحادثة معطلة حالياً' : 'اكتب رسالة...'}
             value={text}
             rows={1}
             onChange={(event) => handleTyping(event.target.value)}
@@ -904,6 +904,37 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
               }
             }}
           />
+          {/* v60: أيقونات داخل حقل النص على الجوال (إيموجي + GIF + صور) - تطابق التصميم */}
+          <div className="yam-input-inline-icons" aria-hidden={composerDisabled}>
+            <button
+              type="button"
+              disabled={composerDisabled}
+              onClick={() => setShowEmojiPicker((prev) => !prev)}
+              aria-label="إيموجي"
+              title="إيموجي"
+            >
+              🙂
+            </button>
+            <button
+              type="button"
+              disabled={composerDisabled}
+              onClick={() => emitToast({ type: 'info', title: 'GIF قريباً' })}
+              aria-label="GIF"
+              title="GIF"
+              style={{ fontSize: 11, fontWeight: 700 }}
+            >
+              GIF
+            </button>
+            <button
+              type="button"
+              disabled={composerDisabled}
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="صورة"
+              title="صورة"
+            >
+              🖼
+            </button>
+          </div>
         </div>
       </div>
 

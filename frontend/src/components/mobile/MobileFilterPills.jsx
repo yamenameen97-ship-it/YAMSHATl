@@ -94,29 +94,21 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
           /* ⭐ v59.13.24: لا نقيّد اللمس هنا حتى يمرّ التمرير العمودي لـ main */
           touch-action: pan-x pan-y;
           -webkit-tap-highlight-color: transparent;
+          /* ⭐ v59.13.38 FIX: sticky داخل .yam-home-mobile-page
+             (scroll-container داخلي). تلتصق تحت صندوق «بماذا
+             تفكر؟» الملتصق أيضاً. الـ top = ارتفاع الصندوق
+             تقريباً (~52px) حتى تبقى الاثنتان مرئيّتين فوق بعضهما. */
           position: sticky;
-          top: calc(56px + env(safe-area-inset-top, 0px));
+          top: 52px;
+          /* تعويض الـ padding الجانبي لحاوية .yam-home-mobile-page (12px)
+             حتى تلتصق الفلاتر بحواف منطقة العرض تماماً */
+          margin-inline-start: -12px;
+          margin-inline-end: -12px;
+          margin-top: 0;
+          padding-top: 8px;
           z-index: 50;
           border-bottom: 1px solid #1F2937;
           direction: rtl;
-        }
-        @media (min-width: 768px) {
-          .ym-filters-container { top: calc(60px + env(safe-area-inset-top, 0px)); }
-        }
-        @media (min-width: 1024px) {
-          .ym-filters-container { top: calc(64px + env(safe-area-inset-top, 0px)); }
-        }
-        @media (max-width: 480px) {
-          .ym-filters-container { top: calc(54px + env(safe-area-inset-top, 0px)); }
-        }
-        @media (max-width: 400px) {
-          .ym-filters-container { top: calc(52px + env(safe-area-inset-top, 0px)); }
-        }
-        @media (max-width: 360px) {
-          .ym-filters-container { top: calc(50px + env(safe-area-inset-top, 0px)); }
-        }
-        @media (max-width: 340px) {
-          .ym-filters-container { top: calc(48px + env(safe-area-inset-top, 0px)); }
         }
         .ym-filters {
           display: flex;
@@ -196,7 +188,7 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
         }
 
         @media (max-width: 400px) {
-          .ym-filters-container { padding: 7px 8px 9px; }
+          .ym-filters-container { padding: 7px 8px 9px; padding-top: 8px; top: 50px; }
           .ym-filters { gap: 5px; }
           .ym-filter-pill-new {
             height: 32px;
@@ -205,7 +197,7 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
           }
         }
         @media (max-width: 360px) {
-          .ym-filters-container { padding: 6px 6px 8px; }
+          .ym-filters-container { padding: 6px 6px 8px; padding-top: 8px; top: 48px; }
           .ym-filters { gap: 4px; }
           .ym-filter-pill-new {
             height: 30px;
@@ -214,7 +206,7 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
           }
         }
         @media (max-width: 320px) {
-          .ym-filters-container { padding: 5px 4px 6px; }
+          .ym-filters-container { padding: 5px 4px 6px; padding-top: 8px; top: 46px; }
           .ym-filters { gap: 3px; }
           .ym-filter-pill-new {
             height: 26px;

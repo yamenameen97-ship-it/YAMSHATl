@@ -116,18 +116,27 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
 
       <style>{`
         .ym-composer-wrap {
-          /* ⭐ v59.13.24: padding متماثل + width:100% لضمان التصاق
-             الأفاتار (Y) بحافة اليمين تماماً بدون فراغ زائد */
+          /* ⭐ v59.13.38 FIX: جعل صندوق «بماذا تفكر؟» ملتصقاً بأعلى
+             منطقة العرض داخل .yam-home-mobile-page (scroll-container).
+             كان يهرب للأعلى عند السحب. الآن يبقى ثابتاً فوق الفلاتر. */
           padding: 10px 12px 4px;
           padding-inline-start: 12px;
           padding-inline-end: 12px;
-          margin: 0;
+          /* تعويض الـ padding العلوي (12px) للصفحة الأم حتى
+             يلتصق بأعلى منطقة العرض دون فراغ */
+          margin-top: -12px;
+          margin-inline-start: -12px;
+          margin-inline-end: -12px;
+          margin-bottom: 0;
           background-color: #0A0D1A;
           box-sizing: border-box;
-          width: 100%;
-          max-width: 100%;
+          width: auto;
+          max-width: none;
           font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
           direction: rtl;
+          position: sticky;
+          top: 0;
+          z-index: 51; /* أعلى من الفلاتر (50) */
         }
         .ym-composer {
           display: flex;

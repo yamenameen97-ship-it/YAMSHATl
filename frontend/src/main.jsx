@@ -117,8 +117,14 @@ import './styles/font-size-control.css';
    هيدر، فقاعات، شريط إيموجي، شريط أوامر، قائمة فرعية، شريط إدخال سفلي.
    ⚠️ يجب أن يكون آخر import CSS مطلقاً ليفوز في cascade */
 import './styles/chat-mobile-redesign-v60.css';
-/* 🔧 v60.1 — Mobile Chat Redesign HOTFIX (آخر CSS مطلقاً) */
+/* 🔧 v60.1 — Mobile Chat Redesign HOTFIX */
 import './styles/chat-mobile-redesign-v60.1.css';
+/* 🎯 v60.2 — Pixel-Perfect Mobile Chat Redesign (مطابق للصورة الثالثة)
+   جوال: رأس مع زر رجوع + اسم + أفاتار + أيقونات اتصال صغيرة
+   شريط كتابة: صف واحد (مايك + حقل + إرسال)
+   فقاعات: بنفسجية للمرسل + داكنة للمستقبل + ترجمة فورية
+   ⚠️ يجب أن يكون آخر import CSS مطلقاً */
+import './styles/chat-mobile-redesign-v60.2.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';

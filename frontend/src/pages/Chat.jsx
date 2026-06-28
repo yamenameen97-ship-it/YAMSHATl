@@ -2184,6 +2184,18 @@ export default function Chat() {
           </div>
 
           <header className="yam-chat-stage-header">
+            {/* v60.2 — زر الرجوع على الجوال (يخفى على سطح المكتب عبر CSS) */}
+            <button
+              type="button"
+              className="yam-stage-back-btn"
+              onClick={() => navigate('/chat')}
+              aria-label="رجوع"
+            >
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+            </button>
+
             <div className="yam-chat-stage-peer">
               <button type="button" className="yam-chat-stage-peer-button" onClick={openChatSettings} aria-label="إعدادات المحادثة">
                 <div className="yam-avatar-wrap">
@@ -2197,10 +2209,10 @@ export default function Chat() {
             </div>
 
             <div className="yam-chat-stage-actions">
-              <button type="button" className="yam-stage-icon" onClick={() => setCallMode('voice')}>📞</button>
-              <button type="button" className="yam-stage-icon" onClick={() => setCallMode('video')}>🎥</button>
-              <button type="button" className="yam-stage-icon" onClick={() => searchInputRef.current?.focus()}>⌕</button>
-              <button type="button" className="yam-stage-icon" onClick={() => setShowDetailsDrawer((prev) => !prev)}>⋮</button>
+              <button type="button" className="yam-stage-icon" onClick={() => setCallMode('voice')} aria-label="اتصال صوتي">📞</button>
+              <button type="button" className="yam-stage-icon" onClick={() => setCallMode('video')} aria-label="اتصال فيديو">🎥</button>
+              <button type="button" className="yam-stage-icon" onClick={() => searchInputRef.current?.focus()} aria-label="بحث">⌕</button>
+              <button type="button" className="yam-stage-icon" onClick={() => setShowDetailsDrawer((prev) => !prev)} aria-label="المزيد">⋮</button>
             </div>
           </header>
 

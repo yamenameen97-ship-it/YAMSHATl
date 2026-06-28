@@ -5,8 +5,16 @@ import callService, {
   acceptIncomingCall,
   rejectIncomingCall,
   subscribe as subscribeCall,
+  describeMediaError,
 } from '../../services/callService.js';
 import CallExperience from './CallExperience.jsx';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔧 v59.13.32 — Call System Hard Fix
+//   FIX #4: When accepting an incoming call fails due to permissions, show an
+//           explicit error banner with retry CTA instead of silently rejecting
+//           the call without telling the user why.
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Global overlay that:
@@ -23,6 +31,9 @@ export default function IncomingCallOverlay() {
   const [invite, setInvite] = useState(null);
   const [accepted, setAccepted] = useState(false);
   const [activeCall, setActiveCall] = useState(null);
+  // 🔧 FIX #4: track accept-time permission errors so we can show them to the
+  //            callee instead of just dropping the call.
+  const [acceptError, setAcceptError] = useState(null);
   const ringtoneRef = useRef(null);
   const ringtoneCtxRef = useRef(null);
   // ✅ FIX v59.13.6: تتبّع إشعار النظام لإغلاقه عند انتهاء الرنين أو unmount
@@ -122,14 +133,18 @@ export default function IncomingCallOverlay() {
   const handleAccept = async () => {
     if (!invite) return;
     stopRingtone();
+    setAcceptError(null);
     setAccepted(true);
     try {
       await acceptIncomingCall(invite);
     } catch (err) {
-      // If permission is denied, reject the call so the caller gets feedback.
-      rejectIncomingCall(invite, 'media_unavailable');
-      setInvite(null);
+      // 🔧 FIX #4: keep the overlay open and show a clear error so the callee
+      //            can fix permissions and retry. Notify caller that we hit a
+      //            media issue rather than a hard reject.
+      const desc = describeMediaError(err);
+      setAcceptError(desc);
       setAccepted(false);
+      try { rejectIncomingCall(invite, 'media_unavailable'); } catch (_) {}
     }
   };
 
@@ -139,11 +154,13 @@ export default function IncomingCallOverlay() {
     stopRingtone();
     setInvite(null);
     setAccepted(false);
+    setAcceptError(null);
   };
 
   const handleClose = () => {
     setInvite(null);
     setAccepted(false);
+    setAcceptError(null);
   };
 
   // Show the live call sheet once we accepted (uses callService internally).
@@ -174,10 +191,32 @@ export default function IncomingCallOverlay() {
         <div style={{ marginTop: 4, opacity: 0.85 }}>
           {invite.mode === 'video' ? '🎥 مكالمة فيديو' : '📞 مكالمة صوتية'}
         </div>
+
+        {/* 🔧 FIX #4: explicit permission error banner inside the ringing UI */}
+        {acceptError ? (
+          <div
+            role="alert"
+            style={{
+              marginTop: 16,
+              padding: 12,
+              borderRadius: 12,
+              background: 'rgba(248,113,113,0.16)',
+              border: '1px solid rgba(248,113,113,0.36)',
+              color: '#fee2e2',
+              fontSize: 13,
+              textAlign: 'start',
+              lineHeight: 1.55,
+            }}
+          >
+            <strong style={{ display: 'block', marginBottom: 4 }}>⚠️ تعذّر الرد على المكالمة</strong>
+            {acceptError.message}
+          </div>
+        ) : null}
+
         <div style={{ display: 'flex', gap: 12, marginTop: 24, justifyContent: 'center' }}>
           <button type="button" onClick={handleReject} style={{ ...btnBase, background: '#ef4444' }}>رفض</button>
           <button type="button" onClick={handleAccept} style={{ ...btnBase, background: '#22c55e' }}>
-            {invite.mode === 'video' ? 'رد بالفيديو' : 'رد'}
+            {acceptError ? 'إعادة المحاولة' : (invite.mode === 'video' ? 'رد بالفيديو' : 'رد')}
           </button>
         </div>
         <div style={{ marginTop: 16, fontSize: 12, opacity: 0.65 }}>

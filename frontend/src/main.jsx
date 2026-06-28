@@ -96,10 +96,29 @@ import './styles/yamshat-fixes-v59.13.25.css';
 import './styles/yamshat-fixes-v59.13.26.css';
 /* ⭐ v59.13.28 — HOME MOBILE = GROUPS MOBILE (parity)
    يجعل الصفحة الرئيسية على ويب الموبايل تستجيب للسحب لأعلى/أسفل
-   بسلاسة فائقة مثل صفحة المجموعات تماماً (بصمة .yam-groups-page).
-   ⚠️ يجب أن يبقى آخر import CSS مطلقاً. */
+   بسلاسة فائقة مثل صفحة المجموعات تماماً (بصمة .yam-groups-page). */
 import './styles/home-mobile-page-v59.13.28.css';
+/* ⭐ v59.13.29 — CHAT + STORIES MOBILE PULL PARITY
+   يطبّق نفس بصمة .yam-groups-page على:
+   - .yam-inbox-page (قائمة المحادثات)
+   - .yam-stories-page (صفحة الستوريات)
+   - .yam-messages-area (منطقة الرسائل في الشات الفردي) */
+import './styles/chat-stories-mobile-pull-v59.13.29.css';
+/* ⭐ v59.13.31 — CHAT + STORIES MOBILE PULL HARD FIX
+   يتغلّب على inline <style> blocks داخل JSX (Inbox.jsx + StoriesPage.jsx + Chat.jsx).
+   يحلّ مشكلة: السحب لأعلى/أسفل من منتصف الشاشة لا يستجيب.
+   يلغي contain:layout/style/paint الذي يكسر momentum scroll على iOS Safari.
+   ⚠️ يجب أن يبقى آخر import CSS مطلقاً. */
+import './styles/chat-stories-mobile-pull-v59.13.31.css';
+/* ⚭ v59.13.35 — Font Size Control + Chat Translation Strip styles */
+import './styles/font-size-control.css';
+/* 🎨 v60 — Mobile Chat Redesign (مطابقة صورة المرجع)
+   يعيد تصميم صفحة المحادثة 1-1 على الجوال بالكامل:
+   هيدر، فقاعات، شريط إيموجي، شريط أوامر، قائمة فرعية، شريط إدخال سفلي.
+   ⚠️ يجب أن يكون آخر import CSS مطلقاً ليفوز في cascade */
+import './styles/chat-mobile-redesign-v60.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
+import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';
 import { smoothTouchLayer } from './services/smoothTouchLayer.js';
 import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
@@ -180,6 +199,8 @@ function watchServiceWorkerUpdates(registration) {
 
 if (typeof window !== 'undefined') {
   normalizeStandaloneDeepLink();
+  // v59.13.35 — تطبيق حجم الخط المحفوظ فوراً على <html> (قبل أي رسم)
+  try { applyFontSize(getStoredFontSize()); } catch (_) { /* ignore */ }
   window.__YAMSHAT_BUILD__ = BUILD_ID;
   window.__YAMSHAT_SW_READY__ = Promise.resolve(null);
   initializePerformanceToolkit();

@@ -5,7 +5,7 @@
    ============================================================ */
 import React, { useState } from 'react';
 import { useLanguage } from '../../i18n/LanguageProvider.jsx';
-import { SUPPORTED_LANGUAGES } from '../../i18n/translations.js';
+import { SUPPORTED_LANGUAGES, getLanguageMeta } from '../../i18n/translations.js';
 
 const styles = {
   card: {
@@ -78,11 +78,16 @@ const styles = {
 export default function LanguageSettings() {
   const { lang, setLang, t } = useLanguage();
   const [toast, setToast] = useState('');
+  const [banner, setBanner] = useState(null); // v59.13.35 — بوست التغيير
 
   const handleSelect = (code) => {
     if (code === lang) return;
+    const prevMeta = getLanguageMeta(lang);
+    const nextMeta = getLanguageMeta(code);
     setLang(code);
     setToast(true);
+    // v59.13.35 — عرض بوست (banner) دائم حتى يغلقه المستخدم يوضح تغيير اللغة
+    setBanner({ from: prevMeta, to: nextMeta, at: Date.now() });
     // أيضاً ابلاغ الخادم (إن وُجد) — لا يفشل إن لم يكن متاحاً
     try {
       fetch('/api/users/me/language', {
@@ -97,6 +102,53 @@ export default function LanguageSettings() {
 
   return (
     <div style={styles.card}>
+      {/* v59.13.35 — بوست إعلان تغيير اللغة */}
+      {banner && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 14,
+            padding: '14px 16px',
+            borderRadius: 14,
+            background: 'linear-gradient(135deg, rgba(124,58,237,0.18), rgba(59,130,246,0.18))',
+            border: '1px solid rgba(124,58,237,0.35)',
+            marginBottom: 18,
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
+          <span aria-hidden style={{ fontSize: 32 }}>{banner.to.flag}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 2 }}>
+              ✨ {t('settings.languageSaved')}
+            </div>
+            <div style={{ fontSize: 13, opacity: 0.8 }}>
+              <span aria-hidden>{banner.from.flag}</span> {banner.from.nativeName}
+              <span style={{ margin: '0 8px', opacity: 0.6 }}>←</span>
+              <strong>{banner.to.nativeName}</strong> <span aria-hidden>{banner.to.flag}</span>
+              <span style={{ marginInlineStart: 8, opacity: 0.6 }}>({banner.to.dir.toUpperCase()})</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setBanner(null)}
+            aria-label="إغلاق"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'inherit',
+              fontSize: 18,
+              cursor: 'pointer',
+              opacity: 0.6,
+              padding: 6,
+            }}
+          >✕</button>
+        </div>
+      )}
+
       <div style={styles.header}>
         <span aria-hidden style={{ fontSize: 24 }}>🌐</span>
         <span>{t('settings.language')}</span>

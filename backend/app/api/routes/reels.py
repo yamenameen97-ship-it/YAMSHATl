@@ -70,12 +70,18 @@ def _build_reels_response(items: list[dict], *, limit: int, offset: int) -> dict
 
 
 def _load_reels_items(db: Session, current_user: User, *, limit: int, offset: int, category: str) -> list[dict]:
+    # ✅ v59.13.34 FIX: عدم حذف الريلز عند فقد ملف /uploads/ مؤقتاً
+    # المشكلة السابقة: عند إعادة تشغيل/نشر الـ backend تُمحى ملفات /uploads/
+    # المؤقتة (filesystem غير دائم في الحاويات)، فكان _media_file_exists يُرجع
+    # False ويُعلَّم كل ريل قديم على أنه is_deleted=True نهائياً → الريلز
+    # المرفوعة سابقاً تختفي للأبد رغم أن سجلاتها موجودة في قاعدة البيانات.
+    # الحل: لا نُعلِّم أي ريل كمحذوف بسبب فقد الملف؛ نُبقي السجل في قاعدة
+    # البيانات ونعرض كل الريلز التي يظنّ النظام أنها صالحة، حتى لو كان
+    # المسار محلياً ومفقوداً مؤقتاً — مع تسجيل تحذير فقط.
     query = db.query(Reel).filter(Reel.is_deleted.is_(False))
     if str(category or 'all').strip().lower() != 'all':
         query = query.filter(Reel.category == str(category).strip())
-    # نجلب أكثر من المطلوب لأننا سنفلتر سجلات ملفاتها مفقودة (404 في الواجهة)
-    fetch_limit = max(limit * 4, limit + 20)
-    reels = query.order_by(desc(Reel.created_at), Reel.id.desc()).offset(offset).limit(fetch_limit).all()
+    reels = query.order_by(desc(Reel.created_at), Reel.id.desc()).offset(offset).limit(limit).all()
     serialized: list[dict] = []
     for reel in reels:
         try:
@@ -83,23 +89,17 @@ def _load_reels_items(db: Session, current_user: User, *, limit: int, offset: in
         except Exception as exc:  # noqa: BLE001
             logger.warning('Failed to serialize reel %s: %s', getattr(reel, 'id', '?'), exc)
             continue
-        # تخطي الريلز التي ملفاتها مفقودة لتجنب خطأ 404 في الفيد
-        video_ok = _media_file_exists(payload.get('video_url'))
-        if not video_ok:
-            try:
-                # تعليم السجل كمحذوف برفق حتى لا يعود
-                reel.is_deleted = True
-                db.add(reel)
-            except Exception:
-                pass
-            continue
+        # نُسجِّل تحذيراً فقط عند فقد الملف لكن لا نحذف السجل ولا نستبعده
+        try:
+            if not _media_file_exists(payload.get('video_url')):
+                logger.warning(
+                    'Reel %s media file missing on disk (kept in DB): %s',
+                    getattr(reel, 'id', '?'),
+                    payload.get('video_url'),
+                )
+        except Exception:
+            pass
         serialized.append(payload)
-        if len(serialized) >= limit:
-            break
-    try:
-        db.commit()
-    except Exception:
-        db.rollback()
     return serialized
 
 

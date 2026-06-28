@@ -894,15 +894,21 @@ body {
 }
 .ym-sheet {
   width: 100%; max-width: 540px;
-  height: 55dvh; max-height: 55dvh;
+  /* ✅ v59.13.34 FIX: مطابقة بوست التعليق في الجوال للويب — ارتفاع متوسط مع composer ثابت
+     المشكلة السابقة: 55dvh كان كبيراً ويغطي معظم الصفحة وعند ظهور لوحة المفاتيح يختفي الـ composer */
+  height: auto;
+  max-height: min(72dvh, 560px);
+  min-height: 320px;
   background: var(--ym-card, #141A29);
   border-radius: 20px 20px 0 0;
   display: flex; flex-direction: column;
   animation: ym-slide-up 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  /* الـ composer سيحمل الـ safe-area-inset بنفسه، لا نضع padding على الحاوية الأم لتجنّب اختفائه */
   border-top: 1px solid rgba(255,255,255,0.08);
   box-shadow: 0 -8px 28px rgba(0,0,0,0.4);
   font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+  position: relative;
+  overflow: hidden;
 }
 /* في الشاشات الأكبر (تابلت/لابتوب) يُعرض كنافذة عائمة صغيرة جانبية */
 @media (min-width: 768px) {
@@ -942,8 +948,14 @@ body {
 }
 .ym-sheet-close:hover { background: rgba(255,255,255,0.06); color: var(--ym-text, #fff) }
 .ym-sheet-body {
-  flex: 1; overflow-y: auto; padding: 12px 16px;
+  /* ✅ v59.13.34 FIX: نضمن أن body يأخذ المساحة المتاحة مع ترك مكان للـ composer
+     ولا يطغى على منطقة الكتابة في الجوال */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 16px;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 .ym-sheet-empty {
   text-align: center; color: var(--ym-text-muted, #8E97A9);
@@ -970,9 +982,19 @@ body {
 .ym-comment-text { color: var(--ym-text, #fff); font-size: 14px; line-height: 1.55; margin-top: 2px; word-wrap: break-word }
 
 .ym-sheet-composer {
-  display: flex; gap: 8px; align-items: center;
+  /* ✅ v59.13.34 FIX: composer ثابت في الأسفل ويحمل safe-area بنفسه
+     بحيث منطقة الكتابة تظهر دائماً ولا يغطيها أي شيء حتى مع لوحة المفاتيح */
+  display: flex;
+  gap: 8px;
+  align-items: center;
   padding: 10px 12px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid rgba(255,255,255,0.06);
+  background: var(--ym-card, #141A29);
+  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
 }
 .ym-sheet-input {
   flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08);

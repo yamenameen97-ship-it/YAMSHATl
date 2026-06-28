@@ -171,10 +171,10 @@ export default function StoriesPage() {
           </label>
         </div>
 
-        {/* قصص الأصدقاء */}
+        {/* قصص الأصدقاء — ✅ v59.13.36: تخطيط حر بدائر بدلًا من شبكة محشورة */}
         {activeTab === 'feed' && (
-          <div className="yam-stories-grid">
-            {loading && <SkeletonGrid />}
+          <div className="yam-stories-freeflow">
+            {loading && <SkeletonFreeFlow />}
             {!loading && groups.length === 0 && (
               <div className="yam-empty">
                 <div className="yam-empty-icon">📭</div>
@@ -186,22 +186,25 @@ export default function StoriesPage() {
               <motion.button
                 key={group.user_id}
                 type="button"
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
                 onClick={() => openViewer(idx)}
-                className={`yam-story-card ${group.has_unseen ? 'unseen' : ''}`}
+                className={`yam-story-bubble ${group.has_unseen ? 'unseen' : ''}`}
+                aria-label={`فتح قصة ${group.is_self ? 'قصتي' : group.username}`}
               >
-                <div className="yam-story-card-preview">
-                  {group.stories?.[0]?.media_type === 'video' ? (
-                    <video src={group.stories[0].media_url} muted playsInline />
-                  ) : (
-                    <img src={group.stories?.[0]?.media_url} alt="" loading="lazy" />
-                  )}
-                  {group.stories?.length > 1 && (
-                    <span className="yam-story-card-count">{group.stories.length}</span>
-                  )}
+                <div className="yam-story-bubble-ring">
+                  <div className="yam-story-bubble-media">
+                    {group.stories?.[0]?.media_type === 'video' ? (
+                      <video src={group.stories[0].media_url} muted playsInline />
+                    ) : (
+                      <img src={group.stories?.[0]?.media_url} alt="" loading="lazy" />
+                    )}
+                    {group.stories?.length > 1 && (
+                      <span className="yam-story-bubble-count">{group.stories.length}</span>
+                    )}
+                  </div>
                 </div>
-                <div className="yam-story-card-meta">
+                <div className="yam-story-bubble-name">
                   <strong>{group.is_self ? 'قصتي' : group.username}</strong>
                   <span>{formatTimeAgo(group.last_created_at)}</span>
                 </div>
@@ -285,6 +288,24 @@ function SkeletonGrid() {
   );
 }
 
+// ✅ v59.13.36: skeleton دائري للتخطيط الجديد
+function SkeletonFreeFlow() {
+  return (
+    <>
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} className="yam-story-bubble yam-skel-bubble">
+          <div className="yam-story-bubble-ring">
+            <div className="yam-story-bubble-media yam-skel" />
+          </div>
+          <div className="yam-story-bubble-name">
+            <strong className="yam-skel-text" />
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
 function formatTimeAgo(iso) {
   if (!iso) return '';
   try {
@@ -299,10 +320,56 @@ function formatTimeAgo(iso) {
 }
 
 const pageStyles = `
+/* ⭐ v59.13.31 — .yam-stories-page هي scroll container بصمة .yam-groups-page تماماً
+   height ثابت + overflow-y:auto + momentum scroll + touch-action:pan-y
+   هذا يحلّ مشكلة عدم استجابة السحب من منتصف الشاشة على ويب الجوال. */
 .yam-stories-page {
+  /* ✅ height ثابت — أبعاد معروفة مسبقاً تُفعّل momentum scroll على iOS Safari */
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
   max-width: 1180px;
   margin: 0 auto;
-  padding: 16px 14px 32px;
+  /* ✅ padding يحسب الهيدر العلوي (76px) + BottomNav السفلي (120px) */
+  padding:
+    calc(76px + env(safe-area-inset-top, 0px))
+    14px
+    calc(120px + env(safe-area-inset-bottom, 0px));
+  /* ✅ momentum scroll حقيقي (iOS) */
+  -webkit-overflow-scrolling: touch;
+  /* ✅ اللمس: pan-y نقي */
+  touch-action: pan-y;
+  -ms-touch-action: pan-y;
+  /* ✅ لا انعكاس bounce يبتلع التمرير */
+  overscroll-behavior-y: contain;
+  overscroll-behavior-x: none;
+  /* ✅ لا transform/filter يكسر momentum */
+  transform: none;
+  -webkit-transform: none;
+  filter: none;
+  -webkit-filter: none;
+  perspective: none;
+  pointer-events: auto;
+  overflow-anchor: none;
+  will-change: scroll-position;
+  scrollbar-width: none;
+  box-sizing: border-box;
+}
+.yam-stories-page::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+/* ✅ متوافق مع الديسكتوب — على الشاشات الكبيرة لا نفرض 100dvh لأن التمرير يحدث على مستوى الصفحة */
+@media (min-width: 981px) {
+  .yam-stories-page {
+    height: auto;
+    max-height: none;
+    overflow-y: visible;
+    padding: 16px 14px 32px;
+  }
 }
 .yam-stories-tabs {
   display: flex;
@@ -345,6 +412,151 @@ const pageStyles = `
 }
 @media (min-width: 1280px) {
   .yam-stories-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+}
+
+/* ✨ v59.13.36 — تخطيط حر (Free-Flow) لفقاعات الستوري
+   توزيع دائري على عرض الصفحة بدون حاوية مربعة تحصر العناصر */
+.yam-stories-freeflow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 22px 28px;
+  padding: 8px 4px 24px;
+  background: transparent;
+  border: 0;
+}
+@media (min-width: 768px) {
+  .yam-stories-freeflow { gap: 30px 38px; padding: 12px 8px 28px; }
+}
+@media (min-width: 1280px) {
+  .yam-stories-freeflow { gap: 36px 46px; padding: 16px 10px 32px; }
+}
+
+/* 🔵 الفقاعة الواحدة — دائرية بدون خلفية حاوية */
+.yam-story-bubble {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  font-family: inherit;
+  color: var(--text, #f4f4f5);
+  width: 92px;
+  -webkit-tap-highlight-color: transparent;
+}
+@media (min-width: 768px) {
+  .yam-story-bubble { width: 104px; gap: 10px; }
+}
+@media (min-width: 1280px) {
+  .yam-story-bubble { width: 116px; gap: 12px; }
+}
+
+/* 🟣 حلقة متدرجة حول الفقاعة (بنفسجي/وردي للقصص غير المشاهدة) */
+.yam-story-bubble-ring {
+  width: 86px;
+  height: 86px;
+  border-radius: 50%;
+  padding: 3px;
+  background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 50%, #f59e0b 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 18px rgba(139, 92, 246, 0.22);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.yam-story-bubble:not(.unseen) .yam-story-bubble-ring {
+  background: linear-gradient(135deg, rgba(255,255,255,0.18), rgba(255,255,255,0.08));
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+.yam-story-bubble:hover .yam-story-bubble-ring {
+  box-shadow: 0 10px 24px rgba(236, 72, 153, 0.35);
+}
+@media (min-width: 768px) {
+  .yam-story-bubble-ring { width: 96px; height: 96px; padding: 3px; }
+}
+@media (min-width: 1280px) {
+  .yam-story-bubble-ring { width: 108px; height: 108px; padding: 4px; }
+}
+
+/* 🖼️ الوسائط داخل الفقاعة — صورة/فيديو دائريًا بالكامل */
+.yam-story-bubble-media {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #1a1a1d;
+  border: 2px solid var(--bg, #0f0f12);
+}
+.yam-story-bubble-media img,
+.yam-story-bubble-media video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* 🔢 مؤشر عدد القصص الإضافية */
+.yam-story-bubble-count {
+  position: absolute;
+  bottom: 4px;
+  inset-inline-end: 4px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+  line-height: 1.4;
+}
+
+/* 🏷️ اسم المستخدم تحت الفقاعة */
+.yam-story-bubble-name {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  text-align: center;
+}
+.yam-story-bubble-name strong {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text, #f4f4f5);
+  max-width: 92px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.yam-story-bubble-name span {
+  font-size: 10.5px;
+  opacity: 0.6;
+  color: var(--text-secondary, #a1a1aa);
+}
+@media (min-width: 768px) {
+  .yam-story-bubble-name strong { font-size: 13px; max-width: 104px; }
+  .yam-story-bubble-name span { font-size: 11px; }
+}
+
+/* 💤 skeleton دائري */
+.yam-skel-bubble .yam-skel {
+  border-radius: 50%;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+}
+.yam-skel-text {
+  display: block;
+  width: 60px;
+  height: 11px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.04) 100%);
+  background-size: 200% 100%;
+  animation: yam-shimmer 1.5s infinite;
 }
 
 .yam-story-card {

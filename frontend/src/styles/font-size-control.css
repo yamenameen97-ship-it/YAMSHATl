@@ -1,0 +1,148 @@
+/* ============================================================
+   Yamshat — Font Size Control (v59.13.35)
+   تطبيق فعلي لحجم الخط على كامل المنصة
+   يعتمد على [data-font-size="..."] على عنصر <html>
+   ============================================================ */
+
+/* الأحجام الأساسية الافتراضية (medium) */
+:root {
+  --yam-font-scale: 1;
+  --yam-font-base: 15px;
+}
+
+/* صغير — 87.5% */
+html[data-font-size="small"] {
+  --yam-font-scale: 0.875;
+  --yam-font-base: 13.5px;
+  font-size: 14px;
+}
+
+/* متوسط — افتراضي 100% */
+html[data-font-size="medium"] {
+  --yam-font-scale: 1;
+  --yam-font-base: 15px;
+  font-size: 15px;
+}
+
+/* كبير — 112.5% */
+html[data-font-size="large"] {
+  --yam-font-scale: 1.125;
+  --yam-font-base: 17px;
+  font-size: 16.5px;
+}
+
+/* كبير جدًا — 125% */
+html[data-font-size="xl"] {
+  --yam-font-scale: 1.25;
+  --yam-font-base: 19px;
+  font-size: 18px;
+}
+
+/* تطبيق على عناصر شائعة في المنصة */
+html[data-font-size] body {
+  font-size: var(--yam-font-base);
+}
+
+html[data-font-size="large"] body,
+html[data-font-size="xl"] body {
+  line-height: 1.7;
+}
+
+html[data-font-size] .bubble-text,
+html[data-font-size] .yam-message-text,
+html[data-font-size] .yam-post-content,
+html[data-font-size] .yam-comment-text,
+html[data-font-size] .yam-reel-caption,
+html[data-font-size] p,
+html[data-font-size] .yam-card-body,
+html[data-font-size] .yam-list-item {
+  font-size: calc(15px * var(--yam-font-scale));
+}
+
+html[data-font-size] h1 { font-size: calc(28px * var(--yam-font-scale)); }
+html[data-font-size] h2 { font-size: calc(22px * var(--yam-font-scale)); }
+html[data-font-size] h3 { font-size: calc(18px * var(--yam-font-scale)); }
+html[data-font-size] h4 { font-size: calc(16px * var(--yam-font-scale)); }
+
+html[data-font-size] .settings-input,
+html[data-font-size] .settings-select,
+html[data-font-size] input,
+html[data-font-size] textarea,
+html[data-font-size] select,
+html[data-font-size] button {
+  font-size: calc(14px * var(--yam-font-scale));
+}
+
+/* عدّ القيم الصغيرة جدًا — احفظ إمكانية القراءة */
+html[data-font-size] small,
+html[data-font-size] .bubble-time,
+html[data-font-size] .yam-meta,
+html[data-font-size] .muted {
+  font-size: calc(12px * var(--yam-font-scale));
+}
+
+/* مؤشر بصري في صفحة الإعدادات أثناء معاينة الحجم */
+.yam-font-preview {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(124, 58, 237, 0.08);
+  border: 1px solid rgba(124, 58, 237, 0.25);
+  font-size: var(--yam-font-base);
+  line-height: 1.6;
+}
+
+/* ============================================================
+   تنبيه ترجمة الرسائل (Chat Translation Strip)
+   ============================================================ */
+.yam-translation-strip {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(59, 130, 246, 0.08);
+  border-inline-start: 3px solid #3b82f6;
+  font-size: calc(13px * var(--yam-font-scale, 1));
+  line-height: 1.55;
+  color: rgba(226, 232, 240, 0.92);
+  unicode-bidi: plaintext;
+}
+
+.yam-translation-strip .yam-translation-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #93c5fd;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.yam-translation-strip .yam-translation-label::before {
+  content: '🌐';
+  font-size: 13px;
+}
+
+.yam-translation-strip.is-loading {
+  background: rgba(148, 163, 184, 0.08);
+  border-inline-start-color: #94a3b8;
+  opacity: 0.85;
+}
+
+.yam-translation-strip.is-loading .yam-translation-label {
+  color: #94a3b8;
+}
+
+.yam-translation-strip .yam-translation-text {
+  display: block;
+  word-break: break-word;
+}
+
+/* وضع داخل فقاعة المرسل (me) — لون مختلف */
+.bubble-me .yam-translation-strip {
+  background: rgba(255, 255, 255, 0.12);
+  border-inline-start-color: rgba(255, 255, 255, 0.6);
+}
+.bubble-me .yam-translation-strip .yam-translation-label {
+  color: rgba(255, 255, 255, 0.85);
+}

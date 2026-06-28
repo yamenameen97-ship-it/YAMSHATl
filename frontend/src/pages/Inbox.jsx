@@ -1004,14 +1004,45 @@ export default function Inbox() {
 
         {/* ============== الأنماط (CSS) ============== */}
         <style>{`
+          /* ⭐ v59.13.31 — .yam-inbox-page هي scroll container بصمة .yam-groups-page تماماً
+             height ثابت + overflow-y:auto + momentum scroll + touch-action:pan-y
+             هذا يحلّ مشكلة عدم استجابة السحب من منتصف الشاشة. */
           .yam-inbox-page {
-            min-height: 100vh;
-            min-height: 100dvh;
+            /* ✅ height ثابت — أبعاد معروفة مسبقاً تُفعّل momentum scroll على iOS Safari */
+            height: 100vh;
+            height: 100dvh;
+            max-height: 100dvh;
+            overflow-y: auto;
+            overflow-x: hidden;
             background:
               radial-gradient(circle at top right, rgba(130, 73, 255, 0.14), transparent 22%),
               radial-gradient(circle at top left, rgba(99, 102, 241, 0.08), transparent 20%),
               #060818;
             color: #fff;
+            /* ✅ السر: momentum scroll حقيقي (iOS) */
+            -webkit-overflow-scrolling: touch;
+            /* ✅ اللمس: pan-y نقي (السحب العمودي) */
+            touch-action: pan-y;
+            -ms-touch-action: pan-y;
+            /* ✅ لا انعكاس bounce يبتلع التمرير */
+            overscroll-behavior-y: contain;
+            overscroll-behavior-x: none;
+            /* ✅ لا transform/filter يكسر momentum على iOS */
+            transform: none;
+            -webkit-transform: none;
+            filter: none;
+            -webkit-filter: none;
+            perspective: none;
+            pointer-events: auto;
+            overflow-anchor: none;
+            will-change: scroll-position;
+            scrollbar-width: none;
+            box-sizing: border-box;
+          }
+          .yam-inbox-page::-webkit-scrollbar {
+            display: none;
+            width: 0;
+            height: 0;
           }
           .yam-inbox-screen {
             max-width: 520px;
@@ -1021,6 +1052,13 @@ export default function Inbox() {
               calc(76px + env(safe-area-inset-top, 0px))
               14px
               calc(120px + env(safe-area-inset-bottom, 0px));
+            /* ✅ لا overflow ذاتي — تتدفّق طبيعياً داخل .yam-inbox-page */
+            min-height: auto;
+            height: auto;
+            max-height: none;
+            overflow: visible;
+            touch-action: pan-y;
+            pointer-events: auto;
           }
 
           /* ============== شريط البحث ============== */

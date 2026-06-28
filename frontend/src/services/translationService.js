@@ -1,313 +1,196 @@
-import apiClient from './api/apiClient.js';
+/* ============================================================
+   Yamshat — Translation Service (v59.13.35)
+   خدمة الترجمة الفورية للمحادثات
+   - تستخدم Google Translate API المجانية (gtx) كـ fallback
+   - تدعم backend endpoint إن وُجد: POST /api/translate
+   - تكتشف اللغة تلقائياً للنص الوارد
+   - تخزن نتائج الترجمة في cache (localStorage + memory)
+   ============================================================ */
 
-/**
- * خدمة الترجمة الفورية المحسّنة
- * توفر ترجمة فورية من وإلى لغات متعددة
- */
+const CACHE_KEY = 'yamshat:translation-cache';
+const CACHE_LIMIT = 500;
+const PREFS_KEY = 'yamshat:translation-prefs';
 
-const CACHE_KEY_PREFIX = 'translation_cache_';
-const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 ساعة
+// ذاكرة مؤقتة (memory cache) لتسريع الوصول
+let memCache = null;
 
-/**
- * الحصول على الترجمة من الكاش
- */
-const getCachedTranslation = (text, targetLanguage) => {
+function loadCache() {
+  if (memCache) return memCache;
   try {
-    const cacheKey = `${CACHE_KEY_PREFIX}${btoa(text)}_${targetLanguage}`;
-    const cached = localStorage.getItem(cacheKey);
-    
-    if (cached) {
-      const { translation, timestamp } = JSON.parse(cached);
-      if (Date.now() - timestamp < CACHE_DURATION) {
-        return translation;
-      }
-      localStorage.removeItem(cacheKey);
+    memCache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
+  } catch {
+    memCache = {};
+  }
+  return memCache;
+}
+
+function persistCache() {
+  try {
+    const entries = Object.entries(memCache || {});
+    // الإبقاء على آخر CACHE_LIMIT فقط
+    if (entries.length > CACHE_LIMIT) {
+      const trimmed = entries.slice(-CACHE_LIMIT);
+      memCache = Object.fromEntries(trimmed);
     }
-  } catch (error) {
-    console.error('خطأ في الوصول للكاش:', error);
-  }
-  
-  return null;
-};
+    localStorage.setItem(CACHE_KEY, JSON.stringify(memCache));
+  } catch { /* ignore */ }
+}
 
-/**
- * حفظ الترجمة في الكاش
- */
-const cacheTranslation = (text, targetLanguage, translation) => {
+function cacheKey(text, target, source) {
+  return `${source || 'auto'}->${target}::${(text || '').slice(0, 200)}`;
+}
+
+/** قراءة تفضيلات الترجمة المخزنة */
+export function getTranslationPrefs() {
   try {
-    const cacheKey = `${CACHE_KEY_PREFIX}${btoa(text)}_${targetLanguage}`;
-    localStorage.setItem(cacheKey, JSON.stringify({
-      translation,
-      timestamp: Date.now(),
-    }));
-  } catch (error) {
-    console.error('خطأ في حفظ الكاش:', error);
+    return JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
+  } catch {
+    return {};
   }
-};
+}
 
-/**
- * كشف لغة النص
- */
-export const detectLanguage = (text) => {
-  if (!text) return 'auto';
-  
-  // نمط للكشف عن العربية
-  const arabicPattern = /[\u0600-\u06FF]/g;
-  // نمط للكشف عن الصينية
-  const chinesePattern = /[\u4E00-\u9FFF]/g;
-  // نمط للكشف عن اليابانية
-  const japanesePattern = /[\u3040-\u309F\u30A0-\u30FF]/g;
-  // نمط للكشف عن الكورية
-  const koreanPattern = /[\uAC00-\uD7AF]/g;
-  // نمط للكشف عن الروسية
-  const russianPattern = /[\u0400-\u04FF]/g;
-  // نمط للكشف عن العبرية
-  const hebrewPattern = /[\u0590-\u05FF]/g;
-
-  if (arabicPattern.test(text)) return 'ar';
-  if (chinesePattern.test(text)) return 'zh';
-  if (japanesePattern.test(text)) return 'ja';
-  if (koreanPattern.test(text)) return 'ko';
-  if (russianPattern.test(text)) return 'ru';
-  if (hebrewPattern.test(text)) return 'he';
-  
-  return 'en';
-};
-
-/**
- * ترجمة نص
- */
-export const translateText = async (text, targetLanguage, sourceLanguage = 'auto') => {
-  if (!text || !targetLanguage) {
-    throw new Error('النص ولغة الهدف مطلوبان');
-  }
-
-  // تحديد لغة المصدر تلقائياً إذا لم تكن محددة
-  const detectedSourceLanguage = sourceLanguage === 'auto' ? detectLanguage(text) : sourceLanguage;
-
-  // تجنب ترجمة النص إلى نفس اللغة
-  if (detectedSourceLanguage === targetLanguage) {
-    return {
-      original_text: text,
-      translated_text: text,
-      source_language: detectedSourceLanguage,
-      target_language: targetLanguage,
-      is_same_language: true,
-    };
-  }
-
-  // البحث في الكاش أولاً
-  const cachedTranslation = getCachedTranslation(text, targetLanguage);
-  if (cachedTranslation) {
-    return {
-      original_text: text,
-      translated_text: cachedTranslation,
-      source_language: detectedSourceLanguage,
-      target_language: targetLanguage,
-      from_cache: true,
-    };
-  }
-
+/** حفظ تفضيلات الترجمة */
+export function saveTranslationPrefs(prefs) {
   try {
-    // استدعاء API الترجمة
-    const response = await apiClient.post('/translate', {
-      text,
-      target_language: targetLanguage,
-      source_language: detectedSourceLanguage,
-    });
+    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs || {}));
+  } catch { /* ignore */ }
+}
 
-    if (response?.data?.translated_text) {
-      // حفظ في الكاش
-      cacheTranslation(text, targetLanguage, response.data.translated_text);
-      
-      return {
-        original_text: text,
-        translated_text: response.data.translated_text,
-        source_language: detectedSourceLanguage,
-        target_language: targetLanguage,
-        from_cache: false,
-      };
-    }
+/** اكتشاف اللغة بصورة مبدئية: عربية إن كانت أغلب الأحرف عربية، وإلا انجليزية */
+export function quickDetectLang(text) {
+  const s = String(text || '');
+  if (!s.trim()) return 'unknown';
+  const arabic = (s.match(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/g) || []).length;
+  const latin = (s.match(/[A-Za-z]/g) || []).length;
+  if (arabic >= latin) return 'ar';
+  if (latin > 0) return 'en';
+  return 'unknown';
+}
 
-    throw new Error('فشلت الترجمة');
-  } catch (error) {
-    console.error('خطأ في الترجمة:', error);
-    throw error;
-  }
-};
+/** فحص ما إذا كان النص بحاجة لترجمة (لغته تختلف عن لغة الواجهة) */
+export function needsTranslation(text, viewerLang) {
+  const detected = quickDetectLang(text);
+  if (detected === 'unknown') return false;
+  return detected !== viewerLang;
+}
 
-/**
- * ترجمة رسالة في الدردشة
- */
-export const translateMessage = async (messageId, targetLanguage) => {
-  try {
-    const response = await apiClient.post(`/messages/${messageId}/translate`, {
-      target_language: targetLanguage,
-    });
+/** ترجمة عبر backend (مفضل لو متوفر) */
+async function translateViaBackend(text, target, source) {
+  const res = await fetch('/api/translate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, target, source: source || 'auto' }),
+    credentials: 'include',
+  });
+  if (!res.ok) throw new Error('backend translate failed');
+  const data = await res.json();
+  if (!data || !data.translatedText) throw new Error('invalid response');
+  return {
+    text: data.translatedText,
+    detected: data.detectedSourceLanguage || source || 'auto',
+    provider: 'backend',
+  };
+}
 
-    return response?.data;
-  } catch (error) {
-    console.error('خطأ في ترجمة الرسالة:', error);
-    throw error;
-  }
-};
+/** ترجمة عبر Google gtx public endpoint (fallback، بدون مفتاح API) */
+async function translateViaGoogleFree(text, target, source) {
+  const params = new URLSearchParams({
+    client: 'gtx',
+    sl: source || 'auto',
+    tl: target,
+    dt: 't',
+    q: text,
+  });
+  const url = `https://translate.googleapis.com/translate_a/single?${params.toString()}`;
+  const res = await fetch(url, { method: 'GET' });
+  if (!res.ok) throw new Error('google translate failed');
+  const data = await res.json();
+  // الشكل: [[["translated","original",null,null,...]], detected, ...]
+  const translated = (data?.[0] || [])
+    .map((segment) => segment?.[0])
+    .filter(Boolean)
+    .join('');
+  if (!translated) throw new Error('empty translation');
+  return {
+    text: translated,
+    detected: data?.[2] || source || 'auto',
+    provider: 'google-free',
+  };
+}
 
-/**
- * الحصول على اللغات المدعومة
- */
-export const getSupportedLanguages = async () => {
-  try {
-    const response = await apiClient.get('/languages');
-    return response?.data?.supported_languages || [];
-  } catch (error) {
-    console.error('خطأ في الحصول على اللغات المدعومة:', error);
-    // إرجاع قائمة افتراضية في حالة الخطأ
-    return ['ar', 'en', 'fr', 'es', 'de', 'it', 'pt', 'ru', 'ja', 'zh', 'ko', 'tr'];
-  }
-};
-
-/**
- * ترجمة نص مع خيارات متقدمة
- */
-export const translateWithOptions = async (text, options = {}) => {
-  const {
-    targetLanguage,
-    sourceLanguage = 'auto',
-    preserveFormatting = true,
-    includeAlternatives = false,
-  } = options;
-
-  if (!targetLanguage) {
-    throw new Error('لغة الهدف مطلوبة');
-  }
-
-  try {
-    const response = await apiClient.post('/translate/advanced', {
-      text,
-      target_language: targetLanguage,
-      source_language: sourceLanguage,
-      preserve_formatting: preserveFormatting,
-      include_alternatives: includeAlternatives,
-    });
-
-    return response?.data;
-  } catch (error) {
-    console.error('خطأ في الترجمة المتقدمة:', error);
-    throw error;
-  }
-};
+/** ترجمة عبر MyMemory (fallback ثانٍ، 100% مجاني وبدون حدود قاسية) */
+async function translateViaMyMemory(text, target, source) {
+  const sl = source && source !== 'auto' ? source : (quickDetectLang(text) || 'en');
+  const params = new URLSearchParams({
+    q: text,
+    langpair: `${sl}|${target}`,
+  });
+  const url = `https://api.mymemory.translated.net/get?${params.toString()}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('mymemory failed');
+  const data = await res.json();
+  const t = data?.responseData?.translatedText;
+  if (!t) throw new Error('mymemory empty');
+  return { text: t, detected: sl, provider: 'mymemory' };
+}
 
 /**
- * ترجمة دفعة من النصوص
+ * الترجمة الرئيسية — تجرّب backend ثم Google gtx ثم MyMemory
+ * @returns {Promise<{text:string, detected:string, provider:string, fromCache?:boolean}>}
  */
-export const translateBatch = async (texts, targetLanguage) => {
-  if (!Array.isArray(texts) || texts.length === 0) {
-    throw new Error('يجب توفير مصفوفة من النصوص');
+export async function translateText(text, target, source = 'auto') {
+  if (!text || !target) {
+    return { text: text || '', detected: 'unknown', provider: 'noop' };
+  }
+  // عدم الترجمة لو اللغتان متطابقتان
+  if (source && source !== 'auto' && source === target) {
+    return { text, detected: source, provider: 'noop' };
+  }
+  const detectedQuick = quickDetectLang(text);
+  if (detectedQuick === target) {
+    return { text, detected: detectedQuick, provider: 'noop' };
   }
 
-  try {
-    const response = await apiClient.post('/translate/batch', {
-      texts,
-      target_language: targetLanguage,
-    });
-
-    return response?.data?.translations || [];
-  } catch (error) {
-    console.error('خطأ في ترجمة الدفعة:', error);
-    throw error;
+  const cache = loadCache();
+  const key = cacheKey(text, target, source);
+  if (cache[key]) {
+    return { ...cache[key], fromCache: true };
   }
-};
 
-/**
- * الحصول على الترجمات البديلة
- */
-export const getAlternativeTranslations = async (text, targetLanguage, sourceLanguage = 'auto') => {
-  try {
-    const response = await apiClient.post('/translate/alternatives', {
-      text,
-      target_language: targetLanguage,
-      source_language: sourceLanguage,
-    });
+  const attempts = [
+    () => translateViaBackend(text, target, source),
+    () => translateViaGoogleFree(text, target, source),
+    () => translateViaMyMemory(text, target, source),
+  ];
 
-    return response?.data?.alternatives || [];
-  } catch (error) {
-    console.error('خطأ في الحصول على الترجمات البديلة:', error);
-    return [];
-  }
-};
-
-/**
- * تقييم جودة الترجمة
- */
-export const rateTranslation = async (messageId, rating, feedback = '') => {
-  try {
-    const response = await apiClient.post(`/messages/${messageId}/translation/rate`, {
-      rating,
-      feedback,
-    });
-
-    return response?.data;
-  } catch (error) {
-    console.error('خطأ في تقييم الترجمة:', error);
-    throw error;
-  }
-};
-
-/**
- * إنشاء قاموس مخصص للترجمة
- */
-export const createCustomDictionary = async (entries) => {
-  try {
-    const response = await apiClient.post('/translate/dictionary', {
-      entries,
-    });
-
-    return response?.data;
-  } catch (error) {
-    console.error('خطأ في إنشاء القاموس المخصص:', error);
-    throw error;
-  }
-};
-
-/**
- * حذف الكاش
- */
-export const clearTranslationCache = () => {
-  try {
-    const keys = Object.keys(localStorage);
-    keys.forEach(key => {
-      if (key.startsWith(CACHE_KEY_PREFIX)) {
-        localStorage.removeItem(key);
+  let lastErr = null;
+  for (const fn of attempts) {
+    try {
+      const result = await fn();
+      if (result && result.text) {
+        cache[key] = result;
+        persistCache();
+        return result;
       }
-    });
-  } catch (error) {
-    console.error('خطأ في حذف الكاش:', error);
+    } catch (err) {
+      lastErr = err;
+    }
   }
-};
+  // عند فشل كل المحاولات، نعيد النص الأصلي بدون كسر الـ UI
+  return { text, detected: detectedQuick, provider: 'error', error: String(lastErr || 'unknown') };
+}
 
-/**
- * الحصول على إحصائيات الترجمة
- */
-export const getTranslationStats = async () => {
-  try {
-    const response = await apiClient.get('/translate/stats');
-    return response?.data;
-  } catch (error) {
-    console.error('خطأ في الحصول على إحصائيات الترجمة:', error);
-    return null;
-  }
-};
+/** تنظيف كاش الترجمة (للمستخدم) */
+export function clearTranslationCache() {
+  memCache = {};
+  try { localStorage.removeItem(CACHE_KEY); } catch { /* ignore */ }
+}
 
 export default {
-  detectLanguage,
   translateText,
-  translateMessage,
-  getSupportedLanguages,
-  translateWithOptions,
-  translateBatch,
-  getAlternativeTranslations,
-  rateTranslation,
-  createCustomDictionary,
+  needsTranslation,
+  quickDetectLang,
+  getTranslationPrefs,
+  saveTranslationPrefs,
   clearTranslationCache,
-  getTranslationStats,
 };

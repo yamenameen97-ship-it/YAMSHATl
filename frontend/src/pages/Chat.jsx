@@ -15,13 +15,16 @@ import { useToast } from '../components/admin/ToastProvider.jsx';
 import {
   blockUserApi,
   deleteMessageApi,
+  editMessage as editMessageApi,
   getBlockStatus,
   getChatThreads,
   getMessages,
   getPresence,
   markMessagesSeen,
+  reactToMessage,
   sendMessageApi,
   unblockUserApi,
+  unreactToMessage,
 } from '../api/chat.js';
 import { getCurrentUsername } from '../utils/auth.js';
 import { useAppStore, useChatStore } from '../store/appStore.js';
@@ -32,6 +35,9 @@ import { CHAT_NAV_ITEMS, buildContacts, getContactDetails } from '../features/ch
 import BrandLogo from '../components/ui/BrandLogo.jsx';
 // ✅ v59.13.17 FIX #1+#2: ReportModal الموحّد بدلاً من window.prompt للإبلاغ، ومحرّر تعديل داخلي بدلاً من window.prompt للتعديل
 import ReportModal from '../components/reports/ReportModal.jsx';
+// ✅ v59.13.36 FIX: socketManager للاستماع المباشر لحدث typing_update داخل الصفحة
+// كألية احتياطية تضمن ظهور مؤشر “يكتب الآن...” حتى لو فشل تحديث useChatStore
+import socketManager from '../services/socketManager.js';
 
 const EMPTY_MESSAGES = [];
 const REACTION_STORAGE_KEY = 'yamshat-message-reactions-v2';
@@ -167,12 +173,20 @@ export default function Chat() {
   const setActivePeer = useChatStore((state) => state.setActivePeer);
   const hydrateThreads = useChatStore((state) => state.hydrateThreads);
   const replaceConversationMessages = useChatStore((state) => state.replaceConversationMessages);
+  // ✅ v59.13.37 FIX #3: تحميل صفحات الرسائل الأقدم عبر store.prependConversationPage
+  const prependConversationPage = useChatStore((state) => state.prependConversationPage);
   const applyIncomingMessage = useChatStore((state) => state.applyIncomingMessage);
   const reconcileOptimisticMessage = useChatStore((state) => state.reconcileOptimisticMessage);
   const applyMessagePatch = useChatStore((state) => state.applyMessagePatch);
   const setPresenceStore = useChatStore((state) => state.setPresence);
   const markThreadRead = useChatStore((state) => state.markThreadRead);
   const queueAction = useAppStore((state) => state.queueAction);
+
+  // ✅ v59.13.37 FIX #3: حالة وعلامات تحميل صفحات الرسائل الأقدم
+  const hasMoreOlder = Boolean(conversationState?.hasMore);
+  const oldestMessageId = conversationState?.oldestMessageId || '';
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const loadingOlderRef = useRef(false);
 
   const [threadsLoading, setThreadsLoading] = useState(true);
   const [msgLoading, setMsgLoading] = useState(false);
@@ -561,24 +575,101 @@ export default function Chat() {
     setTimeout(() => setFlyingHearts((prev) => prev.filter((item) => item !== id)), 1800);
   };
 
+  // ✅ v59.13.37 FIX #2: مزامنة التفاعلات مع الباك إند (reactToMessage / unreactToMessage)
+  // السلوك السابق: التفاعل كان يُحفظ في localStorage فقط، لذا الطرف الآخر لا يرى التفاعل.
+  // الحل: تحديث متفائل (optimistic) محلي ثم استدعاء API؛ في حال الفشل نعكس التغيير ونعرض Toast.
   const handleReact = useCallback((message, emoji) => {
-    const messageId = String(message?.id || message?.client_id);
+    const messageId = String(message?.id || message?.client_id || '');
+    if (!messageId || !emoji) return;
+
+    let previousState = null; // لقطة قبل التحديث لاستخدامها في الـ rollback
+    let action = 'add'; // 'add' | 'remove' | 'switch'
+    let previousEmoji = null;
+
     setReactionsByMessage((prev) => {
+      previousState = prev;
       const current = prev[messageId] || { counts: {}, myReaction: null };
       const nextCounts = { ...(current.counts || {}) };
+
       if (current.myReaction === emoji) {
+        // إزالة التفاعل
+        action = 'remove';
         nextCounts[emoji] = Math.max(0, Number(nextCounts[emoji] || 0) - 1);
         if (!nextCounts[emoji]) delete nextCounts[emoji];
         return { ...prev, [messageId]: { counts: nextCounts, myReaction: null } };
       }
+
       if (current.myReaction) {
+        // تبديل من emoji لآخر
+        action = 'switch';
+        previousEmoji = current.myReaction;
         nextCounts[current.myReaction] = Math.max(0, Number(nextCounts[current.myReaction] || 0) - 1);
         if (!nextCounts[current.myReaction]) delete nextCounts[current.myReaction];
+      } else {
+        action = 'add';
       }
       nextCounts[emoji] = Number(nextCounts[emoji] || 0) + 1;
       return { ...prev, [messageId]: { counts: nextCounts, myReaction: emoji } };
     });
-  }, []);
+
+    // طلبات الـ API — بدون انتظار للـ UI (optimistic)
+    (async () => {
+      try {
+        if (action === 'remove') {
+          await unreactToMessage(messageId, emoji);
+        } else if (action === 'switch') {
+          // أزل القديم ثم أضف الجديد
+          try { await unreactToMessage(messageId, previousEmoji); } catch (_) { /* تجاهل */ }
+          await reactToMessage(messageId, emoji);
+        } else {
+          await reactToMessage(messageId, emoji);
+        }
+      } catch (err) {
+        // rollback
+        if (previousState) setReactionsByMessage(previousState);
+        pushToast({ type: 'error', title: 'تعذر إرسال التفاعل', description: 'حدث خطأ أثناء مزامنة التفاعل مع الخادم' });
+      }
+    })();
+  }, [pushToast]);
+
+  // ✅ v59.13.37 FIX #3: تحميل صفحة من الرسائل الأقدم وحقنها في المتجر
+  const loadOlderMessages = useCallback(async () => {
+    if (!peer) return;
+    if (loadingOlderRef.current) return;
+    if (!hasMoreOlder) return;
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+
+    // الاحتفاظ بموقع التمرير قبل الحقن
+    const area = messagesAreaRef.current;
+    const previousScrollHeight = area ? area.scrollHeight : 0;
+    const previousScrollTop = area ? area.scrollTop : 0;
+
+    try {
+      const { data } = await getMessages(peer, 60, oldestMessageId || undefined);
+      const olderItems = Array.isArray(data?.items) ? data.items : [];
+      prependConversationPage(peer, olderItems, {
+        hasMore: Boolean(data?.paging?.has_more),
+        oldestMessageId: data?.paging?.next_before_id || '',
+        limit: 250,
+      });
+
+      // بعد الـ render نعيد ضبط التمرير ليبقى المستخدم عند نفس الرسالة
+      window.requestAnimationFrame(() => {
+        const node = messagesAreaRef.current;
+        if (!node) return;
+        const delta = node.scrollHeight - previousScrollHeight;
+        node.scrollTop = previousScrollTop + delta;
+        // عطّل الالتصاق التلقائي بالأسفل لأنّ المستخدم يستعرض السجل القديم
+        shouldAutoScrollRef.current = false;
+      });
+    } catch (err) {
+      pushToast({ type: 'error', title: 'تعذّر تحميل الرسائل الأقدم' });
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
+  }, [peer, hasMoreOlder, oldestMessageId, prependConversationPage, pushToast]);
 
   const registerMessageNode = useCallback((id, node) => {
     if (!id) return;
@@ -607,7 +698,64 @@ export default function Chat() {
   }, [contacts, searchQuery]);
 
   const isOnline = Boolean(peerPresence.is_online ?? peerDetails.isOnline);
-  const isTyping = Boolean(peerPresence.is_typing);
+
+  // ✅ v59.13.36 FIX (typing indicator): حالة محلية لل“يكتب الآن”
+  // السبب: في بعض الحالات لم تكن تحديثات useChatStore تصل للبيانات بسبب فروق
+  // في حالة الأحرف بين peer المحفوظ في المتجر و payload.sender الوارد من السوكت.
+  // الحل: نستمع مباشرة لـ typing_update ونقارن بدون حساسية للحالة + trim.
+  const [localTyping, setLocalTyping] = useState(false);
+  const typingTimerRef = useRef(null);
+
+  useEffect(() => {
+    // عند تبديل المحادثة أعد ضبط الحالة
+    setLocalTyping(false);
+    if (typingTimerRef.current) {
+      clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+  }, [peer]);
+
+  useEffect(() => {
+    if (!peer) return undefined;
+    const normalizedPeer = String(peer).trim().toLowerCase();
+
+    const handleTypingUpdate = (payload) => {
+      const sender = String(payload?.sender || '').trim().toLowerCase();
+      // المرسل لابد أن يكون الطرف الآخر في المحادثة المفتوحة
+      if (!sender || sender !== normalizedPeer) return;
+      const typing = Boolean(payload?.is_typing);
+
+      if (typingTimerRef.current) {
+        clearTimeout(typingTimerRef.current);
+        typingTimerRef.current = null;
+      }
+
+      setLocalTyping(typing);
+
+      // تعطيل تلقائي بعد 3.5ث في حال لم يصل is_typing:false (على سبيل الأمان)
+      if (typing) {
+        typingTimerRef.current = setTimeout(() => {
+          setLocalTyping(false);
+          typingTimerRef.current = null;
+        }, 3500);
+      }
+    };
+
+    // تأكد أن الاتصال قائم
+    try { socketManager.connect(); } catch (_) { /* ignore */ }
+    const unsubscribe = socketManager.on('typing_update', handleTypingUpdate);
+
+    return () => {
+      try { unsubscribe?.(); } catch (_) { /* ignore */ }
+      if (typingTimerRef.current) {
+        clearTimeout(typingTimerRef.current);
+        typingTimerRef.current = null;
+      }
+    };
+  }, [peer]);
+
+  // دمج مصدرين: المتجر (store) + المستمع المحلي (fallback)
+  const isTyping = Boolean(peerPresence.is_typing) || localTyping;
   const lastSeen = peerPresence.last_seen;
   const mediaMessages = useMemo(() => messages.filter((item) => item.media_url), [messages]);
   const fileMessages = useMemo(() => messages.filter((item) => item.type === 'file' || item.type === 'voice'), [messages]);
@@ -650,13 +798,23 @@ export default function Chat() {
           selectedMessage={chatSelectedMessage}
           onClose={() => { setChatSelectedMessage(null); setChatReactionAnchor(null); try { document.body.classList.remove('yam-long-press-active'); } catch {} }}
           onForward={(m) => pushToast({ type: 'info', title: 'إعادة توجيه', description: 'اختر جهة الوجهة لإعادة توجيه الرسالة' })}
-          onDelete={(m) => setMessages((prev) => prev.filter((x) => (x.id || x.client_id) !== (m.id || m.client_id)))}
-          onStar={(m) => setMessages((prev) => prev.map((x) => (x.id||x.client_id)===(m.id||m.client_id) ? { ...x, starred: !x.starred } : x))}
+          /* ✅ v59.13.37 FIX #1: استبدال setMessages غير المعرَّف باستدعاء handleDelete (API + store) */
+          onDelete={(m) => { const id = m?.id || m?.client_id; if (id) handleDelete(id, false); setChatSelectedMessage(null); setChatReactionAnchor(null); }}
+          /* ✅ v59.13.37 FIX #1: التنجيم عبر applyMessagePatch بدل setMessages غير المعرَّف */
+          onStar={(m) => { const id = m?.id || m?.client_id; if (!id) return; applyMessagePatch(peer, [id], { starred: !m?.starred }); pushToast({ type: 'success', title: m?.starred ? 'تم إلغاء تنجيم الرسالة' : 'تم تنجيم الرسالة' }); }}
           onReply={(m) => setReplyTo(m)}
           onCopy={(m) => { try { navigator.clipboard.writeText(m?.text || m?.content || ''); } catch {} }}
           onPin={(m) => pushToast({ type: 'success', title: 'تم تثبيت الرسالة', description: 'ستظهر في أعلى المحادثة' })}
           onInfo={(m) => pushToast({ type: 'info', title: 'تفاصيل الرسالة', description: `المرسل: ${m?.sender || 'غير معروف'} · الوقت: ${m?.time || m?.created_at || 'غير متوفر'}` })}
-          onReport={(m) => pushToast({ type: 'success', title: 'تم إرسال البلاغ', description: 'سنراجع البلاغ خلال 24 ساعة' })}
+          /* ✅ v59.13.37 FIX #4: فتح ReportModal الموحّد بدلاً من Toast كاذب (مطابق لإصلاح v59.13.17) */
+          onReport={(m) => {
+            setReportTarget({
+              id: m?.id || m?.client_id,
+              label: `رسالة من @${m?.sender || m?.author || peer}`,
+            });
+            setChatSelectedMessage(null);
+            setChatReactionAnchor(null);
+          }}
         />
       ) : null}
 
@@ -664,7 +822,8 @@ export default function Chat() {
       {chatSelectedMessage && chatReactionAnchor ? (
         <MessageReactionPicker
           anchorRect={chatReactionAnchor}
-          onPick={(emoji) => setMessages((prev) => prev.map((x) => (x.id||x.client_id)===(chatSelectedMessage.id||chatSelectedMessage.client_id) ? { ...x, reaction: emoji } : x))}
+          /* ✅ v59.13.37 FIX #1+#2: استدعاء handleReact (مزامنة مع الـ API + تخزين موحّد) بدل setMessages غير المعرَّف */
+          onPick={(emoji) => { handleReact(chatSelectedMessage, emoji); setChatReactionAnchor(null); }}
           onClose={() => setChatReactionAnchor(null)}
         />
       ) : null}
@@ -685,6 +844,7 @@ export default function Chat() {
       <section className="yam-conversation-screen" dir="rtl" data-yam-chat-root="true" style={{ fontFamily: "'Noto Sans Arabic', 'Cairo', 'Tajawal', 'Tahoma', system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
         <style>{`
           .yam-conversation-screen {
+            /* ⭐ v59.13.31 — لا transform/filter يكسر إطار التمرير لأبنائه (.yam-messages-area) */
             min-height: 100%;
             height: min(100dvh, var(--yam-vh, 100dvh));
             display: grid;
@@ -695,6 +855,13 @@ export default function Chat() {
               #040714;
             color: #fff;
             overflow: hidden;
+            /* ✅ الجذر لا يتمرّر بنفسه لكن يسمح لأبنائه بالتمرير */
+            transform: none;
+            -webkit-transform: none;
+            filter: none;
+            perspective: none;
+            touch-action: pan-y;
+            pointer-events: auto;
           }
           .yam-chat-sidebar,
           .yam-side-profile-panel {
@@ -1024,12 +1191,18 @@ export default function Chat() {
             color: #fff;
           }
           .yam-messages-area {
+            /* ⭐ v59.13.31 — بصمة .yam-groups-page على منطقة الرسائل:
+               السحب يستجيب فوراً من منتصف الشاشة على ويب الجوال. */
             min-height: 0;
             flex: 1;
             overflow-y: auto !important;
-            overflow-x: hidden;
+            overflow-x: hidden !important;
             overscroll-behavior-y: contain;
-            -webkit-overflow-scrolling: touch;
+            overscroll-behavior-x: none;
+            -webkit-overflow-scrolling: touch !important;
+            /* ✅ touch-action: pan-y صريح — يجبر المتصفح على التحرك فوراً */
+            touch-action: pan-y !important;
+            -ms-touch-action: pan-y !important;
             scroll-behavior: smooth;
             scroll-padding-bottom: 140px;
             scrollbar-gutter: stable both-edges;
@@ -1044,8 +1217,39 @@ export default function Chat() {
               radial-gradient(circle at top right, rgba(124,58,237,0.06), transparent 22%),
               radial-gradient(circle at bottom left, rgba(59,130,246,0.05), transparent 22%),
               linear-gradient(180deg, rgba(7,10,24,0.95), rgba(4,7,18,0.98));
-            contain: layout style paint;
+            /* ⚠️ أزلنا contain: layout style paint لأنه يكسر momentum scroll على iOS Safari */
             direction: rtl;
+            /* ✅ لا transform/filter يكسر momentum */
+            transform: none;
+            -webkit-transform: none;
+            filter: none;
+            perspective: none;
+            pointer-events: auto;
+            overflow-anchor: none;
+            will-change: scroll-position;
+          }
+          /* ✅ فقاعات/صفوف داخل منطقة الرسائل: لا تبتلع pan-y */
+          .yam-messages-area .yam-message-row,
+          .yam-messages-area .yam-message-stack,
+          .yam-messages-area .yam-bubble,
+          .yam-messages-area .yam-day-divider {
+            touch-action: pan-y;
+            pointer-events: auto;
+          }
+          /* ✅ الصور/الفيديو داخل الفقاعات: pan-y عمودي فقط + منع السحب الأصلي */
+          .yam-messages-area img {
+            touch-action: pan-y;
+            -webkit-user-drag: none;
+            user-drag: none;
+          }
+          .yam-messages-area video {
+            touch-action: manipulation;
+          }
+          /* ✅ الأزرار داخل الفقاعات: manipulation (تسمح بـ pan-y عند البدء) */
+          .yam-messages-area button,
+          .yam-messages-area a,
+          .yam-messages-area [role="button"] {
+            touch-action: manipulation;
           }
           .yam-day-divider {
             align-self: center;
@@ -1498,15 +1702,9 @@ export default function Chat() {
           .yam-scroll-jump:hover {
             transform: translateY(-1px);
           }
-          .yam-call-overlay {
-            position: absolute;
-            inset: 0;
-            display: grid;
-            place-items: center;
-            z-index: 40;
-            background: rgba(2,6,23,0.48);
-            backdrop-filter: blur(10px);
-          }
+          /* 🔧 v59.13.32 FIX #1: ألغي دور yam-call-overlay لأن CallExperience أصبح
+             يعرض نفسه عبر fixed overlay خاص به. أبقينا الصنف للتوافق فقط. */
+          .yam-call-overlay { display: contents; }
           .yam-empty-state {
             min-height: 180px;
             display: grid;
@@ -1549,24 +1747,85 @@ export default function Chat() {
             font-size: 22px;
             font-weight: 900;
           }
+          /* 🔧 v59.13.32 FIX #3: توحيد أزرار الإجراءات السريعة بستايل النظام */
           .yam-quick-actions {
             display: grid;
             grid-template-columns: repeat(4, minmax(0, 1fr));
             gap: 10px;
           }
           .yam-quick-card {
-            min-height: 82px;
+            position: relative;
+            min-height: 92px;
             border-radius: 20px;
-            border: 1px solid rgba(255,255,255,0.06);
-            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
+            background: linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
             color: white;
             display: grid;
             place-items: center;
             gap: 6px;
+            cursor: pointer;
+            transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+            overflow: hidden;
+          }
+          .yam-quick-card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            background: radial-gradient(circle at top, rgba(255,255,255,0.18), transparent 60%);
+            transition: opacity 0.2s ease;
+            pointer-events: none;
+          }
+          .yam-quick-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(255,255,255,0.18);
+            background: linear-gradient(160deg, rgba(255,255,255,0.09), rgba(255,255,255,0.04));
+            box-shadow: 0 12px 28px rgba(0,0,0,0.32);
+          }
+          .yam-quick-card:hover::before { opacity: 1; }
+          .yam-quick-card:active { transform: translateY(0); }
+          .yam-quick-card:focus-visible {
+            outline: 2px solid rgba(167,139,250,0.7);
+            outline-offset: 2px;
+          }
+          .yam-quick-card > span:first-child {
+            font-size: 22px;
+            line-height: 1;
+            display: inline-grid;
+            place-items: center;
+            width: 44px;
+            height: 44px;
+            border-radius: 14px;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.1);
+            transition: background 0.2s ease, transform 0.2s ease;
+          }
+          .yam-quick-card:hover > span:first-child { transform: scale(1.06); }
+          .yam-quick-card.call-action > span:first-child {
+            background: linear-gradient(135deg, rgba(34,197,94,0.35), rgba(16,185,129,0.18));
+            border-color: rgba(34,197,94,0.45);
+            color: #d1fae5;
+          }
+          .yam-quick-card.video-action > span:first-child {
+            background: linear-gradient(135deg, rgba(59,130,246,0.35), rgba(99,102,241,0.18));
+            border-color: rgba(59,130,246,0.45);
+            color: #dbeafe;
+          }
+          .yam-quick-card.search-action > span:first-child {
+            background: linear-gradient(135deg, rgba(168,85,247,0.32), rgba(217,70,239,0.18));
+            border-color: rgba(168,85,247,0.45);
+            color: #f3e8ff;
+          }
+          .yam-quick-card.more-action > span:first-child {
+            background: linear-gradient(135deg, rgba(234,179,8,0.32), rgba(249,115,22,0.18));
+            border-color: rgba(234,179,8,0.45);
+            color: #fef3c7;
           }
           .yam-quick-card small {
-            color: #cbd5e1;
+            color: #e2e8f0;
             font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.02em;
           }
           .yam-info-card {
             padding: 18px;
@@ -1963,17 +2222,16 @@ export default function Chat() {
             ))}
           </div>
 
+          {/* 🔧 v59.13.32 FIX #1: CallExperience يتولّى العرض fixed overlay داخليّاً */}
           {callMode ? (
-            <div className="yam-call-overlay">
-              <CallExperience
-                open={Boolean(callMode)}
-                mode={callMode}
-                callType="direct"
-                participantName={peer}
-                onClose={() => setCallMode(null)}
-                onStatusChange={() => {}}
-              />
-            </div>
+            <CallExperience
+              open={Boolean(callMode)}
+              mode={callMode}
+              callType="direct"
+              participantName={peer}
+              onClose={() => setCallMode(null)}
+              onStatusChange={() => {}}
+            />
           ) : null}
 
           {!blockStatus.can_chat && blockStatus.blocked_by_me ? (
@@ -1991,6 +2249,36 @@ export default function Chat() {
           <div className="yam-messages-area" ref={messagesAreaRef} onScroll={handleMessagesScroll}>
             {threadsLoading && !peerDetails.username ? <div className="yam-empty-state">جارٍ تجهيز بيانات المحادثة...</div> : null}
             {msgLoading ? <div className="yam-empty-state">جارٍ تحميل الرسائل...</div> : null}
+            {/* ✅ v59.13.37 FIX #3: زر "تحميل رسائل أقدم" في أعلى منطقة الرسائل */}
+            {!msgLoading && messages.length > 0 && hasMoreOlder ? (
+              <div className="yam-load-older-row" style={{ display: 'flex', justifyContent: 'center', padding: '8px 0 6px' }}>
+                <button
+                  type="button"
+                  onClick={loadOlderMessages}
+                  disabled={loadingOlder}
+                  aria-label="تحميل رسائل أقدم"
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: 999,
+                    background: 'rgba(255,255,255,0.06)',
+                    color: 'inherit',
+                    border: '1px solid rgba(255,255,255,0.14)',
+                    fontWeight: 600,
+                    fontSize: 13,
+                    cursor: loadingOlder ? 'progress' : 'pointer',
+                    opacity: loadingOlder ? 0.7 : 1,
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  {loadingOlder ? '⏳ جارٍ تحميل الأقدم…' : '⤴ تحميل رسائل أقدم'}
+                </button>
+              </div>
+            ) : null}
+            {!msgLoading && messages.length > 0 && !hasMoreOlder ? (
+              <div className="yam-load-older-end" aria-hidden="true" style={{ textAlign: 'center', padding: '6px 0', fontSize: 11, opacity: 0.5 }}>
+                — بداية المحادثة —
+              </div>
+            ) : null}
             {!msgLoading && !messages.length ? (
               <div className="yam-empty-state rich">
                 <strong>ابدأ المحادثة مع {peer}</strong>
@@ -2103,13 +2391,20 @@ export default function Chat() {
 
           <div className="yam-quick-actions">
             {[
-              { key: 'call', label: 'اتصال', icon: '📞', action: () => setCallMode('voice') },
-              { key: 'video', label: 'فيديو', icon: '🎥', action: () => setCallMode('video') },
-              { key: 'search', label: 'بحث', icon: '⌕', action: () => searchInputRef.current?.focus() },
-              { key: 'more', label: 'المزيد', icon: '⋯', action: () => setShowDetailsDrawer((prev) => !prev) },
+              { key: 'call', label: 'اتصال', icon: '📞', cls: 'call-action', aria: 'بدء مكالمة صوتية', action: () => setCallMode('voice') },
+              { key: 'video', label: 'فيديو', icon: '🎥', cls: 'video-action', aria: 'بدء مكالمة فيديو', action: () => setCallMode('video') },
+              { key: 'search', label: 'بحث', icon: '⌕', cls: 'search-action', aria: 'بحث في الرسائل', action: () => searchInputRef.current?.focus() },
+              { key: 'more', label: 'المزيد', icon: '⋯', cls: 'more-action', aria: 'خيارات إضافية', action: () => setShowDetailsDrawer((prev) => !prev) },
             ].map((item) => (
-              <button key={item.key} type="button" className="yam-quick-card" onClick={item.action}>
-                <span>{item.icon}</span>
+              <button
+                key={item.key}
+                type="button"
+                className={`yam-quick-card ${item.cls}`}
+                onClick={item.action}
+                aria-label={item.aria}
+                title={item.aria}
+              >
+                <span aria-hidden="true">{item.icon}</span>
                 <small>{item.label}</small>
               </button>
             ))}
@@ -2206,27 +2501,53 @@ export default function Chat() {
               >إلغاء</button>
               <button
                 type="button"
-                disabled={!editingDraft.trim() || editingDraft.trim() === (editingMessage?.original || '').trim()}
-                onClick={() => {
+                disabled={!editingDraft.trim() || editingDraft.trim() === (editingMessage?.original || '').trim() || editingMessage?.saving}
+                onClick={async () => {
+                  /* ✅ v59.13.37 FIX #5: استدعاء editMessage() API + تحديث متفائل + rollback عند الفشل */
                   const newText = editingDraft.trim();
                   if (!newText || !editingMessage?.id) return;
-                  applyMessagePatch(peer, [editingMessage.id], {
+                  const messageId = editingMessage.id;
+                  const originalText = editingMessage.original || '';
+
+                  // علامة "جارٍ الحفظ" لتعطيل الزر أثناء الطلب
+                  setEditingMessage((prev) => (prev ? { ...prev, saving: true } : prev));
+
+                  // تحديث متفائل
+                  applyMessagePatch(peer, [messageId], {
                     content: newText,
                     message: newText,
                     edited: true,
                     edited_at: new Date().toISOString(),
                   });
-                  pushToast({ type: 'success', title: 'تم تعديل الرسالة' });
-                  setEditingMessage(null);
-                  setEditingDraft('');
+
+                  try {
+                    await editMessageApi(messageId, newText);
+                    pushToast({ type: 'success', title: 'تم تعديل الرسالة' });
+                    setEditingMessage(null);
+                    setEditingDraft('');
+                  } catch (err) {
+                    // rollback في حال الفشل
+                    applyMessagePatch(peer, [messageId], {
+                      content: originalText,
+                      message: originalText,
+                      edited: false,
+                      edited_at: null,
+                    });
+                    pushToast({
+                      type: 'error',
+                      title: 'تعذر تعديل الرسالة',
+                      description: err?.response?.data?.detail || 'حدث خطأ أثناء حفظ التعديل، حاول مجددًا',
+                    });
+                    setEditingMessage((prev) => (prev ? { ...prev, saving: false } : prev));
+                  }
                 }}
                 style={{
-                  padding: '9px 18px', borderRadius: 10, cursor: 'pointer',
+                  padding: '9px 18px', borderRadius: 10, cursor: editingMessage?.saving ? 'progress' : 'pointer',
                   background: 'var(--primary, #6f53ff)', color: '#fff',
                   border: 'none', fontWeight: 700,
-                  opacity: (!editingDraft.trim() || editingDraft.trim() === (editingMessage?.original || '').trim()) ? 0.5 : 1,
+                  opacity: (!editingDraft.trim() || editingDraft.trim() === (editingMessage?.original || '').trim() || editingMessage?.saving) ? 0.5 : 1,
                 }}
-              >حفظ التعديل</button>
+              >{editingMessage?.saving ? '⏳ جارٍ الحفظ…' : 'حفظ التعديل'}</button>
             </div>
           </div>
         </div>

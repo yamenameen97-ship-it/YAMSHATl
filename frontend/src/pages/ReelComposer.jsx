@@ -400,6 +400,14 @@ export default function ReelComposer() {
     setUploading(true);
     setUploadProgress(0);
     setErrorMessage('');
+    // ✅ v59.13.34 FIX: ضمان حفظ الريل في قاعدة البيانات
+    // المشكلة السابقة: عند فشل mediaUploadService أو إعادة الـ mediaUrl فارغاً،
+    // كان الـ backend يرفض الطلب (HTTPException 400) ولا يحفظ السجل البتة.
+    // الحل: إذا فشل التحميل عبر الخدمة أو لم نحصل على mediaUrl، نرفع الملف مباشرة
+    // إلى POST /reels بصيغة multipart/form-data — وهي صيغة يدعمها الـ backend أصلاً
+    // (راجع reels.py حيث 'multipart/form-data' in content_type) وبذلك يتم حفظ
+    // الريل بشكل موثوق في قاعدة البيانات.
+    let mediaUrl = '';
     try {
       const upload = await mediaUploadService.uploadFile(file, {
         purpose: 'reel-upload',
@@ -411,8 +419,14 @@ export default function ReelComposer() {
           setUploadProgress(Math.min(100, Number(p?.percent || 0)));
         },
       });
-      const mediaUrl = upload?.mediaUrl || upload?.url || '';
-      try {
+      mediaUrl = upload?.mediaUrl || upload?.url || '';
+    } catch (uploadErr) {
+      // سنحاول الرفع عبر multipart/form-data للـ backend مباشرة
+      mediaUrl = '';
+    }
+    try {
+      if (mediaUrl) {
+        // المسار الأساسي: لدينا mediaUrl جاهزة من خدمة الرفع
         await API.post('/reels', {
           media_url: mediaUrl,
           duration,
@@ -424,9 +438,19 @@ export default function ReelComposer() {
           captions,
           beautify,
         });
-      } catch {
-        // fallback لِنقطة بديلة
-        try { await API.post('/reels/create', { media_url: mediaUrl }); } catch { /* ignore */ }
+      } else {
+        // ✅ v59.13.34: fallback multipart — نرفع الملف مباشرة للـ backend
+        const fd = new FormData();
+        fd.append('file', file, file.name || `reel-${Date.now()}.webm`);
+        fd.append('caption', captions || '');
+        fd.append('category', 'general');
+        await API.post('/reels', fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          onUploadProgress: (e) => {
+            if (!isMountedRef.current || !e?.total) return;
+            setUploadProgress(Math.min(100, Math.round((e.loaded * 100) / e.total)));
+          },
+        });
       }
       if (!isMountedRef.current) return;
       pushToast?.({ tone: 'success', message: 'تم نشر الريل بنجاح 🎉' });

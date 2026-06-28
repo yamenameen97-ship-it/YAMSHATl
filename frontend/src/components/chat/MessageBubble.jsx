@@ -5,6 +5,8 @@ import { statusColor, statusTicks } from '../yamshat/YamshatDesign.js';
 import VoiceMessagePlayer from '../ui/VoiceMessagePlayer.jsx';
 import SafeImage from './SafeImage.jsx';
 import CallBubble from './CallBubble.jsx';
+import MessageContextPopup from './MessageContextPopup.jsx';
+import useMessageTranslation from '../../hooks/useMessageTranslation.js';
 
 const QUICK_REACTIONS = ['❤️', '🔥', '😂', '👏', '👍', '😮'];
 
@@ -77,6 +79,7 @@ function MessageBubble({
 }) {
   const [showToolbar, setShowToolbar] = useState(false);
   const [contextMenu, setContextMenu] = useState(null); // {x, y}
+  const [popupAnchor, setPopupAnchor] = useState(null); // لـ MessageContextPopup (v60)
   const [swipeOffset, setSwipeOffset] = useState(0);
   const reduceMotion = useReducedMotion();
 
@@ -149,23 +152,37 @@ function MessageBubble({
   const isVoiceOnly = isVoice && !content && !replyTarget && !message?.deleted;
 
   // === القائمة السياقية: فتح + إغلاق ===
+  // v60: على الجوال نستخدم popupAnchor (MessageContextPopup) ، وعلى السطح نستخدم contextMenu القديم
   const openContextMenu = useCallback((x, y) => {
-    // ضبط الموقع داخل حدود الشاشة
+    const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+    if (isMobile && bubbleRef.current) {
+      // v60: افتح البوب أب الجديد المتمركز حول الرسالة
+      const rect = bubbleRef.current.querySelector('.yam-bubble')?.getBoundingClientRect()
+        || bubbleRef.current.getBoundingClientRect();
+      setPopupAnchor(rect);
+      setShowToolbar(false);
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try { navigator.vibrate(15); } catch { /* ignore */ }
+      }
+      return;
+    }
+    // سطح المكتب: القائمة القديمة
     const maxX = window.innerWidth - 200;
     const maxY = window.innerHeight - 280;
     setContextMenu({
       x: Math.min(Math.max(8, x), maxX),
       y: Math.min(Math.max(8, y), maxY),
     });
-    // إغلاق توولبار التفاعلات لو كان مفتوحاً
     setShowToolbar(false);
-    // اهتزاز خفيف للجوال (إن دُعم)
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
       try { navigator.vibrate(15); } catch { /* ignore */ }
     }
   }, []);
 
-  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(null);
+    setPopupAnchor(null);
+  }, []);
 
   useEffect(() => {
     if (!contextMenu) return undefined;
@@ -462,16 +479,20 @@ function MessageBubble({
 
           {/* محتوى الرسالة - الإيموجي يظهر تلقائياً داخل النص */}
           {content && !message?.deleted ? (
-            <div
-              className="bubble-text"
-              style={{
-                fontFamily: "'Noto Sans Arabic', 'Apple Color Emoji', 'Segoe UI Emoji', system-ui, sans-serif",
-                direction: 'rtl',
-                unicodeBidi: 'plaintext',
-              }}
-            >
-              {content}
-            </div>
+            <>
+              <div
+                className="bubble-text"
+                style={{
+                  fontFamily: "'Noto Sans Arabic', 'Apple Color Emoji', 'Segoe UI Emoji', system-ui, sans-serif",
+                  direction: 'rtl',
+                  unicodeBidi: 'plaintext',
+                }}
+              >
+                {content}
+              </div>
+              {/* v59.13.35 — شريط الترجمة الفورية */}
+              <ChatTranslationStrip content={content} isMe={isMe} />
+            </>
           ) : null}
           {message?.deleted ? <div className="bubble-deleted">تم حذف الرسالة</div> : null}
 
@@ -511,7 +532,38 @@ function MessageBubble({
         </AnimatePresence>
       </div>
 
-      {/* القائمة السياقية الموحّدة (الضغط المطول / كليك يمين / زر ⋯) */}
+      {/* v60: القائمة المنبثقة الجديدة للجوال (تطابق التصميم المرجعي) */}
+      {popupAnchor ? (
+        <MessageContextPopup
+          anchorRect={popupAnchor}
+          isMe={isMe}
+          message={message}
+          onClose={closeContextMenu}
+          onReact={(emoji) => { onReact?.(message, emoji); }}
+          onReply={() => onReply?.(message)}
+          onCopy={() => {
+            const text = message?.content || message?.message || '';
+            if (text && typeof navigator !== 'undefined' && navigator.clipboard) {
+              try { navigator.clipboard.writeText(text); } catch { /* ignore */ }
+            }
+          }}
+          onEdit={() => onEdit?.(message)}
+          onDelete={() => {
+            if (onDeleteForMe) onDeleteForMe(messageId);
+            else onDelete?.(messageId, false);
+          }}
+          onDeleteForMe={() => {
+            if (onDeleteForMe) onDeleteForMe(messageId);
+            else onDelete?.(messageId, false);
+          }}
+          onDeleteForEveryone={() => {
+            if (onDeleteForEveryone) onDeleteForEveryone(messageId);
+            else onDelete?.(messageId, true);
+          }}
+        />
+      ) : null}
+
+      {/* القائمة السياقية الموحّدة (الضغط المطول / كليك يمين / زر ⋯) - سطح المكتب فقط */}
       <AnimatePresence>
         {contextMenu && (
           <motion.div
@@ -605,3 +657,34 @@ function MessageBubble({
 }
 
 export default memo(MessageBubble);
+
+/* ============================================================
+   v59.13.35 — مكوّن شريط الترجمة الفورية
+   يظهر تحت نص الرسالة في حال اختلفت لغتها عن لغة الواجهة
+   ============================================================ */
+function ChatTranslationStrip({ content, isMe }) {
+  const { showTranslation, loading, translated, detected, provider } = useMessageTranslation(content, { isMe });
+
+  if (!showTranslation && !loading) return null;
+
+  if (loading) {
+    return (
+      <div className="yam-translation-strip is-loading" aria-live="polite">
+        <span className="yam-translation-label">جارٍ الترجمة…</span>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="yam-translation-strip"
+      style={{ direction: 'rtl', unicodeBidi: 'plaintext' }}
+      title={provider === 'backend' ? 'Yamshat Translate' : (provider === 'google-free' ? 'Google Translate' : 'MyMemory')}
+    >
+      <span className="yam-translation-label">
+        الترجمة من {(detected || '').toUpperCase() || 'اللغة الأصلية'}
+      </span>
+      <span className="yam-translation-text">{translated}</span>
+    </div>
+  );
+}

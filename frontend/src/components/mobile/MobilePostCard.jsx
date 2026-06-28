@@ -33,18 +33,10 @@ function VerifiedBadge() {
   );
 }
 
-/** أيقونة قوس قزح ملوّنة صغيرة لزاوية الصورة (مطابقة للصورة) */
-function CornerColorIcon() {
-  return (
-    <svg viewBox="0 0 32 32" width="100%" height="100%" aria-hidden="true">
-      <circle cx="16" cy="16" r="16" fill="#1A1F2E" />
-      <path d="M16 6 A10 10 0 0 1 26 16 L21 16 A5 5 0 0 0 16 11 Z" fill="#EF4444" />
-      <path d="M26 16 A10 10 0 0 1 16 26 L16 21 A5 5 0 0 0 21 16 Z" fill="#F59E0B" />
-      <path d="M16 26 A10 10 0 0 1 6 16 L11 16 A5 5 0 0 0 16 21 Z" fill="#3B82F6" />
-      <path d="M6 16 A10 10 0 0 1 16 6 L16 11 A5 5 0 0 0 11 16 Z" fill="#F3F4F6" />
-    </svg>
-  );
-}
+/* ⭐ v59.13.38 — تمت إزالة CornerColorIcon (أيقونة قوس قزح في زاوية
+   الصورة) بناءً على بلاغ المستخدم: «دائرة ملوّنة مزعجة
+   تظهر تلقائياً بعد نشر الصورة». حذف الدالة + الـ render حتّى
+   لا تظهر أبداً حتّى لو أرسل الـ backend الحقل showCornerIcon. */
 
 function MobilePostCard({
   post = {},
@@ -170,81 +162,90 @@ function MobilePostCard({
         </div>
       )}
 
-      {/* === صورة المنشور / لوحة الشعار === */}
-      <div className="ym-post-banner-new">
-        {isLive && <div className="ym-live-overlay-label">مباشر الآن LIVE</div>}
-        {banner && banner.type === 'image' ? (
-          <div className="banner-image-container">
-            {/* v59.13.19 UX FIX: alt وصفي للوصولية + معالجة خطأ تحميل
-                الصورة بدل إظهار أيقونة "صورة مكسورة" للمستخدم */}
-            <img
-              src={banner.url}
-              alt={(text && String(text).trim().slice(0, 140)) || `صورة منشور من ${authorName}`}
-              loading="lazy"
-              decoding="async"
-              onError={(e) => {
-                try {
-                  const el = e.currentTarget;
-                  el.style.display = 'none';
-                  if (el.parentNode && !el.parentNode.querySelector('.banner-image-fallback')) {
-                    const fb = document.createElement('div');
-                    fb.className = 'banner-image-fallback';
-                    fb.setAttribute('role', 'img');
-                    fb.setAttribute('aria-label', 'تعذّر تحميل الصورة');
-                    fb.innerText = '🖼️ تعذّر تحميل الصورة';
-                    el.parentNode.appendChild(fb);
-                  }
-                } catch { /* ignore */ }
-              }}
-            />
-            {isLive && (
-              <div className="banner-live-info">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="white" aria-hidden="true">
-                  <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-                </svg>
-                <span>{formatCount(post.viewers || 2400)} مشاهد</span>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="banner-logo-container">
-            {/* شعار Y كبير بسيط بخطوط سميكة — مطابق تماماً للصورة المرجعية */}
-            <svg className="ym-logo-large" viewBox="0 0 200 200" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
-              <defs>
-                <linearGradient id="ym-banner-grad" x1="0" y1="0" x2="0.5" y2="1">
-                  <stop offset="0%" stopColor="#A78BFA" />
-                  <stop offset="60%" stopColor="#8B5CF6" />
-                  <stop offset="100%" stopColor="#6D28D9" />
-                </linearGradient>
-              </defs>
-              {/* الفرع الأيسر */}
-              <line
-                x1="45" y1="35" x2="100" y2="110"
-                stroke="url(#ym-banner-grad)"
-                strokeWidth="24"
-                strokeLinecap="round"
+      {/* === صورة المنشور / لوحة الشعار ===
+          v59.13.30 FIX:
+          1) لا تُعرض لوحة البانر إطلاقاً للمنشورات النصية البحتة
+             (banner == null أو غير صالح). كانت سابقاً تُعرض لوحة
+             الشعار الافتراضية (Y بنفسجي) تلقائياً لكل منشور نصي.
+          2) أيقونة قوس قزح الملوّنة في الزاوية (CornerColorIcon)
+             أصبحت اختيارية: تظهر فقط إذا طلب المنشور ذلك صراحة
+             عبر post.showCornerIcon === true. كانت سابقاً تُلصق
+             تلقائياً فوق كل صورة/منشور بدون شرط. */}
+      {banner && (banner.type === 'image' || banner.type === 'logo') && (
+        <div className="ym-post-banner-new">
+          {isLive && <div className="ym-live-overlay-label">مباشر الآن LIVE</div>}
+          {banner.type === 'image' ? (
+            <div className="banner-image-container">
+              {/* v59.13.19 UX FIX: alt وصفي للوصولية + معالجة خطأ تحميل
+                  الصورة بدل إظهار أيقونة "صورة مكسورة" للمستخدم */}
+              <img
+                src={banner.url}
+                alt={(text && String(text).trim().slice(0, 140)) || `صورة منشور من ${authorName}`}
+                loading="lazy"
+                decoding="async"
+                onError={(e) => {
+                  try {
+                    const el = e.currentTarget;
+                    el.style.display = 'none';
+                    if (el.parentNode && !el.parentNode.querySelector('.banner-image-fallback')) {
+                      const fb = document.createElement('div');
+                      fb.className = 'banner-image-fallback';
+                      fb.setAttribute('role', 'img');
+                      fb.setAttribute('aria-label', 'تعذّر تحميل الصورة');
+                      fb.innerText = '🖼️ تعذّر تحميل الصورة';
+                      el.parentNode.appendChild(fb);
+                    }
+                  } catch { /* ignore */ }
+                }}
               />
-              {/* الفرع الأيمن */}
-              <line
-                x1="155" y1="35" x2="100" y2="110"
-                stroke="url(#ym-banner-grad)"
-                strokeWidth="24"
-                strokeLinecap="round"
-              />
-              {/* الساق العمودية */}
-              <line
-                x1="100" y1="110" x2="100" y2="172"
-                stroke="url(#ym-banner-grad)"
-                strokeWidth="24"
-                strokeLinecap="round"
-              />
-            </svg>
-          </div>
-        )}
-        <div className="banner-corner-icon" aria-hidden="true">
-          <CornerColorIcon />
+              {isLive && (
+                <div className="banner-live-info">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="white" aria-hidden="true">
+                    <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                  </svg>
+                  <span>{formatCount(post.viewers || 2400)} مشاهد</span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="banner-logo-container">
+              {/* شعار Y كبير بسيط بخطوط سميكة — يُعرض فقط حين banner.type === 'logo' */}
+              <svg className="ym-logo-large" viewBox="0 0 200 200" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
+                <defs>
+                  <linearGradient id="ym-banner-grad" x1="0" y1="0" x2="0.5" y2="1">
+                    <stop offset="0%" stopColor="#A78BFA" />
+                    <stop offset="60%" stopColor="#8B5CF6" />
+                    <stop offset="100%" stopColor="#6D28D9" />
+                  </linearGradient>
+                </defs>
+                {/* الفرع الأيسر */}
+                <line
+                  x1="45" y1="35" x2="100" y2="110"
+                  stroke="url(#ym-banner-grad)"
+                  strokeWidth="24"
+                  strokeLinecap="round"
+                />
+                {/* الفرع الأيمن */}
+                <line
+                  x1="155" y1="35" x2="100" y2="110"
+                  stroke="url(#ym-banner-grad)"
+                  strokeWidth="24"
+                  strokeLinecap="round"
+                />
+                {/* الساق العمودية */}
+                <line
+                  x1="100" y1="110" x2="100" y2="172"
+                  stroke="url(#ym-banner-grad)"
+                  strokeWidth="24"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </div>
+          )}
+          {/* ⭐ v59.13.38: أُزيلت أيقونة الزاوية نهائياً — المستخدم
+              أبلغ أنها مزعجة وتظهر تلقائياً بعد نشر الصورة. */}
         </div>
-      </div>
+      )}
 
       {/* === الفوتر — الترتيب على الشاشة من اليسار→اليمين:
             🏷️ حفظ | ✈️ مشاركة | 💬 تعليق | ❤️ إعجاب === */}

@@ -1,0 +1,420 @@
+/* ============================================================
+   🩹 YAMSHAT — v59.13.31 — CHAT + STORIES MOBILE PULL HARD FIX
+   ------------------------------------------------------------
+   🔴 شكوى المستخدم (متابعة v59.13.29):
+     "صفحت الشات ما تستجيب للسحب للأعلى والأسفل من منتصف
+      الشاشة، اصلحها مثلما اصلحت صفحة المنشورات. راجع ملفات
+      الشرح التي تشرح كيف تم إصلاح صفحة المنشورات في ويب
+      للجوال، وقم بإصلاح صفحة الشات مثلها. وأيضاً إصلاح
+      صفحة الستوري مشكلتها نفس مشكلة صفحة الشات."
+
+   🔬 سبب فشل v59.13.29:
+     ▸ ملفات JSX (Inbox.jsx + StoriesPage.jsx) تحوي
+       inline <style> blocks تفرض قواعد بنفس specificity،
+       تأتي بعد imports CSS في DOM، فتفوز في cascade.
+     ▸ في Inbox: `.yam-inbox-page { min-height:100dvh }` فقط،
+       بدون `overflow-y:auto` ولا `height` ثابت — فالمتصفح
+       لا يعرف أن الحاوية هي scroll container.
+     ▸ في Stories: `.yam-stories-page { max-width:1180px;
+       margin:0 auto; padding:16px 14px 32px }` فقط —
+       نفس المشكلة.
+     ▸ في Chat: `.yam-messages-area` كان لديها `contain:
+       layout style paint` وهذا يكسر momentum scroll على
+       iOS Safari.
+
+   ✅ الحل في v59.13.31 (طبقتان):
+     1️⃣ تعديل JSX inline styles مباشرة — جعل الحاويات
+        الجذرية scroll containers مطابقة لـ .yam-groups-page
+        (height: 100dvh + overflow-y: auto + touch-action: pan-y).
+     2️⃣ هذا الملف — طبقة CSS خارجية بـ !important تتغلب على
+        أي قاعدة قديمة وتضمن السلوك على كل المتصفحات.
+
+   ⚠️ هذا الملف يجب أن يبقى آخر import CSS بعد v59.13.29.
+   ============================================================ */
+
+
+/* ─────────────────────────────────────────────────────────────
+   1️⃣  ⭐ .yam-inbox-page — قائمة المحادثات (الموبايل)
+       SCROLL CONTAINER مطابق لـ .yam-groups-page
+   ───────────────────────────────────────────────────────────── */
+@media (max-width: 980px) {
+  .yam-inbox-page,
+  .app-shell .page-content .yam-inbox-page,
+  .app-shell.yamshat-unified .page-content .yam-inbox-page,
+  section.yam-inbox-page,
+  div.yam-inbox-page {
+    /* ⭐ height ثابت — يفعّل momentum scroll على iOS Safari */
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    min-height: 0 !important;
+    /* ⭐ scroll container الفعلي */
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    /* ⭐ momentum scroll حقيقي على iOS */
+    -webkit-overflow-scrolling: touch !important;
+    /* ⭐ pan-y نقي — السحب العمودي يستجيب فوراً */
+    touch-action: pan-y !important;
+    -ms-touch-action: pan-y !important;
+    /* لا انعكاس bounce يبتلع التمرير */
+    overscroll-behavior-y: contain !important;
+    overscroll-behavior-x: none !important;
+    /* ⭐ لا transform/filter — يكسران momentum على iOS Safari */
+    transform: none !important;
+    -webkit-transform: none !important;
+    filter: none !important;
+    -webkit-filter: none !important;
+    perspective: none !important;
+    /* الاستقبال الكامل للمس */
+    pointer-events: auto !important;
+    overflow-anchor: none !important;
+    will-change: scroll-position !important;
+    /* scrollbar مخفي على الموبايل */
+    scrollbar-width: none !important;
+  }
+  .yam-inbox-page::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
+
+  /* ⭐ .yam-inbox-screen كمحتوى داخلي شفاف — لا scroll ذاتي */
+  .yam-inbox-page .yam-inbox-screen {
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
+    touch-action: pan-y !important;
+    pointer-events: auto !important;
+    transform: none !important;
+    filter: none !important;
+  }
+
+  /* ⭐ قائمة المحادثات + التبويبات + شريط البحث: pan-y عمودي */
+  .yam-inbox-page .yam-list,
+  .yam-inbox-page .yam-thread-list,
+  .yam-inbox-page .yam-thread-scroll,
+  .yam-inbox-page .yam-conversations-list,
+  .yam-inbox-page .yam-conversations-scroll {
+    overflow: visible !important;
+    overflow-y: visible !important;
+    overflow-x: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: auto !important;
+    touch-action: pan-y !important;
+    pointer-events: auto !important;
+    transform: none !important;
+  }
+
+  /* ⭐ صفوف المحادثات (.yam-row): لا تبتلع pan-y */
+  .yam-inbox-page .yam-row {
+    touch-action: pan-y !important;
+    pointer-events: auto !important;
+    transform: none !important;
+    will-change: auto !important;
+  }
+
+  /* ⭐ الأزرار/الروابط: manipulation (تسمح بـ pan-y عند البدء عليها) */
+  .yam-inbox-page button,
+  .yam-inbox-page a,
+  .yam-inbox-page [role="button"],
+  .yam-inbox-page [role="tab"],
+  .yam-inbox-page [role="link"],
+  .yam-inbox-page [role="listitem"] {
+    touch-action: manipulation;
+  }
+
+  /* ⭐ حقول الإدخال */
+  .yam-inbox-page input,
+  .yam-inbox-page textarea,
+  .yam-inbox-page [contenteditable] {
+    touch-action: auto;
+  }
+
+  /* ⭐ الصور: pan-y فقط + منع السحب الأصلي */
+  .yam-inbox-page img {
+    touch-action: pan-y !important;
+    -webkit-user-drag: none;
+    user-drag: none;
+  }
+
+  /* ⭐ الكاروسيلات الأفقية (شريط الستوريات + التبويبات): pan-x */
+  .yam-inbox-page .yam-stories-bar,
+  .yam-inbox-page .yam-stories-row,
+  .yam-inbox-page .stories-row,
+  .yam-inbox-page .yam-tabs,
+  .yam-inbox-page [data-horizontal-scroll="true"],
+  .yam-inbox-page .horizontal-scroll {
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x !important;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .yam-inbox-page .yam-stories-bar::-webkit-scrollbar,
+  .yam-inbox-page .yam-tabs::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
+  /* ⭐ حماية ضد قواعد .page-content التي تطبق padding-top/bottom */
+  .app-shell .page-content:has(.yam-inbox-page),
+  .app-shell.yamshat-unified .page-content:has(.yam-inbox-page) {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   2️⃣  ⭐ .yam-stories-page — صفحة الستوريات (الموبايل)
+       SCROLL CONTAINER مطابق لـ .yam-groups-page
+   ───────────────────────────────────────────────────────────── */
+@media (max-width: 980px) {
+  .yam-stories-page,
+  .app-shell .page-content .yam-stories-page,
+  .app-shell.yamshat-unified .page-content .yam-stories-page,
+  section.yam-stories-page,
+  div.yam-stories-page {
+    /* ⭐ height ثابت — يفعّل momentum scroll على iOS Safari */
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    min-height: 0 !important;
+    /* ⭐ scroll container الفعلي */
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    max-width: none !important;
+    margin: 0 auto !important;
+    /* ⭐ padding يحسب الهيدر العلوي (76px) + BottomNav السفلي (120px) */
+    padding:
+      calc(76px + env(safe-area-inset-top, 0px))
+      14px
+      calc(120px + env(safe-area-inset-bottom, 0px))
+      14px !important;
+    /* momentum scroll حقيقي (iOS) */
+    -webkit-overflow-scrolling: touch !important;
+    /* pan-y نقي */
+    touch-action: pan-y !important;
+    -ms-touch-action: pan-y !important;
+    /* لا bounce */
+    overscroll-behavior-y: contain !important;
+    overscroll-behavior-x: none !important;
+    /* لا transform/filter */
+    transform: none !important;
+    -webkit-transform: none !important;
+    filter: none !important;
+    -webkit-filter: none !important;
+    perspective: none !important;
+    pointer-events: auto !important;
+    overflow-anchor: none !important;
+    will-change: scroll-position !important;
+    scrollbar-width: none !important;
+    box-sizing: border-box !important;
+  }
+  .yam-stories-page::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
+
+  /* ⭐ تبويبات الستوريات: pan-y عمودي + flex-wrap */
+  .yam-stories-page .yam-stories-tabs {
+    flex-wrap: wrap;
+    touch-action: pan-y !important;
+    pointer-events: auto !important;
+    transform: none !important;
+  }
+
+  /* ⭐ أزرار التبويبات: manipulation */
+  .yam-stories-page .yam-stab,
+  .yam-stories-page button,
+  .yam-stories-page a,
+  .yam-stories-page [role="button"],
+  .yam-stories-page [role="tab"] {
+    touch-action: manipulation;
+  }
+
+  /* ⭐ Grid + Archive — لا overflow ذاتي، تتدفّق طبيعياً */
+  .yam-stories-page .yam-stories-grid,
+  .yam-stories-page .yam-archive-grid {
+    overflow: visible !important;
+    overflow-y: visible !important;
+    overflow-x: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: auto !important;
+    touch-action: pan-y !important;
+    pointer-events: auto !important;
+    transform: none !important;
+  }
+
+  /* ⭐ بطاقات القصص: pan-y + لا تبتلع التمرير */
+  .yam-stories-page .yam-story-card,
+  .yam-stories-page .yam-archive-item {
+    touch-action: manipulation !important;
+    pointer-events: auto !important;
+    transform: none;
+    will-change: auto;
+  }
+
+  /* ⭐ الصور/الفيديو داخل البطاقات */
+  .yam-stories-page .yam-story-card img,
+  .yam-stories-page .yam-story-card video,
+  .yam-stories-page .yam-archive-item img,
+  .yam-stories-page .yam-archive-item video {
+    touch-action: pan-y !important;
+    -webkit-user-drag: none;
+    user-drag: none;
+    pointer-events: none; /* النقر يصل للزر الأم */
+  }
+
+  /* ⭐ حقول الإدخال */
+  .yam-stories-page input,
+  .yam-stories-page textarea,
+  .yam-stories-page [contenteditable] {
+    touch-action: auto;
+  }
+
+  /* ⭐ حماية ضد .page-content padding */
+  .app-shell .page-content:has(.yam-stories-page),
+  .app-shell.yamshat-unified .page-content:has(.yam-stories-page) {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   3️⃣  ⭐ .yam-messages-area — منطقة الرسائل في الشات الفردي
+       تأكيد قاطع: scroll container مع momentum + pan-y
+       (يحلّ مشكلة: السحب من منتصف الشاشة لا يستجيب)
+   ───────────────────────────────────────────────────────────── */
+@media (max-width: 980px) {
+  .yam-messages-area {
+    /* ⭐ scroll container القاطع */
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    /* ⭐ momentum scroll حقيقي (iOS) */
+    -webkit-overflow-scrolling: touch !important;
+    /* ⭐ pan-y نقي — يفتح السحب العمودي من أي منطقة */
+    touch-action: pan-y !important;
+    -ms-touch-action: pan-y !important;
+    /* لا bounce */
+    overscroll-behavior-y: contain !important;
+    overscroll-behavior-x: none !important;
+    /* ⭐ لا transform/filter يكسر momentum على iOS Safari */
+    transform: none !important;
+    -webkit-transform: none !important;
+    filter: none !important;
+    -webkit-filter: none !important;
+    perspective: none !important;
+    /* ⚠️ contain: layout/style/paint يكسر momentum scroll على iOS — نلغيه */
+    contain: none !important;
+    /* استقبال اللمس بالكامل */
+    pointer-events: auto !important;
+    /* لا overflow-anchor يقفز بالمحتوى */
+    overflow-anchor: none !important;
+    /* تحسين الأداء */
+    will-change: scroll-position !important;
+  }
+
+  /* ⭐ .yam-conversation-screen — الحاوية الجذرية لا تكسر التمرير لأبنائها */
+  .yam-conversation-screen {
+    transform: none !important;
+    -webkit-transform: none !important;
+    filter: none !important;
+    perspective: none !important;
+    contain: none !important;
+    touch-action: pan-y !important;
+    pointer-events: auto !important;
+  }
+
+  /* ⭐ فقاعات/صفوف داخل منطقة الرسائل: لا تبتلع pan-y */
+  .yam-messages-area .yam-message-row,
+  .yam-messages-area .yam-message-stack,
+  .yam-messages-area .yam-bubble,
+  .yam-messages-area .yam-day-divider {
+    touch-action: pan-y !important;
+    pointer-events: auto !important;
+    transform: none;
+  }
+
+  /* ⭐ الصور والفيديو داخل الفقاعات: pan-y فقط */
+  .yam-messages-area img {
+    touch-action: pan-y !important;
+    -webkit-user-drag: none;
+    user-drag: none;
+  }
+  .yam-messages-area video {
+    touch-action: manipulation !important;
+  }
+
+  /* ⭐ الأزرار داخل الفقاعات: manipulation */
+  .yam-messages-area button,
+  .yam-messages-area a,
+  .yam-messages-area [role="button"] {
+    touch-action: manipulation !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   4️⃣  iOS Safari خاص — تأكيد momentum scrolling 1:1
+       (-webkit-touch-callout: none تستهدف WebKit/Safari فقط)
+   ───────────────────────────────────────────────────────────── */
+@supports (-webkit-touch-callout: none) {
+  @media (max-width: 980px) {
+    .yam-inbox-page,
+    .yam-stories-page {
+      -webkit-overflow-scrolling: touch !important;
+      overflow-y: auto !important;
+      touch-action: pan-y !important;
+      height: 100dvh !important;
+      max-height: 100dvh !important;
+      transform: none !important;
+      filter: none !important;
+      contain: none !important;
+    }
+    .yam-messages-area {
+      -webkit-overflow-scrolling: touch !important;
+      overflow-y: auto !important;
+      touch-action: pan-y !important;
+      transform: none !important;
+      filter: none !important;
+      contain: none !important;
+    }
+    .yam-conversation-screen {
+      transform: none !important;
+      filter: none !important;
+      contain: none !important;
+    }
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   5️⃣  prefers-reduced-motion — احترام إعداد المستخدم
+   ───────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .yam-inbox-page,
+  .yam-stories-page,
+  .yam-messages-area {
+    scroll-behavior: auto !important;
+  }
+}
+
+
+/* ============================================================
+   ✨ نهاية v59.13.31
+   صفحة الشات (Inbox + منطقة الرسائل) وصفحة الستوريات على
+   ويب الموبايل تتمرّر الآن بنفس سلاسة صفحة المجموعات تماماً.
+   من أي منطقة في الصفحة — حتى من منتصف الشاشة فوق العناصر —
+   السحب لأعلى/أسفل يستجيب فوراً، مع momentum scroll حقيقي
+   على iOS Safari وكل المتصفحات.
+   ============================================================ */

@@ -43,18 +43,24 @@ function timeAgoAr(iso) {
 }
 
 function normalizeReel(item = {}) {
+  // ✅ v59.13.34 FIX: تصفير كل العدادات والقيم التجريبية fallback
+  // المشكلة السابقة: عند فشل جلب البيانات (catch) أو غياب الحقول، كانت
+  // تُعرض قيم وهمية (1200/128/356 + اسم/وصف/هاشتاجات افتراضية) تُربك
+  // المستخدم بأنها أرقام/منشورات حقيقية. الآن نعرض الأرقام الفعلية من
+  // قاعدة البيانات فقط؛ وإذا لم تكن موجودة نعرض 0.
   return {
     id: item.id || item._id || String(item.reel_id || Math.random()),
-    username: item.username || item.user?.username || 'yamenameen97',
-    is_verified: Boolean(item.is_verified ?? item.user?.is_verified ?? true),
+    username: item.username || item.user?.username || '',
+    is_verified: Boolean(item.is_verified ?? item.user?.is_verified ?? false),
     created_at: item.created_at || item.createdAt || new Date().toISOString(),
-    content: item.content || item.caption || item.description || 'الليل، المدينة، والإضاءة البنفسجية',
-    hashtags: Array.isArray(item.hashtags) ? item.hashtags : ['Yamshat', 'Reels', 'Night'],
+    content: item.content || item.caption || item.description || '',
+    hashtags: Array.isArray(item.hashtags) ? item.hashtags : [],
     media_url: resolveMediaUrl(item.media_url || item.video_url || ''),
     poster: resolveMediaUrl(item.thumbnail_url || item.poster || item.image_url || ''),
-    likes_count: Number(item.likes_count || 1200),
-    comments_count: Number(item.comments_count || 128),
-    share_count: Number(item.share_count || 356),
+    likes_count: Number(item.likes_count ?? 0) || 0,
+    comments_count: Number(item.comments_count ?? 0) || 0,
+    share_count: Number(item.share_count ?? item.shares_count ?? 0) || 0,
+    views_count: Number(item.views_count ?? 0) || 0,
     is_liked: Boolean(item.is_liked),
     is_saved: Boolean(item.is_saved),
     is_following: Boolean(item.is_following ?? item.user?.is_following ?? false),
@@ -71,7 +77,8 @@ export default function Reels() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [topTab, setTopTab] = useState('reels'); // reels | following | explore
   const [muted, setMuted] = useState(true);
-  const [progress, setProgress] = useState(0.42);
+  // ✅ v59.13.34 FIX: progress يبدأ من 0 (لا قيمة تجريبية 0.42)
+  const [progress, setProgress] = useState(0);
   const [showComments, setShowComments] = useState(false);
   const [activeComments, setActiveComments] = useState([]);
   const [commentText, setCommentText] = useState('');
@@ -99,10 +106,13 @@ export default function Reels() {
         }
         const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
         if (cancelled) return;
-        const normalized = items.length ? items.map(normalizeReel) : [normalizeReel({})];
+        // ✅ v59.13.34 FIX: لا تُولّد ريل تجريبي عند الفراغ — اعرض قائمة فارغة فعلاً
+        // المشكلة السابقة: [normalizeReel({})] كان يُولّد سلايد واحد بكل القيم الافتراضية
+        // مما يُوهم المستخدم بوجود محتوى. الآن نعرض حالة فارغة حقيقية.
+        const normalized = items.map(normalizeReel);
         setReels(normalized);
       } catch {
-        if (!cancelled) setReels([normalizeReel({})]);
+        if (!cancelled) setReels([]);
       } finally {
         if (!cancelled) setIsLoading(false);
       }

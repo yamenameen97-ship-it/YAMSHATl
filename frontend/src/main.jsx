@@ -134,6 +134,11 @@ import './styles/chat-mobile-redesign-v60.2.css';
    - بطاقة "مكالمة صوتية" pill في المنتصف
    ⚠️ يجب أن يبقى آخر import CSS مطلقاً ليفوز في cascade */
 import './styles/chat-mobile-redesign-v60.3.css';
+/* v60.4 — تصحيح Selectors بحيث تستهدف class names الفعلية في MessageBubble.jsx
+   (yam-bubble + bubble-me/them + bubble-text + bubble-meta + bubble-status)
+   كذلك تنسيق رسائل صوتية WhatsApp-style + قائمة منبثقة بإعادة إرسال.
+   ⚠️ يجب أن يبقى هذا آخر import CSS مطلقاً ليفوز في cascade */
+import './styles/chat-mobile-redesign-v60.4.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';

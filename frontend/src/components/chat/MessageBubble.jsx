@@ -548,6 +548,7 @@ function MessageBubble({
             }
           }}
           onEdit={() => onEdit?.(message)}
+          onResend={onResend ? () => onResend(message) : undefined}
           onDelete={() => {
             if (onDeleteForMe) onDeleteForMe(messageId);
             else onDelete?.(messageId, false);

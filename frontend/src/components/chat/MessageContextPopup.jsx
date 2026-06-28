@@ -44,6 +44,7 @@ export default function MessageContextPopup({
   onReply,
   onCopy,
   onEdit,
+  onResend,
   onDelete,
   onDeleteForMe,
   onDeleteForEveryone,
@@ -233,6 +234,12 @@ export default function MessageContextPopup({
               <span className="label">تعديل</span>
             </button>
           ) : null}
+          {isMe && onResend ? (
+            <button type="button" className="ym-action-btn" onClick={handleAction(onResend)}>
+              <span className="icon" aria-hidden="true">↻</span>
+              <span className="label">إعادة إرسال</span>
+            </button>
+          ) : null}
           <button type="button" className="ym-action-btn" onClick={handleAction(onDelete || onDeleteForMe)}>
             <span className="icon" aria-hidden="true">🗑</span>
             <span className="label">حذف</span>
@@ -273,6 +280,12 @@ export default function MessageContextPopup({
             <button type="button" role="menuitem" onClick={handleAction(onEdit)}>
               <span>تعديل لدي</span>
               <span className="icon" aria-hidden="true">✎</span>
+            </button>
+          ) : null}
+          {isMe && onResend ? (
+            <button type="button" role="menuitem" onClick={handleAction(onResend)}>
+              <span>إعادة إرسال</span>
+              <span className="icon" aria-hidden="true">↻</span>
             </button>
           ) : null}
           {isMe ? (

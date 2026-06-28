@@ -2199,7 +2199,8 @@ export default function Chat() {
             <div className="yam-chat-stage-peer">
               <button type="button" className="yam-chat-stage-peer-button" onClick={openChatSettings} aria-label="إعدادات المحادثة">
                 <div className="yam-avatar-wrap">
-                  <Avatar name={peer} src={peerDetails.avatar} size={56} ring showStatus status={isOnline ? 'online' : 'offline'} />
+                  {/* v60.3 — تصغير حجم الأفاتار ليطابق الصورة المرجعية (40 بدل 56) */}
+                  <Avatar name={peer} src={peerDetails.avatar} size={40} ring showStatus status={isOnline ? 'online' : 'offline'} />
                 </div>
                 <div className="yam-chat-stage-peer-copy">
                   <strong>{peer}</strong>

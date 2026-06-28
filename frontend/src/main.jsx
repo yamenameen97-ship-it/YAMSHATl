@@ -125,6 +125,15 @@ import './styles/chat-mobile-redesign-v60.1.css';
    فقاعات: بنفسجية للمرسل + داكنة للمستقبل + ترجمة فورية
    ⚠️ يجب أن يكون آخر import CSS مطلقاً */
 import './styles/chat-mobile-redesign-v60.2.css';
+/* 🎯 v60.3 — Pixel-Perfect Mobile Chat (تصغير دقيق للأيقونات + بطاقة المكالمة pill)
+   مطابقة 100% للصورة المرجعية الرابعة:
+   - أيقونات الهيدر والإدخال صغيرة جداً
+   - نقطة "نشط الآن" دقيقة بدون توهج
+   - علامات الاطلاع وعلامات الوقت صغيرة
+   - شارة GIF صغيرة جداً
+   - بطاقة "مكالمة صوتية" pill في المنتصف
+   ⚠️ يجب أن يبقى آخر import CSS مطلقاً ليفوز في cascade */
+import './styles/chat-mobile-redesign-v60.3.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';

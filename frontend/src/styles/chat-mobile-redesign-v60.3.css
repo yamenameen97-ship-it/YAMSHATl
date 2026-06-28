@@ -1,0 +1,412 @@
+/* ==========================================================================
+   Yamshat — Mobile Chat Pixel-Perfect Redesign v60.3
+   --------------------------------------------------------------------------
+   هدف v60.3: مطابقة دقيقة جداً للصورة المرجعية (yamenameen97).
+   ملاحظات المستخدم على v60.2:
+     - الأيقونات في الهيدر لا تزال أكبر من اللازم — يجب أن تكون صغيرة جداً.
+     - النقطة الخضراء كبيرة جداً وتتوهج كثيراً — يجب أن تكون نقطة دقيقة.
+     - علامات الاطلاع (✓✓) كبيرة — يجب أن تكون صغيرة جداً.
+     - شارة GIF كبيرة — يجب أن تكون صغيرة جداً.
+     - زر المايك والإرسال يجب أن يكونا صغيرَين أيضاً.
+     - بطاقة "مكالمة صوتية" يجب أن تكون pill رمادية في المنتصف (وليست فقاعة).
+     - أيقونات الإدخال داخل الحقل (🙂 GIF 🖼) يجب أن تكون مصغرة.
+   هذا الملف يتم استيراده آخر شيء في cascade ليتجاوز كل ما سبق.
+   ========================================================================== */
+
+/* =========================================================
+   A) متغيرات مساعدة — كل القيم مُصغّرة لتطابق الصورة
+   ========================================================= */
+:root {
+  --ym63-bg: #0a0a14;
+  --ym63-bg-deep: #000;
+  --ym63-bubble-other: #1a1a24;
+  --ym63-bubble-mine-1: #8B5CF6;
+  --ym63-bubble-mine-2: #7C3AED;
+  --ym63-text: #ffffff;
+  --ym63-muted: #9ca3af;
+  --ym63-muted-2: #6b7280;
+  --ym63-green: #22c55e;
+  --ym63-purple: #8B5CF6;
+  --ym63-purple-light: #a78bfa;
+
+  /* أبعاد مصغّرة لتطابق الصورة */
+  --ym63-header-h: 54px;
+  --ym63-avatar: 36px;       /* أفاتار الهيدر */
+  --ym63-back-size: 28px;    /* زر الرجوع */
+  --ym63-header-icon: 26px;  /* 📞 🎥 ⋮ */
+  --ym63-header-icon-font: 14px;
+  --ym63-mic-size: 34px;     /* زر المايك */
+  --ym63-send-size: 34px;    /* زر الإرسال */
+  --ym63-inline-icon: 22px;  /* 🙂 🖼 داخل الحقل */
+  --ym63-inline-icon-font: 13px;
+  --ym63-input-h: 40px;
+  --ym63-status-dot: 5px;    /* نقطة "نشط الآن" */
+}
+
+/* =========================================================
+   B) رأس المحادثة (Header) — صغير ودقيق
+   ========================================================= */
+@media (max-width: 768px) {
+  .yam-chat-stage-header {
+    padding: 4px 8px !important;
+    min-height: var(--ym63-header-h) !important;
+    height: var(--ym63-header-h) !important;
+    gap: 2px !important;
+  }
+
+  /* === زر الرجوع — صغير جداً === */
+  .yam-stage-back-btn {
+    width: var(--ym63-back-size) !important;
+    height: var(--ym63-back-size) !important;
+    min-width: var(--ym63-back-size) !important;
+  }
+  .yam-stage-back-btn svg {
+    width: 18px !important;
+    height: 18px !important;
+    stroke-width: 2.2 !important;
+  }
+
+  /* === المنطقة الوسطى === */
+  .yam-chat-stage-peer-button {
+    gap: 9px !important;
+    padding: 0 2px !important;
+  }
+
+  /* الأفاتار — 36×36 بدل 40 */
+  .yam-chat-stage-peer-button .yam-avatar-wrap,
+  .yam-chat-stage-peer-button .yam-avatar-wrap > *,
+  .yam-chat-stage-peer-button .yam-avatar-wrap img,
+  .yam-chat-stage-peer-button .yam-avatar-wrap svg {
+    width: var(--ym63-avatar) !important;
+    height: var(--ym63-avatar) !important;
+    min-width: var(--ym63-avatar) !important;
+  }
+
+  /* اسم المستخدم */
+  .yam-chat-stage-peer-copy strong {
+    font-size: 14.5px !important;
+    font-weight: 700 !important;
+    line-height: 1.15 !important;
+  }
+  /* "نشط الآن" — صغير جداً، رمادي فاتح */
+  .yam-chat-stage-peer-copy span {
+    font-size: 10.5px !important;
+    color: #b8b8c0 !important;
+    line-height: 1.15 !important;
+    gap: 4px !important;
+    font-weight: 400 !important;
+  }
+  /* نقطة "نشط الآن" — صغيرة جداً بدون توهج زائد */
+  .yam-chat-stage-peer-copy span::before {
+    width: var(--ym63-status-dot) !important;
+    height: var(--ym63-status-dot) !important;
+    background: var(--ym63-green) !important;
+    box-shadow: none !important;
+  }
+
+  /* === أيقونات الهيدر 📞 🎥 ⋮ — صغيرة جداً === */
+  .yam-chat-stage-actions {
+    gap: 0 !important;
+  }
+  .yam-chat-stage-actions .yam-stage-icon {
+    width: var(--ym63-header-icon) !important;
+    height: var(--ym63-header-icon) !important;
+    min-width: var(--ym63-header-icon) !important;
+    font-size: var(--ym63-header-icon-font) !important;
+    opacity: 0.92;
+  }
+  /* إخفاء زر البحث */
+  .yam-chat-stage-actions .yam-stage-icon[aria-label="بحث"] {
+    display: none !important;
+  }
+
+  /* نقطة حالة الأفاتار في الهيدر — صغيرة وأنيقة */
+  .yam-chat-stage-header .ui-avatar-status {
+    width: 9px !important;
+    height: 9px !important;
+    border: 2px solid var(--ym63-bg) !important;
+    box-shadow: none !important;
+  }
+}
+
+/* =========================================================
+   C) فقاعات الرسائل — مطابقة دقيقة للصورة
+   ========================================================= */
+@media (max-width: 768px) {
+  /* المسافات بين الرسائل أضيق قليلاً */
+  .yam-message-row,
+  .message-row {
+    margin-bottom: 6px !important;
+  }
+
+  /* فقاعة الآخر (يسار) */
+  .yam-message-bubble[data-mine="false"],
+  .yam-message-bubble.other,
+  .message-row.other .message-bubble {
+    background: var(--ym63-bubble-other) !important;
+    border-radius: 18px 18px 18px 6px !important;
+    padding: 9px 13px !important;
+    max-width: 75% !important;
+  }
+
+  /* فقاعة رسائلي (يمين) */
+  .yam-message-bubble[data-mine="true"],
+  .yam-message-bubble.mine,
+  .message-row.mine .message-bubble {
+    background: linear-gradient(135deg, var(--ym63-bubble-mine-1) 0%, var(--ym63-bubble-mine-2) 100%) !important;
+    border-radius: 18px 18px 6px 18px !important;
+    padding: 9px 13px !important;
+    max-width: 75% !important;
+    box-shadow: 0 1px 4px rgba(124, 58, 237, 0.18) !important;
+  }
+
+  /* نص الرسالة — أصغر قليلاً */
+  .yam-message-bubble .yam-message-text,
+  .yam-message-bubble p,
+  .message-bubble .message-text {
+    font-size: 14px !important;
+    line-height: 1.4 !important;
+  }
+
+  /* وقت الرسالة + علامة الاطلاع — صغير جداً */
+  .yam-message-bubble .yam-message-meta,
+  .message-bubble .message-meta {
+    font-size: 9.5px !important;
+    color: rgba(255, 255, 255, 0.65) !important;
+    margin-top: 3px !important;
+    gap: 3px !important;
+  }
+  .yam-message-bubble[data-mine="false"] .yam-message-meta,
+  .message-row.other .message-meta {
+    color: #7c7c87 !important;
+  }
+
+  /* علامات الاطلاع SVG */
+  .yam-message-bubble .yam-message-meta svg,
+  .message-bubble .message-meta svg {
+    width: 11px !important;
+    height: 11px !important;
+  }
+}
+
+/* =========================================================
+   D) شريط الترجمة الفورية داخل الفقاعة
+   ========================================================= */
+@media (max-width: 768px) {
+  .yam-translation-strip {
+    margin-top: 5px !important;
+    padding-top: 5px !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.07) !important;
+    gap: 2px !important;
+  }
+  .yam-translation-strip .yam-translation-label {
+    font-size: 9.5px !important;
+    color: rgba(255, 255, 255, 0.45) !important;
+    font-weight: 400 !important;
+  }
+  .yam-translation-strip .yam-translation-text {
+    font-size: 13.5px !important;
+    line-height: 1.4 !important;
+  }
+}
+
+/* =========================================================
+   E) فاصل التاريخ "اليوم" — pill داكن صغير
+   ========================================================= */
+@media (max-width: 768px) {
+  .yam-day-separator,
+  .day-separator,
+  .yam-date-divider {
+    margin: 10px 0 8px !important;
+  }
+  .yam-day-separator > span,
+  .day-separator > span,
+  .yam-date-divider > span {
+    background: rgba(255, 255, 255, 0.05) !important;
+    color: #b0b0b8 !important;
+    font-size: 10.5px !important;
+    padding: 4px 12px !important;
+    border-radius: 16px !important;
+    font-weight: 500 !important;
+  }
+}
+
+/* =========================================================
+   F) بطاقة المكالمة "مكالمة صوتية" — pill في المنتصف
+   ========================================================= */
+@media (max-width: 768px) {
+  /* تغيير سلوك صف فقاعة المكالمة → توسيط */
+  .yam-message-row:has(.yam-call-bubble),
+  .message-row:has(.yam-call-bubble) {
+    justify-content: center !important;
+  }
+
+  .yam-call-bubble,
+  .yam-call-bubble.me,
+  .yam-call-bubble.them {
+    background: rgba(255, 255, 255, 0.06) !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    color: #d0d0d8 !important;
+    min-width: 0 !important;
+    max-width: 220px !important;
+    padding: 7px 14px !important;
+    border-radius: 18px !important;
+    gap: 9px !important;
+    font-size: 12.5px !important;
+    box-shadow: none !important;
+  }
+
+  .yam-call-bubble .icon-wrap {
+    width: 26px !important;
+    height: 26px !important;
+    font-size: 13px !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+  }
+
+  .yam-call-bubble .body {
+    gap: 1px !important;
+  }
+  .yam-call-bubble .title-row {
+    font-size: 12.5px !important;
+    font-weight: 600 !important;
+    gap: 4px !important;
+  }
+  .yam-call-bubble .arrow {
+    font-size: 10px !important;
+    opacity: 0.55 !important;
+  }
+  .yam-call-bubble .sub {
+    font-size: 10.5px !important;
+    opacity: 0.6 !important;
+  }
+  .yam-call-bubble .time {
+    font-size: 10px !important;
+    opacity: 0.55 !important;
+    margin-inline-start: 6px !important;
+  }
+}
+
+/* =========================================================
+   G) شريط الكتابة (Composer) — أصغر وأنحف
+   ========================================================= */
+@media (max-width: 768px) {
+  .yam-chat-input-wrap {
+    padding: 5px 8px calc(5px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .yam-chat-input-wrap .yam-composer-shell,
+  .yam-chat-input-wrap .yam-composer-shell.compact,
+  .yam-chat-input-wrap .yam-composer-shell.expanded {
+    gap: 5px !important;
+  }
+
+  /* === حقل النص === */
+  .yam-chat-input-wrap .yam-input-frame {
+    background: #14141f !important;
+    border: 1px solid rgba(139, 92, 246, 0.15) !important;
+    border-radius: 22px !important;
+    padding: 1px 14px 1px 4px !important;
+    min-height: var(--ym63-input-h) !important;
+    max-height: 88px !important;
+    gap: 2px !important;
+  }
+
+  .yam-chat-input-wrap .yam-input-frame textarea {
+    font-size: 14px !important;
+    padding: 7px 2px !important;
+    min-height: 26px !important;
+  }
+  .yam-chat-input-wrap .yam-input-frame textarea::placeholder {
+    color: #5b5b67 !important;
+    font-size: 13.5px !important;
+  }
+
+  /* === أيقونات داخل الحقل (🙂 GIF 🖼) — صغيرة جداً === */
+  .yam-chat-input-wrap .yam-input-inline-icons {
+    gap: 1px !important;
+    margin-inline-start: 4px !important;
+  }
+  .yam-chat-input-wrap .yam-input-inline-icons > button {
+    width: var(--ym63-inline-icon) !important;
+    height: var(--ym63-inline-icon) !important;
+    min-width: var(--ym63-inline-icon) !important;
+    font-size: var(--ym63-inline-icon-font) !important;
+    color: #8a8a96 !important;
+  }
+  /* شارة GIF — صغيرة جداً */
+  .yam-chat-input-wrap .yam-input-inline-icons > button[aria-label="GIF"] {
+    width: 26px !important;
+    height: 16px !important;
+    min-width: 26px !important;
+    font-size: 8.5px !important;
+    font-weight: 800 !important;
+    background: rgba(139, 92, 246, 0.14) !important;
+    color: var(--ym63-purple-light) !important;
+    border-radius: 5px !important;
+    letter-spacing: 0.3px !important;
+    line-height: 1 !important;
+    padding: 0 !important;
+    margin: 0 2px !important;
+  }
+
+  /* === زر المايك — أصغر === */
+  .yam-chat-input-wrap .yam-composer-actions > button[aria-label="رسالة صوتية"],
+  .yam-chat-input-wrap button[aria-label="رسالة صوتية"] {
+    width: var(--ym63-mic-size) !important;
+    height: var(--ym63-mic-size) !important;
+    min-width: var(--ym63-mic-size) !important;
+    font-size: 13px !important;
+    box-shadow: 0 2px 6px rgba(139, 92, 246, 0.28) !important;
+  }
+
+  /* === زر الإرسال — أصغر === */
+  .yam-chat-input-wrap .yam-send-btn {
+    width: var(--ym63-send-size) !important;
+    height: var(--ym63-send-size) !important;
+    min-width: var(--ym63-send-size) !important;
+    font-size: 12px !important;
+    box-shadow: 0 2px 6px rgba(139, 92, 246, 0.28) !important;
+  }
+  .yam-chat-input-wrap .yam-send-btn svg {
+    width: 14px !important;
+    height: 14px !important;
+  }
+
+  /* شاشات صغيرة جداً */
+  @media (max-width: 360px) {
+    :root {
+      --ym63-mic-size: 32px;
+      --ym63-send-size: 32px;
+      --ym63-inline-icon: 20px;
+      --ym63-header-icon: 24px;
+      --ym63-avatar: 34px;
+    }
+  }
+}
+
+/* =========================================================
+   H) منطقة الرسائل — padding أنحف
+   ========================================================= */
+@media (max-width: 768px) {
+  .yam-messages-area {
+    padding: 10px 10px calc(64px + env(safe-area-inset-bottom, 0px)) 10px !important;
+  }
+}
+
+/* =========================================================
+   I) الأفاتار في الهيدر — حلقة بنفسجية رفيعة (كما في الصورة)
+   ========================================================= */
+@media (max-width: 768px) {
+  .yam-chat-stage-header .yam-avatar-wrap {
+    position: relative;
+    box-shadow: 0 0 0 1.5px rgba(139, 92, 246, 0.55) !important;
+    border-radius: 50% !important;
+  }
+}
+
+/* =========================================================
+   J) إخفاء توهج زائد على النقطة الخضراء عبر كل الشاشة
+   ========================================================= */
+.yam-chat-stage-peer-copy span::before {
+  box-shadow: none !important;
+}

@@ -55,22 +55,42 @@ export default function MessageContextPopup({
   const submenuRef = useRef(null);
   const moreBtnRef = useRef(null);
 
-  // حساب موضع القائمة المنبثقة بناءً على موقع الرسالة
+  // v60.6 — حساب موضع القائمة المنبثقة بطريقة أكثر ذكاءً
+  // الأولوية المطلقة: فوق الرسالة. لا نضعها تحتها أبداً إذا كان شريط الإدخال يحجبها.
   useLayoutEffect(() => {
     if (!anchorRect) return;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const POPUP_WIDTH = Math.min(vw - 24, 340);
-    const POPUP_HEIGHT = 130; // تقدير الارتفاع
+    const POPUP_HEIGHT = 140; // ارتفاع تقديري (إيموجي + شريط أوامر + هامش)
+    const HEADER_SAFE = 72;   // ارتفاع الهيدر الثابت + هامش
+    // ارتفاع شريط الإدخال السفلي + safe-area (تقدير محافظ ليشمل لوحة المفاتيح أيضاً)
+    const INPUT_SAFE = 110;
 
-    // افتراضياً: ضع القائمة فوق الرسالة
-    let top = anchorRect.top - POPUP_HEIGHT - 8;
-    if (top < 70) {
-      // لا توجد مساحة في الأعلى → ضعها تحت الرسالة
-      top = anchorRect.bottom + 8;
+    // المتاح: من أعلى الهيدر إلى أعلى شريط الإدخال
+    const usableTop = HEADER_SAFE;
+    const usableBottom = vh - INPUT_SAFE;
+
+    // الخطة A: فوق الرسالة
+    let top = anchorRect.top - POPUP_HEIGHT - 10;
+
+    if (top < usableTop) {
+      // لا مساحة فوق الرسالة كاملةً. هل يوجد مساحة تحتها بحيث لا يحجبها الإدخال؟
+      const belowTop = anchorRect.bottom + 10;
+      if (belowTop + POPUP_HEIGHT <= usableBottom) {
+        top = belowTop;
+      } else {
+        // لا فوق ولا تحت — ثبّت أعلى المنطقة الآمنة (تظهر القائمة فوق رغم تداخل بسيط مع الرسالة)
+        top = Math.max(usableTop, usableBottom - POPUP_HEIGHT);
+      }
     }
 
-    // المحاذاة الأفقية: لتطابق RTL، نحاذي الرسالة
+    // ضمان أن القائمة لا تخرج من الأسفل (في حالة الرسائل القريبة من الشريط السفلي)
+    if (top + POPUP_HEIGHT > usableBottom) {
+      top = Math.max(usableTop, usableBottom - POPUP_HEIGHT);
+    }
+
+    // المحاذاة الأفقية: المنتصف مع الرسالة
     let left = anchorRect.left + (anchorRect.width / 2) - (POPUP_WIDTH / 2);
     left = Math.max(12, Math.min(left, vw - POPUP_WIDTH - 12));
 
@@ -119,12 +139,20 @@ export default function MessageContextPopup({
     if (!showSubmenu && moreBtnRef.current) {
       const rect = moreBtnRef.current.getBoundingClientRect();
       const vw = window.innerWidth;
+      const vh = window.innerHeight;
       const SUBMENU_WIDTH = 220;
+      const SUBMENU_HEIGHT = 200; // تقدير
+      const INPUT_SAFE = 110;
       let subLeft = rect.right - SUBMENU_WIDTH;
       subLeft = Math.max(12, Math.min(subLeft, vw - SUBMENU_WIDTH - 12));
+      // v60.6 — إذا لا توجد مساحة أسفل زر المزيد، اعرضها فوقه
+      let subTop = rect.bottom + 6;
+      if (subTop + SUBMENU_HEIGHT > vh - INPUT_SAFE) {
+        subTop = Math.max(12, rect.top - SUBMENU_HEIGHT - 6);
+      }
       setPosition((p) => ({
         ...p,
-        submenuTop: rect.bottom + 6,
+        submenuTop: subTop,
         submenuLeft: subLeft,
       }));
     }

@@ -141,6 +141,12 @@ import './styles/chat-mobile-redesign-v60.3.css';
 import './styles/chat-mobile-redesign-v60.4.css';
 /* v60.5 — إصلاحات نهائية pixel-perfect: "نشط الآن" + "جاري الكتابة" + "تمت الترجمة تلقائياً" + composer صف واحد مع زر + */
 import './styles/chat-mobile-redesign-v60.5.css';
+/* v60.6 — USER FEEDBACK FIX (3 مشاكل رئيسية):
+   1. اسم المشترك لم يظهر بالأعلى → تصغير أيقونات الهيدر وفسح مجال للاسم
+   2. قائمة الضغط المطول تهرب أسفل الشاشة → منطق JS أذكى + ضمان max-width/overflow
+   3. أزرار الإدخال كبيرة → تصغير جميع الأزرار (mic/send/+/inline) لإفساح مجال للنص
+   ⚠️ يجب أن يبقى أخر import CSS للفوز في cascade */
+import './styles/chat-mobile-redesign-v60.6.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';

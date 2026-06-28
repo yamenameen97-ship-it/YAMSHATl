@@ -117,6 +117,8 @@ import './styles/font-size-control.css';
    هيدر، فقاعات، شريط إيموجي، شريط أوامر، قائمة فرعية، شريط إدخال سفلي.
    ⚠️ يجب أن يكون آخر import CSS مطلقاً ليفوز في cascade */
 import './styles/chat-mobile-redesign-v60.css';
+/* 🔧 v60.1 — Mobile Chat Redesign HOTFIX (آخر CSS مطلقاً) */
+import './styles/chat-mobile-redesign-v60.1.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';

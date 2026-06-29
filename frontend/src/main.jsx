@@ -128,6 +128,10 @@ import './styles/chat-redesign-v61.css';
 /* ✅ v62 hotfix: إصلاح علوق تحميل الملف الشخصي + ظهور منطقة كتابة التعليق.
    يجب أن يبقى هذا الإستيراد بعد chat-redesign-v61.css ليفوز في cascade */
 import './styles/yamshat-fixes-v62-profile-comments.css';
+/* ✅ v63 pixel‑match: مطابقة دقيقة لشاشة الدردشة على الجوال مع الصورة المرجعية
+   (هيدر، فقاعات زرقاء، شريط ترجمة برتقالي، كرت مكالمة، شريط إدخال سفلي).
+   يجب أن يبقى هذا الاستيراد آخر CSS chat-related ليفوز في cascade. */
+import './styles/chat-mobile-pixel-match-v63.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';

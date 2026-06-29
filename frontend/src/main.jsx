@@ -147,6 +147,12 @@ import './styles/chat-mobile-redesign-v60.5.css';
    3. أزرار الإدخال كبيرة → تصغير جميع الأزرار (mic/send/+/inline) لإفساح مجال للنص
    ⚠️ يجب أن يبقى أخر import CSS للفوز في cascade */
 import './styles/chat-mobile-redesign-v60.6.css';
+/* v60.7 — USER FEEDBACK FIX:
+   1) إخفاء زر "+" (المرفقات) الدائري في أسفل الشريط — يوجد بديل داخل حقل النص (🖼)
+   2) قائمة الضغط المطول تظهر دائماً فوق الرسالة (وليس تحتها)
+   3) اسم المشترك + "نشط الآن" / "آخر ظهور" يظهر بوضوح في الهيدر
+   ⚠️ يجب أن يبقى أخر import CSS للفوز في cascade */
+import './styles/chat-mobile-redesign-v60.7.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';

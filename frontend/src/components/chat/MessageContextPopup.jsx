@@ -55,39 +55,34 @@ export default function MessageContextPopup({
   const submenuRef = useRef(null);
   const moreBtnRef = useRef(null);
 
-  // v60.6 — حساب موضع القائمة المنبثقة بطريقة أكثر ذكاءً
-  // الأولوية المطلقة: فوق الرسالة. لا نضعها تحتها أبداً إذا كان شريط الإدخال يحجبها.
+  // v60.7 — القائمة تظهر دائماً فوق الرسالة (طلب المستخدم المباشر)
+  // المنطق:
+  //  1) دائماً نحاول وضع الـ popup فوق الرسالة (anchorRect.top - POPUP_HEIGHT - 10).
+  //  2) إذا لم تكن هناك مساحة كافية فوق الرسالة (top < HEADER_SAFE)،
+  //     نُثبّت الـ popup عند HEADER_SAFE (أسفل الهيدر مباشرة) — وليس تحت الرسالة.
+  //     هذا يحافظ على الاتجاه "للأعلى" حتى للرسائل القريبة من الهيدر.
+  //  3) لا نضع القائمة تحت الرسالة أبداً (وفقاً لطلب المستخدم).
   useLayoutEffect(() => {
     if (!anchorRect) return;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const POPUP_WIDTH = Math.min(vw - 24, 340);
     const POPUP_HEIGHT = 140; // ارتفاع تقديري (إيموجي + شريط أوامر + هامش)
-    const HEADER_SAFE = 72;   // ارتفاع الهيدر الثابت + هامش
-    // ارتفاع شريط الإدخال السفلي + safe-area (تقدير محافظ ليشمل لوحة المفاتيح أيضاً)
-    const INPUT_SAFE = 110;
-
-    // المتاح: من أعلى الهيدر إلى أعلى شريط الإدخال
-    const usableTop = HEADER_SAFE;
+    const HEADER_SAFE = 64;   // ارتفاع الهيدر الثابت + هامش صغير
+    const INPUT_SAFE = 100;   // مساحة الشريط السفلي
     const usableBottom = vh - INPUT_SAFE;
 
-    // الخطة A: فوق الرسالة
+    // ✅ دائماً فوق الرسالة
     let top = anchorRect.top - POPUP_HEIGHT - 10;
 
-    if (top < usableTop) {
-      // لا مساحة فوق الرسالة كاملةً. هل يوجد مساحة تحتها بحيث لا يحجبها الإدخال؟
-      const belowTop = anchorRect.bottom + 10;
-      if (belowTop + POPUP_HEIGHT <= usableBottom) {
-        top = belowTop;
-      } else {
-        // لا فوق ولا تحت — ثبّت أعلى المنطقة الآمنة (تظهر القائمة فوق رغم تداخل بسيط مع الرسالة)
-        top = Math.max(usableTop, usableBottom - POPUP_HEIGHT);
-      }
+    // إذا لم تكن هناك مساحة كافية فوق، ثبّت تحت الهيدر مباشرة (وليس تحت الرسالة)
+    if (top < HEADER_SAFE) {
+      top = HEADER_SAFE;
     }
 
-    // ضمان أن القائمة لا تخرج من الأسفل (في حالة الرسائل القريبة من الشريط السفلي)
+    // حماية إضافية: لو الشاشة قصيرة جداً ولم تتسع، لا تخرج من الأسفل
     if (top + POPUP_HEIGHT > usableBottom) {
-      top = Math.max(usableTop, usableBottom - POPUP_HEIGHT);
+      top = Math.max(HEADER_SAFE, usableBottom - POPUP_HEIGHT);
     }
 
     // المحاذاة الأفقية: المنتصف مع الرسالة
@@ -139,16 +134,15 @@ export default function MessageContextPopup({
     if (!showSubmenu && moreBtnRef.current) {
       const rect = moreBtnRef.current.getBoundingClientRect();
       const vw = window.innerWidth;
-      const vh = window.innerHeight;
       const SUBMENU_WIDTH = 220;
       const SUBMENU_HEIGHT = 200; // تقدير
-      const INPUT_SAFE = 110;
+      const HEADER_SAFE = 64;
       let subLeft = rect.right - SUBMENU_WIDTH;
       subLeft = Math.max(12, Math.min(subLeft, vw - SUBMENU_WIDTH - 12));
-      // v60.6 — إذا لا توجد مساحة أسفل زر المزيد، اعرضها فوقه
-      let subTop = rect.bottom + 6;
-      if (subTop + SUBMENU_HEIGHT > vh - INPUT_SAFE) {
-        subTop = Math.max(12, rect.top - SUBMENU_HEIGHT - 6);
+      // v60.7 — القائمة الفرعية تظهر دائماً فوق زر "المزيد"
+      let subTop = rect.top - SUBMENU_HEIGHT - 6;
+      if (subTop < HEADER_SAFE) {
+        subTop = HEADER_SAFE;
       }
       setPosition((p) => ({
         ...p,

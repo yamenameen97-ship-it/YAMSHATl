@@ -5,7 +5,7 @@
 /* Import all CSS modules in order */
 @import './global.css';
 @import './feed-scrollbar-fix.css';
-@import './chat-layout-fix.css';
+/* v61: chat-layout-fix.css حذف — دمج في chat-redesign-v61.css */
 @import './group-chat.css';
 @import './groups-list.css';
 @import './theme.css';
@@ -16,7 +16,7 @@
 
 /* ====== Stage 5 — Premium Polish Layers (must be last) ====== */
 @import './chat-premium.css';
-@import './chat-long-press-swipe.css';
+/* v61: chat-long-press-swipe.css حذف — غير مستخدم */
 @import './reels-premium.css';
 @import './design-system-enforce.css';
 @import './feed-actions-compact-v39.css';

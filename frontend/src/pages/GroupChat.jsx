@@ -25,7 +25,7 @@ import CallBubble from '../components/chat/CallBubble.jsx';
 import GroupPinnedBar from '../components/groups/GroupPinnedBar.jsx';
 import GroupQuickLinks from '../components/groups/GroupQuickLinks.jsx';
 import '../styles/group-chat.css';
-import '../styles/chat-mobile-fixes.css';
+/* v61: حذف chat-mobile-fixes.css (دمج في chat-redesign-v61.css) */
 import '../styles/groups-features.css';
 // ✅ v59.13.17 FIX #3: ReportModal الموحّد بدلاً عن window.prompt للإبلاغ على رسائل المجموعة
 import ReportModal from '../components/reports/ReportModal.jsx';

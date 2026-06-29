@@ -116,24 +116,27 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
 
       <style>{`
         .ym-composer-wrap {
-          /* ⭐ v59.13.38 FIX: جعل صندوق «بماذا تفكر؟» ملتصقاً بأعلى
-             منطقة العرض داخل .yam-home-mobile-page (scroll-container).
-             كان يهرب للأعلى عند السحب. الآن يبقى ثابتاً فوق الفلاتر. */
-          padding: 10px 12px 4px;
+          /* ⭐ v60.9 FIX: margin سالب ثابت يلغي padding الحاوية الأم
+             (.yam-home-mobile-page لديها padding: 12px) فيصبح الصندوق
+             ملتصقاً بحافتي العرض تماماً (يمين+يسار) دون هروب. */
+          padding: 10px 12px 6px;
           padding-inline-start: 12px;
           padding-inline-end: 12px;
-          /* تعويض الـ padding العلوي (12px) للصفحة الأم حتى
-             يلتصق بأعلى منطقة العرض دون فراغ */
+          /* تعويض padding الحاوية الأم على الجهات الأربع */
           margin-top: -12px;
           margin-inline-start: -12px;
           margin-inline-end: -12px;
+          margin-right: -12px;
+          margin-left: -12px;
           margin-bottom: 0;
           background-color: #0A0D1A;
           box-sizing: border-box;
           width: auto;
           max-width: none;
+          display: block;
           font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
           direction: rtl;
+          text-align: right;
           position: sticky;
           top: 0;
           z-index: 51; /* أعلى من الفلاتر (50) */
@@ -142,6 +145,7 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           display: flex;
           flex-direction: row;
           align-items: center;
+          justify-content: flex-start;  /* RTL: flex-start = اليمين */
           gap: 8px;
           background: #14172a;
           border: 1px solid #1F2937;
@@ -155,6 +159,7 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           max-width: 100%;
           overflow: hidden;
           direction: rtl;
+          text-align: right;
         }
         .ym-composer:hover { border-color: rgba(139,92,246,0.45); }
         /* ⭐ v59.13.23 a11y: focus-visible ring للصندوق */

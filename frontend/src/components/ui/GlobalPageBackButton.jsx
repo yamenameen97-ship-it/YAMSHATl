@@ -26,6 +26,11 @@ const HIDDEN_PATHS = [
   /^\/reset-password$/,
   /^\/admin\/login$/,
   /^\/reels$/, // الريلز لها زر رجوع عائم خاص بها
+  // ✅ v61 FIX: صفحة الدردشة الفردية لديها زر رجوع داخلي في الهيدر،
+  // إخفاء العائم يمنع التكرار (مشكلة الزر المكرر في رأس الشات).
+  /^\/chat$/,
+  /^\/chat\/[^/]+$/,
+  /^\/groups\/[^/]+\/chat$/,
 ];
 
 function fallbackRoute(pathname) {

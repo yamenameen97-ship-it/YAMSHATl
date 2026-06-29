@@ -112,56 +112,19 @@ import './styles/chat-stories-mobile-pull-v59.13.29.css';
 import './styles/chat-stories-mobile-pull-v59.13.31.css';
 /* ⚭ v59.13.35 — Font Size Control + Chat Translation Strip styles */
 import './styles/font-size-control.css';
-/* 🎨 v60 — Mobile Chat Redesign (مطابقة صورة المرجع)
-   يعيد تصميم صفحة المحادثة 1-1 على الجوال بالكامل:
-   هيدر، فقاعات، شريط إيموجي، شريط أوامر، قائمة فرعية، شريط إدخال سفلي.
-   ⚠️ يجب أن يكون آخر import CSS مطلقاً ليفوز في cascade */
-import './styles/chat-mobile-redesign-v60.css';
-/* 🔧 v60.1 — Mobile Chat Redesign HOTFIX */
-import './styles/chat-mobile-redesign-v60.1.css';
-/* 🎯 v60.2 — Pixel-Perfect Mobile Chat Redesign (مطابق للصورة الثالثة)
-   جوال: رأس مع زر رجوع + اسم + أفاتار + أيقونات اتصال صغيرة
-   شريط كتابة: صف واحد (مايك + حقل + إرسال)
-   فقاعات: بنفسجية للمرسل + داكنة للمستقبل + ترجمة فورية
-   ⚠️ يجب أن يكون آخر import CSS مطلقاً */
-import './styles/chat-mobile-redesign-v60.2.css';
-/* 🎯 v60.3 — Pixel-Perfect Mobile Chat (تصغير دقيق للأيقونات + بطاقة المكالمة pill)
-   مطابقة 100% للصورة المرجعية الرابعة:
-   - أيقونات الهيدر والإدخال صغيرة جداً
-   - نقطة "نشط الآن" دقيقة بدون توهج
-   - علامات الاطلاع وعلامات الوقت صغيرة
-   - شارة GIF صغيرة جداً
-   - بطاقة "مكالمة صوتية" pill في المنتصف
-   ⚠️ يجب أن يبقى آخر import CSS مطلقاً ليفوز في cascade */
-import './styles/chat-mobile-redesign-v60.3.css';
-/* v60.4 — تصحيح Selectors بحيث تستهدف class names الفعلية في MessageBubble.jsx
-   (yam-bubble + bubble-me/them + bubble-text + bubble-meta + bubble-status)
-   كذلك تنسيق رسائل صوتية WhatsApp-style + قائمة منبثقة بإعادة إرسال.
-   ⚠️ يجب أن يبقى هذا آخر import CSS مطلقاً ليفوز في cascade */
-import './styles/chat-mobile-redesign-v60.4.css';
-/* v60.5 — إصلاحات نهائية pixel-perfect: "نشط الآن" + "جاري الكتابة" + "تمت الترجمة تلقائياً" + composer صف واحد مع زر + */
-import './styles/chat-mobile-redesign-v60.5.css';
-/* v60.6 — USER FEEDBACK FIX (3 مشاكل رئيسية):
-   1. اسم المشترك لم يظهر بالأعلى → تصغير أيقونات الهيدر وفسح مجال للاسم
-   2. قائمة الضغط المطول تهرب أسفل الشاشة → منطق JS أذكى + ضمان max-width/overflow
-   3. أزرار الإدخال كبيرة → تصغير جميع الأزرار (mic/send/+/inline) لإفساح مجال للنص
-   ⚠️ يجب أن يبقى أخر import CSS للفوز في cascade */
-import './styles/chat-mobile-redesign-v60.6.css';
-/* v60.7 — USER FEEDBACK FIX:
-   1) إخفاء زر "+" (المرفقات) الدائري في أسفل الشريط — يوجد بديل داخل حقل النص (🖼)
-   2) قائمة الضغط المطول تظهر دائماً فوق الرسالة (وليس تحتها)
-   3) اسم المشترك + "نشط الآن" / "آخر ظهور" يظهر بوضوح في الهيدر */
-import './styles/chat-mobile-redesign-v60.7.css';
-/* 🎯 v60.8 — PIXEL-PERFECT MATCH (مطابق للصورة المرجعية الثالثة 100%):
-   1) إعادة تخطيط الهيدر بالكامل بترتيب LTR-friendly:
-      [← رجوع] [أفاتار + اسم/حالة] (مساحة) [📞 🎥 ⋮]
-      - اسم المشترك يظهر دائماً بوضوح
-      - حالة "نشط الآن" / "آخر ظهور" تحت الاسم مع نقطة خضراء
-      - أزرار الاتصال لا تغطي منطقة الاسم
-   2) إصلاح بوتوم شيت التعليقات بحيث تظهر منطقة الكتابة (composer) دائماً
-      ولا يغطيها شريط التنقل السفلي BottomNav.
-   ⚠️ يجب أن يبقى آخر import CSS مطلقاً ليفوز في cascade */
-import './styles/chat-mobile-redesign-v60.8.css';
+/* 🩹 v60.9 — RTL FIX: إعادة منطقة "بماذا تفكر؟" + شريط الفلترة
+   (الكل / المجموعات / الستوري / الوسائط) إلى جهة اليمين الصحيحة
+   على ويب الجوال — إصلاح دقيق ومتقن. */
+import './styles/yamshat-fixes-v60.9-rtl-composer-filters.css';
+/* 🎯 v61 — DEFINITIVE CHAT HEADER FIX (Mobile + Laptop/Desktop)
+   استبدال كامل لكل ملفات chat-mobile-redesign-v60.x.css السابقة
+   وأيضاً يعالج المشاكل التالية بشكل نهائي:
+   1) اسم المشترك (peer name) + حالة "نشط الآن" يظهران بوضوح
+   2) أزرار الاتصال (📞 🎥 ⋮) مصغّرة ولا تغطي منطقة الاسم
+   3) إزالة زر الرجوع المُكرَّر القادم من GlobalPageBackButton
+   4) راس صفحة الدردشه متوافق على الجوال واللاب توب
+   ⚠️ يجب أن يبقى هذا الملف من آخر CSS imports في main.jsx ليفوز في cascade */
+import './styles/chat-redesign-v61.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';

@@ -79,32 +79,35 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
 
       <style>{`
         .ym-filters-container {
-          /* ⭐ v59.13.24: padding متماثل يسارًا ويمينًا حتى تلتصق
-             أول pill (الكل) بحافة اليمين تماماً */
+          /* ⭐ v60.9 FIX: margin سالب على الجهات الأربع يلغي padding
+             الحاوية الأم .yam-home-mobile-page فتلتصق أول pill (الكل)
+             بحافة اليمين تماماً وتختفي مشكلة الهروب لليسار */
           padding: 8px 12px 10px;
           padding-inline-start: 12px;
           padding-inline-end: 12px;
           margin: 0;
+          margin-inline-start: -12px;
+          margin-inline-end: -12px;
+          margin-right: -12px;
+          margin-left: -12px;
+          margin-top: 0;
           background-color: #0A0D1A;
           box-sizing: border-box;
-          width: 100%;
-          max-width: 100%;
-          overflow: hidden;
+          width: auto;
+          max-width: none;
+          display: block;
+          overflow-x: auto;
+          overflow-y: hidden;
           font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
-          /* ⭐ v59.13.24: لا نقيّد اللمس هنا حتى يمرّ التمرير العمودي لـ main */
           touch-action: pan-x pan-y;
           -webkit-tap-highlight-color: transparent;
+          text-align: right;
           /* ⭐ v59.13.38 FIX: sticky داخل .yam-home-mobile-page
              (scroll-container داخلي). تلتصق تحت صندوق «بماذا
              تفكر؟» الملتصق أيضاً. الـ top = ارتفاع الصندوق
              تقريباً (~52px) حتى تبقى الاثنتان مرئيّتين فوق بعضهما. */
           position: sticky;
           top: 52px;
-          /* تعويض الـ padding الجانبي لحاوية .yam-home-mobile-page (12px)
-             حتى تلتصق الفلاتر بحواف منطقة العرض تماماً */
-          margin-inline-start: -12px;
-          margin-inline-end: -12px;
-          margin-top: 0;
           padding-top: 8px;
           z-index: 50;
           border-bottom: 1px solid #1F2937;

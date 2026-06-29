@@ -8,7 +8,8 @@ import MediaPreviewModal from '../components/chat/MediaPreviewModal.jsx';
 import MessageActionsToolbar from '../components/chat/MessageActionsToolbar.jsx';
 import MessageReactionPicker from '../components/chat/MessageReactionPicker.jsx';
 import CallBubble from '../components/chat/CallBubble.jsx';
-import '../styles/chat-mobile-fixes.css';
+/* v61: تم حذف chat-mobile-fixes.css. التنسيقات الآن في chat-redesign-v61.css
+   المُحمّل عبر main.jsx ليفوز في cascade. */
 import { Avatar, ChatBubble } from '../components/ui/index.js';
 import useViewportHeight from '../hooks/useViewportHeight.js';
 import { useToast } from '../components/admin/ToastProvider.jsx';

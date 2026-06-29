@@ -150,9 +150,18 @@ import './styles/chat-mobile-redesign-v60.6.css';
 /* v60.7 — USER FEEDBACK FIX:
    1) إخفاء زر "+" (المرفقات) الدائري في أسفل الشريط — يوجد بديل داخل حقل النص (🖼)
    2) قائمة الضغط المطول تظهر دائماً فوق الرسالة (وليس تحتها)
-   3) اسم المشترك + "نشط الآن" / "آخر ظهور" يظهر بوضوح في الهيدر
-   ⚠️ يجب أن يبقى أخر import CSS للفوز في cascade */
+   3) اسم المشترك + "نشط الآن" / "آخر ظهور" يظهر بوضوح في الهيدر */
 import './styles/chat-mobile-redesign-v60.7.css';
+/* 🎯 v60.8 — PIXEL-PERFECT MATCH (مطابق للصورة المرجعية الثالثة 100%):
+   1) إعادة تخطيط الهيدر بالكامل بترتيب LTR-friendly:
+      [← رجوع] [أفاتار + اسم/حالة] (مساحة) [📞 🎥 ⋮]
+      - اسم المشترك يظهر دائماً بوضوح
+      - حالة "نشط الآن" / "آخر ظهور" تحت الاسم مع نقطة خضراء
+      - أزرار الاتصال لا تغطي منطقة الاسم
+   2) إصلاح بوتوم شيت التعليقات بحيث تظهر منطقة الكتابة (composer) دائماً
+      ولا يغطيها شريط التنقل السفلي BottomNav.
+   ⚠️ يجب أن يبقى آخر import CSS مطلقاً ليفوز في cascade */
+import './styles/chat-mobile-redesign-v60.8.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';

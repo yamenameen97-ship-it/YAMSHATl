@@ -43,7 +43,13 @@ function MobileCommentsSheet({ open, postId, onClose }) {
     if (!open) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
+    // ✅ v60.8 FIX: تعيين data-attribute على body حتى يتم إخفاء BottomNav عبر CSS
+    // وبالتالي تظهر منطقة كتابة التعليق بالكامل ولا تفقد خلف شريط التنقل
+    document.body.setAttribute('data-ym-sheet', 'open');
+    return () => {
+      document.body.style.overflow = prev;
+      document.body.removeAttribute('data-ym-sheet');
+    };
   }, [open]);
 
   const handleSend = async () => {

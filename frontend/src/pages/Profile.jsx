@@ -82,6 +82,9 @@ export default function Profile() {
 
   const avatarFileRef = useRef(null);
   const coverFileRef = useRef(null);
+  // ✅ FIX (v62): إضافة requestSeqRef المفقود — كان يُستخدم في loadProfile دون تعريف
+  // مما يسبب ReferenceError ويُبقي الصفحة عالقة على "جارٍ تحميل الملف الشخصي..."
+  const requestSeqRef = useRef(0);
 
   useEffect(() => {
     loadProfile();

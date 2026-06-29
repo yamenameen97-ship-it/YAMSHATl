@@ -125,6 +125,9 @@ import './styles/yamshat-fixes-v60.9-rtl-composer-filters.css';
    4) راس صفحة الدردشه متوافق على الجوال واللاب توب
    ⚠️ يجب أن يبقى هذا الملف من آخر CSS imports في main.jsx ليفوز في cascade */
 import './styles/chat-redesign-v61.css';
+/* ✅ v62 hotfix: إصلاح علوق تحميل الملف الشخصي + ظهور منطقة كتابة التعليق.
+   يجب أن يبقى هذا الإستيراد بعد chat-redesign-v61.css ليفوز في cascade */
+import './styles/yamshat-fixes-v62-profile-comments.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';

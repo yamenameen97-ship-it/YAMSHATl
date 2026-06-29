@@ -1,0 +1,155 @@
+/* ============================================================
+   YAMSHAT v62 — Hotfix Profile Loading + Comments Composer
+   ============================================================
+   إصلاحات هذه النسخة:
+   1) صفحة الملف الشخصي (Profile.jsx) — تم إصلاح ReferenceError
+      الخاص بـ requestSeqRef في الكود (لا حاجة لـ CSS).
+   2) بوتوم شيت التعليقات (MobileCommentsSheet) — ضمان ظهور
+      منطقة كتابة التعليق دائماً في أسفل الـ sheet، وإخفاء
+      شريط التنقل السفلي (BottomNav) بشكل قاطع عند فتح الـ sheet.
+   ============================================================ */
+
+/* (1) إخفاء BottomNav بقوة عند فتح الـ sheet — انتصار في cascade على
+   <style> الداخلي الخاص بـ BottomNav.jsx (الذي يستعمل selector
+   بسيط بدون !important فلا يستطيع تخطّي هذه القاعدة). */
+body[data-ym-sheet="open"] .ym-bottomnav,
+body[data-ym-sheet="open"] nav.ym-bottomnav,
+html[data-ym-sheet="open"] .ym-bottomnav,
+body[data-ym-sheet="open"] [class*="bottomnav"],
+body[data-ym-sheet="open"] [class*="BottomNav"] {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  opacity: 0 !important;
+}
+
+/* (2) ضمان أن الـ sheet يصل لأقصى الأسفل ويستوعب الـ composer */
+.ym-sheet-overlay {
+  z-index: 999999 !important;
+  /* overlay يأخذ كامل الشاشة بما فيها safe-area */
+  padding: 0 !important;
+}
+
+.ym-sheet {
+  /* السماح للـ sheet بأن يكون عمودياً وأن يحوي composer ثابتاً */
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  /* ارتفاع كافٍ لإظهار المحتوى + composer دون أن يطغى على الشاشة */
+  max-height: min(80dvh, 640px) !important;
+  min-height: 360px !important;
+  /* استيعاب safe-area على الأجهزة ذات الـ notch */
+  padding-bottom: 0 !important;
+}
+
+/* جسم الـ sheet يأخذ المساحة المتبقية ويُمرَّر داخلياً */
+.ym-sheet-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior: contain !important;
+}
+
+/* (3) منطقة كتابة التعليق — ثابتة في الأسفل، مرئية دائماً */
+.ym-sheet-composer {
+  /* لا نستعمل position: sticky هنا لأنها تتأثر بالـ overflow
+     على بعض المتصفحات. flex-shrink: 0 داخل flex-column يكفي. */
+  position: relative !important;
+  flex: 0 0 auto !important;
+  flex-shrink: 0 !important;
+
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 8px !important;
+
+  width: 100% !important;
+  box-sizing: border-box !important;
+  padding: 12px 14px !important;
+  padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)) !important;
+
+  background: var(--ym-card, #141A29) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+
+  /* ضمان عدم الإخفاء بأي طريقة */
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  z-index: 3 !important;
+}
+
+.ym-sheet-composer .ym-sheet-input {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  width: auto !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  color: #fff !important;
+  border-radius: 999px !important;
+  padding: 11px 16px !important;
+  font-size: 14px !important;
+  line-height: 1.4 !important;
+  outline: none !important;
+  font-family: inherit !important;
+}
+
+.ym-sheet-composer .ym-sheet-input::placeholder {
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+
+.ym-sheet-composer .ym-sheet-input:focus {
+  border-color: var(--ym-purple, #7C3AED) !important;
+  background: rgba(124, 58, 237, 0.10) !important;
+}
+
+.ym-sheet-composer .ym-sheet-send {
+  flex: 0 0 auto !important;
+  width: 42px !important;
+  height: 42px !important;
+  min-width: 42px !important;
+  border-radius: 50% !important;
+  background: var(--ym-purple, #7C3AED) !important;
+  color: #fff !important;
+  border: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  transition: opacity 0.15s, transform 0.1s !important;
+}
+
+.ym-sheet-composer .ym-sheet-send:disabled {
+  opacity: 0.4 !important;
+  cursor: not-allowed !important;
+}
+
+/* (4) شاشات تابلت/ديسكتوب — sheet جانبي صغير */
+@media (min-width: 768px) {
+  .ym-sheet {
+    max-width: 400px !important;
+    width: 400px !important;
+    max-height: 70vh !important;
+    min-height: 420px !important;
+    border-radius: 18px !important;
+  }
+}
+
+/* (5) صفحة الملف الشخصي — تحسين حالة الـ loading كي لا تبدو فارغة
+   إذا حصل تأخير حقيقي في الشبكة (وليس خطأ JS كما كان سابقاً). */
+.profile-page-loading {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profile-loading-card {
+  text-align: center;
+  padding: 32px 24px;
+  font-size: 15px;
+  color: var(--ym-text, #fff);
+  background: var(--ym-card, #141A29);
+  border-radius: 16px;
+}

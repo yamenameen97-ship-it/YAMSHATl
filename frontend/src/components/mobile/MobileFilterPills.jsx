@@ -79,27 +79,19 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
 
       <style>{`
         .ym-filters-container {
-          /* ⭐ v65 STRETCH FIX:
-             استخدم width: calc(100% + 24px) لضمان حساب رياضي دقيق.
-             الحاوية الأم لديها padding: 12px → نعوض بـ 24px إضافة
-             للعرض و -12px للجهة البدائية. النتيجة: الفلاتر
-             تمتد بعرض الشاشة الكامل وأول pill (الكل) يلتصق
-             بحافة اليمين تماماً دون أي فراغ. */
+          /* ⭐ v68 FINAL FIX:
+             عرض طبيعي 100% بدون calc() أو negative margin.
+             الحاوية الأم .yam-home-mobile-page أصبح لديها padding
+             جانبي = 0، فالفلاتر تمتد بعرض الشاشة الكامل بشكل طبيعي
+             وأول pill (الكل) يلتصق بحافة اليمين دون فراغ. */
           padding: 8px 12px 10px;
           padding-inline-start: 12px;
           padding-inline-end: 12px;
           margin: 0;
-          margin-inline-start: -12px;
-          margin-inline-end: -12px;
-          margin-right: -12px;
-          margin-left: -12px;
-          margin-top: 0;
           background-color: #0A0D1A;
           box-sizing: border-box;
-          /* ⭐ v65: عرض محسوب بدلاً من auto */
-          width: calc(100% + 24px);
-          max-width: calc(100% + 24px);
-          min-width: calc(100% + 24px);
+          width: 100%;
+          max-width: 100%;
           display: block;
           overflow-x: auto;
           overflow-y: hidden;
@@ -196,7 +188,7 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
         }
 
         @media (max-width: 400px) {
-          .ym-filters-container { padding: 7px 8px 9px; padding-top: 8px; top: 50px; }
+          .ym-filters-container { padding: 7px 8px 9px; padding-top: 8px; top: 50px; width: 100%; max-width: 100%; }
           .ym-filters { gap: 5px; }
           .ym-filter-pill-new {
             height: 32px;
@@ -205,7 +197,7 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
           }
         }
         @media (max-width: 360px) {
-          .ym-filters-container { padding: 6px 6px 8px; padding-top: 8px; top: 48px; }
+          .ym-filters-container { padding: 6px 6px 8px; padding-top: 8px; top: 48px; width: 100%; max-width: 100%; }
           .ym-filters { gap: 4px; }
           .ym-filter-pill-new {
             height: 30px;
@@ -214,7 +206,7 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
           }
         }
         @media (max-width: 320px) {
-          .ym-filters-container { padding: 5px 4px 6px; padding-top: 8px; top: 46px; }
+          .ym-filters-container { padding: 5px 4px 6px; padding-top: 8px; top: 46px; width: 100%; max-width: 100%; }
           .ym-filters { gap: 3px; }
           .ym-filter-pill-new {
             height: 26px;

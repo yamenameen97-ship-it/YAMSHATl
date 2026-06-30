@@ -156,6 +156,12 @@ import './styles/yamshat-fixes-v66-profile-reels-chat.css';
    ويضمن ظهور الاسم + "متصل" مع تصغير محسوب للأزرار من أقصى لأدنى حد.
    ⚠️ يجب أن يبقى هذا الاستيراد آخر CSS chat-related ليفوز في cascade. */
 import './styles/chat-header-v67-name-online-fix.css';
+/* 🎯 v68 FINAL FIX — صندوق "بماذا تفكر؟" + شريط الفلاتر مرئيان بعرض كامل (RTL).
+   إصلاح جذري: نُلغي padding الجانبي من .yam-home-mobile-page ونضعه على
+   .ym-feed (المنشورات) فقط. النتيجة: الأشرطة تمتد بعرض الشاشة كاملاً
+   بدون أي negative margin أو calc() hack، وتلتصق باليمين في RTL.
+   ⚠️ يجب أن يبقى هذا الاستيراد آخر CSS مطلقاً ليفوز في cascade. */
+import './styles/yamshat-fixes-v68-composer-filters-final.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';

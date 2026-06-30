@@ -48,7 +48,10 @@
   height: 100dvh;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 12px 12px calc(100px + env(safe-area-inset-bottom, 0px)) 12px;
+  /* ⭐ v68 FIX: إلغاء padding الجانبي حتى تمتد الأشرطة (composer/filters)
+     بعرض الشاشة الكامل. الهامش الجمالي للمنشورات يُطبَّق
+     على .ym-feed بدلاً من .yam-home-mobile-page */
+  padding: 0 0 calc(100px + env(safe-area-inset-bottom, 0px)) 0;
   font-family: 'Noto Sans Arabic', 'Tajawal', 'Cairo', 'Inter', sans-serif;
   direction: rtl;
 

@@ -116,28 +116,19 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
 
       <style>{`
         .ym-composer-wrap {
-          /* ⭐ v65 STRETCH FIX:
-             استخدم width: calc(100% + 24px) بدلاً من width: auto
-             ليضمن حساباً رياضياً دقيقاً للعرض.
-             الحاوية الأم .yam-home-mobile-page لديها padding: 12px
-             → نحن نضيف 24px (12 × 2) للعرض ونسحب -12px للجهة البدائية
-             → النتيجة: العنصر يحتل عرض الشاشة الكامل تماماً. */
+          /* ⭐ v68 FINAL FIX:
+             عرض طبيعي 100% بدون أي calc() أو negative margin.
+             الحاوية الأم .yam-home-mobile-page أصبح لديها padding
+             جانبي = 0 (بفضل v68 CSS)، فالعنصر يمتد بعرض الشاشة الكامل
+             بشكل طبيعي. المنشورات (.ym-feed) تأخذ الهامش الجمالي. */
           padding: 10px 12px 6px;
           padding-inline-start: 12px;
           padding-inline-end: 12px;
-          /* margin سالب على الجهتين + عرض محسوب */
-          margin-top: -12px;
-          margin-inline-start: -12px;
-          margin-inline-end: -12px;
-          margin-right: -12px;
-          margin-left: -12px;
-          margin-bottom: 0;
+          margin: 0;
           background-color: #0A0D1A;
           box-sizing: border-box;
-          /* ⭐ v65: عرض محسوب بدلاً من auto */
-          width: calc(100% + 24px);
-          max-width: calc(100% + 24px);
-          min-width: calc(100% + 24px);
+          width: 100%;
+          max-width: 100%;
           display: block;
           font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
           direction: rtl;
@@ -257,7 +248,7 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
         }
 
         @media (max-width: 400px) {
-          .ym-composer-wrap { padding: 8px 10px 4px; }
+          .ym-composer-wrap { padding: 8px 10px 4px; width: 100%; max-width: 100%; }
           .ym-composer { gap: 6px; padding: 6px 8px; border-radius: 12px; }
           .ym-composer-avatar { width: 30px; height: 30px; padding: 3px; }
           .ym-composer-input { font-size: 0.82rem; padding: 3px 5px; }
@@ -267,7 +258,7 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           .ym-gif-pill { font-size: 0.62rem; padding: 1px 3px; }
         }
         @media (max-width: 360px) {
-          .ym-composer-wrap { padding: 7px 8px 4px; }
+          .ym-composer-wrap { padding: 7px 8px 4px; width: 100%; max-width: 100%; }
           .ym-composer { gap: 5px; padding: 5px 7px; }
           .ym-composer-avatar { width: 28px; height: 28px; padding: 3px; }
           .ym-composer-input { font-size: 0.76rem; padding: 3px 4px; }
@@ -277,7 +268,7 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           .ym-gif-pill { font-size: 0.58rem; padding: 1px 3px; }
         }
         @media (max-width: 320px) {
-          .ym-composer-wrap { padding: 6px 6px 3px; }
+          .ym-composer-wrap { padding: 6px 6px 3px; width: 100%; max-width: 100%; }
           .ym-composer { gap: 3px; padding: 4px 5px; border-radius: 10px; }
           .ym-composer-avatar { width: 24px; height: 24px; padding: 2px; }
           .ym-composer-input { font-size: 0.66rem; padding: 2px 3px; }

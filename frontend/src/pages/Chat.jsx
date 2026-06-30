@@ -2204,8 +2204,12 @@ export default function Chat() {
                   <Avatar name={peer} src={peerDetails.avatar} size={40} ring showStatus status={isOnline ? 'online' : 'offline'} />
                 </div>
                 <div className="yam-chat-stage-peer-copy">
-                  <strong>{peer}</strong>
-                  <span className={(isOnline || isTyping) ? 'online' : 'offline'}>{isTyping ? 'جاري الكتابة...' : formatLastSeen(lastSeen, isOnline)}</span>
+                  {/* v67 — ضمان ظهور الاسم حتى لو كان peer مؤقتاً فارغ (أثناء التحميل). */}
+                  <strong>{peer || peerDetails?.username || peerDetails?.handle || 'جارٍ التحميل...'}</strong>
+                  {/* v67 — إظهار كلمة "متصل" حسب طلب المستخدم بدلاً من "نشط الآن". */}
+                  <span className={(isOnline || isTyping) ? 'online' : 'offline'}>
+                    {isTyping ? 'جاري الكتابة...' : (isOnline ? 'متصل' : formatLastSeen(lastSeen, false))}
+                  </span>
                 </div>
               </button>
             </div>

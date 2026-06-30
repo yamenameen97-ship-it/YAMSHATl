@@ -1,0 +1,353 @@
+/* ==========================================================================
+   YAMSHAT v67 — CHAT HEADER NAME + "متصل" — Definitive Pixel-Level Fix
+   --------------------------------------------------------------------------
+   هذا الملف يحل المشكلة الجذرية التي بقيت رغم محاولات v60 → v66:
+   
+   ❗ السبب الحقيقي للمشكلة:
+   في الملف `brand-chat-notifications-refresh.css` يوجد:
+     @media (max-width: 980px) {
+       body .yam-chat-stage-actions {
+         width: 100%;                    ← يأكل كل عرض الـ row
+         justify-content: space-between; ← يفرق الأزرار على كامل الـ row
+       }
+     }
+   هذا أجبر شريط الأزرار (📞 🎥 ⋮) على أخذ العرض الكامل،
+   مما طرد منطقة الـ peer (الأفاتار + الاسم + "متصل") خارج الـ flex flow
+   فأصبحت غير مرئية رغم وجود `<strong>` و `<span>` في الـ DOM.
+   
+   ✅ الحل النهائي:
+   1) إعادة .yam-chat-stage-actions إلى width:auto + flex:0 0 auto
+   2) تثبيت .yam-chat-stage-peer كـ flex:1 1 0 مع min-width:0
+   3) ضمان عرض الـ peer-button و peer-copy عبر display:flex معلن
+   4) رفع specificity عبر `html body` ليفوز على كل cascade سابق
+   5) ضمان ظهور كلمة "متصل" / "آخر ظهور" دون قصّ
+   
+   ⚠️ يجب أن يبقى هذا الملف هو آخر CSS chat-related في main.jsx.
+   ========================================================================== */
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+   (A) HEADER ROOT — Flex layout صحيح + ترتيب RTL/LTR ثابت
+   ───────────────────────────────────────────────────────────────────────── */
+
+html body .yam-chat-stage-header {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  flex-wrap: nowrap !important;
+  gap: 10px !important;
+  width: 100% !important;
+  /* لا نلمس justify-content هنا — الـ flex children تتولّى التوزيع */
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+   (B) زر الرجوع — حجم ثابت لا ينكمش
+   ───────────────────────────────────────────────────────────────────────── */
+
+html body .yam-chat-stage-header .yam-stage-back-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 38px !important;
+  height: 38px !important;
+  min-width: 38px !important;
+  max-width: 38px !important;
+  flex: 0 0 38px !important;
+  border: none !important;
+  background: transparent !important;
+  color: #ffffff !important;
+  border-radius: 10px !important;
+  cursor: pointer !important;
+  padding: 0 !important;
+}
+
+html body .yam-chat-stage-header .yam-stage-back-btn svg {
+  width: 22px !important;
+  height: 22px !important;
+  stroke: currentColor !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+   (C) ⭐ PEER CONTAINER — يأخذ كل المساحة المتبقية بين الزر والأكشن
+   ───────────────────────────────────────────────────────────────────────── */
+
+html body .yam-chat-stage-header .yam-chat-stage-peer {
+  flex: 1 1 0% !important;        /* 1 1 0 يجبر العنصر على أخذ كل ما يستطيع */
+  min-width: 0 !important;
+  width: auto !important;
+  max-width: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  overflow: hidden !important;
+}
+
+html body .yam-chat-stage-header .yam-chat-stage-peer-button {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  width: 100% !important;
+  overflow: hidden !important;
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  cursor: pointer !important;
+  text-align: start !important;
+}
+
+/* الأفاتار — حجم ثابت، لا ينمو ولا ينكمش */
+html body .yam-chat-stage-header .yam-chat-stage-peer-button .yam-avatar-wrap {
+  flex: 0 0 42px !important;
+  width: 42px !important;
+  height: 42px !important;
+  min-width: 42px !important;
+  max-width: 42px !important;
+  position: relative !important;
+  border-radius: 50% !important;
+  padding: 2px !important;
+  border: 1.5px solid #6D5BFF !important;
+  box-shadow: 0 0 0 1px rgba(109, 91, 255, 0.25) inset !important;
+}
+
+html body .yam-chat-stage-header .yam-chat-stage-peer-button .yam-avatar-wrap > *,
+html body .yam-chat-stage-header .yam-chat-stage-peer-button .yam-avatar-wrap img,
+html body .yam-chat-stage-header .yam-chat-stage-peer-button .yam-avatar-wrap svg {
+  border-radius: 50% !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+   (D) ⭐ PEER COPY — الاسم + "متصل" — يجب أن يظهر دائماً
+   ───────────────────────────────────────────────────────────────────────── */
+
+html body .yam-chat-stage-header .yam-chat-stage-peer-copy {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  justify-content: center !important;
+  gap: 2px !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  width: auto !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+/* الاسم — أبيض، واضح، يُقصّ بأناقة */
+html body .yam-chat-stage-header .yam-chat-stage-peer-copy strong {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  color: #ffffff !important;
+  line-height: 1.2 !important;
+  letter-spacing: 0 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* الحالة (متصل / آخر ظهور / يكتب الآن) — أصفر دافئ بدون نقطة */
+html body .yam-chat-stage-header .yam-chat-stage-peer-copy span {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  font-size: 12.5px !important;
+  font-weight: 500 !important;
+  color: #94a3b8 !important;
+  line-height: 1.25 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+html body .yam-chat-stage-header .yam-chat-stage-peer-copy span.online {
+  color: #22c55e !important; /* أخضر = متصل */
+}
+
+/* إخفاء أي زخارف ::before / ::after قديمة (نقطة خضراء قبل النص) */
+html body .yam-chat-stage-header .yam-chat-stage-peer-copy span::before,
+html body .yam-chat-stage-header .yam-chat-stage-peer-copy span::after,
+html body .yam-chat-stage-header .yam-chat-stage-peer-copy span.online::before,
+html body .yam-chat-stage-header .yam-chat-stage-peer-copy span.online::after,
+html body .yam-chat-stage-header .yam-chat-stage-peer-copy span:not(.online)::before,
+html body .yam-chat-stage-header .yam-chat-stage-peer-copy span:not(.online)::after {
+  display: none !important;
+  content: none !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+   (E) ⭐⭐⭐ ACTIONS — الإصلاح الجذري:
+   إلغاء `width: 100%` و `justify-content: space-between` القادمة من
+   brand-chat-notifications-refresh.css التي كانت تأكل كل العرض.
+   ───────────────────────────────────────────────────────────────────────── */
+
+html body .yam-chat-stage-header .yam-chat-stage-actions,
+html body .yam-chat-stage-actions {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 2px !important;
+  flex: 0 0 auto !important;          /* لا ينمو، لا ينكمش */
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  width: auto !important;             /* ❌ يلغي width:100% الذي كان يأكل كل المساحة */
+  max-width: none !important;
+  min-width: 0 !important;
+  margin-inline-start: auto !important; /* يدفعه إلى الحافة المقابلة بسلاسة في RTL/LTR */
+}
+
+/* كل زر إجراء */
+html body .yam-chat-stage-header .yam-chat-stage-actions .yam-stage-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  max-width: 36px !important;
+  flex: 0 0 36px !important;
+  border: none !important;
+  background: transparent !important;
+  color: #ffffff !important;
+  font-size: 17px !important;
+  border-radius: 10px !important;
+  padding: 0 !important;
+  cursor: pointer !important;
+}
+
+html body .yam-chat-stage-header .yam-chat-stage-actions .yam-stage-icon:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+   (F) MOBILE BREAKPOINT — تصغير محسوب للأقصى/الأدنى ليظهر الاسم + "متصل"
+   ───────────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 980px) {
+  html body .yam-chat-stage-header {
+    padding: 8px 10px !important;
+    padding-top: calc(8px + env(safe-area-inset-top, 0px)) !important;
+    min-height: 56px !important;
+    gap: 8px !important;
+  }
+
+  /* إخفاء أيقونة البحث على الجوال لتوفير مساحة للاسم */
+  html body .yam-chat-stage-header .yam-chat-stage-actions .yam-stage-icon[aria-label="بحث"] {
+    display: none !important;
+  }
+}
+
+/* شاشات صغيرة جداً (≤ 380px مثل 360×800) — تصغير لأقصى حد ممكن */
+@media (max-width: 380px) {
+  html body .yam-chat-stage-header {
+    padding: 6px 8px !important;
+    padding-top: calc(6px + env(safe-area-inset-top, 0px)) !important;
+    gap: 6px !important;
+  }
+  html body .yam-chat-stage-header .yam-stage-back-btn {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
+    flex: 0 0 34px !important;
+  }
+  html body .yam-chat-stage-header .yam-stage-back-btn svg {
+    width: 20px !important;
+    height: 20px !important;
+  }
+  html body .yam-chat-stage-header .yam-chat-stage-peer-button .yam-avatar-wrap {
+    flex: 0 0 38px !important;
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    max-width: 38px !important;
+  }
+  html body .yam-chat-stage-header .yam-chat-stage-peer-button {
+    gap: 8px !important;
+  }
+  html body .yam-chat-stage-header .yam-chat-stage-peer-copy strong {
+    font-size: 15px !important;
+  }
+  html body .yam-chat-stage-header .yam-chat-stage-peer-copy span {
+    font-size: 11.5px !important;
+  }
+  html body .yam-chat-stage-header .yam-chat-stage-actions .yam-stage-icon {
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    max-width: 32px !important;
+    flex: 0 0 32px !important;
+    font-size: 15px !important;
+  }
+}
+
+/* شاشات أصغر (≤ 340px مثل iPhone SE 1st gen / very small Androids) */
+@media (max-width: 340px) {
+  html body .yam-chat-stage-header {
+    padding: 5px 6px !important;
+    gap: 5px !important;
+  }
+  html body .yam-chat-stage-header .yam-stage-back-btn,
+  html body .yam-chat-stage-header .yam-chat-stage-actions .yam-stage-icon {
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
+    max-width: 30px !important;
+    flex: 0 0 30px !important;
+    font-size: 14px !important;
+  }
+  html body .yam-chat-stage-header .yam-chat-stage-peer-button .yam-avatar-wrap {
+    flex: 0 0 34px !important;
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
+  }
+  html body .yam-chat-stage-header .yam-chat-stage-peer-copy strong {
+    font-size: 14px !important;
+  }
+  html body .yam-chat-stage-header .yam-chat-stage-peer-copy span {
+    font-size: 11px !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+   (G) Fallback صلب — لو peer فارغ لأي سبب (loading)، اعرض placeholder
+   ───────────────────────────────────────────────────────────────────────── */
+
+html body .yam-chat-stage-header .yam-chat-stage-peer-copy strong:empty::before {
+  content: 'جاري التحميل...';
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+html body .yam-chat-stage-header .yam-chat-stage-peer-copy span:empty::before {
+  content: '...';
+  color: #64748b;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+   النهاية — v67 يحل المشكلة جذرياً عبر إصلاح cascade الـ actions
+   ───────────────────────────────────────────────────────────────────────── */

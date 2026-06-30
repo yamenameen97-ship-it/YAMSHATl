@@ -150,6 +150,12 @@ import './styles/yamshat-fixes-v65-composer-filters-stretch.css';
    4) أزرار التفاعل (Long-press): تظهر فوق الرسالة وليس خلفها (createPortal + z-index)
    ⚠️ يجب أن يبقى هذا الاستيراد آخر CSS chat-related ليفوز في cascade. */
 import './styles/yamshat-fixes-v66-profile-reels-chat.css';
+/* 🎯 v67 DEFINITIVE FIX — Chat header: peer name + "متصل" status visibility on mobile.
+   يصلح السبب الجذري: brand-chat-notifications-refresh.css كان يعطي
+   .yam-chat-stage-actions عرض 100% فيُخفي منطقة الاسم. هذا الملف يلغي ذلك
+   ويضمن ظهور الاسم + "متصل" مع تصغير محسوب للأزرار من أقصى لأدنى حد.
+   ⚠️ يجب أن يبقى هذا الاستيراد آخر CSS chat-related ليفوز في cascade. */
+import './styles/chat-header-v67-name-online-fix.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';

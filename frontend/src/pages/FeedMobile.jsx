@@ -413,17 +413,35 @@ function FeedMobile() {
 
   return (
     <>
-      {/* ⭐ v59.13.28 — الصفحة الرئيسية على ويب الموبايل مغلّفة الآن
-          بـ .yam-home-mobile-page تماماً مثل صفحة المجموعات
-          (.yam-groups-page). هذا يضمن أن السحب لأعلى/أسفل من أي
-          منطقة من الصفحة يستجيب بسلاسة 100% — momentum scroll حقيقي
-          على iOS Safari وكل المتصفحات. */}
+      {/* ⭐ v75 — ABSOLUTE FIX: الصفحة الرئيسية على ويب الموبايل
+          مغلّفة بـ .yam-home-mobile-page تماماً مثل صفحة المجموعات.
+          هذا يضمن أن السحب لأعلى/أسفل يستجيب بسلاسة 100%.
+          ⚠️ v75 inline-style: طبقة حماية إضافية (defense-in-depth)
+          لضمان أن الحاوية = block + عرض كامل + صفر padding جانبي. */}
       <div
         className="yam-home-mobile-page"
         dir="rtl"
         role="region"
         aria-label="الصفحة الرئيسية"
-        style={{ fontFamily: "'Noto Sans Arabic','Tajawal','Cairo',sans-serif" }}
+        style={{
+          fontFamily: "'Noto Sans Arabic','Tajawal','Cairo',sans-serif",
+          /* ⭐ v75 — inline guard: يفوز على أي CSS خارجي */
+          display: 'block',
+          width: '100%',
+          maxWidth: '100%',
+          minWidth: 0,
+          marginLeft: 0,
+          marginRight: 0,
+          marginInlineStart: 0,
+          marginInlineEnd: 0,
+          paddingLeft: 0,
+          paddingRight: 0,
+          paddingInlineStart: 0,
+          paddingInlineEnd: 0,
+          boxSizing: 'border-box',
+          direction: 'rtl',
+          textAlign: 'right',
+        }}
       >
         {/* === صندوق المُنشئ "بماذا تفكر؟" === */}
         <MobileComposer

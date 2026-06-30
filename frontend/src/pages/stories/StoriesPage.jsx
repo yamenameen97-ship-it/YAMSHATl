@@ -374,11 +374,12 @@ const pageStyles = `
 .yam-stories-tabs {
   display: flex;
   gap: 8px;
-  /* ✅ v73 FIX #2: فصل واضح بين أزرار التبويبات (قصّة جديدة /
-     الأرشيف / قصص الأصدقاء) وبين فقاعات الستوري أسفلها
-     لمنع اختبائها خلف الأزرار العلوية (المستخدم طلب سحبها تحت). */
-  margin-bottom: 28px;
-  padding-bottom: 8px;
+  /* ✅ v74 FIX #2 (DEFINITIVE): فصل واضح وكبير بين أزرار التبويبات
+     (قصّة جديدة / الأرشيف / قصص الأصدقاء) وبين فقاعات الستوري أسفلها
+     لمنع اختبائها تحت الشريط العلوي على شاشات الجوال الصغيرة.
+     المستخدم طلب صراحةً: "اسحبه ليظهر تحت الشريط بمسافة فوق منتصف الصفحة". */
+  margin-bottom: 0;
+  padding-bottom: 10px;
   border-bottom: 1px solid rgba(255,255,255,0.06);
   flex-wrap: wrap;
   position: relative;
@@ -421,18 +422,22 @@ const pageStyles = `
   .yam-stories-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
 }
 
-/* ✨ v59.13.36 — تخطيط حر (Free-Flow) لفقاعات الستوري
+/* ✨ v74 — تخطيط حر (Free-Flow) لفقاعات الستوري
    توزيع دائري على عرض الصفحة بدون حاوية مربعة تحصر العناصر */
-/* ✅ v73 FIX #2: إضافة padding-top أكبر + clear:both لإبعاد الفقاعات
-   تحت الأزرار العلوية بحيث تظهر منفصلة عن الشريط العلوي. */
+/* ✅ v74 FIX #2 (DEFINITIVE): إنزال الفقاعات لتظهر فوق منتصف الصفحة
+   بمسافة كبيرة من الشريط العلوي (طلب المستخدم الصريح).
+   نستخدم margin-top كبير + min-height ليُجبر الفقاعات على الجلوس
+   في الثلث الأعلى من الصفحة بدلاً من الالتصاق بالأزرار العلوية. */
 .yam-stories-freeflow {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   align-items: flex-start;
   gap: 22px 28px;
-  padding: 24px 4px 24px;
-  margin-top: 8px;
+  padding: 0 4px 24px;
+  /* 📏 المسافة المطلوبة: تقريباً 18% من ارتفاع الـ viewport */
+  /* هذا يضع الفقاعات تقريباً عند 25-30% من أعلى الشاشة (فوق منتصف الصفحة) */
+  margin-top: clamp(60px, 18vh, 160px);
   background: transparent;
   border: 0;
   clear: both;
@@ -440,10 +445,18 @@ const pageStyles = `
   z-index: 1;
 }
 @media (min-width: 768px) {
-  .yam-stories-freeflow { gap: 30px 38px; padding: 28px 8px 28px; margin-top: 10px; }
+  .yam-stories-freeflow {
+    gap: 30px 38px;
+    padding: 0 8px 28px;
+    margin-top: clamp(40px, 8vh, 80px);
+  }
 }
 @media (min-width: 1280px) {
-  .yam-stories-freeflow { gap: 36px 46px; padding: 32px 10px 32px; margin-top: 12px; }
+  .yam-stories-freeflow {
+    gap: 36px 46px;
+    padding: 0 10px 32px;
+    margin-top: clamp(32px, 5vh, 60px);
+  }
 }
 
 /* 🔵 الفقاعة الواحدة — دائرية بدون خلفية حاوية */

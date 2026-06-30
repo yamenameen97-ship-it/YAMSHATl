@@ -951,14 +951,17 @@ export default function Reels() {
           }
 
           /* Comments drawer */
-          /* ✅ v73 FIX #1: رفع z-index فوق BottomNav (z=1001-1003) كي يظهر مربع
-             الكتابة فوق شريط التنقل السفلي بدلًا من اختفائه خلفه. */
+          /* ✅ v74 FIX #1 (DEFINITIVE): درج التعليقات يجلس فوق BottomNav بالكامل
+             بحيث يظهر صندوق الإدخال مرئياً دون اختباء خلف شريط التنقل السفلي.
+             الإصلاح الجذري: padding-bottom على الحاوية .ym-reels-drawer يرفع البانل بأكمله. */
           .ym-reels-drawer {
             position: fixed;
             inset: 0;
             z-index: 2147483600;
             display: flex;
             align-items: flex-end;
+            /* ✅ v74: دفع الدرج بالكامل فوق BottomNav (ارتفاعه ≈64-72px + safe-area) */
+            padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px));
           }
           .ym-reels-drawer-backdrop {
             position: absolute;
@@ -970,10 +973,11 @@ export default function Reels() {
           .ym-reels-drawer-panel {
             position: relative;
             width: 100%;
-            /* ✅ v73 FIX #1: ارتفاع ثابت + bottom-safe-area كي يظهر شريط الإدخال
-               كاملاً فوق شريط التنقّل السفلي على الموبايل. */
-            height: 72dvh;
-            max-height: 72dvh;
+            /* ✅ v74 FIX #1: ارتفاع ثابت بدون safe-area (لأن .ym-reels-drawer يتكفل بالرفع فوق BottomNav).
+               صندوق الإدخال أصبح عضواً راسخاً في flex column. */
+            height: 60dvh;
+            max-height: 60dvh;
+            min-height: 320px;
             background: #150f24;
             border-top-left-radius: 22px;
             border-top-right-radius: 22px;
@@ -981,6 +985,7 @@ export default function Reels() {
             flex-direction: column;
             border-top: 1px solid rgba(139,92,246,.4);
             overflow: hidden;
+            z-index: 1;
           }
           .ym-reels-drawer-head {
             display: flex;
@@ -1025,13 +1030,14 @@ export default function Reels() {
           .ym-reels-drawer-input {
             display: flex;
             gap: 8px;
-            padding: 12px 14px;
-            /* ✅ v73 FIX #1: padding سفلي يحجز مساحة لشريط التنقل الموبايل
-               (BottomNav ≈ 64px + safe-area) كي يبقى صندوق الإدخال مرئيًا. */
-            padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+            padding: 14px 14px;
+            /* ✅ v74 FIX #1 (DEFINITIVE): البانل بأكمله أصبح فوق BottomNav
+               عبر padding-bottom على .ym-reels-drawer. لذلك لا حاجة لـ safe-area هنا. */
             border-top: 1px solid rgba(255,255,255,.08);
             background: #0f0a1c;
             flex-shrink: 0;
+            position: relative;
+            z-index: 2;
           }
           .ym-reels-drawer-input input {
             flex: 1;

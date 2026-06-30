@@ -30,15 +30,18 @@ export default function Modal({
     const previousFocus = document.activeElement;
     document.body.style.overflow = 'hidden';
 
-    const focusFirst = window.setTimeout(() => {
-      const preferredFocusable = modalRef.current?.querySelector(
-        'input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), select:not([disabled]), [contenteditable="true"], [data-modal-autofocus="true"]',
+    // v71 ROOT FIX: استخدام requestAnimationFrame بدلاً من setTimeout(40ms)
+    // للتركيز الفوري في أول frame بعد الرسم — يجعل النوافذ تفتح فوراً
+    const focusFirst = window.requestAnimationFrame(() => {
+      if (!modalRef.current) return;
+      // استعلام مدمج بدلاً من استعلامين منفصلين (تحسين أداء)
+      const preferred = modalRef.current.querySelector('[data-modal-autofocus="true"]');
+      if (preferred) { preferred.focus(); return; }
+      const focusable = modalRef.current.querySelector(
+        'input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), select:not([disabled]), [contenteditable="true"], button:not([disabled])',
       );
-      const fallbackFocusable = modalRef.current?.querySelector(
-        'button:not([disabled]), [href], input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      );
-      (preferredFocusable || fallbackFocusable)?.focus();
-    }, 40);
+      focusable?.focus();
+    });
 
     const onKeyDown = (event) => {
       if (event.key === 'Escape') onCloseRef.current?.();
@@ -60,7 +63,7 @@ export default function Modal({
 
     window.addEventListener('keydown', onKeyDown);
     return () => {
-      window.clearTimeout(focusFirst);
+      window.cancelAnimationFrame(focusFirst);
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', onKeyDown);
       if (previousFocus && typeof previousFocus.focus === 'function' && document.contains(previousFocus)) {

@@ -80,15 +80,17 @@ class InstantTouchFeedback {
       }, SCROLL_END_DELAY);
     };
 
-    // passive: true → لا يحجب الـ thread الرئيسي
-    window.addEventListener('scroll', onScrollOrTouchMove, { passive: true, capture: true });
-    window.addEventListener('touchmove', onScrollOrTouchMove, { passive: true, capture: true });
-    window.addEventListener('wheel', onScrollOrTouchMove, { passive: true, capture: true });
+    // v71 ROOT FIX: حذف capture:true لأنه كان يجبر كل حدث على المرور بمرحلة
+    // الـ capture قبل وصوله للعنصر المستهدف → يبطئ استجابة اللمس.
+    // passive: true يضمن عدم حجب الـ main thread.
+    window.addEventListener('scroll', onScrollOrTouchMove, { passive: true });
+    window.addEventListener('touchmove', onScrollOrTouchMove, { passive: true });
+    window.addEventListener('wheel', onScrollOrTouchMove, { passive: true });
 
     this.cleanupFns.push(() => {
-      window.removeEventListener('scroll', onScrollOrTouchMove, true);
-      window.removeEventListener('touchmove', onScrollOrTouchMove, true);
-      window.removeEventListener('wheel', onScrollOrTouchMove, true);
+      window.removeEventListener('scroll', onScrollOrTouchMove);
+      window.removeEventListener('touchmove', onScrollOrTouchMove);
+      window.removeEventListener('wheel', onScrollOrTouchMove);
     });
   }
 
@@ -232,16 +234,17 @@ class InstantTouchFeedback {
       this.touchStart = null;
     };
 
-    document.addEventListener('touchstart', onTouchStart, { passive: true, capture: true });
-    document.addEventListener('touchmove', onTouchMove, { passive: true, capture: true });
-    document.addEventListener('touchend', onTouchEndOrCancel, { passive: true, capture: true });
-    document.addEventListener('touchcancel', onTouchEndOrCancel, { passive: true, capture: true });
+    // v71 ROOT FIX: حذف capture:true (كان يبطئ استجابة كل لمسة)
+    document.addEventListener('touchstart', onTouchStart, { passive: true });
+    document.addEventListener('touchmove', onTouchMove, { passive: true });
+    document.addEventListener('touchend', onTouchEndOrCancel, { passive: true });
+    document.addEventListener('touchcancel', onTouchEndOrCancel, { passive: true });
 
     this.cleanupFns.push(() => {
-      document.removeEventListener('touchstart', onTouchStart, true);
-      document.removeEventListener('touchmove', onTouchMove, true);
-      document.removeEventListener('touchend', onTouchEndOrCancel, true);
-      document.removeEventListener('touchcancel', onTouchEndOrCancel, true);
+      document.removeEventListener('touchstart', onTouchStart);
+      document.removeEventListener('touchmove', onTouchMove);
+      document.removeEventListener('touchend', onTouchEndOrCancel);
+      document.removeEventListener('touchcancel', onTouchEndOrCancel);
     });
   }
 

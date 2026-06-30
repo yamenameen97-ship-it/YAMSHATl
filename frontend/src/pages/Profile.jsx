@@ -60,6 +60,10 @@ export default function Profile() {
   const isOwnProfile = username === currentUser;
 
   const [profile, setProfile] = useState(null);
+  // v71 ROOT FIX: تتبع حالة التحميل والخطأ بشكل صحيح حتى لا تعلق الصفحة
+  // على "جارٍ تحميل الملف الشخصي..." للأبد عند بطء/فشل الخادم
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [activeTab, setActiveTab] = useState('posts');
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showCustomization, setShowCustomization] = useState(false);
@@ -126,20 +130,59 @@ export default function Profile() {
 
   const loadProfile = async () => {
     // ✅ FIX (v59.13.3): حل race condition عند التنقل بين الملفات
-    // عند التنقل بين ملفي A ثم B بسرعة، استجابة A البطيئة
-    // كانت قد تصل بعد B وتستبدل بيانات B الأحدث.
     const mySeq = ++requestSeqRef.current;
     const myUsername = username;
 
+    setLoading(true);
+    setLoadError('');
+
+    // v71 ROOT FIX: عرض البيانات المحلية فوراً (Optimistic UI) حتى لا
+    // ينتظر المستخدم الخادم البارد (cold start لـ Render قد يصل إلى 30s)
+    const localPreview = readLocalProfileImages(myUsername);
+    if (!profile && localPreview) {
+      setProfile({
+        user: {
+          username: myUsername,
+          avatar: localPreview.avatar || '',
+          profile: { bio: '', cover_photo: localPreview.cover_photo || '' },
+        },
+        counts: { posts: 0, followers: 0, following: 0 },
+        posts: [],
+        archived_posts: [],
+        saved_posts: [],
+        _isStale: true,
+      });
+    }
+
+    // v71 ROOT FIX: safety timeout — لا تترك الصفحة عالقة للأبد
+    let didTimeout = false;
+    const safetyTimer = setTimeout(() => {
+      didTimeout = true;
+      if (mySeq !== requestSeqRef.current || myUsername !== username) return;
+      setLoading(false);
+      setProfile((prev) => prev || {
+        user: {
+          username: myUsername,
+          avatar: '',
+          profile: { bio: '', cover_photo: '' },
+        },
+        counts: { posts: 0, followers: 0, following: 0 },
+        posts: [],
+        archived_posts: [],
+        saved_posts: [],
+        _isStale: true,
+      });
+      setLoadError('الخادم يستعيد العمل، جارٍ المحاولة في الخلفية...');
+    }, 8000);
+
     try {
       const { data } = await getProfileBundle(myUsername);
+      clearTimeout(safetyTimer);
 
-      // إذا أُطلق طلب أحدث بعدنا، أو تغيّر الملف المستهدف — تجاهل الاستجابة
       if (mySeq !== requestSeqRef.current || myUsername !== username) {
         return;
       }
 
-      // دمج بيانات الصور المحفوظة محلياً إذا لم تأتٍ من الخادم
       const local = readLocalProfileImages(myUsername);
       if (local && data?.user) {
         if (!data.user.avatar && local.avatar) {
@@ -151,16 +194,17 @@ export default function Profile() {
         }
       }
       setProfile(data);
+      setLoading(false);
+      setLoadError('');
       setTheme(data?.profile_insights?.theme || data?.user?.profile?.profile_theme || 'midnight');
     } catch (error) {
-      // لا تكتب حالة فشل إذا لم تعد الاستجابة تخصنا
+      clearTimeout(safetyTimer);
       if (mySeq !== requestSeqRef.current || myUsername !== username) {
         return;
       }
       console.error('Failed to load profile', error);
-      // عند فشل تحميل الخادم، استخدم النسخة المحلية إن وجدت
       const local = readLocalProfileImages(myUsername) || {};
-      setProfile({
+      setProfile((prev) => (prev && !prev._isStale) ? prev : {
         user: {
           username: myUsername,
           avatar: local.avatar || '',
@@ -170,7 +214,12 @@ export default function Profile() {
         posts: [],
         archived_posts: [],
         saved_posts: [],
+        _isStale: true,
       });
+      setLoading(false);
+      if (!didTimeout) {
+        setLoadError('تعذر تحميل الملف الشخصي. تحقق من اتصالك بالإنترنت.');
+      }
     }
   };
 
@@ -336,10 +385,26 @@ export default function Profile() {
   };
 
   if (!profile) {
+    // v71 ROOT FIX: skeleton خفيف بدلاً من نص التحميل العالق + زر إعادة المحاولة
     return (
       <MainLayout>
         <div className="profile-page profile-page-loading">
-          <Card className="profile-loading-card">جارٍ تحميل الملف الشخصي...</Card>
+          <Card className="profile-loading-card">
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '16px 8px' }}>
+              <div style={{ width: 96, height: 96, borderRadius: '50%', background: 'linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.10) 50%, rgba(255,255,255,0.04) 100%)', backgroundSize: '200% 100%', animation: 'ymProfileShimmer 1.2s linear infinite' }} />
+              <div style={{ width: 160, height: 16, borderRadius: 8, background: 'linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.10) 50%, rgba(255,255,255,0.04) 100%)', backgroundSize: '200% 100%', animation: 'ymProfileShimmer 1.2s linear infinite' }} />
+              <div style={{ width: 220, height: 12, borderRadius: 6, background: 'linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.10) 50%, rgba(255,255,255,0.04) 100%)', backgroundSize: '200% 100%', animation: 'ymProfileShimmer 1.2s linear infinite' }} />
+              {loadError ? (
+                <>
+                  <div style={{ color: '#fbbf24', fontSize: 13, marginTop: 8, textAlign: 'center' }}>{loadError}</div>
+                  <Button onClick={() => loadProfile()} variant="primary" size="small">إعادة المحاولة</Button>
+                </>
+              ) : (
+                <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, marginTop: 4 }}>جارٍ تحميل الملف الشخصي...</div>
+              )}
+            </div>
+            <style>{`@keyframes ymProfileShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
+          </Card>
         </div>
       </MainLayout>
     );

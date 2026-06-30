@@ -190,6 +190,20 @@ import './styles/yamshat-fixes-v71-performance-root-fix.css';
    ⚠️ يجب أن يبقى هذا الملف **آخر CSS مطلقاً** ليفوز في cascade. */
 import './styles/yamshat-fixes-v72-composer-filters-ULTIMATE.css';
 
+/* 🔥🔥🔥 v73 — DEFINITIVE ROOT FIX (الحل الجذري الحاسم بعد 6 محاولات)
+   يحلّ نهائياً مشكلة هروب "بماذا تفكر؟" + أزرار التصفية إلى اليسار
+   على ويب الموبايل (الشاشات الصغيرة 320–480px).
+   
+   📐 النموذج المعماري الجديد: CSS Grid (1fr) على الحاوية الأم.
+      Grid يجبر الأبناء على عرض 100% عبر justify-items: stretch تلقائياً
+      — يلغي تأثير أي width:auto قديم بدون معركة specificity.
+   
+   🗑️ تمّ تفريغ الملفات السامة فعلياً (v60.9, v65, v68, v70, v72)
+      كلها تشير الآن إلى v73 كحلٍّ بديل.
+   
+   ⚠️ يجب أن يبقى هذا الملف **آخر CSS مطلقاً** بعد كل الإصلاحات. */
+import './styles/yamshat-fixes-v73-composer-filters-DEFINITIVE.css';
+
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';
@@ -198,7 +212,7 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v72-composer-filters-ULTIMATE';
+const BUILD_ID = 'yamshat-v73-composer-filters-DEFINITIVE';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

@@ -2,27 +2,27 @@ import { memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 /**
- * MobileComposer (v59.13.23 — A11y Pass)
- *  • v59.13.23 UX fixes:
- *    - إضافة focus-visible ring للصندوق وأزرار الإجراءات (Keyboard a11y).
- *    - احترام prefers-reduced-motion (إيقاف scale animation).
- *
- * MobileComposer (v59.13.21 — RTL Arabic Order Restored)
+ * MobileComposer (v73 — DEFINITIVE ROOT FIX)
  * --------------------------------------------------------------------------
- * الترتيب البصري الصحيح للعربية (RTL، من اليمين→اليسار على الشاشة):
+ * 🔥 v73 يحل المشكلة المزمنة جذرياً عبر CSS Grid على الحاوية الأم
+ * (.yam-home-mobile-page) — الأبناء يأخذون 100% تلقائياً بفضل
+ * justify-items: stretch، بدون أي معركة specificity.
  *
+ * هذا الملف:
+ *   ✅ أزال inline-style guard القديم (wrapInlineGuard) الذي كان
+ *      يفرض marginInline سالب — لم يعد ضرورياً لأن v60.9 تم تفريغه.
+ *   ✅ أزال <style>{`...`}</style> المضمن الذي كان يكرر قواعد
+ *      تتعارض مع v73. كل الستايل الآن مركزي في v73 CSS.
+ *   ✅ أبقى فقط على الستايل الداخلي للأيقونات والأزرار (الذي
+ *      لا يتعارض مع v73).
+ *
+ * الترتيب البصري RTL على الشاشة (يمين → يسار):
  *   |  ☺  GIF  🖼️                      بماذا تفكر؟   Y  |
  *   |(يسار: أيقونات الوسائط)           (يمين: نص+أفاتار) |
- *
- * ✅ شعار Y (الأفاتار) في **يمين** الصندوق (وفق العرف العربي).
- * ✅ نص "بماذا تفكر؟" بجوار الأفاتار من اليسار.
- * ✅ أيقونات الوسائط (صورة، GIF، إيموجي) في **يسار** الصندوق.
- * ✅ حاوية مستطيلة بزوايا 14px.
- * ✅ استجابة كاملة: 320 / 360 / 400 / 480 / 768+.
  */
 function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
   const navigate = useNavigate();
-  // v50 — فتح صفحة ReelComposer الجديدة بدلاً من dispatch حدث المودال القديم
+
   const open = (action) => {
     if (onFocus) {
       onFocus(action);
@@ -34,27 +34,8 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
     navigate(`/compose?tab=${tab}`);
   };
 
-  // ⭐ v72 — inline style guard: حزام أمان أخير يفرض width: 100%
-  // حتى لو تسللت أي قاعدة CSS قديمة بـ width: auto / margin negative.
-  // inline style يفوز على أي CSS عدا !important في CSS — وملف v72 الجديد
-  // يستخدم !important داخلياً أيضاً — فتصبح الحماية مضاعفة.
-  const wrapInlineGuard = {
-    width: '100%',
-    maxWidth: '100%',
-    minWidth: '100%',
-    marginLeft: 0,
-    marginRight: 0,
-    marginInlineStart: 0,
-    marginInlineEnd: 0,
-    boxSizing: 'border-box',
-    display: 'block',
-    direction: 'rtl',
-    textAlign: 'right',
-    float: 'none',
-  };
-
   return (
-    <div className="ym-composer-wrap" dir="rtl" style={wrapInlineGuard}>
+    <div className="ym-composer-wrap" dir="rtl">
       <div
         className="ym-composer"
         role="button"
@@ -62,9 +43,8 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
         dir="rtl"
         onClick={() => open(null)}
         onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && open(null)}
-        style={{ width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}
       >
-        {/* === Avatar شعار Y (في يسار الصندوق على الشاشة) === */}
+        {/* === Avatar شعار Y === */}
         <span className="ym-composer-avatar" aria-hidden="true">
           <svg viewBox="0 0 100 100" width="100%" height="100%">
             <defs>
@@ -89,8 +69,7 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           بماذا تفكر؟
         </span>
 
-        {/* === أزرار الأكشن (في يمين الصندوق على الشاشة) === */}
-        {/* الترتيب على الشاشة من اليسار→اليمين: 🖼️ ← GIF ← ☺ */}
+        {/* === أزرار الأكشن === */}
         <div
           className="ym-composer-actions"
           onClick={(e) => e.stopPropagation()}
@@ -134,53 +113,26 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
         </div>
       </div>
 
+      {/* ⭐ v73 — Internal styles محدودة فقط للعناصر الداخلية
+          (الأفاتار، الأزرار، البيل) التي لا تتعارض مع v73 CSS.
+          القواعد الخاصة بـ .ym-composer-wrap و .ym-composer
+          (العرض، الـ sticky، الـ padding) كلها مركزية في v73. */}
       <style>{`
-        .ym-composer-wrap {
-          /* ⭐ v68 FINAL FIX:
-             عرض طبيعي 100% بدون أي calc() أو negative margin.
-             الحاوية الأم .yam-home-mobile-page أصبح لديها padding
-             جانبي = 0 (بفضل v68 CSS)، فالعنصر يمتد بعرض الشاشة الكامل
-             بشكل طبيعي. المنشورات (.ym-feed) تأخذ الهامش الجمالي. */
-          padding: 10px 12px 6px;
-          padding-inline-start: 12px;
-          padding-inline-end: 12px;
-          margin: 0;
-          background-color: #0A0D1A;
-          box-sizing: border-box;
-          width: 100%;
-          max-width: 100%;
-          display: block;
-          font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
-          direction: rtl;
-          text-align: right;
-          position: sticky;
-          top: 0;
-          z-index: 51; /* أعلى من الفلاتر (50) */
-        }
-        .ym-composer {
-          display: flex;
-          flex-direction: row;
-          align-items: center;
-          justify-content: flex-start;  /* RTL: flex-start = اليمين */
-          gap: 8px;
+        .ym-composer-wrap .ym-composer {
           background: #14172a;
           border: 1px solid #1F2937;
           border-radius: 14px;
           padding: 7px 10px;
-          margin: 0;
           cursor: pointer;
           transition: border-color 0.15s, background 0.15s;
-          box-sizing: border-box;
-          width: 100%;
-          max-width: 100%;
           overflow: hidden;
-          direction: rtl;
-          text-align: right;
+          font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
         }
-        .ym-composer:hover { border-color: rgba(139,92,246,0.45); }
-        /* ⭐ v59.13.23 a11y: focus-visible ring للصندوق */
-        .ym-composer:focus { outline: none; }
-        .ym-composer:focus-visible {
+        .ym-composer-wrap .ym-composer:hover {
+          border-color: rgba(139,92,246,0.45);
+        }
+        .ym-composer-wrap .ym-composer:focus { outline: none; }
+        .ym-composer-wrap .ym-composer:focus-visible {
           border-color: #A78BFA;
           box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.35);
         }
@@ -248,7 +200,6 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           color: #C4B5FD;
         }
         .ym-composer-action:active { transform: scale(0.93); }
-        /* ⭐ v59.13.23 a11y: focus-visible لأزرار الإجراءات */
         .ym-composer-action:focus { outline: none; }
         .ym-composer-action:focus-visible {
           outline: 2px solid #A78BFA;
@@ -268,8 +219,7 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
         }
 
         @media (max-width: 400px) {
-          .ym-composer-wrap { padding: 8px 10px 4px; width: 100%; max-width: 100%; }
-          .ym-composer { gap: 6px; padding: 6px 8px; border-radius: 12px; }
+          .ym-composer-wrap .ym-composer { gap: 6px; padding: 6px 8px; border-radius: 12px; }
           .ym-composer-avatar { width: 30px; height: 30px; padding: 3px; }
           .ym-composer-input { font-size: 0.82rem; padding: 3px 5px; }
           .ym-composer-actions { gap: 3px; }
@@ -278,8 +228,7 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           .ym-gif-pill { font-size: 0.62rem; padding: 1px 3px; }
         }
         @media (max-width: 360px) {
-          .ym-composer-wrap { padding: 7px 8px 4px; width: 100%; max-width: 100%; }
-          .ym-composer { gap: 5px; padding: 5px 7px; }
+          .ym-composer-wrap .ym-composer { gap: 5px; padding: 5px 7px; }
           .ym-composer-avatar { width: 28px; height: 28px; padding: 3px; }
           .ym-composer-input { font-size: 0.76rem; padding: 3px 4px; }
           .ym-composer-actions { gap: 2px; }
@@ -288,8 +237,7 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           .ym-gif-pill { font-size: 0.58rem; padding: 1px 3px; }
         }
         @media (max-width: 320px) {
-          .ym-composer-wrap { padding: 6px 6px 3px; width: 100%; max-width: 100%; }
-          .ym-composer { gap: 3px; padding: 4px 5px; border-radius: 10px; }
+          .ym-composer-wrap .ym-composer { gap: 3px; padding: 4px 5px; border-radius: 10px; }
           .ym-composer-avatar { width: 24px; height: 24px; padding: 2px; }
           .ym-composer-input { font-size: 0.66rem; padding: 2px 3px; }
           .ym-composer-actions { gap: 1px; }
@@ -297,16 +245,9 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           .ym-composer-action svg { width: 13px; height: 13px; }
           .ym-gif-pill { font-size: 0.5rem; padding: 1px 2px; border-width: 1px; }
         }
-        /* دعم Redmi Note 8 (عرض افتراضي 393px) */
-        @media (max-width: 393px) and (min-width: 361px) {
-          .ym-composer-wrap { padding: 9px 11px 4px; }
-          .ym-composer { padding: 6px 9px; }
-          .ym-composer-input { font-size: 0.84rem; }
-        }
 
-        /* ⭐ v59.13.23 a11y: احترام prefers-reduced-motion */
         @media (prefers-reduced-motion: reduce) {
-          .ym-composer,
+          .ym-composer-wrap .ym-composer,
           .ym-composer-action {
             transition: none !important;
           }

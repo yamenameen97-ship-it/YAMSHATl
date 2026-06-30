@@ -374,8 +374,15 @@ const pageStyles = `
 .yam-stories-tabs {
   display: flex;
   gap: 8px;
-  margin-bottom: 16px;
+  /* ✅ v73 FIX #2: فصل واضح بين أزرار التبويبات (قصّة جديدة /
+     الأرشيف / قصص الأصدقاء) وبين فقاعات الستوري أسفلها
+     لمنع اختبائها خلف الأزرار العلوية (المستخدم طلب سحبها تحت). */
+  margin-bottom: 28px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
   flex-wrap: wrap;
+  position: relative;
+  z-index: 2;
 }
 .yam-stab {
   background: rgba(255,255,255,0.05);
@@ -416,21 +423,27 @@ const pageStyles = `
 
 /* ✨ v59.13.36 — تخطيط حر (Free-Flow) لفقاعات الستوري
    توزيع دائري على عرض الصفحة بدون حاوية مربعة تحصر العناصر */
+/* ✅ v73 FIX #2: إضافة padding-top أكبر + clear:both لإبعاد الفقاعات
+   تحت الأزرار العلوية بحيث تظهر منفصلة عن الشريط العلوي. */
 .yam-stories-freeflow {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   align-items: flex-start;
   gap: 22px 28px;
-  padding: 8px 4px 24px;
+  padding: 24px 4px 24px;
+  margin-top: 8px;
   background: transparent;
   border: 0;
+  clear: both;
+  position: relative;
+  z-index: 1;
 }
 @media (min-width: 768px) {
-  .yam-stories-freeflow { gap: 30px 38px; padding: 12px 8px 28px; }
+  .yam-stories-freeflow { gap: 30px 38px; padding: 28px 8px 28px; margin-top: 10px; }
 }
 @media (min-width: 1280px) {
-  .yam-stories-freeflow { gap: 36px 46px; padding: 16px 10px 32px; }
+  .yam-stories-freeflow { gap: 36px 46px; padding: 32px 10px 32px; margin-top: 12px; }
 }
 
 /* 🔵 الفقاعة الواحدة — دائرية بدون خلفية حاوية */

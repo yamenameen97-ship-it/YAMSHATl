@@ -951,10 +951,12 @@ export default function Reels() {
           }
 
           /* Comments drawer */
+          /* ✅ v73 FIX #1: رفع z-index فوق BottomNav (z=1001-1003) كي يظهر مربع
+             الكتابة فوق شريط التنقل السفلي بدلًا من اختفائه خلفه. */
           .ym-reels-drawer {
             position: fixed;
             inset: 0;
-            z-index: 50;
+            z-index: 2147483600;
             display: flex;
             align-items: flex-end;
           }
@@ -964,16 +966,21 @@ export default function Reels() {
             background: rgba(0,0,0,.55);
             backdrop-filter: blur(2px);
           }
+          .ym-reels-panel-anchor { width: 100%; }
           .ym-reels-drawer-panel {
             position: relative;
             width: 100%;
-            max-height: 70vh;
+            /* ✅ v73 FIX #1: ارتفاع ثابت + bottom-safe-area كي يظهر شريط الإدخال
+               كاملاً فوق شريط التنقّل السفلي على الموبايل. */
+            height: 72dvh;
+            max-height: 72dvh;
             background: #150f24;
             border-top-left-radius: 22px;
             border-top-right-radius: 22px;
             display: flex;
             flex-direction: column;
             border-top: 1px solid rgba(139,92,246,.4);
+            overflow: hidden;
           }
           .ym-reels-drawer-head {
             display: flex;
@@ -1019,8 +1026,12 @@ export default function Reels() {
             display: flex;
             gap: 8px;
             padding: 12px 14px;
+            /* ✅ v73 FIX #1: padding سفلي يحجز مساحة لشريط التنقل الموبايل
+               (BottomNav ≈ 64px + safe-area) كي يبقى صندوق الإدخال مرئيًا. */
+            padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
             border-top: 1px solid rgba(255,255,255,.08);
             background: #0f0a1c;
+            flex-shrink: 0;
           }
           .ym-reels-drawer-input input {
             flex: 1;

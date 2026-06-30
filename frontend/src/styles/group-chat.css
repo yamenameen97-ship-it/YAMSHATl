@@ -6,13 +6,18 @@
 .yam-group-chat-container {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  min-height: 100svh;
-  height: 100dvh;
+  /* ✅ v73 FIX #3: نستخدم الارتفاع المتاح من الأم (.page-content)
+     بدلاً من 100dvh كي لا يمتد المكوّن خارج المنطقة المرئية
+     (التي تطرح ارتفاع BottomNav). هذا يحلّ مشكلة ظهور مربع كتابة
+     مزدوج (أحدهما تحت BottomNav) داخل مجموعات الدردشة. */
+  height: 100%;
+  min-height: 100%;
+  max-height: 100%;
   background-color: #080a12; /* خلفية داكنة جداً */
   color: #ffffff;
   font-family: 'Inter', sans-serif;
   overflow: hidden;
+  position: relative;
 }
 
 /* الهيدر العلوي */
@@ -101,10 +106,14 @@
 }
 
 /* منطقة الرسائل */
+/* ✅ v73 FIX #3: padding-bottom صغير فقط لتباعد آخر رسالة عن الـ input.
+   الـ input area هو الآن sticky/relative داخل نفس container الـ flex،
+   لذا لا حاجة لحجز 132px لمنع التداخل. هذا يلغي الفراغ الذي بدا كصندوق ثاني. */
 .yam-group-messages {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
-  padding: 24px 20px calc(132px + env(safe-area-inset-bottom, 0px));
+  padding: 24px 20px 16px;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -112,7 +121,7 @@
   scrollbar-width: auto;
   scrollbar-color: #8b5cf6 rgba(255, 255, 255, 0.05);
   scroll-padding-top: 90px;
-  scroll-padding-bottom: 132px;
+  scroll-padding-bottom: 16px;
 }
 
 .yam-group-messages::-webkit-scrollbar {
@@ -260,16 +269,20 @@
 }
 
 /* منطقة الإدخال */
+/* ✅ v73 FIX #3: تحويل من sticky إلى عضو flex عادي (relative) لأن الأم
+   (.yam-group-chat-container) أصبحت height:100% داخل .page-content التي
+   تطرح ارتفاع BottomNav. النتيجة: مربع إدخال واحد فقط ظاهر مباشرةً فوق
+   شريط التنقّل السفلي بدون تكرار/شبح. */
 .yam-group-input-area {
   padding: 14px 20px;
-  padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: 14px;
   background: rgba(13, 17, 28, 0.92);
   border-top: 1px solid rgba(255, 255, 255, 0.05);
   display: flex;
   align-items: center;
   gap: 12px;
-  position: sticky;
-  bottom: 0;
+  position: relative;
+  flex-shrink: 0;
   z-index: 20;
   backdrop-filter: blur(14px);
   box-shadow: 0 -16px 32px rgba(0, 0, 0, 0.28);

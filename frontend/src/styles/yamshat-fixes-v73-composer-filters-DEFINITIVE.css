@@ -1,0 +1,529 @@
+/* ============================================================
+   🔥🔥🔥 YAMSHAT — v73 — DEFINITIVE ROOT FIX (الحل الجذري الحاسم)
+   ============================================================
+   📋 خلاصة المشكلة بعد 6 محاولات فاشلة (v59.13.24 → v72):
+   ────────────────────────────────────────────────
+   صندوق "بماذا تفكر؟" وأزرار التصفية لا يزالان يهربان إلى الجهة
+   اليسرى ولا يمتدّان بعرض الشاشة الكامل على ويب الموبايل
+   (الشاشات الصغيرة 320–480px) رغم 2205 سطر CSS متعارض.
+
+   🔬 السبب الجذري الحقيقي (الذي فات كل المحاولات السابقة):
+   ────────────────────────────────────────────────
+   1) ملف v60.9 (الأصل السام) ثبّت:
+        width: auto !important
+        margin-inline-start: -12px !important
+        margin-inline-end:   -12px !important
+      على .ym-composer-wrap و .ym-filters-container.
+
+   2) ملفات v65/v68/v70/v72 حاولت إصلاحها بزيادة specificity
+      وإضافة width: 100% !important، لكن:
+        • !important مع specificity متساوية = آخر import يفوز
+        • مع تعدد الـ media queries، كل ملف يضيف breakpoint جديد
+        • النتيجة: cascade متضارب لا يمكن التنبؤ به على Chrome Mobile
+
+   3) ملف v70 أضاف display:flex + flex-direction:column على
+      .yam-home-mobile-page → reflow متضارب مع inline-styles من JSX.
+
+   4) MobileComposer.jsx + MobileFilterPills.jsx يحويان أيضاً
+      <style>{`...`}</style> بقواعد width:100% — هذه inline styles
+      من React تطبق scoped لكنها تتعارض مع !important من الملفات.
+
+   ✅ الحل النهائي v73 (نموذج معماري جديد كلياً):
+   ────────────────────────────────────────────────
+   ▸ إفراغ الملفات السامة (v60.9, v65, v68, v70, v72) — تم
+   ▸ نموذج Grid على الأم بدل Block/Flex:
+        .yam-home-mobile-page { display: grid; grid-template-columns: 1fr; }
+     في CSS Grid، كل ابن مباشر يأخذ تلقائياً عرض العمود الكامل
+     (1fr = 100%) بغض النظر عن أي width:auto على الابن نفسه.
+     هذه خاصية معمارية في Grid (justify-items: stretch هو الافتراضي)
+     وليست hack — تلغي الحاجة لـ width:100% على الأبناء كلياً.
+
+   ▸ إزالة كل padding-inline من الأم — يتولاه كل ابن بنفسه.
+
+   ▸ specificity منخفضة + استخدام محدود لـ !important فقط حيث
+     يلزم لإلغاء قواعد قديمة معلَّقة في الـ cascade.
+
+   ⚠️ هذا الملف يجب أن يبقى آخر CSS مُستوَرد في main.jsx.
+   ============================================================ */
+
+
+/* ─────────────────────────────────────────────────────────────
+   0️⃣  متغيرات الجذر — قابلة للضبط حسب breakpoint
+   ───────────────────────────────────────────────────────────── */
+:root {
+  --ym-bar-pad-x: 12px;
+  --ym-topbar-h: 52px;
+  --ym-composer-sticky-top: 0px;
+  --ym-filters-sticky-top: 52px;
+}
+
+@media (max-width: 480px) {
+  :root { --ym-bar-pad-x: 11px; --ym-filters-sticky-top: 52px; }
+}
+@media (max-width: 400px) {
+  :root { --ym-bar-pad-x: 10px; --ym-filters-sticky-top: 50px; }
+}
+@media (max-width: 360px) {
+  :root { --ym-bar-pad-x: 8px;  --ym-filters-sticky-top: 48px; }
+}
+@media (max-width: 320px) {
+  :root { --ym-bar-pad-x: 6px;  --ym-filters-sticky-top: 46px; }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   1️⃣  ⭐⭐⭐ .yam-home-mobile-page — الحاوية الأم
+       نموذج جديد: CSS Grid بعمود واحد (1fr)
+       → كل ابن مباشر يأخذ 100% بدون أي قاعدة width
+       → justify-items: stretch (الافتراضي) يلغي width:auto
+   ───────────────────────────────────────────────────────────── */
+.yam-home-mobile-page {
+  /* ⭐ النموذج المعماري الجديد */
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-auto-rows: min-content !important;
+  align-content: start !important;
+  justify-items: stretch !important;  /* الأبناء = 100% تلقائياً */
+
+  /* عرض كامل بدون أي padding جانبي */
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+
+  /* الأبعاد لتمرير عمودي داخلي */
+  height: 100vh;
+  height: 100dvh;
+  min-height: 100dvh;
+  max-height: 100dvh;
+
+  /* بدون padding جانبي — كل ابن يضع padding داخله */
+  padding-top: 0;
+  padding-right: 0;
+  padding-left: 0;
+  padding-inline-start: 0;
+  padding-inline-end: 0;
+  padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
+
+  /* بدون margin */
+  margin: 0;
+
+  /* تمرير */
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior-y: contain;
+  overscroll-behavior-x: none;
+  overflow-anchor: none;
+
+  /* RTL */
+  direction: rtl;
+  text-align: right;
+  font-family: 'Noto Sans Arabic', 'Tajawal', 'Cairo', 'Inter', sans-serif;
+
+  /* لا transforms تكسر sticky / momentum */
+  transform: none;
+  -webkit-transform: none;
+  filter: none;
+  -webkit-filter: none;
+  perspective: none;
+  will-change: auto;
+  contain: none;
+
+  /* ظهور */
+  background-color: #0A0D1A;
+  color: #ffffff;
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   2️⃣  ⭐⭐⭐ الأبناء المباشرون: composer-wrap + filters-container + feed
+       في Grid يأخذون 100% تلقائياً بفضل justify-items: stretch
+       (لا حاجة لـ width:100% — Grid يتولى ذلك معمارياً)
+
+       لكن نُضيف width:100% احتياطاً لأي محرك قديم
+       ونلغي صراحةً margin-inline negative من v60.9 (المعطّل الآن)
+   ───────────────────────────────────────────────────────────── */
+.yam-home-mobile-page > .ym-composer-wrap,
+.yam-home-mobile-page > .ym-filters-container,
+.yam-home-mobile-page > .ym-feed,
+.yam-home-mobile-page > .ym-empty {
+  /* Grid item: العمود الكامل */
+  grid-column: 1 / -1 !important;
+  justify-self: stretch !important;
+  align-self: start !important;
+
+  /* عرض كامل (احتياط للمتصفحات التي لا تدعم justify-items) */
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+
+  /* صفر margin — يلغي -12px السالب من v60.9 */
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  margin-inline-start: 0 !important;
+  margin-inline-end: 0 !important;
+
+  /* صندوق border-box ليتوافق padding مع العرض */
+  box-sizing: border-box !important;
+
+  /* لا float */
+  float: none !important;
+
+  /* الأبناء RTL */
+  direction: rtl !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   3️⃣  .ym-composer-wrap — صندوق "بماذا تفكر؟"
+       sticky في أعلى scroll container
+   ───────────────────────────────────────────────────────────── */
+.yam-home-mobile-page > .ym-composer-wrap {
+  display: block !important;
+  background-color: #0A0D1A !important;
+
+  /* padding داخلي = الهامش الجمالي للصندوق */
+  padding-top: 10px !important;
+  padding-right: var(--ym-bar-pad-x) !important;
+  padding-bottom: 6px !important;
+  padding-left: var(--ym-bar-pad-x) !important;
+  padding-inline-start: var(--ym-bar-pad-x) !important;
+  padding-inline-end: var(--ym-bar-pad-x) !important;
+
+  /* sticky */
+  position: -webkit-sticky !important;
+  position: sticky !important;
+  top: var(--ym-composer-sticky-top) !important;
+  z-index: 51 !important;
+
+  /* لا transform يكسر sticky */
+  transform: none !important;
+  filter: none !important;
+  will-change: auto !important;
+  contain: none !important;
+
+  text-align: right !important;
+  font-family: 'Noto Sans Arabic', 'Tajawal', sans-serif !important;
+
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   4️⃣  .ym-composer — الصندوق الداخلي flex
+   ───────────────────────────────────────────────────────────── */
+.yam-home-mobile-page > .ym-composer-wrap > .ym-composer {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-start !important;  /* RTL: flex-start = اليمين */
+  gap: 8px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  direction: rtl !important;
+  text-align: right !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   5️⃣  .ym-filters-container — شريط الفلاتر
+       sticky تحت الـ composer بالضبط
+   ───────────────────────────────────────────────────────────── */
+.yam-home-mobile-page > .ym-filters-container {
+  display: block !important;
+  background-color: #0A0D1A !important;
+
+  /* padding داخلي */
+  padding-top: 8px !important;
+  padding-right: var(--ym-bar-pad-x) !important;
+  padding-bottom: 10px !important;
+  padding-left: var(--ym-bar-pad-x) !important;
+  padding-inline-start: var(--ym-bar-pad-x) !important;
+  padding-inline-end: var(--ym-bar-pad-x) !important;
+
+  /* sticky */
+  position: -webkit-sticky !important;
+  position: sticky !important;
+  top: var(--ym-filters-sticky-top) !important;
+  z-index: 50 !important;
+
+  /* تمرير أفقي ناعم للفلاتر */
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-x pan-y !important;
+
+  /* لا transforms */
+  transform: none !important;
+  filter: none !important;
+  will-change: auto !important;
+  contain: none !important;
+
+  border-bottom: 1px solid #1F2937 !important;
+  text-align: right !important;
+  font-family: 'Noto Sans Arabic', 'Tajawal', sans-serif !important;
+
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+.yam-home-mobile-page > .ym-filters-container::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   6️⃣  .ym-filters — صف الأزرار، RTL، flex-start = اليمين
+   ───────────────────────────────────────────────────────────── */
+.yam-home-mobile-page > .ym-filters-container > .ym-filters {
+  display: flex !important;
+  flex-direction: row !important;
+  justify-content: flex-start !important;
+  align-items: center !important;
+  gap: 6px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  direction: rtl !important;
+  text-align: right !important;
+  box-sizing: border-box !important;
+}
+
+.yam-home-mobile-page > .ym-filters-container > .ym-filters > .ym-filter-pill-new:first-child {
+  margin-inline-start: 0 !important;
+  margin-right: 0 !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   7️⃣  .ym-feed — المنشورات بهامش جانبي جمالي
+   ───────────────────────────────────────────────────────────── */
+.yam-home-mobile-page > .ym-feed {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+
+  padding-top: 12px !important;
+  padding-right: var(--ym-bar-pad-x) !important;
+  padding-bottom: 12px !important;
+  padding-left: var(--ym-bar-pad-x) !important;
+  padding-inline-start: var(--ym-bar-pad-x) !important;
+  padding-inline-end: var(--ym-bar-pad-x) !important;
+
+  margin: 0 !important;
+  direction: rtl !important;
+  font-family: 'Noto Sans Arabic', 'Tajawal', sans-serif !important;
+  overflow: visible !important;
+}
+
+.yam-home-mobile-page > .ym-empty {
+  padding: 24px var(--ym-bar-pad-x) !important;
+  text-align: center !important;
+  color: #9CA3AF !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   8️⃣  إزاحة .page-content للأسفل بقدر ارتفاع Topbar
+   ───────────────────────────────────────────────────────────── */
+.app-shell .page-content:has(.yam-home-mobile-page),
+.app-shell.yamshat-unified .page-content:has(.yam-home-mobile-page) {
+  padding-top: var(--ym-topbar-h) !important;
+  padding-bottom: 0 !important;
+  padding-right: 0 !important;
+  padding-left: 0 !important;
+
+  transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+  will-change: auto !important;
+  contain: none !important;
+
+  height: 100vh !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   9️⃣  المسار من html → الحاوية: لا transform/filter يكسر sticky
+   ───────────────────────────────────────────────────────────── */
+html,
+html body,
+html body #root,
+html body .app-shell,
+html body .app-shell.yamshat-unified,
+html body .app-shell.yamshat-unified .main-shell,
+html body .app-shell.yamshat-unified .page-content,
+html body .app-shell.yamshat-unified .page-content .page-shell-glow {
+  transform: none !important;
+  -webkit-transform: none !important;
+  filter: none !important;
+  -webkit-filter: none !important;
+  perspective: none !important;
+  -webkit-perspective: none !important;
+  contain: none !important;
+}
+
+html body .app-shell.yamshat-unified .page-content .page-shell-glow {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   🔟  iOS Safari — تأكيد sticky يعمل
+   ───────────────────────────────────────────────────────────── */
+@supports (-webkit-touch-callout: none) {
+  .yam-home-mobile-page {
+    -webkit-overflow-scrolling: touch !important;
+    overflow-y: auto !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    will-change: auto !important;
+    transform: none !important;
+  }
+  .yam-home-mobile-page > .ym-composer-wrap {
+    position: -webkit-sticky !important;
+    position: sticky !important;
+    top: 0 !important;
+  }
+  .yam-home-mobile-page > .ym-filters-container {
+    position: -webkit-sticky !important;
+    position: sticky !important;
+    top: var(--ym-filters-sticky-top) !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   ⓫  حماية ضد inline styles قديمة
+   ───────────────────────────────────────────────────────────── */
+.yam-home-mobile-page[style*="direction: ltr"],
+.yam-home-mobile-page[style*="direction:ltr"] {
+  direction: rtl !important;
+}
+
+.ym-composer-wrap[style*="text-align: left"],
+.ym-composer-wrap[style*="text-align:left"],
+.ym-filters-container[style*="text-align: left"],
+.ym-filters-container[style*="text-align:left"] {
+  text-align: right !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   ⓬  إلغاء صريح لأي بقايا من v60.9/v65 لو ظهرت من cache قديم
+       (الملفات نفسها تم تفريغها، لكن نضع الحماية للأمان)
+   ───────────────────────────────────────────────────────────── */
+.yam-home-mobile-page .ym-composer-wrap,
+.yam-home-mobile-page .ym-filters-container,
+.ym-composer-wrap,
+.ym-filters-container {
+  /* صفر margin سالب */
+  margin-inline-start: 0 !important;
+  margin-inline-end: 0 !important;
+  margin-right: 0 !important;
+  margin-left: 0 !important;
+
+  /* لا calc(100% + 24px) */
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+
+  /* لا float */
+  float: none !important;
+
+  /* RTL مضمون */
+  direction: rtl !important;
+  text-align: right !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   ⓭  Responsive — تثبيت أن العرض يبقى 100% على كل breakpoint
+   ───────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .yam-home-mobile-page > .ym-composer-wrap,
+  .yam-home-mobile-page > .ym-filters-container,
+  .yam-home-mobile-page > .ym-feed {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .yam-home-mobile-page > .ym-composer-wrap,
+  .yam-home-mobile-page > .ym-filters-container {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .yam-home-mobile-page > .ym-composer-wrap,
+  .yam-home-mobile-page > .ym-filters-container {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+@media (max-width: 320px) {
+  .yam-home-mobile-page > .ym-composer-wrap,
+  .yam-home-mobile-page > .ym-filters-container {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   ⓮  prefers-reduced-motion
+   ───────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .yam-home-mobile-page {
+    scroll-behavior: auto !important;
+  }
+}
+
+
+/* ============================================================
+   ✨ نهاية v73 — الحل الجذري الحاسم
+   ────────────────────────────────────────────────────────────
+   🎯 الفرق المعماري عن كل المحاولات السابقة:
+     1. الأم تستخدم CSS Grid بدل Block/Flex.
+        Grid يجعل الأبناء = 100% تلقائياً عبر justify-items: stretch.
+        هذا يلغي أي تأثير لـ width:auto من قواعد قديمة.
+     2. كل القواعد السامة من v60.9/v65/v68/v70/v72 تمّ تفريغها
+        فعلياً (الملفات الآن فارغة) → لا حاجة لمعركة specificity.
+     3. selectors قصيرة (.yam-home-mobile-page > .ym-composer-wrap)
+        وليست 9-deep — يعمل كل المتصفحات بنفس الكفاءة.
+     4. متغيرات CSS قابلة للضبط حسب breakpoint.
+     5. inline-style guard في JSX (MobileComposer/MobileFilterPills)
+        يتم إزالته في تعديل JSX المرافق لتجنب التعارض.
+   ============================================================ */

@@ -34,8 +34,27 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
     navigate(`/compose?tab=${tab}`);
   };
 
+  // ⭐ v72 — inline style guard: حزام أمان أخير يفرض width: 100%
+  // حتى لو تسللت أي قاعدة CSS قديمة بـ width: auto / margin negative.
+  // inline style يفوز على أي CSS عدا !important في CSS — وملف v72 الجديد
+  // يستخدم !important داخلياً أيضاً — فتصبح الحماية مضاعفة.
+  const wrapInlineGuard = {
+    width: '100%',
+    maxWidth: '100%',
+    minWidth: '100%',
+    marginLeft: 0,
+    marginRight: 0,
+    marginInlineStart: 0,
+    marginInlineEnd: 0,
+    boxSizing: 'border-box',
+    display: 'block',
+    direction: 'rtl',
+    textAlign: 'right',
+    float: 'none',
+  };
+
   return (
-    <div className="ym-composer-wrap" dir="rtl">
+    <div className="ym-composer-wrap" dir="rtl" style={wrapInlineGuard}>
       <div
         className="ym-composer"
         role="button"
@@ -43,6 +62,7 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
         dir="rtl"
         onClick={() => open(null)}
         onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && open(null)}
+        style={{ width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}
       >
         {/* === Avatar شعار Y (في يسار الصندوق على الشاشة) === */}
         <span className="ym-composer-avatar" aria-hidden="true">

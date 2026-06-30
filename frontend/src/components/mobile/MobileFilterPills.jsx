@@ -50,9 +50,33 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
     try { tabRefs.current[nextId]?.focus(); } catch { /* ignore */ }
   }, [handleChange]);
 
+  // ⭐ v72 — inline style guard: حزام أمان أخير يفرض width: 100%
+  // يلغي margin-inline negative و width: auto و calc(100% + 24px) السامة
+  // من إصدارات v60.9/v65 القديمة.
+  const containerInlineGuard = {
+    width: '100%',
+    maxWidth: '100%',
+    minWidth: '100%',
+    marginLeft: 0,
+    marginRight: 0,
+    marginInlineStart: 0,
+    marginInlineEnd: 0,
+    boxSizing: 'border-box',
+    display: 'block',
+    direction: 'rtl',
+    textAlign: 'right',
+    float: 'none',
+  };
+
   return (
-    <div className="ym-filters-container" dir="rtl">
-      <div className="ym-filters" role="tablist" aria-label="تصفية المحتوى" dir="rtl">
+    <div className="ym-filters-container" dir="rtl" style={containerInlineGuard}>
+      <div
+        className="ym-filters"
+        role="tablist"
+        aria-label="تصفية المحتوى"
+        dir="rtl"
+        style={{ width: '100%', maxWidth: '100%', boxSizing: 'border-box', justifyContent: 'flex-start' }}
+      >
         {FILTERS.map((f, idx) => {
           const isActive = f.id === currentActive;
           return (

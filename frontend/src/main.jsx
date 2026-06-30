@@ -176,6 +176,20 @@ import './styles/chat-desktop-layout-v69-fix.css';
    الـ sticky بدقة بالنسبة لارتفاع MobileTopBar الثابت.
    ⚠️ يجب أن يبقى هذا الاستيراد آخر CSS مطلقاً ليفوز في cascade. */
 import './styles/yamshat-fixes-v70-composer-filters-root-fix.css';
+/* 🔥 v71 ROOT FIX — أداء + استجابة اللمس + فتح النوافذ + ظهور الملف الشخصي
+   يحل بدل backdrop-filter و will-change العالمي + يفعّل content-visibility على البطاقات.
+   ⚠️ يجب أن يبقى أخر CSS مطلقاً ليفوز في cascade */
+import './styles/yamshat-fixes-v71-performance-root-fix.css';
+
+/* ✅ v72 — ULTIMATE FIX for composer + filters width on mobile home.
+   يحل المشكلة المزمنة (5 محاولات فاشلة في v60.9/v65/v68/v70) حيث كان
+   شريط "بماذا تفكر؟" وأزرار التصفية يهربان لجهة اليسار بعرض ~50% فقط.
+   السبب الجذري: width: auto + margin-inline negative من v60.9 +
+   display: flex column من v70 = reflow متضارب على Chrome Mobile.
+   الحل: العودة إلى display: block + width: 100% بـ specificity عملاقة.
+   ⚠️ يجب أن يبقى هذا الملف **آخر CSS مطلقاً** ليفوز في cascade. */
+import './styles/yamshat-fixes-v72-composer-filters-ULTIMATE.css';
+
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';
@@ -184,7 +198,7 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v70-composer-filters-root-fix';
+const BUILD_ID = 'yamshat-v72-composer-filters-ULTIMATE';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

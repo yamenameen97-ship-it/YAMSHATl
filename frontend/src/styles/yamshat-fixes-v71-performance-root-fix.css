@@ -1,0 +1,147 @@
+/* 🔥 v71 ROOT FIX — Performance & Touch Responsiveness
+   ====================================================
+   يحلّ من الجذر:
+   1) بطء فتح النوافذ (Modal) — حذف backdrop-filter الثقيل
+   2) عدم استجابة اللمس — تعطيل will-change العالمي
+   3) تأخر ظهور الملف الشخصي — تسريع الـ paint للحاويات
+   
+   ⚠️ يجب أن يبقى آخر CSS مطلقاً ليفوز في cascade.
+   ================================================== */
+
+/* ---------- 1) تخفيف عبء الـ GPU على Modal ---------- */
+/* السبب الجذري لبطء فتح النوافذ: backdrop-filter يجبر المتصفح على
+   إعادة رسم كامل الشاشة عند ظهور كل modal. على الجوال = lag واضح. */
+.ui-modal-backdrop {
+  background: rgba(10, 13, 26, 0.72) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  /* تسريع ظهور النافذة */
+  animation-duration: 120ms !important;
+  will-change: opacity;
+}
+
+.ui-modal {
+  /* احذف backdrop-filter من الـ modal نفسه (إن وُجد) */
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  /* تسريع ظهور الفتح */
+  animation-duration: 160ms !important;
+  /* استخدم transform بدلاً من الـ properties التي تجبر layout */
+  contain: layout style paint;
+}
+
+/* ---------- 2) إلغاء will-change العام على .page-content ---------- */
+/* will-change: scroll-position على .page-content كان يجعل المتصفح
+   يحتفظ بطبقة GPU مخصصة لكامل الصفحة طوال الوقت → استنزاف ذاكرة
+   ويسبب lag على الأجهزة منخفضة الموارد (Redmi/Honor قديم). */
+.page-content {
+  will-change: auto !important;
+}
+
+/* لكن نُبقي transform: translateZ(0) فقط أثناء التمرير الفعلي
+   (يُفعّل عبر كلاس .is-scrolling الذي يضيفه instantTouchFeedback) */
+html.is-scrolling .page-content {
+  will-change: scroll-position;
+}
+
+/* ---------- 3) تسريع رد فعل اللمس على الأزرار ---------- */
+/* فرض touch-action على كل العناصر التفاعلية لتقليل تأخير 300ms */
+button,
+a,
+[role="button"],
+[role="tab"],
+.btn,
+.ym-btn,
+.yam-action-btn,
+.yam-bottom-nav-item,
+.tab-pill,
+.story-circle,
+[data-clickable="true"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(99, 102, 241, 0.15);
+  /* رد فعل بصري فوري */
+  transition: opacity 90ms ease, transform 90ms ease, background-color 90ms ease;
+}
+
+/* رد الفعل الفوري عند الضغط */
+button:active:not(:disabled),
+a:active,
+[role="button"]:active,
+.btn:active:not(:disabled),
+.ym-btn:active:not(:disabled),
+.yam-action-btn:active,
+.yam-bottom-nav-item:active,
+[data-clickable="true"]:active {
+  opacity: 0.7;
+  transform: scale(0.97);
+}
+
+/* ---------- 4) تسريع رسم البطاقات (content-visibility) ---------- */
+/* المنشورات والبطاقات خارج viewport لا داعي لرسمها — توفير ضخم
+   في الـ paint cost = استجابة أفضل للمس على الفور. */
+.ym-post-card,
+.mobile-post-card,
+.post-card,
+.feed-card {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 420px;
+}
+
+/* ---------- 5) إلغاء backdrop-filter العالمي على الجوال ---------- */
+/* backdrop-filter هو أكبر قاتل أداء على Chrome Mobile.
+   نُبقي عليه فقط على الديسكتوب. */
+@media (max-width: 1023px) {
+  .ym-glass,
+  .yam-glass,
+  .glass-effect,
+  .nav-glass,
+  [class*="-glass"],
+  .yam-bottom-nav,
+  .yam-top-bar,
+  .yam-chat-stage-actions {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+
+/* ---------- 6) صفحة الملف الشخصي — منع التعليق ---------- */
+/* ضمان أن منطقة المحتوى لا تكون pointer-events:none أبداً */
+.profile-page,
+.profile-page * {
+  pointer-events: auto;
+}
+
+.profile-page-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50vh;
+}
+
+.profile-loading-card {
+  max-width: 360px;
+  width: 92%;
+  padding: 24px;
+  border-radius: 16px;
+}
+
+/* ---------- 7) تقليل وزن الـ animations عند prefers-reduced-motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------- 8) Hint للمتصفح: استخدم composited scrolling ---------- */
+.page-content,
+.yam-services-panel,
+.ym-reels-feed,
+.yam-messages-area {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}

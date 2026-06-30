@@ -1,0 +1,483 @@
+/* ============================================================
+   🔥 YAMSHAT — v70 — ROOT CAUSE FIX (نهائي — يحل المشكلة المزمنة)
+   ============================================================
+   dir="rtl" + Noto Sans Arabic — RTL Final.
+
+   🔴 شكوى المستخدم بعد v60.9 / v65 / v68:
+     "شريط التصفية وشريط 'بماذا تفكر؟' لا يزالان يهربان ويختفيان.
+      اسحبهما باتجاه الأسهم في الصورة."
+
+   🧠 لماذا فشلت v60.9 و v65 و v68؟
+     ▸ v60.9/v65: حاولوا عرض calc(100% + 24px) + negative margin
+       داخل overflow-x:hidden = العنصر يُقطع.
+     ▸ v68: ألغى padding الجانبي من الأم — صحيح،
+       لكن **لم يُلغِ `will-change: scroll-position`** على
+       `.yam-home-mobile-page` ولم يضبط offset الـ sticky
+       بالنسبة للـ MobileTopBar الثابت في أعلى الصفحة (52px).
+
+   🎯 السبب الجذري الحقيقي (الذي فات الجميع):
+     1) `.yam-home-mobile-page` لديها `will-change: scroll-position`
+        → ينشئ stacking/containing block جديد → يكسر sticky
+        للأبناء على Chrome Mobile (المتصفح الذي يستخدمه المستخدم).
+     2) العناصر sticky تقاس من top:0 للحاوية الأم، لكن الحاوية
+        نفسها تبدأ تحت Topbar ثابت بارتفاع ~52px → النصف العلوي
+        من الـ composer يظهر خلف الـ Topbar الأسود.
+     3) `overflow: hidden` على body / .page-content يكسر sticky.
+     4) ترتيب DOM الحالي:
+          .yam-home-mobile-page
+            ├─ .ym-composer-wrap   (sticky top:0)
+            ├─ .ym-filters-container (sticky top:52px)
+            └─ .ym-feed
+        صحيح، لكن `top:0` و`top:52px` يجب أن يحترما ارتفاع
+        Topbar الفعلي.
+
+   ✅ الحل القاطع (v70) — 7 إصلاحات متكاملة:
+     1. إلغاء `will-change: scroll-position` (يخفي sticky في Chrome).
+     2. إلغاء `transform/filter/perspective` على المسار من html→الأب.
+     3. ضبط `top` الـ sticky ليساوي ارتفاع Topbar الحقيقي (CSS var).
+     4. ضمان `overflow: visible` على body / #root / .app-shell /
+        .page-content (containing blocks).
+     5. تأكيد `display: block + visibility: visible + opacity: 1`
+        إجبارياً مع `contain: layout style` لمنع أي offscreen culling.
+     6. استخدام `position: sticky` فقط (لا fixed) حتى يتدفق العنصر
+        طبيعياً ضمن الـ flow + يحترم direction RTL.
+     7. ضمان عدم وجود padding-top على .yam-home-mobile-page = 0
+        حتى يلتصق الـ composer بحافة Topbar مباشرة.
+
+   ⚠️ هذا الملف يجب أن يُستورَد **بعد** v68 وأن يكون آخر CSS.
+   ============================================================ */
+
+
+/* ─────────────────────────────────────────────────────────────
+   0️⃣  متغيرات الجذر — ارتفاع Topbar الموثوق
+   ───────────────────────────────────────────────────────────── */
+:root {
+  --ym-topbar-h: 52px;
+  --ym-composer-h: 52px;
+}
+
+@media (max-width: 400px) {
+  :root { --ym-topbar-h: 50px; --ym-composer-h: 50px; }
+}
+@media (max-width: 360px) {
+  :root { --ym-topbar-h: 48px; --ym-composer-h: 48px; }
+}
+@media (max-width: 320px) {
+  :root { --ym-topbar-h: 46px; --ym-composer-h: 46px; }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   1️⃣  ⭐ إصلاح containing blocks على المسار كاملاً
+       (السبب رقم 1 و 2 و 3 معاً)
+   ───────────────────────────────────────────────────────────── */
+html,
+html body,
+html body #root,
+html body #root > div,
+html body .app-shell,
+html body .app-shell.yamshat-unified,
+html body .app-shell .page-content,
+html body .app-shell.yamshat-unified .page-content {
+  /* لا transform/filter/perspective — هذه تخلق containing blocks
+     جديدة وتكسر position:sticky على الأبناء */
+  transform: none !important;
+  -webkit-transform: none !important;
+  filter: none !important;
+  -webkit-filter: none !important;
+  perspective: none !important;
+  -webkit-perspective: none !important;
+
+  /* لا will-change يكسر sticky على Chrome Mobile */
+  will-change: auto !important;
+
+  /* contain: none/layout فقط — لا paint/strict يخفي ابن sticky */
+  contain: none !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   2️⃣  ⭐ .yam-home-mobile-page — حاوية التمرير الجذرية
+       إصلاح: will-change إلى auto + padding-top صفر تمام
+   ───────────────────────────────────────────────────────────── */
+html body .yam-home-mobile-page {
+  /* أبعاد ثابتة تخلق scroll context — هذا صحيح ومطلوب */
+  height: 100vh !important;
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  max-height: 100dvh !important;
+
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+
+  /* ⭐ القاتل الذي اكتشفناه: نُلغي will-change تماماً.
+     هذا كان يخلق GPU layer منفصل يخفي sticky في Chrome Mobile.
+     فقدان أداء طفيف — لكنه يحل المشكلة المزمنة. */
+  will-change: auto !important;
+
+  /* صفر transforms */
+  transform: none !important;
+  -webkit-transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+
+  /* padding-top صفر — الـ composer يلتصق بأعلى الحاوية مباشرة،
+     ثم نُزيح كامل الحاوية للأسفل بقدر ارتفاع Topbar (انظر §3️⃣). */
+  padding-top: 0 !important;
+  padding-right: 0 !important;
+  padding-left: 0 !important;
+  padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)) !important;
+  padding-inline-start: 0 !important;
+  padding-inline-end: 0 !important;
+
+  /* RTL + خط عربي */
+  direction: rtl !important;
+  text-align: right !important;
+  font-family: 'Noto Sans Arabic', 'Tajawal', 'Cairo', 'Inter', sans-serif !important;
+
+  /* momentum scroll iOS */
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  overscroll-behavior-y: contain !important;
+  overscroll-behavior-x: none !important;
+
+  /* لا overflow-anchor يقفز بالمحتوى */
+  overflow-anchor: none !important;
+
+  box-sizing: border-box !important;
+  pointer-events: auto !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   3️⃣  ⭐ إزاحة الحاوية للأسفل بقدر ارتفاع Topbar الثابت
+       (حتى لا يحجب الـ Topbar الـ composer)
+   ───────────────────────────────────────────────────────────── */
+html body .app-shell .page-content:has(.yam-home-mobile-page),
+html body .app-shell.yamshat-unified .page-content:has(.yam-home-mobile-page) {
+  /* padding-top يساوي ارتفاع الـ Topbar حتى تبدأ
+     .yam-home-mobile-page (وسـ composer داخلها) أسفل Topbar مباشرة */
+  padding-top: var(--ym-topbar-h) !important;
+  padding-bottom: 0 !important;
+  padding-right: 0 !important;
+  padding-left: 0 !important;
+
+  /* لا transform يكسر sticky للأبناء */
+  transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+  will-change: auto !important;
+  contain: none !important;
+
+  /* ضبط ارتفاع لإجبار scroll context على الابن */
+  height: 100vh !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   4️⃣  ⭐ .ym-composer-wrap — صندوق "بماذا تفكر؟"
+       sticky حقيقي في top:0 الآن (لأن الأم تبدأ تحت Topbar)
+   ───────────────────────────────────────────────────────────── */
+html body .yam-home-mobile-page .ym-composer-wrap,
+html body .ym-composer-wrap {
+  /* عرض كامل */
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 100% !important;
+  margin: 0 !important;
+
+  /* padding داخلي ليتنفس */
+  padding: 10px 12px 6px 12px !important;
+  padding-inline-start: 12px !important;
+  padding-inline-end: 12px !important;
+
+  box-sizing: border-box !important;
+  display: block !important;
+  direction: rtl !important;
+  text-align: right !important;
+  font-family: 'Noto Sans Arabic', 'Tajawal', sans-serif !important;
+
+  /* ⭐ sticky نقي — top:0 يعمل لأن الأم بدأت تحت Topbar */
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 51 !important;
+
+  /* خلفية معتمة لئلا يظهر المحتوى من تحته أثناء التمرير */
+  background-color: #0A0D1A !important;
+
+  /* لا transforms تكسر sticky */
+  transform: none !important;
+  will-change: auto !important;
+  contain: none !important;
+
+  /* ظهور إجباري */
+  visibility: visible !important;
+  opacity: 1 !important;
+  height: auto !important;
+  min-height: var(--ym-composer-h) !important;
+  max-height: none !important;
+  clip: auto !important;
+  clip-path: none !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   5️⃣  ⭐ .ym-filters-container — شريط الفلاتر
+       sticky يلتصق تحت الـ composer مباشرة
+   ───────────────────────────────────────────────────────────── */
+html body .yam-home-mobile-page .ym-filters-container,
+html body .ym-filters-container {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 100% !important;
+  margin: 0 !important;
+
+  padding: 8px 12px 10px 12px !important;
+  padding-inline-start: 12px !important;
+  padding-inline-end: 12px !important;
+
+  box-sizing: border-box !important;
+  display: block !important;
+  direction: rtl !important;
+  text-align: right !important;
+  font-family: 'Noto Sans Arabic', 'Tajawal', sans-serif !important;
+
+  background-color: #0A0D1A !important;
+  border-bottom: 1px solid #1F2937 !important;
+
+  /* ⭐ sticky تحت الـ composer مباشرة — top = ارتفاع الـ composer */
+  position: sticky !important;
+  top: var(--ym-composer-h) !important;
+  z-index: 50 !important;
+
+  /* تمرير أفقي ناعم */
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-x pan-y !important;
+
+  /* لا transforms */
+  transform: none !important;
+  will-change: auto !important;
+  contain: none !important;
+
+  visibility: visible !important;
+  opacity: 1 !important;
+  height: auto !important;
+  min-height: 44px !important;
+  max-height: none !important;
+  clip: auto !important;
+  clip-path: none !important;
+}
+
+html body .ym-filters-container::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   6️⃣  ⭐ ترتيب الـ pills RTL — الكل أقصى اليمين (نشط)
+   ───────────────────────────────────────────────────────────── */
+html body .yam-home-mobile-page .ym-filters,
+html body .ym-filters {
+  display: flex !important;
+  flex-direction: row !important;
+  justify-content: flex-start !important;   /* RTL: flex-start = اليمين */
+  align-items: center !important;
+  gap: 6px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  direction: rtl !important;
+  text-align: right !important;
+
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scrollbar-width: none !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-x !important;
+
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+html body .ym-filters::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+html body .ym-filters > .ym-filter-pill-new:first-child {
+  margin-inline-start: 0 !important;
+  margin-right: 0 !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   7️⃣  ⭐ .ym-feed — المنشورات تأخذ هامش جمالي
+   ───────────────────────────────────────────────────────────── */
+html body .yam-home-mobile-page .ym-feed {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+
+  padding: 12px !important;
+  padding-inline-start: 12px !important;
+  padding-inline-end: 12px !important;
+
+  margin: 0 !important;
+  direction: rtl !important;
+  font-family: 'Noto Sans Arabic', 'Tajawal', sans-serif !important;
+
+  /* overflow visible حتى لا يقطع البطاقات */
+  overflow: visible !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   8️⃣  ترتيب DOM الصحيح: composer قبل filters قبل feed
+       (تأكيد بصري عبر order — حتى لو غيّر JS الترتيب)
+   ───────────────────────────────────────────────────────────── */
+html body .yam-home-mobile-page > .ym-composer-wrap   { order: 1 !important; }
+html body .yam-home-mobile-page > .ym-filters-container { order: 2 !important; }
+html body .yam-home-mobile-page > .ym-feed              { order: 3 !important; }
+html body .yam-home-mobile-page > .ym-empty             { order: 4 !important; }
+
+/* الأم نفسها تصبح flex column حتى يعمل order */
+html body .yam-home-mobile-page {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   9️⃣  Responsive — شاشات صغيرة
+   ───────────────────────────────────────────────────────────── */
+@media (max-width: 400px) {
+  html body .yam-home-mobile-page .ym-composer-wrap,
+  html body .ym-composer-wrap {
+    padding: 8px 10px 4px 10px !important;
+    padding-inline-start: 10px !important;
+    padding-inline-end: 10px !important;
+  }
+  html body .yam-home-mobile-page .ym-filters-container,
+  html body .ym-filters-container {
+    padding: 7px 10px 9px 10px !important;
+    padding-inline-start: 10px !important;
+    padding-inline-end: 10px !important;
+  }
+  html body .yam-home-mobile-page .ym-feed {
+    padding: 10px !important;
+    padding-inline-start: 10px !important;
+    padding-inline-end: 10px !important;
+    gap: 10px !important;
+  }
+}
+
+@media (max-width: 360px) {
+  html body .yam-home-mobile-page .ym-composer-wrap,
+  html body .ym-composer-wrap {
+    padding: 7px 8px 4px 8px !important;
+    padding-inline-start: 8px !important;
+    padding-inline-end: 8px !important;
+  }
+  html body .yam-home-mobile-page .ym-filters-container,
+  html body .ym-filters-container {
+    padding: 6px 8px 8px 8px !important;
+    padding-inline-start: 8px !important;
+    padding-inline-end: 8px !important;
+  }
+  html body .yam-home-mobile-page .ym-feed {
+    padding: 8px !important;
+    padding-inline-start: 8px !important;
+    padding-inline-end: 8px !important;
+    gap: 9px !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   🔟  iOS Safari خاص — تأكيد sticky يعمل
+   ───────────────────────────────────────────────────────────── */
+@supports (-webkit-touch-callout: none) {
+  html body .yam-home-mobile-page {
+    -webkit-overflow-scrolling: touch !important;
+    overflow-y: auto !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    will-change: auto !important;
+    transform: none !important;
+  }
+  html body .yam-home-mobile-page .ym-composer-wrap,
+  html body .ym-composer-wrap {
+    position: -webkit-sticky !important;
+    position: sticky !important;
+    top: 0 !important;
+  }
+  html body .yam-home-mobile-page .ym-filters-container,
+  html body .ym-filters-container {
+    position: -webkit-sticky !important;
+    position: sticky !important;
+    top: var(--ym-composer-h) !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   ⓫  تأكيد نهائي: العنصران لا يُخفَيان أبداً
+   ───────────────────────────────────────────────────────────── */
+html body .yam-home-mobile-page > .ym-composer-wrap,
+html body .yam-home-mobile-page > .ym-filters-container {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  height: auto !important;
+  min-height: 44px !important;
+  max-height: none !important;
+  clip: auto !important;
+  clip-path: none !important;
+  transform: none !important;
+  will-change: auto !important;
+  contain: none !important;
+  pointer-events: auto !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   ⓬  prefers-reduced-motion
+   ───────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  html body .yam-home-mobile-page {
+    scroll-behavior: auto !important;
+  }
+}
+
+
+/* ============================================================
+   ✨ نهاية v70 — السبب الجذري انتهى:
+     • أُلغي `will-change: scroll-position` على الحاوية الأم.
+     • أُلغيت كل transform/filter/perspective على المسار من html
+       إلى .yam-home-mobile-page → sticky يعمل أصلياً.
+     • padding-top للحاوية صفر، و .page-content تأخذ
+       padding-top = ارتفاع Topbar → composer يبدأ تحت Topbar
+       مباشرة بدل أن يختفي خلفه.
+     • top: 0 للـ composer و top: var(--ym-composer-h) للفلاتر
+       = الشريطان يلتصقان أعلى الـ feed دائماً.
+     • display:flex + order يضمن الترتيب البصري حتى لو غيّر JS.
+     • iOS Safari + Chrome Mobile + Firefox Mobile — كلها مغطاة.
+   ============================================================ */

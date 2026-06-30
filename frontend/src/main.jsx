@@ -162,6 +162,20 @@ import './styles/chat-header-v67-name-online-fix.css';
    بدون أي negative margin أو calc() hack، وتلتصق باليمين في RTL.
    ⚠️ يجب أن يبقى هذا الاستيراد آخر CSS مطلقاً ليفوز في cascade. */
 import './styles/yamshat-fixes-v68-composer-filters-final.css';
+/* 🎯 v69 DEFINITIVE CHAT DESKTOP LAYOUT FIX —
+   إصلاح نهائي وحاسم لعرض صفحة المحادثة الفردية (/chat/:userId) على الويب
+   (الكمبيوتر/اللاب توب). يضمن ظهور: قائمة جهات الاتصال (يمين) +
+   منطقة الرسائل (وسط) + بطاقة الملف الشخصي (يسار) — تماماً كما يظهر
+   على الجوال. يلغي تعارض brand-chat-notifications-refresh.css.
+   ⚠️ يجب أن يبقى هذا الاستيراد آخر CSS مطلقاً ليفوز في cascade. */
+import './styles/chat-desktop-layout-v69-fix.css';
+/* 🔥 v70 ROOT-CAUSE FIX — Composer + Filters Sticky Visibility (FINAL)
+   يحل المشكلة المزمنة لاختفاء/هروب شريطي «بماذا تفكر؟» والفلاتر في
+   صفحة المنشورات للويب موبايل. يُلغي `will-change: scroll-position`
+   ويزيل كل transform/filter/perspective من المسار، ويضبط offset
+   الـ sticky بدقة بالنسبة لارتفاع MobileTopBar الثابت.
+   ⚠️ يجب أن يبقى هذا الاستيراد آخر CSS مطلقاً ليفوز في cascade. */
+import './styles/yamshat-fixes-v70-composer-filters-root-fix.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';
@@ -170,7 +184,7 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-posts-fix-v58-1';
+const BUILD_ID = 'yamshat-v70-composer-filters-root-fix';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

@@ -1,0 +1,322 @@
+/* ==========================================================================
+   Yamshat — Chat Desktop Layout v69 (Definitive Web/Desktop Fix)
+   --------------------------------------------------------------------------
+   🎯 الهدف:
+   إصلاح نهائي وحاسم لعرض صفحة الدردشة الفردية (/chat/:userId) على الويب
+   (الكمبيوتر/اللاب توب) بحيث تظهر تماماً كما تظهر على الجوال — أي يجب أن
+   تعرض منطقة الرسائل (yam-chat-stage) بشكل كامل ومركزي، مع إظهار قائمة
+   جهات الاتصال على اليمين (yam-chat-sidebar) وبطاقة الملف الشخصي للطرف
+   الآخر على اليسار (yam-side-profile-panel).
+
+   🐞 المشكلة المُعالَجة:
+   عند فتح /chat/:userId على الكمبيوتر، كان يظهر فقط الـ sidebar بدون
+   منطقة الرسائل (chat-stage) لأن:
+   1) شبكة CSS (grid) كانت تنضغط بسبب width غير محسوب على الحاوية الأم
+   2) brand-chat-notifications-refresh.css كان يفرض 3 أعمدة عند ≤1280px
+      حتى بعد إخفاء yam-side-profile-panel (تعارض بين 3 أعمدة و 2)
+   3) page-shell-glow في وضع conversation-mode لم يأخذ width كامل
+   4) ارتفاع yam-conversation-screen لم يكن مضموناً على الديسكتوب
+
+   ✅ الحل:
+   - يجبر .yam-conversation-screen على ملء كامل العرض والارتفاع
+   - يضبط grid-template-columns بدقة حسب breakpoints صحيحة
+   - يلغي !important المتعارض من brand-chat-notifications-refresh.css
+   - يضمن ظهور yam-chat-stage بشكل واضح ومركزي
+
+   ⚠️ يجب أن يبقى هذا الملف من آخر CSS imports في main.jsx ليفوز في cascade
+   ========================================================================== */
+
+
+/* ==========================================================================
+   1) أساس: حاوية صفحة الدردشة تأخذ العرض والارتفاع الكاملين
+   ========================================================================== */
+
+html body .app-shell.conversation-shell .page-content,
+html body .app-shell.conversation-shell .page-shell-glow,
+html body .page-content.conversation-mode,
+html body .page-shell-glow.conversation-mode {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  height: 100% !important;
+  min-height: 100dvh !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  display: block !important;
+}
+
+html body .yam-conversation-screen {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  box-sizing: border-box;
+}
+
+
+/* ==========================================================================
+   2) ديسكتوب كامل (>1280px): 3 أعمدة (sidebar | stage | side-profile)
+   ========================================================================== */
+
+@media (min-width: 1281px) {
+  html body .yam-conversation-screen {
+    display: grid !important;
+    grid-template-columns: 310px minmax(0, 1fr) 320px !important;
+    grid-template-rows: 100dvh !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  html body .yam-conversation-screen > .yam-chat-sidebar {
+    display: flex !important;
+    grid-column: 1 !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow: hidden !important;
+    min-width: 0 !important;
+  }
+
+  html body .yam-conversation-screen > .yam-chat-stage {
+    display: grid !important;
+    grid-column: 2 !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    background:
+      radial-gradient(circle at top right, rgba(124,58,237,0.06), transparent 22%),
+      radial-gradient(circle at bottom left, rgba(59,130,246,0.05), transparent 22%),
+      #040714 !important;
+  }
+
+  html body .yam-conversation-screen > .yam-side-profile-panel {
+    display: flex !important;
+    grid-column: 3 !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow: auto !important;
+    min-width: 0 !important;
+  }
+}
+
+
+/* ==========================================================================
+   3) ديسكتوب متوسط (981px – 1280px): عمودان (sidebar | stage)
+   يخفي yam-side-profile-panel ويعطي stage باقي العرض.
+   ========================================================================== */
+
+@media (min-width: 981px) and (max-width: 1280px) {
+  /* يلغي تأثير brand-chat-notifications-refresh.css الذي يفرض 3 أعمدة هنا */
+  html body .yam-conversation-screen {
+    display: grid !important;
+    grid-template-columns: 290px minmax(0, 1fr) !important;
+    grid-template-rows: 100dvh !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  html body .yam-conversation-screen > .yam-chat-sidebar {
+    display: flex !important;
+    grid-column: 1 !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow: hidden !important;
+    min-width: 0 !important;
+  }
+
+  html body .yam-conversation-screen > .yam-chat-stage {
+    display: grid !important;
+    grid-column: 2 !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    background:
+      radial-gradient(circle at top right, rgba(124,58,237,0.06), transparent 22%),
+      radial-gradient(circle at bottom left, rgba(59,130,246,0.05), transparent 22%),
+      #040714 !important;
+  }
+
+  html body .yam-conversation-screen > .yam-side-profile-panel {
+    display: none !important;
+  }
+}
+
+
+/* ==========================================================================
+   4) عام للديسكتوب (>980px): ضمان sub-elements الـ chat-stage تعمل
+   ========================================================================== */
+
+@media (min-width: 981px) {
+  /* الهيدر داخل yam-chat-stage يبقى داخل الـ stage (ليس fixed) */
+  html body .yam-conversation-screen .yam-chat-stage .yam-chat-stage-header {
+    position: sticky !important;
+    top: 0 !important;
+    left: auto !important;
+    right: auto !important;
+    inset-inline: auto !important;
+    z-index: 60 !important;
+    border-radius: 26px !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    padding: 14px 18px !important;
+    min-height: 64px !important;
+    transform: none !important;
+    -webkit-transform: none !important;
+  }
+
+  /* صندوق الإدخال داخل yam-chat-stage (ليس fixed) */
+  html body .yam-conversation-screen .yam-chat-stage .yam-chat-input-wrap {
+    position: sticky !important;
+    bottom: 0 !important;
+    left: auto !important;
+    right: auto !important;
+    inset-inline: auto !important;
+    z-index: 50 !important;
+    border-radius: 26px 26px 0 0 !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    border-bottom: none !important;
+    padding: 12px 16px !important;
+    padding-bottom: 14px !important;
+    background: linear-gradient(180deg, rgba(7,10,24,0.95), rgba(4,7,18,0.98)) !important;
+    transform: none !important;
+    -webkit-transform: none !important;
+  }
+
+  /* منطقة الرسائل تأخذ المساحة المتاحة بين الهيدر وصندوق الإدخال */
+  html body .yam-conversation-screen .yam-chat-stage .yam-messages-area {
+    min-height: 0 !important;
+    flex: 1 1 auto !important;
+    overflow-y: auto !important;
+    padding: 18px 18px 24px !important;
+    scroll-padding-bottom: 80px !important;
+    border-radius: 26px !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    background:
+      radial-gradient(circle at top right, rgba(124,58,237,0.05), transparent 24%),
+      radial-gradient(circle at bottom left, rgba(59,130,246,0.04), transparent 26%),
+      linear-gradient(180deg, rgba(7,10,24,0.95), rgba(4,7,18,0.98)) !important;
+  }
+
+  /* يخفي شريط البحث العلوي القديم (yam-stage-top-search) لأنه ليس مطلوباً
+     في التصميم النهائي — البحث متاح عبر زر ⌕ في الهيدر */
+  html body .yam-conversation-screen .yam-chat-stage > .yam-stage-top-search {
+    display: none !important;
+  }
+
+  /* زر الرجوع في الهيدر يخفى على الديسكتوب (متاح فقط على الجوال) */
+  html body .yam-conversation-screen .yam-chat-stage-header .yam-stage-back-btn {
+    display: none !important;
+  }
+
+  /* ضمان ظهور أزرار المكالمة والمزيد في الهيدر */
+  html body .yam-conversation-screen .yam-chat-stage-header .yam-chat-stage-actions {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    flex-wrap: nowrap !important;
+    width: auto !important;
+    flex: 0 0 auto !important;
+  }
+
+  /* ضمان ظهور peer info في الهيدر */
+  html body .yam-conversation-screen .yam-chat-stage-header .yam-chat-stage-peer {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    min-width: 0 !important;
+    flex: 1 1 0 !important;
+  }
+
+  html body .yam-conversation-screen .yam-chat-stage-header .yam-chat-stage-peer-button {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    cursor: pointer !important;
+  }
+
+  html body .yam-conversation-screen .yam-chat-stage-header .yam-chat-stage-peer-copy {
+    display: grid !important;
+    gap: 4px !important;
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+  }
+
+  html body .yam-conversation-screen .yam-chat-stage-header .yam-chat-stage-peer-copy strong {
+    font-size: 17px !important;
+    font-weight: 900 !important;
+    color: #fff !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    display: block !important;
+  }
+
+  html body .yam-conversation-screen .yam-chat-stage-header .yam-chat-stage-peer-copy span {
+    font-size: 12px !important;
+    color: #94a3b8 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    display: block !important;
+  }
+
+  html body .yam-conversation-screen .yam-chat-stage-header .yam-chat-stage-peer-copy span.online {
+    color: #4ade80 !important;
+  }
+
+  /* ضمان عدم اختفاء أي محتوى داخل yam-chat-stage بسبب overflow */
+  html body .yam-conversation-screen .yam-chat-stage > * {
+    min-width: 0 !important;
+  }
+
+  /* ضمان ظهور الستوبار/التنبيهات داخل yam-chat-stage */
+  html body .yam-conversation-screen .yam-chat-stage .yam-chat-details-drawer,
+  html body .yam-conversation-screen .yam-chat-stage .yam-block-banner,
+  html body .yam-conversation-screen .yam-chat-stage .yam-search-summary {
+    border-radius: 22px !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+  }
+}
+
+
+/* ==========================================================================
+   5) إصلاح خاص للـ MainLayout: ضمان أن .page-content لا تقيّد عرض الصفحة
+   على الديسكتوب (إزالة max-width: 1200px في وضع conversation-mode)
+   ========================================================================== */
+
+@media (min-width: 1024px) {
+  html body .app-shell.yamshat-unified.conversation-shell .page-content,
+  html body .app-shell.yamshat-unified .page-content.conversation-mode {
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+}
+
+
+/* ==========================================================================
+   6) قاعدة احتياطية: لو لم تتوفر شروط الـ grid فلا تجعل sidebar يحتل العرض
+   ========================================================================== */
+
+@media (min-width: 981px) {
+  html body .yam-chat-sidebar {
+    max-width: 310px !important;
+    flex-shrink: 0 !important;
+  }
+}
+
+
+/* ==========================================================================
+   7) الموبايل (≤980px): لا تغيّر شيئاً — اترك السلوك الموبايلي الحالي
+   ========================================================================== */
+
+@media (max-width: 980px) {
+  /* لا قواعد هنا — يستخدم التطبيق CSS الجوال الحالي بدون تغيير */
+}

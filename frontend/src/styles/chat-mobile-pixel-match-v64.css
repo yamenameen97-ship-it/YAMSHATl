@@ -1,0 +1,320 @@
+/* ==========================================================================
+   Yamshat — Chat Mobile Pixel Match v64
+   --------------------------------------------------------------------------
+   تحسينات v64 فوق v63 (لا يستبدل v63 بل يأتي بعده ليغلب في cascade):
+
+   ✅ تأكيد ظهور قائمة خيارات الرسالة (MessageContextPopup) فوق الرسالة دائماً
+   ✅ تثبيت شريط الإدخال السفلي وضمان عدم تغطيته بلوحة المفاتيح
+   ✅ تحسين شريط الترجمة (لون أصفر/برتقالي مطابق للصورة)
+   ✅ تحسين بادج "اليوم" ليطابق الصورة بدقة
+   ✅ تحسين الفقاعة الزرقاء وعلامات القراءة ✓✓
+   ✅ تحسين CallBubble (مكالمة صوتية) ليطابق الصورة
+   ========================================================================== */
+
+
+/* ==========================================================================
+   1) MessageContextPopup — تثبيت فوق الرسالة وتنسيق العناصر
+   ========================================================================== */
+
+/* الـ overlay الخلفي شفاف تقريباً */
+body .yam-msg-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  background: rgba(0, 0, 0, 0.35) !important;
+  z-index: 9990 !important;
+  backdrop-filter: blur(2px) !important;
+  -webkit-backdrop-filter: blur(2px) !important;
+}
+
+/* شريط الأوامر تحت شريط الإيموجي */
+body .yam-msg-popup-container .yam-msg-action-bar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-around !important;
+  background: #1F2230 !important;
+  border-radius: 16px !important;
+  padding: 6px 4px !important;
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.04) !important;
+  gap: 2px !important;
+  font-family: 'Noto Sans Arabic', 'Cairo', 'Tajawal', system-ui, sans-serif !important;
+}
+
+body .yam-msg-popup-container .ym-action-btn {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 2px !important;
+  padding: 8px 10px !important;
+  background: transparent !important;
+  border: none !important;
+  color: #e6e9f2 !important;
+  cursor: pointer !important;
+  border-radius: 10px !important;
+  min-width: 56px !important;
+  transition: background 0.15s ease !important;
+  font-family: inherit !important;
+}
+
+body .yam-msg-popup-container .ym-action-btn:hover,
+body .yam-msg-popup-container .ym-action-btn:focus-visible {
+  background: rgba(255, 255, 255, 0.08) !important;
+  outline: none !important;
+}
+
+body .yam-msg-popup-container .ym-action-btn .icon {
+  font-size: 20px !important;
+  line-height: 1 !important;
+}
+
+body .yam-msg-popup-container .ym-action-btn .label {
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  color: #d1d5db !important;
+}
+
+/* القائمة الفرعية (للمزيد) */
+body .yam-msg-submenu {
+  position: fixed !important;
+  background: #1F2230 !important;
+  border-radius: 12px !important;
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.06) !important;
+  min-width: 220px !important;
+  padding: 6px !important;
+  z-index: 9999 !important;
+  font-family: 'Noto Sans Arabic', 'Cairo', system-ui, sans-serif !important;
+  animation: ymPopIn 0.16s ease !important;
+}
+
+body .yam-msg-submenu button {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  padding: 10px 14px !important;
+  background: transparent !important;
+  border: none !important;
+  color: #e6e9f2 !important;
+  font-size: 14px !important;
+  border-radius: 8px !important;
+  cursor: pointer !important;
+  font-family: inherit !important;
+  transition: background 0.12s !important;
+}
+
+body .yam-msg-submenu button:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+body .yam-msg-submenu button.danger {
+  color: #fca5a5 !important;
+}
+
+body .yam-msg-submenu button.danger:hover {
+  background: rgba(248, 113, 113, 0.12) !important;
+}
+
+body .yam-msg-submenu button .icon {
+  font-size: 16px !important;
+  opacity: 0.85 !important;
+}
+
+@keyframes ymPopIn {
+  from { transform: scale(0.94) translateY(4px); opacity: 0; }
+  to   { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+
+/* ==========================================================================
+   2) شريط الترجمة — لون مطابق للصورة (#E8B43E أصفر/برتقالي)
+   ========================================================================== */
+
+body .yam-translation-strip {
+  margin-top: 6px !important;
+  padding: 4px 0 0 !important;
+  border-top: 1px solid rgba(232, 180, 62, 0.18) !important;
+  background: transparent !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+  font-family: 'Noto Sans Arabic', 'Cairo', system-ui, sans-serif !important;
+}
+
+body .yam-translation-strip .yam-translation-label {
+  font-size: 10.5px !important;
+  font-weight: 500 !important;
+  color: #E8B43E !important;
+  opacity: 0.85 !important;
+  display: inline-block !important;
+}
+
+body .yam-translation-strip .yam-translation-text {
+  font-size: 14px !important;
+  color: #ffffff !important;
+  line-height: 1.5 !important;
+  direction: rtl !important;
+  unicode-bidi: plaintext !important;
+}
+
+body .yam-translation-strip.is-loading .yam-translation-label {
+  color: #E8B43E !important;
+  opacity: 0.7 !important;
+}
+
+
+/* ==========================================================================
+   3) بادج "اليوم" — تطابق دقيق
+   ========================================================================== */
+
+@media (max-width: 980px) {
+  body .yam-messages-area .yam-day-divider {
+    background: rgba(26, 31, 43, 0.95) !important;
+    color: #ffffff !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    padding: 6px 22px !important;
+    border-radius: 16px !important;
+    margin: 16px auto 14px !important;
+    align-self: center !important;
+    max-width: max-content !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+}
+
+
+/* ==========================================================================
+   4) فقاعات الرسائل — تطابق دقيق مع الصورة
+   ========================================================================== */
+
+@media (max-width: 980px) {
+  /* الفقاعة الزرقاء (sent) */
+  body .yam-message-row.me .yam-bubble {
+    background: #2F95FF !important;
+    background-image: none !important;
+    color: #ffffff !important;
+    border-radius: 18px !important;
+    padding: 9px 14px !important;
+    max-width: 78% !important;
+  }
+  body .yam-message-row.me:last-child .yam-bubble,
+  body .yam-message-row.me:not(.grouped-next) .yam-bubble {
+    border-bottom-right-radius: 6px !important;
+  }
+
+  /* الفقاعة الرمادية (received) */
+  body .yam-message-row.them .yam-bubble {
+    background: #1A1F2B !important;
+    color: #ffffff !important;
+    border-radius: 18px !important;
+    padding: 9px 14px !important;
+    max-width: 78% !important;
+  }
+  body .yam-message-row.them:not(.grouped-next) .yam-bubble {
+    border-bottom-left-radius: 6px !important;
+  }
+
+  /* نص الرسالة */
+  body .yam-bubble .bubble-text {
+    font-size: 14.5px !important;
+    line-height: 1.45 !important;
+  }
+
+  /* الوقت + علامات القراءة */
+  body .yam-bubble .bubble-meta {
+    margin-top: 3px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    justify-content: flex-end !important;
+    width: 100% !important;
+  }
+  body .yam-bubble .bubble-time {
+    font-size: 10.5px !important;
+    opacity: 0.85 !important;
+    color: rgba(255, 255, 255, 0.85) !important;
+  }
+  body .yam-message-row.me .yam-bubble .bubble-status {
+    font-size: 11px !important;
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+}
+
+
+/* ==========================================================================
+   5) CallBubble — مكالمة صوتية (يطابق الصورة)
+   ========================================================================== */
+
+@media (max-width: 980px) {
+  body .yam-message-row.me .yam-call-bubble,
+  body .yam-message-row .yam-call-bubble {
+    background: #1A1F2B !important;
+    background-image: none !important;
+    border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    border-radius: 14px !important;
+    padding: 10px 14px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    min-width: 180px !important;
+  }
+  body .yam-call-bubble .call-icon,
+  body .yam-call-bubble [data-call-icon] {
+    width: 30px !important;
+    height: 30px !important;
+    border-radius: 50% !important;
+    background: rgba(47, 149, 255, 0.18) !important;
+    color: #2F95FF !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 15px !important;
+  }
+}
+
+
+/* ==========================================================================
+   6) شريط الإدخال السفلي — تثبيت + لا يغطّى بلوحة المفاتيح
+   ========================================================================== */
+
+@media (max-width: 980px) {
+  body .yam-chat-input,
+  body .yam-input-bar,
+  body [data-yam-chat-input] {
+    position: fixed !important;
+    bottom: 0 !important;
+    inset-inline: 0 !important;
+    background: #000000 !important;
+    background-image: none !important;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
+    z-index: 50 !important;
+  }
+}
+
+
+/* ==========================================================================
+   7) إخفاء toolbar الـ Hover القديم على الجوال (نستخدم popup فقط)
+   ========================================================================== */
+
+@media (max-width: 980px) {
+  body .yam-bubble-toolbar,
+  body .yam-bubble-more {
+    display: none !important;
+  }
+}
+
+
+/* ==========================================================================
+   8) تأكيد ظهور القائمة فوق الرسالة (override أي positioning مكسور)
+   ========================================================================== */
+
+body .yam-msg-popup-container {
+  position: fixed !important;
+  z-index: 9998 !important;
+  pointer-events: auto !important;
+}

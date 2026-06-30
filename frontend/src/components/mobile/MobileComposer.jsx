@@ -116,13 +116,16 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
 
       <style>{`
         .ym-composer-wrap {
-          /* ⭐ v60.9 FIX: margin سالب ثابت يلغي padding الحاوية الأم
-             (.yam-home-mobile-page لديها padding: 12px) فيصبح الصندوق
-             ملتصقاً بحافتي العرض تماماً (يمين+يسار) دون هروب. */
+          /* ⭐ v65 STRETCH FIX:
+             استخدم width: calc(100% + 24px) بدلاً من width: auto
+             ليضمن حساباً رياضياً دقيقاً للعرض.
+             الحاوية الأم .yam-home-mobile-page لديها padding: 12px
+             → نحن نضيف 24px (12 × 2) للعرض ونسحب -12px للجهة البدائية
+             → النتيجة: العنصر يحتل عرض الشاشة الكامل تماماً. */
           padding: 10px 12px 6px;
           padding-inline-start: 12px;
           padding-inline-end: 12px;
-          /* تعويض padding الحاوية الأم على الجهات الأربع */
+          /* margin سالب على الجهتين + عرض محسوب */
           margin-top: -12px;
           margin-inline-start: -12px;
           margin-inline-end: -12px;
@@ -131,8 +134,10 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
           margin-bottom: 0;
           background-color: #0A0D1A;
           box-sizing: border-box;
-          width: auto;
-          max-width: none;
+          /* ⭐ v65: عرض محسوب بدلاً من auto */
+          width: calc(100% + 24px);
+          max-width: calc(100% + 24px);
+          min-width: calc(100% + 24px);
           display: block;
           font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
           direction: rtl;

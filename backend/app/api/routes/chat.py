@@ -856,12 +856,30 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int, db: Session = D
 @router.post('/translate')
 @router.post('/translate_message')
 async def translate(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # v64 — يقبل كلا التنسيقين (frontend جديد: target/source ، أو القديم: target_lang/source_lang)
     text = str(payload.get('text') or '').strip()
-    source_lang = str(payload.get('source_lang') or '').strip() or 'auto'
-    target_lang = str(payload.get('target_lang') or '').strip() or 'en'
+    source_lang = (
+        str(payload.get('source_lang') or payload.get('source') or '').strip() or 'auto'
+    )
+    target_lang = (
+        str(payload.get('target_lang') or payload.get('target') or '').strip() or 'en'
+    )
     if not text:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Text is required')
-    return await _translate_with_mymemory(text, source_lang, target_lang)
+    result = await _translate_with_mymemory(text, source_lang, target_lang)
+    # v64 — نرجّع التنسيقين معاً ليتوافق مع الـ frontend الحالي والقديم
+    translated_text = result.get('translated_text') or ''
+    return {
+        # تنسيق frontend الجديد (المتوقع في translationService.js)
+        'translatedText': translated_text,
+        'detectedSourceLanguage': source_lang,
+        # تنسيق قديم (للتوافق الخلفي)
+        'translated_text': translated_text,
+        'source_lang': source_lang,
+        'target_lang': target_lang,
+        'provider': result.get('provider', 'MyMemory'),
+        'match': result.get('match'),
+    }
 
 
 @router.post('/update_online')

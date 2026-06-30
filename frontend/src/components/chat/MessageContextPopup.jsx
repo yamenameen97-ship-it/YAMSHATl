@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 /**
- * MessageContextPopup (v60)
+ * MessageContextPopup (v66)
+ * --------------------------------------------------------------------------
+ * v66 FIX: استخدام createPortal لإخراج الـ popup من شجرة DOM الخاصة بالرسالة
+ * المشكلة: عناصر .yam-message-row و .yam-bubble تحتوي على will-change/transform/isolation
+ * مما يُنشئ stacking context يحبس الـ popup داخل حدود البابلة
+ * فيظهر خلف البابلات الأخرى رغم z-index: 9998.
+ * الحل: عرض الـ popup عبر portal إلى document.body — يخرج من جميع stacking contexts.
  * --------------------------------------------------------------------------
  * قائمة منبثقة موحّدة لأوامر الرسالة على الجوال - تطابق التصميم المرجعي:
  *
@@ -55,7 +62,7 @@ export default function MessageContextPopup({
   const submenuRef = useRef(null);
   const moreBtnRef = useRef(null);
 
-  // v60.7 — القائمة تظهر دائماً فوق الرسالة (طلب المستخدم المباشر)
+  // v64 — القائمة تظهر دائماً فوق الرسالة المحددة (طلب المستخدم المباشر)
   // المنطق:
   //  1) دائماً نحاول وضع الـ popup فوق الرسالة (anchorRect.top - POPUP_HEIGHT - 10).
   //  2) إذا لم تكن هناك مساحة كافية فوق الرسالة (top < HEADER_SAFE)،
@@ -67,15 +74,15 @@ export default function MessageContextPopup({
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const POPUP_WIDTH = Math.min(vw - 24, 340);
-    const POPUP_HEIGHT = 140; // ارتفاع تقديري (إيموجي + شريط أوامر + هامش)
-    const HEADER_SAFE = 64;   // ارتفاع الهيدر الثابت + هامش صغير
-    const INPUT_SAFE = 100;   // مساحة الشريط السفلي
+    const POPUP_HEIGHT = 150; // ارتفاع تقديري (إيموجي + شريط أوامر + هامش)
+    const HEADER_SAFE = 72;   // ارتفاع الهيدر الثابت + هامش صغير (يطابق v63 60px + safe-area)
+    const INPUT_SAFE = 110;   // مساحة الشريط السفلي
     const usableBottom = vh - INPUT_SAFE;
 
-    // ✅ دائماً فوق الرسالة
-    let top = anchorRect.top - POPUP_HEIGHT - 10;
+    // ✅ v64: دائماً فوق الرسالة (gap = 12px أوضح بصرياً)
+    let top = anchorRect.top - POPUP_HEIGHT - 12;
 
-    // إذا لم تكن هناك مساحة كافية فوق، ثبّت تحت الهيدر مباشرة (وليس تحت الرسالة)
+    // إذا لم تكن هناك مساحة كافية فوق الرسالة، ثبّت تحت الهيدر مباشرة (وليس تحت الرسالة)
     if (top < HEADER_SAFE) {
       top = HEADER_SAFE;
     }
@@ -85,7 +92,7 @@ export default function MessageContextPopup({
       top = Math.max(HEADER_SAFE, usableBottom - POPUP_HEIGHT);
     }
 
-    // المحاذاة الأفقية: المنتصف مع الرسالة
+    // v64 — المحاذاة الأفقية: المنتصف مع الرسالة (مع تثبيت ضمن الـ viewport)
     let left = anchorRect.left + (anchorRect.width / 2) - (POPUP_WIDTH / 2);
     left = Math.max(12, Math.min(left, vw - POPUP_WIDTH - 12));
 
@@ -119,6 +126,7 @@ export default function MessageContextPopup({
   }, [onClose]);
 
   if (!anchorRect) return null;
+  if (typeof document === 'undefined') return null;
 
   const handleEmojiClick = (emoji) => {
     onReact?.(emoji);
@@ -153,7 +161,9 @@ export default function MessageContextPopup({
     setShowSubmenu((v) => !v);
   };
 
-  return (
+  // v66: العرض عبر portal إلى document.body — يضمن أن الـ popup يظهر فوق كل الرسائل
+  // ولا يحبسه أي stacking context تابع لرسالة معينة (will-change/transform/isolation).
+  return createPortal(
     <>
       {/* الـ overlay للخلفية */}
       <div className="yam-msg-overlay" onClick={() => onClose?.()} />
@@ -322,6 +332,7 @@ export default function MessageContextPopup({
           </button>
         </div>
       ) : null}
-    </>
+    </>,
+    document.body
   );
 }

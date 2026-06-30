@@ -1,0 +1,400 @@
+/* ==========================================================================
+   YAMSHAT v66 — Critical UX Fixes (Profile + Reels + Chat)
+   --------------------------------------------------------------------------
+   إصلاحات v66 (تأتي بعد كل ملفات v60.x و v61 و v62 و v63 و v64 و v65 لتفوز في cascade):
+
+   ✅ (1) صفحة الملف الشخصي (Profile.jsx):
+        المشكلة: الملف يظهر لكنه "يعلّق" ولا يستجيب للضغط أو التعديل،
+                ويتأخر في الفتح.
+        السبب: طبقات shimmer / overlay كانت تظل بـ pointer-events: auto
+               بعد انتهاء التحميل، مما يحجب النقرات. كذلك .profile-page-loading
+               قد تبقى مرئية لفترة بسبب race condition قديم.
+        الحل: تحييد جميع طبقات التحميل/الـ shimmer وضمان أن الصفحة
+              قابلة للنقر والتفاعل دائماً، مع تسريع الانتقال البصري.
+
+   ✅ (2) صفحة الريلز (Reels.jsx) — تعليقات الريلز:
+        المشكلة: عند فتح درج التعليقات على الريلز، منطقة كتابة التعليق
+                لا تظهر — تختفي خلف الـ keyboard أو خلف الشريط السفلي.
+        السبب: .ym-reels-drawer-panel يستخدم max-height: 70vh مع
+               flex-column، لكن .ym-reels-drawer-input لم تكن sticky/fixed
+               فعند ظهور الـ keyboard تُدفع خارج الـ viewport.
+        الحل: تثبيت .ym-reels-drawer-input في أسفل الـ panel، وإضافة
+              dvh للتعامل مع الـ keyboard، وضمان flex-shrink: 0.
+
+   ✅ (3) صفحة الدردشة (Chat.jsx) — اسم الشخص في الهيدر:
+        المشكلة: عند فتح صفحة شات بين شخصين، لا يظهر اسم الشخص
+                في أعلى الشات على الجوال (يُقصّ أو يُخفى).
+        السبب: .yam-chat-stage-peer كان min-width: 0 بدون flex: 1
+               فعند ضغط الأزرار اليمنى الـ peer يُختصر لصفر عرض.
+        الحل: إعطاء .yam-chat-stage-peer قيمة flex: 1 1 auto + min-width
+              معقول، وضمان عرض الاسم والحالة بوضوح حتى على شاشات 320px.
+
+   ✅ (4) صفحة الدردشة — أزرار التفاعل خلف الرسالة عند الضغط المطوّل:
+        المشكلة: عند الضغط المطوّل على رسالة لاستدعاء أزرار التفاعل
+                (إعادة إرسال، تعديل، الإيموجي)، تظهر هذه الأزرار
+                خلف الرسالة بدلاً من فوقها.
+        السبب: .yam-message-row و .yam-bubble تحتوي على
+               will-change: transform و isolation: isolate و transform،
+               مما يُنشئ stacking context يحبس MessageContextPopup
+               داخل حدود الرسالة رغم position: fixed و z-index: 9998.
+        الحل (الجزء الأول — JS): تعديل MessageContextPopup.jsx لاستخدام
+                                  createPortal إلى document.body.
+        الحل (الجزء الثاني — CSS هنا): رفع z-index الفعّال للـ portal
+                                       وتعطيل أي stacking context
+                                       منافس فوقه.
+   ========================================================================== */
+
+
+/* ==========================================================================
+   (1) PROFILE PAGE — Unblock interactions, kill stuck loaders
+   ========================================================================== */
+
+/* Profile.jsx لا يستخدم className=profile-page-loading إلا في حالة التحميل
+   لكن .profile-loading-card من v62 قد يظل عالقاً بسبب pointer-events.
+   هنا نضمن أن أي shimmer/loader عند زواله لا يبقى محجوب الضغط. */
+
+body .profile-page-loading {
+  pointer-events: none !important;
+}
+
+body .profile-page-loading.is-done,
+body .profile-page-loading[data-loaded="true"] {
+  display: none !important;
+}
+
+/* تسريع وإجبار قابلية النقر على Card / Buttons / Modal triggers في الصفحة الشخصية */
+body [data-page="profile"] button,
+body .yam-profile-page button,
+body main button,
+body [class*="profile"] button {
+  pointer-events: auto !important;
+  touch-action: manipulation !important;
+}
+
+/* أي طبقة shimmer/skeleton لا تحجب التفاعل بعد الانتهاء */
+body .ym-skeleton,
+body .skeleton-loader,
+body [class*="skeleton"]:not(:hover):not(:focus-within) {
+  pointer-events: none !important;
+}
+
+/* احتياط: إلغاء أي pointer-events: none غير مقصودة على Card الأساسي للملف الشخصي */
+body main .yam-card,
+body main [class*="ProfileCard"],
+body main [class*="profile-card"] {
+  pointer-events: auto !important;
+}
+
+/* ضمان أن أزرار تعديل الملف الشخصي (Modal triggers) قابلة للضغط دائماً */
+body button[aria-label*="تعديل"],
+body button[aria-label*="حساب"],
+body button[aria-label*="الملف الشخصي"] {
+  pointer-events: auto !important;
+  cursor: pointer !important;
+  position: relative !important;
+  z-index: 5 !important;
+}
+
+
+/* ==========================================================================
+   (2) REELS — Comments drawer: ensure input stays visible
+   ========================================================================== */
+
+/* الـ drawer الأم */
+body .ym-reels-drawer {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 9000 !important;
+  display: flex !important;
+  align-items: flex-end !important;
+  /* استخدام dvh لإحترام ارتفاع الـ viewport الديناميكي مع الـ keyboard */
+  height: 100dvh !important;
+}
+
+/* لوحة الـ drawer */
+body .ym-reels-drawer-panel {
+  position: relative !important;
+  width: 100% !important;
+  max-height: min(75dvh, 640px) !important;
+  min-height: 280px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  background: #150f24 !important;
+  border-top-left-radius: 22px !important;
+  border-top-right-radius: 22px !important;
+  border-top: 1px solid rgba(139, 92, 246, 0.4) !important;
+}
+
+/* الهيدر (التعليقات + X) ثابت لا يُضغط */
+body .ym-reels-drawer-head {
+  flex: 0 0 auto !important;
+  flex-shrink: 0 !important;
+}
+
+/* جسم التعليقات يأخذ المساحة المتاحة ويمرّر داخلياً */
+body .ym-reels-drawer-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior: contain !important;
+}
+
+/* ✅ منطقة كتابة التعليق — ثابتة في الأسفل، مرئية دائماً */
+body .ym-reels-drawer-input {
+  flex: 0 0 auto !important;
+  flex-shrink: 0 !important;
+  position: sticky !important;
+  bottom: 0 !important;
+  display: flex !important;
+  gap: 8px !important;
+  padding: 12px 14px !important;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: #0f0a1c !important;
+  z-index: 5 !important;
+  /* ضمان عدم الإخفاء */
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+body .ym-reels-drawer-input input {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  background: #1f1635 !important;
+  border: 1px solid rgba(139, 92, 246, 0.3) !important;
+  border-radius: 999px !important;
+  color: #fff !important;
+  padding: 10px 16px !important;
+  font-family: inherit !important;
+  font-size: 14px !important;
+  outline: none !important;
+}
+
+body .ym-reels-drawer-input input:focus {
+  border-color: #8b5cf6 !important;
+}
+
+body .ym-reels-drawer-input button {
+  flex: 0 0 auto !important;
+  background: linear-gradient(180deg, #8b5cf6, #6d28d9) !important;
+  color: #fff !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  padding: 10px 18px !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  font-family: inherit !important;
+  white-space: nowrap !important;
+}
+
+
+/* ==========================================================================
+   (3) CHAT HEADER — Ensure peer name is visible on mobile
+   ========================================================================== */
+
+/* الحاوية الأم للهيدر — تخصيص العرض بشكل صحيح */
+body .yam-chat-stage-header {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  /* justify-content مرن: زر الرجوع، ثم peer (يأخذ المساحة)، ثم الأزرار */
+  justify-content: flex-start !important;
+}
+
+/* زر الرجوع لا ينكمش */
+body .yam-chat-stage-header .yam-stage-back-btn {
+  flex: 0 0 auto !important;
+  flex-shrink: 0 !important;
+}
+
+/* peer container يأخذ المساحة المتاحة بين زر الرجوع وأزرار الإجراءات */
+body .yam-chat-stage-peer {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  overflow: hidden !important;
+}
+
+/* زر الـ peer (الذي يحوي الأفاتار والاسم) */
+body .yam-chat-stage-peer-button {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+  overflow: hidden !important;
+}
+
+/* النص (الاسم + الحالة) — يجب أن يظهر دائماً */
+body .yam-chat-stage-peer-copy {
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+}
+
+body .yam-chat-stage-peer-copy strong {
+  display: block !important;
+  font-size: 16px !important;
+  font-weight: 800 !important;
+  color: #ffffff !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  max-width: 100% !important;
+  line-height: 1.2 !important;
+}
+
+body .yam-chat-stage-peer-copy span {
+  display: block !important;
+  font-size: 12px !important;
+  color: #94a3b8 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  line-height: 1.2 !important;
+}
+
+body .yam-chat-stage-peer-copy span.online {
+  color: #22c55e !important;
+}
+
+/* أزرار الإجراءات (📞 🎥 ⌕ ⋮) لا تنكمش لكن تأخذ أقل مساحة ممكنة */
+body .yam-chat-stage-actions {
+  flex: 0 0 auto !important;
+  flex-shrink: 0 !important;
+  display: flex !important;
+  gap: 4px !important;
+}
+
+/* تكبير الأفاتار قليلاً ليكون ظاهراً */
+body .yam-chat-stage-peer-button .yam-avatar-wrap {
+  flex: 0 0 auto !important;
+}
+
+/* على الشاشات الصغيرة جداً (≤ 360px) — تصغير الأزرار اليمنى لإفساح المجال للاسم */
+@media (max-width: 380px) {
+  body .yam-chat-stage-actions .yam-stage-icon {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    font-size: 15px !important;
+  }
+  body .yam-chat-stage-header {
+    padding: 8px 10px !important;
+    padding-top: calc(8px + env(safe-area-inset-top, 0px)) !important;
+    gap: 6px !important;
+  }
+  body .yam-chat-stage-peer-button {
+    gap: 8px !important;
+  }
+  body .yam-chat-stage-peer-copy strong {
+    font-size: 15px !important;
+  }
+}
+
+/* على الجوال عامة — ضمان min-height مناسب وعرض الاسم */
+@media (max-width: 980px) {
+  body .yam-chat-stage-header {
+    min-height: 56px !important;
+  }
+  /* تقليل عدد الأزرار المرئية على الجوال — البحث يُخفى للحفاظ على الاسم */
+  body .yam-chat-stage-header .yam-stage-icon[aria-label="بحث"] {
+    display: none !important;
+  }
+}
+
+
+/* ==========================================================================
+   (4) MESSAGE CONTEXT POPUP — Force above all messages (portal + z-index)
+   ========================================================================== */
+
+/* MessageContextPopup.jsx الآن يستخدم createPortal إلى document.body،
+   لكن نضمن أيضاً عبر CSS أن z-index لن يُهزم. */
+
+body > .yam-msg-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  background: rgba(0, 0, 0, 0.45) !important;
+  z-index: 999998 !important;
+  backdrop-filter: blur(2px) !important;
+  -webkit-backdrop-filter: blur(2px) !important;
+  pointer-events: auto !important;
+}
+
+body > .yam-msg-popup-container {
+  position: fixed !important;
+  z-index: 999999 !important;
+  pointer-events: auto !important;
+  /* لا transform/will-change/filter هنا — نريد stacking context نظيف */
+  transform: none !important;
+  will-change: auto !important;
+  isolation: auto !important;
+}
+
+body > .yam-msg-submenu {
+  position: fixed !important;
+  z-index: 999999 !important;
+  pointer-events: auto !important;
+}
+
+/* احتياط: حتى لو لم يدخل portal لسبب ما، نرفع z-index بشكل عام */
+body .yam-msg-overlay {
+  z-index: 999998 !important;
+}
+
+body .yam-msg-popup-container {
+  z-index: 999999 !important;
+}
+
+body .yam-msg-submenu {
+  z-index: 999999 !important;
+}
+
+/* تعطيل أي stacking context على الـ row/bubble قد يُحبس داخله الـ popup
+   عندما لا يستخدم portal (احتياط fallback). */
+body .yam-message-row {
+  isolation: auto !important;
+}
+
+/* لا نُعطّل will-change/transform على .yam-bubble لأنها تُستخدم للأنميشن،
+   لكن بفضل portal الجديد، الـ popup لن يكون داخلها أصلاً. */
+
+
+/* ==========================================================================
+   (5) Profile page loading state — Quick recovery
+   ========================================================================== */
+
+/* إذا كان loadProfile() قد انتهى لكن state setProfile لم يُفعّل بعد،
+   لا نريد أن يبدو الزر "تعديل" غير قابل للضغط. */
+body .yam-profile-loading {
+  pointer-events: none !important;
+  opacity: 0.6 !important;
+}
+
+body .yam-profile-loading + * {
+  pointer-events: auto !important;
+}
+
+/* تأكيد: شعار "جارٍ تحميل الملف الشخصي..." لا يبقى لأكثر من ضرورة */
+body .profile-loading-card {
+  animation: yamProfileFadeOut 0.3s ease 5s forwards;
+}
+
+@keyframes yamProfileFadeOut {
+  to {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
+
+/* ==========================================================================
+   النهاية — v66 إصلاحات حرجة بدون أي تبعيات جديدة
+   ========================================================================== */

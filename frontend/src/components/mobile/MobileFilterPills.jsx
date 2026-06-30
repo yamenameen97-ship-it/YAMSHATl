@@ -79,9 +79,12 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
 
       <style>{`
         .ym-filters-container {
-          /* ⭐ v60.9 FIX: margin سالب على الجهات الأربع يلغي padding
-             الحاوية الأم .yam-home-mobile-page فتلتصق أول pill (الكل)
-             بحافة اليمين تماماً وتختفي مشكلة الهروب لليسار */
+          /* ⭐ v65 STRETCH FIX:
+             استخدم width: calc(100% + 24px) لضمان حساب رياضي دقيق.
+             الحاوية الأم لديها padding: 12px → نعوض بـ 24px إضافة
+             للعرض و -12px للجهة البدائية. النتيجة: الفلاتر
+             تمتد بعرض الشاشة الكامل وأول pill (الكل) يلتصق
+             بحافة اليمين تماماً دون أي فراغ. */
           padding: 8px 12px 10px;
           padding-inline-start: 12px;
           padding-inline-end: 12px;
@@ -93,8 +96,10 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
           margin-top: 0;
           background-color: #0A0D1A;
           box-sizing: border-box;
-          width: auto;
-          max-width: none;
+          /* ⭐ v65: عرض محسوب بدلاً من auto */
+          width: calc(100% + 24px);
+          max-width: calc(100% + 24px);
+          min-width: calc(100% + 24px);
           display: block;
           overflow-x: auto;
           overflow-y: hidden;

@@ -132,6 +132,24 @@ import './styles/yamshat-fixes-v62-profile-comments.css';
    (هيدر، فقاعات زرقاء، شريط ترجمة برتقالي، كرت مكالمة، شريط إدخال سفلي).
    يجب أن يبقى هذا الاستيراد آخر CSS chat-related ليفوز في cascade. */
 import './styles/chat-mobile-pixel-match-v63.css';
+/* ✅ v64 polish: ضمان ظهور قائمة خيارات الرسالة (popup) فوق الرسالة دائماً،
+   تحسين شريط الترجمة الأصفر، وتثبيت شريط الإدخال السفلي.
+   يجب أن يبقى هذا الاستيراد آخر CSS chat-related ليفوز في cascade. */
+import './styles/chat-mobile-pixel-match-v64.css';
+/* 🎯 v65 STRETCH FIX (Mobile Web Feed):
+   - صندوق "بماذا تفكر؟" يمتد بعرض الشاشة الكامل ويلتصق بحافتي العرض.
+   - أزرار الفلترة (الكل/المجموعات/الستوري/الوسائط) تمتد بنفس العرض.
+   - يستخدم width: calc(100% + 24px) بدلاً من width: auto لحساب رياضي دقيق.
+   - يصلح مشكلة الفراغ الأسود في الجهة اليمنى في وضع RTL.
+   ⚠️ يجب أن يبقى هذا الاستيراد بعد v60.9 ليفوز في cascade. */
+import './styles/yamshat-fixes-v65-composer-filters-stretch.css';
+/* 🚨 v66 CRITICAL UX FIXES — Profile + Reels Comments + Chat Header + Reaction Popup
+   1) الملف الشخصي: ضمان قابلية الضغط والتفاعل (لا تعليق)
+   2) تعليقات الريلز: ظهور منطقة كتابة التعليق دائماً
+   3) هيدر الدردشة: ضمان ظهور اسم الشخص الذي تدردش معه
+   4) أزرار التفاعل (Long-press): تظهر فوق الرسالة وليس خلفها (createPortal + z-index)
+   ⚠️ يجب أن يبقى هذا الاستيراد آخر CSS chat-related ليفوز في cascade. */
+import './styles/yamshat-fixes-v66-profile-reels-chat.css';
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';

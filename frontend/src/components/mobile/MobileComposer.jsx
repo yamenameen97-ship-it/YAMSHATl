@@ -34,13 +34,45 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
     navigate(`/compose?tab=${tab}`);
   };
 
+  /* ⭐ v75 ABSOLUTE FIX: inline guard لـ .ym-composer-wrap
+     يضمن width:100% + zero margin-inline حتى لو فشلت CSS
+     في الفوز على أي قاعدة سابقة. */
+  const wrapInlineGuard = {
+    display: 'block',
+    width: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
+    marginLeft: 0,
+    marginRight: 0,
+    marginInlineStart: 0,
+    marginInlineEnd: 0,
+    boxSizing: 'border-box',
+    direction: 'rtl',
+  };
+
+  /* ⭐ v75: inline guard لـ .ym-composer (الداخلي)
+     يلغي margin:12px 0 من mobile-yamshat-redesign.css */
+  const composerInlineGuard = {
+    display: 'flex',
+    width: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
+    marginTop: 0,
+    marginBottom: 0,
+    marginLeft: 0,
+    marginRight: 0,
+    boxSizing: 'border-box',
+    direction: 'rtl',
+  };
+
   return (
-    <div className="ym-composer-wrap" dir="rtl">
+    <div className="ym-composer-wrap" dir="rtl" style={wrapInlineGuard}>
       <div
         className="ym-composer"
         role="button"
         tabIndex={0}
         dir="rtl"
+        style={composerInlineGuard}
         onClick={() => open(null)}
         onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && open(null)}
       >

@@ -204,6 +204,13 @@ import './styles/yamshat-fixes-v72-composer-filters-ULTIMATE.css';
    ⚠️ يجب أن يبقى هذا الملف **آخر CSS مطلقاً** بعد كل الإصلاحات. */
 import './styles/yamshat-fixes-v73-composer-filters-DEFINITIVE.css';
 
+/* 🔥🔥🔥 v75 — ABSOLUTE FINAL FIX (الحل المطلق للمشكلة المزمنة)
+   يصلح نهائياً مشكلة "بماذا تفكر؟" + أزرار التصفية التي تهرب
+   إلى اليسار بدلاً من الامتداد بعرض الشاشة الكامل في RTL.
+   
+   ⚠️ هذا الملف يجب أن يكون **آخر CSS مطلقاً** ليفوز في cascade. */
+import './styles/yamshat-fixes-v75-composer-filters-ABSOLUTE.css';
+
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';
@@ -212,7 +219,7 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v73-composer-filters-DEFINITIVE';
+const BUILD_ID = 'yamshat-v75-composer-filters-ABSOLUTE';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

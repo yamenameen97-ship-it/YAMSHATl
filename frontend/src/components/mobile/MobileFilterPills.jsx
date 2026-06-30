@@ -47,13 +47,42 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
     try { tabRefs.current[nextId]?.focus(); } catch { /* ignore */ }
   }, [handleChange]);
 
+  /* ⭐ v75 ABSOLUTE FIX: inline guard لـ .ym-filters-container
+     يضمن width:100% + zero margin-inline حتى لو فشلت CSS
+     في الفوز على أي قاعدة سابقة. */
+  const containerInlineGuard = {
+    display: 'block',
+    width: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
+    marginLeft: 0,
+    marginRight: 0,
+    marginInlineStart: 0,
+    marginInlineEnd: 0,
+    boxSizing: 'border-box',
+    direction: 'rtl',
+  };
+
+  const filtersInlineGuard = {
+    display: 'flex',
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    width: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
+    margin: 0,
+    padding: 0,
+    direction: 'rtl',
+  };
+
   return (
-    <div className="ym-filters-container" dir="rtl">
+    <div className="ym-filters-container" dir="rtl" style={containerInlineGuard}>
       <div
         className="ym-filters"
         role="tablist"
         aria-label="تصفية المحتوى"
         dir="rtl"
+        style={filtersInlineGuard}
       >
         {FILTERS.map((f, idx) => {
           const isActive = f.id === currentActive;

@@ -34,9 +34,9 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
     navigate(`/compose?tab=${tab}`);
   };
 
-  /* ⭐ v75 ABSOLUTE FIX: inline guard لـ .ym-composer-wrap
-     يضمن width:100% + zero margin-inline حتى لو فشلت CSS
-     في الفوز على أي قاعدة سابقة. */
+  /* ⭐ v76 FINAL ROOT-CAUSE FIX: inline guard لـ .ym-composer-wrap
+     يضمن width:100% + zero margin + left/right=0 الفيزيائي
+     لتجاوز scrollbar-gutter في .page-content (RTL). */
   const wrapInlineGuard = {
     display: 'block',
     width: '100%',
@@ -46,23 +46,36 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
     marginRight: 0,
     marginInlineStart: 0,
     marginInlineEnd: 0,
+    paddingLeft: 'var(--ym76-bar-pad-x, 12px)',
+    paddingRight: 'var(--ym76-bar-pad-x, 12px)',
+    left: 0,
+    right: 0,
     boxSizing: 'border-box',
     direction: 'rtl',
+    textAlign: 'right',
+    transform: 'none',
   };
 
-  /* ⭐ v75: inline guard لـ .ym-composer (الداخلي)
+  /* ⭐ v76: inline guard لـ .ym-composer (الداخلي)
      يلغي margin:12px 0 من mobile-yamshat-redesign.css */
   const composerInlineGuard = {
     display: 'flex',
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
     width: '100%',
     maxWidth: '100%',
     minWidth: 0,
+    margin: 0,
     marginTop: 0,
     marginBottom: 0,
     marginLeft: 0,
     marginRight: 0,
+    left: 0,
+    right: 0,
     boxSizing: 'border-box',
     direction: 'rtl',
+    textAlign: 'right',
   };
 
   return (

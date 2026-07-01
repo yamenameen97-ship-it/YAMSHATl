@@ -17,69 +17,89 @@ import notificationService from '../services/notificationService.js';
 import { clearStoredUser } from '../utils/auth.js';
 import { getCDNConfig, getMediaDeliveryProfile } from '../utils/performance.js';
 
-// مجموعات الإعدادات الرئيسية — مصنفة بشكل احترافي مثل تطبيقات الفئة الأولى
+/**
+ * v76 — إعدادات مضغوطة على صفحة واحدة
+ * - إزالة روابط الخروج لصفحات فرعية من التبويبات الأساسية.
+ * - كل قسم يعرض ملخصه داخل نفس الصفحة + زر "فتح كامل" اختياري للصفحة الفرعية إن وُجدت.
+ * - أزرار مصغّرة جداً (mini) لتخفيض الارتفاع.
+ * - Padding مدمج + font-size مصغّر لعرض أكبر عدد من الإعدادات في viewport واحد.
+ */
+
+// مجموعات الإعدادات — كلها تُعرض في نفس الصفحة (لا links تخرج المستخدم إلا اختيارياً)
 const TAB_GROUPS = [
   {
     label: 'الحساب',
     tabs: [
-      { key: 'account', label: '👤 الحساب', icon: '👤' },
-      { key: 'profile-link', label: '🪪 الملف الشخصي', icon: '🪪', link: '/settings/profile' },
-      { key: 'privacy', label: '🔒 الخصوصية', icon: '🔒' },
-      { key: 'security', label: '🛡️ الأمان', icon: '🛡️' },
-      { key: 'two-factor', label: '🔑 المصادقة الثنائية', icon: '🔑' },
-      { key: 'devices', label: '💻 الأجهزة الموثوقة', icon: '💻' },
-      { key: 'sessions', label: '🪟 الجلسات', icon: '🪟' },
-      { key: 'connected-apps', label: '🔗 التطبيقات المرتبطة', icon: '🔗' },
-      { key: 'blocked', label: '🚫 المحظورون', icon: '🚫' },
-      { key: 'muted', label: '🔇 المكتومون', icon: '🔇' },
+      { key: 'account', label: '👤 الحساب' },
+      { key: 'profile', label: '🪪 الملف الشخصي' },
+      { key: 'privacy', label: '🔒 الخصوصية' },
+      { key: 'security', label: '🛡️ الأمان' },
+      { key: 'two-factor', label: '🔑 المصادقة الثنائية' },
+      { key: 'devices', label: '💻 الأجهزة الموثوقة' },
+      { key: 'sessions', label: '🪟 الجلسات' },
+      { key: 'connected-apps', label: '🔗 التطبيقات المرتبطة' },
+      { key: 'blocked', label: '🚫 المحظورون' },
+      { key: 'muted', label: '🔇 المكتومون' },
     ],
   },
   {
     label: 'المحتوى والخدمات',
     tabs: [
-      { key: 'feed-link', label: '📰 الخلاصة (Feed)', icon: '📰', link: '/settings/feed' },
-      { key: 'reels-link', label: '🎬 الريلز', icon: '🎬', link: '/settings/reels' },
-      { key: 'stories-link', label: '📖 الستوريز', icon: '📖', link: '/settings/stories' },
-      { key: 'inbox-link', label: '✉️ الرسائل', icon: '✉️', link: '/settings/inbox' },
-      { key: 'voice-link', label: '🎙️ الغرف الصوتية', icon: '🎙️', link: '/settings/voice' },
-      { key: 'engagement-link', label: '⚔️ المعارك والتفاعل', icon: '⚔️', link: '/settings/engagement' },
-      { key: 'wallet-link', label: '💰 المحفظة', icon: '💰', link: '/settings/wallet' },
+      { key: 'feed', label: '📰 الخلاصة' },
+      { key: 'reels', label: '🎬 الريلز' },
+      { key: 'stories', label: '📖 الستوريز' },
+      { key: 'inbox', label: '✉️ الرسائل' },
+      { key: 'voice', label: '🎙️ الغرف الصوتية' },
+      { key: 'engagement', label: '⚔️ التفاعل والمعارك' },
+      { key: 'wallet', label: '💰 المحفظة' },
     ],
   },
   {
     label: 'التطبيق',
     tabs: [
-      { key: 'appearance', label: '🎨 المظهر', icon: '🎨' },
-      { key: 'language', label: '🌐 اللغة', icon: '🌐' },
-      { key: 'font-size', label: '🔤 حجم الخط', icon: '🔤' },
-      { key: 'translation', label: '🌍 ترجمة المحادثات', icon: '🌍' },
-      { key: 'accessibility', label: '♿ سهولة الوصول', icon: '♿' },
-      { key: 'notifications', label: '🔔 الإشعارات', icon: '🔔' },
-      { key: 'sounds', label: '🔊 الأصوات', icon: '🔊' },
-      { key: 'data-storage', label: '💾 البيانات والتخزين', icon: '💾' },
-      { key: 'media', label: '🎞️ حماية الوسائط', icon: '🎞️' },
-      { key: 'sync', label: '🔄 تعدد الأجهزة', icon: '🔄' },
-      { key: 'performance', label: '⚡ الأداء', icon: '⚡' },
+      { key: 'appearance', label: '🎨 المظهر' },
+      { key: 'language', label: '🌐 اللغة' },
+      { key: 'font-size', label: '🔤 حجم الخط' },
+      { key: 'translation', label: '🌍 الترجمة' },
+      { key: 'accessibility', label: '♿ سهولة الوصول' },
+      { key: 'notifications', label: '🔔 الإشعارات' },
+      { key: 'sounds', label: '🔊 الأصوات' },
+      { key: 'data-storage', label: '💾 البيانات' },
+      { key: 'media', label: '🎞️ حماية الوسائط' },
+      { key: 'sync', label: '🔄 المزامنة' },
+      { key: 'performance', label: '⚡ الأداء' },
     ],
   },
   {
-    label: 'الدعم والمعلومات',
+    label: 'الدعم',
     tabs: [
-      { key: 'download-data', label: '📥 تنزيل بياناتي', icon: '📥' },
-      { key: 'help', label: '❓ المساعدة والدعم', icon: '❓' },
-      { key: 'feedback', label: '💬 إرسال ملاحظات', icon: '💬' },
-      { key: 'about', label: 'ℹ️ عن التطبيق', icon: 'ℹ️' },
-      { key: 'legal', label: '📜 القانوني', icon: '📜' },
+      { key: 'download-data', label: '📥 تنزيل بياناتي' },
+      { key: 'help', label: '❓ المساعدة' },
+      { key: 'feedback', label: '💬 ملاحظات' },
+      { key: 'about', label: 'ℹ️ عن التطبيق' },
+      { key: 'legal', label: '📜 القانوني' },
     ],
   },
 ];
 
-// localStorage helpers لتفضيلات المظهر/الخصوصية/الوصول
+// خريطة تبويب → رابط صفحة كاملة (لزر "فتح كامل" الاختياري)
+const FULL_PAGE_LINKS = {
+  profile: '/settings/profile',
+  feed: '/settings/feed',
+  reels: '/settings/reels',
+  stories: '/settings/stories',
+  inbox: '/settings/inbox',
+  voice: '/settings/voice',
+  engagement: '/settings/engagement',
+  wallet: '/settings/wallet',
+  notifications: '/settings/notifications',
+};
+
 const PREFS_KEY = 'yamshat:app-prefs';
 const loadPrefs = () => { try { return JSON.parse(localStorage.getItem(PREFS_KEY) || '{}'); } catch { return {}; } };
 const savePrefs = (p) => { try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch {} };
 
-// v59.13.33 — مودال تفاعلي لإدخال البيانات وتنفيذ الإجراءات
+// مودال إدخال بيانات
 function SettingsModal({ open, title, description, fields = [], confirmLabel = 'حفظ', cancelLabel = 'إلغاء', danger = false, onConfirm, onClose }) {
   const [values, setValues] = useState({});
   const [submitting, setSubmitting] = useState(false);
@@ -107,56 +127,39 @@ function SettingsModal({ open, title, description, fields = [], confirmLabel = '
           <h3>{title}</h3>
           <button type="button" className="settings-modal-close" onClick={onClose} aria-label="إغلاق">✕</button>
         </div>
-        {description ? <p className="muted" style={{ margin: '0 0 14px' }}>{description}</p> : null}
-        <div style={{ display: 'grid', gap: 12 }}>
+        {description ? <p className="muted" style={{ margin: '0 0 10px', fontSize: 12 }}>{description}</p> : null}
+        <div style={{ display: 'grid', gap: 8 }}>
           {fields.map((f) => (
-            <label key={f.name} style={{ display: 'grid', gap: 6 }}>
-              <span style={{ fontSize: 13, color: 'rgba(226,232,240,0.8)' }}>{f.label}</span>
+            <label key={f.name} style={{ display: 'grid', gap: 4 }}>
+              <span style={{ fontSize: 11.5, color: 'rgba(226,232,240,0.8)' }}>{f.label}</span>
               {f.type === 'textarea' ? (
-                <textarea
-                  className="settings-input"
-                  rows={4}
-                  placeholder={f.placeholder || ''}
-                  value={values[f.name] || ''}
-                  onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))}
-                />
+                <textarea className="settings-input" rows={3} placeholder={f.placeholder || ''}
+                  value={values[f.name] || ''} onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))} />
               ) : f.type === 'select' ? (
-                <select
-                  className="settings-select"
-                  value={values[f.name] || ''}
-                  onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))}
-                >
+                <select className="settings-select" value={values[f.name] || ''}
+                  onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))}>
                   {(f.options || []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               ) : (
-                <input
-                  className="settings-input"
-                  type={f.type || 'text'}
-                  placeholder={f.placeholder || ''}
-                  value={values[f.name] || ''}
-                  onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))}
-                />
+                <input className="settings-input" type={f.type || 'text'} placeholder={f.placeholder || ''}
+                  value={values[f.name] || ''} onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))} />
               )}
-              {f.hint ? <small className="muted" style={{ fontSize: 12 }}>{f.hint}</small> : null}
+              {f.hint ? <small className="muted" style={{ fontSize: 10.5 }}>{f.hint}</small> : null}
             </label>
           ))}
         </div>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 18 }}>
-          <Button variant="secondary" size="small" onClick={onClose}>{cancelLabel}</Button>
-          <Button
-            variant="primary"
-            size="small"
-            loading={submitting}
-            onClick={handleConfirm}
-            className={danger ? 'settings-danger' : ''}
-          >{confirmLabel}</Button>
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 12 }}>
+          <button type="button" className="settings-btn-mini" onClick={onClose}>{cancelLabel}</button>
+          <button type="button" className={`settings-btn-mini settings-btn-mini--primary ${danger ? 'settings-btn-mini--danger' : ''}`}
+            disabled={submitting} onClick={handleConfirm}>
+            {submitting ? '...' : confirmLabel}
+          </button>
         </div>
       </div>
     </div>
   );
 }
 
-// محتوى عرض للنوافذ المعلوماتية (مثل عرض FAQ / Cookies / DMCA)
 function InfoModal({ open, title, content, onClose }) {
   if (!open) return null;
   return (
@@ -167,11 +170,26 @@ function InfoModal({ open, title, content, onClose }) {
           <button type="button" className="settings-modal-close" onClick={onClose} aria-label="إغلاق">✕</button>
         </div>
         <div className="settings-modal-content">{content}</div>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 18 }}>
-          <Button variant="secondary" size="small" onClick={onClose}>إغلاق</Button>
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 12 }}>
+          <button type="button" className="settings-btn-mini" onClick={onClose}>إغلاق</button>
         </div>
       </div>
     </div>
+  );
+}
+
+// زر مصغّر موحّد (بديل عن <Button size="small" /> الأكبر حجماً)
+function MiniBtn({ children, onClick, variant = 'secondary', danger = false, disabled = false, loading = false, ...rest }) {
+  const cls = [
+    'settings-btn-mini',
+    variant === 'primary' ? 'settings-btn-mini--primary' : '',
+    danger ? 'settings-btn-mini--danger' : '',
+    loading ? 'is-busy' : '',
+  ].filter(Boolean).join(' ');
+  return (
+    <button type="button" className={cls} onClick={onClick} disabled={disabled || loading} {...rest}>
+      {loading ? '...' : children}
+    </button>
   );
 }
 
@@ -187,26 +205,34 @@ export default function Settings() {
   const [syncState, setSyncState] = useState(deviceTrustService.getSyncState());
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState('');
-  const [modal, setModal] = useState(null); // {type:'edit'|'info', ...}
+  const [modal, setModal] = useState(null);
   const [prefs, setPrefs] = useState(() => ({
-    // المظهر
     theme: 'dark', accentColor: 'purple', fontSize: 'medium', density: 'normal',
     reducedMotion: false, highContrast: false, roundedCorners: true, animations: true,
-    // الخصوصية
     privateAccount: false, hideLastSeen: false, hideReadReceipts: false,
     incognitoMode: false, anonymousBrowsing: false, locationSharing: false,
-    // الأداء
     saveDataMode: false, lowPowerMode: false, prefetchEnabled: true, hardwareAcceleration: true,
-    // البيانات
     autoBackup: true, backupOnWifi: true, storageLimit: '5GB',
-    // الوصول
     screenReader: false, largeButtons: false, captionsAlways: false, reduceTransparency: false,
-    // الحساب
     email: '', phone: '', username: '', birthdate: '', country: '',
-    // 2FA
     twoFAEmail: false, twoFASms: false, biometric: true,
-    // OAuth
     googleLinked: true, appleLinked: false, facebookLinked: false, twitterLinked: false,
+    // profile / content quick prefs
+    showOnlineStatus: true, allowMentions: 'everyone', allowDMs: 'followers',
+    // feed
+    feedAlgo: 'smart', autoplayVideos: true, showSensitive: false,
+    // reels
+    reelsAutoplay: true, reelsSaveData: false,
+    // stories
+    storiesReplies: 'everyone', storiesShareable: true,
+    // inbox
+    inboxRequestFilter: 'known', readReceipts: true,
+    // voice rooms
+    voiceAutoJoin: false, voiceNoiseSuppress: true,
+    // engagement
+    battleNotifs: true, streakReminders: true,
+    // wallet
+    walletPin: true, walletAutoConfirm: false,
     ...loadPrefs(),
   }));
 
@@ -224,7 +250,7 @@ export default function Settings() {
   const updatePref = (k, v) => {
     const next = { ...prefs, [k]: v };
     setPrefs(next); savePrefs(next);
-    setSuccess('تم حفظ الإعداد.');
+    setSuccess('تم الحفظ.');
   };
 
   useEffect(() => {
@@ -258,57 +284,55 @@ export default function Settings() {
 
   const setSuccess = (text) => {
     setMessage(text);
-    window.setTimeout(() => setMessage(''), 2500);
+    window.setTimeout(() => setMessage(''), 2000);
   };
 
-  // ========== Handlers للأزرار ==========
   const openEdit = (cfg) => setModal({ type: 'edit', ...cfg });
   const openInfo = (cfg) => setModal({ type: 'info', ...cfg });
   const closeModal = () => setModal(null);
 
-  // — معلومات الحساب —
+  // ===== الحساب =====
   const handleEditEmail = () => openEdit({
     title: 'تعديل البريد الإلكتروني',
     description: 'سيتم إرسال رابط تأكيد للبريد الجديد.',
-    fields: [{ name: 'email', label: 'البريد الإلكتروني الجديد', type: 'email', defaultValue: prefs.email, placeholder: 'name@example.com' }],
-    confirmLabel: 'إرسال رابط التأكيد',
-    onConfirm: (v) => { updatePref('email', v.email); setSuccess('تم إرسال رابط التأكيد إلى ' + v.email); closeModal(); },
+    fields: [{ name: 'email', label: 'البريد الجديد', type: 'email', defaultValue: prefs.email, placeholder: 'name@example.com' }],
+    confirmLabel: 'إرسال',
+    onConfirm: (v) => { updatePref('email', v.email); setSuccess('تم إرسال التأكيد.'); closeModal(); },
   });
   const handleEditPhone = () => openEdit({
     title: 'تعديل رقم الهاتف',
     description: 'سيتم إرسال رمز تحقق عبر SMS.',
-    fields: [{ name: 'phone', label: 'رقم الهاتف (مع رمز الدولة)', type: 'tel', defaultValue: prefs.phone, placeholder: '+966 5xxxxxxxx' }],
-    confirmLabel: 'إرسال رمز التحقق',
-    onConfirm: (v) => { updatePref('phone', v.phone); setSuccess('تم إرسال رمز التحقق إلى ' + v.phone); closeModal(); },
+    fields: [{ name: 'phone', label: 'رقم الهاتف', type: 'tel', defaultValue: prefs.phone, placeholder: '+966 5xxxxxxxx' }],
+    confirmLabel: 'إرسال',
+    onConfirm: (v) => { updatePref('phone', v.phone); setSuccess('تم إرسال الرمز.'); closeModal(); },
   });
   const handleChangePassword = () => openEdit({
     title: 'تغيير كلمة المرور',
     fields: [
-      { name: 'current', label: 'كلمة المرور الحالية', type: 'password' },
-      { name: 'next', label: 'كلمة المرور الجديدة', type: 'password', hint: '8 أحرف على الأقل، تحتوي حروف وأرقام' },
-      { name: 'confirm', label: 'تأكيد كلمة المرور الجديدة', type: 'password' },
+      { name: 'current', label: 'الحالية', type: 'password' },
+      { name: 'next', label: 'الجديدة', type: 'password', hint: '8 أحرف على الأقل' },
+      { name: 'confirm', label: 'تأكيد الجديدة', type: 'password' },
     ],
     confirmLabel: 'تغيير',
     onConfirm: (v) => {
-      if (!v.current || !v.next) { setSuccess('يرجى تعبئة جميع الحقول.'); return; }
-      if (v.next.length < 8) { setSuccess('كلمة المرور قصيرة جدًا.'); return; }
-      if (v.next !== v.confirm) { setSuccess('كلمتا المرور غير متطابقتين.'); return; }
-      setSuccess('تم تغيير كلمة المرور بنجاح.'); closeModal();
+      if (!v.current || !v.next) { setSuccess('يرجى تعبئة الحقول.'); return; }
+      if (v.next.length < 8) { setSuccess('كلمة المرور قصيرة.'); return; }
+      if (v.next !== v.confirm) { setSuccess('غير متطابقتين.'); return; }
+      setSuccess('تم التغيير.'); closeModal();
     },
   });
   const handleEditUsername = () => openEdit({
-    title: 'تعديل اسم المستخدم',
-    description: 'يجب أن يكون فريدًا، 3 أحرف على الأقل.',
+    title: 'اسم المستخدم',
     fields: [{ name: 'username', label: 'اسم المستخدم', defaultValue: prefs.username, placeholder: '@username' }],
-    onConfirm: (v) => { updatePref('username', v.username); setSuccess('تم تحديث اسم المستخدم إلى ' + v.username); closeModal(); },
+    onConfirm: (v) => { updatePref('username', v.username); setSuccess('تم التحديث.'); closeModal(); },
   });
   const handleEditBirthdate = () => openEdit({
-    title: 'تعديل تاريخ الميلاد',
-    fields: [{ name: 'birthdate', label: 'تاريخ الميلاد', type: 'date', defaultValue: prefs.birthdate }],
-    onConfirm: (v) => { updatePref('birthdate', v.birthdate); setSuccess('تم تحديث تاريخ الميلاد.'); closeModal(); },
+    title: 'تاريخ الميلاد',
+    fields: [{ name: 'birthdate', label: 'التاريخ', type: 'date', defaultValue: prefs.birthdate }],
+    onConfirm: (v) => { updatePref('birthdate', v.birthdate); setSuccess('تم التحديث.'); closeModal(); },
   });
   const handleEditCountry = () => openEdit({
-    title: 'تعديل الدولة والمنطقة الزمنية',
+    title: 'الدولة',
     fields: [
       { name: 'country', label: 'الدولة', type: 'select', defaultValue: prefs.country || 'SA', options: [
         { value: 'SA', label: 'السعودية' }, { value: 'AE', label: 'الإمارات' }, { value: 'EG', label: 'مصر' },
@@ -320,287 +344,236 @@ export default function Settings() {
         { value: 'OTHER', label: 'أخرى' },
       ] },
     ],
-    onConfirm: (v) => { updatePref('country', v.country); setSuccess('تم تحديث الدولة.'); closeModal(); },
+    onConfirm: (v) => { updatePref('country', v.country); setSuccess('تم التحديث.'); closeModal(); },
   });
 
-  // — إدارة الحساب —
   const handleSuspendAccount = () => openEdit({
-    title: 'إيقاف الحساب مؤقتًا',
-    description: 'سيُخفى حسابك دون حذف بياناتك. يمكنك العودة بأي وقت بتسجيل الدخول.',
-    fields: [{ name: 'reason', label: 'سبب الإيقاف (اختياري)', type: 'textarea', placeholder: 'أحتاج استراحة...' }],
-    confirmLabel: 'إيقاف مؤقت',
-    danger: true,
-    onConfirm: () => { setSuccess('تم إيقاف حسابك مؤقتًا. سيتم تسجيل خروجك خلال لحظات.'); closeModal(); window.setTimeout(handleLogout, 1500); },
+    title: 'إيقاف مؤقت',
+    description: 'سيُخفى حسابك دون حذف بياناتك.',
+    fields: [{ name: 'reason', label: 'السبب (اختياري)', type: 'textarea', placeholder: 'أحتاج استراحة...' }],
+    confirmLabel: 'إيقاف', danger: true,
+    onConfirm: () => { setSuccess('تم الإيقاف.'); closeModal(); window.setTimeout(handleLogout, 1200); },
   });
   const handleDeleteAccount = () => openEdit({
-    title: 'حذف الحساب نهائيًا',
-    description: '⚠️ هذا الإجراء لا يمكن التراجع عنه. سيتم حذف جميع منشوراتك ورسائلك وبياناتك خلال 30 يومًا.',
-    fields: [{ name: 'confirm', label: 'اكتب "حذف نهائي" للتأكيد', placeholder: 'حذف نهائي' }],
-    confirmLabel: 'حذف نهائي',
-    danger: true,
+    title: 'حذف الحساب',
+    description: '⚠️ لا يمكن التراجع. سيتم حذف بياناتك خلال 30 يومًا.',
+    fields: [{ name: 'confirm', label: 'اكتب "حذف نهائي"', placeholder: 'حذف نهائي' }],
+    confirmLabel: 'حذف', danger: true,
     onConfirm: (v) => {
-      if (v.confirm !== 'حذف نهائي') { setSuccess('الرجاء كتابة "حذف نهائي" للتأكيد.'); return; }
-      setSuccess('تم تسجيل طلب الحذف. لديك 30 يومًا للتراجع.'); closeModal();
+      if (v.confirm !== 'حذف نهائي') { setSuccess('اكتب "حذف نهائي".'); return; }
+      setSuccess('تم تسجيل الطلب.'); closeModal();
     },
   });
   const handleConvertBusiness = () => openEdit({
-    title: 'تحويل لحساب أعمال',
-    description: 'حساب الأعمال يفتح: إحصائيات متقدمة، روابط تواصل، إعلانات مدفوعة.',
+    title: 'حساب أعمال',
     fields: [
-      { name: 'category', label: 'فئة العمل', type: 'select', defaultValue: 'creator', options: [
+      { name: 'category', label: 'الفئة', type: 'select', defaultValue: 'creator', options: [
         { value: 'creator', label: 'صانع محتوى' }, { value: 'shop', label: 'متجر' },
-        { value: 'service', label: 'خدمات' }, { value: 'media', label: 'وسائل إعلام' },
-        { value: 'other', label: 'أخرى' },
+        { value: 'service', label: 'خدمات' }, { value: 'media', label: 'وسائل إعلام' }, { value: 'other', label: 'أخرى' },
       ] },
-      { name: 'website', label: 'الموقع الإلكتروني (اختياري)', type: 'url', placeholder: 'https://...' },
+      { name: 'website', label: 'الموقع (اختياري)', type: 'url', placeholder: 'https://...' },
     ],
     confirmLabel: 'تحويل',
-    onConfirm: () => { setSuccess('تم تحويل حسابك إلى حساب أعمال.'); closeModal(); },
+    onConfirm: () => { setSuccess('تم التحويل.'); closeModal(); },
   });
 
-  // — 2FA —
+  // ===== 2FA =====
   const handle2FAApp = () => openEdit({
-    title: 'إعداد تطبيق المصادقة',
-    description: 'امسح رمز QR في تطبيق Google Authenticator أو Authy، ثم أدخل الرمز الظاهر.',
-    fields: [
-      { name: 'code', label: 'الرمز المكوّن من 6 أرقام', placeholder: '123456', hint: 'رمز QR وهمي للعرض — البنية الفعلية في الخادم.' },
-    ],
+    title: 'تطبيق المصادقة',
+    description: 'امسح QR ثم أدخل الرمز.',
+    fields: [{ name: 'code', label: 'رمز 6 أرقام', placeholder: '123456' }],
     confirmLabel: 'تفعيل',
     onConfirm: (v) => {
-      if (!/^\d{6}$/.test(v.code || '')) { setSuccess('الرمز يجب أن يكون 6 أرقام.'); return; }
-      setSuccess('تم تفعيل المصادقة الثنائية عبر التطبيق.'); closeModal();
+      if (!/^\d{6}$/.test(v.code || '')) { setSuccess('6 أرقام مطلوبة.'); return; }
+      setSuccess('تم التفعيل.'); closeModal();
     },
   });
   const handleAddHardwareKey = () => openEdit({
-    title: 'إضافة مفتاح أمان',
-    description: 'صل المفتاح بالـ USB أو فعّل NFC ثم اضغط زرّ المفتاح.',
-    fields: [{ name: 'label', label: 'اسم المفتاح', placeholder: 'YubiKey رئيسي' }],
+    title: 'مفتاح أمان',
+    fields: [{ name: 'label', label: 'اسم المفتاح', placeholder: 'YubiKey' }],
     confirmLabel: 'تسجيل',
-    onConfirm: () => { setSuccess('تم تسجيل المفتاح بنجاح.'); closeModal(); },
+    onConfirm: () => { setSuccess('تم التسجيل.'); closeModal(); },
   });
   const handleRecoveryCodes = () => {
-    const codes = Array.from({ length: 10 }, () => Math.random().toString(36).slice(2, 8).toUpperCase() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase());
+    const codes = Array.from({ length: 10 }, () =>
+      Math.random().toString(36).slice(2, 8).toUpperCase() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase()
+    );
     openInfo({
       title: 'رموز الاسترداد',
       content: (
         <div>
-          <p className="muted">احفظ هذه الرموز في مكان آمن. كل رمز يُستخدم مرة واحدة فقط.</p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginTop: 12 }}>
-            {codes.map((c) => <code key={c} style={{ padding: '8px 10px', background: 'rgba(15,23,42,0.6)', borderRadius: 8, fontFamily: 'monospace', textAlign: 'center' }}>{c}</code>)}
+          <p className="muted" style={{ fontSize: 12 }}>احفظ الرموز — كل رمز يُستخدم مرة واحدة.</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6, marginTop: 8 }}>
+            {codes.map((c) => <code key={c} style={{ padding: '5px 7px', background: 'rgba(15,23,42,0.6)', borderRadius: 6, fontFamily: 'monospace', textAlign: 'center', fontSize: 11.5 }}>{c}</code>)}
           </div>
-          <div style={{ marginTop: 12 }}>
-            <Button variant="secondary" size="small" onClick={() => {
-              navigator.clipboard?.writeText(codes.join('\n')).then(() => setSuccess('تم نسخ الرموز.')).catch(() => {});
-            }}>📋 نسخ الكل</Button>
+          <div style={{ marginTop: 8 }}>
+            <button className="settings-btn-mini" onClick={() => {
+              navigator.clipboard?.writeText(codes.join('\n')).then(() => setSuccess('تم النسخ.')).catch(() => {});
+            }}>📋 نسخ الكل</button>
           </div>
         </div>
       ),
     });
   };
 
-  // — OAuth —
   const handleOAuth = (provider) => {
     const key = provider + 'Linked';
     if (prefs[key]) {
       if (!window.confirm(`إلغاء ربط ${provider}؟`)) return;
-      updatePref(key, false);
-      setSuccess(`تم إلغاء ربط ${provider}.`);
+      updatePref(key, false); setSuccess(`أُلغي ربط ${provider}.`);
     } else {
-      updatePref(key, true);
-      setSuccess(`تم ربط حسابك بـ ${provider}.`);
+      updatePref(key, true); setSuccess(`تم ربط ${provider}.`);
     }
   };
 
-  // — Misc —
   const handleRevokeAllSessions = () => {
-    if (!window.confirm('إنهاء كل الجلسات الأخرى؟ سيتم تسجيل الخروج من كل الأجهزة عداك.')) return;
+    if (!window.confirm('إنهاء كل الجلسات الأخرى؟')) return;
     setBusy('revoke-all');
     Promise.all(sessions.filter((s) => !s.current).map((s) => deviceTrustService.revokeSession(s.id).catch(() => null)))
-      .then(async () => {
-        setSessions(await deviceTrustService.getSessions());
-        setSuccess('تم إنهاء كل الجلسات الأخرى.');
-      })
+      .then(async () => { setSessions(await deviceTrustService.getSessions()); setSuccess('تم الإنهاء.'); })
       .finally(() => setBusy(''));
   };
 
   const handleClearMedia = () => {
-    if (!window.confirm('مسح الوسائط المنزّلة؟ سيتم حذف الصور والفيديوهات المخزّنة محليًا.')) return;
+    if (!window.confirm('مسح الوسائط المنزّلة؟')) return;
     try {
       Object.keys(localStorage).filter((k) => k.includes(':media') || k.includes(':downloads')).forEach((k) => localStorage.removeItem(k));
       if ('caches' in window) caches.keys().then((keys) => keys.filter((k) => k.includes('media') || k.includes('image')).forEach((k) => caches.delete(k)));
-      setSuccess('تم مسح الوسائط المنزّلة.');
-    } catch { setSuccess('تعذر المسح.'); }
+      setSuccess('تم المسح.');
+    } catch { setSuccess('تعذّر المسح.'); }
   };
 
-  // — Feedback —
   const handleRate = () => openEdit({
     title: 'قيّم التطبيق',
     fields: [
-      { name: 'stars', label: 'التقييم (1-5)', type: 'select', defaultValue: '5', options: [
-        { value: '5', label: '⭐⭐⭐⭐⭐ ممتاز' }, { value: '4', label: '⭐⭐⭐⭐ جيد جدًا' },
-        { value: '3', label: '⭐⭐⭐ جيد' }, { value: '2', label: '⭐⭐ مقبول' }, { value: '1', label: '⭐ ضعيف' },
+      { name: 'stars', label: 'التقييم', type: 'select', defaultValue: '5', options: [
+        { value: '5', label: '⭐⭐⭐⭐⭐' }, { value: '4', label: '⭐⭐⭐⭐' },
+        { value: '3', label: '⭐⭐⭐' }, { value: '2', label: '⭐⭐' }, { value: '1', label: '⭐' },
       ] },
-      { name: 'comment', label: 'تعليقك (اختياري)', type: 'textarea', placeholder: 'ما الذي أعجبك؟' },
+      { name: 'comment', label: 'تعليق (اختياري)', type: 'textarea' },
     ],
-    confirmLabel: 'إرسال التقييم',
-    onConfirm: () => { setSuccess('شكرًا لتقييمك! 🌟'); closeModal(); },
+    confirmLabel: 'إرسال',
+    onConfirm: () => { setSuccess('شكراً! 🌟'); closeModal(); },
   });
   const handleSuggest = () => openEdit({
     title: 'اقترح ميزة',
     fields: [
-      { name: 'title', label: 'عنوان الاقتراح', placeholder: 'مثال: تفعيل الوضع الليلي التلقائي' },
-      { name: 'desc', label: 'التفاصيل', type: 'textarea', placeholder: 'اشرح الميزة وفائدتها...' },
+      { name: 'title', label: 'العنوان' },
+      { name: 'desc', label: 'التفاصيل', type: 'textarea' },
     ],
     confirmLabel: 'إرسال',
-    onConfirm: () => { setSuccess('تم إرسال اقتراحك إلى فريق التطوير. شكرًا! 💡'); closeModal(); },
+    onConfirm: () => { setSuccess('تم الإرسال. 💡'); closeModal(); },
   });
   const handleReport = (defaultType = 'bug') => openEdit({
     title: 'الإبلاغ عن مشكلة',
     fields: [
-      { name: 'type', label: 'نوع المشكلة', type: 'select', defaultValue: defaultType, options: [
-        { value: 'bug', label: '🐞 خطأ تقني' }, { value: 'ui', label: '🎨 مشكلة في الواجهة' },
-        { value: 'perf', label: '⚡ بطء أو تعليق' }, { value: 'crash', label: '💥 توقف التطبيق' },
-        { value: 'other', label: 'أخرى' },
+      { name: 'type', label: 'النوع', type: 'select', defaultValue: defaultType, options: [
+        { value: 'bug', label: '🐞 خطأ تقني' }, { value: 'ui', label: '🎨 واجهة' },
+        { value: 'perf', label: '⚡ بطء' }, { value: 'crash', label: '💥 توقف' }, { value: 'other', label: 'أخرى' },
       ] },
-      { name: 'desc', label: 'وصف المشكلة', type: 'textarea', placeholder: 'متى تظهر؟ كيف تتكرر؟' },
+      { name: 'desc', label: 'الوصف', type: 'textarea' },
     ],
     confirmLabel: 'إبلاغ',
-    onConfirm: () => { setSuccess('تم استلام البلاغ. سنراجعه قريبًا. 🙏'); closeModal(); },
+    onConfirm: () => { setSuccess('تم الاستلام. 🙏'); closeModal(); },
   });
   const handleContactSupport = () => openEdit({
-    title: 'تواصل مع الدعم',
-    description: 'فريق الدعم متوفر 24/7. متوسط الرد: أقل من ساعتين.',
+    title: 'الدعم الفني',
+    description: 'متوسط الرد: أقل من ساعتين.',
     fields: [
-      { name: 'topic', label: 'الموضوع', placeholder: 'باختصار...' },
-      { name: 'msg', label: 'تفاصيل الرسالة', type: 'textarea', placeholder: 'اشرح المشكلة...' },
+      { name: 'topic', label: 'الموضوع' },
+      { name: 'msg', label: 'التفاصيل', type: 'textarea' },
     ],
-    confirmLabel: 'إرسال للدعم',
-    onConfirm: () => { setSuccess('تم إرسال رسالتك. سنرد عبر بريدك المسجل.'); closeModal(); },
+    confirmLabel: 'إرسال',
+    onConfirm: () => { setSuccess('تم الإرسال.'); closeModal(); },
   });
 
-  // — Info modals —
   const showFAQ = () => openInfo({
     title: 'الأسئلة الشائعة',
     content: (
-      <div style={{ display: 'grid', gap: 14 }}>
+      <div style={{ display: 'grid', gap: 8 }}>
         {[
-          { q: 'كيف أغيّر كلمة المرور؟', a: 'من تبويب "الحساب" ← "تغيير كلمة المرور".' },
-          { q: 'كيف أفعّل المصادقة الثنائية؟', a: 'من تبويب "المصادقة الثنائية" واختر الطريقة المناسبة.' },
-          { q: 'كيف أوقف الإشعارات؟', a: 'من تبويب "الإشعارات" أو من إعدادات النظام.' },
-          { q: 'كيف أحذف حسابي؟', a: 'تبويب "الحساب" ← "حذف الحساب نهائيًا".' },
-          { q: 'هل بياناتي مشفّرة؟', a: 'نعم، جميع الرسائل مشفّرة end-to-end، والوسائط عبر signed URLs.' },
-          { q: 'كيف أحظر مستخدمًا؟', a: 'من صفحة المستخدم ← القائمة ← حظر.' },
+          { q: 'كيف أغيّر كلمة المرور؟', a: 'من "الحساب" ← "تغيير كلمة المرور".' },
+          { q: 'كيف أفعّل 2FA؟', a: 'من "المصادقة الثنائية".' },
+          { q: 'كيف أوقف الإشعارات؟', a: 'من "الإشعارات".' },
+          { q: 'كيف أحذف حسابي؟', a: '"الحساب" ← "حذف نهائي".' },
+          { q: 'هل بياناتي مشفّرة؟', a: 'نعم، جميع الرسائل E2E.' },
         ].map((item, i) => (
-          <div key={i} style={{ padding: 12, background: 'rgba(15,23,42,0.5)', borderRadius: 10 }}>
-            <strong style={{ display: 'block', marginBottom: 6 }}>{item.q}</strong>
-            <span className="muted" style={{ fontSize: 13 }}>{item.a}</span>
+          <div key={i} style={{ padding: 8, background: 'rgba(15,23,42,0.5)', borderRadius: 8 }}>
+            <strong style={{ display: 'block', marginBottom: 4, fontSize: 12.5 }}>{item.q}</strong>
+            <span className="muted" style={{ fontSize: 11.5 }}>{item.a}</span>
           </div>
         ))}
       </div>
     ),
   });
   const showTutorials = () => openInfo({
-    title: 'دروس البدء السريع',
+    title: 'دروس البدء',
     content: (
-      <div style={{ display: 'grid', gap: 10 }}>
-        {[
-          '🎬 رفع أول ريل',
-          '📖 نشر ستوري بمؤثرات',
-          '💬 إعداد محادثة جماعية',
-          '🎙️ إنشاء غرفة صوتية',
-          '⚔️ المشاركة في معارك التفاعل',
-          '💰 شحن المحفظة وإرسال هدايا',
-        ].map((t, i) => (
-          <div key={i} style={{ padding: 12, background: 'rgba(15,23,42,0.5)', borderRadius: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>{t}</span>
-            <Button variant="secondary" size="small" onClick={() => { closeModal(); navigate('/support'); }}>عرض</Button>
+      <div style={{ display: 'grid', gap: 6 }}>
+        {['🎬 رفع أول ريل', '📖 نشر ستوري', '💬 محادثة جماعية', '🎙️ غرفة صوتية', '⚔️ معارك التفاعل', '💰 شحن المحفظة'].map((t, i) => (
+          <div key={i} style={{ padding: 8, background: 'rgba(15,23,42,0.5)', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 12.5 }}>{t}</span>
+            <button className="settings-btn-mini" onClick={() => { closeModal(); navigate('/support'); }}>عرض</button>
           </div>
         ))}
       </div>
     ),
   });
   const showWhatsNew = () => openInfo({
-    title: 'ما الجديد في الإصدار',
+    title: 'ما الجديد',
     content: (
-      <div style={{ display: 'grid', gap: 12 }}>
-        <div style={{ padding: 12, background: 'rgba(99,102,241,0.12)', borderRadius: 10, borderInlineStart: '3px solid #6366f1' }}>
-          <strong>v59.13.33 — إصلاح أزرار الإعدادات</strong>
-          <ul style={{ margin: '8px 0 0', paddingInlineStart: 18, fontSize: 13, color: 'rgba(226,232,240,0.8)' }}>
-            <li>ربط جميع أزرار الإعدادات الرئيسية بمعالجات فعلية.</li>
-            <li>مودال موحّد لتعديل بيانات الحساب وكلمة المرور و2FA.</li>
-            <li>عرض رموز الاسترداد ونسخها للحافظة.</li>
-            <li>روابط فعلية للمساعدة والملاحظات والقانوني.</li>
+      <div style={{ display: 'grid', gap: 8 }}>
+        <div style={{ padding: 10, background: 'rgba(99,102,241,0.12)', borderRadius: 8, borderInlineStart: '3px solid #6366f1' }}>
+          <strong style={{ fontSize: 12.5 }}>v76 — إعدادات مضغوطة</strong>
+          <ul style={{ margin: '4px 0 0', paddingInlineStart: 16, fontSize: 11.5, color: 'rgba(226,232,240,0.8)' }}>
+            <li>كل الأقسام في صفحة واحدة.</li>
+            <li>أزرار مصغّرة وخط مدمج.</li>
+            <li>لا تنقل بين الصفحات إلا اختيارياً.</li>
           </ul>
-        </div>
-        <div style={{ padding: 12, background: 'rgba(15,23,42,0.5)', borderRadius: 10 }}>
-          <strong>v59.13.32 — Call System Hard Fix</strong>
-          <p style={{ margin: '6px 0 0', fontSize: 13 }} className="muted">إصلاحات شاملة لنظام المكالمات.</p>
         </div>
       </div>
     ),
   });
   const showLegal = (kind) => {
     const contents = {
-      cookies: {
-        title: 'سياسة الكوكيز (Cookies)',
-        body: 'نستخدم الكوكيز لحفظ الجلسة، تخصيص الواجهة، وقياس الأداء. يمكنك التحكم بإعدادات المتصفح لرفضها، مع العلم أن بعض الميزات قد تتعطل.',
-      },
-      dmca: {
-        title: 'حقوق النشر و DMCA',
-        body: 'نحترم حقوق الملكية الفكرية. لتقديم شكوى DMCA: أرسل بريدًا إلى copyright@yamshat.com يتضمن وصف العمل، رابط المحتوى المُخالف، ومعلومات الاتصال.',
-      },
-      community: {
-        title: 'إرشادات المجتمع',
-        body: 'يُمنع: التحرش، خطاب الكراهية، السبام، انتحال الهوية، نشر محتوى صريح. الالتزام بالقوانين المحلية إجباري. المخالفون يتعرضون لتحذير، تقييد، أو حظر دائم.',
-      },
+      cookies: { title: 'الكوكيز', body: 'نستخدم الكوكيز لحفظ الجلسة وتخصيص الواجهة وقياس الأداء.' },
+      dmca: { title: 'DMCA', body: 'لشكوى: copyright@yamshat.com يتضمن وصف العمل ورابط المحتوى.' },
+      community: { title: 'إرشادات المجتمع', body: 'يُمنع: التحرش، خطاب الكراهية، السبام، انتحال الهوية.' },
     };
     const c = contents[kind];
-    openInfo({
-      title: c.title,
-      content: <p style={{ margin: 0, lineHeight: 1.8, color: 'rgba(226,232,240,0.9)' }}>{c.body}</p>,
-    });
+    openInfo({ title: c.title, content: <p style={{ margin: 0, lineHeight: 1.7, fontSize: 12.5 }}>{c.body}</p> });
   };
   const showAbout = (kind) => {
-    const contents = {
-      site: { title: 'الموقع الرسمي', body: 'سيتم فتح الموقع الرسمي قريبًا: yamshat.com — للأخبار والتحديثات والوظائف.' },
-    };
+    const contents = { site: { title: 'الموقع', body: 'yamshat.com — الأخبار والتحديثات.' } };
     const c = contents[kind];
-    openInfo({ title: c.title, content: <p style={{ margin: 0 }}>{c.body}</p> });
+    openInfo({ title: c.title, content: <p style={{ margin: 0, fontSize: 12.5 }}>{c.body}</p> });
   };
 
   const handleTrustCurrentDevice = async () => {
     setBusy('trust-device');
     await deviceTrustService.trustCurrentDevice();
     setTrustedDevices(await deviceTrustService.getTrustedDevices());
-    setSuccess('تم اعتبار الجهاز الحالي موثوق.');
-    setBusy('');
+    setSuccess('تم توثيق الجهاز.'); setBusy('');
   };
-
   const handleRemoveDevice = async (deviceId) => {
     setBusy(deviceId);
     await deviceTrustService.untrustDevice(deviceId);
     setTrustedDevices(await deviceTrustService.getTrustedDevices());
-    setSuccess('تم إزالة الجهاز.');
-    setBusy('');
+    setSuccess('تم الحذف.'); setBusy('');
   };
-
   const handleRevokeSession = async (sessionId) => {
     setBusy(sessionId);
     await deviceTrustService.revokeSession(sessionId);
     setSessions(await deviceTrustService.getSessions());
-    setSuccess('تم إنهاء الجلسة.');
-    setBusy('');
+    setSuccess('تم الإنهاء.'); setBusy('');
   };
-
   const handleEnablePush = async () => {
     setBusy('push');
     await notificationService.initialize();
     await notificationService.subscribeToPushNotifications().catch(() => null);
     setPushState(notificationService.getPushReadiness());
-    setSuccess('تم تجهيز إشعارات الـ Push.');
-    setBusy('');
+    setSuccess('تم التفعيل.'); setBusy('');
   };
-
   const handleSyncNow = () => {
     const next = deviceTrustService.updateSyncState({
       profile_revision: Number(syncState.profile_revision || 1) + 1,
@@ -608,46 +581,50 @@ export default function Settings() {
       inbox_revision: Number(syncState.inbox_revision || 1) + 1,
       devices_online: Math.max(1, trustedDevices.length),
     });
-    setSyncState(next);
-    setSuccess('تم بث حالة المزامنة.');
+    setSyncState(next); setSuccess('تمت المزامنة.');
   };
-
   const handleLogout = useCallback(async () => {
     try { await logoutUser(); } catch {}
-    clearStoredUser();
-    setMenuOpen(false);
+    clearStoredUser(); setMenuOpen(false);
     navigate('/login', { replace: true });
   }, [navigate]);
 
-  const updateActiveTab = (tab) => {
-    if (tab.link) { navigate(tab.link); return; }
-    setActiveTab(tab.key);
+  const updateActiveTab = (tabKey) => {
+    setActiveTab(tabKey);
     const params = new URLSearchParams(location.search);
-    params.set('tab', tab.key);
+    params.set('tab', tabKey);
     navigate({ pathname: '/settings', search: `?${params.toString()}` }, { replace: true });
   };
 
   const handleDownloadData = (kind = 'full') => {
     const labels = { full: 'الأرشيف الكامل', activity: 'سجل النشاط', media: 'الوسائط' };
-    setSuccess(`تم تسجيل طلب تنزيل ${labels[kind]}. سيُرسل الرابط لبريدك خلال 48 ساعة.`);
+    setSuccess(`تم تسجيل طلب تنزيل ${labels[kind]}.`);
   };
-
   const handleClearCache = () => {
-    if (!window.confirm('تأكيد مسح الكاش؟')) return;
+    if (!window.confirm('مسح الكاش؟')) return;
     try {
       Object.keys(localStorage).filter(k => k.includes(':cache')).forEach(k => localStorage.removeItem(k));
       if ('caches' in window) caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
-      setSuccess('تم مسح الكاش بنجاح.');
+      setSuccess('تم المسح.');
     } catch {}
+  };
+
+  // زر "فتح الصفحة الكاملة" — اختياري لكل قسم له صفحة فرعية
+  const FullPageLink = ({ tabKey }) => {
+    const link = FULL_PAGE_LINKS[tabKey];
+    if (!link) return null;
+    return (
+      <MiniBtn onClick={() => navigate(link)}>فتح الصفحة الكاملة ›</MiniBtn>
+    );
   };
 
   return (
     <MainLayout>
-      <div style={{ maxWidth: 1180, margin: '0 auto', padding: 20 }} dir="rtl">
+      <div className="settings-wrap" dir="rtl">
         <div className="settings-hero">
           <div>
-            <h1 style={{ marginBottom: 8 }}>الإعدادات</h1>
-            <p className="muted" style={{ margin: 0 }}>تحكم كامل في حسابك، خصوصيتك، أمانك، ومحتواك على منصة يمشات.</p>
+            <h1>الإعدادات</h1>
+            <p className="muted">تحكم كامل في حسابك، خصوصيتك، أمانك، ومحتواك.</p>
           </div>
           <button type="button" className="settings-quick-menu-btn" aria-label="القائمة السريعة" onClick={() => setMenuOpen(true)}>
             <span /><span /><span />
@@ -662,14 +639,10 @@ export default function Settings() {
               <div key={group.label} className="settings-group">
                 <div className="settings-group-label">{group.label}</div>
                 {group.tabs.map((tab) => (
-                  <button
-                    key={tab.key}
-                    type="button"
+                  <button key={tab.key} type="button"
                     className={`settings-tab-btn ${activeTab === tab.key ? 'active' : ''}`}
-                    onClick={() => updateActiveTab(tab)}
-                  >
+                    onClick={() => updateActiveTab(tab.key)}>
                     {tab.label}
-                    {tab.link ? <span style={{ marginInlineStart: 'auto', opacity: 0.5 }}>›</span> : null}
                   </button>
                 ))}
               </div>
@@ -680,46 +653,76 @@ export default function Settings() {
             {/* ===== الحساب ===== */}
             {activeTab === 'account' ? (
               <>
-                <Card style={{ padding: 18 }}>
-                  <h3 style={{ marginTop: 0 }}>معلومات الحساب</h3>
-                  <SettingsRow icon="📧" title="البريد الإلكتروني" description={prefs.email || 'تغيير البريد المرتبط بحسابك'}>
-                    <Button variant="secondary" size="small" onClick={handleEditEmail}>تعديل</Button>
+                <Card className="s-card">
+                  <h3 className="s-h3">معلومات الحساب</h3>
+                  <SettingsRow icon="📧" title="البريد الإلكتروني" description={prefs.email || 'تغيير البريد المرتبط'}>
+                    <MiniBtn onClick={handleEditEmail}>تعديل</MiniBtn>
                   </SettingsRow>
-                  <SettingsRow icon="📱" title="رقم الهاتف" description={prefs.phone || 'رقم الهاتف للتحقق والاسترداد'}>
-                    <Button variant="secondary" size="small" onClick={handleEditPhone}>تعديل</Button>
+                  <SettingsRow icon="📱" title="رقم الهاتف" description={prefs.phone || 'رقم للتحقق والاسترداد'}>
+                    <MiniBtn onClick={handleEditPhone}>تعديل</MiniBtn>
                   </SettingsRow>
-                  <SettingsRow icon="🔑" title="تغيير كلمة المرور">
-                    <Button variant="secondary" size="small" onClick={handleChangePassword}>تغيير</Button>
+                  <SettingsRow icon="🔑" title="كلمة المرور">
+                    <MiniBtn onClick={handleChangePassword}>تغيير</MiniBtn>
                   </SettingsRow>
                   <SettingsRow icon="🆔" title="اسم المستخدم" description={prefs.username || '—'}>
-                    <Button variant="secondary" size="small" onClick={handleEditUsername}>تعديل</Button>
+                    <MiniBtn onClick={handleEditUsername}>تعديل</MiniBtn>
                   </SettingsRow>
                   <SettingsRow icon="🎂" title="تاريخ الميلاد" description={prefs.birthdate || '—'}>
-                    <Button variant="secondary" size="small" onClick={handleEditBirthdate}>تعديل</Button>
+                    <MiniBtn onClick={handleEditBirthdate}>تعديل</MiniBtn>
                   </SettingsRow>
-                  <SettingsRow icon="🌍" title="الدولة والمنطقة الزمنية" description={prefs.country || '—'}>
-                    <Button variant="secondary" size="small" onClick={handleEditCountry}>تعديل</Button>
+                  <SettingsRow icon="🌍" title="الدولة" description={prefs.country || '—'}>
+                    <MiniBtn onClick={handleEditCountry}>تعديل</MiniBtn>
                   </SettingsRow>
                 </Card>
-                <Card style={{ padding: 18 }}>
-                  <h3 style={{ marginTop: 0 }}>إدارة الحساب</h3>
-                  <SettingsRow icon="⏸️" title="إيقاف الحساب مؤقتًا" description="إخفاء حسابك دون حذفه">
-                    <Button variant="secondary" size="small" className="settings-danger" onClick={handleSuspendAccount}>إيقاف</Button>
+                <Card className="s-card">
+                  <h3 className="s-h3">إدارة الحساب</h3>
+                  <SettingsRow icon="⏸️" title="إيقاف مؤقت" description="إخفاء دون حذف">
+                    <MiniBtn danger onClick={handleSuspendAccount}>إيقاف</MiniBtn>
                   </SettingsRow>
-                  <SettingsRow icon="❌" title="حذف الحساب نهائيًا" description="حذف بياناتك بشكل دائم">
-                    <Button variant="secondary" size="small" className="settings-danger" onClick={handleDeleteAccount}>حذف</Button>
+                  <SettingsRow icon="❌" title="حذف نهائي" description="حذف دائم لجميع البيانات">
+                    <MiniBtn danger onClick={handleDeleteAccount}>حذف</MiniBtn>
                   </SettingsRow>
                   <SettingsRow icon="🔄" title="تحويل لحساب أعمال">
-                    <Button variant="secondary" size="small" onClick={handleConvertBusiness}>تحويل</Button>
+                    <MiniBtn onClick={handleConvertBusiness}>تحويل</MiniBtn>
                   </SettingsRow>
                 </Card>
               </>
             ) : null}
 
+            {/* ===== الملف الشخصي ===== */}
+            {activeTab === 'profile' ? (
+              <Card className="s-card">
+                <div className="s-card-header">
+                  <h3 className="s-h3">الملف الشخصي</h3>
+                  <FullPageLink tabKey="profile" />
+                </div>
+                <SettingsRow icon="🔒" title="حساب خاص">
+                  <SettingsToggle on={prefs.privateAccount} onChange={(v) => updatePref('privateAccount', v)} />
+                </SettingsRow>
+                <SettingsRow icon="🟢" title="إظهار حالة الاتصال">
+                  <SettingsToggle on={prefs.showOnlineStatus} onChange={(v) => updatePref('showOnlineStatus', v)} />
+                </SettingsRow>
+                <SettingsRow icon="@" title="من يمكنه الإشارة إليك">
+                  <select className="settings-select" value={prefs.allowMentions} onChange={(e) => updatePref('allowMentions', e.target.value)}>
+                    <option value="everyone">الجميع</option>
+                    <option value="followers">المتابعون</option>
+                    <option value="nobody">لا أحد</option>
+                  </select>
+                </SettingsRow>
+                <SettingsRow icon="✉️" title="من يمكنه مراسلتك">
+                  <select className="settings-select" value={prefs.allowDMs} onChange={(e) => updatePref('allowDMs', e.target.value)}>
+                    <option value="everyone">الجميع</option>
+                    <option value="followers">المتابعون</option>
+                    <option value="nobody">لا أحد</option>
+                  </select>
+                </SettingsRow>
+              </Card>
+            ) : null}
+
             {/* ===== الخصوصية ===== */}
             {activeTab === 'privacy' ? (
-              <Card style={{ padding: 18 }}>
-                <h3 style={{ marginTop: 0 }}>الخصوصية</h3>
+              <Card className="s-card">
+                <h3 className="s-h3">الخصوصية</h3>
                 <SettingsRow icon="🔒" title="حساب خاص">
                   <SettingsToggle on={prefs.privateAccount} onChange={(v) => updatePref('privateAccount', v)} />
                 </SettingsRow>
@@ -729,10 +732,10 @@ export default function Settings() {
                 <SettingsRow icon="✓✓" title="إخفاء إيصالات القراءة">
                   <SettingsToggle on={prefs.hideReadReceipts} onChange={(v) => updatePref('hideReadReceipts', v)} />
                 </SettingsRow>
-                <SettingsRow icon="🕵️" title="وضع التصفح الخفي">
+                <SettingsRow icon="🕵️" title="التصفح الخفي">
                   <SettingsToggle on={prefs.incognitoMode} onChange={(v) => updatePref('incognitoMode', v)} />
                 </SettingsRow>
-                <SettingsRow icon="👤" title="تصفح المحتوى دون تسجيل مشاهدة">
+                <SettingsRow icon="👤" title="تصفح دون تسجيل مشاهدة">
                   <SettingsToggle on={prefs.anonymousBrowsing} onChange={(v) => updatePref('anonymousBrowsing', v)} />
                 </SettingsRow>
                 <SettingsRow icon="📍" title="مشاركة الموقع">
@@ -744,22 +747,23 @@ export default function Settings() {
             {/* ===== الأمان ===== */}
             {activeTab === 'security' ? (
               <>
-                <Card style={{ padding: 18 }}>
-                  <h3 style={{ marginTop: 0 }}>Anti-Spam / Bot Detection / Shadow Ban</h3>
+                <Card className="s-card">
+                  <h3 className="s-h3">مكافحة السبام والبوتات</h3>
                   <div className="stats-grid">
-                    <div className="metric-card"><span>Rate limit</span><strong>{antiSpam.remainingRequests} متبقي</strong></div>
+                    <div className="metric-card"><span>Rate limit</span><strong>{antiSpam.remainingRequests}</strong></div>
                     <div className="metric-card"><span>Bot score</span><strong>{antiSpam.bot.score}/100</strong></div>
                     <div className="metric-card"><span>Verdict</span><strong>{antiSpam.bot.verdict}</strong></div>
-                    <div className="metric-card"><span>Shadow ban</span><strong>{antiSpam.shadowBanned ? 'مفعّل' : 'غير مفعّل'}</strong></div>
+                    <div className="metric-card"><span>Shadow ban</span><strong>{antiSpam.shadowBanned ? 'ON' : 'OFF'}</strong></div>
                   </div>
-                  <div style={{ marginTop: 16, display: 'grid', gap: 12 }}>
+                  <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
                     <RateLimitUI remaining={antiSpam.remainingRequests} resetTime={antiSpam.resetInMs} />
                     <CooldownUI remaining={antiSpam.bot.score >= 35 ? 9000 : 0} action="إعادة المحاولة" />
                   </div>
                 </Card>
-                <Card style={{ padding: 18 }}>
-                  <h3 style={{ marginTop: 0 }}>Login Alerts</h3>
-                  <div style={{ display: 'grid', gap: 12 }}>
+                <Card className="s-card">
+                  <h3 className="s-h3">تنبيهات تسجيل الدخول</h3>
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {alerts.length === 0 ? <div className="muted" style={{ padding: 12, textAlign: 'center', fontSize: 12 }}>لا تنبيهات.</div> : null}
                     {alerts.map((alert) => (
                       <div key={alert.id} className="list-row">
                         <div>
@@ -774,27 +778,27 @@ export default function Settings() {
               </>
             ) : null}
 
-            {/* ===== المصادقة الثنائية ===== */}
+            {/* ===== 2FA ===== */}
             {activeTab === 'two-factor' ? (
-              <Card style={{ padding: 18 }}>
-                <h3 style={{ marginTop: 0 }}>المصادقة الثنائية (2FA)</h3>
-                <p className="muted">طبقة حماية إضافية لحسابك. اختر طريقة واحدة على الأقل.</p>
-                <SettingsRow icon="📱" title="تطبيق المصادقة (Authenticator)" description="Google Authenticator, Authy, ...">
-                  <Button variant="secondary" size="small" onClick={handle2FAApp}>إعداد</Button>
+              <Card className="s-card">
+                <h3 className="s-h3">المصادقة الثنائية</h3>
+                <p className="muted s-p">طبقة حماية إضافية. اختر طريقة واحدة على الأقل.</p>
+                <SettingsRow icon="📱" title="تطبيق مصادقة" description="Google Authenticator, Authy">
+                  <MiniBtn onClick={handle2FAApp}>إعداد</MiniBtn>
                 </SettingsRow>
-                <SettingsRow icon="📧" title="رمز عبر البريد الإلكتروني">
-                  <SettingsToggle on={prefs.twoFAEmail} onChange={(v) => { updatePref('twoFAEmail', v); setSuccess(v ? 'تم تفعيل 2FA عبر البريد.' : 'تم إيقاف 2FA عبر البريد.'); }} />
+                <SettingsRow icon="📧" title="عبر البريد">
+                  <SettingsToggle on={prefs.twoFAEmail} onChange={(v) => { updatePref('twoFAEmail', v); }} />
                 </SettingsRow>
-                <SettingsRow icon="📩" title="رمز عبر SMS">
-                  <SettingsToggle on={prefs.twoFASms} onChange={(v) => { updatePref('twoFASms', v); setSuccess(v ? 'تم تفعيل 2FA عبر SMS.' : 'تم إيقاف 2FA عبر SMS.'); }} />
+                <SettingsRow icon="📩" title="عبر SMS">
+                  <SettingsToggle on={prefs.twoFASms} onChange={(v) => { updatePref('twoFASms', v); }} />
                 </SettingsRow>
-                <SettingsRow icon="🗝️" title="مفتاح أمان (Hardware Key)" description="YubiKey أو متوافق">
-                  <Button variant="secondary" size="small" onClick={handleAddHardwareKey}>إضافة</Button>
+                <SettingsRow icon="🗝️" title="مفتاح أمان" description="YubiKey">
+                  <MiniBtn onClick={handleAddHardwareKey}>إضافة</MiniBtn>
                 </SettingsRow>
-                <SettingsRow icon="🆘" title="رموز الاسترداد (Recovery Codes)" description="احتفظ بها في مكان آمن">
-                  <Button variant="secondary" size="small" onClick={handleRecoveryCodes}>عرض/توليد</Button>
+                <SettingsRow icon="🆘" title="رموز الاسترداد">
+                  <MiniBtn onClick={handleRecoveryCodes}>عرض</MiniBtn>
                 </SettingsRow>
-                <SettingsRow icon="👆" title="البصمة / Face ID" description="فتح التطبيق بالبصمة">
+                <SettingsRow icon="👆" title="البصمة / Face ID">
                   <SettingsToggle on={prefs.biometric} onChange={(v) => updatePref('biometric', v)} />
                 </SettingsRow>
               </Card>
@@ -802,24 +806,25 @@ export default function Settings() {
 
             {/* ===== الأجهزة ===== */}
             {activeTab === 'devices' ? (
-              <Card style={{ padding: 18 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Card className="s-card">
+                <div className="s-card-header">
                   <div>
-                    <h3 style={{ margin: '0 0 6px' }}>الأجهزة الموثوقة</h3>
-                    <div className="muted">إدارة الأجهزة التي سجلت دخولًا.</div>
+                    <h3 className="s-h3">الأجهزة الموثوقة</h3>
+                    <div className="muted s-p">إدارة الأجهزة المسجل دخولها.</div>
                   </div>
-                  <Button onClick={handleTrustCurrentDevice} loading={busy === 'trust-device'}>توثيق الجهاز الحالي</Button>
+                  <MiniBtn variant="primary" onClick={handleTrustCurrentDevice} loading={busy === 'trust-device'}>توثيق الحالي</MiniBtn>
                 </div>
-                <div style={{ display: 'grid', gap: 12, marginTop: 16 }}>
+                <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+                  {trustedDevices.length === 0 ? <div className="muted" style={{ padding: 12, textAlign: 'center', fontSize: 12 }}>لا أجهزة.</div> : null}
                   {trustedDevices.map((device) => (
                     <div key={device.id || device.device_id} className="list-row">
                       <div>
                         <strong>{device.label || device.device_label || 'Device'}</strong>
                         <div className="muted">آخر ظهور: {new Date(device.lastSeenAt || device.last_active_at || Date.now()).toLocaleString('ar-EG')}</div>
                       </div>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                        <span className="score-pill">{device.current ? 'Current' : 'Trusted'}</span>
-                        {!device.current ? <Button variant="secondary" size="small" onClick={() => handleRemoveDevice(device.id || device.device_id)} loading={busy === (device.id || device.device_id)}>إزالة</Button> : null}
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span className="score-pill">{device.current ? 'حالي' : 'موثوق'}</span>
+                        {!device.current ? <MiniBtn onClick={() => handleRemoveDevice(device.id || device.device_id)} loading={busy === (device.id || device.device_id)}>إزالة</MiniBtn> : null}
                       </div>
                     </div>
                   ))}
@@ -829,80 +834,201 @@ export default function Settings() {
 
             {/* ===== الجلسات ===== */}
             {activeTab === 'sessions' ? (
-              <Card style={{ padding: 18 }}>
-                <h3 style={{ marginTop: 0 }}>الجلسات النشطة</h3>
-                <div style={{ display: 'grid', gap: 12 }}>
+              <Card className="s-card">
+                <h3 className="s-h3">الجلسات النشطة</h3>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  {sessions.length === 0 ? <div className="muted" style={{ padding: 12, textAlign: 'center', fontSize: 12 }}>لا جلسات.</div> : null}
                   {sessions.map((session) => (
                     <div key={session.id} className="list-row">
                       <div>
                         <strong>{session.device_label || session.label || 'Session'}</strong>
                         <div className="muted">آخر نشاط: {new Date(session.last_active_at || Date.now()).toLocaleString('ar-EG')}</div>
                       </div>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                        <span className="score-pill">{session.sync_state || 'healthy'}</span>
-                        {!session.current ? <Button variant="secondary" size="small" onClick={() => handleRevokeSession(session.id)} loading={busy === session.id}>إنهاء</Button> : null}
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span className="score-pill">{session.sync_state || 'صحية'}</span>
+                        {!session.current ? <MiniBtn onClick={() => handleRevokeSession(session.id)} loading={busy === session.id}>إنهاء</MiniBtn> : null}
                       </div>
                     </div>
                   ))}
                 </div>
-                <Button variant="secondary" style={{ marginTop: 14 }} className="settings-danger" onClick={handleRevokeAllSessions} loading={busy === 'revoke-all'}>إنهاء كل الجلسات عدا الحالية</Button>
+                <div style={{ marginTop: 10 }}>
+                  <MiniBtn danger onClick={handleRevokeAllSessions} loading={busy === 'revoke-all'}>إنهاء الكل عدا الحالية</MiniBtn>
+                </div>
               </Card>
             ) : null}
 
-            {/* ===== التطبيقات المرتبطة ===== */}
+            {/* ===== OAuth ===== */}
             {activeTab === 'connected-apps' ? (
-              <Card style={{ padding: 18 }}>
-                <h3 style={{ marginTop: 0 }}>التطبيقات والخدمات المرتبطة (OAuth)</h3>
-                <p className="muted">التطبيقات الخارجية التي لديها صلاحية الوصول لحسابك.</p>
-                <SettingsRow icon="🇬" title="Google" description={prefs.googleLinked ? 'مرتبط (تسجيل دخول)' : 'غير مرتبط'}>
-                  <Button variant="secondary" size="small" className={prefs.googleLinked ? 'settings-danger' : ''} onClick={() => handleOAuth('google')}>
-                    {prefs.googleLinked ? 'إلغاء الربط' : 'ربط'}
-                  </Button>
+              <Card className="s-card">
+                <h3 className="s-h3">التطبيقات المرتبطة (OAuth)</h3>
+                <SettingsRow icon="G" title="Google" description={prefs.googleLinked ? 'مرتبط' : 'غير مرتبط'}>
+                  <MiniBtn danger={prefs.googleLinked} onClick={() => handleOAuth('google')}>{prefs.googleLinked ? 'إلغاء' : 'ربط'}</MiniBtn>
                 </SettingsRow>
                 <SettingsRow icon="🍎" title="Apple" description={prefs.appleLinked ? 'مرتبط' : 'غير مرتبط'}>
-                  <Button variant="secondary" size="small" className={prefs.appleLinked ? 'settings-danger' : ''} onClick={() => handleOAuth('apple')}>
-                    {prefs.appleLinked ? 'إلغاء الربط' : 'ربط'}
-                  </Button>
+                  <MiniBtn danger={prefs.appleLinked} onClick={() => handleOAuth('apple')}>{prefs.appleLinked ? 'إلغاء' : 'ربط'}</MiniBtn>
                 </SettingsRow>
                 <SettingsRow icon="📘" title="Facebook" description={prefs.facebookLinked ? 'مرتبط' : 'غير مرتبط'}>
-                  <Button variant="secondary" size="small" className={prefs.facebookLinked ? 'settings-danger' : ''} onClick={() => handleOAuth('facebook')}>
-                    {prefs.facebookLinked ? 'إلغاء الربط' : 'ربط'}
-                  </Button>
+                  <MiniBtn danger={prefs.facebookLinked} onClick={() => handleOAuth('facebook')}>{prefs.facebookLinked ? 'إلغاء' : 'ربط'}</MiniBtn>
                 </SettingsRow>
-                <SettingsRow icon="🐦" title="X (Twitter)" description={prefs.twitterLinked ? 'مرتبط' : 'غير مرتبط'}>
-                  <Button variant="secondary" size="small" className={prefs.twitterLinked ? 'settings-danger' : ''} onClick={() => handleOAuth('twitter')}>
-                    {prefs.twitterLinked ? 'إلغاء الربط' : 'ربط'}
-                  </Button>
+                <SettingsRow icon="X" title="X (Twitter)" description={prefs.twitterLinked ? 'مرتبط' : 'غير مرتبط'}>
+                  <MiniBtn danger={prefs.twitterLinked} onClick={() => handleOAuth('twitter')}>{prefs.twitterLinked ? 'إلغاء' : 'ربط'}</MiniBtn>
                 </SettingsRow>
               </Card>
             ) : null}
 
             {/* ===== المحظورون / المكتومون ===== */}
             {activeTab === 'blocked' ? (
-              <Card style={{ padding: 18 }}>
-                <h3 style={{ marginTop: 0 }}>الحسابات المحظورة</h3>
-                <p className="muted">لا يمكن للحسابات المحظورة رؤيتك أو التواصل معك.</p>
-                <div className="muted" style={{ padding: 24, textAlign: 'center' }}>لا توجد حسابات محظورة حاليًا.</div>
+              <Card className="s-card">
+                <h3 className="s-h3">المحظورون</h3>
+                <p className="muted s-p">لا يمكن للمحظورين رؤيتك أو التواصل معك.</p>
+                <div className="muted" style={{ padding: 16, textAlign: 'center', fontSize: 12 }}>لا حسابات محظورة.</div>
               </Card>
             ) : null}
             {activeTab === 'muted' ? (
-              <Card style={{ padding: 18 }}>
-                <h3 style={{ marginTop: 0 }}>الحسابات المكتومة</h3>
-                <p className="muted">لن ترى منشورات أو ستوريز هذه الحسابات.</p>
-                <div className="muted" style={{ padding: 24, textAlign: 'center' }}>لا توجد حسابات مكتومة.</div>
+              <Card className="s-card">
+                <h3 className="s-h3">المكتومون</h3>
+                <p className="muted s-p">لن ترى منشورات أو ستوريز هذه الحسابات.</p>
+                <div className="muted" style={{ padding: 16, textAlign: 'center', fontSize: 12 }}>لا حسابات مكتومة.</div>
+              </Card>
+            ) : null}
+
+            {/* ===== المحتوى: الخلاصة ===== */}
+            {activeTab === 'feed' ? (
+              <Card className="s-card">
+                <div className="s-card-header">
+                  <h3 className="s-h3">الخلاصة (Feed)</h3>
+                  <FullPageLink tabKey="feed" />
+                </div>
+                <SettingsRow icon="🧠" title="خوارزمية الخلاصة">
+                  <select className="settings-select" value={prefs.feedAlgo} onChange={(e) => updatePref('feedAlgo', e.target.value)}>
+                    <option value="smart">ذكية</option>
+                    <option value="chronological">زمنية</option>
+                    <option value="following">المتابعون فقط</option>
+                  </select>
+                </SettingsRow>
+                <SettingsRow icon="▶️" title="تشغيل الفيديو تلقائياً">
+                  <SettingsToggle on={prefs.autoplayVideos} onChange={(v) => updatePref('autoplayVideos', v)} />
+                </SettingsRow>
+                <SettingsRow icon="⚠️" title="إظهار المحتوى الحساس">
+                  <SettingsToggle on={prefs.showSensitive} onChange={(v) => updatePref('showSensitive', v)} />
+                </SettingsRow>
+              </Card>
+            ) : null}
+
+            {/* ===== الريلز ===== */}
+            {activeTab === 'reels' ? (
+              <Card className="s-card">
+                <div className="s-card-header">
+                  <h3 className="s-h3">الريلز</h3>
+                  <FullPageLink tabKey="reels" />
+                </div>
+                <SettingsRow icon="▶️" title="التشغيل التلقائي">
+                  <SettingsToggle on={prefs.reelsAutoplay} onChange={(v) => updatePref('reelsAutoplay', v)} />
+                </SettingsRow>
+                <SettingsRow icon="💾" title="توفير البيانات">
+                  <SettingsToggle on={prefs.reelsSaveData} onChange={(v) => updatePref('reelsSaveData', v)} />
+                </SettingsRow>
+              </Card>
+            ) : null}
+
+            {/* ===== الستوريز ===== */}
+            {activeTab === 'stories' ? (
+              <Card className="s-card">
+                <div className="s-card-header">
+                  <h3 className="s-h3">الستوريز</h3>
+                  <FullPageLink tabKey="stories" />
+                </div>
+                <SettingsRow icon="💬" title="من يمكنه الرد">
+                  <select className="settings-select" value={prefs.storiesReplies} onChange={(e) => updatePref('storiesReplies', e.target.value)}>
+                    <option value="everyone">الجميع</option>
+                    <option value="followers">المتابعون</option>
+                    <option value="nobody">لا أحد</option>
+                  </select>
+                </SettingsRow>
+                <SettingsRow icon="↗️" title="السماح بمشاركة الستوري">
+                  <SettingsToggle on={prefs.storiesShareable} onChange={(v) => updatePref('storiesShareable', v)} />
+                </SettingsRow>
+              </Card>
+            ) : null}
+
+            {/* ===== الرسائل ===== */}
+            {activeTab === 'inbox' ? (
+              <Card className="s-card">
+                <div className="s-card-header">
+                  <h3 className="s-h3">الرسائل</h3>
+                  <FullPageLink tabKey="inbox" />
+                </div>
+                <SettingsRow icon="🔍" title="فلترة طلبات الرسائل">
+                  <select className="settings-select" value={prefs.inboxRequestFilter} onChange={(e) => updatePref('inboxRequestFilter', e.target.value)}>
+                    <option value="all">الكل</option>
+                    <option value="known">المعروفون</option>
+                    <option value="followers">المتابعون فقط</option>
+                  </select>
+                </SettingsRow>
+                <SettingsRow icon="✓✓" title="إيصالات القراءة">
+                  <SettingsToggle on={prefs.readReceipts} onChange={(v) => updatePref('readReceipts', v)} />
+                </SettingsRow>
+              </Card>
+            ) : null}
+
+            {/* ===== الغرف الصوتية ===== */}
+            {activeTab === 'voice' ? (
+              <Card className="s-card">
+                <div className="s-card-header">
+                  <h3 className="s-h3">الغرف الصوتية</h3>
+                  <FullPageLink tabKey="voice" />
+                </div>
+                <SettingsRow icon="🎙️" title="الانضمام التلقائي">
+                  <SettingsToggle on={prefs.voiceAutoJoin} onChange={(v) => updatePref('voiceAutoJoin', v)} />
+                </SettingsRow>
+                <SettingsRow icon="🔇" title="إلغاء الضوضاء">
+                  <SettingsToggle on={prefs.voiceNoiseSuppress} onChange={(v) => updatePref('voiceNoiseSuppress', v)} />
+                </SettingsRow>
+              </Card>
+            ) : null}
+
+            {/* ===== التفاعل والمعارك ===== */}
+            {activeTab === 'engagement' ? (
+              <Card className="s-card">
+                <div className="s-card-header">
+                  <h3 className="s-h3">التفاعل والمعارك</h3>
+                  <FullPageLink tabKey="engagement" />
+                </div>
+                <SettingsRow icon="⚔️" title="إشعارات المعارك">
+                  <SettingsToggle on={prefs.battleNotifs} onChange={(v) => updatePref('battleNotifs', v)} />
+                </SettingsRow>
+                <SettingsRow icon="🔥" title="تذكير السلاسل اليومية">
+                  <SettingsToggle on={prefs.streakReminders} onChange={(v) => updatePref('streakReminders', v)} />
+                </SettingsRow>
+              </Card>
+            ) : null}
+
+            {/* ===== المحفظة ===== */}
+            {activeTab === 'wallet' ? (
+              <Card className="s-card">
+                <div className="s-card-header">
+                  <h3 className="s-h3">المحفظة</h3>
+                  <FullPageLink tabKey="wallet" />
+                </div>
+                <SettingsRow icon="🔐" title="حماية بـ PIN">
+                  <SettingsToggle on={prefs.walletPin} onChange={(v) => updatePref('walletPin', v)} />
+                </SettingsRow>
+                <SettingsRow icon="⚡" title="تأكيد تلقائي للمبالغ الصغيرة">
+                  <SettingsToggle on={prefs.walletAutoConfirm} onChange={(v) => updatePref('walletAutoConfirm', v)} />
+                </SettingsRow>
               </Card>
             ) : null}
 
             {/* ===== المظهر ===== */}
             {activeTab === 'appearance' ? (
-              <Card style={{ padding: 18 }}>
-                <h3 style={{ marginTop: 0 }}>المظهر والثيم</h3>
+              <Card className="s-card">
+                <h3 className="s-h3">المظهر والثيم</h3>
                 <SettingsRow icon="🌓" title="ثيم التطبيق">
                   <select className="settings-select" value={prefs.theme} onChange={(e) => updatePref('theme', e.target.value)}>
                     <option value="dark">داكن</option>
                     <option value="light">فاتح</option>
-                    <option value="auto">تلقائي (حسب النظام)</option>
-                    <option value="amoled">AMOLED أسود نقي</option>
+                    <option value="auto">تلقائي</option>
+                    <option value="amoled">AMOLED</option>
                   </select>
                 </SettingsRow>
                 <SettingsRow icon="🎨" title="اللون المميز">
@@ -933,7 +1059,7 @@ export default function Settings() {
                 <SettingsRow icon="🔘" title="الزوايا الدائرية">
                   <SettingsToggle on={prefs.roundedCorners} onChange={(v) => updatePref('roundedCorners', v)} />
                 </SettingsRow>
-                <SettingsRow icon="✨" title="الحركات والانتقالات (Animations)">
+                <SettingsRow icon="✨" title="الحركات والانتقالات">
                   <SettingsToggle on={prefs.animations} onChange={(v) => updatePref('animations', v)} />
                 </SettingsRow>
               </Card>
@@ -942,31 +1068,28 @@ export default function Settings() {
             {/* ===== اللغة ===== */}
             {activeTab === 'language' ? <LanguageSettings /> : null}
 
-            {/* ===== حجم الخط (v59.13.35) ===== */}
+            {/* ===== حجم الخط ===== */}
             {activeTab === 'font-size' ? (
-              <FontSizeSettings
-                value={prefs.fontSize}
-                onChange={(v) => { updatePref('fontSize', v); applyFontSize(v); }}
-              />
+              <FontSizeSettings value={prefs.fontSize} onChange={(v) => { updatePref('fontSize', v); applyFontSize(v); }} />
             ) : null}
 
-            {/* ===== الترجمة الفورية للمحادثات (v59.13.35) ===== */}
+            {/* ===== الترجمة ===== */}
             {activeTab === 'translation' ? <TranslationSettings /> : null}
 
             {/* ===== سهولة الوصول ===== */}
             {activeTab === 'accessibility' ? (
-              <Card style={{ padding: 18 }}>
-                <h3 style={{ marginTop: 0 }}>سهولة الوصول (Accessibility)</h3>
-                <SettingsRow icon="🎙️" title="دعم قارئ الشاشة">
+              <Card className="s-card">
+                <h3 className="s-h3">سهولة الوصول</h3>
+                <SettingsRow icon="🎙️" title="قارئ الشاشة">
                   <SettingsToggle on={prefs.screenReader} onChange={(v) => updatePref('screenReader', v)} />
                 </SettingsRow>
-                <SettingsRow icon="🔲" title="أزرار كبيرة (Large Touch Targets)">
+                <SettingsRow icon="🔲" title="أزرار كبيرة">
                   <SettingsToggle on={prefs.largeButtons} onChange={(v) => updatePref('largeButtons', v)} />
                 </SettingsRow>
-                <SettingsRow icon="📝" title="إظهار الترجمة دائمًا">
+                <SettingsRow icon="📝" title="ترجمة دائماً">
                   <SettingsToggle on={prefs.captionsAlways} onChange={(v) => updatePref('captionsAlways', v)} />
                 </SettingsRow>
-                <SettingsRow icon="🎬" title="تقليل الحركة (Reduce Motion)">
+                <SettingsRow icon="🎬" title="تقليل الحركة">
                   <SettingsToggle on={prefs.reducedMotion} onChange={(v) => updatePref('reducedMotion', v)} />
                 </SettingsRow>
                 <SettingsRow icon="🌓" title="تباين عالي">
@@ -981,24 +1104,24 @@ export default function Settings() {
             {/* ===== الإشعارات ===== */}
             {activeTab === 'notifications' ? (
               <>
-                <Card style={{ padding: 18 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <Card className="s-card">
+                  <div className="s-card-header">
                     <div>
-                      <h3 style={{ margin: '0 0 6px' }}>Push Notifications احترافية</h3>
-                      <div className="muted">Android + PWA + foreground/background + service worker.</div>
+                      <h3 className="s-h3">إشعارات Push</h3>
+                      <div className="muted s-p">Android + PWA + service worker.</div>
                     </div>
-                    <Button onClick={handleEnablePush} loading={busy === 'push'}>تفعيل الـ Push</Button>
+                    <MiniBtn variant="primary" onClick={handleEnablePush} loading={busy === 'push'}>تفعيل</MiniBtn>
                   </div>
-                  <div className="stats-grid" style={{ marginTop: 16 }}>
+                  <div className="stats-grid" style={{ marginTop: 10 }}>
                     <div className="metric-card"><span>Permission</span><strong>{pushState.permission}</strong></div>
-                    <div className="metric-card"><span>Android</span><strong>{pushState.androidReady ? 'جاهز' : 'غير متاح'}</strong></div>
-                    <div className="metric-card"><span>PWA</span><strong>{pushState.pwaReady ? 'Installed' : 'Browser'}</strong></div>
-                    <div className="metric-card"><span>Background</span><strong>{pushState.supportsBackground ? 'Enabled' : 'No'}</strong></div>
+                    <div className="metric-card"><span>Android</span><strong>{pushState.androidReady ? 'جاهز' : 'لا'}</strong></div>
+                    <div className="metric-card"><span>PWA</span><strong>{pushState.pwaReady ? 'ثابت' : 'متصفح'}</strong></div>
+                    <div className="metric-card"><span>Background</span><strong>{pushState.supportsBackground ? 'On' : 'Off'}</strong></div>
                   </div>
                 </Card>
-                <Card style={{ padding: 18 }}>
-                  <SettingsRow icon="🔔" title="إعدادات الإشعارات التفصيلية" description="تحكم تفصيلي في كل نوع إشعار">
-                    <Button onClick={() => navigate('/settings/notifications')}>فتح</Button>
+                <Card className="s-card">
+                  <SettingsRow icon="🔔" title="إعدادات تفصيلية" description="تحكم كامل بأنواع الإشعارات">
+                    <FullPageLink tabKey="notifications" />
                   </SettingsRow>
                 </Card>
               </>
@@ -1006,39 +1129,39 @@ export default function Settings() {
 
             {/* ===== الأصوات ===== */}
             {activeTab === 'sounds' ? (
-              <Card style={{ padding: 18 }}>
+              <Card className="s-card">
                 <SoundSettingsPanel />
               </Card>
             ) : null}
 
-            {/* ===== البيانات والتخزين ===== */}
+            {/* ===== البيانات ===== */}
             {activeTab === 'data-storage' ? (
-              <Card style={{ padding: 18 }}>
-                <h3 style={{ marginTop: 0 }}>البيانات والتخزين</h3>
-                <SettingsRow icon="💾" title="وضع توفير البيانات">
+              <Card className="s-card">
+                <h3 className="s-h3">البيانات والتخزين</h3>
+                <SettingsRow icon="💾" title="توفير البيانات">
                   <SettingsToggle on={prefs.saveDataMode} onChange={(v) => updatePref('saveDataMode', v)} />
                 </SettingsRow>
-                <SettingsRow icon="📦" title="حد التخزين المحلي">
+                <SettingsRow icon="📦" title="حد التخزين">
                   <select className="settings-select" value={prefs.storageLimit} onChange={(e) => updatePref('storageLimit', e.target.value)}>
                     <option value="500MB">500 MB</option>
                     <option value="1GB">1 GB</option>
                     <option value="2GB">2 GB</option>
                     <option value="5GB">5 GB</option>
                     <option value="10GB">10 GB</option>
-                    <option value="unlimited">بلا حدود</option>
+                    <option value="unlimited">بلا حد</option>
                   </select>
                 </SettingsRow>
                 <SettingsRow icon="☁️" title="نسخ احتياطي تلقائي">
                   <SettingsToggle on={prefs.autoBackup} onChange={(v) => updatePref('autoBackup', v)} />
                 </SettingsRow>
-                <SettingsRow icon="📶" title="نسخ احتياطي على WiFi فقط">
+                <SettingsRow icon="📶" title="على WiFi فقط">
                   <SettingsToggle on={prefs.backupOnWifi} onChange={(v) => updatePref('backupOnWifi', v)} />
                 </SettingsRow>
-                <SettingsRow icon="🧹" title="مسح الكاش المؤقت">
-                  <Button variant="secondary" size="small" onClick={handleClearCache}>مسح</Button>
+                <SettingsRow icon="🧹" title="مسح الكاش">
+                  <MiniBtn onClick={handleClearCache}>مسح</MiniBtn>
                 </SettingsRow>
                 <SettingsRow icon="📥" title="مسح الوسائط المنزّلة">
-                  <Button variant="secondary" size="small" className="settings-danger" onClick={handleClearMedia}>مسح</Button>
+                  <MiniBtn danger onClick={handleClearMedia}>مسح</MiniBtn>
                 </SettingsRow>
               </Card>
             ) : null}
@@ -1046,19 +1169,19 @@ export default function Settings() {
             {/* ===== حماية الوسائط ===== */}
             {activeTab === 'media' ? (
               <>
-                <Card style={{ padding: 18 }}>
-                  <h3 style={{ marginTop: 0 }}>Media Protection</h3>
+                <Card className="s-card">
+                  <h3 className="s-h3">حماية الوسائط</h3>
                   <div className="stats-grid">
                     <div className="metric-card"><span>Signed URLs</span><strong>{MEDIA_SECURITY.signedUrls ? 'On' : 'Off'}</strong></div>
-                    <div className="metric-card"><span>Expiring links</span><strong>{MEDIA_SECURITY.expiringLinks ? `${SIGNED_URL_TTL_SECONDS}s` : 'Off'}</strong></div>
-                    <div className="metric-card"><span>Encrypted uploads</span><strong>{MEDIA_SECURITY.encryptedUploads ? 'Enabled' : 'Disabled'}</strong></div>
+                    <div className="metric-card"><span>Expiring</span><strong>{MEDIA_SECURITY.expiringLinks ? `${SIGNED_URL_TTL_SECONDS}s` : 'Off'}</strong></div>
+                    <div className="metric-card"><span>Encrypted</span><strong>{MEDIA_SECURITY.encryptedUploads ? 'On' : 'Off'}</strong></div>
                     <div className="metric-card"><span>Provider</span><strong>{currentMediaProviderLabel()}</strong></div>
                   </div>
                 </Card>
-                <Card style={{ padding: 18 }}>
-                  <h3 style={{ marginTop: 0 }}>CDN Acceleration</h3>
-                  <div className="muted" style={{ marginBottom: 12 }}>الصور والفيديو والملفات تُسرَّع عبر CDN عالمي.</div>
-                  <div style={{ display: 'grid', gap: 12 }}>
+                <Card className="s-card">
+                  <h3 className="s-h3">تسريع CDN</h3>
+                  <div className="muted s-p">الوسائط تُسرَّع عبر CDN عالمي.</div>
+                  <div style={{ display: 'grid', gap: 6 }}>
                     {[imageDelivery, videoDelivery, fileDelivery].map((profile) => (
                       <div key={profile.strategy} className="list-row">
                         <div>
@@ -1069,146 +1192,150 @@ export default function Settings() {
                       </div>
                     ))}
                   </div>
-                  <div className="muted" style={{ marginTop: 12 }}>المناطق: {cdnConfig.regions.join(' • ')}</div>
+                  <div className="muted" style={{ marginTop: 8, fontSize: 11 }}>المناطق: {cdnConfig.regions.join(' • ')}</div>
                 </Card>
               </>
             ) : null}
 
-            {/* ===== تعدد الأجهزة ===== */}
+            {/* ===== مزامنة ===== */}
             {activeTab === 'sync' ? (
-              <Card style={{ padding: 18 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Card className="s-card">
+                <div className="s-card-header">
                   <div>
-                    <h3 style={{ margin: '0 0 6px' }}>Multi Device Sync</h3>
-                    <div className="muted">مزامنة الحالة بين الأجهزة باستخدام BroadcastChannel + fallback.</div>
+                    <h3 className="s-h3">مزامنة الأجهزة</h3>
+                    <div className="muted s-p">BroadcastChannel + fallback.</div>
                   </div>
-                  <Button onClick={handleSyncNow}>Sync state now</Button>
+                  <MiniBtn variant="primary" onClick={handleSyncNow}>مزامنة الآن</MiniBtn>
                 </div>
-                <div className="stats-grid" style={{ marginTop: 16 }}>
-                  <div className="metric-card"><span>Devices online</span><strong>{syncState.devices_online || trustedDevices.length || 1}</strong></div>
-                  <div className="metric-card"><span>Profile rev</span><strong>{syncState.profile_revision || 1}</strong></div>
-                  <div className="metric-card"><span>Notifications rev</span><strong>{syncState.notifications_revision || 1}</strong></div>
-                  <div className="metric-card"><span>Inbox rev</span><strong>{syncState.inbox_revision || 1}</strong></div>
+                <div className="stats-grid" style={{ marginTop: 10 }}>
+                  <div className="metric-card"><span>Devices</span><strong>{syncState.devices_online || trustedDevices.length || 1}</strong></div>
+                  <div className="metric-card"><span>Profile</span><strong>{syncState.profile_revision || 1}</strong></div>
+                  <div className="metric-card"><span>Notifs</span><strong>{syncState.notifications_revision || 1}</strong></div>
+                  <div className="metric-card"><span>Inbox</span><strong>{syncState.inbox_revision || 1}</strong></div>
                 </div>
               </Card>
             ) : null}
 
             {/* ===== الأداء ===== */}
             {activeTab === 'performance' ? (
-              <Card style={{ padding: 18 }}>
-                <h3 style={{ marginTop: 0 }}>الأداء وتحسين الجهاز</h3>
-                <SettingsRow icon="⚡" title="وضع توفير الطاقة">
+              <Card className="s-card">
+                <h3 className="s-h3">الأداء</h3>
+                <SettingsRow icon="⚡" title="توفير الطاقة">
                   <SettingsToggle on={prefs.lowPowerMode} onChange={(v) => updatePref('lowPowerMode', v)} />
                 </SettingsRow>
-                <SettingsRow icon="🚀" title="التحميل المسبق (Prefetch)">
+                <SettingsRow icon="🚀" title="التحميل المسبق">
                   <SettingsToggle on={prefs.prefetchEnabled} onChange={(v) => updatePref('prefetchEnabled', v)} />
                 </SettingsRow>
-                <SettingsRow icon="🎮" title="تسريع الأجهزة (Hardware Acceleration)">
+                <SettingsRow icon="🎮" title="تسريع الأجهزة">
                   <SettingsToggle on={prefs.hardwareAcceleration} onChange={(v) => updatePref('hardwareAcceleration', v)} />
                 </SettingsRow>
               </Card>
             ) : null}
 
-            {/* ===== تنزيل بياناتي (GDPR) ===== */}
+            {/* ===== تنزيل بياناتي ===== */}
             {activeTab === 'download-data' ? (
-              <Card style={{ padding: 18 }}>
-                <h3 style={{ marginTop: 0 }}>تنزيل بياناتي (GDPR)</h3>
-                <p className="muted">طلب نسخة كاملة من بياناتك على المنصة. سيتم تجهيز الأرشيف خلال 48 ساعة وإرسال رابط التنزيل لبريدك.</p>
-                <SettingsRow icon="📥" title="تنزيل بياناتي بالكامل">
-                  <Button onClick={() => handleDownloadData('full')}>طلب</Button>
+              <Card className="s-card">
+                <h3 className="s-h3">تنزيل بياناتي (GDPR)</h3>
+                <p className="muted s-p">سيتم تجهيز الأرشيف خلال 48 ساعة وإرسال رابط لبريدك.</p>
+                <SettingsRow icon="📥" title="بياناتي الكاملة">
+                  <MiniBtn variant="primary" onClick={() => handleDownloadData('full')}>طلب</MiniBtn>
                 </SettingsRow>
-                <SettingsRow icon="📊" title="تنزيل سجل النشاط فقط">
-                  <Button variant="secondary" size="small" onClick={() => handleDownloadData('activity')}>طلب</Button>
+                <SettingsRow icon="📊" title="سجل النشاط">
+                  <MiniBtn onClick={() => handleDownloadData('activity')}>طلب</MiniBtn>
                 </SettingsRow>
-                <SettingsRow icon="🎬" title="تنزيل وسائطي (صور/فيديو)">
-                  <Button variant="secondary" size="small" onClick={() => handleDownloadData('media')}>طلب</Button>
+                <SettingsRow icon="🎬" title="وسائطي">
+                  <MiniBtn onClick={() => handleDownloadData('media')}>طلب</MiniBtn>
                 </SettingsRow>
               </Card>
             ) : null}
 
             {/* ===== المساعدة ===== */}
             {activeTab === 'help' ? (
-              <Card style={{ padding: 18 }}>
-                <h3 style={{ marginTop: 0 }}>المساعدة والدعم</h3>
+              <Card className="s-card">
+                <h3 className="s-h3">المساعدة والدعم</h3>
                 <SettingsRow icon="❓" title="مركز المساعدة">
-                  <Button variant="secondary" size="small" onClick={() => navigate('/support')}>فتح</Button>
+                  <MiniBtn onClick={() => navigate('/support')}>فتح</MiniBtn>
                 </SettingsRow>
                 <SettingsRow icon="💬" title="تواصل مع الدعم">
-                  <Button variant="secondary" size="small" onClick={handleContactSupport}>تواصل</Button>
+                  <MiniBtn onClick={handleContactSupport}>تواصل</MiniBtn>
                 </SettingsRow>
-                <SettingsRow icon="📚" title="الأسئلة الشائعة (FAQ)">
-                  <Button variant="secondary" size="small" onClick={showFAQ}>عرض</Button>
+                <SettingsRow icon="📚" title="الأسئلة الشائعة">
+                  <MiniBtn onClick={showFAQ}>عرض</MiniBtn>
                 </SettingsRow>
                 <SettingsRow icon="🚨" title="الإبلاغ عن مشكلة">
-                  <Button variant="secondary" size="small" onClick={() => handleReport('bug')}>إبلاغ</Button>
+                  <MiniBtn onClick={() => handleReport('bug')}>إبلاغ</MiniBtn>
                 </SettingsRow>
-                <SettingsRow icon="🎓" title="دروس البدء السريع">
-                  <Button variant="secondary" size="small" onClick={showTutorials}>عرض</Button>
+                <SettingsRow icon="🎓" title="دروس البدء">
+                  <MiniBtn onClick={showTutorials}>عرض</MiniBtn>
                 </SettingsRow>
               </Card>
             ) : null}
 
             {/* ===== ملاحظات ===== */}
             {activeTab === 'feedback' ? (
-              <Card style={{ padding: 18 }}>
-                <h3 style={{ marginTop: 0 }}>إرسال ملاحظات</h3>
-                <p className="muted">رأيك يهمنا. ساعدنا في تحسين يمشات.</p>
+              <Card className="s-card">
+                <h3 className="s-h3">إرسال ملاحظات</h3>
+                <p className="muted s-p">رأيك يهمنا.</p>
                 <SettingsRow icon="⭐" title="قيّم التطبيق">
-                  <Button variant="secondary" size="small" onClick={handleRate}>تقييم</Button>
+                  <MiniBtn onClick={handleRate}>تقييم</MiniBtn>
                 </SettingsRow>
                 <SettingsRow icon="💡" title="اقترح ميزة">
-                  <Button variant="secondary" size="small" onClick={handleSuggest}>اقتراح</Button>
+                  <MiniBtn onClick={handleSuggest}>اقتراح</MiniBtn>
                 </SettingsRow>
                 <SettingsRow icon="🐞" title="بلّغ عن خطأ">
-                  <Button variant="secondary" size="small" onClick={() => handleReport('bug')}>إبلاغ</Button>
+                  <MiniBtn onClick={() => handleReport('bug')}>إبلاغ</MiniBtn>
                 </SettingsRow>
               </Card>
             ) : null}
 
             {/* ===== عن التطبيق ===== */}
             {activeTab === 'about' ? (
-              <Card style={{ padding: 18 }}>
-                <h3 style={{ marginTop: 0 }}>عن يمشات</h3>
-                <div style={{ display: 'grid', gap: 10 }}>
-                  <SettingsRow icon="📦" title="الإصدار">
-                    <span className="muted">{`v${(typeof __APP_VERSION__ !== 'undefined' && __APP_VERSION__) || (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_APP_VERSION) || '59.13.33'}`}</span>
-                  </SettingsRow>
-                  <SettingsRow icon="🏗️" title="رقم البناء">
-                    <span className="muted">{(typeof __APP_BUILD_DATE__ !== 'undefined' && __APP_BUILD_DATE__) || new Date().toISOString().slice(0, 10).replace(/-/g, '.')}</span>
-                  </SettingsRow>
-                  <SettingsRow icon="🆕" title="ما الجديد"><Button variant="secondary" size="small" onClick={showWhatsNew}>عرض</Button></SettingsRow>
-                  <SettingsRow icon="🌐" title="الموقع الرسمي"><Button variant="secondary" size="small" onClick={() => showAbout('site')}>زيارة</Button></SettingsRow>
-                  <SettingsRow icon="📱" title="تابعنا"><span className="muted">@yamshat</span></SettingsRow>
-                </div>
+              <Card className="s-card">
+                <h3 className="s-h3">عن يمشات</h3>
+                <SettingsRow icon="📦" title="الإصدار">
+                  <span className="muted s-p" style={{ fontSize: 11.5 }}>{`v${(typeof __APP_VERSION__ !== 'undefined' && __APP_VERSION__) || (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_APP_VERSION) || '76.0.0'}`}</span>
+                </SettingsRow>
+                <SettingsRow icon="🏗️" title="رقم البناء">
+                  <span className="muted" style={{ fontSize: 11.5 }}>{(typeof __APP_BUILD_DATE__ !== 'undefined' && __APP_BUILD_DATE__) || new Date().toISOString().slice(0, 10).replace(/-/g, '.')}</span>
+                </SettingsRow>
+                <SettingsRow icon="🆕" title="ما الجديد">
+                  <MiniBtn onClick={showWhatsNew}>عرض</MiniBtn>
+                </SettingsRow>
+                <SettingsRow icon="🌐" title="الموقع الرسمي">
+                  <MiniBtn onClick={() => showAbout('site')}>زيارة</MiniBtn>
+                </SettingsRow>
+                <SettingsRow icon="📱" title="تابعنا">
+                  <span className="muted" style={{ fontSize: 11.5 }}>@yamshat</span>
+                </SettingsRow>
               </Card>
             ) : null}
 
             {/* ===== قانوني ===== */}
             {activeTab === 'legal' ? (
-              <Card style={{ padding: 18 }}>
-                <h3 style={{ marginTop: 0 }}>الشروط والسياسات</h3>
+              <Card className="s-card">
+                <h3 className="s-h3">الشروط والسياسات</h3>
                 <SettingsRow icon="📜" title="شروط الاستخدام">
-                  <Button variant="secondary" size="small" onClick={() => navigate('/terms')}>عرض</Button>
+                  <MiniBtn onClick={() => navigate('/terms')}>عرض</MiniBtn>
                 </SettingsRow>
                 <SettingsRow icon="🔐" title="سياسة الخصوصية">
-                  <Button variant="secondary" size="small" onClick={() => navigate('/privacy')}>عرض</Button>
+                  <MiniBtn onClick={() => navigate('/privacy')}>عرض</MiniBtn>
                 </SettingsRow>
                 <SettingsRow icon="🍪" title="سياسة Cookies">
-                  <Button variant="secondary" size="small" onClick={() => showLegal('cookies')}>عرض</Button>
+                  <MiniBtn onClick={() => showLegal('cookies')}>عرض</MiniBtn>
                 </SettingsRow>
-                <SettingsRow icon="©️" title="حقوق النشر و DMCA">
-                  <Button variant="secondary" size="small" onClick={() => showLegal('dmca')}>عرض</Button>
+                <SettingsRow icon="©️" title="DMCA">
+                  <MiniBtn onClick={() => showLegal('dmca')}>عرض</MiniBtn>
                 </SettingsRow>
                 <SettingsRow icon="⚖️" title="إرشادات المجتمع">
-                  <Button variant="secondary" size="small" onClick={() => showLegal('community')}>عرض</Button>
+                  <MiniBtn onClick={() => showLegal('community')}>عرض</MiniBtn>
                 </SettingsRow>
               </Card>
             ) : null}
 
             {/* تسجيل الخروج */}
-            <Card style={{ padding: 18, marginTop: 6 }}>
-              <SettingsRow icon="🚪" title="تسجيل الخروج" description="إنهاء الجلسة الحالية على هذا الجهاز">
-                <Button variant="secondary" className="settings-danger" onClick={handleLogout}>خروج</Button>
+            <Card className="s-card">
+              <SettingsRow icon="🚪" title="تسجيل الخروج" description="إنهاء الجلسة على هذا الجهاز">
+                <MiniBtn danger onClick={handleLogout}>خروج</MiniBtn>
               </SettingsRow>
             </Card>
           </main>
@@ -1217,7 +1344,6 @@ export default function Settings() {
 
       <YamServicesMenu open={menuOpen} onClose={() => setMenuOpen(false)} onLogout={handleLogout} brandLabel="Yamshat" />
 
-      {/* المودالات الموحدة v59.13.33 */}
       <SettingsModal
         open={modal?.type === 'edit'}
         title={modal?.title}
@@ -1236,187 +1362,315 @@ export default function Settings() {
         onClose={closeModal}
       />
 
+      {/* =========================
+          v76 — CSS مضغوط
+          - أحجام مصغّرة لكل شيء
+          - الأزرار: min-height 26px بدل 40+
+          - Padding مدمج
+          - Cards بحواف صغيرة
+      ========================= */}
       <style>{`
+        .settings-wrap {
+          max-width: 1180px;
+          margin: 0 auto;
+          padding: 12px 14px 40px;
+          font-size: 13px;
+        }
         .settings-hero {
           display: flex;
-          align-items: flex-start;
+          align-items: center;
           justify-content: space-between;
-          gap: 16px;
-          margin-bottom: 20px;
+          gap: 10px;
+          margin-bottom: 12px;
         }
+        .settings-hero h1 { margin: 0 0 3px; font-size: 20px; }
+        .settings-hero p { margin: 0; font-size: 12px; }
         .settings-quick-menu-btn {
-          width: 52px; height: 52px; padding: 0; flex-shrink: 0;
-          border-radius: 16px; border: 1px solid rgba(167,139,250,0.25);
+          width: 38px; height: 38px; padding: 0; flex-shrink: 0;
+          border-radius: 10px; border: 1px solid rgba(167,139,250,0.25);
           background: rgba(15,23,42,0.78);
           display: inline-flex; flex-direction: column;
           align-items: center; justify-content: center;
-          gap: 5px; cursor: pointer;
-          box-shadow: 0 12px 28px rgba(15, 23, 42, 0.28);
+          gap: 3px; cursor: pointer;
         }
         .settings-quick-menu-btn span {
-          display: block; width: 20px; height: 2.5px;
+          display: block; width: 16px; height: 2px;
           border-radius: 999px; background: #e2e8f0;
         }
         .settings-banner {
-          padding: 14px 16px; border-radius: 14px;
+          padding: 8px 10px; border-radius: 10px;
           background: rgba(34,197,94,0.14); color: #86efac;
           border: 1px solid rgba(34,197,94,0.24);
-          margin-bottom: 18px;
+          margin-bottom: 10px; font-size: 12px;
         }
         .settings-layout {
           display: grid;
-          grid-template-columns: 280px 1fr;
-          gap: 18px;
+          grid-template-columns: 200px 1fr;
+          gap: 12px;
           align-items: start;
         }
         .settings-sidebar {
-          display: grid; gap: 14px;
-          position: sticky; top: 80px;
-          max-height: calc(100vh - 100px);
+          display: grid; gap: 8px;
+          position: sticky; top: 70px;
+          max-height: calc(100vh - 90px);
           overflow-y: auto;
-          padding-inline-end: 6px;
+          padding-inline-end: 4px;
         }
         .settings-group {
-          display: grid; gap: 4px;
-          padding: 12px;
+          display: grid; gap: 2px;
+          padding: 7px;
           background: rgba(15,23,42,0.4);
-          border-radius: 14px;
+          border-radius: 10px;
           border: 1px solid rgba(148,163,184,0.10);
         }
         .settings-group-label {
-          font-size: 11px; font-weight: 700;
+          font-size: 10px; font-weight: 700;
           text-transform: uppercase;
           color: rgba(226,232,240,0.55);
-          padding: 4px 8px 8px;
-          letter-spacing: 0.5px;
+          padding: 3px 6px 5px;
+          letter-spacing: 0.4px;
         }
         .settings-tab-btn {
-          display: flex; align-items: center; gap: 8px;
-          padding: 10px 12px;
-          border-radius: 10px; border: none;
+          display: flex; align-items: center; gap: 5px;
+          padding: 6px 8px;
+          border-radius: 7px; border: none;
           background: transparent; color: #e2e8f0;
-          font-size: 14px; cursor: pointer;
+          font-size: 12px; cursor: pointer;
           text-align: start; width: 100%;
-          transition: all 0.15s;
+          transition: all 0.12s;
+          line-height: 1.3;
         }
         .settings-tab-btn:hover { background: rgba(99,102,241,0.12); }
         .settings-tab-btn.active {
           background: rgba(99,102,241,0.22);
-          color: #c4b5fd;
-          font-weight: 600;
+          color: #c4b5fd; font-weight: 600;
         }
-        .settings-main { display: grid; gap: 14px; min-width: 0; }
+
+        .settings-main { display: grid; gap: 10px; min-width: 0; }
+
+        /* Cards مضغوطة */
+        .s-card {
+          padding: 12px 14px !important;
+        }
+        .s-h3 {
+          margin: 0 0 8px;
+          font-size: 14.5px;
+          font-weight: 700;
+        }
+        .s-p { font-size: 11.5px !important; margin: 0 0 8px !important; }
+        .s-card-header {
+          display: flex; align-items: center;
+          justify-content: space-between; gap: 8px;
+          margin-bottom: 4px;
+        }
+        .s-card-header h3 { margin: 0; }
+
+        /* Rows مضغوطة */
         .settings-row {
           display: flex; align-items: center;
-          justify-content: space-between; gap: 12px;
-          padding: 14px 0;
-          border-bottom: 1px solid rgba(148,163,184,0.10);
+          justify-content: space-between; gap: 8px;
+          padding: 7px 0 !important;
+          border-bottom: 1px solid rgba(148,163,184,0.08);
         }
         .settings-row:last-child { border-bottom: none; }
-        .settings-row-info { flex: 1; }
-        .settings-row-info strong { display: block; margin-bottom: 4px; font-size: 15px; }
-        .settings-row-info .muted { font-size: 13px; }
+        .settings-row-info { flex: 1; min-width: 0; }
+        .settings-row-info strong {
+          display: block; margin-bottom: 1px;
+          font-size: 12.5px !important; font-weight: 600;
+        }
+        .settings-row-info .muted { font-size: 11px !important; line-height: 1.35; }
+
+        /* Toggle مصغّر */
         .settings-toggle {
-          position: relative; width: 50px; height: 28px;
+          position: relative; width: 36px; height: 20px;
           border-radius: 999px; background: rgba(100,116,139,0.35);
           cursor: pointer; transition: background 0.2s; border: none;
           flex-shrink: 0;
         }
         .settings-toggle::after {
           content: ''; position: absolute;
-          top: 3px; right: 3px;
-          width: 22px; height: 22px;
+          top: 2px; right: 2px;
+          width: 16px; height: 16px;
           background: #fff; border-radius: 50%;
           transition: all 0.2s;
         }
         .settings-toggle[data-on='true'] { background: #6366f1; }
-        .settings-toggle[data-on='true']::after { right: 25px; }
+        .settings-toggle[data-on='true']::after { right: 18px; }
+
+        /* Selects / Inputs مصغّرة */
         .settings-select, .settings-input {
-          padding: 9px 12px; border-radius: 10px;
+          padding: 4px 8px;
+          border-radius: 7px;
           background: rgba(15,23,42,0.6);
           border: 1px solid rgba(148,163,184,0.18);
-          color: #e2e8f0; font-size: 14px; min-width: 140px;
+          color: #e2e8f0;
+          font-size: 12px !important;
+          min-width: 110px;
+          min-height: 26px;
           font-family: inherit;
         }
-        textarea.settings-input { resize: vertical; min-height: 80px; width: 100%; }
-        .settings-danger { color: #fca5a5; border-color: rgba(239,68,68,0.3); }
+        textarea.settings-input { resize: vertical; min-height: 60px; width: 100%; padding: 6px 8px; }
+
+        /* =========================
+           الأزرار المصغّرة الأساسية
+           ========================= */
+        .settings-btn-mini {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 4px;
+          padding: 3px 10px;
+          min-height: 24px;
+          height: 24px;
+          border-radius: 6px;
+          border: 1px solid rgba(148,163,184,0.25);
+          background: rgba(15,23,42,0.65);
+          color: #e2e8f0;
+          font-size: 11.5px;
+          font-weight: 600;
+          font-family: inherit;
+          cursor: pointer;
+          white-space: nowrap;
+          transition: all 0.12s;
+          line-height: 1;
+        }
+        .settings-btn-mini:hover:not(:disabled) {
+          background: rgba(99,102,241,0.18);
+          border-color: rgba(167,139,250,0.4);
+        }
+        .settings-btn-mini:disabled {
+          opacity: 0.55; cursor: not-allowed;
+        }
+        .settings-btn-mini--primary {
+          background: linear-gradient(135deg, #6366f1, #8b5cf6);
+          border-color: rgba(139,92,246,0.6);
+          color: #fff;
+        }
+        .settings-btn-mini--primary:hover:not(:disabled) {
+          background: linear-gradient(135deg, #4f46e5, #7c3aed);
+        }
+        .settings-btn-mini--danger {
+          color: #fca5a5;
+          border-color: rgba(239,68,68,0.35);
+          background: rgba(239,68,68,0.08);
+        }
+        .settings-btn-mini--danger:hover:not(:disabled) {
+          background: rgba(239,68,68,0.18);
+        }
+        .settings-btn-mini.is-busy { opacity: 0.6; pointer-events: none; }
+
+        /* Grid statistics مضغوطة */
         .stats-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-          gap: 12px;
+          grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+          gap: 6px;
         }
         .metric-card {
-          padding: 16px; border-radius: 16px;
+          padding: 8px 10px;
+          border-radius: 10px;
           background: rgba(15,23,42,0.45);
           border: 1px solid rgba(148,163,184,0.12);
-          display: grid; gap: 6px;
+          display: grid; gap: 2px;
         }
-        .metric-card span { color: rgba(226,232,240,0.72); font-size: 13px; }
-        .metric-card strong { font-size: 18px; }
+        .metric-card span { color: rgba(226,232,240,0.72); font-size: 11px; }
+        .metric-card strong { font-size: 13.5px; }
+
+        /* Lists مضغوطة */
         .list-row {
           border: 1px solid rgba(148,163,184,0.12);
           background: rgba(15,23,42,0.38);
-          border-radius: 16px;
-          padding: 14px 16px;
+          border-radius: 10px;
+          padding: 8px 10px;
           display: flex; justify-content: space-between;
-          gap: 12px; align-items: center;
+          gap: 8px; align-items: center;
+          font-size: 12px;
         }
+        .list-row strong { font-size: 12.5px; display: block; margin-bottom: 1px; }
+        .list-row .muted { font-size: 11px; }
         .score-pill {
           display: inline-flex; align-items: center;
-          justify-content: center; min-width: 78px;
-          padding: 7px 12px; border-radius: 999px;
+          justify-content: center; min-width: 52px;
+          padding: 3px 7px; border-radius: 999px;
           background: rgba(59,130,246,0.14);
           color: #93c5fd;
           border: 1px solid rgba(147,197,253,0.26);
-          font-size: 12px;
+          font-size: 10.5px;
         }
-        /* v59.13.33 — Modal */
+
+        /* Modals */
         .settings-modal-backdrop {
           position: fixed; inset: 0;
           background: rgba(2, 6, 23, 0.72);
-          backdrop-filter: blur(8px);
+          backdrop-filter: blur(6px);
           z-index: 9999;
           display: flex; align-items: center; justify-content: center;
-          padding: 16px;
-          animation: settings-modal-fade 0.18s ease-out;
+          padding: 12px;
+          animation: settings-modal-fade 0.15s ease-out;
         }
         .settings-modal {
           background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(15,23,42,0.95));
           border: 1px solid rgba(167,139,250,0.25);
-          border-radius: 18px;
-          padding: 22px;
-          max-width: 520px; width: 100%;
+          border-radius: 14px;
+          padding: 16px;
+          max-width: 460px; width: 100%;
           max-height: 88vh; overflow-y: auto;
-          box-shadow: 0 30px 80px rgba(0,0,0,0.5);
-          animation: settings-modal-pop 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+          box-shadow: 0 22px 60px rgba(0,0,0,0.5);
+          animation: settings-modal-pop 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
         .settings-modal-header {
           display: flex; justify-content: space-between;
-          align-items: flex-start; gap: 12px;
-          margin-bottom: 8px;
+          align-items: center; gap: 8px;
+          margin-bottom: 6px;
         }
-        .settings-modal-header h3 { margin: 0; font-size: 18px; }
+        .settings-modal-header h3 { margin: 0; font-size: 15px; }
         .settings-modal-close {
-          width: 32px; height: 32px;
-          border-radius: 10px; border: 1px solid rgba(148,163,184,0.2);
+          width: 26px; height: 26px;
+          border-radius: 7px; border: 1px solid rgba(148,163,184,0.2);
           background: rgba(15,23,42,0.6);
           color: #e2e8f0; cursor: pointer;
           display: inline-flex; align-items: center; justify-content: center;
-          font-size: 16px; flex-shrink: 0;
+          font-size: 13px; flex-shrink: 0;
         }
         .settings-modal-close:hover { background: rgba(239,68,68,0.18); }
-        .settings-modal-content { font-size: 14px; line-height: 1.7; color: rgba(226,232,240,0.9); }
-        @keyframes settings-modal-fade {
-          from { opacity: 0; } to { opacity: 1; }
-        }
+        .settings-modal-content { font-size: 12.5px; line-height: 1.55; color: rgba(226,232,240,0.9); }
+
+        @keyframes settings-modal-fade { from { opacity: 0; } to { opacity: 1; } }
         @keyframes settings-modal-pop {
-          from { opacity: 0; transform: scale(0.94) translateY(8px); }
+          from { opacity: 0; transform: scale(0.94) translateY(6px); }
           to { opacity: 1; transform: scale(1) translateY(0); }
         }
+
+        /* Responsive */
         @media (max-width: 900px) {
           .settings-layout { grid-template-columns: 1fr; }
-          .settings-sidebar { position: static; max-height: none; }
-          .settings-hero { align-items: center; }
+          .settings-sidebar {
+            position: static; max-height: none;
+            grid-template-columns: 1fr 1fr; display: grid;
+          }
+        }
+        @media (max-width: 600px) {
+          .settings-sidebar { grid-template-columns: 1fr; }
+          .settings-wrap { padding: 10px 10px 30px; }
+          .s-card { padding: 10px 12px !important; }
+          .settings-row { flex-wrap: wrap; gap: 6px; }
+        }
+
+        /* Overrides قوية لتصغير أي أزرار قديمة داخل الإعدادات */
+        .settings-main .btn,
+        .settings-main button.btn,
+        .settings-main .btn-small,
+        .settings-main .btn-medium {
+          min-height: 24px !important;
+          height: 24px !important;
+          padding: 3px 10px !important;
+          font-size: 11.5px !important;
+          border-radius: 6px !important;
+        }
+        .settings-main .btn-large {
+          min-height: 28px !important;
+          height: 28px !important;
+          padding: 4px 12px !important;
+          font-size: 12px !important;
         }
       `}</style>
     </MainLayout>

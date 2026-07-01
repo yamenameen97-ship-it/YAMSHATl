@@ -211,6 +211,20 @@ import './styles/yamshat-fixes-v73-composer-filters-DEFINITIVE.css';
    ⚠️ هذا الملف يجب أن يكون **آخر CSS مطلقاً** ليفوز في cascade. */
 import './styles/yamshat-fixes-v75-composer-filters-ABSOLUTE.css';
 
+/* 🔥🔥🔥 v76 — FINAL ROOT-CAUSE FIX (الإصلاح النهائي للسبب الجذري)
+   يصلح نهائياً مشكلة هروب "بماذا تفكر؟" + شريط التصفية لليسار
+   على ويب الجوال في الصفحة الرئيسية للمنشورات.
+
+   🔬 السبب الحقيقي (الذي فات v59→v75):
+   .page-content في MainLayout.jsx يستخدم scrollbar-gutter: stable
+   الذي في RTL يحجز ~15px على الحافة اليمنى → كل المحتوى ينزاح لليسار.
+   
+   ✅ الحل: إلغاء scrollbar-gutter + إخفاء scrollbar الفعلي
+   على .page-content (الأم) — وليس .yam-home-mobile-page (الابن).
+
+   ⚠️ هذا الملف يجب أن يكون آخر CSS مطلقاً ليفوز في cascade. */
+import './styles/yamshat-fixes-v76-FINAL-ROOT-CAUSE.css';
+
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';
@@ -219,7 +233,7 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v75-composer-filters-ABSOLUTE';
+const BUILD_ID = 'yamshat-v76-FINAL-ROOT-CAUSE';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

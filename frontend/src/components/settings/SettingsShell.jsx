@@ -65,22 +65,23 @@ export default function SettingsShell({
         .settings-shell {
           max-width: 1080px;
           margin: 0 auto;
-          padding: 18px 16px 80px;
+          padding: 12px 14px 40px;
+          font-size: 13px;
         }
         .settings-shell-header {
           display: flex;
-          align-items: flex-start;
-          gap: 12px;
-          margin-bottom: 18px;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 12px;
         }
         .settings-shell-back {
-          width: 44px;
-          height: 44px;
-          border-radius: 14px;
+          width: 32px;
+          height: 32px;
+          border-radius: 9px;
           border: 1px solid rgba(167,139,250,0.25);
           background: rgba(15,23,42,0.7);
           color: #e2e8f0;
-          font-size: 22px;
+          font-size: 16px;
           cursor: pointer;
           display: inline-flex;
           align-items: center;
@@ -89,59 +90,60 @@ export default function SettingsShell({
         }
         .settings-shell-back:hover { background: rgba(99,102,241,0.18); }
         .settings-shell-title-block h1 {
-          margin: 0 0 6px;
-          font-size: 22px;
+          margin: 0 0 2px;
+          font-size: 17px;
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 7px;
         }
-        .settings-shell-icon { font-size: 26px; }
-        .settings-shell-title-block p { margin: 0; }
+        .settings-shell-icon { font-size: 18px; }
+        .settings-shell-title-block p { margin: 0; font-size: 11.5px; }
         .settings-banner {
-          padding: 12px 14px;
-          border-radius: 12px;
+          padding: 8px 10px;
+          border-radius: 10px;
           background: rgba(34,197,94,0.14);
           color: #86efac;
           border: 1px solid rgba(34,197,94,0.24);
-          margin-bottom: 16px;
-          font-size: 14px;
+          margin-bottom: 10px;
+          font-size: 12px;
         }
         .settings-shell-tabs {
           display: flex;
           flex-wrap: wrap;
-          gap: 8px;
-          margin-bottom: 16px;
+          gap: 6px;
+          margin-bottom: 10px;
           overflow-x: auto;
         }
         .settings-shell-body {
           display: grid;
-          gap: 14px;
+          gap: 10px;
         }
         .settings-row {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 12px;
-          padding: 14px 0;
-          border-bottom: 1px solid rgba(148,163,184,0.10);
+          gap: 8px;
+          padding: 7px 0;
+          border-bottom: 1px solid rgba(148,163,184,0.08);
         }
         .settings-row:last-child { border-bottom: none; }
-        .settings-row-info { flex: 1; }
-        .settings-row-info strong { display: block; margin-bottom: 4px; font-size: 15px; }
-        .settings-row-info .muted { font-size: 13px; }
+        .settings-row-info { flex: 1; min-width: 0; }
+        .settings-row-info strong { display: block; margin-bottom: 1px; font-size: 12.5px; font-weight: 600; }
+        .settings-row-info .muted { font-size: 11px; line-height: 1.35; }
         .settings-section-title {
-          margin: 0 0 4px;
-          font-size: 17px;
+          margin: 0 0 3px;
+          font-size: 14.5px;
+          font-weight: 700;
         }
         .settings-section-desc {
-          margin: 0 0 14px;
+          margin: 0 0 8px;
           color: rgba(226,232,240,0.66);
-          font-size: 13px;
+          font-size: 11.5px;
         }
         .settings-toggle {
           position: relative;
-          width: 50px;
-          height: 28px;
+          width: 36px;
+          height: 20px;
           border-radius: 999px;
           background: rgba(100,116,139,0.35);
           cursor: pointer;
@@ -152,24 +154,25 @@ export default function SettingsShell({
         .settings-toggle::after {
           content: '';
           position: absolute;
-          top: 3px;
-          right: 3px;
-          width: 22px;
-          height: 22px;
+          top: 2px;
+          right: 2px;
+          width: 16px;
+          height: 16px;
           background: #fff;
           border-radius: 50%;
           transition: all 0.2s;
         }
         .settings-toggle[data-on='true'] { background: #6366f1; }
-        .settings-toggle[data-on='true']::after { right: 25px; }
+        .settings-toggle[data-on='true']::after { right: 18px; }
         .settings-select, .settings-input {
-          padding: 10px 12px;
-          border-radius: 10px;
+          padding: 4px 8px;
+          border-radius: 7px;
           background: rgba(15,23,42,0.6);
           border: 1px solid rgba(148,163,184,0.18);
           color: #e2e8f0;
-          font-size: 14px;
-          min-width: 140px;
+          font-size: 12px;
+          min-width: 110px;
+          min-height: 26px;
         }
         .settings-danger {
           color: #fca5a5;
@@ -177,22 +180,41 @@ export default function SettingsShell({
         }
         .stats-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-          gap: 10px;
+          grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+          gap: 6px;
         }
         .metric-card {
-          padding: 14px;
-          border-radius: 14px;
+          padding: 8px 10px;
+          border-radius: 10px;
           background: rgba(15,23,42,0.45);
           border: 1px solid rgba(148,163,184,0.12);
           display: grid;
-          gap: 4px;
+          gap: 2px;
         }
-        .metric-card span { color: rgba(226,232,240,0.72); font-size: 12px; }
-        .metric-card strong { font-size: 16px; }
+        .metric-card span { color: rgba(226,232,240,0.72); font-size: 11px; }
+        .metric-card strong { font-size: 13.5px; }
+
+        /* v76 — overrides لتصغير الأزرار داخل SettingsShell */
+        .settings-shell-body .btn,
+        .settings-shell-body button.btn,
+        .settings-shell-body .btn-small,
+        .settings-shell-body .btn-medium {
+          min-height: 24px !important;
+          height: 24px !important;
+          padding: 3px 10px !important;
+          font-size: 11.5px !important;
+          border-radius: 6px !important;
+        }
+        .settings-shell-body .btn-large {
+          min-height: 28px !important;
+          height: 28px !important;
+          padding: 4px 12px !important;
+          font-size: 12px !important;
+        }
+
         @media (max-width: 600px) {
-          .settings-shell-title-block h1 { font-size: 19px; }
-          .settings-row { flex-wrap: wrap; }
+          .settings-shell-title-block h1 { font-size: 15px; }
+          .settings-row { flex-wrap: wrap; gap: 6px; }
         }
       `}</style>
     </MainLayout>

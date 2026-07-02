@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import Button from '../ui/Button.jsx';
-import Card from '../ui/Card.jsx';
 import { CALL_DEFAULT_SETTINGS, getCallNetworkSummary } from '../../config/callConfig.js';
 import callService, {
   startCall as svcStartCall,
@@ -14,14 +12,14 @@ import callService, {
 } from '../../services/callService.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 🔧 v59.13.32 — Call System Hard Fix
-//   FIX #1: Render the call sheet as a full-screen overlay (own portal-style
-//           container, position: fixed) so the post-call UI is visible above
-//           the chat column on every breakpoint.
-//   FIX #2: Show explicit, actionable permission errors (camera/mic) with a
-//           "Retry" button and link to browser settings instructions.
-//   FIX #5: Stop attached srcObject + null it out on unmount/teardown so the
-//           camera LED turns off and there's no memory leak.
+// 🎨 v79 — Active Voice Call UI (pixel-perfect redesign)
+//   ▸ Full-screen deep dark background (#080914) with subtle purple ambient
+//   ▸ Top bar: chevron-down (minimize) on the left ┃ speaker + people + dots on right
+//   ▸ Centered circular avatar with dual symmetrical animated soundwave bars
+//   ▸ Username, "مكالمة صوتية", live purple duration timer (03:12 style)
+//   ▸ Encryption pill: "مشفرة بالكامل" + lock icon
+//   ▸ Utility grid (5 items): الدردشة • كتم الميكروفون • سماعة • تسجيل • المزيد
+//   ▸ Large red end-call button + "إنهاء المكالمة" label
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MOCK_PARTICIPANTS = [
@@ -29,22 +27,92 @@ const MOCK_PARTICIPANTS = [
   { id: 'guest-1', name: 'ضيف 1', role: 'guest' },
 ];
 
-function avatarGradient(index = 0) {
-  const gradients = [
-    'linear-gradient(135deg, #3b82f6, #8b5cf6)',
-    'linear-gradient(135deg, #f97316, #ef4444)',
-    'linear-gradient(135deg, #10b981, #14b8a6)',
-    'linear-gradient(135deg, #eab308, #f97316)',
-  ];
-  return gradients[index % gradients.length];
-}
+// ── Inline SVG icons (stroke-based, currentColor) ────────────────────────────
+const Icon = {
+  ChevronDown: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" {...p}><polyline points="6 9 12 15 18 9" /></svg>
+  ),
+  People: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" {...p}>
+      <path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
+      <circle cx="10" cy="7" r="4" />
+      <path d="M21 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M17 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  ),
+  Dots: (p) => (
+    <svg viewBox="0 0 24 24" fill="currentColor" {...p}>
+      <circle cx="5" cy="12" r="1.9" />
+      <circle cx="12" cy="12" r="1.9" />
+      <circle cx="19" cy="12" r="1.9" />
+    </svg>
+  ),
+  Lock: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}>
+      <rect x="4" y="11" width="16" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </svg>
+  ),
+  Chat: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...p}>
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      <line x1="8" y1="10" x2="16" y2="10" />
+      <line x1="8" y1="14" x2="13" y2="14" />
+    </svg>
+  ),
+  MicOff: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" {...p}>
+      <line x1="4" y1="4" x2="20" y2="20" />
+      <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+      <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
+      <line x1="12" y1="19" x2="12" y2="23" />
+      <line x1="8" y1="23" x2="16" y2="23" />
+    </svg>
+  ),
+  MicOn: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" {...p}>
+      <rect x="9" y="2" width="6" height="12" rx="3" />
+      <path d="M5 10v2a7 7 0 0 0 14 0v-2" />
+      <line x1="12" y1="19" x2="12" y2="23" />
+      <line x1="8" y1="23" x2="16" y2="23" />
+    </svg>
+  ),
+  // "سماعة" — earpiece / speaker-off silhouette (matches design: speaker with sound-off feel)
+  Speaker: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" {...p}>
+      <polygon points="11 5 6 9 3 9 3 15 6 15 11 19 11 5" />
+      <path d="M15 9a4 4 0 0 1 0 6" />
+    </svg>
+  ),
+  SpeakerLoud: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" {...p}>
+      <polygon points="11 5 6 9 3 9 3 15 6 15 11 19 11 5" />
+      <path d="M15 9a4 4 0 0 1 0 6" />
+      <path d="M18 6a8 8 0 0 1 0 12" />
+    </svg>
+  ),
+  // "تسجيل" — soundwave inside a circle
+  Record: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" {...p}>
+      <circle cx="12" cy="12" r="9" />
+      <line x1="8" y1="10" x2="8" y2="14" />
+      <line x1="11" y1="8" x2="11" y2="16" />
+      <line x1="14" y1="6" x2="14" y2="18" />
+      <line x1="17" y1="10" x2="17" y2="14" />
+    </svg>
+  ),
+  PhoneEnd: (p) => (
+    <svg viewBox="0 0 24 24" fill="currentColor" {...p}>
+      <path d="M12 8c-2.5 0-4.9.5-7.2 1.5-.8.3-1.4 1-1.4 1.9v2.5c0 .5.2 1 .6 1.4.4.4.9.6 1.4.6h3c.5 0 1-.2 1.4-.6.4-.4.6-.9.6-1.4v-1.6c1.1-.3 2.2-.4 3.6-.4s2.5.1 3.6.4v1.6c0 .5.2 1 .6 1.4.4.4.9.6 1.4.6h3c.5 0 1-.2 1.4-.6.4-.4.6-.9.6-1.4v-2.5c0-.9-.6-1.6-1.4-1.9C16.9 8.5 14.5 8 12 8z" transform="rotate(135 12 12)" />
+    </svg>
+  ),
+};
 
 export default function CallExperience({
   open,
   mode = 'voice',
   callType = 'direct',
-  participantName = 'المستخدم',
-  // When `incomingInvite` is set we render the answer UI for an inbound call.
+  participantName = 'yamenameen97',
   incomingInvite = null,
   onClose,
   onStatusChange,
@@ -56,31 +124,34 @@ export default function CallExperience({
   const [muted, setMuted] = useState(CALL_DEFAULT_SETTINGS.muted);
   const [speakerEnabled, setSpeakerEnabled] = useState(CALL_DEFAULT_SETTINGS.speaker);
   const [cameraEnabled, setCameraEnabled] = useState(mode === 'video');
+  const [recording, setRecording] = useState(false);
   const [reconnectCount, setReconnectCount] = useState(0);
   const [connectionQuality, setConnectionQuality] = useState('excellent');
-  // 🔧 FIX #2: structured error { code, message } instead of plain string.
   const [streamError, setStreamError] = useState(null);
   const [permissionHint, setPermissionHint] = useState(null);
-  const [participants] = useState(callType === 'group' ? MOCK_PARTICIPANTS : [{ id: 'peer', name: participantName, role: 'peer' }]);
+  const [showChat, setShowChat] = useState(false);
+  const [showMore, setShowMore] = useState(false);
+  const [tick, setTick] = useState(0);
+  // eslint-disable-next-line no-unused-vars
+  const [participants] = useState(
+    callType === 'group'
+      ? MOCK_PARTICIPANTS
+      : [{ id: 'peer', name: participantName, role: 'peer' }]
+  );
 
-  // Subscribe to global call state so we know when the remote side answers /
-  // hangs up and we get the remote MediaStream.
+  // Global call state subscription
   useEffect(() => {
     if (!open) return undefined;
     const unsubscribe = subscribeCall((snapshot) => {
       setCallState(snapshot);
       if (snapshot?.status) onStatusChange?.(snapshot.status);
       if (snapshot?.mediaError) setStreamError(snapshot.mediaError);
-      if (!snapshot) {
-        // The other side hung up or the call ended elsewhere.
-        onClose?.();
-      }
+      if (!snapshot) onClose?.();
     });
     return () => unsubscribe?.();
   }, [open, onClose, onStatusChange]);
 
-  // 🔧 FIX #2: pre-flight permission probe so we can warn BEFORE the modal
-  //            tries to grab the camera / mic.
+  // Pre-flight permission probe
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -100,44 +171,32 @@ export default function CallExperience({
     return () => { cancelled = true; };
   }, [open, mode]);
 
-  // Kick off the actual signaling once the modal is opened.
+  // Signaling
   useEffect(() => {
     if (!open) return undefined;
     let cancelled = false;
-    const run = async () => {
+    (async () => {
       try {
-        if (incomingInvite) {
-          await svcAcceptIncoming(incomingInvite);
-        } else {
-          await svcStartCall({ peer: participantName, mode });
-        }
-        if (cancelled) return;
-        setStreamError(null);
+        if (incomingInvite) await svcAcceptIncoming(incomingInvite);
+        else await svcStartCall({ peer: participantName, mode });
+        if (!cancelled) setStreamError(null);
       } catch (err) {
-        // 🔧 FIX #2: map raw DOMException → friendly message.
-        const desc = describeMediaError(err);
-        setStreamError(desc);
+        setStreamError(describeMediaError(err));
       }
-    };
-    run();
+    })();
     const qualityTimer = window.setInterval(() => {
-      setConnectionQuality((prev) => {
-        if (prev === 'excellent') return 'good';
-        if (prev === 'good') return 'stable';
-        return 'excellent';
-      });
+      setConnectionQuality((prev) =>
+        prev === 'excellent' ? 'good' : prev === 'good' ? 'stable' : 'excellent'
+      );
     }, 6000);
     return () => {
       cancelled = true;
       window.clearInterval(qualityTimer);
     };
-    // Intentionally omit `mode`/`participantName` from deps: the call session
-    // is established once when the modal opens, and changing those after the
-    // fact would tear down the live call.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Attach the local stream to the <video> element.
+  // Attach local stream
   useEffect(() => {
     const active = callService.getActiveCall();
     if (localVideoRef.current && active?.localStream) {
@@ -145,16 +204,21 @@ export default function CallExperience({
     }
   }, [callState]);
 
-  // Attach the remote stream to its <video>/<audio> element.
+  // Attach remote stream
   useEffect(() => {
     if (remoteVideoRef.current && callState?.remoteStream) {
       remoteVideoRef.current.srcObject = callState.remoteStream;
     }
   }, [callState?.remoteStream]);
 
-  // 🔧 FIX #5: clear srcObject on unmount so the <video>/<audio> element
-  //            releases its reference to the MediaStream. Otherwise the camera
-  //            LED stays on for ~10s after the modal closes on Chromium.
+  // Live timer refresh (1 Hz)
+  useEffect(() => {
+    if (!open) return undefined;
+    const id = window.setInterval(() => setTick((t) => t + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [open]);
+
+  // Cleanup streams on unmount
   useEffect(() => () => {
     try {
       if (localVideoRef.current) {
@@ -164,370 +228,510 @@ export default function CallExperience({
         }
         localVideoRef.current.srcObject = null;
       }
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = null;
-      }
+      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     } catch (_) { /* noop */ }
   }, []);
 
   const status = callState?.status || 'connecting';
+  const peerLabel = callState?.peer || participantName;
+  const peerAvatar = callState?.peerAvatar || callState?.avatar || null;
+  const effectiveMode = callState?.mode || mode;
+  const activeError = streamError || permissionHint;
+  const isVideo = effectiveMode === 'video';
+  const initial = String(peerLabel || 'U').trim().slice(0, 1).toUpperCase();
 
   const durationLabel = useMemo(() => {
     const startedAt = callState?.startedAt;
     if (!startedAt) return '00:00';
-    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
-    const minutes = String(Math.floor(elapsedSeconds / 60)).padStart(2, '0');
-    const seconds = String(elapsedSeconds % 60).padStart(2, '0');
-    return `${minutes}:${seconds}`;
-  }, [callState?.startedAt, reconnectCount, status]);
+    const elapsed = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+    const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+    const s = String(elapsed % 60).padStart(2, '0');
+    return `${m}:${s}`;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callState?.startedAt, tick]);
 
-  const handleToggleMute = () => {
-    const next = !muted;
-    setMuted(next);
-    svcToggleMute(next);
-  };
+  const statusLabel =
+    status === 'connected' ? 'مكالمة صوتية' :
+    status === 'ringing' ? 'يرن…' :
+    status === 'reconnecting' ? 'إعادة الاتصال…' :
+    status === 'rejected' ? 'تم الرفض' :
+    isVideo ? 'مكالمة فيديو' : 'مكالمة صوتية';
 
+  const handleToggleMute = () => { const n = !muted; setMuted(n); svcToggleMute(n); };
   const handleToggleCamera = () => {
     if (mode !== 'video') return;
-    const next = !cameraEnabled;
-    setCameraEnabled(next);
-    svcToggleCamera(next);
+    const n = !cameraEnabled; setCameraEnabled(n); svcToggleCamera(n);
   };
-
-  const handleHangup = () => {
-    svcEndCall('hangup');
-    onClose?.();
-  };
-
+  const handleHangup = () => { svcEndCall('hangup'); onClose?.(); };
   const reconnect = () => {
-    setReconnectCount((prev) => prev + 1);
+    setReconnectCount((p) => p + 1);
     setStreamError(null);
-    // Try to restart media if it failed previously.
     (async () => {
       try {
-        if (incomingInvite) {
-          await svcAcceptIncoming(incomingInvite);
-        } else {
-          await svcStartCall({ peer: participantName, mode });
-        }
-      } catch (err) {
-        setStreamError(describeMediaError(err));
-      }
+        if (incomingInvite) await svcAcceptIncoming(incomingInvite);
+        else await svcStartCall({ peer: participantName, mode });
+      } catch (err) { setStreamError(describeMediaError(err)); }
     })();
   };
-
   const toggleSpeaker = async () => {
     setSpeakerEnabled((prev) => !prev);
     const audio = remoteVideoRef.current;
     if (audio && typeof audio.setSinkId === 'function') {
       try {
         await audio.setSinkId(speakerEnabled ? 'default' : 'communications');
-      } catch {
-        // sink switching not supported
-      }
+      } catch { /* noop */ }
     }
   };
+  const toggleRecording = () => setRecording((v) => !v);
+  const handleMinimize = () => { onClose?.(); };
 
   if (!open) return null;
 
-  const peerLabel = callState?.peer || participantName;
-  const effectiveMode = callState?.mode || mode;
-  const activeError = streamError || permissionHint;
-
   return (
-    // 🔧 FIX #1: full-screen fixed overlay so the post-call sheet is always
-    //            visible above the chat layout (works on mobile + desktop).
-    <div className="yam-call-sheet-root" role="dialog" aria-modal="true" aria-label="مكالمة">
-      <div className="yam-call-sheet-scrim" onClick={handleHangup} />
-      <div className="yam-call-sheet-body" dir="rtl">
-        {/* Top bar: title + close — FIX #1: visible close button */}
-        <div className="yam-call-sheet-header">
-          <div>
-            <div className="yam-call-sheet-eyebrow">
-              {callType === 'group' ? 'مكالمة جماعية' : effectiveMode === 'video' ? 'مكالمة فيديو' : 'مكالمة صوتية'}
-            </div>
-            <h3 className="yam-call-sheet-title">{callType === 'group' ? 'غرفة مكالمة جماعية' : peerLabel}</h3>
-          </div>
+    <div className="yam-call-v79-root" role="dialog" aria-modal="true" aria-label="مكالمة صوتية" dir="rtl">
+      {/* Ambient purple radial glow */}
+      <div className="yam-call-v79-ambient" aria-hidden />
+
+      {/* ═════════ TOP HEADER ═════════ */}
+      <header className="yam-call-v79-header">
+        <button
+          type="button"
+          className="yam-call-v79-iconbtn"
+          onClick={handleMinimize}
+          aria-label="إخفاء المكالمة"
+        >
+          <Icon.ChevronDown width="22" height="22" />
+        </button>
+
+        <div className="yam-call-v79-header-end">
+          <button type="button" className="yam-call-v79-iconbtn" aria-label="مكبر الصوت" onClick={toggleSpeaker}>
+            <Icon.SpeakerLoud width="20" height="20" />
+          </button>
+          <button type="button" className="yam-call-v79-iconbtn" aria-label="المشاركون">
+            <Icon.People width="20" height="20" />
+          </button>
           <button
             type="button"
-            className="yam-call-sheet-close"
-            onClick={handleHangup}
-            aria-label="إغلاق المكالمة"
+            className="yam-call-v79-iconbtn"
+            aria-label="المزيد"
+            onClick={() => setShowMore((v) => !v)}
           >
-            ✕
+            <Icon.Dots width="20" height="20" />
           </button>
         </div>
+      </header>
 
-      <Card style={{ padding: 16, background: 'linear-gradient(160deg, rgba(15,23,42,0.95), rgba(30,41,59,0.96))', color: 'white' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-          <div>
-            <div style={{ fontSize: 13, opacity: 0.72, marginBottom: 4 }}>
-              {callType === 'group' ? 'Group call' : effectiveMode === 'video' ? 'Video call' : 'Voice call'}
-            </div>
-            <h3 style={{ margin: 0, fontSize: 24 }}>{callType === 'group' ? 'غرفة مكالمة جماعية' : peerLabel}</h3>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-              <span className="call-chip">{network.transport}</span>
-              <span className="call-chip">
-                {status === 'connected' ? 'متصل' : status === 'ringing' ? 'يرن...' : status === 'reconnecting' ? 'إعادة الاتصال' : status === 'rejected' ? 'تم الرفض' : 'يتصل...'}
-              </span>
-              <span className="call-chip">{connectionQuality}</span>
-              <span className="call-chip">{durationLabel}</span>
-            </div>
-          </div>
-          <div style={{ textAlign: 'end' }}>
-            <div style={{ fontSize: 12, opacity: 0.7 }}>TURN/STUN</div>
-            <div style={{ fontSize: 13 }}>{network.turn.length ? `${network.turn.length} TURN` : 'TURN غير متاح'} · {network.stun.length} STUN</div>
-            <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>Reconnect #{reconnectCount}</div>
-          </div>
+      {/* ═════════ AVATAR + SOUND WAVES ═════════ */}
+      <div className="yam-call-v79-stage-voice">
+        <div className="yam-call-v79-wave yam-call-v79-wave-left" aria-hidden>
+          {Array.from({ length: 9 }).map((_, i) => (
+            <span key={i} style={{ animationDelay: `${i * 0.09}s` }} />
+          ))}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: callType === 'group' ? 'repeat(auto-fit, minmax(160px, 1fr))' : (effectiveMode === 'video' ? '1fr 1fr' : '1fr'), gap: 12 }}>
-          {/* Local preview */}
-          <div style={{ minHeight: 220, borderRadius: 20, overflow: 'hidden', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', position: 'relative' }}>
-            {effectiveMode === 'video' && cameraEnabled ? (
-              <video ref={localVideoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            ) : (
-              <div style={{ minHeight: 220, display: 'grid', placeItems: 'center', background: 'radial-gradient(circle at top, rgba(59,130,246,0.35), rgba(15,23,42,0.95))' }}>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ width: 84, height: 84, borderRadius: '50%', display: 'grid', placeItems: 'center', margin: '0 auto 12px', fontSize: 30, fontWeight: 700, background: 'rgba(255,255,255,0.15)' }}>
-                    Y
-                  </div>
-                  <div style={{ fontWeight: 700 }}>أنت</div>
-                  <div style={{ opacity: 0.75, fontSize: 12 }}>{effectiveMode === 'video' ? 'الكاميرا مغلقة' : 'مكالمة صوتية'}</div>
-                </div>
-              </div>
-            )}
-            <div style={{ position: 'absolute', insetInlineStart: 12, bottom: 12, background: 'rgba(15,23,42,0.78)', padding: '6px 10px', borderRadius: 999, fontSize: 12 }}>
-              {muted ? 'الميك مكتوم' : 'الميك شغال'}
-            </div>
-          </div>
-
-          {/* Remote preview (only for direct calls) */}
-          {callType !== 'group' ? (
-            <div style={{ minHeight: 220, borderRadius: 20, overflow: 'hidden', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', position: 'relative' }}>
-              {callState?.remoteStream ? (
-                effectiveMode === 'video' ? (
-                  <video ref={remoteVideoRef} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : (
-                  <>
-                    <audio ref={remoteVideoRef} autoPlay />
-                    <div style={{ minHeight: 220, display: 'grid', placeItems: 'center', background: 'radial-gradient(circle at top, rgba(139,92,246,0.35), rgba(15,23,42,0.95))' }}>
-                      <div style={{ textAlign: 'center' }}>
-                        <div style={{ width: 84, height: 84, borderRadius: '50%', display: 'grid', placeItems: 'center', margin: '0 auto 12px', fontSize: 30, fontWeight: 700, background: 'rgba(255,255,255,0.15)' }}>
-                          {String(peerLabel || 'U').slice(0, 1).toUpperCase()}
-                        </div>
-                        <div style={{ fontWeight: 700 }}>{peerLabel}</div>
-                        <div style={{ opacity: 0.75, fontSize: 12 }}>المكالمة قيد التشغيل</div>
-                      </div>
-                    </div>
-                  </>
-                )
-              ) : (
-                <div style={{ minHeight: 220, display: 'grid', placeItems: 'center', background: 'radial-gradient(circle at top, rgba(236,72,153,0.35), rgba(15,23,42,0.95))' }}>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ width: 84, height: 84, borderRadius: '50%', display: 'grid', placeItems: 'center', margin: '0 auto 12px', fontSize: 30, fontWeight: 700, background: 'rgba(255,255,255,0.15)' }}>
-                      {String(peerLabel || 'U').slice(0, 1).toUpperCase()}
-                    </div>
-                    <div style={{ fontWeight: 700 }}>{peerLabel}</div>
-                    <div style={{ opacity: 0.75, fontSize: 12 }}>{status === 'ringing' ? 'يرن... في انتظار الرد' : 'جاري الاتصال...'}</div>
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : null}
-
-          {callType === 'group'
-            ? participants.map((participant, index) => (
-                <div key={participant.id} style={{ minHeight: 220, borderRadius: 20, overflow: 'hidden', background: avatarGradient(index), position: 'relative', display: 'grid', placeItems: 'center' }}>
-                  <div style={{ textAlign: 'center', color: 'white' }}>
-                    <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'rgba(255,255,255,0.18)', display: 'grid', placeItems: 'center', margin: '0 auto 10px', fontSize: 26, fontWeight: 700 }}>
-                      {participant.name.slice(0, 1).toUpperCase()}
-                    </div>
-                    <div style={{ fontWeight: 700 }}>{participant.name}</div>
-                    <div style={{ fontSize: 12, opacity: 0.85 }}>{participant.role === 'host' ? 'Host' : 'Participant'}</div>
-                  </div>
-                </div>
-              ))
-            : null}
-        </div>
-
-        {activeError ? (
-          // 🔧 FIX #2: clear, actionable error banner with retry CTA.
-          <div className="yam-call-error" role="alert">
-            <div className="yam-call-error-title">
-              <span aria-hidden>⚠️</span>
-              <span>{activeError.code === 'permission_denied' ? 'الأذونات مطلوبة' : activeError.code === 'insecure_context' ? 'اتصال غير آمن' : activeError.code === 'no_device' ? 'لا يوجد جهاز' : activeError.code === 'device_busy' ? 'الجهاز مشغول' : 'تعذّر بدء المكالمة'}</span>
-            </div>
-            <div className="yam-call-error-msg">{activeError.message}</div>
-            <div className="yam-call-error-actions">
-              <Button variant="secondary" onClick={reconnect}>إعادة المحاولة</Button>
-              {activeError.code === 'permission_denied' ? (
-                <a
-                  className="yam-call-error-help"
-                  href="https://support.google.com/chrome/answer/2693767"
-                  target="_blank"
-                  rel="noreferrer"
-                >كيفية تفعيل الأذونات؟</a>
+        <div className="yam-call-v79-avatar-big">
+          {isVideo && callState?.remoteStream ? (
+            <video ref={remoteVideoRef} autoPlay playsInline />
+          ) : (
+            <>
+              {!isVideo && callState?.remoteStream ? (
+                <audio ref={remoteVideoRef} autoPlay />
               ) : null}
-            </div>
-          </div>
-        ) : null}
-      </Card>
+              {peerAvatar ? (
+                <img src={peerAvatar} alt={peerLabel} />
+              ) : (
+                <span className="yam-call-v79-avatar-initial">{initial}</span>
+              )}
+            </>
+          )}
+        </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginTop: 14 }}>
-        <Button variant={muted ? 'warning' : 'secondary'} onClick={handleToggleMute}>{muted ? 'إلغاء كتم' : 'كتم الميك'}</Button>
-        <Button variant={speakerEnabled ? 'secondary' : 'warning'} onClick={toggleSpeaker}>{speakerEnabled ? 'السماعة الخارجية' : 'سماعة المكالمة'}</Button>
-        {effectiveMode === 'video' ? <Button variant={cameraEnabled ? 'secondary' : 'warning'} onClick={handleToggleCamera}>{cameraEnabled ? 'قفل الكاميرا' : 'فتح الكاميرا'}</Button> : null}
-        <Button variant="secondary" onClick={reconnect}>إعادة الاتصال</Button>
-        <Button variant="danger" onClick={handleHangup}>إنهاء</Button>
+        <div className="yam-call-v79-wave yam-call-v79-wave-right" aria-hidden>
+          {Array.from({ length: 9 }).map((_, i) => (
+            <span key={i} style={{ animationDelay: `${i * 0.09}s` }} />
+          ))}
+        </div>
       </div>
 
-      <Card style={{ padding: 16, marginTop: 12 }}>
-        <div style={{ fontWeight: 700, marginBottom: 10 }}>جاهزية المكالمات</div>
-        <div style={{ display: 'grid', gap: 10 }}>
-          <div className="call-info-row"><strong>الوضع</strong><span>{callType === 'group' ? 'جماعي' : effectiveMode === 'video' ? 'فيديو + صوت' : 'صوت فقط'}</span></div>
-          <div className="call-info-row"><strong>WebRTC</strong><span>إشارات عبر السوكت + ICE</span></div>
-          <div className="call-info-row"><strong>STUN</strong><span>{network.stun.join(' • ')}</span></div>
-          <div className="call-info-row"><strong>TURN</strong><span>{network.turn.length ? network.turn.join(' • ') : 'أضف VITE_TURN_URL / USERNAME / CREDENTIAL'}</span></div>
-          <div className="call-info-row"><strong>الحالة</strong><span>{status}</span></div>
+      {/* ═════════ IDENTITY + TIMER ═════════ */}
+      <div className="yam-call-v79-identity">
+        <div className="yam-call-v79-username">{peerLabel}</div>
+        <div className="yam-call-v79-substatus">{statusLabel}</div>
+        <div className="yam-call-v79-timer">{durationLabel}</div>
+      </div>
+
+      {/* ═════════ ENCRYPTION BADGE ═════════ */}
+      <div className="yam-call-v79-enc-badge">
+        <span>مشفرة بالكامل</span>
+        <span className="yam-call-v79-enc-lock" aria-hidden>
+          <Icon.Lock width="12" height="12" />
+        </span>
+      </div>
+
+      {/* ═════════ UTILITY GRID ═════════ */}
+      <div className="yam-call-v79-utility">
+        <UtilBtn label="الدردشة" active={showChat} onClick={() => setShowChat((v) => !v)}>
+          <Icon.Chat width="22" height="22" />
+        </UtilBtn>
+        <UtilBtn label="كتم الميكروفون" muted={muted} onClick={handleToggleMute}>
+          {muted ? <Icon.MicOff width="22" height="22" /> : <Icon.MicOn width="22" height="22" />}
+        </UtilBtn>
+        <UtilBtn label="سماعة" active={speakerEnabled} onClick={toggleSpeaker}>
+          <Icon.Speaker width="22" height="22" />
+        </UtilBtn>
+        <UtilBtn label="تسجيل" active={recording} onClick={toggleRecording}>
+          <Icon.Record width="22" height="22" />
+        </UtilBtn>
+        <UtilBtn label="المزيد" onClick={() => setShowMore((v) => !v)}>
+          <Icon.Dots width="22" height="22" />
+        </UtilBtn>
+      </div>
+
+      {/* ═════════ END-CALL ═════════ */}
+      <div className="yam-call-v79-endcall-wrap">
+        <button
+          type="button"
+          className="yam-call-v79-endcall"
+          onClick={handleHangup}
+          aria-label="إنهاء المكالمة"
+        >
+          <Icon.PhoneEnd width="30" height="30" />
+        </button>
+        <span className="yam-call-v79-endcall-label">إنهاء المكالمة</span>
+      </div>
+
+      {/* Error banner (overlay style, non-blocking) */}
+      {activeError ? (
+        <div className="yam-call-v79-err" role="alert">
+          <div className="yam-call-v79-err-title">
+            ⚠️ {activeError.code === 'permission_denied' ? 'الأذونات مطلوبة' : 'تعذّر بدء المكالمة'}
+          </div>
+          <div className="yam-call-v79-err-msg">{activeError.message}</div>
+          <div className="yam-call-v79-err-actions">
+            <button type="button" className="yam-call-v79-err-btn" onClick={reconnect}>إعادة المحاولة</button>
+            {activeError.code === 'permission_denied' ? (
+              <a
+                href="https://support.google.com/chrome/answer/2693767"
+                target="_blank"
+                rel="noreferrer"
+                className="yam-call-v79-err-link"
+              >
+                كيفية تفعيل الأذونات؟
+              </a>
+            ) : null}
+          </div>
         </div>
-      </Card>
+      ) : null}
+
+      {/* Diagnostics (screen-reader only) */}
+      <div className="yam-call-v79-sr-only" aria-live="polite">
+        الشبكة: {network.transport} • الجودة: {connectionQuality} • إعادة الاتصال #{reconnectCount}
+      </div>
+
+      {/* More sheet */}
+      {showMore ? (
+        <div className="yam-call-v79-more-panel" onClick={() => setShowMore(false)}>
+          <div className="yam-call-v79-more-inner" onClick={(e) => e.stopPropagation()}>
+            <div className="yam-call-v79-more-title">خيارات المكالمة</div>
+            <button type="button" className="yam-call-v79-more-item" onClick={reconnect}>إعادة الاتصال</button>
+            <button type="button" className="yam-call-v79-more-item" onClick={toggleRecording}>
+              {recording ? 'إيقاف التسجيل' : 'بدء تسجيل المكالمة'}
+            </button>
+            {mode === 'video' ? (
+              <button type="button" className="yam-call-v79-more-item" onClick={handleToggleCamera}>
+                {cameraEnabled ? 'إيقاف الكاميرا' : 'تشغيل الكاميرا'}
+              </button>
+            ) : null}
+            <button type="button" className="yam-call-v79-more-item" onClick={() => setShowMore(false)}>إغلاق</button>
+          </div>
+        </div>
+      ) : null}
 
       <style>{`
-        /* 🔧 FIX #1: full-screen overlay */
-        .yam-call-sheet-root {
-          position: fixed;
-          inset: 0;
-          z-index: 9997;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 16px;
+        /* ────────────── ROOT ────────────── */
+        .yam-call-v79-root {
+          position: fixed; inset: 0; z-index: 9997;
+          background: #080914;
+          color: #fff;
+          font-family: 'SF Pro Display', 'Cairo', 'Tajawal', system-ui, -apple-system, sans-serif;
+          overflow: hidden;
+          display: flex; flex-direction: column; align-items: center;
+          padding: max(20px, env(safe-area-inset-top)) 20px max(28px, env(safe-area-inset-bottom));
+          box-sizing: border-box;
         }
-        .yam-call-sheet-scrim {
-          position: absolute;
-          inset: 0;
-          background: rgba(2,6,23,0.72);
-          backdrop-filter: blur(8px);
-          cursor: pointer;
+        .yam-call-v79-ambient {
+          position: absolute; inset: 0;
+          background:
+            radial-gradient(70% 45% at 50% 32%, rgba(127,61,255,0.20) 0%, rgba(127,61,255,0.05) 45%, transparent 70%),
+            radial-gradient(80% 60% at 50% 100%, rgba(75,29,154,0.10) 0%, transparent 65%);
+          pointer-events: none;
         }
-        .yam-call-sheet-body {
+
+        /* ────────────── HEADER ────────────── */
+        .yam-call-v79-header {
           position: relative;
-          width: min(960px, 96vw);
-          max-height: 92vh;
-          overflow-y: auto;
-          background: linear-gradient(160deg, rgba(15,23,42,0.97), rgba(30,41,59,0.97));
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 24px;
-          padding: 18px;
-          box-shadow: 0 30px 80px rgba(0,0,0,0.55);
-          color: #fff;
+          width: 100%;
+          max-width: 500px;
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 4px 2px 8px;
         }
-        .yam-call-sheet-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          gap: 12px;
-          margin-bottom: 14px;
+        .yam-call-v79-header-end {
+          display: flex; align-items: center; gap: 6px;
         }
-        .yam-call-sheet-eyebrow {
-          font-size: 12px;
-          opacity: 0.7;
-          letter-spacing: 0.02em;
+        .yam-call-v79-iconbtn {
+          background: transparent; border: none;
+          width: 40px; height: 40px; border-radius: 50%;
+          display: grid; place-items: center;
+          color: #E7E5F0; cursor: pointer;
+          transition: background .15s;
         }
-        .yam-call-sheet-title {
-          margin: 4px 0 0;
-          font-size: 20px;
-          font-weight: 800;
+        .yam-call-v79-iconbtn:hover { background: rgba(255,255,255,0.08); color: #fff; }
+        .yam-call-v79-iconbtn:active { transform: scale(0.94); }
+
+        /* ────────────── STAGE (avatar + waves) ────────────── */
+        .yam-call-v79-stage-voice {
+          position: relative;
+          width: 100%;
+          display: flex; align-items: center; justify-content: center;
+          gap: 22px;
+          margin-top: 28px;
+          margin-bottom: 22px;
         }
-        .yam-call-sheet-close {
-          width: 40px;
-          height: 40px;
+        .yam-call-v79-avatar-big {
+          position: relative;
+          width: 156px; height: 156px;
           border-radius: 50%;
-          border: 1px solid rgba(255,255,255,0.18);
-          background: rgba(255,255,255,0.08);
-          color: #fff;
-          font-size: 18px;
-          line-height: 1;
-          cursor: pointer;
-          display: grid;
-          place-items: center;
-          transition: background 0.15s, transform 0.12s;
+          overflow: hidden;
+          background: linear-gradient(160deg, #3b1d6e 0%, #1a0a34 100%);
+          box-shadow:
+            0 0 0 3px rgba(127,61,255,0.45),
+            0 0 30px rgba(127,61,255,0.35),
+            0 0 70px rgba(127,61,255,0.20);
+          display: grid; place-items: center;
           flex-shrink: 0;
         }
-        .yam-call-sheet-close:hover {
-          background: rgba(239,68,68,0.85);
-          transform: scale(1.05);
+        .yam-call-v79-avatar-big img,
+        .yam-call-v79-avatar-big video {
+          width: 100%; height: 100%; object-fit: cover; display: block;
         }
-        .call-chip {
-          display: inline-flex;
-          align-items: center;
-          padding: 6px 10px;
+        .yam-call-v79-avatar-initial {
+          font-size: 62px; font-weight: 800; color: #fff;
+          text-shadow: 0 2px 12px rgba(0,0,0,0.4);
+        }
+
+        /* Soundwave bars — vibrant violet, symmetric on both sides */
+        .yam-call-v79-wave {
+          display: inline-flex; align-items: center;
+          gap: 4px;
+          height: 70px;
+          flex-shrink: 0;
+        }
+        .yam-call-v79-wave span {
+          display: block;
+          width: 4px;
           border-radius: 999px;
-          background: rgba(255,255,255,0.08);
-          border: 1px solid rgba(255,255,255,0.1);
-          font-size: 12px;
+          background: linear-gradient(180deg, #B98CFF 0%, #7F3DFF 100%);
+          box-shadow: 0 0 8px rgba(127,61,255,0.6);
+          animation: yam-call-wave 1.1s ease-in-out infinite;
+          transform-origin: center;
         }
-        .call-info-row {
-          display: flex;
-          justify-content: space-between;
-          gap: 12px;
-          padding: 12px 14px;
-          border-radius: 12px;
-          background: rgba(15,23,42,0.04);
-          border: 1px solid rgba(15,23,42,0.08);
-          font-size: 13px;
+        .yam-call-v79-wave-left  { justify-content: flex-end; }
+        .yam-call-v79-wave-right { justify-content: flex-start; }
+        @keyframes yam-call-wave {
+          0%,100% { height: 8px;  opacity: 0.55; }
+          50%     { height: 46px; opacity: 1; }
         }
-        /* 🔧 FIX #2: explicit error banner */
-        .yam-call-error {
-          margin-top: 14px;
-          border-radius: 14px;
-          padding: 14px;
-          background: rgba(248,113,113,0.14);
-          border: 1px solid rgba(248,113,113,0.32);
-          font-size: 13px;
+
+        /* ────────────── IDENTITY ────────────── */
+        .yam-call-v79-identity {
+          position: relative;
+          text-align: center;
+          margin-bottom: 16px;
+        }
+        .yam-call-v79-username {
+          font-size: 24px; font-weight: 700; color: #fff;
+          letter-spacing: 0.2px;
+          margin-bottom: 6px;
+        }
+        .yam-call-v79-substatus {
+          font-size: 14px; color: rgba(255,255,255,0.6);
+          margin-bottom: 6px;
+        }
+        .yam-call-v79-timer {
+          font-size: 20px; font-weight: 700;
+          color: #A56BFF;
+          letter-spacing: 1px;
+          font-variant-numeric: tabular-nums;
+          text-shadow: 0 0 12px rgba(165,107,255,0.4);
+        }
+
+        /* ────────────── ENC BADGE ────────────── */
+        .yam-call-v79-enc-badge {
+          position: relative;
+          display: inline-flex; align-items: center; gap: 8px;
+          background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 999px;
+          padding: 7px 14px;
+          font-size: 12.5px; color: #D8D6E6;
+          margin-bottom: 40px;
+        }
+        .yam-call-v79-enc-lock {
+          display: inline-grid; place-items: center;
+          color: #A56BFF;
+        }
+
+        /* ────────────── UTILITY GRID ────────────── */
+        .yam-call-v79-utility {
+          position: relative;
+          width: 100%;
+          max-width: 460px;
           display: grid;
-          gap: 8px;
+          grid-template-columns: repeat(5, 1fr);
+          gap: 6px;
+          margin-bottom: 36px;
         }
-        .yam-call-error-title {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-weight: 800;
-          color: #fecaca;
+        .yam-call-v79-util-cell {
+          display: flex; flex-direction: column; align-items: center; gap: 8px;
+          min-width: 0;
         }
-        .yam-call-error-msg {
-          color: #fee2e2;
-          line-height: 1.55;
+        .yam-call-v79-util-btn {
+          background: rgba(255,255,255,0.06);
+          border: 1px solid rgba(255,255,255,0.04);
+          width: 54px; height: 54px; border-radius: 50%;
+          display: grid; place-items: center;
+          color: #fff; cursor: pointer;
+          transition: background .15s, transform .12s;
         }
-        .yam-call-error-actions {
-          display: flex;
-          gap: 10px;
-          align-items: center;
-          flex-wrap: wrap;
-          margin-top: 4px;
+        .yam-call-v79-util-btn:hover { background: rgba(255,255,255,0.12); }
+        .yam-call-v79-util-btn:active { transform: scale(0.94); }
+        .yam-call-v79-util-btn.is-active {
+          background: #7F3DFF;
+          border-color: transparent;
+          box-shadow: 0 6px 18px rgba(127,61,255,0.45);
         }
-        .yam-call-error-help {
-          color: #fbbf24;
-          text-decoration: underline;
-          font-size: 12px;
+        .yam-call-v79-util-btn.is-muted {
+          background: rgba(255,255,255,0.14);
         }
-        @media (max-width: 640px) {
-          .yam-call-sheet-body {
-            width: 100vw;
-            max-height: 100vh;
-            border-radius: 0;
-            padding: 14px;
-          }
-          .yam-call-sheet-root {
-            padding: 0;
-          }
-          .call-info-row {
-            flex-direction: column;
-          }
+        .yam-call-v79-util-btn.is-muted svg { color: #fff; }
+        .yam-call-v79-util-label {
+          font-size: 11px; color: rgba(255,255,255,0.72);
+          text-align: center;
+          white-space: nowrap;
+          overflow: hidden; text-overflow: ellipsis;
+          max-width: 100%;
+        }
+
+        /* ────────────── END CALL ────────────── */
+        .yam-call-v79-endcall-wrap {
+          position: relative;
+          display: flex; flex-direction: column; align-items: center; gap: 10px;
+          margin-top: auto;
+        }
+        .yam-call-v79-endcall {
+          background: #F43C4B;
+          border: none;
+          width: 68px; height: 68px; border-radius: 50%;
+          display: grid; place-items: center;
+          color: #fff; cursor: pointer;
+          box-shadow:
+            0 10px 26px rgba(244,60,75,0.5),
+            0 0 0 6px rgba(244,60,75,0.10);
+          transition: transform .12s, background .15s;
+        }
+        .yam-call-v79-endcall:hover { background: #E32B3A; }
+        .yam-call-v79-endcall:active { transform: scale(0.92); }
+        .yam-call-v79-endcall-label {
+          font-size: 14px; font-weight: 500; color: #fff;
+        }
+
+        /* ────────────── ERROR BANNER ────────────── */
+        .yam-call-v79-err {
+          position: absolute;
+          top: 74px; inset-inline-start: 16px; inset-inline-end: 16px;
+          background: rgba(180,30,50,0.85);
+          border: 1px solid rgba(255,100,100,0.4);
+          border-radius: 14px; padding: 12px 14px;
+          z-index: 5;
+        }
+        .yam-call-v79-err-title { font-weight: 800; margin-bottom: 4px; }
+        .yam-call-v79-err-msg { font-size: 13px; color: #ffe8ec; line-height: 1.5; }
+        .yam-call-v79-err-actions { display: flex; gap: 10px; margin-top: 8px; align-items: center; }
+        .yam-call-v79-err-btn {
+          background: #fff; color: #7A0F1F; border: none;
+          padding: 6px 12px; border-radius: 8px; font-weight: 700; cursor: pointer;
+        }
+        .yam-call-v79-err-link { color: #fde68a; font-size: 12px; text-decoration: underline; }
+
+        /* ────────────── MORE PANEL ────────────── */
+        .yam-call-v79-more-panel {
+          position: absolute; inset: 0;
+          background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+          z-index: 20;
+          display: flex; align-items: flex-end; justify-content: center;
+        }
+        .yam-call-v79-more-inner {
+          width: 100%; max-width: 480px;
+          background: #171025;
+          border-radius: 18px 18px 0 0;
+          padding: 16px;
+          display: flex; flex-direction: column; gap: 6px;
+        }
+        .yam-call-v79-more-title { font-weight: 700; margin-bottom: 8px; }
+        .yam-call-v79-more-item {
+          background: rgba(255,255,255,0.06);
+          border: none; color: #fff;
+          padding: 12px 14px; border-radius: 10px;
+          text-align: start; cursor: pointer;
+          font-size: 14px;
+        }
+        .yam-call-v79-more-item:hover { background: rgba(255,255,255,0.12); }
+
+        .yam-call-v79-sr-only {
+          position: absolute; width: 1px; height: 1px; padding: 0;
+          margin: -1px; overflow: hidden; clip: rect(0,0,0,0);
+          white-space: nowrap; border: 0;
+        }
+
+        /* ────────────── RESPONSIVE ────────────── */
+        @media (max-height: 720px) {
+          .yam-call-v79-avatar-big { width: 130px; height: 130px; }
+          .yam-call-v79-avatar-initial { font-size: 52px; }
+          .yam-call-v79-wave { height: 58px; }
+          .yam-call-v79-enc-badge { margin-bottom: 24px; }
+          .yam-call-v79-utility { margin-bottom: 24px; }
+          .yam-call-v79-endcall { width: 60px; height: 60px; }
+        }
+        @media (max-width: 380px) {
+          .yam-call-v79-util-btn { width: 48px; height: 48px; }
+          .yam-call-v79-util-label { font-size: 10.5px; }
+          .yam-call-v79-wave { gap: 3px; }
+          .yam-call-v79-wave span { width: 3px; }
         }
       `}</style>
-      </div>
+    </div>
+  );
+}
+
+// ── Reusable utility button ─────────────────────────────────────────────────
+function UtilBtn({ label, active, muted, onClick, children }) {
+  const cls = [
+    'yam-call-v79-util-btn',
+    active ? 'is-active' : '',
+    muted ? 'is-muted' : '',
+  ].filter(Boolean).join(' ');
+  return (
+    <div className="yam-call-v79-util-cell">
+      <button
+        type="button"
+        className={cls}
+        onClick={onClick}
+        aria-label={label}
+        aria-pressed={active ? 'true' : undefined}
+      >
+        {children}
+      </button>
+      <span className="yam-call-v79-util-label">{label}</span>
     </div>
   );
 }

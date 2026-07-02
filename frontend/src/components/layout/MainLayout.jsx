@@ -195,8 +195,12 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
             touch-action: pan-y;
             transition: opacity var(--motion-fast, 180ms);
             overflow-anchor: none;
-            scrollbar-gutter: stable;
-            will-change: scroll-position;
+            /* ⭐ v78 ROOT FIX: تم إزالة scrollbar-gutter: stable
+               لأنه في RTL يحجز 15px من الحافة اليمنى
+               ويجعل كل المحتوى ينزاح لليسار. الـ v78 CSS
+               يخفي scrollbar بديلاً على الموبايل. */
+            scrollbar-gutter: auto;
+            will-change: auto;
           }
 
           /* عند وجود هيدر/فوتر مثبّتين أضف هوامش حتى لا يختفي المحتوى تحتهما */

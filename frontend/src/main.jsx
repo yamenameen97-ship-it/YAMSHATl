@@ -225,6 +225,29 @@ import './styles/yamshat-fixes-v75-composer-filters-ABSOLUTE.css';
    ⚠️ هذا الملف يجب أن يكون آخر CSS مطلقاً ليفوز في cascade. */
 import './styles/yamshat-fixes-v76-FINAL-ROOT-CAUSE.css';
 
+/* 🔥🔥🔥 v78 — RTL FULL-BLEED ROOT FIX (حل نهائي بعد 9 محاولات فاشلة)
+
+   🔬 تحليل جديد: v60.9→v76 استخدموا كلها
+         width:100% + left:0 + right:0 + inset-inline:0
+   لكن هذه تُحسب نسبةً إلى صندوق الأب المعطوب أصلاً:
+     • scrollbar-gutter: stable (v76 ألغاه لكن المتصفحين أحياناً يتجاهلون الـ override)
+     • Chrome Mobile scrollbar الحقيقي (يقتطع 10-15px)
+     • max-width: 1200px من media query على الديسكتوب
+     • padding/margin موروث من طبقات app-shell→main-shell→page-content
+
+   ✅ الحل الجذري: تقنية Full-Bleed الـ CSS الشهيرة:
+         width: 100vw
+         margin-inline-start: calc(50% - 50vw)
+         margin-inline-end:   calc(50% - 50vw)
+   هذه تُخرج العنصر من حاويته وتملأ عرض الـ viewport الفعلي
+   بغض النظر عن أي scrollbar-gutter/padding/max-width موروث.
+
+   إضافةً، تم حذف scrollbar-gutter:stable من المصدر في
+   MainLayout.jsx (لا override) لإيقاف المشكلة من جذرها.
+
+   ⚠️ هذا الملف يجب أن يكون آخر CSS مطلقاً. */
+import './styles/yamshat-fixes-v78-RTL-FULLBLEED-ROOT.css';
+
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';
@@ -233,7 +256,7 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v76-FINAL-ROOT-CAUSE';
+const BUILD_ID = 'yamshat-v78-RTL-FULLBLEED-ROOT';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

@@ -34,48 +34,21 @@ function MobileComposer({ onFocus, onMedia, onGif, onEmoji }) {
     navigate(`/compose?tab=${tab}`);
   };
 
-  /* ⭐ v76 FINAL ROOT-CAUSE FIX: inline guard لـ .ym-composer-wrap
-     يضمن width:100% + zero margin + left/right=0 الفيزيائي
-     لتجاوز scrollbar-gutter في .page-content (RTL). */
+  /* ⭐ v78 RTL FULL-BLEED ROOT FIX: تم إفراغ الـ inline-style
+     تماماً — كل الأحجام والمواقع تُعرَّف الآن في
+     yamshat-fixes-v78-RTL-FULLBLEED-ROOT.css عبر تقنية
+     Full-Bleed: width:100vw + margin-inline: calc(50% - 50vw).
+     أي inline hint يتعارض مع الحل، لذا نتركه فارغاً.
+     نُبقي فقط dir + fontFamily لضمان RTL على مستوى العنصر. */
   const wrapInlineGuard = {
-    display: 'block',
-    width: '100%',
-    maxWidth: '100%',
-    minWidth: 0,
-    marginLeft: 0,
-    marginRight: 0,
-    marginInlineStart: 0,
-    marginInlineEnd: 0,
-    paddingLeft: 'var(--ym76-bar-pad-x, 12px)',
-    paddingRight: 'var(--ym76-bar-pad-x, 12px)',
-    left: 0,
-    right: 0,
-    boxSizing: 'border-box',
-    direction: 'rtl',
-    textAlign: 'right',
-    transform: 'none',
+    /* فارغ عمداً — v78 يعتمد على CSS خارجي بالكامل */
   };
 
-  /* ⭐ v76: inline guard لـ .ym-composer (الداخلي)
-     يلغي margin:12px 0 من mobile-yamshat-redesign.css */
+  /* ⭐ v78: inline guard للـ .ym-composer الداخلي
+     نُبقي فقط ما لا يتعارض مع Full-Bleed للأب.
+     لا left/right فيزيائي، لا width بقيمة صريحة. */
   const composerInlineGuard = {
-    display: 'flex',
-    flexDirection: 'row',
-    justifyContent: 'flex-start',
-    alignItems: 'center',
-    width: '100%',
-    maxWidth: '100%',
-    minWidth: 0,
-    margin: 0,
-    marginTop: 0,
-    marginBottom: 0,
-    marginLeft: 0,
-    marginRight: 0,
-    left: 0,
-    right: 0,
-    boxSizing: 'border-box',
-    direction: 'rtl',
-    textAlign: 'right',
+    /* فارغ — v78 CSS يدير كل شيء */
   };
 
   return (

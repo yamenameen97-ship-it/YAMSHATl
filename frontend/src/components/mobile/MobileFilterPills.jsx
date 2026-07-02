@@ -47,43 +47,16 @@ function MobileFilterPills({ activeId, activeFilter, onChange, onFilterChange })
     try { tabRefs.current[nextId]?.focus(); } catch { /* ignore */ }
   }, [handleChange]);
 
-  /* ⭐ v76 FINAL ROOT-CAUSE FIX: inline guard لـ .ym-filters-container
-     يضمن width:100% + zero margin + left/right=0 فيزيائي
-     لتجاوز scrollbar-gutter في .page-content (RTL). */
+  /* ⭐ v78 RTL FULL-BLEED ROOT FIX:
+     تم إفراغ inline-style بالكامل. كل الأحجام والمواقع
+     تُعرَّف في yamshat-fixes-v78-RTL-FULLBLEED-ROOT.css بتقنية
+     Full-Bleed التي تقفز فوق أي scrollbar-gutter/max-width موروث. */
   const containerInlineGuard = {
-    display: 'block',
-    width: '100%',
-    maxWidth: '100%',
-    minWidth: 0,
-    margin: 0,
-    marginLeft: 0,
-    marginRight: 0,
-    marginInlineStart: 0,
-    marginInlineEnd: 0,
-    paddingLeft: 'var(--ym76-bar-pad-x, 12px)',
-    paddingRight: 'var(--ym76-bar-pad-x, 12px)',
-    left: 0,
-    right: 0,
-    boxSizing: 'border-box',
-    direction: 'rtl',
-    textAlign: 'right',
-    transform: 'none',
+    /* فارغ عمداً — v78 CSS يدير كل شيء */
   };
 
   const filtersInlineGuard = {
-    display: 'flex',
-    flexDirection: 'row',
-    justifyContent: 'flex-start',
-    alignItems: 'center',
-    width: '100%',
-    maxWidth: '100%',
-    minWidth: 0,
-    margin: 0,
-    padding: 0,
-    left: 0,
-    right: 0,
-    direction: 'rtl',
-    textAlign: 'right',
+    /* فارغ — v78 CSS يدير كل شيء */
   };
 
   return (

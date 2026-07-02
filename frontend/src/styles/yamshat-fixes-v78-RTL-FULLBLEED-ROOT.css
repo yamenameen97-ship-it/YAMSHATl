@@ -1,0 +1,451 @@
+/* ================================================================
+   🔥🔥🔥 YAMSHAT v78 — RTL FULL-BLEED ROOT FIX
+   ================================================================
+   الإصلاح الجذري الحاسم لمشكلة "هروب شريط بماذا تفكر؟ + شريط
+   أزرار التصفية إلى الجهة اليسرى" بعد فشل v59.13.24 → v77.
+
+   🔬 السبب الحقيقي (بعد إعادة تحليل شاملة):
+   ─────────────────────────────────────────────────
+   المحاولات السابقة (v60.9 → v76) استخدمت:
+       width: 100% !important + left/right: 0 + inset-inline: 0
+   لكن كل هذه القواعد تُحسب نسبةً إلى صندوق الأب.
+   والأب المباشر (.yam-home-mobile-page) مغلّف داخل:
+     .page-content (position:absolute; inset:0; overflow-y:auto)
+     └── .page-shell-glow
+         └── .yam-home-mobile-page
+   وأي من هذه الطبقات يمكن أن تحتوي على:
+     • scrollbar-gutter: stable  (يحجز 15px من start-edge)
+     • padding/margin موروث من contain/transform/will-change
+     • max-width: 1200px على شاشات ≥1024
+     • Chrome Mobile scrollbar الحقيقي (10-15px)
+   لذلك width: 100% = 100% من صندوق أب معطوب أصلاً!
+
+   ✅ الحل الجذري v78 — تقنية Full-Bleed الحاسمة:
+   ─────────────────────────────────────────────────
+   بدلاً من محاولة تصحيح صندوق الأب، نتجاهله كلياً بـ:
+       width: 100vw   ← عرض الـ viewport الحقيقي وليس الأب
+       margin-inline-start: calc(50% - 50vw)  ← يسحب البداية
+       margin-inline-end:   calc(50% - 50vw)  ← يسحب النهاية
+
+   الرياضيات:
+     • لو كان عرض الأب 340px والعرض الحقيقي للـ viewport 360px
+       فالعنصر يمتد من (170 - 180)= -10px إلى (170 + 180)= 350px
+     • النتيجة: 100vw فعلي، يبدأ من الحافة الفيزيائية اليمنى
+       تماماً (في RTL) بغض النظر عن أي padding/gutter موروث.
+
+   بعدها نطبّق padding داخلي متناسب (بدلاً من الاعتماد على الأب).
+   ================================================================ */
+
+
+/* ─────────────────────────────────────────────────────────────
+   0️⃣  المتغيرات
+   ───────────────────────────────────────────────────────────── */
+:root {
+  --ym78-bar-pad-x: 12px;
+  --ym78-composer-top: 0px;
+  --ym78-filters-top: 52px;
+  /* عرض الـ scrollbar المتوقع (يحرم فقط على الديسكتوب) */
+  --ym78-vw-fix: 0px;
+}
+
+@media (max-width: 480px) { :root { --ym78-bar-pad-x: 11px; } }
+@media (max-width: 400px) { :root { --ym78-bar-pad-x: 10px; } }
+@media (max-width: 360px) { :root { --ym78-bar-pad-x:  8px; } }
+@media (max-width: 320px) { :root { --ym78-bar-pad-x:  6px; } }
+
+
+/* ─────────────────────────────────────────────────────────────
+   1️⃣  تحرير .page-content و .yam-home-mobile-page نهائياً
+       من scrollbar-gutter (سبب موروث معروف)
+   ───────────────────────────────────────────────────────────── */
+html body .app-shell .page-content,
+html body .app-shell.yamshat-unified .page-content,
+.app-shell .page-content {
+  scrollbar-gutter: auto !important;
+  will-change: auto !important;
+  padding-right: 0 !important;
+  padding-left: 0 !important;
+  padding-inline-start: 0 !important;
+  padding-inline-end: 0 !important;
+}
+
+/* على الموبايل: إخفاء scrollbar تماماً لتحرير الحافة اليمنى */
+@media (max-width: 1023px) {
+  html body .app-shell .page-content,
+  html body .app-shell.yamshat-unified .page-content {
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+  }
+  html body .app-shell .page-content::-webkit-scrollbar,
+  html body .app-shell.yamshat-unified .page-content::-webkit-scrollbar {
+    width: 0 !important;
+    height: 0 !important;
+    display: none !important;
+    background: transparent !important;
+  }
+}
+
+html body .yam-home-mobile-page,
+body .yam-home-mobile-page,
+.yam-home-mobile-page {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  padding-inline-start: 0 !important;
+  padding-inline-end: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  margin-inline-start: 0 !important;
+  margin-inline-end: 0 !important;
+  scrollbar-gutter: auto !important;
+  /* إخفاء scrollbar الأم أيضاً */
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+html body .yam-home-mobile-page::-webkit-scrollbar,
+body .yam-home-mobile-page::-webkit-scrollbar,
+.yam-home-mobile-page::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+
+
+/* ═════════════════════════════════════════════════════════════
+   2️⃣  ⭐⭐⭐ التقنية الجذرية: FULL-BLEED للشريطين
+   ═════════════════════════════════════════════════════════════
+   نستخدم width: 100vw + margin-inline calc(50% - 50vw) لكسر
+   الحاوية والتمدد بعرض الـ viewport الحقيقي.
+   ═════════════════════════════════════════════════════════════ */
+
+/* 🎯 الشريط الأول: ym-composer-wrap (بماذا تفكر؟) */
+html body .app-shell .page-content .yam-home-mobile-page > .ym-composer-wrap,
+html body .yam-home-mobile-page > .ym-composer-wrap,
+body .yam-home-mobile-page > .ym-composer-wrap,
+.yam-home-mobile-page > .ym-composer-wrap,
+.ym-composer-wrap {
+  /* ⭐ Full-Bleed: عرض الـ viewport بالكامل، متمركز أفقياً */
+  display: block !important;
+  position: -webkit-sticky !important;
+  position: sticky !important;
+  top: var(--ym78-composer-top) !important;
+
+  width: 100vw !important;
+  max-width: 100vw !important;
+  min-width: 100vw !important;
+
+  /* السحر: يسحب البداية والنهاية للحافة الحقيقية للـ viewport */
+  margin-inline-start: calc(50% - 50vw) !important;
+  margin-inline-end:   calc(50% - 50vw) !important;
+  /* fallback للفيزيائيات (بعض المتصفحات القديمة) */
+  margin-left:  calc(50% - 50vw) !important;
+  margin-right: calc(50% - 50vw) !important;
+  margin-top:    0 !important;
+  margin-bottom: 0 !important;
+
+  /* Padding داخلي (بدل الاعتماد على الأب) */
+  padding-top:    10px !important;
+  padding-bottom: 6px !important;
+  padding-left:   var(--ym78-bar-pad-x) !important;
+  padding-right:  var(--ym78-bar-pad-x) !important;
+  padding-inline-start: var(--ym78-bar-pad-x) !important;
+  padding-inline-end:   var(--ym78-bar-pad-x) !important;
+
+  /* لا مواقع فيزيائية منافسة */
+  left:  auto !important;
+  right: auto !important;
+  inset-inline: auto !important;
+
+  /* لا transforms تكسر sticky */
+  transform: none !important;
+  -webkit-transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+  will-change: auto !important;
+  contain: none !important;
+  float: none !important;
+  clear: both !important;
+
+  /* RTL + خلفية */
+  direction: rtl !important;
+  text-align: right !important;
+  background-color: #0A0D1A !important;
+  box-sizing: border-box !important;
+  z-index: 51 !important;
+
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+/* 🎯 الشريط الثاني: ym-filters-container (أزرار التصفية) */
+html body .app-shell .page-content .yam-home-mobile-page > .ym-filters-container,
+html body .yam-home-mobile-page > .ym-filters-container,
+body .yam-home-mobile-page > .ym-filters-container,
+.yam-home-mobile-page > .ym-filters-container,
+.ym-filters-container {
+  display: block !important;
+  position: -webkit-sticky !important;
+  position: sticky !important;
+  top: var(--ym78-filters-top) !important;
+
+  width: 100vw !important;
+  max-width: 100vw !important;
+  min-width: 100vw !important;
+
+  /* Full-Bleed */
+  margin-inline-start: calc(50% - 50vw) !important;
+  margin-inline-end:   calc(50% - 50vw) !important;
+  margin-left:  calc(50% - 50vw) !important;
+  margin-right: calc(50% - 50vw) !important;
+  margin-top:    0 !important;
+  margin-bottom: 0 !important;
+
+  /* Padding داخلي متماثل */
+  padding-top:    8px !important;
+  padding-bottom: 10px !important;
+  padding-left:   var(--ym78-bar-pad-x) !important;
+  padding-right:  var(--ym78-bar-pad-x) !important;
+  padding-inline-start: var(--ym78-bar-pad-x) !important;
+  padding-inline-end:   var(--ym78-bar-pad-x) !important;
+
+  left:  auto !important;
+  right: auto !important;
+  inset-inline: auto !important;
+
+  transform: none !important;
+  -webkit-transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+  will-change: auto !important;
+  contain: none !important;
+  float: none !important;
+  clear: both !important;
+
+  direction: rtl !important;
+  text-align: right !important;
+
+  background-color: #0A0D1A !important;
+  border-bottom: 1px solid #1F2937 !important;
+  box-sizing: border-box !important;
+  z-index: 50 !important;
+
+  /* تمرير أفقي بدون scrollbar مرئي */
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+  -webkit-overflow-scrolling: touch !important;
+
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+.ym-filters-container::-webkit-scrollbar,
+.yam-home-mobile-page > .ym-filters-container::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+  background: transparent !important;
+}
+
+
+/* ═════════════════════════════════════════════════════════════
+   3️⃣  الطبقة الداخلية: .ym-composer داخل .ym-composer-wrap
+   ═════════════════════════════════════════════════════════════ */
+html body .yam-home-mobile-page > .ym-composer-wrap > .ym-composer,
+.yam-home-mobile-page > .ym-composer-wrap > .ym-composer,
+.ym-composer-wrap > .ym-composer,
+.ym-composer-wrap .ym-composer {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  /* RTL: flex-start = يمين */
+  justify-content: flex-start !important;
+  gap: 8px !important;
+
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+
+  margin: 0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  margin-inline: 0 !important;
+
+  direction: rtl !important;
+  text-align: right !important;
+}
+
+
+/* ═════════════════════════════════════════════════════════════
+   4️⃣  الطبقة الداخلية: .ym-filters داخل .ym-filters-container
+   ═════════════════════════════════════════════════════════════ */
+html body .yam-home-mobile-page > .ym-filters-container > .ym-filters,
+.yam-home-mobile-page > .ym-filters-container > .ym-filters,
+.ym-filters-container > .ym-filters,
+.ym-filters-container .ym-filters {
+  display: flex !important;
+  flex-direction: row !important;
+  justify-content: flex-start !important;
+  align-items: center !important;
+  gap: 6px !important;
+
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+
+  margin: 0 !important;
+  padding: 0 !important;
+
+  direction: rtl !important;
+  text-align: right !important;
+
+  overflow: visible !important;
+}
+
+/* أول pill في RTL — بدون margin start */
+.yam-home-mobile-page .ym-filters > .ym-filter-pill-new:first-child,
+.ym-filters > .ym-filter-pill-new:first-child,
+.ym-filters > *:first-child {
+  margin-right: 0 !important;
+  margin-inline-start: 0 !important;
+}
+
+
+/* ═════════════════════════════════════════════════════════════
+   5️⃣  ym-feed — يبقى بعرض الأب الطبيعي مع padding
+   ═════════════════════════════════════════════════════════════ */
+html body .yam-home-mobile-page > .ym-feed,
+body .yam-home-mobile-page > .ym-feed,
+.yam-home-mobile-page > .ym-feed {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+
+  margin: 0 !important;
+
+  padding-top: 8px !important;
+  padding-bottom: 0 !important;
+  padding-left: var(--ym78-bar-pad-x) !important;
+  padding-right: var(--ym78-bar-pad-x) !important;
+  padding-inline-start: var(--ym78-bar-pad-x) !important;
+  padding-inline-end:   var(--ym78-bar-pad-x) !important;
+
+  direction: rtl !important;
+  text-align: right !important;
+
+  overflow: visible !important;
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+}
+
+
+/* ═════════════════════════════════════════════════════════════
+   6️⃣  إبطال أي inline-style قديم من v75/v76 يحطم Full-Bleed
+   ═════════════════════════════════════════════════════════════
+   ملاحظة: MobileComposer.jsx و MobileFilterPills.jsx يضعان
+   inline: {left:0, right:0, width:100%, marginInline:0}.
+   لكن الآن نستبدل ذلك بمقاسات viewport-based، لذا نتجاوز الـ
+   inline via !important + CSS custom خارجية.
+   ═════════════════════════════════════════════════════════════ */
+
+/* الـ inline-style: {left:0, right:0} ← نتجاوزه بـ auto */
+.ym-composer-wrap[style*="left"],
+.ym-filters-container[style*="left"] {
+  left: auto !important;
+}
+.ym-composer-wrap[style*="right"],
+.ym-filters-container[style*="right"] {
+  right: auto !important;
+}
+
+/* الـ inline-style width:100% ← نستبدل بـ 100vw */
+.ym-composer-wrap[style*="width"],
+.ym-filters-container[style*="width"] {
+  width: 100vw !important;
+  max-width: 100vw !important;
+  min-width: 100vw !important;
+}
+
+
+/* ═════════════════════════════════════════════════════════════
+   7️⃣  ديسكتوب (≥1024px) — تعطيل Full-Bleed لأن الصفحة قد تكون
+       محصورة في max-width: 1200px داخل .page-content
+   ═════════════════════════════════════════════════════════════
+   على الديسكتوب نعود للسلوك التقليدي: العرض 100% من الأب
+   بدون Full-Bleed لأن ذلك سيمتد خلف الشريط الجانبي.
+   ═════════════════════════════════════════════════════════════ */
+@media (min-width: 1024px) {
+  html body .yam-home-mobile-page > .ym-composer-wrap,
+  .yam-home-mobile-page > .ym-composer-wrap,
+  .ym-composer-wrap,
+  html body .yam-home-mobile-page > .ym-filters-container,
+  .yam-home-mobile-page > .ym-filters-container,
+  .ym-filters-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    margin-inline-start: 0 !important;
+    margin-inline-end:   0 !important;
+    margin-left:  0 !important;
+    margin-right: 0 !important;
+  }
+}
+
+
+/* ═════════════════════════════════════════════════════════════
+   8️⃣  Safari iOS — sticky + full-bleed معاً
+   ═════════════════════════════════════════════════════════════
+   Safari iOS يتطلب position: -webkit-sticky. نستخدم أيضاً
+   translate3d(0,0,0) خفيف على الأب لتفعيل compositing.
+   ═════════════════════════════════════════════════════════════ */
+@supports (-webkit-touch-callout: none) {
+  .yam-home-mobile-page > .ym-composer-wrap,
+  .yam-home-mobile-page > .ym-filters-container {
+    position: -webkit-sticky !important;
+    position: sticky !important;
+    /* لا translate على الأب لأنه سيكسر sticky */
+  }
+}
+
+
+/* ═════════════════════════════════════════════════════════════
+   9️⃣  prefers-reduced-motion
+   ═════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  .yam-home-mobile-page > .ym-composer-wrap,
+  .yam-home-mobile-page > .ym-filters-container {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+
+/* ═════════════════════════════════════════════════════════════
+   🔟  FINAL SAFETY NET — كسر أي `inset-inline` أو `inset` قديم
+   ═════════════════════════════════════════════════════════════ */
+html[dir="rtl"] body .app-shell .page-content .yam-home-mobile-page > .ym-composer-wrap,
+html[dir="rtl"] body .app-shell .page-content .yam-home-mobile-page > .ym-filters-container,
+html body[dir="rtl"] .app-shell .page-content .yam-home-mobile-page > .ym-composer-wrap,
+html body[dir="rtl"] .app-shell .page-content .yam-home-mobile-page > .ym-filters-container {
+  inset: auto !important;
+  inset-inline: auto !important;
+  inset-block: auto !important;
+  inset-inline-start: auto !important;
+  inset-inline-end: auto !important;
+  left: auto !important;
+  right: auto !important;
+}
+
+
+/* ⭐ End of v78 RTL FULL-BLEED ROOT FIX ⭐ */

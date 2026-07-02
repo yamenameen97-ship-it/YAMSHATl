@@ -1,0 +1,148 @@
+/* ============================================================
+   YAMSHAT v80 — Home Searchbar + Comment Composer Lift
+   ============================================================
+   طلب المستخدم (v80):
+     1) إضافة شريط بحث (فيسبوك-style) أعلى صفحة المنشورات
+        الرئيسية في ويب الجوال — للبحث عن منشور أو صديق.
+     2) رفع منطقة كتابة التعليق قليلاً للأعلى (كانت تظهر
+        هاربة للأسفل مباشرة).
+
+   ⚠️ يجب استيراد هذا الملف بعد v79 مباشرةً ليكون له الأولوية.
+   ============================================================ */
+
+/* ============================================================
+   (1) شريط البحث الجديد أعلى الصفحة الرئيسية للجوال
+   ============================================================ */
+.yam-home-mobile-page .ym-home-searchbar {
+  display: block !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  padding: 10px 12px 6px 12px !important;
+  background: transparent !important;
+  direction: rtl !important;
+}
+
+.yam-home-mobile-page .ym-home-searchbar__btn {
+  width: 100% !important;
+  min-height: 42px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 0 16px !important;
+
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.09) !important;
+  border-radius: 999px !important; /* pill شكل فيسبوك */
+
+  color: rgba(255, 255, 255, 0.62) !important;
+  font-family: inherit !important;
+  font-size: 14.5px !important;
+  text-align: right !important;
+
+  cursor: pointer !important;
+  outline: none !important;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.06s ease !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+.yam-home-mobile-page .ym-home-searchbar__btn:hover,
+.yam-home-mobile-page .ym-home-searchbar__btn:focus-visible {
+  background: rgba(124, 58, 237, 0.10) !important;
+  border-color: rgba(124, 58, 237, 0.35) !important;
+  color: rgba(255, 255, 255, 0.88) !important;
+}
+
+.yam-home-mobile-page .ym-home-searchbar__btn:active {
+  transform: scale(0.985) !important;
+}
+
+.yam-home-mobile-page .ym-home-searchbar__icon {
+  flex: 0 0 auto !important;
+  color: rgba(255, 255, 255, 0.72) !important;
+}
+
+.yam-home-mobile-page .ym-home-searchbar__placeholder {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  line-height: 1.4 !important;
+}
+
+/* على شاشات الويب الكبيرة (ديسكتوب) نُخفي شريط البحث هذا لأن
+   الديسكتوب لديه شريط البحث الخاص به في MobileTopBar. */
+@media (min-width: 900px) {
+  .yam-home-mobile-page .ym-home-searchbar {
+    display: none !important;
+  }
+}
+
+/* ضبط تباعد أول منشور بعد شريط البحث */
+.yam-home-mobile-page .ym-home-searchbar + .ym-feed {
+  margin-top: 4px !important;
+  padding-top: 4px !important;
+}
+
+/* ============================================================
+   (2) رفع منطقة كتابة التعليق للأعلى قليلاً
+   ------------------------------------------------------------
+   المشكلة: منطقة كتابة التعليق تظهر هاربة إلى أسفل الشاشة،
+   خاصةً على الأجهزة ذات safe-area صغير.
+   الحل: زيادة padding السفلي داخل الـ composer + رفع
+        الـ sheet قليلاً عن حافة الشاشة، مع الحفاظ على
+        safe-area للأجهزة ذات الـ notch.
+   ============================================================ */
+
+/* رفع الشيت نفسه عن أقصى الأسفل قليلاً (يعطي هامش تنفس) */
+.ym-sheet-overlay {
+  /* هامش سفلي عام للـ overlay حتى يرفع الـ sheet قليلاً */
+  padding-bottom: 0 !important;
+}
+
+.ym-sheet {
+  /* السماح للـ sheet بترك مساحة صغيرة من الأسفل حتى تبتعد
+     منطقة الكتابة عن حافة الشاشة السفلية. */
+  margin-bottom: 0 !important;
+}
+
+/* الأهم: رفع منطقة كتابة التعليق نفسها إلى أعلى بشكل واضح
+   عبر زيادة padding-bottom لضمان مسافة تنفس ولا تبدو هاربة. */
+.ym-sheet-composer {
+  /* رفع بمقدار ~14px إضافي فوق safe-area (كانت 14px فقط) */
+  padding-top: 14px !important;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)) !important;
+  padding-left: 14px !important;
+  padding-right: 14px !important;
+}
+
+/* على الأجهزة التي لا تحتوي safe-area (متصفح جوال بلا notch)
+   نضمن على الأقل 24px من الحافة السفلية. */
+@supports not (padding-bottom: env(safe-area-inset-bottom)) {
+  .ym-sheet-composer {
+    padding-bottom: 24px !important;
+  }
+}
+
+/* حقل الإدخال يصبح أكبر قليلاً وأكثر بروزاً */
+.ym-sheet-composer .ym-sheet-input {
+  padding-top: 12px !important;
+  padding-bottom: 12px !important;
+  min-height: 44px !important;
+  font-size: 14.5px !important;
+}
+
+/* زر الإرسال أكبر بلمسة عصرية */
+.ym-sheet-composer .ym-sheet-send {
+  width: 44px !important;
+  height: 44px !important;
+  min-width: 44px !important;
+}
+
+/* على الأجهزة الطويلة (شاشات كبيرة)، ارفع الـ sheet قليلاً
+   لتبتعد منطقة الكتابة أكثر عن الحافة السفلية. */
+@media (max-height: 800px) and (min-height: 600px) {
+  .ym-sheet-composer {
+    padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}

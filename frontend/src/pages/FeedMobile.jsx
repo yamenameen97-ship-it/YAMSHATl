@@ -446,6 +446,23 @@ function FeedMobile() {
       >
         {/* v79 — تم الحذف النهائي: صندوق "بماذا تفكر؟" + أزرار التصفية (الكل/المجموعات/الستوري) */}
 
+        {/* ✅ v80 — شريط البحث الفيسبوك-ستايل أعلى صفحة المنشورات (للجوال فقط)
+            نقرة عليه تفتح صفحة /search للبحث عن منشور/صديق. */}
+        <div className="ym-home-searchbar" role="search" aria-label="البحث في يام شات">
+          <button
+            type="button"
+            className="ym-home-searchbar__btn"
+            onClick={() => navigate('/search')}
+            aria-label="ابحث عن منشور أو صديق"
+          >
+            <svg className="ym-home-searchbar__icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" strokeWidth="2" />
+              <path d="M20 20 L16.2 16.2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            <span className="ym-home-searchbar__placeholder">ابحث عن منشور أو صديق</span>
+          </button>
+        </div>
+
         {/* Posts Feed */}
         <div className="ym-feed">
           {filtered.map((post) => {

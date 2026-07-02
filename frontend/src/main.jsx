@@ -249,6 +249,8 @@ import './styles/yamshat-fixes-v76-FINAL-ROOT-CAUSE.css';
 import './styles/yamshat-fixes-v78-RTL-FULLBLEED-ROOT.css';
 /* v79 — حذف نهائي لزر "بماذا تفكر؟" + أزرار التصفية من أعلى الصفحة الرئيسية للجوال */
 import './styles/yamshat-fixes-v79-REMOVE-COMPOSER-FILTERS.css';
+/* v80 — إضافة شريط بحث فيسبوك-ستايل أعلى صفحة الجوال + رفع منطقة كتابة التعليق للأعلى */
+import './styles/yamshat-fixes-v80-SEARCHBAR-COMMENT-LIFT.css';
 
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';

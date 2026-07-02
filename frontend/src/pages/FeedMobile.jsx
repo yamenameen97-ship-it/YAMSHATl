@@ -1,8 +1,9 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import MobileComposer from '../components/mobile/MobileComposer.jsx';
-import MobileFilterPills from '../components/mobile/MobileFilterPills.jsx';
+// v79 — تم حذف MobileComposer (زر "بماذا تفكر؟") وMobileFilterPills (أزرار الكل/المجموعات/الستوري) نهائياً من أعلى الصفحة الرئيسية للجوال
+// import MobileComposer from '../components/mobile/MobileComposer.jsx';
+// import MobileFilterPills from '../components/mobile/MobileFilterPills.jsx';
 import MobilePostCard from '../components/mobile/MobilePostCard.jsx';
 // v50 — ألغي MobileComposeModal: استبدل بصفحة ReelComposer (/compose).
 // إبقاء المستورد للتوافق الخلفي (لن يتم استخدامه).
@@ -443,16 +444,7 @@ function FeedMobile() {
           textAlign: 'right',
         }}
       >
-        {/* === صندوق المُنشئ "بماذا تفكر؟" === */}
-        <MobileComposer
-          onFocus={(action) => openComposerWithAction(action)}
-          onMedia={() => openComposerWithAction('image')}
-          onGif={() => openComposerWithAction('gif')}
-          onEmoji={() => openComposerWithAction('emoji')}
-        />
-
-        {/* Filter Pills */}
-        <MobileFilterPills activeFilter={activeFilter} onFilterChange={setActiveFilter} />
+        {/* v79 — تم الحذف النهائي: صندوق "بماذا تفكر؟" + أزرار التصفية (الكل/المجموعات/الستوري) */}
 
         {/* Posts Feed */}
         <div className="ym-feed">

@@ -1,0 +1,53 @@
+/* ============================================================
+   YAMSHAT v79 — REMOVE COMPOSER + FILTER PILLS (MOBILE HOME)
+   ============================================================
+   طلب المستخدم: حذف نهائي دقيق من أعلى الصفحة الرئيسية للجوال:
+     1) صندوق "بماذا تفكر؟" (MobileComposer)
+     2) أزرار التصفية: الكل / المجموعات / الستوري (MobileFilterPills)
+
+   تم حذفهما بالفعل من JSX في src/pages/FeedMobile.jsx.
+   هذا الملف طبقة حماية دفاعية (defense-in-depth) لضمان اختفائهما
+   بشكل نهائي حتى لو أُعيد استخدام هذه المكوّنات في مكان آخر
+   داخل .yam-home-mobile-page.
+
+   ⚠️ هذا الملف يجب أن يُستورد بعد v78 مباشرةً ليكون له الأولوية.
+   ============================================================ */
+
+/* 1) إخفاء صندوق "بماذا تفكر؟" داخل الصفحة الرئيسية للجوال */
+.yam-home-mobile-page .ym-composer-wrap,
+.yam-home-mobile-page .ym-composer,
+.yam-home-mobile-page [class*="ym-composer"] {
+  display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
+
+/* 2) إخفاء أزرار التصفية (الكل / المجموعات / الستوري) */
+.yam-home-mobile-page .ym-filters-container,
+.yam-home-mobile-page .ym-filters,
+.yam-home-mobile-page .ym-filter-pill-new,
+.yam-home-mobile-page [class*="ym-filter"] {
+  display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
+
+/* 3) إزالة أي فراغ علوي كان مخصصاً لهذين العنصرين */
+.yam-home-mobile-page .ym-feed {
+  margin-top: 0 !important;
+  padding-top: 8px !important;
+}

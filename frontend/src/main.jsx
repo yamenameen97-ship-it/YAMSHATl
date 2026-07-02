@@ -247,6 +247,8 @@ import './styles/yamshat-fixes-v76-FINAL-ROOT-CAUSE.css';
 
    ⚠️ هذا الملف يجب أن يكون آخر CSS مطلقاً. */
 import './styles/yamshat-fixes-v78-RTL-FULLBLEED-ROOT.css';
+/* v79 — حذف نهائي لزر "بماذا تفكر؟" + أزرار التصفية من أعلى الصفحة الرئيسية للجوال */
+import './styles/yamshat-fixes-v79-REMOVE-COMPOSER-FILTERS.css';
 
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
@@ -256,7 +258,7 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v78-RTL-FULLBLEED-ROOT';
+const BUILD_ID = 'yamshat-v79-REMOVE-COMPOSER-FILTERS';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

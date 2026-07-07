@@ -57,9 +57,28 @@ def env_bool(name: str, default: bool = False) -> bool:
 
 
 def normalize_database_url(value: str) -> str:
+    """
+    v85.2 fix — تطبيع رابط قاعدة البيانات بدقة متناهية:
+      1. تحويل postgres:// إلى postgresql:// (SQLAlchemy 2.x يرفض القديم).
+      2. اكتشاف روابط Render الخارجية (تحتوي .render.com) وإضافة
+         sslmode=require إذا لم يكن موجوداً — بدونه فشل الاتصال.
+      3. عدم لمس الروابط الداخلية (dpg-xxx-a بدون domain) لأنها لا تتطلب SSL
+         داخل شبكة Render نفسها.
+      4. عدم لمس sqlite أو الروابط المحلية.
+    """
     cleaned = (value or '').strip()
+    if not cleaned:
+        return cleaned
+
+    # (1) توحيد المخطط
     if cleaned.startswith('postgres://'):
-        return cleaned.replace('postgres://', 'postgresql://', 1)
+        cleaned = cleaned.replace('postgres://', 'postgresql://', 1)
+
+    # (2) sslmode=require تلقائياً لروابط Render الخارجية فقط
+    if cleaned.startswith('postgresql://') and '.render.com' in cleaned and 'sslmode=' not in cleaned:
+        separator = '&' if '?' in cleaned else '?'
+        cleaned = f'{cleaned}{separator}sslmode=require'
+
     return cleaned
 
 
@@ -384,6 +403,8 @@ class Settings:
             return False
         if value.startswith('sqlite'):
             return True
+        # v85.2 fix: رابط Render الداخلي لا يحتوي على domain كامل
+        # (dpg-xxx-a بدون .oregon-postgres.render.com) — نتأكد أنه ليس placeholder فقط.
         return not has_placeholder_segments(value)
 
     @property

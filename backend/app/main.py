@@ -324,6 +324,20 @@ async def on_startup():
     else:
         logger.info(f"   ✅ All {len(_ROUTER_STATUS)} routers mounted successfully")
 
+    # v85.2 fix: تهيئة قاعدة البيانات تلقائياً عند إقلاع الخدمة.
+    # مطلوب للقاعدة الجديدة على Render حتى تُنشأ الجداول وحسابات المسؤول
+    # والديمو دون احتياج تدخل يدوي. initialize_database() داخلياً:
+    #   • يحترم settings.DB_BOOTSTRAP_ON_START
+    #   • يكشف الجداول المفقودة تلقائياً حتى لو كان false
+    #   • idempotent — إذا كانت الجداول موجودة لا يفعل شيئاً
+    try:
+        from app.db.bootstrap import initialize_database
+        from app.db.session import engine as _db_engine
+        initialize_database(_db_engine)
+        logger.info("   🗄️  Database initialization completed")
+    except Exception as exc:
+        logger.error(f"   ❌ Database bootstrap failed: {exc}", exc_info=True)
+
     # v47.6: تشغيل مركز الإشعارات اللحظية (Realtime Hub) - Redis Pub/Sub
     try:
         from app.services.realtime_hub import realtime_hub

@@ -14,7 +14,11 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option('sqlalchemy.url', settings.DATABASE_URL)
+# v85.2 fix: استخدم effective_database_url (بعد normalize + sslmode)
+# بدلاً من DATABASE_URL الخام. القيمة الخام قد لا تشتغل مع Alembic إذا كانت
+# postgres:// (SQLAlchemy 2.x يرفضها) أو تنقصها sslmode لروابط Render الخارجية.
+_alembic_db_url = getattr(settings, 'effective_database_url', None) or settings.DATABASE_URL
+config.set_main_option('sqlalchemy.url', _alembic_db_url)
 target_metadata = Base.metadata
 
 

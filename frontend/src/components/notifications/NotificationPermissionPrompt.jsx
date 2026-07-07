@@ -49,12 +49,44 @@ export default function NotificationPermissionPrompt() {
     if (typeof window === 'undefined') return undefined;
 
     const syncPermission = () => setPermission(getPermission());
+
+    // ✅ v83.5 FIX #5: مزامنة فورية عند التركيب.
+    // الخلل السابق: getPermission() يُستدعى مرة واحدة فقط داخل useState initializer
+    // (أول render). إذا منح المستخدم الإذن في تبويب آخر أو عبر Web Push subscription
+    // من SDK خارجي، فإن focus/visibilitychange لا يُطلقان إذا كان التبويب الحالي
+    // مفتوحاً دون تبديل → المستخدم يرى نافذة "فعّل الإشعارات" حتّى لو كانت
+    // مُفعّلة فعلاً. يُصلّح الآن بمزامنة فورية.
+    syncPermission();
+
     window.addEventListener('focus', syncPermission);
     document.addEventListener('visibilitychange', syncPermission);
+
+    // ✅ v83.5 FIX #5 (تكملة): مراقبة تغيير الإذن مباشرة عبر Permissions API
+    // حيثما متوفر — Chromium/Firefox يدعمان change event لـ PermissionStatus
+    // → المزامنة تحدث فوراً حتّى دون focus/visibility change.
+    let permStatus = null;
+    let permHandler = null;
+    try {
+      if (navigator?.permissions?.query) {
+        navigator.permissions
+          .query({ name: 'notifications' })
+          .then((status) => {
+            permStatus = status;
+            permHandler = () => setPermission(getPermission());
+            status.addEventListener?.('change', permHandler);
+          })
+          .catch(() => { /* Safari أقدم يرمي — نتجاهل */ });
+      }
+    } catch { /* ignore */ }
 
     return () => {
       window.removeEventListener('focus', syncPermission);
       document.removeEventListener('visibilitychange', syncPermission);
+      try {
+        if (permStatus && permHandler) {
+          permStatus.removeEventListener?.('change', permHandler);
+        }
+      } catch { /* ignore */ }
     };
   }, []);
 

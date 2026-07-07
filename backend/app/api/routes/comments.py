@@ -1,7 +1,10 @@
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user, get_db
+from app.models.comment import Comment
+from app.models.post_preference import CommentReaction
 from app.models.user import User
 from app.schemas.comment import CommentCreate
 from app.services.ai_service import moderate_comment, detect_spam, rank_comments
@@ -115,3 +118,75 @@ def report(comment_id: int, payload: dict = Body(default={}), db: Session = Depe
 @router.delete('/item/{comment_id}')
 def delete(comment_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return delete_comment(db, comment_id, current_user.id)
+
+
+# ============================================================
+# v83.8 — Cloud-persisted emoji reactions on comments
+# Previously handled only by local state; now saved per-user in DB.
+# ============================================================
+
+_ALLOWED_EMOJIS = {'👍', '❤️', '😂', '😢', '😡', '😮', '🔥', '🎉'}
+
+
+def _reaction_summary(db: Session, comment_id: int, user_id: int | None = None) -> dict:
+    rows = (
+        db.query(CommentReaction.emoji, func.count(CommentReaction.id))
+        .filter(CommentReaction.comment_id == comment_id)
+        .group_by(CommentReaction.emoji)
+        .all()
+    )
+    counts = {emoji: int(count) for emoji, count in rows}
+    my_emoji = None
+    if user_id is not None:
+        existing = (
+            db.query(CommentReaction)
+            .filter(CommentReaction.comment_id == comment_id, CommentReaction.user_id == user_id)
+            .first()
+        )
+        my_emoji = existing.emoji if existing else None
+    return {
+        'comment_id': comment_id,
+        'reactions': counts,
+        'total': sum(counts.values()),
+        'my_reaction': my_emoji,
+    }
+
+
+@router.post('/item/{comment_id}/react')
+def react_to_comment(
+    comment_id: int,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    emoji = str(payload.get('emoji') or '').strip()
+    if not emoji:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='emoji is required')
+    if emoji not in _ALLOWED_EMOJIS and len(emoji) > 8:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Unsupported emoji')
+    if db.query(Comment.id).filter(Comment.id == comment_id).first() is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Comment not found')
+
+    existing = (
+        db.query(CommentReaction)
+        .filter(CommentReaction.comment_id == comment_id, CommentReaction.user_id == current_user.id)
+        .first()
+    )
+    if existing is None:
+        db.add(CommentReaction(comment_id=comment_id, user_id=current_user.id, emoji=emoji))
+    elif existing.emoji == emoji:
+        # Toggle off
+        db.delete(existing)
+    else:
+        existing.emoji = emoji
+    db.commit()
+    return _reaction_summary(db, comment_id, current_user.id)
+
+
+@router.get('/item/{comment_id}/reactions')
+def get_comment_reactions(
+    comment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return _reaction_summary(db, comment_id, current_user.id)

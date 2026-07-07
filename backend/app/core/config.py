@@ -259,6 +259,20 @@ class Settings:
     PHONE_VERIFICATION_MAX_ATTEMPTS: int = int(os.getenv("PHONE_VERIFICATION_MAX_ATTEMPTS", "5"))
     PHONE_VERIFICATION_LOCKOUT_MINUTES: int = int(os.getenv("PHONE_VERIFICATION_LOCKOUT_MINUTES", "15"))
 
+    # LiveKit (Video/Audio Calls & Live Streaming)
+    # NOTE: v83 fix — كانت مفقودة من Settings مما يسبب AttributeError في routes/live.py
+    LIVEKIT_URL: str = env_str("LIVEKIT_URL", "").strip()
+    LIVEKIT_API_KEY: str = env_str("LIVEKIT_API_KEY", "").strip()
+    LIVEKIT_API_SECRET: str = env_str("LIVEKIT_API_SECRET", "").strip()
+
+    # Firebase (Push Notifications)
+    FIREBASE_PROJECT_ID: str = env_str("FIREBASE_PROJECT_ID", "").strip()
+    FIREBASE_SERVICE_ACCOUNT_PATH: str = env_str(
+        "FIREBASE_SERVICE_ACCOUNT_PATH",
+        env_str("FIREBASE_CREDENTIALS_PATH", ""),
+    ).strip()
+    FIREBASE_ANDROID_CONFIG_PATH: str = env_str("FIREBASE_ANDROID_CONFIG_PATH", "").strip()
+
     @property
     def cors_origin_regex(self) -> str | None:
         # fallback شامل يغطي كل الـ subdomains على onrender.com

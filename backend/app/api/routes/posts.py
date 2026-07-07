@@ -6,8 +6,12 @@ from datetime import datetime
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from sqlalchemy import func
+
 from app.core.dependencies import get_current_user, get_db
 from app.models.follow import Follow
+from app.models.post import Post
+from app.models.post_preference import PostPreference
 from app.models.user import User
 from app.services.comment_service import create_comment, get_comments
 from app.services.ai_service import (
@@ -242,3 +246,160 @@ def insights(post_id: int, db: Session = Depends(get_db), current_user: User = D
 @router.delete('/{post_id}')
 def delete(post_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return delete_post(db, post_id, current_user.id)
+
+
+# ============================================================
+# v83.8 — Missing endpoints added (previously called by frontend but 404-ing)
+# ============================================================
+
+@router.get('/scheduled')
+def scheduled_posts(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """
+    Return the current user's scheduled (future) posts, persisted in the cloud DB.
+    """
+    from app.services.post_service import _serialize_post, utcnow_naive
+    now = utcnow_naive()
+    posts = (
+        db.query(Post)
+        .filter(
+            Post.user_id == current_user.id,
+            Post.scheduled_at.isnot(None),
+            Post.scheduled_at > now,
+            Post.is_draft.is_(False),
+        )
+        .order_by(Post.scheduled_at.asc())
+        .all()
+    )
+    return {
+        'items': [_serialize_post(db, p, current_user=current_user) for p in posts],
+        'total': len(posts),
+    }
+
+
+@router.get('/recommended')
+async def recommended_posts(
+    limit: int = Query(default=10, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Return AI/heuristic-ranked recommendations for the current user.
+    Falls back to trending posts (by engagement) when the recommender is unavailable.
+    """
+    try:
+        items = await get_recommendations(current_user)
+        if items:
+            return {'items': list(items)[:limit], 'total': min(len(items), limit)}
+    except Exception as exc:
+        logger.warning('Recommendations failed, using engagement fallback: %s', exc)
+
+    # Fallback: top posts by (share_count + save_count) recency
+    from app.services.post_service import _serialize_post
+    posts = (
+        db.query(Post)
+        .filter(Post.is_draft.is_(False), Post.published_at.isnot(None))
+        .order_by(
+            (func.coalesce(Post.share_count, 0) + func.coalesce(Post.save_count, 0)).desc(),
+            Post.published_at.desc(),
+        )
+        .limit(limit)
+        .all()
+    )
+    return {
+        'items': [_serialize_post(db, p, current_user=current_user) for p in posts],
+        'total': len(posts),
+    }
+
+
+@router.get('/{post_id}/analytics')
+def post_analytics(post_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """
+    Detailed analytics for a post (owner-only). Backed by cloud DB rows.
+    """
+    return get_post_insights(db, post_id=post_id, current_user=current_user)
+
+
+# ============================================================
+# v83.8 — Per-user post preferences (hide / archive / mute-author / report)
+# Previously stored only in localStorage; now persisted per-user in cloud DB.
+# ============================================================
+
+def _get_or_create_pref(db: Session, user_id: int, post_id: int) -> PostPreference:
+    pref = db.query(PostPreference).filter(
+        PostPreference.user_id == user_id,
+        PostPreference.post_id == post_id,
+    ).first()
+    if pref is None:
+        # Guard: only allow preferences on real posts
+        exists = db.query(Post.id).filter(Post.id == post_id).first()
+        if exists is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Post not found')
+        pref = PostPreference(user_id=user_id, post_id=post_id)
+        db.add(pref)
+        db.flush()
+    return pref
+
+
+def _serialize_pref(pref: PostPreference) -> dict:
+    return {
+        'post_id': pref.post_id,
+        'is_hidden': bool(pref.is_hidden),
+        'is_archived': bool(pref.is_archived),
+        'is_muted_author': bool(pref.is_muted_author),
+        'is_reported': bool(pref.is_reported),
+        'report_reason': pref.report_reason or '',
+        'updated_at': pref.updated_at,
+    }
+
+
+@router.get('/preferences')
+def list_my_preferences(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    rows = db.query(PostPreference).filter(PostPreference.user_id == current_user.id).all()
+    return {
+        'items': [_serialize_pref(r) for r in rows],
+        'hidden_ids': [r.post_id for r in rows if r.is_hidden],
+        'archived_ids': [r.post_id for r in rows if r.is_archived],
+        'muted_author_post_ids': [r.post_id for r in rows if r.is_muted_author],
+        'reported_ids': [r.post_id for r in rows if r.is_reported],
+    }
+
+
+@router.post('/{post_id}/hide')
+def toggle_hide(post_id: int, payload: dict = Body(default={}), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    pref = _get_or_create_pref(db, current_user.id, post_id)
+    desired = payload.get('hidden')
+    pref.is_hidden = bool(desired) if desired is not None else (not pref.is_hidden)
+    db.commit()
+    db.refresh(pref)
+    return _serialize_pref(pref)
+
+
+@router.post('/{post_id}/archive')
+def toggle_archive(post_id: int, payload: dict = Body(default={}), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    pref = _get_or_create_pref(db, current_user.id, post_id)
+    desired = payload.get('archived')
+    pref.is_archived = bool(desired) if desired is not None else (not pref.is_archived)
+    db.commit()
+    db.refresh(pref)
+    return _serialize_pref(pref)
+
+
+@router.post('/{post_id}/mute-author')
+def toggle_mute_author(post_id: int, payload: dict = Body(default={}), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    pref = _get_or_create_pref(db, current_user.id, post_id)
+    desired = payload.get('muted')
+    pref.is_muted_author = bool(desired) if desired is not None else (not pref.is_muted_author)
+    db.commit()
+    db.refresh(pref)
+    return _serialize_pref(pref)
+
+
+@router.post('/{post_id}/report')
+def report_post(post_id: int, payload: dict = Body(default={}), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    pref = _get_or_create_pref(db, current_user.id, post_id)
+    reason = str(payload.get('reason') or 'abuse').strip()[:200] or 'abuse'
+    pref.is_reported = True
+    pref.report_reason = reason
+    db.commit()
+    db.refresh(pref)
+    return _serialize_pref(pref)

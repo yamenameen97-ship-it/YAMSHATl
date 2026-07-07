@@ -4,7 +4,12 @@ import notificationService from '../../services/notificationService';
 import { useNotificationStore } from '../../store/notificationStore';
 
 export default function NotificationList() {
-  const { notifications } = useNotificationStore();
+  // ✅ v83.5 FIX #1: كان الكود يقرأ `notifications` من المتجر بينما المتجر الفعلي يعرّض
+  // `items` فقط (انظر store/notificationStore.js). النتيجة: `notifications` كان دائماً
+  // `undefined` → كل الفلاتر و`filter(n => !n.read)` كان يرمي `TypeError: Cannot read`
+  // ضمن ErrorBoundary → صفحة الإشعارات فارغة والجرس لا يعمل. الآن نقرأ `items`
+  // ونعرّف alias آمن `notifications` بمصفوفة افتراضية.
+  const notifications = useNotificationStore((s) => s.items) || [];
   const [filter, setFilter] = useState('all'); // all, unread, mentions
 
   // ✅ v59.13.12 FIX #1: حماية المكوّن من unmount أثناء استقبال إشعار socket
@@ -14,19 +19,50 @@ export default function NotificationList() {
     return () => { isMountedRef.current = false; };
   }, []);
 
-  // ✅ v59.13.14 FIX #2: حساب عدد غير المقروءة لتفعيل/تعطيل زر "تحديد الكل كمقروء"
+  // ✅ v59.13.14 FIX #2 + v83.5 FIX #1: حساب عدد غير المقروءة لتفعيل/تعطيل زر "تحديد الكل كمقروء".
+  // ملاحظة: المتجر ينتج `seen`/`is_read` عبر normalizeNotification — لم يعد يوجد حقل `read`
+  // على مستوى المتجر، لذا نتحقق من الحقلين لتوافق خلفي مع أي مزوّد قديم.
   const unreadCount = useMemo(
-    () => notifications.filter((n) => !n.read).length,
+    () => notifications.filter((n) => !(n.seen || n.is_read || n.read)).length,
     [notifications]
   );
 
   // ✅ v59.13.15 FIX #2: إشعار النظام لم يكن له onclick → النقر عليه لا يفعل شيئاً.
-  // أيضاً بلا `tag` → الإشعارات المتتابعة تتكدّس في مركز إشعارات النظام.
-  // الحل: إضافة tag فريد + onclick يفتح صفحة الإشعارات عبر SPA navigation دون reload.
+  // ✅ v83.6 FIX #5: إلغاء إنشاء Notification النظامي من هنا تماماً.
+  //
+  // الخلل المكتشف: NotificationList (مميَّز فقط عندما يكون المستخدم في صفحة الإشعارات)
+  //   يشترك في نفس حدث socket 'new_notification' الذي يشترك فيه GlobalNotificationListener
+  //   المركّب طوال الوقت. الإشعار الواحد يُعالَج مرتين:
+  //     - تحديث المتجر: مُقبول (deduplicateNotifications يدمج حسب id)
+  //     - Notification API النظامي: يُطلق مرتين! رغم tag متطابق (لأنّ كلّ مكوّن
+  //       يولُد مثيلاً منفصلاً من Notification في نفس الإطار الزمني).
+  //       وفي Chrome iOS/Safari: dedupe حسب tag غير موثوق → يظهر إشعاران متطابقان.
+  //     - أيضاً beep الذي يديره GlobalNotificationListener يتقاطع مع طلب إشعار أخر
+  //       من هنا دون توافق حول أي منهما يفتح SPA route.
+  //
+  // الحل: لا نقدّم sub́criptions موازية. في NotificationList نكتفي بتحديث المتجر
+  //   (كخط دفاعي لو unmount GlobalListener لفترة وجيزة) دون دفع Notification/beep/toast
+  //   — فهذه مسؤولية GlobalNotificationListener فقط وتمتلك dedupe TTL في shownNotificationIds.
   useEffect(() => {
     const unsubscribe = socketManager.on('new_notification', (notification) => {
       if (!isMountedRef.current) return;
-      useNotificationStore.getState().addNotification(notification);
+      // ✅ v83.5 FIX #1: `addNotification` غير موجود في المتجر — الدالة الصحيحة هي
+      // `upsertNotification` (تدعم de-dupe + batching + persistence).
+      useNotificationStore.getState().upsertNotification(notification);
+      // ✅ v83.6 FIX #5: تم حذف new Notification(...) المزدوج — GlobalNotificationListener
+      // يتولّى ذلك مركزيّا مع dedupe.
+      // الكود القديم أُبقي موثّقاً تحته للمرجعة فقط (غير مفعّل).
+    });
+    return () => { try { unsubscribe?.(); } catch { /* ignore */ } };
+  }, []);
+
+  // ✅ v83.6 FIX #5 (المرجعية المُعطّلة أدناه متروكة للتوثيق ولن تُنفّذ):
+  // كانت هذه الكتلة تقوم بإنشاء Notification من NotificationList أيضاً، ممّا يؤدي
+  // إلى إشعار مزدوج (هذا المكوّن + GlobalListener) عندما يكون المستخدم
+  // في صفحة الإشعارات. تُحتفظ كمرجع فقط.
+  const _DISABLED_LEGACY_NOTIFICATION_EFFECT = () => {
+    // eslint-disable-next-line no-unused-vars
+    const legacyBlock = (notification) => {
       try {
         if (
           typeof Notification !== 'undefined' &&
@@ -62,13 +98,14 @@ export default function NotificationList() {
           notif.onerror = () => { /* ignore */ };
         }
       } catch { /* ignore */ }
-    });
-    return () => { try { unsubscribe?.(); } catch { /* ignore */ } };
-  }, []);
+    };
+    return legacyBlock;
+  };
 
-  // ✅ v59.13.12 FIX #1: عدم استدعاء API إذا الإشعار مقروء بالفعل + دعم لوحة المفاتيح
+  // ✅ v59.13.12 FIX #1 + v83.5 FIX #1: عدم استدعاء API إذا الإشعار مقروء بالفعل + دعم لوحة المفاتيح.
+  // نفحص `seen || is_read || read` لتفادي تكرار الطلبات عندما يكون المتجر قد طبَّع الحقل.
   const handleNotificationClick = useCallback((n) => {
-    if (n.read) return; // لا داعي لاستدعاء markRead على إشعار مقروء
+    if (n.seen || n.is_read || n.read) return; // لا داعي لاستدعاء markRead على إشعار مقروء
     try { notificationService.markNotificationRead(n.id); } catch { /* ignore */ }
   }, []);
 
@@ -107,11 +144,15 @@ export default function NotificationList() {
 
   const groupedNotifications = useMemo(() => {
     let filtered = notifications;
-    if (filter === 'unread') filtered = notifications.filter(n => !n.read);
-    if (filter === 'mentions') filtered = notifications.filter(n => n.type === 'mention');
+    // ✅ v83.5 FIX #1: نفس علة `read` — نستخدم مفاتيح `seen`/`is_read` المُطبَّعة.
+    // كذلك نعتمد `created_at` أولاً (الحقل القياسي في المتجر) ونعود إلى `timestamp` كخيار احتياطي.
+    if (filter === 'unread') filtered = notifications.filter((n) => !(n.seen || n.is_read || n.read));
+    if (filter === 'mentions') filtered = notifications.filter((n) => n.type === 'mention');
     const groups = {};
-    filtered.forEach(n => {
-      const date = new Date(n.timestamp).toLocaleDateString();
+    filtered.forEach((n) => {
+      const raw = n.created_at || n.timestamp;
+      const d = raw ? new Date(raw) : new Date();
+      const date = Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString();
       if (!groups[date]) groups[date] = [];
       groups[date].push(n);
     });
@@ -198,15 +239,15 @@ export default function NotificationList() {
                   key={n.id}
                   role="button"
                   tabIndex={0}
-                  aria-pressed={n.read ? 'true' : 'false'}
+                  aria-pressed={(n.seen || n.is_read || n.read) ? 'true' : 'false'}
                   onClick={() => handleNotificationClick(n)}
                   onKeyDown={(e) => handleKeyActivate(e, n)}
                   style={{
                     padding: 15,
-                    background: n.read ? 'transparent' : 'rgba(var(--primary-rgb), 0.1)',
+                    background: (n.seen || n.is_read || n.read) ? 'transparent' : 'rgba(var(--primary-rgb), 0.1)',
                     borderRadius: 10,
                     marginBottom: 10,
-                    cursor: n.read ? 'default' : 'pointer',
+                    cursor: (n.seen || n.is_read || n.read) ? 'default' : 'pointer',
                     border: '1px solid #222',
                     outline: 'none'
                   }}
@@ -214,7 +255,7 @@ export default function NotificationList() {
                   onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
                 >
                   <div style={{ fontWeight: 'bold' }}>{n.title}</div>
-                  <div style={{ fontSize: 14, opacity: 0.8 }}>{n.message}</div>
+                  <div style={{ fontSize: 14, opacity: 0.8 }}>{n.body || n.message}</div>
                 </div>
               ))}
             </div>

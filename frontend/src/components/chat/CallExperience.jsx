@@ -260,20 +260,33 @@ export default function CallExperience({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Attach local stream
+  // ✅ FIX v83 (الكاميرا لا تفتح + بطاقة التشفير كبيرة):
+  // Attach local stream — مربوط بـ callState و cameraEnabled حتى يمتلئ مباشرة
+  // فور وصول التدفق المحلي (حتى قبل رد الطرف البعيد).
   useEffect(() => {
     const active = callService.getActiveCall();
-    if (localVideoRef.current && active?.localStream) {
-      localVideoRef.current.srcObject = active.localStream;
+    const stream = active?.localStream || callState?.localStream;
+    if (localVideoRef.current && stream) {
+      if (localVideoRef.current.srcObject !== stream) {
+        localVideoRef.current.srcObject = stream;
+      }
     }
-  }, [callState]);
+  }, [callState, cameraEnabled]);
 
-  // Attach remote stream
+  // ✅ FIX v83: Attach MAIN stage stream (remote if available, else local preview)
+  // بدلاً من إظهار placeholder أفاتار كبير ومحبط — نعرض الكاميرا
+  // المحلية في المشهد الرئيسي حتى يرد الطرف الآخر (مثل WhatsApp/Meet).
   useEffect(() => {
-    if (remoteVideoRef.current && callState?.remoteStream) {
-      remoteVideoRef.current.srcObject = callState.remoteStream;
+    if (!remoteVideoRef.current) return;
+    const active = callService.getActiveCall();
+    const remote = callState?.remoteStream;
+    const local = active?.localStream || callState?.localStream;
+    // أولوية للتدفق البعيد، وإلا المحلي في وضع الفيديو.
+    const chosen = remote || (mode === 'video' ? local : null);
+    if (chosen && remoteVideoRef.current.srcObject !== chosen) {
+      remoteVideoRef.current.srcObject = chosen;
     }
-  }, [callState?.remoteStream]);
+  }, [callState?.remoteStream, callState?.localStream, callState, mode, cameraEnabled]);
 
   // Live timer refresh (1 Hz)
   useEffect(() => {
@@ -300,6 +313,10 @@ export default function CallExperience({
   const peerLabel = callState?.peer || participantName;
   const effectiveMode = callState?.mode || mode;
   const activeError = streamError || permissionHint;
+  // ✅ v83: ملخّص حالة التدفق — لاختيار ما يظهر في المشهد الرئيسي
+  const hasRemoteStream = Boolean(callState?.remoteStream);
+  const hasLocalStream = Boolean(callState?.localStream || callService.getActiveCall()?.localStream);
+  const mainHasVideo = effectiveMode === 'video' && (hasRemoteStream || (hasLocalStream && cameraEnabled));
 
   const durationLabel = useMemo(() => {
     const startedAt = callState?.startedAt;
@@ -452,16 +469,25 @@ export default function CallExperience({
             </button>
           </div>
 
-          {/* Neon Y background */}
-          <div className="yam-call-v79-neon-y" aria-hidden>Y</div>
+          {/* ✅ v83: إظهار حرف Y النيون فقط عندما لا يوجد فيديو —
+              حتى لا يشوّش على المشهد عند فتح الكاميرا */}
+          {!mainHasVideo ? (
+            <div className="yam-call-v79-neon-y" aria-hidden>Y</div>
+          ) : null}
 
-          {/* Remote video (main) */}
+          {/* Main stage: remote if available, else local preview when camera on */}
           <div className="yam-call-v79-remote">
-            {showVideoMain && callState?.remoteStream ? (
-              <video ref={remoteVideoRef} autoPlay playsInline className="yam-call-v79-remote-video" />
+            {mainHasVideo ? (
+              <video
+                ref={remoteVideoRef}
+                autoPlay
+                playsInline
+                muted={!hasRemoteStream /* دائماً muted إذا كان المعروض هو التدفق المحلي */}
+                className="yam-call-v79-remote-video"
+              />
             ) : (
               <>
-                {!showVideoMain && callState?.remoteStream ? (
+                {effectiveMode !== 'video' && callState?.remoteStream ? (
                   <audio ref={remoteVideoRef} autoPlay />
                 ) : null}
                 <div className="yam-call-v79-remote-placeholder">
@@ -482,27 +508,30 @@ export default function CallExperience({
             ))}
           </div>
 
-          {/* PiP self video (bottom-end) */}
-          <div className="yam-call-v79-pip">
-            {showVideoMain && cameraEnabled ? (
+          {/* ✅ v83: PiP self video (bottom-end) — يظهر فقط عند وجود تدفق بعيد
+              (أي أن المشهد الرئيسي للطرف الآخر، و PiP للذات).
+              قبل اتصال الطرف الآخر، كاميرتي تحتل المشهد الرئيسي مباشرة. */}
+          {effectiveMode === 'video' && hasRemoteStream && cameraEnabled && hasLocalStream ? (
+            <div className="yam-call-v79-pip">
               <video ref={localVideoRef} autoPlay muted playsInline className="yam-call-v79-pip-video" />
-            ) : (
-              <div className="yam-call-v79-pip-placeholder">
-                <span>أنت</span>
-              </div>
-            )}
-          </div>
+            </div>
+          ) : null}
+          {/* video element خفي لـ localVideoRef حتى يظل الربط موجوداً للإلتقاط */}
+          {effectiveMode === 'video' && !(hasRemoteStream && cameraEnabled && hasLocalStream) ? (
+            <video ref={localVideoRef} autoPlay muted playsInline style={{ display: 'none' }} />
+          ) : null}
 
           {/* Camera flip (bottom-start of stage) */}
           <button type="button" className="yam-call-v79-flip" onClick={flipCamera} aria-label="تبديل الكاميرا">
             <Icon.CameraFlip width="22" height="22" />
           </button>
 
-          {/* Encryption info card */}
-          <div className="yam-call-v79-enc-card" role="note">
-            <div className="yam-call-v79-enc-card-badge">
+          {/* ✅ v83: بطاقة التشفير — مضغوطة ورفيعة جداً لتطابق التصميم المرجعي.
+              كانت تغطي مساحة كبيرة من المشهد، أصبحت الآن شريط رفيع pill في أسفل يمين. */}
+          <div className="yam-call-v79-enc-card yam-call-v79-enc-card-compact" role="note">
+            <div className="yam-call-v79-enc-card-badge yam-call-v79-enc-card-badge-sm">
               <span className="yam-call-v79-enc-y">Y</span>
-              <span className="yam-call-v79-enc-lock"><Icon.Lock width="12" height="12" /></span>
+              <span className="yam-call-v79-enc-lock"><Icon.Lock width="10" height="10" /></span>
             </div>
             <div className="yam-call-v79-enc-card-text">
               <div className="yam-call-v79-enc-card-title">محادثة مشفرة بالكامل</div>
@@ -776,17 +805,18 @@ export default function CallExperience({
           100% { transform: translateY(-320px) scale(0.8); opacity: 0; }
         }
 
-        /* PiP self view */
+        /* ✅ v83: PiP self view — أصغر قليلاً وأعلى من بطاقة التشفير
+           ليطابق التصميم المرجعي (في الجهة المقابلة للبطاقة). */
         .yam-call-v79-pip {
           position: absolute;
-          inset-inline-end: 14px; bottom: 130px;
-          width: 96px; height: 128px;
-          border-radius: 16px;
+          inset-inline-end: 12px; bottom: 60px;
+          width: 90px; height: 120px;
+          border-radius: 14px;
           overflow: hidden;
           background: linear-gradient(160deg, #3b1d6e, #1a0a34);
           border: 2px solid rgba(255,255,255,0.14);
           box-shadow: 0 8px 24px rgba(0,0,0,0.45);
-          z-index: 3;
+          z-index: 4;
         }
         .yam-call-v79-pip-video { width: 100%; height: 100%; object-fit: cover; }
         .yam-call-v79-pip-placeholder {
@@ -795,10 +825,11 @@ export default function CallExperience({
           font-size: 13px; color: #E9DEFF; font-weight: 600;
         }
 
+        /* ✅ v83: زر flip — يوضع تحت PiP مباشرة ليطابق التصميم المرجعي */
         .yam-call-v79-flip {
           position: absolute;
-          inset-inline-end: 14px; bottom: 80px;
-          width: 40px; height: 40px; border-radius: 12px;
+          inset-inline-end: 12px; bottom: 14px;
+          width: 40px; height: 40px; border-radius: 50%;
           background: rgba(20,10,40,0.55); backdrop-filter: blur(6px);
           border: 1px solid rgba(255,255,255,0.12);
           color: #fff; cursor: pointer;
@@ -818,12 +849,42 @@ export default function CallExperience({
           max-width: 260px;
           z-index: 3;
         }
+        /* ✅ v83: نسخة مضغوطة من بطاقة التشفير — افتراضيّاً. مطابقة
+           للتصميم المرجعي: شريط رفيع لا يتجاوز 65% من عرض المشهد،
+           أراضي أقل padding، وخطوط أصغر. */
+        .yam-call-v79-enc-card-compact {
+          background: rgba(15,10,30,0.55);
+          border-radius: 12px;
+          padding: 6px 10px;
+          gap: 8px;
+          max-width: 68%;
+          bottom: 12px;
+          inset-inline-start: 12px;
+        }
+        .yam-call-v79-enc-card-compact .yam-call-v79-enc-card-title {
+          font-size: 10.5px;
+          margin-bottom: 1px;
+        }
+        .yam-call-v79-enc-card-compact .yam-call-v79-enc-card-desc {
+          font-size: 9.5px;
+          line-height: 1.3;
+          color: #A5A0B8;
+        }
         .yam-call-v79-enc-card-badge {
           position: relative;
           width: 30px; height: 30px; border-radius: 50%;
           background: linear-gradient(135deg, #7F3DFF, #4B1D9A);
           display: grid; place-items: center;
           flex-shrink: 0;
+        }
+        .yam-call-v79-enc-card-badge-sm {
+          width: 22px; height: 22px;
+        }
+        .yam-call-v79-enc-card-badge-sm .yam-call-v79-enc-y { font-size: 10px; }
+        .yam-call-v79-enc-card-badge-sm .yam-call-v79-enc-lock {
+          width: 11px; height: 11px;
+          bottom: -2px; inset-inline-end: -2px;
+          border-width: 1.5px;
         }
         .yam-call-v79-enc-y { color: #fff; font-weight: 800; font-size: 13px; }
         .yam-call-v79-enc-lock {

@@ -1,0 +1,130 @@
+# =====================================================
+# v83.4 fix (NEW GAP #2):
+# backend/app/celery_app.py يعرّف Celery كامل مع:
+#   - broker/backend على REDIS_URL
+#   - beat_schedule فيه ثلاث مهام دورية:
+#       * cleanup-media-every-night   (كل ليلة 02:00)
+#       * cleanup-expired-sessions    (كل ليلة 03:00)
+#       * cleanup-dead-rooms          (كل 30 دقيقة)
+#   - tasks لإرسال الإيميلات (app.services.email) والوسائط والإشعارات والتحليلات.
+#
+# لكن **لم يكن هناك أي Deployment لـ celery worker أو celery beat في k8s/**.
+# النتيجة الصامتة في الإنتاج:
+#   - كل @celery_app.task يستدعى ⇒ يُدفع إلى Redis queue ⇒ يبقى للأبد بلا مستهلك.
+#   - رسائل التحقق/إعادة التعيين لا تُرسَل (email.py يمر عبر celery).
+#   - غرف live الميتة لا تُنظَّف ⇒ تسريب سجلات في PostgreSQL.
+#   - جلسات refresh المنتهية لا تُمسَح ⇒ تراكم دائم في جدول الجلسات.
+#   - الوسائط اليتيمة على Cloudinary لا تُحذف ⇒ فاتورة تخزين متضخمة.
+#
+# هذا الملف يضيف Deployment مستقلَّين: celery-worker (متعدد) و celery-beat (فرد).
+# يعيدان استخدام نفس image الـ backend مع أوامر مختلفة — تجنّب صور متعددة.
+# =====================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-worker
+  namespace: app-prod
+  labels:
+    app: celery-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: celery-worker
+  template:
+    metadata:
+      labels:
+        app: celery-worker
+    spec:
+      containers:
+        - name: celery-worker
+          image: yamshat/backend:v83.3
+          command: ['celery']
+          args:
+            - '-A'
+            - 'app.celery_app.celery_app'
+            - 'worker'
+            - '--loglevel=info'
+            - '--concurrency=4'
+          envFrom:
+            - configMapRef:
+                name: yamshat-config
+            - secretRef:
+                name: yamshat-secrets
+          env:
+            - name: SERVICE_NAME
+              value: celery-worker
+          volumeMounts:
+            - name: firebase-sa
+              mountPath: /secrets/firebase
+              readOnly: true
+          # لا HTTP probes — Celery worker ليس HTTP. نستخدم فحص خفيف بـ inspect ping.
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - 'celery -A app.celery_app.celery_app inspect ping -d celery@$HOSTNAME || exit 1'
+            initialDelaySeconds: 45
+            periodSeconds: 60
+            timeoutSeconds: 15
+          resources:
+            requests:
+              cpu: 150m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: firebase-sa
+          secret:
+            secretName: yamshat-firebase-sa
+            items:
+              - key: service-account.json
+                path: service-account.json
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-beat
+  namespace: app-prod
+  labels:
+    app: celery-beat
+spec:
+  # ⚠️ لا ترفع replicas فوق 1 — celery-beat واحد فقط يجب أن ينشر المهام
+  # المجدولة، وإلا ستُنفَّذ كل مهمة مرتين (أو أكثر) بسبب طبيعة crontab.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: celery-beat
+  template:
+    metadata:
+      labels:
+        app: celery-beat
+    spec:
+      containers:
+        - name: celery-beat
+          image: yamshat/backend:v83.3
+          command: ['celery']
+          args:
+            - '-A'
+            - 'app.celery_app.celery_app'
+            - 'beat'
+            - '--loglevel=info'
+          envFrom:
+            - configMapRef:
+                name: yamshat-config
+            - secretRef:
+                name: yamshat-secrets
+          env:
+            - name: SERVICE_NAME
+              value: celery-beat
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi

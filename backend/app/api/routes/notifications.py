@@ -10,6 +10,10 @@ from app.core.dependencies import get_current_user, get_db
 from app.models.notification import Notification
 from app.models.user import User
 from app.services.push_service import push_engine
+from app.services.device_service import (
+    register_or_update_device,
+    unregister_device as _svc_unregister_device,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -74,24 +78,62 @@ def mark_notification_read(
     return _serialize(notification)
 
 
+# ✅ v83.6 FIX #2: كان endpoint PUT /notifications/read يتجاهل أي معرّفات
+# ويعلّم كل الإشعارات مقروءة بصرف النظر عمّا يرسله الفرونت. الإصلاح في
+# frontend/src/api/notifications.js (v83.5 FIX #2) بدأ يرسل ids في body و query
+# لكن الخادم لم يقرأها أبداً → إصلاح غير مكتمل، عمليّاً over-mark للإشعارات
+# التي وصلت على أجهزة أخرى قبل نصف ثانية من الطلب.
+#
+# الحل: قبول ids (اختياري) من body أو query. إذا أُعطي → علِّم فقط تلك.
+# إذا لم يُعطَ (طلب بلا معطيات) → السلوك القديم "علِّم الكل" — توافق خلفي.
 @router.put('/read')
 @router.put('/read/')
 def mark_all_notifications_read(
+    payload: Dict[str, Any] = Body(default_factory=dict),
+    ids: str = Query(default=''),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    notifications = (
+    # ✅ v83.6 FIX #2: جمّع IDs من الـ body أو من query string.
+    raw_ids: List[Any] = []
+    body_ids = payload.get('ids') if isinstance(payload, dict) else None
+    if isinstance(body_ids, list):
+        raw_ids.extend(body_ids)
+    if ids:
+        raw_ids.extend([piece for piece in ids.split(',') if piece.strip()])
+
+    parsed_ids: List[int] = []
+    for raw in raw_ids:
+        try:
+            parsed_ids.append(int(str(raw).strip()))
+        except (TypeError, ValueError):
+            continue
+
+    query = (
         db.query(Notification)
         .filter(
             Notification.user_id == current_user.id,
             Notification.is_read.is_(False),
         )
-        .all()
     )
+
+    if parsed_ids:
+        # نُقيّد بالمستخدم الحالي لضمان عدم تعليم إشعارات مستخدم آخر
+        query = query.filter(Notification.id.in_(parsed_ids))
+        scope = 'selective'
+    else:
+        scope = 'all_unread'
+
+    notifications = query.all()
     for notification in notifications:
         notification.is_read = True
     db.commit()
-    return {'message': 'Notifications marked as read', 'updated': len(notifications)}
+    return {
+        'message': 'Notifications marked as read',
+        'updated': len(notifications),
+        'scope': scope,
+        'requested_ids': parsed_ids or None,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -137,10 +179,24 @@ def register_device(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    token = str(payload.get('fcm_token') or payload.get('token') or '').strip()
+    # v83.7 FIX #5 — قبل: هذا المسار كان يحدّث فقط users.fcm_token (عمود واحد للمستخدم) ولا يكتب
+    #                    أي شيء في جدول user_devices → push_engine.get_active_devices() يرجع قائمة فارغة
+    #                    ولا تصل إشعارات Push أبداً. فوق ذلك Multi-device مكسور (كل تسجيل يدهس
+    #                    السابق). والفرونت لا يرسل fcm_token أصلاً في هذا المسار → يخرج بلا فعل.
+    # الحل: نكتب فعلياً في user_devices عبر register_or_update_device (upsert)
+    #      حتى لو لم يصل fcm_token (حينئذٍ نسجل مجرد وجود الجهاز وموافقته على الإشعارات).
+    token = str(payload.get('fcm_token') or payload.get('token') or payload.get('push_token') or '').strip()
     device_id = str(payload.get('device_id') or '').strip()
     platform = str(payload.get('platform') or 'web').strip().lower()
+    provider = str(payload.get('provider') or ('fcm' if platform in ('android', 'ios') else 'web')).strip().lower()
+    user_agent = str(payload.get('user_agent') or '').strip()[:500] or None
+    web_push_p256dh = payload.get('web_push_p256dh') or (payload.get('subscription') or {}).get('keys', {}).get('p256dh') if isinstance(payload.get('subscription'), dict) else payload.get('web_push_p256dh')
+    web_push_auth = payload.get('web_push_auth') or (payload.get('subscription') or {}).get('keys', {}).get('auth') if isinstance(payload.get('subscription'), dict) else payload.get('web_push_auth')
+    device_name = str(payload.get('device_name') or '').strip() or None
+    os_version = str(payload.get('os_version') or '').strip() or None
+    app_version = str(payload.get('app_version') or '').strip() or None
 
+    # توافق خلفي: ما زلنا نحدّث users.fcm_token لو ورد token (لتجنّب كسر خدمات legacy تقرأ منه).
     if token:
         try:
             current_user.fcm_token = token[:1024]
@@ -149,12 +205,37 @@ def register_device(
             db.rollback()
             logger.warning('Could not update fcm_token for user %s: %s', current_user.id, exc)
 
+    device_row = None
+    if device_id:
+        try:
+            device_row = register_or_update_device(
+                db,
+                user_id=current_user.id,
+                device_id=device_id,
+                # لو ما وصلنا token نخزّن sentinel قصير حتى يبقى الصف موجوداً ويُرجَّع من get_active_devices
+                # (لا يقوم push إرسال فعلي إلا عند تحديثه لاحقاً مع الرمز الفعلي).
+                push_token=token or f'pending:{device_id}',
+                platform=platform or 'web',
+                provider=provider,
+                web_push_p256dh=web_push_p256dh,
+                web_push_auth=web_push_auth,
+                device_name=device_name,
+                os_version=os_version,
+                app_version=app_version,
+                user_agent=user_agent,
+            )
+        except Exception as exc:
+            db.rollback()
+            logger.warning('Could not upsert user_device row for user %s device %s: %s', current_user.id, device_id, exc)
+
     return {
         'status': 'registered',
         'user_id': current_user.id,
         'device_id': device_id or None,
+        'device_row_id': getattr(device_row, 'id', None),
         'platform': platform,
         'has_token': bool(token),
+        'persisted_in_user_devices': bool(device_row),
     }
 
 
@@ -166,6 +247,16 @@ def unregister_device(
     current_user: User = Depends(get_current_user),
 ):
     device_id = str(payload.get('device_id') or '').strip()
+    # v83.7 FIX #5 — نزيل أيضاً صف الجهاز من user_devices (إلغاء تفعيل الإشعارات).
+    #                    قبل: كان يمسح fcm_token فقط → إذا دخل في user_devices لاحقاً يبقى الجهاز نشطاً.
+    removed = False
+    if device_id:
+        try:
+            removed = bool(_svc_unregister_device(db, current_user.id, device_id))
+        except Exception as exc:
+            db.rollback()
+            logger.warning('Could not unregister device row for user %s: %s', current_user.id, exc)
+
     try:
         current_user.fcm_token = None
         db.commit()
@@ -177,6 +268,7 @@ def unregister_device(
         'status': 'unregistered',
         'user_id': current_user.id,
         'device_id': device_id or None,
+        'device_row_removed': removed,
     }
 
 

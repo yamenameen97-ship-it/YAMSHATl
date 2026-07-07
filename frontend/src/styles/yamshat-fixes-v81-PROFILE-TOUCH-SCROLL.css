@@ -1,0 +1,266 @@
+/* ================================================================
+   🔥 YAMSHAT v81 — PROFILE PAGE: FAST APPEAR + SCROLLABLE + TAPPABLE
+   ================================================================
+   شكاوى المستخدم:
+     1) الملف الشخصي يظهر متأخراً (بعد ~8 ثوانٍ).
+     2) بعد ظهوره لا يمكن سحبه لأعلى (scroll لا يعمل).
+     3) النقر / اللمس متأخر أو لا يعمل عند التعديل.
+
+   الأسباب الجذرية:
+     أ) الـ safetyTimer كان 8s — تم تخفيضه إلى 2.5s + إظهار skeleton
+        قابل للتفاعل فوراً (تم في Profile.jsx).
+     ب) .page-shell-glow يستخدم:
+            content-visibility: auto;
+            contain-intrinsic-size: 900px;
+        هذا يجعل المتصفح يعطي المحتوى ارتفاعاً وهمياً 900px قبل
+        الرسم، مما يجعل .page-content يعتقد أن المحتوى لا يتخطى
+        الشاشة → لا scroll. كذلك يؤخر paint الأول → تأخر النقر.
+     ج) طبقات shimmer/loader بقيت أحياناً بـ pointer-events: auto.
+     د) الأزرار داخل .profile-page كانت بحاجة إلى touch-action:
+        manipulation لإزالة تأخير 300ms على iOS Safari.
+     هـ) على iOS، أي عنصر مسبَّب لِـ overflow أفقي داخل .page-content
+        (بسبب 100vw من v78) يعطّل momentum scroll العمودي.
+   ================================================================ */
+
+
+/* ─────────────────────────────────────────────────────────────
+   1) إلغاء content-visibility على صفحة الملف الشخصي فقط
+      (نبقيها على باقي الصفحات كتحسين أداء).
+   ───────────────────────────────────────────────────────────── */
+html body .app-shell .page-content:has(.ym-profile-page) .page-shell-glow,
+html body .app-shell .page-content:has([data-page="profile"]) .page-shell-glow {
+  content-visibility: visible !important;
+  contain-intrinsic-size: auto !important;
+  contain: none !important;
+}
+
+/* Fallback للمتصفحات التي لا تدعم :has() — نستهدف .page-shell-glow
+   الذي يحتوي مباشرة على .profile-page */
+.page-shell-glow:has(> .profile-page),
+.page-shell-glow:has(> .ym-profile-page) {
+  content-visibility: visible !important;
+  contain-intrinsic-size: auto !important;
+  contain: none !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   2) ضمان أن .profile-page لا تحبس الـ scroll — تدع الأم
+      (.page-content) هي حاوية التمرير الفعلية.
+   ───────────────────────────────────────────────────────────── */
+html body .profile-page,
+html body .ym-profile-page,
+body [data-page="profile"] {
+  /* لا نضع overflow-y هنا — التمرير يحدث في .page-content */
+  overflow: visible !important;
+  overflow-x: visible !important;
+  overflow-y: visible !important;
+
+  /* ارتفاع تلقائي حسب المحتوى — بلا حد أدنى محبِس */
+  height: auto !important;
+  min-height: auto !important;
+  max-height: none !important;
+
+  /* تسريع اللمس */
+  touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+  pointer-events: auto !important;
+
+  /* منع أي transform يكسر position:absolute لأولاده */
+  transform: none !important;
+  -webkit-transform: none !important;
+  filter: none !important;
+  will-change: auto !important;
+  contain: none !important;
+
+  /* منع أي فيض أفقي يبطل momentum scroll على iOS */
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   3) ضمان أن حاوية التمرير .page-content تعمل بشكل صحيح
+      حين تعرض profile page — بلا فيض أفقي من قواعد v78.
+   ───────────────────────────────────────────────────────────── */
+html body .app-shell .page-content:has(.ym-profile-page),
+html body .app-shell .page-content:has([data-page="profile"]) {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  overscroll-behavior-y: contain !important;
+}
+
+/* منع أي طفل داخل profile من الخروج للـ full-bleed 100vw
+   (لأن v78 يطبقها فقط على .yam-home-mobile-page، لكن نضمن
+   عدم تسرّبها هنا حتى لو نُسخ selector من قِبل الخطأ). */
+html body .ym-profile-page .ym-composer-wrap,
+html body .ym-profile-page .ym-filters-container,
+html body [data-page="profile"] .ym-composer-wrap,
+html body [data-page="profile"] .ym-filters-container {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-inline-start: 0 !important;
+  margin-inline-end: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   4) ضمان استجابة الأزرار / الروابط داخل الملف الشخصي فوراً
+      (لا تأخير 300ms، لا حجب من طبقات shimmer).
+   ───────────────────────────────────────────────────────────── */
+html body .ym-profile-page button,
+html body .ym-profile-page a,
+html body .ym-profile-page [role="button"],
+html body .ym-profile-page input,
+html body .ym-profile-page textarea,
+html body .ym-profile-page label,
+html body [data-page="profile"] button,
+html body [data-page="profile"] a,
+html body [data-page="profile"] [role="button"],
+html body [data-page="profile"] input,
+html body [data-page="profile"] textarea,
+html body [data-page="profile"] label {
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
+  -webkit-tap-highlight-color: rgba(124, 58, 237, 0.18) !important;
+  user-select: auto !important;
+  -webkit-user-select: auto !important;
+}
+
+/* حقول النص يجب أن تسمح بالتحديد */
+html body .ym-profile-page input[type="text"],
+html body .ym-profile-page input[type="email"],
+html body .ym-profile-page input:not([type]),
+html body .ym-profile-page textarea {
+  cursor: text !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   5) قتل أي طبقة shimmer/loader بقيت بعد التحميل
+      وتحجب النقرات على المحتوى الحقيقي.
+   ───────────────────────────────────────────────────────────── */
+html body .ym-profile-page .profile-page-loading,
+html body [data-page="profile"] .profile-page-loading {
+  pointer-events: none !important;
+}
+
+/* لو ظهر skeleton فوق المحتوى الفعلي، لا يمنع التفاعل */
+html body .ym-profile-page [class*="skeleton"],
+html body .ym-profile-page [class*="shimmer"],
+html body [data-page="profile"] [class*="skeleton"],
+html body [data-page="profile"] [class*="shimmer"] {
+  pointer-events: none !important;
+}
+
+/* أي Card داخل profile قابل للتفاعل بشكل كامل */
+html body .ym-profile-page .yam-card,
+html body .ym-profile-page .profile-hero-card,
+html body .ym-profile-page .profile-loading-card,
+html body [data-page="profile"] .yam-card {
+  pointer-events: auto !important;
+  will-change: auto !important;
+  transform: none !important;
+  contain: none !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   6) تحسين ظهور المودال (تعديل الملف الشخصي)
+      كي يستجيب فوراً للنقر ولا يعلق تحت طبقات أخرى.
+   ───────────────────────────────────────────────────────────── */
+html body .yam-modal-overlay:has(.profile-edit-stack),
+html body .yam-modal-overlay:has([class*="profile-edit"]) {
+  z-index: 99999 !important;
+  pointer-events: auto !important;
+}
+
+html body .yam-modal:has(.profile-edit-stack),
+html body .yam-modal:has([class*="profile-edit"]) {
+  pointer-events: auto !important;
+  z-index: 100000 !important;
+  touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   7) حل خاص بالموبايل: ضمان أن الأزرار العلوية في hero card
+      (تعديل / تخصيص / تحليلات) قابلة للنقر ولا تُغطى.
+   ───────────────────────────────────────────────────────────── */
+@media (max-width: 720px) {
+  html body .ym-profile-page .profile-actions-row {
+    position: relative !important;
+    z-index: 10 !important;
+    pointer-events: auto !important;
+    width: 100% !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+  html body .ym-profile-page .profile-actions-row > button {
+    flex: 1 1 auto !important;
+    min-height: 42px !important;
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+    position: relative !important;
+    z-index: 11 !important;
+  }
+
+  /* ضمان أن avatar / cover لا يحجبان الأزرار */
+  html body .ym-profile-page .profile-cover-banner,
+  html body .ym-profile-page .profile-avatar-shell {
+    pointer-events: none !important;
+  }
+  html body .ym-profile-page .profile-avatar-shell img,
+  html body .ym-profile-page .profile-avatar-shell span {
+    pointer-events: auto !important;
+  }
+
+  /* التبويبات (posts / archive / saved) — نقر فوري */
+  html body .ym-profile-page .profile-tabs-row {
+    position: relative !important;
+    z-index: 5 !important;
+  }
+  html body .ym-profile-page .profile-tab {
+    touch-action: manipulation !important;
+    pointer-events: auto !important;
+    min-height: 46px !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   8) fallback: إذا فشل :has() (Firefox < 121)، نضمن الحد الأدنى
+      عبر قاعدة global scope-safe.
+   ───────────────────────────────────────────────────────────── */
+@supports not selector(:has(*)) {
+  .page-shell-glow {
+    /* على المتصفحات القديمة، ضحّي بالأداء لكن اضمن التمرير */
+    content-visibility: visible;
+    contain-intrinsic-size: auto;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   9) placeholder skeleton (v81 addition): إذا كانت الصفحة
+      في وضع _isPlaceholder (لا يوجد بيانات بعد)، اجعل الأزرار
+      تفاعلية لكن مع مؤشر تحميل خفيف.
+   ───────────────────────────────────────────────────────────── */
+html body .ym-profile-page.is-placeholder,
+html body .ym-profile-page[data-placeholder="true"] {
+  animation: ymProfileFadeIn 260ms ease-out;
+}
+
+@keyframes ymProfileFadeIn {
+  from { opacity: 0.65; }
+  to   { opacity: 1; }
+}

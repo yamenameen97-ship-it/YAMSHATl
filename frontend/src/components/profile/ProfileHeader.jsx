@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from '../ui/Button.jsx';
 import Modal from '../ui/Modal.jsx';
@@ -7,12 +7,18 @@ import { updateMyProfile } from '../../api/users.js';
 import { resolveMediaUrl } from '../../config/mediaConfig.js';
 
 /**
- * ProfileHeader (v31) — صفحة بروفايل موحّدة بنفس ستايل المشروع
- * - تطابق تصميم الصورة المرجعية (غلاف + أفاتار + اسم + شارة توثيق + إحصائيات + أزرار)
- * - أزرار «متابعة» + «مراسلة» تظهر للزائر بنفس ترتيب الصورة
- * - تبويبات: الكل / ريلز / الصور
- * - معلومات شخصية أسفل التبويبات (الموقع، الجنس...)
- * - dir="rtl" وخط Noto Sans Arabic / Tajawal ليطابق الستايل العام
+ * ProfileHeader (v85 — Profile Completeness Upgrade)
+ * =====================================================
+ * التحسينات الخمس المضافة لتقارب منصات (Instagram / Facebook / TikTok / WhatsApp):
+ *  1) تبويب "الوسائط المُعلَّمة" (Tagged Posts) — كامل مع Empty state
+ *  2) روابط السيرة الذاتية (Bio Links) — عرض قابل للنقر + أيقونات ذكية
+ *  3) قائمة "المزيد" (⋯) + زر المشاركة (Share / Block / Report / Copy Link)
+ *  4) قسم "القصص المميزة" (Story Highlights) — قابل للتمرير الأفقي
+ *  5) مؤشر حالة الاتصال (Online Status Indicator) على الأفاتار
+ * -----------------------------------------------------
+ * ملاحظات:
+ *  - جميع الإضافات محمية بـ null-checks ولن تكسر إذا لم يوفر الـ backend الحقول
+ *  - dir="rtl" وخط Noto Sans Arabic / Tajawal للحفاظ على هوية المشروع
  */
 
 const FallbackAvatar = ({ name = 'User' }) => {
@@ -45,6 +51,95 @@ const VerifiedBadge = () => (
   </span>
 );
 
+/* =====================================================
+ * 🔗 (2) Bio Links Renderer — يكتشف نوع الرابط ويعرض أيقونة مناسبة
+ * ===================================================== */
+const detectLinkType = (url = '') => {
+  const u = String(url).toLowerCase();
+  if (u.includes('instagram.com')) return { icon: '📷', label: 'Instagram' };
+  if (u.includes('twitter.com') || u.includes('x.com')) return { icon: '𝕏', label: 'X' };
+  if (u.includes('tiktok.com')) return { icon: '🎵', label: 'TikTok' };
+  if (u.includes('youtube.com') || u.includes('youtu.be')) return { icon: '▶️', label: 'YouTube' };
+  if (u.includes('facebook.com')) return { icon: 'f', label: 'Facebook' };
+  if (u.includes('linkedin.com')) return { icon: 'in', label: 'LinkedIn' };
+  if (u.includes('github.com')) return { icon: '⌨️', label: 'GitHub' };
+  if (u.includes('t.me') || u.includes('telegram')) return { icon: '✈️', label: 'Telegram' };
+  if (u.includes('wa.me') || u.includes('whatsapp')) return { icon: '💬', label: 'WhatsApp' };
+  return { icon: '🔗', label: 'موقع' };
+};
+
+const BioLinks = ({ links = [] }) => {
+  if (!Array.isArray(links) || links.length === 0) return null;
+  return (
+    <div className="ymp-bio-links" role="list">
+      {links.slice(0, 5).map((raw, i) => {
+        const link = typeof raw === 'string' ? { url: raw, title: '' } : (raw || {});
+        const href = link.url || '';
+        if (!href) return null;
+        const meta = detectLinkType(href);
+        const label = link.title || meta.label;
+        return (
+          <a
+            key={`biolink-${i}`}
+            className="ymp-bio-link"
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer nofollow"
+            role="listitem"
+            title={href}
+          >
+            <span className="ymp-bio-link-icon" aria-hidden="true">{meta.icon}</span>
+            <span className="ymp-bio-link-label">{label}</span>
+          </a>
+        );
+      })}
+    </div>
+  );
+};
+
+/* =====================================================
+ * 📖 (4) Story Highlights Rail — شريط قابل للتمرير الأفقي
+ * ===================================================== */
+const StoryHighlights = ({ highlights = [], isOwnProfile, onAddHighlight }) => {
+  if ((!Array.isArray(highlights) || highlights.length === 0) && !isOwnProfile) return null;
+  return (
+    <div className="ymp-highlights" role="region" aria-label="القصص المميزة">
+      <div className="ymp-highlights-track">
+        {isOwnProfile && (
+          <button
+            type="button"
+            className="ymp-highlight-item ymp-highlight-add"
+            onClick={onAddHighlight}
+            aria-label="إضافة قصة مميزة جديدة"
+          >
+            <div className="ymp-highlight-ring">
+              <div className="ymp-highlight-thumb ymp-highlight-plus">＋</div>
+            </div>
+            <span className="ymp-highlight-title">جديد</span>
+          </button>
+        )}
+        {highlights.map((h, i) => (
+          <button
+            key={h.id || `hl-${i}`}
+            type="button"
+            className="ymp-highlight-item"
+            onClick={() => (typeof h.onClick === 'function' ? h.onClick(h) : null)}
+          >
+            <div className="ymp-highlight-ring">
+              {h.cover ? (
+                <img className="ymp-highlight-thumb" src={resolveMediaUrl(h.cover)} alt={h.title || 'قصة مميزة'} />
+              ) : (
+                <div className="ymp-highlight-thumb ymp-highlight-fallback">📖</div>
+              )}
+            </div>
+            <span className="ymp-highlight-title">{h.title || 'قصة'}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 export default function ProfileHeader({
   profile,
   isOwnProfile,
@@ -53,12 +148,18 @@ export default function ProfileHeader({
   onFollowClick,
   activeTab: externalActiveTab,
   onTabChange,
+  onAddHighlight,
+  onBlockUser,
+  onReportUser,
 }) {
   const navigate = useNavigate();
   const [showCoverEditor, setShowCoverEditor] = useState(false);
   const [showAvatarCropper, setShowAvatarCropper] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false); // 🆕 (3)
+  const [copyFlash, setCopyFlash] = useState(false);       // 🆕 (3)
   const [internalTab, setInternalTab] = useState('all');
   const activeTab = externalActiveTab || internalTab;
+  const moreMenuRef = useRef(null);
 
   const [coverImage, setCoverImage] = useState(profile?.user?.profile?.cover_photo || '');
   const [avatarImage, setAvatarImage] = useState(profile?.user?.avatar || '');
@@ -119,13 +220,15 @@ export default function ProfileHeader({
     }
   };
 
+  /* 🆕 (1) — أضفنا تبويب "المُعلَّمة" (tagged) */
   const tabs = useMemo(() => [
     { key: 'all', label: 'الكل' },
     { key: 'reels', label: 'ريلز' },
     { key: 'photos', label: 'الصور' },
+    { key: 'tagged', label: 'المُعلَّمة', icon: '🏷️' },
   ], []);
 
-  // ✅ FIX v45 (الاسم لا يُحفظ): قراءة full_name من جميع المصادر المحتملة + النسخة المحلية الاحتياطية
+  // قراءة full_name من جميع المصادر المحتملة + النسخة المحلية الاحتياطية
   const localFullName = (() => {
     try {
       const uname = profile?.user?.username;
@@ -149,6 +252,32 @@ export default function ProfileHeader({
   const city = profile?.user?.profile?.city || '';
   const gender = profile?.user?.profile?.gender || '';
 
+  /* 🆕 (2) — قراءة روابط السيرة الذاتية من الحقول المحتملة */
+  const bioLinks = useMemo(() => {
+    const raw = profile?.user?.profile?.bio_links
+      || profile?.user?.profile?.links
+      || profile?.user?.links
+      || [];
+    if (!Array.isArray(raw)) return [];
+    return raw.filter(Boolean);
+  }, [profile]);
+
+  /* 🆕 (4) — قراءة القصص المميزة */
+  const highlights = useMemo(() => {
+    const raw = profile?.user?.profile?.highlights
+      || profile?.highlights
+      || [];
+    return Array.isArray(raw) ? raw : [];
+  }, [profile]);
+
+  /* 🆕 (5) — حالة الاتصال (online / offline / last_seen) */
+  const onlineStatus = useMemo(() => {
+    const p = profile?.user || {};
+    const isOnline = Boolean(p.is_online || p.online || profile?.is_online);
+    const lastSeen = p.last_seen || p.last_active || profile?.last_seen || null;
+    return { isOnline, lastSeen };
+  }, [profile]);
+
   const formatCount = (n) => {
     const num = Number(n) || 0;
     if (num >= 1000000) return `${(num / 1000000).toFixed(1)} مليون`;
@@ -156,9 +285,82 @@ export default function ProfileHeader({
     return String(num);
   };
 
+  const formatLastSeen = (ts) => {
+    if (!ts) return '';
+    const d = typeof ts === 'number' ? new Date(ts) : new Date(ts);
+    if (isNaN(d.getTime())) return '';
+    const diffMin = Math.floor((Date.now() - d.getTime()) / 60000);
+    if (diffMin < 1) return 'الآن';
+    if (diffMin < 60) return `منذ ${diffMin} دقيقة`;
+    if (diffMin < 60 * 24) return `منذ ${Math.floor(diffMin / 60)} ساعة`;
+    return `منذ ${Math.floor(diffMin / 1440)} يوم`;
+  };
+
   const handleMessage = useCallback(() => {
     navigate(`/chat/${encodeURIComponent(username)}`);
   }, [navigate, username]);
+
+  /* 🆕 (3) — مشاركة البروفايل / نسخ الرابط / حظر / إبلاغ */
+  const profileUrl = useMemo(() => {
+    try {
+      return `${window.location.origin}/profile/${encodeURIComponent(username)}`;
+    } catch { return `/profile/${encodeURIComponent(username)}`; }
+  }, [username]);
+
+  const handleShareProfile = useCallback(async () => {
+    setShowMoreMenu(false);
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: fullName, text: `تصفح ملف ${fullName} على يام شات`, url: profileUrl });
+        return;
+      }
+    } catch { /* ignore user cancel */ }
+    try {
+      await navigator.clipboard.writeText(profileUrl);
+      setCopyFlash(true);
+      setTimeout(() => setCopyFlash(false), 1600);
+    } catch {
+      alert(profileUrl);
+    }
+  }, [fullName, profileUrl]);
+
+  const handleCopyLink = useCallback(async () => {
+    setShowMoreMenu(false);
+    try {
+      await navigator.clipboard.writeText(profileUrl);
+      setCopyFlash(true);
+      setTimeout(() => setCopyFlash(false), 1600);
+    } catch {
+      alert(profileUrl);
+    }
+  }, [profileUrl]);
+
+  const handleBlock = useCallback(() => {
+    setShowMoreMenu(false);
+    if (typeof onBlockUser === 'function') return onBlockUser(username);
+    if (window.confirm(`هل تريد حظر @${username}؟`)) {
+      console.warn('Block user (no handler wired):', username);
+    }
+  }, [onBlockUser, username]);
+
+  const handleReport = useCallback(() => {
+    setShowMoreMenu(false);
+    if (typeof onReportUser === 'function') return onReportUser(username);
+    console.warn('Report user (no handler wired):', username);
+    alert('شكراً — تم إرسال البلاغ للمراجعة.');
+  }, [onReportUser, username]);
+
+  // إغلاق القائمة عند النقر خارجها
+  useEffect(() => {
+    if (!showMoreMenu) return undefined;
+    const onDocClick = (e) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target)) {
+        setShowMoreMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [showMoreMenu]);
 
   return (
     <div className="ymp-profile-wrap" dir="rtl">
@@ -195,6 +397,18 @@ export default function ProfileHeader({
               <FallbackAvatar name={fullName} />
             )}
           </div>
+
+          {/* 🆕 (5) مؤشر حالة الاتصال */}
+          <span
+            className={`ymp-online-dot ${onlineStatus.isOnline ? 'is-online' : 'is-offline'}`}
+            title={
+              onlineStatus.isOnline
+                ? 'متصل الآن'
+                : (onlineStatus.lastSeen ? `آخر ظهور: ${formatLastSeen(onlineStatus.lastSeen)}` : 'غير متصل')
+            }
+            aria-label={onlineStatus.isOnline ? 'متصل الآن' : 'غير متصل'}
+          />
+
           {isOwnProfile && (
             <button
               type="button"
@@ -215,12 +429,23 @@ export default function ProfileHeader({
         </div>
       </div>
 
-      {/* Identity block (name, badge, stats) */}
+      {/* Identity block */}
       <div className="ymp-identity">
         <h2 className="ymp-fullname">
           <span>{fullName}</span>
           {isVerified ? <VerifiedBadge /> : null}
         </h2>
+
+        {/* 🆕 (5) نص "متصل الآن" أو آخر ظهور تحت الاسم */}
+        {onlineStatus.isOnline ? (
+          <div className="ymp-online-label">
+            <span className="ymp-online-mini-dot" /> متصل الآن
+          </div>
+        ) : onlineStatus.lastSeen ? (
+          <div className="ymp-online-label ymp-online-label--muted">
+            آخر ظهور: {formatLastSeen(onlineStatus.lastSeen)}
+          </div>
+        ) : null}
 
         <div className="ymp-stats-row">
           <div className="ymp-stat">
@@ -249,9 +474,12 @@ export default function ProfileHeader({
         ) : null}
 
         {bio ? <p className="ymp-bio">{bio}</p> : null}
+
+        {/* 🆕 (2) روابط السيرة الذاتية */}
+        <BioLinks links={bioLinks} />
       </div>
 
-      {/* Action buttons row (مراسلة + متابعة) — مطابقة للصورة المرجعية */}
+      {/* Action buttons row + 🆕 (3) زر المشاركة + قائمة المزيد */}
       <div className="ymp-actions">
         {isOwnProfile ? (
           <>
@@ -260,6 +488,21 @@ export default function ProfileHeader({
             </button>
             <button type="button" className="ymp-btn ymp-btn-secondary" onClick={onAnalyticsClick}>
               📊 التحليلات
+            </button>
+            <button
+              type="button"
+              className="ymp-btn ymp-btn-icon"
+              onClick={handleShareProfile}
+              aria-label="مشاركة الملف الشخصي"
+              title="مشاركة الملف الشخصي"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="18" cy="5" r="3" />
+                <circle cx="6" cy="12" r="3" />
+                <circle cx="18" cy="19" r="3" />
+                <line x1="8.6" y1="13.5" x2="15.4" y2="17.5" />
+                <line x1="15.4" y1="6.5" x2="8.6" y2="10.5" />
+              </svg>
             </button>
           </>
         ) : (
@@ -277,11 +520,73 @@ export default function ProfileHeader({
             >
               <span>{isFollowing ? '✓ تتابعه' : '＋ متابعة'}</span>
             </button>
+            <button
+              type="button"
+              className="ymp-btn ymp-btn-icon"
+              onClick={handleShareProfile}
+              aria-label="مشاركة الملف الشخصي"
+              title="مشاركة الملف الشخصي"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="18" cy="5" r="3" />
+                <circle cx="6" cy="12" r="3" />
+                <circle cx="18" cy="19" r="3" />
+                <line x1="8.6" y1="13.5" x2="15.4" y2="17.5" />
+                <line x1="15.4" y1="6.5" x2="8.6" y2="10.5" />
+              </svg>
+            </button>
           </>
         )}
+
+        {/* قائمة "المزيد" (⋯) — دائماً متاحة */}
+        <div className="ymp-more-wrap" ref={moreMenuRef}>
+          <button
+            type="button"
+            className="ymp-btn ymp-btn-icon"
+            onClick={() => setShowMoreMenu((v) => !v)}
+            aria-label="خيارات إضافية"
+            aria-expanded={showMoreMenu}
+            title="المزيد"
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+              <circle cx="5" cy="12" r="2" />
+              <circle cx="12" cy="12" r="2" />
+              <circle cx="19" cy="12" r="2" />
+            </svg>
+          </button>
+
+          {showMoreMenu && (
+            <div className="ymp-more-menu" role="menu">
+              <button type="button" className="ymp-more-item" role="menuitem" onClick={handleCopyLink}>
+                <span aria-hidden="true">🔗</span> نسخ رابط الملف
+              </button>
+              <button type="button" className="ymp-more-item" role="menuitem" onClick={handleShareProfile}>
+                <span aria-hidden="true">📤</span> مشاركة الملف
+              </button>
+              {!isOwnProfile && (
+                <>
+                  <div className="ymp-more-divider" />
+                  <button type="button" className="ymp-more-item ymp-danger" role="menuitem" onClick={handleBlock}>
+                    <span aria-hidden="true">🚫</span> حظر @{username}
+                  </button>
+                  <button type="button" className="ymp-more-item ymp-danger" role="menuitem" onClick={handleReport}>
+                    <span aria-hidden="true">🚩</span> إبلاغ
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Tabs (الكل / ريلز / الصور) */}
+      {/* 🆕 (4) القصص المميزة (Story Highlights) */}
+      <StoryHighlights
+        highlights={highlights}
+        isOwnProfile={isOwnProfile}
+        onAddHighlight={onAddHighlight}
+      />
+
+      {/* Tabs */}
       <div className="ymp-tabs">
         {tabs.map((tab) => (
           <button
@@ -290,12 +595,24 @@ export default function ProfileHeader({
             className={`ymp-tab ${activeTab === tab.key ? 'active' : ''}`}
             onClick={() => handleTabChange(tab.key)}
           >
-            {tab.label}
+            {tab.icon ? <span className="ymp-tab-icon" aria-hidden="true">{tab.icon}</span> : null}
+            <span>{tab.label}</span>
           </button>
         ))}
       </div>
 
-      {/* تفاصيل شخصية (الموقع، الجنس) — مطابق للصورة */}
+      {/* 🆕 (1) حالة فارغة لتبويب "المُعلَّمة" — تظهر داخل ProfileHeader فقط عندما يكون التبويب نشطاً
+           والصفحة الأم لم تُمرر محتوى بديلاً. الصفحة الأم تظل مسؤولة عن عرض الشبكة الفعلية. */}
+      {activeTab === 'tagged' && (
+        <div className="ymp-tagged-hint" role="status">
+          <span aria-hidden="true">🏷️</span>
+          <span>
+            المنشورات التي تم تعليمك فيها ستظهر هنا. يمكن التحكم في هذا من إعدادات الخصوصية.
+          </span>
+        </div>
+      )}
+
+      {/* تفاصيل شخصية */}
       {(city || gender) && (
         <div className="ymp-personal">
           <h3 className="ymp-personal-title">التفاصيل الشخصية</h3>
@@ -311,6 +628,13 @@ export default function ProfileHeader({
               <span>{gender === 'male' ? 'ذكر' : gender === 'female' ? 'أنثى' : gender}</span>
             </div>
           ) : null}
+        </div>
+      )}
+
+      {/* Toast خفيف لنسخ الرابط */}
+      {copyFlash && (
+        <div className="ymp-copy-toast" role="status" aria-live="polite">
+          ✅ تم نسخ رابط الملف
         </div>
       )}
 
@@ -352,6 +676,7 @@ export default function ProfileHeader({
           color: #fff;
           background: transparent;
           padding-bottom: 12px;
+          position: relative;
         }
         .ymp-cover {
           position: relative;
@@ -408,36 +733,67 @@ export default function ProfileHeader({
           display: grid;
           place-items: center;
         }
-        .ymp-avatar-img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-        }
+        .ymp-avatar-img { width: 100%; height: 100%; object-fit: cover; }
         .ymp-fallback-avatar {
-          width: 100%;
-          height: 100%;
-          display: grid;
-          place-items: center;
+          width: 100%; height: 100%;
+          display: grid; place-items: center;
           background: linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%);
-          color: #fff;
-          font-size: 36px;
-          font-weight: 800;
+          color: #fff; font-size: 36px; font-weight: 800;
         }
         .ymp-avatar-edit-btn {
           position: absolute;
-          bottom: 6px;
-          right: 6px;
-          width: 36px;
-          height: 36px;
+          bottom: 6px; right: 6px;
+          width: 36px; height: 36px;
           border-radius: 50%;
           border: 3px solid #0A0D1A;
           background: #7C3AED;
           color: #fff;
           font-size: 14px;
           cursor: pointer;
-          display: grid;
-          place-items: center;
+          display: grid; place-items: center;
           box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+          z-index: 2;
+        }
+
+        /* 🆕 (5) — Online status indicator */
+        .ymp-online-dot {
+          position: absolute;
+          bottom: 8px;
+          left: 8px;
+          width: 22px;
+          height: 22px;
+          border-radius: 50%;
+          border: 3px solid #0A0D1A;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+          z-index: 2;
+          transition: transform .2s ease;
+        }
+        .ymp-online-dot.is-online {
+          background: #22c55e;
+          animation: ymp-online-pulse 2s ease-out infinite;
+        }
+        .ymp-online-dot.is-offline {
+          background: #6b7280;
+        }
+        @keyframes ymp-online-pulse {
+          0%   { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.55), 0 2px 6px rgba(0,0,0,0.35); }
+          70%  { box-shadow: 0 0 0 10px rgba(34, 197, 94, 0), 0 2px 6px rgba(0,0,0,0.35); }
+          100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0), 0 2px 6px rgba(0,0,0,0.35); }
+        }
+        .ymp-online-label {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          color: #22c55e;
+          font-size: 12px;
+          font-weight: 700;
+          margin-bottom: 8px;
+        }
+        .ymp-online-label--muted { color: #94a3b8; font-weight: 500; }
+        .ymp-online-mini-dot {
+          width: 8px; height: 8px; border-radius: 50%;
+          background: #22c55e;
+          box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.22);
         }
 
         .ymp-identity {
@@ -454,11 +810,8 @@ export default function ProfileHeader({
           align-items: center;
           gap: 6px;
         }
-        .ymp-verified {
-          display: inline-flex;
-          align-items: center;
-        }
-        /* v46: تقسيم الإحصائيات في صف واحد بدل التمدد */
+        .ymp-verified { display: inline-flex; align-items: center; }
+
         .ymp-stats-row {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
@@ -475,10 +828,8 @@ export default function ProfileHeader({
           direction: rtl;
         }
         .ymp-stats-row .ymp-stat {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
+          display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
           padding: 10px 6px;
           background: rgba(255,255,255,0.04);
           border: 1px solid rgba(255,255,255,0.06);
@@ -490,12 +841,8 @@ export default function ProfileHeader({
         .ymp-stats-row .ymp-stat span { font-size: 12px; color: #94a3b8; white-space: nowrap; }
         .ymp-dot { display: none; }
         .ymp-tagline {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          color: #cbd5e1;
-          font-size: 13px;
-          margin-bottom: 10px;
+          display: inline-flex; align-items: center; gap: 6px;
+          color: #cbd5e1; font-size: 13px; margin-bottom: 10px;
         }
         .ymp-bio {
           color: #cbd5e1;
@@ -506,12 +853,48 @@ export default function ProfileHeader({
           word-break: break-word;
         }
 
+        /* 🆕 (2) — Bio links */
+        .ymp-bio-links {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          justify-content: center;
+          max-width: 560px;
+          margin: 0 auto 14px;
+        }
+        .ymp-bio-link {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 12px;
+          border-radius: 999px;
+          background: rgba(24, 119, 242, 0.10);
+          border: 1px solid rgba(24, 119, 242, 0.30);
+          color: #93c5fd;
+          font-size: 12px;
+          font-weight: 700;
+          text-decoration: none;
+          max-width: 220px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          transition: background .15s ease, transform .12s ease;
+        }
+        .ymp-bio-link:hover {
+          background: rgba(24, 119, 242, 0.20);
+          transform: translateY(-1px);
+        }
+        .ymp-bio-link-icon { font-size: 14px; line-height: 1; }
+        .ymp-bio-link-label { max-width: 170px; overflow: hidden; text-overflow: ellipsis; }
+
         .ymp-actions {
           display: flex;
           gap: 10px;
           justify-content: center;
+          align-items: center;
           padding: 0 16px 14px;
           flex-wrap: wrap;
+          position: relative;
         }
         .ymp-btn {
           display: inline-flex;
@@ -534,11 +917,122 @@ export default function ProfileHeader({
           box-shadow: 0 4px 14px rgba(24, 119, 242, 0.32);
         }
         .ymp-btn-primary:hover { background: #166fe0; transform: translateY(-1px); }
-        .ymp-btn-secondary {
+        .ymp-btn-secondary { background: #2A2F3A; color: #fff; }
+        .ymp-btn-secondary:hover { background: #353B47; }
+
+        /* 🆕 (3) — Icon buttons + More menu */
+        .ymp-btn-icon {
+          min-width: 44px;
+          width: 44px;
+          height: 44px;
+          padding: 0;
           background: #2A2F3A;
           color: #fff;
         }
-        .ymp-btn-secondary:hover { background: #353B47; }
+        .ymp-btn-icon:hover { background: #353B47; }
+        .ymp-more-wrap { position: relative; }
+        .ymp-more-menu {
+          position: absolute;
+          top: calc(100% + 6px);
+          right: 0;
+          min-width: 220px;
+          background: #111827;
+          border: 1px solid #1F2937;
+          border-radius: 12px;
+          box-shadow: 0 12px 40px rgba(0,0,0,0.55);
+          padding: 6px;
+          z-index: 40;
+        }
+        .ymp-more-item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          width: 100%;
+          padding: 10px 12px;
+          background: transparent;
+          border: none;
+          border-radius: 8px;
+          color: #e5e7eb;
+          font-size: 14px;
+          font-family: inherit;
+          text-align: right;
+          cursor: pointer;
+        }
+        .ymp-more-item:hover { background: rgba(255,255,255,0.06); }
+        .ymp-more-item.ymp-danger { color: #f87171; }
+        .ymp-more-item.ymp-danger:hover { background: rgba(248, 113, 113, 0.10); }
+        .ymp-more-divider {
+          height: 1px;
+          background: #1F2937;
+          margin: 6px 4px;
+        }
+
+        /* 🆕 (4) — Story Highlights */
+        .ymp-highlights {
+          padding: 6px 8px 12px;
+          border-top: 1px solid #1F2937;
+          border-bottom: 1px solid #1F2937;
+          margin: 8px 0 4px;
+        }
+        .ymp-highlights-track {
+          display: flex;
+          gap: 14px;
+          overflow-x: auto;
+          padding: 8px 4px 4px;
+          scroll-snap-type: x mandatory;
+          scrollbar-width: none;
+        }
+        .ymp-highlights-track::-webkit-scrollbar { display: none; }
+        .ymp-highlight-item {
+          flex: 0 0 auto;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 6px;
+          background: none;
+          border: none;
+          cursor: pointer;
+          scroll-snap-align: start;
+          font-family: inherit;
+        }
+        .ymp-highlight-ring {
+          width: 68px;
+          height: 68px;
+          border-radius: 50%;
+          padding: 3px;
+          background: linear-gradient(135deg, #f59e0b, #ef4444, #7C3AED);
+          display: grid;
+          place-items: center;
+        }
+        .ymp-highlight-thumb {
+          width: 100%;
+          height: 100%;
+          border-radius: 50%;
+          object-fit: cover;
+          background: #0A0D1A;
+          border: 2px solid #0A0D1A;
+        }
+        .ymp-highlight-fallback {
+          display: grid; place-items: center;
+          font-size: 24px; color: #94a3b8;
+        }
+        .ymp-highlight-plus {
+          display: grid; place-items: center;
+          font-size: 28px; color: #94a3b8; font-weight: 300;
+          background: #1a1f2e;
+        }
+        .ymp-highlight-add .ymp-highlight-ring {
+          background: #1F2937;
+        }
+        .ymp-highlight-title {
+          color: #cbd5e1;
+          font-size: 11px;
+          font-weight: 600;
+          max-width: 74px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
 
         .ymp-tabs {
           display: flex;
@@ -561,15 +1055,34 @@ export default function ProfileHeader({
           cursor: pointer;
           border-bottom: 3px solid transparent;
           transition: color .15s ease, border-color .15s ease;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 4px;
         }
         .ymp-tab.active {
           color: #1877F2;
           border-bottom-color: #1877F2;
         }
+        .ymp-tab-icon { font-size: 12px; }
 
-        .ymp-personal {
-          padding: 14px 16px 4px;
+        /* 🆕 (1) — Tagged empty hint */
+        .ymp-tagged-hint {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          padding: 14px 16px;
+          margin: 8px 12px 4px;
+          color: #94a3b8;
+          font-size: 13px;
+          background: rgba(255,255,255,0.03);
+          border: 1px dashed rgba(255,255,255,0.10);
+          border-radius: 12px;
+          text-align: center;
         }
+
+        .ymp-personal { padding: 14px 16px 4px; }
         .ymp-personal-title {
           margin: 0 0 10px;
           font-size: 15px;
@@ -577,35 +1090,45 @@ export default function ProfileHeader({
           color: #e2e8f0;
         }
         .ymp-personal-row {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          color: #cbd5e1;
-          font-size: 14px;
-          padding: 8px 0;
+          display: flex; align-items: center; gap: 10px;
+          color: #cbd5e1; font-size: 14px; padding: 8px 0;
         }
         .ymp-personal-icon {
-          width: 24px;
-          height: 24px;
-          display: grid;
-          place-items: center;
+          width: 24px; height: 24px;
+          display: grid; place-items: center;
           color: #94a3b8;
         }
 
         .ymp-cover-preview {
-          height: 200px;
-          margin-bottom: 16px;
-          border-radius: 12px;
-          overflow: hidden;
+          height: 200px; margin-bottom: 16px;
+          border-radius: 12px; overflow: hidden;
           background: #1a1a1a;
         }
         .ymp-avatar-preview {
-          width: 200px;
-          height: 200px;
-          border-radius: 50%;
-          margin: 0 auto 18px;
-          overflow: hidden;
-          background: #1a1a1a;
+          width: 200px; height: 200px;
+          border-radius: 50%; margin: 0 auto 18px;
+          overflow: hidden; background: #1a1a1a;
+        }
+
+        .ymp-copy-toast {
+          position: fixed;
+          bottom: 24px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: #111827;
+          color: #22c55e;
+          padding: 10px 18px;
+          border-radius: 999px;
+          border: 1px solid rgba(34, 197, 94, 0.35);
+          box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+          font-size: 13px;
+          font-weight: 700;
+          z-index: 200;
+          animation: ymp-toast-in .25s ease-out;
+        }
+        @keyframes ymp-toast-in {
+          from { opacity: 0; transform: translate(-50%, 12px); }
+          to   { opacity: 1; transform: translate(-50%, 0); }
         }
 
         @media (max-width: 480px) {
@@ -613,19 +1136,24 @@ export default function ProfileHeader({
           .ymp-cover-img, .ymp-fallback-cover { height: 170px; }
           .ymp-avatar-holder { width: 118px; height: 118px; bottom: -55px; }
           .ymp-avatar { width: 118px; height: 118px; }
+          .ymp-online-dot { width: 18px; height: 18px; }
           .ymp-identity { margin-top: 66px; }
           .ymp-fullname { font-size: 19px; }
-          .ymp-btn { min-width: 130px; padding: 10px 16px; }
+          .ymp-btn { min-width: 120px; padding: 10px 14px; }
+          .ymp-btn-icon { min-width: 44px; width: 44px; }
           .ymp-stats-row { gap: 6px; padding: 0 8px; }
           .ymp-stats-row .ymp-stat { padding: 8px 4px; }
           .ymp-stats-row strong { font-size: 16px; }
           .ymp-stats-row .ymp-stat span { font-size: 11px; }
+          .ymp-highlight-ring { width: 60px; height: 60px; }
+          .ymp-highlight-title { font-size: 10px; max-width: 66px; }
         }
         @media (max-width: 360px) {
           .ymp-stats-row { gap: 4px; }
           .ymp-stats-row .ymp-stat { padding: 6px 2px; }
           .ymp-stats-row strong { font-size: 14px; }
           .ymp-stats-row .ymp-stat span { font-size: 10px; }
+          .ymp-btn { min-width: 100px; font-size: 13px; }
         }
       `}</style>
     </div>

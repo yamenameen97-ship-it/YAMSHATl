@@ -17,6 +17,7 @@ from app.models.like import Like
 from app.models.post import Post
 from app.models.post_edit_history import PostEditHistory
 from app.models.post_poll_vote import PostPollVote
+from app.models.post_preference import PostPreference
 from app.models.post_save import PostSave
 from app.models.post_share import PostShare
 from app.models.user import User
@@ -272,8 +273,25 @@ def _publish_due_posts(db: Session) -> None:
         db.commit()
 
 
+def _load_hidden_post_ids(db: Session, current_user: User | None) -> set[int]:
+    """v83.8: pull per-user cloud-persisted post preferences to filter the feed.
+    Returns the set of post IDs the current user has hidden or archived, plus
+    any post whose author they have muted.
+    """
+    if current_user is None:
+        return set()
+    rows = db.query(PostPreference).filter(
+        PostPreference.user_id == current_user.id,
+        (PostPreference.is_hidden.is_(True))
+        | (PostPreference.is_archived.is_(True))
+        | (PostPreference.is_muted_author.is_(True)),
+    ).all()
+    return {int(r.post_id) for r in rows}
+
+
 def get_posts(db: Session, current_user: User | None = None, skip: int = 0, limit: int = 10, include_drafts: bool = False) -> list[dict]:
     _publish_due_posts(db)
+    hidden_ids = _load_hidden_post_ids(db, current_user)
     posts = db.query(Post).order_by(func.coalesce(Post.published_at, Post.created_at).desc(), Post.id.desc()).offset(skip).limit(limit * 3).all()
     visible = []
     for post in posts:
@@ -281,6 +299,8 @@ def get_posts(db: Session, current_user: User | None = None, skip: int = 0, limi
             continue
         if post.is_draft and not include_drafts:
             continue
+        if int(post.id) in hidden_ids:
+            continue  # v83.8: respect user's cloud-saved hide/archive/mute preferences
         try:
             visible.append(_serialize_post(db, post, current_user=current_user))
         except Exception as exc:

@@ -251,6 +251,7 @@ import './styles/yamshat-fixes-v78-RTL-FULLBLEED-ROOT.css';
 import './styles/yamshat-fixes-v79-REMOVE-COMPOSER-FILTERS.css';
 /* v80 — إضافة شريط بحث فيسبوك-ستايل أعلى صفحة الجوال + رفع منطقة كتابة التعليق للأعلى */
 import './styles/yamshat-fixes-v80-SEARCHBAR-COMMENT-LIFT.css';
+import './styles/yamshat-fixes-v81-PROFILE-TOUCH-SCROLL.css';
 
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';

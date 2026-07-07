@@ -37,6 +37,7 @@ from app.models.notification import Notification
 from app.models.post import Post
 from app.models.user import User
 from app.services.chat_realtime import mark_messages_delivered, serialize_message
+from app.services.encryption_service import encrypt_message
 
 # Distributed WebSocket Scaling with Redis Pub/Sub
 mgr = None
@@ -559,11 +560,19 @@ async def chat_message_event(sid, data):
 
         if existing is None:
             delivered_now = is_user_online(username=receiver.username, user_id=receiver.id)
+            # v83.7 FIX #3 — توحيد طبقة التخزين مع مسار REST /send_message:
+            #   أ) تعبئة sender/receiver (usernames) حتى لا تظهر NULL في serialize_message.
+            #   ب) تخزين النص الواضح في Message.message والنسخة المشفّرة في Message.content
+            #      → يوحّد مصدر البيانات مع طريقة HTTP ويمكَّن البحث وفك التشفير لاحقاً.
+            clean_message = sanitize_text(raw_message, max_length=2000)
             message = Message(
                 sender_id=user.id,
                 receiver_id=receiver.id,
+                sender=user.username,
+                receiver=receiver.username,
                 client_id=client_id,
-                content=sanitize_text(raw_message, max_length=2000),
+                message=clean_message,
+                content=encrypt_message(clean_message) if clean_message else '',
                 media_url=media_url or None,
                 message_type=message_type,
                 is_delivered=delivered_now,

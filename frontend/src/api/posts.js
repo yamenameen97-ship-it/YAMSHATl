@@ -190,3 +190,16 @@ export const getScheduledPosts = () => API.get('/posts/scheduled', { cache: fals
 export const getPostAnalytics = (postId) => API.get(`/posts/${postId}/analytics`, { cache: false, forceRefresh: true });
 export const getRecommendedPosts = (params = {}) => API.get('/posts/recommended', { params });
 export const deletePost = (postId) => API.delete(`/posts/${postId}`);
+
+// ============================================================
+// v83.8 — Cloud-persisted per-post preferences (previously localStorage only)
+// ============================================================
+export const getMyPostPreferences = () => API.get('/posts/preferences', { cache: false, forceRefresh: true });
+export const togglePostHidden = (postId, hidden) => API.post(`/posts/${postId}/hide`, { hidden });
+export const togglePostArchived = (postId, archived) => API.post(`/posts/${postId}/archive`, { archived });
+export const toggleMutePostAuthor = (postId, muted) => API.post(`/posts/${postId}/mute-author`, { muted });
+export const reportPost = (postId, reason = 'abuse') => API.post(`/posts/${postId}/report`, { reason });
+
+// v83.8 — Cloud-persisted comment reactions (previously in local component state)
+export const reactToComment = (commentId, emoji) => API.post(`/comments/item/${commentId}/react`, { emoji });
+export const getCommentReactions = (commentId) => API.get(`/comments/item/${commentId}/reactions`, { cache: false, forceRefresh: true });

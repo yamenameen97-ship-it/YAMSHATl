@@ -6,7 +6,7 @@ import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import Modal from '../components/ui/Modal.jsx';
 import { useToast } from '../components/admin/ToastProvider.jsx';
-import { getProfileBundle, updateMyProfile, uploadAvatar } from '../api/users.js';
+import { getProfileBundle, updateMyProfile, uploadAvatar, followUser } from '../api/users.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
 import { getCurrentUsername, mergeStoredUser } from '../utils/auth.js';
 
@@ -63,6 +63,8 @@ export default function Profile() {
   // v71 ROOT FIX: تتبع حالة التحميل والخطأ بشكل صحيح حتى لا تعلق الصفحة
   // على "جارٍ تحميل الملف الشخصي..." للأبد عند بطء/فشل الخادم
   const [loading, setLoading] = useState(true);
+  // ✅ FIX v82 (زر المتابعة لا يستجيب): حالة تنفيذ المتابعة لتعطيل النقر المزدوج
+  const [followBusy, setFollowBusy] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [activeTab, setActiveTab] = useState('posts');
   const [showAnalytics, setShowAnalytics] = useState(false);
@@ -155,7 +157,26 @@ export default function Profile() {
     }
 
     // v71 ROOT FIX: safety timeout — لا تترك الصفحة عالقة للأبد
+    // v81 FIX: تقليل المدة من 8s إلى 2500ms + إظهار skeleton فوري تفاعلي
+    //          حتى لا يشعر المستخدم بأن الصفحة معلّقة أو غير قابلة للتفاعل.
     let didTimeout = false;
+    // ⚡ v81: إذا لا يوجد أي profile محلياً، أظهر skeleton فارغ تفاعلي فوراً
+    //        لكي تصبح الصفحة قابلة للتفاعل بلا انتظار — لا انتظار 8 ثوانٍ.
+    if (!profile && !localPreview) {
+      setProfile({
+        user: {
+          username: myUsername,
+          avatar: '',
+          profile: { bio: '', cover_photo: '' },
+        },
+        counts: { posts: 0, followers: 0, following: 0 },
+        posts: [],
+        archived_posts: [],
+        saved_posts: [],
+        _isStale: true,
+        _isPlaceholder: true,
+      });
+    }
     const safetyTimer = setTimeout(() => {
       didTimeout = true;
       if (mySeq !== requestSeqRef.current || myUsername !== username) return;
@@ -173,7 +194,7 @@ export default function Profile() {
         _isStale: true,
       });
       setLoadError('الخادم يستعيد العمل، جارٍ المحاولة في الخلفية...');
-    }, 8000);
+    }, 2500);
 
     try {
       const { data } = await getProfileBundle(myUsername);
@@ -234,6 +255,66 @@ export default function Profile() {
       cover_photo: profile?.user?.profile?.cover_photo || '',
     });
     setShowEditProfile(true);
+  };
+
+  // ✅ FIX v82 (زر المتابعة لا يستجيب في ملف الآخرين):
+  // الزر في Profile.jsx لم يكن لديه onClick أصلاً. أضفنا دالة حقيقية
+  // تستدعي followUser مع optimistic UI و error rollback.
+  const handleFollowClick = async () => {
+    if (followBusy) return;
+    const targetUsername = profile?.user?.username;
+    if (!targetUsername) return;
+    setFollowBusy(true);
+    // Optimistic UI
+    const wasFollowing = Boolean(profile?.is_following || profile?.following);
+    const oldFollowers = Number(profile?.counts?.followers ?? profile?.followers_count ?? 0);
+    const newFollowing = !wasFollowing;
+    const newFollowers = Math.max(0, oldFollowers + (newFollowing ? 1 : -1));
+    setProfile((prev) => prev ? ({
+      ...prev,
+      is_following: newFollowing,
+      following: newFollowing,
+      counts: {
+        ...(prev.counts || {}),
+        followers: newFollowers,
+      },
+      followers_count: newFollowers,
+    }) : prev);
+    try {
+      const response = await followUser(targetUsername);
+      // احترم الحالة الفعلية من الخادم إن وفرها
+      const serverFollowing = response?.data?.following;
+      if (typeof serverFollowing === 'boolean' && serverFollowing !== newFollowing) {
+        setProfile((prev) => prev ? ({
+          ...prev,
+          is_following: serverFollowing,
+          following: serverFollowing,
+        }) : prev);
+      }
+      pushToast({
+        type: 'success',
+        title: newFollowing ? 'تمت المتابعة ✅' : 'تم إلغاء المتابعة',
+      });
+    } catch (error) {
+      // Rollback
+      setProfile((prev) => prev ? ({
+        ...prev,
+        is_following: wasFollowing,
+        following: wasFollowing,
+        counts: {
+          ...(prev.counts || {}),
+          followers: oldFollowers,
+        },
+        followers_count: oldFollowers,
+      }) : prev);
+      pushToast({
+        type: 'error',
+        title: 'تعذر تحديث المتابعة',
+        description: error?.response?.data?.detail || error?.message,
+      });
+    } finally {
+      setFollowBusy(false);
+    }
   };
 
   const handleThemeChange = async (newTheme) => {
@@ -430,7 +511,7 @@ export default function Profile() {
 
   return (
     <MainLayout>
-      <section className="profile-page desktop-post mobile-post" dir="rtl" style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}>
+      <section className="profile-page desktop-post mobile-post ym-profile-page" data-page="profile" dir="rtl" style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}>
         <Card className="profile-hero-card">
           {coverPhoto ? (
             <div className="profile-cover-banner" style={{ backgroundImage: `url(${coverPhoto})` }} />
@@ -480,7 +561,16 @@ export default function Profile() {
                       >
                         💬 مراسلة
                       </Button>
-                      <Button size="small">╋ متابعة</Button>
+                      {/* ✅ FIX v82: زر المتابعة أصبح يستجيب (يستدعي handleFollowClick) */}
+                      <Button
+                        size="small"
+                        variant={(profile.is_following || profile.following) ? 'secondary' : 'primary'}
+                        onClick={handleFollowClick}
+                        loading={followBusy}
+                        disabled={followBusy}
+                      >
+                        {(profile.is_following || profile.following) ? '✓ تتابعه' : '＋ متابعة'}
+                      </Button>
                     </>
                   )}
                 </div>

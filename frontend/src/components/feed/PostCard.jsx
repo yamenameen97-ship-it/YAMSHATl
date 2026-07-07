@@ -13,9 +13,14 @@ import {
   hideComment,
   likeComment,
   pinComment,
+  reactToComment,
   reportComment,
+  reportPost,
   savePost,
   sharePost,
+  togglePostArchived,
+  togglePostHidden,
+  toggleMutePostAuthor,
   updateComment,
   updatePost,
 } from '../../api/posts.js';
@@ -202,25 +207,58 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
   const posterUrl = useMemo(() => getPosterUrl(post), [post]);
   const hasVideoMedia = useMemo(() => isVideoPost(post), [post]);
 
-  const persistPostPref = (key, value, targetType = 'post') => {
+  // v83.8: تم التحويل من localStorage إلى API سحابي يحفظ في قاعدة البيانات.
+  // نحتفظ بنسخة محلية mirror فقط لتقليل الوميض (optimistic) ثم نزامن مع الخادم.
+  const persistPostPref = async (key, value, targetType = 'post') => {
     const currentPrefs = loadPostPrefs();
     let nextPrefs = currentPrefs;
+    let apiCall = null;
+    let optimisticFlag = null;
 
     if (targetType === 'author') {
-      nextPrefs = { ...currentPrefs, mutedAuthors: toggleListValue(currentPrefs.mutedAuthors, value) };
-      setPostPrefsState((prev) => ({ ...prev, muted: nextPrefs.mutedAuthors.includes(value) }));
+      const nextList = toggleListValue(currentPrefs.mutedAuthors, value);
+      nextPrefs = { ...currentPrefs, mutedAuthors: nextList };
+      optimisticFlag = nextList.includes(value);
+      setPostPrefsState((prev) => ({ ...prev, muted: optimisticFlag }));
+      apiCall = () => toggleMutePostAuthor(post.id, optimisticFlag);
     } else if (key === 'hidden') {
-      nextPrefs = { ...currentPrefs, hiddenPosts: toggleListValue(currentPrefs.hiddenPosts, value) };
-      setPostPrefsState((prev) => ({ ...prev, hidden: nextPrefs.hiddenPosts.includes(value) }));
+      const nextList = toggleListValue(currentPrefs.hiddenPosts, value);
+      nextPrefs = { ...currentPrefs, hiddenPosts: nextList };
+      optimisticFlag = nextList.includes(value);
+      setPostPrefsState((prev) => ({ ...prev, hidden: optimisticFlag }));
+      apiCall = () => togglePostHidden(value, optimisticFlag);
     } else if (key === 'archived') {
-      nextPrefs = { ...currentPrefs, archivedPosts: toggleListValue(currentPrefs.archivedPosts, value) };
-      setPostPrefsState((prev) => ({ ...prev, archived: nextPrefs.archivedPosts.includes(value) }));
+      const nextList = toggleListValue(currentPrefs.archivedPosts, value);
+      nextPrefs = { ...currentPrefs, archivedPosts: nextList };
+      optimisticFlag = nextList.includes(value);
+      setPostPrefsState((prev) => ({ ...prev, archived: optimisticFlag }));
+      apiCall = () => togglePostArchived(value, optimisticFlag);
     } else if (key === 'reported') {
-      nextPrefs = { ...currentPrefs, reportedPosts: toggleListValue(currentPrefs.reportedPosts, value) };
-      setPostPrefsState((prev) => ({ ...prev, reported: nextPrefs.reportedPosts.includes(value) }));
+      const nextList = toggleListValue(currentPrefs.reportedPosts, value);
+      nextPrefs = { ...currentPrefs, reportedPosts: nextList };
+      optimisticFlag = nextList.includes(value);
+      setPostPrefsState((prev) => ({ ...prev, reported: optimisticFlag }));
+      apiCall = () => reportPost(value, 'abuse');
     }
 
-    savePostPrefs(nextPrefs);
+    savePostPrefs(nextPrefs); // mirror محلي offline-friendly
+
+    if (apiCall) {
+      try {
+        await apiCall();
+      } catch (error) {
+        // Rollback optimistic UI on failure
+        savePostPrefs(currentPrefs);
+        setPostPrefsState((prev) => ({
+          ...prev,
+          hidden: currentPrefs.hiddenPosts.includes(value),
+          archived: currentPrefs.archivedPosts.includes(value),
+          muted: currentPrefs.mutedAuthors.includes(value),
+          reported: currentPrefs.reportedPosts.includes(value),
+        }));
+        pushToast({ type: 'error', title: 'تعذر حفظ التفضيل', description: error?.response?.data?.detail || error?.message || 'فشل الاتصال' });
+      }
+    }
   };
 
   const refreshComments = async ({ page = 1, append = false, sortBy = commentsSortBy } = {}) => {
@@ -468,12 +506,31 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
     pushToast({ type: 'success', title: 'تم تجهيز الاقتباس في صندوق النشر' });
   };
 
-  const handleCommentReaction = (commentId, emoji) => {
+  // v83.8: حفظ تفاعلات التعليق في قاعدة البيانات السحابية (كانت محلية فقط)
+  const handleCommentReaction = async (commentId, emoji) => {
+    // Optimistic update
     setComments((prev) => mapCommentsTree(prev, (item) => (
       String(item.id) === String(commentId)
         ? { ...item, reactions: { ...(item.reactions || {}), [emoji]: Number(item.reactions?.[emoji] || 0) + 1 } }
         : item
     )));
+    try {
+      const { data } = await reactToComment(commentId, emoji);
+      // Sync with server's authoritative counts
+      setComments((prev) => mapCommentsTree(prev, (item) => (
+        String(item.id) === String(commentId)
+          ? { ...item, reactions: data?.reactions || {}, my_reaction: data?.my_reaction || null }
+          : item
+      )));
+    } catch (error) {
+      // Revert optimistic increment on failure
+      setComments((prev) => mapCommentsTree(prev, (item) => (
+        String(item.id) === String(commentId)
+          ? { ...item, reactions: { ...(item.reactions || {}), [emoji]: Math.max(0, Number(item.reactions?.[emoji] || 1) - 1) } }
+          : item
+      )));
+      pushToast({ type: 'error', title: 'تعذر حفظ التفاعل', description: error?.response?.data?.detail || error?.message });
+    }
   };
 
   if (postPrefsState.hidden || postPrefsState.archived || postPrefsState.muted) {

@@ -19,7 +19,7 @@ from app.models.notification import Notification
 from app.models.user import User
 from app.models.user_block import UserBlock
 from app.services.chat_realtime import mark_messages_delivered, mark_messages_seen_for_sender, serialize_message
-from app.services.encryption_service import encrypt_message
+from app.services.encryption_service import encrypt_message, decrypt_message
 from app.services.media_service import scan_media_for_malware
 from app.services.chat_features import (
     recall_message,
@@ -786,44 +786,85 @@ def apply_retention(payload: dict = Body(...), db: Session = Depends(get_db), cu
 
 
 @router.get('/chat_threads')
-def get_chat_threads(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    conversations = db.query(Message).filter(
-        or_(Message.sender_id == current_user.id, Message.receiver_id == current_user.id)
-    ).order_by(Message.created_at.desc()).all()
-    seen: set[str] = set()
+def get_chat_threads(
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # v83.7 FIX #2/#4:
+    #  - قبل: .all() بلا حد → استرجاع كل رسائل المستخدم مدى الحياة في الذاكرة (تدهور خطير للأداء).
+    #  - قبل: last_message = message.content = نص مشفَّر '[ENCRYPTED]...' يظهر للمستخدم في القائمة.
+    # الحل: نتصفح تنازلياً بدفعات صغيرة حتى نجمع limit-محادثات، ونفكّ التشفير لعرض معاينة نصيّة نظيفة.
     result: list[dict] = []
+    seen: set[str] = set()
+    page_size = max(limit * 4, 100)  # مضاعف لأن رسائل عدة قد تخص نفس الطرف
+    offset = 0
+    hard_stop = 5000  # سقف مطلق يمنع scan مفتوح لو حساب فيه ملايين الرسائل
 
-    for message in conversations:
-        peer_id = message.receiver_id if message.sender_id == current_user.id else message.sender_id
-        peer = db.query(User).filter(User.id == peer_id, User.is_active.is_(True)).first()
-        if peer is None or peer.username in seen:
-            continue
-        relationship = _block_status(db, current_user.id, peer.id)
-        if not relationship['can_chat']:
-            continue
-        seen.add(peer.username)
-        unread_count = db.query(Message).filter(
-            Message.sender_id == peer.id,
-            Message.receiver_id == current_user.id,
-            Message.is_seen.is_(False),
-        ).count()
-        presence = _presence_payload(peer)
-        result.append({
-            'name': peer.username,
-            'username': peer.username,
-            'avatar': peer.avatar,
-            'last_message': 'تم حذف الرسالة' if message.deleted_at else (message.content or ''),
-            'created_at': message.created_at.isoformat() if message.created_at else None,
-            'unread_count': int(unread_count),
-            'status': 'seen' if message.is_seen else 'delivered' if message.is_delivered else 'sent',
-            'last_message_status': 'seen' if message.is_seen else 'delivered' if message.is_delivered else 'sent',
-            'last_message_sender': current_user.username if message.sender_id == current_user.id else peer.username,
-            'last_message_type': message.message_type or ('image' if message.media_url else 'text'),
-            'last_message_deleted': bool(message.deleted_at),
-            'last_message_id': message.id,
-            'presence': presence,
-            'last_seen': presence['last_seen'],
-        })
+    while len(result) < limit and offset < hard_stop:
+        batch = (
+            db.query(Message)
+            .filter(or_(Message.sender_id == current_user.id, Message.receiver_id == current_user.id))
+            .order_by(Message.id.desc())
+            .offset(offset)
+            .limit(page_size)
+            .all()
+        )
+        if not batch:
+            break
+        for message in batch:
+            if len(result) >= limit:
+                break
+            peer_id = message.receiver_id if message.sender_id == current_user.id else message.sender_id
+            peer = db.query(User).filter(User.id == peer_id, User.is_active.is_(True)).first()
+            if peer is None or peer.username in seen:
+                continue
+            relationship = _block_status(db, current_user.id, peer.id)
+            if not relationship['can_chat']:
+                continue
+            seen.add(peer.username)
+
+            unread_count = db.query(Message).filter(
+                Message.sender_id == peer.id,
+                Message.receiver_id == current_user.id,
+                Message.is_seen.is_(False),
+            ).count()
+
+            # v83.7 FIX #2 — بناء معاينة نصيّة نظيفة (فك التشفير + fallbacks).
+            if message.deleted_at:
+                preview = 'تم حذف الرسالة'
+            else:
+                preview = (getattr(message, 'message', None) or '').strip()
+                if not preview and message.content:
+                    try:
+                        preview = (decrypt_message(message.content) or '').strip()
+                    except Exception:
+                        preview = ''
+                if not preview and message.media_url:
+                    preview = '📎 وسائط'
+                if len(preview) > 140:
+                    preview = preview[:137] + '...'
+
+            presence = _presence_payload(peer)
+            result.append({
+                'name': peer.username,
+                'username': peer.username,
+                'avatar': peer.avatar,
+                'last_message': preview,
+                'created_at': message.created_at.isoformat() if message.created_at else None,
+                'unread_count': int(unread_count),
+                'status': 'seen' if message.is_seen else 'delivered' if message.is_delivered else 'sent',
+                'last_message_status': 'seen' if message.is_seen else 'delivered' if message.is_delivered else 'sent',
+                'last_message_sender': current_user.username if message.sender_id == current_user.id else peer.username,
+                'last_message_type': message.message_type or ('image' if message.media_url else 'text'),
+                'last_message_deleted': bool(message.deleted_at),
+                'last_message_id': message.id,
+                'presence': presence,
+                'last_seen': presence['last_seen'],
+            })
+        if len(batch) < page_size:
+            break
+        offset += page_size
     return result
 
 

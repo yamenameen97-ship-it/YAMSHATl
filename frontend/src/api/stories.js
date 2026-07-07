@@ -75,6 +75,12 @@ export const getStories = async () => {
   return normalizeStoriesResponse(res, 'list');
 };
 
+// v83.9 — جلب قصة واحدة (كان endpoint مفقود)
+export const getStoryById = async (storyId) => {
+  const res = await API.get(`/stories/${storyId}`);
+  return normalizeStoriesResponse(res, 'single');
+};
+
 export const getStoriesGrouped = async () => {
   const res = await API.get('/stories/grouped');
   return normalizeStoriesResponse(res, 'group');

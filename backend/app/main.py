@@ -333,6 +333,14 @@ async def on_startup():
     except Exception as exc:
         logger.warning(f"   ⚠️  Realtime hub startup soft-fail: {exc}")
 
+    # v83.8: تشغيل جدولة نشر المنشورات المؤجلة (كان placeholder فقط)
+    try:
+        from app.services.background_tasks import start_post_scheduler
+        start_post_scheduler()
+        logger.info("   🗓️  Scheduled-posts sweeper started (60s interval)")
+    except Exception as exc:
+        logger.warning(f"   ⚠️  Post scheduler startup soft-fail: {exc}")
+
 
 @app.on_event("shutdown")
 async def on_shutdown():

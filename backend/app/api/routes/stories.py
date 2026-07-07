@@ -1,35 +1,26 @@
-"""مسارات الستوري — نظام محسّن v59.10.
+"""مسارات الستوري — v84.0 (تحديث v83.9).
 
-التغييرات في v59.10:
-- إضافة `/stories/{story_id}/viewers` لقائمة من شاهد قصتي (للمالك فقط).
-- إضافة `/stories/{story_id}/poll/vote` للتصويت على استطلاع داخل القصة.
-- إضافة `/stories/{story_id}/highlight/title` لتسمية قصة مميزة.
-- بث WebSocket عند نشر قصة جديدة لتنبيه الأصدقاء فوراً.
-- إشعار المستخدمين المذكورين في القصة (mentions).
-- تمرير viewer_user_id لـ mark_seen حتى لا يُحسب المالك مشاهداً لقصته.
-- المسار `add_story` يستخدم الآن نفس story_store.add_story (تم تحديثه).
+كل عملية تُحفظ الآن مباشرة في قاعدة البيانات السحابية (Postgres).
+- لا اعتماد على story_store.json (filesystem محلي غير ثابت على Render).
+- المشاهدات والردود والتفاعلات والاستطلاعات و highlights كلها في جداول ORM.
+- إضافة GET /stories/{story_id} لجلب قصة واحدة (كانت مفقودة سابقاً).
+
+v84.0:
+- 403 عند محاولة مشاهدة/تفاعل مع قصة من محظور (UserBlock).
+- avatar_url وuser_avatar في الردود.
+- POST /stories/purge_expired (admin) — تشغيل يدوي للتنظيف.
+
+توافق خلفي كامل مع الواجهة الحالية (نفس أسماء الحقول في الرد).
 """
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile, status
-from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.api.routes.upload import save_upload
 from app.core.dependencies import get_current_user, get_db
-from app.core.story_store import story_store
 from app.models.user import User
-
-try:
-    from app.models.friendship import Friendship, FRIENDSHIP_STATUS_ACCEPTED
-except Exception:  # pragma: no cover
-    Friendship = None  # type: ignore[assignment]
-    FRIENDSHIP_STATUS_ACCEPTED = 'accepted'
-
-try:
-    from app.models.close_friend import CloseFriend  # type: ignore
-except Exception:  # pragma: no cover
-    CloseFriend = None  # type: ignore[assignment]
+from app.services import story_db_service as story_svc
 
 # Hook اختياري لإشعارات الـ WebSocket / الإشعارات الداخلية
 try:
@@ -40,73 +31,39 @@ except Exception:  # pragma: no cover
 router = APIRouter()
 
 
-# ============================== أدوات مساعدة ==============================
-def _load_friend_ids(db: Session, user_id: int) -> list[int]:
-    """يحمّل أصدقاء المستخدم المقبولين فقط (علاقة ثنائية)."""
-    if Friendship is None:
-        return []
-    try:
-        rows = (
-            db.query(Friendship)
-            .filter(
-                and_(
-                    Friendship.status == FRIENDSHIP_STATUS_ACCEPTED,
-                    or_(Friendship.requester_id == user_id, Friendship.addressee_id == user_id),
-                )
-            )
-            .all()
-        )
-    except Exception:
-        return []
-    ids: set[int] = set()
-    for row in rows:
-        other = row.addressee_id if row.requester_id == user_id else row.requester_id
-        if other and other != user_id:
-            ids.add(int(other))
-    return list(ids)
-
-
-def _load_close_friend_ids(db: Session, user_id: int) -> list[int]:
-    """يحمّل قائمة الأصدقاء المقربين (Close Friends) إن وُجد الجدول."""
-    if CloseFriend is None:
-        return []
-    try:
-        rows = db.query(CloseFriend).filter(CloseFriend.owner_id == user_id).all()
-        return [int(r.friend_id) for r in rows if getattr(r, 'friend_id', None)]
-    except Exception:
-        return []
-
-
 def _emit_notification(event: str, payload: dict) -> None:
-    """يحاول استخدام موديول الإشعارات إن وُجد — صامت عند الفشل."""
     if _notifications_module is None:
         return
     try:
-        # محاولة استدعاء أحد الأشكال الشائعة للأكواد الحالية
-        send = getattr(_notifications_module, 'broadcast_event', None) \
-            or getattr(_notifications_module, 'emit', None) \
+        send = (
+            getattr(_notifications_module, 'broadcast_event', None)
+            or getattr(_notifications_module, 'emit', None)
             or getattr(_notifications_module, 'send_notification', None)
+        )
         if callable(send):
             send(event, payload)
     except Exception:
         return
 
 
-# ============================== المسارات ==============================
+def _parse_story_id(story_id: str) -> int:
+    try:
+        return int(str(story_id).strip())
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='invalid story id',
+        ) from exc
+
+
+# ============================== قائمة القصص ==============================
 @router.get('/stories')
 def get_stories(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """قصص الأصدقاء فقط (مسار مسطّح للتوافق الخلفي)."""
-    friend_ids = _load_friend_ids(db, current_user.id)
-    close_ids = _load_close_friend_ids(db, current_user.id)
-    return story_store.list_stories(
-        viewer_username=current_user.username,
-        viewer_user_id=current_user.id,
-        friend_ids=friend_ids,
-        close_friend_ids=close_ids,
-    )
+    return story_svc.list_stories(db, viewer_user_id=current_user.id)
 
 
 @router.get('/stories/grouped')
@@ -114,32 +71,56 @@ def get_stories_grouped(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """قصص مجمّعة حسب المستخدم — لاستخدامها في الشريط الدائري."""
-    friend_ids = _load_friend_ids(db, current_user.id)
-    close_ids = _load_close_friend_ids(db, current_user.id)
-    return story_store.list_grouped_stories(
-        viewer_username=current_user.username,
+    """قصص مجمّعة حسب المستخدم — للشريط الدائري."""
+    return story_svc.list_grouped_stories(
+        db,
         viewer_user_id=current_user.id,
-        friend_ids=friend_ids,
-        close_friend_ids=close_ids,
+        viewer_username=current_user.username,
     )
 
 
 @router.get('/stories/highlights')
-def get_highlights(current_user: User = Depends(get_current_user)):
-    return story_store.get_highlights(current_user.id)
+def get_highlights(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return story_svc.get_highlights(db, current_user.id)
 
 
 @router.get('/stories/archive')
-def get_archive(current_user: User = Depends(get_current_user)):
-    return story_store.get_archive(current_user.id)
+def get_archive(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return story_svc.get_archive(db, current_user.id)
 
 
 @router.get('/stories/analytics/summary')
-def get_story_analytics(current_user: User = Depends(get_current_user)):
-    return story_store.analytics_summary(current_user.id)
+def get_story_analytics(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return story_svc.analytics_summary(db, current_user.id)
 
 
+# ============================== قصة واحدة ==============================
+@router.get('/stories/{story_id}')
+def get_single_story(
+    story_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """جلب قصة واحدة — جديد في v83.9 (كان مفقوداً)."""
+    sid = _parse_story_id(story_id)
+    try:
+        return story_svc.get_story(db, sid, current_user.id)
+    except KeyError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
+# ============================== نشر قصة ==============================
 @router.post('/add_story', status_code=status.HTTP_201_CREATED)
 def add_story(
     file: UploadFile = File(...),
@@ -157,22 +138,22 @@ def add_story(
     is_close_friends: bool = Form(default=False),
     auto_delete_hours: int = Form(default=24),
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     upload_result = save_upload(file)
     media_url = upload_result.get('file_url') or upload_result.get('url')
     if not media_url:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Story media upload failed')
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='Story media upload failed',
+        )
 
-    # تطبيق السياسة: لا قصص عامة. أي محاولة لرفع public تحوَّل إلى friends.
     resolved_privacy = 'close_friends' if is_close_friends else (privacy or 'friends')
     if resolved_privacy == 'public':
         resolved_privacy = 'friends'
 
-    # ربط hooks للإشعارات (يُعاد تركيبها في كل طلب — رخيص جداً)
-    story_store.set_mention_hook(lambda payload: _emit_notification('story:mention', payload))
-    story_store.set_new_story_hook(lambda payload: _emit_notification('story:new', payload))
-
-    result = story_store.add_story(
+    story = story_svc.add_story(
+        db,
         user_id=current_user.id,
         username=current_user.username,
         media_url=media_url,
@@ -191,66 +172,122 @@ def add_story(
             'is_close_friends': bool(is_close_friends),
         },
     )
+    result = story_svc.serialize_story(db, story, viewer_user_id=current_user.id)
+
+    # إشعارات mentions
+    for mention in result.get('mentions', []):
+        _emit_notification('story:mention', {
+            'story_id': result['id'],
+            'owner_id': current_user.id,
+            'owner_username': current_user.username,
+            'mentioned_username': mention,
+        })
+    _emit_notification('story:new', {
+        'story_id': result['id'],
+        'owner_id': current_user.id,
+        'owner_username': current_user.username,
+        'privacy': result.get('privacy'),
+    })
     return result
 
 
+# ============================== تفاعلات ==============================
 @router.post('/stories/{story_id}/view')
-def view_story(story_id: str, current_user: User = Depends(get_current_user)):
+def view_story(
+    story_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    sid = _parse_story_id(story_id)
     try:
-        return story_store.mark_seen(story_id, current_user.username, viewer_user_id=current_user.id)
+        return story_svc.mark_seen(db, sid, current_user.id, current_user.username)
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except PermissionError as exc:  # v84.0 — محظور
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
 
 @router.post('/stories/{story_id}/react')
-def react_story(story_id: str, payload: dict = Body(...), current_user: User = Depends(get_current_user)):
+def react_story(
+    story_id: str,
+    payload: dict = Body(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    sid = _parse_story_id(story_id)
     try:
-        return story_store.add_reaction(
-            story_id,
+        return story_svc.add_reaction(
+            db, sid,
             str(payload.get('emoji') or '🔥'),
+            current_user.id,
             current_user.username,
-            viewer_user_id=current_user.id,
         )
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except PermissionError as exc:  # v84.0 — محظور
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
 
 @router.post('/stories/{story_id}/reply')
-def reply_story(story_id: str, payload: dict = Body(...), current_user: User = Depends(get_current_user)):
+def reply_story(
+    story_id: str,
+    payload: dict = Body(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    sid = _parse_story_id(story_id)
     try:
-        result = story_store.add_reply(story_id, current_user.username, str(payload.get('text') or ''))
-        # إشعار صاحب القصة بالرد (إن أمكن)
+        result = story_svc.add_reply(
+            db, sid, current_user.id, current_user.username,
+            str(payload.get('text') or ''),
+        )
         _emit_notification('story:reply', {
-            'story_id': story_id,
+            'story_id': str(sid),
             'from_username': current_user.username,
             'from_user_id': current_user.id,
         })
         return result
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except PermissionError as exc:  # v84.0 — محظور
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.post('/stories/{story_id}/poll/vote')
-def vote_story_poll(story_id: str, payload: dict = Body(...), current_user: User = Depends(get_current_user)):
-    """تصويت على استطلاع داخل قصة."""
+def vote_story_poll(
+    story_id: str,
+    payload: dict = Body(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    sid = _parse_story_id(story_id)
     try:
-        return story_store.vote_poll(
-            story_id,
+        return story_svc.vote_poll(
+            db, sid,
             int(payload.get('option_index') or 0),
+            current_user.id,
             current_user.username,
         )
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except PermissionError as exc:  # v84.0 — محظور
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
+# ============================== حذف / Highlights ==============================
 @router.delete('/stories/{story_id}')
-def delete_story(story_id: str, current_user: User = Depends(get_current_user)):
+def delete_story(
+    story_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    sid = _parse_story_id(story_id)
     try:
-        return story_store.delete_story(story_id, current_user.id)
+        return story_svc.delete_story(db, sid, current_user.id)
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except PermissionError as exc:
@@ -262,13 +299,14 @@ def highlight_story(
     story_id: str,
     payload: Optional[dict] = Body(default=None),
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    """تبديل حالة highlight (مع عنوان اختياري)."""
+    sid = _parse_story_id(story_id)
     title = ''
     if isinstance(payload, dict):
         title = str(payload.get('title') or '').strip()
     try:
-        return story_store.toggle_highlight(story_id, current_user.id, title=title)
+        return story_svc.toggle_highlight(db, sid, current_user.id, title=title)
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except PermissionError as exc:
@@ -280,10 +318,13 @@ def rename_highlight(
     story_id: str,
     payload: dict = Body(...),
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    """تسمية highlight (يحوّل القصة إلى highlight ضمنياً)."""
+    sid = _parse_story_id(story_id)
     try:
-        return story_store.set_highlight_title(story_id, current_user.id, str(payload.get('title') or ''))
+        return story_svc.set_highlight_title(
+            db, sid, current_user.id, str(payload.get('title') or ''),
+        )
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except PermissionError as exc:
@@ -291,10 +332,14 @@ def rename_highlight(
 
 
 @router.get('/stories/{story_id}/viewers')
-def get_story_viewers(story_id: str, current_user: User = Depends(get_current_user)):
-    """قائمة من شاهد قصة معينة — للمالك فقط."""
+def get_story_viewers(
+    story_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    sid = _parse_story_id(story_id)
     try:
-        return story_store.get_viewers(story_id, current_user.id)
+        return story_svc.get_viewers(db, sid, current_user.id)
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except PermissionError as exc:

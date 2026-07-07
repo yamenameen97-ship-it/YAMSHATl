@@ -1,3 +1,28 @@
+# =====================================================
+# v83.4 fix (NEW GAP #3 — الجزء الثاني):
+# النسخة السابقة كانت هيكل Deployment صرف بلا:
+#   - PersistentVolumeClaim ⇒ فقدان كل البيانات عند أي إعادة نشر لـ pod.
+#   - POSTGRES_USER / POSTGRES_DB / POSTGRES_PASSWORD ⇒ postgres:16-alpine
+#     يقلع بمستخدم افتراضي "postgres" وقاعدة بيانات فارغة "postgres" وبلا
+#     كلمة مرور ⇒ رفض اتصال كامل من backend الذي يستخدم DATABASE_URL
+#     بصيغة "postgres:PASSWORD@postgres:5432/yamshat".
+#   - resources / healthcheck ⇒ Kubernetes ينشر بلا حدود ⇒ OOM في cluster
+#     مشترك، وبلا readiness ⇒ gateway/backend يبدآن قبل جهوزية DB ⇒ crash-loop.
+#
+# الآن مطابق بايت-ببايت لـ k8s/03-postgres.yaml (نفس PVC، نفس env vars من
+# ConfigMap/Secret الموحّد yamshat-config + yamshat-secrets).
+# =====================================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: app-prod
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -5,6 +30,8 @@ metadata:
   namespace: app-prod
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: postgres
@@ -19,6 +46,46 @@ spec:
           ports:
             - containerPort: 5432
               name: db
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: yamshat-config
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: yamshat-config
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: yamshat-secrets
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ['pg_isready', '-U', 'postgres', '-d', 'yamshat']
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ['pg_isready', '-U', 'postgres']
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 150m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-data
 ---
 apiVersion: v1
 kind: Service

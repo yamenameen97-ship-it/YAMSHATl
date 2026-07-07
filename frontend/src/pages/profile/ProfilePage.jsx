@@ -13,6 +13,7 @@ const TABS = {
   ARCHIVE: 'archive',
   SAVED: 'saved',
   PINNED: 'pinned',
+  TAGGED: 'tagged',
 };
 
 /**
@@ -111,6 +112,8 @@ export default function ProfilePage() {
         return profile.saved_posts || [];
       case TABS.PINNED:
         return pinnedPosts;
+      case TABS.TAGGED:
+        return profile.tagged_posts || [];
       default:
         return [];
     }
@@ -177,6 +180,7 @@ export default function ProfilePage() {
               archive: 'الأرشيف',
               saved: 'المحفوظات',
               pinned: '📌 المثبتة',
+              tagged: '🏷️ المُعلَّمة',
             };
 
             return (

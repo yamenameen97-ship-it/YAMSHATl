@@ -55,7 +55,7 @@ class GroupRepository {
         onSuccess: (ApiMessage) -> Unit,
         onError: (String) -> Unit
     ) {
-        val body = mapOf(
+        val body: Map<String, Any?> = mapOf(
             "name" to name,
             "description" to description,
             "category" to category
@@ -224,10 +224,11 @@ class GroupRepository {
     fun promoteGroupMember(
         groupId: Int,
         username: String,
+        role: String = "admin",
         onSuccess: (ApiMessage) -> Unit,
         onError: (String) -> Unit
     ) {
-        apiService.promoteGroupMember(groupId, username).enqueue(object : Callback<ApiMessage> {
+        apiService.promoteGroupMember(groupId, username, mapOf("role" to role)).enqueue(object : Callback<ApiMessage> {
             override fun onResponse(call: Call<ApiMessage>, response: Response<ApiMessage>) {
                 if (response.isSuccessful) {
                     response.body()?.let { message ->
@@ -260,13 +261,12 @@ class GroupRepository {
         onError: (String) -> Unit
     ) {
         val body = mapOf(
-            "group_id" to groupId,
             "content" to content,
             "sender_avatar" to senderAvatar,
             "sender_display_name" to senderDisplayName
         )
         
-        apiService.sendGroupMessage(body).enqueue(object : Callback<ApiMessage> {
+        apiService.sendGroupMessage(groupId, body).enqueue(object : Callback<ApiMessage> {
             override fun onResponse(call: Call<ApiMessage>, response: Response<ApiMessage>) {
                 if (response.isSuccessful) {
                     response.body()?.let { message ->
@@ -318,7 +318,7 @@ class GroupRepository {
      */
     fun deleteGroupMessage(
         groupId: Int,
-        messageId: Int,
+        messageId: String,
         onSuccess: (ApiMessage) -> Unit,
         onError: (String) -> Unit
     ) {
@@ -348,7 +348,7 @@ class GroupRepository {
      */
     fun addGroupMessageReaction(
         groupId: Int,
-        messageId: Int,
+        messageId: String,
         emoji: String,
         onSuccess: (ApiMessage) -> Unit,
         onError: (String) -> Unit
@@ -379,7 +379,7 @@ class GroupRepository {
      */
     fun markGroupMessageSeen(
         groupId: Int,
-        messageId: Int,
+        messageId: String,
         onSuccess: (ApiMessage) -> Unit,
         onError: (String) -> Unit
     ) {

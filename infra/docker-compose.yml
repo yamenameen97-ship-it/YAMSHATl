@@ -2,6 +2,22 @@ version: '3.9'
 
 # v59.4: تم حذف chat-service. الدردشة الآن موحَّدة في backend monolith
 #         (المصدر الوحيد للحقيقة — يستخدم Message model في PostgreSQL).
+#
+# v83.3 fix (NEW GAP #4):
+#   كان ينقص postgres service بالكامل. الـ backend يشير إلى
+#   postgresql+psycopg2://postgres:postgres@postgres:5432/yamshat
+#   لكن compose لا يعرّف host اسمه postgres ⇒ فشل DNS داخل الشبكة
+#   عند أول اتصال بقاعدة البيانات، ورجوع الـ backend إلى SQLite fallback
+#   (كما هو موثّق في backend/RENDER_DATABASE_URLS_AR.txt). أضيف الآن.
+#   بالإضافة إلى ذلك، لم تكن هناك شبكة معرَّفة صراحة، والاعتماديات
+#   depends_on ناقصة، مما يجعل ترتيب الإقلاع غير حتمي.
+
+networks:
+  yamshat:
+    driver: bridge
+
+volumes:
+  postgres-data:
 
 services:
   gateway:
@@ -9,19 +25,24 @@ services:
     ports:
       - '8000:8000'
     environment:
-      AUTH_SERVICE_URL: http://auth-service:8000
+      AUTH_SERVICE_URL: http://backend:8000
       USER_SERVICE_URL: http://user-service:8000
-      POST_SERVICE_URL: http://post-service:8000
+      POST_SERVICE_URL: http://backend:8000
       # ⬇ v59.4: التوجيه إلى backend monolith بدلاً من chat-service محذوف
       BACKEND_SERVICE_URL: http://backend:8000
       CHAT_SERVICE_URL: http://backend:8000
       NOTIFICATION_SERVICE_URL: http://notification-service:8000
-      MEDIA_SERVICE_URL: http://media-service:8000
-      SEARCH_SERVICE_URL: http://search-service:8000
+      MEDIA_SERVICE_URL: http://backend:8000
+      SEARCH_SERVICE_URL: http://backend:8000
       BILLING_SERVICE_URL: http://billing-service:8000
       IDENTITY_SERVICE_URL: http://identity-service:8000
       I18N_SERVICE_URL: http://i18n-service:8000
       DISCOVERY_SERVICE_URL: http://discovery-ai-service:8000
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - backend
+      - redis
+    networks: [yamshat]
 
   backend:
     build: ../backend
@@ -34,39 +55,75 @@ services:
       JWT_ISSUER: ${JWT_ISSUER:-yamshat}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-yamshat-clients}
     depends_on:
+      - postgres
       - redis
+    networks: [yamshat]
+
+  # v83.3 fix: أُضيفت خدمة postgres المفقودة سابقاً.
+  # ⚠️ لضمان توافق كلمة المرور مع DATABASE_URL أعلاه، عرّفها في .env
+  # بحيث تكون POSTGRES_PASSWORD مطابقة تماماً للجزء الثاني في DATABASE_URL.
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-yamshat}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    expose:
+      - '5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-yamshat}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [yamshat]
 
   auth-service:
     build: ../services/auth-service
+    networks: [yamshat]
 
   user-service:
     build: ../services/user-service
+    networks: [yamshat]
 
   post-service:
     build: ../services/post-service
+    networks: [yamshat]
 
   # ❌ chat-service: حُذف بالكامل في v59.4 — توحيد التخزين مع backend monolith.
 
   notification-service:
     build: ../services/notification-service
+    networks: [yamshat]
 
   media-service:
     build: ../services/media-service
+    networks: [yamshat]
 
   search-service:
     build: ../services/search-service
+    networks: [yamshat]
 
   billing-service:
     build: ../services/billing-service
+    networks: [yamshat]
 
   identity-service:
     build: ../services/identity-service
+    networks: [yamshat]
 
   i18n-service:
     build: ../services/i18n-service
+    networks: [yamshat]
 
   discovery-ai-service:
     build: ../services/discovery-ai-service
+    networks: [yamshat]
 
   redis:
-    image: redis
+    image: redis:7-alpine
+    command: ['redis-server', '--appendonly', 'yes']
+    expose:
+      - '6379'
+    networks: [yamshat]

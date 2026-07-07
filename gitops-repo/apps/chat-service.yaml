@@ -1,41 +1,23 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: chat-service
-  namespace: app-prod
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: chat-service
-  template:
-    metadata:
-      labels:
-        app: chat-service
-    spec:
-      containers:
-        - name: chat-service
-          image: your-dockerhub-username/chat-service:latest
-          ports:
-            - containerPort: 8000
-              name: http
-          envFrom:
-            - configMapRef:
-                name: yamshat-config
-            - secretRef:
-                name: yamshat-secrets
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: chat-service
-  namespace: app-prod
-  labels:
-    app: chat-service
-spec:
-  selector:
-    app: chat-service
-  ports:
-    - port: 8000
-      targetPort: http
-      name: http
+# =====================================================
+# v83.2 fix (تابع لـ v59.4):
+# تم حذف Deployment/Service المستقل لـ chat-service من هنا.
+# الدردشة موحّدة الآن في backend monolith (المصدر الوحيد للحقيقة).
+#
+# تركنا هذا الملف موجوداً كـ tombstone حتى يقوم ArcgoCD/kubectl apply
+# بإزالة أي Deployment قديم اسمه chat-service كان موجوداً في العنقود
+# بفضل مسار prune=true، بدلاً من تركه ينشر image
+# "your-dockerhub-username/chat-service:latest" الذي لا يوجد.
+#
+# لا يجب إعادة إحياء chat-service إلا إذا رجعنا لبنية microservices.
+# =====================================================
+#
+# مرجع سابق (محذوف):
+#   apiVersion: apps/v1
+#   kind: Deployment
+#   metadata:
+#     name: chat-service
+#     namespace: app-prod
+#   ...
+#
+# إن احتجت مقاييس/websockets الدردشة استعمل الـ backend service:
+#   http://backend.app-prod.svc.cluster.local:8000

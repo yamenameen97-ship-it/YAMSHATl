@@ -10,9 +10,11 @@ import com.socialapp.models.SignalKeyUploadRequest
 import okhttp3.MultipartBody
 import retrofit2.Call
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Multipart
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -122,8 +124,9 @@ interface ApiService {
     @POST("notifications/read/{id}")
     fun markNotificationRead(@Path("id") id: Int): Call<ApiMessage>
 
-    @POST("create_group")
-    fun createGroup(@Body body: Map<String, String>): Call<ApiMessage>
+    // ============ Groups (v85.1 — fixed prefix `groups/`) ============
+    @POST("groups")
+    fun createGroup(@Body body: Map<String, @JvmSuppressWildcards Any?>): Call<ApiMessage>
 
     @POST("track")
     fun track(@Body body: Map<String, String>): Call<ApiMessage>
@@ -144,39 +147,48 @@ interface ApiService {
     @GET("groups")
     fun getGroups(): Call<List<com.socialapp.models.GroupInfo>>
 
-    @GET("group/{groupId}")
+    @GET("groups/{groupId}")
     fun getGroupInfo(@Path("groupId") groupId: Int): Call<com.socialapp.models.GroupInfo>
 
-    @POST("group/send_message")
-    fun sendGroupMessage(@Body body: Map<String, @JvmSuppressWildcards Any?>): Call<ApiMessage>
+    @PUT("groups/{groupId}")
+    fun updateGroup(@Path("groupId") groupId: Int, @Body body: Map<String, @JvmSuppressWildcards Any?>): Call<com.socialapp.models.GroupInfo>
 
-    @GET("group/{groupId}/messages")
+    @DELETE("groups/{groupId}")
+    fun deleteGroup(@Path("groupId") groupId: Int): Call<ApiMessage>
+
+    @POST("groups/{groupId}/messages")
+    fun sendGroupMessage(@Path("groupId") groupId: Int, @Body body: Map<String, @JvmSuppressWildcards Any?>): Call<ApiMessage>
+
+    @GET("groups/{groupId}/messages")
     fun getGroupMessages(@Path("groupId") groupId: Int, @Query("limit") limit: Int = 50): Call<List<com.socialapp.models.GroupMessage>>
 
-    @POST("group/{groupId}/message/{messageId}/delete")
-    fun deleteGroupMessage(@Path("groupId") groupId: Int, @Path("messageId") messageId: Int): Call<ApiMessage>
+    @DELETE("groups/{groupId}/messages/{messageId}")
+    fun deleteGroupMessage(@Path("groupId") groupId: Int, @Path("messageId") messageId: String): Call<ApiMessage>
 
-    @POST("group/{groupId}/message/{messageId}/reaction")
-    fun addGroupMessageReaction(@Path("groupId") groupId: Int, @Path("messageId") messageId: Int, @Body body: Map<String, String>): Call<ApiMessage>
+    @POST("groups/{groupId}/messages/{messageId}/reactions")
+    fun addGroupMessageReaction(@Path("groupId") groupId: Int, @Path("messageId") messageId: String, @Body body: Map<String, String>): Call<ApiMessage>
 
-    @POST("group/{groupId}/message/{messageId}/seen")
-    fun markGroupMessageSeen(@Path("groupId") groupId: Int, @Path("messageId") messageId: Int): Call<ApiMessage>
+    @POST("groups/{groupId}/messages/{messageId}/seen")
+    fun markGroupMessageSeen(@Path("groupId") groupId: Int, @Path("messageId") messageId: String): Call<ApiMessage>
 
-    @POST("group/{groupId}/join")
+    @POST("groups/{groupId}/join")
     fun joinGroup(@Path("groupId") groupId: Int): Call<ApiMessage>
 
-    @POST("group/{groupId}/leave")
+    @POST("groups/{groupId}/leave")
     fun leaveGroup(@Path("groupId") groupId: Int): Call<ApiMessage>
 
-    @GET("group/{groupId}/members")
+    @GET("groups/{groupId}/members")
     fun getGroupMembers(@Path("groupId") groupId: Int): Call<List<com.socialapp.models.GroupMember>>
 
-    @POST("group/{groupId}/member/{username}/remove")
+    @POST("groups/{groupId}/members/{username}/remove")
     fun removeGroupMember(@Path("groupId") groupId: Int, @Path("username") username: String): Call<ApiMessage>
 
-    @POST("group/{groupId}/member/{username}/promote")
-    fun promoteGroupMember(@Path("groupId") groupId: Int, @Path("username") username: String): Call<ApiMessage>
+    @POST("groups/{groupId}/members/{username}/role")
+    fun promoteGroupMember(@Path("groupId") groupId: Int, @Path("username") username: String, @Body body: Map<String, String> = mapOf("role" to "admin")): Call<ApiMessage>
 
-    @POST("group/{groupId}/typing")
+    @POST("groups/{groupId}/typing")
     fun groupTyping(@Path("groupId") groupId: Int, @Body body: Map<String, @JvmSuppressWildcards Any>): Call<ApiMessage>
+
+    @GET("groups/search")
+    fun searchGroups(@Query("q") query: String): Call<List<com.socialapp.models.GroupInfo>>
 }

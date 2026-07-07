@@ -1,19 +1,38 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: auth-service
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: auth
-  template:
-    metadata:
-      labels:
-        app: auth
-    spec:
-      containers:
-        - name: auth
-          image: auth-service:latest
-          ports:
-            - containerPort: 8000
+# =====================================================
+# v83.4 fix (NEW GAP #4):
+# كان هذا الملف يعرّف Deployment مستقلاً لـ auth-service:
+#   image: auth-service:latest       ⇒ ImagePullBackOff فور التطبيق
+#   containerPort: 8000              ⇒ يتصارع مع Service اسمه backend
+#   لا Service مطابق، لا env، لا probes، لا namespace
+#
+# لكن منذ v59.4 تم توحيد المصادقة (auth) داخل backend monolith. أي:
+#   - k8s/06-backend.yaml هو المصدر الوحيد للحقيقة لـ auth.
+#   - k8s/08-gateway.yaml يوجّه AUTH_SERVICE_URL → http://backend:8000
+#   - services/auth-service/ باقٍ فقط للتوثيق التاريخي.
+#
+# ترك ملف "auth-service Deployment" هنا كان قنبلة موقوتة:
+# أي مطور جديد أو سكربت CI/CD قد يشغّل `kubectl apply -f infra/k8s/`
+# ⇒ ينشر Deployment ميت بـ ImagePullBackOff، يستهلك حصة، يشوّه dashboard،
+# ويناقض قرار العمارة (monolith authoritative for auth).
+#
+# الحل: تفريغه إلى شاهد قبر (tombstone) بلا موارد.
+# =====================================================
+#
+# ⚠️ لا تُعِد إحياء Deployment لـ auth-service من هنا.
+# التوجيه الصحيح — استخدم الـ backend service الموحّد:
+#   http://backend.app-prod.svc.cluster.local:8000
+#
+# للنشر الفعلي راجع:
+#   - k8s/06-backend.yaml       (Deployment + Service الموحّد)
+#   - k8s/08-gateway.yaml       (AUTH_SERVICE_URL → backend)
+#   - gitops-repo/apps/backend.yaml
+#
+# مرجع سابق (محذوف):
+#   apiVersion: apps/v1
+#   kind: Deployment
+#   metadata:
+#     name: auth-service
+#   spec:
+#     replicas: 2
+#     ...
+#     image: auth-service:latest   ← placeholder — ImagePullBackOff

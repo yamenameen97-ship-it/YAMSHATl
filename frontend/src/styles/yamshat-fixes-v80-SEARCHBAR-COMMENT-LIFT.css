@@ -17,7 +17,12 @@
   display: block !important;
   width: 100% !important;
   box-sizing: border-box !important;
-  padding: 10px 12px 6px 12px !important;
+  /* ✅ FIX v82 (تراكب شريط البحث مع الهيدر العلوي):
+     إنزال شريط البحث للأسفل وترك مسافة واضحة بينه وبين الهيدر
+     حتى لا ينحشرا أو يتراكبا. زدنا padding-top من 10 إلى 20
+     وأضفنا margin-top إضافي لإنزاله أكثر. */
+  padding: 20px 12px 10px 12px !important;
+  margin-top: 6px !important;
   background: transparent !important;
   direction: rtl !important;
 }
@@ -80,7 +85,7 @@
 
 /* ضبط تباعد أول منشور بعد شريط البحث */
 .yam-home-mobile-page .ym-home-searchbar + .ym-feed {
-  margin-top: 4px !important;
+  margin-top: 8px !important;
   padding-top: 4px !important;
 }
 

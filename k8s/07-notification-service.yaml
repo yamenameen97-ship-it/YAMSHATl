@@ -15,7 +15,9 @@ spec:
     spec:
       containers:
         - name: notification-service
-          image: your-dockerhub-username/notification-service:latest
+          # v83.3 fix: كانت image placeholder your-dockerhub-username/notification-service:latest
+          # ⇒ ImagePullBackOff فور النشر. حُدّثت إلى registry حقيقي بإصدار مثبَّت.
+          image: yamshat/notification-service:v83.3
           ports:
             - containerPort: 8000
               name: http

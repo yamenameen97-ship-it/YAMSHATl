@@ -20,6 +20,7 @@ import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.socialapp.adapters.GroupMessageAdapter
 import com.socialapp.databinding.ActivityGroupChatBinding
 import com.socialapp.models.ApiMessage
+import com.socialapp.models.GroupInfo
 import com.socialapp.models.GroupMember
 import com.socialapp.models.GroupMessage
 import com.socialapp.network.ApiClient
@@ -47,6 +48,14 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/**
+ * GroupChatActivity — v85.1
+ * Fixes:
+ *  - محاذاة الحقول مع GroupMessage الموحّد (senderUsername/content/messageType/isDeleted/id:String)
+ *  - إضافة أزرار: إزالة عضو، ترقية إلى أدمن (الإصلاح #3)
+ *  - إضافة زر مغادرة المجموعة داخل إعدادات المجموعة (الإصلاح #4)
+ *  - إضافة زر تعديل / حذف المجموعة (للمالك فقط)
+ */
 class GroupChatActivity : AppCompatActivity() {
     private lateinit var binding: ActivityGroupChatBinding
     private lateinit var messageAdapter: GroupMessageAdapter
@@ -59,6 +68,7 @@ class GroupChatActivity : AppCompatActivity() {
     private var isRecording = false
     private var lastTypingAt = 0L
     private var groupMembers = listOf<GroupMember>()
+    private var currentGroup: GroupInfo? = null
 
     private val mediaPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { uploadAndSendFromUri(it) }
@@ -177,9 +187,10 @@ class GroupChatActivity : AppCompatActivity() {
     }
 
     private fun loadGroupInfo() {
-        ApiClient.api.getGroupInfo(groupId).enqueue(object : Callback<com.socialapp.models.GroupInfo> {
-            override fun onResponse(call: Call<com.socialapp.models.GroupInfo>, response: Response<com.socialapp.models.GroupInfo>) {
+        ApiClient.api.getGroupInfo(groupId).enqueue(object : Callback<GroupInfo> {
+            override fun onResponse(call: Call<GroupInfo>, response: Response<GroupInfo>) {
                 val group = response.body() ?: return
+                currentGroup = group
                 binding.groupTitle.text = group.name
                 binding.membersCount.text = "${group.membersCount} أعضاء"
                 if (!group.avatarUrl.isNullOrEmpty()) {
@@ -191,7 +202,7 @@ class GroupChatActivity : AppCompatActivity() {
                 }
             }
 
-            override fun onFailure(call: Call<com.socialapp.models.GroupInfo>, t: Throwable) {
+            override fun onFailure(call: Call<GroupInfo>, t: Throwable) {
                 toast(t.message ?: "فشل تحميل معلومات المجموعة")
             }
         })
@@ -213,13 +224,13 @@ class GroupChatActivity : AppCompatActivity() {
         ApiClient.api.getGroupMessages(groupId, 50).enqueue(object : Callback<List<GroupMessage>> {
             override fun onResponse(call: Call<List<GroupMessage>>, response: Response<List<GroupMessage>>) {
                 val items = response.body().orEmpty().map {
-                    val rawContent = it.content.ifBlank { it.message }
-                    val displayText = if (it.deleted == true) {
+                    val rawContent = it.content
+                    val displayText = if (it.isDeleted) {
                         "تم حذف هذه الرسالة"
                     } else {
                         val signalText = SignalProtocolManager.decryptIncoming(
                             this@GroupChatActivity,
-                            it.sender,
+                            it.senderUsername,
                             rawContent,
                         )
                         if (signalText != rawContent) {
@@ -240,7 +251,7 @@ class GroupChatActivity : AppCompatActivity() {
                 if (scrollToBottom && items.isNotEmpty()) {
                     binding.messagesRecycler.scrollToPosition(items.lastIndex)
                 }
-                items.lastOrNull()?.takeIf { it.id > 0 }?.let { last ->
+                items.lastOrNull()?.takeIf { it.id.isNotBlank() }?.let { last ->
                     ApiClient.api.markGroupMessageSeen(groupId, last.id).enqueue(simpleCallback())
                 }
             }
@@ -280,11 +291,10 @@ class GroupChatActivity : AppCompatActivity() {
                 }
 
                 val optimisticMessage = GroupMessage(
-                    sender = currentUser,
-                    senderName = currentUser,
-                    message = message,
+                    senderUsername = currentUser,
+                    senderDisplayName = currentUser,
                     content = message,
-                    type = type,
+                    messageType = type,
                     mediaUrl = mediaUrl,
                     status = if (NetworkMonitor.isConnected(this)) "sending" else "pending",
                     createdAt = nowTimestamp(),
@@ -303,10 +313,10 @@ class GroupChatActivity : AppCompatActivity() {
 
                 val clientId = "android_${System.currentTimeMillis()}"
                 ApiClient.api.sendGroupMessage(
+                    groupId,
                     mapOf(
-                        "group_id" to groupId,
-                        "encrypted_message" to encrypted,
-                        "type" to type,
+                        "content" to encrypted,
+                        "message_type" to type,
                         "client_id" to clientId,
                         "media_url" to mediaUrl,
                     )
@@ -427,7 +437,7 @@ class GroupChatActivity : AppCompatActivity() {
     }
 
     private fun confirmDelete(message: GroupMessage) {
-        if (message.id <= 0) return
+        if (message.id.isBlank()) return
         AlertDialog.Builder(this)
             .setTitle("حذف الرسالة")
             .setMessage("هل تريد حذف الرسالة للجميع؟")
@@ -447,7 +457,7 @@ class GroupChatActivity : AppCompatActivity() {
     }
 
     private fun addReaction(message: GroupMessage, emoji: String) {
-        if (message.id <= 0) return
+        if (message.id.isBlank()) return
         ApiClient.api.addGroupMessageReaction(groupId, message.id, mapOf("emoji" to emoji)).enqueue(object : Callback<ApiMessage> {
             override fun onResponse(call: Call<ApiMessage>, response: Response<ApiMessage>) {
                 loadGroupMessages(false)
@@ -470,28 +480,170 @@ class GroupChatActivity : AppCompatActivity() {
             .show()
     }
 
+    /**
+     * الإصلاح #3: نافذة الأعضاء الجديدة — تدعم الضغط لعرض إجراءات الإدارة
+     * (إزالة، ترقية إلى أدمن) للمالك فقط.
+     */
     private fun showMembersDialog() {
-        val items = groupMembers.map { member ->
+        val members = groupMembers
+        if (members.isEmpty()) {
+            AlertDialog.Builder(this)
+                .setTitle("أعضاء المجموعة")
+                .setMessage("لا يوجد أعضاء متاحين حالياً")
+                .setPositiveButton("إغلاق", null)
+                .show()
+            return
+        }
+
+        val items = members.map { member ->
             val state = if (member.isOnline) "🟢" else "⚪"
-            "$state ${member.displayName.ifBlank { member.username }} • ${member.role}"
-        }.ifEmpty { listOf("لا يوجد أعضاء متاحين حالياً") }
+            val badge = when (member.role.lowercase()) {
+                "owner" -> " 👑"
+                "admin" -> " ⭐"
+                else -> ""
+            }
+            "$state ${member.displayName.ifBlank { member.username }}$badge"
+        }.toTypedArray()
 
         AlertDialog.Builder(this)
-            .setTitle("أعضاء المجموعة")
-            .setItems(items.toTypedArray(), null)
+            .setTitle("أعضاء المجموعة (${members.size})")
+            .setItems(items) { _, which -> onMemberSelected(members[which]) }
             .setPositiveButton("إغلاق", null)
             .show()
     }
 
+    private fun onMemberSelected(member: GroupMember) {
+        val group = currentGroup
+        val canModerate = group != null && (group.isOwner || group.isAdmin) &&
+            member.username != currentUser &&
+            member.role.lowercase() != "owner"
+
+        if (!canModerate) {
+            AlertDialog.Builder(this)
+                .setTitle(member.displayName.ifBlank { member.username })
+                .setMessage("الدور: ${member.role} — منضم منذ: ${member.joinedAt.take(10)}")
+                .setPositiveButton("إغلاق", null)
+                .show()
+            return
+        }
+
+        val options = arrayOf(
+            if (member.role.lowercase() == "admin") "إزالة الأدمن" else "ترقية إلى أدمن",
+            "إزالة من المجموعة"
+        )
+        AlertDialog.Builder(this)
+            .setTitle(member.displayName.ifBlank { member.username })
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> promoteMember(member)
+                    1 -> confirmRemoveMember(member)
+                }
+            }
+            .setNegativeButton("إلغاء", null)
+            .show()
+    }
+
+    private fun promoteMember(member: GroupMember) {
+        val newRole = if (member.role.lowercase() == "admin") "member" else "admin"
+        ApiClient.api.promoteGroupMember(groupId, member.username, mapOf("role" to newRole))
+            .enqueue(object : Callback<ApiMessage> {
+                override fun onResponse(call: Call<ApiMessage>, response: Response<ApiMessage>) {
+                    toast(if (newRole == "admin") "تمت الترقية" else "تمت إزالة صلاحيات الأدمن")
+                    loadGroupMembers()
+                }
+
+                override fun onFailure(call: Call<ApiMessage>, t: Throwable) {
+                    toast(t.message ?: "تعذر تنفيذ العملية")
+                }
+            })
+    }
+
+    private fun confirmRemoveMember(member: GroupMember) {
+        AlertDialog.Builder(this)
+            .setTitle("إزالة العضو")
+            .setMessage("هل أنت متأكد من إزالة ${member.displayName.ifBlank { member.username }}؟")
+            .setPositiveButton("إزالة") { _, _ ->
+                ApiClient.api.removeGroupMember(groupId, member.username).enqueue(object : Callback<ApiMessage> {
+                    override fun onResponse(call: Call<ApiMessage>, response: Response<ApiMessage>) {
+                        toast("تمت إزالة العضو")
+                        loadGroupMembers()
+                    }
+
+                    override fun onFailure(call: Call<ApiMessage>, t: Throwable) {
+                        toast(t.message ?: "تعذر إزالة العضو")
+                    }
+                })
+            }
+            .setNegativeButton("إلغاء", null)
+            .show()
+    }
+
+    /**
+     * الإصلاح #4: قائمة إعدادات موسّعة تشمل زر مغادرة المجموعة،
+     * وحذف المجموعة (للمالك)، وتحديث المحتوى.
+     */
     private fun showGroupSettings() {
-        val options = arrayOf("تحديث الرسائل", "إعادة تحميل الأعضاء")
+        val group = currentGroup
+        val isOwner = group?.isOwner == true
+
+        val optionsList = mutableListOf(
+            "🔄 تحديث الرسائل",
+            "👥 إعادة تحميل الأعضاء",
+            "🚪 مغادرة المجموعة"
+        )
+        if (isOwner) {
+            optionsList.add("🗑️ حذف المجموعة")
+        }
+
         AlertDialog.Builder(this)
             .setTitle("إعدادات المجموعة")
-            .setItems(options) { _, which ->
+            .setItems(optionsList.toTypedArray()) { _, which ->
                 when (which) {
                     0 -> loadGroupMessages(true)
                     1 -> loadGroupMembers()
+                    2 -> confirmLeaveGroup()
+                    3 -> if (isOwner) confirmDeleteGroup()
                 }
+            }
+            .setNegativeButton("إلغاء", null)
+            .show()
+    }
+
+    private fun confirmLeaveGroup() {
+        AlertDialog.Builder(this)
+            .setTitle("مغادرة المجموعة")
+            .setMessage("هل تريد فعلاً الخروج من المجموعة؟ لن تصلك الرسائل بعد الآن.")
+            .setPositiveButton("مغادرة") { _, _ ->
+                ApiClient.api.leaveGroup(groupId).enqueue(object : Callback<ApiMessage> {
+                    override fun onResponse(call: Call<ApiMessage>, response: Response<ApiMessage>) {
+                        toast("تمت مغادرة المجموعة")
+                        finish()
+                    }
+
+                    override fun onFailure(call: Call<ApiMessage>, t: Throwable) {
+                        toast(t.message ?: "تعذر مغادرة المجموعة")
+                    }
+                })
+            }
+            .setNegativeButton("إلغاء", null)
+            .show()
+    }
+
+    private fun confirmDeleteGroup() {
+        AlertDialog.Builder(this)
+            .setTitle("حذف المجموعة")
+            .setMessage("سيتم حذف المجموعة نهائياً لجميع الأعضاء. لا يمكن التراجع عن هذه العملية. متأكد؟")
+            .setPositiveButton("حذف نهائي") { _, _ ->
+                ApiClient.api.deleteGroup(groupId).enqueue(object : Callback<ApiMessage> {
+                    override fun onResponse(call: Call<ApiMessage>, response: Response<ApiMessage>) {
+                        toast("تم حذف المجموعة")
+                        finish()
+                    }
+
+                    override fun onFailure(call: Call<ApiMessage>, t: Throwable) {
+                        toast(t.message ?: "تعذر حذف المجموعة")
+                    }
+                })
             }
             .setNegativeButton("إلغاء", null)
             .show()

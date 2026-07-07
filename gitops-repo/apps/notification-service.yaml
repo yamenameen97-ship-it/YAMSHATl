@@ -1,3 +1,8 @@
+# =====================================================
+# v83.3 fix (NEW GAP #3 — الجزء الثاني):
+# كان image = your-dockerhub-username/notification-service:latest.
+# مطابق الآن لـ k8s/07-notification-service.yaml.
+# =====================================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -15,7 +20,7 @@ spec:
     spec:
       containers:
         - name: notification-service
-          image: your-dockerhub-username/notification-service:latest
+          image: yamshat/notification-service:v83.3
           ports:
             - containerPort: 8000
               name: http
@@ -24,6 +29,28 @@ spec:
                 name: yamshat-config
             - secretRef:
                 name: yamshat-secrets
+          env:
+            - name: SERVICE_NAME
+              value: notification-service
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 150m
+              memory: 256Mi
+            limits:
+              cpu: 400m
+              memory: 512Mi
 ---
 apiVersion: v1
 kind: Service

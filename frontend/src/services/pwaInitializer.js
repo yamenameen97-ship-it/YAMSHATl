@@ -343,6 +343,20 @@ export class PWAInitializer {
 
   /**
    * تهيئة الإشعارات
+   *
+   * ✅ v83.6 FIX #1: لا نطلب Notification.requestPermission() تلقائياً هنا.
+   * قبل الإصلاح: عند بدء التطبيق مباشرة (بلا أي user gesture) كنّا نستدعي
+   *   `Notification.requestPermission()` — وهو ما تعتبره متصفحات Chrome/Firefox/Edge
+   *   الحديثة بمثابة "permission spam" وترفضه تلقائياً (Firefox يعرض 'default'
+   *   دون سؤال المستخدم أصلاً، Chrome يسجّل تحذير 'Permission request ignored').
+   *   نتيجة الخلل:
+   *     - المستخدم لا يرى نافذة الإذن أبداً حتى لو ضغط لاحقاً على زر التفعيل.
+   *     - Chrome قد يحظر جميع طلبات الإذن اللاحقة بسبب abuse heuristics.
+   *     - يخالف نفس القاعدة التي أُصلحت في GlobalNotificationListener
+   *       (v59.13.14 FIX #4) وفي NotificationPermissionPrompt.
+   *
+   * الحل: نكتفي بفحص القدرات فقط. الطلب الفعلي محصور في
+   *   NotificationPermissionPrompt.handleEnable الذي يعمل داخل user gesture.
    */
   async initNotifications() {
     try {
@@ -351,13 +365,9 @@ export class PWAInitializer {
         return;
       }
 
-      // طلب إذن الإشعارات
-      if (Notification.permission === 'default') {
-        const permission = await Notification.requestPermission();
-        console.log('[PWA] Notification permission:', permission);
-      }
-
-      console.log('[PWA] Notifications initialized');
+      // ✅ v83.6 FIX #1: لا نستدعي requestPermission() هنا — يتم فقط عبر
+      // ضغطة زر المستخدم في NotificationPermissionPrompt.
+      console.log('[PWA] Notifications capability detected. permission =', Notification.permission);
       this.emit('notifications-ready');
     } catch (error) {
       console.error('[PWA] Notifications error:', error);

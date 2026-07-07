@@ -239,13 +239,37 @@ export const notificationService = {
     }
   },
 
-  async markAllNotificationsRead() {
+  // ✅ v83.6 FIX #3: توحيد سلوك "تحديد الكل كمقروء" مع markNotificationsRead(ids)
+  // في api/notifications.js. سابقاً هذه الدالة كانت ترسل PUT /notifications/read
+  // بلا body، بينما api/notifications.js تم تحديثه في v83.5 FIX #2 ليقبل ids.
+  // النتيجة: تناقض داخلي — الاستدعاءات عبر notificationService لا تستفيد من
+  // التحسينات، وأي مستدعي جديد يمرّر ids يحصل على over-mark. الآن نقبل ids
+  // اختياريّة ونحدّث المتجر بالطريقة المناسبة.
+  async markAllNotificationsRead(notificationIds) {
     const store = useNotificationStore.getState();
-    store.markAllRead();
+    const hasIds = Array.isArray(notificationIds) && notificationIds.length > 0;
+
+    if (hasIds) {
+      // تحديث المتجر بشكل انتقائي
+      notificationIds.forEach((id) => {
+        try { store.markRead(id); } catch { /* ignore */ }
+      });
+    } else {
+      store.markAllRead();
+    }
+
     try {
-      await retryWithBackoff(() => API.put('/notifications/read'));
+      await retryWithBackoff(() => {
+        if (hasIds) {
+          const ids = notificationIds.map((id) => String(id)).filter(Boolean);
+          return API.put('/notifications/read', { ids }, { params: { ids: ids.join(',') } });
+        }
+        return API.put('/notifications/read');
+      });
     } catch (error) {
-      if (!navigator.onLine) addToOfflineQueue('markAllRead', {});
+      if (!navigator.onLine) {
+        addToOfflineQueue('markAllRead', hasIds ? { ids: notificationIds } : {});
+      }
       throw error;
     }
   },
@@ -280,7 +304,8 @@ export const notificationService = {
       case 'markRead':
         return this.markNotificationRead(item.payload.notificationId);
       case 'markAllRead':
-        return this.markAllNotificationsRead();
+        // ✅ v83.6 FIX #3: مرّر ids إذا كانت مخزّنة في offline queue
+        return this.markAllNotificationsRead(item.payload?.ids);
       case 'deleteNotification':
         return this.deleteNotification(item.payload.notificationId);
       default:

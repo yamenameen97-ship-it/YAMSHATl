@@ -30,11 +30,19 @@ spec:
           ports:
             - containerPort: 5432
               name: db
+          # v83.2 fix: تُقرأ POSTGRES_USER/DB من ConfigMap و POSTGRES_PASSWORD
+          # من Secret. يمنع الاختلاف مع DATABASE_URL في الـ backend.
           env:
             - name: POSTGRES_DB
-              value: yamshat
+              valueFrom:
+                configMapKeyRef:
+                  name: yamshat-config
+                  key: POSTGRES_DB
             - name: POSTGRES_USER
-              value: postgres
+              valueFrom:
+                configMapKeyRef:
+                  name: yamshat-config
+                  key: POSTGRES_USER
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:

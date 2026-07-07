@@ -1,25 +1,79 @@
+# =====================================================
+# v83.4 fix (NEW GAP #5):
+# النسخة السابقة كانت HTTP فقط بلا TLS، وبلا إيقاف buffering لـ WebSocket.
+# نتائج ذلك — خطيرة جداً في الإنتاج:
+#
+# (أ) فشل تسجيل الدخول كلياً في الإنتاج:
+#     ConfigMap يعرّف:
+#       REFRESH_COOKIE_SECURE: 'true'
+#       COOKIE_SAMESITE:       none
+#     المتصفحات (Chrome / Safari / Firefox) ترفض إرسال أي كوكي بخاصية
+#     Secure+SameSite=None إذا لم يكن المسار HTTPS.
+#     ⇒ عملياً: المستخدم يسجّل دخول ⇒ يستقبل access_token ⇒ لكن
+#     refresh_token لا يعود مع أي request لاحق ⇒ خروج تلقائي في 60 دقيقة
+#     دون إمكانية تجديد. هذه علة صامتة لا تظهر في التطوير المحلي (HTTP على
+#     localhost تتجاوز فحص Secure).
+#
+# (ب) تكسّر WebSocket تحت الحمل:
+#     nginx يفعّل proxy_buffering افتراضياً ⇒ رسائل الدردشة تُحجَز في buffer
+#     حتى امتلائه ⇒ latency متأرجح على /ws و /api/ws (backend WebSocket).
+#     الحل: proxy-buffering: 'off' + زيادة proxy-buffer-size.
+#
+# (ج) لا cert-manager annotation ⇒ لا يوجد آلية إصدار شهادة تلقائياً.
+#     أضفنا cert-manager.io/cluster-issuer + قسم tls:.
+#     على العنقود يجب تركيب cert-manager مسبقاً و ClusterIssuer اسمه
+#     letsencrypt-prod (نمط قياسي).
+# =====================================================
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: yamshat-ingress
   namespace: app-prod
   annotations:
+    # حدّ حجم الرفع (وسائط الملفات الشخصية / منشورات الصور)
     nginx.ingress.kubernetes.io/proxy-body-size: '20m'
     nginx.ingress.kubernetes.io/proxy-read-timeout: '3600'
     nginx.ingress.kubernetes.io/proxy-send-timeout: '3600'
-    # v59.4: تمكين WebSocket على الـ backend monolith
+
+    # v59.4: تمكين WebSocket على backend monolith
     nginx.ingress.kubernetes.io/proxy-http-version: '1.1'
+
+    # v83.4 (ب): إيقاف buffering على WebSocket
+    # حرِج للاستقرار — بدونه رسائل الدردشة تتأخر تحت الحمل.
+    nginx.ingress.kubernetes.io/proxy-buffering: 'off'
+    nginx.ingress.kubernetes.io/proxy-request-buffering: 'off'
+
+    # v83.4 (ج): إصدار شهادة TLS تلقائياً عبر cert-manager
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+
+    # v83.4 (أ): إعادة توجيه إلزامي إلى HTTPS
+    # يمنع أي client من الوصول عبر HTTP ⇒ يضمن أن cookie Secure يعمل.
+    nginx.ingress.kubernetes.io/ssl-redirect: 'true'
+    nginx.ingress.kubernetes.io/force-ssl-redirect: 'true'
+
+    # HSTS — يمنع downgrade attacks بعد أول زيارة ناجحة عبر HTTPS.
+    nginx.ingress.kubernetes.io/hsts: 'true'
+    nginx.ingress.kubernetes.io/hsts-max-age: '31536000'
+    nginx.ingress.kubernetes.io/hsts-include-subdomains: 'true'
+
     nginx.ingress.kubernetes.io/configuration-snippet: |
       proxy_set_header Upgrade $http_upgrade;
       proxy_set_header Connection "upgrade";
 spec:
   ingressClassName: nginx
+
+  # v83.4 (ج): قسم TLS مطلوب حتى يقوم cert-manager بإصدار شهادة تلقائياً
+  # ويحفظها في secret اسمه yamshat-tls (سيُنشأ أول مرة).
+  tls:
+    - hosts:
+        - api.yamshat.local
+      secretName: yamshat-tls
+
   rules:
     - host: api.yamshat.local
       http:
         paths:
-          # v59.4: تم توجيه /ws إلى backend monolith (المصدر الموحَّد للدردشة).
-          # عبور كل WebSockets — الدردشة، المجموعات، الـ presence — عبر backend.
+          # v59.4: توجيه /ws إلى backend monolith (المصدر الموحَّد للدردشة)
           - path: /ws
             pathType: Prefix
             backend:

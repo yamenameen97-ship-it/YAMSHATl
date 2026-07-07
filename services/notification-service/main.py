@@ -9,11 +9,12 @@
 - WebSocket للإشعارات الفورية
 """
 
-from fastapi import FastAPI, WebSocket, HTTPException, Query, Depends
+from fastapi import FastAPI, WebSocket, HTTPException, Query, Depends, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 import json
 import asyncio
+import time
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Set
 from dataclasses import dataclass, asdict, field
@@ -21,6 +22,21 @@ from enum import Enum
 import logging
 from collections import defaultdict
 import uuid
+
+# ✅ v83.5 FIX #4: إضافة Prometheus instrumentation.
+# قبل الإصلاح: الخدمة لا تعرض أي metrics ولا endpoint /metrics
+# → قاعدة Prometheus `NotificationServiceDown` في k8s/11-prometheus-rules.yaml
+#   تعتمد على `up{service="notification-service"}` لكن لا يوجد target scrape.
+# → Grafana dashboard "notifications SLO" يظهر N/A للأبد.
+# → أخطاء 5xx في الإشعارات غير مرئية حتى يتلقّى الفريق شكوى من مستخدم.
+try:
+    from prometheus_client import (
+        Counter, Histogram, Gauge, CollectorRegistry,
+        generate_latest, CONTENT_TYPE_LATEST,
+    )
+    _PROM_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    _PROM_AVAILABLE = False
 
 # إعداد السجلات
 logging.basicConfig(level=logging.INFO)
@@ -338,7 +354,7 @@ class NotificationManager:
 app = FastAPI(
     title="Yamshat Advanced Notification Service",
     description="نظام إشعارات متقدم مع التجميع والتصنيف والتحريكات",
-    version="3.0.0"
+    version="3.0.1"
 )
 
 # إضافة CORS
@@ -349,6 +365,76 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ✅ v83.5 FIX #4: تعريف مقاييس Prometheus + middleware لقياس كل طلب HTTP.
+# الأسماء تتبع نفس الاتفاقية في k8s/11-prometheus-rules.yaml ليعمل selector مباشرة.
+if _PROM_AVAILABLE:
+    _METRICS_REGISTRY = CollectorRegistry()
+    _COMMON_LABELS = {"service": "notification-service"}
+
+    HTTP_REQUESTS_TOTAL = Counter(
+        "http_requests_total",
+        "Total HTTP requests received by notification-service",
+        ["method", "path", "status"],
+        registry=_METRICS_REGISTRY,
+    )
+    HTTP_REQUEST_DURATION = Histogram(
+        "http_request_duration_seconds",
+        "Duration of HTTP requests in seconds",
+        ["method", "path"],
+        buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+        registry=_METRICS_REGISTRY,
+    )
+    NOTIFICATIONS_CREATED_TOTAL = Counter(
+        "notifications_created_total",
+        "Total notifications created",
+        ["category", "type"],
+        registry=_METRICS_REGISTRY,
+    )
+    NOTIFICATIONS_UNREAD_GAUGE = Gauge(
+        "notifications_unread_current",
+        "Current number of unread notifications across all users",
+        registry=_METRICS_REGISTRY,
+    )
+    WEBSOCKET_CONNECTIONS = Gauge(
+        "websocket_active_connections",
+        "Number of currently connected notification WebSockets",
+        registry=_METRICS_REGISTRY,
+    )
+
+    @app.middleware("http")
+    async def prometheus_middleware(request: Request, call_next):
+        # تجنّب قياس endpoint المقاييس نفسه (cardinality explosion + حلقة ذاتية).
+        if request.url.path == "/metrics":
+            return await call_next(request)
+        start = time.perf_counter()
+        try:
+            response = await call_next(request)
+            status = response.status_code
+        except Exception:
+            status = 500
+            raise
+        finally:
+            duration = time.perf_counter() - start
+            # نستخدم route template لو وجد (لتجنّب تفجر العلامات مع UUIDs متعددة)
+            route = request.scope.get("route")
+            path_label = getattr(route, "path", None) or request.url.path
+            HTTP_REQUEST_DURATION.labels(request.method, path_label).observe(duration)
+            HTTP_REQUESTS_TOTAL.labels(request.method, path_label, str(status)).inc()
+        return response
+else:  # pragma: no cover
+    # Placeholders فارغة حتى لو prometheus_client غير مثبت (يجب ألّا يحدث
+    # بعد FIX #3 الذي يجبر requirements.txt).
+    class _Noop:
+        def labels(self, *_a, **_kw): return self
+        def inc(self, *_a, **_kw): pass
+        def observe(self, *_a, **_kw): pass
+        def set(self, *_a, **_kw): pass
+    HTTP_REQUESTS_TOTAL = _Noop()
+    HTTP_REQUEST_DURATION = _Noop()
+    NOTIFICATIONS_CREATED_TOTAL = _Noop()
+    NOTIFICATIONS_UNREAD_GAUGE = _Noop()
+    WEBSOCKET_CONNECTIONS = _Noop()
 
 # مدير الإشعارات
 notification_manager = NotificationManager()
@@ -362,8 +448,33 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "notification-service",
-        "version": "3.0.0"
+        "version": "3.0.1",
+        "metrics": "/metrics" if _PROM_AVAILABLE else "unavailable",
     }
+
+
+# ✅ v83.5 FIX #4: /metrics endpoint متوافق مع Prometheus scraper القياسي.
+@app.get("/metrics", include_in_schema=False)
+async def metrics():
+    if not _PROM_AVAILABLE:
+        return PlainTextResponse(
+            "# prometheus_client not installed\n",
+            status_code=503,
+            media_type="text/plain",
+        )
+    # تحديث المقاييس الفورية قبل التصدير (gauges)
+    try:
+        unread = 0
+        for notifs in notification_manager.notifications.values():
+            unread += sum(1 for n in notifs if not n.is_read)
+        NOTIFICATIONS_UNREAD_GAUGE.set(unread)
+        WEBSOCKET_CONNECTIONS.set(
+            sum(len(s) for s in notification_manager.user_websockets.values())
+        )
+    except Exception:
+        pass
+    payload = generate_latest(_METRICS_REGISTRY)
+    return Response(content=payload, media_type=CONTENT_TYPE_LATEST)
 
 
 @app.post("/notify")
@@ -402,7 +513,53 @@ async def create_notification(
         
         notification_manager.notifications[user_id].append(notification)
         notification_manager.update_badges(user_id)
-        
+        # ✅ v83.5 FIX #4: قياس إنتاجية إنشاء الإشعارات حسب الفئة/النوع.
+        try:
+            NOTIFICATIONS_CREATED_TOTAL.labels(
+                str(getattr(category, "value", category)),
+                str(getattr(notif_type, "value", notif_type)),
+            ).inc()
+        except Exception:
+            pass
+
+        # ✅ v83.6 FIX #4: بث الإشعار فوراً لكل الـ WebSocket sockets المتصلة
+        # لهذا المستخدم. قبل الإصلاح: endpoint /notify كان يخزّن فقط
+        # دون إرسال أي رسالة للـ sockets المتصلة، ومعالج الـ WebSocket
+        # في websocket_notifications() لا يدفع أي حدث "new_notification".
+        # النتيجة: العميل لا يتلقّى الإشعار إلّا عند refetch يدوي — يفقد
+        # الميزة الأساسية للخدمة (real-time) رغم وجود اتصال WS مفتوح.
+        try:
+            sockets = list(notification_manager.user_websockets.get(user_id, ()))
+            if sockets:
+                message = {
+                    "type": "new_notification",
+                    "data": asdict(notification),
+                    "badges": notification_manager.get_user_badges(user_id),
+                }
+                dead: List[WebSocket] = []
+                for ws in sockets:
+                    try:
+                        await ws.send_json(message)
+                    except Exception as broadcast_err:  # noqa: BLE001
+                        logger.warning(
+                            "WS send failed for user %s: %s", user_id, broadcast_err
+                        )
+                        dead.append(ws)
+                # تنظيف الـ sockets الميتة (broken pipe / closed)
+                for ws in dead:
+                    notification_manager.user_websockets[user_id].discard(ws)
+                if dead:
+                    try:
+                        WEBSOCKET_CONNECTIONS.set(
+                            sum(len(s) for s in notification_manager.user_websockets.values())
+                        )
+                    except Exception:
+                        pass
+        except Exception as broadcast_outer:
+            logger.warning(
+                "WebSocket broadcast pipeline failed for %s: %s", user_id, broadcast_outer
+            )
+
         logger.info(f"✅ Notification created for {user_id}: {title}")
         
         return {
@@ -566,6 +723,13 @@ async def websocket_notifications(websocket: WebSocket, user_id: str):
     await websocket.accept()
     notification_manager.user_websockets[user_id].add(websocket)
     notification_manager.connected_users.add(user_id)
+    # ✅ v83.5 FIX #4: تحديث gauge اتّصالات WebSocket فورياً.
+    try:
+        WEBSOCKET_CONNECTIONS.set(
+            sum(len(s) for s in notification_manager.user_websockets.values())
+        )
+    except Exception:
+        pass
     
     logger.info(f"✅ User {user_id} connected to WebSocket")
     
@@ -583,6 +747,12 @@ async def websocket_notifications(websocket: WebSocket, user_id: str):
         notification_manager.user_websockets[user_id].discard(websocket)
         if not notification_manager.user_websockets[user_id]:
             notification_manager.connected_users.discard(user_id)
+        try:
+            WEBSOCKET_CONNECTIONS.set(
+                sum(len(s) for s in notification_manager.user_websockets.values())
+            )
+        except Exception:
+            pass
         logger.info(f"❌ User {user_id} disconnected from WebSocket")
 
 

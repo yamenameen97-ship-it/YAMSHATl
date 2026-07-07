@@ -1,3 +1,14 @@
+# =====================================================
+# v83.4 fix (NEW GAP #3 — تكميل):
+# النسخة السابقة كانت redis:7-alpine بلا:
+#   - --appendonly yes    ⇒ فقدان الـ rate-limit tokens و pub/sub state
+#     بعد أي إعادة تشغيل ⇒ إعادة تعيين حدود المعدل (يستطيع مهاجم إعادة
+#     محاولات تسجيل الدخول 10 مرات جديدة بعد أي restart) وفقدان
+#     WebSocket presence.
+#   - resources / probes ⇒ لا حدود ⇒ يمكن أن يبتلع كل ذاكرة العقدة.
+#
+# الآن مطابق لـ k8s/04-redis.yaml.
+# =====================================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -19,6 +30,24 @@ spec:
           ports:
             - containerPort: 6379
               name: redis
+          args: ['--appendonly', 'yes']
+          readinessProbe:
+            exec:
+              command: ['redis-cli', 'ping']
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ['redis-cli', 'ping']
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
 ---
 apiVersion: v1
 kind: Service

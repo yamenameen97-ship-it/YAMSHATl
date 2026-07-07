@@ -1,3 +1,24 @@
+# =====================================================
+# v83.3 fix (الأصلي): مزامنة مع monitoring/alerts/app-alerts.yaml —
+# أُضيف BackendDown و BackendWebsocketErrors كبديل لـ ChatServiceDown القديم.
+#
+# v83.4 fix (نقص مرتبط تم اكتشافه أثناء فحص Gap #2):
+# التنبيه BackendDown كان يستخدم `up{job="backend"} == 0`. لكن
+# kube-prometheus-stack مع ServiceMonitor CRD يولّد المقياس `up` بعلامة
+# job على صيغة `<namespace>/<servicemonitor-name>` (مثل `monitoring/backend`)
+# — ليس مجرد "backend". النتيجة: `up{job="backend"}` **لا يطابق أي
+# time-series أبداً** ⇒ التعبير يعطي vector فارغ ⇒ التنبيه لا يُطلَق ولو
+# انهارت جميع pods الـ backend. نفس المشكلة تظهر في
+# `BackendWebsocketErrors` (label service="backend") لأن المقياس يُقاس
+# داخل الـ backend ذاته لذا service="backend" محلياً صحيح، لكن للتماسك
+# نضبطهما معاً.
+#
+# الحل: استخدام match على اسم ServiceMonitor بشكل صريح.
+# استعمال group_left مع kube_service_labels يبقى معقّداً؛ الأبسط والأدق
+# هو مطابقة regex أو استخدام app label:
+#   up{service="backend"} == 0
+# لأن ServiceMonitor يضيف label `service="<svc name>"` إلى `up` تلقائياً.
+# =====================================================
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -15,6 +36,7 @@ spec:
           annotations:
             summary: Gateway error rate is elevated
             description: Gateway is returning 5xx responses above threshold for 2 minutes.
+
         - alert: UserServiceLatencyHigh
           expr: histogram_quantile(0.95, sum(rate(yamshat_http_request_latency_seconds_bucket{service="user-service"}[5m])) by (le)) > 1
           for: 5m
@@ -23,3 +45,40 @@ spec:
           annotations:
             summary: User service p95 latency high
             description: User service p95 latency is above 1 second.
+
+        # v83.4 fix: استعمل service="backend" (يضيفه ServiceMonitor)
+        # بدل job="backend" (يكون في الواقع "monitoring/backend").
+        - alert: BackendDown
+          expr: up{service="backend"} == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: 'Backend monolith (chat + API) unreachable'
+            description: >-
+              Backend monolith is unreachable from Prometheus.
+              Since v59.4 chat, groups and presence run inside this service —
+              if it is down, real-time messaging is fully broken.
+
+        - alert: BackendWebsocketErrors
+          expr: sum(rate(yamshat_websocket_errors_total{service="backend"}[5m])) > 0.5
+          for: 3m
+          labels:
+            severity: warning
+          annotations:
+            summary: 'Backend WebSocket error rate elevated'
+            description: >-
+              WebSocket errors on backend (chat channel) above threshold for 3 minutes.
+
+        # v83.4: تنبيه إضافي لعمّال Celery — لأننا أضفنا Deployment celery-worker/beat
+        # وأصبح توقّفهم يعني تعطُّل البريد وتنظيف الغرف الميتة (صامت في السابق).
+        - alert: CeleryWorkerDown
+          expr: kube_deployment_status_replicas_available{namespace="app-prod",deployment=~"celery-worker|celery-beat"} == 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: 'Celery worker or beat unavailable'
+            description: >-
+              Celery worker/beat has 0 available replicas. Emails, media cleanup,
+              session cleanup and live room GC are stalled.

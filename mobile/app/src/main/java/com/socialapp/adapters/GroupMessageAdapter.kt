@@ -22,22 +22,21 @@ class GroupMessageAdapter(
 
     inner class ViewHolder(private val binding: ItemGroupMessageBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(message: GroupMessage) {
-            message.isOwn = message.sender == currentUser
+            message.isOwn = message.senderUsername == currentUser
 
-            binding.senderName.text = message.senderName.ifBlank { message.sender }
+            binding.senderName.text = message.senderDisplayName.ifBlank { message.senderUsername }
             binding.senderName.visibility = if (message.isOwn) android.view.View.GONE else android.view.View.VISIBLE
 
             val displayText = when {
-                message.deleted == true -> "تم حذف هذه الرسالة"
+                message.isDeleted -> "تم حذف هذه الرسالة"
                 message.displayMessage.isNotEmpty() -> message.displayMessage
-                message.content.isNotEmpty() -> message.content
-                else -> message.message
+                else -> message.content
             }
 
             binding.messageText.text = displayText
-            binding.messageText.visibility = if (displayText.isNotEmpty() && message.type == "text") android.view.View.VISIBLE else android.view.View.GONE
+            binding.messageText.visibility = if (displayText.isNotEmpty() && message.messageType == "text") android.view.View.VISIBLE else android.view.View.GONE
 
-            when (message.type) {
+            when (message.messageType) {
                 "image" -> {
                     binding.mediaPreview.visibility = android.view.View.VISIBLE
                     binding.actionBtn.visibility = android.view.View.GONE
@@ -50,7 +49,7 @@ class GroupMessageAdapter(
                 "video", "voice", "file" -> {
                     binding.mediaPreview.visibility = android.view.View.GONE
                     binding.actionBtn.visibility = android.view.View.VISIBLE
-                    binding.actionBtn.text = when (message.type) {
+                    binding.actionBtn.text = when (message.messageType) {
                         "video" -> "▶ فيديو"
                         "voice" -> "🔊 صوتي"
                         else -> "📎 ملف"
@@ -122,7 +121,7 @@ class GroupMessageAdapter(
             }
 
             binding.root.setOnLongClickListener {
-                if (message.deleted != true && message.isOwn && message.status.lowercase() !in setOf("sending", "pending")) {
+                if (!message.isDeleted && message.isOwn && message.status.lowercase() !in setOf("sending", "pending")) {
                     onLongClick(message)
                 }
                 true

@@ -1,3 +1,21 @@
+# =====================================================
+# v83.4 fix (NEW GAP #3 — الجزء الأول):
+# النسخة السابقة كانت تحتوي Application واحد فقط بمسار path: apps
+# ⇒ ArgoCD يزامن gitops-repo/apps/ فقط.
+#
+# لكن gitops-repo/infra/postgres.yaml و redis.yaml موجودان تحت infra/،
+# وهذا يعني أن مع syncPolicy.automated.prune=true كان ArgoCD:
+#   1) لا ينشر postgres/redis أبداً (خارج مساره الوحيد).
+#   2) عند أي تطبيق يدوي `kubectl apply -f k8s/03-postgres.yaml` كان يُنبِّه
+#      ArgoCD بأن موارد "خارج التحكم" ظهرت ⇒ في الوضع الاعتيادي يُبقيها،
+#      لكن مع prune=true وأي إعادة scan خاطئة قد تُحذف قاعدة البيانات.
+#   3) لا مزامنة يعني لا self-heal لـ postgres — أي تغيير يدوي يبقى دائماً.
+#
+# الحل: تحويل الملف إلى ApplicationSet بسيط يعرّف تطبيقين منفصلين:
+#   - yamshat-platform (apps/)      = خدمات التطبيق
+#   - yamshat-infra    (infra/)     = postgres/redis
+# كلاهما ضمن نفس project وnamespace app-prod ونفس syncPolicy.
+# =====================================================
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -15,6 +33,31 @@ spec:
   syncPolicy:
     automated:
       prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+# v83.4 fix (تابع): تطبيق منفصل لطبقة البنية التحتية
+# — postgres/redis — كي يشملها ArgoCD أيضاً.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: yamshat-infra
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/YOUR_ORG/yamshat-gitops.git
+    targetRevision: main
+    path: infra
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: app-prod
+  syncPolicy:
+    automated:
+      # ⚠️ prune=false لطبقة البنية لتجنّب حذف PVC/بيانات المستخدمين
+      # عن طريق الخطأ. self-heal يبقى لضمان مطابقة الإعدادات.
+      prune: false
       selfHeal: true
     syncOptions:
       - CreateNamespace=true

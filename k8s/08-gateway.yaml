@@ -22,14 +22,33 @@ spec:
           envFrom:
             - configMapRef:
                 name: yamshat-config
+          # v83.2 fix: gateway/main.py يقرأ AUTH/POST/MEDIA/SEARCH_SERVICE_URL
+          # لكن Deployment القديم لم يضعها ⇒ كانت تعود إلى defaults
+          # مثل http://auth-service:8000 التي لا وجود لها في العنقود،
+          # ما يؤدي إلى 502/timeout على /api/auth و /api/media و /api/search.
+          # نحن الآن نوجّه الجميع إلى backend monolith كمصدر حقيقة موحّد
+          # (نفس منطق docker-compose.yml بعد v59.4).
           env:
+            # مسارات المستخدمين والمنشورات — services حقيقية موجودة في العنقود
             - name: USER_SERVICE_URL
               value: http://user-service:8000
-            # v59.4: توحيد الدردشة في backend monolith (chat-service القديم محذوف).
+
+            # v59.4/v83.2: توحيد الدردشة داخل backend monolith
             - name: BACKEND_SERVICE_URL
               value: http://backend:8000
             - name: CHAT_SERVICE_URL
               value: http://backend:8000
+
+            # v83.2 fix: المتغيرات الأربعة الناقصة سابقاً
+            - name: AUTH_SERVICE_URL
+              value: http://backend:8000
+            - name: POST_SERVICE_URL
+              value: http://backend:8000
+            - name: MEDIA_SERVICE_URL
+              value: http://backend:8000
+            - name: SEARCH_SERVICE_URL
+              value: http://backend:8000
+
             - name: NOTIFICATION_SERVICE_URL
               value: http://notification-service:8000
             - name: BILLING_SERVICE_URL

@@ -87,10 +87,11 @@ class GroupsListActivity : AppCompatActivity() {
             .setView(input)
             .setPositiveButton("إنشاء") { _, _ ->
                 val groupName = input.text.toString().trim()
-                if (groupName.isNotEmpty()) {
-                    createGroup(groupName)
-                } else {
-                    toast("أدخل اسم المجموعة")
+                when {
+                    groupName.isEmpty() -> toast("أدخل اسم المجموعة")
+                    groupName.length < 2 -> toast("الاسم قصير جداً")
+                    groupName.length > 60 -> toast("الاسم طويل جداً (٣٠ حد أقصى)")
+                    else -> createGroup(groupName)
                 }
             }
             .setNegativeButton("إلغاء", null)
@@ -99,11 +100,20 @@ class GroupsListActivity : AppCompatActivity() {
 
     private fun createGroup(name: String) {
         binding.progressBar.visibility = android.view.View.VISIBLE
-        ApiClient.api.createGroup(mapOf("name" to name)).enqueue(object : Callback<com.socialapp.models.ApiMessage> {
+        val payload = mapOf(
+            "name" to name,
+            "description" to "",
+            "category" to "",
+        )
+        ApiClient.api.createGroup(payload).enqueue(object : Callback<com.socialapp.models.ApiMessage> {
             override fun onResponse(call: Call<com.socialapp.models.ApiMessage>, response: Response<com.socialapp.models.ApiMessage>) {
                 binding.progressBar.visibility = android.view.View.GONE
-                toast("تم إنشاء المجموعة")
-                loadGroups()
+                if (response.isSuccessful) {
+                    toast("تم إنشاء المجموعة")
+                    loadGroups()
+                } else {
+                    toast("فشل إنشاء المجموعة (${response.code()})")
+                }
             }
 
             override fun onFailure(call: Call<com.socialapp.models.ApiMessage>, t: Throwable) {

@@ -1,3 +1,5 @@
+# v83.4 fix: مطابقة k8s/11-prometheus-rules.yaml بايت-ببايت (بلا wrapper CRD).
+# استعمال label service="backend" بدل job="backend" — راجع تعليق ذاك الملف.
 groups:
   - name: app-alerts
     rules:
@@ -8,10 +10,40 @@ groups:
           severity: warning
         annotations:
           description: 'High traffic error rate detected on gateway'
-      - alert: ChatServiceDown
-        expr: up{job="chat-service"} == 0
+
+      # v83.2: استُبدل ChatServiceDown (chat-service محذوف منذ v59.4)
+      # بمراقبة backend الذي يخدم فعلياً WebSocket الدردشة.
+      # v83.4: تصحيح selector من job="backend" إلى service="backend".
+      - alert: BackendDown
+        expr: up{service="backend"} == 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          description: 'chat-service is unreachable from Prometheus'
+          summary: 'Backend monolith (chat + API) unreachable'
+          description: >-
+            Backend monolith is unreachable from Prometheus.
+            Since v59.4 chat, groups and presence run inside this service —
+            if it is down, real-time messaging is fully broken.
+
+      - alert: BackendWebsocketErrors
+        expr: sum(rate(yamshat_websocket_errors_total{service="backend"}[5m])) > 0.5
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Backend WebSocket error rate elevated'
+          description: >-
+            WebSocket errors on backend (chat channel) above threshold for 3 minutes.
+
+      # v83.4: تنبيه Celery المضاف بسبب Gap #2
+      - alert: CeleryWorkerDown
+        expr: kube_deployment_status_replicas_available{namespace="app-prod",deployment=~"celery-worker|celery-beat"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Celery worker or beat unavailable'
+          description: >-
+            Celery worker/beat has 0 available replicas. Emails, media cleanup,
+            session cleanup and live room GC are stalled.

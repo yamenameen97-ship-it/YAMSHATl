@@ -15,7 +15,9 @@ spec:
     spec:
       containers:
         - name: user-service
-          image: your-dockerhub-username/user-service:latest
+          # v83.3 fix: كانت image placeholder your-dockerhub-username/user-service:latest
+          # ⇒ ImagePullBackOff فور النشر. حُدّثت إلى registry حقيقي بإصدار مثبَّت.
+          image: yamshat/user-service:v83.3
           ports:
             - containerPort: 8000
               name: http

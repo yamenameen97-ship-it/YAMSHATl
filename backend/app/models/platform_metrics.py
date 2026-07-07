@@ -17,12 +17,15 @@ from app.db.base import Base
 class PlatformMetricsDaily(Base):
     """تجميعة يومية لإحصائيات المنصة — تتيح حساب التغير الشهري والـ trends بسهولة."""
     __tablename__ = 'platform_metrics_daily'
+    # v85.3 fix: كان يوجد فهرسان بنفس الاسم (index=True على العمود + Index في
+    # __table_args__) → create_all يفشل بـ DuplicateTable وينهار الـ transaction
+    # فلا يُنشأ أي جدول آخر. الحل: إبقاء التعريف الصريح فقط (unique).
     __table_args__ = (
         Index('ix_platform_metrics_daily_date', 'date', unique=True),
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    date = Column(DateTime, nullable=False, index=True)  # بداية اليوم (00:00 UTC)
+    date = Column(DateTime, nullable=False)  # بداية اليوم (00:00 UTC) — الفهرس معرَّف في __table_args__
 
     # Users
     total_users = Column(Integer, nullable=False, default=0)
@@ -57,10 +60,11 @@ class RevenueTransaction(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True)
+    # v85.3 fix: إزالة index=True من الأعمدة لأن الفهارس معرَّفة في __table_args__
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
 
     # 'gift' | 'coins_purchase' | 'subscription' | 'ad' | 'other'
-    source = Column(String(50), nullable=False, default='other', index=True)
+    source = Column(String(50), nullable=False, default='other')
     reference_id = Column(String(120), nullable=True)  # gift_transaction_id, order_id ...
 
     # المبلغ مخزن بالسنتات لتفادي float (USD * 100)
@@ -73,7 +77,7 @@ class RevenueTransaction(Base):
     description = Column(Text, nullable=True)
     status = Column(String(30), nullable=False, default='completed')  # completed|pending|refunded
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
 class PostView(Base):
@@ -86,7 +90,8 @@ class PostView(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    post_id = Column(Integer, ForeignKey('posts.id', ondelete='CASCADE'), nullable=False, index=True)
-    user_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True)
-    viewed_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    # v85.3 fix: إزالة index=True من الأعمدة لأن الفهارس معرَّفة في __table_args__
+    post_id = Column(Integer, ForeignKey('posts.id', ondelete='CASCADE'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    viewed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     duration_seconds = Column(Integer, nullable=False, default=0)

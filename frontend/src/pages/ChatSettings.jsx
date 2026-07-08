@@ -168,6 +168,9 @@ export default function ChatSettings() {
     <MainLayout hideNav lockScroll>
       <section className="yam-chat-settings-screen" dir="rtl">
         <style>{`
+          /* ✅ v85.8: تفعيل التمرير باللمس على الموبايل على body فقط.
+             المشكلة السابقة: المُغلف الخارجي كان overflow:hidden مع grid داخل lockScroll
+             دون تفعيل -webkit-overflow-scrolling و touch-action مما أوقف السحب بالأصبع. */
           .yam-chat-settings-screen {
             min-height: 100%;
             height: min(100dvh, var(--yam-vh, 100dvh));
@@ -179,6 +182,7 @@ export default function ChatSettings() {
               #040714;
             color: #fff;
             overflow: hidden;
+            touch-action: pan-y;
           }
           .yam-chat-settings-header {
             position: sticky;
@@ -225,19 +229,26 @@ export default function ChatSettings() {
             font-size: 12px;
             margin-top: 4px;
           }
+          /* ✅ v85.8: تمرير لمسي مفعّل بالكامل للموبايل */
           .yam-chat-settings-body {
-            overflow: auto;
-            padding: 18px;
-            padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+            overflow-y: auto;
+            overflow-x: hidden;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain;
+            touch-action: pan-y;
+            padding: 14px 14px 40px;
+            padding-bottom: calc(40px + env(safe-area-inset-bottom, 0px));
             display: grid;
-            gap: 16px;
+            gap: 12px;
           }
+          /* ✅ v85.8: بطاقة أكثر ترتيباً — رأس واضح + محتوى منظم،
+             دون الحاجة لأشرطة لونية مقطوعة على اليمين/اليسار. */
           .yam-chat-settings-card {
-            border-radius: 24px;
-            border: 1px solid rgba(255,255,255,0.06);
-            background: linear-gradient(180deg, rgba(7,10,24,0.95), rgba(4,7,18,0.98));
-            padding: 18px;
-            box-shadow: 0 18px 38px rgba(0,0,0,0.18);
+            border-radius: 18px;
+            border: 1px solid rgba(148,163,184,0.12);
+            background: linear-gradient(180deg, rgba(15,20,38,0.92), rgba(7,11,24,0.96));
+            padding: 14px 14px 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.24);
           }
           .yam-peer-hero {
             display: grid;
@@ -279,20 +290,27 @@ export default function ChatSettings() {
             font-size: 16px;
             font-weight: 800;
           }
-          .yam-section-title {
-            display: flex;
+          /* ✅ v85.8: تجاوز تصادم enhanced-ui.css الذي يجعل .yam-section-title
+             بحجم 24-36px مما يخترق ترتيب الصفحة. */
+          .yam-chat-settings-body .yam-section-title {
+            display: flex !important;
             align-items: center;
             justify-content: space-between;
             gap: 12px;
-            margin-bottom: 14px;
+            margin: 0 0 10px !important;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(148,163,184,0.10);
+            font-size: 15px !important;
           }
-          .yam-section-title h2 {
+          .yam-chat-settings-body .yam-section-title h2 {
             margin: 0;
-            font-size: 18px;
-            font-weight: 900;
+            font-size: 15px;
+            font-weight: 800;
+            color: #e2e8f0;
           }
-          .yam-section-title small {
+          .yam-chat-settings-body .yam-section-title small {
             color: #94a3b8;
+            font-size: 11px;
           }
           .yam-media-strip {
             display: grid;
@@ -404,12 +422,52 @@ export default function ChatSettings() {
           }
           @media (max-width: 560px) {
             .yam-chat-settings-body {
-              padding: 14px;
+              padding: 12px 12px 40px;
+              padding-bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+              gap: 10px;
             }
-            .yam-meta-grid,
+            .yam-chat-settings-card {
+              padding: 12px 12px 10px;
+              border-radius: 16px;
+            }
+            /* ✅ v85.8: الإحصائيات أحياناً 2×2 أفضل من عمود واحد — أرتب */
+            .yam-meta-grid {
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+              gap: 8px;
+            }
             .yam-actions-grid {
               grid-template-columns: minmax(0, 1fr);
             }
+            .yam-stat-pill,
+            .yam-action-tile {
+              padding: 10px;
+              border-radius: 14px;
+            }
+            .yam-stat-pill span,
+            .yam-action-tile span {
+              font-size: 10.5px;
+              margin-bottom: 4px;
+            }
+            .yam-stat-pill strong,
+            .yam-action-tile strong {
+              font-size: 14px;
+            }
+            .yam-settings-action-btn {
+              min-height: 46px;
+              padding: 0 12px;
+              font-size: 13.5px;
+            }
+            .yam-settings-action-btn strong { font-size: 13px; font-weight: 700; }
+            .yam-peer-hero h1 { font-size: 18px; }
+            .yam-peer-hero p { font-size: 12px; }
+            .yam-media-thumb { height: 100px; }
+            .yam-media-strip { grid-auto-columns: minmax(108px, 1fr); }
+            .yam-file-item, .yam-link-item {
+              padding: 10px 12px;
+              border-radius: 14px;
+            }
+            .yam-file-copy strong, .yam-link-copy strong { font-size: 12.5px; }
+            .yam-file-copy span, .yam-link-copy span { font-size: 10.5px; }
           }
         `}</style>
 

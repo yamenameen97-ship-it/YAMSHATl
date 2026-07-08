@@ -638,13 +638,16 @@ export default function Settings() {
             {TAB_GROUPS.map((group) => (
               <div key={group.label} className="settings-group">
                 <div className="settings-group-label">{group.label}</div>
-                {group.tabs.map((tab) => (
-                  <button key={tab.key} type="button"
-                    className={`settings-tab-btn ${activeTab === tab.key ? 'active' : ''}`}
-                    onClick={() => updateActiveTab(tab.key)}>
-                    {tab.label}
-                  </button>
-                ))}
+                <div className="settings-group-tabs">
+                  {group.tabs.map((tab) => (
+                    <button key={tab.key} type="button"
+                      className={`settings-tab-btn ${activeTab === tab.key ? 'active' : ''}`}
+                      onClick={() => updateActiveTab(tab.key)}
+                      title={tab.label}>
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             ))}
           </aside>
@@ -1416,29 +1419,40 @@ export default function Settings() {
           overflow-y: auto;
           padding-inline-end: 4px;
         }
+        /* ✅ v85.8: عرض التبويبات داخل كل مجموعة على 3 أعمدة لتقليل الارتفاع
+           بدل عمود واحد يشغل مساحة كبيرة. الخط أصغر و padding مضغوط. */
         .settings-group {
-          display: grid; gap: 2px;
-          padding: 7px;
+          display: block;
+          padding: 6px 6px 7px;
           background: rgba(15,23,42,0.4);
           border-radius: 10px;
           border: 1px solid rgba(148,163,184,0.10);
         }
         .settings-group-label {
-          font-size: 10px; font-weight: 700;
+          font-size: 9.5px; font-weight: 700;
           text-transform: uppercase;
           color: rgba(226,232,240,0.55);
-          padding: 3px 6px 5px;
-          letter-spacing: 0.4px;
+          padding: 2px 4px 4px;
+          letter-spacing: 0.35px;
+        }
+        .settings-group-tabs {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 3px;
         }
         .settings-tab-btn {
-          display: flex; align-items: center; gap: 5px;
-          padding: 6px 8px;
-          border-radius: 7px; border: none;
+          display: flex; align-items: center; gap: 3px;
+          padding: 5px 5px;
+          border-radius: 6px; border: none;
           background: transparent; color: #e2e8f0;
-          font-size: 12px; cursor: pointer;
+          font-size: 10.5px; cursor: pointer;
           text-align: start; width: 100%;
           transition: all 0.12s;
-          line-height: 1.3;
+          line-height: 1.2;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          min-width: 0;
         }
         .settings-tab-btn:hover { background: rgba(99,102,241,0.12); }
         .settings-tab-btn.active {
@@ -1645,14 +1659,24 @@ export default function Settings() {
           .settings-layout { grid-template-columns: 1fr; }
           .settings-sidebar {
             position: static; max-height: none;
-            grid-template-columns: 1fr 1fr; display: grid;
+            display: grid; gap: 8px;
           }
         }
+        /* ✅ v85.8: على الموبايل — 3 أعمدة داخل كل مجموعة (كما طلب المستخدم) */
         @media (max-width: 600px) {
-          .settings-sidebar { grid-template-columns: 1fr; }
           .settings-wrap { padding: 10px 10px 30px; }
           .s-card { padding: 10px 12px !important; }
           .settings-row { flex-wrap: wrap; gap: 6px; }
+          .settings-group-tabs {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+          .settings-tab-btn {
+            font-size: 10px;
+            padding: 5px 4px;
+          }
+        }
+        @media (max-width: 380px) {
+          .settings-tab-btn { font-size: 9.5px; }
         }
 
         /* Overrides قوية لتصغير أي أزرار قديمة داخل الإعدادات */

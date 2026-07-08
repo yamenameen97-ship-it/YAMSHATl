@@ -29,18 +29,46 @@ function fmtCount(n) {
   return String(v);
 }
 
+// ✅ v85.8: وقت دقيق — يأخذ التوقيت المحلي للمتصفح ويحسب الفارق بدقة.
+//   - يقبل ISO أو timestamp (ms).
+//   - يتعامل مع الفوارق السلبية (وقت مستقبلي) ويرجع "الآن".
+//   - طوال اليوم: يرجع دقائق/ساعات. بعدها: أيام/أسابيع/أشهر/سنوات.
 function timeAgoAr(iso) {
   if (!iso) return 'الآن';
-  const t = new Date(iso).getTime();
-  if (!t) return 'الآن';
-  const sec = Math.max(1, Math.floor((Date.now() - t) / 1000));
+  let t;
+  if (typeof iso === 'number') {
+    // إذا كان بالثواني اضرب ×1000
+    t = iso < 1e12 ? iso * 1000 : iso;
+  } else {
+    const s = String(iso);
+    // دعم للأرقام كنص (Unix seconds/ms)
+    if (/^\d+$/.test(s)) {
+      const num = Number(s);
+      t = num < 1e12 ? num * 1000 : num;
+    } else {
+      // إذا لم يكن منتهياً بـZ أو offset نفترض UTC لتجنب الإزاحة
+      const hasTz = /[zZ]|[+-]\d{2}:?\d{2}$/.test(s);
+      t = new Date(hasTz ? s : `${s}Z`).getTime();
+    }
+  }
+  if (!Number.isFinite(t)) return 'الآن';
+  const diffSec = Math.floor((Date.now() - t) / 1000);
+  // وقت مستقبلي أو فرق أقل من 5ث: "الآن"
+  if (diffSec < 5) return 'الآن';
+  const sec = diffSec;
   if (sec < 60) return `قبل ${sec} ثانية`;
   const min = Math.floor(sec / 60);
   if (min < 60) return `منذ ${min} دقيقة`;
   const hr = Math.floor(min / 60);
   if (hr < 24) return `منذ ${hr} ساعة`;
   const d = Math.floor(hr / 24);
-  return `منذ ${d} يوم`;
+  if (d < 7) return `منذ ${d} يوم`;
+  const w = Math.floor(d / 7);
+  if (w < 5) return `منذ ${w} أسبوع`;
+  const mo = Math.floor(d / 30);
+  if (mo < 12) return `منذ ${mo} شهر`;
+  const yr = Math.floor(d / 365);
+  return `منذ ${yr} سنة`;
 }
 
 function normalizeReel(item = {}) {
@@ -53,7 +81,10 @@ function normalizeReel(item = {}) {
     id: item.id || item._id || String(item.reel_id || Math.random()),
     username: item.username || item.user?.username || '',
     is_verified: Boolean(item.is_verified ?? item.user?.is_verified ?? false),
-    created_at: item.created_at || item.createdAt || new Date().toISOString(),
+    // ✅ v85.8: التوقيت الدقيق — ندعم عدة أسماء حقول من الباك إند
+    // (published_at / posted_at / created / timestamp) حتى لا يُرجع إلى Date.now()
+    // الذي كان يجعل الريل المنشور منذ ساعات يظهر كأنه "الآن".
+    created_at: item.created_at || item.createdAt || item.published_at || item.posted_at || item.created || item.timestamp || null,
     content: item.content || item.caption || item.description || '',
     hashtags: Array.isArray(item.hashtags) ? item.hashtags : [],
     media_url: resolveMediaUrl(item.media_url || item.video_url || ''),
@@ -579,8 +610,14 @@ export default function Reels() {
               </div>
 
               {/* Bottom info: username + meta + caption */}
+              {/* ✅ v85.8: اسم المستخدم أسفل الريل قابل للضغط → يفتح الملف الشخصي */}
               <div className="ym-reels-info">
-                <div className="ym-reels-userline">
+                <button
+                  type="button"
+                  className="ym-reels-userline ym-reels-userlink"
+                  onClick={() => reel.username && navigate(`/profile/${encodeURIComponent(reel.username)}`)}
+                  aria-label={`فتح ملف ${reel.username || 'المستخدم'}`}
+                >
                   <span className="ym-reels-username">{reel.username}</span>
                   {reel.is_verified && (
                     <span className="ym-reels-verified" aria-label="موثّق">
@@ -590,7 +627,7 @@ export default function Reels() {
                       </svg>
                     </span>
                   )}
-                </div>
+                </button>
                 <div className="ym-reels-time">{timeAgoAr(reel.created_at)}</div>
                 <div className="ym-reels-caption">
                   <span className="ym-heart">♥</span>
@@ -894,25 +931,27 @@ export default function Reels() {
             font-size: 22px;
             line-height: 1;
           }
+          /* ✅ v85.8: تصغير زر المتابعة — لم يعد يغطي صورة الملف الشخصي.
+             من 22px → 15px مع إزاحة خفيفة تحت الأفاتار لتجنب تغطية الوجه */
           .ym-author-follow-plus {
             position: absolute;
-            bottom: 0;
+            bottom: -6px;
             left: 50%;
             transform: translateX(-50%);
-            width: 22px;
-            height: 22px;
+            width: 16px;
+            height: 16px;
             border-radius: 999px;
             background: #ff3b6b;
             color: #fff;
             font-weight: 900;
-            font-size: 15px;
+            font-size: 10px;
             line-height: 1;
             display: grid;
             place-items: center;
-            border: 2px solid #0a0612;
+            border: 1.5px solid #0a0612;
             cursor: pointer;
             padding: 0;
-            box-shadow: 0 3px 10px rgba(255,59,107,.55);
+            box-shadow: 0 2px 6px rgba(255,59,107,.55);
             touch-action: manipulation;
             -webkit-tap-highlight-color: transparent;
             transition: transform .15s ease, background .2s ease;
@@ -920,7 +959,8 @@ export default function Reels() {
           .ym-author-follow-plus:active { transform: translateX(-50%) scale(0.85); }
           .ym-author-follow-plus.is-following {
             background: #8b5cf6;
-            box-shadow: 0 3px 10px rgba(139,92,246,.55);
+            box-shadow: 0 2px 6px rgba(139,92,246,.55);
+            font-size: 9px;
           }
           .ym-action-label {
             color: #fff;
@@ -961,6 +1001,25 @@ export default function Reels() {
             flex-direction: row;
             align-items: center;
             gap: 6px;
+          }
+          /* ✅ v85.8: اسم المستخدم كزر — يفتح الملف الشخصي عند الضغط */
+          .ym-reels-userlink {
+            background: transparent;
+            border: none;
+            padding: 0;
+            margin: 0;
+            cursor: pointer;
+            color: inherit;
+            font: inherit;
+            text-align: start;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            transition: opacity .15s ease;
+          }
+          .ym-reels-userlink:hover .ym-reels-username,
+          .ym-reels-userlink:active .ym-reels-username {
+            text-decoration: underline;
+            opacity: .92;
           }
           .ym-reels-username {
             font-size: 15px;

@@ -1,4 +1,4 @@
-const VERSION = 'yamshat-v20260609-FIX2-livefix-enh-1780995999999';
+const VERSION = 'yamshat-v85.9-MOBILE-FORCE-FIXES-enh-20260708-1';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,

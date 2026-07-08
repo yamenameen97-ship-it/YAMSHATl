@@ -255,6 +255,10 @@ import './styles/yamshat-fixes-v81-PROFILE-TOUCH-SCROLL.css';
 // v85.7: إصلاحات جذرية — تمرير صفحة الأصدقاء + تراكب صندوق كتابة
 // المجموعات + شيت التعليقات على الجوال.
 import './styles/yamshat-fixes-v85.7-FRIENDS-CHAT-COMMENTS.css';
+// v85.9: إعادة تطبيق قسرية لإصلاحات v85.7 على الجوال (خصوصية أعلى + كسر
+// كاش Service Worker القديم). يجب أن يبقى هذا الاستيراد آخر شيء
+// كي يتفوّق على أي CSS legacy.
+import './styles/yamshat-fixes-v85.9-MOBILE-FORCE-FIXES.css';
 
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
@@ -264,7 +268,7 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v79-REMOVE-COMPOSER-FILTERS';
+const BUILD_ID = 'yamshat-v85.9-MOBILE-FORCE-FIXES';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {
@@ -279,6 +283,25 @@ async function hardResetIfBuildChanged() {
     localStorage.removeItem('apiBase');
     localStorage.removeItem('yamshat_post_draft');
     localStorage.removeItem('yamshat_quote_draft');
+
+    // 🚨 v85.9 — كسر كاش Service Worker القديم قسراً على الجوال (PWA):
+    //   * إلغاء تسجيل كل SW مسجّلة سابقاً حتى يُعاد تنزيل sw.js الجديد.
+    //   * مسح كل الكاشات المخزّنة (Cache Storage) — بما فيها caches
+    //     المحفوظة تحت أسماء VERSION قديمة.
+    // بدون هذا، مستخدم الجوال يرى النسخة القديمة من الأصول حتى بعد
+    // مسح كاش المتصفح، لأن الـ SW القديم يخدم من Cache Storage مباشرةً.
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister().catch(() => null)));
+      }
+    } catch { /* ignore */ }
+    try {
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k).catch(() => null)));
+      }
+    } catch { /* ignore */ }
 
     const reloadFlag = `yamshat_build_reload:${BUILD_ID}`;
     if (!sessionStorage.getItem(reloadFlag)) {

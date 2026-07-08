@@ -24,16 +24,31 @@ function MobileCommentsSheet({ open, postId, onClose }) {
       .then((res) => {
         if (cancelled) return;
         const data = res?.data;
-        const raw = Array.isArray(data) ? data : (data?.items || data?.comments || data?.results || []);
+        // ✅ v85.9 FIX: دعم أشكال إرجاع متعدّدة من الـ backend — مصفوفة مباشرة،
+        // أو { items }، أو { comments }، أو { results }، أو { data: [...] } ملتففة مرتين.
+        let raw = [];
+        if (Array.isArray(data)) raw = data;
+        else if (Array.isArray(data?.items)) raw = data.items;
+        else if (Array.isArray(data?.comments)) raw = data.comments;
+        else if (Array.isArray(data?.results)) raw = data.results;
+        else if (Array.isArray(data?.data)) raw = data.data;
+        else if (Array.isArray(data?.data?.items)) raw = data.data.items;
+
         // ✅ v85.7 FIX: تسطيح شجرة التعليقات (جذور + ردود) إلى قائمة مسطحة
         // لأن الـ backend يُرجع الآن items كشجرة (داخل كل جذر replies[]).
+        // ✅ v85.9 FIX: تجنّب الحلقات اللانهائية لو أرجع الباكاند مرجعاً دائرياً.
         const flat = [];
+        const seen = new Set();
         const walk = (nodes) => {
           if (!Array.isArray(nodes)) return;
           for (const n of nodes) {
             if (!n || typeof n !== 'object') continue;
+            const key = n.id ?? `${n.user_id || ''}-${n.created_at || ''}-${(n.content || n.text || '').slice(0,20)}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
             flat.push(n);
             if (Array.isArray(n.replies) && n.replies.length) walk(n.replies);
+            if (Array.isArray(n.children) && n.children.length) walk(n.children);
           }
         };
         walk(raw);

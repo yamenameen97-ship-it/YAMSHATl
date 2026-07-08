@@ -109,7 +109,11 @@ export default function Profile() {
   }, [isOwnProfile, location.hash, location.search]);
 
   // مفتاح تخزين محلي للصور الشخصية (بديل احتياطي عند فشل حفظ الخادم)
+  // ✅ FIX v85.6: وسّعنا النطاق ليشمل full_name و bio و activity_tagline
+  //             أيضاً لأن الخادم أحياناً لا يحفظ هذه الحقول أو يرجع نسخة مخزّنة (cache)
+  //             فيعود الاسم للقيمة القديمة بعد إعادة تحميل الصفحة.
   const getLocalProfileKey = (uname) => `yamshat:profile:images:${uname || ''}`;
+  const getLocalProfileTextKey = (uname) => `yamshat:profile:text:${uname || ''}`;
 
   const readLocalProfileImages = (uname) => {
     try {
@@ -130,10 +134,33 @@ export default function Profile() {
     }
   };
 
-  const loadProfile = async () => {
+  // ✅ FIX v85.6: قراءة/كتابة حقول النص للملف الشخصي محلياً
+  // (full_name / bio / activity_tagline) لضمان الثبات عبر الزيارات.
+  const readLocalProfileText = (uname) => {
+    try {
+      const raw = window.localStorage.getItem(getLocalProfileTextKey(uname));
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const writeLocalProfileText = (uname, payload) => {
+    try {
+      const existing = readLocalProfileText(uname) || {};
+      const merged = { ...existing, ...payload };
+      window.localStorage.setItem(getLocalProfileTextKey(uname), JSON.stringify(merged));
+    } catch (err) {
+      console.warn('تعذر حفظ نص الملف الشخصي محلياً', err);
+    }
+  };
+
+  const loadProfile = async (opts = {}) => {
     // ✅ FIX (v59.13.3): حل race condition عند التنقل بين الملفات
     const mySeq = ++requestSeqRef.current;
     const myUsername = username;
+    // ✅ FIX v85.6: دعم forceRefresh لإجبار تجاوز الكاش بعد حفظ التعديلات
+    const forceRefresh = Boolean(opts?.forceRefresh);
 
     setLoading(true);
     setLoadError('');
@@ -197,7 +224,7 @@ export default function Profile() {
     }, 2500);
 
     try {
-      const { data } = await getProfileBundle(myUsername);
+      const { data } = await getProfileBundle(myUsername, { forceRefresh });
       clearTimeout(safetyTimer);
 
       if (mySeq !== requestSeqRef.current || myUsername !== username) {
@@ -214,6 +241,28 @@ export default function Profile() {
           data.user.profile.cover_photo = local.cover_photo;
         }
       }
+
+      // ✅ FIX v85.6: دمج حقول النص (full_name/bio/activity_tagline) المخزّنة محلياً
+      // لضمان أن التعديلات تبقى ظاهرة حتى لو اختفت من رد الخادم (bug معروف)
+      // أو الخادم أرجع نسخة مخزّنة قديمة.
+      if (myUsername === currentUser) {
+        const localText = readLocalProfileText(myUsername) || {};
+        if (data?.user) {
+          if (!data.user.profile) data.user.profile = {};
+          // الأولوية: القيمة المحلية إذا كانت غير فارغة (لأنها أحدث تعديل)
+          if (localText.full_name) {
+            data.user.full_name = localText.full_name;
+            data.user.profile.full_name = localText.full_name;
+          }
+          if (localText.bio) {
+            data.user.profile.bio = localText.bio;
+          }
+          if (localText.activity_tagline) {
+            data.user.profile.activity_tagline = localText.activity_tagline;
+          }
+        }
+      }
+
       setProfile(data);
       setLoading(false);
       setLoadError('');
@@ -422,6 +471,12 @@ export default function Profile() {
         avatar: finalAvatar,
         cover_photo: finalCover,
       });
+      // ✅ FIX v85.6: حفظ النص (الاسم/السيرة/الشعار) محلياً أيضاً حتى يبقى بعد الخروج/العودة
+      writeLocalProfileText(cleanedUsername, {
+        full_name: finalFullName,
+        bio: nextProfile?.bio ?? payload.bio ?? '',
+        activity_tagline: nextProfile?.activity_tagline ?? payload.activity_tagline ?? '',
+      });
       mergeStoredUser({
         username: nextUser?.username || cleanedUsername,
         user: nextUser?.username || cleanedUsername,
@@ -452,8 +507,9 @@ export default function Profile() {
         queryClient.invalidateQueries({ queryKey: ['posts'] });
         queryClient.invalidateQueries({ queryKey: ['user-posts'] });
       } catch (_) { /* ignore */ }
-      // إعادة تحميل البيانات بعد الحفظ — و loadProfile ستدمج البدائل المحلية تلقائياً
-      await loadProfile();
+      // ✅ FIX v85.6: إعادة تحميل مع forceRefresh لتجاوز كاش طلب الملف
+      // (المدة الافتراضية 30ث) وإلّا ستجد النسخة القديمة تعود إلى الواجهة.
+      await loadProfile({ forceRefresh: true });
     } catch (error) {
       pushToast({
         type: 'error',

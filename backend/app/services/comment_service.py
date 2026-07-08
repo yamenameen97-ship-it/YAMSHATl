@@ -175,28 +175,72 @@ def get_comments(
     if not include_hidden:
         base_query = base_query.filter(Comment.is_hidden.is_(False))
 
-    root_query = base_query.filter(Comment.parent_id.is_(None))
-    if sort_by == 'oldest':
-        root_query = root_query.order_by(Comment.is_pinned.desc(), Comment.created_at.asc())
-    elif sort_by == 'popular':
-        root_query = root_query.order_by(Comment.is_pinned.desc(), Comment.likes_count.desc(), Comment.created_at.desc())
-    else:
-        root_query = root_query.order_by(Comment.is_pinned.desc(), Comment.created_at.desc())
+    # ✅ v85.7 FIX: نجلب جميع التعليقات الظاهرة أولاً لبناء الشجرة، ثم نُطبّق
+    # الترتيب/التصفح على الجذور الحقيقية + "الأيتام" (تعليقات لها parent_id لكن
+    # الأب المشار إليه غير موجود/محذوف/مخفي). السبب الجذري السابق: عندما تكون كل
+    # التعليقات ردوداً على أب مخفي، roots تكون فارغة ⇒ items = [] وتظهر رسالة
+    # "لا توجد تعليقات" رغم أن عدّاد comments_count = 2.
+    all_visible = base_query.all()
+    visible_ids = {c.id for c in all_visible}
 
-    total_count = root_query.count()
-    roots = root_query.offset((page - 1) * limit).limit(limit).all()
-    root_ids = [item.id for item in roots]
-    descendants = []
-    if root_ids:
-        descendants = base_query.filter((Comment.parent_id.in_(root_ids)) | (Comment.id.in_(root_ids))).all()
-    tree = _build_comment_tree(db, descendants, current_user=current_user)
+    def _is_root_like(c: Comment) -> bool:
+        # جذر فعلي (parent_id فارغ) أو يتيم (الأب غير ظاهر)
+        pid = c.parent_id
+        return pid is None or pid not in visible_ids
+
+    roots_all = [c for c in all_visible if _is_root_like(c)]
+
+    if sort_by == 'oldest':
+        roots_all.sort(key=lambda c: (not bool(c.is_pinned), c.created_at or datetime.min))
+    elif sort_by == 'popular':
+        roots_all.sort(key=lambda c: (not bool(c.is_pinned), -int(c.likes_count or 0), -(int((c.created_at or datetime.min).timestamp()) if c.created_at else 0)))
+    else:
+        # newest — الافتراضي
+        roots_all.sort(key=lambda c: (not bool(c.is_pinned), -(int((c.created_at or datetime.min).timestamp()) if c.created_at else 0)))
+
+    total_count = len(roots_all)
+    start = (page - 1) * limit
+    end = start + limit
+    roots_page = roots_all[start:end]
+    root_ids = {item.id for item in roots_page}
+
+    # اجمع الأبناء التابعين للجذور المختارة (على أي عمق) + الجذور نفسها
+    included = list(roots_page)
+    # BFS لجلب جميع الردود المتفرعة من كل جذر
+    frontier = set(root_ids)
+    seen = set(root_ids)
+    children_by_parent: dict[int, list[Comment]] = {}
+    for c in all_visible:
+        if c.parent_id is not None:
+            children_by_parent.setdefault(c.parent_id, []).append(c)
+    while frontier:
+        next_frontier = set()
+        for parent_id in frontier:
+            for child in children_by_parent.get(parent_id, []):
+                if child.id not in seen:
+                    included.append(child)
+                    seen.add(child.id)
+                    next_frontier.add(child.id)
+        frontier = next_frontier
+
+    # ⚠️ لبناء الشجرة بشكل صحيح للأيتام، نضبط parent_id مؤقتاً إلى None على
+    # الجذور المُختارة إذا كان أباها غير ظاهر — لا نُعدّل الـ DB، فقط الكائنات في الذاكرة.
+    for c in roots_page:
+        if c.parent_id is not None and c.parent_id not in visible_ids:
+            # كائن SQLAlchemy — تعديل السمة في الذاكرة فقط بدون commit
+            try:
+                c.parent_id = None
+            except Exception:
+                pass
+
+    tree = _build_comment_tree(db, included, current_user=current_user)
     return {
         'items': tree,
         'pagination': {
             'page': page,
             'limit': limit,
             'total_count': total_count,
-            'has_more': (page * limit) < total_count,
+            'has_more': end < total_count,
         },
         'sort_by': sort_by,
     }

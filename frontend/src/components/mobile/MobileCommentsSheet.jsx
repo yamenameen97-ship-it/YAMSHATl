@@ -24,8 +24,20 @@ function MobileCommentsSheet({ open, postId, onClose }) {
       .then((res) => {
         if (cancelled) return;
         const data = res?.data;
-        const list = Array.isArray(data) ? data : (data?.comments || data?.items || []);
-        setComments(list);
+        const raw = Array.isArray(data) ? data : (data?.items || data?.comments || data?.results || []);
+        // ✅ v85.7 FIX: تسطيح شجرة التعليقات (جذور + ردود) إلى قائمة مسطحة
+        // لأن الـ backend يُرجع الآن items كشجرة (داخل كل جذر replies[]).
+        const flat = [];
+        const walk = (nodes) => {
+          if (!Array.isArray(nodes)) return;
+          for (const n of nodes) {
+            if (!n || typeof n !== 'object') continue;
+            flat.push(n);
+            if (Array.isArray(n.replies) && n.replies.length) walk(n.replies);
+          }
+        };
+        walk(raw);
+        setComments(flat);
       })
       .catch((err) => {
         // 500 من الـ backend عند غياب التعليقات => نتعامل بصمت بدون رمي خطأ في الكونسول

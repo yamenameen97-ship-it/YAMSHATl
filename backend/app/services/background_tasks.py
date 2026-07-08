@@ -159,3 +159,24 @@ def start_post_scheduler() -> None:
 def start_all_schedulers() -> None:
     """Alias واضح — يبدأ كل مهام الخلفية (منشورات + قصص)."""
     _ensure_scheduler_running()
+
+
+# =========================================================================
+# ✅ v85.4 FIX #4 — Celery task لتنظيف القصص المنتهية
+# =========================================================================
+# المشكلة السابقة: _scheduler_loop() يعمل داخل thread داخل كل واحد من
+# workers gunicorn — أي أنه يُشغَّل N مرة (مرة لكل worker) → احتمال
+# race conditions في purge_expired وتفويت موارد. الأدق أن يُشغل مرة
+# واحدة مركزية من خلال celery beat.
+#
+# يبقى thread الداخلي fallback لافتراضية في حال لم يتوفر celery beat.
+
+try:
+    from app.celery_app import celery_app as _celery_app  # type: ignore
+
+    @_celery_app.task(name='app.services.background_tasks.purge_expired_stories_task')
+    def purge_expired_stories_task() -> int:  # pragma: no cover
+        """Celery beat task — يحذف القصص المنتهية مرة كل 5 دقائق."""
+        return purge_expired_stories_once()
+except Exception as _exc:  # pragma: no cover
+    logger.debug('Celery task registration skipped: %s', _exc)

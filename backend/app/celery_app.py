@@ -12,7 +12,9 @@ celery_app = Celery(
         'app.services.email',
         'app.services.media_service',
         'app.services.notification_service',
-        'app.services.analytics_service'
+        'app.services.analytics_service',
+        # ✅ v85.4 FIX #4: تسجيل background_tasks لـ stories purge
+        'app.services.background_tasks',
     ]
 )
 
@@ -40,5 +42,13 @@ celery_app.conf.beat_schedule = {
     'cleanup-dead-rooms': {
         'task': 'app.services.live_service.cleanup_dead_rooms',
         'schedule': crontab(minute='*/30'),
-    }
+    },
+    # ✅ v85.4 FIX #4: تنظيف القصص المنتهية كل 5 دقائق (إذا توفر celery beat).
+    # في background_tasks._scheduler_loop هناك thread يقوم بالمهمة
+    # لكنه يفشل مع gunicorn multi-worker (كل worker يشغل نسخته).
+    # مع celery beat تُضمن تشغيلة واحدة مركزية.
+    'purge-expired-stories': {
+        'task': 'app.services.background_tasks.purge_expired_stories_task',
+        'schedule': crontab(minute='*/5'),
+    },
 }

@@ -59,12 +59,25 @@ export default function PostComposerPage() {
       </main>
 
       <style>{`
+        /*
+          v85.5 FIX (منشور جديد لا يقبل السحب لأسفل):
+          - نستخدم min-height بدلاً من height + overflow-y: auto صريح على الصفحة
+            حتى يعمل السحب دائماً على الموبايل.
+          - touch-action: pan-y يسمح بالتمرير العمودي وتعطيل تكبير/تصغير مزعج.
+          - overscroll-behavior: contain يمنع تسرّب سحب السحب لصفحة أعلى (pull-to-refresh).
+          - -webkit-overflow-scrolling: touch لسلاسة على iOS.
+        */
         .ympc-page {
           min-height: 100dvh;
+          height: auto;
           background: var(--background, #0a0a0f);
           color: var(--text, #f4f4f5);
-          padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+          padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px));
           direction: rtl;
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior-y: contain;
+          touch-action: pan-y;
         }
         .ympc-top {
           position: sticky;

@@ -27,7 +27,13 @@ export const getUsers = async (params = {}) => {
 export const getMe = () => API.get('/users/me');
 // v71 ROOT FIX: تفعيل smart cache مع TTL قصير (30 ثانية) بدلاً من تعطيل الكاش بالكامل.
 // هذا يجعل التنقل بين الصفحات فورياً ويتجنب cold start المتكرر للخادم.
-export const getProfileBundle = (username) => API.get(`/users/profile/${encodeURIComponent(username)}`, { cache: true, cacheTtlMs: 30_000 });
+// ✅ FIX v85.6: دعم forceRefresh لإجبار إعادة التحميل بعد حفظ تعديلات الملف الشخصي
+export const getProfileBundle = (username, options = {}) =>
+  API.get(`/users/profile/${encodeURIComponent(username)}`, {
+    cache: true,
+    cacheTtlMs: 30_000,
+    forceRefresh: Boolean(options?.forceRefresh),
+  });
 export const getUserSessions = () => API.get('/users/sessions', { cache: false, forceRefresh: true });
 export const revokeUserSession = (sessionId) => API.delete(`/users/sessions/${encodeURIComponent(sessionId)}`);
 export const getLoginActivity = (limit = 20) => API.get('/users/login-activity', { params: { limit }, cache: false, forceRefresh: true });

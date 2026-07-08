@@ -109,14 +109,19 @@ class ReelLike(Base):
 
 
 class ReelComment(Base):
+    """v85.5 — توسيع جدول تعليقات الريلز لدعم الردود/الإخفاء/تاريخ التحديث."""
     __tablename__ = 'reel_comments'
 
     id = Column(Integer, primary_key=True, index=True)
     reel_id = Column(Integer, ForeignKey('reels.id', ondelete='CASCADE'), index=True, nullable=False)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), index=True, nullable=False)
+    parent_id = Column(Integer, ForeignKey('reel_comments.id', ondelete='CASCADE'), nullable=True, index=True)
+    username = Column(Text, nullable=True)
     content = Column(Text, nullable=False)
     likes_count = Column(Integer, default=0, nullable=False)
+    is_hidden = Column(Boolean, default=False, nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    updated_at = Column(DateTime, nullable=True)
 
 
 class ReelView(Base):

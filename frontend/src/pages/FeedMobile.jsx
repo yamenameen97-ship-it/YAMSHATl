@@ -12,7 +12,7 @@ import MobileCommentsSheet from '../components/mobile/MobileCommentsSheet.jsx';
 import Modal from '../components/ui/Modal.jsx';
 import useSmartFeed from '../hooks/useSmartFeed.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
-import { likePost, savePost, sharePost, deletePost } from '../api/posts.js';
+import { likePost, savePost, sharePost, deletePost, updatePost } from '../api/posts.js';
 import { followUser, muteUser, unmuteUser } from '../api/users.js';
 import { blockUserApi, unblockUserApi } from '../api/chat.js';
 import { useToast } from '../components/admin/ToastProvider.jsx';
@@ -389,6 +389,30 @@ function FeedMobile() {
     }
   }, [moreMenuPost, pushToast, queryClient, closeMoreMenu]);
 
+  // ✅ FIX v85.6: تعديل المنشور الخاص من قائمة الخيارات
+  // يفتح prompt (موحد مع باقي التطبيق) لتعديل النص، ثم يرسل PATCH للخادم ويُبطِل الكاش.
+  const handleMenuEditOwnPost = useCallback(async () => {
+    if (!moreMenuPost?.rawId) return;
+    const currentText = String(moreMenuPost.text || moreMenuPost.content || '');
+    // eslint-disable-next-line no-alert
+    const newText = window.prompt('تعديل المنشور:', currentText);
+    if (newText === null) return; // إلغاء
+    const trimmed = newText.trim();
+    if (trimmed === currentText.trim()) { closeMoreMenu(); return; }
+    setMoreMenuBusy(true);
+    try {
+      await updatePost(moreMenuPost.rawId, { content: trimmed });
+      pushToast?.({ type: 'success', title: 'تم حفظ التعديل' });
+      queryClient.invalidateQueries({ queryKey: ['feed-data'] });
+      queryClient.invalidateQueries({ queryKey: ['feed'] });
+      queryClient.invalidateQueries({ queryKey: ['posts'] });
+      closeMoreMenu();
+    } catch (error) {
+      pushToast?.({ type: 'error', title: 'تعذر حفظ التعديل', description: error?.response?.data?.detail || error?.message });
+      setMoreMenuBusy(false);
+    }
+  }, [moreMenuPost, pushToast, queryClient, closeMoreMenu]);
+
   // ✅ v58.1 — إصلاح منطقي: مقارنة username وليس authorName (الاسم المعروض)
   // حتى يستطيع المستخدم حذف منشوره الخاص فعلياً.
   const isOwnMoreMenuPost = (() => {
@@ -507,9 +531,15 @@ function FeedMobile() {
               <button type="button" className="profile-tab" onClick={handleMenuBlock} disabled={moreMenuBusy}>{moreMenuState.blocked ? 'إلغاء الحظر' : 'حظر'}</button>
             </>
           ) : (
-            <button type="button" className="profile-tab" onClick={handleMenuDeleteOwnPost} disabled={moreMenuBusy}>حذف المنشور</button>
+            <>
+              {/* ✅ FIX v85.6: زر تعديل المنشور للمالك (كان مفقوداً) */}
+              <button type="button" className="profile-tab active" onClick={handleMenuEditOwnPost} disabled={moreMenuBusy}>تعديل المنشور</button>
+              <button type="button" className="profile-tab" onClick={handleMenuDeleteOwnPost} disabled={moreMenuBusy}>حذف المنشور</button>
+            </>
           )}
-          <button type="button" className="profile-tab" onClick={handleMenuReport} disabled={moreMenuBusy}>بلاغ</button>
+          {!isOwnMoreMenuPost ? (
+            <button type="button" className="profile-tab" onClick={handleMenuReport} disabled={moreMenuBusy}>بلاغ</button>
+          ) : null}
         </div>
       </Modal>
     </>

@@ -483,6 +483,14 @@ export default function StoryEditor({ file, onClose, onSuccess }) {
 }
 
 const editorStyles = `
+/*
+  v85.5 FIX (مشكلة عدم القدرة على الوصول لزر النشر في الستوري):
+  - المشكلة السابقة: المحرر كان height: 100% + overflow: hidden فلم يتم عرض
+    زر النشر الموجود في الهيدر/الفوتر ولم يقبل السحب.
+  - الحل: جعل .yam-story-editor قابل للتمرير العمودي، وجعل الهيدر sticky
+    في الأعلى (ليبقى زر النشر مرئيًا دائمًا حتى أثناء التمرير).
+  - touch-action: pan-y + -webkit-overflow-scrolling: touch لتجربة سلسة.
+*/
 .yam-story-editor-overlay {
   font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, -apple-system, sans-serif;
   position: fixed;
@@ -490,9 +498,10 @@ const editorStyles = `
   background: rgba(0,0,0,0.94);
   z-index: 2100;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
   padding: 0;
+  overflow: hidden;
 }
 .yam-story-editor {
   width: 100%;
@@ -501,10 +510,14 @@ const editorStyles = `
   background: #0a0a10;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 @media (min-width: 900px) {
-  .yam-story-editor-overlay { padding: 20px; }
+  .yam-story-editor-overlay { padding: 20px; align-items: center; }
   .yam-story-editor {
     max-width: 460px;
     max-height: 96vh;
@@ -517,9 +530,16 @@ const editorStyles = `
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  background: rgba(255,255,255,0.03);
+  padding-top: calc(12px + env(safe-area-inset-top, 0px));
+  background: rgba(10,10,16,0.95);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   color: #fff;
   border-bottom: 1px solid rgba(255,255,255,0.06);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  flex-shrink: 0;
 }
 .yam-editor-header strong { font-size: 15px; font-weight: 700; }
 .yam-editor-close, .yam-editor-publish {
@@ -541,12 +561,17 @@ const editorStyles = `
 
 .yam-editor-stage {
   position: relative;
-  flex: 1;
+  flex: 0 0 auto;
+  min-height: 45vh;
+  max-height: 60vh;
   background: #000;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+@media (min-width: 900px) {
+  .yam-editor-stage { flex: 1; min-height: 0; max-height: none; }
 }
 .yam-editor-media {
   width: 100%;
@@ -628,7 +653,7 @@ const editorStyles = `
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px 14px 16px;
+  padding: 12px 14px calc(24px + env(safe-area-inset-bottom, 0px));
   background: rgba(255,255,255,0.02);
   border-top: 1px solid rgba(255,255,255,0.06);
 }

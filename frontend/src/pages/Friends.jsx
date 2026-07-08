@@ -524,7 +524,7 @@ export default function Friends() {
 
   return (
     <MainLayout>
-      <div className="friends-page" dir="rtl">
+      <div className="friends-page" dir="rtl" data-page="friends">
         {/* الرأس */}
         <div className="friends-header">
           <div className="friends-header-row">

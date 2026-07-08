@@ -260,7 +260,9 @@ export default function MessageContextPopup({
             <span className="icon" aria-hidden="true">⎘</span>
             <span className="label">نسخ</span>
           </button>
-          {isMe ? (
+          {/* ✅ FIX v85.6: زر التعديل يظهر لرسائل المستخدم غير المحذوفة وغير الوسائط */}
+          {isMe && onEdit && !message?.deleted && !message?.media_url
+            && !['image','video','audio','voice','file','media'].includes(String(message?.type||'').toLowerCase()) ? (
             <button type="button" className="ym-action-btn" onClick={handleAction(onEdit)}>
               <span className="icon" aria-hidden="true">✎</span>
               <span className="label">تعديل</span>
@@ -302,13 +304,15 @@ export default function MessageContextPopup({
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          {isMe ? (
+          {isMe && onEdit && !message?.deleted && !message?.media_url
+            && !['image','video','audio','voice','file','media'].includes(String(message?.type||'').toLowerCase()) ? (
             <button type="button" role="menuitem" onClick={handleAction(onEdit)}>
               <span>تعديل لدى الجميع</span>
               <span className="icon" aria-hidden="true">✎</span>
             </button>
           ) : null}
-          {isMe ? (
+          {isMe && onEdit && !message?.deleted && !message?.media_url
+            && !['image','video','audio','voice','file','media'].includes(String(message?.type||'').toLowerCase()) ? (
             <button type="button" role="menuitem" onClick={handleAction(onEdit)}>
               <span>تعديل لدي</span>
               <span className="icon" aria-hidden="true">✎</span>

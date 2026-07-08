@@ -375,28 +375,42 @@ export default function StoriesBar({ currentUser, onOpenComposer }) {
         )}
 
         {/* قصص الأصدقاء */}
-        {otherGroups.map((group, idx) => (
-          <motion.button
-            key={`g-${group.user_id}`}
-            type="button"
-            whileTap={{ scale: 0.92 }}
-            className="yam-story-item"
-            onClick={() => openViewer(group)}
-            aria-label={`فتح قصص ${group.username}`}
-          >
-            <div className={`yam-story-avatar ${group.has_unseen ? 'unseen' : 'seen'}`}>
-              <img
-                src={`https://ui-avatars.com/api/?name=${encodeURIComponent(group.username || 'user')}&background=random&color=fff`}
-                alt=""
-                loading="lazy"
-              />
-              {group.stories?.length > 1 && (
-                <span className="yam-story-count" aria-hidden>{group.stories.length}</span>
-              )}
-            </div>
-            <span className="yam-story-name" title={group.username}>{group.username}</span>
-          </motion.button>
-        ))}
+        {/* ✅ v85.4 FIX #1: استخدام group.user_avatar / avatar_url الحقيقية من الباك اند
+            سابقاً: كان يستخدم دائماً ui-avatars.com كبديل → أفاتار المستخدمين
+            الحقيقية لا تظهر في الشريط الدائري أبداً!
+            مع fallback إلى ui-avatars فقط إذا لم يوجد أفاتار محفوظ. */}
+        {otherGroups.map((group, idx) => {
+          const realAvatar = group.user_avatar || group.avatar_url || '';
+          const fallbackAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(group.username || 'user')}&background=random&color=fff`;
+          return (
+            <motion.button
+              key={`g-${group.user_id}`}
+              type="button"
+              whileTap={{ scale: 0.92 }}
+              className="yam-story-item"
+              onClick={() => openViewer(group)}
+              aria-label={`فتح قصص ${group.username}`}
+            >
+              <div className={`yam-story-avatar ${group.has_unseen ? 'unseen' : 'seen'}`}>
+                <img
+                  src={realAvatar || fallbackAvatar}
+                  alt=""
+                  loading="lazy"
+                  onError={(e) => {
+                    // إذا فشل تحميل الأفاتار الحقيقي، اجعله fallback
+                    if (e.currentTarget.src !== fallbackAvatar) {
+                      e.currentTarget.src = fallbackAvatar;
+                    }
+                  }}
+                />
+                {group.stories?.length > 1 && (
+                  <span className="yam-story-count" aria-hidden>{group.stories.length}</span>
+                )}
+              </div>
+              <span className="yam-story-name" title={group.username}>{group.username}</span>
+            </motion.button>
+          );
+        })}
       </div>
 
       <input

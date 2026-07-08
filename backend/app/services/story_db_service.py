@@ -507,6 +507,90 @@ def list_grouped_stories(db: Session, viewer_user_id: int, viewer_username: str)
     return result
 
 
+# ============================== v85.4 — قصص مستخدم محدد ==============================
+def list_user_stories(
+    db: Session,
+    target_user_id: int,
+    viewer_user_id: int,
+    viewer_username: str = '',
+) -> dict:
+    """جلب قصص مستخدم محدد مع احترام الخصوصية والحظر.
+
+    ✅ v85.4 FIX #5: endpoint لـ deep-link من صفحة تعريفية إلى قصص مستخدم.
+    يرجع بنية group متوافقة مع /stories/grouped لسهولة تمريرها
+    مباشرة لـ StoryViewerEnhanced.
+
+    Raises:
+        KeyError: إذا لم يوجد المستخدم المستهدف.
+        PermissionError: حظر متبادل / ليس صديقاً / private.
+    """
+    purge_expired(db)
+
+    target = db.query(User).filter(User.id == int(target_user_id)).first()
+    if target is None:
+        raise KeyError('User not found')
+
+    is_self = int(target_user_id) == int(viewer_user_id)
+
+    # فحص الحظر (ماعدا مشاهدة لنفسك)
+    if not is_self and _is_blocked_between(db, viewer_user_id, target_user_id):
+        raise PermissionError('Blocked')
+
+    # تحديد الرؤية
+    if is_self:
+        allow_privacies = ('friends', 'close_friends', 'private')
+    else:
+        friend_ids = _load_friend_ids(db, viewer_user_id)
+        close_ids = _load_close_friend_ids(db, viewer_user_id)
+        if int(target_user_id) in close_ids:
+            allow_privacies = ('friends', 'close_friends')
+        elif int(target_user_id) in friend_ids:
+            allow_privacies = ('friends',)
+        else:
+            # ليس صديقاً → لا يرى أي قصة
+            allow_privacies = ()
+
+    stories: list = []
+    if allow_privacies:
+        stories = (
+            db.query(Story)
+            .filter(
+                Story.user_id == int(target_user_id),
+                Story.privacy.in_(list(allow_privacies)),
+            )
+            .order_by(Story.created_at.asc())
+            .all()
+        )
+
+    cache = _UsersCache(db)
+    cache.prefetch([target_user_id, viewer_user_id])
+    serialized = [
+        serialize_story(db, s, viewer_user_id=viewer_user_id, users_cache=cache)
+        for s in stories
+    ]
+
+    author = cache.get(target_user_id)
+    vuname_lc = (viewer_username or '').strip().lower()
+    has_unseen = False
+    if not is_self:
+        for s in serialized:
+            seen_list = [str(u).lower() for u in (s.get('seen_by') or [])]
+            if vuname_lc and vuname_lc not in seen_list:
+                has_unseen = True
+                break
+
+    return {
+        'user_id': int(target_user_id),
+        'username': author.get('username', ''),
+        'avatar_url': author.get('avatar_url', ''),
+        'user_avatar': author.get('avatar_url', ''),
+        'is_self': is_self,
+        'has_unseen': has_unseen,
+        'stories_count': len(serialized),
+        'stories': serialized,
+    }
+
+
 # ============================== Single story ==============================
 def get_story(db: Session, story_id: int, viewer_user_id: int) -> dict:
     story = db.query(Story).filter(Story.id == int(story_id)).first()

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import { addComment, getComments } from '../api/posts.js';
+import { addReelComment, getReelComments } from '../api/reels.js';
 import API from '../api/axios.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
 // ✅ v59.13.16 FIX #1: ربط ReportModal بصفحة الريلز — كان موجوداً لكن غير مستخدم في الريلز
@@ -167,13 +168,24 @@ export default function Reels() {
       videoRefs.current.length = reels.length;
     }
 
+    // v85.5 FIX: محاولة تشغيل قوية مع إعادة المحاولة على iOS/Chrome mobile
+    // المشكلة السابقة: play() قد يفشل بصمت إذا كان الفيديو لم يُحمَّل بعد
+    // الحل: نضبط muted أولاً ثم load() إذا لزم ثم play()، مع إعادة محاولة عبر canplay
     videoRefs.current.forEach((v, i) => {
       if (!v) return;
       if (i === activeIndex) {
         v.muted = muted;
-        // لا تستدعي play() إلا إذا كان الفيديو فعلياً متوقفاً
+        v.playsInline = true;
         if (v.paused) {
-          v.play?.().catch(() => {});
+          const tryPlay = () => v.play?.().catch(() => {});
+          const p = tryPlay();
+          if (p && typeof p.then === 'function') {
+            p.catch(() => {
+              // في حالة الفشل، محاولة أخرى بعد canplay
+              const once = () => { tryPlay(); v.removeEventListener('canplay', once); };
+              v.addEventListener('canplay', once, { once: true });
+            });
+          }
         }
       } else {
         if (!v.paused) v.pause?.();
@@ -219,39 +231,60 @@ export default function Reels() {
     } catch {}
   }, [pushToast]);
 
+  /*
+    v85.5 FIX (تعليقات الريلز تختفي بعد الإرسال):
+    - المشكلة السابقة: كانت addComment/getComments تستخدم endpoints خاصة
+      بالمنشورات (posts) مما أدّى إلى تخزين التعليق في مجدول خاطئ أو فشل صامت.
+    - الحل: نستخدم addReelComment/getReelComments الجديدة مع fallback لمرة واحدة
+      لـ /posts/{id}/comment لدعم النسخ الأقدم إن لم يكن الباك-إند محدّثًا بعد.
+  */
   const openComments = useCallback(async (reel) => {
     if (!reel) return;
     setShowComments(true);
+    let items = [];
     try {
-      const { data } = await getComments(reel.id);
-      // ✅ FIX v59.13.8 (#3): تجنّب setState إذا تم إغلاق الصفحة أثناء جلب التعليقات
-      if (!isMountedRef.current) return;
-      setActiveComments(Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : []);
+      const { data } = await getReelComments(reel.id);
+      items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
     } catch {
-      if (!isMountedRef.current) return;
-      setActiveComments([]);
+      // fallback: المسار القديم (إن لم يكن الباك-إند محدّثًا بعد)
+      try {
+        const { data } = await getComments(reel.id);
+        items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+      } catch {
+        items = [];
+      }
     }
+    if (!isMountedRef.current) return;
+    setActiveComments(items);
   }, []);
 
   const sendComment = useCallback(async () => {
     const text = commentText.trim();
     if (!text || !currentReel) return;
+    // تفاؤلي: أضف التعليق فورًا للواجهة
+    const tempId = `tmp_${Date.now()}`;
+    const optimistic = { id: tempId, content: text, username: 'me', _pending: true };
+    setActiveComments((prev) => [optimistic, ...prev]);
+    setCommentText('');
+
     try {
-      const { data } = await addComment(currentReel.id, text);
-      // ✅ FIX v59.13.8 (#3): حراسة سلسلة الـ setState بعد الـ await
+      const { data } = await addReelComment(currentReel.id, text);
       if (!isMountedRef.current) return;
-      setActiveComments((prev) => [data || { id: Date.now(), content: text, username: 'me' }, ...prev]);
+      // استبدال التعليق المؤقت بالحقيقي
+      setActiveComments((prev) => prev.map((c) => (c.id === tempId ? (data || { ...c, _pending: false }) : c)));
       setReels((prev) => prev.map((r) => (r.id === currentReel.id ? { ...r, comments_count: r.comments_count + 1 } : r)));
-      setCommentText('');
     } catch {
+      // محاولة fallback على المسار القديم
       try {
-        await API.post(`/reels/${encodeURIComponent(currentReel.id)}/comment`, { content: text });
+        const { data } = await addComment(currentReel.id, text);
         if (!isMountedRef.current) return;
+        setActiveComments((prev) => prev.map((c) => (c.id === tempId ? (data || { ...c, _pending: false }) : c)));
         setReels((prev) => prev.map((r) => (r.id === currentReel.id ? { ...r, comments_count: r.comments_count + 1 } : r)));
-        setActiveComments((prev) => [{ id: Date.now(), content: text, username: 'me' }, ...prev]);
-        setCommentText('');
       } catch {
         if (!isMountedRef.current) return;
+        // إزالة التعليق التفاؤلي وإعادة النص للحقل
+        setActiveComments((prev) => prev.filter((c) => c.id !== tempId));
+        setCommentText(text);
         pushToast?.({ type: 'error', title: 'تعذّر إرسال التعليق' });
       }
     }
@@ -310,19 +343,53 @@ export default function Reels() {
               {/* Video / poster */}
               <div className="ym-reels-media">
                 {reel.media_url ? (
+                  /*
+                    v85.5 FIX (مشكلة الريلز لا يشتغل):
+                    - autoPlay + muted (مطلوبان لتشغيل تلقائي على الموبايل).
+                    - preload="auto" للريل النشط، metadata للغير نشط.
+                    - webkit-playsinline لـ iOS القديم.
+                    - controls=false + معالجة أخطاء التحميل لإظهار البوستر.
+                    - defaultMuted لضمان التشغيل التلقائي في Chrome/Safari.
+                  */
                   <video
                     ref={(el) => { videoRefs.current[i] = el; }}
                     className="ym-reels-video"
                     src={reel.media_url}
-                    poster={reel.poster}
+                    poster={reel.poster || undefined}
                     playsInline
+                    webkit-playsinline="true"
+                    x5-playsinline="true"
                     loop
                     muted={muted}
+                    defaultMuted
+                    autoPlay={i === activeIndex}
+                    preload={i === activeIndex ? 'auto' : 'metadata'}
+                    controls={false}
+                    disablePictureInPicture
+                    disableRemotePlayback
+                    onLoadedMetadata={(e) => {
+                      // ضمان بدء التشغيل للريل النشط
+                      if (i === activeIndex && e.currentTarget.paused) {
+                        e.currentTarget.muted = muted;
+                        e.currentTarget.play?.().catch(() => {});
+                      }
+                    }}
+                    onCanPlay={(e) => {
+                      if (i === activeIndex && e.currentTarget.paused) {
+                        e.currentTarget.muted = muted;
+                        e.currentTarget.play?.().catch(() => {});
+                      }
+                    }}
+                    onError={(e) => {
+                      // في حالة فشل تحميل الفيديو، إظهار رسالة خطأ في الكونسول
+                      // eslint-disable-next-line no-console
+                      console.warn('Reel video load error', reel.id, e.currentTarget?.error);
+                    }}
                     onTimeUpdate={i === activeIndex ? handleTimeUpdate : undefined}
                     onClick={() => {
                       const v = videoRefs.current[i];
                       if (!v) return;
-                      if (v.paused) v.play?.(); else v.pause?.();
+                      if (v.paused) v.play?.().catch(() => {}); else v.pause?.();
                     }}
                   />
                 ) : (

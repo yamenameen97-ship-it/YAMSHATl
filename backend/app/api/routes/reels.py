@@ -13,7 +13,7 @@ from app.api.routes.upload import save_upload
 from app.core.dependencies import get_current_user, get_db
 from app.core.media_urls import normalize_media_url
 from app.db.bootstrap import initialize_database
-from app.models.stories_reels import Reel, ReelLike, ReelView, SavedReel
+from app.models.stories_reels import Reel, ReelComment, ReelLike, ReelView, SavedReel
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -359,3 +359,173 @@ def save_reel(reel_id: int, db: Session = Depends(get_db), current_user: User = 
         'reel_id': reel_id,
         'saved': saved,
     }
+
+
+# ============================================================
+# v85.5 — Reel comments endpoints
+# ------------------------------------------------------------
+# قبل: كان الفرونت-إند يستخدم /posts/{reel_id}/comment للتعليق على الريلز
+# مما تسبب في اختفاء التعليقات (تخزين على مجدول خاطئ / فشل صامت).
+# الآن: مسارات مخصصة تحفظ التعليقات في جدول reel_comments المستقل،
+# وتُحدّث comments_count الحقيقي في جدول reels.
+# ============================================================
+from fastapi import Body
+# ReelComment يُستورد في أعلى الملف مع بقية موديلات stories_reels
+
+
+def _serialize_reel_comment(comment: ReelComment, current_user: User | None = None) -> dict:
+    author = None
+    try:
+        # جلب صاحب التعليق (يبقى خفيفاً — استعلام واحد لكل تعليق مقبول لأعداد تعليقات صغيرة)
+        author_row = None
+        if comment.user_id:
+            # نستخدم الجلسة الحالية عبر object_session لتفادي حقن Session جديد
+            from sqlalchemy.orm import object_session
+            sess = object_session(comment)
+            if sess is not None:
+                author_row = sess.query(User).filter(User.id == comment.user_id).first()
+        if author_row is not None:
+            author = {
+                'id': author_row.id,
+                'username': author_row.username,
+                'avatar': getattr(author_row, 'avatar_url', None) or getattr(author_row, 'avatar', None),
+            }
+    except Exception:
+        author = None
+    return {
+        'id': comment.id,
+        'reel_id': comment.reel_id,
+        'user_id': comment.user_id,
+        'parent_id': comment.parent_id,
+        'username': (author or {}).get('username') or comment.username or 'user',
+        'content': comment.content,
+        'likes_count': int(comment.likes_count or 0),
+        'created_at': (comment.created_at.isoformat() if comment.created_at else None),
+        'author': author,
+        'is_me': bool(current_user and current_user.id == comment.user_id),
+    }
+
+
+@router.get('/{reel_id}/comments')
+def list_reel_comments(
+    reel_id: int,
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    reel = db.query(Reel).filter(Reel.id == reel_id, Reel.is_deleted.is_(False)).first()
+    if reel is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Reel not found')
+
+    query = (
+        db.query(ReelComment)
+        .filter(ReelComment.reel_id == reel_id, ReelComment.is_hidden.is_(False))
+        .order_by(desc(ReelComment.created_at))
+    )
+    total = query.count()
+    rows = query.offset(offset).limit(limit).all()
+    items = [_serialize_reel_comment(row, current_user=current_user) for row in rows]
+    return {
+        'items': items,
+        'total': total,
+        'has_more': (offset + len(items)) < total,
+    }
+
+
+@router.post('/{reel_id}/comments', status_code=status.HTTP_201_CREATED)
+def create_reel_comment(
+    reel_id: int,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    reel = db.query(Reel).filter(Reel.id == reel_id, Reel.is_deleted.is_(False)).first()
+    if reel is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Reel not found')
+
+    raw = payload.get('content') or payload.get('text') or payload.get('comment') or ''
+    content = str(raw).strip()
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='comment content is required')
+    if len(content) > 2000:
+        content = content[:2000]
+
+    parent_id = payload.get('parent_id')
+    if parent_id is not None:
+        try:
+            parent_id = int(parent_id)
+            parent = db.query(ReelComment).filter(
+                ReelComment.id == parent_id,
+                ReelComment.reel_id == reel_id,
+            ).first()
+            if parent is None:
+                parent_id = None
+        except (TypeError, ValueError):
+            parent_id = None
+
+    comment = ReelComment(
+        reel_id=reel_id,
+        user_id=current_user.id,
+        parent_id=parent_id,
+        username=current_user.username,
+        content=content,
+        likes_count=0,
+        is_hidden=False,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    db.add(comment)
+
+    # تحديث عدّاد التعليقات على الريل
+    try:
+        reel.comments_count = int(reel.comments_count or 0) + 1
+    except Exception:
+        pass
+
+    db.commit()
+    db.refresh(comment)
+    return _serialize_reel_comment(comment, current_user=current_user)
+
+
+@router.delete('/comments/{comment_id}')
+def delete_reel_comment(
+    comment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    comment = db.query(ReelComment).filter(ReelComment.id == comment_id).first()
+    if comment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Comment not found')
+    if comment.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Not allowed')
+
+    reel_id_ref = comment.reel_id
+    db.delete(comment)
+
+    # تحديث عدّاد التعليقات
+    reel = db.query(Reel).filter(Reel.id == reel_id_ref).first()
+    if reel is not None:
+        try:
+            reel.comments_count = max(0, int(reel.comments_count or 0) - 1)
+        except Exception:
+            pass
+
+    db.commit()
+    return {'ok': True, 'deleted': comment_id}
+
+
+@router.post('/comments/{comment_id}/like')
+def like_reel_comment(
+    comment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    comment = db.query(ReelComment).filter(ReelComment.id == comment_id).first()
+    if comment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Comment not found')
+    # عدّاد بسيط (بدون جدول علاقات لتوفير التعقيد — التوثيق الكامل يمكن إضافته لاحقاً)
+    comment.likes_count = int(comment.likes_count or 0) + 1
+    db.commit()
+    db.refresh(comment)
+    return {'ok': True, 'likes_count': comment.likes_count}

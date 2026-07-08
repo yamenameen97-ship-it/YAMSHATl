@@ -29,6 +29,7 @@ import {
   addComment as apiAddComment,
   getComments as apiGetComments,
   deletePost as apiDeletePost,
+  updatePost as apiUpdatePost,
 } from '../api/posts.js';
 
 
@@ -414,6 +415,25 @@ function PostCard({ post }) {
     }
   };
 
+  // ✅ FIX v85.6: تعديل المنشور (للمالك فقط)
+  const handleEditPost = async () => {
+    if (!isOwnPost || !canCallBackend) return;
+    const currentText = String(post?.text || post?.content || '');
+    // eslint-disable-next-line no-alert
+    const newText = window.prompt('تعديل المنشور:', currentText);
+    if (newText === null) return;
+    const trimmed = newText.trim();
+    if (trimmed === currentText.trim()) { setShowMoreMenu(false); return; }
+    try {
+      await apiUpdatePost(post.rawId, { content: trimmed });
+      setShowMoreMenu(false);
+      pushToast({ type: 'success', title: 'تم حفظ التعديل' });
+      invalidateFeed();
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر حفظ التعديل', description: error?.response?.data?.detail || error?.message });
+    }
+  };
+
   const handleMoreOptions = () => {
     setShowMoreMenu((prev) => !prev);
   };
@@ -586,7 +606,11 @@ function PostCard({ post }) {
                     <button type="button" className="yam-settings-popover-item danger" onClick={handleReportPost}>بلاغ</button>
                   </>
                 ) : (
-                  <button type="button" className="yam-settings-popover-item danger" onClick={handleDeletePost}>حذف المنشور</button>
+                  <>
+                    {/* ✅ FIX v85.6: زر تعديل المنشور (كان مفقوداً) */}
+                    <button type="button" className="yam-settings-popover-item" onClick={handleEditPost}>تعديل المنشور</button>
+                    <button type="button" className="yam-settings-popover-item danger" onClick={handleDeletePost}>حذف المنشور</button>
+                  </>
                 )}
               </div>
             ) : null}

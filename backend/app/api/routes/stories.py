@@ -1,14 +1,19 @@
-"""مسارات الستوري — v84.0 (تحديث v83.9).
+"""مسارات الستوري — v85.4 (تحديث v84.0).
 
 كل عملية تُحفظ الآن مباشرة في قاعدة البيانات السحابية (Postgres).
 - لا اعتماد على story_store.json (filesystem محلي غير ثابت على Render).
 - المشاهدات والردود والتفاعلات والاستطلاعات و highlights كلها في جداول ORM.
-- إضافة GET /stories/{story_id} لجلب قصة واحدة (كانت مفقودة سابقاً).
+
+v85.4 (تدقيق نظام الستوري — 5 نواقص جوهرية):
+- ✅ POST /stories/purge_expired — كان موثّقاً لكنه غير مُطبَّق (endpoint 404).
+- ✅ GET /stories/user/{user_id} — deep-link لقصص مستخدم محدد (كان مفقوداً).
+- ✅ إشعار story:reaction — كان مفقوداً بينما story:reply/mention/new موجودة.
+- ✅ إشعار story:poll_vote — عند تصويت أحدهم على استطلاعك.
+- (النقص #4 و #5 خارج هذا الملف: schedule + frontend avatars)
 
 v84.0:
 - 403 عند محاولة مشاهدة/تفاعل مع قصة من محظور (UserBlock).
 - avatar_url وuser_avatar في الردود.
-- POST /stories/purge_expired (admin) — تشغيل يدوي للتنظيف.
 
 توافق خلفي كامل مع الواجهة الحالية (نفس أسماء الحقول في الرد).
 """
@@ -21,6 +26,12 @@ from app.api.routes.upload import save_upload
 from app.core.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.services import story_db_service as story_svc
+
+# v85.4 — استيراد مهمة تنظيف الخلفية (backup path لـ admin trigger)
+try:
+    from app.services.background_tasks import purge_expired_stories_once as _purge_stories_task  # type: ignore
+except Exception:  # pragma: no cover
+    _purge_stories_task = None
 
 # Hook اختياري لإشعارات الـ WebSocket / الإشعارات الداخلية
 try:
@@ -216,12 +227,23 @@ def react_story(
 ):
     sid = _parse_story_id(story_id)
     try:
-        return story_svc.add_reaction(
-            db, sid,
-            str(payload.get('emoji') or '🔥'),
-            current_user.id,
-            current_user.username,
+        emoji = str(payload.get('emoji') or '🔥')
+        result = story_svc.add_reaction(
+            db, sid, emoji, current_user.id, current_user.username,
         )
+        # ✅ v85.4 FIX #3: إشعار مالك القصة عند التفاعل
+        # سابقاً: story:reply و story:mention و story:new تُرسل إشعارات،
+        # أما التفاعل (react) فلا يُرسل شيئاً → صاحب القصة يفقد كل تفاعلاته!
+        owner_id = int(result.get('user_id') or 0)
+        if owner_id and owner_id != current_user.id:
+            _emit_notification('story:reaction', {
+                'story_id': str(sid),
+                'owner_id': owner_id,
+                'from_user_id': current_user.id,
+                'from_username': current_user.username,
+                'emoji': emoji,
+            })
+        return result
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except PermissionError as exc:  # v84.0 — محظور
@@ -264,18 +286,61 @@ def vote_story_poll(
 ):
     sid = _parse_story_id(story_id)
     try:
-        return story_svc.vote_poll(
-            db, sid,
-            int(payload.get('option_index') or 0),
-            current_user.id,
-            current_user.username,
+        option_idx = int(payload.get('option_index') or 0)
+        result = story_svc.vote_poll(
+            db, sid, option_idx, current_user.id, current_user.username,
         )
+        # ✅ v85.4 FIX #3 (bonus): إشعار بتصويت الاستطلاع أيضاً
+        owner_id = int(result.get('user_id') or 0)
+        if owner_id and owner_id != current_user.id:
+            _emit_notification('story:poll_vote', {
+                'story_id': str(sid),
+                'owner_id': owner_id,
+                'from_user_id': current_user.id,
+                'from_username': current_user.username,
+                'option_index': option_idx,
+            })
+        return result
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except PermissionError as exc:  # v84.0 — محظور
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+# ============================== v85.4 — قصص مستخدم محدد ==============================
+@router.get('/stories/user/{user_id}')
+def get_user_stories(
+    user_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """جلب قصص مستخدم محدد (deep-link من ملفه التعريفي).
+
+    ✅ v85.4 FIX #5: كان هذا الـ endpoint مفقوداً — لا يمكن فتح قصص
+    شخص من صفحته الشخصية إلا بتحميل كل الشريط ثم البحث.
+    - يحترم الخصوصية (friends/close_friends/private) والحظر المتبادل.
+    - يرجع نفس بنية عنصر group لسهولة الاستخدام مع StoryViewerEnhanced.
+    """
+    try:
+        target_id = int(str(user_id).strip())
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='invalid user id',
+        ) from exc
+    try:
+        return story_svc.list_user_stories(
+            db,
+            target_user_id=target_id,
+            viewer_user_id=current_user.id,
+            viewer_username=current_user.username,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
 
 # ============================== حذف / Highlights ==============================
@@ -344,3 +409,33 @@ def get_story_viewers(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
+# ============================== v85.4 — Admin: تنظيف يدوي ==============================
+@router.post('/stories/purge_expired')
+def purge_expired_stories(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """تشغيل يدوي لتنظيف القصص المنتهية (admin فقط).
+
+    ✅ v85.4 FIX #2: كان هذا الـ endpoint موثقاً في docstring لكنه
+    غير مُطبَّق أبداً (404 Not Found). أضفناه الآن مع فحص صلاحيات صارم.
+
+    يستدعي story_db_service.purge_expired مباشرة (وليس task background)،
+    ويعيد عدد القصص المحذوفة فوراً.
+    """
+    role = str(getattr(current_user, 'role', '') or '').lower()
+    if role not in ('admin', 'superadmin', 'moderator'):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail='Admin privileges required',
+        )
+    try:
+        deleted = story_svc.purge_expired(db)
+        return {'ok': True, 'deleted': int(deleted or 0)}
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f'Purge failed: {exc}',
+        ) from exc

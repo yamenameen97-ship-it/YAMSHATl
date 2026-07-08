@@ -374,11 +374,23 @@ export default function StoryViewerEnhanced({
         </div>
 
         {/* الهيدر */}
+        {/* ✅ v85.4 FIX #1: أفاتار مالك القصة الحقيقي من الباكاند
+            (سابقاً: ui-avatars.com دائماً → أفاتار المستخدم غير مرئي) */}
         <div className="yam-story-header">
           <img
             className="yam-story-avatar-sm"
-            src={`https://ui-avatars.com/api/?name=${encodeURIComponent(group?.username || 'user')}&background=8b5cf6&color=fff`}
+            src={
+              group?.user_avatar
+              || group?.avatar_url
+              || current?.user_avatar
+              || current?.avatar_url
+              || `https://ui-avatars.com/api/?name=${encodeURIComponent(group?.username || 'user')}&background=8b5cf6&color=fff`
+            }
             alt=""
+            onError={(e) => {
+              const fallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(group?.username || 'user')}&background=8b5cf6&color=fff`;
+              if (e.currentTarget.src !== fallback) e.currentTarget.src = fallback;
+            }}
           />
           <div className="yam-story-meta">
             <strong>{group?.username || 'مستخدم'}</strong>

@@ -2316,7 +2316,17 @@ export default function Chat() {
                 <ChatBubble
                   key={item.id}
                   message={msg}
-                  isMe={msg.sender === currentUser}
+                  // ✅ FIX v85.6 (زر التعديل يختفي عند الضغط على رسالتي):
+                  // المقارنة الصارمة كانت تفشل بسبب اختلافات الحالة (case) أو المسافات
+                  // أو الرمز @ أو حقول sender_username البديلة. نُطبِّع كلا الطرفين قبل المقارنة.
+                  isMe={(() => {
+                    const me = String(currentUser || '').trim().toLowerCase().replace(/^@/, '');
+                    const sender = String(
+                      msg?.sender_username || msg?.sender || msg?.author || msg?.from || ''
+                    ).trim().toLowerCase().replace(/^@/, '');
+                    if (msg?.isMe === true) return true;
+                    return Boolean(me) && Boolean(sender) && me === sender;
+                  })()}
                   prevMessage={item.prevMessage}
                   nextMessage={item.nextMessage}
                   onReply={(message) => setReplyTo(message)}

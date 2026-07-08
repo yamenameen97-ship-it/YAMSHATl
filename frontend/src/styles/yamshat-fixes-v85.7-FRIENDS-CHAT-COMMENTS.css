@@ -1,0 +1,188 @@
+/* ================================================================
+   🔥 YAMSHAT v85.7 — إصلاحات جذرية:
+     1) صفحة الأصدقاء (Friends): لا تستجيب للسحب على الجوال.
+     2) دردشة المجموعة (GroupChat): تكرار مربع كتابة تحت الأصلي
+        يغطي زر الإرسال + رفع الوسائط.
+     3) شيت تعليقات الجوال (MobileCommentsSheet): تعديلات ثانوية
+        عبر JS داخل المكوّن — الجزء الأكبر backend.
+   ================================================================ */
+
+
+/* ─────────────────────────────────────────────────────────────
+   1) FRIENDS: ضمان أن .friends-page لا تحبس الـ scroll — تدع الأم
+      (main.mobile-main-content / .page-content) هي حاوية التمرير.
+      نفس منهجية v81 التي أصلحت الملف الشخصي.
+   ───────────────────────────────────────────────────────────── */
+html body .friends-page,
+body [data-page="friends"] {
+  overflow: visible !important;
+  overflow-x: visible !important;
+  overflow-y: visible !important;
+
+  height: auto !important;
+  min-height: auto !important;
+  max-height: none !important;
+
+  touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+  pointer-events: auto !important;
+
+  transform: none !important;
+  -webkit-transform: none !important;
+  filter: none !important;
+  will-change: auto !important;
+  contain: none !important;
+
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* إلغاء content-visibility التي تعطل الـ scroll على صفحة الأصدقاء */
+html body .app-shell .page-content:has(.friends-page) .page-shell-glow,
+html body .app-shell .page-content:has([data-page="friends"]) .page-shell-glow {
+  content-visibility: visible !important;
+  contain-intrinsic-size: auto !important;
+  contain: none !important;
+}
+
+.page-shell-glow:has(> .friends-page),
+.page-shell-glow:has(> [data-page="friends"]) {
+  content-visibility: visible !important;
+  contain-intrinsic-size: auto !important;
+  contain: none !important;
+}
+
+/* حماية إضافية: على الجوال، رأس الأصدقاء sticky قد يستهلك
+   نقرات اللمس ويعطّل تمرير المنطقة الرئيسية. نضمن أن اللمس
+   يمر عبر الحاويات الفارغة إلى المحتوى القابل للتمرير. */
+@media (max-width: 900px) {
+  html body .friends-page .friends-header {
+    /* نُبقي sticky للـ UX لكن نضمن أن اللمس على الفراغات لا يبتلع */
+    pointer-events: auto;
+    touch-action: pan-y;
+  }
+  html body .friends-page .friends-header * {
+    touch-action: pan-y;
+  }
+  /* الأقسام الداخلية — كلها تسمح بالتمرير العمودي */
+  html body .friends-page .friends-section,
+  html body .friends-page .friends-list,
+  html body .friends-page .friends-tabs {
+    touch-action: pan-y !important;
+    -webkit-overflow-scrolling: touch !important;
+    overflow: visible !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   2) GROUP CHAT: مشكلة صندوق الكتابة المزدوج (شبَح فوق الأصلي)
+      السبب المرصود من لقطة الشاشة: هناك مربع كتابة إضافي أفقي
+      يظهر أعلى الـ footer الحقيقي ويغطّي زر الإرسال + إرفاق
+      الوسائط. الاحتمال الأرجح: قواعد CSS قديمة من ملفات
+      chat-mobile-* تُطبِّق position: fixed / sticky على
+      .yam-chat-input-wrap داخل .yam-group-chat-container.
+
+      الحل الجذري:
+        - إخفاء أي .yam-chat-input-wrap (composer الدردشة الفردية)
+          إذا صادف ظهوره داخل صفحة مجموعة (data-yam-group-root).
+        - تثبيت .yam-group-input-area كعنصر relative في نهاية
+          الحاوية بدون أي position:fixed/sticky يسبب التكرار.
+        - إعطاء الحاوية ارتفاعاً كاملاً حقيقياً على الجوال حتى
+          يبقى الإدخال دائماً أعلى BottomNav مباشرة.
+   ───────────────────────────────────────────────────────────── */
+
+/* أ) إخفاء أي composer دردشة فردية داخل شاشة المجموعة */
+html body [data-yam-group-root="true"] .yam-chat-input-wrap,
+html body [data-yam-group-root="true"] .yam-composer-shell,
+html body .yam-group-chat-container .yam-chat-input-wrap,
+html body .yam-group-chat-container .yam-composer-shell {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  overflow: hidden !important;
+}
+
+/* ب) تثبيت footer المجموعة في مكانه بدون تكرار */
+html body [data-yam-group-root="true"] .yam-group-input-area,
+html body .yam-group-chat-container .yam-group-input-area {
+  position: relative !important;
+  bottom: auto !important;
+  left: auto !important;
+  right: auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  z-index: 20 !important;
+  /* ضمان ظهور زر الإرسال + الإرفاق فوق أي طبقة أخرى */
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 12px !important;
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)) !important;
+  background: rgba(13, 17, 28, 0.96) !important;
+  border-top: 1px solid rgba(255,255,255,0.06) !important;
+  flex-shrink: 0 !important;
+}
+
+/* ج) الحاوية الأم تأخذ ارتفاع المنطقة المرئية الفعلي */
+html body .yam-group-chat-container {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+}
+
+/* د) منطقة الرسائل تأخذ المساحة المتبقية وتتمرّر داخلياً فقط */
+html body .yam-group-chat-container .yam-group-messages {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+/* هـ) ضمان أن زر الإرسال + زر الإرفاق ظاهران وقابلان للنقر */
+html body .yam-group-input-area .yam-send-btn,
+html body .yam-group-input-area .yam-plus-btn {
+  position: relative !important;
+  z-index: 21 !important;
+  pointer-events: auto !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  display: inline-flex !important;
+  flex-shrink: 0 !important;
+}
+
+/* و) على الجوال — إلغاء padding-bottom للحاوية الأم main إذا
+   كانت المجموعة نشطة، لأن الـ footer يوفّر safe-area بنفسه */
+@media (max-width: 900px) {
+  html body .mobile-main-content:has([data-yam-group-root="true"]) {
+    padding-bottom: 0 !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   3) MOBILE COMMENTS SHEET — ضمان أن الشيت يظهر التعليقات فوراً
+      ولا يبقى فارغاً بسبب طبقات pointer-events / z-index خطأ.
+   ───────────────────────────────────────────────────────────── */
+html body .ym-sheet-overlay {
+  z-index: 4000 !important;
+  pointer-events: auto !important;
+}
+html body .ym-sheet {
+  z-index: 4001 !important;
+  pointer-events: auto !important;
+}
+html body .ym-sheet-body {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+}

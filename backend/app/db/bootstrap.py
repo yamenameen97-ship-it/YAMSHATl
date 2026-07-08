@@ -70,6 +70,8 @@ REQUIRED_SCHEMA_COLUMNS: dict[str, set[str]] = {
     'reel_likes': {'reel_id', 'user_id', 'created_at'},
     'reel_views': {'reel_id', 'user_id', 'viewed_at'},
     'saved_reels': {'reel_id', 'user_id', 'saved_at'},
+    # v85.5 — جدول تعليقات الريلز الجديد
+    'reel_comments': {'reel_id', 'user_id', 'parent_id', 'username', 'content', 'likes_count', 'is_hidden', 'created_at', 'updated_at'},
 }
 REQUIRED_TABLES = {
     'users',
@@ -82,6 +84,7 @@ REQUIRED_TABLES = {
     'reel_likes',
     'reel_views',
     'saved_reels',
+    'reel_comments',  # v85.5
 }
 
 
@@ -609,6 +612,17 @@ def _migrate_live_room_sessions_table(engine: Engine) -> None:
 
 
 
+def _migrate_reel_comments_table(engine: Engine) -> None:
+    """v85.5 — إضافة أعمدة parent_id/username/is_hidden/updated_at لجدول reel_comments
+    (في حالة ترقية قاعدة بيانات موجودة تحمل الإصدار القديم)."""
+    if not _table_exists(engine, 'reel_comments'):
+        return
+    _add_column_if_missing(engine, 'reel_comments', 'parent_id', 'parent_id INTEGER NULL')
+    _add_column_if_missing(engine, 'reel_comments', 'username', 'username TEXT NULL')
+    _add_column_if_missing(engine, 'reel_comments', 'is_hidden', 'is_hidden BOOLEAN NOT NULL DEFAULT FALSE')
+    _add_column_if_missing(engine, 'reel_comments', 'updated_at', 'updated_at TIMESTAMP NULL')
+
+
 def _migrate_reels_table(engine: Engine) -> None:
     if not _table_exists(engine, 'reels'):
         return
@@ -932,6 +946,7 @@ def initialize_database(engine: Engine, force: bool = False) -> None:
     _safe(_migrate_messages_table, 'migrate_messages_table')
     _safe(_migrate_live_room_sessions_table, 'migrate_live_room_sessions_table')
     _safe(_migrate_reels_table, 'migrate_reels_table')
+    _safe(_migrate_reel_comments_table, 'migrate_reel_comments_table')  # v85.5
     _safe(_migrate_notifications_table, 'migrate_notifications_table')
     _safe(_migrate_audit_logs_table, 'migrate_audit_logs_table')
     _safe(_migrate_user_sessions_table, 'migrate_user_sessions_table')

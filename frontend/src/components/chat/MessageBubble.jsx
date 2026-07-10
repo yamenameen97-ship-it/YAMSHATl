@@ -445,7 +445,7 @@ function MessageBubble({
           ) : null}
           {isImage && message?.media_url ? (
             <button type="button" className="yam-media-button" onClick={openCurrentMedia}>
-              <SafeImage src={message.media_url} alt={fileName} onOpen={openCurrentMedia} maxHeight={320} />
+              <SafeImage src={message.media_url} alt={fileName} onOpen={openCurrentMedia} maxHeight={340} />
               <span className="yam-bubble-media-overlay">تكبير</span>
             </button>
           ) : null}

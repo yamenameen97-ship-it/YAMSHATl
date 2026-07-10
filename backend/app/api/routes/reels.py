@@ -16,6 +16,13 @@ from app.db.bootstrap import initialize_database
 from app.models.stories_reels import Reel, ReelComment, ReelLike, ReelView, SavedReel
 from app.models.user import User
 
+# v87.0 — نظام الإشعارات الذكي
+try:
+    from app.services.notification_service import notify as _notify
+except Exception:  # pragma: no cover
+    def _notify(*_args, **_kwargs):  # type: ignore[override]
+        return None
+
 logger = logging.getLogger(__name__)
 
 _UPLOADS_ROOT = Path(__file__).resolve().parents[3] / 'uploads'
@@ -296,6 +303,21 @@ def like_reel(reel_id: int, db: Session = Depends(get_db), current_user: User = 
         reel.likes_count = int(reel.likes_count or 0) + 1
         liked = True
     db.commit()
+
+    # v87.0 — إشعار: شخص أعجب بالريلز تبعك (فقط عند الإعجاب)
+    if liked and reel.user_id and int(reel.user_id) != int(current_user.id):
+        _notify(
+            db,
+            user_id=int(reel.user_id),
+            notification_type='REEL_LIKE',
+            data={
+                'reel_id': int(reel_id),
+                'from_user_id': int(current_user.id),
+                'username': current_user.username,
+                'actor_avatar': getattr(current_user, 'avatar', None) or getattr(current_user, 'avatar_url', None),
+            },
+        )
+
     return {
         'reel_id': reel_id,
         'liked': liked,
@@ -485,6 +507,46 @@ def create_reel_comment(
 
     db.commit()
     db.refresh(comment)
+
+    # v87.0 — إشعارات ذكية للريلز
+    try:
+        preview = content[:80]
+        # 1) رد على تعليق → إشعار لصاحب التعليق الأصلي
+        parent_owner_id = None
+        if parent_id:
+            parent = db.query(ReelComment).filter(ReelComment.id == parent_id).first()
+            if parent and parent.user_id and int(parent.user_id) != int(current_user.id):
+                parent_owner_id = int(parent.user_id)
+                _notify(
+                    db,
+                    user_id=parent_owner_id,
+                    notification_type='COMMENT_REPLY',
+                    data={
+                        'reel_id': int(reel_id),
+                        'comment_id': int(comment.id),
+                        'parent_id': int(parent_id),
+                        'from_user_id': int(current_user.id),
+                        'username': current_user.username,
+                        'preview': preview,
+                    },
+                )
+        # 2) تعليق على ريلز → إشعار لصاحب الريلز (إلا إذا كنّا أرسلنا له COMMENT_REPLY)
+        if reel.user_id and int(reel.user_id) != int(current_user.id) and int(reel.user_id) != (parent_owner_id or -1):
+            _notify(
+                db,
+                user_id=int(reel.user_id),
+                notification_type='REEL_COMMENT',
+                data={
+                    'reel_id': int(reel_id),
+                    'comment_id': int(comment.id),
+                    'from_user_id': int(current_user.id),
+                    'username': current_user.username,
+                    'preview': preview,
+                },
+            )
+    except Exception as _e:
+        logger.warning("reel_comment_notify_failed: %s", _e)
+
     return _serialize_reel_comment(comment, current_user=current_user)
 
 
@@ -528,4 +590,19 @@ def like_reel_comment(
     comment.likes_count = int(comment.likes_count or 0) + 1
     db.commit()
     db.refresh(comment)
+
+    # v87.0 — إشعار: شخص أعجب بتعليقك (على ريلز)
+    if comment.user_id and int(comment.user_id) != int(current_user.id):
+        _notify(
+            db,
+            user_id=int(comment.user_id),
+            notification_type='COMMENT_LIKE',
+            data={
+                'reel_id': int(comment.reel_id) if comment.reel_id else None,
+                'comment_id': int(comment.id),
+                'from_user_id': int(current_user.id),
+                'username': current_user.username,
+            },
+        )
+
     return {'ok': True, 'likes_count': comment.likes_count}

@@ -1,0 +1,398 @@
+/* ================================================================
+   🎯 YAMSHAT v86.6 — إصلاح صفحتَين إضافيَّتَين لم يعملا بسلاسة السحب
+   ================================================================
+   بعد إغلاق v86.5 (الذي عالج `.yam-search-page-shell` و
+   `.share-target-page`) استكملنا الفحص الشامل لبقية الصفحات
+   في المشروع، مقارنةً بمرجع الجودة الرئيسي:
+   `.yam-home-mobile-page` (FeedMobile) — يعمل "فل الفل" منذ v59.13.28.
+
+   عُثر على **صفحتين اثنتين فقط** إضافيَّتين لم يتم إصلاحهما في
+   أي طبقة سابقة (لا في v85.7 / v85.9 / v86.0 / v86.1 / v86.2 /
+   v86.3 / v86.4 / v86.5) — ووقفنا عندهما كما طُلب بالضبط.
+
+   التحقق من عدم وجود إصلاح سابق:
+     grep -rn '\.dashboard-grid'    styles/  →  فقط تخطيط عام
+                                                 (لا يوجد scroll/touch)
+     grep -rn '\.yam-users-page'    styles/  →  فارغ ✅ جديدة
+
+   ─────────────────────────────────────────────────────────────
+   1) صفحة "لوحة التحكم" (.dashboard-grid)
+      → المصدر: frontend/src/pages/Dashboard.jsx
+      → المسار: /dashboard
+      → مغلَّفة داخل <MainLayout> عادية.
+      → الجذر:
+          <section className="dashboard-grid">
+        يحتوي على أقسام كثيرة قد تتجاوز طول الشاشة بسهولة:
+          • .welcome-widget (بطاقة الترحيب + الشارات)
+          • .monitoring-row (بطاقتَي مقياس + مخطط زمني حي)
+          • .realtime-chart-container / .chart-bars / .chart-bar
+            (رسوم بيانية شريطية متحرِّكة تحتوي على 20 عمود)
+          • .system-load-widget / .storage-widget / .metric-card
+          • .analytics-summary-grid / .analytics-row
+          • .quick-actions-grid (شبكة روابط سريعة)
+      → المشاكل على ويب الجوال:
+          • الأم `.page-content` من طبقات v59.13.26 / v85.9 تفرض
+            overflow:hidden + contain:layout عليها → السحب يتوقف
+            قبل الوصول إلى قسم quick-actions السفلي.
+          • .monitoring-row عادةً display:grid مع gap كبير —
+            يجب أن يمرِّر السحب الرأسي للأم.
+          • .realtime-chart-container و .chart-bar لهما
+            transition/transform → قد يبتلعان اللمس فوق المخططات.
+          • .metric-card + Card عموماً لها padding كبير — يجب
+            touch-action:pan-y عليها.
+      → الحل: نجعل الأم `.page-content` هي الـ scroller الرأسي
+        على الجوال، نحرِّر الجذر من أي contain/transform legacy،
+        نمنح كل الأبناء `touch-action:pan-y` — نفس بصمة
+        `.yam-notifications-page` (v86.4 [2]).
+
+   2) صفحة "اكتشاف المستخدمين" (.yam-users-page)
+      → المصدر: frontend/src/pages/Users.jsx
+      → المسار: /users
+      → مغلَّفة داخل <MainLayout> عادية.
+      → أضفنا wrapper بسيط بـ className="yam-users-page" بديلاً
+        من انتقاء عدة أصناف داخلية (section-head + search-panel-card
+        + users-rich-grid + user-row) — مرساة نظيفة وحيدة.
+      → الصفحة تحتوي على:
+          • .section-head (العنوان + الوصف)
+          • .search-panel-card (بحث + اقتراحات) — Card طويلة
+          • .search-shell.large.enabled-search-shell (حقل البحث)
+          • .search-suggestions (أزرار الاقتراحات السريعة)
+          • .list-grid.users-rich-grid — شبكة المستخدمين الرئيسية
+            (قد تحتوي عشرات المستخدمين)
+          • .user-row.responsive-user-row.users-rich-row — صفوف
+            مستخدمين، كل واحد يحتوي:
+              - .avatar-circle.avatar-image (صورة)
+              - .user-meta.expanded-user-meta (بيانات)
+              - أزرار متابعة / حظر / إلغاء
+          • عمود جانبي 320px (على الشاشات الكبيرة) يختفي في
+            الجوال ويصبح كل شيء يتراكم عمودياً.
+      → المشاكل على ويب الجوال:
+          • الأم `.page-content` overflow:hidden → السحب يتوقف
+            قبل نهاية قائمة المستخدمين إذا كانت طويلة.
+          • .search-shell و <input> داخل search-panel-card قد
+            يبتلعون السحب الرأسي إن لم نمرِّر touch-action:pan-y.
+          • .users-rich-grid يستعمل grid-template-columns
+            (grid layout) — لا يفرض overflow افتراضياً لكن الأم
+            .page-content تحتوي contain:layout الذي يمنع السحب.
+          • أزرار الأكشن (متابعة/حظر) قد يكون فيها 300ms delay
+            بدون touch-action:manipulation.
+          • .avatar-image (img) لا يجب أن تبتلع السحب الرأسي.
+      → الحل: نفس بصمة `.friends-all-page` (v86.4 [1]) بحذافيرها،
+        مع استهداف مرساة `.yam-users-page` النظيفة.
+
+   ═════════════════════════════════════════════════════════════
+   ⚠️ ملاحظة عن ترتيب الاستيراد:
+   يجب أن يبقى هذا الملف **آخر استيراد CSS** في main.jsx بعد
+   yamshat-fixes-v86.5-SEARCH-SHARETARGET-SCROLL.css مباشرةً.
+   ═════════════════════════════════════════════════════════════ */
+
+/* ================================================================
+   [1] ═══ صفحة لوحة التحكم (.dashboard-grid) ═══
+   ================================════════════════════════════════ */
+
+@media (max-width: 900px) {
+  /* ── (أ) الأم .page-content تصبح الـ scroller الحقيقي ── */
+  main.mobile-main-content:has(> .dashboard-grid),
+  main.mobile-main-content:has(.dashboard-grid),
+  .page-content:has(> .dashboard-grid),
+  .page-content:has(.dashboard-grid) {
+    overflow: hidden !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
+    overscroll-behavior-y: contain !important;
+    scroll-behavior: smooth !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    contain: none !important;
+    content-visibility: visible !important;
+    padding: 0 !important;
+    padding-bottom: 0 !important;
+    will-change: auto !important;
+    transform: none !important;
+    filter: none !important;
+    perspective: none !important;
+  }
+
+  /* ── (ب) الجذر .dashboard-grid: يتحرر ويتمدد طبيعياً ── */
+  html body .dashboard-grid {
+    min-height: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    overflow-y: visible !important;
+    -webkit-overflow-scrolling: auto !important;
+    touch-action: pan-y !important;
+    contain: none !important;
+    content-visibility: visible !important;
+    will-change: auto !important;
+    transform: none !important;
+    filter: none !important;
+    perspective: none !important;
+    padding: 14px 12px calc(120px + env(safe-area-inset-bottom, 0px)) !important;
+    /* Padding سفلي كبير حتى تظهر آخر بطاقة (quick-actions) فوق BottomNav */
+  }
+
+  /* ── (ج) كل الأبناء المباشرين للجذر يمرِّرون السحب ── */
+  html body .dashboard-grid > * {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+    contain: none !important;
+  }
+
+  /* ── (د) بطاقة الترحيب + شارات الحالة ── */
+  html body .dashboard-grid .welcome-widget,
+  html body .dashboard-grid .welcome-flex,
+  html body .dashboard-grid .user-info,
+  html body .dashboard-grid .status-badges,
+  html body .dashboard-grid .status-pill {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+    contain: none !important;
+  }
+
+  /* ── (هـ) صف بطاقات المراقبة الحية (chart-based) ── */
+  html body .dashboard-grid .monitoring-row,
+  html body .dashboard-grid .metric-card,
+  html body .dashboard-grid .metric-footer,
+  html body .dashboard-grid .current-val,
+  html body .dashboard-grid .trend {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+    contain: none !important;
+  }
+
+  /* ── (و) الرسوم البيانية الشريطية (RealtimeChart) —
+     السحب الرأسي يعمل حتى فوق المخطط بلا مقاطعة ── */
+  html body .dashboard-grid .realtime-chart-container,
+  html body .dashboard-grid .chart-label,
+  html body .dashboard-grid .chart-bars {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+    contain: none !important;
+  }
+  /* أعمدة المخطط: لها transition:height ولا يجب أن تبتلع اللمس */
+  html body .dashboard-grid .chart-bar {
+    touch-action: pan-y !important;
+    pointer-events: none !important;
+    /* الأعمدة عرض فقط، لا تفاعل — نضمن مرور اللمس للأم */
+  }
+
+  /* ── (ز) بطاقات النظام (system-load / storage / أي widget) ── */
+  html body .dashboard-grid .system-load-widget,
+  html body .dashboard-grid .storage-widget,
+  html body .dashboard-grid .analytics-summary-grid,
+  html body .dashboard-grid .analytics-row,
+  html body .dashboard-grid .stat-tile,
+  html body .dashboard-grid .stat-value,
+  html body .dashboard-grid .stat-label {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+    contain: none !important;
+  }
+
+  /* ── (ح) شبكة الروابط السريعة (Quick Actions) ── */
+  html body .dashboard-grid .quick-actions-grid,
+  html body .dashboard-grid .quick-action-card {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+    contain: none !important;
+  }
+
+  /* ── (ط) الأزرار: نقر فوري بدون 300ms delay ── */
+  html body .dashboard-grid button,
+  html body .dashboard-grid a,
+  html body .dashboard-grid .quick-action-card {
+    touch-action: manipulation !important;
+  }
+
+  /* ── (ي) أي Card عامة داخل dashboard-grid ── */
+  html body .dashboard-grid .card,
+  html body .dashboard-grid [class*="Card"] {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+    contain: none !important;
+    transform: none !important;
+    will-change: auto !important;
+  }
+}
+
+/* ================================================================
+   [2] ═══ صفحة اكتشاف المستخدمين (.yam-users-page) ═══
+   ================================════════════════════════════════ */
+
+@media (max-width: 900px) {
+  /* ── (أ) الأم .page-content تصبح الـ scroller الحقيقي ── */
+  main.mobile-main-content:has(.yam-users-page),
+  .page-content:has(.yam-users-page) {
+    overflow: hidden !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
+    overscroll-behavior-y: contain !important;
+    scroll-behavior: smooth !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    contain: none !important;
+    content-visibility: visible !important;
+    padding: 0 !important;
+    padding-bottom: 0 !important;
+    will-change: auto !important;
+    transform: none !important;
+    filter: none !important;
+    perspective: none !important;
+  }
+
+  /* ── (ب) جذر .yam-users-page: يتمدد بحرية ── */
+  html body .yam-users-page {
+    min-height: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    overflow-y: visible !important;
+    -webkit-overflow-scrolling: auto !important;
+    touch-action: pan-y !important;
+    contain: none !important;
+    content-visibility: visible !important;
+    will-change: auto !important;
+    transform: none !important;
+    filter: none !important;
+    perspective: none !important;
+    padding: 14px 12px calc(120px + env(safe-area-inset-bottom, 0px)) !important;
+    display: block !important;
+    /* نلغي أي grid/flex من طبقات سابقة على الأم */
+  }
+
+  /* ── (ج) كل الأبناء المباشرين ── */
+  html body .yam-users-page > * {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+    contain: none !important;
+  }
+
+  /* ── (د) رأس القسم + بيانات وصفية ── */
+  html body .yam-users-page .section-head,
+  html body .yam-users-page .section-title,
+  html body .yam-users-page .muted {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+    contain: none !important;
+  }
+
+  /* ── (هـ) grid العلوي (بحث + عمود جانبي) — على الجوال
+     نجعله عمود واحد بلا 320px sidebar ── */
+  html body .yam-users-page > div[style*="grid-template-columns"] {
+    display: block !important;
+    grid-template-columns: none !important;
+    gap: 12px !important;
+  }
+  html body .yam-users-page > div[style*="grid-template-columns"] > * {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+    contain: none !important;
+    margin-bottom: 12px !important;
+  }
+
+  /* ── (و) بطاقة البحث + shell + الاقتراحات ── */
+  html body .yam-users-page .search-panel-card,
+  html body .yam-users-page .search-shell,
+  html body .yam-users-page .search-shell.large,
+  html body .yam-users-page .enabled-search-shell,
+  html body .yam-users-page .search-suggestions {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+    contain: none !important;
+  }
+
+  /* ── (ز) حقول الإدخال: نقر لفتح الكيبورد + سحب رأسي فوقها ── */
+  html body .yam-users-page input,
+  html body .yam-users-page textarea,
+  html body .yam-users-page select {
+    touch-action: pan-y !important;
+  }
+
+  /* ── (ح) الشبكة الرئيسية للمستخدمين (users-rich-grid) ── */
+  html body .yam-users-page .list-grid,
+  html body .yam-users-page .users-rich-grid,
+  html body .yam-users-page .list-grid.users-rich-grid {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+    contain: none !important;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+    /* على الجوال: عمود واحد بدل عدة أعمدة — يضمن أن كل صف
+       مستخدم يأخذ عرض الصفحة كاملاً وسهولة اللمس. */
+  }
+
+  /* ── (ط) صفوف المستخدم الفردية ── */
+  html body .yam-users-page .user-row,
+  html body .yam-users-page .responsive-user-row,
+  html body .yam-users-page .users-rich-row,
+  html body .yam-users-page .user-meta,
+  html body .yam-users-page .expanded-user-meta {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+    contain: none !important;
+    transform: none !important;
+    will-change: auto !important;
+  }
+
+  /* ── (ي) صور الأفاتار: لا تبتلع السحب الرأسي ── */
+  html body .yam-users-page .avatar-circle,
+  html body .yam-users-page .avatar-image,
+  html body .yam-users-page img {
+    touch-action: pan-y !important;
+    pointer-events: auto !important;
+    /* السحب الرأسي يمرّ حتى فوق الصور — والنقر ما زال يعمل. */
+  }
+
+  /* ── (ك) تنبيهات (alert error) + عناصر feedback ── */
+  html body .yam-users-page .alert,
+  html body .yam-users-page .alert.error {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+  }
+
+  /* ── (ل) الأزرار الصغيرة (mini-action / follow / block) —
+     نقر فوري بلا 300ms delay ── */
+  html body .yam-users-page button,
+  html body .yam-users-page .mini-action,
+  html body .yam-users-page a[role="button"] {
+    touch-action: manipulation !important;
+  }
+
+  /* ── (م) Modal التأكيد (Confirm Modal) — بقاء طبيعي، لا نغيّر
+     سلوكه لأنه مغلق افتراضياً ولا يظهر إلا عند طلب المستخدم ── */
+  html body .yam-users-page .modal-body,
+  html body .yam-users-page .modal-content {
+    touch-action: pan-y !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+}
+
+/* ================================================================
+   [3] ═══ ضمانات إضافية للأجهزة الصغيرة جداً (≤ 400px) ═══
+   ================================════════════════════════════════ */
+@media (max-width: 400px) {
+  /* على الشاشات الضيقة جداً: نصغّر الحشو أكثر لضمان أن كل
+     محتوى مرئي دون احتياج تمرير أفقي. */
+  html body .dashboard-grid {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+  html body .yam-users-page {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+  html body .dashboard-grid .monitoring-row {
+    grid-template-columns: 1fr !important;
+    display: grid !important;
+    gap: 10px !important;
+  }
+}
+
+/* ================================================================
+   END OF v86.6 — DASHBOARD-USERS-SCROLL
+   ================================================================ */

@@ -153,6 +153,7 @@ export default function Users() {
 
   return (
     <MainLayout>
+      <div className="yam-users-page">
       <div className="section-head">
         <div>
           <h3 className="section-title">Suggested users + people discovery</h3>
@@ -287,6 +288,7 @@ export default function Users() {
           </div>
         </div>
       </Modal>
+      </div>
     </MainLayout>
   );
 }

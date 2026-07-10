@@ -1,0 +1,325 @@
+/* ================================================================
+   🎯 YAMSHAT v86.3 — إصلاح صفحتَي إعدادات لم يستجيبا للسحب
+   ================================================================
+   بعد v86.2 (إصلاح CreateGroup + ReelComposer) استكملنا الفحص
+   الشامل لبقية الصفحات، وعُثر على **صفحتين اثنتين فقط** إضافيَّتين
+   لم يعملا بسلاسة مثل الصفحة الرئيسية (.yam-home-mobile-page —
+   مرجع الجودة "فل الفل" منذ v59.13.28) — ووقفنا عندهما كما طُلب.
+
+   1) صفحة "إعدادات المجموعة" (.yam-group-settings-page — GroupSettings.jsx)
+      → المسار: /groups/:groupId/settings
+      → مغلَّفة داخل <MainLayout> عادية → الأم .page-content تفرض
+        overflow:hidden + contain من طبقات v59.13.26/v85.9 عندما
+        تضيفها طبقات legacy، فيتوقف السحب حتى مع overflow-y:auto
+        الموجود في styles/group-settings.css.
+      → ملاحظة: صفحة إعدادات المجموعة **مختلفة** عن /groups/create
+        التي عولجت في v86.2 قسم [1]، ومختلفة عن /groups/wizard التي
+        عولجت في v86.0 قسم [2].
+      → الحل: نفس بصمة .yam-create-group-page (v86.2 قسم [1])
+        و .ympc-page (v86.1) و .yam-home-mobile-page (v59.13.28).
+
+   2) صفحة "إعدادات المحادثة" (.yam-chat-settings-screen — ChatSettings.jsx)
+      → المسار: /chat/:peer/settings
+      → مغلَّفة داخل <MainLayout hideNav lockScroll>. الـ lockScroll
+        يفرض overflow:hidden على .page-content. الـ body الداخلي
+        (.yam-chat-settings-body) لديه overflow-y:auto لكن طبقات
+        legacy (v57/v59.10) قد تضع touch-action:none على أبنائه
+        فيتوقف السحب باللمس بالكامل على ويب الجوال، خصوصاً على
+        الشاشات الطويلة حيث تفيض كروت الوسائط والإحصائيات.
+      → الحل: نمنح .yam-chat-settings-screen طول 100dvh مع grid
+        صارم auto/1fr، ونضمن أن .yam-chat-settings-body هو الـ
+        scroller الوحيد مع touch-action:pan-y + momentum على iOS،
+        والهيدر sticky يبقى ثابتاً كما في الصفحة الرئيسية.
+
+   ⚠️ يجب أن يبقى هذا الاستيراد **آخر CSS مطلقاً** في main.jsx
+      بعد v86.2 مباشرة ليفوز في cascade.
+   ================================================================ */
+
+
+/* ─────────────────────────────────────────────────────────────
+   [1] .yam-group-settings-page — صفحة "إعدادات المجموعة"
+       تفعيل السحب العمودي على ويب الجوال، ليتصرف مثل الصفحة الرئيسية.
+   ───────────────────────────────────────────────────────────── */
+
+/* الحاوية الأم .page-content / main.mobile-main-content التي تحمل
+   .yam-group-settings-page — تمنحها التمرير كما في .yam-create-group-page
+   (v86.2) و .ympc-page (v86.1) و .yamg-page (v86 قسم [2]) و
+   .yam-home-mobile-page (v59.13.28). */
+@media (max-width: 900px) {
+  html body .app-shell .page-content:has(.yam-group-settings-page),
+  html body main.mobile-main-content:has(.yam-group-settings-page) {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
+    overscroll-behavior-y: contain !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    contain: none !important;
+    content-visibility: visible !important;
+    padding: 0 !important;
+    padding-bottom: 0 !important;
+    will-change: auto !important;
+    transform: none !important;
+    filter: none !important;
+    perspective: none !important;
+    pointer-events: auto !important;
+  }
+}
+
+/* .yam-group-settings-page نفسها: طولها يتبع المحتوى (ليعمل السحب
+   الحقيقي على الأم .page-content) + touch-action:pan-y + كسر contain.
+   ملاحظة: styles/group-settings.css كان يضع height:100vh + overflow-y:auto
+   على العنصر نفسه مما يخلق scroller داخلي متداخل مع scroller الأم
+   → يتعطل السحب. نعكس ذلك هنا حسب النمط الذي أثبت فعاليته على
+   الصفحة الرئيسية والمكونات المُصلَحة سابقاً. */
+html body .yam-group-settings-page,
+html body div.yam-group-settings-page[dir="rtl"] {
+  min-height: 100dvh !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+  pointer-events: auto !important;
+  contain: none !important;
+  content-visibility: visible !important;
+  will-change: auto !important;
+  transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+  /* هامش سفلي كافٍ ليظهر آخر عنصر (زر حذف/مغادرة المجموعة) فوق BottomNav */
+  padding-bottom: calc(140px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* الرأس .yam-settings-header sticky ليبقى ظاهراً أثناء السحب — مثل الرئيسية */
+@media (max-width: 900px) {
+  html body .yam-group-settings-page .yam-settings-header {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 20 !important;
+    background: rgba(2, 4, 10, 0.94) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    touch-action: pan-y !important;
+    contain: none !important;
+    will-change: auto !important;
+    transform: none !important;
+    padding-top: calc(8px + env(safe-area-inset-top, 0px)) !important;
+    padding-bottom: 8px !important;
+    margin-bottom: 16px !important;
+  }
+}
+
+/* الأبناء الداخليون (الكروت، الأقسام، شبكة الأعضاء…) لا يفرضون
+   overflow أو contain يمنع السحب — نضمن مرور اللمس بشكل موحّد. */
+html body .yam-group-settings-page > *,
+html body .yam-group-settings-page .yam-settings-section,
+html body .yam-group-settings-page .yam-settings-card,
+html body .yam-group-settings-page .yam-members-list,
+html body .yam-group-settings-page .yam-analytics-grid,
+html body .yam-group-settings-page form,
+html body .yam-group-settings-page section {
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+  contain: none !important;
+  will-change: auto !important;
+  transform: none !important;
+  overflow: visible !important;
+  max-height: none !important;
+}
+
+/* حقول الإدخال / textarea / select تستقبل النقر لكن لا تبتلع
+   السحب العمودي — نفس نمط v86.2 [1]. */
+@media (max-width: 900px) {
+  html body .yam-group-settings-page,
+  html body .yam-group-settings-page * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  html body .yam-group-settings-page input,
+  html body .yam-group-settings-page textarea,
+  html body .yam-group-settings-page [contenteditable="true"],
+  html body .yam-group-settings-page select {
+    touch-action: pan-y !important;
+    overscroll-behavior: contain !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [2] .yam-chat-settings-screen — صفحة "إعدادات المحادثة"
+       تفعيل السحب العمودي على body مع الحفاظ على الهيدر sticky.
+   ───────────────────────────────────────────────────────────── */
+
+/* الحاوية الأم .page-content عندما تحمل .yam-chat-settings-screen.
+   بسبب lockScroll، الأم overflow:hidden — وهذا مقصود (نريد أن يكون
+   الـ body الداخلي هو الـ scroller). لكن نحتاج لكسر contain/transform
+   حتى لا تُبتلع اللمسات قبل وصولها إلى .yam-chat-settings-body. */
+@media (max-width: 900px) {
+  html body .app-shell .page-content:has(.yam-chat-settings-screen),
+  html body main.mobile-main-content:has(.yam-chat-settings-screen) {
+    /* نُبقي overflow:hidden كما هو (lockScroll) — الـ body الداخلي
+       سيتولى التمرير */
+    touch-action: pan-y !important;
+    overscroll-behavior-y: contain !important;
+    contain: none !important;
+    content-visibility: visible !important;
+    padding: 0 !important;
+    padding-bottom: 0 !important;
+    will-change: auto !important;
+    transform: none !important;
+    filter: none !important;
+    perspective: none !important;
+    pointer-events: auto !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+  }
+}
+
+/* .yam-chat-settings-screen نفسها: تحتل كامل الارتفاع مع grid
+   auto/1fr بحيث يأخذ الـ body المساحة المتبقية بعد الهيدر. */
+html body .yam-chat-settings-screen,
+html body section.yam-chat-settings-screen[dir="rtl"] {
+  min-height: 100dvh !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  overflow: hidden !important;
+  touch-action: pan-y !important;
+  overscroll-behavior-y: contain !important;
+  pointer-events: auto !important;
+  contain: none !important;
+  content-visibility: visible !important;
+  will-change: auto !important;
+  transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+}
+
+/* الهيدر .yam-chat-settings-header sticky ثابت أثناء السحب */
+@media (max-width: 900px) {
+  html body .yam-chat-settings-screen .yam-chat-settings-header {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 30 !important;
+    touch-action: pan-y !important;
+    contain: none !important;
+    will-change: auto !important;
+    transform: none !important;
+    pointer-events: auto !important;
+  }
+}
+
+/* ⭐ العنصر الأهم: .yam-chat-settings-body هو الـ scroller الفعلي.
+   نضمن التمرير باللمس السلس فل الفل مع momentum على iOS ونكسر أي
+   contain/transform من طبقات legacy قد يعطّل السحب. */
+html body .yam-chat-settings-screen .yam-chat-settings-body {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  overscroll-behavior-y: contain !important;
+  overscroll-behavior-x: contain !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  height: auto !important;
+  contain: none !important;
+  content-visibility: visible !important;
+  will-change: auto !important;
+  transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+  pointer-events: auto !important;
+  padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* الكروت الداخلية والأقسام لا تبتلع السحب — تمرير اللمس بشكل موحّد */
+html body .yam-chat-settings-body > *,
+html body .yam-chat-settings-body .yam-chat-settings-card,
+html body .yam-chat-settings-body .yam-peer-hero,
+html body .yam-chat-settings-body .yam-meta-grid,
+html body .yam-chat-settings-body .yam-stat-pill,
+html body .yam-chat-settings-body .yam-section-title,
+html body .yam-chat-settings-body section {
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+  contain: none !important;
+  will-change: auto !important;
+  transform: none !important;
+  overflow: visible !important;
+  max-height: none !important;
+}
+
+/* حقول التفاعل داخل إعدادات المحادثة (بحث في الوسائط، ملاحظات…)
+   تستقبل النقر لكن لا تبتلع pan-y العمودي. */
+@media (max-width: 900px) {
+  html body .yam-chat-settings-screen,
+  html body .yam-chat-settings-screen * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  html body .yam-chat-settings-body input,
+  html body .yam-chat-settings-body textarea,
+  html body .yam-chat-settings-body [contenteditable="true"],
+  html body .yam-chat-settings-body select,
+  html body .yam-chat-settings-body button {
+    touch-action: manipulation !important;
+  }
+  /* التمرير الرئيسي على الحاوية pan-y */
+  html body .yam-chat-settings-body input,
+  html body .yam-chat-settings-body textarea,
+  html body .yam-chat-settings-body [contenteditable="true"] {
+    touch-action: pan-y !important;
+    overscroll-behavior: contain !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [3] إبطال طبقات legacy الضارّة على هاتين الصفحتين تحديداً
+       (بدون التأثير على أي صفحة أخرى) — نفس نهج v86.1 [3] و v86.2 [3].
+   ───────────────────────────────────────────────────────────── */
+
+/* mobile-touch-master-fix-v57 كان يضع touch-action:none على أبناء الصفحات
+   في بعض الحالات، وdrawer-style-touch-final-v59.10 قد يضع pointer-events:none
+   أو يفرض contain/transform. نُلغي هذه القيود على الصفحتين المستهدفتين فقط. */
+html body .yam-group-settings-page,
+html body .yam-group-settings-page > *,
+html body .yam-group-settings-page > * > *,
+html body .yam-chat-settings-screen,
+html body .yam-chat-settings-screen > *,
+html body .yam-chat-settings-body,
+html body .yam-chat-settings-body > * {
+  pointer-events: auto !important;
+}
+
+/* لا نسمح لطبقات legacy أن تضع touch-action:none على الحاويتين نفسيهما */
+html body .yam-group-settings-page {
+  touch-action: pan-y !important;
+}
+html body .yam-chat-settings-screen {
+  touch-action: pan-y !important;
+}
+html body .yam-chat-settings-body {
+  touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [4] تحسين على الشاشات الطويلة (min-height: 720px)
+       يضمن ظهور padding سفلي أكبر ليصل المستخدم لآخر الصفحة
+       بدون أن يعلق آخر عنصر خلف BottomNav.
+   ───────────────────────────────────────────────────────────── */
+@media (max-width: 900px) and (min-height: 720px) {
+  html body .yam-group-settings-page {
+    padding-bottom: calc(180px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  html body .yam-chat-settings-body {
+    padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+
+
+/* END OF v86.3 ============================================== */

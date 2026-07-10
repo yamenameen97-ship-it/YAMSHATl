@@ -22,6 +22,13 @@ from app.models.post_save import PostSave
 from app.models.post_share import PostShare
 from app.models.user import User
 
+# v87.0 — نظام الإشعارات الذكي
+try:
+    from app.services.notification_service import notify as _notify
+except Exception:  # pragma: no cover
+    def _notify(*_args, **_kwargs):  # type: ignore[override]
+        return None
+
 HASHTAG_RE = re.compile(r'(?<!\w)#([\w\u0600-\u06FF]{1,50})', re.UNICODE)
 MENTION_RE = re.compile(r'(?<!\w)@([\w.\-]{1,50})', re.UNICODE)
 logger = logging.getLogger(__name__)
@@ -258,6 +265,44 @@ def create_post(
     db.add(post)
     db.commit()
     db.refresh(post)
+
+    # v87.0 — إشعارات mentions داخل المنشور (فقط للمنشورات المنشورة الآن — ليست مسودة ولا مجدولة مستقبلاً)
+    try:
+        if not is_draft and publish_at is not None and publish_at <= now:
+            mentions_list = _loads_list(prepared.get('mentions_json'))
+            if mentions_list:
+                preview = (prepared.get('content') or '')[:80]
+                seen: set[int] = set()
+                for mention_name in mentions_list[:10]:
+                    if not mention_name:
+                        continue
+                    mentioned_user = (
+                        db.query(User)
+                        .filter(func.lower(User.username) == str(mention_name).lower())
+                        .first()
+                    )
+                    if mentioned_user is None:
+                        continue
+                    if int(mentioned_user.id) == int(user_id):
+                        continue
+                    if int(mentioned_user.id) in seen:
+                        continue
+                    seen.add(int(mentioned_user.id))
+                    _notify(
+                        db,
+                        user_id=int(mentioned_user.id),
+                        notification_type='POST_MENTION',
+                        data={
+                            'post_id': int(post.id),
+                            'from_user_id': int(user_id),
+                            'username': (current_user.username if current_user else None),
+                            'actor_avatar': (getattr(current_user, 'avatar', None) if current_user else None),
+                            'preview': preview,
+                        },
+                    )
+    except Exception:
+        pass
+
     return _serialize_post(db, post, current_user=current_user)
 
 
@@ -449,6 +494,22 @@ def like_post(db: Session, user_id: int, post_id: int) -> dict:
     db.flush()
     post_like_count = db.query(func.count(Like.id)).filter(Like.post_id == post_id).scalar() or 0
     db.commit()
+
+    # v87.0 — إشعار: شخص أعجب بمنشورك (فقط عند الإعجاب، لا عند الإلغاء)
+    if liked and post.user_id and int(post.user_id) != int(user_id):
+        actor = db.query(User).filter(User.id == user_id).first()
+        _notify(
+            db,
+            user_id=int(post.user_id),
+            notification_type='POST_LIKE',
+            data={
+                'post_id': int(post_id),
+                'from_user_id': int(user_id),
+                'username': (actor.username if actor else None),
+                'actor_avatar': (getattr(actor, 'avatar', None) if actor else None),
+            },
+        )
+
     return {
         'post_id': post_id,
         'liked': liked,
@@ -494,6 +555,22 @@ def share_post(db: Session, user_id: int, post_id: int, platform: str | None = N
     share_count = db.query(func.count(PostShare.id)).filter(PostShare.post_id == post_id).scalar() or 0
     post.share_count = int(share_count)
     db.commit()
+
+    # v87.0 — إشعار: شخص شارك منشورك
+    if post.user_id and int(post.user_id) != int(user_id):
+        actor = db.query(User).filter(User.id == user_id).first()
+        _notify(
+            db,
+            user_id=int(post.user_id),
+            notification_type='POST_SHARE',
+            data={
+                'post_id': int(post_id),
+                'from_user_id': int(user_id),
+                'username': (actor.username if actor else None),
+                'platform': share.platform,
+            },
+        )
+
     return {
         'post_id': post_id,
         'share_count': int(share_count),

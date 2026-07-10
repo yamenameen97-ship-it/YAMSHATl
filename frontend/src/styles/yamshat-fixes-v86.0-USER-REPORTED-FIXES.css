@@ -1,0 +1,653 @@
+/* ================================================================
+   🎯 YAMSHAT v86.0 — إصلاحات مبنية على تقارير المستخدمين المباشرة
+   ================================================================
+   يعالج هذا الملف 5 مشاكل حرجة أبلغ عنها المستخدمون على ويب الجوال:
+
+   1) بوست رفع الستوري لا يقبل السحب للأعلى/الأسفل
+      → StoryEditor محبوس بـ overflow:hidden قسراً من CSS legacy.
+
+   2) صفحة إنشاء مجموعة جديدة لا تقبل السحب لإظهار زر الإنشاء.
+      → .yamg-page + wizard container محبوس ومحمول ضمن shell scroller
+      لا يفعّل touch-action:pan-y بشكل حاسم.
+
+   3) عند الدخول للمجموعة: لا تظهر رسائل الشات ولا منطقة الكتابة.
+      → v85.9 كان يخفي .yam-chat-input-wrap (المشترك)، لكنه يفرض
+      overflow:hidden على container ويكسر ارتفاع messages area
+      عندما لا يكون footer .yam-group-input-area مرئي بسبب padding.
+
+   4) الصور المرسلة في الدردشة تظهر بحاوية كبيرة فارغة (SafeImage).
+      → SafeImage يستخدم width:100% + min-height:80px + max-width:320
+      مما يخلق حاوية كبيرة بحواف قبل تحميل الصورة، وحتى بعد.
+      الحل: عرض تلقائي حسب الصورة، بدون حاوية زائدة (مثل WhatsApp).
+
+   5) التعليقات على المنشور لا تظهر أبداً.
+      → CSS v85.9 كان يستهدف .ym-comments-list (بـ s) لكن JSX يستخدم
+      .ym-comment-list (بدون s). كذلك .ym-sheet-body لا يمتلك flex-column
+      فتُدفع القائمة خارج المنطقة المرئية.
+
+   ⚠️ يجب أن يبقى هذا الاستيراد **آخر CSS مطلقاً** في main.jsx.
+   ================================================================ */
+
+
+/* ─────────────────────────────────────────────────────────────
+   [1] STORY EDITOR — تفعيل السحب العمودي على الجوال
+   ───────────────────────────────────────────────────────────── */
+
+html body .yam-story-editor-overlay,
+html body div.yam-story-editor-overlay[role="dialog"] {
+  position: fixed !important;
+  inset: 0 !important;
+  overflow: hidden !important;
+  touch-action: none !important;
+  z-index: 2100 !important;
+  /* الأوفرلي نفسها لا تتمرر — الحاوية الداخلية هي التي تتمرر */
+}
+
+html body .yam-story-editor-overlay .yam-story-editor,
+html body div.yam-story-editor-overlay div.yam-story-editor {
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  max-height: 100dvh !important;
+  width: 100% !important;
+  max-width: 100vw !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior: contain !important;
+  touch-action: pan-y !important;
+  /* كسر أي contain/will-change/filter/transform من CSS legacy */
+  contain: none !important;
+  content-visibility: visible !important;
+  will-change: auto !important;
+  transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+  pointer-events: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+@media (min-width: 900px) {
+  html body .yam-story-editor-overlay .yam-story-editor {
+    height: 96vh !important;
+    min-height: 0 !important;
+    max-height: 96vh !important;
+    max-width: 460px !important;
+  }
+}
+
+/* منطقة المحتوى (stage + tools + filters + meta) لا تكون sticky
+   بل عادية داخل scroller — الهيدر فقط sticky */
+html body .yam-story-editor .yam-editor-stage,
+html body .yam-story-editor .yam-editor-tools,
+html body .yam-story-editor .yam-editor-filters,
+html body .yam-story-editor .yam-editor-meta,
+html body .yam-story-editor .yam-editor-poll {
+  flex-shrink: 0 !important;
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+}
+
+/* منع أي طبقة داخل الستيج من ابتلاع أحداث اللمس العمودي */
+@media (max-width: 900px) {
+  html body .yam-story-editor .yam-editor-stage {
+    max-height: 55vh !important;
+    min-height: 40vh !important;
+    touch-action: pan-y !important;
+  }
+  html body .yam-story-editor .yam-editor-stage canvas {
+    /* canvas يبتلع اللمس فقط إذا drawMode مفعّل — نستخدم pointerEvents inline */
+    touch-action: pan-y !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [2] GROUP CREATE WIZARD (.yamg-page) — تفعيل السحب لإظهار
+       زر "إنشاء" والخطوات الكاملة
+   ───────────────────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  /* الحاوية الأم .page-content التي تحمل .yamg-page تصبح المسؤولة
+     عن التمرير — مماثل لبصمة .yam-groups-page في v59.13.28 */
+  html body .app-shell .page-content:has(.yamg-page),
+  html body main.mobile-main-content:has(.yamg-page) {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
+    overscroll-behavior-y: contain !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    contain: none !important;
+    content-visibility: visible !important;
+    padding-bottom: 0 !important;
+  }
+
+  html body .yamg-page {
+    overflow: visible !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    /* ضمان مساحة سفلية لإظهار زر "إنشاء" فوق شريط التنقل */
+    padding-bottom: 140px !important;
+    touch-action: pan-y !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior-y: contain !important;
+    pointer-events: auto !important;
+    contain: none !important;
+    content-visibility: visible !important;
+    will-change: auto !important;
+    transform: none !important;
+    filter: none !important;
+  }
+
+  html body .yamg-page .yamg-card,
+  html body .yamg-page .yamg-wizard-grid,
+  html body .yamg-page .yamg-wizard-nav,
+  html body .yamg-page .yamg-col {
+    touch-action: pan-y !important;
+    -webkit-overflow-scrolling: touch !important;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    contain: none !important;
+  }
+
+  /* شريط التنقل السفلي (yamg-wizard-nav) sticky حتى يبقى ظاهراً */
+  html body .yamg-page .yamg-wizard-nav {
+    position: sticky !important;
+    bottom: calc(60px + env(safe-area-inset-bottom, 0px)) !important;
+    z-index: 15 !important;
+    background: linear-gradient(180deg, transparent 0%, var(--yamg-bg, #0b0f1a) 40%) !important;
+    padding-top: 12px !important;
+    padding-bottom: 12px !important;
+    margin: 20px -16px 0 !important;
+    padding-inline: 16px !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [3] GROUP CHAT — ضمان ظهور الرسائل + منطقة الكتابة
+   ───────────────────────────────────────────────────────────── */
+
+/* الحاوية الأم — flex column يملأ الشاشة */
+html body .yam-group-chat-container,
+html body div[data-yam-group-root="true"].yam-group-chat-container {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  max-height: 100dvh !important;
+  overflow: hidden !important;
+  position: relative !important;
+  contain: none !important;
+  will-change: auto !important;
+}
+
+/* على الجوال: نمنح المجموعة كامل ارتفاع الشاشة (تحت الهيدر فوق BottomNav) */
+@media (max-width: 900px) {
+  html body .app-shell .page-content:has([data-yam-group-root="true"]),
+  html body main.mobile-main-content:has([data-yam-group-root="true"]) {
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+    padding-bottom: 0 !important;
+    contain: none !important;
+    content-visibility: visible !important;
+  }
+}
+
+/* منطقة الرسائل تأخذ المساحة المتبقية */
+html body .yam-group-chat-container .yam-group-messages,
+html body div[data-yam-group-root="true"] main.yam-group-messages {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  height: auto !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  overscroll-behavior: contain !important;
+  padding: 12px 14px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  contain: none !important;
+  content-visibility: visible !important;
+  pointer-events: auto !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+/* footer إدخال الرسائل — دائماً مرئي في الأسفل */
+html body .yam-group-chat-container .yam-group-input-area,
+html body div[data-yam-group-root="true"] footer.yam-group-input-area {
+  position: relative !important;
+  bottom: auto !important;
+  left: auto !important;
+  right: auto !important;
+  top: auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  z-index: 20 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 12px 14px !important;
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)) !important;
+  background: rgba(13, 17, 28, 0.98) !important;
+  border-top: 1px solid rgba(255,255,255,0.06) !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+html body .yam-group-input-area .yam-input-wrapper {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  background: rgba(255,255,255,0.05) !important;
+  border-radius: 22px !important;
+  padding: 6px 14px !important;
+  border: 1px solid rgba(255,255,255,0.08) !important;
+}
+
+html body .yam-group-input-area .yam-chat-input {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  outline: 0 !important;
+  color: #fff !important;
+  font-family: inherit !important;
+  font-size: 15px !important;
+  padding: 8px 0 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+html body .yam-group-input-area .yam-send-btn,
+html body .yam-group-input-area .yam-plus-btn {
+  flex-shrink: 0 !important;
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 50% !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 0 !important;
+  cursor: pointer !important;
+  color: #fff !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  z-index: 21 !important;
+}
+html body .yam-group-input-area .yam-plus-btn {
+  background: rgba(255,255,255,0.08) !important;
+}
+html body .yam-group-input-area .yam-send-btn {
+  background: linear-gradient(135deg, #8b5cf6, #22d3ee) !important;
+}
+
+/* إخفاء أي composer شبح من CSS الدردشة الفردية داخل شاشة المجموعة */
+html body [data-yam-group-root="true"] .yam-chat-input-wrap,
+html body [data-yam-group-root="true"] .yam-composer-shell,
+html body [data-yam-group-root="true"] .yam-composer-row,
+html body [data-yam-group-root="true"] .yam-composer-textrow,
+html body [data-yam-group-root="true"] .yam-messages-area .yam-chat-input-wrap,
+html body .yam-group-chat-container .yam-chat-input-wrap,
+html body .yam-group-chat-container .yam-composer-shell {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  position: static !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  opacity: 0 !important;
+  overflow: hidden !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [4] CHAT IMAGES — عرض احترافي مثل واتساب (لا حواف، حجم ذكي)
+   ───────────────────────────────────────────────────────────── */
+
+/* إعادة تصميم SafeImage: الحاوية تتقلص لحجم الصورة نفسها */
+html body .yam-bubble .yam-safe-image,
+html body .yam-message-group .yam-safe-image,
+html body .yam-safe-image {
+  width: auto !important;
+  max-width: min(260px, 62vw) !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  height: auto !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+  background: transparent !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  display: inline-block !important;
+  box-shadow: none !important;
+  border: 0 !important;
+  line-height: 0 !important;
+}
+
+/* placeholder loading state — نبقيه صغيراً مماثل لمقاس فقاعة نص */
+html body .yam-safe-image.loading {
+  min-width: 180px !important;
+  min-height: 140px !important;
+  background: rgba(255,255,255,0.05) !important;
+}
+
+/* الصورة نفسها — تظهر بحجمها الطبيعي (النسبة محفوظة) */
+html body .yam-safe-image img,
+html body .yam-bubble .yam-safe-image img {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  max-height: 340px !important;
+  object-fit: cover !important;
+  object-position: center !important;
+  display: block !important;
+  border-radius: 14px !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* زر media-button (الذي يلف SafeImage) — بلا أي حواف/خلفية إضافية */
+html body .yam-bubble .yam-media-button,
+html body .yam-message-group .yam-media-button {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  width: auto !important;
+  max-width: min(260px, 62vw) !important;
+  display: inline-block !important;
+  position: relative !important;
+  cursor: pointer !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+  line-height: 0 !important;
+}
+
+/* الفقاعة (bubble) عند احتوائها على صورة — تصبح حاضنة مضغوطة */
+html body .yam-bubble:has(.yam-safe-image),
+html body .yam-bubble:has(.yam-media-button),
+html body .yam-message-group:has(.yam-safe-image) {
+  padding: 3px !important;
+  background: rgba(255,255,255,0.04) !important;
+  max-width: fit-content !important;
+  width: auto !important;
+  border-radius: 16px !important;
+}
+
+/* overlay "تكبير" — يظهر بمقاس صغير في زاوية الصورة فقط */
+html body .yam-bubble-media-overlay {
+  position: absolute !important;
+  bottom: 6px !important;
+  inset-inline-end: 6px !important;
+  background: rgba(0,0,0,0.55) !important;
+  color: #fff !important;
+  font-size: 11px !important;
+  padding: 3px 8px !important;
+  border-radius: 10px !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+  transition: opacity 0.2s ease !important;
+}
+html body .yam-bubble:hover .yam-bubble-media-overlay,
+html body .yam-media-button:hover .yam-bubble-media-overlay {
+  opacity: 1 !important;
+}
+
+/* نفس المعاملة للفيديو في الفقاعة */
+html body .yam-bubble video.yam-bubble-media,
+html body .yam-message-group video.yam-bubble-media {
+  width: 100% !important;
+  max-width: min(260px, 62vw) !important;
+  height: auto !important;
+  max-height: 340px !important;
+  border-radius: 14px !important;
+  display: block !important;
+  background: #000 !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [5] MOBILE COMMENTS SHEET — إظهار التعليقات فعلياً + التمرير
+   ───────────────────────────────────────────────────────────── */
+
+/* التغطية والشيت في مقدمة كل شيء */
+html body .ym-sheet-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 4000 !important;
+  background: rgba(0,0,0,0.55) !important;
+  display: flex !important;
+  align-items: flex-end !important;
+  justify-content: center !important;
+  pointer-events: auto !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+html body .ym-sheet {
+  position: relative !important;
+  width: 100% !important;
+  max-width: 640px !important;
+  max-height: 88dvh !important;
+  height: 88dvh !important;
+  background: #0f1420 !important;
+  border-radius: 20px 20px 0 0 !important;
+  z-index: 4001 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  pointer-events: auto !important;
+  touch-action: pan-y !important;
+  box-shadow: 0 -20px 60px rgba(0,0,0,0.5) !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+html body .ym-sheet .ym-sheet-handle {
+  width: 44px !important;
+  height: 4px !important;
+  background: rgba(255,255,255,0.25) !important;
+  border-radius: 2px !important;
+  margin: 8px auto !important;
+  flex-shrink: 0 !important;
+}
+
+html body .ym-sheet .ym-sheet-head {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 8px 16px 12px !important;
+  border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+  flex-shrink: 0 !important;
+}
+html body .ym-sheet .ym-sheet-head h3 {
+  margin: 0 !important;
+  color: #fff !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+}
+html body .ym-sheet .ym-sheet-close {
+  background: transparent !important;
+  border: 0 !important;
+  color: #fff !important;
+  cursor: pointer !important;
+  padding: 6px !important;
+  border-radius: 8px !important;
+}
+
+/* منطقة عرض التعليقات — flex:1 مع overflow-y:auto */
+html body .ym-sheet .ym-sheet-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  overscroll-behavior: contain !important;
+  padding: 12px 16px !important;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  contain: none !important;
+  content-visibility: visible !important;
+}
+
+/* قائمة التعليقات — الاسم الصحيح ym-comment-list (بدون s) */
+html body .ym-sheet .ym-comment-list,
+html body .ym-sheet ul.ym-comment-list,
+html body .ym-sheet-body .ym-comment-list {
+  list-style: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 14px !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+html body .ym-sheet .ym-comment-item {
+  display: flex !important;
+  gap: 10px !important;
+  align-items: flex-start !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+html body .ym-sheet .ym-comment-avatar {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  overflow: hidden !important;
+  flex-shrink: 0 !important;
+  background: linear-gradient(135deg, #6d28d9, #a78bfa) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+}
+html body .ym-sheet .ym-comment-avatar img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+html body .ym-sheet .ym-comment-body {
+  background: rgba(255,255,255,0.05) !important;
+  border-radius: 14px !important;
+  padding: 8px 12px !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+}
+html body .ym-sheet .ym-comment-author {
+  color: #fff !important;
+  font-weight: 700 !important;
+  font-size: 13px !important;
+}
+html body .ym-sheet .ym-comment-text {
+  color: #e5e7eb !important;
+  font-size: 14px !important;
+  line-height: 1.55 !important;
+  margin-top: 2px !important;
+  word-wrap: break-word !important;
+}
+
+html body .ym-sheet .ym-sheet-empty {
+  text-align: center !important;
+  color: #8e97a9 !important;
+  padding: 48px 12px !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+html body .ym-sheet .ym-sheet-empty .icon {
+  font-size: 36px !important;
+  margin-bottom: 12px !important;
+  display: block !important;
+}
+
+/* حقل إدخال التعليق */
+html body .ym-sheet .ym-sheet-composer {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 10px 12px !important;
+  padding-bottom: max(10px, env(safe-area-inset-bottom, 0px)) !important;
+  background: rgba(15, 20, 32, 0.98) !important;
+  border-top: 1px solid rgba(255,255,255,0.06) !important;
+  flex-shrink: 0 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+html body .ym-sheet .ym-sheet-input {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  background: rgba(255,255,255,0.06) !important;
+  border: 1px solid rgba(255,255,255,0.08) !important;
+  border-radius: 22px !important;
+  padding: 10px 16px !important;
+  color: #fff !important;
+  font-family: inherit !important;
+  font-size: 15px !important;
+  outline: 0 !important;
+}
+html body .ym-sheet .ym-sheet-send {
+  width: 40px !important;
+  height: 40px !important;
+  flex-shrink: 0 !important;
+  border-radius: 50% !important;
+  border: 0 !important;
+  background: linear-gradient(135deg, #8b5cf6, #22d3ee) !important;
+  color: #fff !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+}
+html body .ym-sheet .ym-sheet-send:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [6] كسر أي CSS legacy يضع body.data-ym-sheet="open" في وضع سيء
+   ───────────────────────────────────────────────────────────── */
+html body[data-ym-sheet="open"] {
+  overflow: hidden !important;
+}
+
+/* ضمان أن BottomNav لا يغطي شيت التعليقات */
+html body[data-ym-sheet="open"] .mobile-bottom-nav,
+html body[data-ym-sheet="open"] .yam-bottom-nav,
+html body[data-ym-sheet="open"] nav.bottom-nav {
+  display: none !important;
+}

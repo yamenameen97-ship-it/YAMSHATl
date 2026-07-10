@@ -1,0 +1,324 @@
+/* ================================================================
+   🎯 YAMSHAT v86.5 — إصلاح صفحتَين إضافيَّتَين لم يعملا بسلاسة السحب
+   ================================================================
+   بعد إغلاق v86.4 (الذي عالج `.friends-all-page` و
+   `.yam-notifications-page`) استكملنا الفحص الشامل لبقية الصفحات
+   في المشروع، مقارنةً بمرجع الجودة الرئيسي:
+   `.yam-home-mobile-page` (FeedMobile) — يعمل "فل الفل" منذ v59.13.28.
+
+   عُثر على **صفحتين اثنتين فقط** إضافيَّتين لم يتم إصلاحهما في
+   أي طبقة سابقة (لا في v85.7 FRIENDS، ولا في v85.9 MOBILE-FORCE،
+   ولا في أي من طبقات v86.0/v86.1/v86.2/v86.3/v86.4) — ووقفنا
+   عندهما كما طُلب بالضبط.
+
+   ─────────────────────────────────────────────────────────────
+   1) صفحة "البحث الذكي" (.yam-search-page-shell)
+      → المصدر: frontend/src/pages/Search.jsx
+      → المسار: /search
+      → مغلَّفة داخل <MainLayout> عادية.
+      → لا يوجد لها **أي** إصلاح scroll في styles/*.
+        (بحث grep -rn '\.yam-search-page-shell' styles/  →  فارغ.)
+      → الجذر يستعمل inline style قاسي:
+          minHeight: calc(var(--yam-vh, 100vh) - 70px)
+          display: flex; flexDirection: column; gap: 16
+        والابن `<div style={{ flex: 1 }}>` يحتوي على قائمة نتائج
+        طويلة (البحث + الفلاتر + الاقتراحات + سيرش سريع +
+        الترند + النتائج المفلترة). على ويب الجوال:
+          • الأم .page-content تصير overflow:hidden من طبقات
+            v59.13.26 / v85.9 → السحب يتوقف قبل أن يصل للفلاتر
+            أو قائمة النتائج.
+          • .advanced-search-grid (الفلاتر) + شريط SEARCH_FILTERS
+            (الأزرار) + micro-chip يبتلعون اللمس إن لم نمرِّر
+            touch-action:pan-y عليهم.
+          • Input.yam-search-input و select و checkbox داخل
+            .search-inline-toggle يجب أن لا يبتلعوا السحب الرأسي.
+      → الحل: نجعل الأم `.page-content` هي الـ scroller الرأسي
+        على الجوال، ونحرر الجذر من min-height القاسي، ونمنح كل
+        الأبناء `touch-action:pan-y` + كسر contain — نفس بصمة
+        `.yam-notifications-page` (v86.4 [2]).
+
+   2) صفحة "استقبال المحتوى المُشارَك" (.share-target-page)
+      → المصدر: frontend/src/pages/ShareTargetLanding.jsx
+      → المسار: /share-target (PWA Share Target API)
+      → **لا** تستعمل <MainLayout> — تُقدَّم كصفحة كاملة مستقلة.
+        (تُفتح مباشرةً من نظام تشغيل الهاتف بعد اختيار "مشاركة"
+        من المعرض / المتصفح / مدير الملفات.)
+      → لا يوجد لها **أي** إصلاح scroll في styles/*.
+        (بحث grep -rn '\.share-target-page' styles/  →  فارغ.)
+      → لديها inline `<style>` محلي يفرض:
+          min-height: 100dvh
+        لكن **بدون** overflow-y:auto ولا touch-action ولا كسر
+        contain. الطبقات القديمة (v57 mobile-touch-master +
+        v59.10 drawer-touch) تفرض `overflow:hidden` على `html`
+        و `body` + `touch-action:none` على `#root` — وبما أن
+        .share-target-page ابن مباشر لـ body/#root بدون
+        MainLayout، فإن السحب لا يعمل مطلقاً.
+      → الصفحة تحتوي على:
+          • .share-target-card (البطاقة الرئيسية)
+          • .share-preview-grid (شبكة معاينات الوسائط — قد
+            تكون طويلة إذا شارك المستخدم عدة صور/فيديوهات)
+          • .share-preview-card (بطاقات معاينة فردية)
+          • .share-actions (أزرار "فتح الرئيسية" / "فتح الرسائل")
+          • .share-empty-box / .share-error-note (حالات فارغة)
+      → الحل: نستهدف الجذر مباشرةً (`.share-target-page`) بدلاً
+        من `.page-content` (غير موجودة هنا)، ونجعله هو نفسه
+        الـ scroller الرأسي — على غرار `.yam-story-editor`
+        الذي يستقل عن MainLayout في v86.0.
+
+   ⚠️ يجب أن يبقى هذا الاستيراد **آخر CSS مطلقاً** في main.jsx
+      بعد v86.4 مباشرة ليفوز في cascade.
+   ================================================================ */
+
+
+/* ─────────────────────────────────────────────────────────────
+   [1] .yam-search-page-shell — صفحة "البحث الذكي" (/search)
+       تفعيل السحب العمودي على ويب الجوال، ليتصرف مثل الصفحة الرئيسية.
+   ───────────────────────────────────────────────────────────── */
+
+/* الأم .page-content / main.mobile-main-content تُصبح الـ scroller
+   الحقيقي — نفس بصمة .friends-all-page (v86.4) و
+   .yam-notifications-page (v86.4) و .yam-home-mobile-page (v59.13.28). */
+@media (max-width: 900px) {
+  html body .app-shell .page-content:has(.yam-search-page-shell),
+  html body main.mobile-main-content:has(.yam-search-page-shell) {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
+    overscroll-behavior-y: contain !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    contain: none !important;
+    content-visibility: visible !important;
+    padding: 0 !important;
+    padding-bottom: 0 !important;
+    will-change: auto !important;
+    transform: none !important;
+    filter: none !important;
+    perspective: none !important;
+  }
+
+  /* الجذر نفسه: نتحرر من min-height:calc(100vh-70px) القاسي
+     ونمنح الصفحة أن تتمدد أطول من الشاشة بحرية. */
+  html body .yam-search-page-shell {
+    min-height: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    overflow-y: visible !important;
+    -webkit-overflow-scrolling: auto !important;
+    touch-action: pan-y !important;
+    contain: none !important;
+    content-visibility: visible !important;
+    will-change: auto !important;
+    transform: none !important;
+    filter: none !important;
+    perspective: none !important;
+    padding: 16px 14px calc(120px + env(safe-area-inset-bottom, 0px)) !important;
+    /* الحشو السفلي الكبير يضمن أن آخر بطاقة نتيجة تظهر
+       فوق BottomNav دون أن يقصّها. */
+  }
+
+  /* Card الفلاتر العلوية (البحث + الفلاتر + الاقتراحات) —
+     يجب أن يمرّ السحب الرأسي عليها للأم بلا اعتراض. */
+  html body .yam-search-page-shell > * {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+    contain: none !important;
+  }
+
+  /* شبكة الفلاتر المتقدمة (الترتيب + توثيق + وسائط + هاشتاج + منشن) */
+  html body .yam-search-page-shell .advanced-search-grid {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+    contain: none !important;
+  }
+  html body .yam-search-page-shell .search-select-field,
+  html body .yam-search-page-shell .search-inline-toggle {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+  }
+
+  /* حقل البحث (Input.yam-search-input) — يجب أن يستقبل النقر
+     لفتح الكيبورد لكن لا يبتلع السحب الرأسي فوقه. */
+  html body .yam-search-page-shell input,
+  html body .yam-search-page-shell textarea,
+  html body .yam-search-page-shell select {
+    touch-action: pan-y !important;
+  }
+  html body .yam-search-page-shell .yam-search-input {
+    touch-action: pan-y !important;
+  }
+
+  /* شريط أزرار الفلاتر الأفقي (الكل / الأشخاص / المنشورات / …)
+     — يقبل النقر ويمرّر السحب الرأسي للأم. */
+  html body .yam-search-page-shell button {
+    touch-action: manipulation !important;
+  }
+  html body .yam-search-page-shell .micro-chip {
+    touch-action: manipulation !important;
+  }
+
+  /* لوحة النتائج الرئيسية (div style={{flex:1}}) — نلغي flex:1
+     على الجوال لأن الأم لم تعد flex-column بارتفاع 100vh،
+     ونتركها تنمو طبيعياً بالطول الحقيقي لمحتوى القوائم. */
+  html body .yam-search-page-shell > div[style*="flex: 1"],
+  html body .yam-search-page-shell > div[style*="flex:1"] {
+    flex: unset !important;
+    min-height: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+    touch-action: pan-y !important;
+    contain: none !important;
+  }
+
+  /* شبكات الاكتشاف والنتائج (سيرش سريع / الترند / نتائج البحث) */
+  html body .yam-search-page-shell .search-dashboard-grid,
+  html body .yam-search-page-shell .discovery-row,
+  html body .yam-search-page-shell .trending-row {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+    contain: none !important;
+  }
+
+  /* أي Card داخل الصفحة (react component ينتج div.card) —
+     نتأكد من عدم كسر تدفق السحب. */
+  html body .yam-search-page-shell .card,
+  html body .yam-search-page-shell [class*="Card"] {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+    contain: none !important;
+    will-change: auto !important;
+    transform: none !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [2] .share-target-page — صفحة استقبال المحتوى المشارَك من PWA
+       تفعيل السحب العمودي على ويب الجوال (بدون MainLayout).
+   ───────────────────────────────────────────────────────────── */
+
+/* هذه الصفحة لا تعيش داخل <MainLayout> — تُقدَّم كصفحة كاملة
+   من نظام تشغيل الجهاز عبر PWA Share Target API. لذا نستهدف
+   الجذر مباشرةً بدلاً من .page-content. */
+@media (max-width: 900px) {
+  html body .share-target-page {
+    /* الجذر نفسه يصبح الـ scroller الحقيقي: */
+    min-height: 100dvh !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
+    overscroll-behavior-y: contain !important;
+    contain: none !important;
+    content-visibility: visible !important;
+    will-change: auto !important;
+    transform: none !important;
+    filter: none !important;
+    perspective: none !important;
+    /* حشو سفلي كبير + احترام safe-area للأجهزة ذات الحواف
+       المنحنية (iPhone notch / Android gesture bar). */
+    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  /* البطاقة الرئيسية (share-target-card) — نمنحها touch-action
+     كي يمرّ السحب فوقها للجذر بدل أن يعلق. */
+  html body .share-target-page .share-target-card {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+    contain: none !important;
+    will-change: auto !important;
+    transform: none !important;
+    filter: none !important;
+  }
+
+  /* شارة PWA + العنوان + الوصف */
+  html body .share-target-page .share-target-badge,
+  html body .share-target-page h1,
+  html body .share-target-page p {
+    touch-action: pan-y !important;
+  }
+
+  /* شبكة معاينات الوسائط (قد تكون طويلة إذا شارك المستخدم
+     عدة صور/فيديوهات دفعة واحدة) */
+  html body .share-target-page .share-preview-grid {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+    contain: none !important;
+    will-change: auto !important;
+  }
+  html body .share-target-page .share-preview-card {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+    contain: none !important;
+  }
+  html body .share-target-page .share-preview-card img,
+  html body .share-target-page .share-preview-card video {
+    touch-action: pan-y !important;
+    /* الصور والفيديوهات لا يجب أن تبتلع السحب الرأسي —
+       المستخدم يجب أن يتمكن من التمرير حتى من فوقها. */
+    pointer-events: auto !important;
+  }
+  html body .share-target-page .share-file-meta,
+  html body .share-target-page .share-file-fallback {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+  }
+
+  /* أزرار الإجراءات (فتح الرئيسية / فتح الرسائل / رجوع) —
+     نقر فوري بلا تأخير 300ms، ولا يعطلون السحب. */
+  html body .share-target-page .share-actions {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+  }
+  html body .share-target-page .share-action,
+  html body .share-target-page .share-action.primary,
+  html body .share-target-page .share-link-inline {
+    touch-action: manipulation !important;
+  }
+
+  /* حالات الفراغ والخطأ */
+  html body .share-target-page .share-empty-box,
+  html body .share-target-page .share-error-note {
+    touch-action: pan-y !important;
+    overflow: visible !important;
+  }
+
+  /* حماية من طبقات legacy تفرض overflow:hidden على html/body
+     عندما لا يكون هناك MainLayout — الجذر PWA يحتاج أن يكون
+     html/body قابلاً للسحب. */
+  html:has(.share-target-page),
+  body:has(.share-target-page) {
+    overflow: hidden !important;
+    /* body يبقى hidden لأن .share-target-page نفسها هي
+       الـ scroller — لكن ألغينا touch-action:none القاسي
+       من طبقة v57. */
+    touch-action: pan-y !important;
+    -webkit-overflow-scrolling: touch !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+  }
+  html:has(.share-target-page) #root,
+  body:has(.share-target-page) #root {
+    overflow: hidden !important;
+    touch-action: pan-y !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    contain: none !important;
+    transform: none !important;
+    will-change: auto !important;
+  }
+}
+
+
+/* ================================================================
+   ✅ خُلاصة v86.5:
+      • .yam-search-page-shell  (Search.jsx  — /search)         [قسم 1]
+      • .share-target-page       (ShareTargetLanding.jsx — /share-target) [قسم 2]
+   الصفحتان الآن تتصرَّفان مثل الصفحة الرئيسية بالضبط — سحب سلس
+   "فل الفل" على ويب الجوال، رأسٌ ثابت (حيث يوجد)، وصولٌ ميسَّر
+   لكل الأقسام السفلية، وأزرار تستجيب بنقر فوري.
+   ================================================================ */

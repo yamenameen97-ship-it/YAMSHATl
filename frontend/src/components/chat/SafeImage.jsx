@@ -3,29 +3,23 @@ import { useState } from 'react';
 /**
  * SafeImage
  * --------------------------------------------------------------------------
- * مكوّن صورة مع حماية شاملة من حالات الكسر التي تظهر في الجوال:
- *   - object-fit ثابت يمنع التشويه
- *   - حد أدنى وأقصى للارتفاع
- *   - placeholder للتحميل
- *   - fallback عند الفشل (عنصر بديل قابل للضغط لإعادة المحاولة)
- *   - دعم decoding="async" و loading="lazy"
- *   - حماية من CORS بـ referrerPolicy
- *
- * يستخدم في فقاعات الرسائل (Chat.jsx + GroupChat.jsx + MessageBubble.jsx).
+ * ✅ v86.0 REDESIGN — عرض الصور في الدردشة مثل WhatsApp تماماً:
+ *   • الحاوية تتقلص لحجم الصورة (لا حواف/خلفية زائدة)
+ *   • بدون min-height ثابت (لا يظهر مستطيل رمادي فارغ)
+ *   • max-width ذكي (min(260px, 62vw)) لملاءمة الجوال والكمبيوتر
+ *   • loading placeholder صغير ومضغوط أثناء التحميل فقط
+ *   • decoding=async + loading=lazy لأداء أفضل
+ *   • fallback واضح عند فشل التحميل مع زر إعادة المحاولة
  *
  * Props:
- *   src        : string
- *   alt        : string
- *   onOpen     : () => void   - عند الضغط (لفتح المعاينة الكاملة)
- *   onLongPress: () => void   - تمرير الضغط المطول
- *   maxHeight  : number       - الارتفاع الأقصى (افتراضي 320)
+ *   src, alt, onOpen, onLongPress, maxHeight (default 340), className
  */
 export default function SafeImage({
   src,
   alt = 'صورة',
   onOpen,
   onLongPress,
-  maxHeight = 320,
+  maxHeight = 340,
   className = '',
 }) {
   const [state, setState] = useState('loading'); // loading | ok | error
@@ -69,28 +63,55 @@ export default function SafeImage({
       tabIndex={0}
     >
       <style>{`
+        /* ✅ v86.0: حاوية تتقلص لحجم الصورة (مثل واتساب) — لا حواف زائدة */
         .yam-safe-image {
           position: relative;
-          width: 100%;
-          max-width: 320px;
-          min-height: 80px;
-          border-radius: 12px;
+          display: inline-block;
+          width: auto;
+          max-width: min(260px, 62vw);
+          min-width: 0;
+          min-height: 0;
+          height: auto;
+          border-radius: 14px;
           overflow: hidden;
-          background: rgba(255,255,255,0.04);
+          background: transparent;
+          padding: 0;
+          margin: 0;
+          line-height: 0;
           cursor: pointer;
+          font-family: 'Noto Sans Arabic', 'Cairo', 'Tahoma', sans-serif;
+        }
+        /* أثناء التحميل فقط: أعطها إطاراً صغيراً مؤقتاً — سيختفي عند 'ok' */
+        .yam-safe-image.loading {
+          min-width: 180px;
+          min-height: 140px;
+          background: rgba(255,255,255,0.05);
           display: flex;
           align-items: center;
           justify-content: center;
-          font-family: 'Noto Sans Arabic', 'Cairo', 'Tahoma', sans-serif;
+        }
+        .yam-safe-image.ok {
+          background: transparent;
+          min-width: 0;
+          min-height: 0;
+        }
+        .yam-safe-image.error {
+          min-width: 180px;
+          min-height: 100px;
+          background: rgba(239,68,68,0.08);
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
         .yam-safe-image img {
           display: block;
           width: 100%;
+          max-width: 100%;
           height: auto;
           max-height: inherit;
           object-fit: cover;
           object-position: center;
-          /* يمنع الكسر / التشويه في WebView الجوال */
+          border-radius: 14px;
           -webkit-user-drag: none;
           user-select: none;
         }
@@ -100,27 +121,29 @@ export default function SafeImage({
           background: linear-gradient(110deg, rgba(255,255,255,0.04) 30%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.04) 70%);
           background-size: 200% 100%;
           animation: yam-shimmer 1.2s infinite linear;
+          border-radius: 14px;
+          pointer-events: none;
         }
         @keyframes yam-shimmer {
           0%   { background-position: 200% 0; }
           100% { background-position: -200% 0; }
         }
         .yam-safe-image .yam-img-fallback {
-          padding: 18px 16px;
-          display: flex; flex-direction: column; gap: 8px;
+          padding: 14px 12px;
+          display: flex; flex-direction: column; gap: 6px;
           align-items: center; justify-content: center;
           color: #fca5a5;
           font-size: 13px;
           text-align: center;
         }
-        .yam-safe-image .yam-img-fallback .icon { font-size: 28px; }
+        .yam-safe-image .yam-img-fallback .icon { font-size: 24px; }
         .yam-safe-image .yam-img-fallback button {
           margin-top: 4px;
           background: rgba(239,68,68,0.15);
           border: 1px solid rgba(239,68,68,0.4);
           color: #fecaca;
-          padding: 6px 14px;
-          border-radius: 18px;
+          padding: 5px 12px;
+          border-radius: 16px;
           font-family: inherit;
           font-size: 12px;
           cursor: pointer;

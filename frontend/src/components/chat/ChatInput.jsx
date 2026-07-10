@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import VoiceRecorder from './VoiceRecorder.jsx';
+import PressToRecordMic from './PressToRecordMic.jsx';
 import VoiceMessagePlayer from '../ui/VoiceMessagePlayer.jsx';
 import socketManager from '../../services/socketManager.js';
 import mediaUploadService from '../../services/media/mediaUploadService.js';
@@ -66,6 +67,9 @@ function formatAttachmentMeta(entry) {
 export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend, peer, securitySnapshot, disabled = false, compact = false }) {
   const [text, setText] = useState('');
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
+  // ✅ v86.9: بنر خطأ التسجيل الصوتي (غير حاجب)
+  const [voiceError, setVoiceError] = useState('');
+  const voiceErrorTimerRef = useRef(null);
   const [attachments, setAttachments] = useState([]);
   const [sending, setSending] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -122,6 +126,8 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
     abortAllUploads();
     revokeAttachments(attachmentsRef.current);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    // ✅ v86.9: نظّف مؤقّت رسالة خطأ التسجيل
+    if (voiceErrorTimerRef.current) window.clearTimeout(voiceErrorTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -887,6 +893,31 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
         />
       ) : null}
 
+      {/*
+        ✅ v86.9 (WhatsApp-style Press-to-Record):
+        - Voice recording toast (غير حاجب) — لعرض الأخطاء أثناء التسجيل
+        - يظهر أعلى الشريط عند حدوث خطأ في الميكروفون / الأذونات.
+      */}
+      {voiceError ? (
+        <div
+          role="alert"
+          style={{
+            padding: '10px 12px',
+            borderRadius: 12,
+            background: 'rgba(239,68,68,0.14)',
+            color: '#fca5a5',
+            fontSize: 13,
+            border: '1px solid rgba(239,68,68,0.32)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <span aria-hidden="true">⚠️</span>
+          <span>{voiceError}</span>
+        </div>
+      ) : null}
+
       {/* صف النص: textarea مستقل أعلى الأزرار (طلب المستخدم) */}
       <div className="yam-composer-textrow">
         <div className="yam-input-frame">
@@ -967,18 +998,40 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
             📎
           </label>
 
-          <button
-            type="button"
-            className={`yam-action-btn ${showVoiceRecorder || isRecording ? 'active' : ''}`}
+          {/*
+            ✅ v86.9 (WhatsApp-style Press-to-Record):
+            استُبدل الزر النقري القديم بمكوّن PressToRecordMic:
+              - اضغط مطولاً ⇒ يبدأ التسجيل فوراً.
+              - اسحب للأعلى ⇒ قفل التسجيل (يظهر زر إرسال + إلغاء).
+              - اسحب للأسفل ⇒ إلغاء فوري.
+              - حرّر الإصبع بدون سحب ⇒ يوقف التسجيل ويُرسل تلقائياً.
+            نُبقي زر الفتح اليدوي لواجهة التسجيل الكاملة عبر ضغطة مطوّلة ثانوية
+            (لكن العنصر الأساسي هو Press-to-Record).
+          */}
+          <PressToRecordMic
             disabled={composerDisabled}
-            onClick={() => {
-              setShowVoiceRecorder((prev) => !prev);
+            onStateChange={(next) => {
+              // مزامنة إشارة "يسجّل الآن" مع الطرف الآخر عبر السوكت
+              emitRecordingState(next === 'idle' ? 'idle' : 'recording');
               setShowEmojiPicker(false);
             }}
-            aria-label="رسالة صوتية"
-          >
-            🎤
-          </button>
+            onError={(msg) => {
+              setVoiceError(msg || '');
+              // مسح تلقائي بعد 5 ثوانٍ
+              if (voiceErrorTimerRef.current) window.clearTimeout(voiceErrorTimerRef.current);
+              voiceErrorTimerRef.current = window.setTimeout(() => setVoiceError(''), 5000);
+            }}
+            onSend={(voicePayload) => {
+              // يُرسل التسجيل مباشرة (بدون عرض مسبق) — مطابق لواتساب.
+              handleVoiceSend({
+                blob: voicePayload.blob,
+                file: voicePayload.file,
+                durationSeconds: voicePayload.durationSeconds,
+                mimeType: voicePayload.mimeType,
+                waveformSeed: `voice-${Date.now()}`,
+              });
+            }}
+          />
         </div>
 
         <button

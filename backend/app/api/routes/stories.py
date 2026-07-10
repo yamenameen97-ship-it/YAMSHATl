@@ -39,20 +39,89 @@ try:
 except Exception:  # pragma: no cover
     _notifications_module = None
 
+# v87.0 — نظام الإشعارات الذكي الموحّد (يحفظ في DB + WebSocket + Push)
+try:
+    from app.services.notification_service import create_and_send_notification as _persist_notif
+except Exception:  # pragma: no cover
+    async def _persist_notif(*_args, **_kwargs):  # type: ignore[override]
+        return None
+
 router = APIRouter()
 
 
+_STORY_EVENT_TO_TYPE = {
+    'story:mention': 'STORY_MENTION',
+    'story:new': None,  # إشعار عام للمتابعين — لا يوجد مستلم محدد (broadcast)
+    'story:reaction': 'STORY_LIKE',
+    'story:reply': 'STORY_REPLY',
+    'story:poll_vote': 'STORY_POLL_VOTE',
+}
+
+
 def _emit_notification(event: str, payload: dict) -> None:
-    if _notifications_module is None:
-        return
+    """v87.0: يحفظ الإشعار في DB + يبثّه WebSocket + Push تلقائياً.
+
+    يحدّد مستلم الإشعار من payload — يدعم:
+      * owner_id      — لمالك القصة (reaction/reply/poll_vote)
+      * mentioned_username — لمن تم ذكره (mention)
+    """
+    # محاولة broadcast داخلي إذا كان الموديول موجوداً (اختياري)
+    if _notifications_module is not None:
+        try:
+            send = (
+                getattr(_notifications_module, 'broadcast_event', None)
+                or getattr(_notifications_module, 'emit', None)
+                or getattr(_notifications_module, 'send_notification', None)
+            )
+            if callable(send):
+                send(event, payload)
+        except Exception:
+            pass
+
+    # v87.0 — حفظ الإشعار في DB وبثّه لحظياً
+    notif_type = _STORY_EVENT_TO_TYPE.get(event)
+    if not notif_type:
+        return  # story:new = broadcast فقط — لا إشعار مخصص لمستلم محدد
+
     try:
-        send = (
-            getattr(_notifications_module, 'broadcast_event', None)
-            or getattr(_notifications_module, 'emit', None)
-            or getattr(_notifications_module, 'send_notification', None)
-        )
-        if callable(send):
-            send(event, payload)
+        # تحديد مستلم الإشعار
+        recipient_id = None
+        if notif_type == 'STORY_MENTION':
+            # نحتاج جلب user_id من mentioned_username — لكن ليس لدينا db هنا.
+            # لذلك نتخطّى STORY_MENTION هنا — ويتم معالجته في موقع الاستدعاء (يدوياً أدناه)
+            return
+        recipient_id = payload.get('owner_id')
+        if not recipient_id:
+            return
+
+        # في event loop الحالي — نحتاج db session جديدة (لأن هذه دالة متزامنة)
+        from app.db.session import SessionLocal
+        import asyncio
+
+        async def _run():
+            db_local = SessionLocal()
+            try:
+                await _persist_notif(
+                    db=db_local,
+                    user_id=int(recipient_id),
+                    notification_type=notif_type,
+                    data={
+                        **payload,
+                        'from_user_id': payload.get('from_user_id'),
+                        'username': payload.get('from_username'),
+                    },
+                )
+            finally:
+                db_local.close()
+
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.ensure_future(_run())
+                return
+        except RuntimeError:
+            pass
+        asyncio.run(_run())
     except Exception:
         return
 
@@ -185,14 +254,43 @@ def add_story(
     )
     result = story_svc.serialize_story(db, story, viewer_user_id=current_user.id)
 
-    # إشعارات mentions
-    for mention in result.get('mentions', []):
-        _emit_notification('story:mention', {
-            'story_id': result['id'],
-            'owner_id': current_user.id,
-            'owner_username': current_user.username,
-            'mentioned_username': mention,
-        })
+    # v87.0 — إشعارات mentions داخل الستوري (مع حفظ في DB)
+    try:
+        from sqlalchemy import func as _sqlfunc
+        from app.services.notification_service import notify as _notify
+        seen_mention_ids: set[int] = set()
+        for mention in result.get('mentions', []) or []:
+            mention_clean = str(mention or '').strip().lstrip('@').lower()
+            if not mention_clean:
+                continue
+            mentioned_user = (
+                db.query(User)
+                .filter(_sqlfunc.lower(User.username) == mention_clean)
+                .first()
+            )
+            if mentioned_user is None:
+                continue
+            if int(mentioned_user.id) == int(current_user.id):
+                continue
+            if int(mentioned_user.id) in seen_mention_ids:
+                continue
+            seen_mention_ids.add(int(mentioned_user.id))
+            _notify(
+                db,
+                user_id=int(mentioned_user.id),
+                notification_type='STORY_MENTION',
+                data={
+                    'story_id': result['id'],
+                    'from_user_id': int(current_user.id),
+                    'username': current_user.username,
+                    'owner_id': int(current_user.id),
+                    'actor_avatar': getattr(current_user, 'avatar', None) or getattr(current_user, 'avatar_url', None),
+                },
+            )
+    except Exception:
+        pass
+
+    # broadcast عام (لا يلزم إشعار في DB — يصل للمتابعين عبر fanout خارجي)
     _emit_notification('story:new', {
         'story_id': result['id'],
         'owner_id': current_user.id,

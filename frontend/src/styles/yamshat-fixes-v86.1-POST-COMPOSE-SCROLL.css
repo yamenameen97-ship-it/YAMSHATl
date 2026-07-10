@@ -1,0 +1,264 @@
+/* ================================================================
+   🎯 YAMSHAT v86.1 — إصلاح صفحتَي/بوستَي إنشاء المحتوى الذين
+   لم يستجيبا للسحب لأعلى/أسفل على ويب الجوال.
+   ================================================================
+   بعد تدقيق شامل لجميع الصفحات والبوستات، تم العثور على اثنتين
+   لم يعملا بسلاسة مثل الصفحة الرئيسية (التي هي مرجع الجودة):
+
+   1) بوست "منشور جديد" (.ympc-page — PostComposerPage.jsx)
+      → صفحة كتابة المنشور النصي/الصورة تحت المسار
+        /compose?tab=post و /post/new و /post/compose.
+      → لديها overflow-y:auto inline لكن الأم .page-content
+        داخل MainLayout كانت تفرض overflow:hidden أو contain
+        من طبقات v59.13.26/v85.9 فيتوقف السحب داخل الصفحة.
+      → الحل: تطبيق نفس بصمة .yamg-page من v86 قسم [2] على
+        .ympc-page: تمرير على .page-content الأم مع touch-action
+        على .ympc-page نفسها وكسر contain/will-change.
+
+   2) بوست "إنشاء جديد" (.yam-compose-modal — Inbox.jsx)
+      → مودال إنشاء دردشة/مجموعة جديدة من صفحة الرسائل.
+      → المشكلة: .yam-compose-overlay يستخدم display:grid
+        + place-items:center فقط، بدون max-height على .yam-compose-modal
+        ولا overflow-y عليه. على الجوال الصغير (320-480px)
+        عند اختيار تاب "مجموعة جديدة" (به حقول متعددة + قائمة
+        مستخدمين قابلة للتمرير) المحتوى يتجاوز الشاشة ولا يمكن
+        السحب لأعلى/أسفل داخل المودال.
+      → الحل: overlay flex + قابل للتمرير، والمودال max-height
+        محسوب + overflow-y:auto + touch-action:pan-y + safe-area.
+
+   ⚠️ يجب أن يبقى هذا الاستيراد **آخر CSS مطلقاً** في main.jsx
+      بعد v86.0 مباشرة ليفوز في cascade.
+   ================================================================ */
+
+
+/* ─────────────────────────────────────────────────────────────
+   [1] .ympc-page — بوست "منشور جديد" — تفعيل السحب العمودي
+       على ويب الجوال، ليتصرف مثل الصفحة الرئيسية بالضبط.
+   ───────────────────────────────────────────────────────────── */
+
+/* الحاوية الأم .page-content / main.mobile-main-content تحمل
+   .ympc-page — نمنحها التمرير كما في .yamg-page (v86 قسم 2)
+   وكما في .yam-home-mobile-page (v59.13.28 الصفحة الرئيسية). */
+@media (max-width: 900px) {
+  html body .app-shell .page-content:has(.ympc-page),
+  html body main.mobile-main-content:has(.ympc-page) {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
+    overscroll-behavior-y: contain !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    contain: none !important;
+    content-visibility: visible !important;
+    padding: 0 !important;
+    padding-bottom: 0 !important;
+    will-change: auto !important;
+    transform: none !important;
+    filter: none !important;
+    perspective: none !important;
+    pointer-events: auto !important;
+  }
+}
+
+/* .ympc-page نفسها: طولها يتبع المحتوى، وتفعيل touch-action:pan-y
+   وكسر أي contain/will-change من CSS legacy. */
+html body .ympc-page,
+html body div.ympc-page[dir="rtl"] {
+  min-height: 100dvh !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+  pointer-events: auto !important;
+  contain: none !important;
+  content-visibility: visible !important;
+  will-change: auto !important;
+  transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+  /* هامش سفلي كافٍ ليظهر زر النشر فوق BottomNav */
+  padding-bottom: calc(140px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* .ympc-main و .ympc-wrap لا يحبسان التمرير */
+html body .ympc-page .ympc-main,
+html body .ympc-page .ympc-wrap {
+  overflow: visible !important;
+  height: auto !important;
+  max-height: none !important;
+  touch-action: pan-y !important;
+  contain: none !important;
+  pointer-events: auto !important;
+}
+
+/* الرأس sticky ليبقى ظاهراً أثناء السحب — مثل الصفحة الرئيسية */
+@media (max-width: 900px) {
+  html body .ympc-page .ympc-top {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 20 !important;
+    touch-action: pan-y !important;
+    contain: none !important;
+    will-change: auto !important;
+    transform: none !important;
+  }
+}
+
+/* بطاقة PostComposer الداخلية لا تفرض overflow يمنع السحب */
+html body .ympc-page .ympc-wrap > * {
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+  contain: none !important;
+  will-change: auto !important;
+  transform: none !important;
+}
+
+/* على الجوال: منع أي طبقة تعطي pointer-events:none تسحب فوق .ympc-page */
+@media (max-width: 900px) {
+  html body .ympc-page,
+  html body .ympc-page * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* textarea داخل PostComposer يبقى يستقبل النقر لكن لا يبتلع
+     السحب العمودي — pan-y فقط */
+  html body .ympc-page textarea,
+  html body .ympc-page [contenteditable="true"] {
+    touch-action: pan-y !important;
+    overscroll-behavior: contain !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [2] .yam-compose-modal — بوست "إنشاء جديد" (دردشة/مجموعة)
+       داخل Inbox — تفعيل السحب لأعلى/أسفل داخل المودال.
+   ───────────────────────────────────────────────────────────── */
+
+/* Overlay: يصبح flex بدل grid لضمان أن المودال يمكن أن
+   يمتد وينكمش، والـoverlay نفسها لا تتمرر لكن ابنه يتمرر. */
+html body .yam-compose-overlay,
+html body div.yam-compose-overlay[role="dialog"] {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 1200 !important;
+  background: rgba(2, 4, 12, 0.72) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+  backdrop-filter: blur(6px) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 16px !important;
+  padding-top: calc(16px + env(safe-area-inset-top, 0px)) !important;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important;
+  overflow: hidden !important;
+  touch-action: none !important;
+  overscroll-behavior: contain !important;
+}
+
+/* المودال: max-height محسوب مع safe-area + overflow-y:auto
+   + touch-action:pan-y + smooth scrolling على iOS. */
+html body .yam-compose-overlay .yam-compose-modal,
+html body div.yam-compose-overlay div.yam-compose-modal {
+  width: 100% !important;
+  max-width: 460px !important;
+  max-height: calc(100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior: contain !important;
+  touch-action: pan-y !important;
+  contain: none !important;
+  will-change: auto !important;
+  transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+  pointer-events: auto !important;
+}
+
+/* على الجوال (شاشات صغيرة): المودال يأخذ ارتفاع 90dvh مع تمرير سلس */
+@media (max-width: 480px) {
+  html body .yam-compose-overlay .yam-compose-modal {
+    max-height: calc(90dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+    border-radius: 20px !important;
+    padding: 16px !important;
+  }
+}
+
+/* الرأس sticky داخل المودال ليبقى زر الإغلاق ظاهراً دائماً */
+html body .yam-compose-overlay .yam-compose-modal .yam-compose-head {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 5 !important;
+  background: #0B1024 !important;
+  padding: 4px 0 12px !important;
+  margin: -4px 0 10px !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+/* التابات تبقى sticky أسفل الهيدر */
+html body .yam-compose-overlay .yam-compose-modal .yam-compose-tabs {
+  position: sticky !important;
+  top: 52px !important;
+  z-index: 4 !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  margin-bottom: 12px !important;
+}
+
+/* قائمة المستخدمين داخل tab "دردشة جديدة" — نمنح max-height نسبي
+   للشاشة بدل 320px الصلبة، مع تمرير سلس بالإصبع */
+html body .yam-compose-overlay .yam-compose-modal .yam-compose-users-list {
+  display: grid !important;
+  gap: 4px !important;
+  max-height: min(360px, 46dvh) !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior: contain !important;
+  touch-action: pan-y !important;
+  padding-inline: 2px !important;
+}
+
+/* body / textarea داخل المودال يقبلان اللمس العمودي */
+html body .yam-compose-overlay .yam-compose-modal .yam-compose-body,
+html body .yam-compose-overlay .yam-compose-modal .yam-compose-input,
+html body .yam-compose-overlay .yam-compose-modal .yam-compose-textarea {
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+  contain: none !important;
+}
+
+/* منع خلفية body من التمرير عند فتح المودال (يظل الجسم مُقفلاً) */
+html body:has(.yam-compose-overlay) {
+  overflow: hidden !important;
+  overscroll-behavior: contain !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [3] كسر أي طبقة legacy تضع pointer-events:none على أطفال
+       الصفحتين (سبب معروف من طبقات mobile-touch-master-fix-v57
+       + drawer-style-touch-final-v59.10 التي كانت تحاول
+       "إصلاح" السحب فتكسره).
+   ───────────────────────────────────────────────────────────── */
+
+html body .ympc-page,
+html body .ympc-page > *,
+html body .ympc-page .ympc-main,
+html body .ympc-page .ympc-main > *,
+html body .yam-compose-overlay,
+html body .yam-compose-overlay > *,
+html body .yam-compose-modal,
+html body .yam-compose-modal > * {
+  pointer-events: auto !important;
+}
+
+/* نُلغي أي rule من طبقات قديمة تضع touch-action:none على .ympc-page
+   أو أطفالها، أو تلغي -webkit-overflow-scrolling */
+html body .ympc-page:not(.touch-action-none-force),
+html body .yam-compose-modal:not(.touch-action-none-force) {
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+}

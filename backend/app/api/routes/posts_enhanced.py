@@ -21,6 +21,13 @@ from app.core.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.models.post import Post
 
+# v87.0 — نظام الإشعارات الذكي
+try:
+    from app.services.notification_service import create_and_send_notification as _send_notif
+except Exception:  # pragma: no cover
+    async def _send_notif(*_args, **_kwargs):  # type: ignore[override]
+        return None
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -121,19 +128,23 @@ async def like_post(
         post.likes_count = (post.likes_count or 0) + 1
         db.commit()
 
-        # إرسال إشعار للمؤلف
+        # v87.0 — إرسال إشعار ذكي لمؤلف المنشور (مع الاسم والمسار)
         if post.user_id != current_user.id:
-            from app.models.notification import Notification
-            notification = Notification(
-                user_id=post.user_id,
-                actor_id=current_user.id,
-                type="like",
-                content=f"أعجب {current_user.full_name or current_user.username} بمنشورك",
-                related_post_id=post_id,
-                timestamp=datetime.utcnow()
-            )
-            db.add(notification)
-            db.commit()
+            try:
+                await _send_notif(
+                    db=db,
+                    user_id=int(post.user_id),
+                    notification_type='POST_LIKE',
+                    data={
+                        'post_id': int(post_id),
+                        'from_user_id': int(current_user.id),
+                        'username': current_user.username,
+                        'actor_name': getattr(current_user, 'full_name', None) or current_user.username,
+                        'actor_avatar': getattr(current_user, 'avatar_url', None) or getattr(current_user, 'avatar', None),
+                    },
+                )
+            except Exception as _notif_err:
+                logger.warning("post_like_notify_failed: %s", _notif_err)
 
         return {
             "success": True,
@@ -292,19 +303,25 @@ async def add_comment(
         post.comments_count = (post.comments_count or 0) + 1
         db.commit()
 
-        # إرسال إشعار للمؤلف
+        # v87.0 — إرسال إشعار ذكي للمؤلف
         if post.user_id != current_user.id:
-            from app.models.notification import Notification
-            notification = Notification(
-                user_id=post.user_id,
-                actor_id=current_user.id,
-                type="comment",
-                content=f"علّق {current_user.full_name or current_user.username} على منشورك",
-                related_post_id=post_id,
-                timestamp=datetime.utcnow()
-            )
-            db.add(notification)
-            db.commit()
+            try:
+                await _send_notif(
+                    db=db,
+                    user_id=int(post.user_id),
+                    notification_type='POST_COMMENT',
+                    data={
+                        'post_id': int(post_id),
+                        'comment_id': int(comment.id) if getattr(comment, 'id', None) else None,
+                        'from_user_id': int(current_user.id),
+                        'username': current_user.username,
+                        'actor_name': getattr(current_user, 'full_name', None) or current_user.username,
+                        'actor_avatar': getattr(current_user, 'avatar_url', None) or getattr(current_user, 'avatar', None),
+                        'preview': content[:80],
+                    },
+                )
+            except Exception as _notif_err:
+                logger.warning("post_comment_notify_failed: %s", _notif_err)
 
         return {
             "success": True,
@@ -494,20 +511,31 @@ async def share_post(
         post.shares_count = (post.shares_count or 0) + 1
         db.commit()
 
-        # إرسال إشعارات للمستقبلين
+        # v87.0 — إرسال إشعارات ذكية للمستقبلين
         if share_type == "internal" and recipients:
-            from app.models.notification import Notification
             for recipient_id in recipients:
-                notification = Notification(
-                    user_id=recipient_id,
-                    actor_id=current_user.id,
-                    type="share",
-                    content=f"شارك {current_user.full_name or current_user.username} منشوراً معك",
-                    related_post_id=post_id,
-                    timestamp=datetime.utcnow()
-                )
-                db.add(notification)
-            db.commit()
+                try:
+                    rid = int(recipient_id)
+                except (TypeError, ValueError):
+                    continue
+                if rid == int(current_user.id):
+                    continue
+                try:
+                    await _send_notif(
+                        db=db,
+                        user_id=rid,
+                        notification_type='POST_SHARE',
+                        data={
+                            'post_id': int(post_id),
+                            'from_user_id': int(current_user.id),
+                            'username': current_user.username,
+                            'actor_name': getattr(current_user, 'full_name', None) or current_user.username,
+                            'actor_avatar': getattr(current_user, 'avatar_url', None) or getattr(current_user, 'avatar', None),
+                            'share_message': message,
+                        },
+                    )
+                except Exception as _notif_err:
+                    logger.warning("post_share_notify_failed: %s", _notif_err)
 
         return {
             "success": True,

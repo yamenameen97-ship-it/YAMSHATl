@@ -4,6 +4,13 @@ import Button from '../ui/Button.jsx';
 import Modal from '../ui/Modal.jsx';
 import Card from '../ui/Card.jsx';
 import NestedComments from './NestedComments.jsx';
+
+/* v86.7 — إصلاح احترافي جذري لعرض البستة على الجوال:
+   • نقل كل أزرار الإدارة (نسخ/إخفاء/أرشفة/كتم/إبلاغ/تعديل/تثبيت/حذف) من صف
+     متناثر في الهيدر إلى قائمة منسدلة موحّدة (⋯) لمنع الفيضان والتناثر.
+   • إعادة تصميم الهيدر والفوتر بشبكة موحّدة تعمل من 320px حتى 768px+.
+   • خطوط أصغر أنيقة، ظلال ناعمة، حواف دائرية موحّدة مع MobilePostCard.
+   • overflow مقفول على البطاقة لمنع أي عنصر من الخروج عن حدود الشاشة. */
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   addComment,
@@ -533,16 +540,38 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
     }
   };
 
+  /* v86.7 — قائمة الإدارة المنسدلة (⋯) */
+  const [showActionsMenu, setShowActionsMenu] = useState(false);
+  const actionsMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (!showActionsMenu) return undefined;
+    const handleClickOutside = (e) => {
+      if (actionsMenuRef.current && !actionsMenuRef.current.contains(e.target)) {
+        setShowActionsMenu(false);
+      }
+    };
+    const handleEscape = (e) => { if (e.key === 'Escape') setShowActionsMenu(false); };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside, { passive: true });
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [showActionsMenu]);
+
   if (postPrefsState.hidden || postPrefsState.archived || postPrefsState.muted) {
     const label = postPrefsState.hidden ? 'مخفي' : postPrefsState.archived ? 'مؤرشف' : 'مكتوم';
     return (
-      <Card style={{ padding: 16, border: '1px dashed var(--line)', background: 'rgba(148,163,184,0.04)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div>
-            <strong>تم إخفاء هذا المنشور من العرض</strong>
-            <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>السبب: {label} · @{post.username}</div>
+      <Card className="post-card-hidden" style={{ padding: 14, border: '1px dashed var(--line)', background: 'rgba(148,163,184,0.04)', borderRadius: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <strong style={{ fontSize: 14 }}>تم إخفاء هذا المنشور من العرض</strong>
+            <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>السبب: {label} · @{post.username}</div>
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {postPrefsState.hidden ? <Button variant="secondary" onClick={() => persistPostPref('hidden', post.id)}>إلغاء الإخفاء</Button> : null}
             {postPrefsState.archived ? <Button variant="secondary" onClick={() => persistPostPref('archived', post.id)}>إلغاء الأرشفة</Button> : null}
             {postPrefsState.muted ? <Button variant="secondary" onClick={() => persistPostPref('muted', post.username, 'author')}>إلغاء كتم المحتوى</Button> : null}
@@ -553,15 +582,14 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
   }
 
   return (
-    <Card className={`post-card ${isPinned ? 'pinned' : ''}`} style={{ padding: 16, position: 'relative', border: isPinned ? '1px solid var(--accent)' : '1px solid var(--line)', background: isPinned ? 'rgba(59,130,246,0.03)' : 'var(--bg-card)' }}>
+    <Card className={`post-card ym-pc ${isPinned ? 'pinned' : ''}`} style={{ position: 'relative', border: isPinned ? '1px solid var(--accent)' : '1px solid var(--line)', background: isPinned ? 'rgba(59,130,246,0.03)' : 'var(--bg-card)' }}>
       {isPinned ? (
-        <div style={{ position: 'absolute', top: 12, left: 16, display: 'flex', alignItems: 'center', gap: 4, color: 'var(--accent)', fontSize: 12, fontWeight: 'bold' }}>
-          📌 منشور مثبت
-        </div>
+        <div className="ym-pc-pin">📌 منشور مثبت</div>
       ) : null}
 
-      <div dir="rtl" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 10, flexWrap: 'wrap', fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}>
-        <div style={{ display: 'flex', flexDirection: 'row-reverse', alignItems: 'center', gap: 10 }}>
+      {/* ============ الهيدر ============ */}
+      <div className="ym-pc-header" dir="rtl">
+        <div className="ym-pc-identity">
           <div
             role="link"
             tabIndex={0}
@@ -569,11 +597,11 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
             onKeyDown={onKeyGoToAuthorProfile}
             aria-label={`فتح الملف الشخصي لـ ${post.username || ''}`}
             title={`فتح ملف ${post.username || ''}`}
-            style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--bg-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '2px solid var(--line)', cursor: 'pointer' }}
+            className="ym-pc-avatar"
           >
-            {post.avatar ? <img src={post.avatar} alt={post.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <strong>{post.username?.[0]?.toUpperCase()}</strong>}
+            {post.avatar ? <img src={post.avatar} alt={post.username} /> : <strong>{post.username?.[0]?.toUpperCase()}</strong>}
           </div>
-          <div style={{ textAlign: 'right' }}>
+          <div className="ym-pc-meta">
             <div
               role="link"
               tabIndex={0}
@@ -581,51 +609,90 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
               onKeyDown={onKeyGoToAuthorProfile}
               aria-label={`فتح الملف الشخصي لـ ${post.username || ''}`}
               title={`فتح ملف ${post.username || ''}`}
-              style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end', cursor: 'pointer' }}
+              className="ym-pc-username"
             >
-              {post.username}
-              {post.is_verified ? <span title="حساب موثق">✅</span> : null}
-              {post.mentions?.length ? <span className="muted" style={{ fontSize: 12 }}>ذكر {post.mentions.length} مستخدم</span> : null}
+              <span className="ym-pc-uname-text">{post.username}</span>
+              {post.is_verified ? <span title="حساب موثق" aria-hidden="true">✅</span> : null}
             </div>
-            <div className="muted" style={{ fontSize: 11 }}>{post.created_at ? new Date(post.created_at).toLocaleString('ar-EG') : 'الآن'}</div>
+            <div className="ym-pc-time">
+              {post.created_at ? new Date(post.created_at).toLocaleString('ar-EG') : 'الآن'}
+              {post.mentions?.length ? <span className="ym-pc-dot">•</span> : null}
+              {post.mentions?.length ? <span>ذكر {post.mentions.length}</span> : null}
+            </div>
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <Button variant="secondary" onClick={() => handleShare('copy')}>نسخ الرابط</Button>
-          <Button variant="secondary" onClick={() => persistPostPref('hidden', post.id)}>{postPrefsState.hidden ? 'إظهار' : 'إخفاء'}</Button>
-          <Button variant="secondary" onClick={() => persistPostPref('archived', post.id)}>{postPrefsState.archived ? 'إلغاء الأرشفة' : 'أرشفة'}</Button>
-          <Button variant="secondary" onClick={() => persistPostPref('muted', post.username, 'author')}>{postPrefsState.muted ? 'إلغاء الكتم' : 'كتم المحتوى'}</Button>
-          <Button variant="secondary" onClick={() => { persistPostPref('reported', post.id); pushToast({ type: 'success', title: 'تم إرسال بلاغ المنشور' }); }}>إبلاغ</Button>
-          {typeof onShowAnalytics === 'function' ? <Button variant="secondary" onClick={onShowAnalytics}>📊</Button> : null}
-          {isOwner ? <Button variant="secondary" onClick={() => setShowEditModal(true)}>تعديل</Button> : null}
-          {isOwner ? <Button variant="secondary" onClick={handleTogglePin}>{isPinned ? 'إلغاء التثبيت' : 'تثبيت'}</Button> : null}
-          {isOwner ? <Button variant="secondary" onClick={handleDelete}>حذف</Button> : null}
+        {/* زر ⋯ الوحيد بدل صف الأزرار المتناثرة */}
+        <div className="ym-pc-menu-wrap" ref={actionsMenuRef}>
+          <button
+            type="button"
+            className="ym-pc-more-btn"
+            aria-label="خيارات المنشور"
+            aria-expanded={showActionsMenu ? 'true' : 'false'}
+            aria-haspopup="menu"
+            onClick={() => setShowActionsMenu((v) => !v)}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+              <circle cx="5" cy="12" r="1.8" />
+              <circle cx="12" cy="12" r="1.8" />
+              <circle cx="19" cy="12" r="1.8" />
+            </svg>
+          </button>
+          {showActionsMenu ? (
+            <div className="ym-pc-menu" role="menu" dir="rtl">
+              <button role="menuitem" className="ym-pc-menu-item" onClick={() => { setShowActionsMenu(false); handleShare('copy'); }}>
+                <span aria-hidden="true">🔗</span> نسخ الرابط
+              </button>
+              <button role="menuitem" className="ym-pc-menu-item" onClick={() => { setShowActionsMenu(false); persistPostPref('hidden', post.id); }}>
+                <span aria-hidden="true">🙈</span> {postPrefsState.hidden ? 'إظهار' : 'إخفاء'}
+              </button>
+              <button role="menuitem" className="ym-pc-menu-item" onClick={() => { setShowActionsMenu(false); persistPostPref('archived', post.id); }}>
+                <span aria-hidden="true">📦</span> {postPrefsState.archived ? 'إلغاء الأرشفة' : 'أرشفة'}
+              </button>
+              <button role="menuitem" className="ym-pc-menu-item" onClick={() => { setShowActionsMenu(false); persistPostPref('muted', post.username, 'author'); }}>
+                <span aria-hidden="true">🔕</span> {postPrefsState.muted ? 'إلغاء الكتم' : 'كتم المحتوى'}
+              </button>
+              <button role="menuitem" className="ym-pc-menu-item ym-pc-menu-danger" onClick={() => { setShowActionsMenu(false); persistPostPref('reported', post.id); pushToast({ type: 'success', title: 'تم إرسال بلاغ المنشور' }); }}>
+                <span aria-hidden="true">🚩</span> إبلاغ
+              </button>
+              {typeof onShowAnalytics === 'function' ? (
+                <button role="menuitem" className="ym-pc-menu-item" onClick={() => { setShowActionsMenu(false); onShowAnalytics(); }}>
+                  <span aria-hidden="true">📊</span> الإحصائيات
+                </button>
+              ) : null}
+              {isOwner ? (
+                <>
+                  <div className="ym-pc-menu-sep" role="separator" />
+                  <button role="menuitem" className="ym-pc-menu-item" onClick={() => { setShowActionsMenu(false); setShowEditModal(true); }}>
+                    <span aria-hidden="true">✏️</span> تعديل
+                  </button>
+                  <button role="menuitem" className="ym-pc-menu-item" onClick={() => { setShowActionsMenu(false); handleTogglePin(); }}>
+                    <span aria-hidden="true">📌</span> {isPinned ? 'إلغاء التثبيت' : 'تثبيت'}
+                  </button>
+                  <button role="menuitem" className="ym-pc-menu-item ym-pc-menu-danger" onClick={() => { setShowActionsMenu(false); handleDelete(); }}>
+                    <span aria-hidden="true">🗑️</span> حذف المنشور
+                  </button>
+                </>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
 
-      <div style={{ fontSize: 16, lineHeight: 1.8, marginBottom: 16, whiteSpace: 'pre-wrap' }}>
-        <div>{renderRichText(post.content || '')}</div>
-        {post.hashtags?.length ? <div style={{ marginTop: 8, fontSize: 13, color: 'var(--primary)' }}>{post.hashtags.map((item) => `#${item}`).join(' · ')}</div> : null}
+      {/* ============ جسم المنشور ============ */}
+      <div className="ym-pc-body" dir="rtl">
+        <div className="ym-pc-text">{renderRichText(post.content || '')}</div>
+        {post.hashtags?.length ? (
+          <div className="ym-pc-hashtags">{post.hashtags.map((item) => `#${item}`).join(' · ')}</div>
+        ) : null}
         {mediaUrl ? (
           <div
+            className="ym-pc-media"
             onClick={() => setShowMediaModal(true)}
-            style={{
-              marginTop: 12,
-              borderRadius: 16,
-              overflow: 'hidden',
-              cursor: 'pointer',
-              background: '#000',
-              minHeight: hasVideoMedia ? 280 : 220,
-              maxHeight: 460,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              border: '1px solid rgba(255,255,255,0.08)',
-            }}
+            style={{ minHeight: hasVideoMedia ? 220 : 180 }}
           >
             {hasVideoMedia ? (
-              <div style={{ width: '100%', minHeight: 280 }} onClick={(event) => event.stopPropagation()}>
+              <div style={{ width: '100%' }} onClick={(event) => event.stopPropagation()}>
                 <UniversalPlayer
                   src={mediaUrl}
                   poster={posterUrl}
@@ -635,51 +702,77 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
                 />
               </div>
             ) : (
-              <img
-                src={posterUrl || mediaUrl}
-                alt="Post Media"
-                style={{ width: '100%', maxHeight: 460, objectFit: 'contain', display: 'block', background: '#000' }}
-              />
+              <img src={posterUrl || mediaUrl} alt="Post Media" />
             )}
           </div>
         ) : null}
       </div>
 
-      <div style={{ display: 'grid', gap: 12 }}>
-        <div className="muted" style={{ fontSize: 13 }}>
-          إجمالي التفاعل: {interactionCount} · حفظ {Number(post.saved_count || 0)} · مشاركة {Number(post.share_count || 0)} · مشاهدات {Number(post.views_count || 0)}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--line)', paddingTop: 12, gap: 10, flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <div style={{ position: 'relative' }}>
-              <button type="button" onClick={onLike} onContextMenu={(event) => { event.preventDefault(); setShowReactions((prev) => !prev); }} className="post-inline-btn">
-                <span style={{ fontSize: 18 }}>{post.is_liked ? myReaction || '❤️' : '🤍'}</span>
-                <span>{post.likes_count || 0}</span>
-              </button>
-              {showReactions ? (
-                <div className="reactions-popup" style={{ position: 'absolute', bottom: '100%', left: 0, background: 'var(--bg-card)', border: '1px solid var(--line)', borderRadius: 30, padding: '6px 10px', display: 'flex', gap: 6, boxShadow: '0 10px 30px rgba(0,0,0,0.3)', zIndex: 100, marginBottom: 10 }}>
-                  {ADVANCED_REACTIONS.map((reaction) => (
-                    <button key={reaction.emoji} type="button" onClick={() => { setMyReaction(reaction.emoji); setShowReactions(false); onLike?.(); }} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>{reaction.emoji}</button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
+      {/* ============ إحصاءات صغيرة ============ */}
+      <div className="ym-pc-stats muted" dir="rtl">
+        <span>تفاعل: {interactionCount}</span>
+        <span className="ym-pc-dot">•</span>
+        <span>حفظ {Number(post.saved_count || 0)}</span>
+        <span className="ym-pc-dot">•</span>
+        <span>مشاركة {Number(post.share_count || 0)}</span>
+        <span className="ym-pc-dot">•</span>
+        <span>مشاهدات {Number(post.views_count || 0)}</span>
+      </div>
 
-            <button type="button" onClick={() => { setShowCommentsModal(true); refreshComments({ page: 1, append: false, sortBy: commentsSortBy }); }} className="post-inline-btn">
-              <span style={{ fontSize: 18 }}>💬</span>
-              <span>{post.comments_count || commentsPagination.total_count || 0}</span>
+      {/* ============ الفوتر: شبكة موحّدة 5 أزرار ============ */}
+      <div className="ym-pc-footer" dir="rtl">
+        <div className="ym-pc-actions">
+          <div className="ym-pc-action-wrap">
+            <button
+              type="button"
+              onClick={onLike}
+              onContextMenu={(event) => { event.preventDefault(); setShowReactions((prev) => !prev); }}
+              className={`ym-pc-action ${post.is_liked ? 'is-liked' : ''}`}
+              aria-label="إعجاب"
+            >
+              <span className="ym-pc-emoji">{post.is_liked ? myReaction || '❤️' : '🤍'}</span>
+              <span className="ym-pc-count">{post.likes_count || 0}</span>
             </button>
-
-            <button type="button" onClick={handleQuote} className="post-inline-btn">
-              <span style={{ fontSize: 18 }}>❝</span>
-              <span>إعادة نشر</span>
-            </button>
+            {showReactions ? (
+              <div className="ym-pc-reactions-popup">
+                {ADVANCED_REACTIONS.map((reaction) => (
+                  <button key={reaction.emoji} type="button" onClick={() => { setMyReaction(reaction.emoji); setShowReactions(false); onLike?.(); }} className="ym-pc-reaction-btn" aria-label={reaction.label}>
+                    {reaction.emoji}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
 
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <button type="button" onClick={() => setShowShareModal(true)} className="post-inline-btn">📤 مشاركة</button>
-            <button type="button" onClick={() => saveMutation.mutate()} className="post-inline-btn">{post.is_saved ? '🔖 محفوظ' : '📑 حفظ'}</button>
-          </div>
+          <button
+            type="button"
+            className="ym-pc-action"
+            aria-label="تعليق"
+            onClick={() => { setShowCommentsModal(true); refreshComments({ page: 1, append: false, sortBy: commentsSortBy }); }}
+          >
+            <span className="ym-pc-emoji">💬</span>
+            <span className="ym-pc-count">{post.comments_count || commentsPagination.total_count || 0}</span>
+          </button>
+
+          <button type="button" className="ym-pc-action" aria-label="إعادة نشر" onClick={handleQuote}>
+            <span className="ym-pc-emoji">❝</span>
+            <span className="ym-pc-action-label">نشر</span>
+          </button>
+
+          <button type="button" className="ym-pc-action" aria-label="مشاركة" onClick={() => setShowShareModal(true)}>
+            <span className="ym-pc-emoji">📤</span>
+            <span className="ym-pc-action-label">مشاركة</span>
+          </button>
+
+          <button
+            type="button"
+            className={`ym-pc-action ${post.is_saved ? 'is-saved' : ''}`}
+            aria-label={post.is_saved ? 'محفوظ' : 'حفظ'}
+            onClick={() => saveMutation.mutate()}
+          >
+            <span className="ym-pc-emoji">{post.is_saved ? '🔖' : '📑'}</span>
+            <span className="ym-pc-action-label">{post.is_saved ? 'محفوظ' : 'حفظ'}</span>
+          </button>
         </div>
       </div>
 
@@ -745,8 +838,349 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
       </Modal>
 
       <style>{`
+        /* ============================================================
+           v86.7 — PostCard احترافي متجاوب (متغيرات + clamp)
+           يعمل بأناقة من 320px حتى 1200px+ بدون تناثر أو overflow.
+           ============================================================ */
+        .ym-pc {
+          --pc-radius: clamp(12px, 2.4vw, 16px);
+          --pc-pad-x: clamp(10px, 3vw, 16px);
+          --pc-pad-y: clamp(10px, 2.6vw, 14px);
+          --pc-gap: clamp(6px, 1.8vw, 10px);
+          --pc-avatar: clamp(38px, 10vw, 46px);
+          --pc-name: clamp(0.85rem, 3.4vw, 0.98rem);
+          --pc-meta: clamp(0.68rem, 2.6vw, 0.76rem);
+          --pc-body: clamp(0.86rem, 3.4vw, 0.96rem);
+          --pc-btn: clamp(0.72rem, 2.9vw, 0.84rem);
+          --pc-emoji: clamp(1rem, 4vw, 1.15rem);
+
+          border-radius: var(--pc-radius) !important;
+          padding: var(--pc-pad-y) var(--pc-pad-x) !important;
+          overflow: hidden;
+          max-width: 100%;
+          word-wrap: break-word;
+          overflow-wrap: break-word;
+          font-family: 'Noto Sans Arabic', 'Cairo', 'Tajawal', system-ui, -apple-system, sans-serif;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+          transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .ym-pc:hover { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.09); }
+
+        .ym-pc-pin {
+          position: absolute;
+          top: 10px;
+          left: 14px;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          color: var(--accent);
+          font-size: 11px;
+          font-weight: 700;
+        }
+
+        /* ============ الهيدر ============ */
+        .ym-pc-header {
+          display: flex;
+          flex-direction: row;
+          justify-content: space-between;
+          align-items: center;
+          gap: var(--pc-gap);
+          margin-bottom: var(--pc-gap);
+          min-width: 0;
+        }
+        .ym-pc-identity {
+          display: flex;
+          flex-direction: row-reverse;
+          align-items: center;
+          gap: var(--pc-gap);
+          min-width: 0;
+          flex: 1 1 auto;
+          overflow: hidden;
+        }
+        .ym-pc-avatar {
+          width: var(--pc-avatar);
+          height: var(--pc-avatar);
+          border-radius: 50%;
+          background: var(--bg-soft);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+          border: 2px solid var(--line);
+          cursor: pointer;
+          flex-shrink: 0;
+          transition: transform 0.15s ease;
+        }
+        .ym-pc-avatar:active { transform: scale(0.96); }
+        .ym-pc-avatar img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+        .ym-pc-meta {
+          display: flex;
+          flex-direction: column;
+          text-align: right;
+          min-width: 0;
+          flex: 1 1 auto;
+          overflow: hidden;
+        }
+        .ym-pc-username {
+          font-weight: 700;
+          font-size: var(--pc-name);
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          justify-content: flex-end;
+          cursor: pointer;
+          line-height: 1.25;
+          max-width: 100%;
+          overflow: hidden;
+        }
+        .ym-pc-uname-text {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 100%;
+        }
+        .ym-pc-time {
+          color: var(--muted, #9ca3af);
+          font-size: var(--pc-meta);
+          margin-top: 2px;
+          display: flex;
+          gap: 4px;
+          justify-content: flex-end;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .ym-pc-dot { opacity: 0.6; }
+
+        /* ============ زر ⋯ + القائمة ============ */
+        .ym-pc-menu-wrap {
+          position: relative;
+          flex-shrink: 0;
+        }
+        .ym-pc-more-btn {
+          background: none;
+          border: none;
+          color: var(--muted, #9ca3af);
+          cursor: pointer;
+          padding: 6px;
+          border-radius: 8px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 34px;
+          min-height: 34px;
+          transition: background 0.15s ease, color 0.15s ease;
+          -webkit-tap-highlight-color: transparent;
+          touch-action: manipulation;
+        }
+        .ym-pc-more-btn:hover { background: rgba(139, 92, 246, 0.08); color: var(--accent, #8B5CF6); }
+        .ym-pc-more-btn:active { transform: scale(0.94); }
+
+        .ym-pc-menu {
+          position: absolute;
+          top: calc(100% + 6px);
+          left: 0;
+          min-width: 180px;
+          background: var(--bg-card, #14172a);
+          border: 1px solid var(--line, #1F2937);
+          border-radius: 12px;
+          box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+          padding: 6px;
+          z-index: 50;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          animation: ym-pc-menu-in 0.14s ease-out;
+        }
+        @keyframes ym-pc-menu-in {
+          from { opacity: 0; transform: translateY(-4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .ym-pc-menu-item {
+          background: none;
+          border: none;
+          color: inherit;
+          font-family: inherit;
+          font-size: 0.85rem;
+          text-align: right;
+          padding: 9px 12px;
+          border-radius: 8px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          justify-content: flex-start;
+          direction: rtl;
+          transition: background 0.12s ease, color 0.12s ease;
+          white-space: nowrap;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .ym-pc-menu-item:hover {
+          background: rgba(139, 92, 246, 0.1);
+          color: var(--accent, #8B5CF6);
+        }
+        .ym-pc-menu-item:active { background: rgba(139, 92, 246, 0.18); }
+        .ym-pc-menu-danger { color: #ef4444; }
+        .ym-pc-menu-danger:hover { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+        .ym-pc-menu-sep {
+          height: 1px;
+          background: var(--line, #1F2937);
+          margin: 4px 0;
+        }
+
+        /* ============ جسم المنشور ============ */
+        .ym-pc-body {
+          margin-bottom: var(--pc-gap);
+          max-width: 100%;
+        }
+        .ym-pc-text {
+          font-size: var(--pc-body);
+          line-height: 1.65;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+          overflow-wrap: break-word;
+          text-align: right;
+        }
+        .ym-pc-hashtags {
+          margin-top: 6px;
+          font-size: 0.8rem;
+          color: var(--primary, #8B5CF6);
+          word-wrap: break-word;
+        }
+        .ym-pc-media {
+          margin-top: 10px;
+          border-radius: 12px;
+          overflow: hidden;
+          cursor: pointer;
+          background: #000;
+          max-height: 460px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid rgba(255, 255, 255, 0.06);
+          max-width: 100%;
+        }
+        .ym-pc-media img {
+          width: 100%;
+          max-height: 460px;
+          object-fit: contain;
+          display: block;
+          background: #000;
+        }
+
+        /* ============ إحصاءات ============ */
+        .ym-pc-stats {
+          font-size: 0.72rem;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 4px;
+          padding-bottom: 8px;
+          border-bottom: 1px solid var(--line, rgba(148,163,184,0.15));
+          margin-bottom: 6px;
+        }
+
+        /* ============ الفوتر: شبكة موحّدة ============ */
+        .ym-pc-footer {
+          padding-top: 4px;
+        }
+        .ym-pc-actions {
+          display: grid;
+          grid-template-columns: repeat(5, 1fr);
+          gap: 2px;
+          width: 100%;
+          align-items: center;
+        }
+        .ym-pc-action-wrap {
+          position: relative;
+          display: flex;
+          justify-content: center;
+        }
+        .ym-pc-action {
+          display: inline-flex;
+          flex-direction: row;
+          align-items: center;
+          justify-content: center;
+          gap: 5px;
+          border: none;
+          background: transparent;
+          color: var(--muted, #9ca3af);
+          cursor: pointer;
+          font-size: var(--pc-btn);
+          padding: 8px 6px;
+          border-radius: 10px;
+          transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+          font-family: inherit;
+          min-height: 40px;
+          width: 100%;
+          line-height: 1;
+          -webkit-tap-highlight-color: transparent;
+          touch-action: manipulation;
+          -webkit-user-select: none;
+          user-select: none;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .ym-pc-action:hover { background: rgba(139, 92, 246, 0.08); color: var(--accent, #8B5CF6); }
+        .ym-pc-action:active { transform: scale(0.94); background: rgba(139, 92, 246, 0.15); }
+        .ym-pc-action.is-liked { color: #ef4444; }
+        .ym-pc-action.is-saved { color: var(--accent, #8B5CF6); }
+        .ym-pc-emoji {
+          font-size: var(--pc-emoji);
+          line-height: 1;
+        }
+        .ym-pc-count,
+        .ym-pc-action-label {
+          font-variant-numeric: tabular-nums;
+          font-weight: 600;
+        }
+
+        /* Reactions popup */
+        .ym-pc-reactions-popup {
+          position: absolute;
+          bottom: calc(100% + 6px);
+          left: 50%;
+          transform: translateX(-50%);
+          background: var(--bg-card, #14172a);
+          border: 1px solid var(--line, #1F2937);
+          border-radius: 24px;
+          padding: 4px 8px;
+          display: flex;
+          gap: 4px;
+          box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+          z-index: 40;
+          animation: ym-pc-menu-in 0.14s ease-out;
+        }
+        .ym-pc-reaction-btn {
+          background: none;
+          border: none;
+          font-size: 1.2rem;
+          padding: 4px 6px;
+          cursor: pointer;
+          border-radius: 50%;
+          transition: transform 0.15s ease, background 0.15s ease;
+        }
+        .ym-pc-reaction-btn:hover { transform: scale(1.25); background: rgba(139, 92, 246, 0.08); }
+
+        /* ============ شاشات صغيرة (≤400px): أخفِ التسميات ============ */
+        @media (max-width: 400px) {
+          .ym-pc-action { padding: 8px 3px; gap: 3px; font-size: 0.68rem; }
+          .ym-pc-action-label { display: none; }
+          .ym-pc-stats { font-size: 0.66rem; gap: 3px; }
+        }
+        @media (max-width: 340px) {
+          .ym-pc { --pc-pad-x: 8px; --pc-pad-y: 9px; }
+          .ym-pc-action { min-height: 36px; padding: 6px 2px; }
+          .ym-pc-emoji { font-size: 0.95rem; }
+          .ym-pc-menu { min-width: 160px; }
+        }
+
+        /* ============ التوافق الخلفي ============ */
         .post-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
-        .post-card:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(0,0,0,0.1); }
         .post-inline-btn {
           display: inline-flex;
           align-items: center;
@@ -760,15 +1194,9 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
           border-radius: 12px;
           transition: background 0.2s ease;
         }
-        .post-inline-btn:hover {
-          background: rgba(59,130,246,0.08);
-        }
-        .post-media-player {
-          min-height: 280px;
-        }
-        .post-media-modal-player {
-          min-height: min(70vh, 720px);
-        }
+        .post-inline-btn:hover { background: rgba(59, 130, 246, 0.08); }
+        .post-media-player { min-height: 240px; }
+        .post-media-modal-player { min-height: min(70vh, 720px); }
       `}</style>
     </Card>
   );

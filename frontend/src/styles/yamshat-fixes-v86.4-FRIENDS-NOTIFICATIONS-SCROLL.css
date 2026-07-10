@@ -1,0 +1,385 @@
+/* ================================================================
+   🎯 YAMSHAT v86.4 — إصلاح صفحتَين إضافيَّتَين لم يعملا بسلاسة السحب
+   ================================================================
+   بعد إغلاق v86.3 (إعدادات المجموعة + إعدادات المحادثة) استكملنا
+   الفحص لباقي الصفحات ومقارنتها بمرجع الجودة الرئيسي:
+   .yam-home-mobile-page (FeedMobile) — الذي يعمل "فل الفل" منذ v59.13.28.
+
+   عُثر على **صفحتين اثنتين فقط** إضافيَّتين لم يتم إصلاحهما في
+   أي طبقة سابقة (لا في v85.7 FRIENDS ولا في v85.9 MOBILE-FORCE
+   ولا في أي من طبقات v86.0/v86.1/v86.2/v86.3) — ووقفنا عندهما
+   كما طُلب بالضبط.
+
+   ─────────────────────────────────────────────────────────────
+   1) صفحة "الكل — الأصدقاء / الطلبات / الحظر" (.friends-all-page)
+      → المصدر: frontend/src/pages/FriendsAll.jsx
+      → المسار: /friends/all
+      → مغلَّفة داخل <MainLayout> عادية.
+      → لا يوجد لها **أي** إصلاح scroll في styles/*.
+        (بحث grep -rn '\.friends-all-page' styles/  →  فارغ.)
+      → الأم .page-content من طبقات v59.13.26/v85.9 تفرض
+        overflow:hidden + contain عليها → السحب باللمس يتوقف
+        قبل الوصول إلى المحتوى الطويل (البحث + التبويبات + قوائم
+        الأصدقاء/الطلبات/المحظورين).
+      → صفحة "الكل" **مختلفة** عن .friends-page (Friends.jsx) التي
+        عُولجت في v85.7 و v85.9 — قوائم مختلفة، مكوّنات مختلفة،
+        ومسار مختلف (/friends/all vs /friends).
+      → الحل: نفس بصمة .yam-group-settings-page (v86.3 [1]) و
+        .yam-create-group-page (v86.2 [1]) و .yam-home-mobile-page.
+
+   2) صفحة "الإشعارات" (.yam-notifications-page)
+      → المصدر: frontend/src/pages/Notifications.jsx
+      → المسار: /notifications
+      → كانت لا تستعمل أي class ثابت للجذر (inline style فقط)
+        فأضفنا `className="yam-notifications-page"` + `data-page`
+        في v86.4 حتى يمكن استهدافها من CSS بشكل موثوق.
+      → الجذر يفرض `height: calc(100vh - 70px)` + `display:flex`
+        عمودي، والابن `flex:1` يحتوي على `<AutoSizer><List/>`
+        (react-window المُحاكاة) — على ويب الجوال:
+          • الأم .page-content تصير overflow:hidden من legacy،
+            فتحبس السحب قبل أن يصل للفلاتر أو القائمة الافتراضية.
+          • virtualized List يحتاج لأن يكون الوالد `touch-action:pan-y`
+            وإلا يبتلع الطبقات السابقة (v57/v59.10) اللمس.
+          • كروت الفلاتر (`.notif-filter-chip`) في شريط أفقي مع
+            `overflowX:auto` — نضمن أن السحب الرأسي على الشريط
+            يمرّ للأعلى/الأسفل بدل أن يعلق أفقياً.
+      → الحل: نجعل الأم `.page-content` هي الـ scroller الرأسي
+        على الجوال، ونحرر الجذر من `height:100vh` القاسي، ونمنح
+        كل الأبناء `touch-action:pan-y` + كسر contain.
+
+   ⚠️ يجب أن يبقى هذا الاستيراد **آخر CSS مطلقاً** في main.jsx
+      بعد v86.3 مباشرة ليفوز في cascade.
+   ================================================================ */
+
+
+/* ─────────────────────────────────────────────────────────────
+   [1] .friends-all-page — صفحة "الكل" في الأصدقاء (/friends/all)
+       تفعيل السحب العمودي على ويب الجوال، ليتصرف مثل الصفحة الرئيسية.
+   ───────────────────────────────────────────────────────────── */
+
+/* الأم .page-content / main.mobile-main-content تُصبح الـ scroller
+   الحقيقي — نفس بصمة .yam-create-group-page (v86.2) و
+   .yam-group-settings-page (v86.3) و .yam-home-mobile-page (v59.13.28). */
+@media (max-width: 900px) {
+  html body .app-shell .page-content:has(.friends-all-page),
+  html body main.mobile-main-content:has(.friends-all-page) {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
+    overscroll-behavior-y: contain !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    contain: none !important;
+    content-visibility: visible !important;
+    padding: 0 !important;
+    padding-bottom: 0 !important;
+    will-change: auto !important;
+    transform: none !important;
+    filter: none !important;
+    perspective: none !important;
+    pointer-events: auto !important;
+  }
+
+  /* أي طبقة توهُّج/زخرفة قد تحبس الـ scroll — نحيّدها هنا. */
+  html body .app-shell .page-content:has(.friends-all-page) .page-shell-glow,
+  html body .page-shell-glow:has(> .friends-all-page) {
+    overflow: visible !important;
+    height: auto !important;
+    contain: none !important;
+    pointer-events: none !important; /* الزخرفة لا تلتقط اللمس */
+  }
+}
+
+/* .friends-all-page نفسها: تتبع طول المحتوى (لا scroller داخلي مُتداخل).
+   نفس النمط المُثبت فعّاليته على .yam-group-settings-page. */
+html body .friends-all-page,
+html body div.friends-all-page[dir="rtl"] {
+  min-height: 100dvh !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+  pointer-events: auto !important;
+  contain: none !important;
+  content-visibility: visible !important;
+  will-change: auto !important;
+  transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+  /* هامش سفلي كافٍ ليظهر آخر عنصر (آخر بطاقة صديق/طلب) فوق BottomNav */
+  padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* الرأس .fa-header يبقى sticky ظاهراً أثناء السحب — مثل .yam-home-mobile-page */
+@media (max-width: 900px) {
+  html body .friends-all-page .fa-header {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 20 !important;
+    background: rgba(2, 4, 10, 0.94) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    touch-action: pan-y !important;
+    contain: none !important;
+    will-change: auto !important;
+    transform: none !important;
+    padding-top: calc(8px + env(safe-area-inset-top, 0px)) !important;
+    padding-bottom: 10px !important;
+    margin-bottom: 12px !important;
+  }
+
+  /* شريط البحث + التبويبات لا يحبسان السحب الرأسي */
+  html body .friends-all-page .fa-search,
+  html body .friends-all-page .fa-tabs {
+    touch-action: pan-y !important;
+    contain: none !important;
+    overflow: visible !important;
+  }
+  html body .friends-all-page .fa-tabs {
+    /* التبويبات قد تكون scrollable أفقياً — نسمح بالسحب الأفقي داخلها فقط */
+    touch-action: pan-x pan-y !important;
+  }
+}
+
+/* الأبناء (بطاقات الأصدقاء، الطلبات، المحظورين، الحالات الفارغة، …)
+   لا يفرضون overflow/contain يمنع السحب — نضمن مرور اللمس بشكل موحّد. */
+html body .friends-all-page > *,
+html body .friends-all-page .fa-list,
+html body .friends-all-page .fa-item,
+html body .friends-all-page .fa-empty,
+html body .friends-all-page .alert,
+html body .friends-all-page section,
+html body .friends-all-page article {
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+  contain: none !important;
+  will-change: auto !important;
+  transform: none !important;
+  overflow: visible !important;
+  max-height: none !important;
+}
+
+/* حقول الإدخال (البحث) لا تبتلع السحب الرأسي */
+@media (max-width: 900px) {
+  html body .friends-all-page,
+  html body .friends-all-page * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  html body .friends-all-page input,
+  html body .friends-all-page textarea,
+  html body .friends-all-page [contenteditable="true"],
+  html body .friends-all-page select {
+    touch-action: pan-y !important;
+    overscroll-behavior: contain !important;
+  }
+  /* الأزرار الداخلية → نقر فوري بلا تأخير 300ms */
+  html body .friends-all-page button,
+  html body .friends-all-page a,
+  html body .friends-all-page [role="button"] {
+    touch-action: manipulation !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [2] .yam-notifications-page — صفحة "الإشعارات" (/notifications)
+       الجذر يستخدم height:calc(100vh - 70px) + flex + AutoSizer/List
+       → نحرّره ليعمل السحب مثل .yam-home-mobile-page.
+   ───────────────────────────────────────────────────────────── */
+
+/* الأم .page-content تصبح scroller رأسي حقيقي على الجوال */
+@media (max-width: 900px) {
+  html body .app-shell .page-content:has(.yam-notifications-page),
+  html body main.mobile-main-content:has(.yam-notifications-page) {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
+    overscroll-behavior-y: contain !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    contain: none !important;
+    content-visibility: visible !important;
+    padding: 0 !important;
+    padding-bottom: 0 !important;
+    will-change: auto !important;
+    transform: none !important;
+    filter: none !important;
+    perspective: none !important;
+    pointer-events: auto !important;
+  }
+
+  html body .app-shell .page-content:has(.yam-notifications-page) .page-shell-glow,
+  html body .page-shell-glow:has(.yam-notifications-page) {
+    overflow: visible !important;
+    height: auto !important;
+    contain: none !important;
+    pointer-events: none !important;
+  }
+}
+
+/* .yam-notifications-page: نكسر height:100vh القاسي على الجوال —
+   يصبح min-height:100dvh + height:auto حتى يعمل السحب على الأم.
+   على الشاشات الأكبر (>900px) نُبقي السلوك الأصلي (height:calc(100vh - 70px))
+   بدون تغيير. */
+@media (max-width: 900px) {
+  html body .yam-notifications-page,
+  html body div.yam-notifications-page[data-page="notifications"] {
+    min-height: 100dvh !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 14px !important;
+    touch-action: pan-y !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior-y: contain !important;
+    pointer-events: auto !important;
+    contain: none !important;
+    content-visibility: visible !important;
+    will-change: auto !important;
+    transform: none !important;
+    filter: none !important;
+    perspective: none !important;
+    padding: 12px 10px calc(140px + env(safe-area-inset-bottom, 0px)) !important;
+    margin: 0 auto !important;
+    max-width: 920px !important;
+    width: 100% !important;
+  }
+}
+
+/* شريط الفلاتر (.notif-filter-chip داخل شريط أفقي) — نسمح بسحب أفقي
+   على الشريط نفسه، لكن نضمن أن السحب الرأسي فوقه يمرّ للأم. */
+html body .yam-notifications-page > div:has(.notif-filter-chip),
+html body .yam-notifications-page .notif-filters {
+  touch-action: pan-x pan-y !important;
+  overscroll-behavior-x: contain !important;
+  contain: none !important;
+  overflow-y: visible !important;
+}
+
+/* الأبناء الداخليون (كروت، AutoSizer wrapper، بطاقات فارغة) لا يفرضون
+   overflow/contain يوقف السحب. */
+html body .yam-notifications-page > *,
+html body .yam-notifications-page > .notif-list-wrap,
+html body .yam-notifications-page section,
+html body .yam-notifications-page article {
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+  contain: none !important;
+  will-change: auto !important;
+  transform: none !important;
+  overflow: visible !important;
+  max-height: none !important;
+}
+
+/* ⭐ الحاوية التي تحتوي AutoSizer + react-window List:
+   على الجوال، `flex:1` يجعل الارتفاع = المتبقي من الأم، لكن
+   الأم صارت height:auto → نحتاج ارتفاع أدنى معقول للـ virtualized list.
+   نمنحه min-height كافياً (60vh) حتى يعرض الإشعارات، مع السماح للأم
+   بأن تكون هي الـ scroller الحقيقي على الجوال. */
+@media (max-width: 900px) {
+  html body .yam-notifications-page > div[style*="flex: 1"],
+  html body .yam-notifications-page > div[style*="flex:1"],
+  html body .yam-notifications-page .notif-list-container {
+    flex: 0 0 auto !important;
+    min-height: 60vh !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    touch-action: pan-y !important;
+    contain: none !important;
+  }
+
+  /* react-window List الداخلي: نسمح باللمس بالمرور — لا نمنع Y-scroll */
+  html body .yam-notifications-page .no-scrollbar,
+  html body .yam-notifications-page [class*="ReactVirtualized"],
+  html body .yam-notifications-page [class*="react-window"] {
+    touch-action: pan-y !important;
+    overscroll-behavior-y: contain !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+}
+
+/* الحقول والأزرار كما في نمط v86.3 */
+@media (max-width: 900px) {
+  html body .yam-notifications-page,
+  html body .yam-notifications-page * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  html body .yam-notifications-page input,
+  html body .yam-notifications-page textarea,
+  html body .yam-notifications-page [contenteditable="true"],
+  html body .yam-notifications-page select {
+    touch-action: pan-y !important;
+    overscroll-behavior: contain !important;
+  }
+  html body .yam-notifications-page button,
+  html body .yam-notifications-page a,
+  html body .yam-notifications-page [role="button"] {
+    touch-action: manipulation !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [3] إبطال طبقات legacy الضارّة على الصفحتين المستهدفتَين فقط
+       — بنفس نهج v86.1 [3] و v86.2 [3] و v86.3 [3].
+   ───────────────────────────────────────────────────────────── */
+
+/* طبقات mobile-touch-master-fix-v57 و drawer-style-touch-final-v59.10
+   قد تضع touch-action:none أو pointer-events:none على أطفال الصفحات
+   لأسباب عامة — نُلغي ذلك هنا على هاتَين الصفحتَين فقط. */
+html body .friends-all-page *,
+html body .yam-notifications-page * {
+  /* لا نُجبر touch-action على كل شيء — فقط ندعو الأطفال ليرثوا
+     السلوك الطبيعي بدلاً من `none` القسري */
+  pointer-events: auto;
+}
+
+/* استثناء: النص المسموح تحديده يبقى قابلاً للتحديد كالمعتاد */
+html body .friends-all-page p,
+html body .friends-all-page span:not([role]),
+html body .yam-notifications-page p,
+html body .yam-notifications-page span:not([role]) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [4] تحسين الشاشات الطويلة (Pixel 6+, iPhone 12+, Android حديث)
+       — نفس نهج v86.2 [8] و v86.3 [4].
+   ───────────────────────────────────────────────────────────── */
+
+@media (max-width: 900px) and (min-height: 720px) {
+  html body .friends-all-page {
+    padding-bottom: calc(160px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  html body .yam-notifications-page {
+    padding-bottom: calc(170px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+
+/* على iOS Safari تحديداً، نمنح momentum إضافي للـ scroller الأم */
+@supports (-webkit-touch-callout: none) {
+  @media (max-width: 900px) {
+    html body .app-shell .page-content:has(.friends-all-page),
+    html body .app-shell .page-content:has(.yam-notifications-page),
+    html body main.mobile-main-content:has(.friends-all-page),
+    html body main.mobile-main-content:has(.yam-notifications-page) {
+      -webkit-overflow-scrolling: touch !important;
+      overscroll-behavior-y: contain !important;
+    }
+  }
+}
+
+/* ================================================================
+   نهاية v86.4 — صفحتَين إضافيَّتَين معالَجتَين، وبذلك يكتمل الفحص
+   الشامل لسلاسة السحب على ويب الجوال. المزيد من الصفحات (إذا
+   ظهرت لاحقاً) ستُعالَج في v86.5+ بنفس النهج المُثبَت.
+   ================================================================ */

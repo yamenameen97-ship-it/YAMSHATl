@@ -5,7 +5,7 @@ import re
 from datetime import datetime
 
 from fastapi import HTTPException, status
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
 from app.core.content_sanitizer import sanitize_text
@@ -13,6 +13,13 @@ from app.models.comment import Comment
 from app.models.comment_like import CommentLike
 from app.models.post import Post
 from app.models.user import User
+
+# v87.0 — نظام الإشعارات الذكي
+try:
+    from app.services.notification_service import notify as _notify
+except Exception:  # pragma: no cover
+    def _notify(*_args, **_kwargs):  # type: ignore[override]
+        return None
 
 MENTION_RE = re.compile(r'(?<!\w)@([\w.\-]{1,50})', re.UNICODE)
 MAX_COMMENT_LENGTH = 1000
@@ -156,6 +163,87 @@ def create_comment(db: Session, user_id: int, post_id: int, content: str, parent
     db.add(comment)
     db.commit()
     db.refresh(comment)
+
+    # v87.0 — إشعارات تلقائية
+    try:
+        actor_username = current_user.username if current_user else None
+        actor_avatar = getattr(current_user, 'avatar', None) if current_user else None
+        preview = clean_content[:80]
+
+        # 1) رد على تعليق → إشعار لصاحب التعليق الأصلي
+        if parent_comment is not None and parent_comment.user_id and int(parent_comment.user_id) != int(user_id):
+            _notify(
+                db,
+                user_id=int(parent_comment.user_id),
+                notification_type='COMMENT_REPLY',
+                data={
+                    'post_id': int(post_id),
+                    'comment_id': int(comment.id),
+                    'parent_id': int(parent_comment.id),
+                    'from_user_id': int(user_id),
+                    'username': actor_username,
+                    'actor_avatar': actor_avatar,
+                    'preview': preview,
+                },
+            )
+        # 2) تعليق جديد على منشور → إشعار لصاحب المنشور
+        # (حتى ولو كان رداً، صاحب المنشور يحقّمطلع إذا لم يكن هو صاحب الرد)
+        if post.user_id and int(post.user_id) != int(user_id):
+            # تفادي إشعار مزدوج: إذا أرسلنا COMMENT_REPLY فوق لنفس المستخدم، لا نكرر
+            already_notified = (
+                parent_comment is not None
+                and parent_comment.user_id
+                and int(parent_comment.user_id) == int(post.user_id)
+            )
+            if not already_notified:
+                _notify(
+                    db,
+                    user_id=int(post.user_id),
+                    notification_type='POST_COMMENT',
+                    data={
+                        'post_id': int(post_id),
+                        'comment_id': int(comment.id),
+                        'from_user_id': int(user_id),
+                        'username': actor_username,
+                        'actor_avatar': actor_avatar,
+                        'preview': preview,
+                    },
+                )
+        # 3) إشعارات mentions داخل التعليق
+        mentions = _extract_mentions(clean_content)
+        seen_user_ids: set[int] = set()
+        for mentioned_username in mentions[:10]:
+            mentioned_user = (
+                db.query(User)
+                .filter(func.lower(User.username) == mentioned_username.lower())
+                .first()
+                if mentioned_username
+                else None
+            )
+            if mentioned_user is None:
+                continue
+            if int(mentioned_user.id) == int(user_id):
+                continue
+            if int(mentioned_user.id) in seen_user_ids:
+                continue
+            seen_user_ids.add(int(mentioned_user.id))
+            _notify(
+                db,
+                user_id=int(mentioned_user.id),
+                notification_type='COMMENT_MENTION',
+                data={
+                    'post_id': int(post_id),
+                    'comment_id': int(comment.id),
+                    'from_user_id': int(user_id),
+                    'username': actor_username,
+                    'actor_avatar': actor_avatar,
+                    'preview': preview,
+                },
+            )
+    except Exception:
+        # لا تُفشل الطلب إذا فشلت الإشعارات
+        pass
+
     return _serialize_comment(db, comment, current_user=current_user)
 
 
@@ -320,6 +408,26 @@ def toggle_like_comment(db: Session, comment_id: int, user_id: int) -> dict:
     comment.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(comment)
+
+    # v87.0 — إشعار: شخص أعجب بتعليقك (فقط عند الإعجاب، لا عند الإلغاء)
+    if liked and comment.user_id and int(comment.user_id) != int(user_id):
+        try:
+            actor = db.query(User).filter(User.id == user_id).first()
+            _notify(
+                db,
+                user_id=int(comment.user_id),
+                notification_type='COMMENT_LIKE',
+                data={
+                    'post_id': int(comment.post_id) if comment.post_id else None,
+                    'comment_id': int(comment.id),
+                    'from_user_id': int(user_id),
+                    'username': (actor.username if actor else None),
+                    'actor_avatar': (getattr(actor, 'avatar', None) if actor else None),
+                },
+            )
+        except Exception:
+            pass
+
     return {
         'comment_id': comment.id,
         'liked': liked,

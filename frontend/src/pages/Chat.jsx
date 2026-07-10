@@ -733,12 +733,13 @@ export default function Chat() {
 
       setLocalTyping(typing);
 
-      // تعطيل تلقائي بعد 3.5ث في حال لم يصل is_typing:false (على سبيل الأمان)
+      // ✅ v86.9: تعطيل تلقائي بعد 3ث في حال لم يصل is_typing:false — مطابق لواتساب.
+      // (المُرسِل يُرسل stop تلقائياً بعد 1.8ث، لذا يكفي 3ث كأمان).
       if (typing) {
         typingTimerRef.current = setTimeout(() => {
           setLocalTyping(false);
           typingTimerRef.current = null;
-        }, 3500);
+        }, 3000);
       }
     };
 
@@ -1127,6 +1128,23 @@ export default function Chat() {
           .yam-chat-stage-peer-copy span {
             color: #94a3b8;
             font-size: 13px;
+            /* ✅ v86.9: انتقال أنيق بين "متصل" ↔ "جاري الكتابة" */
+            transition: color 200ms ease, opacity 200ms ease;
+            display: inline-flex; align-items: center; gap: 6px;
+          }
+          .yam-chat-stage-peer-copy span.online { color: #4ade80; }
+          .yam-chat-stage-peer-copy span.typing { color: #a78bfa; font-weight: 700; }
+          .yam-chat-stage-peer-copy span.typing::before {
+            content: '';
+            width: 6px; height: 6px; border-radius: 50%;
+            background: #a78bfa;
+            box-shadow: 10px 0 0 #a78bfa, 20px 0 0 #a78bfa;
+            animation: yam-typing-dots 1.1s infinite ease-in-out;
+            margin-inline-end: 22px;
+          }
+          @keyframes yam-typing-dots {
+            0%, 60%, 100% { opacity: 0.35; transform: translateY(0); }
+            30%           { opacity: 1;    transform: translateY(-2px); }
           }
           .yam-chat-stage-actions {
             display: flex;
@@ -2206,9 +2224,14 @@ export default function Chat() {
                 <div className="yam-chat-stage-peer-copy">
                   {/* v67 — ضمان ظهور الاسم حتى لو كان peer مؤقتاً فارغ (أثناء التحميل). */}
                   <strong>{peer || peerDetails?.username || peerDetails?.handle || 'جارٍ التحميل...'}</strong>
-                  {/* v67 — إظهار كلمة "متصل" حسب طلب المستخدم بدلاً من "نشط الآن". */}
-                  <span className={(isOnline || isTyping) ? 'online' : 'offline'}>
-                    {isTyping ? 'جاري الكتابة...' : (isOnline ? 'متصل' : formatLastSeen(lastSeen, false))}
+                  {/*
+                    v86.9 — مؤشّر الكتابة بأسلوب واتساب:
+                    - عندما يبدأ الصديق بالكتابة → تتحول كلمة "متصل" إلى "جاري الكتابة..."
+                    - عندما يتوقّف → تعود إلى "متصل" أو آخر ظهور.
+                    - اللون والنقاط المتحرّكة تُضفى تلقائياً من خلال class typing.
+                  */}
+                  <span className={isTyping ? 'typing' : (isOnline ? 'online' : 'offline')} aria-live="polite">
+                    {isTyping ? 'جاري الكتابة…' : (isOnline ? 'متصل الآن' : formatLastSeen(lastSeen, false))}
                   </span>
                 </div>
               </button>

@@ -3,27 +3,25 @@ import { useNavigate } from 'react-router-dom';
 import { timeAgoAr as fmtTimeAgoAr } from '../../utils/timeFormat.js';
 
 /**
- * MobilePostCard (v47.9 — إصلاح الاسم المعكوس في صفحة الجوال)
+ * MobilePostCard (v86.7 — إصلاح احترافي شامل للبستة على الجوال)
  * ----------------------------------------------------------------------
- * الترتيب البصري الصحيح كما في الصورة المرجعية الثانية
- * (من اليسار→اليمين على الشاشة):
+ * تحسينات جذرية دائمة (Root-cause fixes):
+ *   • بطاقة بحواف دائرية + ظل ناعم بدل الخط السفلي فقط  → مظهر أنيق موحد.
+ *   • هامش خارجي (margin) صغير موحّد لتباعد البستات بشكل منتظم.
+ *   • padding داخلي موحد على كل breakpoints (لا مسافات متذبذبة).
+ *   • كل الأحجام (خط/أفاتار/أزرار) موحّدة عبر متغيرات CSS + clamp
+ *     ليبقى الفوتر دائماً داخل حدود الشاشة على 320px→768px بدون فيضان.
+ *   • خط أصغر أنيق (Cairo/Noto Sans Arabic) بحجم متناسق.
+ *   • فوتر بشبكة مقسّمة بالتساوي: الحفظ (يسار) + [مشاركة/تعليق/إعجاب] (يمين)
+ *     — لن ينكسر أبداً على الشاشات الضيقة (flex + min-width:0).
+ *   • overflow-x مقفول (overflow:hidden + max-width:100%) على مستوى البطاقة
+ *     والحاويات الداخلية لمنع أي عنصر من تجاوز حدود الشاشة.
+ *   • border-radius على صورة البانر متسق مع البطاقة.
  *
- * الهيدر:
- *   | ⋯       yamenameen97       Y(avatar) |
- *   |       منذ 4 دقيقة • @yamenameen97          |
- *   (أقصى اليسار: ⋯)   (وسط: النص)   (أقصى اليمين: شعار Y)
- *
- * أي: اسم المستخدم يظهر بين زر ⋯ وبين شعار Y الدائري.
- * الاتجاه للنص: RTL طبيعي بمحاذاة اليمين (نحو الشعار).
- * ✅ إصلاح: عكس ترتيب الوقت و@handle ليصبح "منذ 4 دقيقة • @yamenameen97"
- * بدلاً من "@yamenameen97 • منذ 4 دقيقة" وفقاً للصورة المرجعية الثانية.
- *
- * الصورة: مربع أسود بنسبة 1:1 مع شعار Y بنفسجي ضخم في الوسط،
- *         وأيقونة دائرية ملونة في الزاوية السفلية اليسرى.
- *
- * الفوتر (من اليسار→اليمين على الشاشة):
- *   🏷️ حفظ   ✈️ 356   💬 128   ❤️ 1.2 ألف
- *   (يسار)                            (يمين)
+ * الترتيب البصري (RTL):
+ *   الهيدر: [⋯]  ————  [الاسم + الوقت]  [الأفاتار]
+ *   الجسم:  النص → الصورة
+ *   الفوتر: [🔖 حفظ]  ————  [✈️ share] [💬 comments] [❤️ likes]
  */
 function VerifiedBadge() {
   return (
@@ -32,11 +30,6 @@ function VerifiedBadge() {
     </svg>
   );
 }
-
-/* ⭐ v59.13.38 — تمت إزالة CornerColorIcon (أيقونة قوس قزح في زاوية
-   الصورة) بناءً على بلاغ المستخدم: «دائرة ملوّنة مزعجة
-   تظهر تلقائياً بعد نشر الصورة». حذف الدالة + الـ render حتّى
-   لا تظهر أبداً حتّى لو أرسل الـ backend الحقل showCornerIcon. */
 
 function MobilePostCard({
   post = {},
@@ -78,7 +71,6 @@ function MobilePostCard({
     return String(n);
   };
 
-  /* ✅ v48 — استخراج اسم المستخدم النقي (بدون @) للتوجيه لصفحة البروفايل */
   const cleanUsername = (post.username || (handle || '').replace(/^@/, '') || authorName || '').trim();
   const goToProfile = (e) => {
     if (e) { e.preventDefault(); e.stopPropagation(); }
@@ -91,9 +83,9 @@ function MobilePostCard({
 
   return (
     <article className="ym-post-card" dir="rtl">
-      {/* === الهيدر (v48 — الاسم ملتصق بالأفاتار على اليمين، ⋯ على اليسار) === */}
-      <header className="ym-post-header" dir="ltr">
-        {/* أقصى اليسار: ثلاث نقاط ⋯ */}
+      {/* === الهيدر === */}
+      <header className="ym-post-header">
+        {/* أقصى اليسار: زر المزيد */}
         <button className="ym-more-btn" aria-label="المزيد" onClick={() => onMore?.(post)}>
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
             <circle cx="5" cy="12" r="1.8" />
@@ -102,12 +94,10 @@ function MobilePostCard({
           </svg>
         </button>
 
-        {/* مجموعة هوية المستخدم على اليمين: [الاسم + الوقت] ثم [الأفاتار] مباشرة بجانبها */}
-        <div className="ym-identity-group" dir="ltr">
-          {/* النص (الاسم + الوقت/المعرّف) — قابل للنقر للذهاب للبروفايل */}
+        {/* اليمين: مجموعة الهوية */}
+        <div className="ym-identity-group">
           <div
             className="ym-post-title-area ym-clickable"
-            dir="rtl"
             role="link"
             tabIndex={0}
             onClick={goToProfile}
@@ -118,16 +108,14 @@ function MobilePostCard({
               <span className="ym-author-name">{authorName}</span>
               {verified && <VerifiedBadge />}
             </div>
-            {/* ✅ ترتيب: الوقت • @handle (مطابق للصورة المرجعية) */}
-            <div className="ym-post-subtext" dir="rtl">
+            <div className="ym-post-subtext">
               <span className="ym-time" title={timeTitle || ''}>{liveTime}</span>
               <span className="ym-dot">•</span>
               <bdi className="ym-handle">{handle}</bdi>
-              {isLive && <span className="ym-live-badge-inline">البث المباشر</span>}
+              {isLive && <span className="ym-live-badge-inline">مباشر</span>}
             </div>
           </div>
 
-          {/* أقصى اليمين: Avatar (الشعار الدائري) — قابل للنقر أيضاً */}
           <div
             className="ym-post-avatar ym-clickable"
             role="link"
@@ -155,29 +143,19 @@ function MobilePostCard({
         </div>
       </header>
 
-      {/* === النص (إن وُجد) === */}
+      {/* === النص === */}
       {text && (
         <div className="ym-post-content">
           <p dir="rtl">{text}</p>
         </div>
       )}
 
-      {/* === صورة المنشور / لوحة الشعار ===
-          v59.13.30 FIX:
-          1) لا تُعرض لوحة البانر إطلاقاً للمنشورات النصية البحتة
-             (banner == null أو غير صالح). كانت سابقاً تُعرض لوحة
-             الشعار الافتراضية (Y بنفسجي) تلقائياً لكل منشور نصي.
-          2) أيقونة قوس قزح الملوّنة في الزاوية (CornerColorIcon)
-             أصبحت اختيارية: تظهر فقط إذا طلب المنشور ذلك صراحة
-             عبر post.showCornerIcon === true. كانت سابقاً تُلصق
-             تلقائياً فوق كل صورة/منشور بدون شرط. */}
+      {/* === صورة المنشور === */}
       {banner && (banner.type === 'image' || banner.type === 'logo') && (
         <div className="ym-post-banner-new">
           {isLive && <div className="ym-live-overlay-label">مباشر الآن LIVE</div>}
           {banner.type === 'image' ? (
             <div className="banner-image-container">
-              {/* v59.13.19 UX FIX: alt وصفي للوصولية + معالجة خطأ تحميل
-                  الصورة بدل إظهار أيقونة "صورة مكسورة" للمستخدم */}
               <img
                 src={banner.url}
                 alt={(text && String(text).trim().slice(0, 140)) || `صورة منشور من ${authorName}`}
@@ -209,7 +187,6 @@ function MobilePostCard({
             </div>
           ) : (
             <div className="banner-logo-container">
-              {/* شعار Y كبير بسيط بخطوط سميكة — يُعرض فقط حين banner.type === 'logo' */}
               <svg className="ym-logo-large" viewBox="0 0 200 200" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
                 <defs>
                   <linearGradient id="ym-banner-grad" x1="0" y1="0" x2="0.5" y2="1">
@@ -218,40 +195,19 @@ function MobilePostCard({
                     <stop offset="100%" stopColor="#6D28D9" />
                   </linearGradient>
                 </defs>
-                {/* الفرع الأيسر */}
-                <line
-                  x1="45" y1="35" x2="100" y2="110"
-                  stroke="url(#ym-banner-grad)"
-                  strokeWidth="24"
-                  strokeLinecap="round"
-                />
-                {/* الفرع الأيمن */}
-                <line
-                  x1="155" y1="35" x2="100" y2="110"
-                  stroke="url(#ym-banner-grad)"
-                  strokeWidth="24"
-                  strokeLinecap="round"
-                />
-                {/* الساق العمودية */}
-                <line
-                  x1="100" y1="110" x2="100" y2="172"
-                  stroke="url(#ym-banner-grad)"
-                  strokeWidth="24"
-                  strokeLinecap="round"
-                />
+                <line x1="45" y1="35" x2="100" y2="110" stroke="url(#ym-banner-grad)" strokeWidth="24" strokeLinecap="round" />
+                <line x1="155" y1="35" x2="100" y2="110" stroke="url(#ym-banner-grad)" strokeWidth="24" strokeLinecap="round" />
+                <line x1="100" y1="110" x2="100" y2="172" stroke="url(#ym-banner-grad)" strokeWidth="24" strokeLinecap="round" />
               </svg>
             </div>
           )}
-          {/* ⭐ v59.13.38: أُزيلت أيقونة الزاوية نهائياً — المستخدم
-              أبلغ أنها مزعجة وتظهر تلقائياً بعد نشر الصورة. */}
         </div>
       )}
 
-      {/* === الفوتر — الترتيب على الشاشة من اليسار→اليمين:
-            🏷️ حفظ | ✈️ مشاركة | 💬 تعليق | ❤️ إعجاب === */}
+      {/* === الفوتر === */}
       <footer className="ym-post-footer">
-        <div className="ym-footer-actions" dir="ltr">
-          {/* زر الحفظ (أقصى اليسار على الشاشة) */}
+        <div className="ym-footer-actions">
+          {/* حفظ (أقصى اليسار) */}
           <button
             className={`ym-footer-btn ym-footer-btn-save ${saved ? 'is-saved' : ''}`}
             aria-label="حفظ"
@@ -262,82 +218,111 @@ function MobilePostCard({
             </svg>
           </button>
 
-          {/* مشاركة (طائرة ورقية) */}
-          <button className="ym-footer-btn" aria-label="مشاركة" onClick={() => onShare?.(post)}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <line x1="22" y1="2" x2="11" y2="13" />
-              <polygon points="22 2 15 22 11 13 2 9 22 2" />
-            </svg>
-            <span className="ym-count">{formatCount(Number(reposts) || 0)}</span>
-          </button>
+          {/* مجموعة الأزرار الرئيسية (يمين): مشاركة | تعليق | إعجاب */}
+          <div className="ym-footer-actions-right">
+            <button className="ym-footer-btn" aria-label="مشاركة" onClick={() => onShare?.(post)}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <line x1="22" y1="2" x2="11" y2="13" />
+                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+              </svg>
+              <span className="ym-count">{formatCount(Number(reposts) || 0)}</span>
+            </button>
 
-          {/* تعليق */}
-          <button className="ym-footer-btn" aria-label="تعليق" onClick={() => onComment?.(post)}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
-            <span className="ym-count">{formatCount(Number(comments) || 0)}</span>
-          </button>
+            <button className="ym-footer-btn" aria-label="تعليق" onClick={() => onComment?.(post)}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+              <span className="ym-count">{formatCount(Number(comments) || 0)}</span>
+            </button>
 
-          {/* إعجاب (أقصى اليمين على الشاشة) — v59.13.19 UX FIX:
-             القلب يعكس حالة liked فعلياً (ممتلئ بنفسجي عند الإعجاب،
-             مفرَّغ رمادي بدون إعجاب)، والعدد كذلك. */}
-          <button
-            className={`ym-footer-btn ym-footer-btn-like ${liked ? 'liked' : ''}`}
-            aria-label={liked ? 'إلغاء الإعجاب' : 'إعجاب'}
-            aria-pressed={liked ? 'true' : 'false'}
-            onClick={() => onLike?.(post)}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill={liked ? '#8B5CF6' : 'none'}
-              stroke={liked ? '#8B5CF6' : 'currentColor'}
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
+            <button
+              className={`ym-footer-btn ym-footer-btn-like ${liked ? 'liked' : ''}`}
+              aria-label={liked ? 'إلغاء الإعجاب' : 'إعجاب'}
+              aria-pressed={liked ? 'true' : 'false'}
+              onClick={() => onLike?.(post)}
             >
-              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-            </svg>
-            <span className={`ym-count ${liked ? 'text-purple' : ''}`}>{formatCount(Number(likes) || 0)}</span>
-          </button>
+              <svg
+                viewBox="0 0 24 24"
+                fill={liked ? '#8B5CF6' : 'none'}
+                stroke={liked ? '#8B5CF6' : 'currentColor'}
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+              </svg>
+              <span className={`ym-count ${liked ? 'text-purple' : ''}`}>{formatCount(Number(likes) || 0)}</span>
+            </button>
+          </div>
         </div>
       </footer>
 
       <style>{`
+        /* ===================================================================
+           v86.7 — بطاقة منشور احترافية موحّدة على الجوال
+           - متغيرات CSS مركزية لضبط جميع الأحجام من مكان واحد
+           - قيم clamp() تضمن ملاءمة ديناميكية لجميع الشاشات (320px → 768px)
+           - overflow مقفول على كل المستويات لمنع الفيضان
+           =================================================================== */
         .ym-post-card {
+          /* متغيرات موحدة */
+          --ym-radius: 14px;
+          --ym-pad-x: clamp(10px, 3vw, 14px);
+          --ym-pad-y: clamp(10px, 2.6vw, 13px);
+          --ym-gap: clamp(6px, 1.8vw, 10px);
+          --ym-avatar-size: clamp(34px, 9.5vw, 40px);
+          --ym-name-size: clamp(0.82rem, 3.4vw, 0.94rem);
+          --ym-meta-size: clamp(0.66rem, 2.6vw, 0.74rem);
+          --ym-body-size: clamp(0.8rem, 3.3vw, 0.9rem);
+          --ym-btn-size: clamp(0.72rem, 2.9vw, 0.82rem);
+          --ym-icon-size: clamp(18px, 5.2vw, 21px);
+          --ym-icon-more: clamp(16px, 4.8vw, 18px);
+
           background-color: #0A0D1A;
-          border-bottom: 1px solid #1F2937;
-          padding: 12px 12px;
-          color: white;
+          border: 1px solid #1F2937;
+          border-radius: var(--ym-radius);
+          padding: var(--ym-pad-y) var(--ym-pad-x);
+          margin: 8px auto;
+          color: #fff;
           width: 100%;
           max-width: 100%;
           box-sizing: border-box;
           overflow: hidden;
           word-wrap: break-word;
           overflow-wrap: break-word;
-          font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+          font-family: 'Noto Sans Arabic', 'Cairo', 'Tajawal', system-ui, -apple-system, sans-serif;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+          transition: transform 0.15s ease, box-shadow 0.15s ease;
         }
+        .ym-post-card:active {
+          transform: scale(0.998);
+        }
+
+        /* =========================
+           الهيدر
+           ========================= */
         .ym-post-header {
           display: flex;
           flex-direction: row;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 10px;
-          gap: 8px;
+          margin-bottom: var(--ym-gap);
+          gap: var(--ym-gap);
           direction: ltr;
-          /* v59.13.21: pan-y بدل manipulation لإتاحة Pull-to-Refresh من أي مكان */
+          min-width: 0;
           touch-action: pan-y;
           -webkit-tap-highlight-color: transparent;
         }
-        /* ✅ v48: مجموعة الاسم + الأفاتار ملتصقتان كوحدة واحدة على اليمين */
         .ym-identity-group {
           display: flex;
           flex-direction: row;
           align-items: center;
-          gap: 8px;
+          gap: var(--ym-gap);
           min-width: 0;
-          flex: 0 1 auto;
+          flex: 1 1 auto;
+          justify-content: flex-end;
+          overflow: hidden;
         }
         .ym-clickable {
           cursor: pointer;
@@ -351,8 +336,8 @@ function MobilePostCard({
           border-radius: 8px;
         }
         .ym-post-avatar {
-          width: 38px;
-          height: 38px;
+          width: var(--ym-avatar-size);
+          height: var(--ym-avatar-size);
           border-radius: 50%;
           background: #14172a;
           overflow: hidden;
@@ -361,9 +346,13 @@ function MobilePostCard({
           justify-content: center;
           border: 1.5px solid #8B5CF6;
           flex-shrink: 0;
-          box-shadow: 0 0 8px rgba(139, 92, 246, 0.35);
+          box-shadow: 0 0 6px rgba(139, 92, 246, 0.3);
         }
-        .ym-post-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .ym-post-avatar img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
         .ym-post-title-area {
           display: flex;
           flex-direction: column;
@@ -371,23 +360,28 @@ function MobilePostCard({
           text-align: right;
           min-width: 0;
           flex: 0 1 auto;
-          padding-inline-end: 0;
           direction: rtl;
+          overflow: hidden;
         }
         .ym-author-row {
           display: flex;
           flex-direction: row;
           align-items: center;
-          gap: 2px;
+          gap: 3px;
           direction: rtl;
           unicode-bidi: isolate;
+          max-width: 100%;
         }
         .ym-author-name {
           font-weight: 700;
-          font-size: 0.9rem;
+          font-size: var(--ym-name-size);
           color: #fff;
-          line-height: 1.2;
+          line-height: 1.25;
           unicode-bidi: plaintext;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 100%;
         }
         .ym-post-subtext {
           display: flex;
@@ -395,66 +389,80 @@ function MobilePostCard({
           align-items: center;
           gap: 4px;
           color: #9CA3AF;
-          font-size: 0.72rem;
+          font-size: var(--ym-meta-size);
           margin-top: 2px;
-          flex-wrap: wrap;
           justify-content: flex-end;
           direction: rtl;
           unicode-bidi: isolate;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 100%;
         }
         .ym-dot { color: #6B7280; }
         .ym-handle {
-          /* عزل اتجاه @handle حتى لا ينعكس داخل الحاوية RTL */
           direction: ltr;
           unicode-bidi: isolate;
           display: inline-block;
-        }
-        .ym-author-name {
-          unicode-bidi: plaintext;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 100%;
         }
         .ym-live-badge-inline {
           color: #8B5CF6;
           margin-inline-start: 4px;
-          font-weight: bold;
+          font-weight: 700;
+          font-size: 0.92em;
         }
         .ym-more-btn {
           background: none;
           border: none;
           color: #6B7280;
           cursor: pointer;
-          padding: 8px;
-          border-radius: 6px;
+          padding: 6px;
+          border-radius: 8px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
-          /* تحسين الاستجابة على الجوال */
           touch-action: manipulation;
           -webkit-tap-highlight-color: transparent;
-          min-width: 36px;
-          min-height: 36px;
+          min-width: 34px;
+          min-height: 34px;
+          transition: background 0.15s ease, color 0.15s ease;
         }
-        .ym-more-btn:hover { color: #C4B5FD; background: rgba(139,92,246,0.08); }
+        .ym-more-btn svg {
+          width: var(--ym-icon-more);
+          height: var(--ym-icon-more);
+        }
+        .ym-more-btn:hover { color: #C4B5FD; background: rgba(139, 92, 246, 0.08); }
+        .ym-more-btn:active { background: rgba(139, 92, 246, 0.15); }
 
+        /* =========================
+           جسم النص
+           ========================= */
         .ym-post-content {
-          margin-bottom: 9px;
-          font-size: 0.88rem;
-          line-height: 1.5;
+          margin-bottom: var(--ym-gap);
+          font-size: var(--ym-body-size);
+          line-height: 1.55;
           color: #E5E7EB;
           word-wrap: break-word;
           overflow-wrap: break-word;
           direction: rtl;
           text-align: right;
+          max-width: 100%;
         }
         .ym-post-content p { margin: 0; }
 
-        /* === بطاقة الصورة === */
+        /* =========================
+           صورة المنشور
+           ========================= */
         .ym-post-banner-new {
-          border-radius: 14px;
+          border-radius: 12px;
           overflow: hidden;
-          margin-bottom: 10px;
+          margin-bottom: var(--ym-gap);
           position: relative;
-          background: #000000;
+          background: #000;
           aspect-ratio: 1 / 1;
           display: flex;
           align-items: center;
@@ -471,8 +479,8 @@ function MobilePostCard({
           width: 100%;
           height: 100%;
           object-fit: cover;
+          display: block;
         }
-        /* v59.13.19 UX FIX: بديل احتياطي عند فشل تحميل صورة المنشور */
         .banner-image-fallback {
           position: absolute;
           inset: 0;
@@ -482,7 +490,6 @@ function MobilePostCard({
           background: linear-gradient(135deg, #1a1f33 0%, #0f1422 100%);
           color: #9CA3AF;
           font-size: 0.85rem;
-          font-family: 'Noto Sans Arabic', 'Cairo', system-ui, sans-serif;
           text-align: center;
           padding: 12px;
           direction: rtl;
@@ -493,30 +500,13 @@ function MobilePostCard({
           display: flex;
           align-items: center;
           justify-content: center;
-          background: #000000;
+          background: #000;
         }
         .ym-logo-large {
           width: 58%;
           height: auto;
           max-width: 260px;
           filter: drop-shadow(0 6px 24px rgba(139, 92, 246, 0.55));
-        }
-        @media (max-width: 360px) {
-          .ym-logo-large { width: 62%; }
-        }
-        @media (max-width: 320px) {
-          .ym-logo-large { width: 66%; }
-        }
-        .banner-corner-icon {
-          position: absolute;
-          bottom: 10px;
-          left: 10px;
-          width: 30px;
-          height: 30px;
-          border-radius: 50%;
-          overflow: hidden;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.5);
-          z-index: 5;
         }
         .ym-live-overlay-label {
           position: absolute;
@@ -527,26 +517,31 @@ function MobilePostCard({
           padding: 2px 8px;
           border-radius: 4px;
           font-size: 0.7rem;
-          font-weight: bold;
+          font-weight: 700;
           z-index: 10;
         }
         .banner-live-info {
           position: absolute;
           bottom: 10px;
           right: 10px;
-          background: rgba(0,0,0,0.6);
+          background: rgba(0, 0, 0, 0.6);
           color: white;
           padding: 4px 8px;
-          border-radius: 4px;
+          border-radius: 6px;
           font-size: 0.72rem;
           display: flex;
           align-items: center;
           gap: 4px;
         }
 
-        /* === الفوتر === */
+        /* =========================
+           الفوتر
+           - شبكة موحّدة: [حفظ] | [مشاركة/تعليق/إعجاب]
+           ========================= */
         .ym-post-footer {
           padding-top: 4px;
+          border-top: 1px solid rgba(31, 41, 55, 0.6);
+          margin-top: 2px;
         }
         .ym-footer-actions {
           display: flex;
@@ -556,6 +551,15 @@ function MobilePostCard({
           gap: 4px;
           width: 100%;
           direction: ltr;
+          min-width: 0;
+        }
+        .ym-footer-actions-right {
+          display: flex;
+          flex-direction: row;
+          align-items: center;
+          gap: clamp(2px, 1.2vw, 6px);
+          min-width: 0;
+          flex: 0 1 auto;
         }
         .ym-footer-btn {
           background: none;
@@ -564,87 +568,73 @@ function MobilePostCard({
           display: inline-flex;
           flex-direction: row;
           align-items: center;
-          gap: 6px;
+          gap: 5px;
           cursor: pointer;
-          font-size: 0.8rem;
-          padding: 8px 10px;
-          border-radius: 6px;
-          transition: background 0.15s, color 0.15s;
+          font-size: var(--ym-btn-size);
+          padding: 6px 8px;
+          border-radius: 8px;
+          transition: background 0.15s ease, color 0.15s ease;
           font-family: inherit;
-          min-width: 44px;
           min-height: 36px;
           flex-shrink: 0;
           line-height: 1;
-          /* استجابة لمس فورية على PWA/Chrome Mobile */
           touch-action: manipulation;
           -webkit-tap-highlight-color: transparent;
           -webkit-user-select: none;
           user-select: none;
         }
         .ym-footer-btn svg {
-          width: 21px;
-          height: 21px;
+          width: var(--ym-icon-size);
+          height: var(--ym-icon-size);
           flex-shrink: 0;
           display: block;
         }
         .ym-footer-btn .ym-count {
-          font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+          font-family: 'Noto Sans Arabic', 'Cairo', 'Tajawal', system-ui, sans-serif;
           direction: rtl;
+          font-variant-numeric: tabular-nums;
+          font-weight: 600;
         }
-        .ym-footer-btn:hover { background: rgba(139, 92, 246, 0.08); }
-        .ym-footer-btn:active { transform: scale(0.95); }
-        .ym-footer-btn-like { color: #8B5CF6; }
-        .ym-footer-btn-save { color: #9CA3AF; flex-shrink: 0; }
+        .ym-footer-btn:hover { background: rgba(139, 92, 246, 0.1); color: #C4B5FD; }
+        .ym-footer-btn:active { transform: scale(0.94); background: rgba(139, 92, 246, 0.18); }
+        .ym-footer-btn-like { color: #9CA3AF; }
+        .ym-footer-btn-like.liked { color: #8B5CF6; }
+        .ym-footer-btn-save { color: #9CA3AF; }
         .ym-footer-btn-save.is-saved { color: #8B5CF6; }
-        .text-purple { color: #8B5CF6; font-weight: 600; }
+        .text-purple { color: #8B5CF6; font-weight: 700; }
 
-        @media (max-width: 400px) {
-          .ym-post-card { padding: 11px 10px; }
-          .ym-post-avatar { width: 36px; height: 36px; }
-          .ym-author-name { font-size: 0.86rem; }
-          .ym-post-subtext { font-size: 0.68rem; }
-          .ym-post-content { font-size: 0.84rem; line-height: 1.5; margin-bottom: 8px; }
-          .ym-post-banner-new { border-radius: 12px; margin-bottom: 9px; }
-          .ym-footer-btn { font-size: 0.76rem; gap: 5px; padding: 3px 5px; }
-          .ym-footer-btn svg { width: 20px; height: 20px; }
-          .banner-corner-icon { width: 28px; height: 28px; bottom: 8px; left: 8px; }
+        /* =========================
+           شاشات صغيرة جداً (≤340px) — Redmi 5A, Galaxy Fold مغلق
+           ========================= */
+        @media (max-width: 340px) {
+          .ym-post-card {
+            --ym-radius: 12px;
+            --ym-pad-x: 8px;
+            --ym-pad-y: 9px;
+            margin: 6px auto;
+          }
+          .ym-footer-btn { padding: 5px 5px; gap: 3px; }
+          .ym-footer-actions-right { gap: 1px; }
         }
-        @media (max-width: 360px) {
-          .ym-post-card { padding: 9px 7px; }
-          .ym-post-avatar { width: 34px; height: 34px; }
-          .ym-author-name { font-size: 0.8rem; }
-          .ym-post-subtext { font-size: 0.64rem; gap: 3px; }
-          .ym-post-content { font-size: 0.78rem; }
-          .ym-post-banner-new { border-radius: 10px; }
-          .ym-footer-btn { font-size: 0.7rem; padding: 2px 4px; gap: 4px; }
-          .ym-footer-btn svg { width: 18px; height: 18px; }
-          .banner-corner-icon { width: 26px; height: 26px; bottom: 7px; left: 7px; }
-          .ym-more-btn svg { width: 16px; height: 16px; }
+
+        /* =========================
+           سطح المكتب / التابلت
+           ========================= */
+        @media (min-width: 768px) {
+          .ym-post-card {
+            --ym-radius: 16px;
+            --ym-pad-x: 16px;
+            --ym-pad-y: 14px;
+            margin: 10px auto;
+          }
         }
-        @media (max-width: 320px) {
-          .ym-post-card { padding: 7px 5px; }
-          .ym-post-avatar { width: 30px; height: 30px; }
-          .ym-author-name { font-size: 0.74rem; }
-          .ym-post-subtext { font-size: 0.58rem; gap: 2px; }
-          .ym-post-content { font-size: 0.74rem; line-height: 1.45; }
-          .ym-post-banner-new { border-radius: 9px; margin-bottom: 7px; }
-          .ym-footer-btn { font-size: 0.62rem; padding: 2px 3px; gap: 3px; }
-          .ym-footer-btn svg { width: 16px; height: 16px; }
-          .ym-footer-btn-like svg { width: 18px; height: 18px; }
-          .banner-corner-icon { width: 22px; height: 22px; bottom: 6px; left: 6px; }
-          .ym-more-btn svg { width: 15px; height: 15px; }
-          .ym-more-btn { padding: 2px; }
+        @media (min-width: 1024px) {
+          .ym-post-card {
+            --ym-btn-size: 0.92rem;
+          }
         }
-        /* دعم Redmi Note 8 (393px) والأجهزة المشابهة */
-        @media (max-width: 393px) and (min-width: 361px) {
-          .ym-post-card { padding: 11px 9px; }
-          .ym-post-avatar { width: 37px; height: 37px; }
-          .ym-author-name { font-size: 0.88rem; }
-          .ym-post-subtext { font-size: 0.7rem; }
-          .ym-footer-btn { font-size: 0.78rem; }
-          .ym-footer-btn svg { width: 20px; height: 20px; }
-        }
-        /* دعم المتصفحات القديمة التي لا تدعم aspect-ratio */
+
+        /* دعم المتصفحات التي لا تدعم aspect-ratio */
         @supports not (aspect-ratio: 1 / 1) {
           .ym-post-banner-new {
             height: 0;
@@ -659,9 +649,6 @@ function MobilePostCard({
             right: 0;
             bottom: 0;
           }
-        }
-        @media (min-width: 1024px) {
-          .ym-footer-btn { font-size: 0.92rem; }
         }
       `}</style>
     </article>

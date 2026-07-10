@@ -207,107 +207,57 @@ export default function ProfilePage() {
           })}
         </div>
 
-        {/* Content Grid */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
-            gap: 15,
-            marginBottom: 30,
-          }}
-        >
+        {/* Content Grid — Mobile-first professional gallery (v86.8) */}
+        <div className="ym-profile-gallery" dir="rtl">
           {tabContent.length > 0 ? (
             tabContent.map((post) => (
               <div
                 key={post.id}
-                style={{
-                  aspectRatio: '1/1',
-                  background: '#222',
-                  borderRadius: 8,
-                  overflow: 'hidden',
-                  position: 'relative',
-                  cursor: 'pointer',
-                  transition: 'transform 0.2s ease',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'scale(1.02)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'scale(1)';
-                }}
+                className="ym-profile-gallery__item"
+                role="button"
+                tabIndex={0}
                 onClick={() => navigate(`/post/${post.id}`)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    navigate(`/post/${post.id}`);
+                  }
+                }}
               >
-                <img
-                  src={post.media_url || post.image_url}
-                  alt="post"
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
-                  }}
-                />
+                {post.media_url || post.image_url ? (
+                  <img
+                    src={post.media_url || post.image_url}
+                    alt="منشور"
+                    className="ym-profile-gallery__img"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="ym-profile-gallery__empty">📝</div>
+                )}
+
                 {activeTab === TABS.ARCHIVE && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: 10,
-                      right: 10,
-                      background: 'rgba(0,0,0,0.6)',
-                      padding: '4px 8px',
-                      borderRadius: 4,
-                      fontSize: 10,
-                    }}
-                  >
-                    📦 مؤرشف
-                  </div>
+                  <span className="ym-profile-gallery__badge ym-profile-gallery__badge--archive">
+                    <span aria-hidden="true">📦</span>
+                    <span>مؤرشف</span>
+                  </span>
                 )}
                 {activeTab === TABS.PINNED && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: 10,
-                      right: 10,
-                      background: 'rgba(59, 130, 246, 0.8)',
-                      padding: '4px 8px',
-                      borderRadius: 4,
-                      fontSize: 10,
-                    }}
-                  >
-                    📌 مثبت
-                  </div>
+                  <span className="ym-profile-gallery__badge ym-profile-gallery__badge--pinned">
+                    <span aria-hidden="true">📌</span>
+                    <span>مثبت</span>
+                  </span>
                 )}
-                {/* Engagement Stats Overlay */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)',
-                    padding: '10px',
-                    display: 'flex',
-                    gap: 15,
-                    fontSize: 12,
-                    opacity: 0,
-                    transition: 'opacity 0.2s ease',
-                  }}
-                  className="post-stats"
-                >
-                  <span>❤️ {post.likes_count || 0}</span>
-                  <span>💬 {post.comments_count || 0}</span>
-                  <span>↗️ {post.shares_count || 0}</span>
+
+                {/* إحصائيات التفاعل — ظاهرة دائماً على الجوال، وعند التمرير على الديسكتوب */}
+                <div className="ym-profile-gallery__stats" aria-hidden="true">
+                  <span><span aria-hidden="true">❤️</span> {post.likes_count || 0}</span>
+                  <span><span aria-hidden="true">💬</span> {post.comments_count || 0}</span>
+                  <span><span aria-hidden="true">↗️</span> {post.shares_count || 0}</span>
                 </div>
               </div>
             ))
           ) : (
-            <div
-              style={{
-                gridColumn: '1 / -1',
-                textAlign: 'center',
-                padding: '40px 20px',
-                color: '#888',
-              }}
-            >
+            <div className="ym-profile-gallery__empty-state">
               <p>لا توجد منشورات في هذا القسم</p>
             </div>
           )}
@@ -529,11 +479,162 @@ export default function ProfilePage() {
       </Modal>
 
       <style>{`
-        .post-stats {
-          opacity: 0 !important;
+        /* ============================================================
+           v86.8 — Professional Mobile Post Gallery (Profile Page)
+           - Mobile first: 3 columns like Instagram
+           - Tablet: 4 columns
+           - Desktop: 5 columns
+           - أحجام خط مرنة clamp()
+           - حدود دائرية وظل ناعم
+           - لا فيضان أبداً
+           ============================================================ */
+        .ym-profile-gallery {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: clamp(4px, 1.2vw, 8px);
+          margin-bottom: 30px;
+          font-family: 'Cairo', 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+          max-width: 100%;
+          overflow: hidden;
         }
-        div:hover .post-stats {
-          opacity: 1 !important;
+        .ym-profile-gallery__item {
+          position: relative;
+          aspect-ratio: 1 / 1;
+          background: #1a1a1a;
+          border-radius: clamp(6px, 1.8vw, 10px);
+          overflow: hidden;
+          cursor: pointer;
+          transition: transform 0.18s ease, box-shadow 0.18s ease;
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          outline: none;
+        }
+        .ym-profile-gallery__item:hover,
+        .ym-profile-gallery__item:focus-visible {
+          transform: translateY(-1px);
+          box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+          border-color: rgba(139, 92, 246, 0.35);
+        }
+        .ym-profile-gallery__item:active { transform: scale(0.98); }
+        .ym-profile-gallery__img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+        }
+        .ym-profile-gallery__empty {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: clamp(1.4rem, 6vw, 2rem);
+          color: rgba(255, 255, 255, 0.25);
+          background: linear-gradient(135deg, #1a1a1a, #222);
+        }
+
+        /* شارات الأرشفة والتثبيت — حجم موحّد مرن */
+        .ym-profile-gallery__badge {
+          position: absolute;
+          top: clamp(4px, 1.4vw, 8px);
+          inset-inline-end: clamp(4px, 1.4vw, 8px);
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: clamp(2px, 0.8vw, 4px) clamp(5px, 1.6vw, 8px);
+          border-radius: 999px;
+          font-size: clamp(0.58rem, 2.4vw, 0.7rem);
+          font-weight: 700;
+          color: #fff;
+          backdrop-filter: blur(4px);
+          -webkit-backdrop-filter: blur(4px);
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+          white-space: nowrap;
+          line-height: 1.2;
+        }
+        .ym-profile-gallery__badge--archive {
+          background: rgba(0, 0, 0, 0.65);
+        }
+        .ym-profile-gallery__badge--pinned {
+          background: rgba(59, 130, 246, 0.85);
+        }
+
+        /* إحصائيات التفاعل — مخفية افتراضياً، تظهر عند التمرير (ديسكتوب) */
+        .ym-profile-gallery__stats {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          padding: clamp(6px, 1.8vw, 10px) clamp(6px, 1.6vw, 10px);
+          display: flex;
+          justify-content: space-between;
+          gap: clamp(4px, 1.4vw, 10px);
+          background: linear-gradient(to top, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0));
+          color: #fff;
+          font-size: clamp(0.62rem, 2.5vw, 0.78rem);
+          font-weight: 600;
+          opacity: 0;
+          transition: opacity 0.2s ease;
+          pointer-events: none;
+          font-variant-numeric: tabular-nums;
+        }
+        .ym-profile-gallery__stats span {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          min-width: 0;
+        }
+
+        /* على الديسكتوب: إظهار الإحصائيات عند التمرير */
+        @media (hover: hover) {
+          .ym-profile-gallery__item:hover .ym-profile-gallery__stats {
+            opacity: 1;
+          }
+        }
+
+        /* على الجوال (أجهزة اللمس): أظهر الإحصائيات دائماً بشفافية خفيفة حتى يراها المستخدم */
+        @media (hover: none) {
+          .ym-profile-gallery__stats {
+            opacity: 0.95;
+          }
+        }
+
+        /* حالة فارغة */
+        .ym-profile-gallery__empty-state {
+          grid-column: 1 / -1;
+          text-align: center;
+          padding: clamp(24px, 8vw, 48px) 20px;
+          color: #888;
+          font-size: clamp(0.85rem, 3.4vw, 1rem);
+        }
+
+        /* تدرج الأعمدة حسب الشاشة */
+        @media (min-width: 640px) {
+          .ym-profile-gallery {
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+          }
+        }
+        @media (min-width: 1024px) {
+          .ym-profile-gallery {
+            grid-template-columns: repeat(5, 1fr);
+            gap: 12px;
+          }
+        }
+
+        /* شاشات ضيقة جداً (≤ 360px): اختصار الإحصائيات */
+        @media (max-width: 360px) {
+          .ym-profile-gallery {
+            gap: 3px;
+          }
+          .ym-profile-gallery__stats {
+            padding: 4px 5px;
+            font-size: 0.6rem;
+            gap: 3px;
+          }
+          .ym-profile-gallery__badge {
+            font-size: 0.55rem;
+            padding: 2px 5px;
+          }
         }
       `}</style>
     </MainLayout>

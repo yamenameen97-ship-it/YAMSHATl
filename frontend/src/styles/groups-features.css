@@ -163,22 +163,153 @@
 }
 @keyframes yamg-spin { to { transform: rotate(360deg); } }
 
-/* ===== Posts feed ===== */
-.yamg-post-author { display:flex; align-items:center; gap:10px; margin-bottom: 8px; }
-.yamg-post-author img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
-.yamg-post-name { font-weight:700; font-size: 14px; }
-.yamg-post-time { font-size: 11px; color: var(--yamg-muted); }
-.yamg-post-body { font-size: 14px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
-.yamg-post-media { margin-top: 10px; border-radius: 12px; overflow: hidden; border: 1px solid var(--yamg-border-soft); }
-.yamg-post-media img, .yamg-post-media video { width: 100%; display: block; }
-.yamg-post-actions { display:flex; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--yamg-border-soft); }
-.yamg-post-actions button {
-  flex: 1;
-  background: transparent; color: var(--yamg-muted);
-  border: 1px solid transparent; padding: 6px 10px;
-  border-radius: 10px; cursor: pointer; font-size: 13px;
+/* ===== Posts feed — Professional Mobile Polish v86.8 ===== */
+/*
+  📱 هدف التصميم:
+  - بطاقات موحّدة بحواف دائرية وظل ناعم
+  - خط عربي ناعم مع أحجام مرنة clamp()
+  - فوتر بشبكة grid ثابتة لن تنكسر أبداً
+  - لا فيضان: overflow + text-overflow ellipsis
+  - يعمل من 320px إلى 1200px بسلاسة
+*/
+
+/* بطاقة المنشور — تطبيق على .yamg-card الذي يحوي yamg-post-author */
+.yamg-card:has(.yamg-post-author) {
+  padding: clamp(12px, 3.2vw, 16px);
+  border-radius: clamp(12px, 3vw, 18px);
+  margin-bottom: clamp(8px, 2.4vw, 14px);
+  overflow: hidden;
+  max-width: 100%;
+  font-family: 'Cairo', 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
 }
-.yamg-post-actions button:hover { background: rgba(255,255,255,0.05); color: white; }
+
+.yamg-post-author {
+  display: flex;
+  align-items: center;
+  gap: clamp(8px, 2.4vw, 12px);
+  margin-bottom: clamp(8px, 2vw, 12px);
+  min-width: 0;
+  overflow: hidden;
+}
+.yamg-post-author img {
+  width: clamp(36px, 9.5vw, 42px);
+  height: clamp(36px, 9.5vw, 42px);
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1.5px solid var(--yamg-border-soft);
+}
+.yamg-post-name {
+  font-weight: 700;
+  font-size: clamp(0.82rem, 3.4vw, 0.95rem);
+  color: var(--yamg-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  letter-spacing: 0.1px;
+}
+.yamg-post-time {
+  font-size: clamp(0.68rem, 2.8vw, 0.78rem);
+  color: var(--yamg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  margin-top: 2px;
+}
+.yamg-post-body {
+  font-size: clamp(0.82rem, 3.4vw, 0.94rem);
+  line-height: 1.75;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  color: var(--yamg-text);
+  padding: 2px 0;
+}
+.yamg-post-media {
+  margin-top: clamp(8px, 2.2vw, 12px);
+  border-radius: clamp(10px, 2.8vw, 14px);
+  overflow: hidden;
+  border: 1px solid var(--yamg-border-soft);
+  max-width: 100%;
+}
+.yamg-post-media img,
+.yamg-post-media video {
+  width: 100%;
+  height: auto;
+  display: block;
+  max-width: 100%;
+}
+
+/* الفوتر: شبكة grid لن تنكسر أبداً */
+.yamg-post-actions {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: clamp(4px, 1.4vw, 8px);
+  margin-top: clamp(10px, 2.6vw, 14px);
+  padding-top: clamp(8px, 2.2vw, 12px);
+  border-top: 1px solid var(--yamg-border-soft);
+  width: 100%;
+  overflow: hidden;
+}
+.yamg-post-actions button {
+  min-width: 0;
+  width: 100%;
+  background: transparent;
+  color: var(--yamg-muted);
+  border: 1px solid transparent;
+  padding: clamp(6px, 1.8vw, 9px) clamp(4px, 1.2vw, 8px);
+  border-radius: clamp(8px, 2.2vw, 11px);
+  cursor: pointer;
+  font-size: clamp(0.72rem, 2.9vw, 0.84rem);
+  font-weight: 600;
+  font-family: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.12s ease;
+  line-height: 1.3;
+}
+.yamg-post-actions button:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+.yamg-post-actions button:active { transform: scale(0.97); }
+
+/* تفاصيل زر التفاعل: إيموجي + عداد */
+.yamg-post-actions-count {
+  display: inline-block;
+  margin-inline-start: 4px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* شاشات صغيرة جداً (Galaxy Fold وأقل من 360px): إخفاء التسميات النصية والإبقاء على الإيموجي */
+@media (max-width: 360px) {
+  .yamg-post-actions {
+    gap: 3px;
+  }
+  .yamg-post-actions button {
+    font-size: 0.74rem;
+    padding: 6px 2px;
+    letter-spacing: -0.2px;
+  }
+  /* على الشاشات جداً الضيقة: تقليل الفجوة بين الإيموجي والعدد */
+  .yamg-post-actions-count {
+    margin-inline-start: 2px;
+    font-size: 0.7rem;
+  }
+}
+
+/* شاشات متوسطة (تابلت وما فوق): مزيد من الفسحة */
+@media (min-width: 768px) {
+  .yamg-card:has(.yamg-post-author) {
+    padding: 18px;
+    margin-bottom: 14px;
+  }
+}
 
 /* ===== Pinned bar ===== */
 .yamg-pinned-bar {

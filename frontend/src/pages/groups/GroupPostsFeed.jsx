@@ -170,19 +170,28 @@ const GroupPostsFeed = () => {
         ) : (
           posts.map((post) => {
             const isMine = (post.author || post.user_id) === currentUser;
+            const showPin = canPin;
+            const showDelete = isMine || canPin;
             return (
-              <article key={post.id} className="yamg-card hover" style={post.pinned ? { borderColor: 'rgba(245,158,11,.4)' } : {}}>
+              <article
+                key={post.id}
+                className="yamg-card hover"
+                style={post.pinned ? { borderColor: 'rgba(245,158,11,.4)' } : {}}
+              >
                 <div className="yamg-post-author">
                   <img
                     src={post.author_avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.author || 'u'}`}
                     alt=""
+                    loading="lazy"
                   />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="yamg-post-name">{post.author_name || post.author || 'مستخدم'}</div>
+                  <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                    <div className="yamg-post-name" title={post.author_name || post.author}>
+                      {post.author_name || post.author || 'مستخدم'}
+                    </div>
                     <div className="yamg-post-time">{formatTime(post.created_at || post.timestamp)}</div>
                   </div>
-                  {post.pinned && <span className="yamg-tag warning">📌 مثبّت</span>}
-                  {post._pending && <span className="yamg-tag">جاري الإرسال…</span>}
+                  {post.pinned && <span className="yamg-tag warning" style={{ flexShrink: 0 }}>📌</span>}
+                  {post._pending && <span className="yamg-tag" style={{ flexShrink: 0 }}>…</span>}
                 </div>
 
                 <div className="yamg-post-body">{post.content || post.text || post.body}</div>
@@ -190,24 +199,35 @@ const GroupPostsFeed = () => {
                 {(post.media_url || post.image_url) && (
                   <div className="yamg-post-media">
                     {(post.media_type === 'video') ? (
-                      <video src={post.media_url} controls />
+                      <video src={post.media_url} controls playsInline />
                     ) : (
-                      <img src={post.media_url || post.image_url} alt="" />
+                      <img src={post.media_url || post.image_url} alt="" loading="lazy" />
                     )}
                   </div>
                 )}
 
-                <div className="yamg-post-actions">
-                  <button>👍 {post.likes_count || 0} إعجاب</button>
-                  <button>💬 {post.comments_count || 0} تعليق</button>
-                  {canPin && (
-                    <button onClick={() => handlePin(post)}>
-                      {post.pinned ? '📍 إلغاء التثبيت' : '📌 تثبيت'}
+                <div className="yamg-post-actions" role="group" aria-label="إجراءات المنشور">
+                  <button type="button" aria-label="إعجاب">
+                    <span aria-hidden="true">👍</span>
+                    <span className="yamg-post-actions-count"> {post.likes_count || 0}</span>
+                  </button>
+                  <button type="button" aria-label="تعليقات">
+                    <span aria-hidden="true">💬</span>
+                    <span className="yamg-post-actions-count"> {post.comments_count || 0}</span>
+                  </button>
+                  {showPin && (
+                    <button type="button" onClick={() => handlePin(post)} aria-label={post.pinned ? 'إلغاء التثبيت' : 'تثبيت'}>
+                      <span aria-hidden="true">{post.pinned ? '📍' : '📌'}</span>
                     </button>
                   )}
-                  {(isMine || canPin) && (
-                    <button onClick={() => handleDelete(post)} style={{ color: '#fca5a5' }}>
-                      🗑️ حذف
+                  {showDelete && (
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(post)}
+                      style={{ color: '#fca5a5' }}
+                      aria-label="حذف"
+                    >
+                      <span aria-hidden="true">🗑️</span>
                     </button>
                   )}
                 </div>

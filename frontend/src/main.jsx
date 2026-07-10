@@ -259,6 +259,47 @@ import './styles/yamshat-fixes-v85.7-FRIENDS-CHAT-COMMENTS.css';
 // كاش Service Worker القديم). يجب أن يبقى هذا الاستيراد آخر شيء
 // كي يتفوّق على أي CSS legacy.
 import './styles/yamshat-fixes-v85.9-MOBILE-FORCE-FIXES.css';
+// v86.0: إصلاح 5 مشاكل حرجة أبلغ عنها المستخدمون:
+//   1) بوست الستوري لا يقبل السحب  2) إنشاء مجموعة لا يقبل السحب
+//   3) شات المجموعة لا يظهر رسائل ولا إدخال  4) الصور بحواف كبيرة
+//   5) التعليقات لا تظهر. يجب أن يبقى آخر استيراد CSS.
+import './styles/yamshat-fixes-v86.0-USER-REPORTED-FIXES.css';
+// v86.1: بعد فحص شامل لجميع الصفحات/البوستات، تم العثور على اثنتين
+//   لم يستجيبا للسحب لأعلى/أسفل على ويب الجوال:
+//   1) بوست "منشور جديد" (.ympc-page — PostComposerPage)
+//   2) بوست "إنشاء جديد" (.yam-compose-modal داخل Inbox)
+//   تم إصلاحهما بنفس بصمة الصفحة الرئيسية (parity كامل).
+import './styles/yamshat-fixes-v86.1-POST-COMPOSE-SCROLL.css';
+// v86.2: استكمال الفحص → عُثر على بوستَين إضافيَّين لم يعملا بسلاسة:
+//   1) بوست "إنشاء مجموعة" (.yam-create-group-page — /groups/create)
+//   2) بوست "إنشاء ريل/صورة" (.ymrc-root — ReelComposer)
+//   أصبحا يتصرَّفان مثل الصفحة الرئيسية بالضبط (parity كامل).
+import './styles/yamshat-fixes-v86.2-CREATE-REEL-SCROLL.css';
+// v86.3: استكمال الفحص → عُثر على صفحتَين إضافيَّتَين لم يعملا بسلاسة:
+//   1) صفحة "إعدادات المجموعة" (.yam-group-settings-page — /groups/:id/settings)
+//   2) صفحة "إعدادات المحادثة" (.yam-chat-settings-screen — /chat/:peer/settings)
+//   أصبحتا تعملان بسلاسة فل الفل مثل الصفحة الرئيسية على ويب الجوال.
+//   ⚠️ يجب أن يبقى آخر استيراد CSS ليفوز في cascade.
+import './styles/yamshat-fixes-v86.3-SETTINGS-SCROLL.css';
+
+// v86.4: إصلاح صفحتَي "الكل — الأصدقاء" (.friends-all-page — /friends/all)
+//   و "الإشعارات" (.yam-notifications-page — /notifications).
+//   أصبحتا تعملان بسلاسة فل الفل مثل الصفحة الرئيسية على ويب الجوال.
+import './styles/yamshat-fixes-v86.4-FRIENDS-NOTIFICATIONS-SCROLL.css';
+
+// v86.5: إصلاح صفحتَي "البحث الذكي" (.yam-search-page-shell — /search)
+//   و "استقبال المحتوى المُشارَك" (.share-target-page — /share-target).
+//   أصبحتا تعملان بسلاسة فل الفل مثل الصفحة الرئيسية على ويب الجوال.
+import './styles/yamshat-fixes-v86.5-SEARCH-SHARETARGET-SCROLL.css';
+
+// v86.6: استكمال الفحص → عُثر على صفحتَين إضافيَّتَين لم يعملا بسلاسة:
+//   • "لوحة التحكم" (.dashboard-grid — /dashboard)
+//   • "اكتشاف المستخدمين" (.yam-users-page — /users)
+//   الحل: نقل الأم .page-content لتصبح الـ scroller الرأسي وكسر
+//   contain/transform legacy + touch-action:pan-y على كل الأبناء —
+//   نفس بصمة v86.4/v86.5 بحذافيرها.
+//   ⚠️ يجب أن يبقى آخر استيراد CSS ليفوز في cascade.
+import './styles/yamshat-fixes-v86.6-DASHBOARD-USERS-SCROLL.css';
 
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
@@ -268,7 +309,7 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v85.9-MOBILE-FORCE-FIXES';
+const BUILD_ID = 'yamshat-v86.6-DASHBOARD-USERS-SCROLL';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

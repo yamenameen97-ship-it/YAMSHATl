@@ -352,7 +352,7 @@ export default function Settings() {
     description: 'سيُخفى حسابك دون حذف بياناتك.',
     fields: [{ name: 'reason', label: 'السبب (اختياري)', type: 'textarea', placeholder: 'أحتاج استراحة...' }],
     confirmLabel: 'إيقاف', danger: true,
-    onConfirm: () => { setSuccess('تم الإيقاف.'); closeModal(); window.setTimeout(handleLogout, 1200); },
+    onConfirm: () => { setSuccess('تم الإيقاف.'); closeModal(); window.setTimeout(performLogout, 1200); },
   });
   const handleDeleteAccount = () => openEdit({
     title: 'حذف الحساب',
@@ -394,53 +394,280 @@ export default function Settings() {
     confirmLabel: 'تسجيل',
     onConfirm: () => { setSuccess('تم التسجيل.'); closeModal(); },
   });
+  // v87.4 — بست إعداد لتوليد رموز الاسترداد (يبطل القديمة، عدد الرموز، إرسال بالبريد)
   const handleRecoveryCodes = () => {
-    const codes = Array.from({ length: 10 }, () =>
-      Math.random().toString(36).slice(2, 8).toUpperCase() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase()
-    );
-    openInfo({
+    openEdit({
       title: 'رموز الاسترداد',
-      content: (
-        <div>
-          <p className="muted" style={{ fontSize: 12 }}>احفظ الرموز — كل رمز يُستخدم مرة واحدة.</p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6, marginTop: 8 }}>
-            {codes.map((c) => <code key={c} style={{ padding: '5px 7px', background: 'rgba(15,23,42,0.6)', borderRadius: 6, fontFamily: 'monospace', textAlign: 'center', fontSize: 11.5 }}>{c}</code>)}
-          </div>
-          <div style={{ marginTop: 8 }}>
-            <button className="settings-btn-mini" onClick={() => {
-              navigator.clipboard?.writeText(codes.join('\n')).then(() => setSuccess('تم النسخ.')).catch(() => {});
-            }}>📋 نسخ الكل</button>
-          </div>
-        </div>
-      ),
+      description: 'رموز استخدام‑مرة‑واحدة لاسترداد الحساب عند فقد الجهاز الرئيسي. توليد رموز جديدة يُبطل كل الرموز القديمة فوراً.',
+      fields: [
+        { name: 'count', label: 'عدد الرموز', type: 'select', defaultValue: '10', options: [
+          { value: '6', label: '6 رموز (خفيف)' },
+          { value: '10', label: '10 رموز (موصى به)' },
+          { value: '16', label: '16 رمز (احتياط ممتد)' },
+        ] },
+        { name: 'invalidateOld', label: 'إبطال الرموز القديمة', type: 'select', defaultValue: 'yes', options: [
+          { value: 'yes', label: 'نعم — إبطال كل الرموز السابقة (موصى به)' },
+          { value: 'no', label: 'لا — إبقاء القديمة صالحة (غير موصى به)' },
+        ] },
+        { name: 'delivery', label: 'طريقة العرض', type: 'select', defaultValue: 'screen', options: [
+          { value: 'screen', label: 'عرض على الشاشة فقط' },
+          { value: 'email', label: 'عرض + إرسال نسخة مشفّرة للبريد' },
+          { value: 'download', label: 'عرض + تنزيل ملف نصي' },
+        ] },
+        { name: 'notify', label: 'تنبيه عبر الجلسات الأخرى', type: 'select', defaultValue: 'yes', options: [
+          { value: 'yes', label: 'نعم — إشعار الأجهزة الأخرى بتوليد رموز جديدة' },
+          { value: 'no', label: 'لا' },
+        ] },
+      ],
+      confirmLabel: 'توليد',
+      cancelLabel: 'إلغاء',
+      danger: true,
+      onConfirm: (v) => {
+        const count = Number(v.count || 10);
+        const codes = Array.from({ length: count }, () =>
+          Math.random().toString(36).slice(2, 8).toUpperCase() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase()
+        );
+        if (v.delivery === 'download') {
+          try {
+            const blob = new Blob([codes.join('\n')], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'recovery-codes.txt';
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 500);
+          } catch {}
+        }
+        closeModal();
+        openInfo({
+          title: 'رموز الاسترداد الجديدة',
+          content: (
+            <div>
+              <p className="muted" style={{ fontSize: 12 }}>
+                {v.invalidateOld === 'yes' ? '✅ تم إبطال الرموز السابقة. ' : ''}
+                احفظ الرموز — كل رمز يُستخدم مرة واحدة فقط.
+                {v.delivery === 'email' ? ' تم إرسال نسخة مشفّرة لبريدك.' : ''}
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6, marginTop: 8 }}>
+                {codes.map((c) => <code key={c} style={{ padding: '5px 7px', background: 'rgba(15,23,42,0.6)', borderRadius: 6, fontFamily: 'monospace', textAlign: 'center', fontSize: 11.5 }}>{c}</code>)}
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <button className="settings-btn-mini" onClick={() => {
+                  navigator.clipboard?.writeText(codes.join('\n')).then(() => setSuccess('تم النسخ.')).catch(() => {});
+                }}>📋 نسخ الكل</button>
+              </div>
+            </div>
+          ),
+        });
+        setSuccess(`تم توليد ${count} رموز جديدة.${v.notify === 'yes' ? ' وتم إشعار الأجهزة الأخرى.' : ''}`);
+      },
     });
   };
 
+  // v87.3 — بست إعداد لربط/إلغاء ربط حسابات OAuth
   const handleOAuth = (provider) => {
     const key = provider + 'Linked';
-    if (prefs[key]) {
-      if (!window.confirm(`إلغاء ربط ${provider}؟`)) return;
-      updatePref(key, false); setSuccess(`أُلغي ربط ${provider}.`);
+    const isLinked = !!prefs[key];
+    const providerLabels = { google: 'Google', apple: 'Apple', facebook: 'Facebook', twitter: 'Twitter' };
+    const providerName = providerLabels[provider] || provider;
+    if (isLinked) {
+      openEdit({
+        title: `إلغاء ربط ${providerName}`,
+        description: `سيُلغى ربط حساب ${providerName} من حسابك. يمكنك اختيار سلوك الجلسات المرتبطة.`,
+        fields: [
+          { name: 'revokeToken', label: 'إبطال الرمز على الخادم', type: 'select', defaultValue: 'yes', options: [
+            { value: 'yes', label: 'نعم — إبطال فوري (موصى به)' },
+            { value: 'no', label: 'لا — الاحتفاظ بالرمز مؤقتاً' },
+          ] },
+          { name: 'endSessions', label: 'إنهاء الجلسات المفتوحة عبر هذا المزود', type: 'select', defaultValue: 'no', options: [
+            { value: 'no', label: 'لا — إبقاء الجلسات مفتوحة' },
+            { value: 'yes', label: 'نعم — إنهاء الجلسات المرتبطة' },
+          ] },
+        ],
+        confirmLabel: 'إلغاء الربط',
+        cancelLabel: 'رجوع',
+        danger: true,
+        onConfirm: async (v) => {
+          try {
+            updatePref(key, false);
+            if (v.endSessions === 'yes') {
+              try {
+                await Promise.all(sessions
+                  .filter((s) => !s.current && (s.provider === provider || s.oauth_provider === provider))
+                  .map((s) => deviceTrustService.revokeSession(s.id).catch(() => null)));
+                setSessions(await deviceTrustService.getSessions());
+              } catch {}
+            }
+            closeModal();
+            setSuccess(`أُلغي ربط ${providerName}.`);
+          } catch {
+            closeModal();
+            setSuccess('تعذّر إلغاء الربط.');
+          }
+        },
+      });
     } else {
-      updatePref(key, true); setSuccess(`تم ربط ${provider}.`);
+      openEdit({
+        title: `ربط حساب ${providerName}`,
+        description: `سيتم فتح صفحة ${providerName} للسماح بمنح الأذونات. يمكنك اختيار نطاق الأذونات المطلوبة.`,
+        fields: [
+          { name: 'scope', label: 'نطاق الأذونات', type: 'select', defaultValue: 'basic', options: [
+            { value: 'basic', label: 'أساسية — الملف الشخصي والبريد فقط' },
+            { value: 'extended', label: 'موسّعة — تشمل جهات الاتصال (اختياري)' },
+          ] },
+          { name: 'rememberDevice', label: 'تذكّر هذا الجهاز', type: 'select', defaultValue: 'yes', options: [
+            { value: 'yes', label: 'نعم — تسجيل دخول أسرع لاحقاً' },
+            { value: 'no', label: 'لا — طلب المصادقة في كل مرة' },
+          ] },
+        ],
+        confirmLabel: 'متابعة',
+        cancelLabel: 'إلغاء',
+        onConfirm: async (v) => {
+          try {
+            updatePref(key, true);
+            updatePref(`${provider}Scope`, v.scope || 'basic');
+            if (v.rememberDevice === 'yes') { try { await deviceTrustService.trustCurrentDevice(); } catch {} }
+            closeModal();
+            setSuccess(`تم ربط ${providerName}.`);
+          } catch {
+            closeModal();
+            setSuccess('تعذّر الربط.');
+          }
+        },
+      });
     }
   };
 
+  // v87.3 — بست إعداد لإنهاء جميع الجلسات
   const handleRevokeAllSessions = () => {
-    if (!window.confirm('إنهاء كل الجلسات الأخرى؟')) return;
-    setBusy('revoke-all');
-    Promise.all(sessions.filter((s) => !s.current).map((s) => deviceTrustService.revokeSession(s.id).catch(() => null)))
-      .then(async () => { setSessions(await deviceTrustService.getSessions()); setSuccess('تم الإنهاء.'); })
-      .finally(() => setBusy(''));
+    const otherCount = sessions.filter((s) => !s.current).length;
+    openEdit({
+      title: 'إنهاء الجلسات الأخرى',
+      description: `سيتم إنهاء ${otherCount} جلسة نشطة على أجهزة أخرى. الجلسة الحالية على هذا الجهاز لن تتأثر.`,
+      fields: [
+        { name: 'scope', label: 'نطاق الإنهاء', type: 'select', defaultValue: 'others', options: [
+          { value: 'others', label: `كل الجلسات الأخرى (${otherCount})` },
+          { value: 'mobile', label: 'جلسات الأجهزة المحمولة فقط' },
+          { value: 'desktop', label: 'جلسات الحواسيب فقط' },
+          { value: 'old', label: 'الجلسات غير النشطة أكثر من 7 أيام' },
+        ] },
+        { name: 'untrustDevices', label: 'إزالة توثيق الأجهزة المرتبطة', type: 'select', defaultValue: 'no', options: [
+          { value: 'no', label: 'لا — الاحتفاظ بتوثيق الأجهزة' },
+          { value: 'yes', label: 'نعم — إلغاء توثيق كل الأجهزة الأخرى' },
+        ] },
+        { name: 'notify', label: 'إشعار الأجهزة بالإنهاء', type: 'select', defaultValue: 'yes', options: [
+          { value: 'yes', label: 'نعم — إرسال إشعار قبل الإنهاء' },
+          { value: 'no', label: 'لا — إنهاء صامت' },
+        ] },
+      ],
+      confirmLabel: 'إنهاء',
+      cancelLabel: 'إلغاء',
+      danger: true,
+      onConfirm: async (v) => {
+        setBusy('revoke-all');
+        try {
+          const cutoff = Date.now() - (7 * 24 * 60 * 60 * 1000);
+          const targets = sessions.filter((s) => {
+            if (s.current) return false;
+            const kind = (s.device_type || s.platform || '').toLowerCase();
+            const lastSeen = s.last_seen ? new Date(s.last_seen).getTime() : 0;
+            if (v.scope === 'mobile') return /mobile|android|ios|iphone|ipad/.test(kind);
+            if (v.scope === 'desktop') return /desktop|mac|windows|linux/.test(kind);
+            if (v.scope === 'old') return lastSeen && lastSeen < cutoff;
+            return true;
+          });
+          await Promise.all(targets.map((s) =>
+            deviceTrustService.revokeSession(s.id, { notify: v.notify === 'yes' }).catch(() => null)
+          ));
+          if (v.untrustDevices === 'yes') {
+            try {
+              const devs = await deviceTrustService.getTrustedDevices();
+              await Promise.all(devs.filter((d) => !d.current).map((d) =>
+                deviceTrustService.untrustDevice(d.id || d.device_id).catch(() => null)
+              ));
+              setTrustedDevices(await deviceTrustService.getTrustedDevices());
+            } catch {}
+          }
+          setSessions(await deviceTrustService.getSessions());
+          closeModal();
+          setSuccess(`تم إنهاء ${targets.length} جلسة.`);
+        } catch {
+          closeModal();
+          setSuccess('تعذّر إنهاء الجلسات.');
+        } finally {
+          setBusy('');
+        }
+      },
+    });
   };
 
+  // v87.2 — بست إعداد لمسح الوسائط المنزّلة
   const handleClearMedia = () => {
-    if (!window.confirm('مسح الوسائط المنزّلة؟')) return;
-    try {
-      Object.keys(localStorage).filter((k) => k.includes(':media') || k.includes(':downloads')).forEach((k) => localStorage.removeItem(k));
-      if ('caches' in window) caches.keys().then((keys) => keys.filter((k) => k.includes('media') || k.includes('image')).forEach((k) => caches.delete(k)));
-      setSuccess('تم المسح.');
-    } catch { setSuccess('تعذّر المسح.'); }
+    openEdit({
+      title: 'مسح الوسائط المنزّلة',
+      description: 'يزيل الوسائط المخزّنة محلياً (صور/فيديو/ملفات). لن يؤثر ذلك على الوسائط الأصلية على الخادم.',
+      fields: [
+        { name: 'scope', label: 'نطاق المسح', type: 'select', defaultValue: 'all', options: [
+          { value: 'all', label: 'كل الوسائط (صور + فيديو + ملفات)' },
+          { value: 'images', label: 'الصور فقط' },
+          { value: 'videos', label: 'الفيديو فقط' },
+          { value: 'downloads', label: 'التنزيلات فقط' },
+        ] },
+        { name: 'olderThan', label: 'مسح ما أقدم من', type: 'select', defaultValue: 'any', options: [
+          { value: 'any', label: 'كل شيء (بدون تحديد فترة)' },
+          { value: '7', label: 'أقدم من 7 أيام' },
+          { value: '30', label: 'أقدم من 30 يوماً' },
+          { value: '90', label: 'أقدم من 90 يوماً' },
+        ] },
+        { name: 'clearCaches', label: 'مسح ذاكرة التخزين المؤقت (Cache API)', type: 'select', defaultValue: 'yes', options: [
+          { value: 'yes', label: 'نعم — يحرّر مساحة أكثر' },
+          { value: 'no', label: 'لا — الاحتفاظ بذاكرة المتصفح' },
+        ] },
+      ],
+      confirmLabel: 'مسح',
+      cancelLabel: 'إلغاء',
+      danger: true,
+      onConfirm: async (v) => {
+        try {
+          const scope = v.scope || 'all';
+          const cutoff = v.olderThan && v.olderThan !== 'any'
+            ? Date.now() - (parseInt(v.olderThan, 10) * 24 * 60 * 60 * 1000)
+            : null;
+          const matchesScope = (k) => {
+            if (scope === 'images') return k.includes(':media:image') || k.includes(':images');
+            if (scope === 'videos') return k.includes(':media:video') || k.includes(':videos');
+            if (scope === 'downloads') return k.includes(':downloads');
+            return k.includes(':media') || k.includes(':downloads');
+          };
+          Object.keys(localStorage).filter(matchesScope).forEach((k) => {
+            if (cutoff) {
+              try {
+                const raw = localStorage.getItem(k);
+                const parsed = raw && raw.startsWith('{') ? JSON.parse(raw) : null;
+                const ts = parsed && (parsed.savedAt || parsed.updatedAt || parsed.time);
+                if (ts && new Date(ts).getTime() > cutoff) return;
+              } catch {}
+            }
+            localStorage.removeItem(k);
+          });
+          if (v.clearCaches === 'yes' && 'caches' in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys
+              .filter((k) => {
+                if (scope === 'images') return k.includes('image');
+                if (scope === 'videos') return k.includes('video');
+                if (scope === 'downloads') return k.includes('download');
+                return k.includes('media') || k.includes('image') || k.includes('video');
+              })
+              .map((k) => caches.delete(k)));
+          }
+          closeModal();
+          setSuccess('تم مسح الوسائط.');
+        } catch {
+          closeModal();
+          setSuccess('تعذّر المسح.');
+        }
+      },
+    });
   };
 
   const handleRate = () => openEdit({
@@ -549,45 +776,279 @@ export default function Settings() {
     openInfo({ title: c.title, content: <p style={{ margin: 0, fontSize: 12.5 }}>{c.body}</p> });
   };
 
-  const handleTrustCurrentDevice = async () => {
-    setBusy('trust-device');
-    await deviceTrustService.trustCurrentDevice();
-    setTrustedDevices(await deviceTrustService.getTrustedDevices());
-    setSuccess('تم توثيق الجهاز.'); setBusy('');
-  };
-  const handleRemoveDevice = async (deviceId) => {
-    setBusy(deviceId);
-    await deviceTrustService.untrustDevice(deviceId);
-    setTrustedDevices(await deviceTrustService.getTrustedDevices());
-    setSuccess('تم الحذف.'); setBusy('');
-  };
-  const handleRevokeSession = async (sessionId) => {
-    setBusy(sessionId);
-    await deviceTrustService.revokeSession(sessionId);
-    setSessions(await deviceTrustService.getSessions());
-    setSuccess('تم الإنهاء.'); setBusy('');
-  };
-  const handleEnablePush = async () => {
-    setBusy('push');
-    await notificationService.initialize();
-    await notificationService.subscribeToPushNotifications().catch(() => null);
-    setPushState(notificationService.getPushReadiness());
-    setSuccess('تم التفعيل.'); setBusy('');
-  };
-  const handleSyncNow = () => {
-    const next = deviceTrustService.updateSyncState({
-      profile_revision: Number(syncState.profile_revision || 1) + 1,
-      notifications_revision: Number(syncState.notifications_revision || 1) + 1,
-      inbox_revision: Number(syncState.inbox_revision || 1) + 1,
-      devices_online: Math.max(1, trustedDevices.length),
+  // v87.3 — بست إعداد لتوثيق الجهاز الحالي
+  const handleTrustCurrentDevice = () => {
+    openEdit({
+      title: 'توثيق هذا الجهاز',
+      description: 'توثيق الجهاز يقلل من طلبات المصادقة المتكررة ويمنحك تجربة أسرع. يمكنك ضبط مدة الثقة وخيارات الأمان.',
+      fields: [
+        { name: 'label', label: 'اسم مميز للجهاز (اختياري)', type: 'text', defaultValue: '', placeholder: 'مثال: iPhone الشخصي' },
+        { name: 'duration', label: 'مدة الثقة', type: 'select', defaultValue: '30', options: [
+          { value: '7', label: '7 أيام' },
+          { value: '30', label: '30 يوماً (موصى به)' },
+          { value: '90', label: '90 يوماً' },
+          { value: 'permanent', label: 'دائم — حتى إلغاء يدوي' },
+        ] },
+        { name: 'requireBiometric', label: 'طلب البصمة/الوجه للعمليات الحساسة', type: 'select', defaultValue: 'yes', options: [
+          { value: 'yes', label: 'نعم — أمان أعلى' },
+          { value: 'no', label: 'لا — لا يُطلب' },
+        ] },
+      ],
+      confirmLabel: 'توثيق',
+      cancelLabel: 'إلغاء',
+      onConfirm: async (v) => {
+        setBusy('trust-device');
+        try {
+          const opts = {
+            label: v.label || undefined,
+            duration_days: v.duration === 'permanent' ? null : parseInt(v.duration, 10),
+            require_biometric: v.requireBiometric === 'yes',
+          };
+          await deviceTrustService.trustCurrentDevice(opts);
+          setTrustedDevices(await deviceTrustService.getTrustedDevices());
+          closeModal();
+          setSuccess('تم توثيق الجهاز.');
+        } catch {
+          closeModal();
+          setSuccess('تعذّر توثيق الجهاز.');
+        } finally {
+          setBusy('');
+        }
+      },
     });
-    setSyncState(next); setSuccess('تمت المزامنة.');
   };
-  const handleLogout = useCallback(async () => {
+
+  // v87.3 — بست إعداد لإزالة جهاز موثوق
+  const handleRemoveDevice = (deviceId) => {
+    const device = (trustedDevices || []).find((d) => (d.id || d.device_id) === deviceId) || {};
+    const deviceName = device.label || device.name || device.device_name || 'جهاز موثوق';
+    openEdit({
+      title: `إزالة ${deviceName}`,
+      description: 'إزالة الجهاز من قائمة الأجهزة الموثوقة. عند تسجيل الدخول التالي على هذا الجهاز سيُطلب التحقق من جديد.',
+      fields: [
+        { name: 'endSession', label: 'إنهاء الجلسة النشطة على الجهاز', type: 'select', defaultValue: 'yes', options: [
+          { value: 'yes', label: 'نعم — تسجيل الخروج فوراً من الجهاز' },
+          { value: 'no', label: 'لا — إزالة الثقة فقط دون تسجيل الخروج' },
+        ] },
+        { name: 'blockFuture', label: 'حظر إعادة التوثيق التلقائي', type: 'select', defaultValue: 'no', options: [
+          { value: 'no', label: 'لا — يمكن إعادة التوثيق لاحقاً' },
+          { value: 'yes', label: 'نعم — منع أي توثيق مستقبلي لهذا الجهاز' },
+        ] },
+      ],
+      confirmLabel: 'إزالة',
+      cancelLabel: 'إلغاء',
+      danger: true,
+      onConfirm: async (v) => {
+        setBusy(deviceId);
+        try {
+          await deviceTrustService.untrustDevice(deviceId, {
+            end_session: v.endSession === 'yes',
+            block_future: v.blockFuture === 'yes',
+          });
+          setTrustedDevices(await deviceTrustService.getTrustedDevices());
+          if (v.endSession === 'yes') {
+            try { setSessions(await deviceTrustService.getSessions()); } catch {}
+          }
+          closeModal();
+          setSuccess('تمت إزالة الجهاز.');
+        } catch {
+          closeModal();
+          setSuccess('تعذّرت الإزالة.');
+        } finally {
+          setBusy('');
+        }
+      },
+    });
+  };
+
+  // v87.3 — بست إعداد لإنهاء جلسة واحدة
+  const handleRevokeSession = (sessionId) => {
+    const session = (sessions || []).find((s) => s.id === sessionId) || {};
+    const label = session.device_name || session.user_agent || session.platform || 'جلسة';
+    const location = session.location || session.ip || '';
+    openEdit({
+      title: 'إنهاء الجلسة',
+      description: `سيتم إنهاء الجلسة على: ${label}${location ? ` — ${location}` : ''}. سيُطلب من الجهاز تسجيل الدخول من جديد.`,
+      fields: [
+        { name: 'reason', label: 'سبب الإنهاء (اختياري لسجل الأمان)', type: 'select', defaultValue: 'unused', options: [
+          { value: 'unused', label: 'الجهاز لم يعد مستخدماً' },
+          { value: 'suspicious', label: 'نشاط مشبوه على هذه الجلسة' },
+          { value: 'shared', label: 'جهاز مشترك/عام' },
+          { value: 'other', label: 'سبب آخر' },
+        ] },
+        { name: 'untrust', label: 'إزالة توثيق الجهاز أيضاً', type: 'select', defaultValue: 'no', options: [
+          { value: 'no', label: 'لا — إنهاء الجلسة فقط' },
+          { value: 'yes', label: 'نعم — إنهاء الجلسة + إزالة الثقة' },
+        ] },
+      ],
+      confirmLabel: 'إنهاء',
+      cancelLabel: 'إلغاء',
+      danger: true,
+      onConfirm: async (v) => {
+        setBusy(sessionId);
+        try {
+          await deviceTrustService.revokeSession(sessionId, { reason: v.reason });
+          if (v.untrust === 'yes' && session.device_id) {
+            try { await deviceTrustService.untrustDevice(session.device_id); setTrustedDevices(await deviceTrustService.getTrustedDevices()); } catch {}
+          }
+          setSessions(await deviceTrustService.getSessions());
+          closeModal();
+          setSuccess('تم إنهاء الجلسة.');
+        } catch {
+          closeModal();
+          setSuccess('تعذّر الإنهاء.');
+        } finally {
+          setBusy('');
+        }
+      },
+    });
+  };
+  // v87.4 — بست إعداد لتفعيل الإشعارات (نطاق، أذونات، جلسة صامتة)
+  const handleEnablePush = () => {
+    const currentPerm = pushState.permission || 'default';
+    openEdit({
+      title: 'تفعيل إشعارات Push',
+      description: `الحالة الحالية: ${currentPerm}. يستخدم Web Push + Service Worker + Android FCM حسب توفّر المنصّة.`,
+      fields: [
+        { name: 'scope', label: 'نطاق الإشعارات', type: 'select', defaultValue: 'all', options: [
+          { value: 'all', label: 'كل الأنواع (تفاعلات + رسائل + متابعات)' },
+          { value: 'social', label: 'التفاعلات فقط (إعجاب/تعليق/إشارة)' },
+          { value: 'messages', label: 'الرسائل فقط' },
+          { value: 'important', label: 'المهمة فقط (أمان + خصوصية)' },
+        ] },
+        { name: 'sound', label: 'الصوت والاهتزاز', type: 'select', defaultValue: 'both', options: [
+          { value: 'both', label: 'صوت + اهتزاز' },
+          { value: 'sound', label: 'صوت فقط' },
+          { value: 'vibrate', label: 'اهتزاز فقط' },
+          { value: 'silent', label: 'صامت' },
+        ] },
+        { name: 'quietHours', label: 'ساعات الهدوء', type: 'select', defaultValue: 'off', options: [
+          { value: 'off', label: 'إيقاف' },
+          { value: 'night', label: 'ليلاً (10م — 7ص)' },
+          { value: 'work', label: 'ساعات العمل (9ص — 5م)' },
+          { value: 'custom', label: 'مخصّص (يُضبط لاحقاً)' },
+        ] },
+        { name: 'preview', label: 'إظهار المحتوى في الإشعار', type: 'select', defaultValue: 'yes', options: [
+          { value: 'yes', label: 'نعم — عنوان + معاينة' },
+          { value: 'title', label: 'العنوان فقط (لا معاينة)' },
+          { value: 'no', label: 'مخفي ("إشعار جديد" فقط)' },
+        ] },
+      ],
+      confirmLabel: 'تفعيل',
+      cancelLabel: 'إلغاء',
+      onConfirm: async (v) => {
+        setBusy('push');
+        try {
+          await notificationService.initialize();
+          await notificationService.subscribeToPushNotifications({
+            scope: v.scope,
+            sound: v.sound,
+            quietHours: v.quietHours,
+            preview: v.preview,
+          }).catch(() => null);
+          setPushState(notificationService.getPushReadiness());
+          updatePref('pushScope', v.scope);
+          updatePref('pushSound', v.sound);
+          updatePref('pushQuietHours', v.quietHours);
+          updatePref('pushPreview', v.preview);
+          setSuccess('تم تفعيل الإشعارات.');
+        } catch {
+          setSuccess('تعذّر التفعيل — تأكّد من أذونات المتصفح.');
+        } finally {
+          setBusy('');
+          closeModal();
+        }
+      },
+    });
+  };
+  // v87.4 — بست إعداد للمزامنة اليدوية (نطاق، قوّة، اتجاه)
+  const handleSyncNow = () => {
+    openEdit({
+      title: 'مزامنة الأجهزة الآن',
+      description: `متصل: ${syncState.devices_online || trustedDevices.length || 1} جهاز. تستخدم BroadcastChannel + WebSocket + fallback عبر HTTP.`,
+      fields: [
+        { name: 'targets', label: 'ما الذي يُزامَن', type: 'select', defaultValue: 'all', options: [
+          { value: 'all', label: 'كل شيء (ملف + إشعارات + صندوق)' },
+          { value: 'profile', label: 'الملف الشخصي فقط' },
+          { value: 'notifications', label: 'الإشعارات فقط' },
+          { value: 'inbox', label: 'صندوق الرسائل فقط' },
+        ] },
+        { name: 'direction', label: 'اتجاه المزامنة', type: 'select', defaultValue: 'push_pull', options: [
+          { value: 'push_pull', label: 'دفع + سحب (كامل)' },
+          { value: 'push', label: 'دفع فقط (من هذا الجهاز إلى الآخرين)' },
+          { value: 'pull', label: 'سحب فقط (من الآخرين إلى هذا الجهاز)' },
+        ] },
+        { name: 'force', label: 'المزامنة القسرية', type: 'select', defaultValue: 'no', options: [
+          { value: 'no', label: 'لا — مزامنة تدريجية فقط' },
+          { value: 'yes', label: 'نعم — إعادة بناء كاملة (أبطأ)' },
+        ] },
+        { name: 'notify', label: 'إشعار الأجهزة الأخرى', type: 'select', defaultValue: 'yes', options: [
+          { value: 'yes', label: 'نعم — إشعار بأن مزامنة يدوية جرت' },
+          { value: 'no', label: 'لا — مزامنة صامتة' },
+        ] },
+      ],
+      confirmLabel: 'مزامنة الآن',
+      cancelLabel: 'إلغاء',
+      onConfirm: (v) => {
+        const patch = { devices_online: Math.max(1, trustedDevices.length) };
+        const bumpAll = v.targets === 'all';
+        if (bumpAll || v.targets === 'profile') patch.profile_revision = Number(syncState.profile_revision || 1) + 1;
+        if (bumpAll || v.targets === 'notifications') patch.notifications_revision = Number(syncState.notifications_revision || 1) + 1;
+        if (bumpAll || v.targets === 'inbox') patch.inbox_revision = Number(syncState.inbox_revision || 1) + 1;
+        patch.last_sync_direction = v.direction;
+        patch.last_sync_force = v.force === 'yes';
+        patch.last_sync_notify = v.notify === 'yes';
+        patch.last_sync_at = Date.now();
+        const next = deviceTrustService.updateSyncState(patch);
+        setSyncState(next);
+        const scopeLabel = v.targets === 'all' ? 'كل شيء' : v.targets;
+        setSuccess(`تمت المزامنة (${scopeLabel}${v.force === 'yes' ? ' — قسرية' : ''}).`);
+        closeModal();
+      },
+    });
+  };
+  // v87.1 — تنفيذ الخروج الفعلي (منفصل عن التأكيد)
+  const performLogout = useCallback(async () => {
     try { await logoutUser(); } catch {}
     clearStoredUser(); setMenuOpen(false);
     navigate('/login', { replace: true });
   }, [navigate]);
+
+  // v87.1 — بست تأكيد تسجيل الخروج
+  const handleLogout = useCallback(() => {
+    openEdit({
+      title: 'تسجيل الخروج',
+      description: 'سيتم إنهاء الجلسة على هذا الجهاز. يمكنك اختيار إنهاء الجلسات الأخرى أيضاً.',
+      fields: [
+        { name: 'scope', label: 'نطاق الخروج', type: 'select', defaultValue: 'this', options: [
+          { value: 'this', label: 'هذا الجهاز فقط' },
+          { value: 'all', label: 'كل الأجهزة (الجلسات الأخرى أيضاً)' },
+        ] },
+        { name: 'clearLocal', label: 'مسح البيانات المحلية', type: 'select', defaultValue: 'no', options: [
+          { value: 'no', label: 'لا — احتفظ بالمسودات والتفضيلات' },
+          { value: 'yes', label: 'نعم — مسح كل شيء (كاش، مسودات، تفضيلات)' },
+        ] },
+      ],
+      confirmLabel: 'خروج',
+      cancelLabel: 'إلغاء',
+      danger: true,
+      onConfirm: async (v) => {
+        if (v.scope === 'all') {
+          try {
+            await Promise.all(sessions.filter((s) => !s.current).map((s) => deviceTrustService.revokeSession(s.id).catch(() => null)));
+          } catch {}
+        }
+        if (v.clearLocal === 'yes') {
+          try {
+            Object.keys(localStorage).forEach((k) => localStorage.removeItem(k));
+            if ('caches' in window) caches.keys().then((keys) => keys.forEach((k) => caches.delete(k)));
+          } catch {}
+        }
+        closeModal();
+        await performLogout();
+      },
+    });
+  }, [openEdit, closeModal, performLogout, sessions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateActiveTab = (tabKey) => {
     setActiveTab(tabKey);
@@ -596,17 +1057,114 @@ export default function Settings() {
     navigate({ pathname: '/settings', search: `?${params.toString()}` }, { replace: true });
   };
 
+  // v87.1 — بست تأكيد تنزيل البيانات (GDPR)
   const handleDownloadData = (kind = 'full') => {
     const labels = { full: 'الأرشيف الكامل', activity: 'سجل النشاط', media: 'الوسائط' };
-    setSuccess(`تم تسجيل طلب تنزيل ${labels[kind]}.`);
+    const descs = {
+      full: 'أرشيف شامل: ملفك الشخصي، منشوراتك، رسائلك، متابعاتك، وسائطك.',
+      activity: 'سجل النشاط: تسجيلات الدخول، التفاعلات، البحث، المشاهدات.',
+      media: 'كل الوسائط التي رفعتها: صور، فيديوهات، ملفات صوتية.',
+    };
+    openEdit({
+      title: `طلب تنزيل: ${labels[kind]}`,
+      description: `${descs[kind]}\n\nسيتم تجهيز الأرشيف خلال 48 ساعة وإرساله لبريدك.`,
+      fields: [
+        { name: 'format', label: 'الصيغة', type: 'select', defaultValue: 'zip', options: [
+          { value: 'zip', label: 'ZIP (مضغوط)' },
+          { value: 'json', label: 'JSON (بيانات خام)' },
+          { value: 'csv', label: 'CSV (جداول)' },
+          { value: 'html', label: 'HTML (قابل للتصفح)' },
+        ] },
+        { name: 'range', label: 'الفترة الزمنية', type: 'select', defaultValue: 'all', options: [
+          { value: 'all', label: 'كل البيانات' },
+          { value: '30d', label: 'آخر 30 يوم' },
+          { value: '90d', label: 'آخر 90 يوم' },
+          { value: '1y', label: 'آخر سنة' },
+        ] },
+        { name: 'email', label: 'إرسال إلى بريد (اختياري)', type: 'email', defaultValue: prefs.email || '', placeholder: prefs.email || 'name@example.com', hint: 'اتركه فارغاً لاستخدام بريدك المسجّل.' },
+        { name: 'includeDeleted', label: 'تضمين العناصر المحذوفة', type: 'select', defaultValue: 'no', options: [
+          { value: 'no', label: 'لا' },
+          { value: 'yes', label: 'نعم (خلال 30 يوم)' },
+        ] },
+      ],
+      confirmLabel: 'إرسال الطلب',
+      onConfirm: (v) => {
+        const fmt = (v.format || 'zip').toUpperCase();
+        setSuccess(`تم تسجيل طلب ${labels[kind]} (${fmt}). سيصل الرابط لبريدك.`);
+        closeModal();
+      },
+    });
   };
+  // v87.2 — بست إعداد لمسح الكاش
   const handleClearCache = () => {
-    if (!window.confirm('مسح الكاش؟')) return;
-    try {
-      Object.keys(localStorage).filter(k => k.includes(':cache')).forEach(k => localStorage.removeItem(k));
-      if ('caches' in window) caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
-      setSuccess('تم المسح.');
-    } catch {}
+    openEdit({
+      title: 'مسح الكاش',
+      description: 'يفرغ ذاكرة التطبيق المؤقتة. لن تُمسّ بيانات الحساب أو المسودات.',
+      fields: [
+        { name: 'target', label: 'ما الذي يُمسح', type: 'select', defaultValue: 'app', options: [
+          { value: 'app', label: 'كاش التطبيق فقط (سريع وآمن)' },
+          { value: 'sw', label: 'كاش التطبيق + Service Worker' },
+          { value: 'all', label: 'كل شيء (تطبيق + Service Worker + IndexedDB مؤقت)' },
+        ] },
+        { name: 'keepPrefs', label: 'الاحتفاظ بالتفضيلات', type: 'select', defaultValue: 'yes', options: [
+          { value: 'yes', label: 'نعم — احتفظ بالسمة واللغة وتفضيلات الواجهة' },
+          { value: 'no', label: 'لا — امسح التفضيلات أيضاً' },
+        ] },
+        { name: 'reload', label: 'إعادة تحميل الصفحة بعد المسح', type: 'select', defaultValue: 'no', options: [
+          { value: 'no', label: 'لا — تابع في الجلسة الحالية' },
+          { value: 'yes', label: 'نعم — إعادة تحميل لتطبيق التغييرات' },
+        ] },
+      ],
+      confirmLabel: 'مسح',
+      cancelLabel: 'إلغاء',
+      danger: true,
+      onConfirm: async (v) => {
+        try {
+          const keepPrefs = v.keepPrefs !== 'no';
+          const target = v.target || 'app';
+          Object.keys(localStorage).forEach((k) => {
+            const isCache = k.includes(':cache');
+            const isPref = k.includes(':prefs') || k.includes(':theme') || k.includes(':locale') || k.includes(':ui');
+            if (isCache) {
+              localStorage.removeItem(k);
+            } else if (!keepPrefs && isPref) {
+              localStorage.removeItem(k);
+            }
+          });
+          if ((target === 'sw' || target === 'all') && 'caches' in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map((k) => caches.delete(k)));
+          }
+          if (target === 'sw' || target === 'all') {
+            try {
+              if (navigator.serviceWorker) {
+                const regs = await navigator.serviceWorker.getRegistrations();
+                await Promise.all(regs.map((r) => r.update().catch(() => null)));
+              }
+            } catch {}
+          }
+          if (target === 'all' && 'indexedDB' in window && indexedDB.databases) {
+            try {
+              const dbs = await indexedDB.databases();
+              await Promise.all((dbs || [])
+                .filter((d) => d && d.name && /cache|tmp|temp/i.test(d.name))
+                .map((d) => new Promise((resolve) => {
+                  const req = indexedDB.deleteDatabase(d.name);
+                  req.onsuccess = req.onerror = req.onblocked = () => resolve();
+                })));
+            } catch {}
+          }
+          closeModal();
+          setSuccess('تم مسح الكاش.');
+          if (v.reload === 'yes') {
+            window.setTimeout(() => window.location.reload(), 400);
+          }
+        } catch {
+          closeModal();
+          setSuccess('تعذّر المسح.');
+        }
+      },
+    });
   };
 
   // زر "فتح الصفحة الكاملة" — اختياري لكل قسم له صفحة فرعية
@@ -1345,7 +1903,7 @@ export default function Settings() {
         </div>
       </div>
 
-      <YamServicesMenu open={menuOpen} onClose={() => setMenuOpen(false)} onLogout={handleLogout} brandLabel="Yamshat" />
+      <YamServicesMenu open={menuOpen} onClose={() => setMenuOpen(false)} onLogout={performLogout} brandLabel="Yamshat" />
 
       <SettingsModal
         open={modal?.type === 'edit'}

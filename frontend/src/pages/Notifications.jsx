@@ -172,7 +172,8 @@ export default function Notifications() {
 
   return (
     <MainLayout>
-      <div style={{ maxWidth: 920, margin: '0 auto', padding: '20px 10px', height: 'calc(100vh - 70px)', display: 'flex', flexDirection: 'column', gap: 18 }}>
+      {/* v86.4: class ثابت + data-page لتفعيل السحب على ويب الجوال (يقابل .yam-home-mobile-page) */}
+      <div className="yam-notifications-page" data-page="notifications" dir="rtl" style={{ maxWidth: 920, margin: '0 auto', padding: '20px 10px', height: 'calc(100vh - 70px)', display: 'flex', flexDirection: 'column', gap: 18 }}>
         <Card style={{ padding: 18 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <div>

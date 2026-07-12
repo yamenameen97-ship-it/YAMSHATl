@@ -301,6 +301,24 @@ import './styles/yamshat-fixes-v86.5-SEARCH-SHARETARGET-SCROLL.css';
 //   ⚠️ يجب أن يبقى آخر استيراد CSS ليفوز في cascade.
 import './styles/yamshat-fixes-v86.6-DASHBOARD-USERS-SCROLL.css';
 
+// v87.6: إصلاح عرض الصور والرسائل الصوتية في الدردشة لتطابق واتساب:
+//   • الصورة تظهر بدون تغليف فقاعة (is-media-only → خلفية شفافة)
+//   • الوقت + القراءة فوق الصورة كطبقة مثل واتساب
+//   • Voice Pill مع موجة واضحة، أيقونة ميكروفون، وزر سرعة أثناء التشغيل
+//   • تحييد .audio-waveform الافتراضية داخل الـ pill
+import './styles/yamshat-fixes-v87.6-CHAT-MEDIA-VOICE-WHATSAPP.css';
+
+// v87.9 — Buttons & Menus Global Polish
+// تحسين شامل لكل الأزرار والقوائم في جميع الصفحات (ظلال، انتقالات، تركيز واضح،
+// تنظيم مجموعات الأزرار، شكل احترافي لكل من BottomNav / Tabs / Dropdowns / Chips)
+import './styles/yamshat-fixes-v87.9-BUTTONS-MENUS-POLISH.css';
+
+// v87.10 — Chat Completeness Fixes
+// تفعيل إيصالات القراءة المرئية (✓ / ✓✓ / ✓✓ ملوّنة)، بانر إعادة المحاولة عند الفشل،
+// شارة "محوّلة" للرسائل المرفوعة، تحسين ألوان الحالات.
+// ⚠️ يجب أن يبقى آخر استيراد CSS ليفوز في cascade.
+import './styles/yamshat-fixes-v87.10-CHAT-COMPLETENESS.css';
+
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';
@@ -309,7 +327,7 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v86.6-DASHBOARD-USERS-SCROLL';
+const BUILD_ID = 'yamshat-v87.10-CHAT-COMPLETENESS';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

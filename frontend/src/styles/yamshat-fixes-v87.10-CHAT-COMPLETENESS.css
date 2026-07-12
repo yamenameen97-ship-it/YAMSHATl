@@ -1,0 +1,222 @@
+/* =============================================================================
+ * v87.10 — Chat Completeness Fixes
+ * =============================================================================
+ * إصلاح نواقص نظام الشات:
+ *   1. إيصالات القراءة المرئية (Read Receipts) داخل فقاعة الرسالة
+ *   2. باقة إعادة المحاولة عند فشل الإرسال (Message Retry Banner)
+ *   3. شارة "رسالة محوّلة" (Forwarded label)
+ *   4. تكامل الترجمة الفورية (Message Translator Chip)
+ *   5. توحيد ألوان الحالات وتحسين قراءتها
+ *
+ * ⚠️ يجب استيراده كآخر ملف CSS في main.jsx حتى يفوز في الـ cascade
+ * ============================================================================= */
+
+/* ────────────────────────────────────────────────────────────────
+ * 1) MessageReadReceipts — إيصالات القراءة
+ * ──────────────────────────────────────────────────────────────── */
+.message-read-receipts {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 14px;
+  padding: 0 2px;
+  margin-inline-start: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -1px; /* تقريب الـ ✓✓ */
+  transition: color 200ms ease, opacity 200ms ease, transform 200ms ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.message-read-receipts.is-pending {
+  color: rgba(148, 163, 184, 0.85); /* slate-400 */
+  animation: yam-status-pulse 1.4s ease-in-out infinite;
+}
+
+.message-read-receipts.is-sent {
+  color: rgba(148, 163, 184, 0.95); /* slate-400 */
+}
+
+.message-read-receipts.is-delivered {
+  color: rgba(148, 163, 184, 1); /* slate-400 قوي */
+}
+
+.message-read-receipts.is-read {
+  /* الأزرق المميّز لـ "مقروءة" — مطابق تجربة WhatsApp */
+  color: #34b7f1;
+  filter: drop-shadow(0 0 4px rgba(52, 183, 241, 0.35));
+}
+
+.message-read-receipts.is-failed {
+  color: #ef4444; /* red-500 */
+  font-weight: 800;
+}
+
+@keyframes yam-status-pulse {
+  0%, 100% { opacity: 0.6; }
+  50%      { opacity: 1; }
+}
+
+/* الوضع الداكن — لا تحتاج تعديلات كبيرة، الأزرق يظل واضحاً */
+@media (prefers-color-scheme: dark) {
+  .message-read-receipts.is-sent,
+  .message-read-receipts.is-delivered {
+    color: rgba(203, 213, 225, 0.9); /* slate-300 */
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────
+ * 2) MessageRetry — بانر إعادة المحاولة عند الفشل
+ * ──────────────────────────────────────────────────────────────── */
+.message-retry-container {
+  margin: 6px 0 2px;
+  max-width: 100%;
+}
+
+.message-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.14), rgba(220, 38, 38, 0.06));
+  border: 1px solid rgba(239, 68, 68, 0.30);
+  font-size: 0.85rem;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.message-error-banner .error-icon {
+  flex-shrink: 0;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.message-error-banner .error-text {
+  flex: 1;
+  color: #fca5a5;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-error-banner .retry-button {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(239, 68, 68, 0.55);
+  background: rgba(239, 68, 68, 0.20);
+  color: #fecaca;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 180ms ease;
+  font-family: inherit;
+}
+
+.message-error-banner .retry-button:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.32);
+  border-color: rgba(239, 68, 68, 0.75);
+  transform: translateY(-1px);
+}
+
+.message-error-banner .retry-button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.message-error-banner .retry-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.message-error-banner .retry-button .retry-icon {
+  display: inline-block;
+  transition: transform 300ms ease;
+}
+
+.message-error-banner .retry-button:hover:not(:disabled) .retry-icon {
+  transform: rotate(180deg);
+}
+
+.message-error-banner .retry-button.retrying .spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(252, 165, 165, 0.35);
+  border-top-color: #fca5a5;
+  border-radius: 50%;
+  animation: yam-retry-spin 0.75s linear infinite;
+}
+
+@keyframes yam-retry-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ────────────────────────────────────────────────────────────────
+ * 3) Forwarded label — شارة "رسالة محوّلة"
+ * ──────────────────────────────────────────────────────────────── */
+.bubble-forwarded-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+  padding: 2px 8px 2px 6px;
+  border-radius: 8px;
+  background: rgba(148, 163, 184, 0.12);
+  color: rgba(148, 163, 184, 0.95);
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-style: italic;
+  line-height: 1.2;
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bubble-forwarded-label svg {
+  flex-shrink: 0;
+  opacity: 0.85;
+  /* mirror للـ RTL لأن السهم أصلاً يمين→يسار في الأصل */
+}
+
+[dir="rtl"] .bubble-forwarded-label svg {
+  transform: scaleX(-1);
+}
+
+.yam-bubble.bubble-me .bubble-forwarded-label {
+  background: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.90);
+}
+
+@media (prefers-color-scheme: dark) {
+  .bubble-forwarded-label {
+    background: rgba(148, 163, 184, 0.16);
+    color: rgba(203, 213, 225, 0.95);
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────
+ * 4) دعم prefers-reduced-motion
+ * ──────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .message-read-receipts.is-pending {
+    animation: none;
+    opacity: 0.75;
+  }
+  .message-error-banner .retry-button,
+  .message-error-banner .retry-button .retry-icon,
+  .message-error-banner .retry-button.retrying .spinner {
+    transition: none;
+    animation: none;
+  }
+}

@@ -1,0 +1,420 @@
+/* ============================================================================
+   Yamshat — v87.6 CHAT MEDIA & VOICE WHATSAPP-STYLE FIXES
+   ----------------------------------------------------------------------------
+   المشاكل التي يعالجها هذا الملف (كما ورد من المستخدم):
+
+   1) الصورة المرسلة في الدردشة تظهر داخل "فقاعة" ملوّنة (تدرّج بنفسجي/سماوي)
+      مع مربّع أبيض صغير في المنتصف عليه علامة "!" — هذا يجعل الصورة تبدو
+      كأنها مغلّفة داخل حاوية غريبة. المطلوب أن تظهر مثل واتساب: الصورة
+      نفسها مصغّرة بحجم مناسب، بدون فقاعة/إطار زائد.
+
+   2) الرسالة الصوتية تظهر كمربّع تدرّج ملوّن كامل مع "0:00" فقط، بدون
+      موجة صوتية واضحة ولا أيقونة ميكروفون. المطلوب أن تظهر مثل واتساب:
+      Pill أفقي فيه زر تشغيل مستدير، موجة صوتية واضحة القراءة، وقت
+      المدة، وأيقونة ميكروفون صغيرة على يمين الوقت.
+
+   الجذر التقني للمشكلة:
+     • MessageBubble كان يضع الصورة داخل .yam-bubble.bubble-me الذي له
+       تدرّج ملوّن ثابت — أضفنا كلاس is-media-only يجعل الفقاعة شفافة
+       عند احتوائها على وسائط فقط.
+     • SafeImage كانت تستخدم crossOrigin="anonymous" الذي يفشل مع
+       الخوادم غير المدعومة لـ CORS → صورة معطوبة (fallback بعلامة !).
+       أزلنا crossOrigin من الصورة.
+     • AudioWaveform كانت تحمل خلفية/padding/min-height خاصّين بها،
+       فتحجب نفسها داخل .yam-voice-pill بارتفاع 32px. هنا نحيّد ذلك.
+     • مقاييس ولون الموجة داخل الـ pill يجب أن تكون واضحة على تدرّج me،
+       ونصف شفاف ولكن مرئي على them.
+   ========================================================================== */
+
+
+/* ─────────────────────────────────────────────────────────────
+   [1] IMAGE / VIDEO MEDIA-ONLY BUBBLE — بلا فقاعة (واتساب)
+   ───────────────────────────────────────────────────────────── */
+
+/* الفقاعة عند احتوائها فقط على صورة أو فيديو → شفافة، بلا padding/border/box */
+html body .yam-bubble.is-media-only,
+html body .yam-bubble.is-image-only,
+html body .yam-bubble.is-video-only {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  max-width: fit-content !important;
+  width: auto !important;
+  color: inherit !important;
+}
+
+/* عناصر داخلية للفقاعة الوسائطية: نص/رد/تعديل يبقى مخفياً — ليست موجودة أصلاً
+   لأننا نستخدم is-media-only فقط عندما لا يوجد نص ولا رد */
+
+/* شريط المعلومات (وقت + قراءة) — يظهر فوق الصورة كطبقة (overlay) مثل واتساب */
+html body .yam-bubble.is-media-only .bubble-meta {
+  position: absolute !important;
+  bottom: 6px !important;
+  inset-inline-end: 8px !important;
+  z-index: 3 !important;
+  background: rgba(0, 0, 0, 0.55) !important;
+  color: #fff !important;
+  padding: 3px 8px !important;
+  border-radius: 999px !important;
+  font-size: 10.5px !important;
+  font-weight: 500 !important;
+  margin: 0 !important;
+  gap: 4px !important;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  pointer-events: none !important;
+  opacity: 0.95 !important;
+}
+html body .yam-bubble.is-media-only .bubble-meta .bubble-time,
+html body .yam-bubble.is-media-only .bubble-meta .bubble-status {
+  color: #fff !important;
+  opacity: 1 !important;
+}
+
+/* زر "…" (المزيد) على فقاعة الوسائط — يبقى مرئياً في الزاوية العلوية */
+html body .yam-bubble.is-media-only .yam-bubble-more {
+  top: 6px !important;
+  inset-inline-end: 6px !important;
+  background: rgba(0, 0, 0, 0.5) !important;
+  color: #fff !important;
+  opacity: 0.85 !important;
+  z-index: 3 !important;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+/* زر media-button (الذي يلف SafeImage / video) — بلا خلفية سوداء أو حواف */
+html body .yam-bubble.is-media-only .yam-media-button {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  width: auto !important;
+  max-width: min(280px, 68vw) !important;
+  display: block !important;
+  position: relative !important;
+  cursor: pointer !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+  line-height: 0 !important;
+}
+
+/* الصورة نفسها — راديوس متناسق، بلا حواف */
+html body .yam-bubble.is-media-only .yam-safe-image {
+  border-radius: 14px !important;
+  overflow: hidden !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  line-height: 0 !important;
+  display: block !important;
+  width: auto !important;
+  max-width: min(280px, 68vw) !important;
+}
+html body .yam-bubble.is-media-only .yam-safe-image img {
+  border-radius: 14px !important;
+  display: block !important;
+  width: 100% !important;
+  height: auto !important;
+  max-height: 340px !important;
+  object-fit: cover !important;
+}
+
+/* الفيديو داخل فقاعة الوسائط */
+html body .yam-bubble.is-media-only video.yam-bubble-media {
+  width: 100% !important;
+  max-width: min(280px, 68vw) !important;
+  height: auto !important;
+  max-height: 340px !important;
+  border-radius: 14px !important;
+  display: block !important;
+  background: #000 !important;
+}
+
+/* تراجع عن قاعدة v86.0 :has() التي كانت تضيف padding+background للفقاعة
+   عند وجود صورة — الآن نعتمد على كلاس is-media-only بدلاً منها. */
+html body .yam-bubble:has(.yam-safe-image),
+html body .yam-bubble:has(.yam-media-button) {
+  padding: var(--chat-bubble-pad-y, 10px) var(--chat-bubble-pad-x, 14px);
+  background: initial;
+  max-width: initial;
+  width: auto;
+  border-radius: var(--chat-bubble-radius-base, 18px);
+}
+/* لكن إن كانت is-media-only فتبقى شفافة (أعلى أولوية) */
+html body .yam-bubble.is-media-only:has(.yam-safe-image),
+html body .yam-bubble.is-media-only:has(.yam-media-button) {
+  padding: 0 !important;
+  background: transparent !important;
+  max-width: fit-content !important;
+  border-radius: 0 !important;
+}
+
+/* حجم stack المحيط بالفقاعة الوسائطية — نمرّر max-width مرن */
+html body .yam-message-row.media-only .yam-message-stack {
+  max-width: min(72%, 320px);
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [2] VOICE MESSAGE — تطابق واتساب دقيق
+   ───────────────────────────────────────────────────────────── */
+
+/* الفقاعة الحاوية للرسالة الصوتية الخالصة: شفافة */
+html body .yam-bubble.is-voice-only {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  max-width: fit-content !important;
+}
+
+/* الحاوي الرئيسي لل Voice Pill — نمط واتساب النظيف */
+html body .yam-voice-pill {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 6px 12px 6px 6px !important;
+  border-radius: 26px !important;
+  min-width: 210px !important;
+  max-width: 320px !important;
+  width: auto !important;
+  min-height: 48px !important;
+  direction: ltr !important;
+  transition: box-shadow 160ms ease;
+}
+
+/* أسلوب فقاعة "أنا" (المرسل) — تدرّج بنفسجي مطابق للتصميم */
+html body .yam-voice-pill.me {
+  background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%) !important;
+  color: #ffffff !important;
+  border: 0 !important;
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.22) !important;
+}
+
+/* أسلوب فقاعة "الآخر" — رمادي داكن نظيف */
+html body .yam-voice-pill.them {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #e6e9f2 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12) !important;
+}
+
+html body .yam-voice-pill.playing {
+  box-shadow: 0 6px 20px rgba(124, 58, 237, 0.32) !important;
+}
+
+/* زر التشغيل — دائرة بيضاء واضحة مع أيقونة بنفسجية داخلية */
+html body .yam-voice-pill .yam-voice-pill__play {
+  flex: 0 0 auto !important;
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  border: 0 !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  cursor: pointer !important;
+  background: #ffffff !important;
+  color: #6d28d9 !important;
+  padding: 0 !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.14);
+  transition: transform 120ms ease;
+}
+html body .yam-voice-pill.them .yam-voice-pill__play {
+  background: linear-gradient(135deg, #8b5cf6, #6366f1) !important;
+  color: #ffffff !important;
+}
+html body .yam-voice-pill .yam-voice-pill__play:hover { transform: scale(1.06); }
+html body .yam-voice-pill .yam-voice-pill__play:active { transform: scale(0.94); }
+html body .yam-voice-pill .yam-voice-pill__play svg { display: block; }
+
+/* الموجة داخل الـ pill — تكون بلا خلفية/padding خاصّة، مرئية بوضوح */
+html body .yam-voice-pill .yam-voice-pill__wave {
+  flex: 1 1 auto !important;
+  min-width: 90px !important;
+  height: 32px !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: transparent !important;
+  color: inherit !important;
+  cursor: pointer !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  opacity: 1 !important;
+}
+
+/* تحييد الأنماط الافتراضية لـ .audio-waveform عندما تكون داخل voice-pill:
+   - إلغاء الخلفية الرمادية والـ padding
+   - تصغير الارتفاع ليلائم الـ pill (32px) */
+html body .yam-voice-pill .audio-waveform {
+  min-height: 24px !important;
+  height: 26px !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  gap: 2px !important;
+  overflow: visible !important;
+  width: 100% !important;
+  align-items: center !important;
+}
+html body .yam-voice-pill .audio-waveform span {
+  width: 3px !important;
+  min-height: 3px !important;
+  border-radius: 999px !important;
+  transition: opacity 160ms ease, background 160ms ease;
+}
+
+/* لون الأشرطة — واضح جداً على تدرّج me (أبيض شفاف) */
+html body .yam-voice-pill.me .audio-waveform span {
+  background: rgba(255, 255, 255, 0.55) !important;
+  opacity: 1 !important;
+}
+html body .yam-voice-pill.me .audio-waveform span.active {
+  background: #ffffff !important;
+  opacity: 1 !important;
+}
+
+/* لون الأشرطة على them (بنفسجي/فاتح على خلفية داكنة) */
+html body .yam-voice-pill.them .audio-waveform span {
+  background: rgba(139, 92, 246, 0.55) !important;
+  opacity: 1 !important;
+}
+html body .yam-voice-pill.them .audio-waveform span.active {
+  background: #a78bfa !important;
+  opacity: 1 !important;
+}
+
+/* الميتا (وقت + أيقونة ميكروفون / سرعة) */
+html body .yam-voice-pill .yam-voice-pill__meta {
+  flex: 0 0 auto !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-variant-numeric: tabular-nums;
+}
+html body .yam-voice-pill .yam-voice-pill__time {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  opacity: 0.92 !important;
+  min-width: 30px !important;
+  text-align: center !important;
+  color: inherit !important;
+}
+
+/* أيقونة الميكروفون الصغيرة على يمين الوقت — تظهر عند عدم التشغيل */
+html body .yam-voice-pill .yam-voice-pill__mic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: inherit;
+  opacity: 0.85;
+}
+html body .yam-voice-pill.me .yam-voice-pill__mic { opacity: 0.95; color: #ffffff; }
+html body .yam-voice-pill.them .yam-voice-pill__mic { opacity: 0.7; color: #a78bfa; }
+
+/* زر السرعة (يظهر أثناء التشغيل فقط) */
+html body .yam-voice-pill .yam-voice-pill__rate {
+  border: 0 !important;
+  background: rgba(255, 255, 255, 0.22) !important;
+  color: inherit !important;
+  border-radius: 999px !important;
+  padding: 2px 8px !important;
+  font-size: 10.5px !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  line-height: 1.4 !important;
+  transition: background 160ms ease;
+}
+html body .yam-voice-pill.me .yam-voice-pill__rate {
+  background: rgba(255, 255, 255, 0.28) !important;
+  color: #ffffff !important;
+}
+html body .yam-voice-pill.them .yam-voice-pill__rate {
+  background: rgba(139, 92, 246, 0.2) !important;
+  color: #c4b5fd !important;
+}
+html body .yam-voice-pill .yam-voice-pill__rate:hover {
+  background: rgba(255, 255, 255, 0.34) !important;
+}
+
+/* شريط bubble-meta تحت الـ pill (وقت + قراءة) — يظل مرئياً مثل واتساب */
+html body .yam-bubble.is-voice-only .bubble-meta {
+  padding: 2px 8px 0 !important;
+  justify-content: flex-end !important;
+  background: transparent !important;
+  color: rgba(226, 232, 240, 0.7) !important;
+  font-size: 10.5px !important;
+  gap: 4px !important;
+  margin-top: 3px !important;
+}
+html body .yam-message-row.me .yam-bubble.is-voice-only .bubble-meta {
+  color: rgba(226, 232, 240, 0.75) !important;
+}
+
+/* زر "…" على الفقاعة الصوتية */
+html body .yam-bubble.is-voice-only .yam-bubble-more {
+  inset-inline-end: -4px !important;
+  top: -4px !important;
+  background: rgba(0, 0, 0, 0.42) !important;
+  color: #fff !important;
+  opacity: 0.75 !important;
+  z-index: 3;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [3] MOBILE ADJUSTMENTS
+   ───────────────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  html body .yam-voice-pill {
+    min-width: 200px !important;
+    max-width: 78vw !important;
+    padding: 5px 10px 5px 5px !important;
+    gap: 8px !important;
+    min-height: 44px !important;
+  }
+  html body .yam-voice-pill .yam-voice-pill__play {
+    width: 34px !important;
+    height: 34px !important;
+  }
+  html body .yam-voice-pill .yam-voice-pill__wave {
+    min-width: 70px !important;
+    height: 28px !important;
+  }
+  html body .yam-voice-pill .audio-waveform {
+    height: 22px !important;
+  }
+  html body .yam-bubble.is-media-only .yam-safe-image,
+  html body .yam-bubble.is-media-only .yam-media-button {
+    max-width: min(260px, 72vw) !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [4] SAFETY NET — تجنّب أي خلفية إضافية على SafeImage
+   في حالات أخرى (خارج is-media-only)
+   ───────────────────────────────────────────────────────────── */
+html body .yam-safe-image.ok {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+}
+html body .yam-safe-image.ok::before {
+  display: none !important;
+}

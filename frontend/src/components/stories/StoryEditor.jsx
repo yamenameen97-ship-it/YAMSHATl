@@ -1,52 +1,232 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { uploadStory } from '../../api/stories.js';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { uploadStory, getStoryMusicCatalog } from '../../api/stories.js';
+import UserPickerModal from './UserPickerModal.jsx';
 
-/**
- * StoryEditor — محرر ستوري احترافي.
- * -----------------------------------------------------------------
- * • RTL + خط Noto Sans Arabic.
- * • متجاوب: ملء الشاشة على الجوال، إطار 9:16 على اللابتوب.
- * • معاينة فورية للصورة/الفيديو.
- * • أدوات: نص، ستيكرز، رسم بالقلم، فلاتر، موسيقى، خصوصية.
- * • خيار خصوصية: أصدقاء (افتراضي)، أصدقاء مقربون، خاص.
- * • شريط تقدّم أثناء الرفع.
- */
+const STORY_SETTINGS_KEY = 'yamshat:stories-settings';
+
+function _readDefaultPrivacy() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORY_SETTINGS_KEY) || '{}');
+    let v = String(raw?.whoCanSeeMyStory || 'friends').trim();
+    if (v === 'close-friends') v = 'close_friends';
+    if (raw?.closeFriendsOnly) v = 'close_friends';
+    if (!['friends', 'close_friends', 'private'].includes(v)) v = 'friends';
+    return v;
+  } catch {
+    return 'friends';
+  }
+}
+
+function toLocalDateTimeValue(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function formatCountdownRemaining(value) {
+  if (!value) return '';
+  const target = new Date(value);
+  if (Number.isNaN(target.getTime())) return '';
+  const diff = target.getTime() - Date.now();
+  if (diff <= 0) return 'انتهى العد التنازلي';
+  const totalSeconds = Math.floor(diff / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const parts = [];
+  if (days > 0) parts.push(`${days}ي`);
+  if (hours > 0 || days > 0) parts.push(`${hours}س`);
+  parts.push(`${minutes}د`);
+  if (days === 0) parts.push(`${String(seconds).padStart(2, '0')}ث`);
+  return parts.join(' ');
+}
+
+function wrapText(ctx, text, maxWidth) {
+  if (!text) return [];
+  const words = String(text).split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = '';
+  for (const word of words) {
+    const test = line ? `${line} ${word}` : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+async function buildTextStoryFile({
+  caption,
+  texts,
+  stickers,
+  locationText,
+  questionSticker,
+  mentions,
+}) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1080;
+  canvas.height = 1920;
+  const ctx = canvas.getContext('2d');
+
+  const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  grad.addColorStop(0, '#7c3aed');
+  grad.addColorStop(0.5, '#ec4899');
+  grad.addColorStop(1, '#0f172a');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  for (let i = 0; i < 6; i += 1) {
+    ctx.beginPath();
+    ctx.arc(150 + i * 160, 220 + (i % 2) * 120, 90 + i * 8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  let y = 260;
+
+  if (locationText) {
+    ctx.fillStyle = 'rgba(15,23,42,0.5)';
+    roundRect(ctx, 110, y - 46, 420, 72, 28, true, false);
+    ctx.font = '700 34px sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(`📍 ${locationText}`, 140, y);
+    y += 120;
+  }
+
+  const mainText = caption || texts.map((t) => t.text).join(' • ') || 'قصة نصية';
+  ctx.font = '700 72px sans-serif';
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.direction = 'rtl';
+  const lines = wrapText(ctx, mainText, 820).slice(0, 6);
+  lines.forEach((line) => {
+    ctx.fillText(line, canvas.width / 2, y);
+    y += 96;
+  });
+
+  if (mentions.length) {
+    y += 40;
+    ctx.font = '600 32px sans-serif';
+    ctx.fillStyle = '#fde68a';
+    ctx.fillText(mentions.map((m) => `@${m}`).join('   '), canvas.width / 2, y);
+    y += 90;
+  }
+
+  if (questionSticker) {
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    roundRect(ctx, 120, y - 30, 840, 220, 36, true, false);
+    ctx.font = '700 44px sans-serif';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('❓ سؤال', canvas.width / 2, y + 26);
+    ctx.font = '600 38px sans-serif';
+    const questionLines = wrapText(ctx, questionSticker, 720).slice(0, 3);
+    questionLines.forEach((line, idx) => {
+      ctx.fillText(line, canvas.width / 2, y + 94 + idx * 48);
+    });
+  }
+
+  const emojiLine = stickers.filter((s) => !String(s).includes('::')).slice(0, 4).join('   ');
+  if (emojiLine) {
+    ctx.font = '64px sans-serif';
+    ctx.fillText(emojiLine, canvas.width / 2, 1720);
+  }
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error('تعذّر إنشاء القصة النصية'));
+        return;
+      }
+      resolve(new File([blob], `text-story-${Date.now()}.png`, { type: 'image/png' }));
+    }, 'image/png', 0.95);
+  });
+}
+
+function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + width, y, x + width, y + height, r);
+  ctx.arcTo(x + width, y + height, x, y + height, r);
+  ctx.arcTo(x, y + height, x, y, r);
+  ctx.arcTo(x, y, x + width, y, r);
+  ctx.closePath();
+  if (fill) ctx.fill();
+  if (stroke) ctx.stroke();
+}
+
 export default function StoryEditor({ file, onClose, onSuccess }) {
   const [previewUrl, setPreviewUrl] = useState(() => (file ? URL.createObjectURL(file) : ''));
-  const [mediaType] = useState(() => (file?.type?.startsWith('video') ? 'video' : 'image'));
+  const [mediaType, setMediaType] = useState(() => (file?.type?.startsWith('video') ? 'video' : file ? 'image' : 'text'));
   const [stickers, setStickers] = useState([]);
   const [texts, setTexts] = useState([]);
   const [caption, setCaption] = useState('');
-  const [privacy, setPrivacy] = useState('friends'); // friends | close_friends | private
+  const [privacy, setPrivacy] = useState(() => _readDefaultPrivacy());
   const [filterName, setFilterName] = useState('');
   const [music, setMusic] = useState('');
+  const [musicCatalog, setMusicCatalog] = useState([]);
+  const [showMusicPicker, setShowMusicPicker] = useState(false);
+  const [previewingMusic, setPreviewingMusic] = useState('');
+  const musicAudioRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawMode, setDrawMode] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
-  // v59.10: دعم الاستطلاعات (poll)
   const [showPoll, setShowPoll] = useState(false);
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState(['', '']);
-  // ✅ v59.13.17 FIX #5: مودال إضافة نص داخلي بدلاً من window.prompt
-  // (window.prompt تجربة سيئة جداً على الموبايل + محجوب في iframes/PWA)
+  const [showCountdown, setShowCountdown] = useState(false);
+  const [countdownAt, setCountdownAt] = useState('');
   const [showTextModal, setShowTextModal] = useState(false);
   const [textDraft, setTextDraft] = useState('');
-  // v59.10: معرفة إذا كان هناك تغييرات غير محفوظة
-  const dirty = caption || stickers.length || texts.length || music || filterName || showPoll || pollQuestion;
+  const [questionSticker, setQuestionSticker] = useState('');
+  const [showQuestionEditor, setShowQuestionEditor] = useState(false);
+  const [locationText, setLocationText] = useState('');
+  const [showLocationEditor, setShowLocationEditor] = useState(false);
+  const [mentions, setMentions] = useState([]);
+  const [showMentionsPicker, setShowMentionsPicker] = useState(false);
+  const [crossPostToReels, setCrossPostToReels] = useState(false);
 
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
   const stageRef = useRef(null);
-  // ✅ v59.13.7 FIX #1: حارس للمنع setState بعد unmount أثناء عملية رفع القصة
   const isMountedRef = useRef(true);
+
+  const dirty = Boolean(
+    caption || stickers.length || texts.length || questionSticker || locationText || mentions.length ||
+    (music && music !== 'none') || filterName || showPoll || pollQuestion || showCountdown || countdownAt || !file,
+  );
+
   useEffect(() => {
     isMountedRef.current = true;
     return () => { isMountedRef.current = false; };
   }, []);
 
-  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await getStoryMusicCatalog();
+        if (!cancelled) setMusicCatalog(res?.data?.items || []);
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    if (musicAudioRef.current) {
+      musicAudioRef.current.pause();
+      musicAudioRef.current = null;
+    }
+  }, [previewUrl]);
 
   useEffect(() => {
     if (canvasRef.current && stageRef.current) {
@@ -61,28 +241,63 @@ export default function StoryEditor({ file, onClose, onSuccess }) {
       ctx.lineWidth = 4;
       ctxRef.current = ctx;
     }
-  }, []);
+  }, [mediaType]);
+
+  const previewMusic = useCallback((url, key) => {
+    if (previewingMusic === key) {
+      if (musicAudioRef.current) {
+        musicAudioRef.current.pause();
+        musicAudioRef.current = null;
+      }
+      setPreviewingMusic('');
+      return;
+    }
+    if (musicAudioRef.current) {
+      musicAudioRef.current.pause();
+      musicAudioRef.current = null;
+    }
+    if (!url) {
+      setMusic('none');
+      setPreviewingMusic('');
+      return;
+    }
+    const audio = new Audio(url);
+    audio.volume = 0.45;
+    audio.loop = true;
+    audio.play().catch(() => {});
+    musicAudioRef.current = audio;
+    setPreviewingMusic(key);
+    setMusic(key);
+  }, [previewingMusic]);
 
   const addSticker = (emoji) => {
-    setStickers(s => [...s, { id: Date.now() + Math.random(), emoji, x: 40, y: 40 }]);
+    setStickers((s) => [...s, { id: Date.now() + Math.random(), emoji, x: 40, y: 40 }]);
   };
 
-  // ✅ v59.13.17 FIX #5: فتح مودال داخلي بدلاً من window.prompt
   const addText = () => {
     setTextDraft('');
     setShowTextModal(true);
   };
+
   const confirmAddText = () => {
     const value = textDraft.trim();
-    if (value) {
-      setTexts(t => [...t, { id: Date.now() + Math.random(), text: value, x: 30, y: 80 }]);
-    }
+    if (value) setTexts((t) => [...t, { id: Date.now() + Math.random(), text: value, x: 12, y: 16 + t.length * 10 }]);
     setShowTextModal(false);
     setTextDraft('');
   };
 
-  const removeText = (id) => setTexts(t => t.filter(x => x.id !== id));
-  const removeSticker = (id) => setStickers(s => s.filter(x => x.id !== id));
+  const removeText = (id) => setTexts((t) => t.filter((x) => x.id !== id));
+  const removeSticker = (id) => setStickers((s) => s.filter((x) => x.id !== id));
+  const removeMention = (username) => setMentions((arr) => arr.filter((item) => item !== username));
+
+  const getPos = (e) => {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const touch = e.touches?.[0];
+    const cx = touch ? touch.clientX : e.clientX;
+    const cy = touch ? touch.clientY : e.clientY;
+    return { x: cx - rect.left, y: cy - rect.top };
+  };
 
   const startDraw = (e) => {
     if (!drawMode || !ctxRef.current) return;
@@ -98,126 +313,120 @@ export default function StoryEditor({ file, onClose, onSuccess }) {
     ctxRef.current.stroke();
   };
   const endDraw = () => setIsDrawing(false);
-
-  const getPos = (e) => {
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const touch = e.touches?.[0];
-    const cx = touch ? touch.clientX : e.clientX;
-    const cy = touch ? touch.clientY : e.clientY;
-    return { x: cx - rect.left, y: cy - rect.top };
-  };
-
   const clearDrawing = () => {
-    if (ctxRef.current && canvasRef.current) {
-      ctxRef.current.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-    }
+    if (ctxRef.current && canvasRef.current) ctxRef.current.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
   };
+
+  const publishDisabled = useMemo(() => {
+    if (uploading) return true;
+    if (file) return false;
+    return !caption.trim() && !texts.length && !stickers.length && !questionSticker.trim() && !locationText.trim() && !mentions.length;
+  }, [uploading, file, caption, texts.length, stickers.length, questionSticker, locationText, mentions.length]);
 
   const handleUpload = useCallback(async () => {
-    if (!file) return;
     setUploading(true);
     setError('');
     setProgress(0);
     try {
       const drawingData = canvasRef.current?.toDataURL('image/png');
-      const validPollOptions = pollOptions.map(o => o.trim()).filter(Boolean);
-      // v59.13: نلتقط نتيجة الرفع (القصة الجديدة) ونمررها لـonSuccess
-      // حتى نتمكّن من إضافتها فوريًا في الواجهة بدون انتظار الباك إند.
+      const validPollOptions = pollOptions.map((o) => o.trim()).filter(Boolean);
+      const structuredStickers = [
+        ...stickers.map((s) => s.emoji),
+        ...(locationText.trim() ? [`location::${locationText.trim()}`] : []),
+        ...(questionSticker.trim() ? [`question::${questionSticker.trim()}`] : []),
+      ];
+
+      const generatedFile = file || await buildTextStoryFile({
+        caption,
+        texts,
+        stickers: structuredStickers,
+        locationText,
+        questionSticker,
+        mentions,
+      });
+
       const uploadResponse = await uploadStory(
-        file,
+        generatedFile,
         {
           caption,
           privacy,
           music,
           filter_name: filterName,
-          // v59.10: دعم الاستطلاعات
           poll_question: showPoll && validPollOptions.length >= 2 ? pollQuestion.trim() : '',
           poll_options: showPoll && validPollOptions.length >= 2 ? validPollOptions : [],
-          drawing_data: drawingData?.length < 4500 ? drawingData : '', // تجنّب إرسال صورة كبيرة جدًا
+          countdown_at: showCountdown && countdownAt && !Number.isNaN(new Date(countdownAt).getTime()) ? new Date(countdownAt).toISOString() : '',
+          drawing_data: drawingData?.length < 200000 ? drawingData : '',
           is_close_friends: privacy === 'close_friends',
           auto_delete_hours: 24,
-          stickers: stickers.map(s => s.emoji),
+          stickers: structuredStickers,
+          mentions,
+          cross_post_to_reels: crossPostToReels,
         },
         (evt) => {
-          // ✅ v59.13.7 FIX #1: فحص mount قبل setState في كولباك التقدّم
           if (!isMountedRef.current) return;
           if (evt?.total) setProgress(Math.round((evt.loaded / evt.total) * 100));
         },
       );
       const uploadedStory = uploadResponse?.data || null;
-      // ✅ v59.13.7 FIX #1: لا تستدعِ onSuccess إذا أُزيل المكوّن (الأب قد لا يزال حياً
-      // لكن نتجنّب اللعب بالحالة الداخلية لو حدث ذلك أثناء رفع طويل)
       if (isMountedRef.current && typeof onSuccess === 'function') {
-        onSuccess(uploadedStory, { file, caption, privacy });
+        onSuccess(uploadedStory, { file, generatedFile, caption, privacy });
       }
     } catch (err) {
-      console.error('[StoryEditor] upload failed', err);
       const msg = err?.response?.data?.detail || err?.message || '';
-      // ✅ v59.13.7 FIX #1: تجنّب setState إذا أُزيل المكوّن
-      if (isMountedRef.current) {
-        setError(msg ? `تعذّر الرفع: ${msg}` : 'تعذّر رفع القصة. يُرجى المحاولة مرة أخرى.');
-      }
+      if (isMountedRef.current) setError(msg ? `تعذّر الرفع: ${msg}` : 'تعذّر رفع القصة.');
     } finally {
-      // ✅ v59.13.7 FIX #1: تجنّب setState إذا أُزيل المكوّن
       if (isMountedRef.current) setUploading(false);
     }
-  }, [file, caption, privacy, music, filterName, stickers, showPoll, pollQuestion, pollOptions, onSuccess]);
+  }, [caption, countdownAt, crossPostToReels, file, filterName, locationText, mentions, music, onSuccess, pollOptions, pollQuestion, privacy, questionSticker, showCountdown, showPoll, stickers, texts]);
 
-  // v59.10: تأكيد عند الإغلاق إذا كانت هناك تعديلات
   const handleClose = useCallback(() => {
     if (uploading) return;
-    if (dirty && !window.confirm('أنت على وشك الخروج دون نشر. هل ترغب فعلاً بإغلاق المحرر؟')) {
-      return;
-    }
+    if (dirty && !window.confirm('أنت على وشك الخروج دون نشر. هل تريد الإغلاق؟')) return;
     if (typeof onClose === 'function') onClose();
   }, [dirty, uploading, onClose]);
 
   const FILTERS = [
-    { id: '',         label: 'بدون',   css: 'none' },
-    { id: 'mono',     label: 'أبيض/أسود', css: 'grayscale(1)' },
-    { id: 'warm',     label: 'دافئ',    css: 'sepia(0.4) saturate(1.2)' },
-    { id: 'cool',     label: 'بارد',    css: 'hue-rotate(180deg) saturate(1.1)' },
-    { id: 'vivid',    label: 'حيوي',    css: 'saturate(1.6) contrast(1.1)' },
-    { id: 'fade',     label: 'باهت',    css: 'opacity(0.85) contrast(0.9)' },
+    { id: '', label: 'بدون', css: 'none' },
+    { id: 'mono', label: 'أبيض/أسود', css: 'grayscale(1)' },
+    { id: 'warm', label: 'دافئ', css: 'sepia(0.4) saturate(1.2)' },
+    { id: 'cool', label: 'بارد', css: 'hue-rotate(180deg) saturate(1.1)' },
+    { id: 'vivid', label: 'حيوي', css: 'saturate(1.6) contrast(1.1)' },
+    { id: 'fade', label: 'باهت', css: 'opacity(0.85) contrast(0.9)' },
   ];
 
-  const activeFilterCss = FILTERS.find(f => f.id === filterName)?.css || 'none';
+  const activeFilterCss = FILTERS.find((f) => f.id === filterName)?.css || 'none';
+  const countdownPreviewLabel = showCountdown && countdownAt ? formatCountdownRemaining(countdownAt) : '';
+
+  const setCountdownPreset = (hours) => {
+    const date = new Date(Date.now() + hours * 60 * 60 * 1000);
+    setCountdownAt(toLocalDateTimeValue(date));
+    setShowCountdown(true);
+  };
 
   return (
     <div dir="rtl" className="yam-story-editor-overlay" role="dialog" aria-modal="true">
       <div className="yam-story-editor">
         <div className="yam-editor-header">
           <button type="button" onClick={handleClose} className="yam-editor-close" aria-label="إغلاق">✕</button>
-          <strong>قصة جديدة</strong>
-          <button
-            type="button"
-            onClick={handleUpload}
-            disabled={uploading || !file}
-            className="yam-editor-publish"
-          >
+          <strong>{file ? 'قصة جديدة' : 'قصة نصية'}</strong>
+          <button type="button" onClick={handleUpload} disabled={publishDisabled} className="yam-editor-publish">
             {uploading ? `${progress}%` : 'نشر'}
           </button>
         </div>
 
-        <div ref={stageRef} className="yam-editor-stage">
+        <div ref={stageRef} className={`yam-editor-stage ${mediaType === 'text' ? 'text-mode' : ''}`}>
           {mediaType === 'video' ? (
-            <video
-              src={previewUrl}
-              autoPlay
-              loop
-              muted
-              playsInline
-              style={{ filter: activeFilterCss }}
-              className="yam-editor-media"
-            />
+            <video src={previewUrl} autoPlay loop muted playsInline style={{ filter: activeFilterCss }} className="yam-editor-media" />
+          ) : previewUrl ? (
+            <img src={previewUrl} alt="معاينة" style={{ filter: activeFilterCss }} className="yam-editor-media" />
           ) : (
-            <img
-              src={previewUrl}
-              alt="معاينة"
-              style={{ filter: activeFilterCss }}
-              className="yam-editor-media"
-            />
+            <div className="yam-editor-text-preview" style={{ filter: activeFilterCss }}>
+              {locationText && <span className="yam-text-chip">📍 {locationText}</span>}
+              <div className="yam-editor-text-preview-main">{caption || texts[0]?.text || 'ابدأ بكتابة قصة نصية…'}</div>
+              {mentions.length > 0 && <div className="yam-editor-mentions-inline">{mentions.map((m) => <span key={m}>@{m}</span>)}</div>}
+              {questionSticker && <div className="yam-editor-question-preview"><strong>❓ سؤال</strong><span>{questionSticker}</span></div>}
+              {stickers.length > 0 && <div className="yam-editor-emojis">{stickers.map((s) => s.emoji).join(' ')}</div>}
+            </div>
           )}
 
           <canvas
@@ -229,253 +438,134 @@ export default function StoryEditor({ file, onClose, onSuccess }) {
             onTouchStart={startDraw}
             onTouchMove={moveDraw}
             onTouchEnd={endDraw}
-            style={{
-              position: 'absolute', inset: 0, width: '100%', height: '100%',
-              cursor: drawMode ? 'crosshair' : 'default',
-              pointerEvents: drawMode ? 'auto' : 'none',
-            }}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', cursor: drawMode ? 'crosshair' : 'default', pointerEvents: drawMode ? 'auto' : 'none' }}
           />
 
-          {stickers.map(s => (
-            <div
-              key={s.id}
-              onClick={() => removeSticker(s.id)}
-              style={{
-                position: 'absolute', insetInlineStart: `${s.x}%`, top: `${s.y}%`,
-                fontSize: 'clamp(32px, 8vw, 56px)', cursor: 'pointer', userSelect: 'none',
-                filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.5))',
-              }}
-              title="انقر للحذف"
-            >{s.emoji}</div>
+          {stickers.map((s) => (
+            <div key={s.id} onClick={() => removeSticker(s.id)} className="yam-stage-emoji" style={{ insetInlineStart: `${s.x}%`, top: `${s.y}%` }} title="انقر للحذف">{s.emoji}</div>
           ))}
-
-          {texts.map(t => (
-            <div
-              key={t.id}
-              onClick={() => removeText(t.id)}
-              style={{
-                position: 'absolute', insetInlineStart: `${t.x}%`, top: `${t.y}%`,
-                color: '#fff', fontSize: 'clamp(18px, 5vw, 28px)', fontWeight: 800,
-                textShadow: '0 2px 8px rgba(0,0,0,0.7)', cursor: 'pointer',
-                padding: '4px 10px', background: 'rgba(0,0,0,0.25)', borderRadius: 8,
-              }}
-              title="انقر للحذف"
-            >{t.text}</div>
+          {texts.map((t) => (
+            <div key={t.id} onClick={() => removeText(t.id)} className="yam-stage-text" style={{ insetInlineStart: `${t.x}%`, top: `${t.y}%` }} title="انقر للحذف">{t.text}</div>
           ))}
-
+          {countdownPreviewLabel && <div className="yam-editor-countdown-preview"><span className="yam-editor-countdown-chip">⏳ {countdownPreviewLabel}</span></div>}
           {error && <div className="yam-editor-error">{error}</div>}
-
-          {uploading && (
-            <div className="yam-editor-progress">
-              <div className="yam-editor-progress-bar" style={{ width: `${progress}%` }} />
-            </div>
-          )}
+          {uploading && <div className="yam-editor-progress"><div className="yam-editor-progress-bar" style={{ width: `${progress}%` }} /></div>}
         </div>
 
-        {/* أدوات */}
         <div className="yam-editor-tools">
           <button type="button" onClick={addText} className="yam-tool-btn">Aa نص</button>
-          <button
-            type="button"
-            onClick={() => setDrawMode(d => !d)}
-            className={`yam-tool-btn ${drawMode ? 'active' : ''}`}
-          >✏️ رسم</button>
-          {drawMode && (
-            <button type="button" onClick={clearDrawing} className="yam-tool-btn">🧽 مسح</button>
-          )}
+          <button type="button" onClick={() => setDrawMode((d) => !d)} className={`yam-tool-btn ${drawMode ? 'active' : ''}`}>✏️ رسم</button>
+          {drawMode && <button type="button" onClick={clearDrawing} className="yam-tool-btn">🧽 مسح</button>}
           <button type="button" onClick={() => addSticker('🔥')} className="yam-tool-btn">🔥</button>
           <button type="button" onClick={() => addSticker('❤️')} className="yam-tool-btn">❤️</button>
           <button type="button" onClick={() => addSticker('😂')} className="yam-tool-btn">😂</button>
-          <button type="button" onClick={() => addSticker('✨')} className="yam-tool-btn">✨</button>
-          {/* v59.10: زر الاستطلاع */}
-          <button
-            type="button"
-            onClick={() => setShowPoll(s => !s)}
-            className={`yam-tool-btn ${showPoll ? 'active' : ''}`}
-            title="إضافة استطلاع"
-          >📊 استطلاع</button>
+          <button type="button" onClick={() => setShowMentionsPicker(true)} className="yam-tool-btn">@ منشن</button>
+          <button type="button" onClick={() => setShowLocationEditor((s) => !s)} className={`yam-tool-btn ${showLocationEditor ? 'active' : ''}`}>📍 موقع</button>
+          <button type="button" onClick={() => setShowQuestionEditor((s) => !s)} className={`yam-tool-btn ${showQuestionEditor ? 'active' : ''}`}>❓ سؤال</button>
+          <button type="button" onClick={() => setShowPoll((s) => !s)} className={`yam-tool-btn ${showPoll ? 'active' : ''}`}>📊 استطلاع</button>
+          <button type="button" onClick={() => { const next = !showCountdown; setShowCountdown(next); if (next && !countdownAt) setCountdownPreset(24); }} className={`yam-tool-btn ${showCountdown ? 'active' : ''}`}>⏳ عدّاد</button>
         </div>
 
-        {/* v59.10: محرر الاستطلاع */}
-        {showPoll && (
-          <div className="yam-editor-poll">
-            <input
-              type="text"
-              dir="rtl"
-              value={pollQuestion}
-              onChange={(e) => setPollQuestion(e.target.value)}
-              placeholder="سؤال الاستطلاع…"
-              maxLength={140}
-              className="yam-editor-input"
-            />
-            {pollOptions.map((opt, idx) => (
-              <div key={idx} className="yam-poll-row">
-                <input
-                  type="text"
-                  dir="rtl"
-                  value={opt}
-                  onChange={(e) => {
-                    const next = [...pollOptions];
-                    next[idx] = e.target.value;
-                    setPollOptions(next);
-                  }}
-                  placeholder={`الخيار ${idx + 1}`}
-                  maxLength={60}
-                  className="yam-editor-input"
-                />
-                {pollOptions.length > 2 && (
-                  <button
-                    type="button"
-                    className="yam-poll-remove"
-                    onClick={() => setPollOptions(pollOptions.filter((_, i) => i !== idx))}
-                  >✕</button>
-                )}
-              </div>
-            ))}
-            {pollOptions.length < 4 && (
-              <button
-                type="button"
-                className="yam-poll-add"
-                onClick={() => setPollOptions([...pollOptions, ''])}
-              >+ إضافة خيار</button>
-            )}
+        {showLocationEditor && (
+          <div className="yam-editor-block">
+            <input type="text" dir="rtl" value={locationText} onChange={(e) => setLocationText(e.target.value)} placeholder="اسم الموقع أو المكان" maxLength={60} className="yam-editor-input" />
           </div>
         )}
 
-        {/* فلاتر */}
+        {showQuestionEditor && (
+          <div className="yam-editor-block">
+            <input type="text" dir="rtl" value={questionSticker} onChange={(e) => setQuestionSticker(e.target.value)} placeholder="اكتب السؤال الذي تريد طرحه" maxLength={140} className="yam-editor-input" />
+          </div>
+        )}
+
+        {showPoll && (
+          <div className="yam-editor-poll">
+            <input type="text" dir="rtl" value={pollQuestion} onChange={(e) => setPollQuestion(e.target.value)} placeholder="سؤال الاستطلاع…" maxLength={140} className="yam-editor-input" />
+            {pollOptions.map((opt, idx) => (
+              <div key={idx} className="yam-poll-row">
+                <input type="text" dir="rtl" value={opt} onChange={(e) => { const next = [...pollOptions]; next[idx] = e.target.value; setPollOptions(next); }} placeholder={`الخيار ${idx + 1}`} maxLength={60} className="yam-editor-input" />
+                {pollOptions.length > 2 && <button type="button" className="yam-poll-remove" onClick={() => setPollOptions(pollOptions.filter((_, i) => i !== idx))}>✕</button>}
+              </div>
+            ))}
+            {pollOptions.length < 4 && <button type="button" className="yam-poll-add" onClick={() => setPollOptions([...pollOptions, ''])}>+ إضافة خيار</button>}
+          </div>
+        )}
+
         <div className="yam-editor-filters">
-          {FILTERS.map(f => (
-            <button
-              key={f.id || 'none'}
-              type="button"
-              onClick={() => setFilterName(f.id)}
-              className={`yam-filter-btn ${filterName === f.id ? 'active' : ''}`}
-            >{f.label}</button>
+          {FILTERS.map((f) => (
+            <button key={f.id || 'none'} type="button" onClick={() => setFilterName(f.id)} className={`yam-filter-btn ${filterName === f.id ? 'active' : ''}`}>{f.label}</button>
           ))}
         </div>
 
-        {/* الكابشن + الخصوصية */}
         <div className="yam-editor-meta">
-          <input
-            type="text"
-            dir="rtl"
-            value={caption}
-            onChange={(e) => setCaption(e.target.value)}
-            placeholder="اكتب وصفًا (اختياري)…"
-            maxLength={300}
-            className="yam-editor-input"
-          />
-          <input
-            type="text"
-            dir="rtl"
-            value={music}
-            onChange={(e) => setMusic(e.target.value)}
-            placeholder="🎵 موسيقى (اختياري)"
-            maxLength={120}
-            className="yam-editor-input"
-          />
+          <input type="text" dir="rtl" value={caption} onChange={(e) => setCaption(e.target.value)} placeholder={file ? 'اكتب وصفًا (اختياري)…' : 'اكتب نص القصة…'} maxLength={300} className="yam-editor-input" />
+          <button type="button" onClick={() => setShowMusicPicker((s) => !s)} className="yam-editor-input yam-music-picker-btn">
+            {music && music !== 'none' && music !== '' ? `🎵 ${musicCatalog.find((m) => m.key === music)?.label || music}` : '🎵 إضافة موسيقى (اختياري)'}
+          </button>
+          {showMusicPicker && (
+            <div className="yam-music-picker" dir="rtl">
+              <div className="yam-music-picker-header">
+                <strong>🎵 مكتبة الموسيقى</strong>
+                <button type="button" onClick={() => { setShowMusicPicker(false); if (musicAudioRef.current) { musicAudioRef.current.pause(); musicAudioRef.current = null; } setPreviewingMusic(''); }}>✕</button>
+              </div>
+              <div className="yam-music-list">
+                {musicCatalog.length > 0 ? musicCatalog.map((item) => (
+                  <button key={item.key} type="button" className={`yam-music-item ${music === item.key ? 'selected' : ''}`} onClick={() => previewMusic(item.url, item.key)}>
+                    <span className="yam-music-label">{item.label}</span>
+                    {item.url && <span className="yam-music-play-icon">{previewingMusic === item.key ? '⏸' : '▶'}</span>}
+                    {music === item.key && item.url && <span className="yam-music-check">✓</span>}
+                  </button>
+                )) : <div className="yam-music-loading">جاري تحميل المكتبة…</div>}
+              </div>
+            </div>
+          )}
+
+          {mentions.length > 0 && (
+            <div className="yam-mentions-chips">
+              {mentions.map((username) => (
+                <button key={username} type="button" className="yam-chip" onClick={() => removeMention(username)}>@{username} ✕</button>
+              ))}
+            </div>
+          )}
+
+          <label className="yam-switch-row">
+            <input type="checkbox" checked={crossPostToReels} onChange={(e) => setCrossPostToReels(e.target.checked)} disabled={(file && !file.type?.startsWith('video')) || (!file && mediaType !== 'video')} />
+            <span>نشر تلقائي كريلز عند كون القصة فيديو</span>
+          </label>
+
           <div className="yam-editor-privacy" role="radiogroup" aria-label="خصوصية القصة">
-            <button
-              type="button"
-              role="radio"
-              aria-checked={privacy === 'friends'}
-              onClick={() => setPrivacy('friends')}
-              className={`yam-privacy-btn ${privacy === 'friends' ? 'active' : ''}`}
-            >👥 الأصدقاء</button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={privacy === 'close_friends'}
-              onClick={() => setPrivacy('close_friends')}
-              className={`yam-privacy-btn ${privacy === 'close_friends' ? 'active' : ''}`}
-            >💚 المقربون</button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={privacy === 'private'}
-              onClick={() => setPrivacy('private')}
-              className={`yam-privacy-btn ${privacy === 'private' ? 'active' : ''}`}
-            >🔒 خاص</button>
+            <button type="button" role="radio" aria-checked={privacy === 'friends'} onClick={() => setPrivacy('friends')} className={`yam-privacy-btn ${privacy === 'friends' ? 'active' : ''}`}>👥 الأصدقاء</button>
+            <button type="button" role="radio" aria-checked={privacy === 'close_friends'} onClick={() => setPrivacy('close_friends')} className={`yam-privacy-btn ${privacy === 'close_friends' ? 'active' : ''}`}>💚 المقربون</button>
+            <button type="button" role="radio" aria-checked={privacy === 'private'} onClick={() => setPrivacy('private')} className={`yam-privacy-btn ${privacy === 'private' ? 'active' : ''}`}>🔒 خاص</button>
           </div>
-          <p className="yam-editor-note">
-            ستظهر قصتك لأصدقائك المقبولين فقط — لا تظهر للعامة.
-          </p>
+          <p className="yam-editor-note">يمكنك الآن نشر قصة عادية أو قصة نصية فقط مع سؤال، موقع، منشن، استطلاع، وعدّاد تنازلي.</p>
         </div>
       </div>
 
-      {/* ✅ v59.13.17 FIX #5: مودال إضافة نص داخلي بدلاً عن window.prompt */}
-      {showTextModal ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="yam-story-text-title"
-          dir="rtl"
-          onClick={(e) => { if (e.target === e.currentTarget) { setShowTextModal(false); setTextDraft(''); } }}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 10000,
-            background: 'rgba(0,0,0,0.6)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 16,
-            fontFamily: "'Noto Sans Arabic','Cairo','Tahoma',sans-serif",
-          }}
-        >
-          <div style={{
-            background: '#1f2233', color: '#fff',
-            borderRadius: 14, width: '100%', maxWidth: 420,
-            padding: 18, boxShadow: '0 18px 48px rgba(0,0,0,0.45)',
-            border: '1px solid rgba(255,255,255,0.08)',
-          }}>
-            <h3 id="yam-story-text-title" style={{ margin: '0 0 12px', fontSize: 17, fontWeight: 700 }}>
-              🔤 إضافة نص للقصة
-            </h3>
-            <textarea
-              autoFocus
-              value={textDraft}
-              onChange={(e) => setTextDraft(e.target.value)}
-              placeholder="أدخل النص هنا…"
-              maxLength={140}
-              rows={3}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') { setShowTextModal(false); setTextDraft(''); }
-                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && textDraft.trim()) confirmAddText();
-              }}
-              style={{
-                width: '100%', boxSizing: 'border-box',
-                padding: 12, borderRadius: 10,
-                background: 'rgba(255,255,255,0.06)',
-                color: 'inherit', border: '1px solid rgba(255,255,255,0.12)',
-                fontFamily: 'inherit', fontSize: 16, resize: 'vertical',
-              }}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
-              <span style={{ fontSize: 11, opacity: 0.55 }}>Ctrl/Cmd + Enter للإضافة</span>
-              <span style={{ fontSize: 12, opacity: 0.6 }}>{textDraft.length}/140</span>
-            </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
-              <button
-                type="button"
-                onClick={() => { setShowTextModal(false); setTextDraft(''); }}
-                style={{
-                  padding: '9px 16px', borderRadius: 10, cursor: 'pointer',
-                  background: 'transparent', color: 'inherit',
-                  border: '1px solid rgba(255,255,255,0.16)', fontWeight: 600,
-                }}
-              >إلغاء</button>
-              <button
-                type="button"
-                disabled={!textDraft.trim()}
-                onClick={confirmAddText}
-                style={{
-                  padding: '9px 18px', borderRadius: 10, cursor: 'pointer',
-                  background: 'var(--primary, #8b5cf6)', color: '#fff',
-                  border: 'none', fontWeight: 700,
-                  opacity: !textDraft.trim() ? 0.5 : 1,
-                }}
-              >إضافة</button>
+      {showTextModal && (
+        <div role="dialog" aria-modal="true" dir="rtl" onClick={(e) => { if (e.target === e.currentTarget) { setShowTextModal(false); setTextDraft(''); } }} className="yam-modal-backdrop">
+          <div className="yam-modal-card">
+            <h3>🔤 إضافة نص للقصة</h3>
+            <textarea autoFocus value={textDraft} onChange={(e) => setTextDraft(e.target.value)} placeholder="أدخل النص هنا…" maxLength={140} rows={3} onKeyDown={(e) => { if (e.key === 'Escape') { setShowTextModal(false); setTextDraft(''); } if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && textDraft.trim()) confirmAddText(); }} />
+            <div className="yam-modal-meta"><span>Ctrl/Cmd + Enter للإضافة</span><span>{textDraft.length}/140</span></div>
+            <div className="yam-modal-actions">
+              <button type="button" onClick={() => { setShowTextModal(false); setTextDraft(''); }}>إلغاء</button>
+              <button type="button" disabled={!textDraft.trim()} onClick={confirmAddText} className="primary">إضافة</button>
             </div>
           </div>
         </div>
-      ) : null}
+      )}
+
+      <UserPickerModal
+        open={showMentionsPicker}
+        title="إضافة منشن إلى القصة"
+        excludedUsernames={mentions}
+        onPick={async (user) => {
+          if (user?.username && !mentions.includes(user.username)) setMentions((prev) => [...prev, user.username]);
+          setShowMentionsPicker(false);
+        }}
+        onClose={() => setShowMentionsPicker(false)}
+      />
 
       <style>{editorStyles}</style>
     </div>
@@ -483,256 +573,63 @@ export default function StoryEditor({ file, onClose, onSuccess }) {
 }
 
 const editorStyles = `
-/*
-  v85.5 FIX (مشكلة عدم القدرة على الوصول لزر النشر في الستوري):
-  - المشكلة السابقة: المحرر كان height: 100% + overflow: hidden فلم يتم عرض
-    زر النشر الموجود في الهيدر/الفوتر ولم يقبل السحب.
-  - الحل: جعل .yam-story-editor قابل للتمرير العمودي، وجعل الهيدر sticky
-    في الأعلى (ليبقى زر النشر مرئيًا دائمًا حتى أثناء التمرير).
-  - touch-action: pan-y + -webkit-overflow-scrolling: touch لتجربة سلسة.
-*/
-.yam-story-editor-overlay {
-  font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, -apple-system, sans-serif;
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.94);
-  z-index: 2100;
-  display: flex;
-  align-items: stretch;
-  justify-content: center;
-  padding: 0;
-  overflow: hidden;
-}
-.yam-story-editor {
-  width: 100%;
-  height: 100%;
-  max-width: 100vw;
-  background: #0a0a10;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-  touch-action: pan-y;
-}
-@media (min-width: 900px) {
-  .yam-story-editor-overlay { padding: 20px; align-items: center; }
-  .yam-story-editor {
-    max-width: 460px;
-    max-height: 96vh;
-    border-radius: 18px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.7);
-  }
-}
-.yam-editor-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  padding-top: calc(12px + env(safe-area-inset-top, 0px));
-  background: rgba(10,10,16,0.95);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  color: #fff;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  flex-shrink: 0;
-}
-.yam-editor-header strong { font-size: 15px; font-weight: 700; }
-.yam-editor-close, .yam-editor-publish {
-  background: transparent;
-  border: none;
-  color: #fff;
-  font-size: 16px;
-  cursor: pointer;
-  padding: 6px 12px;
-  border-radius: 12px;
-  font-family: inherit;
-  font-weight: 700;
-}
-.yam-editor-publish {
-  background: linear-gradient(135deg, #8b5cf6, #ec4899);
-  min-width: 70px;
-}
-.yam-editor-publish:disabled { opacity: 0.6; cursor: wait; }
-
-.yam-editor-stage {
-  position: relative;
-  flex: 0 0 auto;
-  min-height: 45vh;
-  max-height: 60vh;
-  background: #000;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-@media (min-width: 900px) {
-  .yam-editor-stage { flex: 1; min-height: 0; max-height: none; }
-}
-.yam-editor-media {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  transition: filter 0.25s;
-}
-.yam-editor-error {
-  position: absolute;
-  top: 12px;
-  inset-inline-start: 12px;
-  inset-inline-end: 12px;
-  background: rgba(239,68,68,0.95);
-  color: #fff;
-  padding: 10px 14px;
-  border-radius: 10px;
-  font-size: 13px;
-  text-align: center;
-}
-.yam-editor-progress {
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
-  height: 4px;
-  background: rgba(255,255,255,0.15);
-}
-.yam-editor-progress-bar {
-  height: 100%;
-  background: linear-gradient(90deg, #8b5cf6, #ec4899);
-  transition: width 0.2s;
-}
-
-.yam-editor-tools {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 10px 12px;
-  background: rgba(255,255,255,0.03);
-  border-top: 1px solid rgba(255,255,255,0.06);
-  scrollbar-width: none;
-}
-.yam-editor-tools::-webkit-scrollbar { display: none; }
-.yam-tool-btn {
-  flex-shrink: 0;
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.12);
-  color: #fff;
-  padding: 8px 14px;
-  border-radius: 18px;
-  font-size: 14px;
-  cursor: pointer;
-  font-family: inherit;
-  font-weight: 600;
-}
-.yam-tool-btn:hover { background: rgba(255,255,255,0.15); }
-.yam-tool-btn.active { background: #8b5cf6; border-color: #8b5cf6; }
-
-.yam-editor-filters {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 8px 12px;
-  scrollbar-width: none;
-}
-.yam-editor-filters::-webkit-scrollbar { display: none; }
-.yam-filter-btn {
-  flex-shrink: 0;
-  background: transparent;
-  color: #ddd;
-  border: 1px solid rgba(255,255,255,0.18);
-  padding: 6px 14px;
-  border-radius: 14px;
-  font-size: 12.5px;
-  cursor: pointer;
-  font-family: inherit;
-}
-.yam-filter-btn.active { background: #fff; color: #000; border-color: #fff; font-weight: 700; }
-
-.yam-editor-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 14px calc(24px + env(safe-area-inset-bottom, 0px));
-  background: rgba(255,255,255,0.02);
-  border-top: 1px solid rgba(255,255,255,0.06);
-}
-.yam-editor-input {
-  width: 100%;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.12);
-  color: #fff;
-  padding: 10px 14px;
-  border-radius: 12px;
-  font-size: 14px;
-  outline: none;
-  font-family: inherit;
-}
-.yam-editor-input:focus { border-color: rgba(139,92,246,0.7); }
-.yam-editor-input::placeholder { color: rgba(255,255,255,0.45); }
-
-.yam-editor-privacy {
-  display: flex;
-  gap: 6px;
-}
-.yam-privacy-btn {
-  flex: 1;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.12);
-  color: #ddd;
-  padding: 9px 8px;
-  border-radius: 10px;
-  font-size: 12.5px;
-  cursor: pointer;
-  font-family: inherit;
-  font-weight: 600;
-}
-.yam-privacy-btn.active {
-  background: linear-gradient(135deg, #8b5cf6, #ec4899);
-  color: #fff;
-  border-color: transparent;
-}
-.yam-editor-note {
-  font-size: 11.5px;
-  color: rgba(255,255,255,0.55);
-  margin: 4px 0 0;
-  text-align: center;
-}
-
-/* v59.10: محرر الاستطلاع */
-.yam-editor-poll {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px 14px;
-  background: rgba(139, 92, 246, 0.08);
-  border-top: 1px solid rgba(139, 92, 246, 0.25);
-}
-.yam-poll-row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-.yam-poll-row .yam-editor-input { flex: 1; }
-.yam-poll-remove {
-  background: rgba(239, 68, 68, 0.2);
-  border: 1px solid rgba(239, 68, 68, 0.4);
-  color: #fca5a5;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 14px;
-}
-.yam-poll-add {
-  background: rgba(139, 92, 246, 0.18);
-  border: 1px dashed rgba(139, 92, 246, 0.5);
-  color: #c4b5fd;
-  padding: 8px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 13px;
-  font-family: inherit;
-  font-weight: 600;
-}
+.yam-story-editor-overlay { font-family:'Noto Sans Arabic','Tajawal',system-ui,sans-serif; position:fixed; inset:0; background:rgba(0,0,0,.94); z-index:2100; display:flex; align-items:stretch; justify-content:center; overflow:hidden; }
+.yam-story-editor { width:100%; height:100%; max-width:100vw; background:#0a0a10; display:flex; flex-direction:column; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; }
+@media (min-width: 900px) { .yam-story-editor-overlay { padding:20px; align-items:center; } .yam-story-editor { max-width:460px; max-height:96vh; border-radius:18px; box-shadow:0 20px 60px rgba(0,0,0,.7); } }
+.yam-editor-header { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; background:rgba(10,10,16,.95); color:#fff; border-bottom:1px solid rgba(255,255,255,.06); position:sticky; top:0; z-index:20; }
+.yam-editor-close,.yam-editor-publish { background:transparent; border:none; color:#fff; font-size:16px; cursor:pointer; padding:6px 12px; border-radius:12px; font-family:inherit; font-weight:700; }
+.yam-editor-publish { background:linear-gradient(135deg,#8b5cf6,#ec4899); min-width:74px; }
+.yam-editor-publish:disabled { opacity:.6; cursor:not-allowed; }
+.yam-editor-stage { position:relative; min-height:45vh; max-height:60vh; background:#000; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+.yam-editor-stage.text-mode { background:linear-gradient(135deg,#7c3aed,#ec4899,#0f172a); }
+@media (min-width: 900px) { .yam-editor-stage { flex:1; min-height:0; max-height:none; } }
+.yam-editor-media { width:100%; height:100%; object-fit:contain; transition:filter .25s; }
+.yam-editor-text-preview { width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:32px; gap:18px; color:#fff; text-align:center; }
+.yam-editor-text-preview-main { font-size:clamp(24px,5vw,40px); font-weight:800; line-height:1.6; text-shadow:0 6px 22px rgba(0,0,0,.45); }
+.yam-text-chip,.yam-editor-countdown-chip,.yam-chip { display:inline-flex; align-items:center; gap:6px; padding:10px 14px; border-radius:999px; background:rgba(17,24,39,.75); border:1px solid rgba(255,255,255,.18); color:#fff; font-weight:800; font-size:13px; }
+.yam-editor-mentions-inline { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
+.yam-editor-mentions-inline span { background:rgba(255,255,255,.16); padding:7px 10px; border-radius:999px; font-size:13px; }
+.yam-editor-question-preview { max-width:88%; background:rgba(17,24,39,.5); border:1px solid rgba(255,255,255,.12); border-radius:18px; padding:16px; display:flex; flex-direction:column; gap:8px; }
+.yam-editor-question-preview strong { font-size:15px; }
+.yam-editor-emojis { font-size:32px; }
+.yam-stage-emoji { position:absolute; font-size:clamp(32px,8vw,56px); cursor:pointer; user-select:none; filter:drop-shadow(0 2px 6px rgba(0,0,0,.5)); }
+.yam-stage-text { position:absolute; color:#fff; font-size:clamp(18px,5vw,28px); font-weight:800; text-shadow:0 2px 8px rgba(0,0,0,.7); cursor:pointer; padding:4px 10px; background:rgba(0,0,0,.25); border-radius:8px; }
+.yam-editor-error { position:absolute; top:12px; inset-inline:12px; background:rgba(239,68,68,.95); color:#fff; padding:10px 14px; border-radius:10px; font-size:13px; text-align:center; }
+.yam-editor-progress { position:absolute; bottom:0; left:0; right:0; height:4px; background:rgba(255,255,255,.15); }
+.yam-editor-progress-bar { height:100%; background:linear-gradient(90deg,#8b5cf6,#ec4899); transition:width .2s; }
+.yam-editor-countdown-preview { position:absolute; top:18px; left:50%; transform:translateX(-50%); z-index:4; pointer-events:none; }
+.yam-editor-tools,.yam-editor-filters { display:flex; gap:8px; overflow-x:auto; padding:10px 12px; background:rgba(255,255,255,.03); border-top:1px solid rgba(255,255,255,.06); scrollbar-width:none; }
+.yam-editor-tools::-webkit-scrollbar,.yam-editor-filters::-webkit-scrollbar { display:none; }
+.yam-tool-btn,.yam-filter-btn { flex-shrink:0; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); color:#fff; padding:8px 14px; border-radius:18px; font-size:14px; cursor:pointer; font-family:inherit; font-weight:600; }
+.yam-tool-btn.active,.yam-filter-btn.active { background:#8b5cf6; border-color:#8b5cf6; }
+.yam-editor-meta,.yam-editor-block,.yam-editor-poll { display:flex; flex-direction:column; gap:10px; padding:12px; }
+.yam-editor-input { width:100%; box-sizing:border-box; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); color:#fff; padding:12px 14px; border-radius:14px; font-size:14px; font-family:inherit; }
+.yam-editor-input::placeholder { color:rgba(255,255,255,.45); }
+.yam-mentions-chips { display:flex; flex-wrap:wrap; gap:8px; }
+.yam-chip { background:rgba(56,189,248,.18); border-color:rgba(56,189,248,.35); cursor:pointer; font-size:12px; }
+.yam-switch-row { display:flex; align-items:center; gap:10px; color:#fff; font-size:13px; }
+.yam-editor-privacy { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.yam-privacy-btn { background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); color:#fff; padding:10px 12px; border-radius:14px; cursor:pointer; font-family:inherit; font-weight:700; }
+.yam-privacy-btn.active { background:rgba(139,92,246,.22); border-color:#8b5cf6; }
+.yam-editor-note { margin:0; opacity:.72; font-size:12px; color:#dbeafe; }
+.yam-poll-row { display:flex; gap:8px; align-items:center; }
+.yam-poll-remove,.yam-poll-add { border:none; cursor:pointer; border-radius:12px; font-family:inherit; }
+.yam-poll-remove { width:42px; height:42px; background:rgba(239,68,68,.16); color:#fff; }
+.yam-poll-add { align-self:flex-start; padding:10px 14px; background:rgba(255,255,255,.08); color:#fff; }
+.yam-music-picker { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:16px; overflow:hidden; }
+.yam-music-picker-header { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; color:#fff; border-bottom:1px solid rgba(255,255,255,.08); }
+.yam-music-picker-header button { background:transparent; border:none; color:#fff; cursor:pointer; font-size:18px; }
+.yam-music-list { display:flex; flex-direction:column; max-height:220px; overflow:auto; }
+.yam-music-item { display:flex; align-items:center; gap:8px; padding:10px 12px; background:transparent; border:none; color:#fff; cursor:pointer; font-family:inherit; text-align:right; }
+.yam-music-item.selected { background:rgba(139,92,246,.18); }
+.yam-music-label { flex:1; }
+.yam-music-loading { padding:14px; color:rgba(255,255,255,.68); }
+.yam-modal-backdrop { position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; padding:16px; }
+.yam-modal-card { background:#1f2233; color:#fff; border-radius:14px; width:100%; max-width:420px; padding:18px; box-shadow:0 18px 48px rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.08); }
+.yam-modal-card h3 { margin:0 0 12px; font-size:17px; font-weight:700; }
+.yam-modal-card textarea { width:100%; box-sizing:border-box; padding:12px; border-radius:10px; background:rgba(255,255,255,.06); color:inherit; border:1px solid rgba(255,255,255,.12); font-family:inherit; font-size:16px; resize:vertical; }
+.yam-modal-meta { display:flex; justify-content:space-between; align-items:center; margin-top:6px; font-size:12px; opacity:.65; }
+.yam-modal-actions { display:flex; gap:8px; margin-top:14px; justify-content:flex-end; }
+.yam-modal-actions button { padding:9px 16px; border-radius:10px; cursor:pointer; background:transparent; color:inherit; border:1px solid rgba(255,255,255,.16); font-weight:600; }
+.yam-modal-actions button.primary { background:var(--primary,#8b5cf6); color:#fff; border:none; }
 `;

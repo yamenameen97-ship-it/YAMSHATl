@@ -63,6 +63,9 @@ function normalizePost(p, i) {
   return {
     id: p.id ?? `p-${i}`,
     rawId: p.id,
+    /* ✅ v87.8 FIX: الاحتفاظ بـ user_id لاكتشاف الملكية بشكل موثوق
+       (مقارنة username وحدها قد تفشل إذا لم يتم hydrate للـ session.username) */
+    userId: p.user_id ?? p.author_id ?? p.userId ?? null,
     /* ✅ v48: تمرير username صريح لتمكين التوجيه إلى /profile/:username عند النقر */
     username: handle.replace(/^@/, ''),
     authorName: author,
@@ -415,9 +418,20 @@ function FeedMobile() {
 
   // ✅ v58.1 — إصلاح منطقي: مقارنة username وليس authorName (الاسم المعروض)
   // حتى يستطيع المستخدم حذف منشوره الخاص فعلياً.
+  // ✅ v87.8 FIX: زر "تعديل المنشور" لم يكن يظهر للمالك لأن المقارنة اعتمدت
+  // حصراً على session.username ويمكن أن يكون غير محمّل (undefined) في بعض مسارات
+  // إعادة ترطيب الجلسة. الآن نجرّب أيضاً مطابقة user_id (أقوى وأأمن).
   const isOwnMoreMenuPost = (() => {
-    const myUsername = String(session?.username || '').trim().toLowerCase().replace(/^@/, '');
-    if (!myUsername || !moreMenuPost) return false;
+    if (!moreMenuPost) return false;
+    // 1) مطابقة معرّف رقمي (أولوية)
+    const sessionId = session?.id ?? session?.user_id ?? session?.userId ?? null;
+    const postUserId = moreMenuPost.userId ?? moreMenuPost.user_id ?? null;
+    if (sessionId != null && postUserId != null) {
+      if (String(sessionId) === String(postUserId)) return true;
+    }
+    // 2) fallback: مطابقة username (حسّاسة لا حرف وألف/ياء)
+    const myUsername = String(session?.username || session?.user || '').trim().toLowerCase().replace(/^@/, '');
+    if (!myUsername) return false;
     const postUsername = String(
       moreMenuPost.username
       || (moreMenuPost.handle || '').replace(/^@/, '')

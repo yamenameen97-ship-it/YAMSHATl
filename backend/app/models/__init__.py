@@ -1,6 +1,7 @@
 from app.models.app_setting import AppSetting  # noqa: F401
 from app.models.audit_log import AuditLog  # noqa: F401
 from app.models.close_friend import CloseFriend  # noqa: F401
+from app.models.hidden_story_user import HiddenStoryUser  # noqa: F401
 from app.models.comment import Comment  # noqa: F401
 from app.models.comment_like import CommentLike  # noqa: F401
 from app.models.follow import Follow  # noqa: F401
@@ -20,6 +21,7 @@ from app.models.post_preference import PostPreference, CommentReaction  # noqa: 
 from app.models.user import User  # noqa: F401
 from app.models.user_block import UserBlock  # noqa: F401
 from app.models.user_mute import UserMute  # noqa: F401
+from app.models.muted_story_user import MutedStoryUser  # noqa: F401
 from app.models.user_preference import UserPreference  # noqa: F401
 from app.models.user_profile import UserProfile  # noqa: F401
 from app.models.user_session import UserSession  # noqa: F401

@@ -1,81 +1,74 @@
 import { memo, useMemo } from 'react';
 
 /**
- * MessageReadReceipts
- * ==================
- * يعرض مؤشرات حالة الرسالة:
- * - ✓ مرسلة (sent)
- * - ✓✓ تم التسليم (delivered)
- * - ✓✓ مقروءة (read)
- * 
- * يتم عرضها في أسفل الرسالة المرسلة من المستخدم الحالي
+ * MessageReadReceipts (v87.10)
+ * ============================
+ * يعرض مؤشرات حالة الرسالة داخل فقاعة MessageBubble:
+ * - ⏱  قيد الإرسال (pending)
+ * - ✓   مرسلة (sent)
+ * - ✓✓  تم التسليم (delivered) — رمادي
+ * - ✓✓  مقروءة (read) — أزرق
+ * - ✕   فشل الإرسال (failed)
+ *
+ * v87.10 changes:
+ * - يقبل `isMe` مباشرة (fallback إلى مقارنة sender/currentUser للتوافق العكسي)
+ * - يقرأ read_at / delivered_at / read_by_count (من WS chat/read_receipt)
+ * - يظهر أيضاً للرسائل الفاشلة (لعرض ✕) ولم يعد يعتمد فقط على sender===currentUser
  */
 function MessageReadReceipts({
   message,
   currentUser,
+  isMe: isMeProp,
   className = '',
 }) {
-  const isMine = message?.sender === currentUser;
-  
+  const isMine = useMemo(() => {
+    if (typeof isMeProp === 'boolean') return isMeProp;
+    if (message?.isMe === true) return true;
+    const me = String(currentUser || '').trim().toLowerCase().replace(/^@/, '');
+    const sender = String(
+      message?.sender_username || message?.sender || message?.author || message?.from || ''
+    ).trim().toLowerCase().replace(/^@/, '');
+    return Boolean(me) && Boolean(sender) && me === sender;
+  }, [isMeProp, currentUser, message]);
+
   const statusIcon = useMemo(() => {
     if (!isMine) return null;
-    
-    // حالة الرسالة: read > delivered > sent > pending > failed
-    if (message?.read_at || message?.read_receipt) {
-      return {
-        icon: '✓✓',
-        label: 'مقروءة',
-        className: 'read-receipt read',
-        timestamp: message?.read_at,
-      };
+    const lifecycle = message?.lifecycle?.status || message?.status;
+
+    // فشل الإرسال → أولوية عالية حتى لا يُخفى بواسطة sent_at
+    if (lifecycle === 'failed' || message?.failed) {
+      return { icon: '✕', label: 'فشل الإرسال', kind: 'failed' };
     }
-    
+
+    // قيد الإرسال
+    if (lifecycle === 'pending' || lifecycle === 'sending' || message?.pending) {
+      return { icon: '⏱', label: 'قيد الإرسال', kind: 'pending' };
+    }
+
+    // مقروءة (read) — أعلى من delivered
+    if (message?.read_at || message?.read_receipt || (message?.read_by_count > 0)) {
+      return { icon: '✓✓', label: 'مقروءة', kind: 'read', timestamp: message?.read_at };
+    }
+
+    // تم التسليم
     if (message?.delivered_at || message?.delivered) {
-      return {
-        icon: '✓✓',
-        label: 'تم التسليم',
-        className: 'read-receipt delivered',
-        timestamp: message?.delivered_at,
-      };
+      return { icon: '✓✓', label: 'تم التسليم', kind: 'delivered', timestamp: message?.delivered_at };
     }
-    
-    if (message?.sent_at || message?.status === 'sent' || message?.lifecycle?.status === 'sent') {
-      return {
-        icon: '✓',
-        label: 'مرسلة',
-        className: 'read-receipt sent',
-        timestamp: message?.sent_at || message?.created_at,
-      };
+
+    // مُرسلة (افتراضي بعد الرد من الخادم)
+    if (message?.sent_at || lifecycle === 'sent' || message?.id) {
+      return { icon: '✓', label: 'مرسلة', kind: 'sent', timestamp: message?.sent_at || message?.created_at };
     }
-    
-    if (message?.status === 'pending' || message?.lifecycle?.status === 'pending') {
-      return {
-        icon: '⏱',
-        label: 'قيد الإرسال',
-        className: 'read-receipt pending',
-      };
-    }
-    
-    if (message?.status === 'failed' || message?.lifecycle?.status === 'failed') {
-      return {
-        icon: '✕',
-        label: 'فشل الإرسال',
-        className: 'read-receipt failed',
-      };
-    }
-    
-    return {
-      icon: '○',
-      label: 'غير معروف',
-      className: 'read-receipt unknown',
-    };
+
+    return { icon: '⏱', label: 'قيد الإرسال', kind: 'pending' };
   }, [isMine, message]);
-  
-  if (!statusIcon) return null;
-  
+
+  if (!isMine || !statusIcon) return null;
+
   return (
     <span
-      className={`message-status-icon ${statusIcon.className} ${className}`}
+      className={`message-read-receipts is-${statusIcon.kind} ${className}`}
+      data-status={statusIcon.kind}
       title={statusIcon.label}
       aria-label={statusIcon.label}
     >
@@ -85,51 +78,3 @@ function MessageReadReceipts({
 }
 
 export default memo(MessageReadReceipts);
-
-/**
- * CSS Styles for MessageReadReceipts
- * ==================================
- * 
- * أضف هذا إلى global.css أو chat-styles.css:
- * 
- * .message-status-icon {
- *   display: inline-flex;
- *   align-items: center;
- *   justify-content: center;
- *   font-size: 0.85rem;
- *   font-weight: 600;
- *   margin-left: 4px;
- *   transition: color 200ms ease, opacity 200ms ease;
- * }
- * 
- * .message-status-icon.sent {
- *   color: rgba(148, 163, 184, 0.6);
- * }
- * 
- * .message-status-icon.delivered {
- *   color: rgba(148, 163, 184, 0.8);
- * }
- * 
- * .message-status-icon.read {
- *   color: #60a5fa;
- *   font-weight: 700;
- * }
- * 
- * .message-status-icon.pending {
- *   color: rgba(251, 146, 60, 0.7);
- *   animation: pulse 1.5s ease-in-out infinite;
- * }
- * 
- * .message-status-icon.failed {
- *   color: #ef4444;
- * }
- * 
- * .message-status-icon.unknown {
- *   color: rgba(148, 163, 184, 0.4);
- * }
- * 
- * @keyframes pulse {
- *   0%, 100% { opacity: 1; }
- *   50% { opacity: 0.5; }
- * }
- */

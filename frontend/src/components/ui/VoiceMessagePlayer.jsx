@@ -149,8 +149,10 @@ export default function VoiceMessagePlayer({
   }, [playbackRate, speedOptions]);
 
   // ===== الوضع المضغوط بنمط واتساب (Pill أفقي) =====
+  // v87.6: إعادة تصميم دقيق لتطابق واتساب 100٪ — موجة واضحة، أيقونة ميكروفون، إخفاء زر السرعة إلا أثناء التشغيل
   if (bubbleless) {
     const displayTime = isPlaying || hasPlayed ? currentTime : duration;
+    const showRate = isPlaying || (hasPlayed && playbackRate !== 1);
     return (
       <div
         className={`yam-voice-pill ${isMe ? 'me' : 'them'} ${isPlaying ? 'playing' : ''}`}
@@ -167,13 +169,17 @@ export default function VoiceMessagePlayer({
           aria-label={isPlaying ? 'إيقاف' : 'تشغيل'}
           disabled={loadError && !src}
         >
-          {loadError ? '!' : isPlaying ? (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+          {loadError ? (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
+            </svg>
+          ) : isPlaying ? (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
               <rect x="6" y="5" width="4" height="14" rx="1" />
               <rect x="14" y="5" width="4" height="14" rx="1" />
             </svg>
           ) : (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
               <path d="M8 5v14l11-7z" />
             </svg>
           )}
@@ -189,17 +195,23 @@ export default function VoiceMessagePlayer({
         </button>
 
         <div className="yam-voice-pill__meta">
-          <span className="yam-voice-pill__time">{formatTime(displayTime)}</span>
-          {(isPlaying || hasPlayed) && (
+          {showRate ? (
             <button
               type="button"
               className="yam-voice-pill__rate"
               onClick={cycleRate}
               aria-label="تغيير السرعة"
             >
-              ×{playbackRate}
+              {playbackRate}×
             </button>
+          ) : (
+            <span className="yam-voice-pill__mic" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.42 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.3 6-6.72h-1.7z"/>
+              </svg>
+            </span>
           )}
+          <span className="yam-voice-pill__time">{formatTime(displayTime)}</span>
         </div>
       </div>
     );

@@ -3,10 +3,10 @@ import { useState } from 'react';
 /**
  * SafeImage
  * --------------------------------------------------------------------------
- * ✅ v86.0 REDESIGN — عرض الصور في الدردشة مثل WhatsApp تماماً:
+ * ✅ v87.6 REDESIGN — عرض الصور في الدردشة مثل WhatsApp تماماً:
  *   • الحاوية تتقلص لحجم الصورة (لا حواف/خلفية زائدة)
- *   • بدون min-height ثابت (لا يظهر مستطيل رمادي فارغ)
- *   • max-width ذكي (min(260px, 62vw)) لملاءمة الجوال والكمبيوتر
+ *   • min-height ديناميكي فقط أثناء التحميل، صفر بعد النجاح
+ *   • max-width ذكي (min(280px, 68vw)) لملاءمة الجوال والكمبيوتر
  *   • loading placeholder صغير ومضغوط أثناء التحميل فقط
  *   • decoding=async + loading=lazy لأداء أفضل
  *   • fallback واضح عند فشل التحميل مع زر إعادة المحاولة
@@ -63,16 +63,16 @@ export default function SafeImage({
       tabIndex={0}
     >
       <style>{`
-        /* ✅ v86.0: حاوية تتقلص لحجم الصورة (مثل واتساب) — لا حواف زائدة */
+        /* ✅ v87.6: حاوية تتقلص لحجم الصورة تماماً (مثل واتساب) — بدون أي حواف زائدة */
         .yam-safe-image {
           position: relative;
-          display: inline-block;
+          display: block;
           width: auto;
-          max-width: min(260px, 62vw);
+          max-width: min(280px, 68vw);
           min-width: 0;
           min-height: 0;
           height: auto;
-          border-radius: 14px;
+          border-radius: 12px;
           overflow: hidden;
           background: transparent;
           padding: 0;
@@ -81,11 +81,11 @@ export default function SafeImage({
           cursor: pointer;
           font-family: 'Noto Sans Arabic', 'Cairo', 'Tahoma', sans-serif;
         }
-        /* أثناء التحميل فقط: أعطها إطاراً صغيراً مؤقتاً — سيختفي عند 'ok' */
+        /* أثناء التحميل فقط: مربع مؤقت خفيف — سيختفي عند 'ok' */
         .yam-safe-image.loading {
-          min-width: 180px;
-          min-height: 140px;
-          background: rgba(255,255,255,0.05);
+          min-width: 160px;
+          min-height: 120px;
+          background: rgba(255,255,255,0.06);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -96,8 +96,8 @@ export default function SafeImage({
           min-height: 0;
         }
         .yam-safe-image.error {
-          min-width: 180px;
-          min-height: 100px;
+          min-width: 160px;
+          min-height: 90px;
           background: rgba(239,68,68,0.08);
           display: flex;
           align-items: center;
@@ -111,7 +111,7 @@ export default function SafeImage({
           max-height: inherit;
           object-fit: cover;
           object-position: center;
-          border-radius: 14px;
+          border-radius: 12px;
           -webkit-user-drag: none;
           user-select: none;
         }
@@ -121,7 +121,7 @@ export default function SafeImage({
           background: linear-gradient(110deg, rgba(255,255,255,0.04) 30%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.04) 70%);
           background-size: 200% 100%;
           animation: yam-shimmer 1.2s infinite linear;
-          border-radius: 14px;
+          border-radius: 12px;
           pointer-events: none;
         }
         @keyframes yam-shimmer {
@@ -135,6 +135,7 @@ export default function SafeImage({
           color: #fca5a5;
           font-size: 13px;
           text-align: center;
+          line-height: 1.35;
         }
         .yam-safe-image .yam-img-fallback .icon { font-size: 24px; }
         .yam-safe-image .yam-img-fallback button {
@@ -161,7 +162,6 @@ export default function SafeImage({
           loading="lazy"
           decoding="async"
           referrerPolicy="no-referrer"
-          crossOrigin="anonymous"
           onLoad={handleLoad}
           onError={handleError}
           draggable={false}

@@ -53,6 +53,10 @@ export const unmuteUser = (username) => API.post('/users/unmute', { username });
 export const getCloseFriends = () => API.get('/users/me/close-friends', { cache: false, forceRefresh: true });
 export const addCloseFriend = (username) => API.post('/users/close-friends', { username });
 export const removeCloseFriend = (username) => API.delete(`/users/close-friends/${encodeURIComponent(username)}`);
+// ✅ v87.11 — Hide Story From (إخفاء القصة من مستخدمين محددين)
+export const getHiddenStoryUsers = () => API.get('/users/me/hidden-story-users', { cache: false, forceRefresh: true });
+export const addHiddenStoryUser = (username) => API.post('/users/hide-story-from', { username });
+export const removeHiddenStoryUser = (username) => API.delete(`/users/hide-story-from/${encodeURIComponent(username)}`);
 export const uploadAvatar = (formData) =>
   API.post('/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

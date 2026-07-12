@@ -6,6 +6,8 @@ import VoiceMessagePlayer from '../ui/VoiceMessagePlayer.jsx';
 import SafeImage from './SafeImage.jsx';
 import CallBubble from './CallBubble.jsx';
 import MessageContextPopup from './MessageContextPopup.jsx';
+import MessageReadReceipts from './MessageReadReceipts.jsx';
+import MessageRetry from './MessageRetry.jsx';
 import useMessageTranslation from '../../hooks/useMessageTranslation.js';
 
 const QUICK_REACTIONS = ['❤️', '🔥', '😂', '👏', '👍', '😮'];
@@ -150,6 +152,11 @@ function MessageBubble({
   };
 
   const isVoiceOnly = isVoice && !content && !replyTarget && !message?.deleted;
+  // ✅ v87.6: تحديد الفقاعات التي تحتوي فقط على صورة/فيديو (بدون نص أو رد)
+  // لجعلها تُعرض بنمط واتساب — بدون خلفية فقاعة، فقط الصورة/الفيديو نفسه
+  const isImageOnly = isImage && !content && !replyTarget && !message?.deleted;
+  const isVideoOnly = isVideo && !content && !replyTarget && !message?.deleted;
+  const isMediaOnly = isImageOnly || isVideoOnly;
 
   // === القائمة السياقية: فتح + إغلاق ===
   // v60: على الجوال نستخدم popupAnchor (MessageContextPopup) ، وعلى السطح نستخدم contextMenu القديم
@@ -311,7 +318,7 @@ function MessageBubble({
   return (
     <motion.div
       ref={(node) => { bubbleRef.current = node; registerMessageNode?.(String(messageId), node); }}
-      className={`yam-message-row ${isMe ? 'me' : 'them'} ${groupedWithPrev ? 'grouped-prev' : ''} ${groupedWithNext ? 'grouped-next' : ''} ${isVoiceOnly ? 'voice-only' : ''}`}
+      className={`yam-message-row ${isMe ? 'me' : 'them'} ${groupedWithPrev ? 'grouped-prev' : ''} ${groupedWithNext ? 'grouped-next' : ''} ${isVoiceOnly ? 'voice-only' : ''} ${isMediaOnly ? 'media-only' : ''}`}
       data-msg-id={messageId}
       layout={!reduceMotion}
       onMouseEnter={() => setShowToolbar(true)}
@@ -373,7 +380,7 @@ function MessageBubble({
         onMouseUp={handleMouseUp}
       >
         <motion.div
-          className={`yam-bubble ${isMe ? 'bubble-me' : 'bubble-them'} ${shouldGlow ? 'search-hit' : ''} ${showToolbar ? 'toolbar-open' : ''} ${isVoiceOnly ? 'is-voice-only' : ''}`}
+          className={`yam-bubble ${isMe ? 'bubble-me' : 'bubble-them'} ${shouldGlow ? 'search-hit' : ''} ${showToolbar ? 'toolbar-open' : ''} ${isVoiceOnly ? 'is-voice-only' : ''} ${isMediaOnly ? 'is-media-only' : ''} ${isImageOnly ? 'is-image-only' : ''} ${isVideoOnly ? 'is-video-only' : ''}`}
           layout={!reduceMotion}
         >
           <button
@@ -496,20 +503,40 @@ function MessageBubble({
           ) : null}
           {message?.deleted ? <div className="bubble-deleted">تم حذف الرسالة</div> : null}
 
+          {/* v87.10 — شارة الرسالة المُحوَّلة (Forwarded label) */}
+          {(message?.forwarded_from || message?.is_forwarded || message?.forwardedFrom) ? (
+            <div className="bubble-forwarded-label" aria-label="رسالة محوّلة">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="15 17 20 12 15 7" />
+                <path d="M4 18v-2a4 4 0 0 1 4-4h12" />
+              </svg>
+              <span>محوّلة{message?.forwarded_from ? ` من ${message.forwarded_from}` : ''}</span>
+            </div>
+          ) : null}
+
           <div className="bubble-meta">
             <span className="bubble-time">{formatMessageTime(message?.created_at)}</span>
             {message?.edited ? <span className="bubble-edited" title="تم التعديل">معدّلة</span> : null}
             {isMe ? (
-              <span
-                className="bubble-status"
-                data-status={message?.status || 'sent'}
-                data-ds-status-color={statusColor(message?.status)}
-              >
-                {statusTicks(message?.status)}
-              </span>
+              /* v87.10 — استبدال statusTicks الثابت بمكوّن MessageReadReceipts الديناميكي
+                 الذي يعرض ✓/✓✓/✓✓-مقروءة بألوان مختلفة حسب read_at/delivered_at */
+              <MessageReadReceipts
+                message={message}
+                currentUser={isMe ? message?.sender : undefined}
+                className={`bubble-status ds-color-${statusColor(message?.status)}`}
+              />
             ) : null}
           </div>
         </motion.div>
+
+        {/* v87.10 — بانر إعادة المحاولة عند فشل الإرسال */}
+        {isFailed && onResend ? (
+          <MessageRetry
+            message={message}
+            currentUser={isMe ? message?.sender : null}
+            onRetry={onResend}
+          />
+        ) : null}
 
         <AnimatePresence initial={false}>
           {topReactions.length ? (

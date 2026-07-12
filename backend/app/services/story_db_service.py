@@ -21,7 +21,7 @@ from typing import Optional
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
-from app.models.stories_reels import Story, StoryReply, StoryView
+from app.models.stories_reels import Story, StoryReply, StoryView, Reel
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -36,6 +36,18 @@ try:
     from app.models.close_friend import CloseFriend  # type: ignore
 except Exception:  # pragma: no cover
     CloseFriend = None  # type: ignore[assignment]
+
+# v87.11 — Hide Story From: قائمة المستخدمين الذين لا يرون قصص صاحب الحساب
+try:
+    from app.models.hidden_story_user import HiddenStoryUser  # type: ignore
+except Exception:  # pragma: no cover
+    HiddenStoryUser = None  # type: ignore[assignment]
+
+# v87.12 — Mute User Stories: قائمة المستخدمين الذين كتم منهم المستخدم قصصهم
+try:
+    from app.models.muted_story_user import MutedStoryUser  # type: ignore
+except Exception:  # pragma: no cover
+    MutedStoryUser = None  # type: ignore[assignment]
 
 try:
     from app.models.user_block import UserBlock  # type: ignore
@@ -95,6 +107,40 @@ def _dump_json(value: dict) -> str:
         return '{}'
 
 
+# v87.12 — كتالوج الموسيقى: تحويل اسم الموسيقى إلى رابط ملف صوتي فعلي.
+# يدعم الموسيقى المدمجة (أصلية) + روابط خارجية.
+STORY_MUSIC_CATALOG = {
+    'none':      '',
+    'silence':   '',
+    'upbeat':    '/sounds/story/upbeat.mp3',
+    'chill':     '/sounds/story/chill.mp3',
+    'romantic':  '/sounds/story/romantic.mp3',
+    'epic':      '/sounds/story/epic.mp3',
+    'fun':       '/sounds/story/fun.mp3',
+    'sad':       '/sounds/story/sad.mp3',
+    'party':     '/sounds/story/party.mp3',
+    'lofi':      '/sounds/story/lofi.mp3',
+    'acoustic':  '/sounds/story/acoustic.mp3',
+    'ambient':   '/sounds/story/ambient.mp3',
+    'cinematic': '/sounds/story/cinematic.mp3',
+}
+
+
+def _resolve_music_url(music_field: Optional[str]) -> str:
+    """يحوّل حقل الموسيقى إلى رابط ملف صوتي قابل للتشغيل.
+
+    - إذا كان رابطاً مطلقاً (http/https) يعيده كما هو.
+    - إذا كان مفتاحاً في كتالوج الموسيقى المدمج يعيد رابط الملف.
+    - غير ذلك يعيد سلسلة فارغة.
+    """
+    raw = str(music_field or '').strip()
+    if not raw or raw == 'none':
+        return ''
+    if raw.startswith('http://') or raw.startswith('https://'):
+        return raw
+    return STORY_MUSIC_CATALOG.get(raw.lower(), '')
+
+
 def _load_friend_ids(db: Session, user_id: int) -> set[int]:
     if Friendship is None:
         return set()
@@ -125,6 +171,59 @@ def _load_close_friend_ids(db: Session, user_id: int) -> set[int]:
     try:
         rows = db.query(CloseFriend).filter(CloseFriend.owner_id == user_id).all()
         return {int(r.friend_id) for r in rows if getattr(r, 'friend_id', None)}
+    except Exception:
+        return set()
+
+
+# v87.11 — Hide Story From helpers
+def _load_hidden_from_me_ids(db: Session, viewer_user_id: int) -> set[int]:
+    """يعيد مجموعة معرّفات owner_id للمستخدمين الذين أضافوني (viewer) لقائمة
+    إخفاء الستوري لديهم → يجب ألا أرى أي من قصصهم.
+    """
+    if HiddenStoryUser is None or not viewer_user_id:
+        return set()
+    try:
+        rows = (
+            db.query(HiddenStoryUser)
+            .filter(HiddenStoryUser.hidden_id == int(viewer_user_id))
+            .all()
+        )
+        return {int(r.owner_id) for r in rows if getattr(r, 'owner_id', None)}
+    except Exception:
+        return set()
+
+
+def _load_my_hidden_targets(db: Session, owner_user_id: int) -> set[int]:
+    """يعيد مجموعة معرّفات المستخدمين الذين أخفيت عنهم قصصي."""
+    if HiddenStoryUser is None or not owner_user_id:
+        return set()
+    try:
+        rows = (
+            db.query(HiddenStoryUser)
+            .filter(HiddenStoryUser.owner_id == int(owner_user_id))
+            .all()
+        )
+        return {int(r.hidden_id) for r in rows if getattr(r, 'hidden_id', None)}
+    except Exception:
+        return set()
+
+
+# v87.12 — Mute User Stories helpers
+def _load_muted_story_ids(db: Session, viewer_user_id: int) -> set[int]:
+    """يعيد مجموعة معرّفات المستخدمين الذين كتمت (viewer) قصصهم.
+
+    قصص هؤلاء المستخدمين تُستبعد من شريط الستوري الخاص بـ viewer.
+    لكن يمكنه رؤية قصصهم عبر deep-link (/stories/user/{id}) أو القصة المفردة.
+    """
+    if MutedStoryUser is None or not viewer_user_id:
+        return set()
+    try:
+        rows = (
+            db.query(MutedStoryUser)
+            .filter(MutedStoryUser.muter_id == int(viewer_user_id))
+            .all()
+        )
+        return {int(r.muted_id) for r in rows if getattr(r, 'muted_id', None)}
     except Exception:
         return set()
 
@@ -258,7 +357,7 @@ def serialize_story(
     # replies قصيرة (آخر 20)
     reply_rows = (
         db.query(StoryReply)
-        .filter(StoryReply.story_id == story.id)
+        .filter(StoryReply.story_id == story.id, StoryReply.reply_type != 'reaction')
         .order_by(StoryReply.created_at.desc())
         .limit(20)
         .all()
@@ -271,6 +370,12 @@ def serialize_story(
         }
         for r in reversed(reply_rows)
     ]
+
+    # v87.12 — هل قام المشاهد بكتم قصص صاحب هذه القصة؟
+    is_muted_by_viewer = False
+    if viewer_user_id and int(story.user_id) != int(viewer_user_id or 0):
+        muted_ids = _load_muted_story_ids(db, int(viewer_user_id))
+        is_muted_by_viewer = int(story.user_id) in muted_ids
 
     return {
         'id': str(story.id),
@@ -286,6 +391,7 @@ def serialize_story(
         'caption': story.caption or '',
         'privacy': story.privacy or 'friends',
         'music': story.music or '',
+        'music_url': _resolve_music_url(story.music),   # v87.12 — رابط ملف الموسيقى للدمج الفعلي
         'stickers': _safe_list(story.stickers)[:8],
         'mentions': _safe_list(story.mentions)[:8],
         'poll_question': story.poll_question or '',
@@ -306,6 +412,7 @@ def serialize_story(
         'views_count': int(story.views_count or 0),
         'replies_count': int(story.replies_count or 0),
         'reactions_count': int(story.reactions_count or 0),
+        'is_muted_by_viewer': is_muted_by_viewer,    # v87.12
     }
 
 
@@ -431,14 +538,22 @@ def add_story(
 
 # ============================== List / Grouped ==============================
 def _visible_filter(db: Session, viewer_user_id: int):
-    """يبني شرط الرؤية بحسب سياسة الخصوصية + حظر متبادل."""
+    """يبني شرط الرؤية بحسب سياسة الخصوصية + حظر متبادل + Hide Story From (v87.11)."""
     friends = _load_friend_ids(db, viewer_user_id)
     close = _load_close_friend_ids(db, viewer_user_id)
     blocked = _load_block_scope(db, viewer_user_id)
+    # v87.11 — أصحاب حسابات أخفوا عني قصصهم
+    hidden_from_me = _load_hidden_from_me_ids(db, viewer_user_id)
+    # v87.12 — المستخدمون الذين كتمت قصصهم (لا تظهر في شريط الستوري)
+    muted_stories = _load_muted_story_ids(db, viewer_user_id)
 
-    # استبعد المحظورين من الأصدقاء والمقربين
+    # استبعد المحظورين والمُخفى عني قصصهم والمكتومة قصصهم من الأصدقاء والمقربين
     friends -= blocked
+    friends -= hidden_from_me
+    friends -= muted_stories
     close -= blocked
+    close -= hidden_from_me
+    close -= muted_stories
 
     friend_list = list(friends) or [0]
     close_list = list(close) or [0]
@@ -453,9 +568,11 @@ def _visible_filter(db: Session, viewer_user_id: int):
     ]
     base = or_(*conditions)
 
-    if blocked:
-        # استبعاد قصص المحظورين حتى لو كانوا أصدقاء سابقاً (double-safety)
-        return and_(base, ~Story.user_id.in_(list(blocked)))
+    # v87.11 — استبعاد قصص أي مستخدم أخفى عني قصصه (double-safety)
+    # v87.12 — استبعاد قصص المستخدمين المكتومة قصصهم
+    exclude_ids = list(blocked | hidden_from_me | muted_stories)
+    if exclude_ids:
+        return and_(base, ~Story.user_id.in_(exclude_ids))
     return base
 
 
@@ -536,6 +653,12 @@ def list_user_stories(
     if not is_self and _is_blocked_between(db, viewer_user_id, target_user_id):
         raise PermissionError('Blocked')
 
+    # v87.11 — Hide Story From: إذا كان صاحب القصص أخفى عني قصصه → لا أرى شيئاً
+    if not is_self:
+        hidden_owners = _load_hidden_from_me_ids(db, viewer_user_id)
+        if int(target_user_id) in hidden_owners:
+            raise PermissionError('Hidden')
+
     # تحديد الرؤية
     if is_self:
         allow_privacies = ('friends', 'close_friends', 'private')
@@ -601,6 +724,12 @@ def get_story(db: Session, story_id: int, viewer_user_id: int) -> dict:
     if story.user_id != viewer_user_id and _is_blocked_between(db, viewer_user_id, story.user_id):
         raise PermissionError('Blocked')
 
+    # v87.11 — Hide Story From: إذا أخفى صاحب القصة قصصه عني → ممنوعة
+    if story.user_id != viewer_user_id:
+        hidden_owners = _load_hidden_from_me_ids(db, viewer_user_id)
+        if int(story.user_id) in hidden_owners:
+            raise PermissionError('Hidden')
+
     # فحص الرؤية
     if story.user_id != viewer_user_id:
         if story.privacy == 'private':
@@ -651,11 +780,9 @@ def add_reaction(db: Session, story_id: int, emoji: str, viewer_user_id: int, vi
     if story is None:
         raise KeyError('Story not found')
 
-    # v84.0 — محظور لا يتفاعل
     if _is_blocked_between(db, viewer_user_id, story.user_id):
         raise PermissionError('Blocked')
 
-    # سجّل المشاهدة قبل التفاعل
     if int(viewer_user_id) != story.user_id:
         exists = (
             db.query(StoryView)
@@ -676,10 +803,19 @@ def add_reaction(db: Session, story_id: int, emoji: str, viewer_user_id: int, vi
     reactions[safe] = int(reactions.get(safe, 0)) + 1
     story.reactions = _dump_json(reactions)
     story.reactions_count = sum(int(v or 0) for v in reactions.values())
+
+    db.add(StoryReply(
+        story_id=story.id,
+        user_id=int(viewer_user_id),
+        username=viewer_username or None,
+        content=safe,
+        reply_type='reaction',
+        created_at=_now(),
+    ))
+
     db.commit()
     db.refresh(story)
     return serialize_story(db, story, viewer_user_id=viewer_user_id)
-
 
 def add_reply(db: Session, story_id: int, viewer_user_id: int, viewer_username: str, text: str) -> dict:
     story = db.query(Story).filter(Story.id == int(story_id)).first()
@@ -834,49 +970,201 @@ def get_viewers(db: Session, story_id: int, owner_id: int) -> dict:
         raise KeyError('Story not found')
     if story.user_id != owner_id:
         raise PermissionError('Only owner can view viewers list')
-    rows = (
+
+    view_rows = (
         db.query(StoryView)
         .filter(StoryView.story_id == story.id)
         .order_by(StoryView.viewed_at.desc())
         .all()
     )
+    reaction_rows = (
+        db.query(StoryReply)
+        .filter(StoryReply.story_id == story.id, StoryReply.reply_type == 'reaction')
+        .order_by(StoryReply.created_at.desc())
+        .all()
+    )
+    reply_rows = (
+        db.query(StoryReply)
+        .filter(StoryReply.story_id == story.id, StoryReply.reply_type != 'reaction')
+        .order_by(StoryReply.created_at.desc())
+        .all()
+    )
 
-    # v84.0 — أفاتار حقيقي من جدول users بدل ui-avatars لكل صف
     cache = _UsersCache(db)
-    cache.prefetch([r.user_id for r in rows])
+    cache.prefetch([r.user_id for r in view_rows] + [r.user_id for r in reaction_rows] + [r.user_id for r in reply_rows])
+
+    def _avatar_for(user_id: int, username: str) -> str:
+        info = cache.get(int(user_id))
+        return info.get('avatar_url') or f'https://ui-avatars.com/api/?name={username or "user"}&background=8b5cf6&color=fff'
 
     viewers = []
-    for r in rows:
+    for r in view_rows:
         info = cache.get(int(r.user_id))
         uname = r.username or info.get('username') or ''
-        avatar = info.get('avatar_url') or (
-            f'https://ui-avatars.com/api/?name={uname or "user"}&background=8b5cf6&color=fff'
-        )
         viewers.append({
             'username': uname,
             'user_id': int(r.user_id),
             'viewed_at': _iso(r.viewed_at),
-            'avatar_url': avatar,
+            'avatar_url': _avatar_for(int(r.user_id), uname),
         })
+
+    reactions = []
+    for r in reaction_rows:
+        info = cache.get(int(r.user_id))
+        uname = r.username or info.get('username') or ''
+        reactions.append({
+            'username': uname,
+            'user_id': int(r.user_id),
+            'emoji': str(r.content or '').strip()[:8] or '🔥',
+            'created_at': _iso(r.created_at),
+            'avatar_url': _avatar_for(int(r.user_id), uname),
+        })
+
+    replies = []
+    for r in reply_rows:
+        info = cache.get(int(r.user_id))
+        uname = r.username or info.get('username') or ''
+        replies.append({
+            'username': uname,
+            'user_id': int(r.user_id),
+            'text': str(r.content or '').strip(),
+            'created_at': _iso(r.created_at),
+            'avatar_url': _avatar_for(int(r.user_id), uname),
+        })
+
     return {
         'story_id': str(story.id),
-        'total': len(rows),
+        'total': len(view_rows),
         'viewers': viewers,
+        'reactions': reactions,
+        'replies': replies,
     }
-
 
 # ============================== Analytics ==============================
 def analytics_summary(db: Session, owner_id: int) -> dict:
     purge_expired(db)
-    rows = db.query(Story).filter(Story.user_id == int(owner_id)).all()
+    rows = (
+        db.query(Story)
+        .filter(Story.user_id == int(owner_id))
+        .order_by(Story.created_at.desc())
+        .all()
+    )
     total_views = sum(int(s.views_count or 0) for s in rows)
     total_replies = sum(int(s.replies_count or 0) for s in rows)
     total_reactions = sum(int(s.reactions_count or 0) for s in rows)
+
+    def _score(story: Story) -> int:
+        return int(story.views_count or 0) + (int(story.replies_count or 0) * 3) + (int(story.reactions_count or 0) * 2)
+
+    cache = _UsersCache(db)
+    cache.prefetch([owner_id])
+    top_story = max(rows, key=_score) if rows else None
+    recent_stories = [serialize_story(db, s, viewer_user_id=owner_id, users_cache=cache) for s in rows[:5]]
+    count = len(rows)
     return {
-        'stories_count': len(rows),
+        'stories_count': count,
         'highlights_count': sum(1 for s in rows if s.highlight),
         'total_views': total_views,
         'total_replies': total_replies,
         'total_reactions': total_reactions,
-        'engagement_rate': round(((total_replies + total_reactions) / max(len(rows), 1)), 2),
+        'average_views': round(total_views / count, 2) if count else 0,
+        'average_replies': round(total_replies / count, 2) if count else 0,
+        'average_reactions': round(total_reactions / count, 2) if count else 0,
+        'engagement_rate': round(((total_replies + total_reactions) / count), 2) if count else 0,
+        'top_story': serialize_story(db, top_story, viewer_user_id=owner_id, users_cache=cache) if top_story else None,
+        'recent_stories': recent_stories,
     }
+
+
+def list_close_friends_stories(db: Session, viewer_user_id: int, viewer_username: str = '') -> list[dict]:
+    purge_expired(db)
+    stories = (
+        db.query(Story)
+        .filter(_visible_filter(db, viewer_user_id), Story.privacy == 'close_friends')
+        .order_by(Story.created_at.desc())
+        .all()
+    )
+    if not stories:
+        return []
+    cache = _UsersCache(db)
+    cache.prefetch([s.user_id for s in stories] + [viewer_user_id])
+    serialized = [serialize_story(db, s, viewer_user_id=viewer_user_id, users_cache=cache) for s in stories]
+    groups: dict[int, dict] = {}
+    vuname = (viewer_username or '').strip().lower()
+    for story in serialized:
+        uid = int(story.get('user_id') or 0)
+        if uid not in groups:
+            groups[uid] = {
+                'user_id': uid,
+                'username': story.get('username') or '',
+                'avatar_url': story.get('avatar_url') or '',
+                'user_avatar': story.get('avatar_url') or '',
+                'is_self': (str(story.get('username') or '').lower() == vuname),
+                'has_unseen': False,
+                'last_created_at': story.get('created_at'),
+                'stories': [],
+            }
+        seen_list = [str(u).lower() for u in (story.get('seen_by') or [])]
+        if vuname and vuname not in seen_list and str(story.get('username') or '').lower() != vuname:
+            groups[uid]['has_unseen'] = True
+        groups[uid]['stories'].append(story)
+    result = list(groups.values())
+    for g in result:
+        g['stories'].sort(key=lambda s: s.get('created_at') or '')
+    result.sort(key=lambda g: g.get('last_created_at') or '', reverse=True)
+    return result
+
+
+def toggle_story_mute_by_story(db: Session, story_id: int, viewer_user_id: int) -> dict:
+    if MutedStoryUser is None:
+        raise ValueError('mute story service unavailable')
+    story = db.query(Story).filter(Story.id == int(story_id)).first()
+    if story is None:
+        raise KeyError('Story not found')
+    owner_id = int(story.user_id)
+    if owner_id == int(viewer_user_id):
+        raise PermissionError('Cannot mute your own stories')
+    existing = (
+        db.query(MutedStoryUser)
+        .filter(MutedStoryUser.muter_id == int(viewer_user_id), MutedStoryUser.muted_id == owner_id)
+        .first()
+    )
+    if existing is not None:
+        db.delete(existing)
+        db.commit()
+        return {'muted': False, 'story_id': str(story.id), 'target_user_id': owner_id}
+    db.add(MutedStoryUser(muter_id=int(viewer_user_id), muted_id=owner_id))
+    db.commit()
+    return {'muted': True, 'story_id': str(story.id), 'target_user_id': owner_id}
+
+
+def create_reel_from_story(db: Session, story: Story) -> dict | None:
+    if story is None or str(getattr(story, 'media_type', '') or '') != 'video':
+        return None
+    try:
+        reel = Reel(
+            user_id=int(story.user_id),
+            video_url=story.media_url,
+            thumbnail_url=None,
+            caption=story.caption or None,
+            category='story',
+            duration=int(getattr(story, 'duration', 0) or 0),
+            likes_count=0,
+            comments_count=0,
+            shares_count=0,
+            views_count=0,
+            is_deleted=False,
+            created_at=_now(),
+            updated_at=_now(),
+        )
+        db.add(reel)
+        db.commit()
+        db.refresh(reel)
+        return {'reel_id': int(reel.id), 'video_url': reel.video_url}
+    except Exception as exc:
+        logger.warning('story cross-post to reel failed for story %s: %s', getattr(story, 'id', '?'), exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return None

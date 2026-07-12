@@ -87,6 +87,9 @@ const VoiceRoomsPage = lazy(() => import('./pages/VoiceRoomsPage.jsx'));
 const ProfileSettingsPage = lazy(() => import('./pages/settings/ProfileSettingsPage.jsx'));
 const ReelsSettingsPage = lazy(() => import('./pages/settings/ReelsSettingsPage.jsx'));
 const StoriesSettingsPage = lazy(() => import('./pages/settings/StoriesSettingsPage.jsx'));
+const CloseFriendsManagerPage = lazy(() => import('./pages/settings/CloseFriendsManagerPage.jsx'));
+const HideStoryFromPage = lazy(() => import('./pages/settings/HideStoryFromPage.jsx'));
+const MutedStoriesPage = lazy(() => import('./pages/settings/MutedStoriesPage.jsx'));
 const FeedSettingsPage = lazy(() => import('./pages/settings/FeedSettingsPage.jsx'));
 const NotificationsSettingsPage = lazy(() => import('./pages/settings/NotificationsSettingsPage.jsx'));
 const WalletSettingsPage = lazy(() => import('./pages/settings/WalletSettingsPage.jsx'));
@@ -261,6 +264,9 @@ export default function App() {
             <Route path="/settings/profile" element={<ProtectedRoute><ProfileSettingsPage /></ProtectedRoute>} />
             <Route path="/settings/reels" element={<ProtectedRoute><ReelsSettingsPage /></ProtectedRoute>} />
             <Route path="/settings/stories" element={<ProtectedRoute><StoriesSettingsPage /></ProtectedRoute>} />
+            <Route path="/settings/stories/close-friends" element={<ProtectedRoute><CloseFriendsManagerPage /></ProtectedRoute>} />
+            <Route path="/settings/stories/hide-from" element={<ProtectedRoute><HideStoryFromPage /></ProtectedRoute>} />
+            <Route path="/settings/stories/muted" element={<ProtectedRoute><MutedStoriesPage /></ProtectedRoute>} />
             <Route path="/settings/feed" element={<ProtectedRoute><FeedSettingsPage /></ProtectedRoute>} />
             <Route path="/settings/notifications" element={<ProtectedRoute><NotificationsSettingsPage /></ProtectedRoute>} />
             <Route path="/settings/wallet" element={<ProtectedRoute><WalletSettingsPage /></ProtectedRoute>} />

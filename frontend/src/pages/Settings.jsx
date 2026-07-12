@@ -198,6 +198,9 @@ export default function Settings() {
   const location = useLocation();
   const [activeTab, setActiveTab] = useState('account');
   const [menuOpen, setMenuOpen] = useState(false);
+  // v87.7 — Drill-down على الموبايل: 'menu' = عرض الأزرار، 'section' = عرض القسم بعد الضغط
+  const [mobileView, setMobileView] = useState('menu');
+  const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth <= 900 : false));
   const [trustedDevices, setTrustedDevices] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [alerts, setAlerts] = useState([]);
@@ -258,8 +261,28 @@ export default function Settings() {
     const allTabs = TAB_GROUPS.flatMap((g) => g.tabs);
     if (requestedTab && allTabs.some((tab) => tab.key === requestedTab)) {
       setActiveTab(requestedTab);
+      // v87.7 — إذا فُتحت الصفحة برابط ?tab=... انتقل مباشرة لعرض القسم على الموبايل
+      if (typeof window !== 'undefined' && window.innerWidth <= 900) {
+        setMobileView('section');
+      }
     }
   }, [location.search]);
+
+  // v87.7 — تتبّع تغيّر حجم الشاشة لتحديد وضع الموبايل
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const onResize = () => {
+      const mobile = window.innerWidth <= 900;
+      setIsMobile(mobile);
+      if (!mobile) {
+        // في وضع الديسكتوب، نعرض القسم دائماً (لا drill-down)
+        setMobileView('section');
+      }
+    };
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   useEffect(() => {
     let unsubscribe = () => {};
@@ -1055,6 +1078,28 @@ export default function Settings() {
     const params = new URLSearchParams(location.search);
     params.set('tab', tabKey);
     navigate({ pathname: '/settings', search: `?${params.toString()}` }, { replace: true });
+    // v87.7 — على الموبايل: انتقل لعرض القسم فور الضغط، ومرّر لأعلى
+    if (typeof window !== 'undefined' && window.innerWidth <= 900) {
+      setMobileView('section');
+      // انتظر إعادة الرسم ثم مرّر للأعلى لظهور القسم مباشرة
+      window.setTimeout(() => {
+        try {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          const el = document.querySelector('.settings-main');
+          if (el && typeof el.scrollIntoView === 'function') {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        } catch {}
+      }, 30);
+    }
+  };
+
+  // v87.7 — العودة لقائمة الإعدادات الرئيسية على الموبايل
+  const backToMenu = () => {
+    setMobileView('menu');
+    try {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch {}
   };
 
   // v87.1 — بست تأكيد تنزيل البيانات (GDPR)
@@ -1191,7 +1236,7 @@ export default function Settings() {
 
         {message ? <div className="settings-banner">{message}</div> : null}
 
-        <div className="settings-layout">
+        <div className={`settings-layout ${isMobile ? (mobileView === 'section' ? 'mobile-showing-section' : 'mobile-showing-menu') : ''}`}>
           <aside className="settings-sidebar">
             {TAB_GROUPS.map((group) => (
               <div key={group.label} className="settings-group">
@@ -1211,6 +1256,18 @@ export default function Settings() {
           </aside>
 
           <main className="settings-main">
+            {/* v87.7 — زر رجوع للقائمة على الموبايل فقط */}
+            {isMobile && mobileView === 'section' ? (
+              <button
+                type="button"
+                className="settings-mobile-back"
+                onClick={backToMenu}
+                aria-label="العودة لقائمة الإعدادات"
+              >
+                <span aria-hidden>→</span>
+                <span>العودة للإعدادات</span>
+              </button>
+            ) : null}
             {/* ===== الحساب ===== */}
             {activeTab === 'account' ? (
               <>
@@ -2212,6 +2269,30 @@ export default function Settings() {
           to { opacity: 1; transform: scale(1) translateY(0); }
         }
 
+        /* v87.7 — زر الرجوع على الموبايل */
+        .settings-mobile-back {
+          display: none;
+          align-items: center;
+          gap: 8px;
+          padding: 9px 12px;
+          margin: 0 0 10px;
+          border-radius: 10px;
+          border: 1px solid rgba(167,139,250,0.30);
+          background: rgba(99,102,241,0.14);
+          color: #c4b5fd;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          width: 100%;
+          text-align: start;
+          transition: background 0.15s;
+        }
+        .settings-mobile-back:hover { background: rgba(99,102,241,0.22); }
+        .settings-mobile-back span:first-child {
+          font-size: 16px;
+          line-height: 1;
+        }
+
         /* Responsive */
         @media (max-width: 900px) {
           .settings-layout { grid-template-columns: 1fr; }
@@ -2219,6 +2300,10 @@ export default function Settings() {
             position: static; max-height: none;
             display: grid; gap: 8px;
           }
+          /* v87.7 — Drill-down على الموبايل: إظهار إما القائمة أو القسم */
+          .settings-layout.mobile-showing-menu .settings-main { display: none; }
+          .settings-layout.mobile-showing-section .settings-sidebar { display: none; }
+          .settings-layout.mobile-showing-section .settings-mobile-back { display: inline-flex; }
         }
         /* ✅ v85.8: على الموبايل — 3 أعمدة داخل كل مجموعة (كما طلب المستخدم) */
         @media (max-width: 600px) {

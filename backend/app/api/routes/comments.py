@@ -7,7 +7,13 @@ from app.models.comment import Comment
 from app.models.post_preference import CommentReaction
 from app.models.user import User
 from app.schemas.comment import CommentCreate
-from app.services.ai_service import moderate_comment, detect_spam, rank_comments
+# ✅ v87.8 FIX (تعليقات لا تظهر بعد إعادة الفتح):
+# سابقاً كنا نستورد rank_comments (وهي async) ونستدعيها من route sync بدون await.
+# النتيجة: payload['items'] يصبح coroutine object، FastAPI يفشل في تحويله إلى JSON،
+# ثم except الخارجي يبتلع الخطأ ويرجع empty_payload — فتبدو التعليقات وكأنها اختفت
+# رغم أنها مخزّنة في قاعدة البيانات. الحل: عدم استدعاء rank_comments هنا نهائياً؛
+# الترتيب يتم داخل get_comments (newest/oldest/popular).
+from app.services.ai_service import moderate_comment, detect_spam
 from app.services.comment_service import (
     create_comment,
     delete_comment,
@@ -29,10 +35,16 @@ def create(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if not moderate_comment(comment.content):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Comment failed AI moderation.')
-    if detect_spam(comment.content):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Comment detected as spam.')
+    # ✅ v87.8: moderate_comment async و detect_spam يرجّع dict (دائماً truthy).
+    # من غير الآمن استدعاؤهما مباشرة في route sync، لذلك نتعامل معهما بحذر.
+    try:
+        spam_result = detect_spam(comment.content)
+        if isinstance(spam_result, dict) and spam_result.get('is_spam'):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Comment detected as spam.')
+    except HTTPException:
+        raise
+    except Exception:
+        pass
     return create_comment(db, user_id=current_user.id, post_id=post_id, content=comment.content, parent_id=comment.parent_id)
 
 
@@ -65,11 +77,10 @@ def get_all(
         if not isinstance(payload, dict):
             return empty_payload
         items = payload.get('items', []) or []
-        try:
-            payload['items'] = rank_comments(items, current_user)
-        except Exception:
-            payload['items'] = items
-        payload.setdefault('total', len(payload['items']))
+        # ✅ v87.8: لا نستدعي rank_comments هنا لأنها async — الترتيب يتم داخل get_comments.
+        # المحاولة السابقة كانت تُنتج coroutine غير قابل للـ serialization وتبتلع كل التعليقات.
+        payload['items'] = items
+        payload.setdefault('total', len(items))
         payload.setdefault('page', page)
         payload.setdefault('limit', limit)
         return payload

@@ -9,12 +9,14 @@ from app.core.dependencies import get_current_token_payload, get_current_user, g
 from app.db.bootstrap import initialize_database
 from app.models.audit_log import AuditLog
 from app.models.close_friend import CloseFriend
+from app.models.hidden_story_user import HiddenStoryUser
 from app.models.follow import Follow
 from app.models.like import Like
 from app.models.post import Post
 from app.models.post_save import PostSave
 from app.models.user import User
 from app.models.user_block import UserBlock
+from app.models.muted_story_user import MutedStoryUser
 from app.models.user_mute import UserMute
 from app.models.user_preference import UserPreference
 from app.models.user_profile import UserProfile
@@ -803,6 +805,129 @@ def remove_close_friend(username: str, db: Session = Depends(get_db), current_us
         db.delete(existing)
         db.commit()
     return {'added': False, 'username': other.username}
+
+
+# ============================== v87.11 — Hide Story From ==============================
+# قائمة المستخدمين الذين لا يريد صاحب الحساب أن يروا قصصه (Hide Story From).
+# مستقلة عن UserBlock (الحظر الكامل). المستخدم المُخفى عنه لا يزال يرى
+# بقية محتوى الحساب — فقط الستوريز مخفية.
+
+@router.get('/me/hidden-story-users')
+def get_hidden_story_users(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """إرجاع قائمة المستخدمين المُخفاة عنهم قصصي."""
+    rows = (
+        db.query(HiddenStoryUser, User)
+        .join(User, User.id == HiddenStoryUser.hidden_id)
+        .filter(HiddenStoryUser.owner_id == current_user.id)
+        .all()
+    )
+    return [
+        {
+            'username': user.username,
+            'avatar': user.avatar,
+            'created_at': row.created_at.isoformat() if row.created_at else None,
+        }
+        for row, user in rows
+    ]
+
+
+@router.post('/hide-story-from')
+def add_hidden_story_user(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """إضافة مستخدم إلى قائمة إخفاء الستوري."""
+    username = str(payload.get('username') or '').strip()
+    other = _find_active_user_by_username(db, username)
+    if other is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
+    if other.id == current_user.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Cannot hide from yourself')
+    existing = (
+        db.query(HiddenStoryUser)
+        .filter(HiddenStoryUser.owner_id == current_user.id, HiddenStoryUser.hidden_id == other.id)
+        .first()
+    )
+    if existing is None:
+        db.add(HiddenStoryUser(owner_id=current_user.id, hidden_id=other.id))
+        db.commit()
+    return {'hidden': True, 'username': other.username}
+
+
+@router.delete('/hide-story-from/{username}')
+def remove_hidden_story_user(username: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """إزالة مستخدم من قائمة إخفاء الستوري (سيرى قصصي مجدداً)."""
+    other = _find_active_user_by_username(db, username)
+    if other is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
+    existing = (
+        db.query(HiddenStoryUser)
+        .filter(HiddenStoryUser.owner_id == current_user.id, HiddenStoryUser.hidden_id == other.id)
+        .first()
+    )
+    if existing is not None:
+        db.delete(existing)
+        db.commit()
+    return {'hidden': False, 'username': other.username}
+
+
+# ============================== v87.12 — Mute User Stories ==============================
+# قائمة المستخدمين الذين كتم المستخدم قصصهم (Mute User Stories).
+# مستقلة عن UserMute (الكتم العام) وUserBlock (الحظر). المستخدم المكتوم قصصه
+# لا يزال مرئياً في البوستات/الريلز/البروفايل — فقط قصصه تُستبعد من شريط الستوري.
+
+@router.get('/me/muted-story-users')
+def get_muted_story_users(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """إرجاع قائمة المستخدمين المكتومة قصصهم."""
+    rows = (
+        db.query(MutedStoryUser, User)
+        .join(User, User.id == MutedStoryUser.muted_id)
+        .filter(MutedStoryUser.muter_id == current_user.id)
+        .all()
+    )
+    return [
+        {
+            'username': user.username,
+            'avatar': user.avatar,
+            'created_at': row.created_at.isoformat() if row.created_at else None,
+        }
+        for row, user in rows
+    ]
+
+
+@router.post('/mute-story')
+def mute_user_stories(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """كتم قصص مستخدم محدد — لن تظهر قصصه في شريط الستوري."""
+    username = str(payload.get('username') or '').strip()
+    other = _find_active_user_by_username(db, username)
+    if other is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
+    if other.id == current_user.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Cannot mute your own stories')
+    existing = (
+        db.query(MutedStoryUser)
+        .filter(MutedStoryUser.muter_id == current_user.id, MutedStoryUser.muted_id == other.id)
+        .first()
+    )
+    if existing is None:
+        db.add(MutedStoryUser(muter_id=current_user.id, muted_id=other.id))
+        db.commit()
+    return {'muted': True, 'username': other.username}
+
+
+@router.post('/unmute-story')
+def unmute_user_stories(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """إلغاء كتم قصص مستخدم محدد."""
+    username = str(payload.get('username') or '').strip()
+    other = _find_active_user_by_username(db, username)
+    if other is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
+    existing = (
+        db.query(MutedStoryUser)
+        .filter(MutedStoryUser.muter_id == current_user.id, MutedStoryUser.muted_id == other.id)
+        .first()
+    )
+    if existing is not None:
+        db.delete(existing)
+        db.commit()
+    return {'muted': False, 'username': other.username}
 
 
 @router.get('/by-id/{user_id}')

@@ -95,6 +95,39 @@ function MobileCommentsSheet({ open, postId, onClose }) {
       setDraft('');
       queryClient.invalidateQueries({ queryKey: ['feed-data'] });
       pushToast?.({ type: 'success', title: 'تمت إضافة التعليق' });
+
+      // ✅ v87.8 FIX: إعادة جلب التعليقات من الخادم فور الإرسال لضمان التزامن الحقيقي.
+      // إذا فشل التخزين داخل الخادم لأي سبب (مثلاً: allow_comments=false يتم تجاوزه مؤقتاً،
+      // او رد 200 خاطئ)، سيظهر ذلك فوراً بدل الانتظار للمرة التالية.
+      try {
+        const refetch = await getComments(postId);
+        const data = refetch?.data;
+        let raw = [];
+        if (Array.isArray(data)) raw = data;
+        else if (Array.isArray(data?.items)) raw = data.items;
+        else if (Array.isArray(data?.comments)) raw = data.comments;
+        else if (Array.isArray(data?.results)) raw = data.results;
+        else if (Array.isArray(data?.data)) raw = data.data;
+        const flat = [];
+        const seen = new Set();
+        const walk = (nodes) => {
+          if (!Array.isArray(nodes)) return;
+          for (const n of nodes) {
+            if (!n || typeof n !== 'object') continue;
+            const key = n.id ?? `${n.user_id || ''}-${n.created_at || ''}-${(n.content || n.text || '').slice(0,20)}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            flat.push(n);
+            if (Array.isArray(n.replies) && n.replies.length) walk(n.replies);
+            if (Array.isArray(n.children) && n.children.length) walk(n.children);
+          }
+        };
+        walk(raw);
+        if (flat.length) setComments(flat);
+      } catch (refetchErr) {
+        // إذا فشلت إعادة الجلب، نبقي التعليق المضاف محلياً (فعلناه أعلاه).
+        console.warn('Refetch after add failed', refetchErr?.message || refetchErr);
+      }
     } catch (err) {
       console.error('Add comment failed', err);
       pushToast?.({ type: 'error', title: 'تعذر إضافة التعليق' });

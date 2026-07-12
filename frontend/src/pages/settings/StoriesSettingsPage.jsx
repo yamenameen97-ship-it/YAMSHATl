@@ -1,8 +1,26 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import SettingsShell, { SettingsSection, SettingsRow, SettingsToggle } from '../../components/settings/SettingsShell.jsx';
 
 const KEY = 'yamshat:stories-settings';
-const load = () => { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch { return {}; } };
+// ✅ v87.5 FIX #5: توحيد قيم الخصوصية مع الباك (close_friends بشرطة سفلية).
+// سابقاً: الواجهة تحفظ 'close-friends' والباك يتوقع 'close_friends'
+// → القصة تُرفوض من الخلفية وتعود إلى friends صامتة → إعداد المقربين مُلغى!
+function _normalizePrivacy(p) {
+  if (typeof p !== 'string') return p;
+  if (p === 'close-friends') return 'close_friends';
+  return p;
+}
+const load = () => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(KEY) || '{}');
+    if (raw && typeof raw === 'object') {
+      if (raw.whoCanSeeMyStory) raw.whoCanSeeMyStory = _normalizePrivacy(raw.whoCanSeeMyStory);
+      if (raw.allowReplies)      raw.allowReplies      = _normalizePrivacy(raw.allowReplies);
+    }
+    return raw;
+  } catch { return {}; }
+};
 const save = (p) => { try { localStorage.setItem(KEY, JSON.stringify(p)); } catch {} };
 
 export default function StoriesSettingsPage() {
@@ -42,14 +60,27 @@ export default function StoriesSettingsPage() {
 
       <SettingsSection title="من يستطيع رؤية ستوري" description="القصص خاصة بالأصدقاء فقط ولا تظهر للعامة">
         <SettingsRow icon="👥" title="جمهور الستوري الافتراضي">
+          {/* ✅ v87.5 FIX #5: القيم موحدة مع الباك (close_friends) */}
           <select className="settings-select" value={prefs.whoCanSeeMyStory} onChange={(e) => u('whoCanSeeMyStory', e.target.value)}>
             <option value="friends">الأصدقاء فقط</option>
-            <option value="close-friends">الأصدقاء المقربون</option>
+            <option value="close_friends">الأصدقاء المقربون</option>
             <option value="private">خاص (أنا فقط)</option>
           </select>
         </SettingsRow>
         <SettingsRow icon="💚" title="مشاركة فقط مع المقربين">
           <SettingsToggle on={prefs.closeFriendsOnly} onChange={(v) => u('closeFriendsOnly', v)} />
+        </SettingsRow>
+        {/* ✅ v87.11 — إدارة قائمة المقربين */}
+        <SettingsRow icon="💚" title="إدارة قائمة الأصدقاء المقربين" description="إضافة/إزالة الأشخاص الذين يرون قصص «المقربون فقط»">
+          <Link to="/settings/stories/close-friends" className="settings-link-btn">فتح</Link>
+        </SettingsRow>
+        {/* ✅ v87.11 — إخفاء القصة من مستخدمين محددين */}
+        <SettingsRow icon="🙈" title="إخفاء قصتي من أشخاص محددين" description="لن يرى المستخدمون المُختارون أياً من قصصك">
+          <Link to="/settings/stories/hide-from" className="settings-link-btn">فتح</Link>
+        </SettingsRow>
+        {/* v87.12 — كتم قصص مستخدمين محددين */}
+        <SettingsRow icon="🔕" title="قصص مكتومة" description="المستخدمون الذين كتمت قصصهم من شريط الستوري">
+          <Link to="/settings/stories/muted" className="settings-link-btn">فتح</Link>
         </SettingsRow>
         <SettingsRow icon="👁️" title="عرض قائمة المشاهدين">
           <SettingsToggle on={prefs.showViewerList} onChange={(v) => u('showViewerList', v)} />
@@ -58,9 +89,10 @@ export default function StoriesSettingsPage() {
 
       <SettingsSection title="التفاعل والردود">
         <SettingsRow icon="💬" title="السماح بالردود">
+          {/* ✅ v87.5 FIX #5: close_friends بدل close-friends */}
           <select className="settings-select" value={prefs.allowReplies} onChange={(e) => u('allowReplies', e.target.value)}>
             <option value="friends">الأصدقاء</option>
-            <option value="close-friends">المقربون فقط</option>
+            <option value="close_friends">المقربون فقط</option>
             <option value="nobody">لا أحد</option>
           </select>
         </SettingsRow>
@@ -111,6 +143,18 @@ export default function StoriesSettingsPage() {
       </SettingsSection>
 
       </div>
+
+      <style>{`
+        .settings-link-btn {
+          display: inline-flex; align-items: center; gap: 6px;
+          padding: 6px 14px; border-radius: 10px;
+          background: linear-gradient(135deg, #4f9cff, #6b7cff);
+          color: #fff; font-weight: 700; font-size: 12px;
+          text-decoration: none; cursor: pointer;
+          transition: transform 0.15s ease, opacity 0.15s ease;
+        }
+        .settings-link-btn:hover { transform: translateY(-1px); opacity: 0.94; }
+      `}</style>
     </SettingsShell>
   );
 }

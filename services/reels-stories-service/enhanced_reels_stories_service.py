@@ -11,7 +11,7 @@
 - منع التحميل
 """
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import json
 from datetime import datetime, timedelta
@@ -161,6 +161,12 @@ class Story:
     creator_id: str = ""
     creator_name: str = ""
     creator_avatar: str = ""
+    caption: str = ""
+    poll_question: str = ""
+    poll_options: List[str] = field(default_factory=list)
+    poll_votes: Dict[str, int] = field(default_factory=dict)
+    poll_voters: Dict[str, int] = field(default_factory=dict)
+    countdown_at: str = ""
     elements: List[StoryElement] = field(default_factory=list)
     viewers: List[str] = field(default_factory=list)
     reactions: List[StoryReaction] = field(default_factory=list)
@@ -416,13 +422,31 @@ class EnhancedReelsStoriesManager:
         creator_id: str,
         creator_name: str,
         creator_avatar: str,
-        elements: List[StoryElement] = []
+        elements: List[StoryElement] = [],
+        caption: str = "",
+        poll_question: str = "",
+        poll_options: Optional[List[str]] = None,
+        countdown_at: str = ""
     ) -> Story:
         """إنشاء قصة جديدة"""
+        clean_options = [str(opt).strip() for opt in (poll_options or []) if str(opt).strip()][:4]
+        if poll_question and len(clean_options) < 2:
+            raise ValueError("يجب توفير خيارين على الأقل للاستطلاع")
+        if countdown_at:
+            try:
+                datetime.fromisoformat(countdown_at.replace('Z', '+00:00'))
+            except ValueError as exc:
+                raise ValueError("صيغة countdown_at غير صالحة") from exc
         story = Story(
             creator_id=creator_id,
             creator_name=creator_name,
             creator_avatar=creator_avatar,
+            caption=caption,
+            poll_question=poll_question.strip(),
+            poll_options=clean_options,
+            poll_votes={str(i): 0 for i in range(len(clean_options))},
+            poll_voters={},
+            countdown_at=countdown_at,
             elements=elements
         )
 
@@ -511,6 +535,26 @@ class EnhancedReelsStoriesManager:
 
         logger.info(f"💬 Reply added to story {story_id}")
         return True
+
+    async def vote_story_poll(self, story_id: str, user_id: str, option_index: int) -> Story:
+        """التصويت على استطلاع القصة"""
+        if story_id not in self.stories:
+            raise ValueError('القصة غير موجودة')
+
+        story = self.stories[story_id]
+        if not story.poll_options:
+            raise ValueError('لا يوجد استطلاع في هذه القصة')
+        if option_index < 0 or option_index >= len(story.poll_options):
+            raise ValueError('خيار الاستطلاع غير صالح')
+
+        previous_vote = story.poll_voters.get(user_id)
+        if previous_vote is not None and str(previous_vote) in story.poll_votes:
+            story.poll_votes[str(previous_vote)] = max(0, int(story.poll_votes.get(str(previous_vote), 0)) - 1)
+
+        story.poll_voters[user_id] = option_index
+        story.poll_votes[str(option_index)] = int(story.poll_votes.get(str(option_index), 0)) + 1
+        logger.info(f"🗳️ Story poll vote recorded: {story_id} by {user_id}")
+        return story
 
     async def archive_story(self, story_id: str) -> bool:
         """أرشفة قصة"""
@@ -889,12 +933,17 @@ async def get_saved_reels(user_id: str, limit: int = Query(50)):
 async def create_story(
     creator_id: str = Query(...),
     creator_name: str = Query(...),
-    creator_avatar: str = Query("")
+    creator_avatar: str = Query(""),
+    caption: str = Query(""),
+    poll_question: str = Query(""),
+    poll_options: str = Query(""),
+    countdown_at: str = Query("")
 ):
     """إنشاء قصة جديدة"""
     try:
+        options = [item.strip() for item in poll_options.split(',') if item.strip()] if poll_options else []
         story = await reels_stories_manager.create_story(
-            creator_id, creator_name, creator_avatar
+            creator_id, creator_name, creator_avatar, caption=caption, poll_question=poll_question, poll_options=options, countdown_at=countdown_at
         )
         return {
             "success": True,
@@ -955,6 +1004,34 @@ async def react_to_story(
             raise HTTPException(status_code=404, detail="القصة غير موجودة")
     except Exception as e:
         logger.error(f"❌ Error reacting to story: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/stories/{story_id}/poll/vote")
+async def vote_story_poll(
+    story_id: str,
+    payload: dict = Body(default_factory=dict),
+    user_id: str = Query('anonymous')
+):
+    """التصويت على استطلاع القصة"""
+    try:
+        raw_option = payload.get('option_index')
+        if raw_option is None:
+            raise HTTPException(status_code=400, detail='option_index مطلوب')
+        story = await reels_stories_manager.vote_story_poll(story_id, user_id, int(raw_option))
+        return {
+            'success': True,
+            'story_id': story.id,
+            'my_vote': story.poll_voters.get(user_id),
+            'poll_votes': story.poll_votes,
+            'story': asdict(story),
+        }
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"❌ Error voting on story poll: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

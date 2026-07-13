@@ -16,10 +16,32 @@ import { getChatPreferences, toggleChatPreference } from '../utils/chatPreferenc
 
 const URL_PATTERN = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
 
+const IMAGE_MEDIA_RE = /\.(jpg|jpeg|png|gif|webp|svg|avif|bmp|heic|heif)(?:$|\?)/i;
+const VIDEO_MEDIA_RE = /\.(mp4|webm|mov|m4v|mkv)(?:$|\?)/i;
+
+function getPrimaryAttachment(message = {}) {
+  return Array.isArray(message?.attachments) && message.attachments.length ? (message.attachments[0] || {}) : {};
+}
+
+function resolveMessageMediaUrl(message = {}) {
+  const attachment = getPrimaryAttachment(message);
+  return String(
+    message?.media_url
+    || message?.media_urls?.[0]
+    || attachment?.url
+    || attachment?.mediaUrl
+    || attachment?.media_url
+    || ''
+  ).trim();
+}
+
 function extractFileName(message = {}) {
+  const attachment = getPrimaryAttachment(message);
   if (message.attachment_name) return message.attachment_name;
-  if (Array.isArray(message.attachments) && message.attachments[0]?.fileName) return message.attachments[0].fileName;
-  const mediaUrl = message.media_url || '';
+  if (attachment?.fileName) return attachment.fileName;
+  if (attachment?.file_name) return attachment.file_name;
+  if (attachment?.name) return attachment.name;
+  const mediaUrl = resolveMessageMediaUrl(message);
   if (!mediaUrl) return 'ملف مرفق';
   try {
     const clean = mediaUrl.split('?')[0];
@@ -30,9 +52,13 @@ function extractFileName(message = {}) {
 }
 
 function resolveMediaType(message = {}) {
-  const mediaUrl = String(message?.media_url || '');
-  if (message?.type === 'video' || /\.(mp4|webm|mov|m4v)(\?.*)?$/i.test(mediaUrl)) return 'video';
-  return 'image';
+  const attachment = getPrimaryAttachment(message);
+  const mediaUrl = resolveMessageMediaUrl(message).toLowerCase();
+  const rawType = String(message?.type || message?.message_type || attachment?.kind || attachment?.type || '').trim().toLowerCase();
+  const mime = String(attachment?.mime_type || attachment?.mimeType || '').trim().toLowerCase();
+  if (['video', 'media_video'].includes(rawType) || mime.startsWith('video/') || VIDEO_MEDIA_RE.test(mediaUrl)) return 'video';
+  if (mime.startsWith('image/') || IMAGE_MEDIA_RE.test(mediaUrl) || ['image', 'photo', 'media_image'].includes(rawType)) return 'image';
+  return 'file';
 }
 
 export default function ChatSettings() {
@@ -74,6 +100,7 @@ export default function ChatSettings() {
 
         const nextMessages = messagesRes.status === 'fulfilled'
           ? (Array.isArray(messagesRes.value?.data) ? messagesRes.value.data : (messagesRes.value?.data?.items || []))
+              .map((item) => ({ ...item, media_url: resolveMessageMediaUrl(item) }))
           : [];
 
         const threads = threadsRes.status === 'fulfilled'
@@ -99,10 +126,10 @@ export default function ChatSettings() {
   }, [peer, pushToast]);
 
   const mediaItems = useMemo(() => messages
-    .filter((item) => item?.media_url)
+    .filter((item) => resolveMessageMediaUrl(item))
     .map((item, index) => ({
       id: String(item?.id || item?.client_id || index),
-      url: item.media_url,
+      url: resolveMessageMediaUrl(item),
       type: resolveMediaType(item),
       caption: item.content || item.message || '',
     })), [messages]);
@@ -173,15 +200,13 @@ export default function ChatSettings() {
              دون تفعيل -webkit-overflow-scrolling و touch-action مما أوقف السحب بالأصبع. */
           .yam-chat-settings-screen {
             min-height: 100%;
-            height: min(100dvh, var(--yam-vh, 100dvh));
-            display: grid;
-            grid-template-rows: auto minmax(0, 1fr);
+            display: flex;
+            flex-direction: column;
             background:
               radial-gradient(circle at top right, rgba(124,58,237,0.14), transparent 24%),
               radial-gradient(circle at bottom left, rgba(59,130,246,0.08), transparent 22%),
               #040714;
             color: #fff;
-            overflow: hidden;
             touch-action: pan-y;
           }
           .yam-chat-settings-header {
@@ -231,13 +256,12 @@ export default function ChatSettings() {
           }
           /* ✅ v85.8: تمرير لمسي مفعّل بالكامل للموبايل */
           .yam-chat-settings-body {
-            overflow-y: auto;
-            overflow-x: hidden;
-            -webkit-overflow-scrolling: touch;
-            overscroll-behavior: contain;
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: visible;
             touch-action: pan-y;
             padding: 14px 14px 40px;
-            padding-bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+            padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
             display: grid;
             gap: 12px;
           }
@@ -585,7 +609,7 @@ export default function ChatSettings() {
                       <strong>{extractFileName(item)}</strong>
                       <span>{item?.type === 'voice' ? 'رسالة صوتية' : 'ملف مرفق'}</span>
                     </div>
-                    {item?.media_url ? <a className="yam-open-link" href={item.media_url} target="_blank" rel="noreferrer">فتح</a> : <span aria-hidden="true">📎</span>}
+                    {resolveMessageMediaUrl(item) ? <a className="yam-open-link" href={resolveMessageMediaUrl(item)} target="_blank" rel="noreferrer">فتح</a> : <span aria-hidden="true">📎</span>}
                   </div>
                 ))}
               </div>

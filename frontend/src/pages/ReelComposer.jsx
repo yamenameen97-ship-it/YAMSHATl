@@ -3,6 +3,8 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import API from '../api/axios.js';
 import mediaUploadService from '../services/media/mediaUploadService.js';
+import { getCurrentUsername } from '../utils/auth.js';
+import { getReelsCache, saveReelsCache } from '../services/reelsEngine.js';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import CameraFilterCarousel, {
   CAMERA_FILTERS,
@@ -425,9 +427,10 @@ export default function ReelComposer() {
       mediaUrl = '';
     }
     try {
+      let publishResponse;
       if (mediaUrl) {
         // المسار الأساسي: لدينا mediaUrl جاهزة من خدمة الرفع
-        await API.post('/reels', {
+        publishResponse = await API.post('/reels', {
           media_url: mediaUrl,
           duration,
           quality,
@@ -444,7 +447,7 @@ export default function ReelComposer() {
         fd.append('file', file, file.name || `reel-${Date.now()}.webm`);
         fd.append('caption', captions || '');
         fd.append('category', 'general');
-        await API.post('/reels', fd, {
+        publishResponse = await API.post('/reels', fd, {
           headers: { 'Content-Type': 'multipart/form-data' },
           onUploadProgress: (e) => {
             if (!isMountedRef.current || !e?.total) return;
@@ -452,9 +455,37 @@ export default function ReelComposer() {
           },
         });
       }
+
+      const created = publishResponse?.data?.item || publishResponse?.data?.reel || publishResponse?.data || {};
+      const currentUsername = getCurrentUsername();
+      const cached = Array.isArray(getReelsCache()?.items) ? getReelsCache().items : [];
+      const optimisticReel = {
+        ...created,
+        id: created?.id || `local-reel-${Date.now()}`,
+        username: created?.username || created?.user?.username || currentUsername || 'أنت',
+        content: created?.content || created?.caption || '',
+        caption: created?.caption || created?.content || '',
+        created_at: created?.created_at || new Date().toISOString(),
+        media_url: created?.media_url || created?.video_url || mediaUrl,
+        video_url: created?.video_url || created?.media_url || mediaUrl,
+        thumbnail_url: created?.thumbnail_url || '',
+        likes_count: Number(created?.likes_count || 0),
+        comments_count: Number(created?.comments_count || 0),
+        share_count: Number(created?.share_count || 0),
+        views_count: Number(created?.views_count || 0),
+      };
+      const deduped = [optimisticReel, ...cached].filter((item, index, arr) => {
+        const key = String(item?.id || item?.media_url || item?.video_url || index);
+        return arr.findIndex((candidate) => String(candidate?.id || candidate?.media_url || candidate?.video_url || '') === key) === index;
+      }).slice(0, 80);
+      saveReelsCache(deduped);
+      try {
+        window.dispatchEvent(new CustomEvent('yamshat:reels-updated', { detail: { reelId: optimisticReel.id } }));
+      } catch {}
+
       if (!isMountedRef.current) return;
       pushToast?.({ tone: 'success', message: 'تم نشر الريل بنجاح 🎉' });
-      navigate('/reels', { replace: true });
+      navigate('/reels', { replace: true, state: { highlightReelId: optimisticReel.id } });
     } catch (err) {
       const m = err?.response?.data?.detail || err?.message || 'فشل نشر الريل';
       // ✅ v59.13.7 FIX #3 (ج): تجنّب setState بعد unmount

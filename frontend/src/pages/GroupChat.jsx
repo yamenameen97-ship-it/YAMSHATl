@@ -15,13 +15,15 @@ import {
 import socketManager from '../services/socketManager.js';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import { getCurrentUsername } from '../utils/auth.js';
-import { startCall, bootstrapCallService } from '../services/callService.js';
+import { bootstrapCallService } from '../services/callService.js';
 import { ensureNotificationPermission, showLocalNotification } from '../utils/notificationCenter.js';
 import MediaPreviewModal from '../components/chat/MediaPreviewModal.jsx';
 import MessageActionsToolbar from '../components/chat/MessageActionsToolbar.jsx';
 import MessageReactionPicker from '../components/chat/MessageReactionPicker.jsx';
 import SafeImage from '../components/chat/SafeImage.jsx';
 import CallBubble from '../components/chat/CallBubble.jsx';
+import CallExperience from '../components/chat/CallExperience.jsx';
+import VoiceMessagePlayer from '../components/ui/VoiceMessagePlayer.jsx';
 import GroupPinnedBar from '../components/groups/GroupPinnedBar.jsx';
 import GroupQuickLinks from '../components/groups/GroupQuickLinks.jsx';
 import '../styles/group-chat.css';
@@ -45,6 +47,19 @@ import ReportModal from '../components/reports/ReportModal.jsx';
  *  3. تفعيل المكالمات الصوتية والفيديو من هيدر المجموعة.
  *  4. تفعيل إشعارات الويب للمجموعات (طلب الإذن + إشعار محلي عند الرسائل).
  */
+const AUDIO_EXT_RE = /\.(aac|m4a|mp3|oga|ogg|opus|wav|webm)(?:$|\?)/i;
+
+function normalizeGroupMediaType(type = '', attachment = {}, mediaUrl = '') {
+  const raw = String(type || attachment?.kind || '').trim().toLowerCase();
+  const mime = String(attachment?.mime_type || '').toLowerCase();
+  const url = String(mediaUrl || attachment?.url || '').toLowerCase();
+  if (['voice', 'audio', 'audio_message', 'voice_message'].includes(raw)) return 'voice';
+  if (mime.startsWith('audio/') || AUDIO_EXT_RE.test(url)) return 'voice';
+  if (raw === 'photo') return 'image';
+  if (raw === 'attachment') return mime.startsWith('video/') ? 'video' : mime.startsWith('image/') ? 'image' : 'file';
+  return raw || 'text';
+}
+
 const GroupChat = () => {
   const { groupId } = useParams();
   const navigate = useNavigate();
@@ -57,6 +72,7 @@ const GroupChat = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [activeCall, setActiveCall] = useState(null);
   const [notifPermission, setNotifPermission] = useState(
     typeof Notification !== 'undefined' ? Notification.permission : 'default'
   );
@@ -166,25 +182,26 @@ const GroupChat = () => {
           ? response.data
           : (response.data?.items || []);
 
-        const formattedMessages = raw.map((msg) => ({
-          id: msg.id,
-          group_id: String(msg.group_id || groupId),
-          sender: msg.sender_username || msg.sender,
-          text: msg.content || msg.text || msg.message || '',
-          mediaUrl:
-            msg.media_url ||
-            (Array.isArray(msg.attachments) && msg.attachments[0]?.url) ||
-            null,
-          mediaType: msg.message_type || 'text',
-          time: new Date(msg.created_at || Date.now()).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-          isMe: (msg.sender_username || msg.sender) === currentUser,
-          avatar:
-            msg.sender_avatar ||
-            `https://api.dicebear.com/7.x/avataaars/svg?seed=${msg.sender_username || msg.sender}`,
-        }));
+        const formattedMessages = raw.map((msg) => {
+          const attachment = Array.isArray(msg.attachments) ? (msg.attachments[0] || {}) : {};
+          const mediaUrl = msg.media_url || attachment?.url || null;
+          return {
+            id: msg.id,
+            group_id: String(msg.group_id || groupId),
+            sender: msg.sender_username || msg.sender,
+            text: msg.content || msg.text || msg.message || '',
+            mediaUrl,
+            mediaType: normalizeGroupMediaType(msg.message_type, attachment, mediaUrl),
+            time: new Date(msg.created_at || Date.now()).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+            isMe: (msg.sender_username || msg.sender) === currentUser,
+            avatar:
+              msg.sender_avatar ||
+              `https://api.dicebear.com/7.x/avataaars/svg?seed=${msg.sender_username || msg.sender}`,
+          };
+        });
 
         formattedMessages.sort((a, b) => String(a.id).localeCompare(String(b.id)));
         setMessages(formattedMessages);
@@ -219,16 +236,15 @@ const GroupChat = () => {
       const senderName = payload.sender_username || payload.sender;
       const isFromMe = senderName === currentUser;
 
+      const attachment = Array.isArray(payload.attachments) ? (payload.attachments[0] || {}) : {};
+      const mediaUrl = payload.media_url || attachment?.url || null;
       const newMsg = {
         id: payload.id || `srv_${Date.now()}`,
         group_id: String(currentGid),
         sender: senderName,
         text: payload.content || payload.text || payload.message || '',
-        mediaUrl:
-          payload.media_url ||
-          (Array.isArray(payload.attachments) && payload.attachments[0]?.url) ||
-          null,
-        mediaType: payload.message_type || 'text',
+        mediaUrl,
+        mediaType: normalizeGroupMediaType(payload.message_type, attachment, mediaUrl),
         time: new Date(payload.created_at || Date.now()).toLocaleTimeString([], {
           hour: '2-digit',
           minute: '2-digit',
@@ -523,13 +539,10 @@ const GroupChat = () => {
   // ✅ تفعيل المكالمات الصوتية/الفيديو
   const handleStartCall = useCallback(async (mode = 'voice') => {
     try {
-      // طلب إذن الإشعارات لو لم يُمنح
       if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
         try { await Notification.requestPermission(); } catch {}
       }
-      // للمجموعة: نستخدم بادئة group: لتعريف الطرف الآخر كغرفة مجموعة
-      await startCall({ peer: `group:${groupId}`, mode });
-      navigate(`/call/${encodeURIComponent('group:' + groupId)}?mode=${mode}`);
+      setActiveCall({ mode, nonce: Date.now() });
     } catch (err) {
       console.error('Could not start call:', err);
       pushToast?.({
@@ -538,7 +551,7 @@ const GroupChat = () => {
         description: 'تأكد من السماح بالوصول للميكروفون/الكاميرا.',
       });
     }
-  }, [groupId, navigate, pushToast]);
+  }, [pushToast]);
 
   const groupName = groupInfo?.name || groupInfo?.title || 'دردشة المجموعة';
   const groupIcon = groupInfo?.icon || groupInfo?.image_url || null;
@@ -633,8 +646,35 @@ const GroupChat = () => {
   };
 
   return (
-    <MainLayout>
+    <MainLayout hideNav lockScroll>
     <div className="yam-group-chat-container" dir="rtl" data-yam-group-root="true" style={{ fontFamily: "'Noto Sans Arabic','Cairo','Tahoma',sans-serif" }}>
+      <style>{`
+        [data-yam-group-root="true"] {
+          height: 100%;
+          min-height: 100dvh;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+        [data-yam-group-root="true"] .yam-group-header,
+        [data-yam-group-root="true"] .yamg-quicklinks,
+        [data-yam-group-root="true"] .yam-group-pinned-bar {
+          flex-shrink: 0;
+        }
+        [data-yam-group-root="true"] .yam-group-messages {
+          flex: 1 1 auto;
+          min-height: 0;
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+          padding-bottom: 24px;
+        }
+        [data-yam-group-root="true"] .yam-group-input-area {
+          flex-shrink: 0;
+          position: sticky;
+          bottom: 0;
+          padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+        }
+      `}</style>
       {/* Long-Press Toolbar (فوق الهيدر) */}
       {selectedMessage ? (
         <MessageActionsToolbar
@@ -676,6 +716,19 @@ const GroupChat = () => {
       ) : null}
 
       {/* الهيدر */}
+      {activeCall ? (
+        <CallExperience
+          key={`${groupId}-${activeCall.mode}-${activeCall.nonce}`}
+          open={Boolean(activeCall)}
+          mode={activeCall.mode}
+          callType="group"
+          participantName={groupName}
+          peerId={`group:${groupId}`}
+          onClose={() => setActiveCall(null)}
+          onStatusChange={() => {}}
+        />
+      ) : null}
+
       <header className="yam-group-header">
         <button
           className="yam-back-arrow-btn"
@@ -814,7 +867,7 @@ const GroupChat = () => {
                 </div>
                 <div className="yam-message-content-wrap">
                   {!msg.isMe && <span className="yam-sender-name">{msg.sender}</span>}
-                  <div className="yam-message-bubble">
+                  <div className={`yam-message-bubble ${msg.mediaType === 'voice' ? 'voice-bubble' : ''}`}>
                     {msg.mediaUrl ? (
                       msg.mediaType === 'image' ? (
                         <img
@@ -827,6 +880,14 @@ const GroupChat = () => {
                           src={msg.mediaUrl}
                           controls
                           style={{ maxWidth: '240px', borderRadius: '8px', display: 'block' }}
+                        />
+                      ) : msg.mediaType === 'voice' ? (
+                        <VoiceMessagePlayer
+                          src={msg.mediaUrl}
+                          seed={`${msg.id}-${msg.time}`}
+                          title="رسالة صوتية"
+                          bubbleless
+                          isMe={msg.isMe}
                         />
                       ) : (
                         <a

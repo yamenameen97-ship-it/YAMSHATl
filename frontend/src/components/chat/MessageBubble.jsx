@@ -28,10 +28,64 @@ function formatMessageTime(value) {
   }
 }
 
+const IMAGE_MEDIA_RE = /\.(jpg|jpeg|png|gif|webp|svg|avif|bmp|heic|heif)(?:$|\?)/i;
+const VIDEO_MEDIA_RE = /\.(mp4|webm|mov|m4v|mkv)(?:$|\?)/i;
+const AUDIO_MEDIA_RE = /\.(mp3|wav|ogg|oga|m4a|aac|opus|webm)(?:$|\?)/i;
+
+function getPrimaryAttachment(message = {}) {
+  return Array.isArray(message?.attachments) && message.attachments.length ? (message.attachments[0] || {}) : {};
+}
+
+function resolveMessageMediaUrl(message = {}) {
+  const attachment = getPrimaryAttachment(message);
+  return String(
+    message?.media_url
+    || message?.media_urls?.[0]
+    || attachment?.url
+    || attachment?.mediaUrl
+    || attachment?.media_url
+    || ''
+  ).trim();
+}
+
+function resolveMessageMediaKind(message = {}) {
+  const attachment = getPrimaryAttachment(message);
+  const rawType = String(
+    message?.type
+    || message?.message_type
+    || attachment?.kind
+    || attachment?.type
+    || attachment?.mediaType
+    || attachment?.media_type
+    || ''
+  ).trim().toLowerCase();
+  const mime = String(attachment?.mime_type || attachment?.mimeType || '').trim().toLowerCase();
+  const mediaUrl = resolveMessageMediaUrl(message).toLowerCase();
+
+  if (['voice', 'audio', 'audio_message', 'voice_message'].includes(rawType)) return 'voice';
+  if (['image', 'photo', 'img', 'media_image'].includes(rawType)) return 'image';
+  if (['video', 'media_video'].includes(rawType)) return 'video';
+  if (['file', 'document', 'attachment'].includes(rawType)) return 'file';
+
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'video';
+  if (mime.startsWith('audio/')) return 'voice';
+
+  if (IMAGE_MEDIA_RE.test(mediaUrl)) return 'image';
+  if (VIDEO_MEDIA_RE.test(mediaUrl)) return 'video';
+  if (AUDIO_MEDIA_RE.test(mediaUrl)) return 'voice';
+
+  if (mediaUrl) return 'file';
+  return 'none';
+}
+
 function extractFileName(message) {
+  const attachment = getPrimaryAttachment(message);
   if (message?.attachment_name) return message.attachment_name;
-  if (Array.isArray(message?.attachments) && message.attachments[0]?.fileName) return message.attachments[0].fileName;
-  const mediaUrl = message?.media_url || '';
+  if (attachment?.fileName) return attachment.fileName;
+  if (attachment?.file_name) return attachment.file_name;
+  if (attachment?.name) return attachment.name;
+  const mediaUrl = resolveMessageMediaUrl(message);
   if (!mediaUrl) return 'ملف مرفق';
   try {
     const clean = mediaUrl.split('?')[0];
@@ -106,11 +160,13 @@ function MessageBubble({
     }
   }, []);
 
-  const hasMedia = Boolean(message?.media_url);
-  const isVoice = message?.type === 'voice';
-  const isImage = message?.type === 'image' || (hasMedia && /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(message?.media_url || ''));
-  const isVideo = message?.type === 'video' || (hasMedia && /\.(mp4|webm|mov|m4v)$/i.test(message?.media_url || ''));
-  const isFile = message?.type === 'file' || (hasMedia && !isVoice && !isImage && !isVideo);
+  const mediaUrl = resolveMessageMediaUrl(message);
+  const mediaKind = resolveMessageMediaKind(message);
+  const hasMedia = Boolean(mediaUrl);
+  const isVoice = mediaKind === 'voice';
+  const isImage = mediaKind === 'image';
+  const isVideo = mediaKind === 'video';
+  const isFile = mediaKind === 'file';
   const content = message?.content || message?.message || '';
   const fileName = extractFileName(message);
   const shouldGlow = highlightQuery.trim() && messageMatchesSearch(message, highlightQuery);
@@ -147,7 +203,7 @@ function MessageBubble({
       };
 
   const openCurrentMedia = () => {
-    if (!message?.media_url) return;
+    if (!mediaUrl) return;
     onOpenMedia?.(message);
   };
 
@@ -450,23 +506,23 @@ function MessageBubble({
               }}
             />
           ) : null}
-          {isImage && message?.media_url ? (
+          {isImage && mediaUrl ? (
             <button type="button" className="yam-media-button" onClick={openCurrentMedia}>
-              <SafeImage src={message.media_url} alt={fileName} onOpen={openCurrentMedia} maxHeight={340} />
+              <SafeImage src={mediaUrl} alt={fileName} onOpen={openCurrentMedia} maxHeight={340} />
               <span className="yam-bubble-media-overlay">تكبير</span>
             </button>
           ) : null}
 
-          {isVideo && message?.media_url ? (
+          {isVideo && mediaUrl ? (
             <button type="button" className="yam-media-button yam-video-preview-shell" onClick={openCurrentMedia}>
-              <video src={message.media_url} muted playsInline className="yam-bubble-media" preload="metadata" />
+              <video src={mediaUrl} muted playsInline className="yam-bubble-media" preload="metadata" />
               <span className="yam-bubble-media-overlay">تشغيل كامل</span>
             </button>
           ) : null}
 
-          {isVoice && message?.media_url ? (
+          {isVoice && mediaUrl ? (
             <VoiceMessagePlayer
-              src={message.media_url}
+              src={mediaUrl}
               seed={message?.waveform_seed || message?.created_at || messageId}
               title="رسالة صوتية"
               bubbleless
@@ -474,8 +530,8 @@ function MessageBubble({
             />
           ) : null}
 
-          {isFile && message?.media_url ? (
-            <a href={message.media_url} target="_blank" rel="noreferrer" className="yam-file-card">
+          {isFile && mediaUrl ? (
+            <a href={mediaUrl} target="_blank" rel="noreferrer" className="yam-file-card">
               <span className="yam-file-icon">📄</span>
               <span className="yam-file-copy">
                 <strong>{fileName}</strong>

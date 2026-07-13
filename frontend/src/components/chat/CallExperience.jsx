@@ -178,10 +178,12 @@ export default function CallExperience({
   mode = 'voice',
   callType = 'direct',
   participantName = 'yamenameen97',
+  peerId = null,
   incomingInvite = null,
   onClose,
   onStatusChange,
 }) {
+  const callTarget = peerId || participantName;
   const network = useMemo(() => getCallNetworkSummary(), []);
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
@@ -242,7 +244,7 @@ export default function CallExperience({
     (async () => {
       try {
         if (incomingInvite) await svcAcceptIncoming(incomingInvite);
-        else await svcStartCall({ peer: participantName, mode });
+        else await svcStartCall({ peer: callTarget, mode });
         if (!cancelled) setStreamError(null);
       } catch (err) {
         setStreamError(describeMediaError(err));
@@ -310,7 +312,11 @@ export default function CallExperience({
   }, []);
 
   const status = callState?.status || 'connecting';
-  const peerLabel = callState?.peer || participantName;
+  const peerLabel = (() => {
+    const activePeer = callState?.peer || '';
+    if (typeof activePeer === 'string' && activePeer.startsWith('group:')) return participantName;
+    return activePeer || participantName;
+  })();
   const effectiveMode = callState?.mode || mode;
   const activeError = streamError || permissionHint;
   // ✅ v83: ملخّص حالة التدفق — لاختيار ما يظهر في المشهد الرئيسي
@@ -340,7 +346,7 @@ export default function CallExperience({
     (async () => {
       try {
         if (incomingInvite) await svcAcceptIncoming(incomingInvite);
-        else await svcStartCall({ peer: participantName, mode });
+        else await svcStartCall({ peer: callTarget, mode });
       } catch (err) { setStreamError(describeMediaError(err)); }
     })();
   };
@@ -528,13 +534,13 @@ export default function CallExperience({
 
           {/* ✅ v83: بطاقة التشفير — مضغوطة ورفيعة جداً لتطابق التصميم المرجعي.
               كانت تغطي مساحة كبيرة من المشهد، أصبحت الآن شريط رفيع pill في أسفل يمين. */}
-          <div className="yam-call-v79-enc-card yam-call-v79-enc-card-compact" role="note">
+          <div className="yam-call-v79-enc-card yam-call-v79-enc-card-compact" role="note" aria-label="المكالمة مشفرة بالكامل">
             <div className="yam-call-v79-enc-card-badge yam-call-v79-enc-card-badge-sm">
               <span className="yam-call-v79-enc-y">Y</span>
               <span className="yam-call-v79-enc-lock"><Icon.Lock width="10" height="10" /></span>
             </div>
             <div className="yam-call-v79-enc-card-text">
-              <div className="yam-call-v79-enc-card-title">محادثة مشفرة بالكامل</div>
+              <div className="yam-call-v79-enc-card-title">مشفرة بالكامل</div>
               <div className="yam-call-v79-enc-card-desc">لا يمكن لأحد خارج هذه المكالمة قراءة أو سماع محتواها</div>
             </div>
           </div>
@@ -853,22 +859,26 @@ export default function CallExperience({
            للتصميم المرجعي: شريط رفيع لا يتجاوز 65% من عرض المشهد،
            أراضي أقل padding، وخطوط أصغر. */
         .yam-call-v79-enc-card-compact {
-          background: rgba(15,10,30,0.55);
-          border-radius: 12px;
-          padding: 6px 10px;
-          gap: 8px;
-          max-width: 68%;
-          bottom: 12px;
-          inset-inline-start: 12px;
+          background: rgba(11, 8, 24, 0.46);
+          border-radius: 999px;
+          padding: 4px 8px;
+          gap: 6px;
+          width: auto;
+          max-width: 156px;
+          min-height: 24px;
+          bottom: 10px;
+          inset-inline-start: 10px;
+          border-color: rgba(255,255,255,0.04);
+          backdrop-filter: blur(8px);
         }
         .yam-call-v79-enc-card-compact .yam-call-v79-enc-card-title {
-          font-size: 10.5px;
-          margin-bottom: 1px;
+          font-size: 9.5px;
+          margin-bottom: 0;
+          line-height: 1.1;
+          white-space: nowrap;
         }
         .yam-call-v79-enc-card-compact .yam-call-v79-enc-card-desc {
-          font-size: 9.5px;
-          line-height: 1.3;
-          color: #A5A0B8;
+          display: none;
         }
         .yam-call-v79-enc-card-badge {
           position: relative;
@@ -878,13 +888,13 @@ export default function CallExperience({
           flex-shrink: 0;
         }
         .yam-call-v79-enc-card-badge-sm {
-          width: 22px; height: 22px;
+          width: 18px; height: 18px;
         }
-        .yam-call-v79-enc-card-badge-sm .yam-call-v79-enc-y { font-size: 10px; }
+        .yam-call-v79-enc-card-badge-sm .yam-call-v79-enc-y { font-size: 8px; }
         .yam-call-v79-enc-card-badge-sm .yam-call-v79-enc-lock {
-          width: 11px; height: 11px;
-          bottom: -2px; inset-inline-end: -2px;
-          border-width: 1.5px;
+          width: 9px; height: 9px;
+          bottom: -1px; inset-inline-end: -1px;
+          border-width: 1.25px;
         }
         .yam-call-v79-enc-y { color: #fff; font-weight: 800; font-size: 13px; }
         .yam-call-v79-enc-lock {

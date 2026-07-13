@@ -139,7 +139,59 @@ function MobileCommentsSheet({ open, postId, onClose }) {
   if (!open) return null;
 
   return (
-    <div className="ym-sheet-overlay" role="dialog" aria-modal="true" aria-label="التعليقات" dir="rtl" onClick={onClose}>
+    <div className="ym-sheet-overlay" data-yam-comments-sheet="true" role="dialog" aria-modal="true" aria-label="التعليقات" dir="rtl" onClick={onClose}>
+      <style>{`
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] {
+          align-items: flex-end !important;
+          justify-content: center !important;
+          padding: 0 !important;
+          z-index: 1200 !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet {
+          width: 100% !important;
+          max-width: 100% !important;
+          height: min(82dvh, 760px) !important;
+          max-height: min(82dvh, 760px) !important;
+          margin: 0 !important;
+          border-radius: 24px 24px 0 0 !important;
+          display: flex !important;
+          flex-direction: column !important;
+          overflow: hidden !important;
+          transform: none !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-head {
+          flex-shrink: 0 !important;
+          padding-top: 10px !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-body {
+          flex: 1 1 auto !important;
+          min-height: 0 !important;
+          overflow-y: auto !important;
+          padding-bottom: 12px !important;
+          -webkit-overflow-scrolling: touch !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-composer {
+          position: sticky !important;
+          bottom: 0 !important;
+          inset-inline: 0 !important;
+          margin-top: auto !important;
+          display: flex !important;
+          align-items: center !important;
+          gap: 10px !important;
+          padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px)) !important;
+          background: rgba(9, 12, 26, 0.96) !important;
+          border-top: 1px solid rgba(255,255,255,0.08) !important;
+          z-index: 2 !important;
+          transform: none !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-input {
+          flex: 1 1 auto !important;
+          min-height: 46px !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-send {
+          flex-shrink: 0 !important;
+        }
+      `}</style>
       <div className="ym-sheet" dir="rtl" onClick={(e) => e.stopPropagation()}>
         <div className="ym-sheet-handle" aria-hidden="true" />
         <header className="ym-sheet-head">

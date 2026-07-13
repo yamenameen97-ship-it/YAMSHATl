@@ -69,10 +69,33 @@ function formatDayLabel(value) {
   }
 }
 
+const IMAGE_MEDIA_RE = /\.(jpg|jpeg|png|gif|webp|svg|avif|bmp|heic|heif)(?:$|\?)/i;
+const VIDEO_MEDIA_RE = /\.(mp4|webm|mov|m4v|mkv)(?:$|\?)/i;
+const AUDIO_MEDIA_RE = /\.(mp3|wav|ogg|oga|m4a|aac|opus|webm)(?:$|\?)/i;
+
+function getPrimaryAttachment(message = {}) {
+  return Array.isArray(message?.attachments) && message.attachments.length ? (message.attachments[0] || {}) : {};
+}
+
+function resolveMessageMediaUrl(message = {}) {
+  const attachment = getPrimaryAttachment(message);
+  return String(
+    message?.media_url
+    || message?.media_urls?.[0]
+    || attachment?.url
+    || attachment?.mediaUrl
+    || attachment?.media_url
+    || ''
+  ).trim();
+}
+
 function extractFileName(message) {
+  const attachment = getPrimaryAttachment(message);
   if (message.attachment_name) return message.attachment_name;
-  if (Array.isArray(message.attachments) && message.attachments[0]?.fileName) return message.attachments[0].fileName;
-  const mediaUrl = message.media_url || '';
+  if (attachment?.fileName) return attachment.fileName;
+  if (attachment?.file_name) return attachment.file_name;
+  if (attachment?.name) return attachment.name;
+  const mediaUrl = resolveMessageMediaUrl(message);
   if (!mediaUrl) return 'ملف مرفق';
   try {
     const clean = mediaUrl.split('?')[0];
@@ -94,10 +117,24 @@ function messageMatchesSearch(message, query) {
 }
 
 function normalizeChatMessage(message = {}) {
+  const attachment = getPrimaryAttachment(message);
+  const mediaUrl = resolveMessageMediaUrl(message);
+  const resolvedType = String(
+    message?.type
+    || message?.message_type
+    || attachment?.kind
+    || attachment?.type
+    || attachment?.mediaType
+    || attachment?.media_type
+    || ''
+  ).trim().toLowerCase();
+
   return withLifecycle({
     ...message,
     id: message?.id ?? message?.message_id ?? message?.client_id,
     client_id: message?.client_id ?? message?.id ?? message?.message_id,
+    media_url: mediaUrl || message?.media_url || '',
+    type: resolvedType || message?.type || (mediaUrl ? 'media' : 'text'),
   }, message?.status || message?.lifecycle?.status || MESSAGE_LIFECYCLE.SENT);
 }
 
@@ -132,8 +169,21 @@ function areGrouped(firstMessage, secondMessage) {
 }
 
 function resolveMediaType(message = {}) {
-  const mediaUrl = String(message?.media_url || '');
-  if (message?.type === 'video' || /\.(mp4|webm|mov|m4v)(\?.*)?$/i.test(mediaUrl)) return 'video';
+  const attachment = getPrimaryAttachment(message);
+  const mediaUrl = resolveMessageMediaUrl(message).toLowerCase();
+  const rawType = String(
+    message?.type
+    || message?.message_type
+    || attachment?.kind
+    || attachment?.type
+    || attachment?.mediaType
+    || attachment?.media_type
+    || ''
+  ).trim().toLowerCase();
+  const mime = String(attachment?.mime_type || attachment?.mimeType || '').trim().toLowerCase();
+
+  if (['video', 'media_video'].includes(rawType) || mime.startsWith('video/') || VIDEO_MEDIA_RE.test(mediaUrl)) return 'video';
+  if (['voice', 'audio', 'audio_message', 'voice_message'].includes(rawType) || mime.startsWith('audio/') || AUDIO_MEDIA_RE.test(mediaUrl)) return 'audio';
   return 'image';
 }
 
@@ -1343,6 +1393,18 @@ export default function Chat() {
             transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease;
             border: 1px solid rgba(255,255,255,0.08);
           }
+          .yam-bubble.is-media-only {
+            min-width: 0;
+            padding: 0;
+            border: 0 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            overflow: visible;
+          }
+          .yam-bubble.is-media-only:hover {
+            transform: none;
+            box-shadow: none !important;
+          }
           .bubble-me {
             background: linear-gradient(135deg, rgba(124,58,237,0.96), rgba(79,70,229,0.92));
             border-top-left-radius: 18px;
@@ -1458,6 +1520,14 @@ export default function Chat() {
             position: relative;
             cursor: zoom-in;
           }
+          .yam-bubble.is-media-only .yam-media-button {
+            width: auto;
+            max-width: min(280px, 68vw);
+            margin: 0;
+            border-radius: 14px;
+            background: transparent;
+            box-shadow: none;
+          }
           .yam-video-preview-shell::after {
             content: '▶';
             position: absolute;
@@ -1492,6 +1562,9 @@ export default function Chat() {
             font-size: 12px;
             font-weight: 800;
             backdrop-filter: blur(10px);
+          }
+          .yam-bubble.is-media-only .yam-bubble-media-overlay {
+            display: none;
           }
           .yam-voice-card {
             display: grid;
@@ -1605,6 +1678,10 @@ export default function Chat() {
             margin-top: 8px;
             color: rgba(255,255,255,0.78);
             font-size: 11px;
+          }
+          .yam-bubble.is-media-only .bubble-meta {
+            margin-top: 6px;
+            padding-inline: 4px;
           }
           .yam-reaction-summary {
             display: inline-flex;
@@ -2108,6 +2185,9 @@ export default function Chat() {
             .yam-bubble {
               padding: 10px 14px 8px;
               border-radius: 20px;
+            }
+            .yam-bubble.is-media-only {
+              padding: 0;
             }
             .yam-bubble-toolbar {
               inset-inline-end: 8px;

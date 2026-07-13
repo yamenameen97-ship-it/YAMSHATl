@@ -212,6 +212,19 @@
   box-shadow: 0 4px 15px rgba(109, 40, 217, 0.3);
 }
 
+.yam-message-bubble.voice-bubble {
+  padding: 0;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0;
+}
+
+.yam-message-bubble.voice-bubble .yam-voice-pill {
+  min-width: 188px;
+  max-width: min(82vw, 320px);
+}
+
 .yam-message-time {
   font-size: 11px;
   color: #64748b;
@@ -275,7 +288,7 @@
    شريط التنقّل السفلي بدون تكرار/شبح. */
 .yam-group-input-area {
   padding: 14px 20px;
-  padding-bottom: 14px;
+  padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
   background: rgba(13, 17, 28, 0.92);
   border-top: 1px solid rgba(255, 255, 255, 0.05);
   display: flex;

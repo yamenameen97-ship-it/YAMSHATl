@@ -6,6 +6,7 @@ import { addComment, getComments } from '../api/posts.js';
 import { addReelComment, getReelComments } from '../api/reels.js';
 import API from '../api/axios.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
+import { getReelsCache, saveReelsCache } from '../services/reelsEngine.js';
 // ✅ v59.13.16 FIX #1: ربط ReportModal بصفحة الريلز — كان موجوداً لكن غير مستخدم في الريلز
 import ReportModal from '../components/reports/ReportModal.jsx';
 
@@ -100,6 +101,26 @@ function normalizeReel(item = {}) {
   };
 }
 
+function reelIdentity(reel = {}) {
+  return String(reel.id || reel._id || reel.reel_id || reel.media_url || reel.video_url || `${reel.username || 'user'}-${reel.created_at || ''}`);
+}
+
+function mergeReelLists(primary = [], secondary = []) {
+  const merged = [];
+  const seen = new Set();
+  [...primary, ...secondary]
+    .map((item) => normalizeReel(item))
+    .filter((item) => item.media_url)
+    .forEach((item) => {
+      const key = reelIdentity(item);
+      if (seen.has(key)) return;
+      seen.add(key);
+      merged.push(item);
+    });
+  merged.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+  return merged;
+}
+
 export default function Reels() {
   const navigate = useNavigate();
   const { push: pushToast } = useToast() || {};
@@ -124,9 +145,14 @@ export default function Reels() {
   const isMountedRef = useRef(true);
   useEffect(() => () => { isMountedRef.current = false; }, []);
 
-  // Load feed
+  // Load feed + merge freshly published local cache so new reels appear instantly
   useEffect(() => {
     let cancelled = false;
+    const cachedItems = getReelsCache()?.items || [];
+    const cachedNormalized = mergeReelLists(cachedItems, []);
+    if (cachedNormalized.length) {
+      setReels(cachedNormalized);
+    }
     (async () => {
       setIsLoading(true);
       try {
@@ -138,18 +164,25 @@ export default function Reels() {
         }
         const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
         if (cancelled) return;
-        // ✅ v59.13.34 FIX: لا تُولّد ريل تجريبي عند الفراغ — اعرض قائمة فارغة فعلاً
-        // المشكلة السابقة: [normalizeReel({})] كان يُولّد سلايد واحد بكل القيم الافتراضية
-        // مما يُوهم المستخدم بوجود محتوى. الآن نعرض حالة فارغة حقيقية.
-        const normalized = items.map(normalizeReel);
-        setReels(normalized);
+        const merged = mergeReelLists(items, cachedItems);
+        setReels(merged);
+        saveReelsCache(merged);
       } catch {
-        if (!cancelled) setReels([]);
+        if (!cancelled) setReels(cachedNormalized);
       } finally {
         if (!cancelled) setIsLoading(false);
       }
     })();
     return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    const handleReelsUpdated = () => {
+      const cached = getReelsCache()?.items || [];
+      setReels((prev) => mergeReelLists(cached, prev));
+    };
+    window.addEventListener('yamshat:reels-updated', handleReelsUpdated);
+    return () => window.removeEventListener('yamshat:reels-updated', handleReelsUpdated);
   }, []);
 
   const currentReel = reels[activeIndex] || null;

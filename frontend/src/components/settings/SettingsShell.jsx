@@ -65,8 +65,18 @@ export default function SettingsShell({
         .settings-shell {
           max-width: 1080px;
           margin: 0 auto;
-          padding: 12px 14px 40px;
+          padding: 12px 14px calc(118px + env(safe-area-inset-bottom, 0px));
           font-size: 13px;
+          box-sizing: border-box;
+          touch-action: pan-y;
+          -ms-touch-action: pan-y;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior-y: contain;
+          overscroll-behavior-x: none;
+          pointer-events: auto;
+          transform: none;
+          filter: none;
+          perspective: none;
         }
         .settings-shell-header {
           display: flex;
@@ -117,6 +127,18 @@ export default function SettingsShell({
         .settings-shell-body {
           display: grid;
           gap: 10px;
+          overflow: visible;
+          touch-action: pan-y;
+          pointer-events: auto;
+        }
+        .settings-shell-header,
+        .settings-shell-tabs,
+        .settings-shell-body > *,
+        .settings-row,
+        .stats-grid,
+        .metric-card {
+          touch-action: pan-y;
+          pointer-events: auto;
         }
         .settings-row {
           display: flex;
@@ -195,6 +217,24 @@ export default function SettingsShell({
         .metric-card strong { font-size: 13.5px; }
 
         /* v76 — overrides لتصغير الأزرار داخل SettingsShell */
+        .settings-shell button,
+        .settings-shell a,
+        .settings-shell [role='button'],
+        .settings-shell [role='tab'],
+        .settings-shell [role='link'],
+        .settings-shell .settings-toggle,
+        .settings-shell .settings-shell-back,
+        .settings-shell .settings-link-btn,
+        .settings-shell .btn,
+        .settings-shell button.btn {
+          touch-action: manipulation;
+        }
+        .settings-shell input,
+        .settings-shell textarea,
+        .settings-shell select,
+        .settings-shell [contenteditable='true'] {
+          touch-action: auto;
+        }
         .settings-shell-body .btn,
         .settings-shell-body button.btn,
         .settings-shell-body .btn-small,
@@ -213,6 +253,9 @@ export default function SettingsShell({
         }
 
         @media (max-width: 600px) {
+          .settings-shell {
+            padding: 10px 10px calc(124px + env(safe-area-inset-bottom, 0px));
+          }
           .settings-shell-title-block h1 { font-size: 15px; }
           .settings-row { flex-wrap: wrap; gap: 6px; }
         }

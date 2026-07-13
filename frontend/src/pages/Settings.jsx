@@ -99,6 +99,28 @@ const PREFS_KEY = 'yamshat:app-prefs';
 const loadPrefs = () => { try { return JSON.parse(localStorage.getItem(PREFS_KEY) || '{}'); } catch { return {}; } };
 const savePrefs = (p) => { try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch {} };
 
+const scrollSettingsViewportToTop = () => {
+  if (typeof document === 'undefined') return;
+
+  const candidates = [
+    document.querySelector('.page-content'),
+    document.querySelector('.settings-wrap'),
+    document.scrollingElement,
+  ].filter(Boolean);
+
+  candidates.forEach((node) => {
+    try {
+      if (typeof node.scrollTo === 'function') {
+        node.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        node.scrollTop = 0;
+      }
+    } catch {
+      // ignore
+    }
+  });
+};
+
 // مودال إدخال بيانات
 function SettingsModal({ open, title, description, fields = [], confirmLabel = 'حفظ', cancelLabel = 'إلغاء', danger = false, onConfirm, onClose }) {
   const [values, setValues] = useState({});
@@ -1084,7 +1106,7 @@ export default function Settings() {
       // انتظر إعادة الرسم ثم مرّر للأعلى لظهور القسم مباشرة
       window.setTimeout(() => {
         try {
-          window.scrollTo({ top: 0, behavior: 'smooth' });
+          scrollSettingsViewportToTop();
           const el = document.querySelector('.settings-main');
           if (el && typeof el.scrollIntoView === 'function') {
             el.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1097,9 +1119,7 @@ export default function Settings() {
   // v87.7 — العودة لقائمة الإعدادات الرئيسية على الموبايل
   const backToMenu = () => {
     setMobileView('menu');
-    try {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch {}
+    scrollSettingsViewportToTop();
   };
 
   // v87.1 — بست تأكيد تنزيل البيانات (GDPR)
@@ -1991,8 +2011,18 @@ export default function Settings() {
         .settings-wrap {
           max-width: 1180px;
           margin: 0 auto;
-          padding: 12px 14px 40px;
+          padding: 12px 14px calc(118px + env(safe-area-inset-bottom, 0px));
           font-size: 13px;
+          box-sizing: border-box;
+          touch-action: pan-y;
+          -ms-touch-action: pan-y;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior-y: contain;
+          overscroll-behavior-x: none;
+          pointer-events: auto;
+          transform: none;
+          filter: none;
+          perspective: none;
         }
         .settings-hero {
           display: flex;
@@ -2075,7 +2105,43 @@ export default function Settings() {
           color: #c4b5fd; font-weight: 600;
         }
 
-        .settings-main { display: grid; gap: 10px; min-width: 0; }
+        .settings-main {
+          display: grid;
+          gap: 10px;
+          min-width: 0;
+          overflow: visible;
+          touch-action: pan-y;
+          pointer-events: auto;
+        }
+        .settings-sidebar,
+        .settings-group,
+        .settings-group-tabs,
+        .s-card,
+        .settings-row,
+        .list-row,
+        .stats-grid,
+        .metric-card {
+          touch-action: pan-y;
+          pointer-events: auto;
+        }
+        .settings-wrap button,
+        .settings-wrap a,
+        .settings-wrap [role='button'],
+        .settings-wrap [role='tab'],
+        .settings-wrap [role='link'],
+        .settings-wrap .settings-tab-btn,
+        .settings-wrap .settings-mobile-back,
+        .settings-wrap .settings-quick-menu-btn,
+        .settings-wrap .settings-btn-mini,
+        .settings-wrap .settings-toggle {
+          touch-action: manipulation;
+        }
+        .settings-wrap input,
+        .settings-wrap textarea,
+        .settings-wrap select,
+        .settings-wrap [contenteditable='true'] {
+          touch-action: auto;
+        }
 
         /* Cards مضغوطة */
         .s-card {
@@ -2307,7 +2373,7 @@ export default function Settings() {
         }
         /* ✅ v85.8: على الموبايل — 3 أعمدة داخل كل مجموعة (كما طلب المستخدم) */
         @media (max-width: 600px) {
-          .settings-wrap { padding: 10px 10px 30px; }
+          .settings-wrap { padding: 10px 10px calc(124px + env(safe-area-inset-bottom, 0px)); }
           .s-card { padding: 10px 12px !important; }
           .settings-row { flex-wrap: wrap; gap: 6px; }
           .settings-group-tabs {

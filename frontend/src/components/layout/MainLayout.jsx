@@ -27,6 +27,20 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
   const [isTransitioning, setIsTransitioning] = useState(false);
 
   const isConversationRoute = /^\/chat\/[^/]+/.test(location.pathname);
+  const searchParams = new URLSearchParams(location.search);
+  const isStoriesRoute = location.pathname === '/stories';
+  const isGroupChatRoute = /^\/groups\/[^/]+\/chat$/.test(location.pathname);
+  const isPostComposerRoute =
+    location.pathname === '/post/compose' ||
+    location.pathname === '/post/new' ||
+    (location.pathname === '/compose' && String(searchParams.get('tab') || '').toLowerCase() === 'post');
+  const pageRole = isStoriesRoute
+    ? 'stories'
+    : isGroupChatRoute
+      ? 'group-chat'
+      : isPostComposerRoute
+        ? 'post-composer'
+        : 'generic';
   // وضع الريلز: الهيدر العلوي مُخفي تمامًا (v44 — TikTok pure mode)
   // المحتوى يملأ كامل الشاشة، ويتم الاكتفاء بالشريط العائم الداخلي (استكشف/أتابعه/لك + بحث + LIVE)
   const isReelsRoute = location.pathname === '/reels' || location.pathname.startsWith('/reels/');
@@ -87,17 +101,19 @@ export default function MainLayout({ children, hideNav = false, lockScroll = fal
     <div
       dir="rtl"
       style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}
-      className={`app-shell yamshat-shell yamshat-unified ${nativeShell ? 'native-shell' : ''} ${isConversationRoute ? 'conversation-shell' : ''} ${isReelsRoute ? 'reels-shell' : ''}`}
+      className={`app-shell yamshat-shell yamshat-unified ${nativeShell ? 'native-shell' : ''} ${isConversationRoute ? 'conversation-shell' : ''} ${isReelsRoute ? 'reels-shell' : ''} ${pageRole !== 'generic' ? `page-${pageRole}` : ''}`}
+      data-page={pageRole}
     >
       {/* v44: الهيدر العلوي الموحّد مخفي بالكامل داخل الريلز (TikTok pure mode) */}
       {showTopBar ? <MobileTopBar transparent={false} /> : null}
 
       <div className={`main-shell ${nativeShell ? 'native-shell' : ''}`}>
         <main
-          className={`page-content ${nativeShell ? 'native-shell' : ''} ${isTransitioning ? 'is-transitioning' : ''} ${isConversationRoute ? 'conversation-mode' : ''} ${lockScroll ? 'lock-scroll' : ''} ${showChrome ? 'with-fixed-chrome' : ''} ${isReelsRoute ? 'reels-mode' : ''}`}
+          className={`page-content ${nativeShell ? 'native-shell' : ''} ${isTransitioning ? 'is-transitioning' : ''} ${isConversationRoute ? 'conversation-mode' : ''} ${lockScroll ? 'lock-scroll' : ''} ${showChrome ? 'with-fixed-chrome' : ''} ${isReelsRoute ? 'reels-mode' : ''} ${pageRole !== 'generic' ? `page-${pageRole}` : ''}`}
+          data-page={pageRole}
           ref={mainRef}
         >
-          <div className={`page-shell-glow ${isConversationRoute ? 'conversation-mode' : ''} ${isReelsRoute ? 'reels-mode' : ''}`} key={location.pathname}>
+          <div className={`page-shell-glow ${isConversationRoute ? 'conversation-mode' : ''} ${isReelsRoute ? 'reels-mode' : ''} ${pageRole !== 'generic' ? `page-shell-${pageRole}` : ''}`} data-page-shell={pageRole} key={location.pathname}>
             {children}
           </div>
         </main>

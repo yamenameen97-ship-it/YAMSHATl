@@ -143,7 +143,7 @@ export default function StoriesPage() {
 
   return (
     <MainLayout>
-      <section dir="rtl" className="yam-stories-page" style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}>
+      <section dir="rtl" className="yam-stories-page" data-yam-stories-root="true" style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}>
         <div className="yam-stories-tabs" role="tablist">
           <button type="button" role="tab" aria-selected={activeTab === 'feed'} onClick={() => setActiveTab('feed')} className={`yam-stab ${activeTab === 'feed' ? 'active' : ''}`}>قصص الأصدقاء</button>
           <button type="button" role="tab" aria-selected={activeTab === 'archive'} onClick={() => setActiveTab('archive')} className={`yam-stab ${activeTab === 'archive' ? 'active' : ''}`}>🗄️ الأرشيف {myStoriesCount ? `(${myStoriesCount})` : ''}</button>
@@ -378,7 +378,7 @@ function formatTimeAgo(iso) {
 }
 
 const pageStyles = `
-.yam-stories-page { padding: 18px; display:flex; flex-direction:column; gap:16px; }
+.yam-stories-page { padding: 18px; display:flex; flex-direction:column; gap:16px; width:100%; box-sizing:border-box; }
 .yam-stories-tabs { display:flex; gap:10px; flex-wrap:wrap; }
 .yam-stab { border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.04); color:var(--text,#eef2ff); border-radius:999px; padding:10px 16px; cursor:pointer; font:inherit; font-weight:700; }
 .yam-stab.active { background:linear-gradient(135deg,#7c3aed,#ec4899); border-color:transparent; }
@@ -419,7 +419,7 @@ const pageStyles = `
 .yam-skel-text { display:block; width:70px; height:12px; border-radius:999px; background:rgba(255,255,255,.08); }
 @keyframes yamShimmer { from { background-position:200% 0; } to { background-position:-200% 0; } }
 @media (max-width: 720px) {
-  .yam-stories-page { padding:14px; }
+  .yam-stories-page { padding:14px; padding-top:16px; }
   .yam-story-bubble-ring { width:84px; height:84px; }
   .yam-top-story-layout { grid-template-columns:1fr; }
 }

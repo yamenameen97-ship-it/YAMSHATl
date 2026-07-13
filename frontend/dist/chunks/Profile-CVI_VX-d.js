@@ -1,0 +1,783 @@
+import { bv as useNavigate, bx as useParams, a_ as reactExports, aq as jsxRuntimeExports, h as MainLayout } from "../index-2I4hYPnI.js";
+const PROFILE_DATA = {
+  username: "yamenameen97",
+  handle: "@yamenameen97",
+  displayName: "Y A M E N",
+  stats: [
+    { value: "78", label: "متابع" },
+    { value: "1.2M", label: "متابعين" },
+    { value: "32.4M", label: "إعجابات" }
+  ],
+  bioLines: [
+    "صانع محتوى تقني | عاشق للتصميم والمونتاج 💜",
+    "شارك شغفي واستمتع بالمحتوى"
+  ],
+  contactLine: "للتواصل والإعلانات",
+  website: "yamshat.com"
+};
+const TABS = [
+  { key: "posts", label: "المنشورات", icon: "grid" },
+  { key: "media", label: "الوسائط", icon: "play" },
+  { key: "stories", label: "الستوريات", icon: "circle" },
+  { key: "groups", label: "المجموعات", icon: "group" }
+];
+const POSTS = [
+  {
+    id: "post-text",
+    type: "text",
+    time: "منذ 2 ساعة",
+    content: [
+      "التصميم ليس فقط شكل جميل،",
+      "بل هو طريقة لحل المشاكل وجعل الحياة أسهل.",
+      "ما رأيكم؟ 💜"
+    ],
+    stats: { likes: "12.4K", comments: "832", shares: "451" }
+  },
+  {
+    id: "post-art",
+    type: "image",
+    time: "منذ 1 يوم",
+    image: "/reference-profile/post-image.png",
+    stats: { likes: "23.1K", comments: "1.2K", shares: "678" }
+  }
+];
+function VerifiedBadge({ size = 16 }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { viewBox: "0 0 24 24", width: size, height: size, "aria-hidden": "true", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("path", { fill: "#4C7DFF", d: "M12 2.25 14.61 4l3.13-.25 1.03 2.96L21.75 8l-1.75 4 1.75 4-2.98 1.29-1.03 2.96-3.13-.25L12 21.75 9.39 20l-3.13.25-1.03-2.96L2.25 16 4 12 2.25 8l2.98-1.29 1.03-2.96L9.39 4 12 2.25Z" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("path", { fill: "#fff", d: "m10.32 15.47-2.6-2.6 1.18-1.18 1.42 1.42 4.84-4.84 1.18 1.18-6.02 6.02Z" })
+  ] });
+}
+function Icon({ name, size = 20, color = "currentColor", stroke = 1.9 }) {
+  const common = { fill: "none", stroke: color, strokeWidth: stroke, strokeLinecap: "round", strokeLinejoin: "round" };
+  switch (name) {
+    case "back":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { viewBox: "0 0 24 24", width: size, height: size, "aria-hidden": "true", children: /* @__PURE__ */ jsxRuntimeExports.jsx("path", { ...common, d: "M15 5 8 12l7 7" }) });
+    case "bell":
+      return /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { viewBox: "0 0 24 24", width: size, height: size, "aria-hidden": "true", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { ...common, d: "M12 4a4 4 0 0 0-4 4v2.35c0 .79-.28 1.55-.79 2.16L6 14h12l-1.21-1.49A3.36 3.36 0 0 1 16 10.35V8a4 4 0 0 0-4-4Z" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { ...common, d: "M10 18a2 2 0 0 0 4 0" })
+      ] });
+    case "menu":
+      return /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { viewBox: "0 0 24 24", width: size, height: size, "aria-hidden": "true", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("circle", { cx: "12", cy: "5", r: "1.6", fill: color }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("circle", { cx: "12", cy: "12", r: "1.6", fill: color }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("circle", { cx: "12", cy: "19", r: "1.6", fill: color })
+      ] });
+    case "paper":
+      return /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { viewBox: "0 0 24 24", width: size, height: size, "aria-hidden": "true", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { ...common, d: "m21 3-9.24 18-2.2-7.56L3 11.24 21 3Z" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { ...common, d: "M9.56 13.44 21 3" })
+      ] });
+    case "heart":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { viewBox: "0 0 24 24", width: size, height: size, "aria-hidden": "true", children: /* @__PURE__ */ jsxRuntimeExports.jsx("path", { ...common, d: "M12 20.25S4 15.5 4 9.76A4.76 4.76 0 0 1 8.76 5c1.42 0 2.78.64 3.24 1.64C12.46 5.64 13.82 5 15.24 5A4.76 4.76 0 0 1 20 9.76c0 5.74-8 10.49-8 10.49Z" }) });
+    case "comment":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { viewBox: "0 0 24 24", width: size, height: size, "aria-hidden": "true", children: /* @__PURE__ */ jsxRuntimeExports.jsx("path", { ...common, d: "M6.5 18.5 4 20V6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v8a2.5 2.5 0 0 1-2.5 2.5H6.5Z" }) });
+    case "share":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { viewBox: "0 0 24 24", width: size, height: size, "aria-hidden": "true", children: /* @__PURE__ */ jsxRuntimeExports.jsx("path", { ...common, d: "m21 4-8.5 16-2.25-6.25L4 11.5 21 4Z" }) });
+    case "grid":
+      return /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { viewBox: "0 0 24 24", width: size, height: size, "aria-hidden": "true", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "4", y: "4", width: "6", height: "6", rx: "1.4", fill: color }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "14", y: "4", width: "6", height: "6", rx: "1.4", fill: color }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "4", y: "14", width: "6", height: "6", rx: "1.4", fill: color }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "14", y: "14", width: "6", height: "6", rx: "1.4", fill: color })
+      ] });
+    case "play":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { viewBox: "0 0 24 24", width: size, height: size, "aria-hidden": "true", children: /* @__PURE__ */ jsxRuntimeExports.jsx("path", { ...common, d: "M8 6.75v10.5c0 .65.71 1.05 1.27.72l8.21-4.75a.83.83 0 0 0 0-1.44L9.27 6.03A.83.83 0 0 0 8 6.75Z" }) });
+    case "circle":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { viewBox: "0 0 24 24", width: size, height: size, "aria-hidden": "true", children: /* @__PURE__ */ jsxRuntimeExports.jsx("circle", { cx: "12", cy: "12", r: "6.25", ...common }) });
+    case "group":
+      return /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { viewBox: "0 0 24 24", width: size, height: size, "aria-hidden": "true", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("circle", { cx: "8", cy: "9", r: "2.5", ...common }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("circle", { cx: "16.5", cy: "8.5", r: "2", ...common }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { ...common, d: "M4.5 18.5c.8-2.55 2.77-3.83 5.5-3.83s4.7 1.28 5.5 3.83" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { ...common, d: "M14.5 18c.47-1.76 1.82-2.78 3.84-2.95" })
+      ] });
+    case "home":
+      return /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { viewBox: "0 0 24 24", width: size, height: size, "aria-hidden": "true", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { ...common, d: "m4.5 10.5 7.5-6 7.5 6" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { ...common, d: "M6.5 9.5V19h11V9.5" })
+      ] });
+    case "chat":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { viewBox: "0 0 24 24", width: size, height: size, "aria-hidden": "true", children: /* @__PURE__ */ jsxRuntimeExports.jsx("path", { ...common, d: "M5.5 18.5 4 20V6.75A2.75 2.75 0 0 1 6.75 4h10.5A2.75 2.75 0 0 1 20 6.75v7.5A2.75 2.75 0 0 1 17.25 17H5.5Z" }) });
+    case "plus":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { viewBox: "0 0 24 24", width: size, height: size, "aria-hidden": "true", children: /* @__PURE__ */ jsxRuntimeExports.jsx("path", { ...common, d: "M12 5v14M5 12h14" }) });
+    case "reels":
+      return /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { viewBox: "0 0 24 24", width: size, height: size, "aria-hidden": "true", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "4.5", y: "4.5", width: "15", height: "15", rx: "3", ...common }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { ...common, d: "M4.5 9.25h15" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { ...common, d: "m8 4.75 3 4.5" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { ...common, d: "m13 4.75 3 4.5" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { ...common, d: "m10 11.5 4 2.5-4 2.5Z" })
+      ] });
+    case "profile":
+      return /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { viewBox: "0 0 24 24", width: size, height: size, "aria-hidden": "true", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("circle", { cx: "12", cy: "8", r: "3.25", ...common }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { ...common, d: "M5 19c1.03-3.1 3.27-4.65 7-4.65S17.97 15.9 19 19" })
+      ] });
+    case "site":
+      return /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { viewBox: "0 0 24 24", width: size, height: size, "aria-hidden": "true", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { ...common, d: "M10.2 13.8 8.1 15.9a3.1 3.1 0 1 1-4.38-4.38l2.8-2.8a3.1 3.1 0 0 1 4.38 0" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { ...common, d: "m13.8 10.2 2.1-2.1a3.1 3.1 0 0 1 4.38 4.38l-2.8 2.8a3.1 3.1 0 0 1-4.38 0" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { ...common, d: "m9.2 14.8 5.6-5.6" })
+      ] });
+    case "mail":
+      return /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { viewBox: "0 0 24 24", width: size, height: size, "aria-hidden": "true", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "4", y: "6", width: "16", height: "12", rx: "2.2", ...common }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { ...common, d: "m5 8 7 5 7-5" })
+      ] });
+    default:
+      return null;
+  }
+}
+function SignalIcons() {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ym-ref-status-icons", "aria-hidden": "true", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "ym-ref-signal", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("i", {}),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("i", {}),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("i", {}),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("i", {})
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ym-ref-wifi", children: /* @__PURE__ */ jsxRuntimeExports.jsx("em", {}) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ym-ref-battery", children: /* @__PURE__ */ jsxRuntimeExports.jsx("b", {}) })
+  ] });
+}
+function TabIcon({ name, active }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name, size: 19, color: active ? "#F5F7FF" : "rgba(223, 226, 255, 0.72)", stroke: 1.8 });
+}
+function BottomItem({ icon, label, active = false, center = false }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", className: `ym-ref-bottom-item ${active ? "is-active" : ""} ${center ? "is-center" : ""}`, children: [
+    center ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ym-ref-bottom-plus", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "plus", size: 22, color: "#FFFFFF", stroke: 2.1 }) }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ym-ref-bottom-icon", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: icon, size: 22, color: active ? "#7E4FFF" : "rgba(220,224,255,0.72)", stroke: 1.9 }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: label })
+  ] });
+}
+function PostFooter({ stats }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ym-ref-post-footer", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "heart", size: 19, color: "#7D53FF" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: stats.likes })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "comment", size: 19, color: "rgba(230,233,255,0.68)" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: stats.comments })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "share", size: 19, color: "rgba(230,233,255,0.68)" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: stats.shares })
+    ] })
+  ] });
+}
+function Profile() {
+  const navigate = useNavigate();
+  const { username: routeUsername } = useParams();
+  const [activeTab, setActiveTab] = reactExports.useState("posts");
+  const profile = reactExports.useMemo(() => ({ ...PROFILE_DATA, routeUsername: routeUsername || PROFILE_DATA.username }), [routeUsername]);
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(MainLayout, { hideNav: true, children: /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "ym-ref-profile-screen", dir: "rtl", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ym-ref-profile-shell", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "ym-ref-statusbar", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "9:41" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(SignalIcons, {})
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ym-ref-topbar", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", "aria-label": "رجوع", className: "ym-ref-icon-btn", onClick: () => navigate(-1), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "back", size: 22, color: "#FFFFFF" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ym-ref-topbar-title", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: profile.username }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedBadge, { size: 16 })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ym-ref-topbar-actions", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", "aria-label": "الإشعارات", className: "ym-ref-icon-btn", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "bell", size: 20, color: "#FFFFFF" }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", "aria-label": "المزيد", className: "ym-ref-icon-btn", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "menu", size: 20, color: "#FFFFFF" }) })
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ym-ref-profile-header", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ym-ref-avatar-wrap", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ym-ref-avatar-ring", children: /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: "/reference-profile/avatar.png", alt: profile.username, className: "ym-ref-avatar" }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "ym-ref-avatar-plus", "aria-label": "إضافة", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "plus", size: 14, color: "#FFFFFF", stroke: 2.4 }) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { children: profile.displayName }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: profile.handle }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ym-ref-stats", children: profile.stats.map((item, index) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ym-ref-stat", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: item.value }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: item.label }),
+          index < profile.stats.length - 1 ? /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "ym-ref-stat-divider", "aria-hidden": "true" }) : null
+        ] }, item.label)) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ym-ref-actions", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", className: "ym-ref-action ym-ref-action-secondary", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "رسالة" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "paper", size: 15, color: "rgba(245,247,255,0.92)" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "ym-ref-action ym-ref-action-primary", children: "متابعة" })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ym-ref-bio", children: [
+          profile.bioLines.map((line) => /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: line }, line)),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ym-ref-inline-line ym-ref-contact-row", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "mail", size: 14, color: "rgba(225,230,255,0.75)" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: profile.contactLine }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ym-ref-dot-icon", children: "◎" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ym-ref-inline-line ym-ref-link-row", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "site", size: 14, color: "#B994FF" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: `https://${profile.website}`, target: "_blank", rel: "noreferrer", children: profile.website }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "site", size: 14, color: "#B994FF" })
+          ] })
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("nav", { className: "ym-ref-tabs", "aria-label": "أقسام الملف الشخصي", children: TABS.map((tab) => {
+        const active = activeTab === tab.key;
+        return /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", className: `ym-ref-tab ${active ? "is-active" : ""}`, onClick: () => setActiveTab(tab.key), children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TabIcon, { name: tab.icon, active }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: tab.label })
+        ] }, tab.key);
+      }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ym-ref-content", children: activeTab === "posts" ? /* @__PURE__ */ jsxRuntimeExports.jsx(jsxRuntimeExports.Fragment, { children: POSTS.map((post) => /* @__PURE__ */ jsxRuntimeExports.jsxs("article", { className: "ym-ref-post-card", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ym-ref-post-head", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ym-ref-post-author", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: "/reference-profile/avatar.png", alt: "avatar" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("strong", { children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: profile.username }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedBadge, { size: 13 })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: post.time })
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "ym-ref-post-menu", "aria-label": "خيارات المنشور", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "menu", size: 18, color: "rgba(255,255,255,0.85)" }) })
+        ] }),
+        post.type === "text" ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ym-ref-post-copy", children: post.content.map((line) => /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: line }, line)) }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ym-ref-post-image-wrap", children: /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: post.image, alt: "YAMEN cyberpunk artwork", className: "ym-ref-post-image" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(PostFooter, { stats: post.stats })
+      ] }, post.id)) }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ym-ref-empty-state", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: TABS.find((tab) => tab.key === activeTab)?.label }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "تم تجهيز التبويب ضمن نفس توزيع التصميم المرجعي." })
+      ] }) })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("footer", { className: "ym-ref-bottom-nav", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(BottomItem, { icon: "home", label: "الرئيسية" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(BottomItem, { icon: "chat", label: "الدردشات" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(BottomItem, { icon: "plus", label: "", center: true }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(BottomItem, { icon: "reels", label: "الريلز" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(BottomItem, { icon: "profile", label: "حسابي", active: true })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("style", { children: `
+          .ym-ref-profile-screen {
+            min-height: 100vh;
+            min-height: 100dvh;
+            background:
+              radial-gradient(circle at 50% 0%, rgba(123, 54, 255, 0.16), transparent 32%),
+              radial-gradient(circle at 50% 100%, rgba(123, 54, 255, 0.10), transparent 24%),
+              #020205;
+            color: #FFFFFF;
+            font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+            display: flex;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+          }
+
+          .ym-ref-profile-shell {
+            width: min(100%, 500px);
+            min-height: 100vh;
+            min-height: 100dvh;
+            padding: 10px 18px 108px;
+            box-sizing: border-box;
+            position: relative;
+            background: linear-gradient(180deg, rgba(7,7,10,0.96), rgba(3,3,5,1));
+          }
+
+          .ym-ref-statusbar,
+          .ym-ref-topbar,
+          .ym-ref-stats,
+          .ym-ref-actions,
+          .ym-ref-tabs,
+          .ym-ref-post-head,
+          .ym-ref-post-footer,
+          .ym-ref-bottom-nav,
+          .ym-ref-inline-line,
+          .ym-ref-topbar-actions,
+          .ym-ref-post-author strong,
+          .ym-ref-profile-header {
+            display: flex;
+            align-items: center;
+          }
+
+          .ym-ref-statusbar {
+            justify-content: space-between;
+            direction: ltr;
+            padding: 2px 10px 0;
+            font-size: 17px;
+            line-height: 1;
+            font-weight: 700;
+            color: rgba(255,255,255,0.96);
+          }
+
+          .ym-ref-status-icons {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+          }
+
+          .ym-ref-signal { display: inline-flex; gap: 2px; align-items: flex-end; height: 14px; }
+          .ym-ref-signal i { width: 2.4px; border-radius: 999px; background: #fff; display: block; }
+          .ym-ref-signal i:nth-child(1) { height: 4px; opacity: .55; }
+          .ym-ref-signal i:nth-child(2) { height: 7px; opacity: .72; }
+          .ym-ref-signal i:nth-child(3) { height: 10px; opacity: .86; }
+          .ym-ref-signal i:nth-child(4) { height: 13px; }
+          .ym-ref-wifi { width: 14px; height: 10px; position: relative; display: inline-flex; align-items: center; justify-content: center; }
+          .ym-ref-wifi::before,
+          .ym-ref-wifi::after,
+          .ym-ref-wifi em { content: ''; position: absolute; border: 1.8px solid transparent; border-top-color: #fff; border-radius: 50%; }
+          .ym-ref-wifi::before { width: 14px; height: 14px; top: 1px; }
+          .ym-ref-wifi::after { width: 10px; height: 10px; top: 3px; }
+          .ym-ref-wifi em { width: 5px; height: 5px; top: 7px; }
+          .ym-ref-battery { width: 22px; height: 11px; border: 1.6px solid #fff; border-radius: 3px; position: relative; display: inline-block; }
+          .ym-ref-battery::after { content: ''; position: absolute; inset-inline-end: -3.4px; top: 2.3px; width: 2px; height: 5px; border-radius: 1px; background: #fff; }
+          .ym-ref-battery b { position: absolute; inset: 1.6px; border-radius: 1px; background: #fff; display: block; }
+
+          .ym-ref-topbar {
+            justify-content: space-between;
+            gap: 12px;
+            padding: 16px 4px 10px;
+          }
+
+          .ym-ref-topbar-title {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 19px;
+            font-weight: 700;
+            color: #FFFFFF;
+            transform: translateX(9px);
+          }
+
+          .ym-ref-icon-btn,
+          .ym-ref-post-menu,
+          .ym-ref-bottom-item,
+          .ym-ref-action,
+          .ym-ref-tab,
+          .ym-ref-post-footer button,
+          .ym-ref-avatar-plus {
+            border: 0;
+            background: transparent;
+            color: inherit;
+            cursor: pointer;
+            padding: 0;
+            font: inherit;
+          }
+
+          .ym-ref-icon-btn {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+          }
+
+          .ym-ref-topbar-actions { gap: 4px; }
+
+          .ym-ref-profile-header {
+            flex-direction: column;
+            justify-content: center;
+            text-align: center;
+            padding: 8px 0 10px;
+            gap: 10px;
+          }
+
+          .ym-ref-avatar-wrap {
+            position: relative;
+            width: 124px;
+            height: 124px;
+            margin-bottom: 2px;
+          }
+
+          .ym-ref-avatar-ring {
+            width: 124px;
+            height: 124px;
+            border-radius: 50%;
+            padding: 3px;
+            box-sizing: border-box;
+            background: radial-gradient(circle at 50% 30%, rgba(122,64,255,.35), rgba(98,0,255,0.05) 60%, rgba(0,0,0,0));
+            box-shadow: 0 0 0 1px rgba(104, 54, 255, 0.95), 0 0 30px rgba(104, 54, 255, 0.18);
+          }
+
+          .ym-ref-avatar {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
+            display: block;
+            background: #06060A;
+          }
+
+          .ym-ref-avatar-plus {
+            position: absolute;
+            right: -2px;
+            bottom: 10px;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(180deg, #6B34FF 0%, #8A57FF 100%);
+            box-shadow: 0 8px 18px rgba(111, 53, 255, 0.35);
+          }
+
+          .ym-ref-profile-header h1 {
+            margin: 0;
+            font-size: 24px;
+            letter-spacing: 8px;
+            font-weight: 500;
+          }
+
+          .ym-ref-profile-header > p {
+            margin: -4px 0 4px;
+            font-size: 16px;
+            color: #9198C8;
+          }
+
+          .ym-ref-stats {
+            width: 100%;
+            justify-content: center;
+            gap: 0;
+            margin-top: 6px;
+          }
+
+          .ym-ref-stat {
+            flex: 1 1 0;
+            min-width: 0;
+            justify-content: center;
+            text-align: center;
+            flex-direction: column;
+            gap: 4px;
+            position: relative;
+          }
+
+          .ym-ref-stat strong {
+            font-size: 31px;
+            line-height: 1.05;
+            font-weight: 400;
+            letter-spacing: -0.02em;
+          }
+
+          .ym-ref-stat span {
+            color: rgba(205, 209, 232, 0.78);
+            font-size: 16px;
+          }
+
+          .ym-ref-stat-divider {
+            position: absolute;
+            inset-inline-start: -1px;
+            top: 12px;
+            bottom: 12px;
+            width: 1px;
+            background: rgba(255,255,255,0.10);
+          }
+
+          .ym-ref-actions {
+            width: 100%;
+            gap: 12px;
+            margin-top: 12px;
+          }
+
+          .ym-ref-action {
+            flex: 1 1 0;
+            min-height: 52px;
+            border-radius: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 18px;
+            font-weight: 700;
+          }
+
+          .ym-ref-action-primary {
+            color: #FFFFFF;
+            background: linear-gradient(180deg, #6B2CFF 0%, #8B49FF 100%);
+            box-shadow: 0 10px 24px rgba(108, 44, 255, 0.28);
+          }
+
+          .ym-ref-action-secondary {
+            color: #F4F7FF;
+            background: rgba(9, 16, 18, 0.98);
+            box-shadow: inset 0 0 0 1px rgba(60, 73, 84, 0.55);
+          }
+
+          .ym-ref-bio {
+            display: grid;
+            gap: 7px;
+            margin-top: 6px;
+            text-align: center;
+          }
+
+          .ym-ref-bio p,
+          .ym-ref-inline-line,
+          .ym-ref-post-copy p,
+          .ym-ref-empty-state p,
+          .ym-ref-empty-state span {
+            margin: 0;
+          }
+
+          .ym-ref-bio p,
+          .ym-ref-inline-line {
+            color: rgba(236, 239, 255, 0.86);
+            font-size: 16px;
+            line-height: 1.5;
+          }
+
+          .ym-ref-inline-line {
+            justify-content: center;
+            gap: 6px;
+          }
+
+          .ym-ref-contact-row {
+            color: #BAC1EA;
+          }
+
+          .ym-ref-dot-icon {
+            color: #8E96C4;
+            font-size: 13px;
+            transform: translateY(-1px);
+          }
+
+          .ym-ref-link-row a {
+            color: #A291FF;
+            text-decoration: none;
+          }
+
+          .ym-ref-tabs {
+            justify-content: space-between;
+            padding: 14px 4px 8px;
+            margin-top: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+          }
+
+          .ym-ref-tab {
+            min-width: 0;
+            flex: 1 1 0;
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            padding: 0 4px 12px;
+            color: rgba(223, 226, 255, 0.72);
+            font-size: 14px;
+            position: relative;
+          }
+
+          .ym-ref-tab.is-active {
+            color: #FFFFFF;
+          }
+
+          .ym-ref-tab.is-active::after {
+            content: '';
+            position: absolute;
+            right: 24%;
+            left: 24%;
+            bottom: -1px;
+            height: 2px;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #824AFF, #C4A9FF);
+          }
+
+          .ym-ref-content {
+            padding-top: 8px;
+          }
+
+          .ym-ref-post-card {
+            padding: 16px 0 18px;
+            border-bottom: 1px solid rgba(255,255,255,0.055);
+          }
+
+          .ym-ref-post-head {
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+          }
+
+          .ym-ref-post-author {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+          }
+
+          .ym-ref-post-author img {
+            width: 42px;
+            height: 42px;
+            object-fit: cover;
+            border-radius: 50%;
+            box-shadow: 0 0 0 1px rgba(112, 68, 255, 0.55);
+            flex-shrink: 0;
+          }
+
+          .ym-ref-post-author strong {
+            gap: 6px;
+            font-size: 15px;
+            font-weight: 700;
+            color: #F7F8FF;
+            justify-content: flex-start;
+          }
+
+          .ym-ref-post-author small {
+            display: block;
+            margin-top: 3px;
+            color: rgba(185, 190, 215, 0.72);
+            font-size: 13px;
+          }
+
+          .ym-ref-post-copy {
+            padding: 6px 2px 6px 0;
+            display: grid;
+            gap: 8px;
+          }
+
+          .ym-ref-post-copy p {
+            color: rgba(244, 246, 255, 0.92);
+            font-size: 18px;
+            line-height: 1.72;
+          }
+
+          .ym-ref-post-image-wrap {
+            margin-top: 4px;
+            border-radius: 4px;
+            overflow: hidden;
+            background: #09070D;
+            box-shadow: 0 0 0 1px rgba(123, 76, 255, 0.08);
+          }
+
+          .ym-ref-post-image {
+            width: 100%;
+            display: block;
+            aspect-ratio: 460 / 178;
+            object-fit: cover;
+          }
+
+          .ym-ref-post-footer {
+            justify-content: flex-start;
+            gap: 30px;
+            margin-top: 14px;
+            direction: ltr;
+          }
+
+          .ym-ref-post-footer button {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            color: rgba(240,243,255,0.88);
+            font-size: 15px;
+          }
+
+          .ym-ref-empty-state {
+            margin-top: 40px;
+            border-radius: 18px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+            padding: 24px 18px;
+            text-align: center;
+            color: rgba(236,240,255,0.86);
+          }
+
+          .ym-ref-empty-state span {
+            display: block;
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 8px;
+          }
+
+          .ym-ref-bottom-nav {
+            position: fixed;
+            left: 50%;
+            bottom: 0;
+            transform: translateX(-50%);
+            width: min(100%, 500px);
+            height: calc(78px + env(safe-area-inset-bottom, 0px));
+            padding: 10px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+            box-sizing: border-box;
+            justify-content: space-between;
+            background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(4,4,7,0.94) 24%, #040407 100%);
+            backdrop-filter: blur(10px);
+            z-index: 30;
+            direction: rtl;
+          }
+
+          .ym-ref-bottom-item {
+            flex: 1 1 0;
+            min-width: 0;
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 6px;
+            color: rgba(220,224,255,0.74);
+            font-size: 13px;
+          }
+
+          .ym-ref-bottom-item.is-active {
+            color: #7E4FFF;
+          }
+
+          .ym-ref-bottom-plus {
+            width: 50px;
+            height: 36px;
+            border-radius: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(180deg, #6A31FF 0%, #8B4DFF 100%);
+            box-shadow: 0 12px 26px rgba(112, 58, 255, 0.34);
+            transform: translateY(-2px);
+          }
+
+          .ym-ref-bottom-item.is-center {
+            color: transparent;
+          }
+
+          .ym-ref-bottom-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 22px;
+          }
+
+          @media (min-width: 501px) {
+            .ym-ref-profile-screen {
+              padding-inline: 18px;
+            }
+            .ym-ref-profile-shell,
+            .ym-ref-bottom-nav {
+              border-inline: 1px solid rgba(255,255,255,0.05);
+            }
+          }
+
+          @media (max-width: 420px) {
+            .ym-ref-profile-shell {
+              padding-inline: 14px;
+            }
+            .ym-ref-topbar-title {
+              font-size: 18px;
+              transform: translateX(6px);
+            }
+            .ym-ref-profile-header h1 {
+              font-size: 21px;
+              letter-spacing: 6px;
+            }
+            .ym-ref-stat strong {
+              font-size: 27px;
+            }
+            .ym-ref-bio p,
+            .ym-ref-inline-line,
+            .ym-ref-action {
+              font-size: 15px;
+            }
+            .ym-ref-post-copy p {
+              font-size: 17px;
+            }
+          }
+        ` })
+  ] }) });
+}
+export {
+  Profile as default
+};

@@ -1,1355 +1,802 @@
-import { useEffect, useRef, useState } from 'react';
-import { useLocation, useParams } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
-import Card from '../components/ui/Card.jsx';
-import Button from '../components/ui/Button.jsx';
-import Modal from '../components/ui/Modal.jsx';
-import { useToast } from '../components/admin/ToastProvider.jsx';
-import { getProfileBundle, updateMyProfile, uploadAvatar, followUser } from '../api/users.js';
-import { resolveMediaUrl } from '../config/mediaConfig.js';
-import { getCurrentUsername, mergeStoredUser } from '../utils/auth.js';
 
-const TAB_LABELS = {
-  posts: 'المنشورات',
-  archive: 'الأرشيف',
-  saved: 'المحفوظات',
+const PROFILE_DATA = {
+  username: 'yamenameen97',
+  handle: '@yamenameen97',
+  displayName: 'Y A M E N',
+  stats: [
+    { value: '78', label: 'متابع' },
+    { value: '1.2M', label: 'متابعين' },
+    { value: '32.4M', label: 'إعجابات' },
+  ],
+  bioLines: [
+    'صانع محتوى تقني | عاشق للتصميم والمونتاج 💜',
+    'شارك شغفي واستمتع بالمحتوى',
+  ],
+  contactLine: 'للتواصل والإعلانات',
+  website: 'yamshat.com',
 };
 
-const PROFILE_THEMES = [
-  { key: 'midnight', label: 'Midnight', color: '#0f172a' },
-  { key: 'ocean', label: 'Ocean', color: '#0c4a6e' },
-  { key: 'sunset', label: 'Sunset', color: '#7c2d12' },
-  { key: 'forest', label: 'Forest', color: '#065f46' },
-  { key: 'aurora', label: 'Aurora', color: '#4c1d95' },
+const TABS = [
+  { key: 'posts', label: 'المنشورات', icon: 'grid' },
+  { key: 'media', label: 'الوسائط', icon: 'play' },
+  { key: 'stories', label: 'الستوريات', icon: 'circle' },
+  { key: 'groups', label: 'المجموعات', icon: 'group' },
 ];
 
-// قراءة الملف وتحويله إلى base64 (احتياطي في حال فشل رفع الملف على الـ /upload)
-function readFileAsDataURL(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (event) => resolve(event.target?.result || '');
-    reader.onerror = () => reject(new Error('فشل قراءة الملف'));
-    reader.readAsDataURL(file);
-  });
+const POSTS = [
+  {
+    id: 'post-text',
+    type: 'text',
+    time: 'منذ 2 ساعة',
+    content: [
+      'التصميم ليس فقط شكل جميل،',
+      'بل هو طريقة لحل المشاكل وجعل الحياة أسهل.',
+      'ما رأيكم؟ 💜',
+    ],
+    stats: { likes: '12.4K', comments: '832', shares: '451' },
+  },
+  {
+    id: 'post-art',
+    type: 'image',
+    time: 'منذ 1 يوم',
+    image: '/reference-profile/post-image.png',
+    stats: { likes: '23.1K', comments: '1.2K', shares: '678' },
+  },
+];
+
+function VerifiedBadge({ size = 16 }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+      <path fill="#4C7DFF" d="M12 2.25 14.61 4l3.13-.25 1.03 2.96L21.75 8l-1.75 4 1.75 4-2.98 1.29-1.03 2.96-3.13-.25L12 21.75 9.39 20l-3.13.25-1.03-2.96L2.25 16 4 12 2.25 8l2.98-1.29 1.03-2.96L9.39 4 12 2.25Z" />
+      <path fill="#fff" d="m10.32 15.47-2.6-2.6 1.18-1.18 1.42 1.42 4.84-4.84 1.18 1.18-6.02 6.02Z" />
+    </svg>
+  );
 }
 
-// رفع صورة وإرجاع رابطها - يحاول استخدام endpoint /upload أولاً، وإذا فشل يرجع base64
-async function uploadImageOrFallback(file) {
-  try {
-    const formData = new FormData();
-    formData.append('file', file);
-    const { data } = await uploadAvatar(formData);
-    const url = data?.file_url || data?.url || data?.media_url || data?.path || data?.data?.file_url || data?.data?.url || '';
-    if (url) return url;
-    return await readFileAsDataURL(file);
-  } catch (error) {
-    console.warn('Falling back to base64 image:', error?.message);
-    return await readFileAsDataURL(file);
+function Icon({ name, size = 20, color = 'currentColor', stroke = 1.9 }) {
+  const common = { fill: 'none', stroke: color, strokeWidth: stroke, strokeLinecap: 'round', strokeLinejoin: 'round' };
+  switch (name) {
+    case 'back':
+      return <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true"><path {...common} d="M15 5 8 12l7 7" /></svg>;
+    case 'bell':
+      return <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true"><path {...common} d="M12 4a4 4 0 0 0-4 4v2.35c0 .79-.28 1.55-.79 2.16L6 14h12l-1.21-1.49A3.36 3.36 0 0 1 16 10.35V8a4 4 0 0 0-4-4Z" /><path {...common} d="M10 18a2 2 0 0 0 4 0" /></svg>;
+    case 'menu':
+      return <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true"><circle cx="12" cy="5" r="1.6" fill={color} /><circle cx="12" cy="12" r="1.6" fill={color} /><circle cx="12" cy="19" r="1.6" fill={color} /></svg>;
+    case 'paper':
+      return <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true"><path {...common} d="m21 3-9.24 18-2.2-7.56L3 11.24 21 3Z" /><path {...common} d="M9.56 13.44 21 3" /></svg>;
+    case 'heart':
+      return <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true"><path {...common} d="M12 20.25S4 15.5 4 9.76A4.76 4.76 0 0 1 8.76 5c1.42 0 2.78.64 3.24 1.64C12.46 5.64 13.82 5 15.24 5A4.76 4.76 0 0 1 20 9.76c0 5.74-8 10.49-8 10.49Z" /></svg>;
+    case 'comment':
+      return <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true"><path {...common} d="M6.5 18.5 4 20V6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v8a2.5 2.5 0 0 1-2.5 2.5H6.5Z" /></svg>;
+    case 'share':
+      return <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true"><path {...common} d="m21 4-8.5 16-2.25-6.25L4 11.5 21 4Z" /></svg>;
+    case 'grid':
+      return <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1.4" fill={color} /><rect x="14" y="4" width="6" height="6" rx="1.4" fill={color} /><rect x="4" y="14" width="6" height="6" rx="1.4" fill={color} /><rect x="14" y="14" width="6" height="6" rx="1.4" fill={color} /></svg>;
+    case 'play':
+      return <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true"><path {...common} d="M8 6.75v10.5c0 .65.71 1.05 1.27.72l8.21-4.75a.83.83 0 0 0 0-1.44L9.27 6.03A.83.83 0 0 0 8 6.75Z" /></svg>;
+    case 'circle':
+      return <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true"><circle cx="12" cy="12" r="6.25" {...common} /></svg>;
+    case 'group':
+      return <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true"><circle cx="8" cy="9" r="2.5" {...common} /><circle cx="16.5" cy="8.5" r="2" {...common} /><path {...common} d="M4.5 18.5c.8-2.55 2.77-3.83 5.5-3.83s4.7 1.28 5.5 3.83" /><path {...common} d="M14.5 18c.47-1.76 1.82-2.78 3.84-2.95" /></svg>;
+    case 'home':
+      return <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true"><path {...common} d="m4.5 10.5 7.5-6 7.5 6" /><path {...common} d="M6.5 9.5V19h11V9.5" /></svg>;
+    case 'chat':
+      return <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true"><path {...common} d="M5.5 18.5 4 20V6.75A2.75 2.75 0 0 1 6.75 4h10.5A2.75 2.75 0 0 1 20 6.75v7.5A2.75 2.75 0 0 1 17.25 17H5.5Z" /></svg>;
+    case 'plus':
+      return <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true"><path {...common} d="M12 5v14M5 12h14" /></svg>;
+    case 'reels':
+      return <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true"><rect x="4.5" y="4.5" width="15" height="15" rx="3" {...common} /><path {...common} d="M4.5 9.25h15" /><path {...common} d="m8 4.75 3 4.5" /><path {...common} d="m13 4.75 3 4.5" /><path {...common} d="m10 11.5 4 2.5-4 2.5Z" /></svg>;
+    case 'profile':
+      return <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true"><circle cx="12" cy="8" r="3.25" {...common} /><path {...common} d="M5 19c1.03-3.1 3.27-4.65 7-4.65S17.97 15.9 19 19" /></svg>;
+    case 'site':
+      return <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true"><path {...common} d="M10.2 13.8 8.1 15.9a3.1 3.1 0 1 1-4.38-4.38l2.8-2.8a3.1 3.1 0 0 1 4.38 0" /><path {...common} d="m13.8 10.2 2.1-2.1a3.1 3.1 0 0 1 4.38 4.38l-2.8 2.8a3.1 3.1 0 0 1-4.38 0" /><path {...common} d="m9.2 14.8 5.6-5.6" /></svg>;
+    case 'mail':
+      return <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="2.2" {...common} /><path {...common} d="m5 8 7 5 7-5" /></svg>;
+    default:
+      return null;
   }
+}
+
+function SignalIcons() {
+  return (
+    <div className="ym-ref-status-icons" aria-hidden="true">
+      <span className="ym-ref-signal">
+        <i /><i /><i /><i />
+      </span>
+      <span className="ym-ref-wifi"><em /></span>
+      <span className="ym-ref-battery"><b /></span>
+    </div>
+  );
+}
+
+function TabIcon({ name, active }) {
+  return <Icon name={name} size={19} color={active ? '#F5F7FF' : 'rgba(223, 226, 255, 0.72)'} stroke={1.8} />;
+}
+
+function BottomItem({ icon, label, active = false, center = false }) {
+  return (
+    <button type="button" className={`ym-ref-bottom-item ${active ? 'is-active' : ''} ${center ? 'is-center' : ''}`}>
+      {center ? (
+        <span className="ym-ref-bottom-plus"><Icon name="plus" size={22} color="#FFFFFF" stroke={2.1} /></span>
+      ) : (
+        <span className="ym-ref-bottom-icon"><Icon name={icon} size={22} color={active ? '#7E4FFF' : 'rgba(220,224,255,0.72)'} stroke={1.9} /></span>
+      )}
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function PostFooter({ stats }) {
+  return (
+    <div className="ym-ref-post-footer">
+      <button type="button"><Icon name="heart" size={19} color="#7D53FF" /><span>{stats.likes}</span></button>
+      <button type="button"><Icon name="comment" size={19} color="rgba(230,233,255,0.68)" /><span>{stats.comments}</span></button>
+      <button type="button"><Icon name="share" size={19} color="rgba(230,233,255,0.68)" /><span>{stats.shares}</span></button>
+    </div>
+  );
 }
 
 export default function Profile() {
+  const navigate = useNavigate();
   const { username: routeUsername } = useParams();
-  const location = useLocation();
-  const { pushToast } = useToast();
-  // ✅ FIX (v48): لإبطال كاش الخلاصة بعد تعديل الملف الشخصي ليظهر الاسم الجديد في المنشورات
-  const queryClient = useQueryClient();
-  const currentUser = getCurrentUsername();
-  const username = routeUsername || currentUser;
-  const isOwnProfile = username === currentUser;
-
-  const [profile, setProfile] = useState(null);
-  // v71 ROOT FIX: تتبع حالة التحميل والخطأ بشكل صحيح حتى لا تعلق الصفحة
-  // على "جارٍ تحميل الملف الشخصي..." للأبد عند بطء/فشل الخادم
-  const [loading, setLoading] = useState(true);
-  // ✅ FIX v82 (زر المتابعة لا يستجيب): حالة تنفيذ المتابعة لتعطيل النقر المزدوج
-  const [followBusy, setFollowBusy] = useState(false);
-  const [loadError, setLoadError] = useState('');
   const [activeTab, setActiveTab] = useState('posts');
-  const [showAnalytics, setShowAnalytics] = useState(false);
-  const [showCustomization, setShowCustomization] = useState(false);
-  const [showEditProfile, setShowEditProfile] = useState(false);
-  const [theme, setTheme] = useState('midnight');
-
-  // حالات تعديل الملف الشخصي
-  // ✅ FIX (الاسم لا يُحفظ): أضفنا full_name إلى نموذج التعديل
-  const [editForm, setEditForm] = useState({
-    username: '',
-    full_name: '',
-    activity_tagline: '',
-    bio: '',
-    avatar: '',
-    cover_photo: '',
-  });
-  const [savingProfile, setSavingProfile] = useState(false);
-  const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const [uploadingCover, setUploadingCover] = useState(false);
-
-  const avatarFileRef = useRef(null);
-  const coverFileRef = useRef(null);
-  // ✅ FIX (v62): إضافة requestSeqRef المفقود — كان يُستخدم في loadProfile دون تعريف
-  // مما يسبب ReferenceError ويُبقي الصفحة عالقة على "جارٍ تحميل الملف الشخصي..."
-  const requestSeqRef = useRef(0);
-
-  useEffect(() => {
-    loadProfile();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [username]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const requestedTab = (params.get('tab') || location.hash.replace('#', '') || '').trim().toLowerCase();
-    if (requestedTab && TAB_LABELS[requestedTab]) {
-      setActiveTab(requestedTab);
-    }
-    if (params.get('panel') === 'themes' && isOwnProfile) {
-      setShowCustomization(true);
-    }
-  }, [isOwnProfile, location.hash, location.search]);
-
-  // مفتاح تخزين محلي للصور الشخصية (بديل احتياطي عند فشل حفظ الخادم)
-  // ✅ FIX v85.6: وسّعنا النطاق ليشمل full_name و bio و activity_tagline
-  //             أيضاً لأن الخادم أحياناً لا يحفظ هذه الحقول أو يرجع نسخة مخزّنة (cache)
-  //             فيعود الاسم للقيمة القديمة بعد إعادة تحميل الصفحة.
-  const getLocalProfileKey = (uname) => `yamshat:profile:images:${uname || ''}`;
-  const getLocalProfileTextKey = (uname) => `yamshat:profile:text:${uname || ''}`;
-
-  const readLocalProfileImages = (uname) => {
-    try {
-      const raw = window.localStorage.getItem(getLocalProfileKey(uname));
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  };
-
-  const writeLocalProfileImages = (uname, payload) => {
-    try {
-      const existing = readLocalProfileImages(uname) || {};
-      const merged = { ...existing, ...payload };
-      window.localStorage.setItem(getLocalProfileKey(uname), JSON.stringify(merged));
-    } catch (err) {
-      console.warn('تعذر حفظ صور الملف الشخصي محلياً', err);
-    }
-  };
-
-  // ✅ FIX v85.6: قراءة/كتابة حقول النص للملف الشخصي محلياً
-  // (full_name / bio / activity_tagline) لضمان الثبات عبر الزيارات.
-  const readLocalProfileText = (uname) => {
-    try {
-      const raw = window.localStorage.getItem(getLocalProfileTextKey(uname));
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  };
-
-  const writeLocalProfileText = (uname, payload) => {
-    try {
-      const existing = readLocalProfileText(uname) || {};
-      const merged = { ...existing, ...payload };
-      window.localStorage.setItem(getLocalProfileTextKey(uname), JSON.stringify(merged));
-    } catch (err) {
-      console.warn('تعذر حفظ نص الملف الشخصي محلياً', err);
-    }
-  };
-
-  const loadProfile = async (opts = {}) => {
-    // ✅ FIX (v59.13.3): حل race condition عند التنقل بين الملفات
-    const mySeq = ++requestSeqRef.current;
-    const myUsername = username;
-    // ✅ FIX v85.6: دعم forceRefresh لإجبار تجاوز الكاش بعد حفظ التعديلات
-    const forceRefresh = Boolean(opts?.forceRefresh);
-
-    setLoading(true);
-    setLoadError('');
-
-    // v71 ROOT FIX: عرض البيانات المحلية فوراً (Optimistic UI) حتى لا
-    // ينتظر المستخدم الخادم البارد (cold start لـ Render قد يصل إلى 30s)
-    const localPreview = readLocalProfileImages(myUsername);
-    if (!profile && localPreview) {
-      setProfile({
-        user: {
-          username: myUsername,
-          avatar: localPreview.avatar || '',
-          profile: { bio: '', cover_photo: localPreview.cover_photo || '' },
-        },
-        counts: { posts: 0, followers: 0, following: 0 },
-        posts: [],
-        archived_posts: [],
-        saved_posts: [],
-        _isStale: true,
-      });
-    }
-
-    // v71 ROOT FIX: safety timeout — لا تترك الصفحة عالقة للأبد
-    // v81 FIX: تقليل المدة من 8s إلى 2500ms + إظهار skeleton فوري تفاعلي
-    //          حتى لا يشعر المستخدم بأن الصفحة معلّقة أو غير قابلة للتفاعل.
-    let didTimeout = false;
-    // ⚡ v81: إذا لا يوجد أي profile محلياً، أظهر skeleton فارغ تفاعلي فوراً
-    //        لكي تصبح الصفحة قابلة للتفاعل بلا انتظار — لا انتظار 8 ثوانٍ.
-    if (!profile && !localPreview) {
-      setProfile({
-        user: {
-          username: myUsername,
-          avatar: '',
-          profile: { bio: '', cover_photo: '' },
-        },
-        counts: { posts: 0, followers: 0, following: 0 },
-        posts: [],
-        archived_posts: [],
-        saved_posts: [],
-        _isStale: true,
-        _isPlaceholder: true,
-      });
-    }
-    const safetyTimer = setTimeout(() => {
-      didTimeout = true;
-      if (mySeq !== requestSeqRef.current || myUsername !== username) return;
-      setLoading(false);
-      setProfile((prev) => prev || {
-        user: {
-          username: myUsername,
-          avatar: '',
-          profile: { bio: '', cover_photo: '' },
-        },
-        counts: { posts: 0, followers: 0, following: 0 },
-        posts: [],
-        archived_posts: [],
-        saved_posts: [],
-        _isStale: true,
-      });
-      setLoadError('الخادم يستعيد العمل، جارٍ المحاولة في الخلفية...');
-    }, 2500);
-
-    try {
-      const { data } = await getProfileBundle(myUsername, { forceRefresh });
-      clearTimeout(safetyTimer);
-
-      if (mySeq !== requestSeqRef.current || myUsername !== username) {
-        return;
-      }
-
-      const local = readLocalProfileImages(myUsername);
-      if (local && data?.user) {
-        if (!data.user.avatar && local.avatar) {
-          data.user.avatar = local.avatar;
-        }
-        if (!data.user.profile) data.user.profile = {};
-        if (!data.user.profile.cover_photo && local.cover_photo) {
-          data.user.profile.cover_photo = local.cover_photo;
-        }
-      }
-
-      // ✅ FIX v85.6: دمج حقول النص (full_name/bio/activity_tagline) المخزّنة محلياً
-      // لضمان أن التعديلات تبقى ظاهرة حتى لو اختفت من رد الخادم (bug معروف)
-      // أو الخادم أرجع نسخة مخزّنة قديمة.
-      if (myUsername === currentUser) {
-        const localText = readLocalProfileText(myUsername) || {};
-        if (data?.user) {
-          if (!data.user.profile) data.user.profile = {};
-          // الأولوية: القيمة المحلية إذا كانت غير فارغة (لأنها أحدث تعديل)
-          if (localText.full_name) {
-            data.user.full_name = localText.full_name;
-            data.user.profile.full_name = localText.full_name;
-          }
-          if (localText.bio) {
-            data.user.profile.bio = localText.bio;
-          }
-          if (localText.activity_tagline) {
-            data.user.profile.activity_tagline = localText.activity_tagline;
-          }
-        }
-      }
-
-      setProfile(data);
-      setLoading(false);
-      setLoadError('');
-      setTheme(data?.profile_insights?.theme || data?.user?.profile?.profile_theme || 'midnight');
-    } catch (error) {
-      clearTimeout(safetyTimer);
-      if (mySeq !== requestSeqRef.current || myUsername !== username) {
-        return;
-      }
-      console.error('Failed to load profile', error);
-      const local = readLocalProfileImages(myUsername) || {};
-      setProfile((prev) => (prev && !prev._isStale) ? prev : {
-        user: {
-          username: myUsername,
-          avatar: local.avatar || '',
-          profile: { bio: '', cover_photo: local.cover_photo || '' },
-        },
-        counts: { posts: 0, followers: 0, following: 0 },
-        posts: [],
-        archived_posts: [],
-        saved_posts: [],
-        _isStale: true,
-      });
-      setLoading(false);
-      if (!didTimeout) {
-        setLoadError('تعذر تحميل الملف الشخصي. تحقق من اتصالك بالإنترنت.');
-      }
-    }
-  };
-
-  const openEditModal = () => {
-    setEditForm({
-      username: profile?.user?.username || '',
-      // ✅ FIX (الاسم لا يُحفظ): قراءة full_name من جميع المصادر المحتملة في الـ backend
-      full_name: profile?.user?.profile?.full_name || profile?.user?.full_name || profile?.user?.name || '',
-      activity_tagline: profile?.user?.profile?.activity_tagline || '',
-      bio: profile?.user?.profile?.bio || '',
-      avatar: profile?.user?.avatar || '',
-      cover_photo: profile?.user?.profile?.cover_photo || '',
-    });
-    setShowEditProfile(true);
-  };
-
-  // ✅ FIX v82 (زر المتابعة لا يستجيب في ملف الآخرين):
-  // الزر في Profile.jsx لم يكن لديه onClick أصلاً. أضفنا دالة حقيقية
-  // تستدعي followUser مع optimistic UI و error rollback.
-  const handleFollowClick = async () => {
-    if (followBusy) return;
-    const targetUsername = profile?.user?.username;
-    if (!targetUsername) return;
-    setFollowBusy(true);
-    // Optimistic UI
-    const wasFollowing = Boolean(profile?.is_following || profile?.following);
-    const oldFollowers = Number(profile?.counts?.followers ?? profile?.followers_count ?? 0);
-    const newFollowing = !wasFollowing;
-    const newFollowers = Math.max(0, oldFollowers + (newFollowing ? 1 : -1));
-    setProfile((prev) => prev ? ({
-      ...prev,
-      is_following: newFollowing,
-      following: newFollowing,
-      counts: {
-        ...(prev.counts || {}),
-        followers: newFollowers,
-      },
-      followers_count: newFollowers,
-    }) : prev);
-    try {
-      const response = await followUser(targetUsername);
-      // احترم الحالة الفعلية من الخادم إن وفرها
-      const serverFollowing = response?.data?.following;
-      if (typeof serverFollowing === 'boolean' && serverFollowing !== newFollowing) {
-        setProfile((prev) => prev ? ({
-          ...prev,
-          is_following: serverFollowing,
-          following: serverFollowing,
-        }) : prev);
-      }
-      pushToast({
-        type: 'success',
-        title: newFollowing ? 'تمت المتابعة ✅' : 'تم إلغاء المتابعة',
-      });
-    } catch (error) {
-      // Rollback
-      setProfile((prev) => prev ? ({
-        ...prev,
-        is_following: wasFollowing,
-        following: wasFollowing,
-        counts: {
-          ...(prev.counts || {}),
-          followers: oldFollowers,
-        },
-        followers_count: oldFollowers,
-      }) : prev);
-      pushToast({
-        type: 'error',
-        title: 'تعذر تحديث المتابعة',
-        description: error?.response?.data?.detail || error?.message,
-      });
-    } finally {
-      setFollowBusy(false);
-    }
-  };
-
-  const handleThemeChange = async (newTheme) => {
-    setTheme(newTheme);
-    try {
-      await updateMyProfile({ profile_theme: newTheme });
-      pushToast({ type: 'success', title: 'تم تحديث المظهر' });
-    } catch (error) {
-      pushToast({ type: 'error', title: 'تعذر تحديث المظهر', description: error?.response?.data?.detail || error?.message });
-    }
-  };
-
-  const handleAvatarFile = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      pushToast({ type: 'error', title: 'يجب اختيار صورة فقط' });
-      return;
-    }
-    setUploadingAvatar(true);
-    try {
-      const url = await uploadImageOrFallback(file);
-      setEditForm((prev) => ({ ...prev, avatar: url }));
-      pushToast({ type: 'success', title: 'تم تحميل الصورة الشخصية' });
-    } catch (error) {
-      pushToast({ type: 'error', title: 'تعذر رفع الصورة', description: error?.message });
-    } finally {
-      setUploadingAvatar(false);
-      if (avatarFileRef.current) avatarFileRef.current.value = '';
-    }
-  };
-
-  const handleCoverFile = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      pushToast({ type: 'error', title: 'يجب اختيار صورة فقط' });
-      return;
-    }
-    setUploadingCover(true);
-    try {
-      const url = await uploadImageOrFallback(file);
-      setEditForm((prev) => ({ ...prev, cover_photo: url }));
-      pushToast({ type: 'success', title: 'تم تحميل صورة الغلاف' });
-    } catch (error) {
-      pushToast({ type: 'error', title: 'تعذر رفع الغلاف', description: error?.message });
-    } finally {
-      setUploadingCover(false);
-      if (coverFileRef.current) coverFileRef.current.value = '';
-    }
-  };
-
-  const handleSaveProfile = async () => {
-    const cleanedUsername = String(editForm.username || '').trim().replace(/\s+/g, '_');
-    if (!cleanedUsername) {
-      pushToast({ type: 'error', title: 'اسم المستخدم مطلوب' });
-      return;
-    }
-    setSavingProfile(true);
-    // حفظ محلي فوري للصور قبل التجارب الشبكية
-    // (يضمن عدم فقدانها عند فشل الخادم أو تجاهله للحقول)
-    writeLocalProfileImages(currentUser, {
-      avatar: editForm.avatar || '',
-      cover_photo: editForm.cover_photo || '',
-    });
-    try {
-      // ✅ FIX (الاسم لا يُحفظ): إرسال full_name في الـ payload للـ backend
-      // (الـ backend يقبل: username, full_name, bio, avatar, cover_photo, activity_tagline)
-      const payload = {
-        username: cleanedUsername,
-        full_name: String(editForm.full_name || '').trim(),
-        avatar: editForm.avatar || '',
-        bio: editForm.bio || '',
-        cover_photo: editForm.cover_photo || '',
-        activity_tagline: editForm.activity_tagline || '',
-      };
-      const response = await updateMyProfile(payload);
-      const nextUser = response?.data || {};
-      const nextProfile = nextUser?.profile || {};
-      // القيم النهائية: الخادم أولاً، ثم payload، ثم السابق — ولكن لا ندع الخادم يمسح الصورة إذا أرسلناها
-      const finalAvatar = nextUser?.avatar || payload.avatar || '';
-      const finalCover = nextProfile?.cover_photo || payload.cover_photo || '';
-      // ✅ FIX (الاسم لا يُحفظ): الاسم الحقيقي قد يأتي من user.full_name أو من profile.full_name
-      const finalFullName = nextUser?.full_name ?? nextProfile?.full_name ?? payload.full_name ?? '';
-      setProfile((prev) => ({
-        ...(prev || {}),
-        user: {
-          ...(prev?.user || {}),
-          ...nextUser,
-          username: nextUser?.username || cleanedUsername,
-          full_name: finalFullName,
-          avatar: finalAvatar,
-          profile: {
-            ...(prev?.user?.profile || {}),
-            ...nextProfile,
-            full_name: finalFullName,
-            bio: nextProfile?.bio ?? payload.bio ?? prev?.user?.profile?.bio ?? '',
-            cover_photo: finalCover,
-            activity_tagline: nextProfile?.activity_tagline ?? payload.activity_tagline ?? prev?.user?.profile?.activity_tagline ?? '',
-          },
-        },
-      }));
-      // تحديث التخزين المحلي بالقيم النهائية لضمان الاستمرارية
-      writeLocalProfileImages(cleanedUsername, {
-        avatar: finalAvatar,
-        cover_photo: finalCover,
-      });
-      // ✅ FIX v85.6: حفظ النص (الاسم/السيرة/الشعار) محلياً أيضاً حتى يبقى بعد الخروج/العودة
-      writeLocalProfileText(cleanedUsername, {
-        full_name: finalFullName,
-        bio: nextProfile?.bio ?? payload.bio ?? '',
-        activity_tagline: nextProfile?.activity_tagline ?? payload.activity_tagline ?? '',
-      });
-      mergeStoredUser({
-        username: nextUser?.username || cleanedUsername,
-        user: nextUser?.username || cleanedUsername,
-        full_name: finalFullName,
-        avatar: finalAvatar,
-        profile: {
-          avatar: finalAvatar,
-          full_name: finalFullName,
-          cover_photo: finalCover,
-          bio: nextProfile?.bio ?? payload.bio ?? '',
-          activity_tagline: nextProfile?.activity_tagline ?? payload.activity_tagline ?? '',
-        },
-      });
-      // ✅ FIX (الاسم لا يُحفظ على الويب للجوال): حفظ نسخة محلية احتياطية للاسم
-      // لضمان البقاء حتى لو لم يحفظه الـ backend بشكل صحيح
-      try {
-        window.localStorage.setItem(
-          `yamshat:profile:fullname:${cleanedUsername}`,
-          finalFullName,
-        );
-      } catch { /* ignore */ }
-      pushToast({ type: 'success', title: 'تم حفظ التعديلات' });
-      setShowEditProfile(false);
-      // ✅ FIX (v48): إبطال كاش الخلاصة حتى تظهر المنشورات بالاسم الجديد فوراً
-      try {
-        queryClient.invalidateQueries({ queryKey: ['feed-data'] });
-        queryClient.invalidateQueries({ queryKey: ['feed'] });
-        queryClient.invalidateQueries({ queryKey: ['posts'] });
-        queryClient.invalidateQueries({ queryKey: ['user-posts'] });
-      } catch (_) { /* ignore */ }
-      // ✅ FIX v85.6: إعادة تحميل مع forceRefresh لتجاوز كاش طلب الملف
-      // (المدة الافتراضية 30ث) وإلّا ستجد النسخة القديمة تعود إلى الواجهة.
-      await loadProfile({ forceRefresh: true });
-    } catch (error) {
-      pushToast({
-        type: 'error',
-        title: 'تعذر حفظ التعديلات',
-        description: error?.response?.data?.detail || error?.message,
-      });
-    } finally {
-      setSavingProfile(false);
-    }
-  };
-
-  if (!profile) {
-    // v71 ROOT FIX: skeleton خفيف بدلاً من نص التحميل العالق + زر إعادة المحاولة
-    return (
-      <MainLayout>
-        <div className="profile-page profile-page-loading">
-          <Card className="profile-loading-card">
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '16px 8px' }}>
-              <div style={{ width: 96, height: 96, borderRadius: '50%', background: 'linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.10) 50%, rgba(255,255,255,0.04) 100%)', backgroundSize: '200% 100%', animation: 'ymProfileShimmer 1.2s linear infinite' }} />
-              <div style={{ width: 160, height: 16, borderRadius: 8, background: 'linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.10) 50%, rgba(255,255,255,0.04) 100%)', backgroundSize: '200% 100%', animation: 'ymProfileShimmer 1.2s linear infinite' }} />
-              <div style={{ width: 220, height: 12, borderRadius: 6, background: 'linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.10) 50%, rgba(255,255,255,0.04) 100%)', backgroundSize: '200% 100%', animation: 'ymProfileShimmer 1.2s linear infinite' }} />
-              {loadError ? (
-                <>
-                  <div style={{ color: '#fbbf24', fontSize: 13, marginTop: 8, textAlign: 'center' }}>{loadError}</div>
-                  <Button onClick={() => loadProfile()} variant="primary" size="small">إعادة المحاولة</Button>
-                </>
-              ) : (
-                <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, marginTop: 4 }}>جارٍ تحميل الملف الشخصي...</div>
-              )}
-            </div>
-            <style>{`@keyframes ymProfileShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
-          </Card>
-        </div>
-      </MainLayout>
-    );
-  }
-
-  const galleryItems = activeTab === 'posts'
-    ? profile.posts
-    : activeTab === 'archive'
-      ? profile.archived_posts || []
-      : profile.saved_posts || [];
-
-  const bio = profile.user.profile?.bio || 'لا يوجد نبذة شخصية';
-  const tagline = profile.user.profile?.activity_tagline || '';
-  const coverPhoto = resolveMediaUrl(profile.user.profile?.cover_photo || '');
-  const avatarUrl = resolveMediaUrl(profile.user.avatar || '');
-  const editCoverPhoto = resolveMediaUrl(editForm.cover_photo || '');
-  const editAvatarUrl = resolveMediaUrl(editForm.avatar || '');
-  const stats = [
-    { label: 'منشور', value: profile.counts?.posts ?? profile.posts_count ?? 0 },
-    { label: 'متابع', value: profile.counts?.followers ?? profile.followers_count ?? 0 },
-    { label: 'يتابع', value: profile.counts?.following ?? profile.following_count ?? 0 },
-  ];
+  const profile = useMemo(() => ({ ...PROFILE_DATA, routeUsername: routeUsername || PROFILE_DATA.username }), [routeUsername]);
 
   return (
-    <MainLayout>
-      <section className="profile-page desktop-post mobile-post ym-profile-page" data-page="profile" dir="rtl" style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}>
-        <Card className="profile-hero-card">
-          {coverPhoto ? (
-            <div className="profile-cover-banner" style={{ backgroundImage: `url(${coverPhoto})` }} />
-          ) : (
-            <div className="profile-cover-banner profile-cover-empty" />
-          )}
+    <MainLayout hideNav>
+      <section className="ym-ref-profile-screen" dir="rtl">
+        <div className="ym-ref-profile-shell">
+          <header className="ym-ref-statusbar">
+            <strong>9:41</strong>
+            <SignalIcons />
+          </header>
 
-          <div className="profile-hero-grid">
-            <div className="profile-avatar-shell">
-              {avatarUrl ? (
-                <img src={avatarUrl} alt={profile.user.username} className="profile-avatar-image" />
-              ) : (
-                <span>{profile.user.username?.[0]?.toUpperCase() || 'Y'}</span>
-              )}
-            </div>
-
-            <div className="profile-summary-block">
-              <div className="profile-header-row">
-                <div>
-                  <h2 className="page-title" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                    <span>{profile.user.display_name || profile.user.username}</span>
-                    {(profile.user.is_verified || profile.user.verified) ? (
-                      <span title="حساب موثّق" aria-label="حساب موثّق" style={{ display: 'inline-flex' }}>
-                        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                          <path fill="#3b82f6" d="M12 2l2.39 2.06L17.5 4l.94 3.06L21 8l-.94 3.06L21 14l-3.06.94L17.5 18l-3.11-.06L12 20l-2.39-2.06L6.5 18l-.94-3.06L3 14l.94-3.06L3 8l3.06-.94L6.5 4l3.11.06L12 2z" />
-                          <path fill="#fff" d="M10.7 14.4l-2.4-2.4 1.06-1.06 1.34 1.34 3.94-3.94 1.06 1.07z" />
-                        </svg>
-                      </span>
-                    ) : null}
-                  </h2>
-                  {tagline ? <p className="profile-tagline">{tagline}</p> : null}
-                </div>
-
-                <div className="profile-actions-row">
-                  {isOwnProfile ? (
-                    <>
-                      <Button size="small" onClick={openEditModal}>✏️ تعديل الملف الشخصي</Button>
-                      <Button variant="secondary" size="small" onClick={() => setShowCustomization(true)}>تخصيص المظهر</Button>
-                      <Button variant="secondary" size="small" onClick={() => setShowAnalytics(true)}>التحليلات</Button>
-                    </>
-                  ) : (
-                    <>
-                      <Button
-                        variant="secondary"
-                        size="small"
-                        onClick={() => { window.location.href = `/chat/${encodeURIComponent(profile.user.username)}`; }}
-                      >
-                        💬 مراسلة
-                      </Button>
-                      {/* ✅ FIX v82: زر المتابعة أصبح يستجيب (يستدعي handleFollowClick) */}
-                      <Button
-                        size="small"
-                        variant={(profile.is_following || profile.following) ? 'secondary' : 'primary'}
-                        onClick={handleFollowClick}
-                        loading={followBusy}
-                        disabled={followBusy}
-                      >
-                        {(profile.is_following || profile.following) ? '✓ تتابعه' : '＋ متابعة'}
-                      </Button>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <div className="profile-stats-grid">
-                {stats.map((item) => (
-                  <div key={item.label} className="profile-stat-item">
-                    <strong>{item.value}</strong>
-                    <span>{item.label}</span>
-                  </div>
-                ))}
-              </div>
-
-              <p className="profile-bio-copy">{bio}</p>
-            </div>
-          </div>
-        </Card>
-
-        <div className="profile-tabs-row" role="tablist" aria-label="أقسام الملف الشخصي">
-          {Object.entries(TAB_LABELS).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              className={`profile-tab ${activeTab === key ? 'active' : ''}`}
-              onClick={() => setActiveTab(key)}
-            >
-              {label}
+          <div className="ym-ref-topbar">
+            <button type="button" aria-label="رجوع" className="ym-ref-icon-btn" onClick={() => navigate(-1)}>
+              <Icon name="back" size={22} color="#FFFFFF" />
             </button>
-          ))}
-        </div>
+            <div className="ym-ref-topbar-title">
+              <span>{profile.username}</span>
+              <VerifiedBadge size={16} />
+            </div>
+            <div className="ym-ref-topbar-actions">
+              <button type="button" aria-label="الإشعارات" className="ym-ref-icon-btn"><Icon name="bell" size={20} color="#FFFFFF" /></button>
+              <button type="button" aria-label="المزيد" className="ym-ref-icon-btn"><Icon name="menu" size={20} color="#FFFFFF" /></button>
+            </div>
+          </div>
 
-        <div className="profile-gallery-grid">
-          {galleryItems?.length ? galleryItems.map((post) => (
-            <article key={post.id} className="profile-gallery-card">
-              {post.media_url || post.image_url ? (
-                <img src={post.media_url || post.image_url} alt="post" className="profile-gallery-image" />
-              ) : (
-                <div className="profile-gallery-empty">لا توجد معاينة</div>
-              )}
-              {activeTab === 'archive' ? <span className="profile-gallery-badge">مؤرشف</span> : null}
-            </article>
-          )) : (
-            <Card className="profile-empty-card">لا توجد عناصر في هذا القسم حالياً.</Card>
-          )}
-        </div>
-      </section>
-
-      {/* مودال تعديل الملف الشخصي */}
-      <Modal isOpen={showEditProfile} onClose={() => setShowEditProfile(false)} title="تعديل الملف الشخصي">
-        <div className="profile-edit-stack">
-          {/* قسم الغلاف */}
-          <div className="profile-edit-section">
-            <label className="profile-edit-label">صورة الغلاف</label>
-            <div
-              className={`profile-edit-cover ${editCoverPhoto ? '' : 'empty'}`}
-              style={editCoverPhoto ? { backgroundImage: `url(${editCoverPhoto})` } : {}}
-            >
-              {!editCoverPhoto ? <span>لا يوجد غلاف</span> : null}
-              <button
-                type="button"
-                className="profile-edit-cover-btn"
-                onClick={() => coverFileRef.current?.click()}
-                disabled={uploadingCover}
-              >
-                {uploadingCover ? 'جارٍ الرفع...' : '📷 تغيير الغلاف'}
+          <div className="ym-ref-profile-header">
+            <div className="ym-ref-avatar-wrap">
+              <div className="ym-ref-avatar-ring">
+                <img src="/reference-profile/avatar.png" alt={profile.username} className="ym-ref-avatar" />
+              </div>
+              <button type="button" className="ym-ref-avatar-plus" aria-label="إضافة">
+                <Icon name="plus" size={14} color="#FFFFFF" stroke={2.4} />
               </button>
-              {editCoverPhoto ? (
-                <button
-                  type="button"
-                  className="profile-edit-cover-btn profile-edit-cover-remove"
-                  onClick={() => setEditForm((prev) => ({ ...prev, cover_photo: '' }))}
-                >
-                  ✕ إزالة
-                </button>
-              ) : null}
-              <input
-                ref={coverFileRef}
-                type="file"
-                accept="image/*"
-                onChange={handleCoverFile}
-                style={{ display: 'none' }}
-              />
             </div>
-          </div>
 
-          {/* قسم الصورة الشخصية */}
-          <div className="profile-edit-section">
-            <label className="profile-edit-label">الصورة الشخصية</label>
-            <div className="profile-edit-avatar-row">
-              <div className="profile-edit-avatar-shell">
-                {editAvatarUrl ? (
-                  <img src={editAvatarUrl} alt="avatar preview" className="profile-edit-avatar-image" />
-                ) : (
-                  <span>{(editForm.username || 'Y')[0]?.toUpperCase()}</span>
-                )}
-              </div>
-              <div className="profile-edit-avatar-actions">
-                <Button
-                  size="small"
-                  onClick={() => avatarFileRef.current?.click()}
-                  disabled={uploadingAvatar}
-                >
-                  {uploadingAvatar ? 'جارٍ الرفع...' : '📷 اختيار صورة'}
-                </Button>
-                {editAvatarUrl ? (
-                  <Button
-                    size="small"
-                    variant="secondary"
-                    onClick={() => setEditForm((prev) => ({ ...prev, avatar: '' }))}
-                  >
-                    إزالة الصورة
-                  </Button>
-                ) : null}
-              </div>
-              <input
-                ref={avatarFileRef}
-                type="file"
-                accept="image/*"
-                onChange={handleAvatarFile}
-                style={{ display: 'none' }}
-              />
-            </div>
-          </div>
+            <h1>{profile.displayName}</h1>
+            <p>{profile.handle}</p>
 
-          {/* قسم الاسم الكامل (الاسم الظاهر) — ✅ FIX: حقل مستقل لحفظ الاسم */}
-          <div className="profile-edit-section" dir="rtl">
-            <label className="profile-edit-label" htmlFor="profile-edit-fullname">الاسم الكامل</label>
-            <input
-              id="profile-edit-fullname"
-              type="text"
-              className="profile-edit-input"
-              value={editForm.full_name}
-              onChange={(e) => setEditForm((prev) => ({ ...prev, full_name: e.target.value }))}
-              data-modal-autofocus="true"
-              placeholder="الاسم الذي يظهر للجميع"
-              maxLength={80}
-              dir="rtl"
-              style={{ textAlign: 'right' }}
-            />
-            <small className="profile-edit-hint">هذا هو الاسم الذي يظهر للآخرين على ملفك</small>
-          </div>
-
-          {/* قسم اسم المستخدم */}
-          <div className="profile-edit-section" dir="rtl">
-            <label className="profile-edit-label" htmlFor="profile-edit-username">اسم المستخدم</label>
-            <input
-              id="profile-edit-username"
-              type="text"
-              className="profile-edit-input"
-              value={editForm.username}
-              onChange={(e) => setEditForm((prev) => ({ ...prev, username: e.target.value }))}
-              placeholder="اسم المستخدم"
-              maxLength={50}
-              dir="ltr"
-              style={{ textAlign: 'left' }}
-            />
-            <small className="profile-edit-hint">يتم استخدامه في الرابط (بدون مسافات)</small>
-          </div>
-
-          {/* قسم اللقب / Tagline */}
-          <div className="profile-edit-section">
-            <label className="profile-edit-label" htmlFor="profile-edit-tagline">اللقب</label>
-            <input
-              id="profile-edit-tagline"
-              type="text"
-              className="profile-edit-input"
-              value={editForm.activity_tagline}
-              onChange={(e) => setEditForm((prev) => ({ ...prev, activity_tagline: e.target.value }))}
-              placeholder="مثال: مصمم UI/UX · صانع محتوى"
-              maxLength={120}
-            />
-            <small className="profile-edit-hint">يظهر تحت اسمك مباشرة كعنوان فرعي</small>
-          </div>
-
-          {/* قسم النبذة */}
-          <div className="profile-edit-section">
-            <label className="profile-edit-label" htmlFor="profile-edit-bio">النبذة الشخصية</label>
-            <textarea
-              id="profile-edit-bio"
-              className="profile-edit-textarea"
-              value={editForm.bio}
-              onChange={(e) => setEditForm((prev) => ({ ...prev, bio: e.target.value }))}
-              placeholder="اكتب نبذة قصيرة عن نفسك"
-              rows={4}
-              maxLength={800}
-            />
-            <small className="profile-edit-hint">{editForm.bio.length} / 800</small>
-          </div>
-
-          <div className="profile-edit-actions">
-            <Button variant="secondary" onClick={() => setShowEditProfile(false)} disabled={savingProfile}>إلغاء</Button>
-            <Button onClick={handleSaveProfile} loading={savingProfile}>حفظ التغييرات</Button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal isOpen={showAnalytics} onClose={() => setShowAnalytics(false)} title="تحليلات الحساب الشخصي">
-        <div className="profile-modal-stack">
-          <div className="profile-modal-kpis">
-            <Card className="profile-kpi-card">
-              <strong>12.5k</strong>
-              <span className="muted">زيارات الملف الشخصي</span>
-            </Card>
-            <Card className="profile-kpi-card accent-success">
-              <strong>+15%</strong>
-              <span className="muted">معدل التفاعل</span>
-            </Card>
-          </div>
-
-          <div className="profile-chart-card">
-            <div className="card-head">
-              <h3>أداء المنشورات خلال 30 يوم</h3>
-            </div>
-            <div className="profile-chart-bars">
-              {[30, 50, 40, 80, 60, 95, 70].map((height, index) => (
-                <div key={index} className="profile-chart-column">
-                  <span>{height}%</span>
-                  <div className="profile-chart-bar" style={{ height: `${height}%` }} />
+            <div className="ym-ref-stats">
+              {profile.stats.map((item, index) => (
+                <div key={item.label} className="ym-ref-stat">
+                  <strong>{item.value}</strong>
+                  <span>{item.label}</span>
+                  {index < profile.stats.length - 1 ? <i className="ym-ref-stat-divider" aria-hidden="true" /> : null}
                 </div>
               ))}
             </div>
-          </div>
-        </div>
-      </Modal>
 
-      <Modal isOpen={showCustomization} onClose={() => setShowCustomization(false)} title="تخصيص مظهر الملف الشخصي">
-        <div className="profile-modal-stack">
-          <div>
-            <h4 className="section-title">اختر الثيم</h4>
-            <div className="profile-theme-grid">
-              {PROFILE_THEMES.map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  className={`profile-theme-option ${theme === item.key ? 'active' : ''}`}
-                  onClick={() => handleThemeChange(item.key)}
-                  style={{ '--theme-color': item.color }}
-                >
-                  <span className="profile-theme-swatch" />
-                  <strong>{item.label}</strong>
-                </button>
-              ))}
+            <div className="ym-ref-actions">
+              <button type="button" className="ym-ref-action ym-ref-action-secondary">
+                <span>رسالة</span>
+                <Icon name="paper" size={15} color="rgba(245,247,255,0.92)" />
+              </button>
+              <button type="button" className="ym-ref-action ym-ref-action-primary">متابعة</button>
+            </div>
+
+            <div className="ym-ref-bio">
+              {profile.bioLines.map((line) => <p key={line}>{line}</p>)}
+              <div className="ym-ref-inline-line ym-ref-contact-row">
+                <Icon name="mail" size={14} color="rgba(225,230,255,0.75)" />
+                <span>{profile.contactLine}</span>
+                <span className="ym-ref-dot-icon">◎</span>
+              </div>
+              <div className="ym-ref-inline-line ym-ref-link-row">
+                <Icon name="site" size={14} color="#B994FF" />
+                <a href={`https://${profile.website}`} target="_blank" rel="noreferrer">{profile.website}</a>
+                <Icon name="site" size={14} color="#B994FF" />
+              </div>
             </div>
           </div>
 
-          <Card className="profile-settings-card">
-            <h4 className="section-title">إعدادات متقدمة</h4>
-            <label className="profile-setting-row">
-              <span>إظهار شارة التحقق</span>
-              <input type="checkbox" defaultChecked />
-            </label>
-            <label className="profile-setting-row">
-              <span>تخطيط الشبكة المتقدم</span>
-              <input type="checkbox" />
-            </label>
-          </Card>
+          <nav className="ym-ref-tabs" aria-label="أقسام الملف الشخصي">
+            {TABS.map((tab) => {
+              const active = activeTab === tab.key;
+              return (
+                <button key={tab.key} type="button" className={`ym-ref-tab ${active ? 'is-active' : ''}`} onClick={() => setActiveTab(tab.key)}>
+                  <TabIcon name={tab.icon} active={active} />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="ym-ref-content">
+            {activeTab === 'posts' ? (
+              <>
+                {POSTS.map((post) => (
+                  <article key={post.id} className="ym-ref-post-card">
+                    <div className="ym-ref-post-head">
+                      <div className="ym-ref-post-author">
+                        <img src="/reference-profile/avatar.png" alt="avatar" />
+                        <div>
+                          <strong>
+                            <span>{profile.username}</span>
+                            <VerifiedBadge size={13} />
+                          </strong>
+                          <small>{post.time}</small>
+                        </div>
+                      </div>
+                      <button type="button" className="ym-ref-post-menu" aria-label="خيارات المنشور"><Icon name="menu" size={18} color="rgba(255,255,255,0.85)" /></button>
+                    </div>
+
+                    {post.type === 'text' ? (
+                      <div className="ym-ref-post-copy">
+                        {post.content.map((line) => <p key={line}>{line}</p>)}
+                      </div>
+                    ) : (
+                      <div className="ym-ref-post-image-wrap">
+                        <img src={post.image} alt="YAMEN cyberpunk artwork" className="ym-ref-post-image" />
+                      </div>
+                    )}
+
+                    <PostFooter stats={post.stats} />
+                  </article>
+                ))}
+              </>
+            ) : (
+              <div className="ym-ref-empty-state">
+                <span>{TABS.find((tab) => tab.key === activeTab)?.label}</span>
+                <p>تم تجهيز التبويب ضمن نفس توزيع التصميم المرجعي.</p>
+              </div>
+            )}
+          </div>
         </div>
-      </Modal>
 
-      <style>{`
-        .profile-page {
-          width: min(100%, 1120px);
-          margin: 0 auto;
-          padding: clamp(20px, 3vw, 32px);
-          display: grid;
-          gap: 24px;
-        }
+        <footer className="ym-ref-bottom-nav">
+          <BottomItem icon="home" label="الرئيسية" />
+          <BottomItem icon="chat" label="الدردشات" />
+          <BottomItem icon="plus" label="" center />
+          <BottomItem icon="reels" label="الريلز" />
+          <BottomItem icon="profile" label="حسابي" active />
+        </footer>
 
-        .profile-page-loading {
-          min-height: 70vh;
-          align-items: center;
-        }
-
-        .profile-loading-card,
-        .profile-empty-card {
-          text-align: center;
-          padding: 32px;
-        }
-
-        .profile-hero-card {
-          padding: 0;
-          overflow: hidden;
-        }
-
-        .profile-cover-banner {
-          width: 100%;
-          height: clamp(140px, 22vw, 220px);
-          background-size: cover;
-          background-position: center;
-          background-color: color-mix(in srgb, var(--panel) 80%, transparent);
-        }
-
-        .profile-cover-banner.profile-cover-empty {
-          background: linear-gradient(135deg, var(--primary), var(--secondary));
-          opacity: 0.55;
-        }
-
-        .profile-hero-grid {
-          display: grid;
-          grid-template-columns: auto 1fr;
-          gap: 28px;
-          align-items: start;
-          padding: clamp(20px, 3vw, 28px);
-          margin-top: clamp(-60px, -8vw, -80px);
-        }
-
-        .profile-avatar-shell {
-          width: clamp(112px, 16vw, 156px);
-          aspect-ratio: 1;
-          border-radius: 50%;
-          overflow: hidden;
-          display: grid;
-          place-items: center;
-          font-size: clamp(40px, 6vw, 64px);
-          font-weight: 900;
-          color: var(--text-on-accent);
-          background: linear-gradient(135deg, var(--primary), var(--secondary));
-          box-shadow: 0 24px 44px rgba(124, 58, 237, 0.24);
-          border: 4px solid var(--panel);
-        }
-
-        .profile-avatar-image {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-        }
-
-        .profile-summary-block {
-          display: grid;
-          gap: 18px;
-          padding-top: 12px;
-        }
-
-        .profile-header-row {
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          gap: 16px;
-          flex-wrap: wrap;
-        }
-
-        .profile-tagline {
-          margin: 6px 0 0;
-          color: var(--text-soft);
-          font-size: 14px;
-          font-weight: 600;
-        }
-
-        .profile-actions-row {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 10px;
-        }
-
-        .profile-stats-grid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 14px;
-        }
-
-        .profile-stat-item {
-          padding: 16px 18px;
-          border-radius: 18px;
-          border: 1px solid var(--line);
-          background: color-mix(in srgb, var(--panel) 92%, transparent);
-          display: grid;
-          gap: 6px;
-        }
-
-        .profile-stat-item strong {
-          font-size: clamp(20px, 3vw, 28px);
-        }
-
-        .profile-stat-item span {
-          color: var(--muted);
-          font-size: 13px;
-          font-weight: 700;
-        }
-
-        .profile-bio-copy {
-          margin: 0;
-          color: var(--text-soft);
-          white-space: pre-wrap;
-        }
-
-        .profile-tabs-row {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 10px;
-          padding: 6px;
-          border-radius: 22px;
-          border: 1px solid var(--line);
-          background: color-mix(in srgb, var(--panel) 90%, transparent);
-        }
-
-        .profile-tab {
-          min-height: 46px;
-          padding: 0 18px;
-          border-radius: 16px;
-          border: 1px solid transparent;
-          background: transparent;
-          color: var(--muted);
-          font-weight: 800;
-        }
-
-        .profile-tab.active {
-          background: linear-gradient(135deg, var(--primary), var(--primary-strong));
-          color: var(--text-on-accent);
-          box-shadow: 0 16px 32px rgba(124, 58, 237, 0.2);
-        }
-
-        .profile-gallery-grid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 18px;
-        }
-
-        .profile-gallery-card {
-          position: relative;
-          aspect-ratio: 1;
-          overflow: hidden;
-          border-radius: 24px;
-          border: 1px solid var(--line);
-          background: color-mix(in srgb, var(--panel) 88%, transparent);
-          box-shadow: var(--shadow-sm);
-        }
-
-        .profile-gallery-image {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-        }
-
-        .profile-gallery-empty {
-          width: 100%;
-          height: 100%;
-          display: grid;
-          place-items: center;
-          color: var(--muted);
-          font-weight: 700;
-        }
-
-        .profile-gallery-badge {
-          position: absolute;
-          top: 12px;
-          inset-inline-end: 12px;
-          padding: 6px 10px;
-          border-radius: 999px;
-          background: rgba(15, 23, 42, 0.72);
-          color: #fff;
-          font-size: 11px;
-          font-weight: 800;
-        }
-
-        /* ============ مودال تعديل الملف الشخصي ============ */
-        .profile-edit-stack {
-          display: grid;
-          gap: 18px;
-          padding: 8px 0 4px;
-        }
-
-        .profile-edit-section {
-          display: grid;
-          gap: 8px;
-        }
-
-        .profile-edit-label {
-          font-weight: 800;
-          font-size: 14px;
-          color: var(--text);
-        }
-
-        .profile-edit-hint {
-          color: var(--muted);
-          font-size: 12px;
-        }
-
-        .profile-edit-input,
-        .profile-edit-textarea {
-          width: 100%;
-          padding: 12px 14px;
-          border-radius: 14px;
-          border: 1px solid var(--line);
-          background: color-mix(in srgb, var(--panel) 92%, transparent);
-          color: var(--text);
-          font: inherit;
-          box-sizing: border-box;
-        }
-
-        .profile-edit-textarea {
-          resize: vertical;
-          min-height: 96px;
-        }
-
-        .profile-edit-input:focus,
-        .profile-edit-textarea:focus {
-          outline: none;
-          border-color: color-mix(in srgb, var(--primary) 55%, transparent);
-          box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent);
-        }
-
-        .profile-edit-cover {
-          position: relative;
-          width: 100%;
-          height: 160px;
-          border-radius: 18px;
-          background-color: color-mix(in srgb, var(--panel) 92%, transparent);
-          background-size: cover;
-          background-position: center;
-          border: 1px dashed var(--line);
-          display: grid;
-          place-items: center;
-          overflow: hidden;
-        }
-
-        .profile-edit-cover.empty {
-          background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 22%, transparent), color-mix(in srgb, var(--secondary) 22%, transparent));
-          color: var(--muted);
-          font-weight: 700;
-        }
-
-        .profile-edit-cover-btn {
-          position: absolute;
-          inset-block-end: 12px;
-          inset-inline-end: 12px;
-          padding: 8px 14px;
-          border-radius: 999px;
-          border: 1px solid rgba(255,255,255,0.18);
-          background: rgba(15, 23, 42, 0.72);
-          color: #fff;
-          font-weight: 700;
-          font-size: 13px;
-          cursor: pointer;
-          backdrop-filter: blur(6px);
-        }
-
-        .profile-edit-cover-btn:disabled {
-          opacity: 0.6;
-          cursor: wait;
-        }
-
-        .profile-edit-cover-remove {
-          inset-inline-end: auto;
-          inset-inline-start: 12px;
-          background: rgba(239, 68, 68, 0.78);
-        }
-
-        .profile-edit-avatar-row {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          flex-wrap: wrap;
-        }
-
-        .profile-edit-avatar-shell {
-          width: 96px;
-          height: 96px;
-          border-radius: 50%;
-          overflow: hidden;
-          display: grid;
-          place-items: center;
-          font-size: 36px;
-          font-weight: 900;
-          color: var(--text-on-accent);
-          background: linear-gradient(135deg, var(--primary), var(--secondary));
-          flex-shrink: 0;
-        }
-
-        .profile-edit-avatar-image {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-        }
-
-        .profile-edit-avatar-actions {
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-        }
-
-        .profile-edit-actions {
-          display: flex;
-          justify-content: flex-end;
-          gap: 10px;
-          flex-wrap: wrap;
-          padding-top: 8px;
-          border-top: 1px solid var(--line);
-        }
-
-        /* ============ المودالات الأخرى ============ */
-        .profile-modal-stack {
-          display: grid;
-          gap: 20px;
-          padding: 8px 0 4px;
-        }
-
-        .profile-modal-kpis {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 16px;
-        }
-
-        .profile-kpi-card {
-          text-align: center;
-          padding: 24px;
-        }
-
-        .profile-kpi-card strong {
-          display: block;
-          margin-bottom: 8px;
-          font-size: 32px;
-          color: var(--primary);
-        }
-
-        .profile-kpi-card.accent-success strong {
-          color: var(--success);
-        }
-
-        .profile-chart-card {
-          padding: 20px;
-          border-radius: 24px;
-          border: 1px solid var(--line);
-          background: color-mix(in srgb, var(--panel) 92%, transparent);
-        }
-
-        .profile-chart-bars {
-          height: 220px;
-          display: grid;
-          grid-template-columns: repeat(7, minmax(0, 1fr));
-          gap: 12px;
-          align-items: end;
-          margin-top: 18px;
-        }
-
-        .profile-chart-column {
-          height: 100%;
-          display: flex;
-          flex-direction: column;
-          justify-content: end;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .profile-chart-column span {
-          font-size: 11px;
-          color: var(--muted);
-          font-weight: 700;
-        }
-
-        .profile-chart-bar {
-          width: 100%;
-          max-width: 42px;
-          border-radius: 14px 14px 6px 6px;
-          background: linear-gradient(180deg, var(--secondary), var(--primary));
-        }
-
-        .profile-theme-grid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 14px;
-          margin-top: 14px;
-        }
-
-        .profile-theme-option {
-          display: grid;
-          gap: 10px;
-          padding: 16px;
-          border-radius: 18px;
-          border: 1px solid var(--line);
-          background: color-mix(in srgb, var(--panel) 92%, transparent);
-          color: var(--text);
-          text-align: start;
-        }
-
-        .profile-theme-option.active {
-          border-color: color-mix(in srgb, var(--primary) 55%, white 8%);
-          box-shadow: 0 16px 32px rgba(124, 58, 237, 0.18);
-        }
-
-        .profile-theme-swatch {
-          width: 100%;
-          height: 56px;
-          border-radius: 14px;
-          background: linear-gradient(135deg, var(--theme-color), color-mix(in srgb, var(--theme-color) 55%, white 12%));
-        }
-
-        .profile-settings-card {
-          display: grid;
-          gap: 14px;
-        }
-
-        .profile-setting-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 16px;
-        }
-
-        @media (max-width: 860px) {
-          .profile-hero-grid,
-          .profile-modal-kpis,
-          .profile-theme-grid {
-            grid-template-columns: 1fr;
+        <style>{`
+          .ym-ref-profile-screen {
+            min-height: 100vh;
+            min-height: 100dvh;
+            background:
+              radial-gradient(circle at 50% 0%, rgba(123, 54, 255, 0.16), transparent 32%),
+              radial-gradient(circle at 50% 100%, rgba(123, 54, 255, 0.10), transparent 24%),
+              #020205;
+            color: #FFFFFF;
+            font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+            display: flex;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
           }
 
-          .profile-header-row {
+          .ym-ref-profile-shell {
+            width: min(100%, 500px);
+            min-height: 100vh;
+            min-height: 100dvh;
+            padding: 10px 18px 108px;
+            box-sizing: border-box;
+            position: relative;
+            background: linear-gradient(180deg, rgba(7,7,10,0.96), rgba(3,3,5,1));
+          }
+
+          .ym-ref-statusbar,
+          .ym-ref-topbar,
+          .ym-ref-stats,
+          .ym-ref-actions,
+          .ym-ref-tabs,
+          .ym-ref-post-head,
+          .ym-ref-post-footer,
+          .ym-ref-bottom-nav,
+          .ym-ref-inline-line,
+          .ym-ref-topbar-actions,
+          .ym-ref-post-author strong,
+          .ym-ref-profile-header {
+            display: flex;
+            align-items: center;
+          }
+
+          .ym-ref-statusbar {
+            justify-content: space-between;
+            direction: ltr;
+            padding: 2px 10px 0;
+            font-size: 17px;
+            line-height: 1;
+            font-weight: 700;
+            color: rgba(255,255,255,0.96);
+          }
+
+          .ym-ref-status-icons {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+          }
+
+          .ym-ref-signal { display: inline-flex; gap: 2px; align-items: flex-end; height: 14px; }
+          .ym-ref-signal i { width: 2.4px; border-radius: 999px; background: #fff; display: block; }
+          .ym-ref-signal i:nth-child(1) { height: 4px; opacity: .55; }
+          .ym-ref-signal i:nth-child(2) { height: 7px; opacity: .72; }
+          .ym-ref-signal i:nth-child(3) { height: 10px; opacity: .86; }
+          .ym-ref-signal i:nth-child(4) { height: 13px; }
+          .ym-ref-wifi { width: 14px; height: 10px; position: relative; display: inline-flex; align-items: center; justify-content: center; }
+          .ym-ref-wifi::before,
+          .ym-ref-wifi::after,
+          .ym-ref-wifi em { content: ''; position: absolute; border: 1.8px solid transparent; border-top-color: #fff; border-radius: 50%; }
+          .ym-ref-wifi::before { width: 14px; height: 14px; top: 1px; }
+          .ym-ref-wifi::after { width: 10px; height: 10px; top: 3px; }
+          .ym-ref-wifi em { width: 5px; height: 5px; top: 7px; }
+          .ym-ref-battery { width: 22px; height: 11px; border: 1.6px solid #fff; border-radius: 3px; position: relative; display: inline-block; }
+          .ym-ref-battery::after { content: ''; position: absolute; inset-inline-end: -3.4px; top: 2.3px; width: 2px; height: 5px; border-radius: 1px; background: #fff; }
+          .ym-ref-battery b { position: absolute; inset: 1.6px; border-radius: 1px; background: #fff; display: block; }
+
+          .ym-ref-topbar {
+            justify-content: space-between;
+            gap: 12px;
+            padding: 16px 4px 10px;
+          }
+
+          .ym-ref-topbar-title {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 19px;
+            font-weight: 700;
+            color: #FFFFFF;
+            transform: translateX(9px);
+          }
+
+          .ym-ref-icon-btn,
+          .ym-ref-post-menu,
+          .ym-ref-bottom-item,
+          .ym-ref-action,
+          .ym-ref-tab,
+          .ym-ref-post-footer button,
+          .ym-ref-avatar-plus {
+            border: 0;
+            background: transparent;
+            color: inherit;
+            cursor: pointer;
+            padding: 0;
+            font: inherit;
+          }
+
+          .ym-ref-icon-btn {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+          }
+
+          .ym-ref-topbar-actions { gap: 4px; }
+
+          .ym-ref-profile-header {
             flex-direction: column;
-          }
-        }
-
-        @media (max-width: 640px) {
-          .profile-gallery-grid,
-          .profile-stats-grid {
-            grid-template-columns: 1fr;
+            justify-content: center;
+            text-align: center;
+            padding: 8px 0 10px;
+            gap: 10px;
           }
 
-          .profile-tabs-row {
+          .ym-ref-avatar-wrap {
+            position: relative;
+            width: 124px;
+            height: 124px;
+            margin-bottom: 2px;
+          }
+
+          .ym-ref-avatar-ring {
+            width: 124px;
+            height: 124px;
+            border-radius: 50%;
+            padding: 3px;
+            box-sizing: border-box;
+            background: radial-gradient(circle at 50% 30%, rgba(122,64,255,.35), rgba(98,0,255,0.05) 60%, rgba(0,0,0,0));
+            box-shadow: 0 0 0 1px rgba(104, 54, 255, 0.95), 0 0 30px rgba(104, 54, 255, 0.18);
+          }
+
+          .ym-ref-avatar {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
+            display: block;
+            background: #06060A;
+          }
+
+          .ym-ref-avatar-plus {
+            position: absolute;
+            right: -2px;
+            bottom: 10px;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(180deg, #6B34FF 0%, #8A57FF 100%);
+            box-shadow: 0 8px 18px rgba(111, 53, 255, 0.35);
+          }
+
+          .ym-ref-profile-header h1 {
+            margin: 0;
+            font-size: 24px;
+            letter-spacing: 8px;
+            font-weight: 500;
+          }
+
+          .ym-ref-profile-header > p {
+            margin: -4px 0 4px;
+            font-size: 16px;
+            color: #9198C8;
+          }
+
+          .ym-ref-stats {
+            width: 100%;
+            justify-content: center;
+            gap: 0;
+            margin-top: 6px;
+          }
+
+          .ym-ref-stat {
+            flex: 1 1 0;
+            min-width: 0;
+            justify-content: center;
+            text-align: center;
+            flex-direction: column;
+            gap: 4px;
+            position: relative;
+          }
+
+          .ym-ref-stat strong {
+            font-size: 31px;
+            line-height: 1.05;
+            font-weight: 400;
+            letter-spacing: -0.02em;
+          }
+
+          .ym-ref-stat span {
+            color: rgba(205, 209, 232, 0.78);
+            font-size: 16px;
+          }
+
+          .ym-ref-stat-divider {
+            position: absolute;
+            inset-inline-start: -1px;
+            top: 12px;
+            bottom: 12px;
+            width: 1px;
+            background: rgba(255,255,255,0.10);
+          }
+
+          .ym-ref-actions {
+            width: 100%;
+            gap: 12px;
+            margin-top: 12px;
+          }
+
+          .ym-ref-action {
+            flex: 1 1 0;
+            min-height: 52px;
+            border-radius: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 18px;
+            font-weight: 700;
+          }
+
+          .ym-ref-action-primary {
+            color: #FFFFFF;
+            background: linear-gradient(180deg, #6B2CFF 0%, #8B49FF 100%);
+            box-shadow: 0 10px 24px rgba(108, 44, 255, 0.28);
+          }
+
+          .ym-ref-action-secondary {
+            color: #F4F7FF;
+            background: rgba(9, 16, 18, 0.98);
+            box-shadow: inset 0 0 0 1px rgba(60, 73, 84, 0.55);
+          }
+
+          .ym-ref-bio {
             display: grid;
-            grid-template-columns: 1fr;
+            gap: 7px;
+            margin-top: 6px;
+            text-align: center;
           }
-        }
-      `}</style>
+
+          .ym-ref-bio p,
+          .ym-ref-inline-line,
+          .ym-ref-post-copy p,
+          .ym-ref-empty-state p,
+          .ym-ref-empty-state span {
+            margin: 0;
+          }
+
+          .ym-ref-bio p,
+          .ym-ref-inline-line {
+            color: rgba(236, 239, 255, 0.86);
+            font-size: 16px;
+            line-height: 1.5;
+          }
+
+          .ym-ref-inline-line {
+            justify-content: center;
+            gap: 6px;
+          }
+
+          .ym-ref-contact-row {
+            color: #BAC1EA;
+          }
+
+          .ym-ref-dot-icon {
+            color: #8E96C4;
+            font-size: 13px;
+            transform: translateY(-1px);
+          }
+
+          .ym-ref-link-row a {
+            color: #A291FF;
+            text-decoration: none;
+          }
+
+          .ym-ref-tabs {
+            justify-content: space-between;
+            padding: 14px 4px 8px;
+            margin-top: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+          }
+
+          .ym-ref-tab {
+            min-width: 0;
+            flex: 1 1 0;
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            padding: 0 4px 12px;
+            color: rgba(223, 226, 255, 0.72);
+            font-size: 14px;
+            position: relative;
+          }
+
+          .ym-ref-tab.is-active {
+            color: #FFFFFF;
+          }
+
+          .ym-ref-tab.is-active::after {
+            content: '';
+            position: absolute;
+            right: 24%;
+            left: 24%;
+            bottom: -1px;
+            height: 2px;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #824AFF, #C4A9FF);
+          }
+
+          .ym-ref-content {
+            padding-top: 8px;
+          }
+
+          .ym-ref-post-card {
+            padding: 16px 0 18px;
+            border-bottom: 1px solid rgba(255,255,255,0.055);
+          }
+
+          .ym-ref-post-head {
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+          }
+
+          .ym-ref-post-author {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+          }
+
+          .ym-ref-post-author img {
+            width: 42px;
+            height: 42px;
+            object-fit: cover;
+            border-radius: 50%;
+            box-shadow: 0 0 0 1px rgba(112, 68, 255, 0.55);
+            flex-shrink: 0;
+          }
+
+          .ym-ref-post-author strong {
+            gap: 6px;
+            font-size: 15px;
+            font-weight: 700;
+            color: #F7F8FF;
+            justify-content: flex-start;
+          }
+
+          .ym-ref-post-author small {
+            display: block;
+            margin-top: 3px;
+            color: rgba(185, 190, 215, 0.72);
+            font-size: 13px;
+          }
+
+          .ym-ref-post-copy {
+            padding: 6px 2px 6px 0;
+            display: grid;
+            gap: 8px;
+          }
+
+          .ym-ref-post-copy p {
+            color: rgba(244, 246, 255, 0.92);
+            font-size: 18px;
+            line-height: 1.72;
+          }
+
+          .ym-ref-post-image-wrap {
+            margin-top: 4px;
+            border-radius: 4px;
+            overflow: hidden;
+            background: #09070D;
+            box-shadow: 0 0 0 1px rgba(123, 76, 255, 0.08);
+          }
+
+          .ym-ref-post-image {
+            width: 100%;
+            display: block;
+            aspect-ratio: 460 / 178;
+            object-fit: cover;
+          }
+
+          .ym-ref-post-footer {
+            justify-content: flex-start;
+            gap: 30px;
+            margin-top: 14px;
+            direction: ltr;
+          }
+
+          .ym-ref-post-footer button {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            color: rgba(240,243,255,0.88);
+            font-size: 15px;
+          }
+
+          .ym-ref-empty-state {
+            margin-top: 40px;
+            border-radius: 18px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+            padding: 24px 18px;
+            text-align: center;
+            color: rgba(236,240,255,0.86);
+          }
+
+          .ym-ref-empty-state span {
+            display: block;
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 8px;
+          }
+
+          .ym-ref-bottom-nav {
+            position: fixed;
+            left: 50%;
+            bottom: 0;
+            transform: translateX(-50%);
+            width: min(100%, 500px);
+            height: calc(78px + env(safe-area-inset-bottom, 0px));
+            padding: 10px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+            box-sizing: border-box;
+            justify-content: space-between;
+            background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(4,4,7,0.94) 24%, #040407 100%);
+            backdrop-filter: blur(10px);
+            z-index: 30;
+            direction: rtl;
+          }
+
+          .ym-ref-bottom-item {
+            flex: 1 1 0;
+            min-width: 0;
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 6px;
+            color: rgba(220,224,255,0.74);
+            font-size: 13px;
+          }
+
+          .ym-ref-bottom-item.is-active {
+            color: #7E4FFF;
+          }
+
+          .ym-ref-bottom-plus {
+            width: 50px;
+            height: 36px;
+            border-radius: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(180deg, #6A31FF 0%, #8B4DFF 100%);
+            box-shadow: 0 12px 26px rgba(112, 58, 255, 0.34);
+            transform: translateY(-2px);
+          }
+
+          .ym-ref-bottom-item.is-center {
+            color: transparent;
+          }
+
+          .ym-ref-bottom-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 22px;
+          }
+
+          @media (min-width: 501px) {
+            .ym-ref-profile-screen {
+              padding-inline: 18px;
+            }
+            .ym-ref-profile-shell,
+            .ym-ref-bottom-nav {
+              border-inline: 1px solid rgba(255,255,255,0.05);
+            }
+          }
+
+          @media (max-width: 420px) {
+            .ym-ref-profile-shell {
+              padding-inline: 14px;
+            }
+            .ym-ref-topbar-title {
+              font-size: 18px;
+              transform: translateX(6px);
+            }
+            .ym-ref-profile-header h1 {
+              font-size: 21px;
+              letter-spacing: 6px;
+            }
+            .ym-ref-stat strong {
+              font-size: 27px;
+            }
+            .ym-ref-bio p,
+            .ym-ref-inline-line,
+            .ym-ref-action {
+              font-size: 15px;
+            }
+            .ym-ref-post-copy p {
+              font-size: 17px;
+            }
+          }
+        `}</style>
+      </section>
     </MainLayout>
   );
 }

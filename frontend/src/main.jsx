@@ -318,8 +318,8 @@ import './styles/yamshat-fixes-v87.9-BUTTONS-MENUS-POLISH.css';
 // شارة "محوّلة" للرسائل المرفوعة، تحسين ألوان الحالات.
 import './styles/yamshat-fixes-v87.10-CHAT-COMPLETENESS.css';
 
-// v87.14 — Final user-reported fixes
-// 1) الستوريات لا تختبئ تحت الأزرار العلوية
+// v87.15 — Reinforced mobile fixes (deployment-safe)
+// 1) الستوريات لا تختبئ تحت الأزرار العلوية حتى بدون :has
 // 2) شات المجموعة يصبح keyboard-aware بدون تراكب أو زر إرسال شبح
 // 3) صفحة كتابة المنشور تستعيد السحب واللمس الطبيعي على الجوال
 // ⚠️ يجب أن يبقى آخر استيراد CSS مطلقاً.
@@ -333,7 +333,7 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v87.14-STORIES-GROUPCHAT-COMPOSER';
+const BUILD_ID = 'yamshat-v87.15-DEPLOYMENT-SAFE-MOBILE-FIXES';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

@@ -647,7 +647,7 @@ const GroupChat = () => {
 
   return (
     <MainLayout hideNav lockScroll>
-    <div className="yam-group-chat-container" dir="rtl" data-yam-group-root="true" style={{ fontFamily: "'Noto Sans Arabic','Cairo','Tahoma',sans-serif" }}>
+    <div className="yam-group-chat-container" dir="rtl" data-yam-group-root="true" style={{ fontFamily: "'Noto Sans Arabic','Cairo','Tahoma',sans-serif", position: 'relative', isolation: 'isolate' }}>
       <style>{`
         [data-yam-group-root="true"] {
           height: 100%;
@@ -845,7 +845,7 @@ const GroupChat = () => {
       />
 
       {/* منطقة الرسائل */}
-      <main className="yam-group-messages">
+      <main className="yam-group-messages" style={{ paddingBottom: 'calc(104px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px))', scrollPaddingBottom: 'calc(120px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px))' }}>
         {loading ? (
           <div style={{ textAlign: 'center', padding: '20px', color: '#94a3b8' }}>
             جاري تحميل الرسائل...
@@ -924,7 +924,7 @@ const GroupChat = () => {
           className="yam-upload-progress"
           style={{
             position: 'absolute',
-            bottom: '76px',
+            bottom: 'calc(82px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px))',
             insetInlineStart: '12px',
             insetInlineEnd: '12px',
             background: '#1e293b',
@@ -960,7 +960,7 @@ const GroupChat = () => {
           className="yam-attach-menu"
           style={{
             position: 'absolute',
-            bottom: '80px',
+            bottom: 'calc(86px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px))',
             insetInlineStart: '12px',
             background: '#1e293b',
             borderRadius: '12px',
@@ -1043,7 +1043,7 @@ const GroupChat = () => {
         onChange={(e) => handleFileSelect(e, 'file')}
       />
 
-      <footer className="yam-group-input-area">
+      <footer className="yam-group-input-area" style={{ position: 'sticky', bottom: 0, insetInline: 0, display: 'grid', gridTemplateColumns: '42px minmax(0, 1fr) 42px', alignItems: 'center', gap: '10px', padding: '10px 12px calc(10px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px))', background: 'linear-gradient(180deg, rgba(9, 13, 24, 0.92), rgba(9, 13, 24, 0.98))', borderTop: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 -16px 34px rgba(0,0,0,0.34)', zIndex: 120 }}>
         <button
           className="yam-plus-btn"
           onClick={() => setShowAttachMenu((prev) => !prev)}
@@ -1051,8 +1051,9 @@ const GroupChat = () => {
           aria-label="إرفاق ملف"
           disabled={uploading}
           style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '18px',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '18px', width: '42px', minWidth: '42px', height: '42px',
+            borderRadius: '14px', alignSelf: 'center', boxSizing: 'border-box',
           }}
         >
           {uploading ? (
@@ -1067,7 +1068,7 @@ const GroupChat = () => {
             </svg>
           )}
         </button>
-        <div className="yam-input-wrapper">
+        <div className="yam-input-wrapper" style={{ minWidth: 0, width: '100%', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'center', gap: '8px', direction: 'rtl', borderRadius: '24px', padding: '0 12px', minHeight: '46px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', overflow: 'hidden', order: 2 }}>
           <input
             type="text"
             className="yam-chat-input"
@@ -1080,8 +1081,10 @@ const GroupChat = () => {
             enterKeyHint="send"
             inputMode="text"
             autoComplete="off"
+            onFocus={() => window.setTimeout(scrollToBottom, 140)}
+            style={{ minWidth: 0, width: '100%', height: '100%', background: 'transparent', border: 0, outline: 0, padding: '11px 0', fontSize: '16px', lineHeight: 1.5, color: '#fff', direction: 'rtl', textAlign: 'right' }}
           />
-          <span className="yam-input-icon">😊</span>
+          <span className="yam-input-icon" style={{ width: '28px', height: '28px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#94a3b8', fontSize: '18px' }}>😊</span>
         </div>
         <button
           className="yam-send-btn"
@@ -1089,6 +1092,8 @@ const GroupChat = () => {
           aria-label="إرسال"
           // ✅ منع الزر من خسارة التركيز ووميض الـ keyboard على iOS Safari
           onMouseDown={(e) => e.preventDefault()}
+          type="button"
+          style={{ width: '42px', minWidth: '42px', height: '42px', borderRadius: '14px', alignSelf: 'center', order: 3, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' }}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
             <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />

@@ -1,23 +1,74 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
+import { useAppStore } from '../store/appStore.js';
+import { getMe, getProfileBundle, getRelationship } from '../api/users.js';
+import { getCurrentUsername } from '../utils/auth.js';
 
-const PROFILE_DATA = {
-  username: 'yamenameen97',
-  handle: '@yamenameen97',
-  displayName: 'Y A M E N',
-  stats: [
-    { value: '78', label: 'متابع' },
-    { value: '1.2M', label: 'متابعين' },
-    { value: '32.4M', label: 'إعجابات' },
-  ],
-  bioLines: [
-    'صانع محتوى تقني | عاشق للتصميم والمونتاج 💜',
-    'شارك شغفي واستمتع بالمحتوى',
-  ],
-  contactLine: 'للتواصل والإعلانات',
-  website: 'yamshat.com',
-};
+// ✅ v87.16 FIX: إزالة البيانات التجريبية الثابتة نهائياً.
+// كانت البيانات السابقة "Y A M E N / 78 / 1.2M / 32.4M" مُثبّتة في الكود
+// فلا تتغير حتى لو المستخدم دخل بحساب مختلف. الآن كل القيم تُجلب
+// من الـ backend via getMe() / getProfileBundle(username) ديناميكياً.
+function formatStat(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return '0';
+  if (num >= 1_000_000) {
+    const m = num / 1_000_000;
+    return (m >= 10 ? m.toFixed(0) : m.toFixed(1).replace(/\.0$/, '')) + 'M';
+  }
+  if (num >= 1_000) {
+    const k = num / 1_000;
+    return (k >= 10 ? k.toFixed(0) : k.toFixed(1).replace(/\.0$/, '')) + 'K';
+  }
+  return String(num);
+}
+
+// الحقول التي نقرأها من استجابة backend لتغذية الواجهة
+function extractProfile(payload = {}, currentUsername = '') {
+  const user = payload?.user || {};
+  const rawUsername = String(
+    user.username || payload.username || currentUsername || ''
+  ).trim().replace(/^@/, '');
+  const displayRaw = String(
+    user.display_name || user.full_name || user.name || user.author_name || rawUsername || 'مستخدم'
+  );
+  const handle = rawUsername ? `@${rawUsername}` : '@user';
+  const stats = {
+    following: Number(
+      user.following_count ?? user.following ?? payload.following_count ?? 0
+    ),
+    followers: Number(
+      user.followers_count ?? user.followers ?? payload.followers_count ?? 0
+    ),
+    likes: Number(
+      user.likes_count ?? user.likes_received ?? payload.likes_count
+        ?? payload.total_likes ?? 0
+    ),
+    posts: Number(user.posts_count ?? payload.posts_count ?? 0),
+    reels: Number(user.reels_count ?? payload.reels_count ?? 0),
+  };
+  const bioRaw = String(user.bio ?? payload.bio ?? '').trim();
+  const bioLines = bioRaw
+    ? bioRaw.split(/\n+/).map((line) => line.trim()).filter(Boolean).slice(0, 4)
+    : [];
+  const contactLine = String(payload.contact_line || user.contact_line || 'للتواصل والإعلانات');
+  const website = String(payload.website || user.website || 'yamshat.com');
+  const avatar = user.avatar_url || user.avatar || payload.avatar_url || '';
+  const verified = Boolean(user.verified || user.is_verified || payload.verified);
+  return {
+    username: rawUsername,
+    handle,
+    displayName: displayRaw,
+    stats,
+    bioLines,
+    contactLine,
+    website,
+    avatar,
+    verified,
+    bio: bioRaw,
+    isFollowing: Boolean(payload.is_following),
+  };
+}
 
 const TABS = [
   { key: 'posts', label: 'المنشورات', icon: 'grid' },
@@ -142,25 +193,151 @@ function PostFooter({ stats }) {
 export default function Profile() {
   const navigate = useNavigate();
   const { username: routeUsername } = useParams();
-  const [activeTab, setActiveTab] = useState('posts');
-  const profile = useMemo(() => ({ ...PROFILE_DATA, routeUsername: routeUsername || PROFILE_DATA.username }), [routeUsername]);
+  const session = useAppStore((s) => s.session);
+  const currentUsername = String(
+    session?.username || session?.user || getCurrentUsername() || routeUsername || ''
+  ).trim().replace(/^@/, '');
 
+  // ✅ v87.16: أصحاب الحساب لا يحتاجون أزرار متابعة/رسالة على ملفهم.
+  // المقارنة على username و user_id (دفاع متعدد الطبقات ضد المشاركة الجزئية).
+  const isOwnProfile = useMemo(() => {
+    const sessionIdCandidates = [
+      session?.id,
+      session?.user_id,
+      session?.userId,
+      session?.profile?.user_id,
+      session?.profile?.id,
+    ].filter((v) => v !== undefined && v !== null && v !== '');
+    const mySet = new Set(
+      sessionIdCandidates.map((v) => String(v))
+    );
+    const targetUsername = String(routeUsername || '').trim().replace(/^@/, '').toLowerCase();
+    const myUsername = currentUsername.toLowerCase();
+    if (targetUsername && myUsername && targetUsername === myUsername) return true;
+    if (targetUsername && !myUsername) return false;
+    if (!targetUsername) return true; // لا يوجد username في الرابط → ملكي
+    return false;
+  }, [routeUsername, currentUsername, session]);
+
+  const [activeTab, setActiveTab] = useState('posts');
+  const [profile, setProfile] = useState(() => extractProfile({}, currentUsername));
+  const [relationship, setRelationship] = useState({ following: false, loading: false });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const targetUsername = String(
+    routeUsername || currentUsername || ''
+  ).trim().replace(/^@/, '');
+
+  // ✅ v87.16: جلب البيانات الحقيقية من الـ backend.
+  // إذا لم يمرر :username في الرابط → نعرض ملف المستخدم المسجّل دخوله.
+  useEffect(() => {
+    let cancelled = false;
+    const loadProfile = async () => {
+      if (!targetUsername) {
+        setLoading(true);
+        try {
+          const meRes = await getMe();
+          if (cancelled) return;
+          const payload = meRes?.data?.profile || meRes?.data || {};
+          const meUsername = String(
+            payload.username || payload.user?.username || getCurrentUsername() || ''
+          ).trim().replace(/^@/, '');
+          setProfile(extractProfile(payload, meUsername));
+          setError('');
+        } catch (err) {
+          if (cancelled) return;
+          setError(err?.response?.data?.detail || err?.message || 'فشل تحميل الملف الشخصي');
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+        return;
+      }
+      setLoading(true);
+      try {
+        const bundleRes = await getProfileBundle(targetUsername, { forceRefresh: true });
+        if (cancelled) return;
+        const payload = bundleRes?.data || {};
+        setProfile(extractProfile(payload, targetUsername));
+        setError('');
+      } catch (err) {
+        if (cancelled) return;
+        // fallback إلى getMe() إن كان هو المستخدم نفسه
+        try {
+          const meRes = await getMe();
+          if (cancelled) return;
+          const payload = meRes?.data?.profile || meRes?.data || {};
+          const meUsername = String(payload.username || getCurrentUsername() || '').trim().replace(/^@/, '');
+          if (meUsername.toLowerCase() === targetUsername.toLowerCase()) {
+            setProfile(extractProfile(payload, meUsername));
+            setError('');
+            return;
+          }
+          setError(err?.response?.data?.detail || err?.message || 'فشل تحميل الملف الشخصي');
+        } catch (innerErr) {
+          if (cancelled) return;
+          setError(innerErr?.response?.data?.detail || innerErr?.message || 'فشل تحميل الملف الشخصي');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    loadProfile();
+    return () => { cancelled = true; };
+  }, [targetUsername]);
+
+  // جلب حالة المتابعة فقط حين يكون الملف لغير صاحبه
+  useEffect(() => {
+    if (isOwnProfile || !targetUsername) {
+      setRelationship({ following: false, loading: false });
+      return undefined;
+    }
+    let cancelled = false;
+    const loadRelationship = async () => {
+      try {
+        const res = await getRelationship(targetUsername);
+        if (cancelled) return;
+        setRelationship({
+          following: Boolean(
+            res?.data?.following ?? res?.data?.is_following ?? res?.data?.you_follow ?? false
+          ),
+          loading: false,
+        });
+      } catch (err) {
+        if (cancelled) return;
+        setRelationship({ following: false, loading: false });
+      }
+    };
+    loadRelationship();
+    return () => { cancelled = true; };
+  }, [isOwnProfile, targetUsername]);
+
+  const statsDisplay = useMemo(() => ([
+    { value: formatStat(profile.stats.following), label: 'متابع' },
+    { value: formatStat(profile.stats.followers), label: 'متابعين' },
+    { value: formatStat(profile.stats.likes), label: 'إعجابات' },
+  ]), [profile.stats.following, profile.stats.followers, profile.stats.likes]);
+
+  const avatarSrc = useMemo(() => {
+    if (profile.avatar) return resolveMediaUrlPublic(profile.avatar);
+    return null;
+  }, [profile.avatar]);
+
+  const postHeadAvatar = avatarSrc || '/reference-profile/avatar.png';
   return (
     <MainLayout hideNav>
       <section className="ym-ref-profile-screen" dir="rtl">
         <div className="ym-ref-profile-shell">
-          <header className="ym-ref-statusbar">
-            <strong>9:41</strong>
-            <SignalIcons />
-          </header>
+          {/* ✅ v87.16 FIX: تم حذف شريط الساعة + البطارية + الواي فاي + البث نهائياً.
+              كان مرسوماً رسماً لكن لا داعي له — الصفحة الفعلية تبدأ من الهيدر. */}
 
           <div className="ym-ref-topbar">
             <button type="button" aria-label="رجوع" className="ym-ref-icon-btn" onClick={() => navigate(-1)}>
               <Icon name="back" size={22} color="#FFFFFF" />
             </button>
             <div className="ym-ref-topbar-title">
-              <span>{profile.username}</span>
-              <VerifiedBadge size={16} />
+              <span>{profile.username || 'مستخدم'}</span>
+              {profile.verified ? <VerifiedBadge size={16} /> : null}
             </div>
             <div className="ym-ref-topbar-actions">
               <button type="button" aria-label="الإشعارات" className="ym-ref-icon-btn"><Icon name="bell" size={20} color="#FFFFFF" /></button>
@@ -171,7 +348,13 @@ export default function Profile() {
           <div className="ym-ref-profile-header">
             <div className="ym-ref-avatar-wrap">
               <div className="ym-ref-avatar-ring">
-                <img src="/reference-profile/avatar.png" alt={profile.username} className="ym-ref-avatar" />
+                {avatarSrc ? (
+                  <img src={avatarSrc} alt={profile.username} className="ym-ref-avatar" />
+                ) : (
+                  <div className="ym-ref-avatar ym-ref-avatar-fallback" aria-hidden="true">
+                    {(profile.displayName || profile.username || 'U').slice(0, 2).toUpperCase()}
+                  </div>
+                )}
               </div>
               <button type="button" className="ym-ref-avatar-plus" aria-label="إضافة">
                 <Icon name="plus" size={14} color="#FFFFFF" stroke={2.4} />
@@ -182,22 +365,28 @@ export default function Profile() {
             <p>{profile.handle}</p>
 
             <div className="ym-ref-stats">
-              {profile.stats.map((item, index) => (
+              {statsDisplay.map((item, index) => (
                 <div key={item.label} className="ym-ref-stat">
-                  <strong>{item.value}</strong>
+                  <strong>{loading ? '—' : item.value}</strong>
                   <span>{item.label}</span>
-                  {index < profile.stats.length - 1 ? <i className="ym-ref-stat-divider" aria-hidden="true" /> : null}
+                  {index < statsDisplay.length - 1 ? <i className="ym-ref-stat-divider" aria-hidden="true" /> : null}
                 </div>
               ))}
             </div>
 
-            <div className="ym-ref-actions">
-              <button type="button" className="ym-ref-action ym-ref-action-secondary">
-                <span>رسالة</span>
-                <Icon name="paper" size={15} color="rgba(245,247,255,0.92)" />
-              </button>
-              <button type="button" className="ym-ref-action ym-ref-action-primary">متابعة</button>
-            </div>
+            {/* ✅ v87.16 FIX: إخفاء أزرار المتابعة والرسالة حين يكون الملف لمالكه.
+                نبقي الأزرار فقط حين يكون الملف لمستخدم آخر. */}
+            {!isOwnProfile ? (
+              <div className="ym-ref-actions">
+                <button type="button" className="ym-ref-action ym-ref-action-secondary">
+                  <span>رسالة</span>
+                  <Icon name="paper" size={15} color="rgba(245,247,255,0.92)" />
+                </button>
+                <button type="button" className="ym-ref-action ym-ref-action-primary">
+                  {relationship.following ? 'إلغاء المتابعة' : 'متابعة'}
+                </button>
+              </div>
+            ) : null}
 
             <div className="ym-ref-bio">
               {profile.bioLines.map((line) => <p key={line}>{line}</p>)}
@@ -211,6 +400,7 @@ export default function Profile() {
                 <a href={`https://${profile.website}`} target="_blank" rel="noreferrer">{profile.website}</a>
                 <Icon name="site" size={14} color="#B994FF" />
               </div>
+              {error ? <p style={{ color: '#ff8b8b', fontSize: 13, marginTop: 6 }}>{error}</p> : null}
             </div>
           </div>
 
@@ -228,37 +418,12 @@ export default function Profile() {
 
           <div className="ym-ref-content">
             {activeTab === 'posts' ? (
-              <>
-                {POSTS.map((post) => (
-                  <article key={post.id} className="ym-ref-post-card">
-                    <div className="ym-ref-post-head">
-                      <div className="ym-ref-post-author">
-                        <img src="/reference-profile/avatar.png" alt="avatar" />
-                        <div>
-                          <strong>
-                            <span>{profile.username}</span>
-                            <VerifiedBadge size={13} />
-                          </strong>
-                          <small>{post.time}</small>
-                        </div>
-                      </div>
-                      <button type="button" className="ym-ref-post-menu" aria-label="خيارات المنشور"><Icon name="menu" size={18} color="rgba(255,255,255,0.85)" /></button>
-                    </div>
-
-                    {post.type === 'text' ? (
-                      <div className="ym-ref-post-copy">
-                        {post.content.map((line) => <p key={line}>{line}</p>)}
-                      </div>
-                    ) : (
-                      <div className="ym-ref-post-image-wrap">
-                        <img src={post.image} alt="YAMEN cyberpunk artwork" className="ym-ref-post-image" />
-                      </div>
-                    )}
-
-                    <PostFooter stats={post.stats} />
-                  </article>
-                ))}
-              </>
+              <ProfilePostsList
+                username={profile.username}
+                avatar={postHeadAvatar}
+                displayName={profile.displayName}
+                verified={profile.verified}
+              />
             ) : (
               <div className="ym-ref-empty-state">
                 <span>{TABS.find((tab) => tab.key === activeTab)?.label}</span>

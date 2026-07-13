@@ -1,0 +1,69 @@
+/* ============================================================================
+   Yamshat — v87.16 Final chat media polish
+   ----------------------------------------------------------------------------
+   الهدف:
+   1) ضمان أن رسائل الصوت media-only تظهر كـ voice pill بدون فقاعة خارجية.
+   2) ضمان أن رسائل الصور media-only تظهر بدون كرت/حواف إضافية.
+   3) هذا الملف يُحمَّل أخيراً لكسر أي CSS legacy أو كاش قديم.
+   ========================================================================== */
+
+html body .yam-message-row.voice-only .yam-message-stack,
+html body .yam-message-row.media-only .yam-message-stack {
+  max-width: min(80vw, 340px) !important;
+}
+
+html body .yam-bubble.is-voice-only,
+html body .yam-bubble.is-media-only,
+html body .yam-bubble.is-image-only,
+html body .yam-bubble.is-video-only {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+html body .yam-bubble.is-voice-only:hover,
+html body .yam-bubble.is-media-only:hover,
+html body .yam-bubble.is-image-only:hover,
+html body .yam-bubble.is-video-only:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+html body .yam-bubble.is-media-only .yam-media-button,
+html body .yam-bubble.is-image-only .yam-media-button,
+html body .yam-bubble.is-video-only .yam-media-button,
+html body .yam-bubble.is-media-only .yam-safe-image,
+html body .yam-bubble.is-image-only .yam-safe-image,
+html body .yam-bubble.is-video-only .yam-safe-image {
+  margin: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+}
+
+html body .yam-bubble.is-media-only .yam-safe-image img,
+html body .yam-bubble.is-image-only .yam-safe-image img,
+html body .yam-bubble.is-video-only .yam-safe-image img,
+html body .yam-bubble.is-media-only .yam-bubble-media,
+html body .yam-bubble.is-image-only .yam-bubble-media,
+html body .yam-bubble.is-video-only .yam-bubble-media {
+  display: block !important;
+  border-radius: 14px !important;
+}
+
+html body .yam-bubble.is-voice-only .bubble-meta {
+  margin-top: 4px !important;
+  padding-inline: 8px !important;
+}
+
+html body .yam-bubble.is-media-only .bubble-meta,
+html body .yam-bubble.is-image-only .bubble-meta,
+html body .yam-bubble.is-video-only .bubble-meta {
+  position: absolute !important;
+  inset-inline-end: 8px !important;
+  bottom: 6px !important;
+}

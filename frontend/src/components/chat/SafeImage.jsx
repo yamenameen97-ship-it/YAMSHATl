@@ -161,7 +161,7 @@ export default function SafeImage({
           alt={alt}
           loading="lazy"
           decoding="async"
-          referrerPolicy="no-referrer"
+          referrerPolicy="no-referrer-when-downgrade"
           onLoad={handleLoad}
           onError={handleError}
           draggable={false}

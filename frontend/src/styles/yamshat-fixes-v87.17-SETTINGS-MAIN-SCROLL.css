@@ -1,0 +1,423 @@
+/* ================================================================
+   🎯 YAMSHAT v87.17 — إصلاح صفحة الإعدادات الرئيسية + كل الفروع
+   ================================================================
+   شكوى المستخدم:
+     "صفحة الإعدادات (Settings.jsx) وكل الصفحات المتفرّعة منها
+      (settings/*) — البستات (البطاقات .s-card / SettingsRow /
+      stats-grid ...) لا تستجيب للمس والسحب للأعلى والأسفل بسبب
+      التغليف. الصفحة الرئيسية للمنشورات (.yam-home-mobile-page)
+      تعمل بسلاسة فل الفل — اجعل صفحة الإعدادات مطابقة لها."
+
+   التشخيص:
+     ▸ الصفحة الرئيسية للمنشورات (v59.13.28) تُغلَّف بـ
+       .yam-home-mobile-page الذي يعمل كـ scroll container داخلي
+       مستقل (height:100dvh + overflow-y:auto + touch-action:pan-y
+       + -webkit-overflow-scrolling:touch) — هذا هو "سرّ السلاسة".
+
+     ▸ Settings.jsx يستخدم .settings-wrap كغلاف عادي (بدون scroll
+       container). يعتمد على .page-content من MainLayout. طبقات
+       legacy (mobile-touch-master-v57/drawer-v59.10/scroll-final
+       v59.13.2) قد تفرض touch-action:none أو contain على أبنائه،
+       فيتوقف السحب باللمس على البطاقات الطويلة (خصوصاً على
+       الشاشات الطويلة حيث يفيض المحتوى + الجانبي الشبكي 3 أعمدة).
+
+     ▸ الصفحات الفرعية تستخدم SettingsShell (.settings-shell) — نفس
+       المشكلة تماماً.
+
+   الحل:
+     نطبّق بصمة .yam-home-mobile-page 1:1 على:
+       [1] .settings-wrap (Settings.jsx — الرئيسية)
+       [2] .settings-shell (SettingsShell — كل الفروع)
+     مع كسر أي contain/transform/touch-action:none قادم من طبقات
+     legacy، وتحويل .page-content عند احتوائها لهذين الغلافين إلى
+     حاوية تدعم التمرير بلا padding-blocking، ونضمن أن الحقول
+     التفاعلية تستقبل النقر لكن لا تبتلع pan-y العمودي.
+
+   ⚠️ يجب أن يبقى آخر CSS بعد v87.16 ليفوز في cascade.
+   ================================================================ */
+
+
+/* ─────────────────────────────────────────────────────────────
+   [1] الحاوية الأم .page-content عندما تحتوي .settings-wrap
+       أو .settings-shell — نضمن أنها scroll container سلس
+       (نفس نمط v86.3 [1] لـ .yam-group-settings-page).
+   ───────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  html body .app-shell .page-content:has(.settings-wrap),
+  html body main.mobile-main-content:has(.settings-wrap),
+  html body .app-shell .page-content:has(.settings-shell),
+  html body main.mobile-main-content:has(.settings-shell) {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
+    overscroll-behavior-y: contain !important;
+    overscroll-behavior-x: none !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    contain: none !important;
+    content-visibility: visible !important;
+    padding: 0 !important;
+    padding-bottom: 0 !important;
+    will-change: auto !important;
+    transform: none !important;
+    filter: none !important;
+    perspective: none !important;
+    pointer-events: auto !important;
+    overflow-anchor: none !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [2] .settings-wrap — الصفحة الرئيسية للإعدادات (Settings.jsx)
+       طول يتبع المحتوى + كسر contain (كي يعمل السحب على الأم).
+   ───────────────────────────────────────────────────────────── */
+html body .settings-wrap,
+html body div.settings-wrap[dir="rtl"] {
+  min-height: 100dvh !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  touch-action: pan-y !important;
+  -ms-touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+  overscroll-behavior-x: none !important;
+  pointer-events: auto !important;
+  contain: none !important;
+  content-visibility: visible !important;
+  will-change: auto !important;
+  transform: none !important;
+  -webkit-transform: none !important;
+  filter: none !important;
+  -webkit-filter: none !important;
+  perspective: none !important;
+  overflow-anchor: none !important;
+  box-sizing: border-box;
+}
+
+/* Hero header sticky ليبقى ظاهراً أثناء السحب — مثل الرئيسية */
+@media (max-width: 900px) {
+  html body .settings-wrap .settings-hero {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 20 !important;
+    background: rgba(2, 4, 10, 0.94) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    padding-top: calc(6px + env(safe-area-inset-top, 0px)) !important;
+    padding-bottom: 8px !important;
+    margin-bottom: 10px !important;
+    touch-action: pan-y !important;
+    contain: none !important;
+    will-change: auto !important;
+    transform: none !important;
+  }
+}
+
+/* .settings-layout / .settings-sidebar / .settings-main — كسر contain
+   حتى يعمل السحب على كامل المساحة (البستات الطويلة تفيض) */
+html body .settings-wrap .settings-layout,
+html body .settings-wrap .settings-sidebar,
+html body .settings-wrap .settings-main,
+html body .settings-wrap .settings-group,
+html body .settings-wrap .settings-group-tabs,
+html body .settings-wrap .s-card,
+html body .settings-wrap .settings-row,
+html body .settings-wrap .list-row,
+html body .settings-wrap .stats-grid,
+html body .settings-wrap .metric-card,
+html body .settings-wrap section,
+html body .settings-wrap form {
+  touch-action: pan-y !important;
+  -ms-touch-action: pan-y !important;
+  pointer-events: auto !important;
+  contain: none !important;
+  will-change: auto !important;
+  transform: none !important;
+  -webkit-transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+  overflow: visible !important;
+  max-height: none !important;
+  overflow-anchor: none !important;
+}
+
+/* على الموبايل: settings-sidebar لا تكون sticky ولا max-height (كي لا
+   تخلق scroll container متداخل مع الأم) — كانت في .jsx max-height:
+   calc(100vh-90px) و overflow-y:auto وهذا يُنشئ scroller مستقل ويعطل
+   السحب على المحتوى الرئيسي عندما تكون القائمة مرئية */
+@media (max-width: 900px) {
+  html body .settings-wrap .settings-sidebar {
+    position: static !important;
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    overflow-y: visible !important;
+    padding-inline-end: 0 !important;
+  }
+}
+
+/* padding سفلي كافٍ ليظهر آخر عنصر فوق BottomNav */
+@media (max-width: 900px) {
+  html body .settings-wrap {
+    padding-bottom: calc(140px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+@media (max-width: 900px) and (min-height: 720px) {
+  html body .settings-wrap {
+    padding-bottom: calc(180px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [3] .settings-shell — كل صفحات الإعدادات الفرعية
+       (ProfileSettingsPage / FeedSettingsPage / ReelsSettingsPage
+        / StoriesSettingsPage / InboxSettingsPage / VoiceRooms /
+        Engagement / Wallet / Notifications / Sessions / Security
+        / CloseFriends / HideStoryFrom / MutedStories)
+   ───────────────────────────────────────────────────────────── */
+html body .settings-shell,
+html body div.settings-shell[dir="rtl"] {
+  min-height: 100dvh !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  touch-action: pan-y !important;
+  -ms-touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+  overscroll-behavior-x: none !important;
+  pointer-events: auto !important;
+  contain: none !important;
+  content-visibility: visible !important;
+  will-change: auto !important;
+  transform: none !important;
+  -webkit-transform: none !important;
+  filter: none !important;
+  -webkit-filter: none !important;
+  perspective: none !important;
+  overflow-anchor: none !important;
+  box-sizing: border-box;
+}
+
+/* Header sticky للفروع كذلك */
+@media (max-width: 900px) {
+  html body .settings-shell .settings-shell-header {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 20 !important;
+    background: rgba(2, 4, 10, 0.94) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    padding-top: calc(6px + env(safe-area-inset-top, 0px)) !important;
+    padding-bottom: 8px !important;
+    margin-bottom: 10px !important;
+    touch-action: pan-y !important;
+    contain: none !important;
+    will-change: auto !important;
+    transform: none !important;
+  }
+}
+
+/* أبناء .settings-shell — كسر contain */
+html body .settings-shell .settings-shell-body,
+html body .settings-shell .settings-shell-body > *,
+html body .settings-shell .settings-shell-tabs,
+html body .settings-shell .settings-section,
+html body .settings-shell .settings-row,
+html body .settings-shell .list-row,
+html body .settings-shell .stats-grid,
+html body .settings-shell .metric-card,
+html body .settings-shell .card,
+html body .settings-shell section,
+html body .settings-shell form {
+  touch-action: pan-y !important;
+  -ms-touch-action: pan-y !important;
+  pointer-events: auto !important;
+  contain: none !important;
+  will-change: auto !important;
+  transform: none !important;
+  -webkit-transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+  overflow: visible !important;
+  max-height: none !important;
+  overflow-anchor: none !important;
+}
+
+/* padding سفلي كافٍ للفروع */
+@media (max-width: 900px) {
+  html body .settings-shell {
+    padding-bottom: calc(140px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+@media (max-width: 900px) and (min-height: 720px) {
+  html body .settings-shell {
+    padding-bottom: calc(180px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [4] العناصر التفاعلية — تستقبل النقر لكن لا تبتلع pan-y
+       (نفس نمط .yam-home-mobile-page في v59.13.28)
+   ───────────────────────────────────────────────────────────── */
+html body .settings-wrap button,
+html body .settings-wrap a,
+html body .settings-wrap [role="button"],
+html body .settings-wrap [role="tab"],
+html body .settings-wrap [role="link"],
+html body .settings-wrap .settings-tab-btn,
+html body .settings-wrap .settings-btn-mini,
+html body .settings-wrap .settings-toggle,
+html body .settings-wrap .settings-mobile-back,
+html body .settings-wrap .settings-quick-menu-btn,
+html body .settings-shell button,
+html body .settings-shell a,
+html body .settings-shell [role="button"],
+html body .settings-shell [role="tab"],
+html body .settings-shell [role="link"],
+html body .settings-shell .settings-btn-mini,
+html body .settings-shell .settings-toggle,
+html body .settings-shell .settings-shell-back {
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+}
+
+/* حقول الإدخال: تسمح للمتصفح بإدارتها + pan-y عمودي على textarea */
+html body .settings-wrap input,
+html body .settings-wrap select,
+html body .settings-shell input,
+html body .settings-shell select {
+  touch-action: manipulation !important;
+}
+html body .settings-wrap textarea,
+html body .settings-wrap [contenteditable="true"],
+html body .settings-shell textarea,
+html body .settings-shell [contenteditable="true"] {
+  touch-action: pan-y !important;
+  overscroll-behavior: contain !important;
+}
+
+/* الصور والأيقونات: تسمح بالتمرير العمودي ولا تُسحب */
+html body .settings-wrap img,
+html body .settings-shell img {
+  touch-action: pan-y !important;
+  -webkit-user-drag: none;
+  user-drag: none;
+}
+
+/* الفيديو (إن وُجد داخل بست ما): manipulation */
+html body .settings-wrap video,
+html body .settings-shell video {
+  touch-action: manipulation !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [5] الكاروسيلات الأفقية (settings-shell-tabs / stats-grid ...)
+       تسمح بالتمرير الأفقي داخلها فقط، بدون كسر pan-y الرأسي.
+   ───────────────────────────────────────────────────────────── */
+html body .settings-shell .settings-shell-tabs {
+  overflow-x: auto !important;
+  overflow-y: visible !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-x !important;
+  overscroll-behavior-x: contain !important;
+  scrollbar-width: none;
+}
+html body .settings-shell .settings-shell-tabs::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [6] إبطال طبقات legacy الضارّة على .settings-wrap و .settings-shell
+       (mobile-touch-master-fix-v57 / drawer-style-touch-final-v59.10
+        / mobile-scroll-final-v59.13.2 / mobile-pull-fix-v59.13.20)
+       نُلغي أي pointer-events:none أو touch-action:none تسلّل من
+       طبقات legacy إلى هذه الحاويات — نفس نهج v86.3 [3].
+   ───────────────────────────────────────────────────────────── */
+html body .settings-wrap,
+html body .settings-wrap > *,
+html body .settings-wrap > * > *,
+html body .settings-wrap > * > * > *,
+html body .settings-shell,
+html body .settings-shell > *,
+html body .settings-shell > * > *,
+html body .settings-shell > * > * > * {
+  pointer-events: auto !important;
+}
+
+html body .settings-wrap {
+  touch-action: pan-y !important;
+}
+html body .settings-shell {
+  touch-action: pan-y !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [7] iOS Safari — تأكيد momentum scrolling على الحاويات الأم
+       التي تحوي .settings-wrap أو .settings-shell.
+   ───────────────────────────────────────────────────────────── */
+@supports (-webkit-touch-callout: none) {
+  @media (max-width: 900px) {
+    html body .app-shell .page-content:has(.settings-wrap),
+    html body .app-shell .page-content:has(.settings-shell),
+    html body main.mobile-main-content:has(.settings-wrap),
+    html body main.mobile-main-content:has(.settings-shell) {
+      -webkit-overflow-scrolling: touch !important;
+      overflow-y: auto !important;
+      touch-action: pan-y !important;
+      height: 100dvh !important;
+      max-height: 100dvh !important;
+    }
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [8] prefers-reduced-motion — احترام إعداد المستخدم
+   ───────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  html body .settings-wrap,
+  html body .settings-shell {
+    scroll-behavior: auto !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [9] Modal الإعدادات (.settings-modal) — التمرير الداخلي مسموح
+       داخل المودال فقط (max-height:88vh + overflow-y:auto من .jsx)
+       دون التأثير على السحب على الصفحة الأم بعد إغلاق المودال.
+   ───────────────────────────────────────────────────────────── */
+html body .settings-modal-backdrop {
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+  overscroll-behavior: contain !important;
+}
+html body .settings-modal {
+  touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior: contain !important;
+  overflow-y: auto !important;
+  contain: none !important;
+  will-change: auto !important;
+}
+
+
+/* ================================================================
+   ✨ نهاية v87.17
+   صفحة الإعدادات (.settings-wrap) وكل الصفحات المتفرّعة منها
+   (.settings-shell) تعمل الآن بنفس سلاسة الصفحة الرئيسية
+   (.yam-home-mobile-page) — السحب باللمس للأعلى والأسفل يستجيب
+   فوراً من أي منطقة داخل البستات (البطاقات / الصفوف / الشبكات)
+   بـ momentum scroll حقيقي على iOS Safari وكل متصفحات الموبايل.
+   ================================================================ */

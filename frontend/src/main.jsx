@@ -324,6 +324,13 @@ import './styles/yamshat-fixes-v87.10-CHAT-COMPLETENESS.css';
 // 3) صفحة كتابة المنشور تستعيد السحب واللمس الطبيعي على الجوال
 // ⚠️ يجب أن يبقى آخر استيراد CSS مطلقاً.
 import './styles/yamshat-fixes-v87.14-STORIES-GROUPCHAT-COMPOSER.css';
+// v87.16: آخر طبقة إصلاح للدردشة — إزالة التغليف الزائد عن الصور والرسائل
+// الصوتية حتى مع وجود CSS legacy أو كاش قديم.
+import './styles/yamshat-fixes-v87.16-CHAT-MEDIA-FINAL-POLISH.css';
+// v87.17: إصلاح صفحة الإعدادات الرئيسية (.settings-wrap) + كل الفروع
+// (.settings-shell) لتعمل مثل الصفحة الرئيسية (.yam-home-mobile-page)
+// — السحب باللمس للأعلى والأسفل على البستات يستجيب بسلاسة فل الفل.
+import './styles/yamshat-fixes-v87.17-SETTINGS-MAIN-SCROLL.css';
 
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
@@ -333,7 +340,7 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v87.15-DEPLOYMENT-SAFE-MOBILE-FIXES';
+const BUILD_ID = 'yamshat-v87.17-SETTINGS-MAIN-SCROLL';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

@@ -29,7 +29,7 @@ export default function PostComposerPage() {
 
   return (
     <div
-      className="ympc-page"
+      className="ympc-page yam-home-mobile-page"
       data-yam-post-composer="true"
       dir="rtl"
       style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}
@@ -61,24 +61,85 @@ export default function PostComposerPage() {
 
       <style>{`
         /*
-          v85.5 FIX (منشور جديد لا يقبل السحب لأسفل):
-          - نستخدم min-height بدلاً من height + overflow-y: auto صريح على الصفحة
-            حتى يعمل السحب دائماً على الموبايل.
-          - touch-action: pan-y يسمح بالتمرير العمودي وتعطيل تكبير/تصغير مزعج.
-          - overscroll-behavior: contain يمنع تسرّب سحب السحب لصفحة أعلى (pull-to-refresh).
-          - -webkit-overflow-scrolling: touch لسلاسة على iOS.
+          ✅ v87.16 FIX (منشور جديد يقبل السحب لأعلى ولأسفل بسلاسة فائقة):
+          نطبق نفس "بصمة التمرير" الناجحة في الصفحة الرئيسية
+          (.yam-home-mobile-page من styles/home-mobile-page-v59.13.28.css)
+          مع تخصيصات خاصة بصفحة /post/*.
+          المتصفحات الموبايل (iOS Safari / Android Chrome) تستجيب
+          للسحب العمودي فقط حين يكون scroll container داخلي
+          بأبعاد ثابتة (height/100dvh + overflow-y:auto) +
+          touch-action: pan-y صريح.
         */
         .ympc-page {
-          min-height: 100dvh;
-          height: auto;
           background: var(--background, #0a0a0f);
           color: var(--text, #f4f4f5);
-          padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
           direction: rtl;
-          overflow: visible;
+          font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+          /* ⭐ بصمة التمرير — مطابقة 1:1 لـ .yam-home-mobile-page */
+          height: 100vh;
+          height: 100dvh;
+          overflow-y: auto;
+          overflow-x: hidden;
           -webkit-overflow-scrolling: touch;
           overscroll-behavior-y: contain;
+          overscroll-behavior-x: none;
           touch-action: pan-y;
+          -ms-touch-action: pan-y;
+          transform: none;
+          -webkit-transform: none;
+          filter: none;
+          -webkit-filter: none;
+          perspective: none;
+          pointer-events: auto;
+          scroll-behavior: smooth;
+          overflow-anchor: none;
+          will-change: scroll-position;
+          scrollbar-width: thin;
+          scrollbar-color: rgba(139, 92, 246, 0.45) transparent;
+          box-sizing: border-box;
+          padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+        }
+        .ympc-page::-webkit-scrollbar {
+          width: 6px;
+        }
+        .ympc-page::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .ympc-page::-webkit-scrollbar-thumb {
+          background: rgba(139, 92, 246, 0.45);
+          border-radius: 999px;
+        }
+        @media (max-width: 768px) {
+          .ympc-page {
+            scrollbar-width: none;
+          }
+          .ympc-page::-webkit-scrollbar {
+            display: none;
+            width: 0;
+            height: 0;
+          }
+        }
+        @supports (-webkit-touch-callout: none) {
+          .ympc-page {
+            -webkit-overflow-scrolling: touch !important;
+            overflow-y: auto !important;
+            touch-action: pan-y !important;
+            height: 100dvh !important;
+            max-height: 100dvh !important;
+          }
+        }
+        /* حماية قصوى ضد أي CSS قديم يكسر التمرير */
+        .app-shell .page-content .ympc-page,
+        .app-shell.yamshat-unified .page-content .ympc-page {
+          overflow-y: auto !important;
+          height: 100dvh !important;
+          min-height: 100dvh !important;
+          max-height: 100dvh !important;
+          touch-action: pan-y !important;
+          -webkit-overflow-scrolling: touch !important;
+          transform: none !important;
+          filter: none !important;
+          perspective: none !important;
         }
         .ympc-top {
           position: sticky;

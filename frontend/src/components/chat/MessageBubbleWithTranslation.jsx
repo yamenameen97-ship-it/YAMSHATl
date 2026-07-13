@@ -83,6 +83,52 @@ function extractFileName(message) {
   }
 }
 
+function normalizeMessageContent(message = {}, mediaKind = 'none') {
+  const rawContent = String(message?.content ?? message?.message ?? '').trim();
+  if (!rawContent || mediaKind === 'none') return rawContent;
+
+  const normalized = rawContent
+    .replace(/[\u200E\u200F\u202A-\u202E]/g, '')
+    .replace(/[🎤📷🖼️🎬📹📎🎧🎵]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+  const syntheticCaptions = {
+    voice: new Set([
+      'رسالة صوتية',
+      'رساله صوتيه',
+      'voice message',
+      'audio message',
+      'voice note',
+      'audio note',
+    ]),
+    image: new Set([
+      'صورة',
+      'صوره',
+      'image',
+      'photo',
+      'picture',
+    ]),
+    video: new Set([
+      'فيديو',
+      'video',
+      'clip',
+    ]),
+    file: new Set([
+      'ملف',
+      'ملف مرفق',
+      'مرفق',
+      'file',
+      'attachment',
+      'document',
+    ]),
+  };
+
+  if (syntheticCaptions[mediaKind]?.has(normalized)) return '';
+  return rawContent;
+}
+
 function messageMatchesSearch(message, query) {
   const lowered = String(query || '').trim().toLowerCase();
   if (!lowered) return true;
@@ -128,7 +174,7 @@ function MessageBubbleWithTranslation({
   const isImage = mediaKind === 'image';
   const isVideo = mediaKind === 'video';
   const isFile = mediaKind === 'file';
-  const content = message?.content || message?.message || '';
+  const content = normalizeMessageContent(message, mediaKind);
   const fileName = extractFileName(message);
   const shouldGlow = highlightQuery.trim() && messageMatchesSearch(message, highlightQuery);
   const groupedWithPrev = areGrouped(prevMessage, message);
@@ -266,7 +312,7 @@ function MessageBubbleWithTranslation({
 
             {isImage && mediaUrl ? (
               <button type="button" className="yam-media-button" onClick={openCurrentMedia}>
-                <img src={mediaUrl} alt={fileName} className="yam-bubble-media" loading="lazy" decoding="async" />
+                <img src={mediaUrl} alt={fileName} className="yam-bubble-media" loading="lazy" decoding="async" referrerPolicy="no-referrer-when-downgrade" />
                 <span className="yam-bubble-media-overlay">تكبير</span>
               </button>
             ) : null}

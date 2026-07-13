@@ -1,64 +1,39 @@
-import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import PostComposer from '../components/feed/PostComposer.jsx';
-
-/**
- * PostComposerPage — v59.13.27 (FIX: زر "منشور جديد" يفتح بوست كتابة المنشور)
- * ----------------------------------------------------------------
- * كان السلوك الكارثي السابق: الضغط على زر (+) من الهيدر السفلي في الصفحة
- * الرئيسية يوجّه إلى /compose?tab=post — لكن /compose كان يفتح ReelComposer
- * (شاشة كاميرا الريلز) بصرف النظر عن قيمة tab، فيعرض للمستخدم شاشة الريلز
- * بدلاً من بوست كتابة المنشور.
- *
- * الحل: مسار /compose?tab=post (وكذلك /post/new و /post/compose) يفتح هذه
- * الصفحة المخصصة لكتابة المنشور النصي/الصورة، باستخدام مكوّن PostComposer
- * المُعتمد من صفحة الفييد. الـtab=reel|story|live|photo|templates تبقى
- * تذهب إلى ReelComposer كما كان.
- *
- * RTL كامل + Noto Sans Arabic للحفاظ على الاتساق البصري.
- */
-export default function PostComposerPage() {
+import { bz as useNavigate, b0 as reactExports, ar as jsxRuntimeExports } from "../index-D5NOBPt4.js";
+import { P as PostComposer } from "./PostComposer-ZkMWZPLd.js";
+import "./posts-BMr4cr0i.js";
+function PostComposerPage() {
   const navigate = useNavigate();
-
-  // Page-level title
-  useEffect(() => {
+  reactExports.useEffect(() => {
     const prev = document.title;
-    document.title = 'منشور جديد · YAMSHAT';
-    return () => { document.title = prev; };
+    document.title = "منشور جديد · YAMSHAT";
+    return () => {
+      document.title = prev;
+    };
   }, []);
-
-  return (
-    <div
-      className="ympc-page"
-      dir="rtl"
-      style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" }}
-    >
-      {/* الشريط العلوي */}
-      <header className="ympc-top">
-        <button
-          type="button"
-          className="ympc-icon-btn"
-          onClick={() => navigate(-1)}
-          aria-label="رجوع"
-          title="رجوع"
-        >
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            {/* في RTL سهم العودة يمين، يستخدم نفس الرمز ولكن بـtransform */}
-            <path d="M9 18l6-6-6-6" />
-          </svg>
-        </button>
-        <h1 className="ympc-title">منشور جديد</h1>
-        <div className="ympc-spacer" aria-hidden />
-      </header>
-
-      {/* محتوى الصفحة — مكوّن كتابة المنشور المعتمد */}
-      <main className="ympc-main">
-        <div className="ympc-wrap">
-          <PostComposer />
-        </div>
-      </main>
-
-      <style>{`
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      className: "ympc-page",
+      dir: "rtl",
+      style: { fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif" },
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "ympc-top", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              className: "ympc-icon-btn",
+              onClick: () => navigate(-1),
+              "aria-label": "رجوع",
+              title: "رجوع",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { viewBox: "0 0 24 24", width: "22", height: "22", fill: "none", stroke: "currentColor", strokeWidth: "2.2", strokeLinecap: "round", strokeLinejoin: "round", children: /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M9 18l6-6-6-6" }) })
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "ympc-title", children: "منشور جديد" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ympc-spacer", "aria-hidden": true })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("main", { className: "ympc-main", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ympc-wrap", children: /* @__PURE__ */ jsxRuntimeExports.jsx(PostComposer, {}) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("style", { children: `
         /*
           v85.5 FIX (منشور جديد لا يقبل السحب لأسفل):
           - نستخدم min-height بدلاً من height + overflow-y: auto صريح على الصفحة
@@ -135,7 +110,11 @@ export default function PostComposerPage() {
           .ympc-main { padding: 22px 18px; }
           .ympc-title { font-size: 1.15rem; }
         }
-      `}</style>
-    </div>
+      ` })
+      ]
+    }
   );
 }
+export {
+  PostComposerPage as default
+};

@@ -1,0 +1,273 @@
+/* ================================================================
+   YAMSHAT v87.14 — Stories / Group Chat / Post Composer final fixes
+   ---------------------------------------------------------------
+   يعالج 3 مشاكل حقيقية على ويب الجوال:
+   1) صفحة الستوريات الرئيسية: رجوع القصص أسفل الهيدر/الأزرار العلوية.
+   2) شات المجموعة: منع تراكب حقل الكتابة وزر الإرسال مع لوحة المفاتيح
+      وضبط RTL ومحاذاة النص داخل الحقل.
+   3) صفحة كتابة المنشور: إعادة السحب العمودي واللمس الطبيعي بدون
+      nested scrolling أو طبقات تبتلع اللمس.
+   ================================================================ */
+
+/* ----------------------------------------------------------------
+   [1] STORIES — restore chrome spacing and prevent bubble overlap
+   ---------------------------------------------------------------- */
+@media (max-width: 980px) {
+  html body .app-shell .page-content:has(.yam-stories-page),
+  html body .app-shell.yamshat-unified .page-content:has(.yam-stories-page) {
+    /* ملفات v59.13.29 / v59.13.31 كانت تصفّر padding-top/padding-bottom
+       فصار أول صف قصص يدخل تحت الأزرار العلوية. نعيد مسافة الـ chrome
+       الموحّد كما هو في باقي الصفحات. */
+    padding-top: var(--yam-top-chrome-height) !important;
+    padding-bottom: var(--yam-bottom-chrome-height) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
+  }
+
+  html body .page-content .yam-stories-page,
+  html body .app-shell .page-content .yam-stories-page,
+  html body .app-shell.yamshat-unified .page-content .yam-stories-page {
+    min-height: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding-top: 12px !important;
+    padding-bottom: 18px !important;
+    box-sizing: border-box !important;
+  }
+
+  html body .yam-stories-page .yam-stories-tabs {
+    position: sticky !important;
+    top: 8px !important;
+    z-index: 6 !important;
+    margin-bottom: 14px !important;
+    padding: 10px !important;
+    background: rgba(8, 12, 24, 0.88) !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    border-radius: 18px !important;
+    backdrop-filter: blur(14px) !important;
+    -webkit-backdrop-filter: blur(14px) !important;
+    box-shadow: 0 12px 28px rgba(0,0,0,0.24) !important;
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    row-gap: 8px !important;
+  }
+
+  html body .yam-stories-page .yam-stories-freeflow {
+    margin-top: 6px !important;
+    align-content: flex-start !important;
+    row-gap: 18px !important;
+  }
+
+  html body .yam-stories-page .yam-story-bubble,
+  html body .yam-stories-page .yam-story-bubble-ring,
+  html body .yam-stories-page .yam-story-bubble-media {
+    overflow: visible !important;
+  }
+
+  html body .yam-stories-page .yam-story-bubble-media {
+    overflow: hidden !important;
+  }
+
+  html body .yam-stories-page .yam-story-bubble {
+    scroll-margin-top: calc(var(--yam-top-chrome-height) + 88px) !important;
+  }
+}
+
+/* ----------------------------------------------------------------
+   [2] GROUP CHAT — keyboard aware footer + clean RTL alignment
+   ---------------------------------------------------------------- */
+html body [data-yam-group-root="true"].yam-group-chat-container,
+html body .yam-group-chat-container[data-yam-group-root="true"] {
+  min-height: var(--yam-vh, 100dvh) !important;
+}
+
+html body [data-yam-group-root="true"] .yam-group-messages,
+html body .yam-group-chat-container .yam-group-messages {
+  padding-bottom: 20px !important;
+  scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px)) !important;
+}
+
+html body [data-yam-group-root="true"] .yam-group-input-area,
+html body .yam-group-chat-container .yam-group-input-area {
+  position: sticky !important;
+  bottom: 0 !important;
+  inset-inline: 0 !important;
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px)) !important;
+  background: linear-gradient(180deg, rgba(9, 13, 24, 0.92), rgba(9, 13, 24, 0.98)) !important;
+  border-top: 1px solid rgba(255,255,255,0.08) !important;
+  box-shadow: 0 -16px 34px rgba(0,0,0,0.34) !important;
+  z-index: 70 !important;
+  overflow: visible !important;
+}
+
+html body [data-yam-group-root="true"] .yam-input-wrapper,
+html body .yam-group-chat-container .yam-input-wrapper {
+  min-width: 0 !important;
+  width: 100% !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 8px !important;
+  direction: rtl !important;
+  border-radius: 24px !important;
+  padding: 0 12px !important;
+  min-height: 46px !important;
+  background: rgba(255,255,255,0.05) !important;
+  border: 1px solid rgba(255,255,255,0.09) !important;
+  overflow: hidden !important;
+}
+
+html body [data-yam-group-root="true"] .yam-chat-input,
+html body .yam-group-chat-container .yam-chat-input {
+  min-width: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  background: transparent !important;
+  border: 0 !important;
+  outline: 0 !important;
+  padding: 11px 0 !important;
+  font-size: 16px !important;
+  line-height: 1.5 !important;
+  color: #fff !important;
+  direction: rtl !important;
+  text-align: right !important;
+}
+
+html body [data-yam-group-root="true"] .yam-chat-input::placeholder,
+html body .yam-group-chat-container .yam-chat-input::placeholder {
+  text-align: right !important;
+}
+
+html body [data-yam-group-root="true"] .yam-input-icon,
+html body .yam-group-chat-container .yam-input-icon {
+  width: 28px !important;
+  height: 28px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  color: #94a3b8 !important;
+  font-size: 18px !important;
+}
+
+html body [data-yam-group-root="true"] .yam-send-btn,
+html body [data-yam-group-root="true"] .yam-plus-btn,
+html body .yam-group-chat-container .yam-send-btn,
+html body .yam-group-chat-container .yam-plus-btn {
+  width: 42px !important;
+  min-width: 42px !important;
+  height: 42px !important;
+  border-radius: 14px !important;
+  align-self: center !important;
+}
+
+html body [data-yam-group-root="true"] .yam-send-btn,
+html body .yam-group-chat-container .yam-send-btn {
+  order: 3 !important;
+}
+
+html body [data-yam-group-root="true"] .yam-plus-btn,
+html body .yam-group-chat-container .yam-plus-btn {
+  order: 1 !important;
+}
+
+html body [data-yam-group-root="true"] .yam-input-wrapper,
+html body .yam-group-chat-container .yam-input-wrapper {
+  order: 2 !important;
+}
+
+/* منع أي شريط إدخال شبح من الظهور/التقاط اللمس داخل شاشة المجموعة */
+html body [data-yam-group-root="true"] .yam-chat-input-wrap,
+html body [data-yam-group-root="true"] .yam-composer-shell,
+html body [data-yam-group-root="true"] .yam-composer-row,
+html body [data-yam-group-root="true"] .yam-composer-textrow {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* عناصر مرفقات/تقدّم الرفع ترتفع فوق الكيبورد بدل أن تبقى تحته */
+html body [data-yam-group-root="true"] .yam-attach-menu,
+html body .yam-group-chat-container .yam-attach-menu {
+  bottom: calc(74px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px)) !important;
+  z-index: 80 !important;
+}
+
+html body [data-yam-group-root="true"] .yam-upload-progress,
+html body .yam-group-chat-container .yam-upload-progress {
+  bottom: calc(74px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px)) !important;
+  z-index: 81 !important;
+}
+
+/* ----------------------------------------------------------------
+   [3] POST COMPOSER — one real scroll container + touch friendly UI
+   ---------------------------------------------------------------- */
+@media (max-width: 980px) {
+  html body .app-shell .page-content:has(.ympc-page),
+  html body .app-shell.yamshat-unified .page-content:has(.ympc-page) {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
+    overscroll-behavior-y: contain !important;
+    padding: 0 !important;
+  }
+
+  html body .ympc-page,
+  html body .ympc-page .ympc-main,
+  html body .ympc-page .ympc-wrap {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: auto !important;
+    touch-action: pan-y !important;
+    pointer-events: auto !important;
+  }
+
+  html body .ympc-page {
+    min-height: var(--yam-vh, 100dvh) !important;
+    padding-bottom: calc(36px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  html body .ympc-page .ympc-top {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 30 !important;
+  }
+
+  html body .ympc-page .card,
+  html body .ympc-page .composer-editor-shell,
+  html body .ympc-page .composer-toolbar,
+  html body .ympc-page .composer-actions-row,
+  html body .ympc-page .composer-tags-preview,
+  html body .ympc-page .composer-media-preview {
+    touch-action: pan-y !important;
+    pointer-events: auto !important;
+    transform: none !important;
+  }
+
+  html body .ympc-page .composer-textarea,
+  html body .ympc-page textarea,
+  html body .ympc-page input,
+  html body .ympc-page [contenteditable="true"] {
+    touch-action: auto !important;
+    pointer-events: auto !important;
+    font-size: 16px !important;
+  }
+
+  html body .ympc-page .composer-action-btn,
+  html body .ympc-page .composer-chip,
+  html body .ympc-page button {
+    touch-action: manipulation !important;
+  }
+}

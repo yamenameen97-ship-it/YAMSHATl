@@ -316,8 +316,14 @@ import './styles/yamshat-fixes-v87.9-BUTTONS-MENUS-POLISH.css';
 // v87.10 — Chat Completeness Fixes
 // تفعيل إيصالات القراءة المرئية (✓ / ✓✓ / ✓✓ ملوّنة)، بانر إعادة المحاولة عند الفشل،
 // شارة "محوّلة" للرسائل المرفوعة، تحسين ألوان الحالات.
-// ⚠️ يجب أن يبقى آخر استيراد CSS ليفوز في cascade.
 import './styles/yamshat-fixes-v87.10-CHAT-COMPLETENESS.css';
+
+// v87.14 — Final user-reported fixes
+// 1) الستوريات لا تختبئ تحت الأزرار العلوية
+// 2) شات المجموعة يصبح keyboard-aware بدون تراكب أو زر إرسال شبح
+// 3) صفحة كتابة المنشور تستعيد السحب واللمس الطبيعي على الجوال
+// ⚠️ يجب أن يبقى آخر استيراد CSS مطلقاً.
+import './styles/yamshat-fixes-v87.14-STORIES-GROUPCHAT-COMPOSER.css';
 
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
@@ -327,7 +333,7 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v87.10-CHAT-COMPLETENESS';
+const BUILD_ID = 'yamshat-v87.14-STORIES-GROUPCHAT-COMPOSER';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

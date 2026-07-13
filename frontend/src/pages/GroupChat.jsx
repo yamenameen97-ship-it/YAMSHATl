@@ -921,6 +921,7 @@ const GroupChat = () => {
       {/* شريط تقدم الرفع */}
       {uploading && (
         <div
+          className="yam-upload-progress"
           style={{
             position: 'absolute',
             bottom: '76px',
@@ -1074,6 +1075,7 @@ const GroupChat = () => {
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyPress}
+            dir="rtl"
             // ✅ enterkeyhint يحسن لوحة مفاتيح الجوال
             enterKeyHint="send"
             inputMode="text"

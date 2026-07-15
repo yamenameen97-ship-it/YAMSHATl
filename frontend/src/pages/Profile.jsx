@@ -582,29 +582,36 @@ export default function Profile() {
         </footer>
 
         <style>{`
+          /* ✅ v87.22 FIX #1: تمكين السحب العمودي في صفحة الملف الشخصي.
+             إزالة overflow:hidden و min-height الثابت اللذين كانا يحبسان التمرير.
+             التمرير يحدث الآن داخل main.mobile-main-content من MobileLayout. */
           .ym-ref-profile-screen {
-            min-height: 100vh;
-            min-height: 100dvh;
+            min-height: auto;
+            height: auto;
             background:
               radial-gradient(circle at 50% 0%, rgba(123, 54, 255, 0.16), transparent 32%),
               radial-gradient(circle at 50% 100%, rgba(123, 54, 255, 0.10), transparent 24%),
               #020205;
             color: #FFFFFF;
-            font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
+            font-family: 'Noto Sans Arabic', 'Tajawal', 'Cairo', system-ui, sans-serif;
             display: flex;
             justify-content: center;
             position: relative;
-            overflow: hidden;
+            overflow: visible;
+            touch-action: pan-y pinch-zoom;
+            -webkit-overflow-scrolling: touch;
           }
 
           .ym-ref-profile-shell {
             width: min(100%, 500px);
-            min-height: 100vh;
-            min-height: 100dvh;
-            padding: 10px 18px 108px;
+            min-height: auto;
+            height: auto;
+            padding: 10px 18px calc(140px + env(safe-area-inset-bottom, 0px));
             box-sizing: border-box;
             position: relative;
             background: linear-gradient(180deg, rgba(7,7,10,0.96), rgba(3,3,5,1));
+            overflow: visible;
+            touch-action: pan-y pinch-zoom;
           }
 
           .ym-ref-statusbar,

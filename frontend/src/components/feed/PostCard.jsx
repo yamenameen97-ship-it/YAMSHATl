@@ -688,8 +688,9 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
         {mediaUrl ? (
           <div
             className="ym-pc-media"
+            dir="rtl"
             onClick={() => setShowMediaModal(true)}
-            style={{ minHeight: hasVideoMedia ? 220 : 180 }}
+            style={{ minHeight: hasVideoMedia ? 220 : 180, fontFamily: "'Noto Sans Arabic', 'Tajawal', 'Cairo', system-ui, sans-serif" }}
           >
             {hasVideoMedia ? (
               <div style={{ width: '100%' }} onClick={(event) => event.stopPropagation()}>
@@ -702,7 +703,20 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
                 />
               </div>
             ) : (
-              <img src={posterUrl || mediaUrl} alt="Post Media" />
+              /* ✅ v87.22 FIX #2: إضافة onError → يُظهر placeholder جميل بدل "تعذّر تحميل الصورة".
+                 و loading="lazy" + decoding="async" لأداء أفضل. */
+              <img
+                src={posterUrl || mediaUrl}
+                alt="وسائط المنشور"
+                loading="lazy"
+                decoding="async"
+                referrerPolicy="no-referrer"
+                onLoad={(e) => { e.currentTarget.parentElement?.classList.remove('is-broken'); }}
+                onError={(e) => {
+                  e.currentTarget.setAttribute('data-broken', 'true');
+                  e.currentTarget.parentElement?.classList.add('is-broken');
+                }}
+              />
             )}
           </div>
         ) : null}

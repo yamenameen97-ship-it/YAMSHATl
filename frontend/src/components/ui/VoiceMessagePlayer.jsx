@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AudioWaveform from '../chat/AudioWaveform.jsx';
 
-function formatTime(seconds = 0) {
-  if (!Number.isFinite(seconds) || seconds <= 0) return '0:00';
+// ✅ v87.22 FIX #3: إذا لم تُقرأ المدّة بعد من metadata, أظهر "–:––" بدل 0:00 المضلّل
+function formatTime(seconds = 0, { placeholder = false } = {}) {
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return placeholder ? '–:––' : '0:00';
+  }
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${String(secs).padStart(2, '0')}`;
@@ -186,6 +189,9 @@ export default function VoiceMessagePlayer({
   if (bubbleless) {
     const knownDuration = duration || seededDuration;
     const displayTime = isPlaying || hasPlayed ? currentTime : knownDuration;
+    // ✅ v87.22 FIX #3: إذا لم تُعرف المدّة بعد ولم نبدأ التشغيل
+    //     → أظهر placeholder (–:––) بدل 0:00 الخاطئ
+    const timePlaceholder = !isPlaying && !hasPlayed && knownDuration <= 0;
     const showRate = isPlaying || (hasPlayed && playbackRate !== 1);
     const showAvatar = Boolean(String(avatarSrc || '').trim());
 
@@ -241,7 +247,7 @@ export default function VoiceMessagePlayer({
               {playbackRate}×
             </button>
           ) : null}
-          <span className="yam-voice-pill__time">{formatTime(displayTime)}</span>
+          <span className="yam-voice-pill__time">{formatTime(displayTime, { placeholder: timePlaceholder })}</span>
           <span className="yam-voice-pill__badge" aria-hidden="true">
             {showAvatar ? (
               <img src={avatarSrc} alt={avatarAlt} loading="lazy" decoding="async" referrerPolicy="no-referrer" />

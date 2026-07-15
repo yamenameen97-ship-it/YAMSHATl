@@ -345,6 +345,13 @@ import './styles/yamshat-fixes-v87.18-SETTINGS-POSTS-SCROLL-FINAL.css';
 // استيراد CSS لكسر أي طبقات legacy/كاش قديم.
 import './styles/yamshat-fixes-v87.21-CHAT-MOBILE-WEB-MEDIA-VOICE.css';
 
+// ✅ v87.22 — إصلاحات المستخدم الحرجة الأربعة:
+//   1) صفحة الملف الشخصي على الجوال قابلة للسحب عمودياً.
+//   2) وسائط المنشورات (صور/فيديو) تُعرض دون تكسّر.
+//   3) الرسائل الصوتية بموجة + سهم تشغيل + عرض المدّة الفعلية.
+//   4) نافذة الإبلاغ تُظهر زر الإرسال دائماً.
+import './styles/yamshat-fixes-v87.22-FOUR-CRITICAL-FIXES.css';
+
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';
@@ -353,7 +360,7 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v87.21-CHAT-MOBILE-WEB-MEDIA-VOICE-FIX';
+const BUILD_ID = 'yamshat-v87.22-FOUR-CRITICAL-USER-REPORTED-FIXES';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

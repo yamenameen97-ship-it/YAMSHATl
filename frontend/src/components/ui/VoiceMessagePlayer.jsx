@@ -8,17 +8,30 @@ function formatTime(seconds = 0) {
   return `${mins}:${String(secs).padStart(2, '0')}`;
 }
 
+function toPositiveNumber(value, fallback = 0) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback;
+}
+
+function senderFallbackLetter(label = '') {
+  const normalized = String(label || '').trim();
+  return normalized ? normalized.charAt(0).toUpperCase() : '•';
+}
+
 /**
  * VoiceMessagePlayer — مشغل رسائل صوتية بنمط واتساب.
  *
  * Props:
- *  - src:        رابط الصوت
- *  - seed:       مفتاح لتوليد موجة ثابتة
- *  - title:      عنوان اختياري (يُخفى في وضع bubbleless)
- *  - compact:    تقليص المسافات الداخلية
- *  - autoPlay:   تشغيل تلقائي
- *  - bubbleless: عرض المشغل كـ pill أفقي صغير بدون صندوق محيط (نمط واتساب)
- *  - isMe:       يضبط لون الأكسنت ليتناسب مع فقاعة المرسل/المستقبل
+ *  - src:              رابط الصوت
+ *  - seed:             مفتاح لتوليد موجة ثابتة
+ *  - title:            عنوان اختياري
+ *  - compact:          تقليص المسافات الداخلية
+ *  - autoPlay:         تشغيل تلقائي
+ *  - bubbleless:       عرض المشغل كـ pill أفقي صغير بدون صندوق محيط
+ *  - isMe:             يضبط لون الأكسنت ليتناسب مع فقاعة المرسل/المستقبل
+ *  - initialDuration:  مدة أولية من قاعدة البيانات لتجنّب ظهور 0:00 دائماً
+ *  - avatarSrc:        صورة صغيرة على يمين الرسالة مثل التصميم المرجعي
+ *  - avatarAlt:        اسم صاحب الصورة المصغّرة
  */
 export default function VoiceMessagePlayer({
   src,
@@ -28,11 +41,15 @@ export default function VoiceMessagePlayer({
   autoPlay = false,
   bubbleless = false,
   isMe = false,
+  initialDuration = 0,
+  avatarSrc = '',
+  avatarAlt = 'مستخدم',
 }) {
   const audioRef = useRef(null);
   const rafRef = useRef(0);
+  const seededDuration = toPositiveNumber(initialDuration, 0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [duration, setDuration] = useState(0);
+  const [duration, setDuration] = useState(seededDuration);
   const [currentTime, setCurrentTime] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [hasPlayed, setHasPlayed] = useState(false);
@@ -40,6 +57,14 @@ export default function VoiceMessagePlayer({
 
   const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0;
   const speedOptions = useMemo(() => [1, 1.5, 2], []);
+
+  useEffect(() => {
+    setDuration(toPositiveNumber(initialDuration, 0));
+    setCurrentTime(0);
+    setIsPlaying(false);
+    setHasPlayed(false);
+    setLoadError(false);
+  }, [src, initialDuration]);
 
   const stopProgressLoop = useCallback(() => {
     if (rafRef.current) {
@@ -63,20 +88,22 @@ export default function VoiceMessagePlayer({
     const audio = audioRef.current;
     if (!audio) return undefined;
 
+    const commitDuration = (candidate) => {
+      const next = toPositiveNumber(candidate, 0);
+      if (next > 0) setDuration(next);
+    };
+
     const handleLoadedMetadata = () => {
-      if (Number.isFinite(audio.duration) && audio.duration > 0) {
-        setDuration(audio.duration);
-      }
+      commitDuration(audio.duration);
+      setLoadError(false);
     };
     const handleDurationChange = () => {
-      if (Number.isFinite(audio.duration) && audio.duration > 0) {
-        setDuration(audio.duration);
-      }
+      commitDuration(audio.duration);
     };
     const handleEnded = () => {
       stopProgressLoop();
       setIsPlaying(false);
-      setCurrentTime(audio.duration || 0);
+      setCurrentTime(toPositiveNumber(audio.duration, duration));
     };
     const handlePause = () => {
       stopProgressLoop();
@@ -86,11 +113,14 @@ export default function VoiceMessagePlayer({
     const handlePlay = () => {
       setIsPlaying(true);
       setHasPlayed(true);
+      setLoadError(false);
       stopProgressLoop();
       rafRef.current = requestAnimationFrame(syncProgress);
     };
     const handleError = () => {
       setLoadError(true);
+      stopProgressLoop();
+      setIsPlaying(false);
     };
 
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
@@ -99,6 +129,10 @@ export default function VoiceMessagePlayer({
     audio.addEventListener('pause', handlePause);
     audio.addEventListener('play', handlePlay);
     audio.addEventListener('error', handleError);
+
+    if (seededDuration > 0 && (!Number.isFinite(audio.duration) || audio.duration <= 0)) {
+      setDuration(seededDuration);
+    }
 
     if (autoPlay) {
       audio.play().catch(() => {});
@@ -112,7 +146,7 @@ export default function VoiceMessagePlayer({
       audio.removeEventListener('play', handlePlay);
       audio.removeEventListener('error', handleError);
     };
-  }, [autoPlay, stopProgressLoop, syncProgress, src]);
+  }, [autoPlay, duration, seededDuration, stopProgressLoop, syncProgress, src]);
 
   const togglePlayback = useCallback(() => {
     const audio = audioRef.current;
@@ -129,16 +163,17 @@ export default function VoiceMessagePlayer({
 
   const handleSeek = useCallback((event) => {
     const audio = audioRef.current;
-    if (!audio || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
+    const playableDuration = toPositiveNumber(audio?.duration, duration || seededDuration);
+    if (!audio || playableDuration <= 0) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const isRtl = getComputedStyle(event.currentTarget).direction === 'rtl';
     let ratio = (event.clientX - rect.left) / rect.width;
     if (isRtl) ratio = 1 - ratio;
     ratio = Math.max(0, Math.min(1, ratio));
-    const nextTime = ratio * audio.duration;
+    const nextTime = ratio * playableDuration;
     audio.currentTime = nextTime;
     setCurrentTime(nextTime);
-  }, []);
+  }, [duration, seededDuration]);
 
   const cycleRate = useCallback(() => {
     const audio = audioRef.current;
@@ -148,11 +183,12 @@ export default function VoiceMessagePlayer({
     if (audio) audio.playbackRate = nextRate;
   }, [playbackRate, speedOptions]);
 
-  // ===== الوضع المضغوط بنمط واتساب (Pill أفقي) =====
-  // v87.6: إعادة تصميم دقيق لتطابق واتساب 100٪ — موجة واضحة، أيقونة ميكروفون، إخفاء زر السرعة إلا أثناء التشغيل
   if (bubbleless) {
-    const displayTime = isPlaying || hasPlayed ? currentTime : duration;
+    const knownDuration = duration || seededDuration;
+    const displayTime = isPlaying || hasPlayed ? currentTime : knownDuration;
     const showRate = isPlaying || (hasPlayed && playbackRate !== 1);
+    const showAvatar = Boolean(String(avatarSrc || '').trim());
+
     return (
       <div
         className={`yam-voice-pill ${isMe ? 'me' : 'them'} ${isPlaying ? 'playing' : ''}`}
@@ -167,7 +203,7 @@ export default function VoiceMessagePlayer({
           className="yam-voice-pill__play"
           onClick={togglePlayback}
           aria-label={isPlaying ? 'إيقاف' : 'تشغيل'}
-          disabled={loadError && !src}
+          disabled={!src}
         >
           {loadError ? (
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -204,20 +240,26 @@ export default function VoiceMessagePlayer({
             >
               {playbackRate}×
             </button>
-          ) : (
-            <span className="yam-voice-pill__mic" aria-hidden="true">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.42 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.3 6-6.72h-1.7z"/>
-              </svg>
-            </span>
-          )}
+          ) : null}
           <span className="yam-voice-pill__time">{formatTime(displayTime)}</span>
+          <span className="yam-voice-pill__badge" aria-hidden="true">
+            {showAvatar ? (
+              <img src={avatarSrc} alt={avatarAlt} loading="lazy" decoding="async" referrerPolicy="no-referrer" />
+            ) : showRate ? (
+              <span className="yam-voice-pill__badge-fallback">{senderFallbackLetter(avatarAlt)}</span>
+            ) : (
+              <span className="yam-voice-pill__badge-mic">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.42 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.3 6-6.72h-1.7z"/>
+                </svg>
+              </span>
+            )}
+          </span>
         </div>
       </div>
     );
   }
 
-  // ===== الوضع الكامل (للمعاينة قبل الإرسال) =====
   return (
     <div className={`yam-voice-card ${compact ? 'compact' : ''}`}>
       <audio ref={audioRef} src={src} preload="metadata" playsInline />
@@ -232,7 +274,7 @@ export default function VoiceMessagePlayer({
         </button>
         <div className="yam-voice-copy">
           <strong>{title}</strong>
-          <span>{formatTime(currentTime)} / {formatTime(duration)}</span>
+          <span>{formatTime(currentTime)} / {formatTime(duration || seededDuration)}</span>
         </div>
         <div className="yam-voice-rates">
           {speedOptions.map((option) => (

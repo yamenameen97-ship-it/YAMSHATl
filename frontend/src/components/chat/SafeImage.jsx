@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 /**
  * SafeImage
@@ -24,6 +24,10 @@ export default function SafeImage({
 }) {
   const [state, setState] = useState('loading'); // loading | ok | error
   const [retryKey, setRetryKey] = useState(0);
+
+  useEffect(() => {
+    setState('loading');
+  }, [src]);
 
   const handleLoad = () => setState('ok');
   const handleError = () => setState('error');
@@ -161,7 +165,7 @@ export default function SafeImage({
           alt={alt}
           loading="lazy"
           decoding="async"
-          referrerPolicy="no-referrer-when-downgrade"
+          referrerPolicy="no-referrer"
           onLoad={handleLoad}
           onError={handleError}
           draggable={false}

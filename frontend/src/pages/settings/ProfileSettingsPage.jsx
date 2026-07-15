@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import SettingsShell, { SettingsSection, SettingsRow, SettingsToggle } from '../../components/settings/SettingsShell.jsx';
 import Button from '../../components/ui/Button.jsx';
 
@@ -15,6 +16,7 @@ function savePrefs(prefs) {
 }
 
 export default function ProfileSettingsPage() {
+  const navigate = useNavigate();
   const [prefs, setPrefs] = useState(() => ({
     privateAccount: false,
     showOnlineStatus: true,
@@ -120,10 +122,10 @@ export default function ProfileSettingsPage() {
 
       <SettingsSection title="الحسابات المحظورة والمكتومة">
         <SettingsRow icon="🚫" title="الحسابات المحظورة" description="عرض وإدارة الحسابات التي حظرتها">
-          <Button variant="secondary" size="small" onClick={() => window.location.href = '/settings?tab=blocked'}>إدارة</Button>
+          <Button variant="secondary" size="small" onClick={() => navigate('/settings?tab=blocked')}>إدارة</Button>
         </SettingsRow>
         <SettingsRow icon="🔇" title="الحسابات المكتومة" description="حسابات لا ترى محتواها">
-          <Button variant="secondary" size="small" onClick={() => window.location.href = '/settings?tab=muted'}>إدارة</Button>
+          <Button variant="secondary" size="small" onClick={() => navigate('/settings?tab=muted')}>إدارة</Button>
         </SettingsRow>
       </SettingsSection>
     </SettingsShell>

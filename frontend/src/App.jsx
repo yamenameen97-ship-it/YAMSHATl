@@ -62,7 +62,7 @@ const Inbox = lazy(() => import('./features/chat/index.js').then((mod) => ({ def
 const Users = lazy(() => import('./pages/Users.jsx'));
 const Friends = lazy(() => import('./pages/Friends.jsx'));
 const FriendsAll = lazy(() => import('./pages/FriendsAll.jsx'));
-const Profile = lazy(() => import('./pages/Profile.jsx'));
+const Profile = lazy(() => import('./pages/profile/ProfilePage.jsx'));
 const Chat = lazy(() => import('./features/chat/index.js').then((mod) => ({ default: mod.Chat })));
 const Notifications = lazy(() => import('./features/notifications/index.js').then((mod) => ({ default: mod.Notifications })));
 const Search = lazy(() => import('./pages/Search.jsx'));

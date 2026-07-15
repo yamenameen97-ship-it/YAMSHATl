@@ -148,6 +148,7 @@ export default function ProfileHeader({
   onFollowClick,
   activeTab: externalActiveTab,
   onTabChange,
+  tabs: externalTabs,
   onAddHighlight,
   onBlockUser,
   onReportUser,
@@ -220,13 +221,16 @@ export default function ProfileHeader({
     }
   };
 
-  /* 🆕 (1) — أضفنا تبويب "المُعلَّمة" (tagged) */
-  const tabs = useMemo(() => [
-    { key: 'all', label: 'الكل' },
-    { key: 'reels', label: 'ريلز' },
-    { key: 'photos', label: 'الصور' },
-    { key: 'tagged', label: 'المُعلَّمة', icon: '🏷️' },
-  ], []);
+  /* 🆕 (1) — دعم تبويبات خارجية لربط الهيدر بمحتوى الصفحة الفعلي */
+  const tabs = useMemo(() => {
+    if (Array.isArray(externalTabs) && externalTabs.length > 0) return externalTabs;
+    return [
+      { key: 'all', label: 'الكل' },
+      { key: 'reels', label: 'ريلز' },
+      { key: 'photos', label: 'الصور' },
+      { key: 'tagged', label: 'المُعلَّمة', icon: '🏷️' },
+    ];
+  }, [externalTabs]);
 
   // قراءة full_name من جميع المصادر المحتملة + النسخة المحلية الاحتياطية
   const localFullName = (() => {
@@ -587,23 +591,24 @@ export default function ProfileHeader({
       />
 
       {/* Tabs */}
-      <div className="ymp-tabs">
-        {tabs.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            className={`ymp-tab ${activeTab === tab.key ? 'active' : ''}`}
-            onClick={() => handleTabChange(tab.key)}
-          >
-            {tab.icon ? <span className="ymp-tab-icon" aria-hidden="true">{tab.icon}</span> : null}
-            <span>{tab.label}</span>
-          </button>
-        ))}
-      </div>
+      {tabs.length > 0 && (
+        <div className="ymp-tabs">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              className={`ymp-tab ${activeTab === tab.key ? 'active' : ''}`}
+              onClick={() => handleTabChange(tab.key)}
+            >
+              {tab.icon ? <span className="ymp-tab-icon" aria-hidden="true">{tab.icon}</span> : null}
+              <span>{tab.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
-      {/* 🆕 (1) حالة فارغة لتبويب "المُعلَّمة" — تظهر داخل ProfileHeader فقط عندما يكون التبويب نشطاً
-           والصفحة الأم لم تُمرر محتوى بديلاً. الصفحة الأم تظل مسؤولة عن عرض الشبكة الفعلية. */}
-      {activeTab === 'tagged' && (
+      {/* 🆕 (1) حالة إرشادية لتبويب "المُعلَّمة" */}
+      {tabs.some((tab) => tab.key === 'tagged') && activeTab === 'tagged' && (
         <div className="ymp-tagged-hint" role="status">
           <span aria-hidden="true">🏷️</span>
           <span>

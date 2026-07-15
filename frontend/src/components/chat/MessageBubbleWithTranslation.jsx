@@ -29,9 +29,51 @@ function resolveMessageMediaUrl(message = {}) {
   return String(
     message?.media_url
     || message?.media_urls?.[0]
+    || attachment?.cdn_url
     || attachment?.url
     || attachment?.mediaUrl
     || attachment?.media_url
+    || attachment?.file_url
+    || ''
+  ).trim();
+}
+
+function resolveMessagePreviewUrl(message = {}) {
+  const attachment = getPrimaryAttachment(message);
+  return String(
+    attachment?.thumbnail_url
+    || attachment?.thumbnailUrl
+    || attachment?.preview_url
+    || attachment?.previewUrl
+    || resolveMessageMediaUrl(message)
+    || ''
+  ).trim();
+}
+
+function resolveMessageDurationSeconds(message = {}) {
+  const attachment = getPrimaryAttachment(message);
+  const candidates = [
+    message?.audio_duration_seconds,
+    message?.duration_seconds,
+    message?.duration,
+    attachment?.duration_seconds,
+    attachment?.duration,
+    attachment?.audio_duration_seconds,
+  ];
+  for (const value of candidates) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric > 0) return numeric;
+  }
+  return 0;
+}
+
+function resolveMessageSenderAvatar(message = {}) {
+  const attachment = getPrimaryAttachment(message);
+  return String(
+    message?.sender_avatar
+    || message?.senderAvatar
+    || attachment?.sender_avatar
+    || attachment?.senderAvatar
     || ''
   ).trim();
 }
@@ -45,25 +87,54 @@ function resolveMessageMediaKind(message = {}) {
     || attachment?.type
     || attachment?.mediaType
     || attachment?.media_type
+    || attachment?.attachment_kind
+    || attachment?.content_type
+    || attachment?.contentType
+    || message?.content_type
+    || message?.mime_type
     || ''
   ).trim().toLowerCase();
-  const mime = String(attachment?.mime_type || attachment?.mimeType || '').trim().toLowerCase();
+  const mime = String(
+    attachment?.mime_type
+    || attachment?.mimeType
+    || attachment?.content_type
+    || attachment?.contentType
+    || message?.mime_type
+    || message?.content_type
+    || ''
+  ).trim().toLowerCase();
   const mediaUrl = resolveMessageMediaUrl(message).toLowerCase();
+  const previewUrl = resolveMessagePreviewUrl(message).toLowerCase();
+  const fileName = String(
+    attachment?.file_name
+    || attachment?.fileName
+    || attachment?.originalName
+    || attachment?.name
+    || message?.attachment_name
+    || ''
+  ).trim().toLowerCase();
+  const haystack = `${rawType} ${mime} ${fileName} ${mediaUrl} ${previewUrl}`;
 
   if (['voice', 'audio', 'audio_message', 'voice_message'].includes(rawType)) return 'voice';
   if (['image', 'photo', 'img', 'media_image'].includes(rawType)) return 'image';
   if (['video', 'media_video'].includes(rawType)) return 'video';
-  if (['file', 'document', 'attachment'].includes(rawType)) return 'file';
+  if (['file', 'document', 'attachment', 'media'].includes(rawType)) {
+    if (mime.startsWith('image/') || IMAGE_MEDIA_RE.test(fileName) || IMAGE_MEDIA_RE.test(mediaUrl) || IMAGE_MEDIA_RE.test(previewUrl)) return 'image';
+    if (mime.startsWith('video/') || VIDEO_MEDIA_RE.test(fileName) || VIDEO_MEDIA_RE.test(mediaUrl)) return 'video';
+    if (mime.startsWith('audio/') || AUDIO_MEDIA_RE.test(fileName) || AUDIO_MEDIA_RE.test(mediaUrl)) return 'voice';
+    return resolveMessageMediaUrl(message) ? 'file' : 'none';
+  }
 
   if (mime.startsWith('image/')) return 'image';
   if (mime.startsWith('video/')) return 'video';
   if (mime.startsWith('audio/')) return 'voice';
 
-  if (IMAGE_MEDIA_RE.test(mediaUrl)) return 'image';
-  if (VIDEO_MEDIA_RE.test(mediaUrl)) return 'video';
-  if (AUDIO_MEDIA_RE.test(mediaUrl)) return 'voice';
+  if (IMAGE_MEDIA_RE.test(fileName) || IMAGE_MEDIA_RE.test(mediaUrl) || IMAGE_MEDIA_RE.test(previewUrl)) return 'image';
+  if (VIDEO_MEDIA_RE.test(fileName) || VIDEO_MEDIA_RE.test(mediaUrl)) return 'video';
+  if (AUDIO_MEDIA_RE.test(fileName) || AUDIO_MEDIA_RE.test(mediaUrl)) return 'voice';
 
-  if (mediaUrl) return 'file';
+  if (attachment?.thumbnail_url || attachment?.thumbnailUrl) return 'image';
+  if (resolveMessageMediaUrl(message)) return 'file';
   return 'none';
 }
 
@@ -88,7 +159,7 @@ function normalizeMessageContent(message = {}, mediaKind = 'none') {
   if (!rawContent || mediaKind === 'none') return rawContent;
 
   const normalized = rawContent
-    .replace(/[\u200E\u200F\u202A-\u202E]/g, '')
+    .replace(/[‎‏‪-‮]/g, '')
     .replace(/[🎤📷🖼️🎬📹📎🎧🎵]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
@@ -127,6 +198,32 @@ function normalizeMessageContent(message = {}, mediaKind = 'none') {
 
   if (syntheticCaptions[mediaKind]?.has(normalized)) return '';
   return rawContent;
+}
+
+function hasMeaningfulMediaCaption(message = {}, content = '', mediaKind = 'none') {
+  const raw = String(content || '')
+    .replace(/[‎‏‪-‮]/g, '')
+    .trim();
+  if (!raw) return false;
+
+  const lowered = raw.toLowerCase().replace(/\s+/g, ' ').trim();
+  const fileName = String(extractFileName(message) || '').toLowerCase().trim();
+  const mediaUrl = String(resolveMessageMediaUrl(message) || '').toLowerCase().trim();
+  const attachment = getPrimaryAttachment(message);
+  const attachmentUrl = String(attachment?.url || attachment?.media_url || attachment?.mediaUrl || '').toLowerCase().trim();
+  const genericValues = new Set([
+    'رسالة صوتية', 'رساله صوتيه', 'voice message', 'audio message', 'voice note', 'audio note',
+    'صورة', 'صوره', 'image', 'photo', 'picture',
+    'فيديو', 'video', 'clip',
+    'ملف', 'ملف مرفق', 'مرفق', 'file', 'attachment', 'document',
+  ]);
+
+  if (genericValues.has(lowered)) return false;
+  if (fileName && lowered === fileName) return false;
+  if (mediaUrl && lowered === mediaUrl) return false;
+  if (attachmentUrl && lowered === attachmentUrl) return false;
+  if (mediaKind === 'voice' && /^(?:\d+:)?\d{1,2}:\d{2}$/.test(lowered)) return false;
+  return true;
 }
 
 function messageMatchesSearch(message, query) {
@@ -168,6 +265,9 @@ function MessageBubbleWithTranslation({
   const reduceMotion = useReducedMotion();
 
   const mediaUrl = resolveMessageMediaUrl(message);
+  const previewUrl = resolveMessagePreviewUrl(message) || mediaUrl;
+  const mediaDurationSeconds = resolveMessageDurationSeconds(message);
+  const senderAvatar = resolveMessageSenderAvatar(message);
   const mediaKind = resolveMessageMediaKind(message);
   const hasMedia = Boolean(mediaUrl);
   const isVoice = mediaKind === 'voice';
@@ -213,9 +313,10 @@ function MessageBubbleWithTranslation({
     onOpenMedia?.(message);
   };
 
-  const isVoiceOnly = isVoice && !content && !replyTarget && !message?.deleted;
-  const isImageOnly = isImage && !content && !replyTarget && !message?.deleted;
-  const isVideoOnly = isVideo && !content && !replyTarget && !message?.deleted;
+  const hasMeaningfulCaption = hasMeaningfulMediaCaption(message, content, mediaKind);
+  const isVoiceOnly = isVoice && !hasMeaningfulCaption && !replyTarget && !message?.deleted;
+  const isImageOnly = isImage && !hasMeaningfulCaption && !replyTarget && !message?.deleted;
+  const isVideoOnly = isVideo && !hasMeaningfulCaption && !replyTarget && !message?.deleted;
   const isMediaOnly = isImageOnly || isVideoOnly;
 
   return (
@@ -312,7 +413,7 @@ function MessageBubbleWithTranslation({
 
             {isImage && mediaUrl ? (
               <button type="button" className="yam-media-button" onClick={openCurrentMedia}>
-                <img src={mediaUrl} alt={fileName} className="yam-bubble-media" loading="lazy" decoding="async" referrerPolicy="no-referrer-when-downgrade" />
+                <img src={previewUrl} alt={fileName} className="yam-bubble-media" loading="lazy" decoding="async" referrerPolicy="no-referrer" />
                 <span className="yam-bubble-media-overlay">تكبير</span>
               </button>
             ) : null}

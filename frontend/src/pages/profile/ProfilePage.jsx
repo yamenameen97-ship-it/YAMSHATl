@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import MainLayout from '../../components/layout/MainLayout.jsx';
 import ProfileHeader from '../../components/profile/ProfileHeader.jsx';
 import Card from '../../components/ui/Card.jsx';
@@ -16,6 +16,19 @@ const TABS = {
   TAGGED: 'tagged',
 };
 
+const TAB_ITEMS = {
+  [TABS.POSTS]: { key: TABS.POSTS, label: 'المنشورات' },
+  [TABS.ARCHIVE]: { key: TABS.ARCHIVE, label: 'الأرشيف' },
+  [TABS.SAVED]: { key: TABS.SAVED, label: 'المحفوظات' },
+  [TABS.PINNED]: { key: TABS.PINNED, label: 'المثبتة', icon: '📌' },
+  [TABS.TAGGED]: { key: TABS.TAGGED, label: 'المُعلَّمة', icon: '🏷️' },
+};
+
+const normalizeRequestedTab = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return Object.values(TABS).includes(normalized) ? normalized : TABS.POSTS;
+};
+
 /**
  * ProfilePage Component
  * Features: Tabs optimization, Analytics, Pinned content, Profile customization, Followers insights
@@ -23,6 +36,7 @@ const TABS = {
 export default function ProfilePage() {
   const { username: routeUsername } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const currentUser = getCurrentUsername();
   const username = routeUsername || currentUser;
   const isOwnProfile = username === currentUser;
@@ -40,6 +54,30 @@ export default function ProfilePage() {
   const [analyticsData, setAnalyticsData] = useState(null);
   const [followersData, setFollowersData] = useState(null);
 
+  const requestedTab = normalizeRequestedTab(searchParams.get('tab'));
+  const requestedPanel = String(searchParams.get('panel') || '').trim().toLowerCase();
+
+  const availableTabs = useMemo(() => {
+    if (!profile) return [TAB_ITEMS[TABS.POSTS]];
+
+    const items = [TAB_ITEMS[TABS.POSTS]];
+
+    if (Array.isArray(pinnedPosts) && pinnedPosts.length > 0) {
+      items.push(TAB_ITEMS[TABS.PINNED]);
+    }
+
+    if (isOwnProfile && Array.isArray(profile.archived_posts) && profile.archived_posts.length > 0) {
+      items.push(TAB_ITEMS[TABS.ARCHIVE]);
+    }
+
+    if (isOwnProfile && Array.isArray(profile.saved_posts) && profile.saved_posts.length > 0) {
+      items.push(TAB_ITEMS[TABS.SAVED]);
+    }
+
+    items.push(TAB_ITEMS[TABS.TAGGED]);
+    return items;
+  }, [profile, pinnedPosts, isOwnProfile]);
+
   /**
    * Loads profile data
    */
@@ -49,9 +87,15 @@ export default function ProfilePage() {
       setError('');
       const { data } = await getProfileBundle(username);
       setProfile(data);
-      setPinnedPosts(data.pinned_posts || []);
+      setPinnedPosts(Array.isArray(data.pinned_posts) ? data.pinned_posts : []);
       setAnalyticsData(data.analytics || {});
       setFollowersData(data.followers_insights || {});
+      setTheme(
+        data?.user?.profile?.profile_theme
+        || data?.user?.profile?.theme
+        || data?.profile_theme
+        || 'midnight'
+      );
     } catch (err) {
       setError('فشل تحميل الملف الشخصي');
       console.error('Failed to load profile:', err);
@@ -67,6 +111,23 @@ export default function ProfilePage() {
     loadProfile();
   }, [loadProfile]);
 
+  useEffect(() => {
+    const allowedTabs = availableTabs.map((tab) => tab.key);
+    if (allowedTabs.length === 0) return;
+
+    setActiveTab((currentTab) => {
+      if (allowedTabs.includes(requestedTab)) return requestedTab;
+      if (allowedTabs.includes(currentTab)) return currentTab;
+      return allowedTabs[0];
+    });
+  }, [availableTabs, requestedTab]);
+
+  useEffect(() => {
+    if (requestedPanel === 'themes' && isOwnProfile) {
+      setShowCustomization(true);
+    }
+  }, [requestedPanel, isOwnProfile]);
+
   /**
    * Handles theme change with persistence
    */
@@ -79,19 +140,55 @@ export default function ProfilePage() {
     }
   }, []);
 
+  const handleTabChange = useCallback((nextTab) => {
+    setActiveTab(nextTab);
+    const nextParams = new URLSearchParams(searchParams);
+
+    if (nextTab === TABS.POSTS) {
+      nextParams.delete('tab');
+    } else {
+      nextParams.set('tab', nextTab);
+    }
+
+    setSearchParams(nextParams, { replace: true });
+    window.scrollTo?.({ top: 0, behavior: 'smooth' });
+  }, [searchParams, setSearchParams]);
+
+  const openCustomization = useCallback(() => {
+    setShowCustomization(true);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('panel', 'themes');
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const closeCustomization = useCallback(() => {
+    setShowCustomization(false);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('panel');
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams]);
+
   /**
    * Handles follow/unfollow action
    */
   const handleFollowClick = useCallback(async () => {
+    const targetUsername = profile?.user?.username || '';
+    if (!targetUsername) return;
+
     try {
-      await followUser(profile?.user?.username || '');
-      setProfile((prev) => ({
-        ...prev,
-        is_following: !prev.is_following,
-        followers_count: prev.is_following
-          ? prev.followers_count - 1
-          : prev.followers_count + 1,
-      }));
+      await followUser(targetUsername);
+      setProfile((prev) => {
+        if (!prev) return prev;
+        const isFollowing = Boolean(prev.is_following);
+        const currentFollowers = Number(prev.followers_count || 0);
+        return {
+          ...prev,
+          is_following: !isFollowing,
+          followers_count: isFollowing
+            ? Math.max(0, currentFollowers - 1)
+            : currentFollowers + 1,
+        };
+      });
     } catch (error) {
       console.error('Failed to follow user:', error);
     }
@@ -154,58 +251,12 @@ export default function ProfilePage() {
           profile={profile}
           isOwnProfile={isOwnProfile}
           onAnalyticsClick={() => setShowAnalytics(true)}
-          onCustomizationClick={() => setShowCustomization(true)}
+          onCustomizationClick={openCustomization}
           onFollowClick={handleFollowClick}
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          tabs={availableTabs}
         />
-
-        {/* Tabs */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'center',
-            gap: 30,
-            borderTop: '1px solid var(--line)',
-            borderBottom: '1px solid var(--line)',
-            marginBottom: 30,
-            overflowX: 'auto',
-            paddingBottom: 0,
-          }}
-        >
-          {Object.entries(TABS).map(([key, tab]) => {
-            // Hide pinned tab if no pinned posts
-            if (tab === TABS.PINNED && pinnedPosts.length === 0) return null;
-
-            const tabLabels = {
-              posts: 'المنشورات',
-              archive: 'الأرشيف',
-              saved: 'المحفوظات',
-              pinned: '📌 المثبتة',
-              tagged: '🏷️ المُعلَّمة',
-            };
-
-            return (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                style={{
-                  padding: '15px 0',
-                  background: 'none',
-                  border: 'none',
-                  borderBottom: activeTab === tab ? '2px solid var(--primary)' : '2px solid transparent',
-                  color: activeTab === tab ? 'white' : '#888',
-                  cursor: 'pointer',
-                  fontSize: 13,
-                  textTransform: 'uppercase',
-                  letterSpacing: 1,
-                  transition: 'all 0.3s ease',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {tabLabels[tab]}
-              </button>
-            );
-          })}
-        </div>
 
         {/* Content Grid — Mobile-first professional gallery (v86.8) */}
         <div className="ym-profile-gallery" dir="rtl">
@@ -314,20 +365,22 @@ export default function ProfilePage() {
               padding: 20,
             }}
           >
-            {analyticsData?.daily_stats?.map((stat, i) => (
-              <div
-                key={i}
-                style={{
-                  flex: 1,
-                  height: `${(stat.value / 100) * 100}%`,
-                  background: 'var(--primary)',
-                  borderRadius: '4px 4px 0 0',
-                  position: 'relative',
-                  minHeight: '5px',
-                }}
-                title={`${stat.date}: ${stat.value}`}
-              />
-            )) || (
+            {Array.isArray(analyticsData?.daily_stats) && analyticsData.daily_stats.length > 0 ? (
+              analyticsData.daily_stats.map((stat, i) => (
+                <div
+                  key={i}
+                  style={{
+                    flex: 1,
+                    height: `${Math.max(5, Number(stat.value || 0))}%`,
+                    background: 'var(--primary)',
+                    borderRadius: '4px 4px 0 0',
+                    position: 'relative',
+                    minHeight: '5px',
+                  }}
+                  title={`${stat.date}: ${stat.value}`}
+                />
+              ))
+            ) : (
               <div style={{ width: '100%', textAlign: 'center', color: '#888' }}>
                 لا توجد بيانات متاحة
               </div>
@@ -339,7 +392,7 @@ export default function ProfilePage() {
       {/* Customization Modal */}
       <Modal
         open={showCustomization}
-        onClose={() => setShowCustomization(false)}
+        onClose={closeCustomization}
         title="تخصيص مظهر الملف الشخصي"
         size="medium"
       >
@@ -440,38 +493,40 @@ export default function ProfilePage() {
 
           <h4 style={{ marginBottom: 15 }}>أكثر المتابعين تفاعلاً</h4>
           <div style={{ display: 'grid', gap: 10 }}>
-            {followersData?.top_followers?.map((follower) => (
-              <div
-                key={follower.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: 10,
-                  background: 'rgba(255,255,255,0.05)',
-                  borderRadius: 8,
-                }}
-              >
+            {Array.isArray(followersData?.top_followers) && followersData.top_followers.length > 0 ? (
+              followersData.top_followers.map((follower) => (
                 <div
+                  key={follower.id}
                   style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: '50%',
-                    background: 'var(--primary)',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 18,
+                    gap: 10,
+                    padding: 10,
+                    background: 'rgba(255,255,255,0.05)',
+                    borderRadius: 8,
                   }}
                 >
-                  {follower.username[0].toUpperCase()}
+                  <div
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: '50%',
+                      background: 'var(--primary)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 18,
+                    }}
+                  >
+                    {String(follower.username || '?')[0].toUpperCase()}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 'bold', fontSize: 14 }}>{follower.username}</div>
+                    <div style={{ color: '#888', fontSize: 12 }}>تفاعل: {follower.engagement_count}</div>
+                  </div>
                 </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 'bold', fontSize: 14 }}>{follower.username}</div>
-                  <div style={{ color: '#888', fontSize: 12 }}>تفاعل: {follower.engagement_count}</div>
-                </div>
-              </div>
-            )) || (
+              ))
+            ) : (
               <div style={{ color: '#888', textAlign: 'center' }}>لا توجد بيانات</div>
             )}
           </div>

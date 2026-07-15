@@ -1,0 +1,842 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["chunks/posts-CVbaeloP.js","index-DRmq1dbV.js"])))=>i.map(i=>d[i]);
+import { E as reactExports, ai as useQueryClient, _ as useToast, I as jsxRuntimeExports, a2 as Card, J as Button, aj as mediaUploadService, a4 as __vitePreload } from "../index-DRmq1dbV.js";
+import { c as createPost, i as injectPostIntoFeedCache, a as clearLocalFeedCaches } from "./posts-CVbaeloP.js";
+const DRAFT_KEY = "yamshat_post_draft";
+const QUOTE_KEY = "yamshat_quote_draft";
+function extractTags(text = "") {
+  const hashtags = Array.from(new Set((text.match(/#[\p{L}\p{N}_-]+/gu) || []).map((item) => item.replace("#", ""))));
+  const mentions = Array.from(new Set((text.match(/@[\p{L}\p{N}_.-]+/gu) || []).map((item) => item.replace("@", ""))));
+  return { hashtags, mentions };
+}
+function PostComposer() {
+  const [content, setContent] = reactExports.useState("");
+  const [media, setMedia] = reactExports.useState(null);
+  const [mediaPreview, setMediaPreview] = reactExports.useState(null);
+  const [uploadProgress, setUploadProgress] = reactExports.useState(0);
+  const [isUploading, setIsUploading] = reactExports.useState(false);
+  const [showScheduler, setShowScheduler] = reactExports.useState(false);
+  const [scheduledDate, setScheduledDate] = reactExports.useState("");
+  const [showPollBuilder, setShowPollBuilder] = reactExports.useState(false);
+  const [pollQuestion, setPollQuestion] = reactExports.useState("");
+  const [pollOptions, setPollOptions] = reactExports.useState(["", ""]);
+  const [isPinned, setIsPinned] = reactExports.useState(false);
+  const [quoteDraft, setQuoteDraft] = reactExports.useState(null);
+  const [isDragActive, setIsDragActive] = reactExports.useState(false);
+  const fileInputRef = reactExports.useRef(null);
+  const textareaRef = reactExports.useRef(null);
+  const isMountedRef = reactExports.useRef(true);
+  reactExports.useEffect(() => () => {
+    isMountedRef.current = false;
+  }, []);
+  const queryClient = useQueryClient();
+  const { pushToast } = useToast();
+  reactExports.useEffect(() => {
+    const savedDraft = localStorage.getItem(DRAFT_KEY);
+    const savedQuote = localStorage.getItem(QUOTE_KEY);
+    if (savedDraft) setContent(savedDraft);
+    if (savedQuote) {
+      try {
+        setQuoteDraft(JSON.parse(savedQuote));
+      } catch {
+        localStorage.removeItem(QUOTE_KEY);
+      }
+    }
+    const focusComposer = () => {
+      textareaRef.current?.focus();
+      textareaRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    };
+    const handleQuotedPost = () => {
+      try {
+        const nextValue = JSON.parse(localStorage.getItem(QUOTE_KEY) || "null");
+        setQuoteDraft(nextValue);
+      } catch {
+        setQuoteDraft(null);
+      }
+      window.setTimeout(focusComposer, 30);
+    };
+    const handleComposerAction = (event) => {
+      const action = event?.detail?.action;
+      if (action === "image") {
+        if (fileInputRef.current) {
+          fileInputRef.current.accept = "image/*";
+          fileInputRef.current.click();
+        }
+        return;
+      }
+      if (action === "video") {
+        if (fileInputRef.current) {
+          fileInputRef.current.accept = "video/*";
+          fileInputRef.current.click();
+        }
+        return;
+      }
+      if (fileInputRef.current) fileInputRef.current.accept = "image/*,video/*";
+      if (action === "thought") {
+        setContent((prev) => prev || "شاركنا رأيك... ");
+      }
+      window.setTimeout(focusComposer, 30);
+    };
+    window.addEventListener("yamshat:quote-post", handleQuotedPost);
+    window.addEventListener("yamshat:composer-action", handleComposerAction);
+    return () => {
+      window.removeEventListener("yamshat:quote-post", handleQuotedPost);
+      window.removeEventListener("yamshat:composer-action", handleComposerAction);
+    };
+  }, []);
+  reactExports.useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (content.trim()) localStorage.setItem(DRAFT_KEY, content);
+      else localStorage.removeItem(DRAFT_KEY);
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [content]);
+  reactExports.useEffect(() => {
+    const urlToRevoke = mediaPreview;
+    return () => {
+      if (urlToRevoke) URL.revokeObjectURL(urlToRevoke);
+    };
+  }, [mediaPreview]);
+  const tagsPreview = reactExports.useMemo(() => extractTags(content), [content]);
+  const clearComposer = () => {
+    setContent("");
+    setMedia(null);
+    setMediaPreview(null);
+    setUploadProgress(0);
+    setScheduledDate("");
+    setShowScheduler(false);
+    setShowPollBuilder(false);
+    setPollQuestion("");
+    setPollOptions(["", ""]);
+    setIsPinned(false);
+    setQuoteDraft(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    localStorage.removeItem(DRAFT_KEY);
+    localStorage.removeItem(QUOTE_KEY);
+  };
+  const addSnippet = (value) => {
+    setContent((prev) => `${prev}${prev && !prev.endsWith(" ") ? " " : ""}${value}`);
+  };
+  const applySelectedFile = (file) => {
+    if (!file) return;
+    if (file.size > 200 * 1024 * 1024) {
+      pushToast({ type: "error", title: "الملف كبير جدًا", description: "الحد الأقصى 200 ميجا." });
+      return;
+    }
+    if (mediaPreview) URL.revokeObjectURL(mediaPreview);
+    setMedia(file);
+    setMediaPreview(URL.createObjectURL(file));
+  };
+  const handleMediaSelect = (event) => {
+    const file = event.target.files?.[0];
+    applySelectedFile(file);
+  };
+  const normalizedPollOptions = pollOptions.map((item) => item.trim()).filter(Boolean);
+  const canSubmit = Boolean(content.trim() || media || quoteDraft || showPollBuilder && pollQuestion.trim() && normalizedPollOptions.length >= 2);
+  const handleSubmit = async (status = "published") => {
+    if (isUploading || !canSubmit) return;
+    if (status === "scheduled" && !scheduledDate) {
+      pushToast({ type: "warning", title: "حدد وقت الجدولة", description: "لازم تختار تاريخ ووقت قبل تأكيد الجدولة." });
+      return;
+    }
+    if (showPollBuilder && (!pollQuestion.trim() || normalizedPollOptions.length < 2)) {
+      pushToast({ type: "warning", title: "الاستطلاع غير مكتمل", description: "اكتب سؤال الاستطلاع وأضف خيارين على الأقل." });
+      return;
+    }
+    setIsUploading(true);
+    try {
+      let mediaUrl = "";
+      let thumbnailUrl = "";
+      let isVideoMedia = false;
+      if (media) {
+        isVideoMedia = Boolean(media?.type?.startsWith("video/"));
+        const uploadRes = await mediaUploadService.uploadFile(media, {
+          purpose: isVideoMedia ? "post-attachment" : "post-image",
+          processingProfile: isVideoMedia ? "balanced" : "",
+          useCdn: true,
+          onProgress: (payload) => {
+            if (!isMountedRef.current) return;
+            const percent = typeof payload === "number" ? Number(payload || 0) : Number(payload?.percent || 0);
+            setUploadProgress(percent);
+          }
+        });
+        mediaUrl = uploadRes?.mediaUrl || uploadRes?.url || uploadRes?.file_url || uploadRes?.media_url || "";
+        thumbnailUrl = uploadRes?.thumbnailUrl || uploadRes?.thumbnail_url || uploadRes?.poster_url || "";
+        if (!mediaUrl) {
+          throw new Error("فشل الحصول على رابط الفيديو بعد الرفع. حاول مرة أخرى.");
+        }
+      }
+      const { hashtags, mentions } = extractTags(content);
+      const poll = showPollBuilder ? normalizedPollOptions.map((label) => ({ label })) : void 0;
+      const createdPostResponse = await createPost({
+        content: pollQuestion.trim() ? `${pollQuestion.trim()}
+${content}`.trim() : content,
+        media_url: mediaUrl,
+        // ✅ v33+1: تمرير حقول إضافية تجعل الـ backend/frontend يتعرف على الفيديو بوضوح
+        video_url: isVideoMedia ? mediaUrl : void 0,
+        media_type: isVideoMedia ? "video" : media ? "image" : void 0,
+        thumbnail_url: thumbnailUrl || void 0,
+        has_video: isVideoMedia || void 0,
+        status,
+        scheduled_at: status === "scheduled" ? scheduledDate : null,
+        is_pinned: isPinned,
+        hashtags,
+        mentions,
+        poll,
+        quote_source_id: quoteDraft?.id || null
+      });
+      const createdPost = createdPostResponse?.data || null;
+      if (status === "published" && createdPost) {
+        injectPostIntoFeedCache(queryClient, createdPost);
+      } else {
+        clearLocalFeedCaches();
+      }
+      queryClient.invalidateQueries({ queryKey: ["feed-data"] });
+      if (!isMountedRef.current) return;
+      pushToast({
+        type: "success",
+        title: status === "draft" ? "تم حفظ المسودة" : status === "scheduled" ? "تمت جدولة المنشور" : "تم نشر المنشور",
+        description: isPinned ? "المنشور متجهز كمنشور مثبت." : void 0
+      });
+      clearComposer();
+    } catch (error) {
+      const detail = error?.response?.data?.detail || error?.message || "";
+      const isVideoMedia = Boolean(media?.type?.startsWith("video/"));
+      if (isVideoMedia && media) {
+        try {
+          const { uploadPostMedia } = await __vitePreload(async () => {
+            const { uploadPostMedia: uploadPostMedia2 } = await import("./posts-CVbaeloP.js").then((n) => n.p);
+            return { uploadPostMedia: uploadPostMedia2 };
+          }, true ? __vite__mapDeps([0,1]) : void 0);
+          const uploadResp = await uploadPostMedia(media, (event) => {
+            if (event?.total) setUploadProgress(Math.round(event.loaded / event.total * 100));
+          });
+          const fallbackUrl = uploadResp?.data?.url || uploadResp?.data?.media_url || uploadResp?.data?.file_url || "";
+          if (fallbackUrl) {
+            const { hashtags: hh, mentions: mm } = extractTags(content);
+            if (!isMountedRef.current) return;
+            const createdPostResponse = await createPost({
+              content: pollQuestion.trim() ? `${pollQuestion.trim()}
+${content}`.trim() : content,
+              media_url: fallbackUrl,
+              video_url: fallbackUrl,
+              media_type: "video",
+              has_video: true,
+              status,
+              scheduled_at: status === "scheduled" ? scheduledDate : null,
+              is_pinned: isPinned,
+              hashtags: hh,
+              mentions: mm,
+              quote_source_id: quoteDraft?.id || null
+            });
+            const createdPost = createdPostResponse?.data || null;
+            if (status === "published" && createdPost) {
+              injectPostIntoFeedCache(queryClient, createdPost);
+            } else {
+              clearLocalFeedCaches();
+            }
+            queryClient.invalidateQueries({ queryKey: ["feed-data"] });
+            if (!isMountedRef.current) return;
+            pushToast({ type: "success", title: "تم نشر الفيديو عبر مسار احتياطي" });
+            clearComposer();
+            return;
+          }
+        } catch (fallbackError) {
+          if (!isMountedRef.current) return;
+          pushToast({
+            type: "error",
+            title: "فشل نشر الفيديو",
+            description: fallbackError?.response?.data?.detail || fallbackError?.message || detail || "تعذر رفع الفيديو، افحص الإنترنت وحاول مرة أخرى."
+          });
+          return;
+        }
+      }
+      if (!isMountedRef.current) return;
+      pushToast({ type: "error", title: "فشل نشر المنشور", description: detail || "حاول مرة تانية." });
+    } finally {
+      if (isMountedRef.current) setIsUploading(false);
+    }
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    Card,
+    {
+      style: {
+        marginBottom: 16,
+        padding: 18,
+        border: "1px solid var(--line)",
+        direction: "rtl",
+        borderRadius: 22,
+        background: "linear-gradient(180deg, rgba(13,17,29,0.96), rgba(8,12,22,0.94))"
+      },
+      onDragOver: (event) => {
+        event.preventDefault();
+        setIsDragActive(true);
+      },
+      onDragLeave: (event) => {
+        event.preventDefault();
+        if (event.currentTarget.contains(event.relatedTarget)) return;
+        setIsDragActive(false);
+      },
+      onDrop: (event) => {
+        event.preventDefault();
+        setIsDragActive(false);
+        const file = event.dataTransfer?.files?.[0];
+        applySelectedFile(file);
+      },
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "composer-header-row", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "composer-title", children: "إنشاء منشور" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "composer-subtitle", children: "رتّب الخيارات بالأعلى ثم اكتب المنشور أسفلها ليظهر بشكل أوضح في صفحة المنشورات." })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `composer-status-badge ${isPinned ? "pinned" : ""}`, children: isPinned ? "منشور مثبت" : "منشور عادي" })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "composer-toolbar", "aria-label": "أدوات المنشور", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "composer-chip", onClick: () => addSnippet("#ترند"), children: "ترند#" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "composer-chip", onClick: () => addSnippet("#هاشتاج"), children: "هاشتاج" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "composer-chip", onClick: () => addSnippet("@username"), children: "منشن" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "composer-chip", onClick: () => addSnippet("اقتباس: "), children: "اقتباس" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: `composer-chip ${isPinned ? "active" : ""}`, onClick: () => setIsPinned((prev) => !prev), children: "تثبيت منشور" })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "composer-actions-row", dir: "rtl", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              type: "button",
+              className: "composer-action-btn composer-action-btn--media",
+              onClick: () => fileInputRef.current?.click(),
+              title: "رفع صورة أو فيديو",
+              "aria-label": "رفع صورة أو فيديو",
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "composer-action-icon", "aria-hidden": "true", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { viewBox: "0 0 24 24", width: "22", height: "22", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "3", y: "5", width: "18", height: "14", rx: "2" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("circle", { cx: "8.5", cy: "10", r: "1.6", fill: "currentColor" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M21 17l-5-5-9 9" })
+                ] }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "composer-action-label", children: "رفع وسائط" })
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              type: "button",
+              className: "composer-action-btn composer-action-btn--video",
+              onClick: () => {
+                if (fileInputRef.current) {
+                  fileInputRef.current.accept = "video/*";
+                  fileInputRef.current.value = "";
+                  fileInputRef.current.click();
+                }
+              },
+              title: "رفع فيديو",
+              "aria-label": "رفع فيديو",
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "composer-action-icon", "aria-hidden": "true", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { viewBox: "0 0 24 24", width: "22", height: "22", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "2", y: "6", width: "14", height: "12", rx: "2" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M16 10l6-3v10l-6-3z" })
+                ] }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "composer-action-label", children: "رفع الفيديو" })
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              type: "button",
+              className: "composer-action-btn composer-action-btn--emoji",
+              onClick: () => {
+                const emoji = "😊";
+                setContent((prev) => `${prev}${emoji}`);
+                window.setTimeout(() => textareaRef.current?.focus(), 30);
+              },
+              title: "إضافة إيموجي",
+              "aria-label": "إضافة إيموجي",
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "composer-action-icon", "aria-hidden": "true", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { viewBox: "0 0 24 24", width: "22", height: "22", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("circle", { cx: "12", cy: "12", r: "9" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("circle", { cx: "9", cy: "10", r: "1", fill: "currentColor" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("circle", { cx: "15", cy: "10", r: "1", fill: "currentColor" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M8.5 14.5c1 1.5 2.4 2.2 3.5 2.2s2.5-.7 3.5-2.2" })
+                ] }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "composer-action-label", children: "إيموجي" })
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              type: "button",
+              className: `composer-action-btn ${showScheduler ? "active" : ""}`,
+              onClick: () => setShowScheduler((prev) => !prev),
+              title: "جدولة",
+              "aria-label": "جدولة",
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "composer-action-icon", "aria-hidden": "true", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { viewBox: "0 0 24 24", width: "22", height: "22", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "3", y: "5", width: "18", height: "16", rx: "2" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M3 9h18M8 3v4M16 3v4" })
+                ] }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "composer-action-label", children: "جدولة" })
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              type: "button",
+              className: `composer-action-btn ${showPollBuilder ? "active" : ""}`,
+              onClick: () => setShowPollBuilder((prev) => !prev),
+              title: "استطلاع",
+              "aria-label": "استطلاع",
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "composer-action-icon", "aria-hidden": "true", children: /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { viewBox: "0 0 24 24", width: "22", height: "22", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M4 20V10M10 20V4M16 20v-8M22 20H2" }) }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "composer-action-label", children: "استطلاع" })
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            Button,
+            {
+              variant: "secondary",
+              size: "small",
+              onClick: () => handleSubmit("draft"),
+              disabled: isUploading || !canSubmit,
+              children: "حفظ المنشور"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            Button,
+            {
+              size: "small",
+              onClick: () => handleSubmit(showScheduler ? "scheduled" : "published"),
+              loading: isUploading,
+              disabled: isUploading || !canSubmit,
+              children: showScheduler ? "تأكيد الجدولة" : "النشر"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("input", { type: "file", ref: fileInputRef, hidden: true, accept: "image/*,video/*", onChange: handleMediaSelect })
+        ] }),
+        showScheduler ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "composer-scheduler-box", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "composer-field-label", children: "تحديد وقت النشر" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              type: "datetime-local",
+              value: scheduledDate,
+              onChange: (event) => setScheduledDate(event.target.value),
+              className: "composer-datetime-input"
+            }
+          )
+        ] }) : null,
+        showPollBuilder ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "composer-scheduler-box", style: { display: "grid", gap: 10 }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "composer-field-label", children: "سؤال الاستطلاع" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              type: "text",
+              value: pollQuestion,
+              onChange: (event) => setPollQuestion(event.target.value),
+              className: "composer-datetime-input",
+              placeholder: "مثال: أي تحسين تحبه أكثر في صفحة المنشورات؟"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "grid", gap: 8 }, children: pollOptions.map((option, index) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: 8 }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                type: "text",
+                value: option,
+                onChange: (event) => setPollOptions((prev) => prev.map((item, idx) => idx === index ? event.target.value : item)),
+                className: "composer-datetime-input",
+                placeholder: `الخيار ${index + 1}`
+              }
+            ),
+            pollOptions.length > 2 ? /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "composer-chip", onClick: () => setPollOptions((prev) => prev.filter((_, idx) => idx !== index)), children: "حذف" }) : null
+          ] }, `poll-option-${index}`)) }),
+          pollOptions.length < 4 ? /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "composer-chip", onClick: () => setPollOptions((prev) => [...prev, ""]), children: "إضافة خيار" }) : null
+        ] }) : null,
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `composer-editor-shell ${isDragActive ? "drag-active" : ""}`, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "composer-editor-topline", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "composer-field-label", children: "بماذا تفكر؟" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "composer-drop-hint", children: "اسحب وأسقط صورة أو فيديو أو GIF هنا" })
+          ] }),
+          quoteDraft ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "composer-quote-box", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { flex: 1 }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { fontWeight: 700, marginBottom: 4 }, children: [
+                "اقتباس من @",
+                quoteDraft.username
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "muted", style: { fontSize: 13, lineHeight: 1.7 }, children: quoteDraft.content })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                onClick: () => {
+                  setQuoteDraft(null);
+                  localStorage.removeItem(QUOTE_KEY);
+                },
+                className: "composer-close-btn",
+                children: "✕"
+              }
+            )
+          ] }) : null,
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "textarea",
+            {
+              ref: textareaRef,
+              placeholder: "اكتب منشورك هنا... استخدم #هاشتاج أو @منشن لو حابب",
+              value: content,
+              onChange: (event) => setContent(event.target.value),
+              className: "composer-textarea"
+            }
+          )
+        ] }),
+        tagsPreview.hashtags.length || tagsPreview.mentions.length ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "composer-tags-preview", children: [
+          tagsPreview.hashtags.length ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "muted", style: { fontSize: 13 }, children: [
+            "هاشتاج: ",
+            tagsPreview.hashtags.map((item) => `#${item}`).join(" · ")
+          ] }) : null,
+          tagsPreview.mentions.length ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "muted", style: { fontSize: 13 }, children: [
+            "منشن: ",
+            tagsPreview.mentions.map((item) => `@${item}`).join(" · ")
+          ] }) : null
+        ] }) : null,
+        mediaPreview ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "composer-media-preview", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              onClick: () => {
+                setMedia(null);
+                if (mediaPreview) URL.revokeObjectURL(mediaPreview);
+                setMediaPreview(null);
+              },
+              className: "composer-close-btn media-close",
+              children: "✕"
+            }
+          ),
+          media?.type?.startsWith("video") ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "video",
+            {
+              src: mediaPreview,
+              style: { width: "100%", maxHeight: "min(70dvh, 560px)", objectFit: "contain", display: "block", background: "#060a14", touchAction: "pan-y" },
+              controls: true
+            }
+          ) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "img",
+            {
+              src: mediaPreview,
+              style: { width: "100%", maxHeight: "min(70dvh, 560px)", objectFit: "contain", display: "block", background: "#060a14", touchAction: "pan-y" },
+              alt: "Preview"
+            }
+          ),
+          isUploading ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "composer-upload-progress-track", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "composer-upload-progress-fill", style: { width: `${uploadProgress}%` } }) }) : null
+        ] }) : null,
+        /* @__PURE__ */ jsxRuntimeExports.jsx("style", { children: `
+        .composer-header-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          flex-wrap: wrap;
+          margin-bottom: 12px;
+        }
+        .composer-title {
+          font-size: 18px;
+          font-weight: 800;
+          color: var(--text);
+          margin-bottom: 4px;
+        }
+        .composer-subtitle {
+          color: var(--muted);
+          font-size: 12px;
+          line-height: 1.6;
+        }
+        .composer-status-badge {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 8px 14px;
+          border-radius: 999px;
+          background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.08);
+          color: var(--muted);
+          font-size: 12px;
+          white-space: nowrap;
+        }
+        .composer-status-badge.pinned {
+          background: rgba(16,185,129,0.14);
+          border-color: rgba(16,185,129,0.3);
+          color: #6ee7b7;
+        }
+        .composer-toolbar {
+          display: flex;
+          flex-direction: row-reverse;
+          gap: 8px;
+          flex-wrap: wrap;
+          margin-bottom: 12px;
+          align-items: center;
+        }
+        .composer-chip {
+          border: 1px solid rgba(167, 139, 250, 0.25);
+          background: rgba(139, 92, 246, 0.10);
+          color: var(--text);
+          padding: 8px 14px;
+          border-radius: 999px;
+          cursor: pointer;
+          font-size: 13px;
+          font-weight: 700;
+          transition: all 0.2s ease;
+        }
+        .composer-chip:hover {
+          background: rgba(139, 92, 246, 0.16);
+          border-color: rgba(167, 139, 250, 0.35);
+        }
+        .composer-chip.active {
+          background: rgba(16,185,129,0.14);
+          border-color: rgba(16,185,129,0.3);
+          color: #6ee7b7;
+        }
+        .composer-actions-row {
+          display: flex;
+          flex-direction: row-reverse;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+          margin-bottom: 12px;
+        }
+        /* v46: أزرار أكبر وأوضح مع أيقونات SVG واضحة */
+        .composer-action-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          border-radius: 14px;
+          border: 1px solid rgba(167, 139, 250, 0.28);
+          background: rgba(139, 92, 246, 0.10);
+          color: var(--text);
+          padding: 12px 16px;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: 700;
+          font-family: 'Noto Sans Arabic', 'Tajawal', sans-serif;
+          transition: all 0.2s ease;
+        }
+        .composer-action-btn:hover,
+        .composer-action-btn:active,
+        .composer-action-btn.active {
+          background: rgba(139, 92, 246, 0.20);
+          border-color: rgba(167, 139, 250, 0.50);
+          transform: translateY(-1px);
+        }
+        .composer-action-icon {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 28px;
+          height: 28px;
+          border-radius: 8px;
+          background: rgba(167, 139, 250, 0.18);
+          color: #c4b5fd;
+          flex-shrink: 0;
+        }
+        .composer-action-btn--media .composer-action-icon { color: #93c5fd; background: rgba(59,130,246,0.18); }
+        .composer-action-btn--emoji .composer-action-icon { color: #fcd34d; background: rgba(251,191,36,0.18); }
+        .composer-action-label {
+          font-weight: 700;
+          font-size: 14px;
+          white-space: nowrap;
+        }
+        .composer-scheduler-box {
+          margin-bottom: 12px;
+          padding: 12px;
+          background: rgba(255,255,255,0.035);
+          border-radius: 14px;
+          border: 1px solid rgba(255,255,255,0.06);
+        }
+        .composer-field-label {
+          font-size: 13px;
+          font-weight: 800;
+          color: var(--text);
+        }
+        .composer-datetime-input {
+          width: 100%;
+          margin-top: 8px;
+          background: var(--bg-input);
+          color: var(--text);
+          border: 1px solid var(--line);
+          padding: 10px 12px;
+          border-radius: 10px;
+        }
+        .composer-editor-shell {
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 18px;
+          background: rgba(255,255,255,0.03);
+          padding: 14px;
+          transition: all 0.2s ease;
+        }
+        .composer-editor-shell.drag-active {
+          border-color: rgba(16,185,129,0.45);
+          background: rgba(16,185,129,0.08);
+        }
+        .composer-editor-topline {
+          display: flex;
+          flex-direction: row-reverse;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 10px;
+          flex-wrap: wrap;
+        }
+        .composer-drop-hint {
+          display: inline-flex;
+          align-items: center;
+          padding: 6px 12px;
+          border-radius: 999px;
+          border: 1px dashed rgba(139, 92, 246, 0.28);
+          color: var(--muted);
+          font-size: 12px;
+          background: rgba(139, 92, 246, 0.05);
+        }
+        .composer-quote-box {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          border-radius: 14px;
+          padding: 12px;
+          background: rgba(59,130,246,0.08);
+          border: 1px solid rgba(59,130,246,0.18);
+          margin-bottom: 12px;
+        }
+        .composer-close-btn {
+          background: rgba(0,0,0,0.18);
+          border: none;
+          cursor: pointer;
+          color: white;
+          border-radius: 50%;
+          width: 30px;
+          height: 30px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+        .composer-textarea {
+          width: 100%;
+          min-height: 120px;
+          background: transparent;
+          border: none;
+          color: var(--text);
+          font-size: 15px;
+          resize: vertical;
+          outline: none;
+          line-height: 1.9;
+          direction: rtl;
+        }
+        .composer-tags-preview {
+          display: grid;
+          gap: 8px;
+          margin-top: 12px;
+        }
+        .composer-media-preview {
+          position: relative;
+          margin-top: 12px;
+          border-radius: 14px;
+          overflow: hidden;
+          max-height: none;
+          border: 1px solid rgba(255,255,255,0.08);
+          background: rgba(3, 7, 18, 0.92);
+          touch-action: pan-y;
+        }
+        .composer-close-btn.media-close {
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          z-index: 1;
+          background: rgba(0,0,0,0.5);
+        }
+        .composer-upload-progress-track {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          height: 4px;
+          background: rgba(255,255,255,0.2);
+        }
+        .composer-upload-progress-fill {
+          height: 100%;
+          background: linear-gradient(90deg, #8b5cf6, #ec4899);
+          transition: width 0.2s;
+        }
+        @media (max-width: 1024px) {
+          .composer-header-row,
+          .composer-editor-topline {
+            align-items: stretch;
+          }
+          .composer-toolbar {
+            gap: 8px;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            padding-bottom: 4px;
+            scrollbar-width: none;
+            -webkit-overflow-scrolling: touch;
+          }
+          .composer-toolbar::-webkit-scrollbar {
+            display: none;
+          }
+          .composer-chip {
+            width: auto;
+            min-width: max-content;
+            justify-content: center;
+            padding: 8px 12px;
+            flex: 0 0 auto;
+          }
+          .composer-actions-row {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            padding: 8px 0;
+          }
+          .composer-action-btn,
+          .composer-actions-row > button {
+            width: 100%;
+            min-width: 0;
+            min-height: 58px;
+            justify-content: center;
+            padding-inline: 14px;
+            font-size: 15px;
+            font-weight: 700;
+            border-radius: 14px;
+            direction: rtl;
+          }
+          .composer-action-btn .composer-action-icon {
+            width: 32px;
+            height: 32px;
+          }
+          .composer-action-btn .composer-action-icon svg {
+            width: 24px;
+            height: 24px;
+          }
+          .composer-status-badge {
+            align-self: flex-start;
+          }
+          .composer-drop-hint {
+            width: 100%;
+            justify-content: center;
+            text-align: center;
+          }
+          .composer-quote-box {
+            flex-direction: column;
+          }
+          .composer-textarea {
+            min-height: 96px;
+            line-height: 1.75;
+          }
+        }
+      ` })
+      ]
+    }
+  );
+}
+export {
+  PostComposer as P
+};

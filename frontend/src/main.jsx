@@ -340,6 +340,10 @@ import './styles/yamshat-fixes-v87.17-SETTINGS-MAIN-SCROLL.css';
 // الملف الشخصي التي كانت شاشة بيضاء بسبب دالة غير معرّفة.
 // ⚠️ يجب أن يبقى آخر استيراد CSS مطلقاً.
 import './styles/yamshat-fixes-v87.18-SETTINGS-POSTS-SCROLL-FINAL.css';
+// v87.21: إصلاح نهائي لويب-الجوال داخل الشات — إزالة غلاف الصور وفرض
+// شكل WhatsApp-like للرسائل الصوتية مع زر تشغيل بالطرف. يجب أن يبقى آخر
+// استيراد CSS لكسر أي طبقات legacy/كاش قديم.
+import './styles/yamshat-fixes-v87.21-CHAT-MOBILE-WEB-MEDIA-VOICE.css';
 
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
@@ -349,7 +353,7 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v87.20-PROFILE-REPORT-SCROLL-FIX';
+const BUILD_ID = 'yamshat-v87.21-CHAT-MOBILE-WEB-MEDIA-VOICE-FIX';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

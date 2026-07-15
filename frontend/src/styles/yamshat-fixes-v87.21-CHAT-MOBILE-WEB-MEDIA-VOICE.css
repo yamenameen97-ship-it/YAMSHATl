@@ -1,0 +1,287 @@
+/* ============================================================================
+   Yamshat — v87.21 Mobile Web Chat media/voice parity fix
+   ----------------------------------------------------------------------------
+   الهدف:
+   1) إلغاء أي غلاف/كرت داكن حول الصور داخل الشات على ويب-الجوال.
+   2) فرض عرض الرسالة الصوتية كـ WhatsApp-like pill مع زر تشغيل بالطرف.
+   3) كسر أي CSS legacy تم تحميله سابقاً أو بَقِي في الكاش.
+   ========================================================================== */
+
+/* ─────────────────────────────────────────────────────────────
+   [1] Media-only bubble = الصورة نفسها فقط، بلا كرت خارجي
+   ───────────────────────────────────────────────────────────── */
+html body .yam-message-row.media-only .yam-message-stack {
+  max-width: min(82vw, 340px) !important;
+}
+
+html body .yam-bubble.is-media-only,
+html body .yam-bubble.is-image-only,
+html body .yam-bubble.is-video-only {
+  position: relative !important;
+  display: inline-block !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  max-width: fit-content !important;
+  width: auto !important;
+}
+
+html body .yam-bubble.is-media-only .yam-media-button,
+html body .yam-bubble.is-image-only .yam-media-button,
+html body .yam-bubble.is-video-only .yam-media-button {
+  display: block !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  line-height: 0 !important;
+  overflow: hidden !important;
+  border-radius: 16px !important;
+  width: auto !important;
+  max-width: min(272px, 74vw) !important;
+}
+
+html body .yam-bubble.is-media-only .yam-safe-image,
+html body .yam-bubble.is-image-only .yam-safe-image,
+html body .yam-bubble.is-video-only .yam-safe-image,
+html body .yam-bubble.is-media-only .yam-bubble-media,
+html body .yam-bubble.is-image-only .yam-bubble-media,
+html body .yam-bubble.is-video-only .yam-bubble-media {
+  display: block !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  border-radius: 16px !important;
+  overflow: hidden !important;
+  width: auto !important;
+  max-width: min(272px, 74vw) !important;
+}
+
+html body .yam-bubble.is-media-only .yam-safe-image img,
+html body .yam-bubble.is-image-only .yam-safe-image img,
+html body .yam-bubble.is-video-only .yam-safe-image img,
+html body .yam-bubble.is-media-only video.yam-bubble-media,
+html body .yam-bubble.is-image-only video.yam-bubble-media,
+html body .yam-bubble.is-video-only video.yam-bubble-media {
+  display: block !important;
+  width: 100% !important;
+  height: auto !important;
+  max-height: 340px !important;
+  object-fit: cover !important;
+  border-radius: 16px !important;
+}
+
+html body .yam-bubble.is-media-only .bubble-meta,
+html body .yam-bubble.is-image-only .bubble-meta,
+html body .yam-bubble.is-video-only .bubble-meta {
+  position: absolute !important;
+  inset-inline-end: 8px !important;
+  bottom: 8px !important;
+  z-index: 3 !important;
+  margin: 0 !important;
+  padding: 3px 8px !important;
+  border-radius: 999px !important;
+  background: rgba(0, 0, 0, 0.56) !important;
+  color: #fff !important;
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+  gap: 4px !important;
+  font-size: 10.5px !important;
+  pointer-events: none !important;
+}
+
+html body .yam-bubble.is-media-only .bubble-meta .bubble-time,
+html body .yam-bubble.is-image-only .bubble-meta .bubble-time,
+html body .yam-bubble.is-video-only .bubble-meta .bubble-time,
+html body .yam-bubble.is-media-only .bubble-meta .bubble-status,
+html body .yam-bubble.is-image-only .bubble-meta .bubble-status,
+html body .yam-bubble.is-video-only .bubble-meta .bubble-status {
+  color: #fff !important;
+  opacity: 1 !important;
+}
+
+html body .yam-bubble.is-media-only .yam-bubble-more,
+html body .yam-bubble.is-image-only .yam-bubble-more,
+html body .yam-bubble.is-video-only .yam-bubble-more {
+  top: 6px !important;
+  inset-inline-end: 6px !important;
+  background: rgba(0, 0, 0, 0.46) !important;
+  color: #fff !important;
+  opacity: 0.88 !important;
+  z-index: 4 !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   [2] Voice-only bubble = pill أفقي مثل المرجع
+   ───────────────────────────────────────────────────────────── */
+html body .yam-message-row.voice-only .yam-message-stack {
+  max-width: min(84vw, 360px) !important;
+}
+
+html body .yam-bubble.is-voice-only {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  max-width: fit-content !important;
+  width: auto !important;
+}
+
+html body .yam-voice-pill {
+  position: relative !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 10px !important;
+  direction: ltr !important;
+  min-height: 48px !important;
+  min-width: 224px !important;
+  max-width: min(84vw, 340px) !important;
+  width: auto !important;
+  padding: 6px 12px 6px 6px !important;
+  border-radius: 24px !important;
+  overflow: visible !important;
+}
+
+html body .yam-voice-pill .yam-voice-pill__play {
+  flex: 0 0 36px !important;
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  min-height: 36px !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  border-radius: 999px !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+html body .yam-voice-pill .yam-voice-pill__wave {
+  flex: 1 1 auto !important;
+  min-width: 92px !important;
+  height: 30px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+html body .yam-voice-pill .audio-waveform {
+  width: 100% !important;
+  min-height: 24px !important;
+  height: 24px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  overflow: visible !important;
+  gap: 2px !important;
+}
+
+html body .yam-voice-pill .yam-voice-pill__meta {
+  flex: 0 0 auto !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+}
+
+html body .yam-voice-pill .yam-voice-pill__time {
+  min-width: 32px !important;
+  text-align: center !important;
+}
+
+html body .yam-voice-pill .yam-voice-pill__badge {
+  flex: 0 0 28px !important;
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  min-height: 28px !important;
+  border-radius: 999px !important;
+  overflow: hidden !important;
+  display: inline-grid !important;
+  place-items: center !important;
+}
+
+html body .yam-voice-pill .yam-voice-pill__badge img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  display: block !important;
+}
+
+html body .yam-bubble.is-voice-only .bubble-meta {
+  margin-top: 4px !important;
+  padding-inline: 8px !important;
+  justify-content: flex-end !important;
+}
+
+html body .yam-bubble.is-voice-only .yam-bubble-more {
+  top: -4px !important;
+  inset-inline-end: -4px !important;
+  z-index: 4 !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   [3] Mobile web hard overrides
+   ───────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  html body .yam-bubble.is-media-only .yam-media-button,
+  html body .yam-bubble.is-image-only .yam-media-button,
+  html body .yam-bubble.is-video-only .yam-media-button,
+  html body .yam-bubble.is-media-only .yam-safe-image,
+  html body .yam-bubble.is-image-only .yam-safe-image,
+  html body .yam-bubble.is-video-only .yam-safe-image,
+  html body .yam-bubble.is-media-only .yam-bubble-media,
+  html body .yam-bubble.is-image-only .yam-bubble-media,
+  html body .yam-bubble.is-video-only .yam-bubble-media {
+    max-width: min(250px, 76vw) !important;
+  }
+
+  html body .yam-voice-pill {
+    min-width: 206px !important;
+    max-width: 80vw !important;
+    min-height: 44px !important;
+    gap: 8px !important;
+    padding: 5px 10px 5px 5px !important;
+  }
+
+  html body .yam-voice-pill .yam-voice-pill__play {
+    flex-basis: 34px !important;
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    min-height: 34px !important;
+  }
+
+  html body .yam-voice-pill .yam-voice-pill__wave {
+    min-width: 74px !important;
+    height: 28px !important;
+  }
+
+  html body .yam-voice-pill .audio-waveform {
+    height: 22px !important;
+  }
+
+  html body .yam-voice-pill .yam-voice-pill__badge {
+    width: 26px !important;
+    height: 26px !important;
+    min-width: 26px !important;
+    min-height: 26px !important;
+  }
+}

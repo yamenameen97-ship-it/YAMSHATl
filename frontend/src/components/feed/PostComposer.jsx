@@ -539,9 +539,17 @@ export default function PostComposer() {
             ✕
           </button>
           {media?.type?.startsWith('video') ? (
-            <video src={mediaPreview} style={{ width: '100%', display: 'block' }} controls />
+            <video
+              src={mediaPreview}
+              style={{ width: '100%', maxHeight: 'min(70dvh, 560px)', objectFit: 'contain', display: 'block', background: '#060a14', touchAction: 'pan-y' }}
+              controls
+            />
           ) : (
-            <img src={mediaPreview} style={{ width: '100%', objectFit: 'cover', display: 'block' }} alt="Preview" />
+            <img
+              src={mediaPreview}
+              style={{ width: '100%', maxHeight: 'min(70dvh, 560px)', objectFit: 'contain', display: 'block', background: '#060a14', touchAction: 'pan-y' }}
+              alt="Preview"
+            />
           )}
           {isUploading ? (
             <div className="composer-upload-progress-track">
@@ -761,8 +769,10 @@ export default function PostComposer() {
           margin-top: 12px;
           border-radius: 14px;
           overflow: hidden;
-          max-height: 320px;
+          max-height: none;
           border: 1px solid rgba(255,255,255,0.08);
+          background: rgba(3, 7, 18, 0.92);
+          touch-action: pan-y;
         }
         .composer-close-btn.media-close {
           position: absolute;

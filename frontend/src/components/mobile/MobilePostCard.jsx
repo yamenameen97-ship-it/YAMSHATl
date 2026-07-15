@@ -150,28 +150,48 @@ function MobilePostCard({
         </div>
       )}
 
-      {/* === صورة المنشور === */}
-      {banner && (banner.type === 'image' || banner.type === 'logo') && (
+      {/* === وسائط المنشور (صورة / فيديو / شعار) === */}
+      {/* ✅ v87.19 FIX: دعم الفيديو + معالجة خطأ ذكية.
+           كان الفيديو لا يظهر إطلاقاً (buildBanner كان يرجع null)
+           والصورة المكسورة كانت تعرض alt (فيظهر حرف “أ” من النص)
+           قبل تنفيذ onError. الآن:
+           • alt="" (فارغ) حتى لا يظهر نص قبيح داخل الإطار
+           • fetchpriority="auto" و crossOrigin="anonymous" للمرونة
+           • فيديو: <video> حقيقي مع controls + preload="metadata" + poster */}
+      {banner && (banner.type === 'image' || banner.type === 'video' || banner.type === 'logo') && (
         <div className="ym-post-banner-new">
           {isLive && <div className="ym-live-overlay-label">مباشر الآن LIVE</div>}
-          {banner.type === 'image' ? (
+          {banner.type === 'image' && (
             <div className="banner-image-container">
               <img
                 src={banner.url}
-                alt={(text && String(text).trim().slice(0, 140)) || `صورة منشور من ${authorName}`}
+                alt=""
                 loading="lazy"
                 decoding="async"
+                referrerPolicy="no-referrer"
+                onLoad={(e) => {
+                  try {
+                    e.currentTarget.classList.add('is-loaded');
+                  } catch { /* ignore */ }
+                }}
                 onError={(e) => {
                   try {
                     const el = e.currentTarget;
+                    const parent = el.parentNode;
                     el.style.display = 'none';
-                    if (el.parentNode && !el.parentNode.querySelector('.banner-image-fallback')) {
+                    if (parent && !parent.querySelector('.banner-image-fallback')) {
                       const fb = document.createElement('div');
                       fb.className = 'banner-image-fallback';
                       fb.setAttribute('role', 'img');
                       fb.setAttribute('aria-label', 'تعذّر تحميل الصورة');
-                      fb.innerText = '🖼️ تعذّر تحميل الصورة';
-                      el.parentNode.appendChild(fb);
+                      fb.innerHTML = ''
+                        + '<svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+                        + '<rect x="3" y="3" width="18" height="18" rx="3"/>'
+                        + '<circle cx="9" cy="9" r="1.6"/>'
+                        + '<path d="M21 15l-5-5-9 9"/>'
+                        + '</svg>'
+                        + '<span>تعذّر تحميل الصورة</span>';
+                      parent.appendChild(fb);
                     }
                   } catch { /* ignore */ }
                 }}
@@ -185,7 +205,43 @@ function MobilePostCard({
                 </div>
               )}
             </div>
-          ) : (
+          )}
+          {banner.type === 'video' && (
+            <div className="banner-video-container">
+              <video
+                src={banner.url}
+                poster={banner.poster || undefined}
+                controls
+                playsInline
+                preload="metadata"
+                controlsList="nodownload noremoteplayback"
+                disablePictureInPicture={false}
+                onError={(e) => {
+                  try {
+                    const el = e.currentTarget;
+                    const parent = el.parentNode;
+                    el.style.display = 'none';
+                    if (parent && !parent.querySelector('.banner-image-fallback')) {
+                      const fb = document.createElement('div');
+                      fb.className = 'banner-image-fallback';
+                      fb.setAttribute('role', 'img');
+                      fb.setAttribute('aria-label', 'تعذّر تشغيل الفيديو');
+                      fb.innerHTML = ''
+                        + '<svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+                        + '<polygon points="5 3 19 12 5 21 5 3"/>'
+                        + '</svg>'
+                        + '<span>تعذّر تشغيل الفيديو</span>';
+                      parent.appendChild(fb);
+                    }
+                  } catch { /* ignore */ }
+                }}
+              >
+                {/* fallback للمتصفحات القديمة */}
+                متصفحك لا يدعم تشغيل الفيديو.
+              </video>
+            </div>
+          )}
+          {banner.type === 'logo' && (
             <div className="banner-logo-container">
               <svg className="ym-logo-large" viewBox="0 0 200 200" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
                 <defs>
@@ -470,30 +526,52 @@ function MobilePostCard({
           width: 100%;
           max-width: 100%;
         }
-        .banner-image-container {
+        .banner-image-container,
+        .banner-video-container {
           position: relative;
           width: 100%;
           height: 100%;
+          background: #000;
         }
         .banner-image-container img {
           width: 100%;
           height: 100%;
           object-fit: cover;
           display: block;
+          opacity: 0;
+          transition: opacity 220ms ease-out;
+          background:
+            linear-gradient(135deg, rgba(139,92,246,0.10) 0%, rgba(15,20,34,0.6) 100%);
         }
+        .banner-image-container img.is-loaded { opacity: 1; }
+        /* ✅ v87.19: فيديو حقيقي داخل البطاقة */
+        .banner-video-container video {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+          background: #000;
+          /* controls native */
+        }
+        /* ✅ v87.19: إطار fallback أنيق (بدل شاشة سوداء فيها حرف) */
         .banner-image-fallback {
           position: absolute;
           inset: 0;
           display: flex;
+          flex-direction: column;
           align-items: center;
           justify-content: center;
-          background: linear-gradient(135deg, #1a1f33 0%, #0f1422 100%);
+          gap: 10px;
+          background:
+            linear-gradient(135deg, #1a1f33 0%, #0f1422 100%);
           color: #9CA3AF;
-          font-size: 0.85rem;
+          font-size: 0.9rem;
           text-align: center;
-          padding: 12px;
+          padding: 16px;
           direction: rtl;
         }
+        .banner-image-fallback svg { opacity: 0.7; }
+        .banner-image-fallback span { font-weight: 500; }
         .banner-logo-container {
           width: 100%;
           height: 100%;

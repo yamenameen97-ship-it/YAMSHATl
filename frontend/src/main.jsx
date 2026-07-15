@@ -332,6 +332,15 @@ import './styles/yamshat-fixes-v87.16-CHAT-MEDIA-FINAL-POLISH.css';
 // — السحب باللمس للأعلى والأسفل على البستات يستجيب بسلاسة فل الفل.
 import './styles/yamshat-fixes-v87.17-SETTINGS-MAIN-SCROLL.css';
 
+// v87.18: FINAL ROOT FIX للسحب على ويب-جوال في كل صفحات الإعدادات
+// (رئيسية + فرعية) وكل البستات في الصفحة الرئيسية للمنشورات.
+// نجعل .settings-wrap و .settings-shell نفسها scroll containers
+// (height:100dvh + overflow-y:auto + touch-action:pan-y + momentum
+// scroll) — مطابقة 1:1 لـ .yam-home-mobile-page. + إصلاح صفحة
+// الملف الشخصي التي كانت شاشة بيضاء بسبب دالة غير معرّفة.
+// ⚠️ يجب أن يبقى آخر استيراد CSS مطلقاً.
+import './styles/yamshat-fixes-v87.18-SETTINGS-POSTS-SCROLL-FINAL.css';
+
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';
@@ -340,7 +349,7 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v87.17-SETTINGS-MAIN-SCROLL';
+const BUILD_ID = 'yamshat-v87.19-POSTS-VIDEO-IMAGE-RENDER-FIX';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

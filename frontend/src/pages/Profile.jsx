@@ -4,6 +4,12 @@ import MainLayout from '../components/layout/MainLayout.jsx';
 import { useAppStore } from '../store/appStore.js';
 import { getMe, getProfileBundle, getRelationship } from '../api/users.js';
 import { getCurrentUsername } from '../utils/auth.js';
+// ✅ v87.18 FIX: صفحة الملف الشخصي كانت تختفي كلياً (شاشة بيضاء) لأن
+//    الكود كان يستدعي resolveMediaUrlPublic بينما الدالة المتاحة اسمها
+//    resolveMediaUrl (من config/mediaConfig.js). ReferenceError عند render
+//    يوقف تشكيل الصفحة بالكامل. الحل: استيراد الدالة الصحيحة والاعتماد
+//    عليها في تحويل رابط الأفاتار إلى URL كامل.
+import { resolveMediaUrl } from '../config/mediaConfig.js';
 
 // ✅ v87.16 FIX: إزالة البيانات التجريبية الثابتة نهائياً.
 // كانت البيانات السابقة "Y A M E N / 78 / 1.2M / 32.4M" مُثبّتة في الكود
@@ -319,7 +325,7 @@ export default function Profile() {
   ]), [profile.stats.following, profile.stats.followers, profile.stats.likes]);
 
   const avatarSrc = useMemo(() => {
-    if (profile.avatar) return resolveMediaUrlPublic(profile.avatar);
+    if (profile.avatar) return resolveMediaUrl(profile.avatar);
     return null;
   }, [profile.avatar]);
 

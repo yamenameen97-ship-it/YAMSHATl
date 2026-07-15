@@ -1,0 +1,96 @@
+YAMSHAT - Render Database URL Guide (v85.2)
+=============================================
+
+المتغير المطلوب داخل خدمة الباك إند:
+DATABASE_URL
+
+═══════════════════════════════════════════════════════════════
+🆕 القاعدة الجديدة الحالية (بعد حذف القديمة yamshat_d)
+═══════════════════════════════════════════════════════════════
+
+Internal Database URL (يوضع على Render):
+postgresql://yamshatdt_user:I7IKG546v6Rq54mMFsrAyiE3G1jPxeT3@dpg-d96nf4uq1p3s73d2m95g-a/yamshatdt
+
+External Database URL (للاتصال من خارج Render، مثلاً pgAdmin):
+postgresql://yamshatdt_user:I7IKG546v6Rq54mMFsrAyiE3G1jPxeT3@dpg-d96nf4uq1p3s73d2m95g-a.oregon-postgres.render.com/yamshatdt?sslmode=require
+
+═══════════════════════════════════════════════════════════════
+1) الرابط الصحيح المفضل داخل Render Web Service
+═══════════════════════════════════════════════════════════════
+انسخ القيمة من صفحة قاعدة البيانات في Render:
+Connections -> Internal Database URL
+
+شكلها يكون قريب من هذا:
+postgresql://USERNAME:PASSWORD@dpg-xxxxxxxxxxxx-a/DATABASE_NAME
+
+هذا هو الرابط الذي يجب وضعه في متغير البيئة DATABASE_URL لخدمة الباك إند.
+
+═══════════════════════════════════════════════════════════════
+2) الرابط الخارجي
+═══════════════════════════════════════════════════════════════
+لو كنت ستتصل من جهازك أو من خدمة خارج Render فاستخدم External Database URL.
+شكله غالباً يكون قريب من هذا:
+postgresql://USERNAME:PASSWORD@dpg-xxxxxxxxxxxx-a.oregon-postgres.render.com/DATABASE_NAME
+
+مهم:
+- داخل Render يفضل Internal Database URL (بدون sslmode).
+- خارج Render يفضل External Database URL.
+- التطبيق (v85.2) يضيف sslmode=require تلقائياً للروابط الخارجية إذا لم تضعه.
+
+═══════════════════════════════════════════════════════════════
+3) صيغ مقبولة في هذا المشروع
+═══════════════════════════════════════════════════════════════
+التطبيق يقبل:
+- postgresql://...
+- postgres://...  (يُحوَّل تلقائياً إلى postgresql:// — SQLAlchemy 2.x لا يقبل القديم)
+
+═══════════════════════════════════════════════════════════════
+4) ما الذي يعتبر خطأ وسيؤدي للرجوع إلى SQLite
+═══════════════════════════════════════════════════════════════
+إذا كانت القيمة:
+- فارغة
+- أو ما زالت Placeholder مثل USER أو PASSWORD أو HOST أو DATABASE
+- أو منسوخة بشكل ناقص
+
+فسيظهر هذا التحذير في اللوجز:
+DATABASE_URL est vide ou contient encore des placeholders;
+fallback vers SQLite local jusqu'à ce qu'une URL réelle soit configurée.
+
+═══════════════════════════════════════════════════════════════
+5) هل أحتاج متغيرات أخرى بدلاً من DATABASE_URL؟
+═══════════════════════════════════════════════════════════════
+لا. هذا المشروع يقرأ DATABASE_URL مباشرة.
+لا يحتاج DB_HOST / DB_PORT / DB_NAME / DB_USER / DB_PASSWORD بشكل منفصل.
+
+═══════════════════════════════════════════════════════════════
+6) متغيرات مرتبطة مهمة لكن ليست رابط قاعدة البيانات
+═══════════════════════════════════════════════════════════════
+FRONTEND_ORIGIN=https://yamshat8.onrender.com
+BACKEND_ORIGIN=https://yamshat-1ya4.onrender.com
+RENDER_EXTERNAL_URL=https://yamshat-1ya4.onrender.com
+CORS_ORIGINS=https://yamshat8.onrender.com,https://yamshat-1ya4.onrender.com
+CORS_ORIGIN_REGEX=^https://yamshat[a-zA-Z0-9-]*\.onrender\.com$
+
+═══════════════════════════════════════════════════════════════
+7) خطوات سريعة على Render
+═══════════════════════════════════════════════════════════════
+1. افتح خدمة PostgreSQL الجديدة (yamshatdt) في Render.
+2. اذهب إلى Connect → انسخ Internal Database URL.
+3. افتح خدمة الباك إند (yamshat-1ya4).
+4. Environment → أضف/عدّل متغير البيئة DATABASE_URL والصق الرابط كما هو بالكامل.
+5. Save Changes → أعد النشر (Manual Deploy → Deploy latest commit).
+6. راقب اللوجز — يجب أن تظهر:
+     Database engine will connect to: postgresql://***@dpg-d96nf4uq1p3s73d2m95g-a/yamshatdt
+     🗄️  Database initialization completed
+
+═══════════════════════════════════════════════════════════════
+8) ما تم إصلاحه في v85.2 (هذه النسخة)
+═══════════════════════════════════════════════════════════════
+✅ تحديث .env بالرابط الجديد (yamshatdt).
+✅ تفعيل DB_BOOTSTRAP_ON_START=true تلقائياً لإنشاء الجداول في القاعدة الفارغة.
+✅ إضافة استدعاء initialize_database() في startup event — كان مفقوداً.
+✅ normalize_database_url يضيف sslmode=require تلقائياً للروابط الخارجية.
+✅ pool_recycle=280s + connect_timeout=10s → استقرار مع Render Free tier.
+✅ alembic يستخدم effective_database_url (بعد normalize) بدلاً من الخام.
+✅ إصلاح alembic.ini — إزالة %(DATABASE_URL)s الذي يسبب InterpolationMissingOptionError.
+✅ fallback ثلاثي في session.py: settings.effective → settings.raw → env مباشرة.

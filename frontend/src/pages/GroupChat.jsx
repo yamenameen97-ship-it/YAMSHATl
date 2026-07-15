@@ -1045,7 +1045,7 @@ const GroupChat = () => {
 
       <footer className="yam-group-input-area" style={{ position: 'sticky', bottom: 0, insetInline: 0, display: 'grid', gridTemplateColumns: '42px minmax(0, 1fr) 42px', alignItems: 'center', gap: '10px', padding: '10px 12px calc(10px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px))', background: 'linear-gradient(180deg, rgba(9, 13, 24, 0.92), rgba(9, 13, 24, 0.98))', borderTop: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 -16px 34px rgba(0,0,0,0.34)', zIndex: 120 }}>
         <button
-          className="yam-plus-btn"
+          className="yam-group-plus-btn"
           onClick={() => setShowAttachMenu((prev) => !prev)}
           title="إرفاق ملف"
           aria-label="إرفاق ملف"
@@ -1068,10 +1068,10 @@ const GroupChat = () => {
             </svg>
           )}
         </button>
-        <div className="yam-input-wrapper" style={{ minWidth: 0, width: '100%', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'center', gap: '8px', direction: 'rtl', borderRadius: '24px', padding: '0 12px', minHeight: '46px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', overflow: 'hidden', order: 2 }}>
+        <div className="yam-group-input-wrapper" style={{ minWidth: 0, width: '100%', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'center', gap: '8px', direction: 'rtl', borderRadius: '24px', padding: '0 12px', minHeight: '46px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', overflow: 'hidden', order: 2 }}>
           <input
             type="text"
-            className="yam-chat-input"
+            className="yam-group-chat-input"
             placeholder="اكتب رسالة..."
             value={message}
             onChange={(e) => setMessage(e.target.value)}
@@ -1084,10 +1084,10 @@ const GroupChat = () => {
             onFocus={() => window.setTimeout(scrollToBottom, 140)}
             style={{ minWidth: 0, width: '100%', height: '100%', background: 'transparent', border: 0, outline: 0, padding: '11px 0', fontSize: '16px', lineHeight: 1.5, color: '#fff', direction: 'rtl', textAlign: 'right' }}
           />
-          <span className="yam-input-icon" style={{ width: '28px', height: '28px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#94a3b8', fontSize: '18px' }}>😊</span>
+          <span className="yam-group-input-icon" style={{ width: '28px', height: '28px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#94a3b8', fontSize: '18px' }}>😊</span>
         </div>
         <button
-          className="yam-send-btn"
+          className="yam-group-send-btn"
           onClick={handleSendMessage}
           aria-label="إرسال"
           // ✅ منع الزر من خسارة التركيز ووميض الـ keyboard على iOS Safari

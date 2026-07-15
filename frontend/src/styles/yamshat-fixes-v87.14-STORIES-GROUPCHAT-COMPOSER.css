@@ -111,8 +111,8 @@ html body .yam-group-chat-container .yam-group-input-area {
   overflow: visible !important;
 }
 
-html body [data-yam-group-root="true"] .yam-input-wrapper,
-html body .yam-group-chat-container .yam-input-wrapper {
+html body [data-yam-group-root="true"] .yam-group-input-wrapper,
+html body .yam-group-chat-container .yam-group-input-wrapper {
   min-width: 0 !important;
   width: 100% !important;
   display: grid !important;
@@ -128,8 +128,8 @@ html body .yam-group-chat-container .yam-input-wrapper {
   overflow: hidden !important;
 }
 
-html body [data-yam-group-root="true"] .yam-chat-input,
-html body .yam-group-chat-container .yam-chat-input {
+html body [data-yam-group-root="true"] .yam-group-chat-input,
+html body .yam-group-chat-container .yam-group-chat-input {
   min-width: 0 !important;
   width: 100% !important;
   height: 100% !important;
@@ -144,13 +144,13 @@ html body .yam-group-chat-container .yam-chat-input {
   text-align: right !important;
 }
 
-html body [data-yam-group-root="true"] .yam-chat-input::placeholder,
-html body .yam-group-chat-container .yam-chat-input::placeholder {
+html body [data-yam-group-root="true"] .yam-group-chat-input::placeholder,
+html body .yam-group-chat-container .yam-group-chat-input::placeholder {
   text-align: right !important;
 }
 
-html body [data-yam-group-root="true"] .yam-input-icon,
-html body .yam-group-chat-container .yam-input-icon {
+html body [data-yam-group-root="true"] .yam-group-input-icon,
+html body .yam-group-chat-container .yam-group-input-icon {
   width: 28px !important;
   height: 28px !important;
   display: inline-flex !important;
@@ -161,10 +161,10 @@ html body .yam-group-chat-container .yam-input-icon {
   font-size: 18px !important;
 }
 
-html body [data-yam-group-root="true"] .yam-send-btn,
-html body [data-yam-group-root="true"] .yam-plus-btn,
-html body .yam-group-chat-container .yam-send-btn,
-html body .yam-group-chat-container .yam-plus-btn {
+html body [data-yam-group-root="true"] .yam-group-send-btn,
+html body [data-yam-group-root="true"] .yam-group-plus-btn,
+html body .yam-group-chat-container .yam-group-send-btn,
+html body .yam-group-chat-container .yam-group-plus-btn {
   width: 42px !important;
   min-width: 42px !important;
   height: 42px !important;
@@ -172,19 +172,21 @@ html body .yam-group-chat-container .yam-plus-btn {
   align-self: center !important;
 }
 
-html body [data-yam-group-root="true"] .yam-send-btn,
-html body .yam-group-chat-container .yam-send-btn {
+html body [data-yam-group-root="true"] .yam-group-send-btn,
+html body .yam-group-chat-container .yam-group-send-btn {
   order: 3 !important;
 }
 
-html body [data-yam-group-root="true"] .yam-plus-btn,
-html body .yam-group-chat-container .yam-plus-btn {
+html body [data-yam-group-root="true"] .yam-group-plus-btn,
+html body .yam-group-chat-container .yam-group-plus-btn {
   order: 1 !important;
 }
 
-html body [data-yam-group-root="true"] .yam-input-wrapper,
-html body .yam-group-chat-container .yam-input-wrapper {
+html body [data-yam-group-root="true"] .yam-group-input-wrapper,
+html body .yam-group-chat-container .yam-group-input-wrapper {
   order: 2 !important;
+  position: relative !important;
+  z-index: 2 !important;
 }
 
 /* منع أي شريط إدخال شبح من الظهور/التقاط اللمس داخل شاشة المجموعة */
@@ -196,6 +198,14 @@ html body [data-yam-group-root="true"] .yam-composer-textrow {
   visibility: hidden !important;
   opacity: 0 !important;
   pointer-events: none !important;
+}
+
+html body [data-yam-group-root="true"] .yam-group-send-btn,
+html body [data-yam-group-root="true"] .yam-group-plus-btn,
+html body [data-yam-group-root="true"] .yam-group-chat-input,
+html body [data-yam-group-root="true"] .yam-group-input-icon,
+html body [data-yam-group-root="true"] .yam-group-input-wrapper {
+  pointer-events: auto !important;
 }
 
 /* عناصر مرفقات/تقدّم الرفع ترتفع فوق الكيبورد بدل أن تبقى تحته */

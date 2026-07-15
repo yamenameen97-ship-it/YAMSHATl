@@ -75,14 +75,15 @@ export default function PostComposerPage() {
           color: var(--text, #f4f4f5);
           direction: rtl;
           font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
-          /* ⭐ بصمة التمرير — مطابقة 1:1 لـ .yam-home-mobile-page */
-          height: 100vh;
-          height: 100dvh;
-          overflow-y: auto;
-          overflow-x: hidden;
+          /* ✅ v87.20: نلغي أي scroll داخلي ونترك .page-content في MainLayout
+             كحاوية التمرير الوحيدة، حتى لا تتغلف الصفحة ولا تتعطل
+             السحبة العمودية بعد رفع صورة أو أثناء لمس عناصر النموذج. */
+          min-height: 100%;
+          height: auto;
+          max-height: none;
+          overflow: visible;
           -webkit-overflow-scrolling: touch;
-          overscroll-behavior-y: contain;
-          overscroll-behavior-x: none;
+          overscroll-behavior: auto;
           touch-action: pan-y;
           -ms-touch-action: pan-y;
           transform: none;
@@ -91,11 +92,6 @@ export default function PostComposerPage() {
           -webkit-filter: none;
           perspective: none;
           pointer-events: auto;
-          scroll-behavior: smooth;
-          overflow-anchor: none;
-          will-change: scroll-position;
-          scrollbar-width: thin;
-          scrollbar-color: rgba(139, 92, 246, 0.45) transparent;
           box-sizing: border-box;
           padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
         }
@@ -122,19 +118,19 @@ export default function PostComposerPage() {
         @supports (-webkit-touch-callout: none) {
           .ympc-page {
             -webkit-overflow-scrolling: touch !important;
-            overflow-y: auto !important;
+            overflow: visible !important;
             touch-action: pan-y !important;
-            height: 100dvh !important;
-            max-height: 100dvh !important;
+            height: auto !important;
+            max-height: none !important;
           }
         }
         /* حماية قصوى ضد أي CSS قديم يكسر التمرير */
         .app-shell .page-content .ympc-page,
         .app-shell.yamshat-unified .page-content .ympc-page {
-          overflow-y: auto !important;
-          height: 100dvh !important;
-          min-height: 100dvh !important;
-          max-height: 100dvh !important;
+          overflow: visible !important;
+          height: auto !important;
+          min-height: 100% !important;
+          max-height: none !important;
           touch-action: pan-y !important;
           -webkit-overflow-scrolling: touch !important;
           transform: none !important;

@@ -10,6 +10,7 @@ import MobilePostCard from '../components/mobile/MobilePostCard.jsx';
 // import MobileComposeModal from '../components/mobile/MobileComposeModal.jsx';
 import MobileCommentsSheet from '../components/mobile/MobileCommentsSheet.jsx';
 import Modal from '../components/ui/Modal.jsx';
+import ReportModal from '../components/reports/ReportModal.jsx';
 import useSmartFeed from '../hooks/useSmartFeed.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
 import { likePost, savePost, sharePost, deletePost, updatePost } from '../api/posts.js';
@@ -43,13 +44,34 @@ function isVideoMediaUrl(value = '', post = {}) {
   );
 }
 
+// ✅ v87.19 FIX: دعم الفيديو في بطاقة المنشور على الجوال + تمرير poster
+// للفيديو حتى يظهر معاينة أيضاً قبل التشغيل.
+// كان يعيد null للفيديو فلم يظهر أبداً. الآن نرجع { type: 'video', url, poster }.
+// كذلك نتحقق من صحة الرابط حتى لا تظهر صورة مكسورة.
 function buildBanner(post = {}) {
-  const rawMedia = Array.isArray(post.media_urls) && post.media_urls.length
+  const rawMediaCandidates = Array.isArray(post.media_urls) && post.media_urls.length
     ? post.media_urls
-    : [post.image_url || post.media_url || post.thumbnail_url || post.media].filter(Boolean);
-  const firstMedia = rawMedia[0] || '';
+    : [post.media_url || post.media || post.image_url || post.thumbnail_url].filter(Boolean);
+  const firstMedia = rawMediaCandidates[0] || '';
+  const isVideo =
+    Boolean(post.has_video)
+    || String(post.media_type || '').toLowerCase() === 'video'
+    || Boolean(post.is_reel)
+    || isVideoMediaUrl(firstMedia, post);
+
+  if (isVideo) {
+    // الفيديو: نفضل media_url/media للرابط الفعلي، و thumbnail_url لـ poster
+    const videoCandidate = String(post.media_url || post.media || firstMedia || '');
+    const posterCandidate = String(post.thumbnail_url || post.preview_url || post.image_url || '');
+    const resolvedVideo = resolveMediaUrl(videoCandidate);
+    const resolvedPoster = resolveMediaUrl(posterCandidate);
+    if (!resolvedVideo) return null;
+    return { type: 'video', url: resolvedVideo, poster: resolvedPoster || '' };
+  }
+
+  // الصورة: فقط إن وجد رابط حقيقي
   const resolved = resolveMediaUrl(firstMedia);
-  if (!resolved || isVideoMediaUrl(resolved || firstMedia, post)) return null;
+  if (!resolved) return null;
   return { type: 'image', url: resolved };
 }
 
@@ -110,6 +132,7 @@ function FeedMobile() {
   const navigate = useNavigate();
   const [commentsPostId, setCommentsPostId] = useState(null);
   const [moreMenuPost, setMoreMenuPost] = useState(null);
+  const [reportPostTarget, setReportPostTarget] = useState(null);
   const [moreMenuBusy, setMoreMenuBusy] = useState(false);
   const [moreMenuState, setMoreMenuState] = useState({ following: false, muted: false, blocked: false });
 
@@ -366,15 +389,12 @@ function FeedMobile() {
   }, [moreMenuPost, moreMenuState.blocked, requireAuth, pushToast, closeMoreMenu]);
 
   const handleMenuReport = useCallback(() => {
-    if (!moreMenuPost) return;
-    try {
-      const key = 'yamshat:report-post';
-      const event = new CustomEvent(key, { detail: { postId: moreMenuPost.rawId, authorHandle: moreMenuPost.handle } });
-      window.dispatchEvent(event);
-      closeMoreMenu();
-    } catch (err) {
-      console.error('Report error:', err);
-    }
+    if (!moreMenuPost?.rawId) return;
+    setReportPostTarget({
+      id: moreMenuPost.rawId,
+      label: `منشور ${moreMenuPost.handle || moreMenuPost.authorName || 'مستخدم'}`,
+    });
+    closeMoreMenu();
   }, [moreMenuPost, closeMoreMenu]);
 
   const handleMenuDeleteOwnPost = useCallback(async () => {
@@ -551,11 +571,17 @@ function FeedMobile() {
               <button type="button" className="profile-tab" onClick={handleMenuDeleteOwnPost} disabled={moreMenuBusy}>حذف المنشور</button>
             </>
           )}
-          {!isOwnMoreMenuPost ? (
-            <button type="button" className="profile-tab" onClick={handleMenuReport} disabled={moreMenuBusy}>بلاغ</button>
-          ) : null}
+          <button type="button" className="profile-tab" onClick={handleMenuReport} disabled={moreMenuBusy}>بلاغ</button>
         </div>
       </Modal>
+
+      <ReportModal
+        open={Boolean(reportPostTarget)}
+        onClose={() => setReportPostTarget(null)}
+        targetType="post"
+        targetId={reportPostTarget?.id}
+        targetLabel={reportPostTarget?.label}
+      />
     </>
   );
 }

@@ -2009,9 +2009,18 @@ export default function Settings() {
       ========================= */}
       <style>{`
         .settings-wrap {
+          /* ✅ v87.21: إصلاح السحب الكامل لأعلى ولأسفل —
+             المشكلة كانت أن حاوية الصفحة (.page-content في MainLayout)
+             لا تسمح بسحب عمودي لأن .settings-wrap كان يطبق touch-action
+             و overscroll-behavior داخل نفسه فقط بدون إجبار
+             .page-content على التمرير. الآن:
+             1) نضمن أن .settings-wrap هو flex/grid داخل حاوية تسمح بالتمرير.
+             2) نمنع أي overflow:hidden أو max-height من قتل السحب.
+             3) نستخدم -webkit-overflow-scrolling: touch + scrollbar-gutter:stable.
+          */
           max-width: 1180px;
           margin: 0 auto;
-          padding: 12px 14px calc(118px + env(safe-area-inset-bottom, 0px));
+          padding: 12px 14px calc(120px + env(safe-area-inset-bottom, 0px));
           font-size: 13px;
           box-sizing: border-box;
           touch-action: pan-y;
@@ -2023,6 +2032,18 @@ export default function Settings() {
           transform: none;
           filter: none;
           perspective: none;
+          width: 100%;
+        }
+        /* على الموبايل نرفع أي قيود max-height على السايدبار لأنه يمنع السحب */
+        @media (max-width: 900px) {
+          .settings-sidebar {
+            position: static !important;
+            max-height: none !important;
+            overflow: visible !important;
+          }
+          .settings-group-tabs {
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+          }
         }
         .settings-hero {
           display: flex;

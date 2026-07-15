@@ -75,15 +75,23 @@ export default function PostComposerPage() {
           color: var(--text, #f4f4f5);
           direction: rtl;
           font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
-          /* ✅ v87.20: نلغي أي scroll داخلي ونترك .page-content في MainLayout
-             كحاوية التمرير الوحيدة، حتى لا تتغلف الصفحة ولا تتعطل
-             السحبة العمودية بعد رفع صورة أو أثناء لمس عناصر النموذج. */
+          /* ✅ v87.21 — إصلاح السحب الكامل لأعلى ولأسفل:
+             نترك .page-content في MainLayout حاوية التمرير، ونضمن
+             أن لا توجد قاعدة CSS تكسر propagate الـtouchmove.
+             نقاط الإصلاح:
+             • display:flex + flex-direction:column prevent نقل الـtouch إلى خارج.
+             • إزالة أي max-height/overflow:hidden على .ympc-page أو .ympc-wrap.
+             • pointer-events:auto على كل العناصر الفرعية حتى لا توقف السحب.
+             • touch-action: pan-y صريح لمنع المتصفح من اختطاف اللمس للـpinch.
+          */
+          display: flex;
+          flex-direction: column;
           min-height: 100%;
           height: auto;
           max-height: none;
           overflow: visible;
           -webkit-overflow-scrolling: touch;
-          overscroll-behavior: auto;
+          overscroll-behavior: contain;
           touch-action: pan-y;
           -ms-touch-action: pan-y;
           transform: none;
@@ -93,7 +101,21 @@ export default function PostComposerPage() {
           perspective: none;
           pointer-events: auto;
           box-sizing: border-box;
-          padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+          padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+        }
+        /* ضمان أن محتوى المنشور لا يسرق السحب العمودي */
+        .ympc-wrap, .ympc-main {
+          overflow: visible !important;
+          max-height: none !important;
+          height: auto !important;
+          pointer-events: auto !important;
+          touch-action: pan-y !important;
+        }
+        .ympc-wrap * { touch-action: pan-y; pointer-events: auto; }
+        /* حقل النص يقبل pan-y فقط بدون سرقة الـtouch */
+        .composer-textarea {
+          touch-action: pan-y !important;
+          pointer-events: auto !important;
         }
         .ympc-page::-webkit-scrollbar {
           width: 6px;

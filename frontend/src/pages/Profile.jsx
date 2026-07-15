@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import { useAppStore } from '../store/appStore.js';
-import { getMe, getProfileBundle, getRelationship } from '../api/users.js';
+import { getMe, getProfileBundle, getRelationship, getUserPosts } from '../api/users.js';
 import { getCurrentUsername } from '../utils/auth.js';
 // ✅ v87.18 FIX: صفحة الملف الشخصي كانت تختفي كلياً (شاشة بيضاء) لأن
 //    الكود كان يستدعي resolveMediaUrlPublic بينما الدالة المتاحة اسمها
@@ -166,6 +166,140 @@ function SignalIcons() {
       <span className="ym-ref-wifi"><em /></span>
       <span className="ym-ref-battery"><b /></span>
     </div>
+  );
+}
+
+function normalizeProfilePosts(payload) {
+  const source = Array.isArray(payload)
+    ? payload
+    : payload?.posts || payload?.items || payload?.results || payload?.data || [];
+
+  if (!Array.isArray(source) || source.length === 0) return [];
+
+  return source
+    .map((post, index) => {
+      const rawId = post?.id ?? post?.post_id ?? post?._id ?? `profile-post-${index}`;
+      const rawText = String(
+        post?.content ?? post?.text ?? post?.body ?? post?.caption ?? post?.description ?? ''
+      ).trim();
+      const content = rawText
+        ? rawText.split(/\n+/).map((line) => line.trim()).filter(Boolean).slice(0, 6)
+        : [];
+      const image =
+        post?.image_url || post?.image || post?.media_url || post?.media?.url || post?.thumbnail_url || '';
+      const likes = post?.likes_count ?? post?.likes ?? post?.stats?.likes ?? 0;
+      const comments = post?.comments_count ?? post?.comments ?? post?.stats?.comments ?? 0;
+      const shares = post?.shares_count ?? post?.shares ?? post?.stats?.shares ?? 0;
+      return {
+        id: String(rawId),
+        type: image ? 'image' : 'text',
+        time: String(post?.created_at_relative || post?.time_ago || post?.created_relative || post?.created_at || 'الآن'),
+        content,
+        image,
+        stats: {
+          likes: formatStat(likes),
+          comments: formatStat(comments),
+          shares: formatStat(shares),
+        },
+      };
+    })
+    .filter((item) => item.content.length || item.image);
+}
+
+function ProfilePostsList({ username, avatar, displayName, verified }) {
+  const [items, setItems] = useState(POSTS);
+  const [loadingPosts, setLoadingPosts] = useState(true);
+  const [postsError, setPostsError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPosts = async () => {
+      if (!username) {
+        setItems(POSTS);
+        setPostsError('');
+        setLoadingPosts(false);
+        return;
+      }
+
+      setLoadingPosts(true);
+      try {
+        const res = await getUserPosts(username);
+        if (cancelled) return;
+        const normalized = normalizeProfilePosts(res?.data);
+        if (normalized.length > 0) {
+          setItems(normalized);
+          setPostsError('');
+        } else {
+          setItems(POSTS);
+          setPostsError('');
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setItems(POSTS);
+        setPostsError(err?.response?.data?.detail || err?.message || '');
+      } finally {
+        if (!cancelled) setLoadingPosts(false);
+      }
+    };
+
+    loadPosts();
+    return () => {
+      cancelled = true;
+    };
+  }, [username]);
+
+  if (loadingPosts && items.length === 0) {
+    return <div className="ym-ref-empty-state"><span>جارٍ تحميل المنشورات…</span></div>;
+  }
+
+  return (
+    <>
+      {items.map((post) => {
+        const imageSrc = post.image ? resolveMediaUrl(post.image) : '';
+        return (
+          <article key={post.id} className="ym-ref-post-card">
+            <div className="ym-ref-post-head">
+              <div className="ym-ref-post-author">
+                <img src={avatar} alt={username} />
+                <div>
+                  <strong>
+                    <span>{displayName || username || 'مستخدم'}</span>
+                    {verified ? <VerifiedBadge size={15} /> : null}
+                  </strong>
+                  <small>@{username || 'user'} · {post.time}</small>
+                </div>
+              </div>
+              <button type="button" className="ym-ref-post-menu" aria-label="خيارات المنشور">
+                <Icon name="menu" size={18} color="rgba(230,233,255,0.8)" />
+              </button>
+            </div>
+
+            {post.content?.length ? (
+              <div className="ym-ref-post-copy">
+                {post.content.map((line, index) => (
+                  <p key={`${post.id}-line-${index}`}>{line}</p>
+                ))}
+              </div>
+            ) : null}
+
+            {imageSrc ? (
+              <div className="ym-ref-post-image-wrap">
+                <img src={imageSrc} alt="صورة المنشور" className="ym-ref-post-image" loading="lazy" />
+              </div>
+            ) : null}
+
+            <PostFooter stats={post.stats} />
+          </article>
+        );
+      })}
+
+      {!loadingPosts && postsError ? (
+        <p style={{ color: 'rgba(255, 155, 155, 0.92)', fontSize: 12.5, marginTop: 10 }}>
+          تعذر تحميل بعض المنشورات الحقيقية، فتم عرض نسخة احتياطية مؤقتة.
+        </p>
+      ) : null}
+    </>
   );
 }
 

@@ -349,7 +349,7 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v87.19-POSTS-VIDEO-IMAGE-RENDER-FIX';
+const BUILD_ID = 'yamshat-v87.20-PROFILE-REPORT-SCROLL-FIX';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

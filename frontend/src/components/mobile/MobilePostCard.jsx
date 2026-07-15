@@ -513,13 +513,20 @@ function MobilePostCard({
         /* =========================
            صورة المنشور
            ========================= */
+        /* ✅ v87.21 — إصلاح الصورة المكسورة (الإطار الذي كان يقطع الصورة):
+           كان ym-post-banner-new يفرض aspect-ratio: 1 / 1 قسرياً، مما
+           يقطع الصورة لتكون مربعة (يقص الأجزاء الجانبية أو العلوية).
+           الآن: نستخدم aspect-ratio:auto ونعتمد على object-fit:contain
+           لعرض الصورة كاملة دون قص، ونحافظ على max-height حتى لا
+           تملأ الشاشة لو كانت طويلة جداً. */
         .ym-post-banner-new {
           border-radius: 12px;
           overflow: hidden;
           margin-bottom: var(--ym-gap);
           position: relative;
           background: #000;
-          aspect-ratio: 1 / 1;
+          aspect-ratio: auto;
+          max-height: min(78dvh, 720px);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -535,8 +542,9 @@ function MobilePostCard({
         }
         .banner-image-container img {
           width: 100%;
-          height: 100%;
-          object-fit: cover;
+          height: auto;
+          max-height: min(78dvh, 720px);
+          object-fit: contain;
           display: block;
           opacity: 0;
           transition: opacity 220ms ease-out;
@@ -547,8 +555,9 @@ function MobilePostCard({
         /* ✅ v87.19: فيديو حقيقي داخل البطاقة */
         .banner-video-container video {
           width: 100%;
-          height: 100%;
-          object-fit: cover;
+          height: auto;
+          max-height: min(78dvh, 720px);
+          object-fit: contain;
           display: block;
           background: #000;
           /* controls native */
@@ -712,20 +721,16 @@ function MobilePostCard({
           }
         }
 
-        /* دعم المتصفحات التي لا تدعم aspect-ratio */
-        @supports not (aspect-ratio: 1 / 1) {
+        /* دعم المتصفحات القديمة: نحافظ على نسبة الصورة الأصلية */
+        @supports not (aspect-ratio: auto) {
           .ym-post-banner-new {
-            height: 0;
-            padding-bottom: 100%;
+            height: auto;
             position: relative;
           }
           .banner-image-container,
           .banner-logo-container {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
+            position: relative;
+            width: 100%;
           }
         }
       `}</style>

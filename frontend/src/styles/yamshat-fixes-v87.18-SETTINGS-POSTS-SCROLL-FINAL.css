@@ -46,44 +46,30 @@
    ───────────────────────────────────────────────────────────── */
 html body .settings-wrap,
 html body div.settings-wrap[dir="rtl"] {
-  /* ⭐ scroll container داخلي بأبعاد ثابتة — سرّ السلاسة */
-  height: 100vh !important;
-  height: 100dvh !important;
-  max-height: 100dvh !important;
-  min-height: 100dvh !important;
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
-
-  /* momentum scroll حقيقي (iOS) */
+  /* v87.20: لا نجعل settings-wrap scroll container داخلياً.
+     نترك .page-content في MainLayout هو الحاوية الوحيدة للتمرير
+     لأن الشجرة الفعلية تحتوي page-shell-glow بينهما، ووجود scroll
+     داخلي هنا كان يسبب إحساس "التغليف" ويكسر السحب على بعض الجوالات. */
+  min-height: 100% !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
   -webkit-overflow-scrolling: touch !important;
-
-  /* اللمس: pan-y فقط (عمودي نقي) */
   touch-action: pan-y !important;
   -ms-touch-action: pan-y !important;
-
-  /* لا انعكاس bounce يبتلع التمرير */
   overscroll-behavior-y: contain !important;
   overscroll-behavior-x: none !important;
-
-  /* لا transform/filter يكسر momentum على iOS */
   transform: none !important;
   -webkit-transform: none !important;
   filter: none !important;
   -webkit-filter: none !important;
   perspective: none !important;
-
-  /* استقبال أحداث اللمس بالكامل */
   pointer-events: auto !important;
-
-  /* كسر contain حتى لا يخنق الأبناء */
   contain: none !important;
   content-visibility: visible !important;
   will-change: auto !important;
   overflow-anchor: none !important;
-
-  /* سكرول ناعم */
   scroll-behavior: smooth;
-
   box-sizing: border-box;
 }
 
@@ -108,35 +94,26 @@ html body div.settings-wrap[dir="rtl"] {
    ───────────────────────────────────────────────────────────── */
 html body .settings-shell,
 html body div.settings-shell[dir="rtl"] {
-  height: 100vh !important;
-  height: 100dvh !important;
-  max-height: 100dvh !important;
-  min-height: 100dvh !important;
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
-
+  min-height: 100% !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
   -webkit-overflow-scrolling: touch !important;
-
   touch-action: pan-y !important;
   -ms-touch-action: pan-y !important;
-
   overscroll-behavior-y: contain !important;
   overscroll-behavior-x: none !important;
-
   transform: none !important;
   -webkit-transform: none !important;
   filter: none !important;
   -webkit-filter: none !important;
   perspective: none !important;
-
   pointer-events: auto !important;
   contain: none !important;
   content-visibility: visible !important;
   will-change: auto !important;
   overflow-anchor: none !important;
-
   scroll-behavior: smooth;
-
   box-sizing: border-box;
 }
 
@@ -311,7 +288,10 @@ html body .settings-shell *:not(input):not(select):not(button):not(a):not(textar
     padding: 0 !important;
     contain: none !important;
     content-visibility: visible !important;
-    overflow: hidden !important; /* الحاوية الداخلية تدير التمرير */
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
     height: 100% !important;
   }
 }
@@ -324,7 +304,7 @@ html body .settings-shell *:not(input):not(select):not(button):not(a):not(textar
        post-card) لا تبتلع pan-y. المستخدم يذكر تحديداً أن
        "البستات" لا تستجيب — نعالج ذلك هنا صراحة.
    ───────────────────────────────────────────────────────────── */
-html body .yam-home-mobile-page {
+html body .yam-home-mobile-page:not(.ympc-page) {
   height: 100vh !important;
   height: 100dvh !important;
   overflow-y: auto !important;
@@ -344,12 +324,12 @@ html body .yam-home-mobile-page {
 }
 
 /* البطاقات (posts cards) داخل الصفحة الرئيسية: pan-y ولا تبتلع الأم */
-html body .yam-home-mobile-page .ym-feed,
-html body .yam-home-mobile-page .mobile-post-card,
-html body .yam-home-mobile-page .post-card,
-html body .yam-home-mobile-page .post-item,
-html body .yam-home-mobile-page article,
-html body .yam-home-mobile-page section {
+html body .yam-home-mobile-page:not(.ympc-page) .ym-feed,
+html body .yam-home-mobile-page:not(.ympc-page) .mobile-post-card,
+html body .yam-home-mobile-page:not(.ympc-page) .post-card,
+html body .yam-home-mobile-page:not(.ympc-page) .post-item,
+html body .yam-home-mobile-page:not(.ympc-page) article,
+html body .yam-home-mobile-page:not(.ympc-page) section {
   touch-action: pan-y !important;
   -ms-touch-action: pan-y !important;
   pointer-events: auto !important;
@@ -363,11 +343,11 @@ html body .yam-home-mobile-page section {
 }
 
 /* عناصر البطاقات التفاعلية: manipulation */
-html body .yam-home-mobile-page .mobile-post-card button,
-html body .yam-home-mobile-page .mobile-post-card a,
-html body .yam-home-mobile-page .post-card button,
-html body .yam-home-mobile-page .post-card a,
-html body .yam-home-mobile-page [role="button"] {
+html body .yam-home-mobile-page:not(.ympc-page) .mobile-post-card button,
+html body .yam-home-mobile-page:not(.ympc-page) .mobile-post-card a,
+html body .yam-home-mobile-page:not(.ympc-page) .post-card button,
+html body .yam-home-mobile-page:not(.ympc-page) .post-card a,
+html body .yam-home-mobile-page:not(.ympc-page) [role="button"] {
   touch-action: manipulation !important;
   pointer-events: auto !important;
 }
@@ -379,7 +359,8 @@ html body .yam-home-mobile-page [role="button"] {
 @supports (-webkit-touch-callout: none) {
   html body .settings-wrap,
   html body .settings-shell,
-  html body .yam-home-mobile-page {
+  html body .yam-home-mobile-page:not(.ympc-page),
+  html body .ympc-page {
     -webkit-overflow-scrolling: touch !important;
     transform: translate3d(0, 0, 0);
   }
@@ -392,8 +373,35 @@ html body .yam-home-mobile-page [role="button"] {
 @media (prefers-reduced-motion: reduce) {
   html body .settings-wrap,
   html body .settings-shell,
-  html body .yam-home-mobile-page {
+  html body .yam-home-mobile-page:not(.ympc-page),
+  html body .ympc-page {
     scroll-behavior: auto !important;
+  }
+}
+
+/* v87.20 — منشور جديد: تأكيد صريح أن .page-content هي scroll container
+   الوحيدة، و .ympc-page غلاف طبيعي لا يلتهم السحب العمودي. */
+@media (max-width: 980px) {
+  html body .app-shell .page-content[data-page="post-composer"],
+  html body .app-shell.yamshat-unified .page-content[data-page="post-composer"],
+  html body .app-shell .page-content:has(.ympc-page),
+  html body .app-shell.yamshat-unified .page-content:has(.ympc-page) {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
+    padding: 0 !important;
+  }
+
+  html body .ympc-page,
+  html body .ympc-page .ympc-main,
+  html body .ympc-page .ympc-wrap {
+    min-height: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    touch-action: pan-y !important;
+    pointer-events: auto !important;
   }
 }
 

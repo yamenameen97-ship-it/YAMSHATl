@@ -204,10 +204,11 @@ export default function ReportModal({
           width: '100%', maxWidth: 520,
           background: 'linear-gradient(180deg, #1e1b3a 0%, #14122a 100%)',
           borderTopRightRadius: 24, borderTopLeftRadius: 24,
-          padding: '20px 18px 26px', color: '#fff',
-          maxHeight: '90vh', overflowY: 'auto',
+          padding: '20px 18px 0', color: '#fff',
+          maxHeight: 'min(90dvh, calc(100dvh - env(safe-area-inset-top, 0px) - 8px))', overflowY: 'auto',
           boxShadow: '0 -8px 32px rgba(124,58,237,0.35)',
           border: '1px solid rgba(124,58,237,0.3)',
+          paddingBottom: 'max(12px, env(safe-area-inset-bottom, 0px))',
         }}
       >
         {/* Handle */}
@@ -297,7 +298,21 @@ export default function ReportModal({
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+            <div
+              style={{
+                display: 'flex',
+                gap: 10,
+                marginTop: 18,
+                position: 'sticky',
+                bottom: 0,
+                padding: '14px 18px calc(14px + env(safe-area-inset-bottom, 0px))',
+                marginInline: '-18px',
+                marginBottom: '-12px',
+                background: 'linear-gradient(180deg, rgba(20,18,42,0.08) 0%, rgba(20,18,42,0.92) 24%, rgba(20,18,42,1) 100%)',
+                borderTop: '1px solid rgba(255,255,255,0.08)',
+                zIndex: 2,
+              }}
+            >
               <button
                 ref={closeBtnRef}
                 onClick={onClose}
@@ -316,6 +331,7 @@ export default function ReportModal({
               <button
                 onClick={submit}
                 disabled={submitting || !reason}
+                aria-label="إرسال البلاغ"
                 style={{
                   flex: 1.4, padding: '12px 16px', borderRadius: 12,
                   background: !reason
@@ -326,6 +342,7 @@ export default function ReportModal({
                   cursor: !reason ? 'not-allowed' : 'pointer',
                   fontFamily: 'inherit',
                   opacity: submitting ? 0.6 : 1,
+                  boxShadow: '0 10px 24px rgba(124,58,237,0.28)',
                 }}
               >
                 {submitting ? 'جارٍ الإرسال...' : 'إرسال البلاغ'}

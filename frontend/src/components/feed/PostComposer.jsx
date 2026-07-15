@@ -366,6 +366,32 @@ export default function PostComposer() {
           <span className="composer-action-label">رفع وسائط</span>
         </button>
 
+        {/* ✅ v87.21: زر "رفع الفيديو" منفصل وصريح مطلوب من المستخدم.
+            يفتح picker نوعه video/* فقط. عند الاختيار يُرفع كفيديو
+            (is_draft:false, media_type:'video', has_video:true).
+            هذا يضمن أن الفيديو يُنشر كمنشور نهائي لا كمسودة. */}
+        <button
+          type="button"
+          className="composer-action-btn composer-action-btn--video"
+          onClick={() => {
+            if (fileInputRef.current) {
+              fileInputRef.current.accept = 'video/*';
+              fileInputRef.current.value = '';
+              fileInputRef.current.click();
+            }
+          }}
+          title="رفع فيديو"
+          aria-label="رفع فيديو"
+        >
+          <span className="composer-action-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="6" width="14" height="12" rx="2" />
+              <path d="M16 10l6-3v10l-6-3z" />
+            </svg>
+          </span>
+          <span className="composer-action-label">رفع الفيديو</span>
+        </button>
+
         <button
           type="button"
           className="composer-action-btn composer-action-btn--emoji"

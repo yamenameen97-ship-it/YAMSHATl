@@ -161,8 +161,8 @@
         "src/components/chat/MessageContextPopup.jsx",
         "src/components/settings/FontSizeSettings.jsx",
         "src/components/settings/TranslationSettings.jsx",
-        "src/components/yamshat/YamshatIcon.jsx",
         "src/components/chat/PressToRecordMic.jsx",
-        "src/components/stories/UserPickerModal.jsx"
+        "src/components/stories/UserPickerModal.jsx",
+        "src/components/yamshat/YamshatIcon.jsx"
     ]
 }

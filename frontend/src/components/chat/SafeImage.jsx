@@ -19,7 +19,7 @@ export default function SafeImage({
   alt = 'صورة',
   onOpen,
   onLongPress,
-  maxHeight = 340,
+  maxHeight = 380,
   className = '',
 }) {
   const sourceCandidates = [src, fallbackSrc].filter(Boolean);
@@ -82,9 +82,9 @@ export default function SafeImage({
         /* ✅ v88.0: حاوية تعرض الصورة كاملة بدون قطع — مثل واتساب */
         .yam-safe-image {
           position: relative;
-          display: block;
-          width: auto;
-          max-width: min(280px, 68vw);
+          display: inline-flex;
+          width: fit-content;
+          max-width: min(320px, 74vw);
           min-width: 0;
           min-height: 0;
           height: auto;
@@ -122,7 +122,7 @@ export default function SafeImage({
         /* ✅ FIX: object-fit: contain بدلاً من cover لعرض الصورة كاملة */
         .yam-safe-image img {
           display: block;
-          width: 100%;
+          width: auto;
           max-width: 100%;
           height: auto;
           max-height: ${maxHeight}px;

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import { addComment, getComments } from '../api/posts.js';
@@ -73,6 +73,8 @@ function timeAgoAr(iso) {
 }
 
 function normalizeReel(item = {}) {
+  const rawVideoUrl = item.media_url || item.video_url || item.url || item.file_url || item.media || '';
+  const rawPosterUrl = item.thumbnail_url || item.poster || item.image_url || item.preview_url || item.thumbnail || '';
   // ✅ v59.13.34 FIX: تصفير كل العدادات والقيم التجريبية fallback
   // المشكلة السابقة: عند فشل جلب البيانات (catch) أو غياب الحقول، كانت
   // تُعرض قيم وهمية (1200/128/356 + اسم/وصف/هاشتاجات افتراضية) تُربك
@@ -88,8 +90,10 @@ function normalizeReel(item = {}) {
     created_at: item.created_at || item.createdAt || item.published_at || item.posted_at || item.created || item.timestamp || null,
     content: item.content || item.caption || item.description || '',
     hashtags: Array.isArray(item.hashtags) ? item.hashtags : [],
-    media_url: resolveMediaUrl(item.media_url || item.video_url || ''),
-    poster: resolveMediaUrl(item.thumbnail_url || item.poster || item.image_url || ''),
+    media_url: resolveMediaUrl(rawVideoUrl),
+    video_url: resolveMediaUrl(rawVideoUrl),
+    poster: resolveMediaUrl(rawPosterUrl),
+    thumbnail_url: resolveMediaUrl(rawPosterUrl),
     likes_count: Number(item.likes_count ?? 0) || 0,
     comments_count: Number(item.comments_count ?? 0) || 0,
     share_count: Number(item.share_count ?? item.shares_count ?? 0) || 0,
@@ -123,6 +127,7 @@ function mergeReelLists(primary = [], secondary = []) {
 
 export default function Reels() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { push: pushToast } = useToast() || {};
 
   const [reels, setReels] = useState([]);
@@ -162,7 +167,17 @@ export default function Reels() {
         } catch {
           ({ data } = await API.get('/reels', { params: { limit: 40, offset: 0 } }));
         }
-        const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+        const items = Array.isArray(data?.items)
+          ? data.items
+          : Array.isArray(data?.reels)
+            ? data.reels
+            : Array.isArray(data?.results)
+              ? data.results
+              : Array.isArray(data?.data)
+                ? data.data
+                : Array.isArray(data)
+                  ? data
+                  : [];
         if (cancelled) return;
         const merged = mergeReelLists(items, cachedItems);
         setReels(merged);
@@ -186,6 +201,19 @@ export default function Reels() {
   }, []);
 
   const currentReel = reels[activeIndex] || null;
+
+  useEffect(() => {
+    const highlightReelId = location?.state?.highlightReelId;
+    const container = containerRef.current;
+    if (!highlightReelId || !container || !Array.isArray(reels) || reels.length === 0) return;
+    const targetIndex = reels.findIndex((item) => String(item?.id) === String(highlightReelId));
+    if (targetIndex < 0) return;
+    setActiveIndex(targetIndex);
+    const scrollTop = targetIndex * container.clientHeight;
+    if (Number.isFinite(scrollTop)) {
+      container.scrollTo({ top: scrollTop, behavior: 'auto' });
+    }
+  }, [location?.state, reels]);
 
   // Snap scroll: detect active reel
   // ✅ v59.13.5 FIX #5: throttle عبر rAF + حماية من clientHeight===0 → NaN
@@ -239,15 +267,29 @@ export default function Reels() {
       if (!v) return;
       if (i === activeIndex) {
         v.muted = muted;
+        v.defaultMuted = muted;
         v.playsInline = true;
+        v.setAttribute('playsinline', 'true');
+        v.setAttribute('webkit-playsinline', 'true');
+        if (!v.src && v.dataset.src) {
+          v.src = v.dataset.src;
+        }
+        if (v.readyState < 2) {
+          try { v.load?.(); } catch {}
+        }
         if (v.paused) {
           const tryPlay = () => v.play?.().catch(() => {});
           const p = tryPlay();
           if (p && typeof p.then === 'function') {
             p.catch(() => {
-              // في حالة الفشل، محاولة أخرى بعد canplay
-              const once = () => { tryPlay(); v.removeEventListener('canplay', once); };
+              // في حالة الفشل، محاولة أخرى بعد canplay / loadeddata
+              const once = () => {
+                tryPlay();
+                v.removeEventListener('canplay', once);
+                v.removeEventListener('loadeddata', once);
+              };
               v.addEventListener('canplay', once, { once: true });
+              v.addEventListener('loadeddata', once, { once: true });
             });
           }
         }
@@ -419,6 +461,7 @@ export default function Reels() {
                     ref={(el) => { videoRefs.current[i] = el; }}
                     className="ym-reels-video"
                     src={reel.media_url}
+                    data-src={reel.media_url}
                     poster={reel.poster || undefined}
                     playsInline
                     webkit-playsinline="true"
@@ -435,12 +478,21 @@ export default function Reels() {
                       // ضمان بدء التشغيل للريل النشط
                       if (i === activeIndex && e.currentTarget.paused) {
                         e.currentTarget.muted = muted;
+                        e.currentTarget.defaultMuted = muted;
+                        e.currentTarget.play?.().catch(() => {});
+                      }
+                    }}
+                    onLoadedData={(e) => {
+                      if (i === activeIndex && e.currentTarget.paused) {
+                        e.currentTarget.muted = muted;
+                        e.currentTarget.defaultMuted = muted;
                         e.currentTarget.play?.().catch(() => {});
                       }
                     }}
                     onCanPlay={(e) => {
                       if (i === activeIndex && e.currentTarget.paused) {
                         e.currentTarget.muted = muted;
+                        e.currentTarget.defaultMuted = muted;
                         e.currentTarget.play?.().catch(() => {});
                       }
                     }}

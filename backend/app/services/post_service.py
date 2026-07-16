@@ -79,11 +79,29 @@ def _normalize_media(payload) -> list[str]:
         items = payload
     else:
         items = []
+
     clean = []
     for item in items:
-        normalized = normalize_media_url(item)
-        if normalized and normalized not in clean:
-            clean.append(str(normalized)[:1500])
+        candidates = []
+        if isinstance(item, dict):
+            candidates.extend([
+                item.get('media_url'),
+                item.get('mediaUrl'),
+                item.get('url'),
+                item.get('file_url'),
+                item.get('cdn_url'),
+                item.get('thumbnail_url'),
+                item.get('thumbnailUrl'),
+                item.get('preview_url'),
+                item.get('previewUrl'),
+            ])
+        else:
+            candidates.append(item)
+
+        for candidate in candidates:
+            normalized = normalize_media_url(candidate)
+            if normalized and normalized not in clean:
+                clean.append(str(normalized)[:1500])
     return clean[:8]
 
 
@@ -211,18 +229,30 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
     }
 
 
-def _prepare_post_fields(content: str, content_html: str | None, media_urls, poll, hashtags=None, mentions=None) -> dict:
+def _prepare_post_fields(content: str, content_html: str | None, media_urls, poll, hashtags=None, mentions=None, image_url: str | None = None) -> dict:
     clean_content = sanitize_text(content or '', max_length=5000)
     clean_html = str(content_html or '').strip()[:12000] or None
     clean_media = _normalize_media(media_urls)
+    cover_image = normalize_media_url(image_url) if image_url else None
+
+    if not cover_image:
+        for item in clean_media:
+            if not _looks_like_video_url(item):
+                cover_image = item
+                break
+
+    if not clean_media and cover_image:
+        clean_media = [cover_image]
+
+    primary_media = clean_media[0] if clean_media else cover_image
     clean_poll = _normalize_poll(poll)
     detected_hashtags = hashtags if isinstance(hashtags, list) else _extract_hashtags(clean_content)
     detected_mentions = mentions if isinstance(mentions, list) else _extract_mentions(clean_content)
     return {
         'content': clean_content,
         'content_html': clean_html,
-        'image_url': clean_media[0] if clean_media else None,
-        'media': clean_media[0] if clean_media else None,
+        'image_url': cover_image or primary_media,
+        'media': primary_media,
         'media_json': _dumps(clean_media),
         'hashtags_json': _dumps(detected_hashtags),
         'mentions_json': _dumps(detected_mentions),
@@ -244,7 +274,7 @@ def create_post(
     is_pinned: bool = False,
     allow_comments: bool = True,
 ) -> dict:
-    prepared = _prepare_post_fields(content, content_html, media_urls or ([image_url] if image_url else []), poll)
+    prepared = _prepare_post_fields(content, content_html, media_urls or ([image_url] if image_url else []), poll, image_url=image_url)
     if not prepared['content'] and not prepared['image_url'] and not prepared['media'] and prepared['poll_options_json'] is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='content, media, or poll is required')
     now = utcnow_naive()
@@ -383,6 +413,7 @@ def update_post(
     content_html: str | None = None,
     media_urls=None,
     poll=None,
+    image_url: str | None = None,
     scheduled_at: datetime | None = None,
     is_draft: bool | None = None,
     is_pinned: bool | None = None,
@@ -409,6 +440,7 @@ def update_post(
         content_html if content_html is not None else post.content_html,
         media_urls if media_urls is not None else _loads_list(post.media_json),
         poll if poll is not None else _loads_list(post.poll_options_json),
+        image_url=image_url if image_url is not None else post.image_url,
     )
     for key, value in prepared.items():
         setattr(post, key, value)

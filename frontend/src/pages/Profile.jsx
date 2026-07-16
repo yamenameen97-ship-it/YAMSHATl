@@ -466,7 +466,12 @@ export default function Profile() {
   const postHeadAvatar = avatarSrc || '/reference-profile/avatar.png';
   return (
     <MainLayout hideNav>
-      <section className="ym-ref-profile-screen" dir="rtl">
+      <section
+        className="ym-ref-profile-screen ym-profile-page profile-page"
+        data-page="profile"
+        data-placeholder={loading ? 'true' : 'false'}
+        dir="rtl"
+      >
         <div className="ym-ref-profile-shell">
           {/* ✅ v87.16 FIX: تم حذف شريط الساعة + البطارية + الواي فاي + البث نهائياً.
               كان مرسوماً رسماً لكن لا داعي له — الصفحة الفعلية تبدأ من الهيدر. */}
@@ -589,7 +594,7 @@ export default function Profile() {
              السبب: overflow:visible لا يسمح بالتمرير — نحتاج overflow-y:auto
              على العنصر نفسه حتى يتمكن من السحب على الجوال. */
           .ym-ref-profile-screen {
-            min-height: 100dvh;
+            min-height: 100%;
             height: auto;
             background:
               radial-gradient(circle at 50% 0%, rgba(123, 54, 255, 0.16), transparent 32%),
@@ -600,23 +605,26 @@ export default function Profile() {
             display: flex;
             justify-content: center;
             position: relative;
-            overflow-y: auto;
-            overflow-x: hidden;
-            touch-action: pan-y pinch-zoom;
+            overflow: visible;
+            touch-action: pan-y;
             -webkit-overflow-scrolling: touch;
             overscroll-behavior-y: contain;
+            contain: none;
+            content-visibility: visible;
           }
 
           .ym-ref-profile-shell {
             width: min(100%, 500px);
-            min-height: auto;
+            min-height: 100%;
             height: auto;
             padding: 10px 18px calc(160px + env(safe-area-inset-bottom, 0px));
             box-sizing: border-box;
             position: relative;
             background: linear-gradient(180deg, rgba(7,7,10,0.96), rgba(3,3,5,1));
             overflow: visible;
-            touch-action: pan-y pinch-zoom;
+            touch-action: pan-y;
+            contain: none;
+            content-visibility: visible;
           }
 
           .ym-ref-statusbar,
@@ -1078,13 +1086,15 @@ export default function Profile() {
             min-height: 22px;
           }
 
-          /* ✅ v87.24: تأكيد التمرير على كل الشاشات */
+          /* ✅ v88: التمرير الحقيقي أصبح على .page-content في MainLayout.
+             لذلك نحافظ هنا على overflow:visible حتى لا يتولد nested scroll
+             يجمّد السحب على بعض متصفحات الجوال. */
           @media (max-width: 768px) {
             .ym-ref-profile-screen {
-              overflow-y: auto;
+              min-height: 100%;
+              overflow: visible;
+              touch-action: pan-y;
               -webkit-overflow-scrolling: touch;
-              touch-action: pan-y pinch-zoom;
-              min-height: 100dvh;
             }
           }
 

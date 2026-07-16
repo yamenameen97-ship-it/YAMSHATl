@@ -124,11 +124,15 @@ def _pick_primary_upload_dir():
     return (_PROJECT_ROOT / "uploads")
 
 _PRIMARY_UPLOAD_DIR = _pick_primary_upload_dir()
-try:
-    app.mount("/uploads", StaticFiles(directory=str(_PRIMARY_UPLOAD_DIR), check_dir=False), name="uploads")
-    logger.info(f"[uploads] ✅ mounted /uploads -> {_PRIMARY_UPLOAD_DIR}")
-except Exception as _exc:  # noqa: BLE001
-    logger.error(f"[uploads] failed to mount StaticFiles: {_exc}")
+_USE_STATIC_UPLOAD_MOUNT = os.getenv('YAMSHAT_USE_STATIC_UPLOAD_MOUNT', '0') == '1'
+if _USE_STATIC_UPLOAD_MOUNT:
+    try:
+        app.mount("/uploads", StaticFiles(directory=str(_PRIMARY_UPLOAD_DIR), check_dir=False), name="uploads")
+        logger.info(f"[uploads] ✅ mounted /uploads -> {_PRIMARY_UPLOAD_DIR}")
+    except Exception as _exc:  # noqa: BLE001
+        logger.error(f"[uploads] failed to mount StaticFiles: {_exc}")
+else:
+    logger.info(f"[uploads] using FileResponse fallback router for /uploads (primary={_PRIMARY_UPLOAD_DIR})")
 
 # Fallback handler: يجرب كل المجلدات + يخدم شعار افتراضي بدل 404
 _DEFAULT_LOGO_CANDIDATES = [
@@ -141,7 +145,7 @@ _DEFAULT_LOGO_CANDIDATES = [
 async def uploads_fallback(path: str):
     """
     fallback لأي ملف تحت /uploads:
-    1. تجربة مجلدي uploads (project-root + backend).
+    1. تجربة كل مجلدات الرفع المعروفة (persistent + project-root + backend).
     2. إذا كان المطلوب logo192/icon ، نعيد شعار افتراضي.
     3. خلاف ذلك: PNG شفاف 1×1 بدل 404 (يوقف فيضان خطأ الكونسول).
     """

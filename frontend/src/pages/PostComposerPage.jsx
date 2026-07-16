@@ -75,23 +75,22 @@ export default function PostComposerPage() {
           color: var(--text, #f4f4f5);
           direction: rtl;
           font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
-          /* ✅ v87.21 — إصلاح السحب الكامل لأعلى ولأسفل:
-             نترك .page-content في MainLayout حاوية التمرير، ونضمن
-             أن لا توجد قاعدة CSS تكسر propagate الـtouchmove.
-             نقاط الإصلاح:
-             • display:flex + flex-direction:column prevent نقل الـtouch إلى خارج.
-             • إزالة أي max-height/overflow:hidden على .ympc-page أو .ympc-wrap.
-             • pointer-events:auto على كل العناصر الفرعية حتى لا توقف السحب.
-             • touch-action: pan-y صريح لمنع المتصفح من اختطاف اللمس للـpinch.
-          */
+          /* ✅ v88 — إصلاح جذري: الصفحة ليست داخل MainLayout، لذلك
+             نمنحها حاوية تمرير مستقلة كاملة الشاشة بدلاً من overflow:visible.
+             هذا يمنع تجمّد السحب على WebView/Chrome Mobile عندما يكون body
+             أو route shell مقفول التمرير. */
+          position: fixed;
+          inset: 0;
           display: flex;
           flex-direction: column;
-          min-height: 100%;
-          height: auto;
-          max-height: none;
-          overflow: visible;
+          min-height: 100dvh;
+          height: 100dvh;
+          max-height: 100dvh;
+          overflow-y: auto;
+          overflow-x: hidden;
           -webkit-overflow-scrolling: touch;
-          overscroll-behavior: contain;
+          overscroll-behavior-y: contain;
+          overscroll-behavior-x: none;
           touch-action: pan-y;
           -ms-touch-action: pan-y;
           transform: none;
@@ -108,10 +107,22 @@ export default function PostComposerPage() {
           overflow: visible !important;
           max-height: none !important;
           height: auto !important;
+          min-height: 0 !important;
           pointer-events: auto !important;
           touch-action: pan-y !important;
+          box-sizing: border-box;
         }
-        .ympc-wrap * { touch-action: pan-y; pointer-events: auto; }
+        .ympc-wrap {
+          width: 100%;
+          padding-bottom: calc(36px + env(safe-area-inset-bottom, 0px));
+        }
+        .ympc-wrap * { pointer-events: auto; }
+        .ympc-wrap button,
+        .ympc-wrap a,
+        .ympc-wrap label,
+        .ympc-wrap [role="button"] {
+          touch-action: manipulation;
+        }
         /* حقل النص يقبل pan-y فقط بدون سرقة الـtouch */
         .composer-textarea {
           touch-action: pan-y !important;
@@ -140,19 +151,21 @@ export default function PostComposerPage() {
         @supports (-webkit-touch-callout: none) {
           .ympc-page {
             -webkit-overflow-scrolling: touch !important;
-            overflow: visible !important;
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
             touch-action: pan-y !important;
-            height: auto !important;
-            max-height: none !important;
+            height: 100dvh !important;
+            max-height: 100dvh !important;
           }
         }
         /* حماية قصوى ضد أي CSS قديم يكسر التمرير */
         .app-shell .page-content .ympc-page,
         .app-shell.yamshat-unified .page-content .ympc-page {
-          overflow: visible !important;
-          height: auto !important;
-          min-height: 100% !important;
-          max-height: none !important;
+          overflow-y: auto !important;
+          overflow-x: hidden !important;
+          height: 100dvh !important;
+          min-height: 100dvh !important;
+          max-height: 100dvh !important;
           touch-action: pan-y !important;
           -webkit-overflow-scrolling: touch !important;
           transform: none !important;
@@ -204,8 +217,9 @@ export default function PostComposerPage() {
         .ympc-spacer { width: 40px; height: 40px; }
 
         .ympc-main {
+          flex: 1 1 auto;
+          width: min(100%, 720px);
           padding: 14px 12px 24px;
-          max-width: 720px;
           margin: 0 auto;
         }
         .ympc-wrap {

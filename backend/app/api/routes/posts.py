@@ -51,6 +51,65 @@ def _parse_datetime(value):
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid datetime value') from exc
 
+def _extract_media_urls(payload_value) -> list[str]:
+    if isinstance(payload_value, str):
+        return [payload_value]
+    if not isinstance(payload_value, list):
+        return []
+
+    resolved: list[str] = []
+    for item in payload_value:
+        candidates = []
+        if isinstance(item, dict):
+            candidates.extend([
+                item.get('media_url'),
+                item.get('mediaUrl'),
+                item.get('url'),
+                item.get('file_url'),
+                item.get('cdn_url'),
+                item.get('thumbnail_url'),
+                item.get('thumbnailUrl'),
+                item.get('preview_url'),
+                item.get('previewUrl'),
+            ])
+        else:
+            candidates.append(item)
+        for candidate in candidates:
+            candidate = str(candidate or '').strip()
+            if candidate and candidate not in resolved:
+                resolved.append(candidate)
+    return resolved
+
+
+def _coerce_post_media(payload: dict) -> tuple[str | None, list[str]]:
+    primary_media = str(
+        payload.get('media_url')
+        or payload.get('video_url')
+        or payload.get('media')
+        or payload.get('image_url')
+        or ''
+    ).strip() or None
+    cover_image = str(
+        payload.get('thumbnail_url')
+        or payload.get('preview_url')
+        or payload.get('image_url')
+        or ''
+    ).strip() or None
+
+    media_urls = _extract_media_urls(payload.get('media_urls'))
+    if not media_urls:
+        media_urls = _extract_media_urls(payload.get('attachments'))
+    if not media_urls and primary_media:
+        media_urls = [primary_media]
+    elif primary_media and primary_media not in media_urls:
+        media_urls = [primary_media, *media_urls]
+
+    if cover_image and cover_image not in media_urls and (not primary_media or cover_image != primary_media):
+        media_urls.append(cover_image)
+
+    return cover_image or primary_media, media_urls
+
+
 
 @router.post('', status_code=status.HTTP_201_CREATED)
 @router.post('/', status_code=status.HTTP_201_CREATED)
@@ -62,8 +121,7 @@ def create(payload: dict = Body(...), db: Session = Depends(get_db), current_use
     if content and not bool(moderation_result.get('is_safe', True)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Content failed AI moderation.')
         
-    image_url = payload.get('image_url') or payload.get('media')
-    media_urls = payload.get('media_urls') or payload.get('media') or payload.get('attachments') or ([] if not image_url else [image_url])
+    image_url, media_urls = _coerce_post_media(payload)
     
     scheduled_at = _parse_datetime(payload.get('scheduled_at'))
 
@@ -211,8 +269,9 @@ def patch_post(post_id: int, payload: dict = Body(...), db: Session = Depends(ge
         user_id=current_user.id,
         content=payload.get('content'),
         content_html=payload.get('content_html'),
-        media_urls=payload.get('media_urls') if 'media_urls' in payload else payload.get('attachments'),
+        media_urls=_coerce_post_media(payload)[1] if ('media_urls' in payload or 'attachments' in payload or 'media_url' in payload or 'video_url' in payload or 'image_url' in payload or 'thumbnail_url' in payload or 'preview_url' in payload or 'media' in payload) else None,
         poll=payload.get('poll') if 'poll' in payload else None,
+        image_url=(str(payload.get('thumbnail_url') or payload.get('preview_url') or payload.get('image_url') or '').strip() or None) if ('thumbnail_url' in payload or 'preview_url' in payload or 'image_url' in payload) else None,
         scheduled_at=_parse_datetime(payload.get('scheduled_at')) if 'scheduled_at' in payload else None,
         is_draft=payload.get('is_draft') if 'is_draft' in payload else None,
         is_pinned=payload.get('is_pinned') if 'is_pinned' in payload else None,

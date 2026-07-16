@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import SafeImage from './SafeImage.jsx';
 
 /**
  * ChatWindow
@@ -116,12 +117,11 @@ function ChatWindow({
 
           {message.type === 'image' && message.media_url && (
             <div className="smart-media-preview">
-              <img
+              <SafeImage
                 src={message.media_url}
                 alt="preview"
-                loading="lazy"
-                decoding="async"
-                onClick={() => onOpenMediaViewer?.(message)}
+                maxHeight={380}
+                onOpen={() => onOpenMediaViewer?.(message)}
               />
             </div>
           )}

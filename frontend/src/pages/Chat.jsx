@@ -252,6 +252,8 @@ export default function Chat() {
   const [flyingHearts, setFlyingHearts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [showDetailsDrawer, setShowDetailsDrawer] = useState(false);
+  const [showChatSettingsPanel, setShowChatSettingsPanel] = useState(false);
+  const [settingsPanelData, setSettingsPanelData] = useState({ loading: true, mediaItems: [], sharedLinks: [], fileItems: [], blockStatus: { can_chat: true, blocked_by_me: false, blocked_me: false } });
   const [mediaViewerState, setMediaViewerState] = useState({ open: false, index: 0 });
   const initialChatPrefs = useMemo(() => getChatPreferences(), []);
   const [isMutedConversation, setIsMutedConversation] = useState(initialChatPrefs.muted.has(peer));
@@ -287,8 +289,42 @@ export default function Chat() {
 
   const openChatSettings = useCallback(() => {
     if (!peer) return;
-    navigate(`/chat/${encodeURIComponent(peer)}/settings`);
-  }, [navigate, peer]);
+    setShowChatSettingsPanel(true);
+    // تحميل بيانات الإعدادات
+    setSettingsPanelData((prev) => ({ ...prev, loading: true }));
+    Promise.allSettled([
+      getMessages(peer, 120),
+      getBlockStatus(peer),
+    ]).then(([msgsRes, blockRes]) => {
+      const msgs = Array.isArray(msgsRes?.value?.data) ? msgsRes.value.data : [];
+      const block = blockRes?.value?.data || { can_chat: true, blocked_by_me: false, blocked_me: false };
+      const IMAGE_RE = /\.(jpg|jpeg|png|gif|webp|svg|avif|bmp)(?:$|\?)/i;
+      const VIDEO_RE = /\.(mp4|webm|mov|m4v|mkv)(?:$|\?)/i;
+      const URL_RE = /(https?:\/\/[^\s]+)/g;
+      const mediaItems = [];
+      const sharedLinks = [];
+      const fileItems = [];
+      msgs.forEach((m) => {
+        const url = m?.media_url || m?.media_urls?.[0] || m?.attachments?.[0]?.url || '';
+        const t = String(m?.type || '').toLowerCase();
+        if (url && (IMAGE_RE.test(url) || t === 'image' || t === 'photo')) {
+          mediaItems.push({ id: m.id || m.client_id, url, type: 'image', caption: m.content || '' });
+        } else if (url && (VIDEO_RE.test(url) || t === 'video')) {
+          mediaItems.push({ id: m.id || m.client_id, url, type: 'video', caption: m.content || '' });
+        } else if (t === 'voice' || t === 'audio' || (url && /\.(mp3|wav|ogg|m4a|opus)(?:$|\?)/i.test(url))) {
+          fileItems.push({ ...m, _resolvedUrl: url });
+        } else if (url) {
+          fileItems.push({ ...m, _resolvedUrl: url });
+        }
+        const text = m?.content || m?.message || '';
+        const links = text.match(URL_RE) || [];
+        links.forEach((link) => sharedLinks.push({ id: `${m.id}-${link}`, url: link, sender: m.sender || '' }));
+      });
+      setSettingsPanelData({ loading: false, mediaItems: mediaItems.slice(0, 30), sharedLinks: sharedLinks.slice(0, 20), fileItems: fileItems.slice(0, 20), blockStatus: block });
+    }).catch(() => {
+      setSettingsPanelData((prev) => ({ ...prev, loading: false }));
+    });
+  }, [peer]);
 
   useViewportHeight();
 
@@ -2337,6 +2373,270 @@ export default function Chat() {
                 <button type="button" className="yam-detail-action" onClick={spawnHeart}>تفاعل سريع</button>
                 <button type="button" className="yam-detail-action" onClick={handleArchiveConversation}>أرشفة المحادثة</button>
                 <button type="button" className="yam-detail-action danger" onClick={handleBlock}>{blockStatus.blocked_by_me ? 'رفع الحظر' : 'حظر المستخدم'}</button>
+              </div>
+            </div>
+          ) : null}
+
+          {/* ✅ FIX v88.1: Chat Settings Panel — Drawer ثابت داخل الصفحة بدلاً من route منفصل */}
+          {showChatSettingsPanel ? (
+            <div
+              className="yam-settings-overlay"
+              role="dialog"
+              aria-modal="true"
+              aria-label="إعدادات المحادثة"
+              onClick={(e) => { if (e.target === e.currentTarget) setShowChatSettingsPanel(false); }}
+            >
+              <div className="yam-settings-panel" dir="rtl">
+                <style>{`
+                  .yam-settings-overlay {
+                    position: fixed;
+                    inset: 0;
+                    z-index: 9999;
+                    background: rgba(0,0,0,0.55);
+                    display: flex;
+                    align-items: stretch;
+                    justify-content: flex-end;
+                  }
+                  .yam-settings-panel {
+                    width: min(400px, 100vw);
+                    max-height: 100dvh;
+                    height: 100dvh;
+                    background: radial-gradient(circle at top right, rgba(124,58,237,0.14), transparent 24%),
+                      radial-gradient(circle at bottom left, rgba(59,130,246,0.08), transparent 22%), #040714;
+                    color: #fff;
+                    display: flex;
+                    flex-direction: column;
+                    overflow-y: auto;
+                    overflow-x: hidden;
+                    -webkit-overflow-scrolling: touch;
+                    touch-action: pan-y;
+                    animation: yamPanelSlideIn 0.26s cubic-bezier(0.22,1,0.36,1) both;
+                    box-shadow: -8px 0 40px rgba(0,0,0,0.55);
+                    font-family: 'Noto Sans Arabic', 'Cairo', 'Tahoma', system-ui, sans-serif;
+                  }
+                  @keyframes yamPanelSlideIn {
+                    from { transform: translateX(100%); opacity: 0.6; }
+                    to   { transform: translateX(0);    opacity: 1; }
+                  }
+                  .yam-sp-header {
+                    position: sticky;
+                    top: 0;
+                    z-index: 10;
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    padding: calc(16px + env(safe-area-inset-top,0px)) 18px 16px;
+                    border-bottom: 1px solid rgba(255,255,255,0.07);
+                    background: rgba(7,10,24,0.94);
+                    backdrop-filter: blur(16px);
+                  }
+                  .yam-sp-back {
+                    width: 40px; height: 40px;
+                    border-radius: 12px;
+                    border: 1px solid rgba(255,255,255,0.1);
+                    background: rgba(255,255,255,0.04);
+                    color: #fff;
+                    display: inline-flex; align-items: center; justify-content: center;
+                    font-size: 18px; cursor: pointer; flex-shrink: 0;
+                  }
+                  .yam-sp-header-copy { flex: 1; min-width: 0; }
+                  .yam-sp-header-copy strong { display: block; font-size: 16px; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                  .yam-sp-header-copy span { display: block; font-size: 12px; opacity: 0.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                  .yam-sp-body { flex: 1; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+                  .yam-sp-hero {
+                    display: flex; flex-direction: column; align-items: center; gap: 10px;
+                    padding: 24px 16px 18px;
+                    background: rgba(255,255,255,0.03);
+                    border-radius: 18px;
+                    border: 1px solid rgba(255,255,255,0.07);
+                    text-align: center;
+                  }
+                  .yam-sp-hero h1 { font-size: 20px; font-weight: 900; margin: 0; }
+                  .yam-sp-hero p { font-size: 13px; opacity: 0.65; margin: 0; }
+                  .yam-sp-stats {
+                    display: grid; grid-template-columns: 1fr 1fr;
+                    gap: 8px; width: 100%; margin-top: 4px;
+                  }
+                  .yam-sp-stat {
+                    background: rgba(255,255,255,0.05);
+                    border-radius: 12px;
+                    padding: 10px 12px;
+                    display: flex; flex-direction: column; gap: 2px;
+                  }
+                  .yam-sp-stat span { font-size: 11px; opacity: 0.55; }
+                  .yam-sp-stat strong { font-size: 18px; font-weight: 900; }
+                  .yam-sp-card {
+                    background: rgba(255,255,255,0.03);
+                    border: 1px solid rgba(255,255,255,0.07);
+                    border-radius: 18px;
+                    overflow: hidden;
+                  }
+                  .yam-sp-card-title {
+                    display: flex; align-items: baseline; justify-content: space-between;
+                    padding: 14px 16px 10px;
+                    border-bottom: 1px solid rgba(255,255,255,0.06);
+                  }
+                  .yam-sp-card-title h2 { font-size: 15px; font-weight: 800; margin: 0; }
+                  .yam-sp-card-title small { font-size: 11px; opacity: 0.5; }
+                  .yam-sp-actions { display: flex; flex-direction: column; }
+                  .yam-sp-action-btn {
+                    display: flex; align-items: center; justify-content: space-between;
+                    padding: 14px 16px;
+                    background: transparent;
+                    border: none;
+                    border-bottom: 1px solid rgba(255,255,255,0.05);
+                    color: #fff;
+                    font-size: 14px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    font-family: inherit;
+                    text-align: right;
+                  }
+                  .yam-sp-action-btn:last-child { border-bottom: none; }
+                  .yam-sp-action-btn:hover { background: rgba(255,255,255,0.04); }
+                  .yam-sp-action-btn.danger { color: #f87171; }
+                  .yam-sp-empty { padding: 16px; font-size: 13px; opacity: 0.5; text-align: center; }
+                  .yam-sp-media-strip { display: flex; gap: 6px; flex-wrap: wrap; padding: 12px; }
+                  .yam-sp-media-thumb {
+                    width: 80px; height: 80px;
+                    border-radius: 10px;
+                    overflow: hidden;
+                    background: rgba(255,255,255,0.05);
+                    flex-shrink: 0;
+                  }
+                  .yam-sp-media-thumb img {
+                    width: 100%; height: 100%;
+                    object-fit: cover;
+                    display: block;
+                  }
+                  .yam-sp-video-ph {
+                    width: 100%; height: 100%;
+                    display: flex; align-items: center; justify-content: center;
+                    font-size: 24px;
+                  }
+                  .yam-sp-link-list, .yam-sp-file-list { display: flex; flex-direction: column; padding: 4px 0; }
+                  .yam-sp-link-item, .yam-sp-file-item {
+                    display: flex; align-items: center; justify-content: space-between;
+                    gap: 8px;
+                    padding: 10px 16px;
+                    border-bottom: 1px solid rgba(255,255,255,0.04);
+                  }
+                  .yam-sp-link-item:last-child, .yam-sp-file-item:last-child { border-bottom: none; }
+                  .yam-sp-link-copy strong, .yam-sp-file-copy strong {
+                    display: block; font-size: 12.5px;
+                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px;
+                  }
+                  .yam-sp-link-copy span, .yam-sp-file-copy span { font-size: 11px; opacity: 0.55; }
+                  .yam-sp-open-link {
+                    flex-shrink: 0;
+                    padding: 5px 12px;
+                    border-radius: 10px;
+                    background: rgba(99,102,241,0.18);
+                    color: #a5b4fc;
+                    font-size: 12px;
+                    font-weight: 700;
+                    text-decoration: none;
+                    border: 1px solid rgba(99,102,241,0.3);
+                  }
+                `}</style>
+
+                {/* هيدر الباند */}
+                <header className="yam-sp-header">
+                  <button type="button" className="yam-sp-back" onClick={() => setShowChatSettingsPanel(false)} aria-label="إغلاق">←</button>
+                  <Avatar name={peer} src={peerDetails.avatar} size={40} ring showStatus status={isOnline ? 'online' : 'offline'} />
+                  <div className="yam-sp-header-copy">
+                    <strong>{peer}</strong>
+                    <span>{isTyping ? 'جاري الكتابة…' : (isOnline ? 'متصل الآن' : formatLastSeen(lastSeen, false))}</span>
+                  </div>
+                </header>
+
+                {/* جسم الباند */}
+                <div className="yam-sp-body">
+                  {/* بطاقة المعلومات */}
+                  <section className="yam-sp-hero">
+                    <Avatar name={peer} src={peerDetails.avatar} size={96} ring showStatus status={isOnline ? 'online' : 'offline'} />
+                    <h1>{peer}</h1>
+                    <p>{isTyping ? 'يكتب الآن...' : (isOnline ? 'متصل الآن' : formatLastSeen(lastSeen, false))}</p>
+                    <div className="yam-sp-stats">
+                      <div className="yam-sp-stat"><span>الوسائط المشتركة</span><strong>{settingsPanelData.mediaItems.length}</strong></div>
+                      <div className="yam-sp-stat"><span>الروابط</span><strong>{settingsPanelData.sharedLinks.length}</strong></div>
+                      <div className="yam-sp-stat"><span>الملفات والصوتيات</span><strong>{settingsPanelData.fileItems.length}</strong></div>
+                      <div className="yam-sp-stat"><span>حالة المحادثة</span><strong>{settingsPanelData.blockStatus?.blocked_by_me ? 'محظور' : (isMutedConversation ? 'مكتومة' : 'نشطة')}</strong></div>
+                    </div>
+                  </section>
+
+                  {/* إجراءات المحادثة */}
+                  <section className="yam-sp-card">
+                    <div className="yam-sp-card-title"><h2>إجراءات المحادثة</h2><small>بنفس أسلوب واتساب تقريبًا</small></div>
+                    <div className="yam-sp-actions">
+                      <button type="button" className="yam-sp-action-btn" onClick={() => { handleMuteConversation(); }}>
+                        <strong>{isMutedConversation ? 'إلغاء كتم المحادثة' : 'كتم المحادثة'}</strong>
+                        <span>{isMutedConversation ? '🔔' : '🔕'}</span>
+                      </button>
+                      <button type="button" className="yam-sp-action-btn" onClick={() => { handlePinConversation(); }}>
+                        <strong>{isPinnedConversation ? 'إلغاء تثبيت المحادثة' : 'تثبيت المحادثة'}</strong>
+                        <span>📌</span>
+                      </button>
+                      <button type="button" className={`yam-sp-action-btn${settingsPanelData.blockStatus?.blocked_by_me ? '' : ' danger'}`} onClick={() => { handleBlock(); setShowChatSettingsPanel(false); }}>
+                        <strong>{settingsPanelData.blockStatus?.blocked_by_me ? 'رفع الحظر' : 'حظر المستخدم'}</strong>
+                        <span>{settingsPanelData.blockStatus?.blocked_by_me ? '✅' : '🚫'}</span>
+                      </button>
+                    </div>
+                  </section>
+
+                  {/* الوسائط المشتركة */}
+                  <section className="yam-sp-card">
+                    <div className="yam-sp-card-title"><h2>الوسائط المشتركة</h2><small>{settingsPanelData.mediaItems.length} عنصر</small></div>
+                    {settingsPanelData.loading ? <div className="yam-sp-empty">جاري تحميل الوسائط...</div> : null}
+                    {!settingsPanelData.loading && !settingsPanelData.mediaItems.length ? <div className="yam-sp-empty">لا توجد وسائط مشتركة حالياً.</div> : null}
+                    {!settingsPanelData.loading && settingsPanelData.mediaItems.length ? (
+                      <div className="yam-sp-media-strip">
+                        {settingsPanelData.mediaItems.map((item) => (
+                          <a key={item.id} href={item.url} target="_blank" rel="noreferrer" className="yam-sp-media-thumb">
+                            {item.type === 'image'
+                              ? <img src={item.url} alt={item.caption || 'وسائط'} />
+                              : <div className="yam-sp-video-ph">🎬</div>}
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
+                  </section>
+
+                  {/* الروابط المشتركة */}
+                  <section className="yam-sp-card">
+                    <div className="yam-sp-card-title"><h2>الروابط المشتركة</h2><small>{settingsPanelData.sharedLinks.length} رابط</small></div>
+                    {!settingsPanelData.sharedLinks.length ? <div className="yam-sp-empty">لا توجد روابط مشتركة.</div> : null}
+                    {settingsPanelData.sharedLinks.length ? (
+                      <div className="yam-sp-link-list">
+                        {settingsPanelData.sharedLinks.map((item) => (
+                          <div key={item.id} className="yam-sp-link-item">
+                            <div className="yam-sp-link-copy"><strong>{item.url}</strong><span>أرسله {item.sender}</span></div>
+                            <a className="yam-sp-open-link" href={item.url} target="_blank" rel="noreferrer">فتح</a>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </section>
+
+                  {/* الملفات والصوتيات */}
+                  <section className="yam-sp-card">
+                    <div className="yam-sp-card-title"><h2>الملفات والصوتيات</h2><small>{settingsPanelData.fileItems.length} ملف</small></div>
+                    {!settingsPanelData.fileItems.length ? <div className="yam-sp-empty">لا توجد ملفات أو رسائل صوتية.</div> : null}
+                    {settingsPanelData.fileItems.length ? (
+                      <div className="yam-sp-file-list">
+                        {settingsPanelData.fileItems.map((item, idx) => (
+                          <div key={String(item?.id || item?.client_id || idx)} className="yam-sp-file-item">
+                            <div className="yam-sp-file-copy">
+                              <strong>{item?.attachment_name || item?.attachments?.[0]?.file_name || item?.attachments?.[0]?.name || 'ملف مرفق'}</strong>
+                              <span>{String(item?.type || '').toLowerCase().includes('voice') || String(item?.type || '').toLowerCase().includes('audio') ? 'رسالة صوتية' : 'ملف مرفق'}</span>
+                            </div>
+                            {item?._resolvedUrl ? <a className="yam-sp-open-link" href={item._resolvedUrl} target="_blank" rel="noreferrer">فتح</a> : <span>📎</span>}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </section>
+                </div>
               </div>
             </div>
           ) : null}

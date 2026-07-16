@@ -3,12 +3,11 @@ import { useEffect, useState } from 'react';
 /**
  * SafeImage
  * --------------------------------------------------------------------------
- * ✅ v87.6 REDESIGN — عرض الصور في الدردشة مثل WhatsApp تماماً:
- *   • الحاوية تتقلص لحجم الصورة (لا حواف/خلفية زائدة)
- *   • min-height ديناميكي فقط أثناء التحميل، صفر بعد النجاح
- *   • max-width ذكي (min(280px, 68vw)) لملاءمة الجوال والكمبيوتر
- *   • loading placeholder صغير ومضغوط أثناء التحميل فقط
- *   • decoding=async + loading=lazy لأداء أفضل
+ * ✅ v88.0 FIX — عرض الصورة كاملة داخل الدردشة (مثل واتساب):
+ *   • الصورة تظهر كاملة بدون قطع — object-fit: contain
+ *   • الحاوية تتكيف مع أبعاد الصورة الحقيقية
+ *   • max-width و max-height ذكيان لملاءمة الجوال والكمبيوتر
+ *   • loading placeholder أثناء التحميل فقط
  *   • fallback واضح عند فشل التحميل مع زر إعادة المحاولة
  *
  * Props:
@@ -69,7 +68,6 @@ export default function SafeImage({
     <div
       className={`yam-safe-image ${state} ${className}`}
       dir="rtl"
-      style={{ maxHeight: `${maxHeight}px` }}
       onClick={() => state === 'ok' && onOpen?.()}
       onTouchStart={startPress}
       onTouchEnd={endPress}
@@ -81,7 +79,7 @@ export default function SafeImage({
       tabIndex={0}
     >
       <style>{`
-        /* ✅ v87.6: حاوية تتقلص لحجم الصورة تماماً (مثل واتساب) — بدون أي حواف زائدة */
+        /* ✅ v88.0: حاوية تعرض الصورة كاملة بدون قطع — مثل واتساب */
         .yam-safe-image {
           position: relative;
           display: block;
@@ -99,7 +97,7 @@ export default function SafeImage({
           cursor: pointer;
           font-family: 'Noto Sans Arabic', 'Cairo', 'Tahoma', sans-serif;
         }
-        /* أثناء التحميل فقط: مربع مؤقت خفيف — سيختفي عند 'ok' */
+        /* أثناء التحميل فقط: مربع مؤقت خفيف */
         .yam-safe-image.loading {
           min-width: 160px;
           min-height: 120px;
@@ -121,15 +119,17 @@ export default function SafeImage({
           align-items: center;
           justify-content: center;
         }
+        /* ✅ FIX: object-fit: contain بدلاً من cover لعرض الصورة كاملة */
         .yam-safe-image img {
           display: block;
           width: 100%;
           max-width: 100%;
           height: auto;
-          max-height: inherit;
-          object-fit: cover;
+          max-height: ${maxHeight}px;
+          object-fit: contain;
           object-position: center;
           border-radius: 12px;
+          background: rgba(0,0,0,0.12);
           -webkit-user-drag: none;
           user-select: none;
         }

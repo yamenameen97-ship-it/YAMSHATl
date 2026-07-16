@@ -57,7 +57,9 @@ export const removeCloseFriend = (username) => API.delete(`/users/close-friends/
 export const getHiddenStoryUsers = () => API.get('/users/me/hidden-story-users', { cache: false, forceRefresh: true });
 export const addHiddenStoryUser = (username) => API.post('/users/hide-story-from', { username });
 export const removeHiddenStoryUser = (username) => API.delete(`/users/hide-story-from/${encodeURIComponent(username)}`);
-export const uploadAvatar = (formData) =>
+export const uploadAvatar = (formData, onUploadProgress) =>
   API.post('/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress,
+    timeout: 120000,
+    retryable: true,
   });

@@ -669,13 +669,42 @@ async def create_group_event(
 @router.post('/{group_id}/polls')
 async def create_group_poll(
     group_id: str,
-    question: str = Query(..., description="سؤال الاستطلاع"),
-    options: List[str] = Query(..., description="الخيارات (متعدد)"),
-    multi_choice: bool = Query(False),
+    payload: dict | None = Body(default=None),
+    question: Optional[str] = Query(None, description="سؤال الاستطلاع"),
+    options: Optional[List[str]] = Query(None, description="الخيارات (متعدد)"),
+    multi_choice: Optional[bool] = Query(None),
     closes_at: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
 ):
-    poll = group_store.create_poll(group_id, current_user.username, question, options, multi_choice, closes_at)
+    payload = payload or {}
+    resolved_question = str(payload.get('question') or question or '').strip()
+
+    payload_options = payload.get('options')
+    resolved_options: List[str] = []
+    if isinstance(payload_options, list):
+      resolved_options = [str(item).strip() for item in payload_options if str(item).strip()]
+    elif isinstance(options, list):
+      resolved_options = [str(item).strip() for item in options if str(item).strip()]
+
+    resolved_multi_choice = bool(
+        payload.get('multi_choice')
+        if payload.get('multi_choice') is not None
+        else payload.get('multi')
+        if payload.get('multi') is not None
+        else multi_choice
+        if multi_choice is not None
+        else False
+    )
+    resolved_closes_at = payload.get('closes_at') or closes_at
+
+    poll = group_store.create_poll(
+        group_id,
+        current_user.username,
+        resolved_question,
+        resolved_options,
+        resolved_multi_choice,
+        resolved_closes_at,
+    )
     if not poll:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid poll input')
     await _broadcast(group_id, "poll_created", poll)

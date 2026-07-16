@@ -6,14 +6,39 @@
 .yam-group-settings-page {
   background-color: #02040a;
   color: #ffffff;
-  height: 100vh;
-  height: 100dvh;
-  overflow-y: auto;
+  min-height: 100%;
+  height: auto;
+  overflow: visible;
   padding: 16px 16px 100px;
   font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   direction: rtl;
   scrollbar-width: auto;
   scrollbar-color: #8b5cf6 rgba(255, 255, 255, 0.05);
+  position: relative;
+  isolation: isolate;
+  touch-action: pan-y;
+}
+
+html body .app-shell .page-content.group-settings-page-content-scroll,
+html body .page-content.group-settings-page-content-scroll {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+  touch-action: pan-y !important;
+}
+
+html body .app-shell .page-content.group-settings-page-content-scroll .page-shell-glow,
+html body .page-content.group-settings-page-content-scroll .page-shell-glow {
+  min-height: 100% !important;
+  height: auto !important;
+  overflow: visible !important;
+  pointer-events: none !important;
+}
+
+html body .app-shell .page-content.group-settings-page-content-scroll .page-shell-glow > .yam-group-settings-page,
+html body .page-content.group-settings-page-content-scroll .page-shell-glow > .yam-group-settings-page {
+  pointer-events: auto !important;
 }
 
 .yam-group-settings-page::-webkit-scrollbar {

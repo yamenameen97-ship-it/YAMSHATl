@@ -80,7 +80,10 @@ export const createGroupRule = (groupId, payload) =>
 export const createGroupEvent = (groupId, payload) =>
   API.post(`/groups/${groupId}/events`, null, { params: payload });
 export const createGroupPoll = (groupId, payload) =>
-  API.post(`/groups/${groupId}/polls`, null, { params: payload });
+  API.post(`/groups/${groupId}/polls`, payload, {
+    timeout: 45000,
+    retryable: true,
+  });
 export const voteInPoll = (groupId, pollId, option) =>
   API.post(`/groups/${groupId}/polls/${pollId}/vote`, null, { params: { option } });
 export const createGroupAnnouncement = (groupId, payload) =>

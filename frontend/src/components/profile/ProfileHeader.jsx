@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Button from '../ui/Button.jsx';
 import Modal from '../ui/Modal.jsx';
 import OptimizedImage from '../ui/OptimizedImage.jsx';
-import { updateMyProfile } from '../../api/users.js';
+import { updateMyProfile, uploadAvatar } from '../../api/users.js';
 import { resolveMediaUrl } from '../../config/mediaConfig.js';
 
 /**
@@ -164,11 +164,22 @@ export default function ProfileHeader({
 
   const [coverImage, setCoverImage] = useState(profile?.user?.profile?.cover_photo || '');
   const [avatarImage, setAvatarImage] = useState(profile?.user?.avatar || '');
+  const [coverFile, setCoverFile] = useState(null);
+  const [avatarFile, setAvatarFile] = useState(null);
   const [coverImageError, setCoverImageError] = useState(false);
   const [avatarImageError, setAvatarImageError] = useState(false);
 
   const fileInputRef = useRef(null);
   const avatarInputRef = useRef(null);
+
+  useEffect(() => {
+    setCoverImage(profile?.user?.profile?.cover_photo || '');
+    setAvatarImage(profile?.user?.avatar || '');
+    setCoverFile(null);
+    setAvatarFile(null);
+    setCoverImageError(false);
+    setAvatarImageError(false);
+  }, [profile?.user?.profile?.cover_photo, profile?.user?.avatar]);
 
   const handleTabChange = useCallback((tab) => {
     setInternalTab(tab);
@@ -180,6 +191,7 @@ export default function ProfileHeader({
     if (!file) return;
     if (!file.type.startsWith('image/')) { alert('الرجاء اختيار صورة'); return; }
     if (file.size > 5 * 1024 * 1024) { alert('حجم الصورة كبير جداً (الحد الأقصى 5MB)'); return; }
+    setCoverFile(file);
     const reader = new FileReader();
     reader.onload = (event) => { setCoverImage(event.target?.result); setCoverImageError(false); };
     reader.onerror = () => alert('حدث خطأ في قراءة الملف');
@@ -191,6 +203,7 @@ export default function ProfileHeader({
     if (!file) return;
     if (!file.type.startsWith('image/')) { alert('الرجاء اختيار صورة'); return; }
     if (file.size > 2 * 1024 * 1024) { alert('حجم الصورة كبير جداً (الحد الأقصى 2MB)'); return; }
+    setAvatarFile(file);
     const reader = new FileReader();
     reader.onload = (event) => {
       setAvatarImage(event.target?.result);
@@ -201,9 +214,22 @@ export default function ProfileHeader({
     reader.readAsDataURL(file);
   };
 
+  const uploadImageAndResolveUrl = async (file, fallbackUrl) => {
+    if (!file) return fallbackUrl;
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await uploadAvatar(fd);
+    const nextUrl = res?.data?.url || res?.data?.media_url || res?.data?.file_url || res?.data?.cdn_url || fallbackUrl;
+    if (!nextUrl) throw new Error('لم يتم استلام رابط الصورة من الخادم');
+    return nextUrl;
+  };
+
   const applyCrop = async () => {
     try {
-      await updateMyProfile({ avatar: avatarImage });
+      const avatarUrl = await uploadImageAndResolveUrl(avatarFile, avatarImage);
+      await updateMyProfile({ avatar: avatarUrl, avatar_url: avatarUrl });
+      setAvatarImage(avatarUrl);
+      setAvatarFile(null);
       setShowAvatarCropper(false);
     } catch (error) {
       console.error('Failed to update avatar:', error);
@@ -213,7 +239,10 @@ export default function ProfileHeader({
 
   const saveCoverImage = async () => {
     try {
-      await updateMyProfile({ cover_photo: coverImage });
+      const coverUrl = await uploadImageAndResolveUrl(coverFile, coverImage);
+      await updateMyProfile({ cover_photo: coverUrl, cover_url: coverUrl });
+      setCoverImage(coverUrl);
+      setCoverFile(null);
       setShowCoverEditor(false);
     } catch (error) {
       console.error('Failed to update cover:', error);

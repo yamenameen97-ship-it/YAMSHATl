@@ -36,6 +36,7 @@ const GroupSettings = () => {
 
   const avatarInputRef = useRef(null);
   const coverInputRef = useRef(null);
+  const pageRootRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -67,6 +68,17 @@ const GroupSettings = () => {
     comments: '—',
     activity: '—',
   });
+
+  useEffect(() => {
+    const rootEl = pageRootRef.current;
+    const pageContent = rootEl?.closest?.('.page-content');
+    if (!pageContent) return undefined;
+
+    pageContent.classList.add('group-settings-page-content-scroll');
+    return () => {
+      pageContent.classList.remove('group-settings-page-content-scroll');
+    };
+  }, []);
 
   // جلب بيانات المجموعة + الأعضاء + الإحصائيات
   useEffect(() => {
@@ -357,6 +369,7 @@ const GroupSettings = () => {
     return (
       <MainLayout>
         <div
+          ref={pageRootRef}
           className="yam-group-settings-page"
           dir="rtl"
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '50vh', fontFamily: "'Noto Sans Arabic','Cairo','Tahoma',sans-serif" }}
@@ -370,6 +383,7 @@ const GroupSettings = () => {
   return (
     <MainLayout>
     <div
+      ref={pageRootRef}
       className="yam-group-settings-page"
       dir="rtl"
       style={{ fontFamily: "'Noto Sans Arabic','Cairo','Tahoma',sans-serif" }}

@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.security import hash_password, verify_password
 from app.db.base import Base
 
-CURRENT_ALEMBIC_REVISION = '20260605_0005'
+CURRENT_ALEMBIC_REVISION = '20260610_0006'
 LEGACY_USER_TABLE_NAMES = ('suser', 'user')
 DEFAULT_SUBSCRIBER = {
     'username': ((settings.DEMO_ACCOUNT_EMAIL or 'yasryameen21@gmail.com').split('@')[0] or 'yasryameen21').strip().lower(),
@@ -75,6 +75,8 @@ REQUIRED_SCHEMA_COLUMNS: dict[str, set[str]] = {
 }
 REQUIRED_TABLES = {
     'users',
+    'user_profiles',
+    'user_wallets',
     'user_sessions',
     'audit_logs',
     'login_challenges',
@@ -85,6 +87,9 @@ REQUIRED_TABLES = {
     'reel_views',
     'saved_reels',
     'reel_comments',  # v85.5
+    'voice_rooms',
+    'voice_room_members',
+    'voice_room_messages',
 }
 
 

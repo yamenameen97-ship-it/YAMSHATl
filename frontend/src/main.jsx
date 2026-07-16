@@ -359,6 +359,14 @@ import './styles/yamshat-fixes-v87.22-FOUR-CRITICAL-FIXES.css';
 // يجب أن يبقى آخر استيراد CSS ليفوز في Cascade.
 import './styles/yamshat-fixes-v87.23-SETTINGS-YAM-HOME-MOBILE.css';
 
+// ✅ v87.24 — الإصلاح النهائي الشامل للمشاكل الأربع:
+// 1) البروفايل لا يسحب → overflow-y:auto + touch-action:pan-y جذري
+// 2) الصور/الفيديو في المنشورات تتكسر → aspect-ratio + object-fit:contain
+// 3) الرسائل الصوتية في الشات → yam-voice-pill إعادة بناء كاملة
+// 4) زر إرسال البلاغ مختفي → report-modal-card flex-column + sticky buttons
+// يجب أن يكون آخر CSS في Cascade ليتغلب على كل الطبقات السابقة.
+import './styles/yamshat-fixes-v87.24-FINAL-COMPLETE-FIX.css';
+
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';
@@ -367,7 +375,7 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v87.23-SETTINGS-YAM-HOME-MOBILE-PARITY';
+const BUILD_ID = 'yamshat-v87.24-FINAL-COMPLETE-FIX';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

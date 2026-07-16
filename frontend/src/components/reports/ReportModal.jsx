@@ -205,22 +205,34 @@ export default function ReportModal({
           width: '100%', maxWidth: 520,
           background: 'linear-gradient(180deg, #1e1b3a 0%, #14122a 100%)',
           borderTopRightRadius: 24, borderTopLeftRadius: 24,
-          padding: '20px 18px 0', color: '#fff',
-          maxHeight: 'min(92dvh, calc(100dvh - env(safe-area-inset-top, 0px) - 8px))', overflowY: 'auto',
+          color: '#fff',
+          /* ✅ v87.24 FIX #4: flex-column حتى يكون شريط الأزرار
+             ثابتاً في الأسفل دائماً. overflow:hidden هنا حتى يعمل
+             sticky داخل overflowY:auto على div المحتوى الداخلي. */
+          display: 'flex',
+          flexDirection: 'column',
+          maxHeight: 'min(92dvh, calc(100dvh - 10px))',
+          overflow: 'hidden',
           boxShadow: '0 -8px 32px rgba(124,58,237,0.35)',
           border: '1px solid rgba(124,58,237,0.3)',
-          paddingBottom: 'max(12px, env(safe-area-inset-bottom, 0px))',
           marginBottom: 0,
+          padding: 0,
         }}
       >
-        {/* Handle */}
-        <div style={{
-          width: 48, height: 4, background: 'rgba(255,255,255,0.25)',
-          borderRadius: 4, margin: '0 auto 16px',
-        }} />
-
         {!done ? (
           <>
+            {/* ✅ v87.24: div scroll منفصل عن شريط الأزرار */}
+            <div style={{
+              flex: '1 1 auto',
+              overflowY: 'auto',
+              WebkitOverflowScrolling: 'touch',
+              padding: '20px 18px 8px',
+            }}>
+            {/* Handle */}
+            <div style={{
+              width: 48, height: 4, background: 'rgba(255,255,255,0.25)',
+              borderRadius: 4, margin: '0 auto 16px',
+            }} />
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
               <span style={{ fontSize: 24 }} aria-hidden="true">🚨</span>
               <h3 id={titleId} style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>
@@ -299,20 +311,18 @@ export default function ReportModal({
                 ⚠️ {error}
               </div>
             )}
+            </div>{/* /scroll-area */}
 
+            {/* ✅ v87.24 FIX #4: شريط الأزرار خارج منطقة التمرير — ثابت دائماً في الأسفل */}
             <div
               style={{
+                flex: '0 0 auto',
                 display: 'flex',
                 gap: 10,
-                marginTop: 18,
-                position: 'sticky',
-                bottom: 0,
                 padding: '14px 18px calc(14px + env(safe-area-inset-bottom, 0px))',
-                marginInline: '-18px',
-                marginBottom: '-12px',
-                background: 'linear-gradient(180deg, rgba(20,18,42,0.08) 0%, rgba(20,18,42,0.92) 24%, rgba(20,18,42,1) 100%)',
+                background: 'linear-gradient(180deg, rgba(20,18,42,0.5) 0%, rgba(20,18,42,1) 40%)',
                 borderTop: '1px solid rgba(255,255,255,0.08)',
-                zIndex: 2,
+                zIndex: 5,
               }}
             >
               <button
@@ -321,7 +331,7 @@ export default function ReportModal({
                 disabled={submitting}
                 aria-label="إلغاء وإغلاق نافذة البلاغ"
                 style={{
-                  flex: 1, padding: '12px 16px', borderRadius: 12,
+                  flex: 1, padding: '14px 16px', borderRadius: 12,
                   background: 'rgba(255,255,255,0.08)', color: '#fff',
                   border: '1px solid rgba(255,255,255,0.1)',
                   fontSize: 15, fontWeight: 600, cursor: 'pointer',
@@ -335,7 +345,7 @@ export default function ReportModal({
                 disabled={submitting || !reason}
                 aria-label="إرسال البلاغ"
                 style={{
-                  flex: 1.4, padding: '12px 16px', borderRadius: 12,
+                  flex: 1.4, padding: '14px 16px', borderRadius: 12,
                   background: !reason
                     ? 'rgba(124,58,237,0.4)'
                     : 'linear-gradient(90deg,#7c3aed,#a855f7)',
@@ -344,7 +354,8 @@ export default function ReportModal({
                   cursor: !reason ? 'not-allowed' : 'pointer',
                   fontFamily: 'inherit',
                   opacity: submitting ? 0.6 : 1,
-                  boxShadow: '0 10px 24px rgba(124,58,237,0.28)',
+                  boxShadow: reason ? '0 10px 24px rgba(124,58,237,0.28)' : 'none',
+                  transition: 'transform 140ms ease, box-shadow 200ms ease',
                 }}
               >
                 {submitting ? 'جارٍ الإرسال...' : 'إرسال البلاغ'}
@@ -353,7 +364,7 @@ export default function ReportModal({
           </>
         ) : (
           /* بعد الإرسال */
-          <div style={{ textAlign: 'center', padding: '20px 10px' }} role="status" aria-live="polite">
+          <div style={{ textAlign: 'center', padding: '30px 18px', flex: '1 1 auto' }} role="status" aria-live="polite">
             <div style={{ fontSize: 56, marginBottom: 10 }} aria-hidden="true">✅</div>
             <h3 id={titleId} style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700 }}>
               تم استلام بلاغك

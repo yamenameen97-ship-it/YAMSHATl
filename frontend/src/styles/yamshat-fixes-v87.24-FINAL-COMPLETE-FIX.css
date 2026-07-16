@@ -1,0 +1,669 @@
+/* ================================================================
+   🔥 YAMSHAT v87.24 — FINAL COMPLETE FIX (إصلاح نهائي شامل)
+   ================================================================
+   يُعالج أربع مشاكل حقيقية مُبلَّغ عنها بالصور والتفصيل:
+
+   1) صفحة الملف الشخصي لا تقبل السحب للأعلى والأسفل على الجوال.
+   2) الصور والفيديوهات تتكسر عند النشر في الفيد.
+   3) الرسائل الصوتية في الدردشة تظهر مغلّفة بالأزرق الكامل
+      بدلاً من: موجة صوتية + زر تشغيل واضح + مدة حقيقية.
+   4) زر "إرسال البلاغ" مخفي / يُقصّ خارج الشاشة.
+
+   ملاحظات هامة:
+   • جميع القواعد تستخدم !important لتتغلب على الطبقات السابقة.
+   • font-family: 'Noto Sans Arabic' محفوظ في كل مكان.
+   • dir="rtl" محفوظ.
+   ================================================================ */
+
+/* ═══════════════════════════════════════════════════════════════
+   FIX #1 — الملف الشخصي: إصلاح جذري للسحب العمودي
+   ═══════════════════════════════════════════════════════════════
+   السبب الجذري:
+     داخل Profile.jsx يوجد <style> مضمّن يضع overflow:visible
+     لكن حاوية المحتوى الخارجية (main.mobile-main-content أو
+     .page-content) تضع overflow:hidden أو لا تسمح بالتمرير.
+     الإصلاح هنا: نُجبر كل الحاويات المحتملة على السماح
+     بالتمرير العمودي حين تحتوي صفحة البروفايل.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* الحاوية الأصل: section.ym-ref-profile-screen */
+html body section.ym-ref-profile-screen,
+html body .ym-ref-profile-screen {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y pinch-zoom !important;
+  overscroll-behavior-y: contain !important;
+  min-height: 100dvh !important;
+  height: auto !important;
+  max-height: none !important;
+  will-change: auto !important;
+  transform: none !important;
+  contain: none !important;
+  font-family: 'Noto Sans Arabic', 'Tajawal', 'Cairo', system-ui, sans-serif !important;
+}
+
+/* الصدفة الداخلية */
+html body .ym-ref-profile-shell {
+  height: auto !important;
+  min-height: auto !important;
+  overflow: visible !important;
+  touch-action: pan-y pinch-zoom !important;
+  -webkit-overflow-scrolling: touch !important;
+  padding-bottom: calc(160px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* حاوية main التي تحتوي البروفايل */
+html body main.mobile-main-content:has(.ym-ref-profile-screen),
+html body main:has(.ym-ref-profile-screen),
+html body .mobile-main-content:has(.ym-ref-profile-screen) {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  overscroll-behavior-y: contain !important;
+}
+
+/* حاويات page-content */
+html body .page-content:has(.ym-ref-profile-screen),
+html body .app-shell .page-content:has(.ym-ref-profile-screen),
+html body [class*="page"]:has(.ym-ref-profile-screen) {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+}
+
+/* fallback: .ym-ref-profile-screen مباشرة داخل حاوية app */
+html body .app-root .ym-ref-profile-screen,
+html body #root .ym-ref-profile-screen,
+html body #app .ym-ref-profile-screen {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y pinch-zoom !important;
+}
+
+/* منع أي عنصر داخل الشاشة من حجب التمرير */
+html body .ym-ref-profile-screen > *,
+html body .ym-ref-profile-shell > *:not(.ym-ref-bottom-nav) {
+  touch-action: pan-y pinch-zoom !important;
+}
+
+/* الأزرار فقط: manipulation لإزالة تأخير 300ms */
+html body .ym-ref-profile-screen button,
+html body .ym-ref-profile-screen a,
+html body .ym-ref-profile-screen [role="button"],
+html body .ym-ref-profile-shell button {
+  touch-action: manipulation !important;
+  -webkit-tap-highlight-color: rgba(124, 58, 237, 0.18);
+}
+
+/* ProfileHeader component أيضاً */
+html body .ymp-profile-wrap {
+  overflow: visible !important;
+  touch-action: pan-y pinch-zoom !important;
+}
+
+/* ProfilePage من pages/profile */
+html body .profile-page-wrap,
+html body [class*="profile-page"],
+html body [class*="ProfilePage"] {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  height: auto !important;
+  min-height: 100dvh !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   FIX #2 — الصور والفيديو في المنشورات: إصلاح التكسّر الجذري
+   ═══════════════════════════════════════════════════════════════
+   السبب الجذري:
+     بعض CSS سابق يضع height:0 أو overflow:hidden بدون aspect-ratio
+     أو يتعارض مع أبعاد الحاوية، مما يؤدي إلى عدم ظهور الوسائط.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── MobilePostCard: banner الصورة والفيديو ── */
+html body .ym-post-banner-new {
+  width: 100% !important;
+  max-width: 100% !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+  margin-bottom: 12px !important;
+  position: relative !important;
+  background: linear-gradient(135deg, #0d0f1c 0%, #12142a 100%) !important;
+  display: block !important;
+  min-height: 200px !important;
+}
+
+html body .ym-post-banner-new .banner-image-container,
+html body .ym-post-banner-new .banner-video-container {
+  width: 100% !important;
+  display: block !important;
+  position: relative !important;
+  min-height: 200px !important;
+  background: linear-gradient(135deg, #0d0f1c 0%, #12142a 100%) !important;
+}
+
+html body .ym-post-banner-new .banner-image-container img {
+  width: 100% !important;
+  height: auto !important;
+  min-height: 180px !important;
+  max-height: min(75dvh, 680px) !important;
+  object-fit: contain !important;
+  display: block !important;
+  border-radius: 14px !important;
+  opacity: 1 !important;
+  transition: opacity 250ms ease !important;
+  background: #0d0f1c !important;
+}
+
+html body .ym-post-banner-new .banner-image-container img.is-loaded {
+  opacity: 1 !important;
+}
+
+html body .ym-post-banner-new .banner-video-container video {
+  width: 100% !important;
+  height: auto !important;
+  min-height: 200px !important;
+  max-height: min(75dvh, 680px) !important;
+  object-fit: contain !important;
+  display: block !important;
+  border-radius: 14px !important;
+  background: #000 !important;
+}
+
+/* fallback div عند فشل التحميل */
+html body .banner-image-fallback {
+  position: absolute !important;
+  inset: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 10px !important;
+  background: linear-gradient(135deg, #1a1b2e 0%, #0f1020 100%) !important;
+  color: rgba(255, 255, 255, 0.55) !important;
+  font-size: 14px !important;
+  font-family: 'Noto Sans Arabic', 'Tajawal', 'Cairo', system-ui, sans-serif !important;
+  text-align: center !important;
+  border-radius: 14px !important;
+  min-height: 200px !important;
+}
+
+/* ── PostCard (فيد سطح المكتب): .ym-pc-media ── */
+html body .ym-pc-media {
+  position: relative !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 200px !important;
+  max-height: 560px !important;
+  overflow: hidden !important;
+  border-radius: 14px !important;
+  background: linear-gradient(135deg, #0d0f1c 0%, #12142a 100%) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+html body .ym-pc-media img {
+  width: 100% !important;
+  height: auto !important;
+  min-height: 180px !important;
+  max-height: 560px !important;
+  object-fit: contain !important;
+  display: block !important;
+  border-radius: 14px !important;
+  animation: ym-media-fadein-v24 300ms ease-out both;
+}
+
+@keyframes ym-media-fadein-v24 {
+  from { opacity: 0; transform: scale(0.98); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+html body .ym-pc-media img[data-broken="true"] {
+  visibility: hidden !important;
+}
+
+html body .ym-pc-media.is-broken::after {
+  content: '📷 تعذّر تحميل الوسائط';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #1a1b2e 0%, #0f1020 100%);
+  color: rgba(255, 255, 255, 0.55);
+  font-family: 'Noto Sans Arabic', 'Tajawal', 'Cairo', system-ui, sans-serif;
+  font-size: 14px;
+  text-align: center;
+}
+
+html body .ym-pc-media video,
+html body .ym-pc-media .post-media-player {
+  width: 100% !important;
+  height: auto !important;
+  max-height: 560px !important;
+  object-fit: contain !important;
+  display: block !important;
+  border-radius: 14px !important;
+  background: #000 !important;
+}
+
+@media (max-width: 600px) {
+  html body .ym-pc-media {
+    min-height: 200px !important;
+    max-height: 460px !important;
+  }
+  html body .ym-pc-media img,
+  html body .ym-pc-media video {
+    max-height: 460px !important;
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   FIX #3 — رسائل الصوت في الدردشة: واتساب-style كامل
+   ═══════════════════════════════════════════════════════════════
+   المطلوب (كما في الصورة المرجعية):
+   ▪ دائرة بيضاء بارزة ▶ / ⏸ على اليسار
+   ▪ موجة صوتية (bars) تملأ المساحة الوسطى
+   ▪ مؤقّت واضح (0:32) على اليمين
+   ▪ خلفية الفقاعة: أزرق/بنفسجي شفاف (ليس كتلة زرقاء صلبة)
+   ═══════════════════════════════════════════════════════════════ */
+
+/* إعادة بناء الفقاعة الصوتية من الصفر */
+html body .yam-voice-pill,
+html body .yam-bubble .yam-voice-pill,
+html body .yam-message-row .yam-voice-pill {
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 10px 14px !important;
+  border-radius: 22px !important;
+  min-width: 230px !important;
+  max-width: 320px !important;
+  width: auto !important;
+  /* الخلفية الصحيحة: ليس أزرق صلب بل شفاف مع حدة */
+  background: rgba(79, 70, 229, 0.14) !important;
+  border: 1.5px solid rgba(139, 92, 246, 0.30) !important;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.12) !important;
+  direction: ltr !important;
+  font-family: 'Noto Sans Arabic', 'Tajawal', 'Cairo', system-ui, sans-serif !important;
+}
+
+/* فقاعة المرسل */
+html body .yam-bubble.bubble-me .yam-voice-pill,
+html body .yam-voice-pill.me {
+  background: rgba(124, 58, 237, 0.22) !important;
+  border-color: rgba(167, 139, 250, 0.38) !important;
+}
+
+/* حالة التشغيل */
+html body .yam-voice-pill.playing {
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.40), 0 4px 16px rgba(79, 70, 229, 0.24) !important;
+}
+
+/* ── زر التشغيل: دائرة بيضاء بارزة واضحة ── */
+html body .yam-voice-pill__play,
+html body .yam-bubble .yam-voice-pill__play {
+  flex: 0 0 auto !important;
+  width: 42px !important;
+  height: 42px !important;
+  min-width: 42px !important;
+  min-height: 42px !important;
+  border-radius: 50% !important;
+  border: 0 !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  /* دائرة بيضاء بارزة كواتساب */
+  background: #FFFFFF !important;
+  color: #5b21b6 !important;
+  box-shadow:
+    0 4px 12px rgba(88, 28, 178, 0.30),
+    0 1px 3px rgba(0,0,0,0.20) !important;
+  transition: transform 140ms ease, box-shadow 200ms ease !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+html body .yam-voice-pill__play:hover {
+  transform: scale(1.07) !important;
+}
+
+html body .yam-voice-pill__play:active {
+  transform: scale(0.93) !important;
+}
+
+/* حالة التشغيل: دائرة بنفسجية */
+html body .yam-voice-pill.playing .yam-voice-pill__play {
+  background: linear-gradient(135deg, #A78BFA 0%, #7C3AED 100%) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.50) !important;
+}
+
+/* السهم / إيقاف داخل الزر */
+html body .yam-voice-pill__play svg {
+  width: 18px !important;
+  height: 18px !important;
+  display: block !important;
+  position: relative !important;
+  z-index: 1 !important;
+  color: inherit !important;
+  fill: currentColor !important;
+}
+
+/* ── الموجة الصوتية: تملأ المساحة ── */
+html body .yam-voice-pill__wave,
+html body .yam-bubble .yam-voice-pill__wave {
+  flex: 1 1 auto !important;
+  min-width: 80px !important;
+  height: 36px !important;
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 2px !important;
+  margin: 0 !important;
+  cursor: pointer !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+html body .yam-voice-pill__wave .audio-waveform {
+  width: 100% !important;
+  height: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 2.5px !important;
+  justify-content: space-between !important;
+}
+
+html body .yam-voice-pill__wave .audio-waveform span {
+  flex: 1 1 auto !important;
+  min-width: 2px !important;
+  height: var(--bar-height, 40%) !important;
+  background: rgba(255, 255, 255, 0.35) !important;
+  border-radius: 99px !important;
+  transition: background 180ms ease !important;
+}
+
+html body .yam-voice-pill__wave .audio-waveform span.active {
+  background: linear-gradient(180deg, #C4B5FD 0%, #FFFFFF 100%) !important;
+  box-shadow: 0 0 5px rgba(196, 181, 253, 0.55) !important;
+}
+
+html body .yam-voice-pill.playing .yam-voice-pill__wave .audio-waveform span.active {
+  animation: ym-bar-pulse-v24 650ms ease-in-out infinite !important;
+  animation-delay: var(--bar-delay, 0ms) !important;
+}
+
+@keyframes ym-bar-pulse-v24 {
+  0%, 100% { transform: scaleY(1); }
+  50%       { transform: scaleY(1.20); }
+}
+
+/* ── البيانات الوصفية: الوقت والسرعة ── */
+html body .yam-voice-pill__meta {
+  flex: 0 0 auto !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+html body .yam-voice-pill__time {
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  min-width: 36px !important;
+  text-align: center !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+  font-variant-numeric: tabular-nums !important;
+  letter-spacing: 0.3px !important;
+  font-family: 'Noto Sans Arabic', system-ui, monospace !important;
+}
+
+html body .yam-voice-pill__rate {
+  background: rgba(255, 255, 255, 0.20) !important;
+  color: #fff !important;
+  border: 0 !important;
+  border-radius: 99px !important;
+  padding: 2px 8px !important;
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  cursor: pointer !important;
+}
+
+/* الأفاتار */
+html body .yam-voice-pill__badge img {
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 50% !important;
+  object-fit: cover !important;
+  display: block !important;
+}
+
+/* الميكروفون الصغير */
+html body .yam-voice-pill__badge-mic svg {
+  width: 14px !important;
+  height: 14px !important;
+  opacity: 0.75 !important;
+}
+
+/* تصغير على الشاشات الصغيرة جداً */
+@media (max-width: 380px) {
+  html body .yam-voice-pill {
+    min-width: 200px !important;
+    padding: 8px 10px !important;
+    gap: 8px !important;
+  }
+  html body .yam-voice-pill__play {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    min-height: 36px !important;
+  }
+  html body .yam-voice-pill__wave {
+    height: 30px !important;
+  }
+}
+
+/* ── صورة الدردشة: تظهر كاملة غير مكسورة ── */
+html body .yam-bubble .smart-media-preview,
+html body .yam-message-row .smart-media-preview,
+html body .chat-image-wrap {
+  width: 100% !important;
+  max-width: 280px !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+  display: block !important;
+  background: #0d0f1c !important;
+  cursor: pointer !important;
+}
+
+html body .yam-bubble .smart-media-preview img,
+html body .yam-message-row .smart-media-preview img,
+html body .chat-image-wrap img {
+  width: 100% !important;
+  height: auto !important;
+  max-height: 320px !important;
+  object-fit: cover !important;
+  display: block !important;
+  border-radius: 14px !important;
+  background: #0d0f1c !important;
+}
+
+/* SafeImage داخل الفقاعة */
+html body .yam-bubble .yam-media-button img,
+html body .yam-bubble .yam-media-button video {
+  width: 100% !important;
+  height: auto !important;
+  max-height: 320px !important;
+  object-fit: cover !important;
+  display: block !important;
+  border-radius: 14px !important;
+}
+
+/* ── إزالة الغلاف الأزرق الذي يلتهم الرسالة الصوتية كاملاً ── */
+/* بعض الطبقات السابقة كانت تضع background أزرق على الفقاعة كلها */
+html body .yam-bubble.bubble-them .yam-voice-pill,
+html body .yam-bubble .yam-voice-pill {
+  /* إعادة التأكيد: الخلفية شفافة ليست زرقاء كاملة */
+  background: rgba(59, 130, 246, 0.10) !important;
+  border: 1.5px solid rgba(96, 165, 250, 0.28) !important;
+}
+
+html body .yam-bubble.bubble-me .yam-voice-pill {
+  background: rgba(124, 58, 237, 0.20) !important;
+  border-color: rgba(167, 139, 250, 0.35) !important;
+}
+
+/* منع أي طبقة تضع color أزرق كاملاً على الفقاعة */
+html body .yam-bubble.is-voice-only,
+html body .yam-bubble.is-voice-only .yam-bubble-inner {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   FIX #4 — نافذة البلاغ: إظهار زر إرسال البلاغ دائماً
+   ═══════════════════════════════════════════════════════════════
+   السبب الجذري:
+     .report-modal-card → overflowY:auto + maxHeight → على شاشات
+     قصيرة أو كيبورد مفتوح، ينزل شريط الأزرار تحت منطقة الرؤية.
+   الحل: نجعل الكارت flex-column و شريط الأزرار sticky bottom.
+   ═══════════════════════════════════════════════════════════════ */
+
+html body .report-modal-backdrop {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 99999 !important;
+  background: rgba(0, 0, 0, 0.75) !important;
+  display: flex !important;
+  align-items: flex-end !important;
+  justify-content: center !important;
+  backdrop-filter: blur(6px) !important;
+  font-family: 'Noto Sans Arabic', 'Tajawal', 'Cairo', system-ui, sans-serif !important;
+}
+
+html body .report-modal-card {
+  width: 100% !important;
+  max-width: 520px !important;
+  max-height: min(90dvh, calc(100dvh - 10px)) !important;
+  min-height: 300px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  background: linear-gradient(180deg, #1e1b3a 0%, #14122a 100%) !important;
+  border-top-right-radius: 24px !important;
+  border-top-left-radius: 24px !important;
+  border: 1px solid rgba(124, 58, 237, 0.30) !important;
+  box-shadow: 0 -8px 32px rgba(124, 58, 237, 0.35) !important;
+  padding: 0 !important;
+  margin-bottom: 0 !important;
+  font-family: 'Noto Sans Arabic', 'Tajawal', 'Cairo', system-ui, sans-serif !important;
+}
+
+/* محتوى قابل للتمرير (كل شيء ما عدا الأزرار) */
+html body .report-modal-card > div:first-of-type {
+  flex: 1 1 auto !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  padding: 20px 18px 0 !important;
+}
+
+/* شريط الأزرار: ثابت دائماً في الأسفل */
+html body .report-modal-card > div:last-of-type,
+html body .report-modal-card [style*="sticky"],
+html body .report-modal-card [style*="position: sticky"] {
+  flex: 0 0 auto !important;
+  position: sticky !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 10 !important;
+  background: linear-gradient(180deg, rgba(20,18,42,0.4) 0%, rgba(20,18,42,0.98) 28%, #14122a 100%) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+  padding: 14px 18px calc(14px + env(safe-area-inset-bottom, 0px)) !important;
+  margin: 0 !important;
+  display: flex !important;
+  gap: 10px !important;
+}
+
+/* زر إرسال البلاغ: إبرازه */
+html body .report-modal-card button[aria-label="إرسال البلاغ"] {
+  flex: 1.4 !important;
+  padding: 14px 16px !important;
+  border-radius: 12px !important;
+  background: linear-gradient(90deg, #7c3aed, #a855f7) !important;
+  color: #fff !important;
+  border: none !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  font-family: inherit !important;
+  box-shadow: 0 10px 24px rgba(124, 58, 237, 0.30) !important;
+  transition: transform 140ms ease, box-shadow 200ms ease !important;
+}
+
+html body .report-modal-card button[aria-label="إرسال البلاغ"]:not(:disabled):hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 14px 30px rgba(124, 58, 237, 0.42) !important;
+}
+
+html body .report-modal-card button[aria-label="إرسال البلاغ"]:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+  transform: none !important;
+}
+
+html body .report-modal-card button[aria-label="إلغاء وإغلاق نافذة البلاغ"] {
+  flex: 1 !important;
+  padding: 14px 16px !important;
+  border-radius: 12px !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #fff !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  font-family: inherit !important;
+}
+
+/* على الشاشات القصيرة (كيبورد مفتوح) */
+@media (max-height: 600px) {
+  html body .report-modal-card {
+    max-height: 98dvh !important;
+  }
+  html body .report-modal-card > div:last-of-type {
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+
+@media (max-height: 480px) {
+  html body .report-modal-card {
+    max-height: 100dvh !important;
+    border-radius: 16px 16px 0 0 !important;
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   GLOBAL: RTL + خط عربي لكل ما يلمسه هذا الملف
+   ═══════════════════════════════════════════════════════════════ */
+html body .ym-ref-profile-screen,
+html body .ym-ref-profile-shell,
+html body .ym-post-banner-new,
+html body .banner-image-container,
+html body .banner-video-container,
+html body .banner-image-fallback,
+html body .ym-pc-media,
+html body .yam-voice-pill,
+html body .yam-voice-pill *,
+html body .report-modal-card,
+html body .report-modal-card * {
+  font-family: 'Noto Sans Arabic', 'Tajawal', 'Cairo', system-ui, -apple-system, sans-serif !important;
+}

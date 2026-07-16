@@ -585,8 +585,11 @@ export default function Profile() {
           /* ✅ v87.22 FIX #1: تمكين السحب العمودي في صفحة الملف الشخصي.
              إزالة overflow:hidden و min-height الثابت اللذين كانا يحبسان التمرير.
              التمرير يحدث الآن داخل main.mobile-main-content من MobileLayout. */
+          /* ✅ v87.24 FIX #1: إصلاح جذري للسحب العمودي.
+             السبب: overflow:visible لا يسمح بالتمرير — نحتاج overflow-y:auto
+             على العنصر نفسه حتى يتمكن من السحب على الجوال. */
           .ym-ref-profile-screen {
-            min-height: auto;
+            min-height: 100dvh;
             height: auto;
             background:
               radial-gradient(circle at 50% 0%, rgba(123, 54, 255, 0.16), transparent 32%),
@@ -597,16 +600,18 @@ export default function Profile() {
             display: flex;
             justify-content: center;
             position: relative;
-            overflow: visible;
+            overflow-y: auto;
+            overflow-x: hidden;
             touch-action: pan-y pinch-zoom;
             -webkit-overflow-scrolling: touch;
+            overscroll-behavior-y: contain;
           }
 
           .ym-ref-profile-shell {
             width: min(100%, 500px);
             min-height: auto;
             height: auto;
-            padding: 10px 18px calc(140px + env(safe-area-inset-bottom, 0px));
+            padding: 10px 18px calc(160px + env(safe-area-inset-bottom, 0px));
             box-sizing: border-box;
             position: relative;
             background: linear-gradient(180deg, rgba(7,7,10,0.96), rgba(3,3,5,1));
@@ -1071,6 +1076,16 @@ export default function Profile() {
             align-items: center;
             justify-content: center;
             min-height: 22px;
+          }
+
+          /* ✅ v87.24: تأكيد التمرير على كل الشاشات */
+          @media (max-width: 768px) {
+            .ym-ref-profile-screen {
+              overflow-y: auto;
+              -webkit-overflow-scrolling: touch;
+              touch-action: pan-y pinch-zoom;
+              min-height: 100dvh;
+            }
           }
 
           @media (min-width: 501px) {

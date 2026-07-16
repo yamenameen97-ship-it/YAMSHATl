@@ -94,19 +94,36 @@ async def warmup():
 
 # ============================================================
 # 📁 خدمة مجلد /uploads كملفات ثابتة
-# إصلاح أخطاء 404 على /uploads/...logo192.png وصور أخرى
-# نجرب مسارين: project-root/uploads و backend/uploads (fallback).
+# إصلاح أخطاء 404 على /uploads/...logo192.png وصور الريلز/الفيديوهات.
+# يجب أن يكون mount متوافقاً مع نفس المسار الذي يكتب إليه upload.py:
+#   1) PERSISTENT_DISK_PATH (إنتاج Render)
+#   2) project-root/uploads
+#   3) backend/uploads (legacy fallback)
 # ============================================================
 _BACKEND_ROOT = Path(__file__).resolve().parents[1]   # .../backend
 _PROJECT_ROOT = _BACKEND_ROOT.parent                  # .../
-_UPLOAD_DIRS = [_PROJECT_ROOT / "uploads", _BACKEND_ROOT / "uploads"]
-for _d in _UPLOAD_DIRS:
+_PERSISTENT_UPLOAD_DIR = Path(os.getenv('PERSISTENT_DISK_PATH', '/var/data/uploads'))
+_UPLOAD_DIRS = []
+for _candidate in (_PERSISTENT_UPLOAD_DIR, _PROJECT_ROOT / "uploads", _BACKEND_ROOT / "uploads"):
     try:
-        _d.mkdir(parents=True, exist_ok=True)
+        _candidate.mkdir(parents=True, exist_ok=True)
+        if _candidate not in _UPLOAD_DIRS:
+            _UPLOAD_DIRS.append(_candidate)
     except Exception as _exc:  # noqa: BLE001
-        logger.warning(f"[uploads] cannot create {_d}: {_exc}")
+        logger.warning(f"[uploads] cannot create {_candidate}: {_exc}")
 
-_PRIMARY_UPLOAD_DIR = _UPLOAD_DIRS[0]
+def _pick_primary_upload_dir():
+    for _candidate in _UPLOAD_DIRS:
+        try:
+            _test = _candidate / '.write_test'
+            _test.write_text('ok')
+            _test.unlink(missing_ok=True)
+            return _candidate
+        except Exception:
+            continue
+    return (_PROJECT_ROOT / "uploads")
+
+_PRIMARY_UPLOAD_DIR = _pick_primary_upload_dir()
 try:
     app.mount("/uploads", StaticFiles(directory=str(_PRIMARY_UPLOAD_DIR), check_dir=False), name="uploads")
     logger.info(f"[uploads] ✅ mounted /uploads -> {_PRIMARY_UPLOAD_DIR}")

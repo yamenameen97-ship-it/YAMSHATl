@@ -97,7 +97,7 @@ function normalizeReel(item = {}) {
     is_liked: Boolean(item.is_liked),
     is_saved: Boolean(item.is_saved),
     is_following: Boolean(item.is_following ?? item.user?.is_following ?? false),
-    avatar: resolveMediaUrl(item.user?.avatar || item.avatar || ''),
+    avatar: resolveMediaUrl(item.user?.avatar || item.user?.avatar_url || item.user_avatar || item.avatar || ''),
   };
 }
 

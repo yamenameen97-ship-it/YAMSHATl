@@ -17,7 +17,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import axios from 'axios';
-import { API_BASE } from '../../api/config.js';
+import API from '../../api/axios.js';
 
 const REASONS = [
   { value: 'abuse',          label: 'إساءة وتنمر',                icon: '🚫' },
@@ -149,9 +149,8 @@ export default function ReportModal({
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-      await axios.post(
-        `${API_BASE}/reports`,
+      await API.post(
+        '/reports',
         {
           target_type: targetType,
           target_id: String(targetId),
@@ -160,8 +159,8 @@ export default function ReportModal({
           context: { source: 'web', target_label: targetLabel },
         },
         {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
           signal: controller.signal,
+          retryable: true,
         },
       );
       if (isMountedRef.current) setDone(true);

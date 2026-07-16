@@ -104,15 +104,80 @@ html body .ymp-profile-wrap {
   touch-action: pan-y pinch-zoom !important;
 }
 
-/* ProfilePage من pages/profile */
-html body .profile-page-wrap,
-html body [class*="profile-page"],
-html body [class*="ProfilePage"] {
+/* ProfilePage من pages/profile — نمط "بوست البلاغات" (v88.2 ROOT FIX)
+   ------------------------------------------------------------------
+   ⚠️ التشخيص الجذري:
+   كانت القاعدة القديمة [class*="profile-page"] تُطابق أيضاً الـclass
+   `.profile-page-content-scroll` التي كانت ProfilePage.jsx تضيفها
+   على <main class="page-content">. فتفرض `height: auto !important`
+   على `.page-content` مما يكسر بنيتها (position:absolute + inset:0)
+   فتفقد ارتفاعها ولا تعود تقبل أي تمرير.
+   ------------------------------------------------------------------
+   ✅ الحل (بمعرفة من ReportModal):
+   ◆ لا نُلوّث `.page-content` أبداً — نتركها بقواعدها الطبيعية
+     (position:absolute; inset:0; overflow-y:auto) مثلما في بقية الصفحات.
+   ◆ `.profile-page-wrap` يصبح حاوية flow طبيعية (overflow:visible)
+     وتدع التمرير يحدث على `.page-content` الأم — تماماً
+     مثل ما يفعله FeedMobile / الصفحة الرئيسية الناجحة. */
+html body .profile-page-wrap {
+  width: 100% !important;
+  max-width: 1000px !important;
+  margin: 0 auto !important;
+  padding: 20px !important;
+  padding-bottom: calc(140px + env(safe-area-inset-bottom, 0px)) !important;
+  box-sizing: border-box !important;
+  touch-action: pan-y !important;
+  min-height: 100% !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  overflow-x: hidden !important;
+  transform: none !important;
+  filter: none !important;
+  will-change: auto !important;
+  contain: none !important;
+  font-family: 'Noto Sans Arabic', 'Tajawal', 'Cairo', system-ui, sans-serif !important;
+}
+
+/* أي طفل داخل .profile-page-wrap يُمرّر مع الأم */
+html body .profile-page-wrap > *,
+html body .profile-page-wrap .ym-profile-gallery,
+html body .profile-page-wrap .profile-hero-card {
+  touch-action: pan-y !important;
+  overflow: visible !important;
+}
+
+/* حين الـ .page-content تحوي صفحة البروفايل، أقوّي قواعد التمرير
+   (مع :has() فقط للمتصفحات الحديثة) دون أن ألمس height أو inset. */
+html body .app-shell .page-content:has(> .page-shell-glow > .profile-page-wrap),
+html body .app-shell .page-content:has(.profile-page-wrap),
+html body .page-content:has(.profile-page-wrap) {
   overflow-y: auto !important;
+  overflow-x: hidden !important;
   -webkit-overflow-scrolling: touch !important;
   touch-action: pan-y !important;
-  height: auto !important;
-  min-height: 100dvh !important;
+  overscroll-behavior-y: contain !important;
+  overscroll-behavior-x: none !important;
+  scroll-behavior: smooth !important;
+}
+
+/* الأزرار داخل البروفايل: manipulation لإلغاء تأخير 300ms */
+html body .profile-page-wrap button,
+html body .profile-page-wrap a,
+html body .profile-page-wrap [role="button"] {
+  touch-action: manipulation !important;
+  -webkit-tap-highlight-color: rgba(124, 58, 237, 0.18);
+}
+
+/* منع أي طفل من فرض overflow يكسر تمرير الأم */
+html body .profile-page-wrap .ym-profile-gallery,
+html body .profile-page-wrap .ym-profile-gallery__item,
+html body .profile-page-wrap .ym-profile-gallery__empty-state {
+  min-height: 0 !important;
+  max-height: none !important;
+  will-change: auto !important;
+  transform: none !important;
+  contain: none !important;
 }
 
 

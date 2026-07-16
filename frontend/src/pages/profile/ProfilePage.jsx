@@ -185,14 +185,48 @@ export default function ProfilePage() {
     }
   }, [requestedPanel, isOwnProfile]);
 
+  // ✅ v88.2 ROOT FIX: لا نضيف أي class على .page-content (كان ذلك يُطابق
+  // الـselector العريض [class*="profile-page"] في v87.24 ويفرض height:auto
+  // على .page-content فيكسر بنيتها (position:absolute; inset:0)
+  // ويلغي التمرير تماماً). الآن التمرير يعمل تلقائياً على
+  // .page-content مثل بقية الصفحات الناجحة (FeedMobile, Home...).
+  // الـCSS المحدد في yamshat-fixes-v87.24 يفرض :has(.profile-page-wrap)
+  // قواعد التمرير للمتصفحات الحديثة، وfallback JS أدناه للقديمة.
   useEffect(() => {
     const rootEl = pageRootRef.current;
     const pageContent = rootEl?.closest?.('.page-content');
     if (!pageContent) return undefined;
 
-    pageContent.classList.add('profile-page-content-scroll');
+    // ✅ v88.2: fallback JS للمتصفحات التي لا تدعم :has() —
+    // نضيف data-attribute بدل class (لا يُطابق الـselectors القديمة)
+    pageContent.setAttribute('data-yam-profile-active', 'true');
+
+    // ✅ إزالة class القديمة إن وجدت من إصدار سابق (منع للـlegacy leak)
+    pageContent.classList.remove('profile-page-content-scroll');
+
+    // ✅ فرض قواعد التمرير الاحتياطية مباشرة على element
+    // (حيادية ضد أي legacy CSS يحاول override)
+    const prev = {
+      overflowY: pageContent.style.overflowY,
+      overflowX: pageContent.style.overflowX,
+      webkitOverflowScrolling: pageContent.style.webkitOverflowScrolling,
+      touchAction: pageContent.style.touchAction,
+      overscrollBehaviorY: pageContent.style.overscrollBehaviorY,
+    };
+    pageContent.style.overflowY = 'auto';
+    pageContent.style.overflowX = 'hidden';
+    pageContent.style.webkitOverflowScrolling = 'touch';
+    pageContent.style.touchAction = 'pan-y';
+    pageContent.style.overscrollBehaviorY = 'contain';
+
     return () => {
-      pageContent.classList.remove('profile-page-content-scroll');
+      pageContent.removeAttribute('data-yam-profile-active');
+      // حاول إعادة القيم الأصلية
+      pageContent.style.overflowY = prev.overflowY;
+      pageContent.style.overflowX = prev.overflowX;
+      pageContent.style.webkitOverflowScrolling = prev.webkitOverflowScrolling;
+      pageContent.style.touchAction = prev.touchAction;
+      pageContent.style.overscrollBehaviorY = prev.overscrollBehaviorY;
     };
   }, []);
 
@@ -400,17 +434,28 @@ export default function ProfilePage() {
       </div>
 
       <style>{`
-        .page-content.profile-page-content-scroll {
+        /* ✅ v88.2 ROOT FIX — نمط "بوست البلاغات": تمرير يحدث على
+           .page-content الأم (مثل باقي الصفحات الناجحة)
+           و.profile-page-wrap تبقى حاوية flow طبيعية (overflow:visible).
+           القواعد التفصيلية مفروضة في yamshat-fixes-v87.24 مع :has(). */
+
+        /* fallback للمتصفحات القديمة دون :has() — نستخدم data-attribute */
+        .app-shell .page-content[data-yam-profile-active="true"],
+        .page-content[data-yam-profile-active="true"] {
           overflow-y: auto !important;
           overflow-x: hidden !important;
           -webkit-overflow-scrolling: touch !important;
           touch-action: pan-y !important;
           overscroll-behavior-y: contain !important;
+          overscroll-behavior-x: none !important;
         }
+
         .profile-page-wrap {
           min-height: 100%;
-          padding-bottom: calc(108px + env(safe-area-inset-bottom, 0px));
+          padding-bottom: calc(140px + env(safe-area-inset-bottom, 0px));
           touch-action: pan-y;
+          overflow: visible;
+          -webkit-overflow-scrolling: touch;
         }
         .profile-page-wrap,
         .profile-page-wrap * {
@@ -418,6 +463,13 @@ export default function ProfilePage() {
         }
         .profile-page-wrap .ym-profile-gallery {
           overflow: visible;
+          touch-action: pan-y;
+        }
+
+        /* تأكيد: منع أي طفل من احتباس اللمس العمودي */
+        .profile-page-wrap > *,
+        .profile-page-wrap .ym-profile-gallery > * {
+          touch-action: pan-y;
         }
       `}</style>
 

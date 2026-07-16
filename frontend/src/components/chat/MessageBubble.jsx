@@ -673,16 +673,16 @@ function MessageBubble({
             </button>
           ) : null}
 
-          {isVoice && mediaUrl ? (
+          {isVoice ? (
             <VoiceMessagePlayer
-              src={mediaUrl}
+              src={mediaUrl || ''}
               seed={message?.waveform_seed || message?.created_at || messageId}
               title="رسالة صوتية"
               bubbleless
               isMe={isMe}
               initialDuration={mediaDurationSeconds}
               avatarSrc={senderAvatar}
-              avatarAlt={message?.sender || 'مستخدم'}
+              avatarAlt={message?.sender || '\u0645\u0633\u062a\u062e\u062f\u0645'}
             />
           ) : null}
 

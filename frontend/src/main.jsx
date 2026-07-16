@@ -367,6 +367,10 @@ import './styles/yamshat-fixes-v87.23-SETTINGS-YAM-HOME-MOBILE.css';
 // يجب أن يكون آخر CSS في Cascade ليتغلب على كل الطبقات السابقة.
 import './styles/yamshat-fixes-v87.24-FINAL-COMPLETE-FIX.css';
 
+// ✅ v88 — الحل النهائي الجذري: الصوت + الصور + الفيديو داخل الشات
+// يجب أن يكون آخر import ليضمن الفوز في Cascade على كل CSS سابق
+import './styles/yamshat-fixes-v88-MEDIA-VOICE-FINAL.css';
+
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';
@@ -375,7 +379,7 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v87.24-FINAL-COMPLETE-FIX';
+const BUILD_ID = 'yamshat-v88-MEDIA-VOICE-FINAL';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

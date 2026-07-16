@@ -14,7 +14,13 @@ import PullToRefresh from '../components/common/PullToRefresh.jsx';
  *   لم يعد usePullToRefresh يبحث عن حاوية التمرير في الـ DOM —
  *   نُمرّرها له بشكل صريح كي يعمل السحب في كل الصفحات بدون استثناء.
  */
-function MobileLayout({ children }) {
+function MobileLayout({
+  children,
+  hideNav = false,
+  lockScroll = false,
+  hideTopBar,
+  hideBottomNav,
+}) {
   const location = useLocation();
   // ⭐ v59.13.18: مرجع لعنصر التمرير الفعلي (main.mobile-main-content)
   // نمرّره مباشرة إلى PullToRefresh → usePullToRefresh لتجنّب الاعتماد على CSS classes.
@@ -24,7 +30,9 @@ function MobileLayout({ children }) {
   // (مثل الريلز التي تستخدم snap عمودي، أو الدردشة التي قد تتعارض مع keyboard)
   const isReelsRoute = location.pathname === '/reels' || location.pathname.startsWith('/reels/');
   const isChatRoute = location.pathname.startsWith('/chat') || location.pathname.startsWith('/inbox');
-  const disablePullToRefresh = isReelsRoute || isChatRoute;
+  const shouldHideTopBar = Boolean(hideTopBar ?? hideNav);
+  const shouldHideBottomNav = Boolean(hideBottomNav ?? hideNav);
+  const disablePullToRefresh = isReelsRoute || isChatRoute || lockScroll;
 
   /**
    * onRefresh — سلوك التحديث الموحد:
@@ -68,8 +76,12 @@ function MobileLayout({ children }) {
   }, [location.pathname]);
 
   return (
-    <div className="mobile-layout-container" dir="rtl" style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, -apple-system, sans-serif" }}>
-      <MobileTopBar />
+    <div
+      className={`mobile-layout-container ${shouldHideTopBar ? 'hide-topbar' : ''} ${shouldHideBottomNav ? 'hide-bottomnav' : ''} ${lockScroll ? 'lock-scroll' : ''}`.trim()}
+      dir="rtl"
+      style={{ fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, -apple-system, sans-serif" }}
+    >
+      {shouldHideTopBar ? null : <MobileTopBar />}
 
       <main className="mobile-main-content" ref={mainRef}>
         <PWAInstallBanner />
@@ -85,7 +97,7 @@ function MobileLayout({ children }) {
         </PullToRefresh>
       </main>
 
-      <BottomNav />
+      {shouldHideBottomNav ? null : <BottomNav />}
 
       <style>{`
         /* v59.13.2: الحاوية الأم تثبّت ارتفاع الشاشة بالضبط ولا تتمرّر —
@@ -136,12 +148,27 @@ function MobileLayout({ children }) {
           will-change: scroll-position;
         }
 
+        .mobile-layout-container.hide-topbar .mobile-main-content {
+          padding-top: 0;
+        }
+
+        .mobile-layout-container.hide-bottomnav .mobile-main-content {
+          padding-bottom: env(safe-area-inset-bottom, 0px);
+        }
+
+        .mobile-layout-container.lock-scroll .mobile-main-content {
+          overflow: hidden;
+          overscroll-behavior: none;
+        }
+
         /* ✅ ضمان عدم خروج أي عنصر عن حدود الشاشة على الأجهزة القديمة */
         @media (max-width: 400px) {
           .mobile-main-content { padding-top: 54px; max-width: 100%; }
+          .mobile-layout-container.hide-topbar .mobile-main-content { padding-top: 0; }
         }
         @media (max-width: 360px) {
           .mobile-main-content { padding-top: 52px; }
+          .mobile-layout-container.hide-topbar .mobile-main-content { padding-top: 0; }
         }
 
         .mobile-main-content > .ym-ptr-container {

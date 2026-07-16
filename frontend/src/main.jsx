@@ -352,6 +352,13 @@ import './styles/yamshat-fixes-v87.21-CHAT-MOBILE-WEB-MEDIA-VOICE.css';
 //   4) نافذة الإبلاغ تُظهر زر الإرسال دائماً.
 import './styles/yamshat-fixes-v87.22-FOUR-CRITICAL-FIXES.css';
 
+// ⭐ v87.23 — إصلاح جذري لسحب صفحات الإعدادات على ويب-الجوال:
+// تطبيق نمط .yam-home-mobile-page (من صفحة المنشورات الناجح) على
+// .settings-wrap + .settings-shell. هذا الملف يوفّق بين الجماليات
+// وقواعد التمرير الموروثة، ويضمن momentum scroll حقيقي على iOS.
+// يجب أن يبقى آخر استيراد CSS ليفوز في Cascade.
+import './styles/yamshat-fixes-v87.23-SETTINGS-YAM-HOME-MOBILE.css';
+
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';
@@ -360,7 +367,7 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v87.22-FOUR-CRITICAL-USER-REPORTED-FIXES';
+const BUILD_ID = 'yamshat-v87.23-SETTINGS-YAM-HOME-MOBILE-PARITY';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

@@ -2,6 +2,19 @@ import API from './axios.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
 import { sortPostsNewestFirst } from '../utils/feedCache.js';
 
+function getPostAttachmentUrls(post = {}) {
+  const attachments = Array.isArray(post.attachments) ? post.attachments.filter(Boolean) : [];
+  return attachments.flatMap((attachment) => [
+    attachment?.media_url,
+    attachment?.mediaUrl,
+    attachment?.cdn_url,
+    attachment?.url,
+    attachment?.file_url,
+    attachment?.thumbnail_url,
+    attachment?.preview_url,
+  ]).filter(Boolean);
+}
+
 function looksLikeVideo(post = {}, mediaUrls = []) {
   const typeHint = String(post.media_type || post.type || post.kind || post.mime_type || post.content_type || '').toLowerCase();
   const candidates = [post.media_url, post.media, post.image_url, post.video_url, post.thumbnail_url, ...mediaUrls]
@@ -25,15 +38,17 @@ function looksLikeVideo(post = {}, mediaUrls = []) {
 }
 
 function normalizePost(post = {}) {
+  const attachmentUrls = getPostAttachmentUrls(post);
   const rawMediaUrls = Array.isArray(post.media_urls)
-    ? post.media_urls
-    : [post.media_url || post.media || post.image_url].filter(Boolean);
+    ? [...post.media_urls, ...attachmentUrls]
+    : [post.media_url || post.media || post.video_url || post.image_url, ...attachmentUrls].filter(Boolean);
 
   const normalizedMediaUrls = Array.from(new Set(rawMediaUrls.map((url) => resolveMediaUrl(url)).filter(Boolean)));
   const hasVideo = looksLikeVideo(post, rawMediaUrls);
-  const mediaUrl = resolveMediaUrl(post.media_url || post.media || normalizedMediaUrls[0] || post.image_url || '');
+  const mediaUrl = resolveMediaUrl(post.media_url || post.media || post.video_url || normalizedMediaUrls[0] || post.image_url || '');
   const imageUrl = resolveMediaUrl(
     post.thumbnail_url
+    || post.preview_url
     || (hasVideo ? '' : post.image_url)
     || normalizedMediaUrls.find((url) => !/\.(mp4|webm|mov|m4v|m3u8|mkv|avi)(\?.*)?$/i.test(String(url || '').toLowerCase()))
     || mediaUrl

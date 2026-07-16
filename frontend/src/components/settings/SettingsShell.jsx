@@ -22,7 +22,11 @@ export default function SettingsShell({
 
   return (
     <MainLayout>
-      <div className="settings-shell" dir="rtl">
+      {/* ✅ v87.23 — نلفّ .settings-shell بـ .yam-home-mobile-page لنستعير 1:1
+          نمط التمرير الناجح من صفحة المنشورات. هذا يجعل كل الصفحات
+          الفرعية (الملف الشخصي، الخلاصة، الريلز، الستوريز، الرسائل، الغرف الصوتية...)
+          تستجيب للسحب لأعلى/أسفل بنفس سلاسة صفحة المنشورات. */}
+      <div className="yam-home-mobile-page settings-shell" dir="rtl" data-page="settings-shell">
         <div className="settings-shell-header">
           <button
             type="button"

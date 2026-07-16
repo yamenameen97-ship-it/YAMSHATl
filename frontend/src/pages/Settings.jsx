@@ -1243,7 +1243,11 @@ export default function Settings() {
 
   return (
     <MainLayout>
-      <div className="settings-wrap" dir="rtl">
+      {/* ✅ v87.23 — نلفّ .settings-wrap بـ .yam-home-mobile-page لنستعير 1:1
+          نمط التمرير الناجح من صفحة المنشورات (FeedMobile). هذا يمنح صفحة
+          الإعدادات الرئيسية scroll container داخلي بـ 100dvh + momentum
+          scroll حقيقي على iOS، بدون أي تعارض مع .page-content في MainLayout. */}
+      <div className="yam-home-mobile-page settings-wrap" dir="rtl" data-page="settings">
         <div className="settings-hero">
           <div>
             <h1>الإعدادات</h1>

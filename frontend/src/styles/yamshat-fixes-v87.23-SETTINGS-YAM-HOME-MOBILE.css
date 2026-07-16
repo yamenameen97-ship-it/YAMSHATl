@@ -1,0 +1,356 @@
+/* ============================================================
+   🎯 YAMSHAT — v87.23 — SETTINGS = FEED MOBILE (parity FINAL)
+   ------------------------------------------------------------
+   🔴 شكوى المستخدم (v87.22.x):
+     "صفحة الاعدادات على ويب الجوال لا تقبل السحب للأعلى والأسفل
+      مع كل البستات الموجودة فيها، أصلح الجميع، اجعلها مثل صفحة
+      المنشورات فهي صالحة، خذ المعرفة منها."
+
+   ✅ التشخيص النهائي:
+     v87.17 + v87.18 حاولا إصلاح `.settings-wrap` و `.settings-shell`
+     كـ scroll containers مستقلة، لكن السحب على iOS Safari وبعض
+     متصفحات Android WebView لم يستجب بثقة بسبب:
+
+     1) `.settings-wrap` كان `min-height:100dvh` (ليس `height`)،
+        فالمتصفح لم يعتبره scroll container حقيقياً.
+     2) `.settings-shell` كان بـ `max-width:1080px` + `margin:0 auto`
+        وهذا يخلق حاوية بدون أبعاد ثابتة على الموبايل.
+     3) قواعد `.page-content:has(...)` في v87.17 اعتمدت على `:has()`
+        وهذا غير مدعوم على متصفحات موبايل قديمة.
+
+   ✅ الحل الجذري (نفس نمط .yam-home-mobile-page الذي أثبت نجاحه
+      100% في صفحة المنشورات — FeedMobile.jsx):
+
+     ▸ في JSX: نُضيف الفئة `yam-home-mobile-page` بجانب
+       `settings-wrap` و `settings-shell`. هذا يجعل الحاوية ترث
+       كل قواعد التمرير الناجحة من home-mobile-page-v59.13.28.css:
+         height: 100dvh + overflow-y:auto
+         + -webkit-overflow-scrolling:touch
+         + touch-action:pan-y
+         + overscroll-behavior-y:contain
+         + إلغاء transform/filter/contain الكاسر للتمرير.
+
+     ▸ في CSS: هذا الملف يضبط الأنماط الجمالية لـ .settings-wrap
+       و .settings-shell (padding، max-width، margin) على المحتوى
+       الداخلي فقط، دون كسر خصائص التمرير الموروثة من
+       .yam-home-mobile-page.
+
+   ⚠️ يجب استيراد هذا الملف **بعد**:
+     - home-mobile-page-v59.13.28.css
+     - yamshat-fixes-v87.17-SETTINGS-MAIN-SCROLL.css
+     - yamshat-fixes-v87.18-SETTINGS-POSTS-SCROLL-FINAL.css
+   ============================================================ */
+
+
+/* ═════════════════════════════════════════════════════════════
+   1️⃣  إبطال أي قواعد سابقة تكسر التمرير على .settings-wrap
+       و .settings-shell عندما تحمل أيضاً .yam-home-mobile-page.
+   ═════════════════════════════════════════════════════════════ */
+.yam-home-mobile-page.settings-wrap,
+.yam-home-mobile-page.settings-shell {
+  /* ⭐ نفس بصمة .yam-home-mobile-page — لكن نُعيد التأكيد ضد
+     أي !important أخرى قد تكون في v87.17 / v87.18 */
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  min-height: 100dvh !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  -ms-touch-action: pan-y !important;
+  overscroll-behavior-y: contain !important;
+  overscroll-behavior-x: none !important;
+
+  /* لا transform/filter/contain يكسر momentum على iOS */
+  transform: none !important;
+  -webkit-transform: none !important;
+  filter: none !important;
+  -webkit-filter: none !important;
+  perspective: none !important;
+  contain: none !important;
+
+  pointer-events: auto !important;
+  overflow-anchor: none !important;
+  will-change: scroll-position;
+
+  /* box-model آمن */
+  box-sizing: border-box !important;
+  display: block !important;
+
+  /* padding سفلي كافٍ لتجاوز BottomNav — لا padding جانبي كسِر تمرير */
+  padding-top: 0 !important;
+  padding-bottom: calc(160px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+
+/* ═════════════════════════════════════════════════════════════
+   2️⃣  المحتوى الداخلي لـ .settings-wrap — نُطبّق الجماليات
+       (padding، max-width، layout) على الأبناء المباشرين،
+       ليس على الحاوية نفسها (لأنها الآن scroll container).
+   ═════════════════════════════════════════════════════════════ */
+
+/* الهيدر الداخلي — sticky فوق التمرير */
+.yam-home-mobile-page.settings-wrap .settings-hero {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 20;
+  background: rgba(15, 15, 25, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  padding: 12px 14px;
+  margin: 0 0 8px 0;
+  touch-action: pan-y;
+}
+
+/* حاوية الـ layout الداخلية — تتدفّق طبيعياً بدون scroll ثانٍ */
+.yam-home-mobile-page.settings-wrap .settings-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 12px;
+  max-width: 1080px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+
+  /* لا scroll داخلي — الحاوية الأم تمرّر */
+  overflow: visible !important;
+  height: auto !important;
+  min-height: auto !important;
+  max-height: none !important;
+
+  touch-action: pan-y;
+  pointer-events: auto;
+}
+
+/* Sidebar على الموبايل — يتدفّق طبيعياً (لا scroll داخلي) */
+@media (max-width: 900px) {
+  .yam-home-mobile-page.settings-wrap .settings-sidebar,
+  .yam-home-mobile-page.settings-wrap .settings-main {
+    position: static !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    touch-action: pan-y;
+  }
+}
+
+
+/* ═════════════════════════════════════════════════════════════
+   3️⃣  المحتوى الداخلي لـ .settings-shell — نفس المبدأ
+   ═════════════════════════════════════════════════════════════ */
+
+/* الهيدر الداخلي — sticky */
+.yam-home-mobile-page.settings-shell .settings-shell-header {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 20;
+  background: rgba(15, 15, 25, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  padding: 12px 14px;
+  margin: 0 0 8px 0;
+  touch-action: pan-y;
+}
+
+/* Tabs — أفقي فقط */
+.yam-home-mobile-page.settings-shell .settings-shell-tabs {
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x !important;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  padding: 0 12px;
+  margin: 0 0 8px 0;
+}
+.yam-home-mobile-page.settings-shell .settings-shell-tabs::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* Body — يتدفّق طبيعياً */
+.yam-home-mobile-page.settings-shell .settings-shell-body {
+  padding: 0 12px;
+  max-width: 1080px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+
+  overflow: visible !important;
+  height: auto !important;
+  min-height: auto !important;
+  max-height: none !important;
+
+  touch-action: pan-y;
+  pointer-events: auto;
+
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Banner */
+.yam-home-mobile-page.settings-shell .settings-banner,
+.yam-home-mobile-page.settings-wrap .settings-banner {
+  margin: 0 12px 8px 12px;
+}
+
+
+/* ═════════════════════════════════════════════════════════════
+   4️⃣  كل الأبناء (بطاقات، أقسام، شبكات) — يستقبلون pan-y
+       وتُكسر أي contain/transform قد تكسر التمرير.
+   ═════════════════════════════════════════════════════════════ */
+.yam-home-mobile-page.settings-wrap *,
+.yam-home-mobile-page.settings-shell * {
+  overscroll-behavior-y: contain;
+}
+
+.yam-home-mobile-page.settings-wrap > *,
+.yam-home-mobile-page.settings-shell > *,
+.yam-home-mobile-page.settings-wrap .settings-layout > *,
+.yam-home-mobile-page.settings-wrap .settings-main > *,
+.yam-home-mobile-page.settings-shell .settings-shell-body > * {
+  touch-action: pan-y;
+  pointer-events: auto;
+  transform: none;
+  filter: none;
+  contain: none;
+}
+
+/* البطاقات (Card) داخل الإعدادات */
+.yam-home-mobile-page.settings-wrap .ui-card,
+.yam-home-mobile-page.settings-wrap [class*="settings-card"],
+.yam-home-mobile-page.settings-wrap .settings-section,
+.yam-home-mobile-page.settings-shell .ui-card,
+.yam-home-mobile-page.settings-shell [class*="settings-card"],
+.yam-home-mobile-page.settings-shell .settings-section {
+  touch-action: pan-y !important;
+  transform: none !important;
+  filter: none !important;
+  contain: none !important;
+  overflow: visible !important;
+  will-change: auto;
+}
+
+/* الشبكات (grid) داخل الإعدادات */
+.yam-home-mobile-page.settings-wrap [style*="grid"],
+.yam-home-mobile-page.settings-shell [style*="grid"] {
+  touch-action: pan-y !important;
+  overflow: visible !important;
+}
+
+
+/* ═════════════════════════════════════════════════════════════
+   5️⃣  العناصر التفاعلية — manipulation (تسمح بالنقر وتترك السحب)
+   ═════════════════════════════════════════════════════════════ */
+.yam-home-mobile-page.settings-wrap button,
+.yam-home-mobile-page.settings-wrap a,
+.yam-home-mobile-page.settings-wrap [role="button"],
+.yam-home-mobile-page.settings-wrap [role="tab"],
+.yam-home-mobile-page.settings-wrap [role="link"],
+.yam-home-mobile-page.settings-wrap [role="switch"],
+.yam-home-mobile-page.settings-wrap .settings-toggle,
+.yam-home-mobile-page.settings-wrap .settings-btn-mini,
+.yam-home-mobile-page.settings-wrap .settings-quick-menu-btn,
+.yam-home-mobile-page.settings-wrap .settings-mobile-back,
+.yam-home-mobile-page.settings-wrap .settings-tab-btn,
+.yam-home-mobile-page.settings-shell button,
+.yam-home-mobile-page.settings-shell a,
+.yam-home-mobile-page.settings-shell [role="button"],
+.yam-home-mobile-page.settings-shell [role="tab"],
+.yam-home-mobile-page.settings-shell [role="link"],
+.yam-home-mobile-page.settings-shell [role="switch"],
+.yam-home-mobile-page.settings-shell .settings-toggle,
+.yam-home-mobile-page.settings-shell .settings-btn-mini,
+.yam-home-mobile-page.settings-shell .settings-shell-back {
+  touch-action: manipulation !important;
+}
+
+/* حقول الإدخال — auto (المتصفح يدير) */
+.yam-home-mobile-page.settings-wrap input,
+.yam-home-mobile-page.settings-wrap textarea,
+.yam-home-mobile-page.settings-wrap select,
+.yam-home-mobile-page.settings-wrap [contenteditable="true"],
+.yam-home-mobile-page.settings-shell input,
+.yam-home-mobile-page.settings-shell textarea,
+.yam-home-mobile-page.settings-shell select,
+.yam-home-mobile-page.settings-shell [contenteditable="true"] {
+  touch-action: auto !important;
+}
+
+
+/* ═════════════════════════════════════════════════════════════
+   6️⃣  .page-content في MainLayout — عند احتواء إعدادات،
+       نُلغي paddings حتى لا يتضاعف الحيّز.
+   ═════════════════════════════════════════════════════════════ */
+.app-shell .page-content:has(.yam-home-mobile-page.settings-wrap),
+.app-shell .page-content:has(.yam-home-mobile-page.settings-shell) {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  overflow: hidden !important;
+}
+
+
+/* ═════════════════════════════════════════════════════════════
+   7️⃣  iOS Safari خاص — تأكيد momentum scrolling
+   ═════════════════════════════════════════════════════════════ */
+@supports (-webkit-touch-callout: none) {
+  .yam-home-mobile-page.settings-wrap,
+  .yam-home-mobile-page.settings-shell {
+    -webkit-overflow-scrolling: touch !important;
+    overflow-y: auto !important;
+    touch-action: pan-y !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+  }
+}
+
+
+/* ═════════════════════════════════════════════════════════════
+   8️⃣  Desktop — يبقى layout الإعدادات كما كان (بدون تمرير قسري)
+       نُلغي height:100dvh على شاشات كبيرة لأن الديسكتوب يستخدم
+       .page-content في MainLayout كـ scroll container.
+   ═════════════════════════════════════════════════════════════ */
+@media (min-width: 900px) {
+  .yam-home-mobile-page.settings-wrap,
+  .yam-home-mobile-page.settings-shell {
+    height: auto !important;
+    max-height: none !important;
+    min-height: auto !important;
+    overflow: visible !important;
+    padding-bottom: 24px !important;
+  }
+  .yam-home-mobile-page.settings-wrap .settings-hero,
+  .yam-home-mobile-page.settings-shell .settings-shell-header {
+    position: relative !important;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .app-shell .page-content:has(.yam-home-mobile-page.settings-wrap),
+  .app-shell .page-content:has(.yam-home-mobile-page.settings-shell) {
+    overflow: auto !important;
+  }
+}
+
+
+/* ═════════════════════════════════════════════════════════════
+   9️⃣  prefers-reduced-motion — احترام إعداد المستخدم
+   ═════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  .yam-home-mobile-page.settings-wrap,
+  .yam-home-mobile-page.settings-shell {
+    scroll-behavior: auto !important;
+  }
+}
+
+
+/* ============================================================
+   ✨ نهاية v87.23
+   الآن كل صفحات الإعدادات (الرئيسية + كل الفرعية) تتمرّر
+   بنفس سلاسة صفحة المنشورات على ويب-الجوال — من أي منطقة
+   في الصفحة، اللمس والسحب لأعلى/أسفل يستجيبان فوراً،
+   وبـ momentum scroll حقيقي على iOS Safari.
+   ============================================================ */

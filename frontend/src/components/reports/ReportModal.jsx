@@ -15,6 +15,7 @@
  *   />
  */
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import axios from 'axios';
 import { API_BASE } from '../../api/config.js';
 
@@ -180,12 +181,12 @@ export default function ReportModal({
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div
       dir="rtl"
       className="report-modal-backdrop"
       style={{
-        position: 'fixed', inset: 0, zIndex: 9999,
+        position: 'fixed', inset: 0, zIndex: 10050,
         background: 'rgba(0,0,0,0.75)',
         display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
         fontFamily: '"Noto Sans Arabic", "Cairo", system-ui, sans-serif',
@@ -205,10 +206,11 @@ export default function ReportModal({
           background: 'linear-gradient(180deg, #1e1b3a 0%, #14122a 100%)',
           borderTopRightRadius: 24, borderTopLeftRadius: 24,
           padding: '20px 18px 0', color: '#fff',
-          maxHeight: 'min(90dvh, calc(100dvh - env(safe-area-inset-top, 0px) - 8px))', overflowY: 'auto',
+          maxHeight: 'min(92dvh, calc(100dvh - env(safe-area-inset-top, 0px) - 8px))', overflowY: 'auto',
           boxShadow: '0 -8px 32px rgba(124,58,237,0.35)',
           border: '1px solid rgba(124,58,237,0.3)',
           paddingBottom: 'max(12px, env(safe-area-inset-bottom, 0px))',
+          marginBottom: 0,
         }}
       >
         {/* Handle */}
@@ -376,6 +378,7 @@ export default function ReportModal({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

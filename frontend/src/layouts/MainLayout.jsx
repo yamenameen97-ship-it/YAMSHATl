@@ -9,11 +9,24 @@ import useIsMobile from '../hooks/useIsMobile.js';
  * يستخدم useIsMobile (matchMedia) بدل resize listener
  * لتقليل rerenders. memo يمنع الإعادة عندما لا تتغير children.
  */
-function MainLayout({ children }) {
+function MainLayout({
+  children,
+  hideNav = false,
+  lockScroll = false,
+  hideTopBar,
+  hideBottomNav,
+}) {
   const mobile = useIsMobile();
+  const sharedProps = {
+    hideNav,
+    lockScroll,
+    hideTopBar,
+    hideBottomNav,
+  };
+
   return mobile
-    ? <MobileLayout>{children}</MobileLayout>
-    : <DesktopLayout>{children}</DesktopLayout>;
+    ? <MobileLayout {...sharedProps}>{children}</MobileLayout>
+    : <DesktopLayout {...sharedProps}>{children}</DesktopLayout>;
 }
 
 export default memo(MainLayout);

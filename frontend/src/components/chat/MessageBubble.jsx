@@ -9,6 +9,7 @@ import MessageContextPopup from './MessageContextPopup.jsx';
 import MessageReadReceipts from './MessageReadReceipts.jsx';
 import MessageRetry from './MessageRetry.jsx';
 import useMessageTranslation from '../../hooks/useMessageTranslation.js';
+import { resolveMediaUrl } from '../../config/mediaConfig.js';
 
 const QUICK_REACTIONS = ['❤️', '🔥', '😂', '👏', '👍', '😮'];
 
@@ -38,28 +39,34 @@ function getPrimaryAttachment(message = {}) {
 
 function resolveMessageMediaUrl(message = {}) {
   const attachment = getPrimaryAttachment(message);
-  return String(
+  return resolveMediaUrl(
     message?.media_url
     || message?.media_urls?.[0]
+    || message?.video_url
+    || message?.image_url
     || attachment?.cdn_url
     || attachment?.url
     || attachment?.mediaUrl
     || attachment?.media_url
     || attachment?.file_url
+    || attachment?.thumbnail_url
     || ''
-  ).trim();
+  );
 }
 
 function resolveMessagePreviewUrl(message = {}) {
   const attachment = getPrimaryAttachment(message);
-  return String(
+  return resolveMediaUrl(
     attachment?.thumbnail_url
     || attachment?.thumbnailUrl
     || attachment?.preview_url
     || attachment?.previewUrl
+    || message?.thumbnail_url
+    || message?.preview_url
+    || message?.image_url
     || resolveMessageMediaUrl(message)
     || ''
-  ).trim();
+  );
 }
 
 function resolveMessageDurationSeconds(message = {}) {
@@ -81,13 +88,13 @@ function resolveMessageDurationSeconds(message = {}) {
 
 function resolveMessageSenderAvatar(message = {}) {
   const attachment = getPrimaryAttachment(message);
-  return String(
+  return resolveMediaUrl(
     message?.sender_avatar
     || message?.senderAvatar
     || attachment?.sender_avatar
     || attachment?.senderAvatar
     || ''
-  ).trim();
+  );
 }
 
 function resolveMessageMediaKind(message = {}) {

@@ -11,13 +11,21 @@ import PullToRefresh from '../components/common/PullToRefresh.jsx';
  * 🔧 v59.13.18: mainRef يُمرّر مباشرة إلى PullToRefresh لضمان عمل السحب
  * في كل صفحات الديسكتوب التي تعمل على شاشات لمس.
  */
-function DesktopLayout({ children }) {
+function DesktopLayout({
+  children,
+  hideNav = false,
+  lockScroll = false,
+  hideTopBar,
+  hideBottomNav,
+}) {
   const location = useLocation();
   // ⭐ v59.13.18: مرجع عنصر التمرير الفعلي
   const mainRef = useRef(null);
   const isReelsRoute = location.pathname === '/reels' || location.pathname.startsWith('/reels/');
   const isChatRoute = location.pathname.startsWith('/chat') || location.pathname.startsWith('/inbox');
-  const disablePullToRefresh = isReelsRoute || isChatRoute;
+  const shouldHideTopBar = Boolean(hideTopBar ?? hideNav);
+  const shouldHideBottomNav = Boolean(hideBottomNav ?? hideNav);
+  const disablePullToRefresh = isReelsRoute || isChatRoute || lockScroll;
 
   const onRefresh = useCallback(async () => {
     let handled = false;
@@ -45,8 +53,8 @@ function DesktopLayout({ children }) {
   }, [location.pathname]);
 
   return (
-    <div className="desktop-layout-container" dir="rtl">
-      <MobileTopBar />
+    <div className={`desktop-layout-container ${shouldHideTopBar ? 'hide-topbar' : ''} ${shouldHideBottomNav ? 'hide-bottomnav' : ''} ${lockScroll ? 'lock-scroll' : ''}`.trim()} dir="rtl">
+      {shouldHideTopBar ? null : <MobileTopBar />}
 
       <main className="desktop-main-content" ref={mainRef}>
         <PullToRefresh
@@ -64,7 +72,7 @@ function DesktopLayout({ children }) {
         </PullToRefresh>
       </main>
 
-      <BottomNav />
+      {shouldHideBottomNav ? null : <BottomNav />}
 
       <style>{`
         .desktop-layout-container {
@@ -78,11 +86,23 @@ function DesktopLayout({ children }) {
           font-family: "Noto Sans Arabic", "Cairo", system-ui, -apple-system, sans-serif;
         }
 
+        .desktop-layout-container.hide-topbar {
+          padding-top: 0;
+        }
+
+        .desktop-layout-container.hide-bottomnav {
+          padding-bottom: 0;
+        }
+
         .desktop-main-content {
           flex: 1;
           width: 100%;
           display: flex;
           justify-content: center;
+          overflow: hidden;
+        }
+
+        .desktop-layout-container.lock-scroll .desktop-main-content {
           overflow: hidden;
         }
 

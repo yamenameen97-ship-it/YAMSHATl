@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import MainLayout from '../../components/layout/MainLayout.jsx';
 import ProfileHeader from '../../components/profile/ProfileHeader.jsx';
@@ -6,6 +6,7 @@ import Card from '../../components/ui/Card.jsx';
 import Button from '../../components/ui/Button.jsx';
 import Modal from '../../components/ui/Modal.jsx';
 import { getProfileBundle, updateMyProfile, followUser } from '../../api/users.js';
+import { resolveMediaUrl } from '../../config/mediaConfig.js';
 import { getCurrentUsername } from '../../utils/auth.js';
 
 const TABS = {
@@ -27,6 +28,61 @@ const TAB_ITEMS = {
 const normalizeRequestedTab = (value) => {
   const normalized = String(value || '').trim().toLowerCase();
   return Object.values(TABS).includes(normalized) ? normalized : TABS.POSTS;
+};
+
+const VIDEO_MEDIA_RE = /\.(mp4|webm|mov|m4v|m3u8|mkv|avi)(\?.*)?$/i;
+
+const looksLikeVideoUrl = (value = '') => {
+  const candidate = String(value || '').trim().toLowerCase();
+  if (!candidate) return false;
+  return VIDEO_MEDIA_RE.test(candidate)
+    || /(^data:video\/)|([?&](resource_type|content_type|mime_type)=video)/i.test(candidate)
+    || /\/video\/upload\//i.test(candidate)
+    || /\b(video|reel|stream|playlist)\b/i.test(candidate);
+};
+
+const normalizeGalleryPost = (post) => {
+  if (!post || typeof post !== 'object') return post;
+
+  const rawMediaCandidates = [
+    ...(Array.isArray(post.media_urls) ? post.media_urls : []),
+    post.media_url,
+    post.media,
+    post.video_url,
+    post.image_url,
+    post.thumbnail_url,
+    post.preview_url,
+  ].filter(Boolean);
+
+  const resolvedMedia = Array.from(new Set(rawMediaCandidates.map((item) => resolveMediaUrl(item)).filter(Boolean)));
+  const primaryMediaUrl = resolvedMedia[0] || '';
+  const hasVideo = Boolean(
+    post.has_video
+    || String(post.media_type || post.type || '').toLowerCase() === 'video'
+    || resolvedMedia.some(looksLikeVideoUrl)
+    || looksLikeVideoUrl(primaryMediaUrl)
+  );
+
+  const posterCandidates = [
+    post.thumbnail_url,
+    post.preview_url,
+    post.image_url,
+    ...resolvedMedia.slice(1),
+  ]
+    .map((item) => resolveMediaUrl(item))
+    .filter(Boolean);
+
+  const posterUrl = posterCandidates.find((item) => !looksLikeVideoUrl(item)) || '';
+
+  return {
+    ...post,
+    media_url: primaryMediaUrl,
+    media: primaryMediaUrl,
+    image_url: hasVideo ? (posterUrl || '') : (posterUrl || primaryMediaUrl),
+    thumbnail_url: posterUrl || '',
+    preview_url: posterUrl || primaryMediaUrl,
+    has_video: hasVideo,
+  };
 };
 
 /**
@@ -53,6 +109,7 @@ export default function ProfilePage() {
   const [pinnedPosts, setPinnedPosts] = useState([]);
   const [analyticsData, setAnalyticsData] = useState(null);
   const [followersData, setFollowersData] = useState(null);
+  const pageRootRef = useRef(null);
 
   const requestedTab = normalizeRequestedTab(searchParams.get('tab'));
   const requestedPanel = String(searchParams.get('panel') || '').trim().toLowerCase();
@@ -85,7 +142,7 @@ export default function ProfilePage() {
     try {
       setLoading(true);
       setError('');
-      const { data } = await getProfileBundle(username);
+      const { data } = await getProfileBundle(username, { forceRefresh: true });
       setProfile(data);
       setPinnedPosts(Array.isArray(data.pinned_posts) ? data.pinned_posts : []);
       setAnalyticsData(data.analytics || {});
@@ -127,6 +184,17 @@ export default function ProfilePage() {
       setShowCustomization(true);
     }
   }, [requestedPanel, isOwnProfile]);
+
+  useEffect(() => {
+    const rootEl = pageRootRef.current;
+    const pageContent = rootEl?.closest?.('.page-content');
+    if (!pageContent) return undefined;
+
+    pageContent.classList.add('profile-page-content-scroll');
+    return () => {
+      pageContent.classList.remove('profile-page-content-scroll');
+    };
+  }, []);
 
   /**
    * Handles theme change with persistence
@@ -219,7 +287,7 @@ export default function ProfilePage() {
   /**
    * Memoized content to prevent unnecessary re-renders
    */
-  const tabContent = useMemo(() => getTabContent(), [getTabContent]);
+  const tabContent = useMemo(() => getTabContent().map(normalizeGalleryPost), [getTabContent]);
 
   if (loading) {
     return (
@@ -245,7 +313,7 @@ export default function ProfilePage() {
 
   return (
     <MainLayout>
-      <div style={{ maxWidth: 1000, margin: '0 auto', padding: '20px' }}>
+      <div ref={pageRootRef} className="profile-page-wrap" style={{ maxWidth: 1000, margin: '0 auto', padding: '20px', width: '100%', boxSizing: 'border-box' }}>
         {/* Profile Header */}
         <ProfileHeader
           profile={profile}
@@ -276,12 +344,28 @@ export default function ProfilePage() {
                 }}
               >
                 {post.media_url || post.image_url ? (
-                  <img
-                    src={post.media_url || post.image_url}
-                    alt="منشور"
-                    className="ym-profile-gallery__img"
-                    loading="lazy"
-                  />
+                  post.has_video ? (
+                    <>
+                      <video
+                        src={post.media_url}
+                        poster={post.thumbnail_url || post.image_url || undefined}
+                        className="ym-profile-gallery__img ym-profile-gallery__video"
+                        muted
+                        playsInline
+                        preload="metadata"
+                        aria-label="معاينة فيديو المنشور"
+                      />
+                      <span className="ym-profile-gallery__play-badge" aria-hidden="true">▶</span>
+                    </>
+                  ) : (
+                    <img
+                      src={post.image_url || post.media_url}
+                      alt="منشور"
+                      className="ym-profile-gallery__img"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  )
                 ) : (
                   <div className="ym-profile-gallery__empty">📝</div>
                 )}
@@ -314,6 +398,28 @@ export default function ProfilePage() {
           )}
         </div>
       </div>
+
+      <style>{`
+        .page-content.profile-page-content-scroll {
+          overflow-y: auto !important;
+          overflow-x: hidden !important;
+          -webkit-overflow-scrolling: touch !important;
+          touch-action: pan-y !important;
+          overscroll-behavior-y: contain !important;
+        }
+        .profile-page-wrap {
+          min-height: 100%;
+          padding-bottom: calc(108px + env(safe-area-inset-bottom, 0px));
+          touch-action: pan-y;
+        }
+        .profile-page-wrap,
+        .profile-page-wrap * {
+          box-sizing: border-box;
+        }
+        .profile-page-wrap .ym-profile-gallery {
+          overflow: visible;
+        }
+      `}</style>
 
       {/* Analytics Modal */}
       <Modal
@@ -575,6 +681,28 @@ export default function ProfilePage() {
           height: 100%;
           object-fit: cover;
           display: block;
+          background: linear-gradient(135deg, rgba(19, 23, 42, 0.96), rgba(11, 16, 32, 0.92));
+        }
+        .ym-profile-gallery__video {
+          pointer-events: none;
+        }
+        .ym-profile-gallery__play-badge {
+          position: absolute;
+          inset-inline-start: 10px;
+          bottom: 10px;
+          width: 34px;
+          height: 34px;
+          border-radius: 999px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(0, 0, 0, 0.66);
+          color: #fff;
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+          font-size: 0.95rem;
+          backdrop-filter: blur(6px);
+          -webkit-backdrop-filter: blur(6px);
         }
         .ym-profile-gallery__empty {
           width: 100%;
@@ -689,6 +817,12 @@ export default function ProfilePage() {
           .ym-profile-gallery__badge {
             font-size: 0.55rem;
             padding: 2px 5px;
+          }
+          .ym-profile-gallery__play-badge {
+            width: 30px;
+            height: 30px;
+            inset-inline-start: 8px;
+            bottom: 8px;
           }
         }
       `}</style>

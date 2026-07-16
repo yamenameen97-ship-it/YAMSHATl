@@ -331,8 +331,8 @@ function MobilePostCard({
           --ym-name-size: clamp(0.82rem, 3.4vw, 0.94rem);
           --ym-meta-size: clamp(0.66rem, 2.6vw, 0.74rem);
           --ym-body-size: clamp(0.8rem, 3.3vw, 0.9rem);
-          --ym-btn-size: clamp(0.72rem, 2.9vw, 0.82rem);
-          --ym-icon-size: clamp(18px, 5.2vw, 21px);
+          --ym-btn-size: clamp(0.8rem, 3.15vw, 0.9rem);
+          --ym-icon-size: clamp(20px, 5.8vw, 24px);
           --ym-icon-more: clamp(16px, 4.8vw, 18px);
 
           background-color: #0A0D1A;
@@ -655,14 +655,14 @@ function MobilePostCard({
           display: inline-flex;
           flex-direction: row;
           align-items: center;
-          gap: 5px;
+          gap: 6px;
           cursor: pointer;
           font-size: var(--ym-btn-size);
-          padding: 6px 8px;
-          border-radius: 8px;
+          padding: 9px 11px;
+          border-radius: 10px;
           transition: background 0.15s ease, color 0.15s ease;
           font-family: inherit;
-          min-height: 36px;
+          min-height: 44px;
           flex-shrink: 0;
           line-height: 1;
           touch-action: manipulation;
@@ -712,6 +712,8 @@ function MobilePostCard({
             --ym-radius: 16px;
             --ym-pad-x: 16px;
             --ym-pad-y: 14px;
+            --ym-btn-size: 0.95rem;
+            --ym-icon-size: 24px;
             margin: 10px auto;
           }
         }

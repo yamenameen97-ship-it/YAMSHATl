@@ -37,6 +37,11 @@ try:
 except Exception:  # pragma: no cover
     CloseFriend = None  # type: ignore[assignment]
 
+try:
+    from app.models.follow import Follow  # type: ignore
+except Exception:  # pragma: no cover
+    Follow = None  # type: ignore[assignment]
+
 # v87.11 — Hide Story From: قائمة المستخدمين الذين لا يرون قصص صاحب الحساب
 try:
     from app.models.hidden_story_user import HiddenStoryUser  # type: ignore
@@ -173,6 +178,57 @@ def _load_close_friend_ids(db: Session, user_id: int) -> set[int]:
         return {int(r.friend_id) for r in rows if getattr(r, 'friend_id', None)}
     except Exception:
         return set()
+
+
+def _load_following_ids(db: Session, user_id: int) -> set[int]:
+    """الحسابات التي يتابعها المستخدم — تستخدم لرؤية stories الأصدقاء/المشتركين."""
+    if Follow is None:
+        return set()
+    try:
+        rows = db.query(Follow).filter(Follow.follower_id == int(user_id)).all()
+        return {int(r.following_id) for r in rows if getattr(r, 'following_id', None)}
+    except Exception:
+        return set()
+
+
+def _load_close_friend_owner_ids(db: Session, viewer_user_id: int) -> set[int]:
+    """المستخدمون الذين أضافوا هذا المشاهد إلى close_friends لديهم."""
+    if CloseFriend is None:
+        return set()
+    try:
+        rows = db.query(CloseFriend).filter(CloseFriend.friend_id == int(viewer_user_id)).all()
+        return {int(r.owner_id) for r in rows if getattr(r, 'owner_id', None)}
+    except Exception:
+        return set()
+
+
+def _can_view_story_owner(db: Session, viewer_user_id: int, owner_user_id: int, privacy: str) -> bool:
+    """يفحص هل يحق للمشاهد رؤية قصة صاحب الحساب وفق الخصوصية الحالية."""
+    viewer_id = int(viewer_user_id or 0)
+    owner_id = int(owner_user_id or 0)
+    normalized_privacy = str(privacy or 'friends').strip() or 'friends'
+
+    if viewer_id and viewer_id == owner_id:
+        return True
+    if not viewer_id or not owner_id:
+        return False
+    if _is_blocked_between(db, viewer_id, owner_id):
+        return False
+
+    hidden_owners = _load_hidden_from_me_ids(db, viewer_id)
+    muted_owners = _load_muted_story_ids(db, viewer_id)
+    if owner_id in hidden_owners or owner_id in muted_owners:
+        return False
+
+    friend_ids = _load_friend_ids(db, viewer_id)
+    following_ids = _load_following_ids(db, viewer_id)
+
+    if normalized_privacy == 'private':
+        return False
+    if normalized_privacy == 'close_friends':
+        close_owner_ids = _load_close_friend_owner_ids(db, viewer_id)
+        return owner_id in close_owner_ids
+    return owner_id in friend_ids or owner_id in following_ids
 
 
 # v87.11 — Hide Story From helpers
@@ -538,38 +594,27 @@ def add_story(
 
 # ============================== List / Grouped ==============================
 def _visible_filter(db: Session, viewer_user_id: int):
-    """يبني شرط الرؤية بحسب سياسة الخصوصية + حظر متبادل + Hide Story From (v87.11)."""
+    """يبني شرط الرؤية بحسب الخصوصية مع دعم المتابعات + المقربين + الحظر."""
     friends = _load_friend_ids(db, viewer_user_id)
-    close = _load_close_friend_ids(db, viewer_user_id)
+    following = _load_following_ids(db, viewer_user_id)
+    close_owner_ids = _load_close_friend_owner_ids(db, viewer_user_id)
     blocked = _load_block_scope(db, viewer_user_id)
-    # v87.11 — أصحاب حسابات أخفوا عني قصصهم
     hidden_from_me = _load_hidden_from_me_ids(db, viewer_user_id)
-    # v87.12 — المستخدمون الذين كتمت قصصهم (لا تظهر في شريط الستوري)
     muted_stories = _load_muted_story_ids(db, viewer_user_id)
 
-    # استبعد المحظورين والمُخفى عني قصصهم والمكتومة قصصهم من الأصدقاء والمقربين
-    friends -= blocked
-    friends -= hidden_from_me
-    friends -= muted_stories
-    close -= blocked
-    close -= hidden_from_me
-    close -= muted_stories
+    visible_friend_like_ids = (friends | following) - blocked - hidden_from_me - muted_stories
+    visible_close_owner_ids = close_owner_ids - blocked - hidden_from_me - muted_stories
 
-    friend_list = list(friends) or [0]
-    close_list = list(close) or [0]
+    friend_like_list = list(visible_friend_like_ids) or [0]
+    close_owner_list = list(visible_close_owner_ids) or [0]
 
     conditions = [
-        # قصصي أنا
         Story.user_id == viewer_user_id,
-        # قصص أصدقائي بخصوصية friends
-        and_(Story.privacy == 'friends', Story.user_id.in_(friend_list)),
-        # قصص المقربين الذين وضعوني في close_friends
-        and_(Story.privacy == 'close_friends', Story.user_id.in_(close_list)),
+        and_(Story.privacy == 'friends', Story.user_id.in_(friend_like_list)),
+        and_(Story.privacy == 'close_friends', Story.user_id.in_(close_owner_list)),
     ]
     base = or_(*conditions)
 
-    # v87.11 — استبعاد قصص أي مستخدم أخفى عني قصصه (double-safety)
-    # v87.12 — استبعاد قصص المستخدمين المكتومة قصصهم
     exclude_ids = list(blocked | hidden_from_me | muted_stories)
     if exclude_ids:
         return and_(base, ~Story.user_id.in_(exclude_ids))
@@ -664,13 +709,13 @@ def list_user_stories(
         allow_privacies = ('friends', 'close_friends', 'private')
     else:
         friend_ids = _load_friend_ids(db, viewer_user_id)
-        close_ids = _load_close_friend_ids(db, viewer_user_id)
-        if int(target_user_id) in close_ids:
+        following_ids = _load_following_ids(db, viewer_user_id)
+        close_owner_ids = _load_close_friend_owner_ids(db, viewer_user_id)
+        if int(target_user_id) in close_owner_ids:
             allow_privacies = ('friends', 'close_friends')
-        elif int(target_user_id) in friend_ids:
+        elif int(target_user_id) in (friend_ids | following_ids):
             allow_privacies = ('friends',)
         else:
-            # ليس صديقاً → لا يرى أي قصة
             allow_privacies = ()
 
     stories: list = []
@@ -732,16 +777,12 @@ def get_story(db: Session, story_id: int, viewer_user_id: int) -> dict:
 
     # فحص الرؤية
     if story.user_id != viewer_user_id:
-        if story.privacy == 'private':
-            raise PermissionError('Private story')
-        if story.privacy == 'close_friends':
-            cf = _load_close_friend_ids(db, viewer_user_id)
-            if int(story.user_id) not in cf:
+        if not _can_view_story_owner(db, viewer_user_id, int(story.user_id), str(story.privacy or 'friends')):
+            if story.privacy == 'private':
+                raise PermissionError('Private story')
+            if story.privacy == 'close_friends':
                 raise PermissionError('Not in close friends')
-        else:  # friends
-            fr = _load_friend_ids(db, viewer_user_id)
-            if int(story.user_id) not in fr:
-                raise PermissionError('Not a friend')
+            raise PermissionError('Not following story owner')
     return serialize_story(db, story, viewer_user_id=viewer_user_id)
 
 

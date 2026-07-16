@@ -45,22 +45,22 @@ function normalizeStoriesResponse(res, mode = 'list') {
 }
 
 export const getStories = async () => {
-  const res = await API.get('/stories');
+  const res = await API.get('/stories', { cache: false, forceRefresh: true });
   return normalizeStoriesResponse(res, 'list');
 };
 
 export const getStoryById = async (storyId) => {
-  const res = await API.get(`/stories/${storyId}`);
+  const res = await API.get(`/stories/${storyId}`, { cache: false, forceRefresh: true });
   return normalizeStoriesResponse(res, 'single');
 };
 
 export const getStoriesGrouped = async () => {
-  const res = await API.get('/stories/grouped');
+  const res = await API.get('/stories/grouped', { cache: false, forceRefresh: true });
   return normalizeStoriesResponse(res, 'group');
 };
 
 export const getStoriesByUser = async (userId) => {
-  const res = await API.get(`/stories/user/${userId}`);
+  const res = await API.get(`/stories/user/${userId}`, { cache: false, forceRefresh: true });
   if (res?.data && typeof res.data === 'object' && Array.isArray(res.data.stories)) {
     return { ...res, data: normalizeStoryGroup(res.data) };
   }
@@ -68,22 +68,22 @@ export const getStoriesByUser = async (userId) => {
 };
 
 export const getCloseFriendsStories = async () => {
-  const res = await API.get('/stories/close_friends');
+  const res = await API.get('/stories/close_friends', { cache: false, forceRefresh: true });
   return normalizeStoriesResponse(res, 'group');
 };
 
 export const getStoryHighlights = async () => {
-  const res = await API.get('/stories/highlights');
+  const res = await API.get('/stories/highlights', { cache: false, forceRefresh: true });
   return normalizeStoriesResponse(res, 'list');
 };
 
 export const getStoryArchive = async () => {
-  const res = await API.get('/stories/archive');
+  const res = await API.get('/stories/archive', { cache: false, forceRefresh: true });
   return normalizeStoriesResponse(res, 'list');
 };
 
 export const getStoryAnalyticsSummary = async () => {
-  const res = await API.get('/stories/analytics/summary');
+  const res = await API.get('/stories/analytics/summary', { cache: false, forceRefresh: true });
   const topStory = normalizeStoryObject(res?.data?.top_story || null);
   const recentStories = Array.isArray(res?.data?.recent_stories)
     ? res.data.recent_stories.map(normalizeStoryObject)
@@ -107,7 +107,7 @@ export const toggleStoryHighlight = (storyId, title = '') => API.post(`/stories/
 export const renameStoryHighlight = (storyId, title) => API.post(`/stories/${storyId}/highlight/title`, { title });
 export const deleteStory = (storyId) => API.delete(`/stories/${storyId}`);
 export const purgeExpiredStories = () => API.post('/stories/purge_expired');
-export const getStoryMusicCatalog = () => API.get('/stories/music-catalog');
+export const getStoryMusicCatalog = () => API.get('/stories/music-catalog', { cache: true, cacheTtlMs: 60_000 });
 export const muteStoryById = (storyId) => API.post(`/stories/${storyId}/mute`);
 
 export const getMutedStoryUsers = () => API.get('/users/me/muted-story-users', { cache: false, forceRefresh: true });

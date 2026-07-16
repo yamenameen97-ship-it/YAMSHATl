@@ -1118,17 +1118,17 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
           flex-direction: row;
           align-items: center;
           justify-content: center;
-          gap: 5px;
+          gap: 6px;
           border: none;
           background: transparent;
           color: var(--muted, #9ca3af);
           cursor: pointer;
-          font-size: var(--pc-btn);
-          padding: 8px 6px;
-          border-radius: 10px;
+          font-size: calc(var(--pc-btn) + 0.04rem);
+          padding: 10px 8px;
+          border-radius: 12px;
           transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
           font-family: inherit;
-          min-height: 40px;
+          min-height: 48px;
           width: 100%;
           line-height: 1;
           -webkit-tap-highlight-color: transparent;
@@ -1144,7 +1144,7 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
         .ym-pc-action.is-liked { color: #ef4444; }
         .ym-pc-action.is-saved { color: var(--accent, #8B5CF6); }
         .ym-pc-emoji {
-          font-size: var(--pc-emoji);
+          font-size: calc(var(--pc-emoji) + 0.08rem);
           line-height: 1;
         }
         .ym-pc-count,
@@ -1182,13 +1182,13 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
 
         /* ============ شاشات صغيرة (≤400px): أخفِ التسميات ============ */
         @media (max-width: 400px) {
-          .ym-pc-action { padding: 8px 3px; gap: 3px; font-size: 0.68rem; }
+          .ym-pc-action { padding: 9px 5px; gap: 4px; font-size: 0.76rem; min-height: 44px; }
           .ym-pc-action-label { display: none; }
           .ym-pc-stats { font-size: 0.66rem; gap: 3px; }
         }
         @media (max-width: 340px) {
           .ym-pc { --pc-pad-x: 8px; --pc-pad-y: 9px; }
-          .ym-pc-action { min-height: 36px; padding: 6px 2px; }
+          .ym-pc-action { min-height: 42px; padding: 7px 4px; }
           .ym-pc-emoji { font-size: 0.95rem; }
           .ym-pc-menu { min-width: 160px; }
         }

@@ -45,6 +45,41 @@ function revokeAttachments(entries = []) {
   });
 }
 
+function normalizeUploadedAttachment(upload = {}, file, extras = {}) {
+  const kind = extras?.kind || upload?.kind || upload?.type || upload?.mediaType || attachmentKind(file);
+  const mimeType = extras?.mime_type || extras?.mimeType || upload?.mime_type || upload?.mimeType || file?.type || upload?.preparedFile?.type || '';
+  const fileName = extras?.file_name || extras?.fileName || upload?.file_name || upload?.fileName || upload?.originalName || file?.name || '';
+  const fileSize = Number(extras?.file_size || extras?.size || upload?.file_size || upload?.size || upload?.originalSize || file?.size || 0) || undefined;
+  const durationSeconds = Number(
+    extras?.duration_seconds
+    || extras?.audio_duration_seconds
+    || upload?.duration_seconds
+    || upload?.audio_duration_seconds
+    || 0,
+  ) || undefined;
+
+  return {
+    ...upload,
+    ...extras,
+    kind,
+    type: extras?.type || kind,
+    url: extras?.url || upload?.url || upload?.media_url || upload?.mediaUrl || '',
+    media_url: extras?.media_url || upload?.media_url || upload?.mediaUrl || upload?.url || '',
+    cdn_url: extras?.cdn_url || upload?.cdn_url || upload?.cdnUrl || upload?.url || upload?.mediaUrl || '',
+    thumbnail_url: extras?.thumbnail_url || upload?.thumbnail_url || upload?.thumbnailUrl || '',
+    mime_type: mimeType || undefined,
+    file_name: fileName || undefined,
+    file_size: fileSize,
+    duration_seconds: durationSeconds,
+    audio_duration_seconds: durationSeconds,
+    waveform: extras?.waveform || upload?.waveform || null,
+    waveform_seed: extras?.waveform_seed || upload?.waveform_seed || null,
+    originalName: fileName || upload?.originalName || file?.name || '',
+    originalSize: fileSize,
+    mediaType: upload?.mediaType || kind,
+  };
+}
+
 function timerLabel(value) {
   const option = DISAPPEARING_MESSAGE_OPTIONS.find((item) => Number(item.value) === Number(value));
   return option?.label || 'بدون';
@@ -300,13 +335,16 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
 
     try {
       const uploadResults = await Promise.all(attachments.map((entry) => uploadAttachment(entry)));
+      const normalizedUploads = uploadResults.map((item, index) => normalizeUploadedAttachment(item, attachments[index]?.file, {
+        kind: attachments[index]?.kind,
+      }));
       const securityPayload = await buildMessageSecurityPayload(text);
       await onSend?.({
         text: text.trim(),
-        media_url: uploadResults[0]?.mediaUrl || '',
-        media_urls: uploadResults.map((item) => item.mediaUrl).filter(Boolean),
-        attachments: uploadResults,
-        type: uploadResults.length ? (uploadResults[0]?.mediaType || 'media') : 'text',
+        media_url: normalizedUploads[0]?.media_url || normalizedUploads[0]?.url || '',
+        media_urls: normalizedUploads.map((item) => item.media_url || item.url).filter(Boolean),
+        attachments: normalizedUploads,
+        type: normalizedUploads.length ? (normalizedUploads[0]?.type || normalizedUploads[0]?.mediaType || 'media') : 'text',
         replyTo,
         securityPayload,
         disappearing_in_seconds: Number(messageTimer || 0),
@@ -337,11 +375,19 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
         fileName: voicePayload.file.name,
         onProgress: () => {},
       });
+      const voiceAttachment = normalizeUploadedAttachment(upload, voicePayload.file, {
+        kind: 'voice',
+        type: 'voice',
+        duration_seconds: voicePayload.durationSeconds,
+        audio_duration_seconds: voicePayload.durationSeconds,
+        waveform_seed: voicePayload.waveformSeed,
+        waveform: voicePayload.waveformSeed,
+      });
       await onSend?.({
         text: '',
-        media_url: upload.mediaUrl,
-        media_urls: [upload.mediaUrl],
-        attachments: [upload],
+        media_url: voiceAttachment.media_url,
+        media_urls: [voiceAttachment.media_url].filter(Boolean),
+        attachments: [voiceAttachment],
         type: 'voice',
         waveform_seed: voicePayload.waveformSeed,
         audio_duration_seconds: voicePayload.durationSeconds,

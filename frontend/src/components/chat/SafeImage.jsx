@@ -16,25 +16,39 @@ import { useEffect, useState } from 'react';
  */
 export default function SafeImage({
   src,
+  fallbackSrc = '',
   alt = 'صورة',
   onOpen,
   onLongPress,
   maxHeight = 340,
   className = '',
 }) {
+  const sourceCandidates = [src, fallbackSrc].filter(Boolean);
   const [state, setState] = useState('loading'); // loading | ok | error
   const [retryKey, setRetryKey] = useState(0);
+  const [sourceIndex, setSourceIndex] = useState(0);
 
   useEffect(() => {
     setState('loading');
-  }, [src]);
+    setSourceIndex(0);
+  }, [src, fallbackSrc]);
+
+  const activeSrc = sourceCandidates[sourceIndex] || src || fallbackSrc || '';
 
   const handleLoad = () => setState('ok');
-  const handleError = () => setState('error');
+  const handleError = () => {
+    if (sourceIndex < sourceCandidates.length - 1) {
+      setSourceIndex((index) => index + 1);
+      setState('loading');
+      return;
+    }
+    setState('error');
+  };
 
   const handleRetry = (e) => {
     e.stopPropagation();
     setState('loading');
+    setSourceIndex(0);
     setRetryKey((k) => k + 1);
   };
 
@@ -161,7 +175,7 @@ export default function SafeImage({
       {state !== 'error' ? (
         <img
           key={retryKey}
-          src={src}
+          src={activeSrc}
           alt={alt}
           loading="lazy"
           decoding="async"

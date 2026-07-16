@@ -20,10 +20,31 @@ const SWIPE_REPLY_THRESHOLD = 60;
 // الحد الأقصى للسحب
 const SWIPE_REPLY_MAX = 100;
 
+function normalizeMessageDate(value) {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const direct = new Date(raw);
+  const hasExplicitTimezone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(raw);
+  if (hasExplicitTimezone && !Number.isNaN(direct.getTime())) return direct;
+
+  const normalizedIso = raw.replace(' ', 'T');
+  if (/^\d{4}-\d{2}-\d{2}t\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?$/i.test(normalizedIso)) {
+    const assumedUtc = new Date(`${normalizedIso}Z`);
+    if (!Number.isNaN(assumedUtc.getTime())) return assumedUtc;
+  }
+
+  return Number.isNaN(direct.getTime()) ? null : direct;
+}
+
 function formatMessageTime(value) {
-  if (!value) return '';
+  const date = normalizeMessageDate(value);
+  if (!date) return '';
   try {
-    return new Date(value).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
   } catch {
     return '';
   }
@@ -661,8 +682,14 @@ function MessageBubble({
           ) : null}
           {isImage && mediaUrl ? (
             <button type="button" className="yam-media-button" onClick={openCurrentMedia}>
-              <SafeImage src={previewUrl} alt={fileName} onOpen={openCurrentMedia} maxHeight={340} />
-              <span className="yam-bubble-media-overlay">تكبير</span>
+              <SafeImage
+                src={previewUrl}
+                fallbackSrc={previewUrl !== mediaUrl ? mediaUrl : ''}
+                alt={fileName}
+                onOpen={openCurrentMedia}
+                maxHeight={340}
+              />
+              {!isImageOnly ? <span className="yam-bubble-media-overlay">تكبير</span> : null}
             </button>
           ) : null}
 

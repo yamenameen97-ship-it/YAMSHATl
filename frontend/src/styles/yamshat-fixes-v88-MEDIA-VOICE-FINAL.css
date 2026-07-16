@@ -363,23 +363,7 @@ html body .yam-bubble.is-media-only .yam-safe-image img {
 /* §2.5 — overlay نص التكبير */
 html body .yam-bubble.is-image-only .yam-bubble-media-overlay,
 html body .yam-bubble.is-media-only .yam-bubble-media-overlay {
-  position: absolute !important;
-  inset-inline-end: 8px !important;
-  bottom: 8px !important;
-  z-index: 3 !important;
-  opacity: 0 !important;
-  transition: opacity 160ms ease !important;
-  background: rgba(0, 0, 0, 0.55) !important;
-  color: #fff !important;
-  padding: 3px 10px !important;
-  border-radius: 999px !important;
-  font-size: 11px !important;
-  backdrop-filter: blur(6px) !important;
-}
-
-html body .yam-bubble.is-image-only .yam-media-button:hover .yam-bubble-media-overlay,
-html body .yam-bubble.is-media-only .yam-media-button:hover .yam-bubble-media-overlay {
-  opacity: 1 !important;
+  display: none !important;
 }
 
 /* §2.6 — timestamp مطموس فوق الصورة */
@@ -390,13 +374,15 @@ html body .yam-bubble.is-media-only .bubble-meta {
   bottom: 8px !important;
   z-index: 4 !important;
   margin: 0 !important;
-  padding: 2px 8px !important;
-  border-radius: 999px !important;
-  background: rgba(0, 0, 0, 0.52) !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
   color: #fff !important;
-  backdrop-filter: blur(6px) !important;
+  backdrop-filter: none !important;
   font-size: 10.5px !important;
   pointer-events: none !important;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9) !important;
+  gap: 4px !important;
 }
 
 html body .yam-bubble.is-image-only .bubble-meta .bubble-time,

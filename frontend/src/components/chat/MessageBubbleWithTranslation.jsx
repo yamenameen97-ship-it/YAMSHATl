@@ -8,10 +8,31 @@ import { resolveMediaUrl } from '../../config/mediaConfig.js';
 
 const QUICK_REACTIONS = ['❤️', '🔥', '😂', '👏', '👍', '😮'];
 
+function normalizeMessageDate(value) {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const direct = new Date(raw);
+  const hasExplicitTimezone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(raw);
+  if (hasExplicitTimezone && !Number.isNaN(direct.getTime())) return direct;
+
+  const normalizedIso = raw.replace(' ', 'T');
+  if (/^\d{4}-\d{2}-\d{2}t\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?$/i.test(normalizedIso)) {
+    const assumedUtc = new Date(`${normalizedIso}Z`);
+    if (!Number.isNaN(assumedUtc.getTime())) return assumedUtc;
+  }
+
+  return Number.isNaN(direct.getTime()) ? null : direct;
+}
+
 function formatMessageTime(value) {
-  if (!value) return '';
+  const date = normalizeMessageDate(value);
+  if (!date) return '';
   try {
-    return new Date(value).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
   } catch {
     return '';
   }

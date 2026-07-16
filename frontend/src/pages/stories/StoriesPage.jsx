@@ -384,8 +384,8 @@ const pageStyles = `
 .yam-stab.active { background:linear-gradient(135deg,#7c3aed,#ec4899); border-color:transparent; }
 .yam-stab-add { display:inline-flex; align-items:center; justify-content:center; }
 .yam-stab-add.alt { background:rgba(56,189,248,.12); }
-.yam-stories-freeflow { display:flex; gap:18px; flex-wrap:wrap; }
-.yam-story-bubble { border:0; background:transparent; display:flex; flex-direction:column; align-items:center; gap:10px; cursor:pointer; color:inherit; }
+.yam-stories-freeflow { display:grid; grid-template-columns:repeat(auto-fill, minmax(104px, 1fr)); gap:18px 14px; align-items:start; }
+.yam-story-bubble { width:100%; max-width:118px; justify-self:center; border:0; background:transparent; display:flex; flex-direction:column; align-items:center; gap:10px; cursor:pointer; color:inherit; }
 .yam-story-bubble-ring { width:92px; height:92px; padding:4px; border-radius:50%; background:linear-gradient(135deg,#a855f7,#ec4899,#f59e0b); }
 .yam-story-bubble.unseen .yam-story-bubble-ring { box-shadow:0 0 0 4px rgba(168,85,247,.18); }
 .yam-story-bubble-media { position:relative; width:100%; height:100%; border-radius:50%; overflow:hidden; background:#111827; }
@@ -420,7 +420,12 @@ const pageStyles = `
 @keyframes yamShimmer { from { background-position:200% 0; } to { background-position:-200% 0; } }
 @media (max-width: 720px) {
   .yam-stories-page { padding:14px; padding-top:16px; }
+  .yam-stories-freeflow { grid-template-columns:repeat(3, minmax(0, 1fr)); gap:16px 10px; }
+  .yam-story-bubble { max-width:none; }
   .yam-story-bubble-ring { width:84px; height:84px; }
   .yam-top-story-layout { grid-template-columns:1fr; }
+}
+@media (max-width: 420px) {
+  .yam-stories-freeflow { grid-template-columns:repeat(2, minmax(0, 1fr)); }
 }
 `;

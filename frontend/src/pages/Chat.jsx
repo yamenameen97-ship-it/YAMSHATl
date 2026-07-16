@@ -487,6 +487,8 @@ export default function Chat() {
       security_payload: payload?.securityPayload || null,
       disappearing_in_seconds: Number(payload?.disappearing_in_seconds || 0),
       attachments: payload?.attachments || [],
+      waveform_seed: payload?.waveform_seed || null,
+      audio_duration_seconds: Number(payload?.audio_duration_seconds || 0) || null,
     };
 
     const initialStatus = typeof navigator !== 'undefined' && navigator.onLine === false
@@ -502,8 +504,10 @@ export default function Chat() {
       message: text,
       media_url: mediaUrl,
       attachments: payload?.attachments || [],
-      attachment_name: payload?.attachments?.[0]?.fileName || payload?.attachments?.[0]?.originalName || '',
+      attachment_name: payload?.attachments?.[0]?.file_name || payload?.attachments?.[0]?.fileName || payload?.attachments?.[0]?.originalName || '',
       type: requestPayload.type,
+      waveform_seed: payload?.waveform_seed || null,
+      audio_duration_seconds: Number(payload?.audio_duration_seconds || 0) || undefined,
       created_at: new Date().toISOString(),
       status: initialStatus,
       reply_to: replyTo ? { id: replyTo.id, content: replyTo.content || replyTo.message } : null,

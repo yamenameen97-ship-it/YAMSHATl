@@ -24,6 +24,23 @@ from sqlalchemy.orm import Session
 from app.models.stories_reels import Story, StoryReply, StoryView, Reel
 from app.models.user import User
 
+# v88.3.2 MEDIA RENDER ROOT FIX: دالّة موحّدة لتطبيع روابط الوسائط.
+try:
+    from app.core.media_urls import normalize_media_url as _normalize_media_url
+except Exception:  # pragma: no cover
+    def _normalize_media_url(x):
+        return x
+
+
+def _normalize_media(url):
+    """يضمن إرجاع رابط مطلق قابل للاستهلاك (أو فارغ)."""
+    try:
+        result = _normalize_media_url(url)
+        return result or (url or '')
+    except Exception:
+        return url or ''
+
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -439,8 +456,10 @@ def serialize_story(
         'username': username,
         'avatar_url': avatar_url,          # v84.0 — كان مفقوداً
         'user_avatar': avatar_url,          # alias للتوافق مع الواجهة
-        'media_url': story.media_url,
-        'media': story.media_url,
+        # v88.3.2 MEDIA RENDER ROOT FIX: إرجاع رابط مطلق دائماً ليعمل للمشتركين
+        # على أي Origin (يفيد خاصة القصص القديمة التي حُفظت بمسار نسبي).
+        'media_url': _normalize_media(story.media_url),
+        'media': _normalize_media(story.media_url),
         'media_type': story.media_type or 'image',
         'created_at': _iso(story.created_at),
         'expires_at': _iso(story.expires_at),

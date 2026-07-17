@@ -74,6 +74,16 @@ const rewriteLegacyHost = (value = '') => {
   }
 };
 
+// ✅ v88.3 ROOT FIX: حساب مأمون لـ currentOrigin يعمل في SSR أيضاً
+const getCurrentOrigin = () => {
+  try {
+    if (typeof window !== 'undefined' && window.location && window.location.origin) {
+      return trimSlash(window.location.origin);
+    }
+  } catch { /* ignore */ }
+  return '';
+};
+
 const toAbsoluteMediaUrl = (value = '') => {
   const cleaned = trim(value);
   if (!cleaned) return '';
@@ -86,7 +96,15 @@ const toAbsoluteMediaUrl = (value = '') => {
   // ✅ FIX: أصول الواجهة الأمامية (شعارات، أيقونات، أصوات) تُخدَم من نفس الأصل
   if (isFrontendStaticPath(normalizedPath)) return normalizedPath;
   if (MEDIA_CDN_BASE) return `${MEDIA_CDN_BASE}${normalizedPath}`;
-  if (BACKEND_ORIGIN) return `${trimSlash(BACKEND_ORIGIN)}${normalizedPath}`;
+  // ✅ v88.3 ROOT FIX: إذا كان BACKEND_ORIGIN == currentOrigin (نفس الأصل،
+  //   أي Full-stack منشور معاً على Render) يجب إبقاء المسار نسبياً
+  //   لتفادي مشاكل CORS وإعادة التوجيه، وللاستفادة من relative URLs.
+  const currentOrigin = getCurrentOrigin();
+  const normalizedBackend = trimSlash(BACKEND_ORIGIN);
+  if (normalizedBackend && currentOrigin && normalizedBackend === currentOrigin) {
+    return normalizedPath;
+  }
+  if (normalizedBackend) return `${normalizedBackend}${normalizedPath}`;
   return normalizedPath;
 };
 

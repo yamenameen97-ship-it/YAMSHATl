@@ -33,7 +33,28 @@ export function clearLocalFeedCaches() {
 }
 
 function normalizeInjectedPost(post = {}) {
+  // ✅ v88.3 ROOT FIX: أي منشور يُحقَن في الكاش يمر عبر طبقة normalize قوية
+  //   حتى لا تبقى المسارات غير محلولة (relative) ويفشل عرضها لاحقاً.
   const attachments = Array.isArray(post.attachments) ? post.attachments.filter(Boolean) : [];
+  const attachmentCandidates = attachments.flatMap((attachment) => {
+    if (!attachment) return [];
+    if (typeof attachment === 'string') return [attachment];
+    return [
+      attachment.media_url,
+      attachment.mediaUrl,
+      attachment.cdn_url,
+      attachment.url,
+      attachment.file_url,
+      attachment.fileUrl,
+      attachment.path,
+      attachment.file_path,
+      attachment.src,
+      attachment.href,
+      attachment.download_url,
+      attachment.thumbnail_url,
+      attachment.preview_url,
+    ];
+  });
   const rawMediaCandidates = [
     ...(Array.isArray(post.media_urls) ? post.media_urls : []),
     post.media_url,
@@ -41,16 +62,8 @@ function normalizeInjectedPost(post = {}) {
     post.video_url,
     post.image_url,
     post.thumbnail_url,
-    ...attachments.flatMap((attachment) => [
-      attachment?.media_url,
-      attachment?.mediaUrl,
-      attachment?.cdn_url,
-      attachment?.url,
-      attachment?.file_url,
-      attachment?.thumbnail_url,
-      attachment?.preview_url,
-    ]),
-  ].filter(Boolean);
+    ...attachmentCandidates,
+  ].filter((value) => typeof value === 'string' && value.trim().length > 0);
 
   const normalizedMediaUrls = Array.from(new Set(rawMediaCandidates.map((value) => resolveMediaUrl(value)).filter(Boolean)));
   const lowerCandidates = normalizedMediaUrls.map((value) => String(value || '').toLowerCase());

@@ -19,8 +19,19 @@
   touch-action: pan-y;
 }
 
-html body .app-shell .page-content.group-settings-page-content-scroll,
-html body .page-content.group-settings-page-content-scroll {
+/* ✅ v88.3.3 ROOT FIX — نمط الملف الشخصي v88.2 / بوست البلاغات:
+ * حذفنا القواعد القديمة .page-content.group-settings-page-content-scroll
+ * لأنها كانت تفرض overflow-y وتدخل في خصائص .page-content الأصلية
+ * (position:absolute; inset:0; overflow-y:auto) ممّا كان يكسر السحب
+ * (مزج بين scroller داخلي وخارجي). الجزء .jsx يضيف الآن
+ * data-yam-group-settings-active="true" مع inline-style للتمرير
+ * ولمن لا يدعم :has(). */
+
+/* دعم المتصفحات الحديثة (:has()) — نفّعل التمرير على .page-content
+   دون مسّ الطول (height) أو (inset) الأصلية مطلقاً. */
+html body .app-shell .page-content:has(> .page-shell-glow > .yam-group-settings-page),
+html body .app-shell .page-content[data-yam-group-settings-active="true"],
+html body .page-content[data-yam-group-settings-active="true"] {
   overflow-y: auto !important;
   overflow-x: hidden !important;
   -webkit-overflow-scrolling: touch !important;
@@ -28,16 +39,17 @@ html body .page-content.group-settings-page-content-scroll {
   touch-action: pan-y !important;
 }
 
-html body .app-shell .page-content.group-settings-page-content-scroll .page-shell-glow,
-html body .page-content.group-settings-page-content-scroll .page-shell-glow {
+/* page-shell-glow — يبقى حاوية flow طبيعية (بدون overflow داخلي) */
+html body .app-shell .page-content:has(.yam-group-settings-page) .page-shell-glow,
+html body .page-content[data-yam-group-settings-active="true"] .page-shell-glow {
   min-height: 100% !important;
   height: auto !important;
   overflow: visible !important;
   pointer-events: none !important;
 }
 
-html body .app-shell .page-content.group-settings-page-content-scroll .page-shell-glow > .yam-group-settings-page,
-html body .page-content.group-settings-page-content-scroll .page-shell-glow > .yam-group-settings-page {
+html body .app-shell .page-content:has(.yam-group-settings-page) .page-shell-glow > .yam-group-settings-page,
+html body .page-content[data-yam-group-settings-active="true"] .page-shell-glow > .yam-group-settings-page {
   pointer-events: auto !important;
 }
 

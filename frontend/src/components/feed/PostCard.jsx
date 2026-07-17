@@ -187,6 +187,8 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
   const [showReactions, setShowReactions] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showMediaModal, setShowMediaModal] = useState(false);
+  // ✅ v88.3 ROOT FIX: fallback للفيديو إذا فشل UniversalPlayer
+  const [videoPlayerFailed, setVideoPlayerFailed] = useState(false);
   const [showCommentsModal, setShowCommentsModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [commentDraft, setCommentDraft] = useState('');
@@ -694,13 +696,50 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
           >
             {hasVideoMedia ? (
               <div style={{ width: '100%' }} onClick={(event) => event.stopPropagation()}>
-                <UniversalPlayer
-                  src={mediaUrl}
-                  poster={posterUrl}
-                  variant="post"
-                  muted
-                  className="post-media-player"
-                />
+                {videoPlayerFailed ? (
+                  /* ✅ v88.3 ROOT FIX: native <video> مع source+type كـ fallback مماثل لـ MobilePostCard */
+                  <video
+                    controls
+                    playsInline
+                    preload="metadata"
+                    crossOrigin="anonymous"
+                    poster={posterUrl || undefined}
+                    style={{ width: '100%', maxHeight: '80vh', background: '#000', borderRadius: 8 }}
+                    onError={(e) => {
+                      try {
+                        const el = e.currentTarget;
+                        const parent = el.parentNode;
+                        el.style.display = 'none';
+                        if (parent && !parent.querySelector('.ym-pc-video-fallback')) {
+                          const fb = document.createElement('div');
+                          fb.className = 'ym-pc-video-fallback';
+                          fb.style.cssText = 'padding:24px;text-align:center;color:#9CA3AF;background:linear-gradient(135deg,#1a1f33,#0f1422);border-radius:8px;';
+                          fb.textContent = 'تعذّر تشغيل الفيديو';
+                          parent.appendChild(fb);
+                        }
+                      } catch { /* ignore */ }
+                    }}
+                  >
+                    <source src={mediaUrl} type={(() => {
+                      const u = String(mediaUrl || '').toLowerCase();
+                      if (u.endsWith('.webm')) return 'video/webm';
+                      if (u.endsWith('.mov') || u.endsWith('.m4v')) return 'video/quicktime';
+                      if (u.endsWith('.mkv')) return 'video/x-matroska';
+                      if (u.endsWith('.m3u8')) return 'application/vnd.apple.mpegurl';
+                      return 'video/mp4';
+                    })()} />
+                    متصفحك لا يدعم تشغيل الفيديو.
+                  </video>
+                ) : (
+                  <UniversalPlayer
+                    src={mediaUrl}
+                    poster={posterUrl}
+                    variant="post"
+                    muted
+                    className="post-media-player"
+                    onError={() => setVideoPlayerFailed(true)}
+                  />
+                )}
               </div>
             ) : (
               /* ✅ v87.22 FIX #2: إضافة onError → يُظهر placeholder جميل بدل "تعذّر تحميل الصورة".

@@ -69,14 +69,46 @@ const GroupSettings = () => {
     activity: '—',
   });
 
+  // ✅ v88.3.3 ROOT FIX (نمط v88.2 ProfilePage / ReportModal):
+  //  - لا نضيف أي class على .page-content لأن سيلكتورات legacy عريضة
+  //    مثل [class*="group-settings"] كانت تُطابقها وتفرض overflow/height/padding
+  //    مضادة لبنية .page-content الأصلية (position:absolute; inset:0).
+  //  - بدلاً من ذلك نستخدم data-attribute (لا يُطابق أي [class*=...]) +
+  //    inline-styles كـ fallback JS للمتصفحات القديمة التي لا تدعم :has().
+  //  - النتيجة: التمرير يعمل تلقائياً على .page-content تماماً مثل
+  //    الصفحة الرئيسية والملف الشخصي (بعد إصلاح v88.2) وبوست البلاغات.
   useEffect(() => {
     const rootEl = pageRootRef.current;
     const pageContent = rootEl?.closest?.('.page-content');
     if (!pageContent) return undefined;
 
-    pageContent.classList.add('group-settings-page-content-scroll');
+    // إزالة class القديمة إن وجدت من إصدار سابق (منع تسرّب legacy)
+    pageContent.classList.remove('group-settings-page-content-scroll');
+
+    // data-attribute بديل — لا يُطابق [class*="group-settings"] أو أي legacy
+    pageContent.setAttribute('data-yam-group-settings-active', 'true');
+
+    // fallback JS: نفرض قواعد التمرير الاحتياطية مباشرة على element
+    const prev = {
+      overflowY: pageContent.style.overflowY,
+      overflowX: pageContent.style.overflowX,
+      webkitOverflowScrolling: pageContent.style.webkitOverflowScrolling,
+      touchAction: pageContent.style.touchAction,
+      overscrollBehaviorY: pageContent.style.overscrollBehaviorY,
+    };
+    pageContent.style.overflowY = 'auto';
+    pageContent.style.overflowX = 'hidden';
+    pageContent.style.webkitOverflowScrolling = 'touch';
+    pageContent.style.touchAction = 'pan-y';
+    pageContent.style.overscrollBehaviorY = 'contain';
+
     return () => {
-      pageContent.classList.remove('group-settings-page-content-scroll');
+      pageContent.removeAttribute('data-yam-group-settings-active');
+      pageContent.style.overflowY = prev.overflowY;
+      pageContent.style.overflowX = prev.overflowX;
+      pageContent.style.webkitOverflowScrolling = prev.webkitOverflowScrolling;
+      pageContent.style.touchAction = prev.touchAction;
+      pageContent.style.overscrollBehaviorY = prev.overscrollBehaviorY;
     };
   }, []);
 

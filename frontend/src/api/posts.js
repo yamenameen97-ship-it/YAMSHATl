@@ -3,16 +3,28 @@ import { resolveMediaUrl } from '../config/mediaConfig.js';
 import { sortPostsNewestFirst } from '../utils/feedCache.js';
 
 function getPostAttachmentUrls(post = {}) {
+  // ✅ v88.3 ROOT FIX: تدعيم استخراج مسارات الوسائط من attachments بأي مفتاح
+  //   محتمل (media_url, url, path, file_path, src...) وتجاهل المفاتيح غيرالنصية
   const attachments = Array.isArray(post.attachments) ? post.attachments.filter(Boolean) : [];
-  return attachments.flatMap((attachment) => [
-    attachment?.media_url,
-    attachment?.mediaUrl,
-    attachment?.cdn_url,
-    attachment?.url,
-    attachment?.file_url,
-    attachment?.thumbnail_url,
-    attachment?.preview_url,
-  ]).filter(Boolean);
+  return attachments.flatMap((attachment) => {
+    if (!attachment) return [];
+    if (typeof attachment === 'string') return [attachment];
+    return [
+      attachment.media_url,
+      attachment.mediaUrl,
+      attachment.cdn_url,
+      attachment.url,
+      attachment.file_url,
+      attachment.fileUrl,
+      attachment.path,
+      attachment.file_path,
+      attachment.src,
+      attachment.href,
+      attachment.download_url,
+      attachment.thumbnail_url,
+      attachment.preview_url,
+    ];
+  }).filter((value) => typeof value === 'string' && value.trim().length > 0);
 }
 
 function looksLikeVideo(post = {}, mediaUrls = []) {
@@ -39,9 +51,14 @@ function looksLikeVideo(post = {}, mediaUrls = []) {
 
 function normalizePost(post = {}) {
   const attachmentUrls = getPostAttachmentUrls(post);
-  const rawMediaUrls = Array.isArray(post.media_urls)
-    ? [...post.media_urls, ...attachmentUrls]
-    : [post.media_url || post.media || post.video_url || post.image_url, ...attachmentUrls].filter(Boolean);
+  // ✅ v88.3 ROOT FIX: دمج قوي لمصادر الوسائط — حتى لو أتت media_urls
+  //   من الباكيند فارغة، نستخرج المسارات من attachments/media_url/video_url/image_url
+  const primaryCandidates = [post.media_url, post.media, post.video_url, post.image_url].filter(Boolean);
+  const rawMediaUrls = [
+    ...(Array.isArray(post.media_urls) ? post.media_urls.filter(Boolean) : []),
+    ...primaryCandidates,
+    ...attachmentUrls,
+  ].filter((value) => typeof value === 'string' && value.trim().length > 0);
 
   const normalizedMediaUrls = Array.from(new Set(rawMediaUrls.map((url) => resolveMediaUrl(url)).filter(Boolean)));
   const hasVideo = looksLikeVideo(post, rawMediaUrls);

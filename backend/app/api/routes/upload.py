@@ -14,9 +14,13 @@ from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, HTTPExcepti
 from werkzeug.utils import secure_filename
 
 from app.core.dependencies import get_current_user
+from app.core.media_urls import normalize_media_url
 from app.models.user import User
 from app.services.cloudinary_service import is_configured as cloudinary_is_configured
 from app.services.cloudinary_service import upload_file as cloudinary_upload_file
+
+import logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -218,6 +222,12 @@ def _write_session(session_id: str, payload: dict) -> None:
 
 
 def _finalize_upload_payload(file_path: Path, *, original_name: str, content_type: str, size: int, kind: str) -> dict:
+    # v88.3.2 MEDIA RENDER ROOT FIX:
+    # نُرجِع دائماً رابطاً مطلقاً يمكن للمشترك تحميله من أي Origin.
+    # normalize_media_url يبني الرابط من BACKEND_ORIGIN/RENDER_EXTERNAL_URL
+    # عند توفّرهما، وإلاّ يعيد المسار كما هو (نسبي).
+    local_path = f'/uploads/{file_path.name}'
+    absolute_url = normalize_media_url(local_path) or local_path
     return {
         'status': 'completed',
         'filename': original_name,
@@ -225,22 +235,34 @@ def _finalize_upload_payload(file_path: Path, *, original_name: str, content_typ
         'file_size': int(size or file_path.stat().st_size),
         'content_type': content_type,
         'kind': kind,
-        'file_url': f'/uploads/{file_path.name}',
-        'url': f'/uploads/{file_path.name}',
-        'media_url': f'/uploads/{file_path.name}',
+        'file_url': absolute_url,
+        'url': absolute_url,
+        'media_url': absolute_url,
+        'local_path': local_path,
         'storage': 'local',
     }
 
 
 def _apply_remote_storage(file_path: Path, payload: dict) -> dict:
+    """يرفع الملف إلى Cloudinary — v88.3.2 MEDIA RENDER ROOT FIX.
+
+    السلوك الجديد:
+      • إذا كان Cloudinary مُهيّأً ونجح الرفع → نستبدل الرابط بالكامل
+        بالرابط السحابي الدائم (يعمل لكل المشتركين على Render/بدون قرص).
+      • إذا فشل الرفع → نُبقي الرابط المحلي المطلق، لكن **نُسجِّل الخطأ
+        بوضوح** ليظهر في logs الإنتاج بدلاً من الفشل الصامت السابق.
+      • إذا لم يكن Cloudinary مُهيّأً → نُبقي الرابط المحلي كما هو (يعتمد
+        على PERSISTENT_DISK_PATH لتفادي فقد الملفات بعد إعادة النشر).
+    """
     if not cloudinary_is_configured():
+        # لا نُسجّل تحذيراً هنا — قد تكون البيئة تطويرية.
         return payload
 
     try:
-        remote = cloudinary_upload_file(
-            str(file_path),
-            is_video=str(file_path).lower().endswith(('.mp4', '.mov', '.webm', '.mkv')),
+        is_video = str(file_path).lower().endswith(
+            ('.mp4', '.mov', '.webm', '.mkv', '.m4v', '.avi', '.3gp')
         )
+        remote = cloudinary_upload_file(str(file_path), is_video=is_video)
         remote_url = str(remote.get('url') or '').strip()
         if remote_url:
             payload.update({
@@ -250,10 +272,19 @@ def _apply_remote_storage(file_path: Path, payload: dict) -> dict:
                 'media_url': remote_url,
                 'storage': 'cloudinary',
                 'provider': 'cloudinary',
+                'public_id': remote.get('public_id') or '',
                 'remote': remote,
             })
+        else:
+            logger.error('[upload] Cloudinary returned empty URL for %s', file_path.name)
         return payload
     except Exception as exc:
+        # v88.3.2: تسجيل مفصّل بدلاً من الفشل الصامت — يساعد على تشخيص
+        # مشاكل "القصص/الريلز مكسورة عند المشتركين" في الإنتاج.
+        logger.error(
+            '[upload] Cloudinary upload FAILED for %s (fallback to local URL): %s',
+            file_path.name, exc,
+        )
         payload['remote_upload_error'] = str(exc)[:300]
         return payload
 

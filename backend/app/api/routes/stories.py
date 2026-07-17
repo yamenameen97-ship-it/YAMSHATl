@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 
 from app.api.routes.upload import save_upload
 from app.core.dependencies import get_current_user, get_db
+from app.core.media_urls import normalize_media_url
 from app.models.user import User
 from app.services import story_db_service as story_svc
 
@@ -276,8 +277,17 @@ def add_story(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # v88.3.2 MEDIA RENDER ROOT FIX:
+    # - نفضّل media_url المُرجَع من upload (مطلق أو Cloudinary).
+    # - إن وصل الرابط محلياً لأي سبب نُمرّره عبر normalize_media_url مرة
+    #   أخرى ليصبح مطلقاً ليتمكّن المشتركون من تحميله في أي Origin.
     upload_result = save_upload(file)
-    media_url = upload_result.get('file_url') or upload_result.get('url')
+    media_url = (
+        upload_result.get('media_url')
+        or upload_result.get('file_url')
+        or upload_result.get('url')
+    )
+    media_url = normalize_media_url(media_url) or media_url
     if not media_url:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -288,6 +298,8 @@ def add_story(
     if resolved_privacy == 'public':
         resolved_privacy = 'friends'
 
+    # v88.3.2: نمرّر media_url النهائي (مطلق) إلى طبقة الخدمة ليُحفظ
+    # في DB كرابط دائم قابل للمشاركة مع أي مشترك.
     story = story_svc.add_story(
         db,
         user_id=current_user.id,

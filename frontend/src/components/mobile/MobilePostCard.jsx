@@ -163,11 +163,24 @@ function MobilePostCard({
           {isLive && <div className="ym-live-overlay-label">مباشر الآن LIVE</div>}
           {banner.type === 'image' && (
             <div className="banner-image-container">
+              {/* ✅ v88.3 ROOT FIX: الصور مرئية دائمًا (بلا opacity:0).
+                  الاعتماد على onLoad وحده كان يخفي الصور المكسورة/المُخزَّنة
+                  التي لا تُطلق حدث load في بعض متصفحات الجوال. */}
               <img
+                ref={(el) => {
+                  if (!el) return;
+                  // fade-in لطيف عند mount حتى لو لم يُطلق onLoad (صورة من الكاش)
+                  try {
+                    if (el.complete && el.naturalWidth > 0) {
+                      el.classList.add('is-loaded');
+                    }
+                  } catch { /* ignore */ }
+                }}
                 src={banner.url}
                 alt=""
                 loading="lazy"
                 decoding="async"
+                crossOrigin="anonymous"
                 referrerPolicy="no-referrer"
                 onLoad={(e) => {
                   try {
@@ -208,12 +221,14 @@ function MobilePostCard({
           )}
           {banner.type === 'video' && (
             <div className="banner-video-container">
+              {/* ✅ v88.3 ROOT FIX: crossOrigin="anonymous" لتفعيل CORS على
+                  R2/Cloudflare + استخدام <source> مع type للتوافق الأوسع */}
               <video
-                src={banner.url}
                 poster={banner.poster || undefined}
                 controls
                 playsInline
                 preload="metadata"
+                crossOrigin="anonymous"
                 controlsList="nodownload noremoteplayback"
                 disablePictureInPicture={false}
                 onError={(e) => {
@@ -236,6 +251,14 @@ function MobilePostCard({
                   } catch { /* ignore */ }
                 }}
               >
+                <source src={banner.url} type={(() => {
+                  const u = String(banner.url || '').toLowerCase();
+                  if (u.endsWith('.webm')) return 'video/webm';
+                  if (u.endsWith('.mov') || u.endsWith('.m4v')) return 'video/quicktime';
+                  if (u.endsWith('.mkv')) return 'video/x-matroska';
+                  if (u.endsWith('.m3u8')) return 'application/vnd.apple.mpegurl';
+                  return 'video/mp4';
+                })()} />
                 {/* fallback للمتصفحات القديمة */}
                 متصفحك لا يدعم تشغيل الفيديو.
               </video>
@@ -546,7 +569,9 @@ function MobilePostCard({
           max-height: min(78dvh, 720px);
           object-fit: contain;
           display: block;
-          opacity: 0;
+          /* ✅ v88.3 ROOT FIX: الصور تظهر افتراضيًا (opacity:1) — لا تعتمد على onLoad.
+             is-loaded يضيف فقط انتقالاً لطيفًا للصور التي حُملت للتو. */
+          opacity: 1;
           transition: opacity 220ms ease-out;
           background:
             linear-gradient(135deg, rgba(139,92,246,0.10) 0%, rgba(15,20,34,0.6) 100%);

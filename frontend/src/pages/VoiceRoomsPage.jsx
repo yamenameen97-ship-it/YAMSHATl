@@ -81,12 +81,45 @@ function CreateRoomInline({ onCancel, onCreated }) {
 
   const submit = async () => {
     if (!form.title.trim()) { setErr("أدخل عنواناً للغرفة"); return; }
+    // v88.3.4: تحقق من كلمة المرور إذا كانت الغرفة خاصة
+    if (form.is_private && !form.password.trim()) {
+      setErr("الغرفة الخاصة تتطلب كلمة مرور");
+      return;
+    }
     setBusy(true); setErr(null);
     try {
-      const r = await voiceRoomsApi.create(form);
+      // v88.3.4: تنظيف الحمولة قبل الإرسال — أمان مقابل backend Pydantic strict
+      const payload = {
+        title: form.title.trim(),
+        description: form.description.trim() || null,
+        category: form.category || "general",
+        seats_count: Number(form.seats_count) || 8,
+        is_private: Boolean(form.is_private),
+        password: form.is_private ? (form.password || null) : null,
+      };
+      const r = await voiceRoomsApi.create(payload);
+      if (!r || !r.id) throw new Error("السيرفر لم يرجع معرّف الغرفة");
       onCreated(r.id);
     } catch (e) {
-      setErr(e?.response?.data?.detail || "تعذر إنشاء الغرفة");
+      // v88.3.4: رسائل خطأ أوضح + لوج للكونسول للتشخيص
+      const status = e?.response?.status;
+      const detail = e?.response?.data?.detail;
+      let msg;
+      if (status === 401) {
+        msg = "يرجى تسجيل الدخول أولاً";
+      } else if (status === 404) {
+        msg = "خدمة الغرف الصوتية غير متوفرة حالياً — حاول مجدداً بعد قليل";
+      } else if (status === 400 && detail) {
+        msg = typeof detail === 'string' ? detail : JSON.stringify(detail);
+      } else if (status === 500) {
+        msg = "خطأ في السيرفر — حاول مجدداً";
+      } else if (!e?.response) {
+        msg = "لا يوجد اتصال بالإنترنت";
+      } else {
+        msg = (typeof detail === 'string' ? detail : null) || e?.message || "تعذر إنشاء الغرفة";
+      }
+      console.error('[VoiceRoom.create] failed:', { status, detail, err: e });
+      setErr(msg);
     } finally { setBusy(false); }
   };
 

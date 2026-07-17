@@ -262,3 +262,77 @@ html body .yam-compose-modal:not(.touch-action-none-force) {
   -webkit-overflow-scrolling: touch !important;
   overscroll-behavior-y: contain !important;
 }
+
+
+/* ================================================================
+   ✅ v88.3 (2026) — ROOT FIX عبر React Portal
+   ================================================================
+   PostComposerPage الآن تُعرض عبر createPortal → document.body
+   خارج شجرة .app-shell/.page-content تماماً. الحاوية الرئيسية
+   أصبحت .ympc-portal-shell (بدلاً من .ympc-page السابقة).
+   
+   هذه القواعد تضمن أن أي CSS legacy لا يكسر السحب داخل الـ portal
+   حتى لو تم تحميل ملفات CSS قديمة بعد هذا الملف.
+   ================================================================ */
+
+html body .ympc-portal-shell {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 10040 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  touch-action: pan-y !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+  contain: none !important;
+  transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+  will-change: auto !important;
+  pointer-events: auto !important;
+}
+
+html body .ympc-portal-shell .ympc-scroll-area {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+  overscroll-behavior-x: none !important;
+  touch-action: pan-y !important;
+  contain: none !important;
+  transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+  pointer-events: auto !important;
+}
+
+html body .ympc-portal-shell .ympc-top-fixed {
+  flex: 0 0 auto !important;
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+}
+
+html body .ympc-portal-shell textarea,
+html body .ympc-portal-shell [contenteditable="true"],
+html body .ympc-portal-shell .composer-textarea {
+  touch-action: pan-y !important;
+  overscroll-behavior: contain !important;
+  pointer-events: auto !important;
+}
+
+html body .ympc-portal-shell button,
+html body .ympc-portal-shell a,
+html body .ympc-portal-shell label,
+html body .ympc-portal-shell [role="button"] {
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+}
+
+/* عند فتح portal الصفحة: قفل body لتوجيه كل touchmove للمنطقة الداخلية */
+html body:has(.ympc-portal-shell) {
+  overflow: hidden !important;
+  overscroll-behavior: contain !important;
+}

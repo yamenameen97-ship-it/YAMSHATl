@@ -163,6 +163,7 @@
         "src/components/settings/TranslationSettings.jsx",
         "src/components/chat/PressToRecordMic.jsx",
         "src/components/stories/UserPickerModal.jsx",
+        "src/components/feed/ImageViewerModal.jsx",
         "src/components/yamshat/YamshatIcon.jsx"
     ]
 }

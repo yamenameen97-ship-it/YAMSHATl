@@ -72,12 +72,17 @@ html body .yam-bubble.is-video-only .yam-safe-image img,
 html body .yam-bubble.is-media-only video.yam-bubble-media,
 html body .yam-bubble.is-image-only video.yam-bubble-media,
 html body .yam-bubble.is-video-only video.yam-bubble-media {
+  /* ✅ v88.9 FIX (2026-07-18): contain بدل cover — الصورة كاملة دون قص */
   display: block !important;
-  width: 100% !important;
+  width: auto !important;
+  max-width: 100% !important;
   height: auto !important;
-  max-height: 340px !important;
-  object-fit: cover !important;
+  max-height: min(70vh, 520px) !important;
+  object-fit: contain !important;
+  object-position: center !important;
+  margin: 0 auto !important;
   border-radius: 16px !important;
+  background: rgba(0, 0, 0, 0.35) !important;
 }
 
 html body .yam-bubble.is-media-only .bubble-meta,

@@ -81,14 +81,14 @@ function CreateRoomInline({ onCancel, onCreated }) {
 
   const submit = async () => {
     if (!form.title.trim()) { setErr("أدخل عنواناً للغرفة"); return; }
-    // v88.3.4: تحقق من كلمة المرور إذا كانت الغرفة خاصة
+    // v88.3.5: تحقق من كلمة المرور إذا كانت الغرفة خاصة
     if (form.is_private && !form.password.trim()) {
       setErr("الغرفة الخاصة تتطلب كلمة مرور");
       return;
     }
     setBusy(true); setErr(null);
     try {
-      // v88.3.4: تنظيف الحمولة قبل الإرسال — أمان مقابل backend Pydantic strict
+      // v88.3.5: تنظيف الحمولة قبل الإرسال — أمان مقابل backend Pydantic strict
       const payload = {
         title: form.title.trim(),
         description: form.description.trim() || null,
@@ -101,18 +101,37 @@ function CreateRoomInline({ onCancel, onCreated }) {
       if (!r || !r.id) throw new Error("السيرفر لم يرجع معرّف الغرفة");
       onCreated(r.id);
     } catch (e) {
-      // v88.3.4: رسائل خطأ أوضح + لوج للكونسول للتشخيص
+      // v88.3.5: عند 404 نتحقّق إذا كان الراوتر محملاً فعلاً (ping)
+      // حتى نميّز بين "الخدمة غير متوفرة" و "مشكلة في طلبيك"
       const status = e?.response?.status;
       const detail = e?.response?.data?.detail;
       let msg;
       if (status === 401) {
         msg = "يرجى تسجيل الدخول أولاً";
+      } else if (status === 403) {
+        msg = (typeof detail === 'string' ? detail : null) || "ليس لديك صلاحية لإنشاء غرفة صوتية";
       } else if (status === 404) {
-        msg = "خدمة الغرف الصوتية غير متوفرة حالياً — حاول مجدداً بعد قليل";
+        // تحقق من حالة الراوتر حتى نتأكد
+        try {
+          const p = await voiceRoomsApi.ping();
+          if (p?.available) {
+            // الراوتر موجود، لكن مسار الإنشاء فشل — غالباً مشكلة متصفح/كوكيز
+            msg = "تعذر إنشاء الغرفة — جرّب تحديث الصفحة وإعادة تسجيل الدخول";
+          } else {
+            msg = "خدمة الغرف الصوتية غير متوفرة حالياً — حاول مجدداً بعد قليل";
+          }
+        } catch (_) {
+          msg = "خدمة الغرف الصوتية غير متوفرة حالياً — حاول مجدداً بعد قليل";
+        }
       } else if (status === 400 && detail) {
         msg = typeof detail === 'string' ? detail : JSON.stringify(detail);
+      } else if (status === 422 && detail) {
+        // Pydantic validation error
+        msg = typeof detail === 'string' ? detail : "بعض الحقول غير صحيحة — تحقّق من العنوان وعدد المقاعد";
+      } else if (status === 503) {
+        msg = (typeof detail === 'string' ? detail : null) || "خدمة الغرف الصوتية تحت الصيانة — حاول لاحقاً";
       } else if (status === 500) {
-        msg = "خطأ في السيرفر — حاول مجدداً";
+        msg = (typeof detail === 'string' ? detail : null) || "خطأ في السيرفر — حاول مجدداً";
       } else if (!e?.response) {
         msg = "لا يوجد اتصال بالإنترنت";
       } else {

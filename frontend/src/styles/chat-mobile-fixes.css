@@ -28,18 +28,21 @@
 }
 
 /* -- Image bubble fixes — WhatsApp style ------------------------------- */
+/* ✅ v88.9 FIX (2026-07-18): استخدام object-fit:contain بدل cover لعرض
+   الصورة كاملة داخل فقاعة الدردشة دون قص الجزء العلوي أو السفلي.
+   ورفع max-height ليتناسب مع الصور الطويلة (البورتريه). */
 .yam-bubble-media,
 .yam-media-button img,
 .yam-media-button video {
   display: block !important;
-  width: 100% !important;
-  max-width: 320px !important;
+  width: auto !important;
+  max-width: min(320px, 78vw) !important;
   height: auto !important;
-  max-height: 340px !important;
-  object-fit: cover !important;
+  max-height: min(70vh, 520px) !important;
+  object-fit: contain !important;
   object-position: center !important;
   border-radius: 12px !important;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(0, 0, 0, 0.35);
   -webkit-user-drag: none;
   user-select: none;
 }
@@ -76,12 +79,14 @@
   .yam-bubble-media,
   .yam-media-button img,
   .yam-media-button video {
-    max-width: 78vw !important;
-    max-height: 60vh !important;
+    max-width: 82vw !important;
+    max-height: 72vh !important;
+    object-fit: contain !important;
   }
 
   .yam-media-button {
-    max-width: 78vw;
+    max-width: 82vw;
+    height: auto !important;
   }
 
   /* WhatsApp-like spacing */

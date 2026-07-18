@@ -117,23 +117,30 @@ html body .yam-bubble.is-media-only .yam-safe-image {
   width: auto !important;
   max-width: min(280px, 68vw) !important;
 }
+/* ✅ v88.9 FIX (2026-07-18): contain بدل cover لعرض الصورة كاملة */
 html body .yam-bubble.is-media-only .yam-safe-image img {
   border-radius: 14px !important;
   display: block !important;
-  width: 100% !important;
+  width: auto !important;
+  max-width: 100% !important;
   height: auto !important;
-  max-height: 340px !important;
-  object-fit: cover !important;
+  max-height: min(70vh, 520px) !important;
+  object-fit: contain !important;
+  object-position: center !important;
+  margin: 0 auto !important;
+  background: rgba(0,0,0,0.35) !important;
 }
 
 /* الفيديو داخل فقاعة الوسائط */
 html body .yam-bubble.is-media-only video.yam-bubble-media {
-  width: 100% !important;
-  max-width: min(280px, 68vw) !important;
+  width: auto !important;
+  max-width: min(320px, 78vw) !important;
   height: auto !important;
-  max-height: 340px !important;
+  max-height: min(70vh, 520px) !important;
   border-radius: 14px !important;
+  object-fit: contain !important;
   display: block !important;
+  margin: 0 auto !important;
   background: #000 !important;
 }
 

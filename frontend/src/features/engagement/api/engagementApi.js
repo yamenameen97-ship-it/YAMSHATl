@@ -38,13 +38,14 @@ export const engagementApi = {
 };
 
 // ============================================================
-// v88.3.4 — API للغرف الصوتية مع Fallback ذكي
+// v88.3.5 — API للغرف الصوتية مع Fallback ذكي محسّن
 // ------------------------------------------------------------
-// السبب: بعض عمليات النشر (Render/الإنتاج) قد يفشل فيها راوتر
-// voice_rooms الأساسي على البادئة /api/voice، بينما يبقى الـalias
-// الاحتياطي على /api شغّالاً. كنا سابقاً نتحقق فقط من /api/voice/rooms
-// فتظهر رسالة "Not Found" رغم أن السيرفر يعمل. الآن نجرّب المسار
-// الأساسي أولاً، ثم نتراجع تلقائياً إلى الـalias عند 404.
+// الباك اند (v88.3.5) يسجّل الراوتر على ثلاث بوادئ:
+//   1) /api/voice/rooms        → الرئيسي
+//   2) /api/voice-rooms/rooms  → alias جديد أوضح
+//   3) /api/rooms              → alias قديم متوافق
+// وكل endpoint يقبل slash وبدونه (redirect_slashes=False + مزدوج decorator).
+// هنا نجرّب المسارات بالترتيب، وفقط عند 404/405 ننتقل للتالي.
 // ============================================================
 
 const tryPaths = async (method, paths, dataOrOpts, opts) => {
@@ -61,30 +62,49 @@ const tryPaths = async (method, paths, dataOrOpts, opts) => {
     } catch (e) {
       lastErr = e;
       const s = e?.response?.status;
-      // 404/405 → جرّب المسار التالي. أي خطأ آخر يعني السيرفر موجود، لا فائدة من تكرار.
+      // 404/405 → جرّب المسار التالي. أي خطأ آخر يعني السيرفر موجود، لا فائدة من التكرار.
       if (s !== 404 && s !== 405) throw e;
     }
   }
   throw lastErr;
 };
 
+// v88.3.5: مولّد مسارات — يولّد كل الأشكال الممكنة (3 بوادئ)
+// suffix يجب أن يبدأ بـ / مثل "/123/join" أو "" للجذر.
+const vrPaths = (suffix = '') => [
+  `/api/voice/rooms${suffix}`,
+  `/api/voice-rooms/rooms${suffix}`,
+  `/api/rooms${suffix}`,
+];
+
 export const voiceRoomsApi = {
-  list: (category) => tryPaths('get', ['/api/voice/rooms', '/api/rooms'], { params: { category } }),
-  get: (id) => tryPaths('get', [`/api/voice/rooms/${id}`, `/api/rooms/${id}`]),
-  create: (payload) => tryPaths('post', ['/api/voice/rooms', '/api/rooms'], payload),
+  // v88.3.5: دالة تشخيصية تتحقق فيما إذا كان راوتر الغرف الصوتية محمّلاً على السيرفر
+  // ترجع { available: bool, path?: string, error?: string }
+  ping: async () => {
+    for (const p of vrPaths('/_ping')) {
+      try {
+        const r = await apiClient.get(p);
+        if (r?.data?.ok) return { available: true, path: p, ...r.data };
+      } catch (_) { /* جرّب التالي */ }
+    }
+    return { available: false, error: 'voice_rooms router not mounted on server' };
+  },
+  list: (category) => tryPaths('get', vrPaths(), { params: { category } }),
+  get: (id) => tryPaths('get', vrPaths(`/${id}`)),
+  create: (payload) => tryPaths('post', vrPaths(), payload),
   join: (id, password) =>
-    tryPaths('post', [`/api/voice/rooms/${id}/join`, `/api/rooms/${id}/join`], null, { params: { password } }),
-  leave: (id) => tryPaths('post', [`/api/voice/rooms/${id}/leave`, `/api/rooms/${id}/leave`], null),
+    tryPaths('post', vrPaths(`/${id}/join`), null, { params: { password } }),
+  leave: (id) => tryPaths('post', vrPaths(`/${id}/leave`), null),
   takeSeat: (id, seatIndex) =>
-    tryPaths('post', [`/api/voice/rooms/${id}/seats/take`, `/api/rooms/${id}/seats/take`], { seat_index: seatIndex }),
+    tryPaths('post', vrPaths(`/${id}/seats/take`), { seat_index: seatIndex }),
   leaveSeat: (id) =>
-    tryPaths('post', [`/api/voice/rooms/${id}/seats/leave`, `/api/rooms/${id}/seats/leave`], null),
+    tryPaths('post', vrPaths(`/${id}/seats/leave`), null),
   toggleMute: (id, targetUserId, mute) =>
-    tryPaths('post', [`/api/voice/rooms/${id}/mute`, `/api/rooms/${id}/mute`], null,
+    tryPaths('post', vrPaths(`/${id}/mute`), null,
       { params: { target_user_id: targetUserId, mute } }),
-  close: (id) => tryPaths('post', [`/api/voice/rooms/${id}/close`, `/api/rooms/${id}/close`], null),
+  close: (id) => tryPaths('post', vrPaths(`/${id}/close`), null),
   sendMessage: (id, content) =>
-    tryPaths('post', [`/api/voice/rooms/${id}/messages`, `/api/rooms/${id}/messages`], { content }),
+    tryPaths('post', vrPaths(`/${id}/messages`), { content }),
   getMessages: (id, limit = 50) =>
-    tryPaths('get', [`/api/voice/rooms/${id}/messages`, `/api/rooms/${id}/messages`], { params: { limit } }),
+    tryPaths('get', vrPaths(`/${id}/messages`), { params: { limit } }),
 };

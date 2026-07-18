@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from sqlalchemy import and_, desc
 from sqlalchemy.orm import Session
 
@@ -383,6 +383,45 @@ def save_reel(reel_id: int, db: Session = Depends(get_db), current_user: User = 
     }
 
 
+@router.put('/{reel_id}')
+def update_reel(
+    reel_id: int,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    reel = db.query(Reel).filter(Reel.id == reel_id, Reel.is_deleted.is_(False)).first()
+    if reel is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Reel not found')
+    if int(reel.user_id) != int(current_user.id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Not allowed to edit this reel')
+    caption = str(payload.get('caption', payload.get('content', ''))).strip()
+    if len(caption) > 2000:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Caption is too long')
+    reel.caption = caption or None
+    reel.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(reel)
+    return _serialize_reel(db, reel, current_user=current_user)
+
+
+@router.delete('/{reel_id}')
+def delete_reel(
+    reel_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    reel = db.query(Reel).filter(Reel.id == reel_id, Reel.is_deleted.is_(False)).first()
+    if reel is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Reel not found')
+    if int(reel.user_id) != int(current_user.id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Not allowed to delete this reel')
+    reel.is_deleted = True
+    reel.updated_at = datetime.utcnow()
+    db.commit()
+    return {'ok': True, 'deleted': reel_id}
+
+
 # ============================================================
 # v85.5 — Reel comments endpoints
 # ------------------------------------------------------------
@@ -391,7 +430,6 @@ def save_reel(reel_id: int, db: Session = Depends(get_db), current_user: User = 
 # الآن: مسارات مخصصة تحفظ التعليقات في جدول reel_comments المستقل،
 # وتُحدّث comments_count الحقيقي في جدول reels.
 # ============================================================
-from fastapi import Body
 # ReelComment يُستورد في أعلى الملف مع بقية موديلات stories_reels
 
 

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import MainLayout from '../../components/layout/MainLayout.jsx';
+import MobileTopBar from '../../components/mobile/MobileTopBar.jsx';
+import BottomNav from '../../components/mobile/BottomNav.jsx';
 import ProfileHeader from '../../components/profile/ProfileHeader.jsx';
 import Card from '../../components/ui/Card.jsx';
 import Button from '../../components/ui/Button.jsx';
@@ -86,8 +88,44 @@ const normalizeGalleryPost = (post) => {
 };
 
 /**
- * ProfilePage Component
- * Features: Tabs optimization, Analytics, Pinned content, Profile customization, Followers insights
+ * ProfilePage — v88.4 (ROOT FIX: السحب لأعلى وأسفل يعمل بسلاسة على ويب الجوال)
+ * ----------------------------------------------------------------
+ * سبب الفشل السابق (v88.2 وأقدم):
+ *   الصفحة كانت تُعرض داخل شجرة `.app-shell/.page-content` عبر <MainLayout>.
+ *   هذه الشجرة لديها:
+ *     .app-shell.yamshat-unified  → height:100dvh; overflow:hidden
+ *       .main-shell               → overflow:hidden; height:100%
+ *         .page-content           → position:absolute; inset:0; overflow-y:auto  ← ⚠️ scroll container
+ *           .profile-page-wrap    → محتوى الصفحة
+ *
+ *   على WebView الجوال (Chrome Android / Samsung Internet / iOS WebView) تحدث ظاهرة
+ *   "double scroll container" أو تعارض قواعد CSS (v87.24 كان يفرض height:auto على
+ *   .page-content فيكسر بنيتها). النتيجة: touchmove العمودي لا يصل إلى الحاوية الصحيحة
+ *   ويتجمّد السحب.
+ *
+ * ✅ الحل الجذري v88.4 (مأخوذ حرفياً من PostComposerPage.jsx / ReportModal.jsx):
+ *   1) استخدام createPortal لعرض الصفحة مباشرة كطفل لـ document.body — بذلك تخرج
+ *      كلياً من شجرة `.app-shell/.page-content` ولا تتأثر بأي overflow أو contain
+ *      أو transform أو height:auto من الطبقات الأم.
+ *   2) بنية flex-column ثابتة (نفس بصمة PostComposerPage الناجحة):
+ *        - MobileTopBar (flex:0 0 auto) — الهيدر الموحّد للتطبيق يبقى ظاهراً
+ *        - منطقة التمرير (flex:1 1 auto; overflow-y:auto; -webkit-overflow-scrolling:touch)
+ *        - BottomNav (flex:0 0 auto) — الشريط السفلي يبقى ثابتاً
+ *        - shell خارجي position:fixed;inset:0;overflow:hidden — يمنع body من التمرير
+ *   3) قفل تمرير body أثناء فتح الصفحة (مثل المودال) لضمان أن المتصفح يوجّه كل
+ *      touchmove العمودي إلى منطقة التمرير الداخلية فقط.
+ *   4) touch-action:pan-y صريح + overscroll-behavior-y:contain لمنع pull-to-refresh
+ *      ومنع أي bubbling للأعلى.
+ *   5) كسر أي contain/transform/filter موروثة قد تعطل position:fixed.
+ *
+ * ⚠️ ملاحظة مهمة: صفحة الملف الشخصي لا تُلف بـ <MainLayout> بعد الآن. بدلاً من ذلك،
+ * الـ Portal يحتوي على MobileTopBar و BottomNav داخلياً — نفس النمط الذي جعل
+ * PostComposerPage تعمل بسلاسة.
+ *
+ * النتيجة: نفس بصمة السحب الناجحة في PostComposerPage/ReportModal — يعمل على iOS
+ * Safari و Chrome Android و Samsung Internet و WebView داخل التطبيق و Firefox Mobile.
+ *
+ * RTL كامل + Noto Sans Arabic.
  */
 export default function ProfilePage() {
   const { username: routeUsername } = useParams();
@@ -109,7 +147,7 @@ export default function ProfilePage() {
   const [pinnedPosts, setPinnedPosts] = useState([]);
   const [analyticsData, setAnalyticsData] = useState(null);
   const [followersData, setFollowersData] = useState(null);
-  const pageRootRef = useRef(null);
+  const scrollRef = useRef(null);
 
   const requestedTab = normalizeRequestedTab(searchParams.get('tab'));
   const requestedPanel = String(searchParams.get('panel') || '').trim().toLowerCase();
@@ -135,9 +173,6 @@ export default function ProfilePage() {
     return items;
   }, [profile, pinnedPosts, isOwnProfile]);
 
-  /**
-   * Loads profile data
-   */
   const loadProfile = useCallback(async () => {
     try {
       setLoading(true);
@@ -161,9 +196,6 @@ export default function ProfilePage() {
     }
   }, [username]);
 
-  /**
-   * Loads profile on mount or username change
-   */
   useEffect(() => {
     loadProfile();
   }, [loadProfile]);
@@ -185,54 +217,36 @@ export default function ProfilePage() {
     }
   }, [requestedPanel, isOwnProfile]);
 
-  // ✅ v88.2 ROOT FIX: لا نضيف أي class على .page-content (كان ذلك يُطابق
-  // الـselector العريض [class*="profile-page"] في v87.24 ويفرض height:auto
-  // على .page-content فيكسر بنيتها (position:absolute; inset:0)
-  // ويلغي التمرير تماماً). الآن التمرير يعمل تلقائياً على
-  // .page-content مثل بقية الصفحات الناجحة (FeedMobile, Home...).
-  // الـCSS المحدد في yamshat-fixes-v87.24 يفرض :has(.profile-page-wrap)
-  // قواعد التمرير للمتصفحات الحديثة، وfallback JS أدناه للقديمة.
+  // ✅ v88.4: عنوان الصفحة
   useEffect(() => {
-    const rootEl = pageRootRef.current;
-    const pageContent = rootEl?.closest?.('.page-content');
-    if (!pageContent) return undefined;
+    const prev = document.title;
+    const label = profile?.user?.username ? `@${profile.user.username}` : 'الملف الشخصي';
+    document.title = `${label} · YAMSHAT`;
+    return () => { document.title = prev; };
+  }, [profile?.user?.username]);
 
-    // ✅ v88.2: fallback JS للمتصفحات التي لا تدعم :has() —
-    // نضيف data-attribute بدل class (لا يُطابق الـselectors القديمة)
-    pageContent.setAttribute('data-yam-profile-active', 'true');
-
-    // ✅ إزالة class القديمة إن وجدت من إصدار سابق (منع للـlegacy leak)
-    pageContent.classList.remove('profile-page-content-scroll');
-
-    // ✅ فرض قواعد التمرير الاحتياطية مباشرة على element
-    // (حيادية ضد أي legacy CSS يحاول override)
-    const prev = {
-      overflowY: pageContent.style.overflowY,
-      overflowX: pageContent.style.overflowX,
-      webkitOverflowScrolling: pageContent.style.webkitOverflowScrolling,
-      touchAction: pageContent.style.touchAction,
-      overscrollBehaviorY: pageContent.style.overscrollBehaviorY,
-    };
-    pageContent.style.overflowY = 'auto';
-    pageContent.style.overflowX = 'hidden';
-    pageContent.style.webkitOverflowScrolling = 'touch';
-    pageContent.style.touchAction = 'pan-y';
-    pageContent.style.overscrollBehaviorY = 'contain';
-
+  // ✅ v88.4: قفل تمرير body أثناء فتح الصفحة — مثل المودال بالضبط.
+  // هذا يمنع المتصفح من محاولة تمرير .page-content الأم عندما يلمس المستخدم الشاشة،
+  // ويضمن توجيه كل touchmove العمودي إلى منطقة التمرير الداخلية للصفحة.
+  useEffect(() => {
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
     return () => {
-      pageContent.removeAttribute('data-yam-profile-active');
-      // حاول إعادة القيم الأصلية
-      pageContent.style.overflowY = prev.overflowY;
-      pageContent.style.overflowX = prev.overflowX;
-      pageContent.style.webkitOverflowScrolling = prev.webkitOverflowScrolling;
-      pageContent.style.touchAction = prev.touchAction;
-      pageContent.style.overscrollBehaviorY = prev.overscrollBehaviorY;
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
     };
   }, []);
 
-  /**
-   * Handles theme change with persistence
-   */
+  // ✅ v88.4: عند فتح الصفحة، نُصعّد التمرير الداخلي إلى الأعلى
+  useEffect(() => {
+    const node = scrollRef.current;
+    if (node) {
+      try { node.scrollTop = 0; } catch { /* ignore */ }
+    }
+  }, [username]);
+
   const handleThemeChange = useCallback(async (newTheme) => {
     setTheme(newTheme);
     try {
@@ -253,7 +267,11 @@ export default function ProfilePage() {
     }
 
     setSearchParams(nextParams, { replace: true });
-    window.scrollTo?.({ top: 0, behavior: 'smooth' });
+    // ✅ v88.4: نُمرّر منطقة التمرير الداخلية للـ portal (وليس window)
+    const node = scrollRef.current;
+    if (node) {
+      try { node.scrollTo({ top: 0, behavior: 'smooth' }); } catch { node.scrollTop = 0; }
+    }
   }, [searchParams, setSearchParams]);
 
   const openCustomization = useCallback(() => {
@@ -270,9 +288,6 @@ export default function ProfilePage() {
     setSearchParams(nextParams, { replace: true });
   }, [searchParams, setSearchParams]);
 
-  /**
-   * Handles follow/unfollow action
-   */
   const handleFollowClick = useCallback(async () => {
     const targetUsername = profile?.user?.username || '';
     if (!targetUsername) return;
@@ -296,12 +311,8 @@ export default function ProfilePage() {
     }
   }, [profile?.user?.username]);
 
-  /**
-   * Gets content based on active tab
-   */
   const getTabContent = useCallback(() => {
     if (!profile) return [];
-    
     switch (activeTab) {
       case TABS.POSTS:
         return profile.posts || [];
@@ -318,160 +329,201 @@ export default function ProfilePage() {
     }
   }, [profile, activeTab, pinnedPosts]);
 
-  /**
-   * Memoized content to prevent unnecessary re-renders
-   */
   const tabContent = useMemo(() => getTabContent().map(normalizeGalleryPost), [getTabContent]);
 
-  if (loading) {
-    return (
-      <MainLayout>
-        <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-          <div className="page-loader-spinner" />
-          <p>جارٍ التحميل...</p>
-        </div>
-      </MainLayout>
-    );
-  }
-
-  if (error || !profile) {
-    return (
-      <MainLayout>
-        <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-          <p style={{ color: '#ff6b6b' }}>{error || 'حدث خطأ'}</p>
-          <Button onClick={loadProfile}>إعادة محاولة</Button>
-        </div>
-      </MainLayout>
-    );
-  }
-
-  return (
-    <MainLayout>
-      <div ref={pageRootRef} className="profile-page-wrap" style={{ maxWidth: 1000, margin: '0 auto', padding: '20px', width: '100%', boxSizing: 'border-box' }}>
-        {/* Profile Header */}
-        <ProfileHeader
-          profile={profile}
-          isOwnProfile={isOwnProfile}
-          onAnalyticsClick={() => setShowAnalytics(true)}
-          onCustomizationClick={openCustomization}
-          onFollowClick={handleFollowClick}
-          activeTab={activeTab}
-          onTabChange={handleTabChange}
-          tabs={availableTabs}
-        />
-
-        {/* Content Grid — Mobile-first professional gallery (v86.8) */}
-        <div className="ym-profile-gallery" dir="rtl">
-          {tabContent.length > 0 ? (
-            tabContent.map((post) => (
-              <div
-                key={post.id}
-                className="ym-profile-gallery__item"
-                role="button"
-                tabIndex={0}
-                onClick={() => navigate(`/post/${post.id}`)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    navigate(`/post/${post.id}`);
-                  }
-                }}
-              >
-                {post.media_url || post.image_url ? (
-                  post.has_video ? (
-                    <>
-                      <video
-                        src={post.media_url}
-                        poster={post.thumbnail_url || post.image_url || undefined}
-                        className="ym-profile-gallery__img ym-profile-gallery__video"
-                        muted
-                        playsInline
-                        preload="metadata"
-                        aria-label="معاينة فيديو المنشور"
-                      />
-                      <span className="ym-profile-gallery__play-badge" aria-hidden="true">▶</span>
-                    </>
-                  ) : (
-                    <img
-                      src={post.image_url || post.media_url}
-                      alt="منشور"
-                      className="ym-profile-gallery__img"
-                      loading="lazy"
-                      decoding="async"
-                    />
-                  )
-                ) : (
-                  <div className="ym-profile-gallery__empty">📝</div>
-                )}
-
-                {activeTab === TABS.ARCHIVE && (
-                  <span className="ym-profile-gallery__badge ym-profile-gallery__badge--archive">
-                    <span aria-hidden="true">📦</span>
-                    <span>مؤرشف</span>
-                  </span>
-                )}
-                {activeTab === TABS.PINNED && (
-                  <span className="ym-profile-gallery__badge ym-profile-gallery__badge--pinned">
-                    <span aria-hidden="true">📌</span>
-                    <span>مثبت</span>
-                  </span>
-                )}
-
-                {/* إحصائيات التفاعل — ظاهرة دائماً على الجوال، وعند التمرير على الديسكتوب */}
-                <div className="ym-profile-gallery__stats" aria-hidden="true">
-                  <span><span aria-hidden="true">❤️</span> {post.likes_count || 0}</span>
-                  <span><span aria-hidden="true">💬</span> {post.comments_count || 0}</span>
-                  <span><span aria-hidden="true">↗️</span> {post.shares_count || 0}</span>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="ym-profile-gallery__empty-state">
-              <p>لا توجد منشورات في هذا القسم</p>
-            </div>
-          )}
-        </div>
+  // ============================================================
+  // ⭐ محتوى الـ Portal (نفس بصمة PostComposerPage الناجحة)
+  // ============================================================
+  const content = (
+    <div
+      dir="rtl"
+      className="ymp-portal-shell"
+      data-yam-profile-portal="true"
+      style={{
+        // ⭐ position:fixed;inset:0 يعزل الصفحة كلياً عن أي scroll container أم.
+        position: 'fixed',
+        inset: 0,
+        zIndex: 10030,
+        display: 'flex',
+        flexDirection: 'column',
+        background: '#0A0A0F',
+        color: '#F4F4F5',
+        fontFamily: "'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif",
+        // منع تمرير الـ shell نفسه (فقط الابن الداخلي يتمرر) — بصمة ReportModal.
+        overflow: 'hidden',
+        // منع pull-to-refresh على الجوال والسحب الأفقي.
+        overscrollBehavior: 'contain',
+        WebkitOverflowScrolling: 'touch',
+        touchAction: 'pan-y',
+        // كسر أي contain/transform موروثة قد تعطل position:fixed.
+        transform: 'none',
+        filter: 'none',
+        perspective: 'none',
+        contain: 'none',
+        willChange: 'auto',
+        pointerEvents: 'auto',
+      }}
+    >
+      {/* ============================================================
+          الشريط العلوي الموحّد — flex:0 0 auto — ثابت لا يتمرر
+          ============================================================ */}
+      <div
+        className="ymp-top-fixed"
+        style={{
+          flex: '0 0 auto',
+          touchAction: 'manipulation',
+          zIndex: 5,
+        }}
+      >
+        <MobileTopBar transparent={false} />
       </div>
 
-      <style>{`
-        /* ✅ v88.2 ROOT FIX — نمط "بوست البلاغات": تمرير يحدث على
-           .page-content الأم (مثل باقي الصفحات الناجحة)
-           و.profile-page-wrap تبقى حاوية flow طبيعية (overflow:visible).
-           القواعد التفصيلية مفروضة في yamshat-fixes-v87.24 مع :has(). */
+      {/* ============================================================
+          ⭐ منطقة التمرير الداخلية — نفس بصمة PostComposerPage/ReportModal
+          هذا هو العنصر الوحيد الذي يستقبل touchmove العمودي ويتمرر.
+          ============================================================ */}
+      <main
+        ref={scrollRef}
+        className="ymp-scroll-area"
+        style={{
+          flex: '1 1 auto',
+          minHeight: 0, // ⭐ حرج داخل flex-column على iOS Safari
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehaviorY: 'contain',
+          overscrollBehaviorX: 'none',
+          touchAction: 'pan-y',
+          scrollBehavior: 'smooth',
+          contain: 'none',
+          willChange: 'scroll-position',
+          transform: 'none',
+          filter: 'none',
+          perspective: 'none',
+          pointerEvents: 'auto',
+          // padding سفلي كافٍ ليتنفس المحتوى فوق BottomNav
+          paddingBottom: 'calc(140px + env(safe-area-inset-bottom, 0px))',
+        }}
+      >
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+            <div className="page-loader-spinner" />
+            <p>جارٍ التحميل...</p>
+          </div>
+        ) : (error || !profile) ? (
+          <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+            <p style={{ color: '#ff6b6b' }}>{error || 'حدث خطأ'}</p>
+            <Button onClick={loadProfile}>إعادة محاولة</Button>
+          </div>
+        ) : (
+          <div
+            className="profile-page-wrap"
+            style={{
+              maxWidth: 1000,
+              margin: '0 auto',
+              padding: '20px',
+              width: '100%',
+              boxSizing: 'border-box',
+              touchAction: 'pan-y',
+            }}
+          >
+            <ProfileHeader
+              profile={profile}
+              isOwnProfile={isOwnProfile}
+              onAnalyticsClick={() => setShowAnalytics(true)}
+              onCustomizationClick={openCustomization}
+              onFollowClick={handleFollowClick}
+              activeTab={activeTab}
+              onTabChange={handleTabChange}
+              tabs={availableTabs}
+            />
 
-        /* fallback للمتصفحات القديمة دون :has() — نستخدم data-attribute */
-        .app-shell .page-content[data-yam-profile-active="true"],
-        .page-content[data-yam-profile-active="true"] {
-          overflow-y: auto !important;
-          overflow-x: hidden !important;
-          -webkit-overflow-scrolling: touch !important;
-          touch-action: pan-y !important;
-          overscroll-behavior-y: contain !important;
-          overscroll-behavior-x: none !important;
-        }
+            <div className="ym-profile-gallery" dir="rtl">
+              {tabContent.length > 0 ? (
+                tabContent.map((post) => (
+                  <div
+                    key={post.id}
+                    className="ym-profile-gallery__item"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => navigate(`/post/${post.id}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        navigate(`/post/${post.id}`);
+                      }
+                    }}
+                  >
+                    {post.media_url || post.image_url ? (
+                      post.has_video ? (
+                        <>
+                          <video
+                            src={post.media_url}
+                            poster={post.thumbnail_url || post.image_url || undefined}
+                            className="ym-profile-gallery__img ym-profile-gallery__video"
+                            muted
+                            playsInline
+                            preload="metadata"
+                            aria-label="معاينة فيديو المنشور"
+                          />
+                          <span className="ym-profile-gallery__play-badge" aria-hidden="true">▶</span>
+                        </>
+                      ) : (
+                        <img
+                          src={post.image_url || post.media_url}
+                          alt="منشور"
+                          className="ym-profile-gallery__img"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      )
+                    ) : (
+                      <div className="ym-profile-gallery__empty">📝</div>
+                    )}
 
-        .profile-page-wrap {
-          min-height: 100%;
-          padding-bottom: calc(140px + env(safe-area-inset-bottom, 0px));
-          touch-action: pan-y;
-          overflow: visible;
-          -webkit-overflow-scrolling: touch;
-        }
-        .profile-page-wrap,
-        .profile-page-wrap * {
-          box-sizing: border-box;
-        }
-        .profile-page-wrap .ym-profile-gallery {
-          overflow: visible;
-          touch-action: pan-y;
-        }
+                    {activeTab === TABS.ARCHIVE && (
+                      <span className="ym-profile-gallery__badge ym-profile-gallery__badge--archive">
+                        <span aria-hidden="true">📦</span>
+                        <span>مؤرشف</span>
+                      </span>
+                    )}
+                    {activeTab === TABS.PINNED && (
+                      <span className="ym-profile-gallery__badge ym-profile-gallery__badge--pinned">
+                        <span aria-hidden="true">📌</span>
+                        <span>مثبت</span>
+                      </span>
+                    )}
 
-        /* تأكيد: منع أي طفل من احتباس اللمس العمودي */
-        .profile-page-wrap > *,
-        .profile-page-wrap .ym-profile-gallery > * {
-          touch-action: pan-y;
-        }
-      `}</style>
+                    <div className="ym-profile-gallery__stats" aria-hidden="true">
+                      <span><span aria-hidden="true">❤️</span> {post.likes_count || 0}</span>
+                      <span><span aria-hidden="true">💬</span> {post.comments_count || 0}</span>
+                      <span><span aria-hidden="true">↗️</span> {post.shares_count || 0}</span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="ym-profile-gallery__empty-state">
+                  <p>لا توجد منشورات في هذا القسم</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* ============================================================
+          الشريط السفلي الموحّد — flex:0 0 auto — ثابت لا يتمرر
+          ============================================================ */}
+      <div
+        className="ymp-bottom-fixed"
+        style={{
+          flex: '0 0 auto',
+          touchAction: 'manipulation',
+          zIndex: 5,
+        }}
+      >
+        <BottomNav />
+      </div>
 
       {/* Analytics Modal */}
       <Modal
@@ -481,7 +533,6 @@ export default function ProfilePage() {
         size="large"
       >
         <div style={{ padding: 20 }}>
-          {/* Key Metrics */}
           <div
             style={{
               display: 'grid',
@@ -510,7 +561,6 @@ export default function ProfilePage() {
             </Card>
           </div>
 
-          {/* Performance Chart */}
           <h4 style={{ marginBottom: 15 }}>أداء المنشورات (آخر 30 يوم)</h4>
           <div
             style={{
@@ -691,26 +741,97 @@ export default function ProfilePage() {
         </div>
       </Modal>
 
+      {/* ============================================================
+          حقن CSS مضاد: نضمن أن أي طبقة legacy لا تكسر السحب داخل الصفحة
+          ============================================================ */}
       <style>{`
+        /* ✅ v88.4 — Portal shell محصّن ضد أي CSS legacy (نفس بصمة v88.3 الناجحة) */
+        .ymp-portal-shell,
+        .ymp-portal-shell * {
+          -webkit-tap-highlight-color: transparent;
+        }
+        .ymp-portal-shell .ymp-scroll-area {
+          -webkit-overflow-scrolling: touch !important;
+          overflow-y: auto !important;
+          overflow-x: hidden !important;
+          touch-action: pan-y !important;
+          overscroll-behavior-y: contain !important;
+          overscroll-behavior-x: none !important;
+          contain: none !important;
+          transform: none !important;
+          filter: none !important;
+          perspective: none !important;
+          min-height: 0 !important;
+          pointer-events: auto !important;
+        }
+        /* الحاوية الداخلية: لا تحبس اللمس العمودي */
+        .ymp-portal-shell .profile-page-wrap,
+        .ymp-portal-shell .profile-page-wrap * {
+          box-sizing: border-box;
+        }
+        .ymp-portal-shell .profile-page-wrap {
+          touch-action: pan-y !important;
+          overflow: visible !important;
+          -webkit-overflow-scrolling: touch !important;
+        }
+        .ymp-portal-shell .ym-profile-gallery {
+          overflow: visible !important;
+          touch-action: pan-y !important;
+        }
+        .ymp-portal-shell .profile-page-wrap > *,
+        .ymp-portal-shell .ym-profile-gallery > * {
+          touch-action: pan-y;
+        }
+        /* الأزرار والروابط: manipulation لتفعيل النقر السريع */
+        .ymp-portal-shell button,
+        .ymp-portal-shell a,
+        .ymp-portal-shell label,
+        .ymp-portal-shell [role="button"] {
+          touch-action: manipulation;
+          pointer-events: auto !important;
+        }
+        /* scrollbar لطيف على الديسكتوب فقط */
+        .ymp-portal-shell .ymp-scroll-area::-webkit-scrollbar {
+          width: 6px;
+        }
+        .ymp-portal-shell .ymp-scroll-area::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .ymp-portal-shell .ymp-scroll-area::-webkit-scrollbar-thumb {
+          background: rgba(139, 92, 246, 0.45);
+          border-radius: 999px;
+        }
+        @media (max-width: 768px) {
+          .ymp-portal-shell .ymp-scroll-area {
+            scrollbar-width: none;
+          }
+          .ymp-portal-shell .ymp-scroll-area::-webkit-scrollbar {
+            display: none;
+            width: 0;
+            height: 0;
+          }
+        }
+        /* iOS Safari: momentum scroll تفعيل قوي */
+        @supports (-webkit-touch-callout: none) {
+          .ymp-portal-shell .ymp-scroll-area {
+            -webkit-overflow-scrolling: touch !important;
+            overflow-y: auto !important;
+            touch-action: pan-y !important;
+          }
+        }
+
         /* ============================================================
            v86.8 — Professional Mobile Post Gallery (Profile Page)
-           - Mobile first: 3 columns like Instagram
-           - Tablet: 4 columns
-           - Desktop: 5 columns
-           - أحجام خط مرنة clamp()
-           - حدود دائرية وظل ناعم
-           - لا فيضان أبداً
            ============================================================ */
-        .ym-profile-gallery {
+        .ymp-portal-shell .ym-profile-gallery {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
           gap: clamp(4px, 1.2vw, 8px);
           margin-bottom: 30px;
           font-family: 'Cairo', 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
           max-width: 100%;
-          overflow: hidden;
         }
-        .ym-profile-gallery__item {
+        .ymp-portal-shell .ym-profile-gallery__item {
           position: relative;
           aspect-ratio: 1 / 1;
           background: #1a1a1a;
@@ -721,24 +842,22 @@ export default function ProfilePage() {
           border: 1px solid rgba(255, 255, 255, 0.05);
           outline: none;
         }
-        .ym-profile-gallery__item:hover,
-        .ym-profile-gallery__item:focus-visible {
+        .ymp-portal-shell .ym-profile-gallery__item:hover,
+        .ymp-portal-shell .ym-profile-gallery__item:focus-visible {
           transform: translateY(-1px);
           box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
           border-color: rgba(139, 92, 246, 0.35);
         }
-        .ym-profile-gallery__item:active { transform: scale(0.98); }
-        .ym-profile-gallery__img {
+        .ymp-portal-shell .ym-profile-gallery__item:active { transform: scale(0.98); }
+        .ymp-portal-shell .ym-profile-gallery__img {
           width: 100%;
           height: 100%;
           object-fit: cover;
           display: block;
           background: linear-gradient(135deg, rgba(19, 23, 42, 0.96), rgba(11, 16, 32, 0.92));
         }
-        .ym-profile-gallery__video {
-          pointer-events: none;
-        }
-        .ym-profile-gallery__play-badge {
+        .ymp-portal-shell .ym-profile-gallery__video { pointer-events: none; }
+        .ymp-portal-shell .ym-profile-gallery__play-badge {
           position: absolute;
           inset-inline-start: 10px;
           bottom: 10px;
@@ -756,7 +875,7 @@ export default function ProfilePage() {
           backdrop-filter: blur(6px);
           -webkit-backdrop-filter: blur(6px);
         }
-        .ym-profile-gallery__empty {
+        .ymp-portal-shell .ym-profile-gallery__empty {
           width: 100%;
           height: 100%;
           display: flex;
@@ -766,9 +885,7 @@ export default function ProfilePage() {
           color: rgba(255, 255, 255, 0.25);
           background: linear-gradient(135deg, #1a1a1a, #222);
         }
-
-        /* شارات الأرشفة والتثبيت — حجم موحّد مرن */
-        .ym-profile-gallery__badge {
+        .ymp-portal-shell .ym-profile-gallery__badge {
           position: absolute;
           top: clamp(4px, 1.4vw, 8px);
           inset-inline-end: clamp(4px, 1.4vw, 8px);
@@ -786,15 +903,9 @@ export default function ProfilePage() {
           white-space: nowrap;
           line-height: 1.2;
         }
-        .ym-profile-gallery__badge--archive {
-          background: rgba(0, 0, 0, 0.65);
-        }
-        .ym-profile-gallery__badge--pinned {
-          background: rgba(59, 130, 246, 0.85);
-        }
-
-        /* إحصائيات التفاعل — مخفية افتراضياً، تظهر عند التمرير (ديسكتوب) */
-        .ym-profile-gallery__stats {
+        .ymp-portal-shell .ym-profile-gallery__badge--archive { background: rgba(0, 0, 0, 0.65); }
+        .ymp-portal-shell .ym-profile-gallery__badge--pinned { background: rgba(59, 130, 246, 0.85); }
+        .ymp-portal-shell .ym-profile-gallery__stats {
           position: absolute;
           bottom: 0;
           left: 0;
@@ -812,72 +923,67 @@ export default function ProfilePage() {
           pointer-events: none;
           font-variant-numeric: tabular-nums;
         }
-        .ym-profile-gallery__stats span {
+        .ymp-portal-shell .ym-profile-gallery__stats span {
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
           min-width: 0;
         }
-
-        /* على الديسكتوب: إظهار الإحصائيات عند التمرير */
         @media (hover: hover) {
-          .ym-profile-gallery__item:hover .ym-profile-gallery__stats {
-            opacity: 1;
-          }
+          .ymp-portal-shell .ym-profile-gallery__item:hover .ym-profile-gallery__stats { opacity: 1; }
         }
-
-        /* على الجوال (أجهزة اللمس): أظهر الإحصائيات دائماً بشفافية خفيفة حتى يراها المستخدم */
         @media (hover: none) {
-          .ym-profile-gallery__stats {
-            opacity: 0.95;
-          }
+          .ymp-portal-shell .ym-profile-gallery__stats { opacity: 0.95; }
         }
-
-        /* حالة فارغة */
-        .ym-profile-gallery__empty-state {
+        .ymp-portal-shell .ym-profile-gallery__empty-state {
           grid-column: 1 / -1;
           text-align: center;
           padding: clamp(24px, 8vw, 48px) 20px;
           color: #888;
           font-size: clamp(0.85rem, 3.4vw, 1rem);
         }
-
-        /* تدرج الأعمدة حسب الشاشة */
         @media (min-width: 640px) {
-          .ym-profile-gallery {
+          .ymp-portal-shell .ym-profile-gallery {
             grid-template-columns: repeat(4, 1fr);
             gap: 10px;
           }
         }
         @media (min-width: 1024px) {
-          .ym-profile-gallery {
+          .ymp-portal-shell .ym-profile-gallery {
             grid-template-columns: repeat(5, 1fr);
             gap: 12px;
           }
         }
-
-        /* شاشات ضيقة جداً (≤ 360px): اختصار الإحصائيات */
         @media (max-width: 360px) {
-          .ym-profile-gallery {
-            gap: 3px;
-          }
-          .ym-profile-gallery__stats {
+          .ymp-portal-shell .ym-profile-gallery { gap: 3px; }
+          .ymp-portal-shell .ym-profile-gallery__stats {
             padding: 4px 5px;
             font-size: 0.6rem;
             gap: 3px;
           }
-          .ym-profile-gallery__badge {
+          .ymp-portal-shell .ym-profile-gallery__badge {
             font-size: 0.55rem;
             padding: 2px 5px;
           }
-          .ym-profile-gallery__play-badge {
+          .ymp-portal-shell .ym-profile-gallery__play-badge {
             width: 30px;
             height: 30px;
             inset-inline-start: 8px;
             bottom: 8px;
           }
         }
+
+        /* ✅ v88.4: تحييد أي قواعد legacy من v87.24 قد تحاول لمس .page-content
+           (لم نعد نستخدمها — الصفحة الآن في portal مباشرة على body). */
+        body > .ymp-portal-shell {
+          isolation: isolate;
+        }
       `}</style>
-    </MainLayout>
+    </div>
   );
+
+  // ⭐ createPortal → document.body: الصفحة تخرج كلياً من شجرة .app-shell/.page-content
+  // ولا يمكن لأي CSS من طبقات الـ layout أن يكسر السحب داخلها.
+  if (typeof document === 'undefined') return null;
+  return createPortal(content, document.body);
 }

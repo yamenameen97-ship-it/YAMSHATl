@@ -7,9 +7,14 @@ import { useToast } from '../../components/admin/ToastProvider.jsx';
 import { getCurrentUsername } from '../../utils/auth.js';
 import '../../styles/groups-features.css';
 
+const optionLabel = (option) => (typeof option === 'string' ? option : (option?.text || option?.label || ''));
+const optionVotes = (poll, option) => {
+  const label = optionLabel(option);
+  return Number(typeof option === 'object' ? option?.votes : poll?.totals?.[label]) || 0;
+};
 const computePct = (poll) => {
-  const total = (poll.options || []).reduce((s, o) => s + (o.votes || 0), 0);
-  return { total, pct: (opt) => total ? Math.round(((opt.votes || 0) * 100) / total) : 0 };
+  const total = (poll.options || []).reduce((sum, option) => sum + optionVotes(poll, option), 0);
+  return { total, pct: (option) => total ? Math.round((optionVotes(poll, option) * 100) / total) : 0 };
 };
 
 // v88.3.4: ألوان الأزرار حسب موقع الخيار (أخضر للأول = نعم، أحمر للثاني = لا، إلخ)
@@ -102,15 +107,14 @@ const GroupPolls = () => {
     // تحديث تفاؤلي فوري — العدّ يبدأ مباشرة عند الضغط
     setPolls((p) => p.map((x) => {
       if (x.id !== poll.id) return x;
-      const options = (x.options || []).map((o, i) => {
-        if (i !== optIndex) return o;
-        return { ...o, votes: (o.votes || 0) + 1 };
-      });
-      return { ...x, options, _voted_index: optIndex, _voting: true };
+      const selectedLabel = optionLabel((x.options || [])[optIndex]);
+      const totals = { ...(x.totals || {}) };
+      totals[selectedLabel] = (Number(totals[selectedLabel]) || 0) + 1;
+      return { ...x, totals, _voted_index: optIndex, _voting: true };
     }));
 
     try {
-      const res = await voteInPoll(groupId, poll.id, String(optIndex));
+      const res = await voteInPoll(groupId, poll.id, optionLabel((poll.options || [])[optIndex]));
       // في حال أرجع السيرفر النسخة الرسمية للاستطلاع، استبدلها
       const server = res?.data || res;
       if (server && server.id === poll.id && Array.isArray(server.options)) {
@@ -125,11 +129,10 @@ const GroupPolls = () => {
       // إرجاع التغيير التفاؤلي في حالة الفشل
       setPolls((p) => p.map((x) => {
         if (x.id !== poll.id) return x;
-        const options = (x.options || []).map((o, i) => {
-          if (i !== optIndex) return o;
-          return { ...o, votes: Math.max(0, (o.votes || 0) - 1) };
-        });
-        return { ...x, options, _voted_index: undefined, _voting: false };
+        const selectedLabel = optionLabel((x.options || [])[optIndex]);
+        const totals = { ...(x.totals || {}) };
+        totals[selectedLabel] = Math.max(0, (Number(totals[selectedLabel]) || 0) - 1);
+        return { ...x, totals, _voted_index: undefined, _voting: false };
       }));
       pushToast?.({ type: 'error', title: 'تعذر التصويت', description: e?.response?.data?.detail || e?.message });
     }
@@ -256,7 +259,7 @@ const GroupPolls = () => {
                   {options.map((opt, i) => {
                     const c = OPTION_COLORS[i % OPTION_COLORS.length];
                     const p = pct(opt);
-                    const label = typeof opt === 'string' ? opt : (opt.text || opt.label || '');
+                    const label = optionLabel(opt);
                     const isMyVote = (poll._voted_index === i) || (poll.user_vote === i);
                     return (
                       <button
@@ -278,7 +281,7 @@ const GroupPolls = () => {
                             {isMyVote && '✓ '}{label}
                           </span>
                           <span className="yamg-poll-btn-stats">
-                            {opt.votes || 0} صوت{total > 0 && ` · ${p}%`}
+                            {optionVotes(poll, opt)} صوت{total > 0 && ` · ${p}%`}
                           </span>
                         </span>
                       </button>

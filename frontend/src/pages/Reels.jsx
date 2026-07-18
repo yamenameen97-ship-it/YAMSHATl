@@ -3,10 +3,11 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import { addComment, getComments } from '../api/posts.js';
-import { addReelComment, getReelComments } from '../api/reels.js';
+import { addReelComment, getReelComments, updateReel, deleteReel } from '../api/reels.js';
 import API from '../api/axios.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
 import { getReelsCache, saveReelsCache } from '../services/reelsEngine.js';
+import { getCurrentUsername } from '../utils/auth.js';
 // ✅ v59.13.16 FIX #1: ربط ReportModal بصفحة الريلز — كان موجوداً لكن غير مستخدم في الريلز
 import ReportModal from '../components/reports/ReportModal.jsx';
 
@@ -83,6 +84,7 @@ function normalizeReel(item = {}) {
   return {
     id: item.id || item._id || String(item.reel_id || Math.random()),
     username: item.username || item.user?.username || '',
+    user_id: item.user_id ?? item.user?.id ?? null,
     is_verified: Boolean(item.is_verified ?? item.user?.is_verified ?? false),
     // ✅ v85.8: التوقيت الدقيق — ندعم عدة أسماء حقول من الباك إند
     // (published_at / posted_at / created / timestamp) حتى لا يُرجع إلى Date.now()
@@ -142,6 +144,10 @@ export default function Reels() {
   const [commentText, setCommentText] = useState('');
   // ✅ v59.13.16 FIX #1: هدف الإبلاغ لـ ReportModal
   const [reportTarget, setReportTarget] = useState(null);
+  const [menuReel, setMenuReel] = useState(null);
+  const [editCaption, setEditCaption] = useState('');
+  const [reelActionLoading, setReelActionLoading] = useState(false);
+  const currentUsername = getCurrentUsername();
 
   const videoRefs = useRef([]);
   const containerRef = useRef(null);
@@ -149,6 +155,48 @@ export default function Reels() {
   //    (handleLike / handleShare / openComments / sendComment) عند مغادرة الصفحة.
   const isMountedRef = useRef(true);
   useEffect(() => () => { isMountedRef.current = false; }, []);
+
+  const openReelMenu = (reel) => {
+    setMenuReel(reel);
+    setEditCaption(reel.content || '');
+  };
+
+  const closeReelMenu = () => {
+    if (!reelActionLoading) setMenuReel(null);
+  };
+
+  const saveReelCaption = async () => {
+    if (!menuReel) return;
+    const caption = editCaption.trim();
+    setReelActionLoading(true);
+    try {
+      const { data } = await updateReel(menuReel.id, { caption });
+      const nextCaption = data?.caption ?? data?.content ?? caption;
+      setReels((prev) => prev.map((r) => (r.id === menuReel.id ? { ...r, content: nextCaption } : r)));
+      setMenuReel((prev) => (prev ? { ...prev, content: nextCaption } : prev));
+      pushToast?.({ type: 'success', title: 'تم تعديل وصف الريل' });
+    } catch (error) {
+      pushToast?.({ type: 'error', title: 'تعذر تعديل وصف الريل', description: error?.response?.data?.detail || error?.message });
+    } finally {
+      setReelActionLoading(false);
+    }
+  };
+
+  const removeReel = async () => {
+    if (!menuReel || !window.confirm('هل تريد حذف هذا الريل نهائياً؟')) return;
+    const removedId = menuReel.id;
+    setReelActionLoading(true);
+    try {
+      await deleteReel(removedId);
+      setReels((prev) => prev.filter((r) => r.id !== removedId));
+      setMenuReel(null);
+      pushToast?.({ type: 'success', title: 'تم حذف الريل' });
+    } catch (error) {
+      pushToast?.({ type: 'error', title: 'تعذر حذف الريل', description: error?.response?.data?.detail || error?.message });
+    } finally {
+      setReelActionLoading(false);
+    }
+  };
 
   // Load feed + merge freshly published local cache so new reels appear instantly
   useEffect(() => {
@@ -548,7 +596,7 @@ export default function Reels() {
               </button>
 
               {/* More button (يمين-أعلى) — ثلاث نقاط */}
-              <button type="button" className="ym-reels-more" aria-label="المزيد">
+              <button type="button" className="ym-reels-more" onClick={() => openReelMenu(reel)} aria-label="المزيد" aria-haspopup="dialog">
                 <span /><span /><span />
               </button>
 
@@ -732,6 +780,25 @@ export default function Reels() {
             </section>
           ))}
         </div>
+
+        {menuReel && (
+          <div className="ym-reel-menu-layer" dir="rtl" role="dialog" aria-modal="true" aria-label="خيارات الريل">
+            <button type="button" className="ym-reel-menu-backdrop" onClick={closeReelMenu} aria-label="إغلاق الخيارات" />
+            <div className="ym-reel-menu-sheet">
+              <div className="ym-reel-menu-head"><strong>خيارات الريل</strong><button type="button" onClick={closeReelMenu} disabled={reelActionLoading} aria-label="إغلاق">✕</button></div>
+              {String(menuReel.username || '').toLowerCase() === String(currentUsername || '').toLowerCase() ? (
+                <>
+                  <label className="ym-reel-edit-label">تعديل وصف الريل</label>
+                  <textarea className="ym-reel-edit-input" value={editCaption} onChange={(e) => setEditCaption(e.target.value)} maxLength={2000} placeholder="اكتب وصف الريل" />
+                  <button type="button" className="ym-reel-menu-save" onClick={saveReelCaption} disabled={reelActionLoading}>{reelActionLoading ? 'جارٍ الحفظ...' : 'حفظ الوصف'}</button>
+                  <button type="button" className="ym-reel-menu-delete" onClick={removeReel} disabled={reelActionLoading}>حذف الريل</button>
+                </>
+              ) : (
+                <div className="ym-reel-menu-note">خيارات التعديل والحذف تظهر لصاحب الريل فقط.</div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* ===== Comments drawer ===== */}
         {showComments && (
@@ -944,6 +1011,19 @@ export default function Reels() {
             background: #fff;
             box-shadow: 0 1px 3px rgba(0,0,0,.6);
           }
+
+          .ym-reel-menu-layer { position:fixed; inset:0; z-index:100; display:flex; align-items:flex-end; justify-content:center; }
+          .ym-reel-menu-backdrop { position:absolute; inset:0; border:0; background:rgba(0,0,0,.55); }
+          .ym-reel-menu-sheet { position:relative; width:min(100%, 520px); padding:18px; border-radius:22px 22px 0 0; background:#121222; color:#fff; box-shadow:0 -12px 40px rgba(0,0,0,.35); }
+          .ym-reel-menu-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; font-size:17px; }
+          .ym-reel-menu-head button { border:0; background:transparent; color:#fff; font-size:20px; cursor:pointer; }
+          .ym-reel-edit-label { display:block; margin-bottom:8px; font-weight:700; }
+          .ym-reel-edit-input { width:100%; min-height:96px; box-sizing:border-box; resize:vertical; border:1px solid rgba(255,255,255,.18); border-radius:13px; padding:12px; background:#202036; color:#fff; font:inherit; }
+          .ym-reel-menu-save,.ym-reel-menu-delete { width:100%; border:0; border-radius:13px; padding:13px; margin-top:10px; color:#fff; font:inherit; font-weight:800; cursor:pointer; }
+          .ym-reel-menu-save { background:linear-gradient(135deg,#7c3aed,#a855f7); }
+          .ym-reel-menu-delete { background:rgba(239,68,68,.18); color:#ff8585; }
+          .ym-reel-menu-save:disabled,.ym-reel-menu-delete:disabled { opacity:.6; cursor:wait; }
+          .ym-reel-menu-note { color:rgba(255,255,255,.72); line-height:1.7; padding:8px 0; }
 
           .ym-reels-actions {
             position: absolute;

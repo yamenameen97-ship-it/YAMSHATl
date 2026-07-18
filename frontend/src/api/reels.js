@@ -31,3 +31,11 @@ export const likeReelComment = (commentId) =>
 
 export const deleteReelComment = (commentId) =>
   API.delete(`/reels/comments/${encodeURIComponent(commentId)}`);
+
+
+// إجراءات مالك الريل: تعديل الوصف أو حذف الريل.
+export const updateReel = (reelId, payload) =>
+  API.put(`/reels/${encodeURIComponent(reelId)}`, payload);
+
+export const deleteReel = (reelId) =>
+  API.delete(`/reels/${encodeURIComponent(reelId)}`);

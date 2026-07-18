@@ -368,8 +368,21 @@ import './styles/yamshat-fixes-v87.23-SETTINGS-YAM-HOME-MOBILE.css';
 import './styles/yamshat-fixes-v87.24-FINAL-COMPLETE-FIX.css';
 
 // ✅ v88 — الحل النهائي الجذري: الصوت + الصور + الفيديو داخل الشات
-// يجب أن يكون آخر import ليضمن الفوز في Cascade على كل CSS سابق
 import './styles/yamshat-fixes-v88-MEDIA-VOICE-FINAL.css';
+
+// ✅ v88.5.1 — إصلاحان مطلوبان من المستخدم:
+//   1) زر تشغيل № الرسالة الصوتية يختفي (دائرة بيضاء فارغة) → إعادة إظهار № دائماً.
+//   2) توحيد أزرار الكومبوزر داخل مستطيل واحد فوق صندوق الكتابة:
+//      الإيموجي + المرفق + GIF + الصورة + المايك + الإرسال كلّها بمسار واحد.
+// يجب أن يكون آخر import ليفوز في Cascade.
+import './styles/yamshat-fixes-v88.5.1-VOICE-PLAY-COMPOSER-UNIFIED.css';
+
+// v88.8: IMAGE VIEWER FIX — إصلاح عرض الصور في الدردشة
+// المشكلة: كانت الصورة تظهر كمستطيل ضيق مع اقتصاص أعلى وأسفل
+// (object-fit: cover في الملفات القديمة). الإصلاح: contain لعرض
+// الصورة كاملة داخل الفقاعة، وعند الضغط عليها تُفتح بالحجم الكامل.
+// يجب أن يكون هذا آخر import CSS ليفوز في Cascade.
+import './styles/yamshat-fixes-v88.8-IMAGE-VIEWER-FIX.css';
 
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';

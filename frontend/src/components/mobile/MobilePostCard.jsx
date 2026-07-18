@@ -1,6 +1,8 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { timeAgoAr as fmtTimeAgoAr } from '../../utils/timeFormat.js';
+import { votePoll as apiVotePoll } from '../../api/posts.js';
+import ImageViewerModal from '../feed/ImageViewerModal.jsx';
 
 /**
  * MobilePostCard (v86.7 — إصلاح احترافي شامل للبستة على الجوال)
@@ -38,7 +40,12 @@ function MobilePostCard({
   onShare,
   onSave,
   onMore,
+  onRepost,
+  onDelete,
+  canDelete = false,
 }) {
+  // ✅ v88.8 (2026-07): حالة عارض الصور الكامل
+  const [imageViewerOpen, setImageViewerOpen] = useState(false);
   const navigate = useNavigate();
   const {
     authorName = 'مستخدم',
@@ -57,6 +64,85 @@ function MobilePostCard({
     saved = false,
     isLive = false,
   } = post;
+
+  /* ✅ FIX v88.7 (2026-07): إصلاح جذري لعرض الاستطلاعات في منشورات الجوال.
+     المشكلة الأصلية: عند نشر استطلاع من مؤلف المنشورات كان يظهر السؤال فقط كنص،
+     دون أزرار اختيار أو نسب تصويت.
+     السبب الجذري: (1) الحقل poll قد يأتي بأسماء متعددة (poll / poll_options / options).
+                  (2) قد يأتي كخيارات نصية بدون id/votes بعد الإنشاء المتفائل.
+     الحل: نتقبّل كل الأشكال ونطبّعها لصيغة واحدة {id,label,votes,voted_by_me}
+           ونعرض UI مماثلاً لاستطلاعات المجموعات (أزرار + شريط النسبة). */
+  const normalizePollShape = (raw) => {
+    const source = Array.isArray(raw?.poll) ? raw.poll
+      : Array.isArray(raw?.poll_options) ? raw.poll_options
+      : Array.isArray(raw?.options) ? raw.options
+      : [];
+    return source.map((item, index) => {
+      if (typeof item === 'string') {
+        return { id: `option-${index + 1}`, label: item, votes: 0, voted_by_me: false };
+      }
+      return {
+        id: item?.id || item?.key || `option-${index + 1}`,
+        label: item?.label || item?.text || '',
+        votes: Number(item?.votes || 0),
+        voted_by_me: Boolean(item?.voted_by_me),
+      };
+    }).filter((opt) => String(opt.label || '').trim().length > 0);
+  };
+  const initialPoll = normalizePollShape(post);
+  const [pollItems, setPollItems] = useState(initialPoll);
+  const [pollBusy, setPollBusy] = useState(false);
+
+  useEffect(() => {
+    setPollItems(normalizePollShape(post));
+  }, [post?.poll, post?.poll_options]);
+
+  // ✅ استخراج سؤال الاستطلاع من أول سطر في النص (السؤال يُخزّن في content بواسطة الـ composer)
+  // نعرضه فوق أزرار التصويت ونحذفه من نص المنشور لتجنب التكرار.
+  const pollQuestionExtracted = (() => {
+    if (!pollItems.length) return { question: '', body: text };
+    // إذا كان post.poll_question موجود صراحة، استخدمه
+    if (post?.poll_question && typeof post.poll_question === 'string') {
+      return { question: post.poll_question.trim(), body: text };
+    }
+    // وإلا استخرجه من أول سطر
+    const raw = String(text || '').trim();
+    if (!raw) return { question: '', body: '' };
+    const firstNL = raw.indexOf('\n');
+    if (firstNL === -1) return { question: raw, body: '' };
+    return { question: raw.slice(0, firstNL).trim(), body: raw.slice(firstNL + 1).trim() };
+  })();
+
+  const pollTotalVotes = useMemo(
+    () => pollItems.reduce((sum, it) => sum + Number(it?.votes || 0), 0),
+    [pollItems],
+  );
+  const hasVoted = useMemo(
+    () => pollItems.some((it) => it?.voted_by_me),
+    [pollItems],
+  );
+
+  const handleVote = async (optionId) => {
+    if (pollBusy || hasVoted) return;
+    if (!post.rawId) return; // المنشور الترحيبي لا يدعم التصويت
+    setPollBusy(true);
+    // تحديث متفائل فوري
+    const prev = pollItems;
+    setPollItems((items) => items.map((it) => ({
+      ...it,
+      votes: it.id === optionId ? Number(it.votes || 0) + 1 : Number(it.votes || 0),
+      voted_by_me: it.id === optionId,
+    })));
+    try {
+      const res = await apiVotePoll(post.rawId, optionId);
+      const data = res?.data || {};
+      if (Array.isArray(data.poll)) setPollItems(data.poll);
+    } catch (err) {
+      setPollItems(prev); // تراجع عند الفشل
+    } finally {
+      setPollBusy(false);
+    }
+  };
 
   const [liveTime, setLiveTime] = useState(() => (rawTime ? fmtTimeAgoAr(rawTime) : timeText));
   useEffect(() => {
@@ -143,10 +229,61 @@ function MobilePostCard({
         </div>
       </header>
 
-      {/* === النص === */}
-      {text && (
+      {/* === النص === (نُخفي السؤال هنا لأنه سيظهر داخل صندوق الاستطلاع بالأعلى) */}
+      {(pollItems.length > 0 ? pollQuestionExtracted.body : text) && (
         <div className="ym-post-content">
-          <p dir="rtl">{text}</p>
+          <p dir="rtl">{pollItems.length > 0 ? pollQuestionExtracted.body : text}</p>
+        </div>
+      )}
+
+      {/* === ✅ FIX v88.7: صندوق الاستطلاع (السؤال بالأعلى + الأزرار بالأسفل مع النسب) === */}
+      {pollItems.length > 0 && (
+        <div className="ym-post-poll" dir="rtl">
+          <div className="ym-poll-head">
+            <span className="ym-poll-badge">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="3" y="11" width="4" height="9" rx="1" />
+                <rect x="10" y="4" width="4" height="16" rx="1" />
+                <rect x="17" y="8" width="4" height="12" rx="1" />
+              </svg>
+              استطلاع
+            </span>
+            <span className="ym-poll-total">{formatCount(pollTotalVotes)} صوت</span>
+          </div>
+          {pollQuestionExtracted.question ? (
+            <div className="ym-poll-question">{pollQuestionExtracted.question}</div>
+          ) : null}
+          <div className="ym-poll-options">
+            {pollItems.map((opt) => {
+              const votes = Number(opt?.votes || 0);
+              const percent = pollTotalVotes > 0 ? Math.round((votes / pollTotalVotes) * 100) : 0;
+              const isMine = Boolean(opt?.voted_by_me);
+              const disabled = pollBusy || hasVoted;
+              return (
+                <button
+                  key={opt.id || opt.label}
+                  type="button"
+                  className={`ym-poll-option${isMine ? ' is-mine' : ''}${hasVoted ? ' is-revealed' : ''}`}
+                  onClick={() => handleVote(opt.id)}
+                  disabled={disabled}
+                >
+                  <span className="ym-poll-fill" style={{ width: `${percent}%` }} aria-hidden="true" />
+                  <span className="ym-poll-label">{opt.label}</span>
+                  {hasVoted && <span className="ym-poll-percent">{percent}%</span>}
+                  {isMine && (
+                    <span className="ym-poll-check" aria-label="صوتك">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          {!hasVoted && (
+            <div className="ym-poll-hint">اختر احد الخيارات للتصويت</div>
+          )}
         </div>
       )}
 
@@ -162,7 +299,15 @@ function MobilePostCard({
         <div className="ym-post-banner-new">
           {isLive && <div className="ym-live-overlay-label">مباشر الآن LIVE</div>}
           {banner.type === 'image' && (
-            <div className="banner-image-container">
+            <div
+              className="banner-image-container"
+              onClick={() => setImageViewerOpen(true)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setImageViewerOpen(true); } }}
+              style={{ cursor: 'zoom-in' }}
+              aria-label="عرض الصورة كاملة"
+            >
               {/* ✅ v88.3 ROOT FIX: الصور مرئية دائمًا (بلا opacity:0).
                   الاعتماد على onLoad وحده كان يخفي الصور المكسورة/المُخزَّنة
                   التي لا تُطلق حدث load في بعض متصفحات الجوال. */}
@@ -336,6 +481,20 @@ function MobilePostCard({
           </div>
         </div>
       </footer>
+
+      {/* ✅ v88.8 (2026-07-18): عارض الصور الكامل مع أزرار (إعادة نشر، حذف، حفظ، تكبير، تصغير) */}
+      {banner && banner.type === 'image' && banner.url && (
+        <ImageViewerModal
+          open={imageViewerOpen}
+          imageUrl={banner.url}
+          altText={`صورة منشور ${authorName || ''}`}
+          fileName={`yamshat-${post.rawId || post.id || 'image'}`}
+          canDelete={canDelete}
+          onClose={() => setImageViewerOpen(false)}
+          onRepost={() => { (onRepost || onShare)?.(post); }}
+          onDelete={() => { onDelete?.(post); }}
+        />
+      )}
 
       <style>{`
         /* ===================================================================
@@ -543,18 +702,18 @@ function MobilePostCard({
            لعرض الصورة كاملة دون قص، ونحافظ على max-height حتى لا
            تملأ الشاشة لو كانت طويلة جداً. */
         .ym-post-banner-new {
+          /* ✅ v88.8 FIX (2026-07): إزالة flex+center وmax-height المُحدَد
+             حتى لا تظهر الصورة مقصوصة. الحاوية تأخذ ارتفاع الصورة طبيعياً. */
           border-radius: 12px;
           overflow: hidden;
           margin-bottom: var(--ym-gap);
           position: relative;
           background: #000;
           aspect-ratio: auto;
-          max-height: min(78dvh, 720px);
-          display: flex;
-          align-items: center;
-          justify-content: center;
           width: 100%;
           max-width: 100%;
+          display: block;
+          cursor: zoom-in;
         }
         .banner-image-container,
         .banner-video-container {
@@ -566,8 +725,12 @@ function MobilePostCard({
         .banner-image-container img {
           width: 100%;
           height: auto;
-          max-height: min(78dvh, 720px);
+          /* ✅ v88.8 FIX (2026-07): رفع الحد الأقصى للارتفاع وجعل object-fit:contain
+             يضمن ظهور الصورة كاملة دون قص. */
+          max-height: min(85dvh, 900px);
           object-fit: contain;
+          object-position: center;
+          margin: 0 auto;
           display: block;
           /* ✅ v88.3 ROOT FIX: الصور تظهر افتراضيًا (opacity:1) — لا تعتمد على onLoad.
              is-loaded يضيف فقط انتقالاً لطيفًا للصور التي حُملت للتو. */
@@ -759,6 +922,131 @@ function MobilePostCard({
             position: relative;
             width: 100%;
           }
+        }
+
+        /* ✅ FIX v88.5: تنسيقات استطلاع المنشور (تطابق مظهر استطلاعات المجموعات) */
+        .ym-post-poll {
+          margin: 8px 14px 12px;
+          padding: 12px 14px;
+          border-radius: 14px;
+          background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(109,40,217,0.04));
+          border: 1px solid rgba(139,92,246,0.25);
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .ym-poll-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 12px;
+          color: rgba(255,255,255,0.8);
+        }
+        .ym-poll-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 10px;
+          border-radius: 999px;
+          background: rgba(139,92,246,0.18);
+          color: #C4B5FD;
+          font-weight: 700;
+        }
+        .ym-poll-total {
+          font-weight: 600;
+          color: rgba(255,255,255,0.6);
+        }
+        .ym-poll-question {
+          font-size: 15px;
+          font-weight: 700;
+          color: #F4F4F5;
+          line-height: 1.5;
+          padding: 6px 2px 4px;
+          border-bottom: 1px dashed rgba(139,92,246,0.25);
+          margin-bottom: 4px;
+          word-break: break-word;
+        }
+        .ym-poll-options {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .ym-poll-option {
+          position: relative;
+          overflow: hidden;
+          width: 100%;
+          text-align: right;
+          padding: 12px 14px;
+          border-radius: 12px;
+          border: 1px solid rgba(139,92,246,0.35);
+          background: rgba(30,26,45,0.55);
+          color: #fff;
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: transform 0.15s ease, border-color 0.15s ease, background 0.2s ease;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          min-height: 44px;
+        }
+        .ym-poll-option:not(:disabled):hover {
+          border-color: rgba(139,92,246,0.75);
+          transform: translateY(-1px);
+        }
+        .ym-poll-option:disabled {
+          cursor: default;
+        }
+        .ym-poll-option.is-mine {
+          border-color: #8B5CF6;
+          background: rgba(139,92,246,0.18);
+        }
+        .ym-poll-fill {
+          position: absolute;
+          inset: 0 auto 0 0;
+          width: 0%;
+          background: linear-gradient(90deg, rgba(139,92,246,0.35), rgba(167,139,250,0.18));
+          transition: width 0.5s ease;
+          z-index: 0;
+          border-radius: inherit;
+        }
+        /* في RTL نجعل التعبئة تبدأ من اليمين */
+        .ym-post-poll[dir="rtl"] .ym-poll-fill {
+          inset: 0 0 0 auto;
+        }
+        .ym-poll-label,
+        .ym-poll-percent,
+        .ym-poll-check {
+          position: relative;
+          z-index: 1;
+        }
+        .ym-poll-label {
+          flex: 1;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .ym-poll-percent {
+          font-weight: 800;
+          color: #C4B5FD;
+          font-variant-numeric: tabular-nums;
+        }
+        .ym-poll-check {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 22px;
+          height: 22px;
+          border-radius: 50%;
+          background: #8B5CF6;
+          color: #fff;
+        }
+        .ym-poll-hint {
+          font-size: 11px;
+          color: rgba(255,255,255,0.5);
+          text-align: center;
+          margin-top: 2px;
         }
       `}</style>
     </article>

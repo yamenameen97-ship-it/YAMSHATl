@@ -189,6 +189,13 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
         }
         for option in poll_options
     ]
+    # ✅ FIX v88.7 (2026-07-18): استخراج سؤال الاستطلاع من أول سطر في content عند وجود استطلاع
+    poll_question_extracted = ''
+    if poll_items and post.content:
+        first_line = str(post.content or '').strip().split('\n', 1)[0].strip()
+        if first_line:
+            poll_question_extracted = first_line
+
     return {
         'id': post.id,
         'user_id': post.user_id,
@@ -207,6 +214,7 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
         'hashtags': _loads_list(post.hashtags_json),
         'mentions': _loads_list(post.mentions_json),
         'poll': poll_items,
+        'poll_question': poll_question_extracted,
         'created_at': post.created_at,
         'updated_at': post.updated_at,
         'last_edited_at': post.last_edited_at,

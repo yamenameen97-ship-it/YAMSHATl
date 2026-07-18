@@ -203,12 +203,23 @@ export default function PostComposer() {
       }
 
       const { hashtags, mentions } = extractTags(content);
+      // ✅ FIX v88.7: عند نشر استطلاع، نُرسل السؤال في content ومصفوفة poll (options)
+      //    حتى يستطيع الباك إند تحويلها إلى {id, label, votes, voted_by_me}
+      //    ويعيدها إلى الواجهة الأمامية لعرض أزرار التصويت والنسب المئوية
+      //    (نفس تصميم استطلاعات المجموعات).
       const poll = showPollBuilder
         ? normalizedPollOptions.map((label) => ({ label }))
         : undefined;
 
+      // ✅ FIX v88.7: نحن نحتفظ بسؤال الاستطلاع في content (السؤال في الأعلى)
+      //    ثم يعرض MobilePostCard/FeedEnhanced صندوق الاستطلاع تحت النص
+      //    مع أزرار التصويت ونسبها المئوية.
+      const finalContent = showPollBuilder && pollQuestion.trim()
+        ? (content.trim() ? `${pollQuestion.trim()}\n${content}`.trim() : pollQuestion.trim())
+        : content;
+
       const createdPostResponse = await createPost({
-        content: pollQuestion.trim() ? `${pollQuestion.trim()}\n${content}`.trim() : content,
+        content: finalContent,
         media_url: mediaUrl,
         // ✅ v33+1: تمرير حقول إضافية تجعل الـ backend/frontend يتعرف على الفيديو بوضوح
         video_url: isVideoMedia ? mediaUrl : undefined,
@@ -221,6 +232,7 @@ export default function PostComposer() {
         hashtags,
         mentions,
         poll,
+        poll_question: showPollBuilder && pollQuestion.trim() ? pollQuestion.trim() : undefined,
         quote_source_id: quoteDraft?.id || null,
       });
 
@@ -259,8 +271,15 @@ export default function PostComposer() {
             // ✅ FIX v59.13.8 (#2): فحص isMounted قبل إنشاء المنشور الاحتياطي
             //    (إذا غادر المستخدم الصفحة أثناء الـ fallback upload — لا نكمل المسار الاحتياطي)
             if (!isMountedRef.current) return;
+            // ✅ FIX v88.7: دعم الاستطلاع في المسار الاحتياطي أيضاً
+            const fallbackPoll = showPollBuilder
+              ? normalizedPollOptions.map((label) => ({ label }))
+              : undefined;
+            const fallbackContent = showPollBuilder && pollQuestion.trim()
+              ? (content.trim() ? `${pollQuestion.trim()}\n${content}`.trim() : pollQuestion.trim())
+              : content;
             const createdPostResponse = await createPost({
-              content: pollQuestion.trim() ? `${pollQuestion.trim()}\n${content}`.trim() : content,
+              content: fallbackContent,
               media_url: fallbackUrl,
               video_url: fallbackUrl,
               media_type: 'video',
@@ -270,6 +289,8 @@ export default function PostComposer() {
               is_pinned: isPinned,
               hashtags: hh,
               mentions: mm,
+              poll: fallbackPoll,
+              poll_question: showPollBuilder && pollQuestion.trim() ? pollQuestion.trim() : undefined,
               quote_source_id: quoteDraft?.id || null,
             });
             const createdPost = createdPostResponse?.data || null;

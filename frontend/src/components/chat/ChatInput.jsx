@@ -981,37 +981,8 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
               }
             }}
           />
-          {/* v60: أيقونات داخل حقل النص على الجوال (إيموجي + GIF + صور) - تطابق التصميم */}
-          <div className="yam-input-inline-icons" aria-hidden={composerDisabled}>
-            <button
-              type="button"
-              disabled={composerDisabled}
-              onClick={() => setShowEmojiPicker((prev) => !prev)}
-              aria-label="إيموجي"
-              title="إيموجي"
-            >
-              🙂
-            </button>
-            <button
-              type="button"
-              disabled={composerDisabled}
-              onClick={() => emitToast({ type: 'info', title: 'GIF قريباً' })}
-              aria-label="GIF"
-              title="GIF"
-              style={{ fontSize: 11, fontWeight: 700 }}
-            >
-              GIF
-            </button>
-            <button
-              type="button"
-              disabled={composerDisabled}
-              onClick={() => fileInputRef.current?.click()}
-              aria-label="صورة"
-              title="صورة"
-            >
-              🖼
-            </button>
-          </div>
+          {/* v88.5.1: أُزيلت الأيقونات الداخلية — انتقلت إلى شريط الأزرار الموحّد أعلاه.
+              صندوق الكتابة الآن خالٍ من الأيقونات ومخصّص للنص فقط. */}
         </div>
       </div>
 
@@ -1043,6 +1014,31 @@ export default function ChatInput({ currentUser, replyTo, onCancelReply, onSend,
             <input ref={fileInputRef} type="file" hidden multiple disabled={composerDisabled} onChange={(event) => handleFilesAdded(event.target.files)} />
             📎
           </label>
+
+          {/* v88.5.1: زرّ GIF داخل شريط الأزرار الموحّد (كان سابقاً داخل صندوق النص) */}
+          <button
+            type="button"
+            className="yam-action-btn yam-gif-btn"
+            disabled={composerDisabled}
+            onClick={() => emitToast({ type: 'info', title: 'GIF قريباً' })}
+            aria-label="GIF"
+            title="GIF"
+            style={{ fontSize: 11, fontWeight: 700 }}
+          >
+            GIF
+          </button>
+
+          {/* v88.5.1: زرّ صورة سريع داخل شريط الأزرار الموحّد */}
+          <button
+            type="button"
+            className="yam-action-btn yam-image-btn"
+            disabled={composerDisabled}
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="صورة"
+            title="صورة"
+          >
+            🖼
+          </button>
 
           {/*
             ✅ v86.9 (WhatsApp-style Press-to-Record):

@@ -105,6 +105,15 @@ function normalizePost(p, i) {
     liked: Boolean(p.is_liked ?? p.liked_by_me ?? p.liked),
     reposted: Boolean(p.reposted ?? p.is_reposted),
     saved: Boolean(p.is_saved ?? p.saved_by_me ?? p.saved),
+    // ✅ FIX v88.7 (2026-07-18): تمرير كامل لبيانات الاستطلاع — إصلاح جذري.
+    // المشكلة: عند نشر منشور مع استطلاع تظهر الأسئلة فقط بدون أزرار التصويت.
+    // السبب الجذري: (1) mapBackendPost لم يكن يمرّر حقل poll (يحوي id/label/votes/voted_by_me).
+    //                (2) قد يأتي دون poll_question منفصل.
+    // الحل: نمرر كل الأشكال (poll / poll_options / options) + poll_question.
+    poll: Array.isArray(p.poll) ? p.poll
+        : (Array.isArray(p.poll_options) ? p.poll_options
+        : (Array.isArray(p.options) ? p.options : [])),
+    poll_question: p.poll_question || '',
   };
 }
 
@@ -294,6 +303,32 @@ function FeedMobile() {
       }
     }
   }, [pushToast, setOverlayFor, queryClient]);
+
+  // ✅ v88.8 (2026-07-18): دالة حذف منشور خاص من عارض الصور
+  const handleDelete = useCallback(async (post) => {
+    if (!post?.rawId) return;
+    try {
+      await deletePost(post.rawId);
+      pushToast?.({ type: 'success', title: 'تم حذف المنشور' });
+      queryClient.invalidateQueries({ queryKey: ['feed-data'] });
+    } catch (error) {
+      pushToast?.({ type: 'error', title: 'تعذر حذف المنشور', description: error?.response?.data?.detail || error?.message });
+    }
+  }, [pushToast, queryClient]);
+
+  // ✅ v88.8 (2026-07-18): تحديد إذا كان المستخدم الحالي هو صاحب المنشور
+  const isOwnPost = useCallback((post) => {
+    if (!post) return false;
+    const sessionId = session?.id ?? session?.user_id ?? session?.userId ?? null;
+    const postUserId = post.userId ?? post.user_id ?? null;
+    if (sessionId != null && postUserId != null) {
+      if (String(sessionId) === String(postUserId)) return true;
+    }
+    const myUsername = String(session?.username || session?.user || '').trim().toLowerCase().replace(/^@/, '');
+    if (!myUsername) return false;
+    const postUsername = String(post.username || (post.handle || '').replace(/^@/, '') || '').trim().toLowerCase();
+    return Boolean(postUsername) && postUsername === myUsername;
+  }, [session]);
 
   const handleRepost = useCallback(async (post) => {
     // إعادة النشر = نفس endpoint للمشاركة (repost) — backend يتعامل معها كـ share من نوع repost
@@ -534,6 +569,9 @@ function FeedMobile() {
                 onShare={handleShare}
                 onSave={handleSave}
                 onMore={handleMore}
+                onRepost={handleRepost}
+                onDelete={handleDelete}
+                canDelete={isOwnPost(post)}
               />
             );
           })}

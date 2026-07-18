@@ -1,7 +1,10 @@
 import { Link } from 'react-router-dom';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getNotifications } from '../../api/notifications.js';
+import { useNotificationStore, selectUnreadNotificationsCount } from '../../store/notificationStore.js';
+import socketManager from '../../services/socketManager.js';
+import { normalizeNotification } from '../../utils/notificationCenter.js';
 import { BACKEND_ORIGIN } from '../../api/config.js';
 import { resolveMediaUrl } from '../../config/mediaConfig.js';
 import { clearStoredUser, getAuthToken, getCurrentUsername, getStoredUserSnapshot } from '../../utils/auth.js';
@@ -47,6 +50,7 @@ function Topbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const menuRef = useRef(null);
+  const queryClient = useQueryClient();
 
   const { data: notifications = [] } = useQuery({
     queryKey: ['topbar-notifications-count'],
@@ -55,10 +59,52 @@ function Topbar() {
     refetchInterval: 20_000,
   });
 
-  const unreadNotificationCount = useMemo(
-    () => (Array.isArray(notifications) ? notifications.filter((item) => !item.is_read).length : 0),
+  // v88.6 FIX (نظام الإشعارات): كان العدّاد في الجرس يقرأ من React Query فقط،
+  // بينما صفحة الإشعارات + الـ zustand store مصدر مختلف تماماً. النتيجة:
+  // بعد تعليم إشعار كمقروء، الشارة تبقى تعرض الرقم القديم لدقائق. الحل:
+  //   1) نقرأ العدّاد من مصدرين ونأخذ الحدّ الأدنى الحقيقي:
+  //      - React Query (server truth)
+  //      - zustand store (client truth after optimistic updates)
+  //   2) نستمع لحدث 'yamshat:notifications-changed' لإبطال الكاش فوراً.
+  //   3) نستمع لسوكت 'new_notification' حتى تظهر الشارة فوراً دون انتظار polling.
+  const storeUnreadCount = useNotificationStore(selectUnreadNotificationsCount);
+
+  const serverUnreadCount = useMemo(
+    () => (Array.isArray(notifications)
+      ? notifications.filter((item) => !item.is_read && !item.seen).length
+      : 0),
     [notifications],
   );
+
+  // نأخذ storeUnreadCount عندما يكون المخزن مُهيّئاً (فيه بيانات)، وإلا نعتمد على السيرفر.
+  const unreadNotificationCount = useMemo(() => {
+    if (Array.isArray(notifications) && notifications.length > 0) {
+      // إذا كان لدينا بيانات من الطرفين، نأخذ الأصغر منطقياً (ربما المستخدم قرأ بعضها)
+      return Math.min(serverUnreadCount, storeUnreadCount || serverUnreadCount);
+    }
+    return storeUnreadCount || serverUnreadCount;
+  }, [notifications, serverUnreadCount, storeUnreadCount]);
+
+  const invalidateBadge = useCallback(() => {
+    try { queryClient.invalidateQueries({ queryKey: ['topbar-notifications-count'] }); } catch { /* noop */ }
+  }, [queryClient]);
+
+  useEffect(() => {
+    const handler = () => invalidateBadge();
+    window.addEventListener('yamshat:notifications-changed', handler);
+    return () => window.removeEventListener('yamshat:notifications-changed', handler);
+  }, [invalidateBadge]);
+
+  const upsertNotification = useNotificationStore((state) => state.upsertNotification);
+  useEffect(() => {
+    const unsubscribe = socketManager.on('new_notification', (incoming) => {
+      try { upsertNotification(normalizeNotification(incoming)); } catch { /* noop */ }
+      invalidateBadge();
+    });
+    return () => {
+      try { unsubscribe?.(); } catch { /* noop */ }
+    };
+  }, [invalidateBadge, upsertNotification]);
 
   const navItems = useMemo(
     () => PRIMARY_ITEMS.map((item) => ({

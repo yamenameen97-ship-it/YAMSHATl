@@ -36,6 +36,7 @@ import { getCurrentUsername } from '../../utils/auth.js';
 import socketManager from '../../services/socketManager.js';
 import { resolveMediaUrl } from '../../config/mediaConfig.js';
 import UniversalPlayer from '../video/UniversalPlayer.jsx';
+import ImageViewerModal from './ImageViewerModal.jsx';
 
 const ADVANCED_REACTIONS = [
   { emoji: '❤️', label: 'حب' },
@@ -692,7 +693,7 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
             className="ym-pc-media"
             dir="rtl"
             onClick={() => setShowMediaModal(true)}
-            style={{ minHeight: hasVideoMedia ? 220 : 180, fontFamily: "'Noto Sans Arabic', 'Tajawal', 'Cairo', system-ui, sans-serif" }}
+            style={{ minHeight: hasVideoMedia ? 220 : 'auto', fontFamily: "'Noto Sans Arabic', 'Tajawal', 'Cairo', system-ui, sans-serif" }}
           >
             {hasVideoMedia ? (
               <div style={{ width: '100%' }} onClick={(event) => event.stopPropagation()}>
@@ -829,9 +830,11 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
         </div>
       </div>
 
-      <Modal open={showMediaModal} onClose={() => setShowMediaModal(false)} title="الوسائط">
-        <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', minHeight: 320 }}>
-          {hasVideoMedia ? (
+      {/* ✅ v88.8 (2026-07-18): الفيديو يبقى بـ Modal الافتراضي، بينما الصور
+         تُفتح بعارض احترافي كامل الشاشة مع أزرار (تكبير/تصغير/حفظ/إعادة نشر/حذف). */}
+      {hasVideoMedia ? (
+        <Modal open={showMediaModal} onClose={() => setShowMediaModal(false)} title="الوسائط">
+          <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', minHeight: 320 }}>
             <div style={{ width: '100%' }}>
               <UniversalPlayer
                 src={mediaUrl}
@@ -841,11 +844,29 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
                 className="post-media-modal-player"
               />
             </div>
-          ) : (
-            <img src={posterUrl || mediaUrl} alt="Full Media" style={{ maxWidth: '100%', maxHeight: '80vh', objectFit: 'contain' }} />
-          )}
-        </div>
-      </Modal>
+          </div>
+        </Modal>
+      ) : (
+        <ImageViewerModal
+          open={showMediaModal}
+          imageUrl={posterUrl || mediaUrl}
+          altText={`صورة منشور ${post.username || ''}`}
+          fileName={`yamshat-${post.id || 'image'}`}
+          canDelete={Boolean(isOwner)}
+          onClose={() => setShowMediaModal(false)}
+          onRepost={() => { setShowMediaModal(false); handleQuote?.(); }}
+          onDelete={async () => {
+            setShowMediaModal(false);
+            try {
+              await deletePost(post.id);
+              queryClient?.invalidateQueries?.({ queryKey: ['feed-data'] });
+              pushToast?.({ type: 'success', message: 'تم حذف المنشور' });
+            } catch (err) {
+              pushToast?.({ type: 'error', message: 'تعذّر حذف المنشور' });
+            }
+          }}
+        />
+      )}
 
       <Modal open={showShareModal} onClose={() => setShowShareModal(false)} title="مشاركة المنشور">
         <div style={{ display: 'grid', gap: 12 }}>
@@ -1105,23 +1126,27 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
           word-wrap: break-word;
         }
         .ym-pc-media {
+          /* ✅ v88.8 FIX (2026-07): إزالة flex-center ورفع max-height
+             لتظهر الصورة كاملة دون قص. */
           margin-top: 10px;
           border-radius: 12px;
           overflow: hidden;
-          cursor: pointer;
+          cursor: zoom-in;
           background: #000;
-          max-height: 460px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
           border: 1px solid rgba(255, 255, 255, 0.06);
           max-width: 100%;
+          width: 100%;
+          display: block;
+          position: relative;
         }
         .ym-pc-media img {
           width: 100%;
-          max-height: 460px;
+          height: auto;
+          max-height: min(85dvh, 900px);
           object-fit: contain;
+          object-position: center;
           display: block;
+          margin: 0 auto;
           background: #000;
         }
 

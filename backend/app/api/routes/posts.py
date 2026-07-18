@@ -125,6 +125,14 @@ def create(payload: dict = Body(...), db: Session = Depends(get_db), current_use
     
     scheduled_at = _parse_datetime(payload.get('scheduled_at'))
 
+    # ✅ FIX v88.7 (2026-07-18): دعم poll_question منفصل ودمجه في أول سطر من content
+    poll_question = str(payload.get('poll_question') or '').strip()
+    poll_data = payload.get('poll') or payload.get('poll_options')
+    if poll_question and poll_data:
+        # إذا ورد سؤال استطلاع منفصل ولم يكن في مقدمة content — ألحقه في المقدمة
+        if poll_question not in content.split('\n', 1)[0]:
+            content = (poll_question + ('\n' + content if content else '')).strip()
+
     post = create_post(
         db,
         user_id=current_user.id,
@@ -132,12 +140,15 @@ def create(payload: dict = Body(...), db: Session = Depends(get_db), current_use
         image_url=image_url,
         content_html=payload.get('content_html'),
         media_urls=media_urls,
-        poll=payload.get('poll') or payload.get('poll_options'),
+        poll=poll_data,
         scheduled_at=scheduled_at,
         is_draft=bool(payload.get('is_draft', False)),
         is_pinned=bool(payload.get('is_pinned', False)),
         allow_comments=bool(payload.get('allow_comments', True)),
     )
+    # ✅ FIX v88.7: إرجاع poll_question مع الاستجابة حتى تعرف الواجهة الأمامية أين تعرضه
+    if isinstance(post, dict):
+        post = {**post, 'poll_question': poll_question or (content.split('\n', 1)[0] if isinstance(post.get('poll'), list) and post.get('poll') else '')}
     
     # Scheduled publishing queue & Background processing
     if scheduled_at:

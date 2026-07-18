@@ -30,6 +30,7 @@ import {
   getComments as apiGetComments,
   deletePost as apiDeletePost,
   updatePost as apiUpdatePost,
+  votePoll as apiVotePoll,
 } from '../api/posts.js';
 
 
@@ -148,6 +149,12 @@ function buildFeedPosts(posts = []) {
         isLiked: Boolean(post.is_liked ?? post.liked_by_me),
         isSaved: Boolean(post.is_saved ?? post.saved_by_me),
         media: normalizedMedia,
+        // ✅ FIX v88.7 (2026-07-18): تمرير كامل لبيانات الاستطلاع
+        // إصلاح جذري: ندعم كل الأشكال + نمرر poll_question
+        poll: Array.isArray(post.poll) ? post.poll
+            : (Array.isArray(post.poll_options) ? post.poll_options
+            : (Array.isArray(post.options) ? post.options : [])),
+        poll_question: post.poll_question || '',
       };
     });
   }
@@ -262,6 +269,68 @@ function PostCard({ post }) {
   const queryClient = useQueryClient();
   const postUrl = `${window.location.origin}/#/post/${post.rawId || post.id}`;
   const mediaItems = Array.isArray(post.media) ? post.media.slice(0, 3) : [];
+
+  /* ✅ FIX v88.7 (2026): دعم عرض الاستطلاعات في منشورات الفيد (ديسكتوب) — إصلاح جذري.
+     نُطبِّع خيارات الاستطلاع لأي شكل من (poll / poll_options / options) وسواء كانت نصية أو كائنات. */
+  const normalizePollShape = (raw) => {
+    const source = Array.isArray(raw?.poll) ? raw.poll
+      : Array.isArray(raw?.poll_options) ? raw.poll_options
+      : Array.isArray(raw?.options) ? raw.options
+      : [];
+    return source.map((item, index) => {
+      if (typeof item === 'string') {
+        return { id: `option-${index + 1}`, label: item, votes: 0, voted_by_me: false };
+      }
+      return {
+        id: item?.id || item?.key || `option-${index + 1}`,
+        label: item?.label || item?.text || '',
+        votes: Number(item?.votes || 0),
+        voted_by_me: Boolean(item?.voted_by_me),
+      };
+    }).filter((opt) => String(opt.label || '').trim().length > 0);
+  };
+  const initialPoll = normalizePollShape(post);
+  const [pollItems, setPollItems] = useState(initialPoll);
+  const [pollBusy, setPollBusy] = useState(false);
+  useEffect(() => {
+    setPollItems(normalizePollShape(post));
+  }, [post?.poll, post?.poll_options]);
+
+  // ✅ استخراج سؤال الاستطلاع من أول سطر في النص
+  const pollQuestionExtracted = (() => {
+    if (!pollItems.length) return { question: '', body: post.text || '' };
+    if (post?.poll_question && typeof post.poll_question === 'string') {
+      return { question: post.poll_question.trim(), body: post.text || '' };
+    }
+    const raw = String(post.text || '').trim();
+    if (!raw) return { question: '', body: '' };
+    const firstNL = raw.indexOf('\n');
+    if (firstNL === -1) return { question: raw, body: '' };
+    return { question: raw.slice(0, firstNL).trim(), body: raw.slice(firstNL + 1).trim() };
+  })();
+  const pollTotalVotes = (pollItems || []).reduce((sum, it) => sum + Number(it?.votes || 0), 0);
+  const hasVotedPoll = (pollItems || []).some((it) => it?.voted_by_me);
+  const handleVotePoll = async (optionId) => {
+    if (pollBusy || hasVotedPoll) return;
+    if (!post.rawId) return;
+    setPollBusy(true);
+    const prev = pollItems;
+    setPollItems((items) => items.map((it) => ({
+      ...it,
+      votes: it.id === optionId ? Number(it.votes || 0) + 1 : Number(it.votes || 0),
+      voted_by_me: it.id === optionId,
+    })));
+    try {
+      const res = await apiVotePoll(post.rawId, optionId);
+      const data = res?.data || {};
+      if (Array.isArray(data.poll)) setPollItems(data.poll);
+    } catch (err) {
+      setPollItems(prev);
+      pushToast({ type: 'error', title: 'تعذر التصويت', description: err?.response?.data?.detail || err?.message });
+    } finally {
+      setPollBusy(false);
+    }
+  };
   // ✅ تهيئة الحالة من البيانات القادمة من الـ backend (is_liked / is_saved)
   const [liked, setLiked] = useState(Boolean(post.isLiked));
   const [saved, setSaved] = useState(Boolean(post.isSaved));
@@ -618,7 +687,57 @@ function PostCard({ post }) {
         </div>
       </div>
 
-      <p className="yam-post-copy-v2">{post.text}</p>
+      <p className="yam-post-copy-v2">{(pollItems || []).length > 0 ? pollQuestionExtracted.body : post.text}</p>
+
+      {/* ✅ FIX v88.7 (2026): إظهار استطلاع المنشور — السؤال بالأعلى + الأزرار تحته مع النسب */}
+      {(pollItems || []).length > 0 ? (
+        <div className="yam-post-poll" dir="rtl">
+          <div className="yam-poll-head">
+            <span className="yam-poll-badge">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="3" y="11" width="4" height="9" rx="1" />
+                <rect x="10" y="4" width="4" height="16" rx="1" />
+                <rect x="17" y="8" width="4" height="12" rx="1" />
+              </svg>
+              استطلاع
+            </span>
+            <span className="yam-poll-total">{formatCompactNumber(pollTotalVotes)} صوت</span>
+          </div>
+          {pollQuestionExtracted.question ? (
+            <div className="yam-poll-question">{pollQuestionExtracted.question}</div>
+          ) : null}
+          <div className="yam-poll-options">
+            {(pollItems || []).map((opt) => {
+              const votes = Number(opt?.votes || 0);
+              const percent = pollTotalVotes > 0 ? Math.round((votes / pollTotalVotes) * 100) : 0;
+              const isMine = Boolean(opt?.voted_by_me);
+              return (
+                <button
+                  key={opt.id || opt.label}
+                  type="button"
+                  className={`yam-poll-option${isMine ? ' is-mine' : ''}${hasVotedPoll ? ' is-revealed' : ''}`}
+                  onClick={() => handleVotePoll(opt.id)}
+                  disabled={pollBusy || hasVotedPoll}
+                >
+                  <span className="yam-poll-fill" style={{ width: `${percent}%` }} aria-hidden="true" />
+                  <span className="yam-poll-label">{opt.label}</span>
+                  {hasVotedPoll ? <span className="yam-poll-percent">{percent}%</span> : null}
+                  {isMine ? (
+                    <span className="yam-poll-check" aria-label="صوتك">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+          {!hasVotedPoll ? (
+            <div className="yam-poll-hint">اختر أحد الخيارات للتصويت</div>
+          ) : null}
+        </div>
+      ) : null}
 
       {mediaItems.length ? (
         <div className={`yam-post-media-grid-v2 media-count-${mediaItems.length}`}>

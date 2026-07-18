@@ -99,3 +99,125 @@
 [dir='rtl'] .yam-post-actions-v2.yam-post-actions-compact {
   direction: rtl;
 }
+
+/* ✅ FIX v88.5: تنسيقات استطلاع منشور الفيد (ديسكتوب) — يطابق مظهر استطلاعات المجموعات */
+.yam-post-poll {
+  margin: 8px 16px 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(109,40,217,0.04));
+  border: 1px solid rgba(139,92,246,0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.yam-post-poll .yam-poll-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: rgba(255,255,255,0.8);
+}
+.yam-post-poll .yam-poll-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(139,92,246,0.18);
+  color: #C4B5FD;
+  font-weight: 700;
+}
+.yam-post-poll .yam-poll-total {
+  font-weight: 600;
+  color: rgba(255,255,255,0.6);
+}
+/* ✅ FIX v88.7: سؤال الاستطلاع في الأعلى */
+.yam-post-poll .yam-poll-question {
+  font-size: 15px;
+  font-weight: 700;
+  color: #F4F4F5;
+  line-height: 1.5;
+  padding: 6px 2px 4px;
+  border-bottom: 1px dashed rgba(139,92,246,0.25);
+  margin-bottom: 4px;
+  word-break: break-word;
+}
+.yam-post-poll .yam-poll-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.yam-post-poll .yam-poll-option {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  text-align: right;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(139,92,246,0.35);
+  background: rgba(30,26,45,0.55);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+}
+.yam-post-poll .yam-poll-option:not(:disabled):hover {
+  border-color: rgba(139,92,246,0.75);
+  transform: translateY(-1px);
+}
+.yam-post-poll .yam-poll-option:disabled {
+  cursor: default;
+}
+.yam-post-poll .yam-poll-option.is-mine {
+  border-color: #8B5CF6;
+  background: rgba(139,92,246,0.18);
+}
+.yam-post-poll .yam-poll-fill {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 0%;
+  background: linear-gradient(90deg, rgba(139,92,246,0.35), rgba(167,139,250,0.18));
+  transition: width 0.5s ease;
+  z-index: 0;
+  border-radius: inherit;
+}
+.yam-post-poll .yam-poll-label,
+.yam-post-poll .yam-poll-percent,
+.yam-post-poll .yam-poll-check {
+  position: relative;
+  z-index: 1;
+}
+.yam-post-poll .yam-poll-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.yam-post-poll .yam-poll-percent {
+  font-weight: 800;
+  color: #C4B5FD;
+  font-variant-numeric: tabular-nums;
+}
+.yam-post-poll .yam-poll-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #8B5CF6;
+  color: #fff;
+}
+.yam-post-poll .yam-poll-hint {
+  font-size: 11px;
+  color: rgba(255,255,255,0.5);
+  text-align: center;
+  margin-top: 2px;
+}

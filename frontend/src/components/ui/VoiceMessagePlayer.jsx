@@ -121,7 +121,8 @@ export default function VoiceMessagePlayer({
       rafRef.current = requestAnimationFrame(syncProgress);
     };
     const handleError = () => {
-      setLoadError(true);
+      // ✅ v88.5.1 FIX: لا نُظهر أيقونة الخطأ عند فشل تحميل الميتاداتا (CORS/شبكة مؤقتة).
+      // نُبقي زر التشغيل ▶ ظاهراً، ونضع loadError=true فقط عند الفشل الفعلي أثناء المحاولة.
       stopProgressLoop();
       setIsPlaying(false);
     };
@@ -155,9 +156,16 @@ export default function VoiceMessagePlayer({
     const audio = audioRef.current;
     if (!audio) return;
     if (audio.paused) {
+      // إعادة المحاولة: امسح حالة الخطأ السابقة قبل بدء التشغيل
+      setLoadError(false);
       const playPromise = audio.play();
       if (playPromise && typeof playPromise.catch === 'function') {
-        playPromise.catch(() => setLoadError(true));
+        playPromise.catch((err) => {
+          // تجاهل AbortError (يحدث عند التبديل السريع بين الرسائل)
+          const name = err && err.name ? String(err.name) : '';
+          if (name === 'AbortError' || name === 'NotAllowedError') return;
+          setLoadError(true);
+        });
       }
     } else {
       audio.pause();
